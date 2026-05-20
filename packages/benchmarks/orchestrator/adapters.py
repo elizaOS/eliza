@@ -118,6 +118,11 @@ SWE_BENCH_DOCKER_UNAVAILABLE_REASON = (
     "(start Docker Desktop/daemon so official SWE-Bench tests can run); "
     "harness not run"
 )
+OSWORLD_DOCKER_UNAVAILABLE_REASON = (
+    "OSWorld Docker desktop backend unavailable "
+    "(start Docker Desktop/daemon so the VM-backed tasks can run); "
+    "harness not run"
+)
 HERMES_SANDBOX_UNAVAILABLE_REASON = (
     "Hermes sandbox execution unavailable "
     "(set MODAL_TOKEN_ID/MODAL_TOKEN_SECRET or start a reachable Docker daemon); "
@@ -147,6 +152,8 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
         return ALL_HARNESSES if _has_terminal_bench_docker_backend() else ()
     if benchmark_id in {"swe_bench", "swe_bench_orchestrated"}:
         return ALL_HARNESSES if _has_swe_bench_docker_backend() else ()
+    if benchmark_id == "osworld":
+        return ALL_HARNESSES if _has_osworld_docker_backend() else ()
     if benchmark_id == "gauntlet":
         return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
     if benchmark_id in {
@@ -286,6 +293,18 @@ def _has_swe_bench_docker_backend() -> bool:
         return _SWE_BENCH_DOCKER_AVAILABLE
     _SWE_BENCH_DOCKER_AVAILABLE = _has_terminal_bench_docker_backend()
     return _SWE_BENCH_DOCKER_AVAILABLE
+
+
+_OSWORLD_DOCKER_AVAILABLE: bool | None = None
+
+
+def _has_osworld_docker_backend() -> bool:
+    """Return true when Docker can run OSWorld's VM orchestration backend."""
+    global _OSWORLD_DOCKER_AVAILABLE
+    if _OSWORLD_DOCKER_AVAILABLE is not None:
+        return _OSWORLD_DOCKER_AVAILABLE
+    _OSWORLD_DOCKER_AVAILABLE = _docker_info_available(attempts=1, timeout_s=5.0)
+    return _OSWORLD_DOCKER_AVAILABLE
 
 
 def _has_hermes_sandbox_backend() -> bool:

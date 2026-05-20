@@ -1,0 +1,45 @@
+---
+title: Create a Plugin
+description: "Scaffold a new @elizaos plugin from the CLI."
+---
+
+## Scaffold
+
+```bash
+npx elizaos create my-plugin --template plugin
+cd my-plugin
+bun install
+```
+
+You get:
+
+- `src/plugin.ts` — the entry point exporting the `Plugin` object
+- `src/actions/`, `src/providers/`, `src/services/` — starter implementations
+- `src/__tests__/` — Bun test setup with a runtime fixture
+- `e2e/` — end-to-end tests against a real agent
+- `package.json` — published under your scope, `main`/`types` pointing at `dist/`
+
+## Run inside a host agent
+
+To iterate against a real agent, link the plugin into an Eliza project:
+
+```bash
+cd ../my-agent
+bun add link:../my-plugin
+```
+
+Add `'my-plugin'` to the character's `plugins` array. The runtime loads the linked package and hot-reloads on rebuild.
+
+## Build and test
+
+```bash
+bun run build       # tsdown → dist/
+bun run test        # unit tests
+bun run test:e2e    # e2e against a real runtime
+```
+
+## See also
+
+- [Plugin anatomy](/tracks/plugin/anatomy)
+- [Plugin patterns](/plugins/patterns)
+- [Local plugins](/plugins/local-plugins)

@@ -1,0 +1,35 @@
+---
+title: Cloud Billing
+description: "Credits, top-up, Stripe, creator earnings."
+---
+
+Eliza Cloud bills in **credits**. Credits cover inference, container minutes, storage, and add-ons. They are denominated in fiat (USD) under the hood.
+
+## Top up
+
+Manual top-up via Stripe in the dashboard. Auto-renewal is optional and configurable per account.
+
+## Where credits go
+
+- **Inference** — per-call, per-token cost from the underlying provider plus the app's configured markup.
+- **Containers** — per-minute by tier.
+- **Storage** — long-term blob, vector, and document storage.
+- **Add-ons** — domains, premium features.
+
+## Creator monetization
+
+Apps with monetization enabled earn a share of inference markup and any purchases. Earnings accrue per `appId` and are payable through Stripe Connect (or other configured rails).
+
+## Invoices and receipts
+
+Issued automatically on every top-up and at billing cycle close. Available in the dashboard and via the Cloud API.
+
+## Source
+
+- Routes: `packages/cloud-api/v1/billing/`
+- Dashboard: `packages/cloud-frontend/src/dashboard/billing/`
+
+## See also
+
+- [Apps](/tracks/cloud/apps) — monetization is enabled per app
+- [Inference](/tracks/cloud/inference) — where most credits go

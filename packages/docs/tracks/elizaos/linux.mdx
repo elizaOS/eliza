@@ -1,0 +1,40 @@
+---
+title: elizaOS Linux
+description: "The Tails-derived live distribution."
+---
+
+elizaOS Live is built on top of [Tails](https://tails.net), the amnesic incognito live system. It inherits Tails' boot, networking, and security model and adds an Eliza-branded desktop with the app pre-installed.
+
+## What's in the image
+
+- A live Linux desktop (Debian-based, Tails core).
+- The elizaOS desktop app pre-installed and pinned to the dock.
+- A local agent runtime configured for offline-first operation.
+- Optional encrypted persistence for character files, plugin credentials, and model weights.
+
+## Boot
+
+Flash the image to a USB drive (8 GB+), boot from it, and the desktop comes up directly into Eliza. Persistence is opt-in and encrypted with a passphrase you choose at first boot.
+
+## Security model
+
+elizaOS Live inherits Tails' security posture:
+
+- Runs from RAM; nothing is written to disk by default.
+- Network traffic can be routed through Tor (toggleable from the greeter).
+- All system identifiers (MAC, hostname) are randomized per boot.
+
+The added elizaOS surfaces (the app, the agent, plugins) follow the same rule: no state escapes the persistent volume unless you enabled it.
+
+## Variants
+
+Active variant: `packages/os/linux/variants/milady-tails/`. Variant configuration controls which plugins ship preinstalled, default character, and dock pins.
+
+## Building locally
+
+The build scripts live in `packages/os/linux/`. Building a live image requires a Debian-based host, root, and ~20 GB free. See the variant README for the full prerequisite list.
+
+## See also
+
+- [Install](/tracks/elizaos/install)
+- [AOSP variant](/tracks/elizaos/aosp)

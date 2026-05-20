@@ -13,7 +13,7 @@ import {
   dispatchAppEvent,
   NETWORK_STATUS_CHANGE_EVENT,
   type NetworkStatusChangeDetail,
-} from "@elizaos/ui";
+} from "@elizaos/ui/events";
 
 export interface MobileLifecycleContext {
   isNative: boolean;

@@ -1,0 +1,32 @@
+---
+title: Deploy an Agent App
+description: "Register with Eliza Cloud, bind a domain, ship to users."
+---
+
+Agent apps deploy in two shapes:
+
+## Local-first (no Cloud)
+
+Sign and distribute the binary directly. Users install, the app runs entirely on their machine. No registration required. Works for desktop, mobile sideloads, and self-hosted web.
+
+## Cloud-backed
+
+Register the app with Eliza Cloud to unlock:
+
+- A unique `appId` (used for analytics, multi-tenant routing, monetization).
+- Hosted auth and OAuth redirects.
+- Custom domain binding.
+- Container deploys for server-side workloads.
+- Billing and usage tracking.
+
+Registration is a POST to the Cloud apps API. See the [Cloud track](/tracks/cloud/apps) for the request shape and lifecycle.
+
+## CLI deploy
+
+The CLI exposes `elizaos deploy` for one-shot container + domain deploys against Cloud. Configuration lives in `app.config.ts` (`appId`, name, version, regions).
+
+## See also
+
+- [Cloud track](/tracks/cloud/overview)
+- [Cloud guides](/guides/cloud)
+- [Deployment](/deployment)

@@ -1,0 +1,36 @@
+---
+title: Cloud Inference
+description: "Routed model calls — gateways, fallback, rate limits."
+---
+
+Cloud-routed inference is what an Eliza agent uses when its model provider is `@elizaos/plugin-elizacloud`. Cloud acts as a gateway: it takes a model call, picks a provider (you set the priority order), enforces rate limits and budgets, and returns the response.
+
+## Why route through Cloud
+
+- One API key for all providers.
+- Centralized rate limiting, budget caps, and observability.
+- Automatic fallback when a provider errors or is over quota.
+- Per-app inference markup for creator monetization.
+- Cheaper aggregate pricing when Cloud has bulk-rate contracts.
+
+## Provider routing
+
+The Cloud inference endpoint accepts a model type (`TEXT_LARGE`, `TEXT_SMALL`, `EMBEDDING`, `IMAGE`, etc.) and resolves it to a concrete provider call using your account's routing policy. See [Cloud provider routing](/guides/cloud-provider-routing) for policy syntax.
+
+## Fallback
+
+If the primary provider returns a transient error or is rate-limited, Cloud retries against the next configured provider for that model type. The agent sees one logical call.
+
+## Rate limits
+
+Each app has per-minute, per-hour, and per-day caps configurable in the dashboard. Caps hit return `429` to the agent; the agent's local retry logic decides whether to back off or escalate.
+
+## Source
+
+- Routes: `packages/cloud-api/v1/inference/`, `packages/cloud-api/v1/llm/`
+- Routing policy: dashboard at `packages/cloud-frontend/src/dashboard/inference/`
+
+## See also
+
+- [Provider routing guide](/guides/cloud-provider-routing)
+- [Model providers](/model-providers)
