@@ -13,7 +13,7 @@ import * as ethers from "ethers";
 import type { TxService } from "./tx-service.ts";
 
 // ── ABI ──────────────────────────────────────────────────────────────────
-// Matches ElizaAgentRegistry.sol. Babylon-compatible core interface plus
+// Matches ElizaAgentRegistry.sol. Feed-compatible core interface plus
 // registerAgentFor() and ERC721URIStorage tokenURI.
 
 const REGISTRY_ABI = [
