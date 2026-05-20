@@ -92,5 +92,5 @@ export LINE_CHANNEL_SECRET=YOUR_CHANNEL_SECRET
 
 ## Related
 
-- [LINE Plugin Reference](/plugin-registry/platform/line)
+- [LINE Plugin Reference](/connectors/line)
 - [Connectors overview](/guides/connectors#line)

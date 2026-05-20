@@ -224,7 +224,7 @@ describe("documentation files", () => {
   });
 
   it("documentation directories exist", () => {
-    const expectedDirs = ["guides", "examples", "runtime", "plugins"];
+    const expectedDirs = ["guides", "tracks", "runtime", "plugins", "cli", "connectors"];
     for (const dir of expectedDirs) {
       assert.ok(
         existsSync(join(DOCS_DIR, dir)),

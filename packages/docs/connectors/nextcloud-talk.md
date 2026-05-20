@@ -92,6 +92,6 @@ Configure in `~/.eliza/eliza.json`:
 
 ## Related
 
-- [Nextcloud Talk Plugin Reference](/plugin-registry/platform/nextcloud-talk)
+- [Nextcloud Talk Plugin Reference](/connectors/nextcloud-talk)
 - [Connectors overview](/guides/connectors#nextcloud-talk)
 - [Configuration reference](/configuration)

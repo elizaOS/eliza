@@ -38,5 +38,5 @@ Once pairing succeeds, the dashboard stores the API token and redirects to the m
 
 ## Related
 
-- [Authentication API](/rest/auth) — REST API endpoints for auth status and pairing
-- [API Reference](/api-reference) — full API authentication documentation
+- Authentication API — REST API endpoints for auth status and pairing
+- [API Reference](/cli/overview) — full API authentication documentation

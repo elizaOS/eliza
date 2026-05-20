@@ -79,6 +79,6 @@ The `"token": "placeholder"` value is not used for authentication — it only tr
 
 ## Related
 
-- [Nostr plugin reference](/plugin-registry/platform/nostr)
+- [Nostr plugin reference](/connectors/nostr)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

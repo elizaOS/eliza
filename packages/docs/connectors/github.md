@@ -124,6 +124,6 @@ Fine-grained tokens are strictly allowlist — if the repo isn't in the list, th
 
 ## Related
 
-- [GitHub plugin reference](/plugin-registry/platform/github)
+- [GitHub plugin reference](/connectors/github)
 - [Connectors overview](/guides/connectors#github)
 - [Configuration reference](/configuration)

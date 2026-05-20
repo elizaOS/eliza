@@ -19,23 +19,23 @@ A plugin is a self-contained module that registers one or more of:
 
 <CardGroup cols={2}>
 
-<Card title="Core Plugins" icon="cube" href="/plugin-registry/documents">
+<Card title="Core Plugins" icon="cube" href="/plugins/overview">
   12 essential plugins that ship with every Eliza installation — sql, local-embedding, form, knowledge, trajectory-logger, agent-orchestrator, cron, shell, agent-skills, commands, plugin-manager, and roles.
 </Card>
 
-<Card title="Model Providers" icon="brain" href="/plugin-registry/llm/openai">
+<Card title="Model Providers" icon="brain" href="/plugins/overview">
   LLM integrations for OpenAI, Anthropic, Google Gemini, Groq, Ollama, OpenRouter, xAI, Local AI, and Vercel AI Gateway ship in the bundled registry and auto-enable when their API key env var is set. Additional providers (DeepSeek, Mistral, Cohere, Together, Minimax, Perplexity, Google Antigravity, Zai) may be available from the upstream elizaOS remote registry but are not bundled — install them explicitly if needed. Eliza Cloud auto-enables separately via `ELIZAOS_CLOUD_API_KEY`.
 </Card>
 
-<Card title="Platform Connectors" icon="plug" href="/plugin-registry/platform/discord">
+<Card title="Platform Connectors" icon="plug" href="/connectors/discord">
   28 connector plugins across the bundled and remote registries. 18 auto-enable via connector config (Discord, Telegram, Twitter, Slack, WhatsApp, Signal, iMessage, Blooio, MS Teams, Google Chat, Mattermost, Farcaster, Twitch, Feishu, Matrix, Nostr, Lens, WeChat). 10 additional connectors (BlueBubbles, Bluesky, Instagram, LINE, Zalo, Twilio, GitHub, Gmail Watch, Nextcloud Talk, Tlon) can be installed from the registry.
 </Card>
 
-<Card title="DeFi & Blockchain" icon="wallet" href="/plugin-registry/defi/evm">
+<Card title="DeFi & Blockchain" icon="wallet" href="/plugins/overview">
   On-chain interactions for EVM chains and Solana — token transfers, swaps, and DeFi protocols.
 </Card>
 
-<Card title="Feature Plugins" icon="wand-magic-sparkles" href="/plugin-registry/browser">
+<Card title="Feature Plugins" icon="wand-magic-sparkles" href="/plugins/overview">
   64 feature plugins covering browser automation, image generation, TTS/STT, computer use, cron scheduling, vision, shell execution, webhooks, FAL media generation, Suno music, MCP server integration, code sandboxing, agent orchestration, knowledge/RAG, Obsidian vault sync, Gmail Watch, personality tuning, Shopify/Linear integrations, RSS feeds, x402 payments, agent skills, and more.
 </Card>
 

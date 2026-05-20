@@ -93,5 +93,5 @@ export TLON_URL=http://localhost:8080
 
 ## Related
 
-- [Tlon Plugin Reference](/plugin-registry/platform/tlon)
+- [Tlon Plugin Reference](/connectors/tlon)
 - [Connectors overview](/guides/connectors#tlon)

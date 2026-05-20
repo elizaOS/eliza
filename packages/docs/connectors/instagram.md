@@ -63,5 +63,5 @@ Configure in `~/.eliza/eliza.json`:
 
 ## Related
 
-- [Instagram plugin reference](/plugin-registry/platform/instagram)
+- [Instagram plugin reference](/connectors/instagram)
 - [Connectors overview](/guides/connectors#instagram)

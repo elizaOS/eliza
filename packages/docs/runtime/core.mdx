@@ -230,7 +230,7 @@ const team = elizaOS.getAgentsByNames(["Researcher", "Writer"]);
 
 ### Events
 
-ElizaOS extends `EventTarget` for lifecycle events:
+elizaOS extends `EventTarget` for lifecycle events:
 
 ```typescript
 elizaOS.addEventListener("agent:started", (e) => {
@@ -265,7 +265,7 @@ const keyStatus = await elizaOS.validateApiKeys();
 
 ## What You Get
 
-| Feature                  | Without ElizaOS                   | With ElizaOS                        |
+| Feature                  | Without elizaOS                   | With elizaOS                        |
 | ------------------------ | --------------------------------- | ----------------------------------- |
 | **Plugin resolution**    | Manual imports, version conflicts | Auto-discovery, dependency ordering |
 | **Database setup**       | 50+ lines boilerplate             | Zero-config SQLite or Postgres      |
@@ -864,9 +864,9 @@ const types = runtime.getRegisteredServiceTypes();
 // ['DATABASE', 'SPEECH', 'VIDEO', 'TRANSCRIPTION', ...]
 ```
 
-### ElizaOS Type Guard
+### elizaOS Type Guard
 
-Check if the runtime has an ElizaOS instance attached:
+Check if the runtime has an elizaOS instance attached:
 
 ```typescript
 hasElizaOS(): this is IAgentRuntime & { elizaOS: IElizaOS };

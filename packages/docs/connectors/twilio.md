@@ -125,5 +125,5 @@ export TWILIO_PHONE_NUMBER=+1234567890
 
 ## Related
 
-- [Twilio Plugin Reference](/plugin-registry/platform/twilio)
+- [Twilio Plugin Reference](/connectors/twilio)
 - [Connectors overview](/guides/connectors#twilio)

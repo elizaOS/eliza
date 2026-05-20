@@ -113,7 +113,7 @@ good published **`2.0.0-alpha.13`** artifact.
 - **Before bumping** the OpenRouter dependency, verify the **published tarball** on npm: open `dist/node/index.node.js` and confirm it defines the default export / `openrouterPlugin`, or run `bun build node_modules/@elizaos/plugin-openrouter/dist/node/index.node.js --target=bun` after install.
 - **Do not replace the workspace link with an unfenced semver range** until upstream publishes a fixed version and you have confirmed the artifact. **Why:** `^2.0.0-alpha.10` allowed Bun to resolve **`alpha.12`**, which broke installs that upgraded the lockfile.
 
-User-facing context and configuration for OpenRouter itself live in **[OpenRouter plugin](plugin-registry/llm/openrouter.md)** (Mintlify: `/plugin-registry/llm/openrouter`).
+User-facing context and configuration for OpenRouter itself live in **[OpenRouter plugin](plugins/overview)** (Mintlify: `/plugins/overview`).
 
 ## Optional plugins: why was this package in the load set?
 

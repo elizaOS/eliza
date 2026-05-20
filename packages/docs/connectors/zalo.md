@@ -147,5 +147,5 @@ eliza plugins install zalouser
 
 ## Related
 
-- [Zalo Plugin Reference](/plugin-registry/platform/zalo)
+- [Zalo Plugin Reference](/connectors/zalo)
 - [Connectors overview](/guides/connectors#zalo)

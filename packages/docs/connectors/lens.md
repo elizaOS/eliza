@@ -60,6 +60,6 @@ The Lens connector will auto-enable once the API key is configured.
 
 ## Related
 
-- [Lens plugin reference](/plugin-registry/platform/lens)
+- [Lens plugin reference](/connectors/lens)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

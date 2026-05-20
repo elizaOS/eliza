@@ -64,6 +64,6 @@ Unlike most connectors, Gmail Watch is configured via the `features` section of 
 
 ## Related
 
-- [Gmail Watch plugin reference](/plugin-registry/platform/gmail-watch)
+- [Gmail Watch plugin reference](/connectors/gmail-watch)
 - [Connectors overview](/guides/connectors#gmail-watch)
 - [Configuration reference](/configuration)
