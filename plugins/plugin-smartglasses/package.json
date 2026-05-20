@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-smartglasses",
-  "version": "2.0.1-beta.0",
+  "version": "2.0.3",
   "type": "module",
   "description": "Even Realities G1/G2 smartglasses plugin for ElizaOS: display text, receive microphone audio, and route side-tap microphone controls.",
   "main": "./dist/index.js",
