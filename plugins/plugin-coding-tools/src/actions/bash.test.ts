@@ -585,7 +585,48 @@ describe("shellAction", () => {
     }
   });
 
+  it("preserves local health JSON returned with a non-2xx status", async () => {
+    const previousPort = process.env.ELIZA_API_PORT;
+    const server = createServer((_req, res) => {
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end('{"ready":false,"plugins":{"loaded":23,"failed":1}}');
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      server.close();
+      throw new Error("test server did not expose a TCP port");
+    }
+    process.env.ELIZA_API_PORT = String(address.port);
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-565656565656",
+          "check the local bot health endpoint and summarize ready status and plugin counts, concise",
+        ),
+        undefined,
+        {
+          command: "curl -fsS http://localhost:3000/health",
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.userFacingText).toBe(
+        "Health: ready=false; plugins loaded=23, failed=1.",
+      );
+    } finally {
+      if (previousPort === undefined) delete process.env.ELIZA_API_PORT;
+      else process.env.ELIZA_API_PORT = previousPort;
+      server.close();
+    }
+  });
+
   it("adds user-facing text for RAM status output", async () => {
+    if (process.platform !== "linux") return;
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
       runtime,

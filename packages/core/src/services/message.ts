@@ -6349,7 +6349,7 @@ function looksLikeLocalShellRequest(text: string): boolean {
 			normalized,
 		);
 	const asksLocalSourceInspection =
-		/\b(?:does|do|is|are|can|could|check|verify|inspect|show)\b[\s\S]{0,160}\b(?:local|vendored|workspace|worktree|repo|repository|submodules?|source|code)\b[\s\S]{0,160}\b(?:include|contain|have|support|implement|detect|use)\b/iu.test(
+		/\b(?:does|do|is|are|can|could|check|verify|inspect|show)\b[\s\S]{0,160}\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b[\s\S]{0,160}\b(?:include|contain|have|support|implement|detect|use)\b/iu.test(
 			normalized,
 		) &&
 		/\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b/iu.test(

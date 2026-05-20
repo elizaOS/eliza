@@ -103,7 +103,7 @@ const CRYPTO_SPOT_ASSETS: CryptoSpotAsset[] = [
 
 const BOUNDED_DISK_INSPECTION_COMMAND =
   'df -h / /home; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/.local/share/Trash"; do [ -e "$p" ] && du -sh "$p" 2>/dev/null; done | sort -hr | head -n 10';
-const LOCAL_HEALTH_COMMAND = `PORT="\${ELIZA_API_PORT:-\${ELIZA_PORT:-\${API_PORT:-\${SERVER_PORT:-2138}}}}"; curl -fsS "http://127.0.0.1:\${PORT}/api/health"`;
+const LOCAL_HEALTH_COMMAND = `PORT="\${ELIZA_API_PORT:-\${ELIZA_PORT:-\${API_PORT:-\${SERVER_PORT:-2138}}}}"; curl -sS "http://127.0.0.1:\${PORT}/api/health"`;
 const LOCAL_MEMORY_COMMAND = "free -m";
 const SOURCE_SEARCH_EXCLUDES = [
   "!**/.git/**",
@@ -327,7 +327,7 @@ function asksForLocalSourceInspection(text: string): boolean {
   const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
   if (!normalized) return false;
   return (
-    /\b(?:does|do|is|are|can|could|check|verify|inspect|show)\b[\s\S]{0,160}\b(?:local|vendored|workspace|worktree|repo|repository|submodules?|source|code)\b[\s\S]{0,160}\b(?:include|contain|have|support|implement|detect|use)\b/.test(
+    /\b(?:does|do|is|are|can|could|check|verify|inspect|show)\b[\s\S]{0,160}\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b[\s\S]{0,160}\b(?:include|contain|have|support|implement|detect|use)\b/.test(
       normalized,
     ) &&
     /\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b/.test(
