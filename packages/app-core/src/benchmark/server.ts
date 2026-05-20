@@ -503,7 +503,7 @@ async function callOpenAiCompatibleActionCalling(params: {
       params.toolChoice === "none"
         ? "none"
         : params.toolChoice === "auto"
-          ? "required"
+          ? "auto"
           : params.toolChoice || "required";
   }
   const requestBody = JSON.stringify(requestPayload);
@@ -2375,8 +2375,8 @@ export async function startBenchmarkServer() {
               tools.length === 0
                 ? "none"
                 : typeof benchmarkContext.tool_choice === "string"
-                ? benchmarkContext.tool_choice
-                : "auto";
+                  ? benchmarkContext.tool_choice
+                  : "auto";
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
             activeUsageBuffer = turnUsageBuffer;
             let nativeResult: unknown;
