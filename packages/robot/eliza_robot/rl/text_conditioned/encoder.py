@@ -99,8 +99,15 @@ def build_task_embeddings(
         all_means.append(mean)
 
     stacked = np.stack(all_means, axis=0)
-    if pca_dim < stacked.shape[1] and stacked.shape[0] >= pca_dim:
-        pca = PCA(n_components=pca_dim, whiten=False)
+    # Force PCA whenever it makes the obs strictly smaller. When
+    # n_tasks < pca_dim, fall back to n_components = n_tasks (sklearn
+    # caps it anyway), so we still strictly shrink the obs vs the raw
+    # 384-D sentence-transformer output. The previous behavior — return
+    # raw 384-D when n_tasks < pca_dim — was silently dropping PCA and
+    # lying about it in the manifest (R-8 in the SOTA audit).
+    if pca_dim < stacked.shape[1]:
+        effective_n = min(pca_dim, stacked.shape[0])
+        pca = PCA(n_components=effective_n, whiten=False)
         reduced = pca.fit_transform(stacked).astype(np.float32)
         pca_components = pca.components_.astype(np.float32)
         pca_mean = pca.mean_.astype(np.float32)
