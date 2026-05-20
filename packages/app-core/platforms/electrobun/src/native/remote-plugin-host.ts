@@ -1,6 +1,6 @@
 /**
- * Electrobun carrot host runtime — manages install, start, stop, and
- * lifecycle for `mode: "background"` and `mode: "window"` carrots, plus
+ * Electrobun remote-plugin host runtime — manages install, start, stop, and
+ * lifecycle for `mode: "background"` and `mode: "window"` remote plugins, plus
  * the host-side dispatcher for `bridge.requestHost(...)` host actions.
  */
 import * as fs from "node:fs";
@@ -17,8 +17,8 @@ import type {
   HostActionMessage,
   HostRequestMessage,
   HostResponseMessage,
-  InstalledCarrot,
-  InstalledCarrotSnapshot,
+  InstalledRemotePlugin,
+  InstalledRemotePluginSnapshot,
   JsonValue,
   WorkerInitMessage,
   WorkerResponseMessage,
@@ -27,43 +27,43 @@ import {
   buildCarrotRuntimeContext,
   ensureCarrotSourceDirectory,
   hasHostPermission,
-  installPrebuiltCarrot,
+  installPrebuiltRemotePlugin,
   loadCarrotListEntries,
   loadCarrotStoreSnapshot,
-  loadInstalledCarrot,
-  toCarrotListEntry,
-  toInstalledCarrotSnapshot,
-  uninstallInstalledCarrot,
+  loadInstalledRemotePlugin,
+  toRemotePluginListEntry,
+  toInstalledRemotePluginSnapshot,
+  uninstallInstalledRemotePlugin,
 } from "@elizaos/plugin-remote-manifest";
 import { resolveApiToken } from "@elizaos/shared";
 import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import { logger } from "../logger.js";
 import type { SendToWebview } from "../types.js";
 
-type CarrotWindowInstance = InstanceType<typeof BrowserWindow>;
+type RemotePluginWindowInstance = InstanceType<typeof BrowserWindow>;
 
-export type CarrotWorkerState = "stopped" | "starting" | "running" | "error";
+export type RemotePluginWorkerState = "stopped" | "starting" | "running" | "error";
 
-export interface CarrotWorkerStatus {
+export interface RemotePluginWorkerStatus {
   id: string;
-  state: CarrotWorkerState;
+  state: RemotePluginWorkerState;
   startedAt: number | null;
   stoppedAt: number | null;
   error: string | null;
 }
 
-export interface CarrotInstallFromDirectoryOptions {
+export interface RemotePluginInstallFromDirectoryOptions {
   sourceDir: string;
   devMode?: boolean;
   permissionsGranted?: RemotePluginPermissionGrant;
 }
 
-export interface CarrotUninstallResult {
+export interface RemotePluginUninstallResult {
   removed: boolean;
-  carrot: RemotePluginListEntry | null;
+  remotePlugin: RemotePluginListEntry | null;
 }
 
-export interface CarrotLogsSnapshot {
+export interface RemotePluginLogsSnapshot {
   id: string;
   path: string;
   text: string;
@@ -77,27 +77,27 @@ export interface RemotePluginWorkerHandle {
   onError(listener: (error: Error) => void): void;
 }
 
-export interface CarrotWorkerRunner {
-  start(carrot: InstalledCarrot): RemotePluginWorkerHandle;
+export interface RemotePluginWorkerRunner {
+  start(remotePlugin: InstalledRemotePlugin): RemotePluginWorkerHandle;
 }
 
-interface CarrotWorkerRecord {
-  status: CarrotWorkerStatus;
+interface RemotePluginWorkerRecord {
+  status: RemotePluginWorkerStatus;
   handle: RemotePluginWorkerHandle | null;
   context: RemotePluginRuntimeContext | null;
-  window: CarrotWindowInstance | null;
+  window: RemotePluginWindowInstance | null;
 }
 
-interface CarrotManagerEvents {
+interface RemotePluginHostEvents {
   storeChanged?: (snapshot: RemotePluginStoreSnapshot) => void;
-  workerChanged?: (status: CarrotWorkerStatus) => void;
+  workerChanged?: (status: RemotePluginWorkerStatus) => void;
 }
 
-export interface CarrotManagerOptions {
+export interface RemotePluginHostOptions {
   storeRoot?: string;
-  workerRunner?: CarrotWorkerRunner;
+  workerRunner?: RemotePluginWorkerRunner;
   now?: () => number;
-  events?: CarrotManagerEvents;
+  events?: RemotePluginHostEvents;
 }
 
 const REMOTE_PLUGIN_STORE_ENV_KEYS = [
@@ -126,7 +126,7 @@ export function resolveCarrotStoreRoot(
   }
   return path.join(
     resolveUtilsUserData() ?? path.join(os.homedir(), ".eliza"),
-    "carrots",
+    "remote-plugins",
   );
 }
 
@@ -153,22 +153,22 @@ class BrowserWorkerHandle implements RemotePluginWorkerHandle {
         new Error(
           typeof event.message === "string"
             ? event.message
-            : "Carrot worker failed.",
+            : "Remote plugin worker failed.",
         ),
       );
     });
   }
 }
 
-class BrowserCarrotWorkerRunner implements CarrotWorkerRunner {
-  start(carrot: InstalledCarrot): RemotePluginWorkerHandle {
+class BrowserCarrotWorkerRunner implements RemotePluginWorkerRunner {
+  start(remotePlugin: InstalledRemotePlugin): RemotePluginWorkerHandle {
     return new BrowserWorkerHandle(
-      new Worker(pathToFileURL(carrot.workerPath).href, { type: "module" }),
+      new Worker(pathToFileURL(remotePlugin.workerPath).href, { type: "module" }),
     );
   }
 }
 
-function stoppedStatus(id: string): CarrotWorkerStatus {
+function stoppedStatus(id: string): RemotePluginWorkerStatus {
   return {
     id,
     state: "stopped",
@@ -179,12 +179,12 @@ function stoppedStatus(id: string): CarrotWorkerStatus {
 }
 
 function buildWorkerInitMessage(
-  carrot: InstalledCarrot,
+  remotePlugin: InstalledRemotePlugin,
   context: RemotePluginRuntimeContext,
 ): WorkerInitMessage {
   return {
     type: "init",
-    manifest: carrot.manifest,
+    manifest: remotePlugin.manifest,
     context: {
       statePath: context.statePath,
       logsPath: context.logsPath,
@@ -228,23 +228,23 @@ interface PendingInvoke {
 
 const INVOKE_TIMEOUT_MS = 30_000;
 
-export class CarrotManager {
+export class RemotePluginHost {
   private readonly storeRoot: string;
-  private readonly workerRunner: CarrotWorkerRunner;
+  private readonly workerRunner: RemotePluginWorkerRunner;
   private readonly now: () => number;
-  private events: CarrotManagerEvents;
-  private readonly workers = new Map<string, CarrotWorkerRecord>();
+  private events: RemotePluginHostEvents;
+  private readonly workers = new Map<string, RemotePluginWorkerRecord>();
   private readonly pendingInvokes = new Map<number, PendingInvoke>();
   private nextInvokeId = 1;
 
-  constructor(options: CarrotManagerOptions = {}) {
+  constructor(options: RemotePluginHostOptions = {}) {
     this.storeRoot = options.storeRoot ?? resolveCarrotStoreRoot();
     this.workerRunner = options.workerRunner ?? new BrowserCarrotWorkerRunner();
     this.now = options.now ?? Date.now;
     this.events = options.events ?? {};
   }
 
-  setEvents(events: CarrotManagerEvents): void {
+  setEvents(events: RemotePluginHostEvents): void {
     this.events = events;
   }
 
@@ -252,7 +252,7 @@ export class CarrotManager {
     return this.storeRoot;
   }
 
-  listCarrots(): RemotePluginListEntry[] {
+  listRemotePlugins(): RemotePluginListEntry[] {
     return loadCarrotListEntries(this.storeRoot);
   }
 
@@ -260,69 +260,69 @@ export class CarrotManager {
     return loadCarrotStoreSnapshot(this.storeRoot);
   }
 
-  getCarrot(id: string): InstalledCarrotSnapshot | null {
-    const carrot = loadInstalledCarrot(this.storeRoot, id);
-    return carrot ? toInstalledCarrotSnapshot(carrot) : null;
+  getRemotePlugin(id: string): InstalledRemotePluginSnapshot | null {
+    const remotePlugin = loadInstalledRemotePlugin(this.storeRoot, id);
+    return remotePlugin ? toInstalledRemotePluginSnapshot(remotePlugin) : null;
   }
 
   installFromDirectory(
-    options: CarrotInstallFromDirectoryOptions,
-  ): InstalledCarrotSnapshot {
+    options: RemotePluginInstallFromDirectoryOptions,
+  ): InstalledRemotePluginSnapshot {
     const sourceDir = ensureCarrotSourceDirectory(options.sourceDir);
-    const carrot = installPrebuiltCarrot(this.storeRoot, sourceDir, {
+    const remotePlugin = installPrebuiltRemotePlugin(this.storeRoot, sourceDir, {
       devMode: options.devMode === true,
       permissionsGranted: options.permissionsGranted,
       source: { kind: "local", path: sourceDir },
       now: this.now,
     });
     this.emitStoreChanged();
-    return toInstalledCarrotSnapshot(carrot);
+    return toInstalledRemotePluginSnapshot(remotePlugin);
   }
 
-  uninstall(id: string): CarrotUninstallResult {
-    const carrot = loadInstalledCarrot(this.storeRoot, id);
-    const entry = carrot ? toCarrotListEntry(carrot) : null;
-    if (carrot) {
+  uninstall(id: string): RemotePluginUninstallResult {
+    const remotePlugin = loadInstalledRemotePlugin(this.storeRoot, id);
+    const entry = remotePlugin ? toRemotePluginListEntry(remotePlugin) : null;
+    if (remotePlugin) {
       this.stopWorker(id);
     }
-    const record = uninstallInstalledCarrot(this.storeRoot, id);
+    const record = uninstallInstalledRemotePlugin(this.storeRoot, id);
     if (record) {
       this.workers.delete(id);
       this.emitStoreChanged();
     }
-    return { removed: record !== null, carrot: entry };
+    return { removed: record !== null, remotePlugin: entry };
   }
 
-  startWorker(id: string): CarrotWorkerStatus {
+  startWorker(id: string): RemotePluginWorkerStatus {
     const existing = this.workers.get(id);
     if (existing?.status.state === "running") return existing.status;
     if (existing?.status.state === "starting") return existing.status;
 
-    const carrot = loadInstalledCarrot(this.storeRoot, id);
-    if (!carrot) {
-      throw new Error(`Carrot is not installed: ${id}`);
+    const remotePlugin = loadInstalledRemotePlugin(this.storeRoot, id);
+    if (!remotePlugin) {
+      throw new Error(`Remote plugin is not installed: ${id}`);
     }
 
-    fs.mkdirSync(carrot.stateDir, { recursive: true });
-    if (carrot.install.permissionsGranted.isolation === "isolated-process") {
+    fs.mkdirSync(remotePlugin.stateDir, { recursive: true });
+    if (remotePlugin.install.permissionsGranted.isolation === "isolated-process") {
       logger.warn(
-        `[carrots] ${id}: manifest requests isolation:isolated-process but the host runs all carrots as shared-worker today; falling back. Process isolation lands when a Bun.spawn-based runner is wired.`,
+        `[remote-plugin] ${id}: manifest requests isolation:isolated-process but the host runs all remote plugins as shared-worker today; falling back. Process isolation lands when a Bun.spawn-based runner is wired.`,
       );
     }
     const context = buildCarrotRuntimeContext(
-      carrot.currentDir,
-      carrot.stateDir,
-      carrot.manifest.id,
-      carrot.install.permissionsGranted,
+      remotePlugin.currentDir,
+      remotePlugin.stateDir,
+      remotePlugin.manifest.id,
+      remotePlugin.install.permissionsGranted,
     );
-    const status: CarrotWorkerStatus = {
+    const status: RemotePluginWorkerStatus = {
       id,
       state: "starting",
       startedAt: this.now(),
       stoppedAt: null,
       error: null,
     };
-    const record: CarrotWorkerRecord = {
+    const record: RemotePluginWorkerRecord = {
       status,
       handle: null,
       context,
@@ -332,15 +332,15 @@ export class CarrotManager {
     this.emitWorkerChanged(status);
 
     try {
-      const handle = this.workerRunner.start(carrot);
+      const handle = this.workerRunner.start(remotePlugin);
       record.handle = handle;
       handle.onMessage((message) =>
         this.handleWorkerMessage(id, handle, message),
       );
       handle.onError((error) => this.markWorkerError(id, handle, error));
-      handle.postMessage(buildWorkerInitMessage(carrot, context));
-      if (carrot.manifest.mode === "window") {
-        record.window = this.openCarrotWindow(carrot);
+      handle.postMessage(buildWorkerInitMessage(remotePlugin, context));
+      if (remotePlugin.manifest.mode === "window") {
+        record.window = this.openRemotePluginWindow(remotePlugin);
       }
       status.state = "running";
       this.emitWorkerChanged(status);
@@ -355,9 +355,9 @@ export class CarrotManager {
   }
 
   /**
-   * Open the carrot's view window. Used for `mode: "window"` carrots; the
-   * carrot's `view/index.html` (and friends) is served via Electrobun's
-   * `views://` scheme rooted at `carrot.currentDir`. Background carrots
+   * Open the remote plugin's view window. Used for `mode: "window"` remote plugins; the
+   * remote-plugin's `view/index.html` (and friends) is served via Electrobun's
+   * `views://` scheme rooted at `remotePlugin.currentDir`. Background remote plugins
    * never call this.
    *
    * Guarded against test stubs: vitest replaces `electrobun/bun` with a
@@ -366,21 +366,21 @@ export class CarrotManager {
    * warning if the runtime can't open windows (which is harmless in
    * tests and informative in dev where the host hasn't initialized FFI).
    */
-  private openCarrotWindow(
-    carrot: InstalledCarrot,
-  ): CarrotWindowInstance | null {
+  private openRemotePluginWindow(
+    remotePlugin: InstalledRemotePlugin,
+  ): RemotePluginWindowInstance | null {
     if (
       typeof BrowserWindow !== "function" ||
       typeof BrowserView !== "function"
     ) {
       logger.warn(
-        `[carrots] ${carrot.manifest.id}: skipping window-mode open — Electrobun BrowserWindow not available in this runtime (typeof=${typeof BrowserWindow}).`,
+        `[remote-plugin] ${remotePlugin.manifest.id}: skipping window-mode open — Electrobun BrowserWindow not available in this runtime (typeof=${typeof BrowserWindow}).`,
       );
       return null;
     }
 
     const { width, height, title, titleBarStyle, transparent } =
-      carrot.manifest.view;
+      remotePlugin.manifest.view;
     try {
       const win = new BrowserWindow({
         title,
@@ -396,19 +396,19 @@ export class CarrotManager {
         // Some Electrobun builds expose webview lazily; safe to ignore.
       }
       new BrowserView({
-        url: carrot.viewUrl,
-        viewsRoot: carrot.currentDir,
+        url: remotePlugin.viewUrl,
+        viewsRoot: remotePlugin.currentDir,
         renderer: "cef",
         frame: { x: 0, y: 0, width, height },
         windowId: win.id,
       });
       win.on("close", () => {
-        this.handleCarrotWindowClosed(carrot.manifest.id);
+        this.handleCarrotWindowClosed(remotePlugin.manifest.id);
       });
       return win;
     } catch (error) {
       logger.warn(
-        `[carrots] ${carrot.manifest.id}: failed to open window — ${
+        `[remote-plugin] ${remotePlugin.manifest.id}: failed to open window — ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -421,7 +421,7 @@ export class CarrotManager {
     if (!record) return;
     record.window = null;
     // Closing the window stops the underlying worker — `mode: "window"`
-    // carrots have no UI-less lifetime.
+    // remote plugins have no UI-less lifetime.
     if (
       record.status.state === "running" ||
       record.status.state === "starting"
@@ -430,7 +430,7 @@ export class CarrotManager {
     }
   }
 
-  stopWorker(id: string): CarrotWorkerStatus {
+  stopWorker(id: string): RemotePluginWorkerStatus {
     const record = this.workers.get(id);
     if (!record) {
       const status = stoppedStatus(id);
@@ -446,7 +446,7 @@ export class CarrotManager {
         // BrowserWindow.close() may throw if already destroyed.
       }
     }
-    const status: CarrotWorkerStatus = {
+    const status: RemotePluginWorkerStatus = {
       id,
       state: "stopped",
       startedAt: record.status.startedAt,
@@ -463,16 +463,16 @@ export class CarrotManager {
     return status;
   }
 
-  getWorkerStatus(id: string): CarrotWorkerStatus | null {
+  getWorkerStatus(id: string): RemotePluginWorkerStatus | null {
     const record = this.workers.get(id);
     if (record) return record.status;
-    return loadInstalledCarrot(this.storeRoot, id) ? stoppedStatus(id) : null;
+    return loadInstalledRemotePlugin(this.storeRoot, id) ? stoppedStatus(id) : null;
   }
 
-  listWorkerStatuses(): CarrotWorkerStatus[] {
-    const statuses = new Map<string, CarrotWorkerStatus>();
-    for (const carrot of this.listCarrots()) {
-      statuses.set(carrot.id, stoppedStatus(carrot.id));
+  listWorkerStatuses(): RemotePluginWorkerStatus[] {
+    const statuses = new Map<string, RemotePluginWorkerStatus>();
+    for (const remotePlugin of this.listRemotePlugins()) {
+      statuses.set(remotePlugin.id, stoppedStatus(remotePlugin.id));
     }
     for (const [id, record] of this.workers) {
       statuses.set(id, record.status);
@@ -482,16 +482,16 @@ export class CarrotManager {
     );
   }
 
-  getLogs(id: string, maxBytes = 64 * 1024): CarrotLogsSnapshot {
-    const carrot = loadInstalledCarrot(this.storeRoot, id);
-    if (!carrot) {
-      throw new Error(`Carrot is not installed: ${id}`);
+  getLogs(id: string, maxBytes = 64 * 1024): RemotePluginLogsSnapshot {
+    const remotePlugin = loadInstalledRemotePlugin(this.storeRoot, id);
+    if (!remotePlugin) {
+      throw new Error(`Remote plugin is not installed: ${id}`);
     }
     const context = buildCarrotRuntimeContext(
-      carrot.currentDir,
-      carrot.stateDir,
-      carrot.manifest.id,
-      carrot.install.permissionsGranted,
+      remotePlugin.currentDir,
+      remotePlugin.stateDir,
+      remotePlugin.manifest.id,
+      remotePlugin.install.permissionsGranted,
     );
     if (!fs.existsSync(context.logsPath)) {
       return {
@@ -584,7 +584,7 @@ export class CarrotManager {
     const target = this.workers.get(targetId);
     if (!target?.handle || target.status.state !== "running") {
       logger.warn(
-        `[carrots] ${callerId} → emit-carrot-event dropped: target ${targetId} is not running.`,
+        `[remote-plugin] ${callerId} → emit-remote-plugin-event dropped: target ${targetId} is not running.`,
       );
       return;
     }
@@ -640,19 +640,19 @@ export class CarrotManager {
   ): void {
     this.requireManageCarrots(callerId, "invoke-remote-plugin");
     if (!isRecord(request.params)) {
-      throw new Error("invoke-carrot: missing params object.");
+      throw new Error("invoke-remote-plugin: missing params object.");
     }
     const targetId = request.params.remotePluginId;
     const method = request.params.method;
     if (typeof targetId !== "string" || targetId.length === 0) {
-      throw new Error("invoke-carrot: invalid remotePluginId.");
+      throw new Error("invoke-remote-plugin: invalid remotePluginId.");
     }
     if (typeof method !== "string" || method.length === 0) {
-      throw new Error("invoke-carrot: invalid method.");
+      throw new Error("invoke-remote-plugin: invalid method.");
     }
     const target = this.workers.get(targetId);
     if (!target?.handle || target.status.state !== "running") {
-      throw new Error(`invoke-carrot: target ${targetId} is not running.`);
+      throw new Error(`invoke-remote-plugin: target ${targetId} is not running.`);
     }
     const targetHandle = target.handle;
 
@@ -665,7 +665,7 @@ export class CarrotManager {
         type: "host-response",
         requestId: pending.originalRequestId,
         success: false,
-        error: `invoke-carrot: target ${targetId} did not respond within ${INVOKE_TIMEOUT_MS}ms`,
+        error: `invoke-remote-plugin: target ${targetId} did not respond within ${INVOKE_TIMEOUT_MS}ms`,
       });
     }, INVOKE_TIMEOUT_MS);
 
@@ -711,7 +711,7 @@ export class CarrotManager {
           ? {}
           : { payload: response.payload }
         : {
-            error: response.error ?? "invoke-carrot: target returned failure",
+            error: response.error ?? "invoke-remote-plugin: target returned failure",
           }),
     });
   }
@@ -725,7 +725,7 @@ export class CarrotManager {
           type: "host-response",
           requestId: pending.originalRequestId,
           success: false,
-          error: `invoke-carrot: target ${id} stopped before responding`,
+          error: `invoke-remote-plugin: target ${id} stopped before responding`,
         });
       } else if (pending.callerId === id) {
         this.pendingInvokes.delete(invokeId);
@@ -748,20 +748,20 @@ export class CarrotManager {
     const grant = record?.context?.grantedPermissions ?? null;
     if (!hasHostPermission(grant, "manage-remote-plugins")) {
       throw new Error(
-        `${action}: carrot "${callerId}" lacks host:manage-carrots permission`,
+        `${action}: remote plugin "${callerId}" lacks host:manage-remote-plugins permission`,
       );
     }
   }
 
   /**
-   * Auth-token model (MVP): each carrot worker has its own
+   * Auth-token model (MVP): each remote plugin worker has its own
    * `context.authToken` stored in-process on the host. `get-auth-token` is
    * lazy — the first call seeds the slot from `resolveApiToken()` so a
-   * carrot can call Milady's HTTP API as the user without seeing the
-   * underlying env var. `set-auth-token` lets a carrot REPLACE ITS OWN
-   * token (Farm-login style flows); cross-carrot exfiltration is prevented
+   * remote plugin can call Milady's HTTP API as the user without seeing the
+   * underlying env var. `set-auth-token` lets a remote plugin REPLACE ITS OWN
+   * token (Farm-login style flows); cross-remote plugin exfiltration is prevented
    * by keying read/write off the calling worker's id. The MVP forwards the
-   * host token verbatim; the production hook is a per-carrot scoped JWT
+   * host token verbatim; the production hook is a per-remote plugin scoped JWT
    * issued by the auth pairing layer — schema unchanged.
    */
   private async dispatchHostRequest(
@@ -771,7 +771,7 @@ export class CarrotManager {
   ): Promise<JsonValue> {
     switch (method) {
       case "list-remote-plugins":
-        return this.listCarrots() as unknown as JsonValue;
+        return this.listRemotePlugins() as unknown as JsonValue;
       case "start-remote-plugin": {
         this.requireManageCarrots(callerId, "start-remote-plugin");
         const targetId = hostRequestStringField(params, "id");
@@ -787,7 +787,7 @@ export class CarrotManager {
       case "get-auth-token": {
         const record = this.workers.get(callerId);
         if (!record?.context) {
-          throw new Error(`Carrot ${callerId} has no runtime context.`);
+          throw new Error(`Remote plugin  has no runtime context.`);
         }
         if (record.context.authToken === null) {
           record.context.authToken = resolveApiToken();
@@ -796,12 +796,12 @@ export class CarrotManager {
       }
       case "invoke-remote-plugin":
         throw new Error(
-          "invoke-carrot must be routed through startInvokeCarrot",
+          "invoke-remote-plugin must be routed through startInvokeCarrot",
         );
       case "set-auth-token": {
         const record = this.workers.get(callerId);
         if (!record?.context) {
-          throw new Error(`Carrot ${callerId} has no runtime context.`);
+          throw new Error(`Remote plugin  has no runtime context.`);
         }
         if (!isRecord(params)) {
           throw new Error("set-auth-token: missing params object.");
@@ -848,35 +848,35 @@ export class CarrotManager {
     this.events.storeChanged?.(this.getStoreSnapshot());
   }
 
-  private emitWorkerChanged(status: CarrotWorkerStatus): void {
+  private emitWorkerChanged(status: RemotePluginWorkerStatus): void {
     this.events.workerChanged?.(status);
   }
 }
 
-let activeCarrotManager: CarrotManager | null = null;
+let activeRemotePluginHost: RemotePluginHost | null = null;
 
-export function getCarrotManager(): CarrotManager {
-  activeCarrotManager ??= new CarrotManager();
-  return activeCarrotManager;
+export function getRemotePluginHost(): RemotePluginHost {
+  activeRemotePluginHost ??= new RemotePluginHost();
+  return activeRemotePluginHost;
 }
 
-export function configureCarrotManagerEvents(
+export function configureRemotePluginHostEvents(
   sendToWebview: SendToWebview,
 ): void {
-  getCarrotManager().setEvents({
+  getRemotePluginHost().setEvents({
     storeChanged: (snapshot) => {
-      sendToWebview("carrotStoreChanged", { snapshot });
+      sendToWebview("remotePluginStoreChanged", { snapshot });
     },
     workerChanged: (status) => {
-      sendToWebview("carrotWorkerChanged", { status });
+      sendToWebview("remotePluginWorkerChanged", { status });
     },
   });
 }
 
 export function resetCarrotManagerForTesting(
-  manager: CarrotManager | null = null,
+  manager: RemotePluginHost | null = null,
 ): void {
-  activeCarrotManager = manager;
+  activeRemotePluginHost = manager;
 }
 
 export type { RemotePluginInstallRecord };

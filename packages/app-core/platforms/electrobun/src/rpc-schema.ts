@@ -16,7 +16,7 @@ import type {
   RemotePluginListEntry,
   RemotePluginPermissionGrant,
   RemotePluginStoreSnapshot,
-  InstalledCarrotSnapshot,
+  InstalledRemotePluginSnapshot,
 } from "@elizaos/plugin-remote-manifest";
 import type { RPCSchema } from "electrobun/bun";
 
@@ -748,28 +748,28 @@ export interface CorePluginsSnapshot {
   optional: CorePluginEntry[];
 }
 
-export type CarrotWorkerState = "stopped" | "starting" | "running" | "error";
+export type RemotePluginWorkerState = "stopped" | "starting" | "running" | "error";
 
-export interface CarrotWorkerStatus {
+export interface RemotePluginWorkerStatus {
   id: string;
-  state: CarrotWorkerState;
+  state: RemotePluginWorkerState;
   startedAt: number | null;
   stoppedAt: number | null;
   error: string | null;
 }
 
-export interface CarrotInstallFromDirectoryRequest {
+export interface RemotePluginInstallFromDirectoryRequest {
   sourceDir: string;
   devMode?: boolean;
   permissionsGranted?: RemotePluginPermissionGrant;
 }
 
-export interface CarrotUninstallResult {
+export interface RemotePluginUninstallResult {
   removed: boolean;
-  carrot: RemotePluginListEntry | null;
+  remotePlugin: RemotePluginListEntry | null;
 }
 
-export interface CarrotLogsSnapshot {
+export interface RemotePluginLogsSnapshot {
   id: string;
   path: string;
   text: string;
@@ -1035,49 +1035,49 @@ export type ElizaDesktopRPCSchema = {
         params: undefined;
         response: CorePluginsSnapshot;
       };
-      carrotGetStoreRoot: {
+      remotePluginGetStoreRoot: {
         params: undefined;
         response: { storeRoot: string };
       };
-      carrotList: {
+      remotePluginList: {
         params: undefined;
-        response: { carrots: RemotePluginListEntry[] };
+        response: { remotePlugins: RemotePluginListEntry[] };
       };
-      carrotGetStoreSnapshot: {
+      remotePluginGetStoreSnapshot: {
         params: undefined;
         response: RemotePluginStoreSnapshot;
       };
-      carrotGet: {
+      remotePluginGet: {
         params: { id: string };
-        response: InstalledCarrotSnapshot | null;
+        response: InstalledRemotePluginSnapshot | null;
       };
-      carrotInstallFromDirectory: {
-        params: CarrotInstallFromDirectoryRequest;
-        response: InstalledCarrotSnapshot;
+      remotePluginInstallFromDirectory: {
+        params: RemotePluginInstallFromDirectoryRequest;
+        response: InstalledRemotePluginSnapshot;
       };
-      carrotUninstall: {
+      remotePluginUninstall: {
         params: { id: string };
-        response: CarrotUninstallResult;
+        response: RemotePluginUninstallResult;
       };
-      carrotStartWorker: {
+      remotePluginStartWorker: {
         params: { id: string };
-        response: CarrotWorkerStatus;
+        response: RemotePluginWorkerStatus;
       };
-      carrotStopWorker: {
+      remotePluginStopWorker: {
         params: { id: string };
-        response: CarrotWorkerStatus;
+        response: RemotePluginWorkerStatus;
       };
-      carrotGetWorkerStatus: {
+      remotePluginGetWorkerStatus: {
         params: { id: string };
-        response: CarrotWorkerStatus | null;
+        response: RemotePluginWorkerStatus | null;
       };
-      carrotListWorkerStatuses: {
+      remotePluginListWorkerStatuses: {
         params: undefined;
-        response: { workers: CarrotWorkerStatus[] };
+        response: { workers: RemotePluginWorkerStatus[] };
       };
-      carrotGetLogs: {
+      remotePluginGetLogs: {
         params: { id: string; maxBytes?: number };
-        response: CarrotLogsSnapshot;
+        response: RemotePluginLogsSnapshot;
       };
       /**
        * Aggregated boot/startup snapshot. Combines `agentStatus` with the
@@ -2038,8 +2038,8 @@ export type ElizaDesktopRPCSchema = {
       desktopManagedWindowsChanged: {
         windows: DesktopManagedWindowSnapshot[];
       };
-      carrotStoreChanged: { snapshot: RemotePluginStoreSnapshot };
-      carrotWorkerChanged: { status: CarrotWorkerStatus };
+      remotePluginStoreChanged: { snapshot: RemotePluginStoreSnapshot };
+      remotePluginWorkerChanged: { status: RemotePluginWorkerStatus };
 
       // Canvas: Window events
       canvasWindowEvent: {
@@ -2246,18 +2246,18 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:openAppWindow": "desktopOpenAppWindow",
   "desktop:setManagedWindowAlwaysOnTop": "desktopSetManagedWindowAlwaysOnTop",
 
-  // Carrots
-  "carrot:getStoreRoot": "carrotGetStoreRoot",
-  "carrot:list": "carrotList",
-  "carrot:getStoreSnapshot": "carrotGetStoreSnapshot",
-  "carrot:get": "carrotGet",
-  "carrot:installFromDirectory": "carrotInstallFromDirectory",
-  "carrot:uninstall": "carrotUninstall",
-  "carrot:startWorker": "carrotStartWorker",
-  "carrot:stopWorker": "carrotStopWorker",
-  "carrot:getWorkerStatus": "carrotGetWorkerStatus",
-  "carrot:listWorkerStatuses": "carrotListWorkerStatuses",
-  "carrot:getLogs": "carrotGetLogs",
+  // Remote Plugins
+  "remote-plugin:getStoreRoot": "remotePluginGetStoreRoot",
+  "remote-plugin:list": "remotePluginList",
+  "remote-plugin:getStoreSnapshot": "remotePluginGetStoreSnapshot",
+  "remote-plugin:get": "remotePluginGet",
+  "remote-plugin:installFromDirectory": "remotePluginInstallFromDirectory",
+  "remote-plugin:uninstall": "remotePluginUninstall",
+  "remote-plugin:startWorker": "remotePluginStartWorker",
+  "remote-plugin:stopWorker": "remotePluginStopWorker",
+  "remote-plugin:getWorkerStatus": "remotePluginGetWorkerStatus",
+  "remote-plugin:listWorkerStatuses": "remotePluginListWorkerStatuses",
+  "remote-plugin:getLogs": "remotePluginGetLogs",
 
   // Browser Workspace
   "browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",
@@ -2456,8 +2456,8 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
   "desktop:windowClose": "desktopWindowClose",
   "desktop:shutdownStarted": "desktopShutdownStarted",
   "desktop:managedWindowsChanged": "desktopManagedWindowsChanged",
-  "carrot:storeChanged": "carrotStoreChanged",
-  "carrot:workerChanged": "carrotWorkerChanged",
+  "remote-plugin:storeChanged": "remotePluginStoreChanged",
+  "remote-plugin:workerChanged": "remotePluginWorkerChanged",
   "canvas:windowEvent": "canvasWindowEvent",
   "talkmode:audioChunkPush": "talkmodeAudioChunkPush",
   "talkmode:stateChanged": "talkmodeStateChanged",

@@ -13,20 +13,20 @@ import {
   buildCarrotRuntimeContext,
   RemotePluginStoreError,
   ensureCarrotSourceDirectory,
-  getCarrotStorePaths,
-  installPrebuiltCarrot,
+  getRemotePluginStorePaths,
+  installPrebuiltRemotePlugin,
   loadCarrotListEntries,
   loadCarrotStoreSnapshot,
-  loadInstalledCarrot,
-  loadInstalledCarrots,
-  readCarrotRegistry,
+  loadInstalledRemotePlugin,
+  loadInstalledRemotePlugins,
+  readRemotePluginRegistry,
   resolveCarrotPathInside,
-  uninstallInstalledCarrot,
+  uninstallInstalledRemotePlugin,
 } from "./store.js";
 import type { RemotePluginManifest } from "./types.js";
 
 function withTempDir<T>(fn: (dir: string) => T): T {
-  const dir = mkdtempSync(join(tmpdir(), "electrobun-carrots-"));
+  const dir = mkdtempSync(join(tmpdir(), "plugin-remote-manifest-"));
   try {
     return fn(dir);
   } finally {
@@ -69,7 +69,7 @@ function writePayload(
   const payloadDir = join(dir, "payload");
   mkdirSync(join(payloadDir, "views"), { recursive: true });
   writeFileSync(
-    join(payloadDir, "carrot.json"),
+    join(payloadDir, "plugin.json"),
     JSON.stringify(nextManifest, null, 2),
     "utf8",
   );
@@ -86,13 +86,13 @@ function writePayload(
   return payloadDir;
 }
 
-describe("carrot store", () => {
-  it("installs a prebuilt carrot and writes a registry", () =>
+describe("remote plugin store", () => {
+  it("installs a prebuilt remote plugin and writes a registry", () =>
     withTempDir((dir) => {
       const storeRoot = join(dir, "store");
       const payloadDir = writePayload(dir);
 
-      const installed = installPrebuiltCarrot(storeRoot, payloadDir, {
+      const installed = installPrebuiltRemotePlugin(storeRoot, payloadDir, {
         now: () => 1700000000000,
       });
 
@@ -104,39 +104,39 @@ describe("carrot store", () => {
         isolation: "shared-worker",
       });
       expect(
-        installed.workerPath.endsWith(".bunny/carrot-bun-entrypoint.mjs"),
+        installed.workerPath.endsWith(".bunny/plugin-bun-entrypoint.mjs"),
       ).toBe(true);
 
-      const registry = readCarrotRegistry(storeRoot);
-      expect(Object.keys(registry.carrots)).toEqual(["bunny.search"]);
-      expect(registry.carrots["bunny.search"]?.installedAt).toBe(1700000000000);
+      const registry = readRemotePluginRegistry(storeRoot);
+      expect(Object.keys(registry.remotePlugins)).toEqual(["bunny.search"]);
+      expect(registry.remotePlugins["bunny.search"]?.installedAt).toBe(1700000000000);
     }));
 
-  it("loads installed carrots and preserves the bootstrap context", () =>
+  it("loads installed remote plugins and preserves the bootstrap context", () =>
     withTempDir((dir) => {
       const storeRoot = join(dir, "store");
       const payloadDir = writePayload(dir);
-      installPrebuiltCarrot(storeRoot, payloadDir, {
+      installPrebuiltRemotePlugin(storeRoot, payloadDir, {
         now: () => 1700000000000,
       });
 
-      const loaded = loadInstalledCarrot(storeRoot, "bunny.search");
+      const loaded = loadInstalledRemotePlugin(storeRoot, "bunny.search");
       expect(loaded?.manifest.remoteUIs?.dash?.path).toBe(
         "remote-ui/dash/index.html",
       );
       expect(loaded?.workerPath).toBe(
-        join(loaded?.currentDir ?? "", ".bunny", "carrot-bun-entrypoint.mjs"),
+        join(loaded?.currentDir ?? "", ".bunny", "plugin-bun-entrypoint.mjs"),
       );
 
-      const all = loadInstalledCarrots(storeRoot);
-      expect(all.map((carrot) => carrot.manifest.id)).toEqual(["bunny.search"]);
-      if (!loaded) throw new Error("Expected carrot to load.");
+      const all = loadInstalledRemotePlugins(storeRoot);
+      expect(all.map((remotePlugin) => remotePlugin.manifest.id)).toEqual(["bunny.search"]);
+      if (!loaded) throw new Error("Expected remote plugin to load.");
       const bootstrap = readFileSync(loaded.workerPath, "utf8");
       expect(bootstrap).toContain('"authToken":null');
-      expect(bootstrap).toContain('"channel":"carrot:bunny.search"');
+      expect(bootstrap).toContain('"channel":"remote-plugin:bunny.search"');
     }));
 
-  it("builds a complete carrot runtime context", () =>
+  it("builds a complete remote plugin runtime context", () =>
     withTempDir((dir) => {
       expect(
         buildCarrotRuntimeContext(
@@ -157,7 +157,7 @@ describe("carrot store", () => {
           isolation: "shared-worker",
         },
         authToken: "token-1",
-        channel: "carrot:bunny.search",
+        channel: "remote-plugin:bunny.search",
       });
     }));
 
@@ -165,7 +165,7 @@ describe("carrot store", () => {
     withTempDir((dir) => {
       const storeRoot = join(dir, "store");
       const payloadDir = writePayload(dir);
-      installPrebuiltCarrot(storeRoot, payloadDir, {
+      installPrebuiltRemotePlugin(storeRoot, payloadDir, {
         currentHash: "hash-1",
         devMode: true,
         lastBuildAt: 1700000000100,
@@ -176,7 +176,7 @@ describe("carrot store", () => {
 
       expect(snapshot).toMatchObject({
         version: 1,
-        carrots: [
+        remotePlugins: [
           {
             id: "bunny.search",
             name: "Search",
@@ -223,11 +223,11 @@ describe("carrot store", () => {
       expect(JSON.stringify(snapshot)).not.toContain(storeRoot);
     }));
 
-  it("builds compact list entries from installed carrots", () =>
+  it("builds compact list entries from installed remote plugins", () =>
     withTempDir((dir) => {
       const storeRoot = join(dir, "store");
       const payloadDir = writePayload(dir);
-      installPrebuiltCarrot(storeRoot, payloadDir, {
+      installPrebuiltRemotePlugin(storeRoot, payloadDir, {
         devMode: true,
         now: () => 1700000000000,
       });
@@ -246,7 +246,7 @@ describe("carrot store", () => {
       ]);
     }));
 
-  it("rejects payload paths that escape the carrot root", () =>
+  it("rejects payload paths that escape the remote plugin root", () =>
     withTempDir((dir) => {
       const escapedManifest: RemotePluginManifest = {
         ...manifest,
@@ -260,23 +260,23 @@ describe("carrot store", () => {
       );
     }));
 
-  it("rejects carrot ids before deriving store paths", () =>
+  it("rejects remote plugin ids before deriving store paths", () =>
     withTempDir((dir) => {
       expect(() =>
-        getCarrotStorePaths(join(dir, "store"), "../../evil"),
+        getRemotePluginStorePaths(join(dir, "store"), "../../evil"),
       ).toThrow(RemotePluginStoreError);
     }));
 
-  it("uninstalls a carrot and refreshes the registry", () =>
+  it("uninstalls a remote plugin and refreshes the registry", () =>
     withTempDir((dir) => {
       const storeRoot = join(dir, "store");
       const payloadDir = writePayload(dir);
-      installPrebuiltCarrot(storeRoot, payloadDir);
+      installPrebuiltRemotePlugin(storeRoot, payloadDir);
 
-      const removed = uninstallInstalledCarrot(storeRoot, "bunny.search");
+      const removed = uninstallInstalledRemotePlugin(storeRoot, "bunny.search");
       expect(removed?.id).toBe("bunny.search");
-      expect(readCarrotRegistry(storeRoot).carrots).toEqual({});
-      expect(loadInstalledCarrot(storeRoot, "bunny.search")).toBeNull();
+      expect(readRemotePluginRegistry(storeRoot).remotePlugins).toEqual({});
+      expect(loadInstalledRemotePlugin(storeRoot, "bunny.search")).toBeNull();
     }));
 
   it("recognizes source directories", () =>
@@ -290,7 +290,7 @@ describe("carrot store", () => {
       );
 
       expect(ensureCarrotSourceDirectory(sourceDir)).toBe(sourceDir);
-      expect(getCarrotStorePaths(dir, "bunny.search").installPath).toBe(
+      expect(getRemotePluginStorePaths(dir, "bunny.search").installPath).toBe(
         join(dir, "bunny.search", "install.json"),
       );
     }));

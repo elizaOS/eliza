@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   buildCarrotPermissionConsentRequest,
   diffCarrotPermissions,
-  getCarrotManifestPermissionTags,
+  getRemotePluginManifestPermissionTags,
 } from "./manifest.js";
 import type { RemotePluginManifest } from "./types.js";
 
@@ -26,9 +26,9 @@ const manifest: RemotePluginManifest = {
   worker: { relativePath: "worker.js" },
 };
 
-describe("carrot manifests", () => {
+describe("remote plugin manifests", () => {
   it("flattens manifest permissions", () => {
-    expect(getCarrotManifestPermissionTags(manifest)).toEqual([
+    expect(getRemotePluginManifestPermissionTags(manifest)).toEqual([
       "host:storage",
       "bun:read",
       "bun:write",

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { validateCarrotManifest } from "./validation.js";
+import { validateRemotePluginManifest } from "./validation.js";
 
-describe("carrot manifest validation", () => {
+describe("remote plugin manifest validation", () => {
   it("validates and normalizes a manifest", () => {
-    const result = validateCarrotManifest({
+    const result = validateRemotePluginManifest({
       id: "bunny.dash",
       name: "Dash",
       version: "0.1.0",
@@ -41,7 +41,7 @@ describe("carrot manifest validation", () => {
   });
 
   it("rejects malformed permissions and required fields", () => {
-    const result = validateCarrotManifest({
+    const result = validateRemotePluginManifest({
       id: "",
       name: "Dash",
       version: "0.1.0",
@@ -71,8 +71,8 @@ describe("carrot manifest validation", () => {
     ]);
   });
 
-  it("rejects ids that could escape the carrot store root", () => {
-    const result = validateCarrotManifest({
+  it("rejects ids that could escape the remote plugin store root", () => {
+    const result = validateRemotePluginManifest({
       id: "../../outside",
       name: "Dash",
       version: "0.1.0",

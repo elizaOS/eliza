@@ -20,11 +20,11 @@ export function isBunPermission(value: string): value is BunPermission {
   return BUN_PERMISSIONS.includes(value as BunPermission);
 }
 
-export function isCarrotIsolation(value: string): value is RemotePluginIsolation {
+export function isRemotePluginIsolation(value: string): value is RemotePluginIsolation {
   return REMOTE_PLUGIN_ISOLATIONS.includes(value as RemotePluginIsolation);
 }
 
-export function normalizeCarrotPermissions(
+export function normalizeRemotePluginPermissions(
   input?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
 ): RemotePluginPermissionGrant {
   const host: Partial<Record<HostPermission, boolean>> = {};
@@ -63,10 +63,10 @@ export function normalizeCarrotPermissions(
   return { host, bun, isolation };
 }
 
-export function flattenCarrotPermissions(
+export function flattenRemotePluginPermissions(
   input?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
 ): RemotePluginPermissionTag[] {
-  const permissions = normalizeCarrotPermissions(input);
+  const permissions = normalizeRemotePluginPermissions(input);
   const tags: RemotePluginPermissionTag[] = [];
 
   for (const key of HOST_PERMISSIONS) {
@@ -87,8 +87,8 @@ export function mergeCarrotPermissions(
   defaults?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
   overrides?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
 ): RemotePluginPermissionGrant {
-  const base = normalizeCarrotPermissions(defaults);
-  const extra = normalizeCarrotPermissions(overrides);
+  const base = normalizeRemotePluginPermissions(defaults);
+  const extra = normalizeRemotePluginPermissions(overrides);
   return {
     host: {
       ...base.host,
@@ -106,20 +106,20 @@ export function hasHostPermission(
   input: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null | undefined,
   permission: HostPermission,
 ): boolean {
-  return normalizeCarrotPermissions(input).host?.[permission] === true;
+  return normalizeRemotePluginPermissions(input).host?.[permission] === true;
 }
 
 export function hasBunPermission(
   input: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null | undefined,
   permission: BunPermission,
 ): boolean {
-  return normalizeCarrotPermissions(input).bun?.[permission] === true;
+  return normalizeRemotePluginPermissions(input).bun?.[permission] === true;
 }
 
 export function toBunWorkerPermissions(
   permissions: RemotePluginPermissionGrant,
 ): RemotePluginBunWorkerPermissions {
-  const normalized = normalizeCarrotPermissions(permissions);
+  const normalized = normalizeRemotePluginPermissions(permissions);
   return Object.fromEntries(
     BUN_PERMISSIONS.map((permission) => [
       permission,
@@ -140,7 +140,7 @@ export function parseCarrotPermissionTag(
   if (scope === "bun" && value && isBunPermission(value)) {
     return `bun:${value}`;
   }
-  if (scope === "isolation" && value && isCarrotIsolation(value)) {
+  if (scope === "isolation" && value && isRemotePluginIsolation(value)) {
     return `isolation:${value}`;
   }
   return null;

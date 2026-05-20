@@ -136,7 +136,7 @@ export interface RemotePluginInstallRecord {
 
 export interface RemotePluginRegistry {
   version: 1;
-  carrots: Record<string, RemotePluginInstallRecord>;
+  remotePlugins: Record<string, RemotePluginInstallRecord>;
 }
 
 export interface WorkerRequestMessage {

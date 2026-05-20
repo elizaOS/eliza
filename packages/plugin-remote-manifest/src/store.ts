@@ -13,9 +13,9 @@ import {
 import { join, resolve, sep } from "node:path";
 import { isJsonObject } from "./json.js";
 import {
-  flattenCarrotPermissions,
-  isCarrotIsolation,
-  normalizeCarrotPermissions,
+  flattenRemotePluginPermissions,
+  isRemotePluginIsolation,
+  normalizeRemotePluginPermissions,
 } from "./permissions.js";
 import type {
   BunPermission,
@@ -31,13 +31,13 @@ import type {
   JsonValue,
 } from "./types.js";
 import { BUN_PERMISSIONS, HOST_PERMISSIONS } from "./types.js";
-import { isValidCarrotId, validateCarrotManifest } from "./validation.js";
+import { isValidRemotePluginId, validateRemotePluginManifest } from "./validation.js";
 
 const REGISTRY_FILE_NAME = "registry.json";
 const INSTALL_FILE_NAME = "install.json";
 const REGISTRY_VERSION = 1;
 
-export interface InstalledCarrot {
+export interface InstalledRemotePlugin {
   install: RemotePluginInstallRecord;
   manifest: RemotePluginManifest;
   rootDir: string;
@@ -51,7 +51,7 @@ export interface InstalledCarrot {
   viewUrl: string;
 }
 
-export interface InstalledCarrotSnapshot {
+export interface InstalledRemotePluginSnapshot {
   id: string;
   name: string;
   version: string;
@@ -74,7 +74,7 @@ export interface InstalledCarrotSnapshot {
 
 export interface RemotePluginStoreSnapshot {
   version: 1;
-  carrots: InstalledCarrotSnapshot[];
+  remotePlugins: InstalledRemotePluginSnapshot[];
 }
 
 export interface RemotePluginStorePaths {
@@ -227,7 +227,7 @@ function parsePermissionGrant(
   const isolation = value.isolation;
   if (isolation === undefined) {
     grant.isolation = "shared-worker";
-  } else if (typeof isolation === "string" && isCarrotIsolation(isolation)) {
+  } else if (typeof isolation === "string" && isRemotePluginIsolation(isolation)) {
     grant.isolation = isolation;
   } else {
     throw new RemotePluginStoreError(
@@ -300,7 +300,7 @@ function normalizeInstallRecord(
   return {
     ...record,
     source: normalizeInstallSource(record.source, record.currentHash),
-    permissionsGranted: normalizeCarrotPermissions(record.permissionsGranted),
+    permissionsGranted: normalizeRemotePluginPermissions(record.permissionsGranted),
     devMode: record.devMode ?? false,
     lastBuildAt: record.lastBuildAt ?? null,
     lastBuildError: record.lastBuildError ?? null,
@@ -354,24 +354,24 @@ function parseInstallRecord(
 
 function parseRegistry(value: JsonValue): RemotePluginRegistry {
   if (!isJsonObject(value)) {
-    throw new RemotePluginStoreError("Invalid carrot registry: expected object.");
+    throw new RemotePluginStoreError("Invalid remote plugin registry: expected object.");
   }
-  if (value.version !== REGISTRY_VERSION || !isJsonObject(value.carrots)) {
-    throw new RemotePluginStoreError("Invalid carrot registry.");
+  if (value.version !== REGISTRY_VERSION || !isJsonObject(value.remotePlugins)) {
+    throw new RemotePluginStoreError("Invalid remote plugin registry.");
   }
-  const carrots: Record<string, RemotePluginInstallRecord> = {};
-  for (const [id, record] of Object.entries(value.carrots)) {
-    carrots[id] = parseInstallRecord(record, `registry.carrots.${id}`);
+  const remotePlugins: Record<string, RemotePluginInstallRecord> = {};
+  for (const [id, record] of Object.entries(value.remotePlugins)) {
+    remotePlugins[id] = parseInstallRecord(record, `registry.remotePlugins.${id}`);
   }
-  return { version: REGISTRY_VERSION, carrots };
+  return { version: REGISTRY_VERSION, remotePlugins };
 }
 
-export function getCarrotStorePaths(
+export function getRemotePluginStorePaths(
   storeRoot: string,
   id: string,
 ): RemotePluginStorePaths {
-  if (!isValidCarrotId(id)) {
-    throw new RemotePluginStoreError(`Invalid carrot id: ${id}`);
+  if (!isValidRemotePluginId(id)) {
+    throw new RemotePluginStoreError(`Invalid remote plugin id: ${id}`);
   }
   const rootDir = resolve(storeRoot, id);
   const normalizedStoreRoot = resolve(storeRoot);
@@ -379,7 +379,7 @@ export function getCarrotStorePaths(
     rootDir !== normalizedStoreRoot &&
     !rootDir.startsWith(`${normalizedStoreRoot}${sep}`)
   ) {
-    throw new RemotePluginStoreError(`Carrot id escapes store root: ${id}`);
+    throw new RemotePluginStoreError(`Remote plugin id escapes store root: ${id}`);
   }
   return {
     rootDir,
@@ -400,7 +400,7 @@ export function resolveCarrotPathInside(
     resolvedPath !== normalizedRoot &&
     !resolvedPath.startsWith(`${normalizedRoot}${sep}`)
   ) {
-    throw new RemotePluginStoreError(`Path escapes carrot root: ${relativePath}`);
+    throw new RemotePluginStoreError(`Path escapes remote plugin root: ${relativePath}`);
   }
   return resolvedPath;
 }
@@ -411,22 +411,22 @@ export function toCarrotViewUrl(relativePath: string): string {
 
 export function readCarrotManifestAt(manifestPath: string): RemotePluginManifest {
   const parsed = parseJsonFile(manifestPath);
-  const result = validateCarrotManifest(parsed);
+  const result = validateRemotePluginManifest(parsed);
   if (!result.ok) {
     const details = result.issues
       .map((issue) => `${issue.path}: ${issue.message}`)
       .join("; ");
     throw new RemotePluginStoreError(
-      `Invalid carrot manifest at ${manifestPath}: ${details}`,
+      `Invalid plugin.json manifest at ${manifestPath}: ${details}`,
     );
   }
   return result.manifest;
 }
 
 export function assertRemotePluginPayload(payloadDir: string): RemotePluginManifest {
-  const manifestPath = join(payloadDir, "carrot.json");
+  const manifestPath = join(payloadDir, "plugin.json");
   if (!existsSync(manifestPath)) {
-    throw new RemotePluginStoreError(`Missing carrot.json in ${payloadDir}`);
+    throw new RemotePluginStoreError(`Missing plugin.json in ${payloadDir}`);
   }
 
   const manifest = readCarrotManifestAt(manifestPath);
@@ -453,11 +453,11 @@ export function assertRemotePluginPayload(payloadDir: string): RemotePluginManif
   return manifest;
 }
 
-export function readCarrotRegistry(storeRoot: string): RemotePluginRegistry {
+export function readRemotePluginRegistry(storeRoot: string): RemotePluginRegistry {
   ensureStoreRoot(storeRoot);
   const filePath = registryPath(storeRoot);
   if (!existsSync(filePath)) {
-    return { version: REGISTRY_VERSION, carrots: {} };
+    return { version: REGISTRY_VERSION, remotePlugins: {} };
   }
   return parseRegistry(parseJsonFile(filePath));
 }
@@ -469,10 +469,10 @@ export function writeCarrotRegistry(
   ensureStoreRoot(storeRoot);
   const normalized: RemotePluginRegistry = {
     version: REGISTRY_VERSION,
-    carrots: {},
+    remotePlugins: {},
   };
-  for (const record of Object.values(registry.carrots)) {
-    normalized.carrots[record.id] = normalizeInstallRecord(record);
+  for (const record of Object.values(registry.remotePlugins)) {
+    normalized.remotePlugins[record.id] = normalizeInstallRecord(record);
   }
   writeFileSync(
     registryPath(storeRoot),
@@ -482,7 +482,7 @@ export function writeCarrotRegistry(
   return normalized;
 }
 
-export function listInstalledCarrotDirectories(storeRoot: string): string[] {
+export function listInstalledRemotePluginDirectories(storeRoot: string): string[] {
   ensureStoreRoot(storeRoot);
   return readdirSync(storeRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -494,7 +494,7 @@ export function readCarrotInstallRecord(
   storeRoot: string,
   id: string,
 ): RemotePluginInstallRecord | null {
-  const installPath = getCarrotStorePaths(storeRoot, id).installPath;
+  const installPath = getRemotePluginStorePaths(storeRoot, id).installPath;
   if (!existsSync(installPath)) return null;
   return parseInstallRecord(parseJsonFile(installPath), installPath);
 }
@@ -504,7 +504,7 @@ export function writeCarrotInstallRecord(
   record: RemotePluginInstallRecord,
 ): RemotePluginInstallRecord {
   const normalized = normalizeInstallRecord(record);
-  const paths = getCarrotStorePaths(storeRoot, normalized.id);
+  const paths = getRemotePluginStorePaths(storeRoot, normalized.id);
   mkdirSync(paths.rootDir, { recursive: true });
   writeFileSync(
     paths.installPath,
@@ -522,15 +522,15 @@ export function buildCarrotRuntimeContext(
   permissionsGranted: RemotePluginPermissionGrant,
   authToken: string | null = null,
 ): RemotePluginRuntimeContext {
-  const grantedPermissions = normalizeCarrotPermissions(permissionsGranted);
+  const grantedPermissions = normalizeRemotePluginPermissions(permissionsGranted);
   return {
     currentDir,
     statePath: join(stateDir, "state.json"),
     logsPath: join(stateDir, "logs.txt"),
-    permissions: flattenCarrotPermissions(grantedPermissions),
+    permissions: flattenRemotePluginPermissions(grantedPermissions),
     grantedPermissions,
     authToken,
-    channel: `carrot:${remotePluginId}`,
+    channel: `remote-plugin:${remotePluginId}`,
   };
 }
 
@@ -542,7 +542,7 @@ export function writeCarrotWorkerBootstrap(
   stateDir: string,
 ): string {
   const bootstrapDir = join(currentDir, ".bunny");
-  const bootstrapPath = join(bootstrapDir, "carrot-bun-entrypoint.mjs");
+  const bootstrapPath = join(bootstrapDir, "plugin-bun-entrypoint.mjs");
   const workerRelativePath = bundleWorkerPath
     .slice(currentDir.length + 1)
     .replaceAll(sep, "/");
@@ -572,12 +572,12 @@ export function writeCarrotWorkerBootstrap(
   return bootstrapPath;
 }
 
-function loadInstalledCarrotRecord(
+function loadInstalledRemotePluginRecord(
   storeRoot: string,
   record: RemotePluginInstallRecord,
-): InstalledCarrot {
-  const paths = getCarrotStorePaths(storeRoot, record.id);
-  const manifest = readCarrotManifestAt(join(paths.currentDir, "carrot.json"));
+): InstalledRemotePlugin {
+  const paths = getRemotePluginStorePaths(storeRoot, record.id);
+  const manifest = readCarrotManifestAt(join(paths.currentDir, "plugin.json"));
   const bundleWorkerPath = resolveCarrotPathInside(
     paths.currentDir,
     manifest.worker.relativePath,
@@ -618,17 +618,17 @@ function loadInstalledCarrotRecord(
   };
 }
 
-export function loadInstalledCarrot(
+export function loadInstalledRemotePlugin(
   storeRoot: string,
   id: string,
-): InstalledCarrot | null {
+): InstalledRemotePlugin | null {
   const record = readCarrotInstallRecord(storeRoot, id);
-  return record ? loadInstalledCarrotRecord(storeRoot, record) : null;
+  return record ? loadInstalledRemotePluginRecord(storeRoot, record) : null;
 }
 
 export function syncCarrotRegistry(storeRoot: string): RemotePluginRegistry {
   const records = new Map<string, RemotePluginInstallRecord>();
-  for (const directory of listInstalledCarrotDirectories(storeRoot)) {
+  for (const directory of listInstalledRemotePluginDirectories(storeRoot)) {
     const record = readCarrotInstallRecord(storeRoot, directory);
     if (record) {
       records.set(record.id, record);
@@ -639,25 +639,25 @@ export function syncCarrotRegistry(storeRoot: string): RemotePluginRegistry {
   );
   return writeCarrotRegistry(storeRoot, {
     version: REGISTRY_VERSION,
-    carrots: Object.fromEntries(
+    remotePlugins: Object.fromEntries(
       sortedRecords.map((record) => [record.id, record]),
     ),
   });
 }
 
-export function loadInstalledCarrots(storeRoot: string): InstalledCarrot[] {
+export function loadInstalledRemotePlugins(storeRoot: string): InstalledRemotePlugin[] {
   const registry = syncCarrotRegistry(storeRoot);
-  return Object.values(registry.carrots)
-    .map((record) => loadInstalledCarrotRecord(storeRoot, record))
+  return Object.values(registry.remotePlugins)
+    .map((record) => loadInstalledRemotePluginRecord(storeRoot, record))
     .sort((left, right) =>
       left.manifest.name.localeCompare(right.manifest.name),
     );
 }
 
-export function toInstalledCarrotSnapshot(
-  carrot: InstalledCarrot,
-): InstalledCarrotSnapshot {
-  const { install, manifest } = carrot;
+export function toInstalledRemotePluginSnapshot(
+  remotePlugin: InstalledRemotePlugin,
+): InstalledRemotePluginSnapshot {
+  const { install, manifest } = remotePlugin;
   return {
     id: manifest.id,
     name: manifest.name,
@@ -672,26 +672,26 @@ export function toInstalledCarrotSnapshot(
     devMode: install.devMode ?? false,
     lastBuildAt: install.lastBuildAt ?? null,
     lastBuildError: install.lastBuildError ?? null,
-    requestedPermissions: normalizeCarrotPermissions(manifest.permissions),
-    grantedPermissions: normalizeCarrotPermissions(install.permissionsGranted),
+    requestedPermissions: normalizeRemotePluginPermissions(manifest.permissions),
+    grantedPermissions: normalizeRemotePluginPermissions(install.permissionsGranted),
     view: {
       ...manifest.view,
-      viewUrl: carrot.viewUrl,
+      viewUrl: remotePlugin.viewUrl,
     },
     worker: manifest.worker,
     ...(manifest.remoteUIs ? { remoteUIs: manifest.remoteUIs } : {}),
   };
 }
 
-export function toCarrotListEntry(carrot: InstalledCarrot): RemotePluginListEntry {
-  const { install, manifest } = carrot;
+export function toRemotePluginListEntry(remotePlugin: InstalledRemotePlugin): RemotePluginListEntry {
+  const { install, manifest } = remotePlugin;
   return {
     id: manifest.id,
     name: manifest.name,
     description: manifest.description,
     version: manifest.version,
     mode: manifest.mode,
-    permissions: flattenCarrotPermissions(install.permissionsGranted),
+    permissions: flattenRemotePluginPermissions(install.permissionsGranted),
     status: install.status,
     devMode: install.devMode ?? false,
   };
@@ -702,22 +702,22 @@ export function loadCarrotStoreSnapshot(
 ): RemotePluginStoreSnapshot {
   return {
     version: REGISTRY_VERSION,
-    carrots: loadInstalledCarrots(storeRoot).map(toInstalledCarrotSnapshot),
+    remotePlugins: loadInstalledRemotePlugins(storeRoot).map(toInstalledRemotePluginSnapshot),
   };
 }
 
 export function loadCarrotListEntries(storeRoot: string): RemotePluginListEntry[] {
-  return loadInstalledCarrots(storeRoot).map(toCarrotListEntry);
+  return loadInstalledRemotePlugins(storeRoot).map(toRemotePluginListEntry);
 }
 
-export function installPrebuiltCarrot(
+export function installPrebuiltRemotePlugin(
   storeRoot: string,
   payloadDir: string,
   options: InstallPrebuiltCarrotOptions = {},
-): InstalledCarrot {
+): InstalledRemotePlugin {
   const manifest = assertRemotePluginPayload(payloadDir);
   const previousInstall = readCarrotInstallRecord(storeRoot, manifest.id);
-  const paths = getCarrotStorePaths(storeRoot, manifest.id);
+  const paths = getRemotePluginStorePaths(storeRoot, manifest.id);
   const now = options.now?.() ?? Date.now();
 
   mkdirSync(paths.rootDir, { recursive: true });
@@ -741,7 +741,7 @@ export function installPrebuiltCarrot(
     currentHash: options.currentHash ?? previousInstall?.currentHash ?? null,
     installedAt: previousInstall?.installedAt ?? now,
     updatedAt: now,
-    permissionsGranted: normalizeCarrotPermissions(
+    permissionsGranted: normalizeRemotePluginPermissions(
       options.permissionsGranted ?? manifest.permissions,
     ),
     devMode: options.devMode ?? previousInstall?.devMode ?? false,
@@ -751,16 +751,16 @@ export function installPrebuiltCarrot(
     source: options.source ?? { kind: "artifact", location: payloadDir },
   });
 
-  return loadInstalledCarrotRecord(storeRoot, installRecord);
+  return loadInstalledRemotePluginRecord(storeRoot, installRecord);
 }
 
-export function uninstallInstalledCarrot(
+export function uninstallInstalledRemotePlugin(
   storeRoot: string,
   id: string,
 ): RemotePluginInstallRecord | null {
   const record = readCarrotInstallRecord(storeRoot, id);
   if (!record) return null;
-  rmSync(getCarrotStorePaths(storeRoot, id).rootDir, {
+  rmSync(getRemotePluginStorePaths(storeRoot, id).rootDir, {
     recursive: true,
     force: true,
   });
@@ -771,7 +771,7 @@ export function uninstallInstalledCarrot(
 export function isCarrotSourceDirectory(directory: string): boolean {
   return (
     existsSync(join(directory, "electrobun.config.ts")) ||
-    existsSync(join(directory, "carrot.json")) ||
+    existsSync(join(directory, "plugin.json")) ||
     existsSync(join(directory, "web")) ||
     existsSync(join(directory, "build.ts")) ||
     existsSync(join(directory, "worker.ts")) ||
@@ -782,11 +782,11 @@ export function isCarrotSourceDirectory(directory: string): boolean {
 export function ensureCarrotSourceDirectory(directory: string): string {
   const normalized = resolve(directory);
   if (!existsSync(normalized) || !statSync(normalized).isDirectory()) {
-    throw new RemotePluginStoreError(`Carrot source folder not found: ${normalized}`);
+    throw new RemotePluginStoreError(`Remote plugin source folder not found: ${normalized}`);
   }
   if (!isCarrotSourceDirectory(normalized)) {
     throw new RemotePluginStoreError(
-      `Selected folder does not look like a Carrot source tree: ${normalized}`,
+      `Selected folder does not look like a remote plugin source tree: ${normalized}`,
     );
   }
   return normalized;
