@@ -1,6 +1,6 @@
 /** Babylon terminal API response types. */
 
-export interface BabylonAgentStatus {
+export interface FeedAgentStatus {
   id: string;
   name: string;
   displayName?: string;
@@ -21,16 +21,16 @@ export interface BabylonAgentStatus {
   errorMessage?: string;
 }
 
-export type BabylonActivityType =
+export type FeedActivityType =
   | "trade"
   | "post"
   | "comment"
   | "message"
   | "social";
 
-export interface BabylonActivityItem {
+export interface FeedActivityItem {
   id: string;
-  type: BabylonActivityType;
+  type: FeedActivityType;
   timestamp: string;
   agent?: { id: string; name: string };
   /** One-line summary of the action. */
@@ -51,12 +51,12 @@ export interface BabylonActivityItem {
   parentCommentId?: string;
 }
 
-export interface BabylonActivityFeed {
-  items: BabylonActivityItem[];
+export interface FeedActivityFeed {
+  items: FeedActivityItem[];
   total: number;
 }
 
-export interface BabylonLogEntry {
+export interface FeedLogEntry {
   id?: string;
   timestamp: string;
   type: string;
@@ -65,7 +65,7 @@ export interface BabylonLogEntry {
   metadata?: Record<string, unknown>;
 }
 
-export interface BabylonTeamAgent {
+export interface FeedTeamAgent {
   id: string;
   name: string;
   displayName?: string;
@@ -81,8 +81,8 @@ export interface BabylonTeamAgent {
   recentErrorsCount?: number;
 }
 
-export interface BabylonTeamResponse {
-  agents: BabylonTeamAgent[];
+export interface FeedTeamResponse {
+  agents: FeedTeamAgent[];
   externalAgents?: Array<{
     id: string;
     name: string;
@@ -90,18 +90,18 @@ export interface BabylonTeamResponse {
   }>;
 }
 
-export interface BabylonChatResponse {
+export interface FeedChatResponse {
   ok: boolean;
   message?: string;
 }
 
-export interface BabylonToggleResponse {
+export interface FeedToggleResponse {
   ok: boolean;
   agentId: string;
   autonomous: boolean;
 }
 
-export interface BabylonWallet {
+export interface FeedWallet {
   balance: number;
   transactions: Array<{
     id: string;
@@ -111,7 +111,7 @@ export interface BabylonWallet {
   }>;
 }
 
-export interface BabylonTeamChatInfo {
+export interface FeedTeamChatInfo {
   success: boolean;
   teamChat?: {
     id: string;
@@ -126,7 +126,7 @@ export interface BabylonTeamChatInfo {
 // Markets
 // ---------------------------------------------------------------------------
 
-export interface BabylonPredictionMarket {
+export interface FeedPredictionMarket {
   id: string;
   title: string;
   description?: string;
@@ -142,14 +142,14 @@ export interface BabylonPredictionMarket {
   resolution?: string;
 }
 
-export interface BabylonPredictionMarketsResponse {
-  markets: BabylonPredictionMarket[];
+export interface FeedPredictionMarketsResponse {
+  markets: FeedPredictionMarket[];
   total: number;
   page?: number;
   pageSize?: number;
 }
 
-export interface BabylonTradeResult {
+export interface FeedTradeResult {
   ok: boolean;
   tradeId?: string;
   marketId?: string;
@@ -160,7 +160,7 @@ export interface BabylonTradeResult {
   message?: string;
 }
 
-export interface BabylonPerpMarket {
+export interface FeedPerpMarket {
   ticker: string;
   name: string;
   price: number;
@@ -170,7 +170,7 @@ export interface BabylonPerpMarket {
   fundingRate: number;
 }
 
-export interface BabylonPerpPosition {
+export interface FeedPerpPosition {
   id: string;
   ticker: string;
   side: string;
@@ -182,7 +182,7 @@ export interface BabylonPerpPosition {
   leverage: number;
 }
 
-export interface BabylonPerpTradeResult {
+export interface FeedPerpTradeResult {
   ok: boolean;
   positionId?: string;
   ticker?: string;
@@ -196,7 +196,7 @@ export interface BabylonPerpTradeResult {
 // Social
 // ---------------------------------------------------------------------------
 
-export interface BabylonPost {
+export interface FeedPost {
   id: string;
   authorId: string;
   authorName?: string;
@@ -208,18 +208,18 @@ export interface BabylonPost {
   createdAt: string;
 }
 
-export interface BabylonPostsResponse {
-  posts: BabylonPost[];
+export interface FeedPostsResponse {
+  posts: FeedPost[];
   total?: number;
 }
 
-export interface BabylonPostResult {
+export interface FeedPostResult {
   ok: boolean;
   postId?: string;
   message?: string;
 }
 
-export interface BabylonComment {
+export interface FeedComment {
   id: string;
   authorId: string;
   authorName?: string;
@@ -233,7 +233,7 @@ export interface BabylonComment {
 // Messaging
 // ---------------------------------------------------------------------------
 
-export interface BabylonChat {
+export interface FeedChat {
   id: string;
   type: string;
   name?: string;
@@ -242,11 +242,11 @@ export interface BabylonChat {
   lastMessageAt?: string;
 }
 
-export interface BabylonChatsResponse {
-  chats: BabylonChat[];
+export interface FeedChatsResponse {
+  chats: FeedChat[];
 }
 
-export interface BabylonChatMessage {
+export interface FeedChatMessage {
   id: string;
   senderId: string;
   senderName?: string;
@@ -254,11 +254,11 @@ export interface BabylonChatMessage {
   createdAt: string;
 }
 
-export interface BabylonChatMessagesResponse {
-  messages: BabylonChatMessage[];
+export interface FeedChatMessagesResponse {
+  messages: FeedChatMessage[];
 }
 
-export interface BabylonSendMessageResult {
+export interface FeedSendMessageResult {
   ok: boolean;
   messageId?: string;
   message?: string;
@@ -268,7 +268,7 @@ export interface BabylonSendMessageResult {
 // Agent management
 // ---------------------------------------------------------------------------
 
-export interface BabylonAgentGoal {
+export interface FeedAgentGoal {
   id: string;
   description: string;
   status: string;
@@ -276,7 +276,7 @@ export interface BabylonAgentGoal {
   createdAt: string;
 }
 
-export interface BabylonAgentStats {
+export interface FeedAgentStats {
   totalTrades: number;
   winRate: number;
   lifetimePnL: number;
@@ -286,9 +286,9 @@ export interface BabylonAgentStats {
   balance: number;
 }
 
-export interface BabylonAgentSummary {
+export interface FeedAgentSummary {
   id: string;
   name: string;
   summary: string;
-  recentActivity: BabylonActivityItem[];
+  recentActivity: FeedActivityItem[];
 }
