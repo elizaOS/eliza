@@ -9,7 +9,7 @@
     "build": "bun build --target=bun --outfile dist/index.js src/server.ts",
     "start": "bun run src/server.ts",
     "test": "bun test",
-    "typecheck": "echo 'Bun-only package, types checked at runtime'"
+    "typecheck": "echo skip (feed) >&2"
   },
   "dependencies": {
     "cors": "^2.8.5",

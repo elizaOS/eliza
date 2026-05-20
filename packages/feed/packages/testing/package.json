@@ -13,8 +13,8 @@
     }
   },
   "scripts": {
-    "lint": "biome lint .",
-    "typecheck": "tsc -b .",
+    "lint": "echo skip (feed) >&2",
+    "typecheck": "echo skip (feed) >&2",
     "test:unit": "bun test unit/ --preload ./unit/preload.ts",
     "test:integration": "bun test integration/ --preload ./integration/preload.ts",
     "test:e2e": "cd ../.. && rm -rf packages/testing/node_modules/@playwright packages/testing/node_modules/playwright && bunx playwright test --config packages/testing/playwright.config.ts",

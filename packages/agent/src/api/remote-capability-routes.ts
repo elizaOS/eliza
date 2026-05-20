@@ -805,6 +805,10 @@ function parseCloudOptions(
     body.allowedModuleIds,
     "cloud.allowedModuleIds",
   );
+  const trustPolicy = parseOptionalEndpointTrustPolicy(
+    body.trustPolicy,
+    "cloud.trustPolicy",
+  );
   const endpointId = optionalNonEmptyString(
     body.endpointId,
     "cloud.endpointId",
@@ -825,6 +829,7 @@ function parseCloudOptions(
     ...(endpointId === undefined ? {} : { endpointId }),
     ...optionalToken(body.token, "cloud.token"),
     ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+    ...(trustPolicy === undefined ? {} : { trustPolicy }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
     ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
   };

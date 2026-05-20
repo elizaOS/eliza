@@ -42,9 +42,7 @@ gcloud services enable cloudbuild.googleapis.com
 gcloud services enable artifactregistry.googleapis.com
 ```
 
-### 3. Deploy (Choose Your Language)
-
-#### TypeScript
+### 3. Deploy
 
 ```bash
 cd packages/examples/gcp
@@ -54,39 +52,6 @@ npm run build
 # Build and deploy
 gcloud run deploy eliza-worker-ts \
   --source . \
-  --region $REGION \
-  --allow-unauthenticated \
-  --set-env-vars "OPENAI_API_KEY=$OPENAI_API_KEY"
-```
-
-#### Python
-
-```bash
-cd packages/packages/examples/gcp/python
-
-# Build and deploy
-gcloud run deploy eliza-worker-py \
-  --source . \
-  --region $REGION \
-  --allow-unauthenticated \
-  --set-env-vars "OPENAI_API_KEY=$OPENAI_API_KEY"
-```
-
-#### Rust
-
-```bash
-cd packages/packages/examples/gcp/rust
-
-# Build container
-docker build -t eliza-worker-rust .
-
-# Tag and push to Artifact Registry
-docker tag eliza-worker-rust $REGION-docker.pkg.dev/$PROJECT_ID/eliza/eliza-worker-rust
-docker push $REGION-docker.pkg.dev/$PROJECT_ID/eliza/eliza-worker-rust
-
-# Deploy
-gcloud run deploy eliza-worker-rust \
-  --image $REGION-docker.pkg.dev/$PROJECT_ID/eliza/eliza-worker-rust \
   --region $REGION \
   --allow-unauthenticated \
   --set-env-vars "OPENAI_API_KEY=$OPENAI_API_KEY"
@@ -115,29 +80,10 @@ bun run test-client.ts --url $SERVICE_URL
 
 ## Local Development
 
-### TypeScript
-
 ```bash
 cd packages/examples/gcp
 npm install
 npm run dev
-# Server runs at http://localhost:8080
-```
-
-### Python
-
-```bash
-cd packages/packages/examples/gcp/python
-pip install -r requirements.txt
-python handler.py
-# Server runs at http://localhost:8080
-```
-
-### Rust
-
-```bash
-cd packages/packages/examples/gcp/rust
-cargo run
 # Server runs at http://localhost:8080
 ```
 
@@ -146,23 +92,14 @@ cargo run
 ```
 packages/examples/gcp/
 ├── README.md                 # This file
+├── Dockerfile                # Cloud Run container image
+├── handler.ts                # Cloud Run handler
 ├── test-client.ts            # Interactive test client
 ├── package.json              # Test client dependencies
 ├── cloudbuild.yaml           # Cloud Build configuration
-├── typescript/
-│   ├── handler.ts            # Cloud Run handler
-│   ├── Dockerfile
-│   ├── package.json
-│   └── tsconfig.json
-├── python/
-│   ├── handler.py            # Cloud Run handler
-│   ├── Dockerfile
-│   └── requirements.txt
-└── rust/
-    ├── Cargo.toml
-    ├── Dockerfile
-    └── src/
-        └── main.rs           # Cloud Run handler
+├── deploy.sh                 # Deployment helper
+├── env.example               # Environment template
+└── terraform/                # Optional infrastructure template
 ```
 
 ## API Reference
