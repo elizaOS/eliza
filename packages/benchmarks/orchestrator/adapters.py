@@ -2084,8 +2084,7 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         default_method = "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
     method = str(ctx.request.extra_config.get("method", default_method))
     compactbench_root = Path(adapter.cwd)
-    venv_python = compactbench_root / ".venv" / "bin" / "python"
-    python_executable = str(venv_python) if venv_python.exists() else sys.executable
+    python_executable = _compactbench_python_executable(compactbench_root)
     args = [
         python_executable,
         "run_cerebras.py",
@@ -2122,6 +2121,45 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
             ]
         )
     return args
+
+
+def _compactbench_python_executable(compactbench_root: Path) -> str:
+    candidates: list[str] = []
+    venv_python = compactbench_root / ".venv" / "bin" / "python"
+    if venv_python.exists():
+        candidates.append(str(venv_python))
+    candidates.append(sys.executable)
+    for binary in ("python3", "python"):
+        resolved = shutil.which(binary)
+        if resolved:
+            candidates.append(resolved)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if _python_can_import(candidate, "ruamel.yaml"):
+            return candidate
+    return candidates[0] if candidates else sys.executable
+
+
+def _python_can_import(python_executable: str, module: str) -> bool:
+    try:
+        completed = subprocess.run(
+            [
+                python_executable,
+                "-c",
+                f"import importlib; importlib.import_module({module!r})",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
 
 
 def _env_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:

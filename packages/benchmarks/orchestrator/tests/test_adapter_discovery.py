@@ -2386,6 +2386,36 @@ def test_compactbench_adapter_uses_repaired_scorer_by_default(tmp_path: Path) ->
     assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
 
 
+def test_compactbench_python_falls_back_when_local_python_lacks_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compactbench_root = tmp_path / "compactbench"
+    venv_bin = compactbench_root / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    local_python = venv_bin / "python"
+    local_python.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    good_python = tmp_path / "conda-python"
+    good_python.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(orchestrator_adapters.sys, "executable", "/broken/sys-python")
+    monkeypatch.setattr(
+        orchestrator_adapters.shutil,
+        "which",
+        lambda name: str(good_python) if name == "python" else None,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_python_can_import",
+        lambda candidate, module: candidate == str(good_python)
+        and module == "ruamel.yaml",
+    )
+
+    assert orchestrator_adapters._compactbench_python_executable(
+        compactbench_root
+    ) == str(good_python)
+
+
 def test_compactbench_hermes_adapter_uses_native_tool_compactor(
     tmp_path: Path,
 ) -> None:
