@@ -377,7 +377,16 @@ export async function startCloudStack(
       spawnLogged(
         "cloud-frontend",
         "bun",
-        ["run", "dev", "--", "--host", "127.0.0.1"],
+        [
+          "run",
+          "dev",
+          "--",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          String(frontendPort),
+          "--strictPort",
+        ],
         {
           env: frontendEnv,
           cwd: join(REPO_ROOT, "packages", "cloud-frontend"),

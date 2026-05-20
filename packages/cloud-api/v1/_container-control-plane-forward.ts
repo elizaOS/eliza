@@ -42,8 +42,10 @@ async function forwardControlPlaneRequest(
   headers.set("x-forwarded-proto", sourceUrl.protocol.replace(":", ""));
 
   const internalToken = readStringEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
-  if (internalToken)
+  if (internalToken) {
     headers.set("x-container-control-plane-token", internalToken);
+    headers.set("authorization", `Bearer ${internalToken}`);
+  }
 
   const databaseUrl = readStringEnv(c, ["DATABASE_URL"]);
   if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);

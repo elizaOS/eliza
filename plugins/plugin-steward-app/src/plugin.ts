@@ -391,6 +391,20 @@ export const stewardPlugin: Plugin = {
     },
     {
       id: "steward",
+      label: "Steward XR",
+      description:
+        "Transaction history and approval queue for Steward wallet management",
+      icon: "Shield",
+      path: "/steward",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "StewardView",
+      tags: ["finance", "wallet", "approvals", "transactions"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "steward",
       label: "Steward TUI",
       description:
         "Terminal transaction history and approval queue for Steward wallet management",

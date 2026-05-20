@@ -267,11 +267,14 @@ function buildHostPage(
       const el = document.activeElement;
       if (!el) return;
       const tag = el.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") {
-        const native = Object.getOwnPropertyDescriptor(window[tag === "INPUT" ? "HTMLInputElement" : "HTMLTextAreaElement"].prototype, "value");
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        const native = Object.getOwnPropertyDescriptor(window[tag === "INPUT" ? "HTMLInputElement" : tag === "TEXTAREA" ? "HTMLTextAreaElement" : "HTMLSelectElement"].prototype, "value");
         native.set.call(el, text);
         el.dispatchEvent(new Event("input", { bubbles: true }));
         el.dispatchEvent(new Event("change", { bubbles: true }));
+        showTranscript(text);
+      } else if (el.getAttribute("role") === "combobox" || el.getAttribute("role") === "listbox") {
+        el.dispatchEvent(new CustomEvent("xr:voice-select", { bubbles: true, detail: { text } }));
         showTranscript(text);
       }
     }

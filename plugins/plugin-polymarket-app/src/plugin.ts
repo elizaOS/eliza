@@ -118,6 +118,20 @@ export const polymarketPlugin: Plugin = {
     },
     {
       id: "polymarket",
+      label: "Polymarket XR",
+      description:
+        "Polymarket prediction markets — market discovery, orderbook, and positions",
+      icon: "BarChart2",
+      path: "/polymarket",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "PolymarketAppView",
+      tags: ["prediction-markets", "polymarket", "trading"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "polymarket",
       label: "Polymarket TUI",
       description: "Terminal Polymarket markets, orderbook, and positions",
       icon: "BarChart2",

@@ -950,6 +950,20 @@ const rawAppLifeOpsPlugin: Plugin = {
     },
     {
       id: "lifeops",
+      label: "LifeOps XR",
+      description:
+        "Owner operations dashboard — routines, goals, inbox, calendar, and health",
+      icon: "LayoutDashboard",
+      path: "/lifeops",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "LifeOpsPageView",
+      tags: ["lifeops", "productivity", "health", "calendar"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "lifeops",
       label: "LifeOps TUI",
       description:
         "Terminal LifeOps routines, goals, inbox, calendar, and health",

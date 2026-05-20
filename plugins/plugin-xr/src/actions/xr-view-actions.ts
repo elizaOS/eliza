@@ -362,6 +362,15 @@ function extractViewId(text: string): string {
     "messages",
     "babylon",
     "2004scape",
+    "clawville",
+    "hyperliquid",
+    "hyperscape",
+    "lifeops",
+    "scape",
+    "screenshare",
+    "trajectory-logger",
+    "model-tester",
+    "smartglasses",
     "defense-of-the-agents",
   ];
   for (const id of known) {
@@ -369,7 +378,7 @@ function extractViewId(text: string): string {
   }
   // Try to extract quoted word
   const quoted = text.match(/["']([^"']+)["']/);
-  if (quoted) return quoted[1]!;
+  if (quoted?.[1]) return quoted[1];
   return "";
 }
 

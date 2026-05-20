@@ -10,14 +10,17 @@ const routePhoneMessage = mock(async () => ({
 type RegisterPhoneGatewayDeviceResult = {
   id: string | null;
   registered: boolean;
-  skippedReason?: string;
+  skippedReason?: "missing_phone_number" | "table_missing" | "write_failed";
 };
 
+const registeredGatewayDevice = (): RegisterPhoneGatewayDeviceResult => ({
+  id: "gateway-device-1",
+  registered: true,
+});
+
 const registerPhoneGatewayDevice = mock(
-  async (): Promise<RegisterPhoneGatewayDeviceResult> => ({
-    id: "gateway-device-1",
-    registered: true,
-  }),
+  async (): Promise<RegisterPhoneGatewayDeviceResult> =>
+    registeredGatewayDevice(),
 );
 
 mock.module("@/lib/services/agent-gateway-router", () => ({
@@ -83,10 +86,9 @@ describe("BlueBubbles webhook", () => {
       organizationId: "org-1",
     }));
     registerPhoneGatewayDevice.mockClear();
-    registerPhoneGatewayDevice.mockImplementation(async () => ({
-      id: "gateway-device-1",
-      registered: true,
-    }));
+    registerPhoneGatewayDevice.mockImplementation(async () =>
+      registeredGatewayDevice(),
+    );
   });
 
   test("rejects requests without the shared gateway secret", async () => {
