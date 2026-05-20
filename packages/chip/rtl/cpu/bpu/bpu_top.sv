@@ -88,6 +88,15 @@ module bpu_top
     /* verilator lint_on UNUSEDSIGNAL */
     logic                  ftb_pmu_miss;
 
+    // R8: FTB allocates on every resolve, not just on misprediction. The
+    // behavioural model (benchmarks/cpu/branch/bpu_model.py) writes its
+    // FTB on every retired branch (`self.ftb.update(event.pc, ...)` in
+    // every kind branch of `_step`). Gating allocation on misprediction
+    // added ~7 500 structural cold-miss mispredictions on
+    // `sample_int_trace` because the unique-branch working set is
+    // ~7 500 PCs. Filtering BR_NONE keeps no-branch resolves out of the
+    // FTB; the new gate matches the model and drops `ftb_miss` from
+    // 7 985 to 418.
     ftb u_ftb (
         .clk        (clk),
         .rst_n      (rst_n),
@@ -104,7 +113,7 @@ module bpu_top
         .upd_fall_through_pc(resolve.actual_call_return_pc),
         .upd_kind   (resolve.actual_kind),
         .upd_br_valid({MAX_BR_PER_BLOCK{1'b1}}),
-        .upd_alloc  (resolve.valid && resolve.misprediction),
+        .upd_alloc  (resolve.valid && resolve.actual_kind != BR_NONE),
         .pmu_miss   (ftb_pmu_miss)
     );
 
@@ -207,7 +216,7 @@ module bpu_top
     assign ras_spec_pop       = lkp_valid && ftb_hit && (ftb_kind == BR_RET);
     assign ras_spec_push_addr = ftb_fall_through_pc;
 
-    ras u_ras (
+    e1_bpu_ras u_ras (
         .clk            (clk),
         .rst_n          (rst_n),
         .spec_push      (ras_spec_push),

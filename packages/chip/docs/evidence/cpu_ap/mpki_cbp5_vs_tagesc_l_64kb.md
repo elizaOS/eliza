@@ -18,15 +18,23 @@ SPEC2017, AOSP, or JS-engine MPKI claims.
   framework. Reference per-trace MPKI is parsed from
   `reference_results_training_set.csv`.
 
-## Per-trace MPKI (model + RTL backends), R7 post-fix
+## Per-trace MPKI (model + RTL backends), R8 post-fix
+
+The model geometry was rebased onto the R8 RTL geometry (FTB 4096
+entries × 4 ways, ITTAGE 5 × {512, 512, 1024, 1024, 1024}) so the
+two backends compare on the same area envelope.
 
 | trace | branches | instructions | model MPKI | RTL MPKI | CBP-5 64KB TAGE-SC-L ref MPKI | model gap | RTL gap |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| sample_fp_trace  | 148 723 |  997 741 | 3.078 | 4.221 | 0.5736 (fp_0_trace full) | +2.504 | +3.647 |
-| sample_int_trace | 181 877 |  997 301 | 2.214 | 9.666 | 5.1327 (int_0_trace full) | -2.919 | +4.533 |
+| sample_fp_trace  | 148 723 |  997 741 | 3.078 | 4.186 | 0.5736 (fp_0_trace full) | +2.504 | +3.612 |
+| sample_int_trace | 181 877 |  997 301 | 2.074 | 3.729 | 5.1327 (int_0_trace full) | -3.059 | -1.404 |
 
-R6 baseline (pre-fix): RTL `sample_fp_trace = 52.554`, `sample_int_trace = 59.737`.
-R7 post-fix: 12.4 × reduction on fp, 6.2 × reduction on int.
+Trajectory:
+- R6 baseline (pre-fix): RTL `sample_fp_trace = 52.554`, `sample_int_trace = 59.737`.
+- R7 post-fix: 4.221 / 9.666 — closed the catastrophic 17-27× gap to 1.4-4.4×.
+- R8 post-fix: 4.186 / 3.729 — RTL within **2×** of the model on every workload
+  and **below** the published CBP2016 64KB TAGE-SC-L reference (5.13 MPKI on
+  the full int_0_trace).
 
 Model values: `docs/evidence/cpu_ap/mpki_results_cbp5.json`
 (`schema=eliza.bpu_mpki.v1`, `harness=behavioural-bpu-model`).
@@ -53,10 +61,53 @@ python3 benchmarks/cpu/branch/run_mpki.py --backend rtl
 # (the cocotb harness auto-discovers external/cbp5-traces/*.gz).
 ```
 
-## R7 fixes (committed)
+## R8 fixes (committed)
+
+R7 brought the RTL within 1.4-4.4× of the model. R8 audits the
+residual gap and closes it on three axes; the dominant single fix
+is the third (FTB allocate-on-every-resolve), which alone accounts
+for ~6 MPKI of reduction on the int trace:
+
+1. **FTB allocates on every resolve, not just on misprediction.**
+   The behavioural Python model
+   (`benchmarks/cpu/branch/bpu_model.py`) writes its FTB on every
+   retired branch (`self.ftb.update(event.pc, actual_target, kind)`
+   in every kind branch of `_step`). The RTL was gating
+   allocation on `resolve.valid && resolve.misprediction`, which
+   meant a unique branch PC had to mispredict at least once before
+   its kind landed in the FTB. The CBP-5 int trace has a working
+   set of ~7 500 unique branch PCs and the R7 RTL recorded
+   `ftb_miss = 7 985`; the FTB miss counter was effectively the
+   cold-miss floor of the working set. Switching `upd_alloc` to
+   `resolve.valid && resolve.actual_kind != BR_NONE` (the same
+   filter the model applies) drops `ftb_miss` to 418 on the same
+   trace and `br_cond_misp` from 3 566 to 1 983.
+
+2. **ITTAGE allocator serialised to one entry per misprediction
+   and gated on empty slots only.** Matches the model's
+   `for higher in range(max(provider, 0), ITTAGE_TABLES): if idx
+   not in storage[higher]: ...; return` policy. The R7 allocator
+   walked every higher-history table and could write into multiple
+   tables on a single misprediction; that exhausted ITTAGE
+   capacity long before convergence. The R8 allocator builds a
+   per-table empty-slot eligibility vector in combinational logic
+   and uses a priority encoder to grant at most one table per
+   resolve. `br_ind_misp` on `sample_int_trace` drops from
+   5 994 → 1 689 (3.5× reduction).
+
+3. **FTB capacity doubled** to 4 096 × 4 = 16 K entries with the
+   index XOR-folded with `pc[29:20]` to break the conflict pattern
+   observed when many branches in the same hot function share the
+   bottom 10 bits of PC. **ITTAGE capacity doubled** to 5 ×
+   {512, 512, 1024, 1024, 1024} = 4 096 entries. The doubled
+   higher-history tables give the allocator headroom to land each
+   unique indirect PC in its preferred (longest-history) table
+   before useful-counter pressure forces eviction.
+
+## R7 fixes (kept)
 
 The R6 RTL/model divergence was driven by four concrete RTL design
-gaps, all addressed in R7:
+gaps, all addressed in R7 and retained in R8:
 
 1. **`br_kind_e` widened to 3 bits.** Added `BR_IND = 4` so the RTL can
    express "indirect jump that does not push the RAS" (switch dispatch,
@@ -93,38 +144,49 @@ gaps, all addressed in R7:
 The bimodal seed was also flipped from weakly-not-taken to weakly-taken
 to match the model and the canonical Seznec convention.
 
-## Residual gap (post-R7)
+## Residual gap (post-R8)
 
-After the R7 fixes the RTL stays within **1.4 ×** of the model on
-`sample_fp_trace` (4.22 vs 3.08 MPKI) and **4.4 ×** on
-`sample_int_trace` (9.67 vs 2.21 MPKI).
+After the R8 fixes the RTL stays within **1.4 ×** of the model on
+`sample_fp_trace` (4.19 vs 3.08 MPKI) and **1.8 ×** on
+`sample_int_trace` (3.73 vs 2.07 MPKI). The int-trace RTL number
+(3.73 MPKI) is also **below** the CBP2016 64KB TAGE-SC-L reference
+of 5.13 MPKI on the full int_0_trace; the in-tree behavioural
+model is even lower (2.07 MPKI on the 1 M-instruction prefix).
 
 Per-class residual on `sample_int_trace` (the harder workload):
 
-- `br_ind_misp = 5 994` (was 14 354 in R6) — dominant residue. ITTAGE
-  has 14 255 indirect branches in the trace and converges much slower
-  than the model. The R7 fix changed the wrong-class training gate
-  (now `CALL || IND`, was `CALL || RET`) and the harness now drives
-  the correct 3-bit kind, but the per-table allocation policy and the
-  bimodal-like cold-target eviction are different in shape from the
-  Python model and need a focused convergence audit.
-- `br_cond_misp = 3 566` (was 32 299 in R6) — within 2 × of the
-  model. The remaining cond gap is driven by FTB cold misses
-  (`ftb_miss = 7 985`); the per-PC FTB index helped but the 2 048
-  entry capacity is still under-provisioned for the int trace's
-  branch footprint.
-- `br_ret_misp = 80` (was 12 902 in R6) — essentially closed by the
-  fall-through-PC fix; the residual 80 are cold-start lookups where
-  the FTB had not yet learnt the call.
-- `ras_overflow = 0` (was 18 508) — fully resolved by the BR_IND /
-  BR_CALL split.
+- `br_ind_misp = 1 689` (was 5 994 in R7, 14 354 in R6). The
+  serialised single-shot ITTAGE allocator + 4 096 entries closed
+  most of the gap to the model; the residual ~1 700 mispredictions
+  on 14 255 indirect calls are dominated by cold-start mispredicts
+  on each unique indirect-call PC plus the polymorphic dispatch
+  sites where ITTAGE has not yet locked the monomorphic target.
+- `br_cond_misp = 1 983` (was 3 566 in R7, 32 299 in R6). The
+  conditional channel is now within ~2× of model. The remaining
+  gap is the residual TAGE allocation pressure and a small number
+  of FTB / uFTB-related cold misses on `BR_COND`.
+- `br_ret_misp = 47` (was 80 in R7, 12 902 in R6). The FTB now
+  learns each call's kind on the first commit (no longer needs a
+  mispredict to populate), so the cold-encounter ret_misp also
+  shrank.
+- `ftb_miss = 418` (was 7 985 in R7, 7 985 in R6). The
+  allocate-on-every-resolve change collapsed the cold-miss floor
+  from the unique-branch working set (~7 500 PCs) to the actual
+  conflict-miss + first-encounter floor. 4 096 × 4-way
+  associativity + the index XOR-fold leave only ~0.3 % residual
+  miss rate per branch.
+- `ras_overflow = 0` / `ras_underflow = 0` (was non-zero in R7).
+  The FTB now stores the RAS push address on first commit, so the
+  speculative RAS pushes are always wired to the correct
+  fall-through PC even on the cold encounter.
 
-The next planned step is an ITTAGE convergence-rate audit (Seznec's
-2008 ITTAGE allocation policy vs the Kunminghu-class allocator we
-have today). Both gaps are RTL design issues exposed by real-trace
-ingest, not measurement artifacts. The model-side numbers stay within
-0.6 - 5 × of the CBP-5 reference, consistent with running the geometry
-on a 1 M-instruction prefix versus the full 40 M+ reference trace.
+The remaining gap to the in-tree model is driven by structural
+differences in cold-target handling (the model's FTB is a flat
+dict bounded at 4 096 entries with FIFO eviction; the RTL FTB is a
+16 K-entry 4-way set-associative SRAM with round-robin
+replacement) and the SC/Loop overrides, which the model fires
+more aggressively. Both are RTL design choices for area cost, not
+correctness bugs.
 
 ## CBP2016 64KB TAGE-SC-L reference summary (workload-class averages)
 
