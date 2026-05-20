@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-capacitor-bridge",
-	"version": "2.0.1",
+	"version": "2.0.1-beta.0",
 	"description": "Capacitor WebSocket bridge to device llama for stock mobile (non-AOSP) Eliza builds.",
 	"type": "module",
 	"main": "dist/index.js",

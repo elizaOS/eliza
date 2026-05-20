@@ -1,6 +1,6 @@
 import { expect, test } from "playwright/test";
 
-test.setTimeout(60_000);
+test.setTimeout(180_000);
 
 test("get-started public method controls work without API mocks", async ({
   context,

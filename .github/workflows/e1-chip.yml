@@ -58,7 +58,7 @@ jobs:
       - name: Fix permissions on docker-written reports
         if: always()
         continue-on-error: true
-        run: sudo chmod -R a+rX packages/chip/build packages/chip/verify || true
+        run: sudo chown -R "$(id -u):$(id -g)" build verify 2>/dev/null || true; sudo chmod -R a+rX build verify || true
 
       - name: Upload regression artifacts
         uses: actions/upload-artifact@v4

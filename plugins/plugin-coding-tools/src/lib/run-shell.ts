@@ -111,6 +111,23 @@ function shellArgsForCommand(shell: {
   return shell.args;
 }
 
+function killHostProcess(
+  pid: number | undefined,
+  signal: NodeJS.Signals,
+  useProcessGroup: boolean,
+  proc: ReturnType<typeof spawn>,
+): void {
+  try {
+    if (pid && useProcessGroup) {
+      process.kill(-pid, signal);
+      return;
+    }
+    proc.kill(signal);
+  } catch {
+    // The process may have exited between the timeout firing and kill delivery.
+  }
+}
+
 function runOnHost(opts: {
   command: string;
   cwd: string;
@@ -132,6 +149,7 @@ function runOnHost(opts: {
       });
       return;
     }
+    const useProcessGroup = process.platform !== "win32";
     const proc = spawn(
       shell.command,
       [...shellArgsForCommand(shell), opts.command],
@@ -139,6 +157,7 @@ function runOnHost(opts: {
         cwd: opts.cwd,
         env: opts.env,
         stdio: ["ignore", "pipe", "pipe"],
+        detached: useProcessGroup,
       },
     );
     let stdout = "";
@@ -158,13 +177,9 @@ function runOnHost(opts: {
 
     const timer = setTimeout(() => {
       timedOut = true;
-      proc.kill("SIGTERM");
+      killHostProcess(proc.pid, "SIGTERM", useProcessGroup, proc);
       setTimeout(() => {
-        try {
-          proc.kill("SIGKILL");
-        } catch {
-          // already dead
-        }
+        killHostProcess(proc.pid, "SIGKILL", useProcessGroup, proc);
       }, 1500);
     }, opts.timeoutMs);
     if (typeof timer.unref === "function") timer.unref();

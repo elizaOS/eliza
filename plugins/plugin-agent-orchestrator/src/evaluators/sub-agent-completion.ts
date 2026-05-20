@@ -154,14 +154,23 @@ function looksLikeCapturedToolOutput(text: string): boolean {
   const firstLine = lines[0]?.trim() ?? "";
   if (!firstLine.startsWith("[tool output:") || !firstLine.endsWith("]"))
     return false;
-  if (lines.some((line) => line.trim() === TOOL_OUTPUT_END_MARKER)) {
+  if (lines.some((line) => line.trim().startsWith(TOOL_OUTPUT_END_MARKER))) {
     return capturedToolOutputBlocksOnly(lines);
   }
   const body = lines.slice(1).join("\n").trim();
   return body.length > 0;
 }
 
-function capturedToolOutputBlocksOnly(lines: string[]): boolean {
+function tailAfterEndMarker(line: string): string {
+  const idx = line.indexOf(TOOL_OUTPUT_END_MARKER);
+  return idx >= 0 ? line.slice(idx + TOOL_OUTPUT_END_MARKER.length).trim() : "";
+}
+
+function partitionToolOutputBlocks(lines: string[]): {
+  remainder: string[];
+  sawToolOutput: boolean;
+  unclosed: boolean;
+} {
   let insideToolOutput = false;
   let sawToolOutput = false;
   const remainder: string[] = [];
@@ -172,41 +181,48 @@ function capturedToolOutputBlocksOnly(lines: string[]): boolean {
       sawToolOutput = true;
       continue;
     }
-    if (insideToolOutput && trimmed === TOOL_OUTPUT_END_MARKER) {
+    if (insideToolOutput && trimmed.startsWith(TOOL_OUTPUT_END_MARKER)) {
       insideToolOutput = false;
+      const after = tailAfterEndMarker(line);
+      if (after) remainder.push(after);
       continue;
     }
-    if (!insideToolOutput) {
-      remainder.push(line);
-    }
+    if (!insideToolOutput) remainder.push(line);
   }
-  return (
-    sawToolOutput && !insideToolOutput && remainder.join("\n").trim() === ""
-  );
+  return { remainder, sawToolOutput, unclosed: insideToolOutput };
+}
+
+function capturedToolOutputBlocksOnly(lines: string[]): boolean {
+  const { remainder, sawToolOutput, unclosed } =
+    partitionToolOutputBlocks(lines);
+  return sawToolOutput && !unclosed && remainder.join("\n").trim() === "";
 }
 
 function userFacingCompletionBody(text: string): string {
   const body = stripRouterAnnotations(text);
   const lines = body.replace(/\r\n/g, "\n").split("\n");
-  if (!lines.some((line) => line.trim() === TOOL_OUTPUT_END_MARKER)) {
+  if (!lines.some((line) => line.trim().startsWith(TOOL_OUTPUT_END_MARKER))) {
     return body;
   }
-  let insideToolOutput = false;
-  const remainder: string[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!insideToolOutput && trimmed.startsWith("[tool output:")) {
-      insideToolOutput = true;
-      continue;
-    }
-    if (insideToolOutput && trimmed === TOOL_OUTPUT_END_MARKER) {
-      insideToolOutput = false;
-      continue;
-    }
-    if (!insideToolOutput) remainder.push(line);
-  }
+  const { remainder } = partitionToolOutputBlocks(lines);
   const userText = remainder.join("\n").trim();
   return userText || body;
+}
+
+function hasCleanFinalProseAfterToolOutput(text: string): boolean {
+  const body = stripRouterAnnotations(text);
+  if (
+    !body.includes("[tool output:") ||
+    !body.includes(TOOL_OUTPUT_END_MARKER)
+  ) {
+    return false;
+  }
+  const userText = userFacingCompletionBody(text);
+  return (
+    userText.length > 0 &&
+    !isEmptyCompletionPlaceholder(userText) &&
+    !looksLikeRawToolTranscript(userText)
+  );
 }
 
 function stripRouterAnnotations(text: string): string {
@@ -252,6 +268,9 @@ function replyPatchFromCompletion(
   const body = userFacingCompletionBody(completionText);
   const verifiedUrl = userFacingVerifiedUrl(verifiedUrls);
   const cleanBody = body && !looksLikeRawToolTranscript(body) ? body : "";
+  const cleanCurrentReply = !looksLikeRawToolTranscript(currentReply)
+    ? currentReply
+    : "";
   if (!body && !verifiedUrl) return undefined;
   if (isEmptyCompletionPlaceholder(body)) return verifiedUrl;
   if (verifiedUrl && looksLikeRawToolTranscript(completionText)) {
@@ -266,8 +285,8 @@ function replyPatchFromCompletion(
     return cleanBody;
   }
   if (verifiedUrl) return verifiedUrl;
-  if (hasUrl(currentReply)) return currentReply;
-  if (currentReply.length === 0) return cleanBody || body;
+  if (hasUrl(cleanCurrentReply)) return cleanCurrentReply;
+  if (cleanCurrentReply.length === 0) return cleanBody || body;
   if (!hasUrl(currentReply) && cleanBody && hasUrl(cleanBody)) return cleanBody;
   return cleanBody || body;
 }
@@ -309,6 +328,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const verifiedUrls = verifiedUrlsFromMetadata(message);
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
+    if (hasCleanFinalProseAfterToolOutput(completionText)) return true;
     const hasConcreteFollowUp =
       hasStrings(messageHandler.plan.candidateActions) &&
       !hasOnlyStaleCompletionHints(messageHandler.plan.candidateActions);

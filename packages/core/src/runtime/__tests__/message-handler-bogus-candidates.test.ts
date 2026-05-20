@@ -297,6 +297,56 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
 	});
 
+	it("routes ack-only local submodule checks to shell", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "Checking for the vendored opencode submodule...",
+				intents: ["check submodule"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [SHELL],
+				messageText:
+					"is the vendored opencode submodule present and what commit is checked out? concise",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
+	});
+
+	it("uses current message text for local submodule checks when intents are missing", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "Checking for the vendored opencode submodule...",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [SHELL],
+				messageText:
+					"is the vendored opencode submodule present and what commit is checked out? concise",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
+	});
+
 	it("promotes current market-data requests to search even when Stage 1 underclaims browsing", () => {
 		const handler = messageHandlerFromFieldResult(
 			{

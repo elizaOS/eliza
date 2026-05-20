@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
@@ -35,8 +36,27 @@ const STREAM_CAP_CHARS = 30_000;
 const SHELL_HISTORY_DEFAULT_LIMIT = 20;
 const URL_PREFIXES = ["https://", "http://"] as const;
 const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
+const COINGECKO_SIMPLE_PRICE_BASE =
+  "https://api.coingecko.com/api/v3/simple/price";
 
 type ShellActionSubaction = "run" | "clear_history" | "view_history";
+
+interface CryptoSpotAsset {
+  symbol: string;
+  coingeckoId: string;
+  terms: RegExp;
+}
+
+interface CryptoSpotCommandResolution {
+  command: string;
+  asset?: CryptoSpotAsset;
+  rewritten: boolean;
+}
+
+interface DiskInspectionCommandResolution {
+  command: string;
+  rewritten: boolean;
+}
 
 type ShellHistoryEntryLike = {
   command?: unknown;
@@ -49,6 +69,27 @@ type ShellHistoryServiceLike = {
     limit?: number,
   ) => ShellHistoryEntryLike[];
 };
+
+const CRYPTO_SPOT_ASSETS: CryptoSpotAsset[] = [
+  {
+    symbol: "BTC",
+    coingeckoId: "bitcoin",
+    terms: /\b(?:btc|bitcoin)\b/iu,
+  },
+  {
+    symbol: "ETH",
+    coingeckoId: "ethereum",
+    terms: /\b(?:eth|ethereum)\b/iu,
+  },
+  {
+    symbol: "SOL",
+    coingeckoId: "solana",
+    terms: /\b(?:sol|solana)\b/iu,
+  },
+];
+
+const BOUNDED_DISK_INSPECTION_COMMAND =
+  'df -h / /home; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/.local/share/Trash"; do [ -e "$p" ] && du -sh "$p" 2>/dev/null; done | sort -hr | head -n 10';
 
 function normalizeShellSubaction(
   value: string | undefined,
@@ -109,6 +150,178 @@ function clampHistoryLimit(value: number | undefined): number {
 function isMissingPathError(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | undefined)?.code;
   return code === "ENOENT" || code === "ENOTDIR";
+}
+
+function messageText(message: Memory): string {
+  return typeof message.content?.text === "string" ? message.content.text : "";
+}
+
+function textMentionsPath(text: string, requestedPath: string): boolean {
+  const normalizedText = text.replace(/\\/g, "/");
+  const normalizedPath = requestedPath.replace(/\\/g, "/");
+  return normalizedText.includes(normalizedPath);
+}
+
+function asksAboutRunningRuntimeSource(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  const mentionsRepoState =
+    /\b(?:branch|commit|head|revision|sha|cwd|directory|folder|path|repo|repository|source|submodule|worktree)\b/.test(
+      normalized,
+    );
+  const groundsToLocalRuntime =
+    /\b(?:running|runtime|process|service|bot|agent|currently|current|local|workspace|worktree|vendored|vendor|present)\b/.test(
+      normalized,
+    ) || /\bchecked[- ]out\b/.test(normalized);
+  return mentionsRepoState && groundsToLocalRuntime;
+}
+
+function requestedCryptoSpotAsset(text: string): CryptoSpotAsset | undefined {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return undefined;
+  if (
+    !/\b(?:price|spot|quote|rate|trading|worth|usd|dollars?)\b/iu.test(
+      normalized,
+    )
+  ) {
+    return undefined;
+  }
+  return CRYPTO_SPOT_ASSETS.find((asset) => asset.terms.test(normalized));
+}
+
+function coingeckoSimplePriceCommand(asset: CryptoSpotAsset): string {
+  const url = `${COINGECKO_SIMPLE_PRICE_BASE}?ids=${encodeURIComponent(
+    asset.coingeckoId,
+  )}&vs_currencies=usd`;
+  return `curl -fsS ${shellSingleQuote(url)}`;
+}
+
+function usesUnreliableCryptoSpotEndpoint(
+  command: string,
+  asset: CryptoSpotAsset,
+): boolean {
+  const lower = command.toLowerCase();
+  if (lower.includes("api.coindesk.com/v1/bpi/currentprice")) {
+    return asset.symbol === "BTC";
+  }
+  if (!lower.includes("api.binance.com/api/v3/ticker/price")) {
+    return false;
+  }
+  const symbolParam = `${asset.symbol.toLowerCase()}usdt`;
+  return lower.includes(`symbol=${symbolParam}`);
+}
+
+export function resolveCryptoSpotPriceCommand(args: {
+  command: string;
+  messageText: string;
+}): CryptoSpotCommandResolution {
+  const asset = requestedCryptoSpotAsset(args.messageText);
+  if (!asset) return { command: args.command, rewritten: false };
+  if (!usesUnreliableCryptoSpotEndpoint(args.command, asset)) {
+    return { command: args.command, asset, rewritten: false };
+  }
+  return {
+    command: coingeckoSimplePriceCommand(asset),
+    asset,
+    rewritten: true,
+  };
+}
+
+function asksForDiskInspection(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return /\b(?:disk|storage|filesystem|free space|cleanup|clean up|space)\b/.test(
+    normalized,
+  );
+}
+
+function usesBroadDiskUsageScan(command: string): boolean {
+  const normalized = command.replace(/\s+/g, " ").trim();
+  if (!/\bdu\b/.test(normalized)) return false;
+  return (
+    /\bdu\b[^;&|]*(?:\/\*|\/home\/\*)/.test(normalized) ||
+    /\bdu\b[^;&|]*\s\/(?:\s|$)/.test(normalized)
+  );
+}
+
+export function resolveDiskInspectionCommand(args: {
+  command: string;
+  messageText: string;
+}): DiskInspectionCommandResolution {
+  if (!asksForDiskInspection(args.messageText)) {
+    return { command: args.command, rewritten: false };
+  }
+  if (!usesBroadDiskUsageScan(args.command)) {
+    return { command: args.command, rewritten: false };
+  }
+  return { command: BOUNDED_DISK_INSPECTION_COMMAND, rewritten: true };
+}
+
+function shouldIgnoreUngroundedRuntimeCwd(args: {
+  message: Memory;
+  requestedCwd: string;
+  sessionCwd: string;
+}): boolean {
+  if (path.resolve(args.requestedCwd) === path.resolve(args.sessionCwd)) {
+    return false;
+  }
+  const text = messageText(args.message);
+  if (textMentionsPath(text, args.requestedCwd)) return false;
+  return asksAboutRunningRuntimeSource(text);
+}
+
+function stripShellQuotes(value: string): string {
+  if (
+    (value.startsWith("'") && value.endsWith("'")) ||
+    (value.startsWith('"') && value.endsWith('"'))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+function stripTrailingShellPathPunctuation(value: string): string {
+  return value.replace(/[),.;:]+$/g, "");
+}
+
+function rewriteUngroundedRuntimeDirectoryOverrides(args: {
+  command: string;
+  message: Memory;
+  sessionCwd: string;
+}): string {
+  const text = messageText(args.message);
+  if (!asksAboutRunningRuntimeSource(text)) return args.command;
+
+  const leadingCd = args.command.match(
+    /^\s*cd\s+((?:"[^"]+")|(?:'[^']+')|(?:\/[^\s;&|]+))\s*&&\s*([\s\S]+)$/u,
+  );
+  if (leadingCd?.[1] && leadingCd[2]) {
+    const requestedPath = stripTrailingShellPathPunctuation(
+      stripShellQuotes(leadingCd[1]),
+    );
+    if (
+      path.isAbsolute(requestedPath) &&
+      !textMentionsPath(text, requestedPath)
+    ) {
+      return leadingCd[2].trim();
+    }
+  }
+
+  return args.command.replace(
+    /\bgit\s+-C\s+((?:"[^"]+")|(?:'[^']+')|(?:\/[^\s;&|]+))/gu,
+    (match, rawPath: string) => {
+      const requestedPath = stripTrailingShellPathPunctuation(
+        stripShellQuotes(rawPath),
+      );
+      if (
+        !path.isAbsolute(requestedPath) ||
+        textMentionsPath(text, requestedPath)
+      ) {
+        return match;
+      }
+      return `git -C ${shellSingleQuote(args.sessionCwd)}`;
+    },
+  );
 }
 
 function hasUnescapedShellUrlMetachar(token: string): boolean {
@@ -190,6 +403,93 @@ function quoteBareUrlsWithShellMetacharacters(command: string): string {
   return out;
 }
 
+function extractJsonPayload(text: string): unknown {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return undefined;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+}
+
+function readNestedNumber(value: unknown, path: string[]): number | undefined {
+  let current = value;
+  for (const key of path) {
+    if (!current || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  if (typeof current === "number" && Number.isFinite(current)) return current;
+  if (typeof current === "string") {
+    const parsed = Number(current.replace(/,/g, ""));
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function cryptoSpotSourceForCommand(command: string): string | undefined {
+  const lower = command.toLowerCase();
+  if (lower.includes("api.coingecko.com")) return "CoinGecko";
+  if (lower.includes("api.coinbase.com")) return "Coinbase";
+  return undefined;
+}
+
+function priceFromCryptoSpotOutput(args: {
+  asset: CryptoSpotAsset;
+  command: string;
+  stdout: string;
+}): { price: number; source: string } | undefined {
+  const parsed = extractJsonPayload(args.stdout);
+  const source = cryptoSpotSourceForCommand(args.command);
+  if (parsed) {
+    const coingeckoPrice = readNestedNumber(parsed, [
+      args.asset.coingeckoId,
+      "usd",
+    ]);
+    if (coingeckoPrice !== undefined) {
+      return { price: coingeckoPrice, source: source ?? "CoinGecko" };
+    }
+    const coinbaseAmount = readNestedNumber(parsed, ["data", "amount"]);
+    if (coinbaseAmount !== undefined) {
+      return { price: coinbaseAmount, source: source ?? "Coinbase" };
+    }
+    const binancePrice = readNestedNumber(parsed, ["price"]);
+    if (binancePrice !== undefined && source) {
+      return { price: binancePrice, source };
+    }
+  }
+
+  const numeric = Number(args.stdout.trim().replace(/[$,]/g, ""));
+  if (Number.isFinite(numeric) && source) {
+    return { price: numeric, source };
+  }
+  return undefined;
+}
+
+function formatUsd(price: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: price >= 1 ? 2 : 6,
+  }).format(price);
+}
+
+function cryptoSpotUserFacingText(args: {
+  message: Memory;
+  command: string;
+  stdout: string;
+}): string | undefined {
+  const asset = requestedCryptoSpotAsset(messageText(args.message));
+  if (!asset) return undefined;
+  const result = priceFromCryptoSpotOutput({
+    asset,
+    command: args.command,
+    stdout: args.stdout,
+  });
+  if (!result) return undefined;
+  return `${asset.symbol} price: ${formatUsd(result.price)} USD (source: ${result.source}).`;
+}
+
 function formatStreams(
   stdout: string,
   stderr: string,
@@ -216,7 +516,7 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Prefer bounded commands; avoid recursive whole-filesystem scans unless explicitly requested. For JSON API inspection, prefer jq or node; if Python is needed, call python3 rather than assuming a python alias exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. If a command exits 0 with empty stdout/stderr, the command produced no output; try another source or parser when data is still needed instead of claiming the shell did not return output. For disk checks, use df for every requested mount/path (for root plus home: df -h / /home) plus targeted du on likely cleanup directories; when asked for cleanup candidates, inspect one readable largest directory one level deeper before ranking candidates. Use separators that still allow later inspection commands to run when du hits expected permission-denied paths.",
+    "Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Prefer bounded commands; avoid recursive whole-filesystem scans unless explicitly requested. Omit cwd unless the user supplied an exact directory or the session was explicitly moved; do not invent cwd from remembered repo paths. For questions about the currently running agent/runtime/source, use the default session cwd and inspect current process/service evidence before reporting git metadata. For JSON API inspection, prefer jq or node; if Python is needed, call python3 rather than assuming a python alias exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. For crypto spot prices, prefer neutral no-key APIs such as CoinGecko simple price or Coinbase spot before exchange-gated APIs; do not start with legacy Coindesk or Binance when the same value can be fetched elsewhere. If a command exits 0 with empty stdout/stderr, the command produced no output; try another source or parser when data is still needed instead of claiming the shell did not return output. For disk checks, use df for every requested mount/path (for root plus home: df -h / /home) plus targeted du on likely cleanup directories; when asked for cleanup candidates, inspect one readable largest directory one level deeper before ranking candidates. Use separators that still allow later inspection commands to run when du hits expected permission-denied paths.",
   descriptionCompressed: "Run shell commands; clear/view shell history.",
   parameters: [
     {
@@ -231,7 +531,7 @@ export const shellAction: Action = {
     {
       name: "command",
       description:
-        "For action=run: shell command, executed via /bin/bash -c. Keep routine inspection commands bounded; avoid broad scans like du -sh /* when a targeted path is enough. For JSON API data, prefer jq or node; use python3, not python, unless the environment explicitly shows python exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. If stdout/stderr are marked empty, the command produced no output; try a different command/source when the user still needs a value. Include every requested path in df, e.g. df -h / /home. For cleanup candidates, follow the first bounded du result with a targeted du on the largest readable directory before answering; avoid && between du probes when permission-denied paths are expected.",
+        "For action=run: shell command, executed via /bin/bash -c. Keep routine inspection commands bounded; avoid broad scans like du -sh /* when a targeted path is enough. For JSON API data, prefer jq or node; use python3, not python, unless the environment explicitly shows python exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. For crypto spot prices, prefer CoinGecko simple price or Coinbase spot before exchange-gated APIs; avoid legacy Coindesk and Binance when a neutral source can answer. If stdout/stderr are marked empty, the command produced no output; try a different command/source when the user still needs a value. Include every requested path in df, e.g. df -h / /home. For cleanup candidates, follow the first bounded du result with a targeted du on the largest readable directory before answering; avoid && between du probes when permission-denied paths are expected.",
       required: false,
       schema: { type: "string" },
     },
@@ -251,7 +551,7 @@ export const shellAction: Action = {
     {
       name: "cwd",
       description:
-        "Absolute cwd; must not resolve under blocked path. Default session cwd.",
+        "Absolute cwd; must not resolve under blocked path. Omit unless the user supplied this exact directory or the session was explicitly moved; default session cwd is safer than remembered paths.",
       required: false,
       schema: { type: "string" },
     },
@@ -347,7 +647,7 @@ export const shellAction: Action = {
         message: "SHELL requires 'command' (string)",
       });
     }
-    const command = quoteBareUrlsWithShellMetacharacters(rawCommand);
+    let command = quoteBareUrlsWithShellMetacharacters(rawCommand);
     if (command !== rawCommand) {
       coreLogger.debug(
         `${CODING_TOOLS_LOG_PREFIX} SHELL quoted bare URL metacharacters before execution`,
@@ -411,6 +711,24 @@ export const shellAction: Action = {
           );
         }
       }
+      const sessionCwd = await session.getExistingCwd(conversationId);
+      if (
+        shouldIgnoreUngroundedRuntimeCwd({
+          message,
+          requestedCwd: v.resolved,
+          sessionCwd: sessionCwd.cwd,
+        })
+      ) {
+        cwd = sessionCwd.cwd;
+        coreLogger.warn(
+          `${CODING_TOOLS_LOG_PREFIX} SHELL ignored ungrounded runtime cwd; using session cwd (requested=${v.resolved}, fallback=${cwd})`,
+        );
+        if (sessionCwd.reset && sessionCwd.previousCwd) {
+          coreLogger.warn(
+            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${sessionCwd.previousCwd}, fallback=${cwd})`,
+          );
+        }
+      }
       if (!cwd) cwd = v.resolved;
     } else {
       const sessionCwd = await session.getExistingCwd(conversationId);
@@ -420,6 +738,38 @@ export const shellAction: Action = {
           `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${sessionCwd.previousCwd}, fallback=${cwd})`,
         );
       }
+    }
+
+    const groundedCommand = rewriteUngroundedRuntimeDirectoryOverrides({
+      command,
+      message,
+      sessionCwd: cwd,
+    });
+    if (groundedCommand !== command) {
+      command = groundedCommand;
+      coreLogger.warn(
+        `${CODING_TOOLS_LOG_PREFIX} SHELL removed ungrounded runtime directory override; using cwd=${cwd}`,
+      );
+    }
+    const diskCommand = resolveDiskInspectionCommand({
+      command,
+      messageText: messageText(message),
+    });
+    if (diskCommand.rewritten) {
+      command = diskCommand.command;
+      coreLogger.warn(
+        `${CODING_TOOLS_LOG_PREFIX} SHELL replaced broad disk scan with bounded cleanup-candidate probe`,
+      );
+    }
+    const cryptoCommand = resolveCryptoSpotPriceCommand({
+      command,
+      messageText: messageText(message),
+    });
+    if (cryptoCommand.rewritten) {
+      command = cryptoCommand.command;
+      coreLogger.warn(
+        `${CODING_TOOLS_LOG_PREFIX} SHELL replaced unreliable crypto spot-price endpoint with neutral no-key API`,
+      );
     }
 
     const defaultTimeout = readPositiveIntSetting(
@@ -492,13 +842,19 @@ export const shellAction: Action = {
         { exit_code: result.exitCode, cwd, output: text },
       );
     }
-    return successActionResult(text, {
+    const actionResult = successActionResult(text, {
       exit_code: result.exitCode,
       cwd,
       execution_route: result.sandbox === "host" ? "host" : "sandbox",
       sandbox_backend: result.sandbox,
       signal,
     });
+    const userFacingText = cryptoSpotUserFacingText({
+      message,
+      command,
+      stdout: result.stdout,
+    });
+    return userFacingText ? { ...actionResult, userFacingText } : actionResult;
   },
   examples: [
     [
@@ -541,6 +897,24 @@ export const shellAction: Action = {
       {
         name: "{{name1}}",
         content: {
+          text: "What branch and commit is the currently running local source using?",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "$ pwd; git rev-parse --abbrev-ref HEAD; git rev-parse HEAD\n[exit 0]",
+          actions: ["SHELL"],
+          thought:
+            "Questions about the currently running source use SHELL in the default session cwd; do not set cwd from remembered repo paths unless the user provided an exact path.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
           text: "Check disk space and safe cleanup candidates.",
           source: "chat",
         },
@@ -570,6 +944,24 @@ export const shellAction: Action = {
           actions: ["SHELL"],
           thought:
             "Current JSON API checks should keep the URL quoted and parse with jq or node; do not assume a python binary exists when python3 is the portable Python command.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Check the current BTC price in USD.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "$ curl -s 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd' | jq -r '.bitcoin.usd'\n[exit 0]",
+          actions: ["SHELL"],
+          thought:
+            "Public spot-price checks should start with a neutral no-key API such as CoinGecko or Coinbase instead of deprecated or exchange-gated endpoints.",
         },
       },
     ],
