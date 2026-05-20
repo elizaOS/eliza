@@ -172,6 +172,22 @@ export const IOS_AGENT_ROOT_EXTENSION_ASSETS = [
   "vector.tar.gz",
   "fuzzystrmatch.tar.gz",
 ];
+const IOS_PRIVILEGED_EXTENSION_LIST_ENTRY_IDS = [
+  "WBCB00010000000000000201",
+  "WBCB00010000000000000702",
+  "DAMON000100000000000702",
+  "DAREP000100000000000702",
+  "WBCB00010000000000000401",
+  "DAMON000100000000000401",
+  "DAREP000100000000000401",
+];
+const IOS_PERSONAL_TEAM_ENTITLEMENTS = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+</dict>
+</plist>
+`;
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
 function readAppIdentity() {
@@ -180,7 +196,8 @@ function readAppIdentity() {
     throw new Error(`app.config.ts not found at ${cfgPath}`);
   }
   const src = fs.readFileSync(cfgPath, "utf8");
-  const appId = src.match(/appId:\s*["']([^"']+)["']/)?.[1];
+  const configAppId = src.match(/appId:\s*["']([^"']+)["']/)?.[1];
+  const appId = process.env.ELIZA_IOS_APP_ID?.trim() || configAppId;
   const appName = src.match(/appName:\s*["']([^"']+)["']/)?.[1];
   const urlScheme = src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ?? appId;
   if (!appId || !appName) {
@@ -533,6 +550,74 @@ function replaceInFile(filePath, replacements) {
   return true;
 }
 
+function replaceIosAppGroupPlaceholders(content, appGroup) {
+  return content.replace(
+    /(^|[^A-Za-z0-9_.-])group\.(ai\.elizaos\.app|app\.eliza|com\.elizaai\.eliza)(?![A-Za-z0-9_.-])/g,
+    `$1${appGroup}`,
+  );
+}
+
+function replaceIosAppGroupPlaceholdersInFile(filePath, appGroup) {
+  if (!fs.existsSync(filePath)) return false;
+  const content = fs.readFileSync(filePath, "utf8");
+  const next = replaceIosAppGroupPlaceholders(content, appGroup);
+  if (next === content) return false;
+  fs.writeFileSync(filePath, next, "utf8");
+  return true;
+}
+
+function shouldDisableIosPrivilegedCapabilities(env = process.env) {
+  return (
+    isTruthyEnv(env.ELIZA_IOS_DISABLE_PRIVILEGED_CAPABILITIES) ||
+    isTruthyEnv(env.ELIZA_IOS_PERSONAL_TEAM_PROFILE)
+  );
+}
+
+function writeIosPersonalTeamEntitlements(filePath) {
+  if (
+    fs.existsSync(filePath) &&
+    fs.readFileSync(filePath, "utf8") === IOS_PERSONAL_TEAM_ENTITLEMENTS
+  ) {
+    return false;
+  }
+  fs.writeFileSync(filePath, IOS_PERSONAL_TEAM_ENTITLEMENTS, "utf8");
+  return true;
+}
+
+function removePbxListEntries(content, ids) {
+  let next = content;
+  for (const id of ids) {
+    next = next.replace(
+      new RegExp(`\\n\\t+${escapeRegExp(id)} /\\* [^\\n]+ \\*/,`, "g"),
+      "",
+    );
+  }
+  return next;
+}
+
+function stripIosPrivilegedExtensionTargets({
+  appDirValue = appDir,
+  log = console.log,
+} = {}) {
+  const projectPath = path.join(
+    appDirValue,
+    "ios",
+    "App",
+    "App.xcodeproj",
+    "project.pbxproj",
+  );
+  if (!fs.existsSync(projectPath)) return false;
+  const project = fs.readFileSync(projectPath, "utf8");
+  const next = removePbxListEntries(
+    project,
+    IOS_PRIVILEGED_EXTENSION_LIST_ENTRY_IDS,
+  );
+  if (next === project) return false;
+  fs.writeFileSync(projectPath, next, "utf8");
+  log("[mobile-build] Disabled privileged iOS extension targets.");
+  return true;
+}
+
 function packageNameToPath(packageName) {
   return path.join(...packageName.split("."));
 }
@@ -542,13 +627,13 @@ export function applyIosAppIdentity({
   appId = APP.appId,
   appName = APP.appName,
   appGroup = `group.${appId}`,
-  developmentTeam = process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
-    process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
-    null,
+  developmentTeam = process.env.ELIZA_IOS_DEVELOPMENT_TEAM ?? null,
   log = console.log,
 } = {}) {
   const iosAppRoot = path.join(appDirValue, "ios", "App");
   const changed = [];
+  const privilegedCapabilitiesDisabled =
+    shouldDisableIosPrivilegedCapabilities();
   const projectPath = path.join(iosAppRoot, "App.xcodeproj", "project.pbxproj");
   if (fs.existsSync(projectPath)) {
     let project = fs.readFileSync(projectPath, "utf8");
@@ -604,17 +689,19 @@ export function applyIosAppIdentity({
     }
   }
 
-  const replacements = [
-    ["group.ai.elizaos.app", appGroup],
-    ["group.app.eliza", appGroup],
-    ["group.com.elizaai.eliza", appGroup],
-    ['"group.ai.elizaos.app"', `"${appGroup}"`],
-    ['"group.app.eliza"', `"${appGroup}"`],
-    ['"group.com.elizaai.eliza"', `"${appGroup}"`],
-  ];
+  if (privilegedCapabilitiesDisabled) {
+    const entitlementPath = path.join(iosAppRoot, "App", "App.entitlements");
+    if (writeIosPersonalTeamEntitlements(entitlementPath)) {
+      changed.push(path.join("App", "App.entitlements"));
+    }
+    if (stripIosPrivilegedExtensionTargets({ appDirValue, log })) {
+      changed.push(path.relative(iosAppRoot, projectPath));
+    }
+  }
   for (const relPath of [
     path.join("App", "App.entitlements"),
     path.join("App", "ScreenTimeSupport.swift"),
+    path.join("App", "ComputerUseBridge.swift"),
     path.join(
       "App",
       "WebsiteBlockerContentExtension",
@@ -627,7 +714,10 @@ export function applyIosAppIdentity({
     ),
   ]) {
     const filePath = path.join(iosAppRoot, relPath);
-    if (replaceInFile(filePath, replacements)) {
+    if (
+      !privilegedCapabilitiesDisabled &&
+      replaceIosAppGroupPlaceholdersInFile(filePath, appGroup)
+    ) {
       changed.push(relPath);
     }
   }
@@ -813,6 +903,56 @@ export function resolveIosAgentRuntimeAssetPlan({
   };
 }
 
+function countGgufFiles(dir) {
+  if (!fs.existsSync(dir)) return 0;
+  let count = 0;
+  for (const entry of fs.readdirSync(dir)) {
+    const fullPath = path.join(dir, entry);
+    const stats = fs.statSync(fullPath);
+    if (stats.isDirectory()) count += countGgufFiles(fullPath);
+    else if (stats.isFile() && entry.toLowerCase().endsWith(".gguf")) count += 1;
+  }
+  return count;
+}
+
+function stageIosBundledLocalModels(targetDir) {
+  const sourceDir = process.env.ELIZA_IOS_BUNDLED_MODELS_DIR?.trim();
+  const requireModels = isTruthyEnv(process.env.ELIZA_IOS_REQUIRE_LOCAL_MODELS);
+  if (!sourceDir) {
+    if (requireModels) {
+      throw new Error(
+        "ELIZA_IOS_REQUIRE_LOCAL_MODELS is set but ELIZA_IOS_BUNDLED_MODELS_DIR is empty.",
+      );
+    }
+    return 0;
+  }
+  if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+    throw new Error(
+      `ELIZA_IOS_BUNDLED_MODELS_DIR does not exist or is not a directory: ${sourceDir}`,
+    );
+  }
+  const sourceCount = countGgufFiles(sourceDir);
+  if (sourceCount === 0) {
+    throw new Error(
+      `ELIZA_IOS_BUNDLED_MODELS_DIR contains no GGUF model files: ${sourceDir}`,
+    );
+  }
+  const sourceName = path.basename(sourceDir.replace(/[\\/]+$/, ""));
+  const targetModelsDir =
+    sourceName && sourceName.endsWith(".bundle")
+      ? path.join(targetDir, "models", sourceName)
+      : path.join(targetDir, "models");
+  fs.mkdirSync(targetModelsDir, { recursive: true });
+  fs.cpSync(sourceDir, targetModelsDir, { recursive: true });
+  const stagedCount = countGgufFiles(targetModelsDir);
+  if (stagedCount === 0) {
+    throw new Error(
+      `No GGUF model files were staged into ${path.relative(repoRoot, targetModelsDir)}`,
+    );
+  }
+  return stagedCount;
+}
+
 function stageIosAgentRuntime({
   appStoreBuild = false,
   includeFullBunEngine = false,
@@ -851,8 +991,9 @@ function stageIosAgentRuntime({
   for (const file of assetPlan.rootAssets) {
     fs.copyFileSync(path.join(sourceDir, file), path.join(publicDir, file));
   }
+  const stagedModelCount = stageIosBundledLocalModels(targetDir);
   console.log(
-    `[mobile-build] Staged iOS Bun agent payload${appStoreBuild ? " (App Store allowlist)" : ""}: ${path.relative(repoRoot, targetDir)}`,
+    `[mobile-build] Staged iOS Bun agent payload${appStoreBuild ? " (App Store allowlist)" : ""}: ${path.relative(repoRoot, targetDir)}${stagedModelCount > 0 ? ` with ${stagedModelCount} local model file(s)` : ""}`,
   );
 }
 
@@ -2765,12 +2906,19 @@ function overlayIos() {
   );
   if (fs.existsSync(srcEnt)) {
     let ent = fs.readFileSync(srcEnt, "utf8");
-    ent = ent.replace("group.ai.elizaos.app", `group.${APP.appId}`);
-    ent = ent.replace("group.app.eliza", `group.${APP.appId}`);
+    if (shouldDisableIosPrivilegedCapabilities()) {
+      ent = IOS_PERSONAL_TEAM_ENTITLEMENTS;
+    } else {
+      ent = replaceIosAppGroupPlaceholders(ent, `group.${APP.appId}`);
+    }
     fs.writeFileSync(path.join(targetAppDir, "App.entitlements"), ent, "utf8");
-    console.log(
-      `[mobile-build] Copied iOS entitlements (app group: group.${APP.appId}).`,
-    );
+    if (shouldDisableIosPrivilegedCapabilities()) {
+      console.log("[mobile-build] Copied minimal iOS entitlements.");
+    } else {
+      console.log(
+        `[mobile-build] Copied iOS entitlements (app group: group.${APP.appId}).`,
+      );
+    }
   }
 
   // Patch xcconfigs to include CocoaPods settings
@@ -2821,6 +2969,29 @@ function isIosLlamaRequested(env = process.env) {
 
 function shouldIncludeIosLlama(env = process.env) {
   return !isIosAppStoreBuild(env) && isIosLlamaRequested(env);
+}
+
+function shouldUseIosFusedLocalInference(env = process.env) {
+  return (
+    shouldIncludeIosLlama(env) &&
+    (isTruthyEnv(env.ELIZA_IOS_FUSED_LOCAL_INFERENCE) ||
+      isTruthyEnv(env.ELIZA_IOS_REQUIRE_LOCAL_MODELS))
+  );
+}
+
+function shouldCleanIosBuildProducts(env = process.env) {
+  return (
+    isTruthyEnv(env.ELIZA_IOS_CLEAN_BUILD_PRODUCTS) ||
+    shouldDisableIosPrivilegedCapabilities(env)
+  );
+}
+
+function shouldSkipIosCapacitorSync(env = process.env) {
+  return isTruthyEnv(env.ELIZA_IOS_SKIP_CAPACITOR_SYNC);
+}
+
+function shouldSkipIosPodInstall(env = process.env) {
+  return isTruthyEnv(env.ELIZA_IOS_SKIP_POD_INSTALL);
 }
 
 function shouldIncludeIosFullBunEngine(env = process.env) {
@@ -2962,6 +3133,9 @@ function generatePodfile() {
       `[mobile-build] iOS full Bun deployment target: ${deploymentTarget}`,
     );
   }
+  const useFrameworksLine = includeLlama
+    ? "use_frameworks! :linkage => :static"
+    : "use_frameworks!";
 
   const lines = [
     `  pod 'Capacitor', :path => node_package_path('@capacitor/ios')`,
@@ -2996,7 +3170,7 @@ capacitor_ios_path = node_package_path('@capacitor/ios')
 require_relative File.join(capacitor_ios_path, 'scripts/pods_helpers')
 
 platform :ios, '${deploymentTarget}'
-use_frameworks!
+${useFrameworksLine}
 
 install! 'cocoapods', :disable_input_output_paths => true
 
@@ -3782,8 +3956,20 @@ async function ensureIosLlamaCppVendoredFramework({
   // other supported backend. Per AGENTS.md §3, missing kernels here are
   // a hard error: build-llama-cpp-dflash.mjs already enforces that and
   // throws via writeCapabilities() before producing CAPABILITIES.json.
-  await ensureDflashIosTarget("ios-arm64-metal");
-  await ensureDflashIosTarget("ios-arm64-simulator-metal");
+  const useFusedLocalInference = shouldUseIosFusedLocalInference();
+  const deviceTarget = useFusedLocalInference
+    ? "ios-arm64-metal-fused"
+    : "ios-arm64-metal";
+  const simulatorTarget = useFusedLocalInference
+    ? "ios-arm64-simulator-metal-fused"
+    : "ios-arm64-simulator-metal";
+  if (useFusedLocalInference) {
+    console.log(
+      "[mobile-build] Using fused iOS local-inference slices for bundled local models",
+    );
+  }
+  await ensureDflashIosTarget(deviceTarget);
+  await ensureDflashIosTarget(simulatorTarget);
 
   fs.mkdirSync(xcframeworksDir, { recursive: true });
   fs.rmSync(xcframeworkDir, { recursive: true, force: true });
@@ -3792,9 +3978,9 @@ async function ensureIosLlamaCppVendoredFramework({
     "--output",
     xcframeworkDir,
     "--device-archive-dir",
-    dflashTargetOutDir("ios-arm64-metal"),
+    dflashTargetOutDir(deviceTarget),
     "--sim-archive-dir",
-    dflashTargetOutDir("ios-arm64-simulator-metal"),
+    dflashTargetOutDir(simulatorTarget),
     "--verify",
   ]);
 
@@ -5558,6 +5744,12 @@ async function buildIos({ local = false } = {}) {
   const includesFullBunRuntime = shouldIncludeIosFullBunEngine();
   const includesLocalAgentPayload = local || includesFullBunRuntime;
   if (includesFullBunRuntime) {
+    setDefaultProcessEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
+  }
+  if (local && isFullIosBunEngineRequested(process.env)) {
+    setDefaultProcessEnv("VITE_ELIZA_IOS_FULL_BUN_STRICT", "1");
+  }
+  if (includesFullBunRuntime) {
     ensureIosFullBunEngineArtifact({ buildTarget });
   }
   if (includesLocalAgentPayload) {
@@ -5587,7 +5779,11 @@ async function buildIos({ local = false } = {}) {
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
-  await runCapacitor(["sync", "ios"]);
+  if (shouldSkipIosCapacitorSync()) {
+    console.log("[mobile-build] Skipping Capacitor iOS sync.");
+  } else {
+    await runCapacitor(["sync", "ios"]);
+  }
   if (includesLocalAgentPayload) {
     stageIosAgentRuntime({
       appStoreBuild: isIosAppStoreBuild() && !local,
@@ -5610,7 +5806,9 @@ async function buildIos({ local = false } = {}) {
   // to be using UTF-8 encoding"). Force the spawned `pod` process to a UTF-8
   // locale regardless of the host shell so builds don't fail under tmux,
   // CI runners, or background launchers that ship without LANG set.
-  if (
+  if (shouldSkipIosPodInstall()) {
+    console.log("[mobile-build] Skipping CocoaPods install.");
+  } else if (
     fs.existsSync(path.join(iosDir, "Podfile")) ||
     shouldRunIosPodInstall(syncedFiles)
   ) {
@@ -5632,23 +5830,34 @@ async function buildIos({ local = false } = {}) {
   const projectArgs = fs.existsSync(wsPath)
     ? ["-workspace", "App.xcworkspace"]
     : ["-project", "App.xcodeproj"];
+  const developmentTeam = process.env.ELIZA_IOS_DEVELOPMENT_TEAM?.trim();
+  const derivedDataPath = process.env.ELIZA_IOS_DERIVED_DATA_PATH?.trim();
+  const provisioningArgs = isTruthyEnv(
+    process.env.ELIZA_IOS_ALLOW_PROVISIONING_UPDATES,
+  )
+    ? ["-allowProvisioningUpdates", "-allowProvisioningDeviceRegistration"]
+    : [];
   await run(
     "xcodebuild",
     [
       ...projectArgs,
       "-scheme",
       "App",
+      ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
       "-configuration",
       resolveIosBuildConfiguration(),
       "-destination",
       buildTarget.destination,
       "-sdk",
       buildTarget.sdk,
+      ...provisioningArgs,
       `IPHONEOS_DEPLOYMENT_TARGET=${resolveIosDeploymentTarget()}`,
       `CODE_SIGNING_ALLOWED=${process.env.ELIZA_IOS_CODE_SIGNING_ALLOWED ?? "NO"}`,
+      ...(developmentTeam ? [`DEVELOPMENT_TEAM=${developmentTeam}`] : []),
       ...(isIosSimulatorBuildTarget(buildTarget)
         ? ["ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "EXCLUDED_ARCHS=x86_64"]
         : []),
+      ...(shouldCleanIosBuildProducts() ? ["clean"] : []),
       "build",
     ],
     { cwd: iosDir },

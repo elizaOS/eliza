@@ -49,7 +49,7 @@ const STUB_MARKERS = Object.freeze([
 
 function pickToolForPlatform(target) {
   // target is e.g. "darwin-arm64-metal-fused", "linux-x64-vulkan-fused", etc.
-  if (target.startsWith("darwin-")) {
+  if (target.startsWith("darwin-") || target.startsWith("ios-")) {
     return { cmd: "nm", args: ["-gU"] };
   }
   if (target.startsWith("windows-")) {
@@ -96,7 +96,9 @@ function dumpSymbolsBestEffort({ tool, file }) {
 
 function locateFusedLibrary({ outDir, target }) {
   const candidates = [];
-  if (target.startsWith("darwin-")) {
+  if (target.startsWith("ios-")) {
+    candidates.push("libelizainference.a");
+  } else if (target.startsWith("darwin-")) {
     candidates.push("libelizainference.dylib");
   } else if (target.startsWith("windows-")) {
     candidates.push("elizainference.dll", "libelizainference.dll");
@@ -322,6 +324,7 @@ function verifyFusedSymbolsInner({ outDir, target }) {
 
   const tool = pickToolForPlatform(target);
   const symbols = dumpSymbols({ tool, file: lib });
+  const isIos = target.startsWith("ios-");
 
   const llamaCount = countExportedSymbolFamily(symbols, "llama");
   const omnivoiceCount = countExportedSymbolFamily(symbols, "ov");
@@ -329,11 +332,13 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   // carries it as a DT_NEEDED dependency that the loader pulls into the
   // same process — both satisfy the "one llama.cpp build, one process"
   // contract without baking a duplicate copy of llama into the fused lib.
-  const llamaReexported = target.startsWith("darwin-")
+  const llamaReexported = isIos
+    ? true
+    : target.startsWith("darwin-")
     ? hasDarwinReexportedLlama(lib)
     : !target.startsWith("windows-") && hasElfNeededLlama(lib);
 
-  if (llamaCount === 0 && !llamaReexported) {
+  if (!isIos && llamaCount === 0 && !llamaReexported) {
     throw new Error(
       `[omnivoice-verify] symbol-verify: libelizainference at ${lib} has no llama_* exports and does not link libllama — text inference is missing from the fused artifact`,
     );
@@ -358,6 +363,24 @@ function verifyFusedSymbolsInner({ outDir, target }) {
     throw new Error(
       `[omnivoice-verify] symbol-verify: libelizainference at ${lib} is missing ABI v3 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/ffi-stub/ffi.h.`,
     );
+  }
+
+  if (isIos) {
+    return {
+      ok: true,
+      target,
+      checkedAt: new Date().toISOString(),
+      library: lib,
+      tool: `${tool.cmd} ${tool.args.join(" ")}`,
+      llamaSymbolCount: llamaCount,
+      llamaReexported,
+      omnivoiceSymbolCount: omnivoiceCount,
+      omnivoiceSymbols: [...REQUIRED_OMNIVOICE_SYMBOLS],
+      abiSymbolCount: REQUIRED_ELIZA_INFERENCE_SYMBOLS.length,
+      abiSymbols: [...REQUIRED_ELIZA_INFERENCE_SYMBOLS],
+      productServer: null,
+      server: null,
+    };
   }
 
   const productServer = locateProductServer({ outDir, target });

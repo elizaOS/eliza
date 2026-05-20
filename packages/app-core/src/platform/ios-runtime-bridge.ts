@@ -12,8 +12,9 @@ import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";
 export const IOS_FULL_BUN_SMOKE_REQUEST_KEY =
   "eliza:ios-full-bun-smoke:request";
 export const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
+const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
 
-const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
+const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 60_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
   "Reply with exactly these four words: ios smoke model works.";
@@ -88,6 +89,27 @@ async function boundedPreferenceGet(key: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function readMobileRuntimeMode(): Promise<string | null> {
+  try {
+    const value = window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY);
+    if (value?.trim()) return value.trim();
+  } catch {
+    return null;
+  }
+  return boundedPreferenceGet(MOBILE_RUNTIME_MODE_STORAGE_KEY);
+}
+
+async function clearIosFullBunSmokeRequest(): Promise<void> {
+  try {
+    window.localStorage.removeItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY);
+  } catch {
+    void 0;
+  }
+  await boundedPreferenceWrite(() =>
+    Preferences.remove({ key: IOS_FULL_BUN_SMOKE_REQUEST_KEY }),
+  );
 }
 
 function renderIosFullBunSmokeStatus(message: string): void {
@@ -265,6 +287,11 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     // Keep the localStorage result from the storage bridge hydration.
   }
   if (!requested) return false;
+  const runtimeMode = await readMobileRuntimeMode();
+  if (runtimeMode === "cloud" || runtimeMode === "cloud-hybrid") {
+    await clearIosFullBunSmokeRequest();
+    return false;
+  }
   iosFullBunSmokeStarted = true;
   try {
     window.localStorage.setItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
@@ -319,7 +346,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
           ELIZA_PLATFORM: "ios",
           ELIZA_MOBILE_PLATFORM: "ios",
           ELIZA_IOS_LOCAL_BACKEND: "1",
-          ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",
+          ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "60000",
           ELIZA_IOS_FULL_BUN_SMOKE: "1",
           ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
           ELIZA_VAULT_BACKEND: "file",

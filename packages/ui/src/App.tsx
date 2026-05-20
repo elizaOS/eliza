@@ -1500,6 +1500,13 @@ export function App() {
   // Non-ready phases are handled by StartupShell (which renders the appropriate
   // view for each coordinator phase: loading, pairing, onboarding, or error).
   if (startupCoordinator.phase !== "ready" || !onboardingComplete) {
+    const preAgentBackgroundStyle = isNative
+      ? { height: "100%" }
+      : { minHeight: "100vh" };
+    const preAgentShellClassName = isNative
+      ? "flex h-full min-h-0 w-full flex-col text-txt"
+      : "flex min-h-[100vh] w-full flex-col text-txt";
+
     // Pre-agent / home-screen surface: ORANGE theme over CLOUDS, BLACK text per
     // brand. xs corners. The CloudVideoBackground itself handles
     // prefers-reduced-motion (pauses video, leaves poster). No glass overlay.
@@ -1511,11 +1518,11 @@ export function App() {
           poster="/clouds/poster-960.jpg"
           animated={false}
           scrim={0.05}
-          style={{ minHeight: "100vh" }}
+          style={preAgentBackgroundStyle}
         >
           <div
             data-testid="pre-agent-cloud-shell"
-            className="flex min-h-[100vh] w-full flex-col text-txt"
+            className={preAgentShellClassName}
             style={{ borderRadius: "var(--radius-xs, 2px)" }}
           >
             <StartupShell />

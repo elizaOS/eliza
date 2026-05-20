@@ -332,7 +332,9 @@ const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
 const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
-const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
+const IOS_NATIVE_TTS_DIAGNOSTICS_RESULT_KEY =
+  "eliza:ios-native-tts-diagnostics:result";
+const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 60_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
   "In one short sentence, confirm the iOS full Bun local backend is running.";
@@ -346,6 +348,38 @@ let keyboardListenersRegistered = false;
 let lifecycleListenersRegistered = false;
 let networkStatusListenerRegistered = false;
 let iosFullBunSmokeStarted = false;
+let iosNativeTtsDiagnosticsStarted = false;
+let iosJsDiagnosticsInstalled = false;
+
+function installIosJsDiagnostics(): void {
+  if (iosJsDiagnosticsInstalled || !isIOS) return;
+  iosJsDiagnosticsInstalled = true;
+  window.addEventListener("error", (event) => {
+    console.error(`${APP_LOG_PREFIX} iOS window error`, {
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      error:
+        event.error instanceof Error
+          ? {
+              name: event.error.name,
+              message: event.error.message,
+              stack: event.error.stack,
+            }
+          : String(event.error ?? ""),
+    });
+  });
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason;
+    console.error(`${APP_LOG_PREFIX} iOS unhandled rejection`, {
+      reason:
+        reason instanceof Error
+          ? { name: reason.name, message: reason.message, stack: reason.stack }
+          : String(reason ?? ""),
+    });
+  });
+}
 
 function isDesktopPlatform(): boolean {
   return isElectrobunRuntime();
@@ -563,6 +597,30 @@ async function writeIosFullBunSmokeResult(
   );
 }
 
+async function writeIosNativeTtsDiagnosticsResult(
+  result: Record<string, unknown>,
+): Promise<void> {
+  const value = JSON.stringify({
+    ...result,
+    updatedAt: new Date().toISOString(),
+  });
+  try {
+    Storage.prototype.setItem.call(
+      window.localStorage,
+      IOS_NATIVE_TTS_DIAGNOSTICS_RESULT_KEY,
+      value,
+    );
+  } catch {
+    void 0;
+  }
+  await boundedPreferenceWrite(() =>
+    Preferences.set({
+      key: IOS_NATIVE_TTS_DIAGNOSTICS_RESULT_KEY,
+      value,
+    }),
+  );
+}
+
 async function boundedPreferenceWrite(
   operation: () => Promise<unknown>,
 ): Promise<void> {
@@ -588,6 +646,27 @@ async function boundedPreferenceGet(key: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function readMobileRuntimeMode(): Promise<string | null> {
+  try {
+    const value = window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY);
+    if (value?.trim()) return value.trim();
+  } catch {
+    return null;
+  }
+  return boundedPreferenceGet(MOBILE_RUNTIME_MODE_STORAGE_KEY);
+}
+
+async function clearIosFullBunSmokeRequest(): Promise<void> {
+  try {
+    window.localStorage.removeItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY);
+  } catch {
+    void 0;
+  }
+  await boundedPreferenceWrite(() =>
+    Preferences.remove({ key: IOS_FULL_BUN_SMOKE_REQUEST_KEY }),
+  );
 }
 
 function renderIosFullBunSmokeStatus(message: string): void {
@@ -730,6 +809,48 @@ async function withIosFullBunSmokeTimeout<T>(
   ]);
 }
 
+async function runIosNativeTtsDiagnosticsForDeviceTest(): Promise<void> {
+  if (iosNativeTtsDiagnosticsStarted) return;
+  if (!isIOS || getCurrentIosRuntimeConfig().mode !== "local") return;
+  iosNativeTtsDiagnosticsStarted = true;
+  await writeIosNativeTtsDiagnosticsResult({
+    ok: false,
+    phase: "running",
+    step: "starting",
+  });
+  try {
+    const { ElizaBunRuntime } = await import("@elizaos/capacitor-bun-runtime");
+    const runtime = ElizaBunRuntime as {
+      getLocalTtsDiagnostics?: (options: {
+        probe?: boolean;
+        text?: string;
+      }) => Promise<unknown>;
+    };
+    if (typeof runtime.getLocalTtsDiagnostics !== "function") {
+      throw new Error("ElizaBunRuntime.getLocalTtsDiagnostics is unavailable");
+    }
+    const diagnostics = await withIosFullBunSmokeTimeout(
+      "ElizaBunRuntime.getLocalTtsDiagnostics",
+      60_000,
+      runtime.getLocalTtsDiagnostics({
+        probe: true,
+        text: "Hi, I'm Eliza. I'll listen when you talk and reply out loud. Ready?",
+      }),
+    );
+    await writeIosNativeTtsDiagnosticsResult({
+      ok: true,
+      phase: "complete",
+      diagnostics,
+    });
+  } catch (error) {
+    await writeIosNativeTtsDiagnosticsResult({
+      ok: false,
+      phase: "failed",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
   if (iosFullBunSmokeStarted) return true;
   let requested = false;
@@ -748,6 +869,11 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     // Keep the localStorage result from the storage bridge hydration.
   }
   if (!requested) return false;
+  const runtimeMode = await readMobileRuntimeMode();
+  if (runtimeMode === "cloud" || runtimeMode === "cloud-hybrid") {
+    await clearIosFullBunSmokeRequest();
+    return false;
+  }
   iosFullBunSmokeStarted = true;
   try {
     window.localStorage.setItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
@@ -804,7 +930,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
           ELIZA_PLATFORM: "ios",
           ELIZA_MOBILE_PLATFORM: "ios",
           ELIZA_IOS_LOCAL_BACKEND: "1",
-          ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",
+          ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "60000",
           ELIZA_IOS_FULL_BUN_SMOKE: "1",
           ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
           ELIZA_VAULT_BACKEND: "file",
@@ -1186,6 +1312,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
 }
 
 async function initializeAgent(): Promise<void> {
+  if (isIOS && getCurrentIosRuntimeConfig().mode === "local") return;
   try {
     const status = await Agent.getStatus();
     dispatchAppEvent(AGENT_READY_EVENT, status);
@@ -1198,8 +1325,10 @@ async function initializeAgent(): Promise<void> {
 }
 
 async function initializePlatform(): Promise<void> {
+  installIosJsDiagnostics();
   await initializeStorageBridge();
   initializeCapacitorBridge();
+  void runIosNativeTtsDiagnosticsForDeviceTest();
   void runIosFullBunSmokeIfRequested();
 
   if (isIOS || isAndroid) {
@@ -1891,6 +2020,29 @@ async function readAndroidLocalAgentToken(): Promise<string | undefined> {
   }
 }
 
+function isMobileLocalApiBase(apiBase: string | undefined): boolean {
+  if (!apiBase) return false;
+  return (
+    apiBase === IOS_LOCAL_AGENT_IPC_BASE ||
+    apiBase === MOBILE_LOCAL_AGENT_API_BASE ||
+    apiBase.startsWith("http://127.0.0.1:31337") ||
+    apiBase.startsWith("http://localhost:31337")
+  );
+}
+
+function backgroundRunnerApiBase(
+  runtimeConfig: IosRuntimeConfig,
+  bootApiBase: string | undefined,
+): string | undefined {
+  if (
+    (runtimeConfig.mode === "cloud" || runtimeConfig.mode === "cloud-hybrid") &&
+    isMobileLocalApiBase(bootApiBase)
+  ) {
+    return runtimeConfig.apiBase?.trim() || runtimeConfig.cloudApiBase;
+  }
+  return bootApiBase || runtimeConfig.apiBase?.trim();
+}
+
 async function configureMobileBackgroundRunner(retry = 0): Promise<void> {
   if (!isNative || (!isIOS && !isAndroid)) return;
 
@@ -1908,7 +2060,7 @@ async function configureMobileBackgroundRunner(retry = 0): Promise<void> {
     platform,
     mode: runtimeConfig.mode,
   };
-  const apiBase = bootApiBase || runtimeConfig.apiBase?.trim();
+  const apiBase = backgroundRunnerApiBase(runtimeConfig, bootApiBase);
   if (apiBase) details.apiBase = apiBase;
   if (authToken) details.authToken = authToken;
   if (isAndroid && runtimeConfig.mode === "local") {

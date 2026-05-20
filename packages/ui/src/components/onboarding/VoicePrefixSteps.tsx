@@ -70,6 +70,8 @@ export type VoiceBundleDownloadStatus =
   | "available"
   | "queued"
   | "downloading"
+  | "assets-ready"
+  | "engine-ready"
   | "ready"
   | "failed"
   | "unsupported";
@@ -101,9 +103,7 @@ const INITIAL_CAPTURE_STATE: VoiceCaptureState = {
 };
 
 const AGENT_GREETING_SCRIPT =
-  "Hi — I'm Eliza. I'll listen when you talk and reply out loud. " +
-  "To recognise your voice across conversations I need to learn how you " +
-  "sound. Ready?";
+  "Hi, I'm Eliza. I'll listen when you talk and reply out loud. Ready?";
 
 /** Convert a Blob to a raw base64 string (no data-URL prefix). */
 function blobToBase64(blob: Blob): Promise<string> {
@@ -139,9 +139,10 @@ export function VoicePrefixSteps(
   props: VoicePrefixStepsProps,
 ): React.ReactElement {
   const tier = props.tier ?? DEFAULT_VOICE_DEVICE_TIER;
-  const stepMeta = VOICE_PREFIX_STEP_META[props.step];
   const allSteps = resolveVoicePrefixSteps(tier);
-  const stepIndex = allSteps.indexOf(props.step);
+  const activeStep = allSteps.includes(props.step) ? props.step : "welcome";
+  const stepMeta = VOICE_PREFIX_STEP_META[activeStep];
+  const stepIndex = Math.max(0, allSteps.indexOf(activeStep));
   const progressLabel = `Step ${stepIndex + 1} of ${allSteps.length}`;
 
   // Lifted state: per-step readiness for Continue. WelcomeStep reports back
@@ -149,15 +150,15 @@ export function VoicePrefixSteps(
   // (denial is still "ready" — the user has made a choice). Other steps don't
   // report and default to ready=true.
   const [welcomeReady, setWelcomeReady] = React.useState(false);
-  const continueDisabled = props.step === "welcome" && !welcomeReady;
+  const continueDisabled = activeStep === "welcome" && !welcomeReady;
 
   return (
     <div
-      className="flex max-h-full min-h-0 w-full flex-col gap-4"
+      className="flex max-h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden"
       data-testid="voice-prefix-steps"
-      data-step={props.step}
+      data-step={activeStep}
     >
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 text-xs text-muted">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 text-xs text-[var(--onboarding-text-faint)]">
         <span
           data-testid="voice-prefix-progress"
           role="progressbar"
@@ -169,54 +170,56 @@ export function VoicePrefixSteps(
           {progressLabel}
         </span>
         {stepMeta.optional ? (
-          <span className="rounded-full bg-bg/60 px-2 py-0.5 text-[10px] uppercase tracking-wide">
+          <span className="rounded-sm bg-white/24 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--onboarding-text-muted)]">
             optional
           </span>
         ) : null}
       </header>
 
       <h1
-        className="shrink-0 text-2xl font-semibold"
+        className="shrink-0 text-2xl font-semibold text-[var(--onboarding-text-strong)]"
         data-testid="voice-prefix-step-name"
         aria-live="polite"
       >
         {stepMeta.defaultName}
       </h1>
       <p
-        className="shrink-0 text-sm text-muted"
+        className="shrink-0 text-sm text-[var(--onboarding-text-muted)]"
         data-testid="voice-prefix-step-subtitle"
       >
         {stepMeta.defaultSubtitle}
       </p>
 
-      <main className="min-h-0 flex-1 overflow-y-auto border border-[#2a2d36] bg-[#0a0b0f]/72 p-4 shadow-[0_1px_0_rgba(255,255,255,0.05)_inset]">
-        {props.step === "welcome" ? (
+      <main className="min-h-40 flex-1 overflow-y-auto rounded-sm bg-white/28 p-4 text-[var(--onboarding-text-primary)]">
+        {activeStep === "welcome" ? (
           <WelcomeStep {...props} onPermissionResolved={setWelcomeReady} />
-        ) : props.step === "tier" ? (
+        ) : activeStep === "tier" ? (
           <VoiceReadinessStep
             {...props}
             tier={tier}
             tierSummary={props.tierSummary}
           />
-        ) : props.step === "agent-speaks" ? (
+        ) : activeStep === "agent-speaks" ? (
           <AgentSpeaksStep {...props} />
-        ) : props.step === "user-speaks" ? (
+        ) : activeStep === "user-speaks" ? (
           <UserSpeaksStep {...props} />
-        ) : props.step === "owner-confirm" ? (
+        ) : activeStep === "owner-confirm" ? (
           <OwnerConfirmStep {...props} />
-        ) : props.step === "family" ? (
+        ) : activeStep === "family" ? (
           <FamilyStep {...props} />
-        ) : null}
+        ) : (
+          <WelcomeStep {...props} onPermissionResolved={setWelcomeReady} />
+        )}
       </main>
 
-      <footer className="flex shrink-0 items-center justify-between gap-3">
-        {previousVoicePrefixStep(props.step, tier) ? (
+      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        {previousVoicePrefixStep(activeStep, tier) ? (
           <Button
             variant="ghost"
             size="sm"
             className="min-h-11 px-4"
             onClick={() => {
-              const prev = previousVoicePrefixStep(props.step, tier);
+              const prev = previousVoicePrefixStep(activeStep, tier);
               if (prev) props.onAdvance(prev);
               else props.onBack();
             }}
@@ -234,7 +237,7 @@ export function VoicePrefixSteps(
               size="sm"
               className="min-h-11 px-4"
               onClick={() =>
-                props.onAdvance(nextVoicePrefixStep(props.step, tier))
+                props.onAdvance(nextVoicePrefixStep(activeStep, tier))
               }
               data-testid="voice-prefix-skip"
             >
@@ -246,7 +249,7 @@ export function VoicePrefixSteps(
             className="min-h-11 px-5"
             disabled={continueDisabled}
             onClick={() =>
-              props.onAdvance(nextVoicePrefixStep(props.step, tier))
+              props.onAdvance(nextVoicePrefixStep(activeStep, tier))
             }
             data-testid="voice-prefix-continue"
             aria-describedby={
@@ -286,7 +289,7 @@ function WelcomeStep(
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-welcome">
       <div className="flex items-center gap-3">
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-accent/15 text-accent">
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm bg-accent/15 text-accent">
           <Sparkles className="h-5 w-5" />
         </span>
         <p className="text-sm">
@@ -353,13 +356,16 @@ function VoiceReadinessStep(
         </p>
       ) : null}
       <div
-        className="rounded-md border border-border/35 bg-bg/60 p-3"
+        className="rounded-sm bg-bg/40 p-3"
         data-testid="voice-prefix-bundle-readiness"
       >
         <div className="flex flex-col gap-2">
           <p className="text-sm font-medium">
-            {readiness?.status === "ready"
-              ? "Voice bundle ready"
+            {readiness?.status === "engine-ready"
+              ? "Voice engine ready"
+              : readiness?.status === "assets-ready" ||
+                  readiness?.status === "ready"
+                ? "Voice assets added"
               : "Voice bundle"}
           </p>
           <p className="text-xs text-muted">
@@ -368,7 +374,7 @@ function VoiceReadinessStep(
           </p>
           {percent !== null ? (
             <div
-              className="h-1.5 overflow-hidden rounded-full bg-border/50"
+              className="h-1.5 overflow-hidden rounded-sm bg-border/50"
               role="progressbar"
               aria-valuenow={percent}
               aria-valuemin={0}
@@ -451,7 +457,7 @@ function AgentSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
           {error}
         </p>
       ) : null}
-      <p className="rounded bg-bg/60 p-2 text-xs italic text-muted">
+      <p className="rounded-sm bg-bg/40 p-2 text-xs italic text-muted">
         {AGENT_GREETING_SCRIPT}
       </p>
     </div>
@@ -609,7 +615,7 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
         <div
           role="alert"
           aria-live="assertive"
-          className="rounded-md border border-warn/30 bg-warn/10 p-2 text-xs"
+          className="rounded-sm bg-warn/10 p-2 text-xs"
           data-testid="voice-prefix-user-speaks-error"
         >
           <p className="font-medium text-warn">
@@ -643,7 +649,7 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
             {state.session.prompts.length} · ~{currentPrompt.targetSeconds}s
           </p>
           <p
-            className="rounded border border-border/30 bg-bg/60 p-3 text-sm"
+            className="rounded-sm bg-bg/40 p-3 text-sm"
             data-testid="voice-prefix-user-speaks-prompt"
           >
             "{currentPrompt.text}"
@@ -726,7 +732,7 @@ function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
           type="text"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
-          className="rounded border border-border/40 bg-bg/50 px-2 py-1 text-sm"
+          className="rounded-sm bg-bg/40 px-2 py-1 text-sm"
           data-testid="voice-prefix-owner-confirm-name"
         />
       </label>
@@ -881,7 +887,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
           {captured.map((m) => (
             <li
               key={m.profileId ?? m.displayName}
-              className="flex items-center gap-2 rounded border border-border/30 p-1.5"
+              className="flex items-center gap-2 rounded-sm bg-bg/25 p-1.5"
             >
               <span className="font-medium">{m.displayName}</span>
               <span className="text-muted">· {m.relationship}</span>
@@ -913,7 +919,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
       )}
 
       {phase === "idle" ? (
-        <div className="flex flex-col gap-2 rounded-lg border border-border/30 bg-bg/50 p-3">
+        <div className="flex flex-col gap-2 rounded-sm bg-bg/35 p-3">
           <label className="flex flex-col gap-1 text-xs text-muted">
             Name
             <input
@@ -921,7 +927,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
               value={draftName}
               placeholder="e.g. Alex"
               onChange={(e) => setDraftName(e.target.value)}
-              className="rounded border border-border/40 bg-bg/60 px-2 py-1 text-sm text-txt"
+              className="rounded-sm bg-bg/45 px-2 py-1 text-sm text-txt"
               data-testid="voice-prefix-family-name-input"
             />
           </label>
@@ -932,7 +938,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
               value={draftRelationship}
               placeholder="family, colleague, …"
               onChange={(e) => setDraftRelationship(e.target.value)}
-              className="rounded border border-border/40 bg-bg/60 px-2 py-1 text-sm text-txt"
+              className="rounded-sm bg-bg/45 px-2 py-1 text-sm text-txt"
               data-testid="voice-prefix-family-relationship-input"
             />
           </label>
@@ -944,7 +950,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
               {captureError}
             </p>
           ) : null}
-          <p className="rounded bg-bg/60 p-2 text-xs italic text-muted">
+          <p className="rounded-sm bg-bg/40 p-2 text-xs italic text-muted">
             "{FAMILY_CAPTURE_PROMPT}"
           </p>
           <Button
@@ -959,7 +965,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
         </div>
       ) : phase === "recording" ? (
         <div
-          className="flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/8 p-3 text-sm"
+          className="flex items-center gap-2 rounded-sm bg-accent/8 p-3 text-sm"
           data-testid="voice-prefix-family-recording"
         >
           <Mic className="h-4 w-4 animate-pulse text-accent" />

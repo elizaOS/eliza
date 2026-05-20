@@ -553,6 +553,9 @@ test_output/
 trajectories-eliza-cerebras/
 action-benchmark-report/
 artifacts/
+!packages/native/bun-runtime/artifacts/
+!packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework/
+!packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework/**
 research/native-tool-calling
 test/mocks/mockoon/.mockoon-pids/
 lifeops_bench_results/

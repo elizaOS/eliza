@@ -89,11 +89,60 @@ export interface CallResult {
   result: unknown;
 }
 
+export interface LocalTtsStatusResult {
+  ready: boolean;
+  status: "assets-ready" | "engine-ready" | "ready" | "missing" | "unavailable";
+  message: string;
+  modelId?: string;
+  bundleDir?: string;
+}
+
+export interface LocalTtsDiagnosticsOptions {
+  bundleDir?: string;
+  probe?: boolean;
+  text?: string;
+}
+
+export interface LocalTtsDiagnosticsResult {
+  available: boolean;
+  selectedBundleDir?: string;
+  modelId?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
+export interface SynthesizeLocalTtsOptions {
+  text: string;
+  bundleDir?: string;
+  speakerPresetId?: string;
+  voice?: string;
+  voiceId?: string;
+  maxSamples?: number;
+  play?: boolean;
+}
+
+export interface SynthesizeLocalTtsResult {
+  audioBase64?: string;
+  contentType: "audio/wav";
+  sampleRate: number;
+  samples: number;
+  durationMs: number;
+  modelId?: string;
+  played?: boolean;
+}
+
 export interface ElizaBunRuntimePlugin {
   start(options: StartOptions): Promise<StartResult>;
   sendMessage(options: SendMessageOptions): Promise<SendMessageResult>;
   getStatus(): Promise<GetStatusResult>;
   stop(): Promise<void>;
+  getLocalTtsStatus(): Promise<LocalTtsStatusResult>;
+  getLocalTtsDiagnostics(
+    options?: LocalTtsDiagnosticsOptions,
+  ): Promise<LocalTtsDiagnosticsResult>;
+  synthesizeLocalTts(
+    options: SynthesizeLocalTtsOptions,
+  ): Promise<SynthesizeLocalTtsResult>;
   /**
    * Invoke an arbitrary UI handler that the agent has registered via
    * `bridge.ui_register_handler`. Useful for routing arbitrary RPC-style

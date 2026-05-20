@@ -243,6 +243,8 @@ const SUPPORTED_TARGETS = [
   // packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch consumes.
   "ios-arm64-metal",
   "ios-arm64-simulator-metal",
+  "ios-arm64-metal-fused",
+  "ios-arm64-simulator-metal-fused",
   "windows-x64-cpu",
   "windows-x64-cuda",
   // windows-x64-vulkan: generic-GPU path on x64 Windows. NVIDIA/AMD/Intel
@@ -279,6 +281,8 @@ const FUSED_TARGETS = new Set([
   "linux-x64-vulkan-fused",
   "linux-aarch64-cuda-fused",
   "darwin-arm64-metal-fused",
+  "ios-arm64-metal-fused",
+  "ios-arm64-simulator-metal-fused",
   "windows-x64-cuda-fused",
 ]);
 
@@ -301,14 +305,6 @@ const UNSUPPORTED_FUSED_TARGET_REASONS = new Map([
   [
     "android-x86_64-vulkan-fused",
     "Android x86_64 fused FFI is not a dflash target in this script; packages/app-core/scripts/aosp/compile-libllama.mjs owns emulator/system-agent fused artifacts.",
-  ],
-  [
-    "ios-arm64-metal-fused",
-    "iOS fused FFI is not wired or verifier-covered in build-llama-cpp-dflash.mjs; use ios-arm64-metal until libelizainference static-archive packaging is implemented.",
-  ],
-  [
-    "ios-arm64-simulator-metal-fused",
-    "iOS simulator fused FFI is not wired or verifier-covered in build-llama-cpp-dflash.mjs; use ios-arm64-simulator-metal until libelizainference static-archive packaging is implemented.",
   ],
 ]);
 
@@ -1020,6 +1016,215 @@ function patchOmnivoiceMtmdApi(cacheDir, { dryRun = false } = {}) {
   console.log(
     "[dflash-build] patched omnivoice ASR FFI for current mtmd_get_audio_sample_rate API",
   );
+}
+
+function patchOmnivoiceVoiceFilePicker(cacheDir, { dryRun = false } = {}) {
+  const ffiPath = path.join(
+    cacheDir,
+    "tools",
+    "omnivoice",
+    "src",
+    "eliza-inference-ffi.cpp",
+  );
+  if (!fs.existsSync(ffiPath)) {
+    return;
+  }
+  let source = fs.readFileSync(ffiPath, "utf8");
+  let patched = source;
+  if (!patched.includes("std::vector<std::string> tts_candidates;")) {
+    const oldPicker = `    if (tts.empty()) return false;
+    tts_model = tts[0];
+    if (!codec.empty()) {
+        codec_model = codec[0];
+    } else if (tts.size() > 1) {
+        codec_model = tts[1];
+    } else {
+        codec_model = tts_model;
+    }
+    return true;`;
+    const newPicker = `    if (tts.empty()) return false;
+
+    std::vector<std::string> tts_candidates;
+    std::vector<std::string> codec_candidates = codec;
+    for (const std::string & path : tts) {
+        const std::string lower = eliza_lower_ascii(std::filesystem::path(path).filename().string());
+        const bool is_omnivoice = lower.find("omnivoice") != std::string::npos;
+        const bool is_codec = lower.find("tokenizer") != std::string::npos || lower.find("codec") != std::string::npos;
+        const bool is_other_voice = lower.find("kokoro") != std::string::npos;
+        if (is_omnivoice && !is_codec && !is_other_voice) {
+            tts_candidates.push_back(path);
+        }
+        if (is_omnivoice && is_codec) {
+            codec_candidates.push_back(path);
+        }
+    }
+
+    if (tts_candidates.empty() || codec_candidates.empty()) {
+        return false;
+    }
+
+    tts_model = tts_candidates[0];
+    codec_model = codec_candidates[0];
+    return true;`;
+    if (!patched.includes(oldPicker)) {
+      throw new Error(
+        `[dflash-build] OmniVoice TTS picker anchor not found in ${ffiPath}`,
+      );
+    }
+    patched = patched.replace(oldPicker, newPicker);
+  }
+  if (!patched.includes('msg += " tts_model=";')) {
+    const oldError = `        std::string msg = "[libelizainference] ov_init failed: ";
+        msg += ov_last_error();
+        eliza_set_error(out_error, msg);`;
+    const newError = `        std::string msg = "[libelizainference] ov_init failed: ";
+        msg += ov_last_error();
+        msg += " tts_model=";
+        msg += ctx->tts_model_path;
+        msg += " codec_model=";
+        msg += ctx->codec_model_path;
+        eliza_set_error(out_error, msg);`;
+    if (!patched.includes(oldError)) {
+      throw new Error(
+        `[dflash-build] OmniVoice TTS init error anchor not found in ${ffiPath}`,
+      );
+    }
+    patched = patched.replace(oldError, newError);
+  }
+  if (patched === source) {
+    return;
+  }
+  if (!dryRun) {
+    fs.writeFileSync(ffiPath, patched, "utf8");
+  }
+  console.log("[dflash-build] patched OmniVoice TTS bundle file picker");
+}
+
+function patchOmnivoiceStaticFfi(cacheDir, { dryRun = false } = {}) {
+  const cmakePath = path.join(
+    cacheDir,
+    "tools",
+    "omnivoice",
+    "CMakeLists.txt",
+  );
+  if (!fs.existsSync(cmakePath)) {
+    return;
+  }
+  const original = fs.readFileSync(cmakePath, "utf8");
+  if (original.includes("ELIZA_OMNIVOICE_STATIC_FFI")) {
+    return;
+  }
+  const addLibraryAnchor = `add_library(elizainference SHARED
+    \${OMNIVOICE_CORE_SOURCES}
+    \${OMNIVOICE_FFI_SOURCES})`;
+  const addLibraryReplacement = `option(ELIZA_OMNIVOICE_STATIC_FFI "Build libelizainference as a static library for iOS XCFramework packaging" OFF)
+if(ELIZA_OMNIVOICE_STATIC_FFI)
+    add_library(elizainference STATIC
+        \${OMNIVOICE_CORE_SOURCES}
+        \${OMNIVOICE_FFI_SOURCES})
+    target_compile_definitions(elizainference PUBLIC OMNIVOICE_STATIC)
+else()
+    add_library(elizainference SHARED
+        \${OMNIVOICE_CORE_SOURCES}
+        \${OMNIVOICE_FFI_SOURCES})
+endif()`;
+  if (!original.includes(addLibraryAnchor)) {
+    throw new Error(
+      `[dflash-build] patchOmnivoiceStaticFfi: elizainference add_library anchor not found in ${cmakePath}`,
+    );
+  }
+  const linkAnchor = "if(APPLE)\n    target_link_options(elizainference PRIVATE";
+  if (!original.includes(linkAnchor)) {
+    throw new Error(
+      `[dflash-build] patchOmnivoiceStaticFfi: Apple reexport anchor not found in ${cmakePath}`,
+    );
+  }
+  const patched = original
+    .replace(addLibraryAnchor, addLibraryReplacement)
+    .replace(
+      linkAnchor,
+      "if(APPLE AND NOT ELIZA_OMNIVOICE_STATIC_FFI)\n    target_link_options(elizainference PRIVATE",
+    );
+  if (!dryRun) {
+    fs.writeFileSync(cmakePath, patched, "utf8");
+  }
+  console.log(
+    "[dflash-build] patched OmniVoice elizainference static FFI option",
+  );
+}
+
+function patchMobileKokoroTts(cacheDir, { dryRun = false } = {}) {
+  const ffiPath = path.join(
+    cacheDir,
+    "tools",
+    "omnivoice",
+    "src",
+    "eliza-inference-ffi.cpp",
+  );
+  if (!fs.existsSync(ffiPath)) {
+    return;
+  }
+  const source = fs.readFileSync(ffiPath, "utf8");
+  if (
+    source.includes("eliza_load_kokoro_tts") &&
+    source.includes("ELIZA_TTS_BACKEND") &&
+    source.includes("eliza_tts_prefers_kokoro(const std::filesystem::path")
+  ) {
+    return;
+  }
+  const patchPath = path.join(
+    __dirname,
+    "patches",
+    "llama-mobile-kokoro-tts.patch",
+  );
+  if (!fs.existsSync(patchPath)) {
+    throw new Error(`[dflash-build] missing mobile Kokoro TTS patch ${patchPath}`);
+  }
+  if (!dryRun) {
+    run("git", ["apply", "--whitespace=nowarn", patchPath], { cwd: cacheDir });
+  }
+  console.log("[dflash-build] patched mobile Kokoro TTS and allocation preflight");
+}
+
+function patchKokoroNativeIstftGuard(cacheDir, { dryRun = false } = {}) {
+  const kokoroPath = path.join(
+    cacheDir,
+    "tools",
+    "kokoro",
+    "src",
+    "kokoro.cpp",
+  );
+  if (!fs.existsSync(kokoroPath)) {
+    return;
+  }
+  const source = fs.readFileSync(kokoroPath, "utf8");
+  if (source.includes("ELIZA_KOKORO_NATIVE_ISTFT")) {
+    return;
+  }
+  let patched = source;
+  if (!patched.includes("#include <cstdlib>")) {
+    patched = patched.replace(
+      "#include <cstdio>\n",
+      "#include <cstdio>\n#include <cstdlib>\n",
+    );
+  }
+  const oldBlock = `        bool used_native_op = false;
+        {
+            ggml_init_params ip = {`;
+  const newBlock = `        bool used_native_op = false;
+        const char * native_istft_env = std::getenv("ELIZA_KOKORO_NATIVE_ISTFT");
+        if (native_istft_env && std::strcmp(native_istft_env, "1") == 0) {
+            ggml_init_params ip = {`;
+  if (!patched.includes(oldBlock)) {
+    throw new Error(
+      `[dflash-build] Kokoro native iSTFT guard anchor not found in ${kokoroPath}`,
+    );
+  }
+  patched = patched.replace(oldBlock, newBlock);
+  if (!dryRun) {
+    fs.writeFileSync(kokoroPath, patched, "utf8");
+  }
+  console.log("[dflash-build] patched Kokoro native iSTFT guard");
 }
 
 function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
@@ -1771,11 +1976,11 @@ function cmakeFlagsForTarget(target, ctx) {
 // { ok: true } or { ok: false, reason: string } so --all can skip cleanly.
 function targetCompatibility(target, ctx) {
   const { platform, arch, backend, fused } = parseTarget(target);
-  if (fused && (platform === "android" || platform === "ios")) {
+  if (fused && platform === "android") {
     return {
       ok: false,
       reason:
-        "fused (omnivoice-grafted) targets are desktop/server only — mobile fusion is not wired yet",
+        "fused (omnivoice-grafted) Android targets are not wired in this script",
     };
   }
   if (platform === "darwin" && process.platform !== "darwin") {
@@ -2304,6 +2509,10 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   patchSpeculativeReplacementsField(cacheDir, { dryRun });
   patchMtmdQwen3aDuplicateDispatch(cacheDir, { dryRun });
   patchOmnivoiceMtmdApi(cacheDir, { dryRun });
+  patchMobileKokoroTts(cacheDir, { dryRun });
+  patchKokoroNativeIstftGuard(cacheDir, { dryRun });
+  patchOmnivoiceVoiceFilePicker(cacheDir, { dryRun });
+  patchOmnivoiceStaticFfi(cacheDir, { dryRun });
   if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
     console.warn(
       `[dflash-build] skipping DFlash speculative dispatch patch for target=${target}; ` +
@@ -3154,7 +3363,7 @@ function collectFilesUnder(root, pattern) {
 }
 
 function buildIosRuntimeSymbolShim({ target, outDir }) {
-  const { isSimulator } = parseTarget(target);
+  const { isSimulator, fused } = parseTarget(target);
   const sdk = isSimulator ? "iphonesimulator" : "iphoneos";
   const source = path.join(
     __dirname,
@@ -3188,6 +3397,7 @@ function buildIosRuntimeSymbolShim({ target, outDir }) {
     minVersionFlag,
     "-I",
     path.join(outDir, "include"),
+    ...(fused ? ["-DELIZA_IOS_REAL_ELIZAINFERENCE=1"] : []),
     "-fvisibility=default",
     "-c",
     source,
@@ -3928,6 +4138,18 @@ function targetOutDir(target, override) {
 function cmakeBuildTargetsFor(target) {
   const { platform, backend, fused } = parseTarget(target);
   const isIos = platform === "ios";
+  if (isIos && fused) {
+    return [
+      "llama",
+      "ggml",
+      "ggml-base",
+      "ggml-cpu",
+      "ggml-metal",
+      "mtmd",
+      "omnivoice_lib",
+      "elizainference",
+    ];
+  }
   // H2.c: only the merged in-fork path remains. `tools/omnivoice/` produces
   // `omnivoice_lib` + `omnivoice-tts/codec` + `elizainference` and patches
   // `/v1/audio/speech` onto `llama-server` directly.
@@ -3987,7 +4209,17 @@ function buildTarget({ target, args, ctx }) {
         `[dflash-build] omnivoice merged path: building tools/omnivoice/ in-fork`,
       );
     }
-    flags.push(...fusedExtraCmakeFlags());
+    flags.push(
+      ...(platform === "ios"
+        ? [
+            "-DLLAMA_BUILD_OMNIVOICE=ON",
+            "-DLLAMA_BUILD_KOKORO=ON",
+            "-DLLAMA_BUILD_MTMD=ON",
+            "-DOMNIVOICE_SHARED=OFF",
+            "-DELIZA_OMNIVOICE_STATIC_FFI=ON",
+          ]
+        : fusedExtraCmakeFlags()),
+    );
   }
 
   if (args.dryRun) {

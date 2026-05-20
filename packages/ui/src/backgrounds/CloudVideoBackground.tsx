@@ -138,6 +138,8 @@ export function CloudVideoBackground({
   }, [loadVideo]);
 
   const sources = CLOUD_VIDEO_VARIANTS[speed];
+  const fallbackBackground =
+    "radial-gradient(circle at 18% 18%, rgba(255,255,255,0.95) 0 7rem, rgba(255,255,255,0.42) 7.1rem 12rem, transparent 12.1rem), radial-gradient(circle at 82% 24%, rgba(255,255,255,0.82) 0 5rem, rgba(255,255,255,0.34) 5.1rem 9rem, transparent 9.1rem), linear-gradient(180deg, #80caff 0%, #bde9ff 42%, #f7c38d 100%)";
 
   return (
     <div
@@ -146,6 +148,7 @@ export function CloudVideoBackground({
         position: "relative",
         width: "100%",
         overflow: "hidden",
+        background: fallbackBackground,
         ...style,
       }}
     >
@@ -225,7 +228,16 @@ export function CloudVideoBackground({
           {overlay}
         </div>
       ) : null}
-      <div style={{ position: "relative", zIndex: 3 }}>{children}</div>
+      <div
+        style={{
+          position: "relative",
+          zIndex: 3,
+          minHeight: "inherit",
+          height: "100%",
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }

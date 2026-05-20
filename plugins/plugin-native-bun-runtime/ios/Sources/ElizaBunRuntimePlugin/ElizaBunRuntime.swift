@@ -79,15 +79,19 @@ public final class ElizaBunRuntime {
         queue.async { [weak self] in
             guard let self = self else { return }
             RuntimeQueue.current = self.queue
+            NSLog("[ElizaBunRuntime] start queued engine=\(engine) argv=\(argv) envKeys=\(env.keys.sorted())")
             if self.isRunning {
                 if let fullBunEngine = self.fullBunEngine, !fullBunEngine.isRunning {
+                    NSLog("[ElizaBunRuntime] start found stale full Bun host")
                     self.isRunning = false
                     self.fullBunEngine = nil
                 } else {
+                    NSLog("[ElizaBunRuntime] start reused running runtime engineMode=\(self.engineMode)")
                     completion(.success(StartOutcome(bridgeVersion: self.bridgeVersion ?? Self.defaultBridgeVersion)))
                     return
                 }
             }
+            let startedAt = Date()
             do {
                 try self.bootstrap(
                     bundlePath: bundlePath,
@@ -97,8 +101,12 @@ public final class ElizaBunRuntime {
                     env: env
                 )
                 let outcome = StartOutcome(bridgeVersion: self.bridgeVersion ?? Self.defaultBridgeVersion)
+                let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+                NSLog("[ElizaBunRuntime] start completed engineMode=\(self.engineMode) bridgeVersion=\(outcome.bridgeVersion) durationMs=\(durationMs)")
                 completion(.success(outcome))
             } catch {
+                let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+                NSLog("[ElizaBunRuntime] start failed engine=\(engine) durationMs=\(durationMs) error=\(error)")
                 completion(.failure(error))
             }
         }
@@ -255,6 +263,12 @@ public final class ElizaBunRuntime {
     ) throws {
         let requestedEngine = IosRuntimePolicy.normalizeEngine(engine)
         let runtimeEnv = IosRuntimePolicy.sanitizeEnvironment(env)
+#if ELIZA_IOS_FULL_BUN_ENGINE
+        let compiledEngine = "full-bun"
+#else
+        let compiledEngine = "compat"
+#endif
+        NSLog("[ElizaBunRuntime] bootstrap requestedEngine=\(requestedEngine) compiledEngine=\(compiledEngine)")
         if requestedEngine == "bun" || requestedEngine == "auto" || requestedEngine.isEmpty {
             let host = FullBunEngineHost.shared
             do {
@@ -265,7 +279,7 @@ public final class ElizaBunRuntime {
                 let resolvedBundlePath = try resolveFullBunAgentBundlePath(override: bundlePath)
                 let assetDir = URL(fileURLWithPath: resolvedBundlePath).deletingLastPathComponent().path
                 let publicDir = URL(fileURLWithPath: assetDir).deletingLastPathComponent().path
-                let localInferenceModelsDir = paths.appSupport
+                let stateLocalInferenceModelsDir = paths.appSupport
                     .appendingPathComponent("local-inference", isDirectory: true)
                     .appendingPathComponent("models", isDirectory: true)
                 try? FileManager.default.createDirectory(
@@ -276,10 +290,9 @@ public final class ElizaBunRuntime {
                     atPath: pgliteDir,
                     withIntermediateDirectories: true
                 )
-                try extractBundledLocalInferenceModels(
-                    sourceDir: URL(fileURLWithPath: assetDir)
-                        .appendingPathComponent("models", isDirectory: true),
-                    targetDir: localInferenceModelsDir
+                try? FileManager.default.createDirectory(
+                    at: stateLocalInferenceModelsDir,
+                    withIntermediateDirectories: true
                 )
                 var fullBunEnv = runtimeEnv
                 fullBunEnv["HOME"] = appSupportDir
@@ -293,6 +306,7 @@ public final class ElizaBunRuntime {
                 fullBunEnv["ELIZA_IOS_AGENT_ASSET_DIR"] = assetDir
                 fullBunEnv["ELIZA_IOS_AGENT_PUBLIC_DIR"] = publicDir
                 fullBunEnv["ELIZA_IOS_BRIDGE_TRANSPORT"] = "bun-host-ipc"
+                NSLog("[ElizaBunRuntime] full Bun bootstrap bundle=\(resolvedBundlePath) appSupport=\(appSupportDir) pglite=\(pgliteDir) assetDir=\(assetDir)")
                 try host.start(
                     bundlePath: resolvedBundlePath,
                     argv: argv,
@@ -307,6 +321,7 @@ public final class ElizaBunRuntime {
                 self.engineMode = "bun"
                 self.bridgeVersion = "bun-ios:\(host.abiVersion)"
                 self.isRunning = true
+                NSLog("[ElizaBunRuntime] full Bun bootstrap ready bridgeVersion=\(self.bridgeVersion ?? "unknown")")
                 return
             } catch {
 #if ELIZA_IOS_FULL_BUN_ENGINE
@@ -426,41 +441,6 @@ public final class ElizaBunRuntime {
         throw makeError(
             "public/agent/agent-bundle.js not found in app bundle resources for full Bun engine"
         )
-    }
-
-    private func extractBundledLocalInferenceModels(sourceDir: URL, targetDir: URL) throws {
-        let fm = FileManager.default
-        var isDirectory = ObjCBool(false)
-        guard fm.fileExists(atPath: sourceDir.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            return
-        }
-        guard let enumerator = fm.enumerator(
-            at: sourceDir,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            throw makeError("could not enumerate bundled local model assets")
-        }
-
-        try fm.createDirectory(at: targetDir, withIntermediateDirectories: true)
-        for case let source as URL in enumerator {
-            let values = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-            guard values.isRegularFile == true else { continue }
-            let relativePath = String(source.path.dropFirst(sourceDir.path.count + 1))
-            let target = targetDir.appendingPathComponent(relativePath, isDirectory: false)
-            try fm.createDirectory(
-                at: target.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            if fm.fileExists(atPath: target.path) {
-                let existing = try target.resourceValues(forKeys: [.fileSizeKey])
-                if existing.fileSize == values.fileSize {
-                    continue
-                }
-                try fm.removeItem(at: target)
-            }
-            try fm.copyItem(at: source, to: target)
-        }
     }
 
 #if !ELIZA_IOS_FULL_BUN_ENGINE

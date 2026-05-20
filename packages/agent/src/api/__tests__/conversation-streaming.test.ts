@@ -251,6 +251,42 @@ describe("generateChatResponse token streaming", () => {
     );
   });
 
+  it("uses the local direct path for iOS full Bun local backend", async () => {
+    const useModel = createUseModelMock(async () => "Yes, on device.");
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "ios",
+          ELIZA_IOS_LOCAL_BACKEND: "1",
+          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
+        };
+        return values[key] ?? null;
+      },
+      useModel,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("can you answer locally?"),
+      "Streaming Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(useModel).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        stream: true,
+        prompt: expect.stringContaining("can you answer locally?"),
+      }),
+    );
+    expect(result.text).toBe("Yes, on device.");
+    expect(result.localInference).toEqual(
+      expect.objectContaining({
+        provider: "mobile-local-direct-reply",
+      }),
+    );
+  });
+
   it("keeps contextual Android local turns on the normal message runtime", async () => {
     const useModel = createUseModelMock(async () => "generic local reply");
     const handleMessage = vi.fn(async () => ({

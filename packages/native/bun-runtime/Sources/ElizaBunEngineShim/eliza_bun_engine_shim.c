@@ -110,6 +110,9 @@ static int g_stdout_read_fd = -1;
 static int g_stdout_write_fd = -1;
 static int g_stderr_read_fd = -1;
 static int g_stderr_write_fd = -1;
+static int g_saved_stdin_fd = -1;
+static int g_saved_stdout_fd = -1;
+static int g_saved_stderr_fd = -1;
 static pthread_t g_stderr_thread;
 static int g_stderr_thread_started = 0;
 static volatile int g_stderr_thread_stop = 0;
@@ -119,8 +122,19 @@ static eliza_bun_engine_host_call_callback g_host_callback = NULL;
 static char g_last_error[ELIZA_LAST_ERROR_BYTES] = {0};
 
 static void close_fd(int *fd);
+static void restore_stdio(void);
 static void set_last_error(const char *fmt, ...);
+static void debug_log(const char *fmt, ...);
 static const char *find_json_field_value(const char *json, const char *field);
+static void free_argv(char **argv, int argc);
+
+typedef struct {
+  int argc;
+  char **args;
+  int stdin_read_fd;
+  int stdout_write_fd;
+  int stderr_write_fd;
+} bun_start_thread_args_t;
 
 static void mark_engine_stopped(void) {
   pthread_mutex_lock(&g_state_mutex);
@@ -147,6 +161,7 @@ static void on_bun_exit(uint32_t code) {
       was_running ? "Bun exited with code %u"
                   : "Bun exited before ios-bridge readiness with code %u",
       code);
+  restore_stdio();
   close_fd(&g_stdout_write_fd);
   close_fd(&g_stderr_write_fd);
 }
@@ -155,6 +170,48 @@ static void close_fd(int *fd) {
   if (*fd >= 0) {
     close(*fd);
     *fd = -1;
+  }
+}
+
+static int redirect_stdio_to_bridge(
+    int stdin_read_fd,
+    int stdout_write_fd,
+    int stderr_write_fd) {
+  if (g_saved_stdin_fd >= 0 || g_saved_stdout_fd >= 0 || g_saved_stderr_fd >= 0) {
+    return 0;
+  }
+
+  g_saved_stdin_fd = dup(STDIN_FILENO);
+  g_saved_stdout_fd = dup(STDOUT_FILENO);
+  g_saved_stderr_fd = dup(STDERR_FILENO);
+  if (g_saved_stdin_fd < 0 || g_saved_stdout_fd < 0 || g_saved_stderr_fd < 0) {
+    set_last_error("failed to save process stdio before Bun start: %s", strerror(errno));
+    restore_stdio();
+    return -1;
+  }
+
+  if (dup2(stdin_read_fd, STDIN_FILENO) < 0 ||
+      dup2(stdout_write_fd, STDOUT_FILENO) < 0 ||
+      dup2(stderr_write_fd, STDERR_FILENO) < 0) {
+    set_last_error("failed to bind Bun stdio to bridge pipes: %s", strerror(errno));
+    restore_stdio();
+    return -1;
+  }
+  return 0;
+}
+
+static void restore_stdio(void) {
+  if (g_saved_stdin_fd >= 0) {
+    dup2(g_saved_stdin_fd, STDIN_FILENO);
+    close_fd(&g_saved_stdin_fd);
+  }
+  if (g_saved_stdout_fd >= 0) {
+    dup2(g_saved_stdout_fd, STDOUT_FILENO);
+    close_fd(&g_saved_stdout_fd);
+  }
+  if (g_saved_stderr_fd >= 0) {
+    dup2(g_saved_stderr_fd, STDERR_FILENO);
+    close_fd(&g_saved_stderr_fd);
   }
 }
 
@@ -180,6 +237,16 @@ static void set_last_error(const char *fmt, ...) {
   vsnprintf(g_last_error, sizeof(g_last_error), fmt, args);
   va_end(args);
   pthread_mutex_unlock(&g_error_mutex);
+}
+
+static void debug_log(const char *fmt, ...) {
+  int fd = g_saved_stderr_fd >= 0 ? g_saved_stderr_fd : STDERR_FILENO;
+  va_list args;
+  va_start(args, fmt);
+  dprintf(fd, "[ElizaBunEngine] ");
+  vdprintf(fd, fmt, args);
+  dprintf(fd, "\n");
+  va_end(args);
 }
 
 static char *json_escape(const char *value) {
@@ -503,7 +570,10 @@ static int write_all(int fd, const char *data, size_t len) {
       if (errno == EINTR) continue;
       return -1;
     }
-    if (n == 0) return -1;
+    if (n == 0) {
+      errno = EPIPE;
+      return -1;
+    }
     written += (size_t)n;
   }
   return 0;
@@ -776,6 +846,7 @@ static int service_host_call_line(const char *line) {
       envelope);
 
   int write_result = write_all(g_stdin_write_fd, response, strlen(response));
+  int write_errno = errno;
   free(call_id);
   free(method);
   free(payload);
@@ -783,7 +854,7 @@ static int service_host_call_line(const char *line) {
   free(escaped_id);
   free(response);
   if (write_result != 0) {
-    set_last_error("failed to write native host_result to Bun bridge");
+    set_last_error("failed to write native host_result to Bun bridge: %s", strerror(write_errno));
     return -1;
   }
   return 0;
@@ -817,6 +888,7 @@ static void *stderr_drain_thread(void *arg) {
     while (n > 0 && (buffer[n - 1] == '\n' || buffer[n - 1] == '\r')) n--;
     buffer[n] = '\0';
     if (n > 0) set_last_error("Bun stderr: %s", buffer);
+    if (n > 0) debug_log("stderr: %s", buffer);
   }
   return NULL;
 }
@@ -842,6 +914,31 @@ static void stop_stderr_drain(void) {
     pthread_join(g_stderr_thread, NULL);
     g_stderr_thread_started = 0;
   }
+}
+
+static void *bun_start_thread(void *raw_arg) {
+  bun_start_thread_args_t *thread_args = (bun_start_thread_args_t *)raw_arg;
+  if (!thread_args) return NULL;
+  debug_log("bun_start thread starting argc=%d", thread_args->argc);
+  int result = bun_start(
+      thread_args->argc,
+      (const char **)thread_args->args,
+      thread_args->stdin_read_fd,
+      thread_args->stdout_write_fd,
+      thread_args->stderr_write_fd,
+      on_bun_exit);
+  debug_log("bun_start returned code=%d", result);
+  if (result != 0) {
+    set_last_error("bun_start failed with code %d", result);
+    g_bun_exited = 1;
+    g_bun_exit_code = (uint32_t)result;
+    mark_engine_stopped();
+    close_fd(&g_stdout_write_fd);
+    close_fd(&g_stderr_write_fd);
+  }
+  free_argv(thread_args->args, thread_args->argc);
+  free(thread_args);
+  return NULL;
 }
 
 static void free_argv(char **argv, int argc) {
@@ -1058,7 +1155,17 @@ static int wait_for_ready(int stdout_fd, int timeout_ms) {
       return -1;
     }
     char *ready_error = NULL;
+    if (is_host_call_line(line)) {
+      debug_log("host_call before ready: %.256s", line);
+      int host_result = service_host_call_line(line);
+      free(line);
+      if (host_result != 0) return -1;
+      continue;
+    }
     int ready = is_ready_line(line, &ready_error);
+    if (ready == 0) {
+      debug_log("stdout before ready: %.512s", line);
+    }
     free(line);
     if (ready > 0) return 0;
     if (ready < 0) {
@@ -1145,6 +1252,7 @@ int32_t eliza_bun_engine_start(
 
   apply_safe_env_json(env_json);
   ensure_default_env(app_support_dir, bundle_path);
+  debug_log("start requested bundle=%s appSupport=%s", bundle_path, app_support_dir);
 
   int argc = 0;
   char **args = parse_argv_json(argv_json, bundle_path, &argc);
@@ -1163,26 +1271,6 @@ int32_t eliza_bun_engine_start(
     return -1;
   }
 
-  int result = bun_start(
-      argc,
-      (const char **)args,
-      stdin_pipe[0],
-      stdout_pipe[1],
-      stderr_pipe[1],
-      on_bun_exit);
-  free_argv(args, argc);
-  if (result != 0) {
-    set_last_error("bun_start failed with code %d", result);
-    close(stdin_pipe[0]);
-    close(stdin_pipe[1]);
-    close(stdout_pipe[0]);
-    close(stdout_pipe[1]);
-    close(stderr_pipe[0]);
-    close(stderr_pipe[1]);
-    mark_engine_stopped();
-    return -1;
-  }
-
   g_stdin_read_fd = stdin_pipe[0];
   g_stdin_write_fd = stdin_pipe[1];
   g_stdout_read_fd = stdout_pipe[0];
@@ -1190,11 +1278,42 @@ int32_t eliza_bun_engine_start(
   g_stderr_read_fd = stderr_pipe[0];
   g_stderr_write_fd = stderr_pipe[1];
 
+  if (redirect_stdio_to_bridge(g_stdin_read_fd, g_stdout_write_fd, g_stderr_write_fd) != 0) {
+    eliza_bun_engine_stop();
+    return -1;
+  }
+  debug_log("stdio redirected; starting Bun thread");
+
   if (start_stderr_drain(g_stderr_read_fd) != 0) {
     set_last_error("failed to start stderr drain thread");
     eliza_bun_engine_stop();
     return -1;
   }
+
+  bun_start_thread_args_t *thread_args =
+      (bun_start_thread_args_t *)calloc(1, sizeof(bun_start_thread_args_t));
+  if (!thread_args) {
+    set_last_error("failed to allocate Bun start thread args");
+    free_argv(args, argc);
+    eliza_bun_engine_stop();
+    return -1;
+  }
+  thread_args->argc = argc;
+  thread_args->args = args;
+  thread_args->stdin_read_fd = g_stdin_read_fd;
+  thread_args->stdout_write_fd = g_stdout_write_fd;
+  thread_args->stderr_write_fd = g_stderr_write_fd;
+
+  pthread_t bun_thread;
+  if (pthread_create(&bun_thread, NULL, bun_start_thread, thread_args) != 0) {
+    set_last_error("failed to start Bun engine thread");
+    free_argv(args, argc);
+    free(thread_args);
+    eliza_bun_engine_stop();
+    return -1;
+  }
+  pthread_detach(bun_thread);
+  debug_log("waiting for ios-bridge ready");
 
   int startup_timeout_ms = env_timeout_ms(
       "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS",
@@ -1202,16 +1321,19 @@ int32_t eliza_bun_engine_start(
       ELIZA_MAX_STARTUP_TIMEOUT_MS);
   int ready = wait_for_ready(g_stdout_read_fd, startup_timeout_ms);
   if (ready != 0) {
+    debug_log("ios-bridge ready wait failed code=%d error=%s", ready, g_last_error);
     eliza_bun_engine_stop();
     return ready;
   }
 
+  debug_log("ios-bridge ready");
   mark_engine_ready();
   return 0;
 }
 
 int32_t eliza_bun_engine_stop(void) {
   mark_engine_stopped();
+  restore_stdio();
   close_fd(&g_stdin_write_fd);
   close_fd(&g_stdin_read_fd);
   close_fd(&g_stdout_read_fd);
@@ -1261,9 +1383,16 @@ char *eliza_bun_engine_call(const char *method, const char *payload_json) {
   free(escaped_method);
 
   if (write_all(g_stdin_write_fd, request, strlen(request)) != 0) {
+    int write_errno = errno;
+    char message[256];
+    snprintf(
+        message,
+        sizeof(message),
+        "failed to write request to Bun bridge: %s",
+        strerror(write_errno));
     free(request);
     pthread_mutex_unlock(&g_call_mutex);
-    return error_json("failed to write request to Bun bridge");
+    return error_json(message);
   }
   free(request);
 
@@ -1288,7 +1417,18 @@ char *eliza_bun_engine_call(const char *method, const char *payload_json) {
       free(line);
       if (host_result != 0) {
         pthread_mutex_unlock(&g_call_mutex);
-        return error_json("failed to service native host call");
+        char detail[ELIZA_LAST_ERROR_BYTES];
+        pthread_mutex_lock(&g_error_mutex);
+        snprintf(detail, sizeof(detail), "%s", g_last_error);
+        pthread_mutex_unlock(&g_error_mutex);
+        char message[ELIZA_LAST_ERROR_BYTES + 64];
+        snprintf(
+            message,
+            sizeof(message),
+            "failed to service native host call%s%s",
+            detail[0] ? ": " : "",
+            detail);
+        return error_json(message);
       }
       continue;
     }

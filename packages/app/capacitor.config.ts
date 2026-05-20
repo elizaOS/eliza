@@ -120,6 +120,8 @@ const config: CapacitorConfig = {
       fullBunAvailable:
         process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE ??
         process.env.VITE_ELIZA_IOS_FULL_BUN_STRICT ??
+        process.env.ELIZA_IOS_FULL_BUN_ENGINE ??
+        process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK ??
         "",
       apiBase: iosApiBase,
     },

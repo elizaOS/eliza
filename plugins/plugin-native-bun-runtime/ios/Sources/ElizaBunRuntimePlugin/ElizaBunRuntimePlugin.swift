@@ -1,5 +1,6 @@
 import Foundation
 import Capacitor
+import AVFoundation
 
 /// Capacitor plugin shell.
 ///
@@ -21,6 +22,9 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "sendMessage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getLocalTtsStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getLocalTtsDiagnostics", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "synthesizeLocalTts", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "call", returnType: CAPPluginReturnPromise),
     ]
 
@@ -34,9 +38,12 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
     private static let webFullBunSmokeResultKey = "CapacitorStorage.eliza:ios-full-bun-smoke:result"
     private static let webFullBunPrewarmResultKey = "CapacitorStorage.eliza:ios-full-bun-prewarm:result"
     private static let mobileRuntimeModeKey = "CapacitorStorage.eliza:mobile-runtime-mode"
+    private static let fullBunSmokeEnvKey = "ELIZA_IOS_FULL_BUN_NATIVE_SMOKE"
+    private static let webFullBunSmokeEnvKey = "ELIZA_IOS_FULL_BUN_WEB_SMOKE"
     private var runtime: ElizaBunRuntime?
     private var nativeSmokeStarted = false
     private var fullBunPrewarmStarted = false
+    private var localTtsPlayers: [String: AVAudioPlayer] = [:]
 
     override public func load() {
         // Construct lazily on first start to avoid holding the JSVirtualMachine
@@ -60,6 +67,8 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             env = [:]
         }
 
+        let startedAt = Date()
+        NSLog("[ElizaBunRuntimePlugin] start requested engine=\(engine) bundlePath=\(bundlePath ?? "default") argv=\(argv) envKeys=\(env.keys.sorted())")
         let runtime = ensureRuntime()
         runtime.start(
             bundlePath: bundlePath,
@@ -68,8 +77,10 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             argv: argv,
             env: env
         ) { result in
+            let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             switch result {
             case .success(let outcome):
+                NSLog("[ElizaBunRuntimePlugin] start succeeded engine=\(engine) bridgeVersion=\(outcome.bridgeVersion) durationMs=\(durationMs)")
                 self.runNativeFullBunSmokeAfterSuccessfulStartIfRequested(runtime: runtime)
                 DispatchQueue.main.async {
                     call.resolve([
@@ -78,6 +89,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
                     ])
                 }
             case .failure(let error):
+                NSLog("[ElizaBunRuntimePlugin] start failed engine=\(engine) durationMs=\(durationMs) error=\(error)")
                 DispatchQueue.main.async {
                     call.resolve([
                         "ok": false,
@@ -147,6 +159,198 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    @objc func getLocalTtsStatus(_ call: CAPPluginCall) {
+#if ELIZA_IOS_INCLUDE_LLAMA
+        guard let bundle = resolveLocalTtsBundleDir(override: call.getString("bundleDir")) else {
+            call.resolve([
+                "ready": false,
+                "status": "missing",
+                "message": "Eliza-1 voice assets are not installed in this iOS build.",
+            ])
+            return
+        }
+        call.resolve([
+            "ready": true,
+            "status": "assets-ready",
+            "message": "Local voice assets are installed. Voice engine will warm on first playback.",
+            "bundleDir": bundle.path,
+            "modelId": modelId(for: bundle),
+        ])
+#else
+        call.resolve([
+            "ready": false,
+            "status": "unavailable",
+            "message": "This build is missing the iOS local voice playback engine.",
+        ])
+#endif
+    }
+
+    @objc func getLocalTtsDiagnostics(_ call: CAPPluginCall) {
+#if ELIZA_IOS_INCLUDE_LLAMA
+        let probe = call.getBool("probe") ?? false
+        let playProbe = call.getBool("play") ?? Self.envFlag("ELIZA_IOS_TTS_PLAY_SMOKE")
+        let keepProbeAudio = call.getBool("keepAudio") ?? Self.envFlag("ELIZA_IOS_TTS_KEEP_PROBE_AUDIO")
+        let text = call.getString("text") ?? "Hi from Eliza."
+        let bundleOverride = call.getString("bundleDir")
+        let baseDiagnostics = buildLocalTtsDiagnostics(bundleOverride: bundleOverride)
+        guard probe, let bundlePath = baseDiagnostics["selectedBundleDir"] as? String else {
+            NSLog("[ElizaBunRuntimePlugin] Local TTS diagnostics \(baseDiagnostics)")
+            call.resolve(baseDiagnostics)
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            var diagnostics = baseDiagnostics
+            let result = LlamaBridgeImpl.shared.synthesizeSpeech(
+                bundleDir: bundlePath,
+                text: text,
+                speakerPresetId: nil,
+                maxSamples: 24_000 * 20
+            )
+            var probePayload: JSObject = [
+                "ok": result.error == nil,
+                "sampleRate": result.sampleRate,
+                "samples": result.samples,
+                "durationMs": result.durationMs,
+            ]
+            if let error = result.error {
+                probePayload["error"] = error
+            }
+            if let audioFilePath = result.audioFilePath, !audioFilePath.isEmpty {
+                probePayload["audioFilePath"] = audioFilePath
+                let audioFileUrl = URL(fileURLWithPath: audioFilePath)
+                if playProbe {
+                    do {
+                        let audioData = try Data(contentsOf: audioFileUrl)
+                        try self.playLocalTtsAudio(audioData)
+                        probePayload["played"] = true
+                    } catch {
+                        probePayload["played"] = false
+                        probePayload["playError"] = error.localizedDescription
+                    }
+                }
+                if !keepProbeAudio {
+                    try? FileManager.default.removeItem(at: audioFileUrl)
+                }
+            }
+            diagnostics["probe"] = probePayload
+            diagnostics["engine"] = self.jsObject(LlamaBridgeImpl.shared.ttsEngineDiagnostics(bundleDir: bundlePath))
+            NSLog("[ElizaBunRuntimePlugin] Local TTS diagnostics \(diagnostics)")
+            DispatchQueue.main.async {
+                call.resolve(diagnostics)
+            }
+        }
+#else
+        call.resolve([
+            "available": false,
+            "message": "This build is missing the iOS local voice playback engine.",
+        ])
+#endif
+    }
+
+    @objc func synthesizeLocalTts(_ call: CAPPluginCall) {
+        guard let text = call.getString("text"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            call.reject("synthesizeLocalTts requires text")
+            return
+        }
+#if ELIZA_IOS_INCLUDE_LLAMA
+        guard let bundle = resolveLocalTtsBundleDir(override: call.getString("bundleDir")) else {
+            call.reject("Eliza-1 voice assets are not installed in this iOS build.")
+            return
+        }
+        let speakerPresetId = call.getString("speakerPresetId")
+            ?? call.getString("voice")
+            ?? call.getString("voiceId")
+        let maxSamples = call.getDouble("maxSamples").map { Int($0) } ?? 24_000 * 60
+        let playImmediately = call.getBool("play") ?? false
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = LlamaBridgeImpl.shared.synthesizeSpeech(
+                bundleDir: bundle.path,
+                text: text,
+                speakerPresetId: speakerPresetId,
+                maxSamples: maxSamples
+            )
+            if let error = result.error {
+                DispatchQueue.main.async {
+                    call.reject(error)
+                }
+                return
+            }
+            let audioBase64: String
+            var audioDataForPlayback: Data?
+            if let audioFilePath = result.audioFilePath, !audioFilePath.isEmpty {
+                let audioFileUrl = URL(fileURLWithPath: audioFilePath)
+                do {
+                    let audioData = try Data(contentsOf: audioFileUrl)
+                    audioDataForPlayback = audioData
+                    audioBase64 = playImmediately ? "" : audioData.base64EncodedString()
+                    try? FileManager.default.removeItem(at: audioFileUrl)
+                } catch {
+                    DispatchQueue.main.async {
+                        call.reject("Failed to read synthesized audio: \(error.localizedDescription)")
+                    }
+                    return
+                }
+            } else {
+                audioBase64 = result.audioBase64
+                if playImmediately, let decoded = Data(base64Encoded: result.audioBase64) {
+                    audioDataForPlayback = decoded
+                }
+            }
+            DispatchQueue.main.async {
+                if playImmediately {
+                    do {
+                        try self.playLocalTtsAudio(audioDataForPlayback)
+                    } catch {
+                        call.reject("Failed to play synthesized audio: \(error.localizedDescription)")
+                        return
+                    }
+                }
+                call.resolve([
+                    "audioBase64": audioBase64,
+                    "contentType": result.contentType,
+                    "sampleRate": result.sampleRate,
+                    "samples": result.samples,
+                    "durationMs": result.durationMs,
+                    "modelId": self.modelId(for: bundle),
+                    "played": playImmediately,
+                ])
+            }
+        }
+#else
+        call.reject("This build is missing the iOS local voice playback engine.")
+#endif
+    }
+
+    private func playLocalTtsAudio(_ audioData: Data?) throws {
+        guard let audioData, !audioData.isEmpty else {
+            throw NSError(
+                domain: "ElizaBunRuntime",
+                code: -40,
+                userInfo: [NSLocalizedDescriptionKey: "No synthesized audio data was available."]
+            )
+        }
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+        try session.setActive(true)
+        let player = try AVAudioPlayer(data: audioData)
+        player.prepareToPlay()
+        player.volume = 1.0
+        let playerId = UUID().uuidString
+        localTtsPlayers[playerId] = player
+        guard player.play() else {
+            localTtsPlayers.removeValue(forKey: playerId)
+            throw NSError(
+                domain: "ElizaBunRuntime",
+                code: -41,
+                userInfo: [NSLocalizedDescriptionKey: "AVAudioPlayer refused to start playback."]
+            )
+        }
+        let cleanupDelay = max(1.0, player.duration + 1.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + cleanupDelay) { [weak self] in
+            self?.localTtsPlayers.removeValue(forKey: playerId)
+        }
+    }
+
     // MARK: - call
 
     @objc func call(_ pluginCall: CAPPluginCall) {
@@ -175,9 +379,211 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func ensureRuntime() -> ElizaBunRuntime {
         if let existing = runtime { return existing }
+        NSLog("[ElizaBunRuntimePlugin] creating ElizaBunRuntime")
         let new = ElizaBunRuntime(plugin: self)
         runtime = new
         return new
+    }
+
+    private struct LocalTtsBundleResolution {
+        let override: URL?
+        let roots: [URL]
+        let selectedBundle: URL?
+    }
+
+    private func resolveLocalTtsBundleDir(override: String?) -> URL? {
+        resolveLocalTtsBundleResolution(override: override).selectedBundle
+    }
+
+    private func resolveLocalTtsBundleResolution(override: String?) -> LocalTtsBundleResolution {
+        if let override, !override.isEmpty {
+            let url = URL(fileURLWithPath: override, isDirectory: true)
+            if hasKokoroBundle(url) {
+                return LocalTtsBundleResolution(override: url, roots: localTtsSearchRoots(), selectedBundle: url)
+            }
+        }
+        let fm = FileManager.default
+        let roots = localTtsSearchRoots()
+        for root in roots where fm.fileExists(atPath: root.path) {
+            if let bundle = findKokoroBundle(in: root) {
+                return LocalTtsBundleResolution(
+                    override: override.map { URL(fileURLWithPath: $0, isDirectory: true) },
+                    roots: roots,
+                    selectedBundle: bundle
+                )
+            }
+        }
+        return LocalTtsBundleResolution(
+            override: override.map { URL(fileURLWithPath: $0, isDirectory: true) },
+            roots: roots,
+            selectedBundle: nil
+        )
+    }
+
+    private func localTtsSearchRoots() -> [URL] {
+        let paths = SandboxPaths()
+        return [
+            paths.appSupport
+                .appendingPathComponent("local-inference", isDirectory: true)
+                .appendingPathComponent("models", isDirectory: true),
+            paths.bundle
+                .appendingPathComponent("public", isDirectory: true)
+                .appendingPathComponent("agent", isDirectory: true)
+                .appendingPathComponent("models", isDirectory: true),
+        ]
+    }
+
+    private func buildLocalTtsDiagnostics(bundleOverride: String?) -> JSObject {
+        let fm = FileManager.default
+        let resolution = resolveLocalTtsBundleResolution(override: bundleOverride)
+        var payload: JSObject = [
+            "available": resolution.selectedBundle != nil,
+            "roots": resolution.roots.map { describeDirectory($0) },
+            "engine": jsObject(LlamaBridgeImpl.shared.ttsEngineDiagnostics(bundleDir: resolution.selectedBundle?.path)),
+        ]
+        if let override = resolution.override {
+            payload["override"] = describeDirectory(override)
+        }
+        guard let bundle = resolution.selectedBundle else {
+            payload["message"] = "No bundled Kokoro local TTS assets were found."
+            return payload
+        }
+
+        payload["selectedBundleDir"] = bundle.path
+        payload["modelId"] = modelId(for: bundle)
+        payload["ttsDir"] = describeDirectory(bundle.appendingPathComponent("tts", isDirectory: true))
+        payload["files"] = [
+            "kokoroCoreMlModel": describeFile(bundle.appendingPathComponent("tts/kokoro-coreml/kokoro_5s.mlmodelc", isDirectory: true)),
+            "kokoroCoreMlVoice": describeFile(bundle.appendingPathComponent("tts/kokoro-coreml/voices/af_heart.json")),
+            "kokoroGgufModel": describeFile(bundle.appendingPathComponent("tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf")),
+            "kokoroGgufVoice": describeFile(bundle.appendingPathComponent("tts/kokoro/voices/af_bella.bin")),
+            "legacyOmniVoiceBase": describeFile(bundle.appendingPathComponent("tts/omnivoice-base-Q4_K_M.gguf")),
+            "legacyOmniVoiceTokenizer": describeFile(bundle.appendingPathComponent("tts/omnivoice-tokenizer-Q4_K_M.gguf")),
+            "text": describeFile(bundle.appendingPathComponent("text/eliza-1-0_8b-128k.gguf")),
+            "asr": describeFile(bundle.appendingPathComponent("asr/eliza-1-asr.gguf")),
+            "manifest": describeFile(bundle.appendingPathComponent("eliza-1.manifest.json")),
+        ]
+        let ttsDir = bundle.appendingPathComponent("tts", isDirectory: true)
+        if let enumerator = fm.enumerator(
+            at: ttsDir,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            var ggufFiles: [JSObject] = []
+            for case let url as URL in enumerator {
+                let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+                guard values?.isRegularFile == true, url.pathExtension.lowercased() == "gguf" else {
+                    continue
+                }
+                ggufFiles.append(describeFile(url))
+            }
+            payload["ttsGgufFiles"] = ggufFiles
+        }
+        return payload
+    }
+
+    private func describeDirectory(_ url: URL) -> JSObject {
+        let fm = FileManager.default
+        var isDirectory: ObjCBool = false
+        let exists = fm.fileExists(atPath: url.path, isDirectory: &isDirectory)
+        return [
+            "path": url.path,
+            "exists": exists,
+            "isDirectory": exists && isDirectory.boolValue,
+            "readable": fm.isReadableFile(atPath: url.path),
+        ]
+    }
+
+    private func describeFile(_ url: URL) -> JSObject {
+        let fm = FileManager.default
+        var payload: JSObject = [
+            "path": url.path,
+            "name": url.lastPathComponent,
+            "exists": fm.fileExists(atPath: url.path),
+            "readable": fm.isReadableFile(atPath: url.path),
+        ]
+        if let attrs = try? fm.attributesOfItem(atPath: url.path),
+           let size = attrs[.size] as? NSNumber {
+            payload["bytes"] = size
+        }
+        return payload
+    }
+
+    private static func envFlag(_ name: String) -> Bool {
+        guard let raw = ProcessInfo.processInfo.environment[name]?.lowercased() else {
+            return false
+        }
+        return raw == "1" || raw == "true" || raw == "yes" || raw == "on"
+    }
+
+    private func jsObject(_ dict: [String: Any]) -> JSObject {
+        var payload: JSObject = [:]
+        for (key, value) in dict {
+            payload[key] = jsValue(value)
+        }
+        return payload
+    }
+
+    private func jsValue(_ value: Any) -> JSValue {
+        switch value {
+        case let value as String:
+            return value
+        case let value as Bool:
+            return value
+        case let value as Int:
+            return value
+        case let value as Int64:
+            return NSNumber(value: value)
+        case let value as UInt64:
+            return NSNumber(value: value)
+        case let value as Float:
+            return value
+        case let value as Double:
+            return value
+        case let value as NSNumber:
+            return value
+        case let value as [String: Any]:
+            return jsObject(value)
+        case let value as [Any]:
+            return value.map { jsValue($0) }
+        default:
+            return String(describing: value)
+        }
+    }
+
+    private func findKokoroBundle(in root: URL) -> URL? {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+        for case let url as URL in enumerator {
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true, url.pathExtension == "bundle" else {
+                continue
+            }
+            if hasKokoroBundle(url) { return url }
+        }
+        return nil
+    }
+
+    private func hasKokoroBundle(_ bundle: URL) -> Bool {
+        let coreMlDir = bundle
+            .appendingPathComponent("tts", isDirectory: true)
+            .appendingPathComponent("kokoro-coreml", isDirectory: true)
+        let fm = FileManager.default
+        let model = coreMlDir.appendingPathComponent("kokoro_5s.mlmodelc", isDirectory: true)
+        let voice = coreMlDir
+            .appendingPathComponent("voices", isDirectory: true)
+            .appendingPathComponent("af_heart.json")
+        return fm.fileExists(atPath: model.path) && fm.fileExists(atPath: voice.path)
+    }
+
+    private func modelId(for bundle: URL) -> String {
+        bundle.deletingPathExtension().lastPathComponent
     }
 
     // MARK: - Simulator full Bun smoke
@@ -190,7 +596,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             "RUNTIME_MODE": IosRuntimePolicy.safeLocalExecutionMode,
             "LOCAL_RUNTIME_MODE": IosRuntimePolicy.safeLocalExecutionMode,
             "ELIZA_IOS_LOCAL_BACKEND": "1",
-            "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS": "300000",
+            "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS": "60000",
             "ELIZA_PGLITE_DISABLE_EXTENSIONS": "0",
             "ELIZA_VAULT_BACKEND": "file",
             "ELIZA_DISABLE_VAULT_PROFILE_RESOLVER": "1",
@@ -209,7 +615,9 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         guard !nativeSmokeStarted, !fullBunPrewarmStarted else { return }
 
         let defaults = UserDefaults.standard
-        let webSmokeRequested = defaults.string(forKey: Self.webFullBunSmokeRequestKey) == "1"
+        let webSmokeRequested =
+            ProcessInfo.processInfo.environment[Self.webFullBunSmokeEnvKey] == "1" ||
+            defaults.string(forKey: Self.webFullBunSmokeRequestKey) == "1"
         guard webSmokeRequested else { return }
 
         fullBunPrewarmStarted = true
@@ -335,7 +743,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
                         "ok": false,
                         "phase": "failed",
                         "nativePrewarm": true,
-                        "error": "iOS full Bun backend did not become ready within 300000ms; last status: \(bridgeStatus ?? NSNull())",
+                        "error": "iOS full Bun backend did not become ready within 60000ms; last status: \(bridgeStatus ?? NSNull())",
                         "finishedAt": self.isoTimestamp(),
                     ])
                     return
@@ -375,6 +783,9 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func shouldRunNativeFullBunSmoke() -> Bool {
         guard !nativeSmokeStarted else { return false }
+        if ProcessInfo.processInfo.environment[Self.fullBunSmokeEnvKey] == "1" {
+            return true
+        }
         return UserDefaults.standard.string(forKey: Self.fullBunSmokeRequestKey) == "1"
     }
 
@@ -417,7 +828,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
                 }
                 if elapsedMs >= 300_000 {
                     self.writeFullBunSmokeFailure(
-                        self.makeSmokeError("native full Bun backend did not become ready within 300000ms; last status: \(bridgeStatus ?? NSNull())")
+                        self.makeSmokeError("native full Bun backend did not become ready within 60000ms; last status: \(bridgeStatus ?? NSNull())")
                     )
                     return
                 }

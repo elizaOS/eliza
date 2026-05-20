@@ -10,19 +10,19 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "border border-accent/45 bg-accent/15 text-accent-fg dark:text-accent shadow-xs hover:border-accent/70 hover:bg-accent/25",
+          "border border-accent/45 bg-accent/15 text-accent-fg dark:text-accent hover:border-accent/70 hover:bg-accent/25",
         surface:
-          "border border-border bg-card text-muted-strong shadow-xs hover:border-border-strong hover:bg-bg-hover hover:text-txt",
+          "border border-border bg-card text-muted-strong hover:border-border-strong hover:bg-bg-hover hover:text-txt",
         surfaceAccent:
-          "border border-accent/30 bg-accent-subtle text-txt-strong shadow-xs hover:border-accent/50 hover:bg-accent/20",
+          "border border-accent/30 bg-accent-subtle text-txt-strong hover:border-accent/50 hover:bg-accent/20",
         surfaceDestructive:
-          "border border-danger/30 bg-destructive-subtle text-danger shadow-xs hover:border-danger/50 hover:bg-destructive/15",
+          "border border-danger/30 bg-destructive-subtle text-danger hover:border-danger/50 hover:bg-destructive/15",
         destructive:
-          "border border-destructive/45 bg-destructive text-destructive-fg shadow-xs hover:border-destructive/75 hover:bg-destructive/90",
+          "border border-destructive/45 bg-destructive text-destructive-fg hover:border-destructive/75 hover:bg-destructive/90",
         outline:
-          "border border-border bg-card text-txt shadow-xs hover:border-border-strong hover:bg-bg-hover",
+          "border border-border bg-card text-txt hover:border-border-strong hover:bg-bg-hover",
         secondary:
-          "border border-border bg-bg-accent text-txt shadow-xs hover:border-border-strong hover:bg-bg-hover",
+          "border border-border bg-bg-accent text-txt hover:border-border-strong hover:bg-bg-hover",
         ghost: "text-muted-strong hover:bg-bg-accent hover:text-txt",
         link: "text-primary underline-offset-4 hover:underline",
       },

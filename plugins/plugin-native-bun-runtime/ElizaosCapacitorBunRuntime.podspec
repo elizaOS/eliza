@@ -3,7 +3,7 @@ require 'json'
 package = JSON.parse(File.read(File.join(__dir__, 'package.json')))
 include_llama = %w[1 true yes on].include?(ENV.fetch('ELIZA_IOS_INCLUDE_LLAMA', '').downcase)
 include_full_bun_engine = %w[1 true yes on].include?(ENV.fetch('ELIZA_IOS_FULL_BUN_ENGINE', '').downcase)
-full_bun_frameworks = ['Network', 'Accelerate', 'Metal', 'MetalKit', 'MetalPerformanceShaders', 'Foundation']
+full_bun_frameworks = ['Network', 'Accelerate', 'Metal', 'MetalKit', 'MetalPerformanceShaders', 'Foundation', 'CoreML', 'NaturalLanguage']
 compat_frameworks = ['JavaScriptCore', *full_bun_frameworks]
 frameworks = include_full_bun_engine ? full_bun_frameworks : compat_frameworks
 swift_flags = '$(inherited)'
@@ -19,7 +19,8 @@ source_files = if include_full_bun_engine
     'ios/Sources/ElizaBunRuntimePlugin/ElizaBunRuntime.swift',
     'ios/Sources/ElizaBunRuntimePlugin/FullBunEngineHost.swift',
     'ios/Sources/ElizaBunRuntimePlugin/SandboxPaths.swift',
-    'ios/Sources/ElizaBunRuntimePlugin/bridge/LlamaBridgeImpl.swift'
+    'ios/Sources/ElizaBunRuntimePlugin/bridge/LlamaBridgeImpl.swift',
+    'ios/Sources/ElizaBunRuntimePlugin/kokoro/**/*.swift'
   ]
 else
   'ios/Sources/**/*.{swift,m,mm,h}'
