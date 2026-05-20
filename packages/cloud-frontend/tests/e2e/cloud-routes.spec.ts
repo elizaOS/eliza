@@ -36,6 +36,7 @@ const ROUTE_TITLE_RULES: Record<string, RegExp> = {
   "/": HOMEPAGE_TITLE_FALLBACK,
   "/os": HOMEPAGE_TITLE_FALLBACK,
   "/blog": HOMEPAGE_TITLE_FALLBACK,
+  "/sandbox-proxy": HOMEPAGE_TITLE_FALLBACK,
 };
 
 interface CapturedFailures {
