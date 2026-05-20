@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,7 +28,9 @@ async function writeIfMissing(file, content) {
   if (existing !== null) return;
 
   await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, content);
+  const tempFile = `${file}.${process.pid}.tmp`;
+  await writeFile(tempFile, content);
+  await rename(tempFile, file);
 }
 
 async function writeCompatibilityFiles() {
