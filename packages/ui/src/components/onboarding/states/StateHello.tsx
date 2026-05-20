@@ -1,4 +1,4 @@
-import { AvatarHost } from "../../../avatar-runtime";
+import { OnboardingAvatar } from "./OnboardingAvatar";
 
 export interface StateHelloProps {
   transcript?: string;
@@ -10,13 +10,7 @@ export function StateHello(props: StateHelloProps): React.JSX.Element {
   return (
     <main className="eliza-ob-screen centered" data-eliza-ob-state="hello">
       <div className="eliza-ob-hello">
-        <div
-          className="eliza-ob-agent-canvas"
-          style={{ width: "min(270px, 78vw)", height: 112 }}
-          aria-hidden="true"
-        >
-          <AvatarHost />
-        </div>
+        <OnboardingAvatar />
         <h1 className="eliza-ob-hello-word">Hello</h1>
         <div
           className="eliza-ob-transcript"

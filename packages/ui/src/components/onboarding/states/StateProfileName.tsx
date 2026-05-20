@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AvatarHost } from "../../../avatar-runtime";
+import { OnboardingAvatar } from "./OnboardingAvatar";
 
 export interface StateProfileNameProps {
   transcript?: string;
@@ -18,12 +18,7 @@ export function StateProfileName(
       data-eliza-ob-state="profile-name"
     >
       <div className="eliza-ob-agent">
-        <div
-          className="eliza-ob-agent-canvas"
-          style={{ width: "min(270px, 78vw)", height: 112 }}
-        >
-          <AvatarHost />
-        </div>
+        <OnboardingAvatar />
         <div className="eliza-ob-transcript">
           {transcript ?? "Okay, can I get your name?"}
         </div>
