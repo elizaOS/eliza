@@ -141,13 +141,14 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
         return ALL_HARNESSES if _has_terminal_bench_docker_backend() else ()
     if benchmark_id == "gauntlet":
         return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
+    if benchmark_id == "hermes_swe_env":
+        return ALL_HARNESSES if _has_hermes_sandbox_backend() else ()
     if benchmark_id in {
         "hermes_tblite",
         "hermes_terminalbench_2",
         "hermes_yc_bench",
-        "hermes_swe_env",
     }:
-        return ALL_HARNESSES if _has_hermes_sandbox_backend() else ()
+        return ("hermes",) if _has_hermes_sandbox_backend() else ()
     if benchmark_id == "voicebench":
         return ALL_HARNESSES if _has_voicebench_real_audio_assets() else ()
     if benchmark_id == "voicebench_quality":
@@ -413,6 +414,13 @@ def _has_vision_language_bundle(tier: str = "eliza-1-9b") -> bool:
     bundle = _eliza_state_dir() / "local-inference" / "models" / f"{tier}.bundle"
     manifest = bundle / "eliza-1.manifest.json"
     if not manifest.is_file():
+        return False
+    try:
+        manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    runtime = manifest_payload.get("runtime") if isinstance(manifest_payload, dict) else None
+    if not isinstance(runtime, dict) or "dflash" not in runtime:
         return False
     slug = tier.removeprefix("eliza-1-")
     text_candidates = [
