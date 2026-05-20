@@ -81,7 +81,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           echo "📊 Collecting all game data..."
-          npx tsx scripts/collect-game-data-for-hf.ts
+          npx tsx packages/feed/scripts/collect-game-data-for-hf.ts
       
       - name: Upload to HuggingFace
         if: steps.preflight.outputs.skip != 'true'
@@ -91,13 +91,13 @@ jobs:
           HF_DATASET_NAME: FeedSocial/feed-game-data
         run: |
           echo "📤 Uploading to HuggingFace..."
-          npx tsx scripts/upload-to-huggingface.ts
+          npx tsx packages/feed/scripts/upload-to-huggingface.ts
       
       - name: Verify upload
         if: steps.preflight.outputs.skip != 'true'
         run: |
           echo "✅ Verifying upload..."
-          npx tsx scripts/verify-hf-upload.ts
+          npx tsx packages/feed/scripts/verify-hf-upload.ts
       
       - name: Upload summary
         if: always() && steps.preflight.outputs.skip != 'true'

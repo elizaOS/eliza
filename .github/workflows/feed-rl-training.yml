@@ -59,10 +59,10 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
-          cache-dependency-path: 'packages/training/python/requirements.txt'
+          cache-dependency-path: 'packages/training/scripts/rl/requirements.txt'
       
       - name: Install dependencies
-        working-directory: packages/training/python
+        working-directory: packages/training/scripts/rl
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
@@ -331,7 +331,7 @@ jobs:
           MAX_EXAMPLES: "2000"
           MAX_STEPS_PER_TRAJECTORY: "20"
           MAX_SEQ_LENGTH: "8192"
-        working-directory: packages/training/python
+        working-directory: packages/training/scripts/rl
         run: |
           echo "🚀 Starting training"
           echo "Batch ID: $BATCH_ID"
@@ -405,8 +405,8 @@ jobs:
         with:
           name: training-logs-${{ steps.batch.outputs.batch_id }}
           path: |
-            packages/training/python/logs/
-            packages/training/python/*.log
+            packages/training/scripts/rl/logs/
+            packages/training/scripts/rl/*.log
           retention-days: 7
       
       - name: Report status

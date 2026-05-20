@@ -37,7 +37,7 @@ jobs:
         env:
           DATABASE_URL: ${{ env.STAGING_DATABASE_URL }}
           DIRECT_DATABASE_URL: ${{ env.STAGING_DIRECT_DATABASE_URL }}
-        working-directory: packages/db
+        working-directory: packages/feed/packages/db
         run: bunx --bun drizzle-kit push --force --config=drizzle.config.ts
 
       - name: Apply migrations (production)
@@ -45,7 +45,7 @@ jobs:
         env:
           DATABASE_URL: ${{ env.PROD_DATABASE_URL }}
           DIRECT_DATABASE_URL: ${{ env.PROD_DIRECT_DATABASE_URL }}
-        working-directory: packages/db
+        working-directory: packages/feed/packages/db
         run: bunx --bun drizzle-kit push --force --config=drizzle.config.ts
 
       - name: Skip notice (staging)
