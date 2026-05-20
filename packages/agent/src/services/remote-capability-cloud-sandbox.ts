@@ -303,7 +303,7 @@ export async function waitForCloudCapabilityEndpointAvailability(
         clearTimeout(timeout);
       }
     } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
+      lastError = describeAvailabilityError(error);
     }
     options.onProgress?.(
       `waiting for endpoint ${options.endpoint.id}: ${lastError}`,
@@ -314,6 +314,38 @@ export async function waitForCloudCapabilityEndpointAvailability(
   throw new Error(
     `Cloud capability endpoint ${options.endpoint.id} did not report plugin availability within ${timeoutMs}ms. Last error: ${lastError}`,
   );
+}
+
+function describeAvailabilityError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = (error as Error & { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    return `${error.message}: ${cause.message}`;
+  }
+  if (cause && typeof cause === "object") {
+    const detail = cause as {
+      code?: unknown;
+      errno?: unknown;
+      syscall?: unknown;
+      hostname?: unknown;
+      address?: unknown;
+      port?: unknown;
+    };
+    const parts = [
+      detail.code,
+      detail.errno,
+      detail.syscall,
+      detail.hostname,
+      detail.address,
+      detail.port,
+    ]
+      .filter((value) => typeof value === "string" || typeof value === "number")
+      .map(String);
+    if (parts.length > 0) {
+      return `${error.message}: ${parts.join(" ")}`;
+    }
+  }
+  return error.message;
 }
 
 export {
