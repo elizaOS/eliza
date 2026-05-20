@@ -178,3 +178,7 @@ packages/training/python/*.logpackages/training/python/shared_model_checkpoints/
 # Model checkpoints
 packages/training/python/shared_model_checkpoints/
 output/
+
+# Static assets dropped from repo — re-add via Git LFS if needed
+apps/web/public/assets/
+apps/web/public/images/
