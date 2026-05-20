@@ -78,6 +78,11 @@ fi
 
 acquire_build_lock
 
+if [[ "$cmd" == "all" && "${MILADY_LLAMA_FORCE_REBUILD:-0}" != "1" ]] && xcframework_is_present; then
+  log "Reusing existing $DIST_DIR/LlamaCpp.xcframework after lock wait (set MILADY_LLAMA_FORCE_REBUILD=1 to rebuild)"
+  exit 0
+fi
+
 # iOS cross-builds require a macOS host with Xcode (xcodebuild + xcrun).
 # When invoked on a non-Darwin host (Linux CI, Linux dev box) this build is
 # physically impossible — there's no iOS SDK to link against. Skip cleanly
