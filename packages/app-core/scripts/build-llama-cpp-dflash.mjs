@@ -2648,7 +2648,9 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   patchMobileKokoroTts(cacheDir, { dryRun });
   patchKokoroNativeIstftGuard(cacheDir, { dryRun });
   patchOmnivoiceVoiceFilePicker(cacheDir, { dryRun });
-  patchOmnivoiceStaticFfi(cacheDir, { dryRun });
+  if (target.startsWith("ios-")) {
+    patchOmnivoiceStaticFfi(cacheDir, { dryRun });
+  }
   if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
     console.warn(
       `[dflash-build] skipping DFlash speculative dispatch patch for target=${target}; ` +
