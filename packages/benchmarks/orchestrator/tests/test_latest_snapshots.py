@@ -1109,6 +1109,63 @@ def test_rebuild_latest_prefers_newest_complete_comparable_real_cohort(
     assert index["benchmark_comparability"]["woobench"]["comparable"] is True
 
 
+def test_rebuild_latest_prefers_within_tolerance_real_cohort(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["lifeops_bench"],
+        repo_meta={},
+    )
+    for offset, agent in enumerate(("eliza", "hermes", "openclaw")):
+        _seed_run(
+            conn,
+            benchmark_id="lifeops_bench",
+            agent=agent,
+            run_id=f"run_mid_{agent}",
+            started_at=f"2026-05-12T00:0{offset}:00+00:00",
+            score=0.5,
+            extra_config={
+                "agent": agent,
+                "harness": agent,
+                "limit": 2,
+                "suite": "smoke",
+            },
+        )
+    _seed_run(
+        conn,
+        benchmark_id="lifeops_bench",
+        agent="openclaw",
+        run_id="run_newer_openclaw_high",
+        started_at="2026-05-12T00:03:00+00:00",
+        score=1.0,
+        extra_config={
+            "agent": "openclaw",
+            "harness": "openclaw",
+            "limit": 2,
+            "suite": "smoke",
+        },
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"lifeops_bench": _adapter("lifeops_bench")},
+    )
+
+    openclaw = json.loads(
+        (tmp_path / "latest" / "lifeops_bench__openclaw.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert openclaw["run_id"] == "run_mid_openclaw"
+
+
 def test_rebuild_latest_ignores_newer_running_rows(tmp_path: Path) -> None:
     conn = connect_database(tmp_path / "orchestrator.sqlite")
     initialize_database(conn)
