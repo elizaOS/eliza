@@ -1,8 +1,6 @@
-import {
-  type G1ConnectionReadyMode,
-  SmartglassesService,
-  WebBluetoothG1Transport,
-} from "../../../plugins/plugin-smartglasses/src/index.js";
+import type { G1ConnectionReadyMode } from "../../../plugins/plugin-smartglasses/src/protocol.js";
+import { SmartglassesService } from "../../../plugins/plugin-smartglasses/src/services/smartglasses-service.js";
+import { WebBluetoothG1Transport } from "../../../plugins/plugin-smartglasses/src/transport/web-bluetooth.js";
 import {
   createHardwareEvidenceReport,
   headsetSetupHint,
@@ -78,6 +76,14 @@ const headsetState: {
   device: null,
 };
 
+function setHardwareReport(): void {
+  (
+    window as unknown as {
+      smartglassesHardwareReport?: typeof report;
+    }
+  ).smartglassesHardwareReport = report;
+}
+
 function log(message: string, data?: unknown): void {
   const suffix = data === undefined ? "" : ` ${JSON.stringify(data)}`;
   logEl.textContent += `[${new Date().toLocaleTimeString()}] ${message}${suffix}\n`;
@@ -86,7 +92,7 @@ function log(message: string, data?: unknown): void {
 
 function updateReport(): void {
   updateHardwareEvidenceStatus(report, service.getStatus());
-  window.smartglassesHardwareReport = report;
+  setHardwareReport();
   renderMissingChecks();
   log("evidence", {
     ok: report.ok,
@@ -98,7 +104,7 @@ function updateReport(): void {
 function reportJson(): string {
   report.finishedAt = new Date().toISOString();
   updateHardwareEvidenceStatus(report, service.getStatus());
-  window.smartglassesHardwareReport = report;
+  setHardwareReport();
   renderMissingChecks();
   return `${JSON.stringify(report, null, 2)}\n`;
 }
@@ -461,10 +467,4 @@ function withTimeout<T>(
       },
     );
   });
-}
-
-declare global {
-  interface Window {
-    smartglassesHardwareReport?: typeof report;
-  }
 }

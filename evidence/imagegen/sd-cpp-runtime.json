@@ -1,0 +1,187 @@
+{
+  "generatedAt": "2026-05-20T09:46:59Z",
+  "memory": {
+    "evidence": "sd-cli --help advertises --mmap, --max-vram, --offload-to-cpu, and backend assignment; no model smoke run in this step",
+    "maxVramAuto": true,
+    "mmap": true,
+    "requiredFeaturesFromUpstreamReview": [
+      "mmap",
+      "--max-vram -1",
+      "segmented param offload"
+    ],
+    "segmentedOffload": true
+  },
+  "probe": {
+    "accelerators": [
+      "auto",
+      "cpu",
+      "metal"
+    ],
+    "available": true,
+    "binary": "/tmp/stable-diffusion.cpp/build-metal/bin/sd-cli",
+    "evidence": [],
+    "source": "local MacBook Metal build; 0_8b SD 1.5 Metal smoke refreshed 2026-05-19",
+    "supportedModels": [
+      "imagegen-sd-1_5-q5_0",
+      "imagegen-sdxl-turbo-q4_0",
+      "imagegen-z-image-turbo-q4_k_m",
+      "imagegen-flux-1-schnell-q4_k_m"
+    ],
+    "version": "stable-diffusion.cpp version master-633-5b0267e, commit 5b0267e"
+  },
+  "publishBlockingReasons": [
+    "CUDA stable-diffusion.cpp build/probe/smoke evidence is still pending; this host cannot run CUDA",
+    "Vulkan stable-diffusion.cpp build/probe/smoke evidence is still pending; local MoltenVK enumeration is not imagegen runtime smoke evidence",
+    "iOS/CoreML and Android image generation smoke remain unproven",
+    "release bundle has not pinned/uploaded signed stable-diffusion.cpp binaries for all supported platforms",
+    "CUDA imagegen blocker report: evidence/imagegen/sd-cpp-cuda-pending.json",
+    "Vulkan imagegen blocker report: evidence/imagegen/sd-cpp-vulkan-pending.json"
+  ],
+  "runtime": {
+    "binaryVersion": "stable-diffusion.cpp version master-633-5b0267e, commit 5b0267e",
+    "engine": "stable-diffusion.cpp",
+    "integration": "plugins/plugin-local-inference/src/services/imagegen/sd-cpp.ts",
+    "integrationContract": "sd-cpp uses --model for monolithic SD 1.5 and --diffusion-model plus --vae/--llm for split Z-Image tiers",
+    "localProbeReport": "evidence/imagegen/sd-cpp-local-probe-2026-05-19.json",
+    "probeScript": "plugins/plugin-local-inference/scripts/probe-sd-cpp.mjs",
+    "upstreamCommit": "5b0267e941cade15bd80089d89838795d9f4baa6",
+    "upstreamRepo": "leejet/stable-diffusion.cpp"
+  },
+  "schemaVersion": 1,
+  "smoke": {
+    "models": {
+      "0_8b/sd-1.5-Q5_0.gguf": {
+        "backends": [
+          "cpu",
+          "metal"
+        ],
+        "outputs": [
+          "evidence/imagegen/sd15-0_8b-cpu-smoke.png",
+          "evidence/imagegen/sd15-0_8b-metal-smoke.png"
+        ],
+        "reports": [
+          "evidence/imagegen/sd15-0_8b-cpu-smoke.json",
+          "evidence/imagegen/sd15-0_8b-metal-smoke.json"
+        ],
+        "status": "pass",
+        "metal": {
+          "status": "pass",
+          "report": "evidence/imagegen/sd15-0_8b-metal-smoke.json",
+          "output": "evidence/imagegen/sd15-0_8b-metal-smoke.png",
+          "outputSha256": "af0cbb621781112a228e235f4dc4e618950d41b00b359fdf5cea1a9a89916d41"
+        }
+      },
+      "9b/z-image-turbo-Q4_K_M.gguf": {
+        "architecture": "z-image/lumina2 diffusion module",
+        "backends": [
+          "cpu",
+          "metal"
+        ],
+        "companions": {
+          "llm": "bundles/9b/imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "vae": "bundles/9b/imagegen/vae/ae.safetensors"
+        },
+        "metal": {
+          "output": "evidence/imagegen/zimage-9b-metal-split-smoke.png",
+          "outputSha256": "4ff7c1c9829b25f550d42e95ef02a6fd7ede54e230f213abee06f76af6de53f8",
+          "report": "evidence/imagegen/zimage-9b-metal-split-smoke.json",
+          "status": "pass",
+          "wallSeconds": 11.69
+        },
+        "outputSha256": "ac1575294804abc7d1655789a2b48ece82da29cee1537a771f5fd7778669299e",
+        "outputs": [
+          "evidence/imagegen/zimage-9b-cpu-split-smoke.png",
+          "evidence/imagegen/zimage-9b-metal-split-smoke.png"
+        ],
+        "report": "evidence/imagegen/zimage-9b-cpu-split-smoke.json",
+        "reports": [
+          "evidence/imagegen/zimage-9b-cpu-split-smoke.json",
+          "evidence/imagegen/zimage-9b-metal-split-smoke.json"
+        ],
+        "requiredInvocation": "--diffusion-model + --vae + --llm",
+        "status": "pass",
+        "wallSeconds": 6.1
+      }
+    },
+    "platforms": {
+      "cpu": {
+        "output": "evidence/imagegen/sd15-0_8b-cpu-smoke.png",
+        "report": "evidence/imagegen/sd15-0_8b-cpu-smoke.json",
+        "status": "pass"
+      },
+      "cuda": {
+        "report": "evidence/imagegen/sd-cpp-cuda-pending.json",
+        "status": "not-run"
+      },
+      "metal": {
+        "output": "evidence/imagegen/sd15-0_8b-metal-smoke.png",
+        "report": "evidence/imagegen/sd15-0_8b-metal-smoke.json",
+        "status": "pass"
+      },
+      "vulkan": {
+        "report": "evidence/imagegen/sd-cpp-vulkan-pending.json",
+        "status": "not-run"
+      }
+    },
+    "status": "partial"
+  },
+  "status": "blocked",
+  "testReports": {
+    "cudaPending": {
+      "path": "evidence/imagegen/sd-cpp-cuda-pending.json",
+      "status": "pending"
+    },
+    "localMetalBuild": {
+      "command": "cmake --build build-eliza-metal --config Release -j 4 --target sd-cli",
+      "path": "evidence/imagegen/sd-cpp-local-probe-2026-05-19.json",
+      "status": "pass"
+    },
+    "sdCppProbeHarness": {
+      "command": "bun test plugins/plugin-local-inference/__tests__/imagegen-sd-cpp-probe.test.ts",
+      "note": "Harness validates probe/backend capability detection, split Z-Image CLI args, CPU/Vulkan backend flags, and avoids false CUDA proof from generic --rng cuda help text; it does not prove real image inference.",
+      "path": "evidence/imagegen/sd-cpp-local-probe-2026-05-19.json",
+      "status": "pass"
+    },
+    "vulkanPending": {
+      "path": "evidence/imagegen/sd-cpp-vulkan-pending.json",
+      "status": "pending"
+    },
+    "zImageCpuSplitSmoke": {
+      "command": "sd-cli --diffusion-model ... --vae ... --llm ... --backend cpu --params-backend cpu --width 64 --height 64 --steps 1",
+      "output": "evidence/imagegen/zimage-9b-cpu-split-smoke.png",
+      "path": "evidence/imagegen/zimage-9b-cpu-split-smoke.json",
+      "status": "pass"
+    },
+    "zImageMetalSplitSmoke": {
+      "command": "sd-cli --diffusion-model ... --vae ... --llm ... --backend gpu --params-backend cpu --max-vram 2 --width 64 --height 64 --steps 1",
+      "output": "evidence/imagegen/zimage-9b-metal-split-smoke.png",
+      "path": "evidence/imagegen/zimage-9b-metal-split-smoke.json",
+      "status": "pass"
+    },
+    "sd15MetalSmoke20260519": {
+      "status": "pass",
+      "path": "evidence/imagegen/sd15-0_8b-metal-smoke.json",
+      "output": "evidence/imagegen/sd15-0_8b-metal-smoke.png",
+      "note": "64x64 one-step Metal smoke; CUDA/Vulkan evidence remains pending."
+    }
+  },
+  "atCommit": "8df74c2c3732",
+  "hostProbe": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "machine": "Apple M4 Max MacBook local verification host",
+    "gpu": "Apple M4 Max 40-core GPU",
+    "cuda": "not available: no NVIDIA GPU and nvidia-smi is not installed",
+    "vulkan": "loader/device present via /opt/homebrew/bin/vulkaninfo and MoltenVK DRIVER_ID_MOLTENVK; this is not sd-cpp Vulkan imagegen execution evidence"
+  },
+  "localChecks20260520": {
+    "sdCliInPath": "not found",
+    "cuda": "not available locally; CUDA pending report remains authoritative",
+    "vulkan": "vulkaninfo --summary passes through MoltenVK, but no sd-cpp Vulkan binary/smoke exists locally",
+    "remoteEvidenceReviewed": [
+      "evidence/imagegen/sd-cpp-runtime.json",
+      "evidence/imagegen/sd-cpp-cuda-pending.json",
+      "evidence/imagegen/sd-cpp-vulkan-pending.json"
+    ]
+  }
+}

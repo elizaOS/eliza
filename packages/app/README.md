@@ -112,21 +112,24 @@ bun install
 bun run build
 ```
 
-### Run the App (Desktop)
-
-```bash
-cd packages/app
-bun install
-bun run build:desktop
-bun run dev:desktop
-```
-
 ### Dev Server
 
 ```bash
 cd packages/app
-bun run dev
+bun install
+bun run dev          # Vite dev server (renderer only)
 ```
+
+### Desktop (Electrobun)
+
+The desktop shell is built by Electrobun from the repo root, not from inside `packages/app`. From the repo root:
+
+```bash
+bun run dev:desktop          # reuses packages/app/dist if fresh
+bun run dev:desktop:watch    # Vite dev + Electrobun HMR
+```
+
+`packages/app` produces the renderer; Electrobun wraps it.
 
 ### Mobile
 

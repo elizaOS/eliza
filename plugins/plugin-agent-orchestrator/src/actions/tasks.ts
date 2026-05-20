@@ -35,6 +35,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
+import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
   type ResolvedWorkdirRoute,
   resolvePinnedAdapter,
@@ -1689,7 +1690,7 @@ async function runSubmitWorkspace(
 
     await workspaceService.push(workspaceId, { setUpstream: true });
 
-    let prInfo = null;
+    let prInfo: PullRequestInfo | null = null;
     if (!content.skipPR) {
       const prTitle = content.prTitle ?? `[Eliza] ${workspace.branch}`;
       const prBody =
@@ -1843,7 +1844,7 @@ async function handleIssueAction(
           );
           if (items.length > 0) {
             const labels = parseLabels(params.labels);
-            const created = [];
+            const created: IssueInfo[] = [];
             for (const item of items.slice(0, ISSUE_RESULT_LIMIT)) {
               const issue = await service.createIssue(repo, {
                 title: item.title,

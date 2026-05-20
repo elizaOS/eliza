@@ -3,8 +3,8 @@ import type {
   G1Event,
   GlassSide,
   SmartglassesAudioEncoding,
-  SmartglassesStatus,
-} from "../../../plugins/plugin-smartglasses/src/index.js";
+} from "../../../plugins/plugin-smartglasses/src/protocol.js";
+import type { SmartglassesStatus } from "../../../plugins/plugin-smartglasses/src/services/smartglasses-service.js";
 
 export type HardwareWriteSide = GlassSide | "both";
 

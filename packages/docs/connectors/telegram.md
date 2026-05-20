@@ -233,6 +233,6 @@ The `accounts` field allows running multiple Telegram bots from a single agent:
 
 ## Related
 
-- [Telegram plugin reference](/plugin-registry/platform/telegram)
+- [Telegram plugin reference](/connectors/telegram)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

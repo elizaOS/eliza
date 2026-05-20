@@ -17,7 +17,7 @@ The Twitter connector is an elizaOS plugin that bridges your agent to Twitter/X.
 ## Installation
 
 ```bash
-eliza plugins install @elizaos/plugin-x
+bun add @elizaos/plugin-x
 ```
 
 ## Configuration
@@ -168,6 +168,6 @@ The posting interval is calculated as a random value between `postIntervalMin` a
 
 ## Related
 
-- [xAI plugin reference](/plugin-registry/llm/xai)
+- [xAI plugin reference](/plugins/overview)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

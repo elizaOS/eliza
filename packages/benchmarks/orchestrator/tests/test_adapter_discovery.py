@@ -619,7 +619,11 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_terminal_bench_docker_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_swe_bench_docker_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_osworld_docker_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_hermes_sandbox_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_voicebench_real_audio_assets", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_voicebench_quality_real_inputs", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_voiceagentbench_real_audio_dataset", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_vision_language_compatible_harnesses", lambda: ("eliza", "hermes", "openclaw"))
     report = build_cross_matrix_report(
         _workspace_root().parent,
@@ -1220,6 +1224,41 @@ def test_hermes_native_envs_require_sandbox_backend(
         assert _is_harness_compatible(adapter, "hermes") is False
         assert _is_harness_compatible(adapter, "eliza") is False
         assert _is_harness_compatible(adapter, "openclaw") is False
+
+
+def test_osworld_requires_reachable_docker_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_osworld_docker_backend",
+        lambda: False,
+    )
+    adapter = discover_adapters(_workspace_root()).adapters["osworld"]
+    assert adapter.agent_compatibility == ()
+    assert _is_harness_compatible(adapter, "eliza") is False
+    assert _is_harness_compatible(adapter, "hermes") is False
+    assert _is_harness_compatible(adapter, "openclaw") is False
+
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        harnesses=("eliza", "hermes", "openclaw"),
+    )
+    for cell in [cell for cell in report.cells if cell.benchmark_id == "osworld"]:
+        assert cell.compatible is False
+        assert cell.command is None
+        assert cell.reason == orchestrator_adapters.OSWORLD_DOCKER_UNAVAILABLE_REASON
+
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_osworld_docker_backend",
+        lambda: True,
+    )
+    adapter = discover_adapters(_workspace_root()).adapters["osworld"]
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert _is_harness_compatible(adapter, "eliza") is True
+    assert _is_harness_compatible(adapter, "hermes") is True
+    assert _is_harness_compatible(adapter, "openclaw") is True
 
 
 def test_hermes_native_env_matrix_reports_sandbox_unavailable(
@@ -2384,6 +2423,36 @@ def test_compactbench_adapter_uses_repaired_scorer_by_default(tmp_path: Path) ->
         "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
     )
     assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+
+
+def test_compactbench_python_falls_back_when_local_python_lacks_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compactbench_root = tmp_path / "compactbench"
+    venv_bin = compactbench_root / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    local_python = venv_bin / "python"
+    local_python.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    good_python = tmp_path / "conda-python"
+    good_python.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(orchestrator_adapters.sys, "executable", "/broken/sys-python")
+    monkeypatch.setattr(
+        orchestrator_adapters.shutil,
+        "which",
+        lambda name: str(good_python) if name == "python" else None,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_python_can_import",
+        lambda candidate, module: candidate == str(good_python)
+        and module == "ruamel.yaml",
+    )
+
+    assert orchestrator_adapters._compactbench_python_executable(
+        compactbench_root
+    ) == str(good_python)
 
 
 def test_compactbench_hermes_adapter_uses_native_tool_compactor(

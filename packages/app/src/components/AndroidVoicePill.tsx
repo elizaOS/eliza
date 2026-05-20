@@ -1,8 +1,9 @@
-import { type ConversationMessage, useApp } from "@elizaos/ui";
+import type { ConversationMessage } from "@elizaos/ui/api/client-types-chat";
 import {
   VoicePill,
   type VoicePillMessage,
 } from "@elizaos/ui/components/voice-pill";
+import { useApp } from "@elizaos/ui/state";
 import { useCallback, useMemo } from "react";
 
 /**

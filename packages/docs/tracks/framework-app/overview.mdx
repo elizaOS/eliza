@@ -1,0 +1,48 @@
+---
+title: Framework App
+description: "Build a custom application directly on @elizaos/core."
+---
+
+A **Framework-Based App** is your own product — bot, CLI, web app, API service — that links against `@elizaos/core` and composes the runtime however you like. Unlike the [Agent App](/tracks/agent-app/overview) track, you don't inherit the elizaOS distribution's dashboard or shell. You ship whatever surface fits your product.
+
+## When to pick this track
+
+- You already own a UI / backend and just want the agent runtime embedded.
+- You're building a non-chat surface (an API, a worker, a game bot).
+- You want full control over message ingestion, response routing, and persistence.
+- The bundled app shell is too opinionated for your use case.
+
+## What you build
+
+Anything. A few examples that exist in this repo:
+
+- `packages/examples/chat/` — minimal CLI chat loop
+- `packages/examples/discord/` — Discord bot driver
+- `packages/examples/twitter-xai/` — X/Twitter agent
+- `packages/examples/cloudflare/` — Cloudflare Worker agent
+
+## Track contents
+
+<CardGroup cols={2}>
+  <Card title="Skeleton" icon="cube" href="/tracks/framework-app/skeleton">
+    Minimum viable app — install, runtime, character, message loop.
+  </Card>
+  <Card title="Extend" icon="plug" href="/tracks/framework-app/extend">
+    Custom actions, providers, evaluators, services for your domain.
+  </Card>
+  <Card title="Package" icon="box" href="/tracks/framework-app/package">
+    Build, bundle, and deploy.
+  </Card>
+</CardGroup>
+
+## Where this comes from
+
+- Examples: [`packages/examples/`](https://github.com/elizaOS/eliza/tree/develop/packages/examples)
+- Project template: [`packages/elizaos/templates/project/`](https://github.com/elizaOS/eliza/tree/develop/packages/elizaos/templates/project)
+
+## Deeper material
+
+- [Beginners development guide](/guides/beginners-development-guide)
+- [Developer playbook](/guides/developer-playbook)
+- [First extension walkthrough](/guides/first-extension-walkthrough)
+- [Custom actions](/guides/custom-actions)

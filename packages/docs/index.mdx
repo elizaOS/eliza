@@ -1,251 +1,90 @@
 ---
-title: Overview
-description: "elizaOS — the agentic operating system. Build Eliza agents in TypeScript, Python, or Rust."
+title: elizaOS
+description: "The open agentic operating system. Pick a track and start building."
 ---
 
 <img src="/brand/banners/elizaos_banner.svg" alt="elizaOS" />
 
 <Tip>
-  **elizaOS** — the open agentic operating system (AIOS). Three commands. Runs anywhere.
+  **elizaOS** — the open agentic operating system. Build an agent, ship an app,
+  publish a plugin, train a model, or run the full OS on your hardware.
 </Tip>
 
-## Build agents in your language
+## Pick a track
 
-elizaOS ships **TypeScript**, **Python**, and **Rust** with identical APIs. Pick one. Start in minutes.
+Every project on elizaOS fits one of eight tracks. Each track has its own landing page with concepts, code, and step-by-step setup.
 
-<CardGroup cols={3}>
-  <Card title="TypeScript" icon="js" href="/quickstart#typescript">
-    The original elizaOS surface. Full Node.js ecosystem.
+<CardGroup cols={2}>
+  <Card title="Agent" icon="robot" href="/tracks/agent/overview">
+    Configure a character, plug in connectors, run an autonomous Eliza agent.
   </Card>
-  <Card title="Python" icon="python" href="/quickstart#python">
-    Pythonic APIs with Pydantic models and async/await.
+  <Card title="Agent App" icon="window" href="/tracks/agent-app/overview">
+    Wrap an agent in a desktop, mobile, or dashboard product for end users.
   </Card>
-  <Card title="Rust" icon="gear" href="/quickstart#rust">
-    Native performance plus WebAssembly for browser deployment.
+  <Card title="Plugin" icon="puzzle-piece" href="/tracks/plugin/overview">
+    Ship a reusable package of actions, providers, evaluators, and services.
+  </Card>
+  <Card title="Framework" icon="cubes" href="/tracks/framework/overview">
+    Use `@elizaos/core` as a library inside your own TypeScript codebase.
+  </Card>
+  <Card title="Framework App" icon="rocket" href="/tracks/framework-app/overview">
+    Build a custom application directly on the core runtime — no shell.
+  </Card>
+  <Card title="elizaOS" icon="computer" href="/tracks/elizaos/overview">
+    The Linux distribution and AOSP variant. Boot Eliza on real hardware.
+  </Card>
+  <Card title="Cloud" icon="cloud" href="/tracks/cloud/overview">
+    Eliza Cloud APIs: auth, app registration, inference, billing, containers, domains.
+  </Card>
+  <Card title="Training & Simulation" icon="brain" href="/tracks/training/overview">
+    Eliza-1 model training, the Feed simulation, robot embodiment, benchmarks.
   </Card>
 </CardGroup>
 
 ---
 
-## Create, then run project scripts
+## Three commands to a live agent
 
-<Tabs>
-  <Tab title="TypeScript">
-    ```bash npx elizaos create my-agent-app --template project cd my-agent-app
-    bun install bun run dev ```
-  </Tab>
-  <Tab title="Python">
-    ```bash pip install elizaos # Install the package python -c "from elizaos
-    import *" # Verify installation python your_agent.py # Run your agent ```
-  </Tab>
-  <Tab title="Rust">
-    ```bash cargo add elizaos # Add to Cargo.toml cargo build # Build your
-    project cargo run # Run your agent ```
-  </Tab>
-</Tabs>
+```bash
+npx elizaos create my-agent
+cd my-agent
+bun install && bun run dev
+```
 
-<CardGroup cols={2}>
-  <Card title="Quickstart" icon="rocket" href="/quickstart" horizontal />
-  <Card
-    title="Examples Gallery"
-    icon="grid-2"
-    href="/examples-gallery"
-    horizontal
-  />
-  <Card
-    title="What You Can Build"
-    icon="lightbulb-on"
-    href="/what-you-can-build"
-    horizontal
-  />
-  <Card
-    title="Plugin Registry"
-    icon="puzzle-piece"
-    href="/plugins/registry"
-    horizontal
-  />
-</CardGroup>
+That gets you the **Agent** track. See [Quickstart](/quickstart) for full setup, or [Installation](/installation) for desktop / CLI install options.
 
 ---
 
 ## Why elizaOS?
 
 <CardGroup cols={3}>
-  <Card title="Multi-Language" icon="code">
-    Identical APIs in TypeScript, Python, and Rust
-  </Card>
-  <Card title="90+ Plugins" icon="puzzle-piece">
-    Discord, X, Telegram, Ethereum, Solana, OpenAI, and more
+  <Card title="Plugin-first" icon="puzzle-piece">
+    Connectors, model providers, and capabilities all ship as composable plugins under `@elizaos/*`.
   </Card>
   <Card title="Persistent memory" icon="brain">
-    Agents remember and learn from every interaction
+    Agents remember conversations, learn from interactions, and act on long-running goals.
   </Card>
-  <Card title="Deploy anywhere" icon="server">
-    Local, Docker, AWS, GCP, Vercel, Cloudflare, or your own infrastructure
+  <Card title="Runs anywhere" icon="server">
+    Local-only, desktop, mobile, Cloud, your own VPS, or directly on elizaOS hardware.
   </Card>
-  <Card title="Browser ready" icon="globe">
-    Run agents client-side with WASM and PGLite
+  <Card title="Open" icon="code-branch">
+    Every package is open source. Extend, fork, and contribute upstream.
   </Card>
-  <Card title="Truly open" icon="code-branch">
-    Every line is open source. Extend, contribute, build together.
+  <Card title="Cloud optional" icon="cloud-arrow-up">
+    Eliza Cloud handles auth, hosting, billing, and domains when you want it — never required.
+  </Card>
+  <Card title="Trains on your data" icon="microchip">
+    Fine-tune Eliza-1 (0.8B–27B), evaluate against 70+ benchmarks, deploy on-device.
   </Card>
 </CardGroup>
 
-Eliza agents can trade onchain, manage social media, create content, analyze data, or talk to any API, blockchain, or repository.
-
 ---
 
-## API consistency across languages
-
-All three implementations share identical interfaces:
-
-| Operation      | TypeScript                          | Python                                | Rust                                    |
-| -------------- | ----------------------------------- | ------------------------------------- | --------------------------------------- |
-| Create runtime | `new AgentRuntime({...})`           | `AgentRuntime(...)`                   | `AgentRuntime::new(...)`                |
-| Initialize     | `await runtime.initialize()`        | `await runtime.initialize()`          | `runtime.initialize().await`            |
-| Use model      | `runtime.useModel(type, params)`    | `runtime.use_model(type, params)`     | `runtime.use_model(type, params).await` |
-| Handle message | `messageService.handleMessage(...)` | `message_service.handle_message(...)` | `message_service().handle_message(...)` |
-| Stop           | `await runtime.stop()`              | `await runtime.stop()`                | `runtime.stop().await`                  |
-
----
-
-## Quick example
-
-<Tabs>
-  <Tab title="TypeScript">
-```typescript
-import { AgentRuntime } from '@elizaos/core';
-import { openaiPlugin } from '@elizaos/plugin-openai';
-import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
-
-const runtime = new AgentRuntime({
-character: {
-name: 'Eliza',
-bio: 'An Eliza agent.',
-},
-plugins: [sqlPlugin, openaiPlugin],
-});
-
-await runtime.initialize();
-console.log('Agent is ready!');
-
-````
-  </Tab>
-  <Tab title="Python">
-```python
-from elizaos import AgentRuntime, Character
-from elizaos_plugin_openai import get_openai_plugin
-
-character = Character(
-    name="Eliza",
-    bio="An Eliza agent.",
-)
-
-runtime = AgentRuntime(
-    character=character,
-    plugins=[get_openai_plugin()],
-)
-
-await runtime.initialize()
-print("Agent is ready!")
-````
-
-  </Tab>
-  <Tab title="Rust">
-```rust
-use elizaos::{AgentRuntime, RuntimeOptions, parse_character};
-use elizaos_plugin_openai::create_openai_plugin;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-let character = parse_character(r#"{
-"name": "Eliza",
-"bio": "An Eliza agent."
-}"#)?;
-
-    let runtime = AgentRuntime::new(RuntimeOptions {
-        character: Some(character),
-        plugins: vec![create_openai_plugin()?],
-        ..Default::default()
-    }).await?;
-
-    runtime.initialize().await?;
-    println!("Agent is ready!");
-    Ok(())
-
-}
-
-```
-  </Tab>
-</Tabs>
-
----
-
-## Explore examples
+## Where to next
 
 <CardGroup cols={2}>
-  <Card title="Chat applications" icon="comments" href="/examples-gallery/chat-apps">
-    Build interactive CLI and web chat interfaces
-  </Card>
-  <Card title="REST APIs" icon="server" href="/examples-gallery/rest-apis">
-    Express, FastAPI, Actix, and 5 more frameworks
-  </Card>
-  <Card title="Browser apps" icon="browser" href="/examples-gallery/web-apps">
-    React, Next.js, and pure HTML implementations
-  </Card>
-  <Card title="Serverless" icon="cloud" href="/examples-gallery/serverless">
-    AWS Lambda, GCP Functions, Vercel, Cloudflare Workers
-  </Card>
+  <Card title="Installation" icon="download" href="/installation" horizontal />
+  <Card title="Quickstart" icon="rocket" href="/quickstart" horizontal />
+  <Card title="CLI" icon="terminal" href="/cli/overview" horizontal />
+  <Card title="Contribute" icon="code-branch" href="/guides/contributing" horizontal />
 </CardGroup>
-
----
-
-## Get started
-
-<CardGroup cols={2}>
-  <Card
-    title="Installation"
-    icon="download"
-    href="/installation"
-    horizontal
-  />
-  <Card
-    title="Create a Plugin"
-    icon="wrench"
-    href="/plugins/create-a-plugin"
-    horizontal
-  />
-  <Card
-    title="API Reference"
-    icon="terminal"
-    href="/api-reference"
-    horizontal
-  />
-  <Card
-    title="CLI Reference"
-    icon="command"
-    href="/cli-reference/overview"
-    horizontal
-  />
-</CardGroup>
-
----
-
-## Design philosophy
-
-**Ship fast** — Three commands to a live agent. No boilerplate, no config hell.
-
-**Any language** — TypeScript, Python, or Rust. Same APIs, same capabilities.
-
-**Scale freely** — Start with a character file. Scale to millions of interactions.
-
-**Truly open** — Every line is open source. Extend through plugins, contribute to core, build the future together.
-
-<Card
-  title="Contribute to core"
-  icon="code-branch"
-  href="/guides/contributing"
->
-  Join the community building the agentic operating system
-</Card>
-```

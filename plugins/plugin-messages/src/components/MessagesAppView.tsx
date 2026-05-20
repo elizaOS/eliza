@@ -1,8 +1,9 @@
 import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";
 import { System, type SystemStatus } from "@elizaos/capacitor-system";
-import type { OverlayAppContext } from "@elizaos/ui";
-import { Button, Input } from "@elizaos/ui";
+import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { Textarea } from "@elizaos/ui/components/ui/textarea";
 import {
   ArrowLeft,
@@ -14,7 +15,13 @@ import {
   ShieldCheck,
   Smartphone,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 type ThreadSummary = {
   id: string;
@@ -401,7 +408,9 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                 <Input
                   id="messages-compose-address"
                   value={composeAddress}
-                  onChange={(event) => setComposeAddress(event.target.value)}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setComposeAddress(event.target.value)
+                  }
                   placeholder="+1 555 123 4567"
                   inputMode="tel"
                   className="mt-1"

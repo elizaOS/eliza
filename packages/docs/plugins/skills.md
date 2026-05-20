@@ -27,7 +27,7 @@ Skills can include:
 | Complexity | Low -- documentation-focused | High -- full programmatic control |
 | Runtime | Injected into agent prompts | Runs as executable code |
 | Use case | Task instructions, workflows | Actions, services, API integrations |
-| Installation | Drop a folder or install from marketplace | `eliza plugins install` |
+| Installation | Drop a folder or install from marketplace | `bun add <name>` (after editing character.plugins) |
 
 Use skills when you want to teach the agent a procedure. Use plugins when you need executable logic, background services, or API routes.
 

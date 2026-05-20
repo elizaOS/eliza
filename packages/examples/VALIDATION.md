@@ -38,6 +38,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | Package builds | `node packages/examples/scripts/verify-examples.mjs --mode build` completed after targeted repairs. Human-gated or known bundler-limited examples use explicit skip scripts that explain the required opt-in command. |
 | Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, and `form` passed targeted reruns after the last fixes. |
 | Static docs | `node packages/examples/scripts/verify-examples.mjs --mode docs` now checks each package README, every package row in this matrix, top-level links to `setup-guide.html`/`VALIDATION.md`, and setup guide sections for Roblox, Minecraft, cloud, social, hardware, and wallet examples. |
+| Setup guide links/render | `packages/examples/setup-guide.html` rendered in Playwright with 34 links, Roblox/Minecraft sections visible, and every external setup link returning HTTP < 400 after redirects. |
 
 ## Example Matrix
 

@@ -1,13 +1,28 @@
+import { client, type AppRunSummary } from "@elizaos/ui/api";
 import {
-  type AppOperatorSurfaceProps,
-  type AppRunSummary,
-  client,
   type GameOperatorAction,
   type GameOperatorEvent,
   GameOperatorShell,
-  useApp,
-} from "@elizaos/ui";
+} from "@elizaos/ui/components/apps/surfaces/GameOperatorShell";
+import type { AppOperatorSurfaceProps } from "@elizaos/ui/components/apps/surfaces/types";
+import { useApp } from "@elizaos/ui/state";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
+
+type RunEventSummary = {
+  eventId: string;
+  kind: string;
+  message: string;
+  severity?: string;
+  createdAt?: string | null;
+};
+
+type RunActivitySummary = {
+  id: string;
+  type: string;
+  message: string;
+  severity?: string;
+  timestamp?: string | null;
+};
 
 const PRIMARY_COMMANDS = [
   {
@@ -98,12 +113,12 @@ function collectRunEvents(
 ): GameOperatorEvent[] {
   const serverEvents = (run.recentEvents ?? [])
     .filter(
-      (event) =>
+      (event: RunEventSummary) =>
         event.kind !== "refresh" &&
         event.kind !== "attach" &&
         event.kind !== "detach",
     )
-    .map((event) => ({
+    .map((event: RunEventSummary) => ({
       id: event.eventId,
       label: event.kind,
       message: cleanClawvilleMessage(event.message),
@@ -117,7 +132,7 @@ function collectRunEvents(
     })) satisfies GameOperatorEvent[];
 
   const activityEvents: GameOperatorEvent[] =
-    run.session?.activity?.map((entry) => ({
+    run.session?.activity?.map((entry: RunActivitySummary) => ({
       id: entry.id,
       label: entry.type,
       message: cleanClawvilleMessage(entry.message),
@@ -246,7 +261,7 @@ export function ClawvilleOperatorSurface({
     ...item,
   }));
   const suggestedActions = (run.session?.suggestedPrompts ?? []).map(
-    (prompt) => ({
+    (prompt: string) => ({
       id: prompt,
       label: prompt,
       command: prompt,
@@ -290,7 +305,7 @@ export function ClawvilleOperatorSurface({
       variant={variant}
       onDraftChange={setDraft}
       onSendDraft={() => void sendCommand(draft, true)}
-      onCommand={(command) => void sendCommand(command)}
+      onCommand={(command: string) => void sendCommand(command)}
     />
   );
 }
@@ -382,7 +397,7 @@ export function ClawvilleTuiView() {
           : PRIMARY_COMMANDS.map((item) => item.command)
         )
           .slice(0, 6)
-          .map((prompt) => (
+          .map((prompt: string) => (
             <button
               key={prompt}
               type="button"

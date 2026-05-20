@@ -4,13 +4,10 @@
 // onboarding redirects. Pure routing logic — share-target persistence and
 // CONNECT event dispatch are injected so the dispatcher stays test-friendly.
 
-import {
-  applyLaunchConnection,
-  CONNECT_EVENT,
-  dispatchAppEvent,
-  routeOnboardingDeepLink,
-  type ShareTargetPayload,
-} from "@elizaos/ui";
+import { CONNECT_EVENT, dispatchAppEvent } from "@elizaos/ui/events";
+import { routeOnboardingDeepLink } from "@elizaos/ui/onboarding/deep-link-handler";
+import type { ShareTargetPayload } from "@elizaos/ui/platform";
+import { applyLaunchConnection } from "@elizaos/ui/platform/browser-launch";
 import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
 import type { UrlTrustPolicy } from "./url-trust-policy";
 

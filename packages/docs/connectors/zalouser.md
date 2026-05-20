@@ -20,7 +20,7 @@ The Zalouser connector is a personal-account variant of the [Zalo](/connectors/z
 ## Installation
 
 ```bash
-eliza plugins install zalouser
+bun add zalouser
 ```
 
 ## Setup
@@ -87,6 +87,6 @@ Or configure in `~/.eliza/eliza.json`:
 ## Related
 
 - [Zalo connector](/connectors/zalo) — Official Account variant
-- [Zalouser plugin reference](/plugin-registry/platform/zalouser)
+- [Zalouser plugin reference](/connectors/zalouser)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

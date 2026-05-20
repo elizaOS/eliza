@@ -16,7 +16,7 @@ The Twilio plugin is an elizaOS feature plugin that bridges your agent to Twilio
 |-------|-------|
 | Package | `@elizaos/plugin-twilio` |
 | Config key | `connectors.twilio` |
-| Install | `eliza plugins install @elizaos/plugin-twilio` |
+| Install | `bun add @elizaos/plugin-twilio` |
 
 ## Setup
 
@@ -51,7 +51,7 @@ The Twilio plugin is an elizaOS feature plugin that bridges your agent to Twilio
 Install the plugin from the registry:
 
 ```bash
-eliza plugins install twilio
+bun add twilio
 ```
 
 Configure in `~/.eliza/eliza.json`:
@@ -125,5 +125,5 @@ export TWILIO_PHONE_NUMBER=+1234567890
 
 ## Related
 
-- [Twilio Plugin Reference](/plugin-registry/platform/twilio)
+- [Twilio Plugin Reference](/connectors/twilio)
 - [Connectors overview](/guides/connectors#twilio)

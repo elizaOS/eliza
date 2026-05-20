@@ -1,0 +1,49 @@
+---
+title: Cloud Apps
+description: "Register an appId, version, and publish."
+---
+
+An **app** in Cloud is a registered product that bundles metadata, allowed redirect URIs, billing settings, and deployment configuration. Registering an app gives you an `appId` that:
+
+- Identifies the app to Cloud-routed inference, billing, and analytics.
+- Lets the app use Cloud OAuth flows.
+- Enables container deploys and domain binding.
+- Powers creator monetization (earnings tied to app usage).
+
+## Register
+
+`POST /v1/apps`
+
+Body:
+
+```json
+{
+  "name": "My App",
+  "description": "What it does.",
+  "redirectUris": ["https://my-app.example.com/oauth/callback"],
+  "monetization": { "enabled": true }
+}
+```
+
+Response includes the assigned `appId` and a client secret. Store the secret server-side.
+
+## Lifecycle
+
+- `GET /v1/apps/:id` — fetch.
+- `PATCH /v1/apps/:id` — update metadata, redirects, settings.
+- `DELETE /v1/apps/:id` — soft-delete.
+
+## Versioning
+
+App versions track deployed releases. Versions can be published, rolled back, and marked stable / beta.
+
+## Source
+
+- Route: `packages/cloud-api/v1/apps/route.ts`, `packages/cloud-api/v1/apps/[id]/route.ts`
+- Dashboard UI: `packages/cloud-frontend/src/dashboard/apps/`
+
+## See also
+
+- [Auth](/tracks/cloud/auth)
+- [Domains](/tracks/cloud/domains)
+- [Billing](/tracks/cloud/billing)

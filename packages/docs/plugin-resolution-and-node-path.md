@@ -23,7 +23,7 @@ Node resolves this by walking up from the **importing file's directory**. When e
 | Entry point | Importing file location | Walks up from | Reaches root `node_modules`? |
 |---|---|---|---|
 | `bun run dev` | `src/runtime/eliza.ts` | `src/runtime/` | Usually yes (2 levels) |
-| `eliza start` (CLI) | `dist/runtime/eliza.js` | `dist/runtime/` | Usually yes (2 levels) |
+| `bun run dev` (CLI) | `dist/runtime/eliza.js` | `dist/runtime/` | Usually yes (2 levels) |
 | Electrobun dev | `eliza-dist/eliza.js` | `apps/app/electrobun/eliza-dist/` | **No** — walks into `apps/` |
 | Electrobun packaged | `app.asar.unpacked/eliza-dist/eliza.js` | Inside the `.app` bundle | **No** — different filesystem |
 
@@ -113,7 +113,7 @@ good published **`2.0.0-alpha.13`** artifact.
 - **Before bumping** the OpenRouter dependency, verify the **published tarball** on npm: open `dist/node/index.node.js` and confirm it defines the default export / `openrouterPlugin`, or run `bun build node_modules/@elizaos/plugin-openrouter/dist/node/index.node.js --target=bun` after install.
 - **Do not replace the workspace link with an unfenced semver range** until upstream publishes a fixed version and you have confirmed the artifact. **Why:** `^2.0.0-alpha.10` allowed Bun to resolve **`alpha.12`**, which broke installs that upgraded the lockfile.
 
-User-facing context and configuration for OpenRouter itself live in **[OpenRouter plugin](plugin-registry/llm/openrouter.md)** (Mintlify: `/plugin-registry/llm/openrouter`).
+User-facing context and configuration for OpenRouter itself live in **[OpenRouter plugin](plugins/overview)** (Mintlify: `/plugins/overview`).
 
 ## Optional plugins: why was this package in the load set?
 

@@ -181,7 +181,7 @@ test("settings connects a remote capability endpoint and opens its view", async 
   }
 });
 
-test.skip("settings provisions a cloud capability sandbox", async ({ page }) => {
+test("settings provisions a cloud capability sandbox", async ({ page }) => {
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
 

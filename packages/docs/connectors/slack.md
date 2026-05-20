@@ -285,6 +285,6 @@ Per-channel settings under `channels.<channel-id>`:
 
 ## Related
 
-- [Slack plugin reference](/plugin-registry/platform/slack)
+- [Slack plugin reference](/connectors/slack)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

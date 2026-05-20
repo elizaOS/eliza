@@ -79,7 +79,7 @@ These are elizaOS plugins with names like `@hyperscape/plugin-hyperscape` that a
 └─────────────────────────────────────┘
 ```
 
-App plugins are discovered via the [Plugin Registry](/plugins/registry) and filtered by the `app-` prefix in their package name. They are managed through the [Apps API](/rest/apps).
+App plugins are discovered via the [Plugin Registry](/tracks/plugin/publish) and filtered by the `app-` prefix in their package name. They are managed through the Apps API.
 
 <Note>
 Plugins do **not** inject custom UI components into the Dashboard. Plugin configuration uses schema-driven forms (via `@elizaos/plugin-ui`), not dynamically loaded components. Only app plugins with a `viewer.url` get embedded as iframes.
@@ -110,5 +110,5 @@ Plugins do **not** inject custom UI components into the Dashboard. Plugin config
 - [Installation](/installation) — Install the CLI and apps
 - [Configuration](/configuration) — Configure your agent
 - [Quickstart](/quickstart) — Get started in minutes
-- [Apps API](/rest/apps) — REST API for managing app plugins
-- [Plugin Registry](/plugins/registry) — Browse available plugins and apps
+- Apps API — REST API for managing app plugins
+- [Plugin Registry](/tracks/plugin/publish) — Browse available plugins and apps

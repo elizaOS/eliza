@@ -29,7 +29,7 @@ A new **Open in cloud** button on the Eliza homepage takes you from a marketing 
 
 - **Coding-agent model preferences propagate to spawned sessions** — When you set Anthropic or OpenAI model preferences in [coding agent settings](/guides/coding-swarms), those choices now flow correctly into the environment of every spawned coding session through the orchestrator's PTY layer. Previously a stale default could leak into long-running sessions.
 - **Computer-use action routing fix** — The action planner now routes computer-use requests (browser navigation, screenshot, click) to the correct handler more reliably, eliminating misroutes that previously sent these requests through generic chat replies.
-- **Gmail email-draft-reply graceful 404** — When your agent tries to draft a reply to a [Gmail](/rest/lifeops) thread that's been deleted or moved, the action now degrades gracefully with a clear message instead of surfacing a Google API 404.
+- **Gmail email-draft-reply graceful 404** — When your agent tries to draft a reply to a Gmail thread that's been deleted or moved, the action now degrades gracefully with a clear message instead of surfacing a Google API 404.
 - **LIFE explicit-intent routing** — LIFE actions now require explicit life-tracking intent in the prompt before routing, so casual phrases like "remember to call mom" no longer trigger the LIFE handler when you meant a simple todo.
 - **Strict execution gaps closed** — Three remaining strict-execution gaps in the action loop have been closed, so multi-step agent runs honor the strict-mode contract end to end.
 - **MANAGE_APP_OPS_MODES action available on mobile** — Mobile builds now declare `MANAGE_APP_OPS_MODES` in their action manifest, exposing app-ops management to your agent on Android and iOS.
@@ -57,14 +57,14 @@ When your agent picks an action but a required field is missing or malformed, it
 
 Plugin install, eject, sync, list, search, and create are now driven through a single canonical PLUGIN action with nine sub-modes instead of separate actions. Talk to your agent the same way you always have — "install the Shopify plugin," "show me my plugins," "create a new plugin scaffold" — and the runtime routes to the right behavior. Existing wording continues to work via legacy aliases.
 
-## ElizaOS auto-assigns Eliza as default phone roles
+## elizaOS auto-assigns Eliza as default phone roles
 
-On [ElizaOS](/architecture) builds, Eliza is now auto-assigned as the default Phone, SMS, and Assistant app on first boot. Previously these roles required manual assignment via shell command after flashing — on a fresh boot they're now wired automatically through a system-level overlay, alongside the existing default-launcher behavior.
+On [elizaOS](/architecture) builds, Eliza is now auto-assigned as the default Phone, SMS, and Assistant app on first boot. Previously these roles required manual assignment via shell command after flashing — on a fresh boot they're now wired automatically through a system-level overlay, alongside the existing default-launcher behavior.
 
 ## Updates
 
-- **Personal connectors quiet by default** — Signal, Discord, Telegram, iMessage, and WhatsApp [LifeOps connectors](/rest/lifeops) no longer auto-reply to inbound messages on your personal accounts. Your agent still reads incoming messages into the [canonical inbox](/rest/inbox) and sends outbound on demand, but it won't talk back unless you explicitly opt in per platform.
-- **Discord DMs route through the desktop bridge** — When your agent runs in local-execution mode, [LifeOps](/rest/lifeops) Discord sends now go through the desktop CDP path so DMs land reliably even when the bot account isn't in the conversation. Previously these sends failed with a "Missing Access" error for most personal DMs.
+- **Personal connectors quiet by default** — Signal, Discord, Telegram, iMessage, and WhatsApp LifeOps connectors no longer auto-reply to inbound messages on your personal accounts. Your agent still reads incoming messages into the canonical inbox and sends outbound on demand, but it won't talk back unless you explicitly opt in per platform.
+- **Discord DMs route through the desktop bridge** — When your agent runs in local-execution mode, LifeOps Discord sends now go through the desktop CDP path so DMs land reliably even when the bot account isn't in the conversation. Previously these sends failed with a "Missing Access" error for most personal DMs.
 - **Companion performance moved into the Companion app** — VRM performance controls (FPS cap, render scale, animation budget) have moved from the main settings sidebar into the [Companion](/dashboard/apps) app's own settings panel, so performance tuning lives next to the avatar it affects.
 - **OWNER_RELATIONSHIP explicit-intent routing** — Relationship lookups now require explicit relationship intent in the prompt before routing to OWNER_RELATIONSHIP, reducing accidental triggers from passing mentions of names in unrelated requests.
 - **Quieter agent logs** — Debug-level logs from the OWNER_RELATIONSHIP path have been dropped, cleaning up the runtime log stream during normal use.
@@ -96,11 +96,11 @@ The runtime now respects per-plugin role declarations on startup. Plugins that d
 
 ## Updates
 
-- **Direct life-ops launch** — Opening [life-ops](/rest/lifeops) from the dashboard now goes straight to the section you tapped instead of routing through an intermediate landing screen.
+- **Direct life-ops launch** — Opening life-ops from the dashboard now goes straight to the section you tapped instead of routing through an intermediate landing screen.
 - **n8n empty-state translations** — The [automations](/guides/cloud) empty state for workflows is now fully localized (Spanish, French, and Chinese) so first-time setup reads cleanly in every supported language.
 - **Eliza Cloud TTS polish** — Cloud-hosted text-to-speech has been refreshed for cleaner audio output and more reliable streaming when your agent speaks back through Discord or the desktop voice surface.
 - **Default assistant name sync** — The assistant name shown across the desktop app, chat, and connector greetings now stays in sync with your agent configuration on first run, so renaming your agent applies everywhere immediately.
-- **Inbox routing reliability** — Inbox route handling has been hardened with deeper test coverage, so cross-channel messages land in the [canonical inbox](/rest/inbox) consistently across Gmail, Discord, Telegram, Signal, and iMessage.
+- **Inbox routing reliability** — Inbox route handling has been hardened with deeper test coverage, so cross-channel messages land in the canonical inbox consistently across Gmail, Discord, Telegram, Signal, and iMessage.
 - **Cloud app surface stability** — Cloud-deployed agents now ship with the full apps catalog — wallet, life-ops, companion, browser bridge, and screenshare — running reliably in cloud containers without the runtime import gaps that previously forced fallbacks.
 
 ## Bug fixes
@@ -129,24 +129,24 @@ Mobile-pane navigation and controls in the dashboard have been reworked so switc
 ## Updates
 
 - **Experience extraction validation** — The [training system](/guides/training) now validates extracted experience against a broader scenario set, improving the quality of patterns your agent learns from real conversations.
-- **Lifeops settings cleanup** — The [life-ops](/rest/lifeops) settings panel has been streamlined with cleaner access visuals and tighter layout, making it easier to review which connectors and capabilities are active.
+- **Lifeops settings cleanup** — The life-ops settings panel has been streamlined with cleaner access visuals and tighter layout, making it easier to review which connectors and capabilities are active.
 - **Lifeops interaction polish** — Small interaction details across the life-ops surface — selection states, hover feedback, and transitions — have been tightened for a more cohesive feel.
 - **Wallet market card sizing** — The [wallet](/guides/wallet) market cards have been resized for better density on the wallet dashboard, so more of your portfolio fits without scrolling.
 - **Chat composer fix** — The chat composer no longer drops focus or input in edge cases that previously required clicking back into the field.
-- **Relationships workspace** — The [contacts view](/rest/inbox) has been updated with workspace improvements for browsing your agent's relationship graph.
+- **Relationships workspace** — The contacts view has been updated with workspace improvements for browsing your agent's relationship graph.
 
 ## Bug fixes
 
-- Fixed the [life-ops](/rest/lifeops) calendar feed surfacing errors outside its own scope, which could cause unrelated panels to display error states
+- Fixed the life-ops calendar feed surfacing errors outside its own scope, which could cause unrelated panels to display error states
 - Fixed a payments typecheck regression that affected billing-related flows in the dashboard
 
 </Update>
 
-<Update label="2026-04-24" description="Week of April 24; ElizaOS Android, fine-tuning app, streamlined onboarding, wallet dashboard polish" tags={["Feature", "Update", "Fix"]}>
+<Update label="2026-04-24" description="Week of April 24; elizaOS Android, fine-tuning app, streamlined onboarding, wallet dashboard polish" tags={["Feature", "Update", "Fix"]}>
 
-## ElizaOS Android
+## elizaOS Android
 
-Eliza now ships as a full Android system image. ElizaOS bakes the agent directly into an AOSP build so your agent runs as a privileged system app on supported devices, with the permissions it needs for messaging, calendar, and background operation pre-granted. A validated boot path and cuttlefish emulator target are available for testing, and the system-level integration lays the groundwork for a first-class Eliza phone experience.
+Eliza now ships as a full Android system image. elizaOS bakes the agent directly into an AOSP build so your agent runs as a privileged system app on supported devices, with the permissions it needs for messaging, calendar, and background operation pre-granted. A validated boot path and cuttlefish emulator target are available for testing, and the system-level integration lays the groundwork for a first-class Eliza phone experience.
 
 ## Fine-tuning app
 
@@ -182,7 +182,7 @@ The [wallet](/guides/wallet) dashboard has been refreshed with a cleaner rail he
 
 ## Dual-wallet with cloud wallet provisioning
 
-Your agent now supports a dual-wallet architecture where [local and cloud wallets](/rest/wallet) coexist, with a primary source per chain. When you log into [Eliza Cloud](/guides/cloud) with the cloud wallet feature enabled, EVM and Solana wallets are imported from the cloud and set as primary automatically — no manual setup. You can switch the primary source at any time, and cloud wallet descriptors can be re-queried on demand. If provisioning fails during login, authentication still succeeds and you can retry wallet provisioning later.
+Your agent now supports a dual-wallet architecture where local and cloud wallets coexist, with a primary source per chain. When you log into [Eliza Cloud](/guides/cloud) with the cloud wallet feature enabled, EVM and Solana wallets are imported from the cloud and set as primary automatically — no manual setup. You can switch the primary source at any time, and cloud wallet descriptors can be re-queried on demand. If provisioning fails during login, authentication still succeeds and you can retry wallet provisioning later.
 
 ## Agent Browser Bridge
 
@@ -224,11 +224,11 @@ A new [BlueBubbles connector](/connectors/bluebubbles) lets your agent bridge to
 
 ## Life-ops page redesign
 
-The [life-ops](/rest/lifeops) page has been completely rebuilt with a new layout. A vertical nav rail on the left lets you switch between dashboard, inbox, calendar, reminders, and setup sections without leaving the page. The inbox and calendar now have their own dedicated views — browse messages from all connected platforms in the inbox section, and view your week at a glance in the calendar section. A right-side chat panel stays visible alongside whichever section you're in, so you can talk to your agent while reviewing your schedule or triaging messages.
+The life-ops page has been completely rebuilt with a new layout. A vertical nav rail on the left lets you switch between dashboard, inbox, calendar, reminders, and setup sections without leaving the page. The inbox and calendar now have their own dedicated views — browse messages from all connected platforms in the inbox section, and view your week at a glance in the calendar section. A right-side chat panel stays visible alongside whichever section you're in, so you can talk to your agent while reviewing your schedule or triaging messages.
 
 ## Calendar event editor
 
-You can now edit calendar events directly from the [life-ops](/rest/lifeops) calendar view. Click any event to open an editor drawer where you can update details without switching to Google Calendar. The editor connects to your real calendar data, so changes sync back to Google automatically.
+You can now edit calendar events directly from the life-ops calendar view. Click any event to open an editor drawer where you can update details without switching to Google Calendar. The editor connects to your real calendar data, so changes sync back to Google automatically.
 
 ## Chat UI refresh
 
@@ -269,7 +269,7 @@ Workflow details now render as an interactive node graph instead of a plain list
 - **Action surface canonical** — Twenty-six legacy actions have been collapsed into owner-scoped umbrellas (`OWNER_INBOX`, `OWNER_CALENDAR`, `OWNER_MESSAGE`, etc.) and two agent-scoped entry points. Each umbrella routes to the same underlying handler, so behavior is unchanged — but the cleaner surface helps the action planner pick the right tool more reliably. Old action names still work as aliases.
 - **Action selection accuracy** — The action planner now achieves 100% selection accuracy across a 69-case benchmark suite covering all 27 action categories. Improved action descriptions and rate-limit-aware retry logic contribute to more reliable routing, especially for health, calendar, and cross-channel actions.
 - **iOS companion canonical** — The separate iOS companion app has been merged into the main Eliza iOS bundle. Companion mode — pairing, chat mirroring, and remote sessions — is now accessible within the main app, eliminating the need to install a second app.
-- **Life-ops onboarding polish** — The [life-ops](/rest/lifeops) page now shows a welcome card with capability tiles and friendlier empty states when no data is connected yet, making it easier to discover and set up integrations.
+- **Life-ops onboarding polish** — The life-ops page now shows a welcome card with capability tiles and friendlier empty states when no data is connected yet, making it easier to discover and set up integrations.
 - **Inbound message readers expanded** — Signal, WhatsApp, and X (Twitter) DM readers are now available for pulling recent messages into your agent's canonical inbox, broadening cross-platform message aggregation.
 - **n8n error visibility** — If the n8n sidecar fails to start, the error is now surfaced in the automations UI instead of being silently swallowed, so you can diagnose and fix the issue directly.
 - **Cloud container reliability** — Cloud Docker image builds now pin dependencies to exact versions and correctly restore workspace references during pruning, preventing intermittent build failures when provisioning cloud agents.
@@ -277,7 +277,7 @@ Workflow details now render as an interactive node graph instead of a plain list
 ## Bug fixes
 
 - Fixed coding agent synthesis occasionally hanging when a subagent session ended without signaling turn completion — the orchestrator now reads end-of-turn signals correctly
-- Fixed the [life-ops](/rest/lifeops) action planner sometimes routing "create a task" or "complete a task" requests to the wrong handler due to stale simile entries
+- Fixed the life-ops action planner sometimes routing "create a task" or "complete a task" requests to the wrong handler due to stale simile entries
 
 </Update>
 
@@ -313,7 +313,7 @@ Your agent now supports [n8n](https://n8n.io) workflow automations through a new
 
 ## Life-ops connector UI overhaul
 
-The [life-ops](/rest/lifeops) connector setup panels have been redesigned with a flat, borderless card layout. Each connector — Signal, Discord, Telegram, and iMessage — now shows a clear connect button and platform-aware permissions panel. Redundant borders and card containers have been stripped out, and the cloud warning banner has been demoted to muted inline text so the interface stays clean and scannable.
+The life-ops connector setup panels have been redesigned with a flat, borderless card layout. Each connector — Signal, Discord, Telegram, and iMessage — now shows a clear connect button and platform-aware permissions panel. Redundant borders and card containers have been stripped out, and the cloud warning banner has been demoted to muted inline text so the interface stays clean and scannable.
 
 ## Updates
 
@@ -339,11 +339,11 @@ The [life-ops](/rest/lifeops) connector setup panels have been redesigned with a
 
 ## Life-ops personal account connectors
 
-Your agent can now connect to your personal Signal, Discord, and Telegram accounts — not just bot accounts — to aggregate messages into the [life-ops](/rest/lifeops) system. Signal uses linked-device QR pairing, Discord uses OAuth2, and Telegram supports phone/code/2FA authentication. Once connected, messages from these platforms flow into your agent's canonical inbox alongside Gmail and Calendar, giving your agent a fuller picture of your communications.
+Your agent can now connect to your personal Signal, Discord, and Telegram accounts — not just bot accounts — to aggregate messages into the life-ops system. Signal uses linked-device QR pairing, Discord uses OAuth2, and Telegram supports phone/code/2FA authentication. Once connected, messages from these platforms flow into your agent's canonical inbox alongside Gmail and Calendar, giving your agent a fuller picture of your communications.
 
 ## Multi-account Google connector
 
-The [life-ops](/rest/lifeops) Google integration now supports multiple Google accounts per side — both for you (the owner) and for your agent. Calendar events and Gmail messages are aggregated across all connected accounts, so you get a single canonical view even if you use separate Google accounts for work and personal. A new accounts management panel in settings lets you add, remove, and configure each account individually. Existing single-account setups continue to work without any changes.
+The life-ops Google integration now supports multiple Google accounts per side — both for you (the owner) and for your agent. Calendar events and Gmail messages are aggregated across all connected accounts, so you get a single canonical view even if you use separate Google accounts for work and personal. A new accounts management panel in settings lets you add, remove, and configure each account individually. Existing single-account setups continue to work without any changes.
 
 ## Steward wallet auto-provisioning on cloud login
 
@@ -412,11 +412,11 @@ Eliza now targets `@stwd/eliza-plugin` 0.3.0 instead of 0.2.0. The published 0.3
 
 ## Life-ops goal grounding
 
-Your agent now understands your life goals and uses them to guide its actions. When you set goals through the [life-ops system](/rest/lifeops), a semantic evaluator scores how well each action aligns with what you're working toward — so your agent's suggestions and task prioritization reflect your actual priorities, not just the immediate request.
+Your agent now understands your life goals and uses them to guide its actions. When you set goals through the life-ops system, a semantic evaluator scores how well each action aligns with what you're working toward — so your agent's suggestions and task prioritization reflect your actual priorities, not just the immediate request.
 
 ## Gmail compose and send
 
-The [life-ops](/rest/lifeops) Gmail integration can now compose and send outbound emails, not just read and triage. Ask your agent to draft and send a message and it handles recipient, subject, and body extraction from natural language. HTML entities in email snippets and subjects are now decoded correctly, and sender names display cleanly alongside addresses.
+The life-ops Gmail integration can now compose and send outbound emails, not just read and triage. Ask your agent to draft and send a message and it handles recipient, subject, and body extraction from natural language. HTML entities in email snippets and subjects are now decoded correctly, and sender names display cleanly alongside addresses.
 
 ## Calendar event editing
 
@@ -426,7 +426,7 @@ Google Calendar actions now support updating and deleting events through convers
 
 - **Onboarding streamlined** — Unused onboarding steps have been removed and the setup chooser screen has been restyled for better readability on dark backgrounds. Each setup option now includes a description, and character selection includes a back button so you can revisit earlier choices.
 - **Action context deduplication** — Your agent's LLM context no longer includes duplicate action results. Action state is now the sole source with a generous token budget, which means faster responses and more room for conversation history.
-- **Music player stream reliability** — The [music player](/rest/apps) audio streaming fallback has been hardened to recover more gracefully when the primary stream source is unavailable.
+- **Music player stream reliability** — The music player audio streaming fallback has been hardened to recover more gracefully when the primary stream source is unavailable.
 - **Knowledge view improvements** — The [knowledge](/guides/documents) detail view has been updated with a cleaner layout for browsing and managing uploaded documents.
 - **Cloud deployment improvements** — Cloud Docker images now build with all runtime patches applied in a single pipeline, making cloud container provisioning faster and more reliable.
 
@@ -446,7 +446,7 @@ Your agent can now manage a Shopify store through conversation. Ask your agent t
 
 ## Inbox triage, digest, and respond
 
-The [canonical inbox](/rest/inbox) now supports three new actions you can trigger through chat. Ask your agent to triage incoming messages and it classifies them by urgency and source. Request a digest and it summarizes what's come in across all your connected platforms. You can also ask your agent to draft and route a response back to the right channel — the reply deep-links to the originating platform automatically.
+The canonical inbox now supports three new actions you can trigger through chat. Ask your agent to triage incoming messages and it classifies them by urgency and source. Request a digest and it summarizes what's come in across all your connected platforms. You can also ask your agent to draft and route a response back to the right channel — the reply deep-links to the originating platform automatically.
 
 ## Connector setup panels
 
@@ -465,7 +465,7 @@ The [Apps view](/dashboard/apps) now includes Vincent trading profile and strate
 - **Provider switcher** — A new provider switcher in [settings](/apps/dashboard/settings) lets you swap between local and cloud LLM providers in one click. Your routing preference is saved and applied immediately — no restart required.
 - **Character tab in navigation** — Character configuration is now accessible from the main navigation pill row, making it faster to reach your agent's personality and avatar settings.
 - **Life-ops LLM routing** — Calendar and Gmail actions now let the LLM drive subaction routing instead of using post-generation regex overrides, which means more accurate handling of complex requests like "reschedule my 3pm and reply to the invite."
-- **Relationships graph improvements** — The [contacts view](/rest/inbox) identity cluster graph now shows richer relationship data with improved layout and filtering in the graph panel.
+- **Relationships graph improvements** — The contacts view identity cluster graph now shows richer relationship data with improved layout and filtering in the graph panel.
 - **Plugin role gating** — Plugins can now declare required roles, and the runtime only loads them when the active user meets the role requirement. This keeps the action space focused and prevents accidental access to admin-only features.
 - **Life-ops widget visibility** — Sidebar widgets for life-ops features like Calendar and Gmail now hide automatically when the corresponding plugin isn't loaded, reducing clutter for users who haven't configured those integrations.
 - **Hyperscape live telemetry** — The [Hyperscape game](/dashboard/apps) now streams live session data including goals, quick-actions, and agent thoughts directly into the app panel.
@@ -493,7 +493,7 @@ The [apps view](/dashboard/apps) now includes a Vincent section with trading pro
 
 ## Inbox actions
 
-The [inbox](/rest/inbox) now supports triage, digest, and respond actions. Your agent can classify incoming messages by urgency, generate a digest summary across channels, and draft responses — with deep-link routing back to the originating platform. Ask your agent to triage your inbox or summarize recent messages and it handles the rest.
+The inbox now supports triage, digest, and respond actions. Your agent can classify incoming messages by urgency, generate a digest summary across channels, and draft responses — with deep-link routing back to the originating platform. Ask your agent to triage your inbox or summarize recent messages and it handles the rest.
 
 ## Companion overlay app
 
@@ -501,7 +501,7 @@ Companion mode is now a launchable overlay app instead of a shell toggle. Open a
 
 ## Updates
 
-- **Life-ops routing improved** — The [life-ops](/rest/lifeops) Gmail and Calendar actions now use LLM-driven routing instead of regex-based overrides, producing more accurate subaction selection. Action descriptions include clearer guidance so the LLM picks the right tool on the first try.
+- **Life-ops routing improved** — The life-ops Gmail and Calendar actions now use LLM-driven routing instead of regex-based overrides, producing more accurate subaction selection. Action descriptions include clearer guidance so the LLM picks the right tool on the first try.
 - **Coding agent progress streams to Discord** — When your agent spawns a [coding task](/guides/coding-swarms) from Discord, progress updates now stream back to the channel. You get a heartbeat after 45 seconds of silence and the final result is posted automatically when the task completes — no more staring at silence during long builds.
 - **Chat UI performance** — The chat composer and PTY session polling no longer trigger unnecessary re-renders across the dashboard. Typing in chat is noticeably smoother, especially with the companion view or coding terminals open.
 - **Sidebar widgets respect plugin state** — Dashboard sidebar widgets for unconfigured plugins (like life-ops without a Google connector) are now hidden automatically, reducing clutter and stopping unnecessary background polling.
@@ -602,7 +602,7 @@ A new Inbox tab between Chat and Stream aggregates messages from every connected
 
 ## Life-ops: Google Calendar and Gmail
 
-The [life-ops system](/rest/lifeops) now integrates with Google Calendar and Gmail. Connect your Google account and your agent can sync calendar events, set reminders with configurable escalation, and surface your next event as context in conversation. Gmail triage lets your agent read, categorize, and draft replies to emails on your behalf, with connector policy controls so you stay in charge of what gets sent.
+The life-ops system now integrates with Google Calendar and Gmail. Connect your Google account and your agent can sync calendar events, set reminders with configurable escalation, and surface your next event as context in conversation. Gmail triage lets your agent read, categorize, and draft replies to emails on your behalf, with connector policy controls so you stay in charge of what gets sent.
 
 ## Updates
 
@@ -652,7 +652,7 @@ The homepage download dropdown now separates stable and canary releases into cle
 ## Updates
 
 - **Official plugins preferred at startup** — The runtime now loads verified official plugins before attempting dynamic resolution, which means faster startup and more predictable plugin behavior out of the box.
-- **Todo and goals plugins retired** — The standalone todo and goals plugins have been removed in favor of the [life-ops system](/rest/lifeops) introduced last week, which offers richer task management with recurring habits, reminders, and progress tracking.
+- **Todo and goals plugins retired** — The standalone todo and goals plugins have been removed in favor of the life-ops system introduced last week, which offers richer task management with recurring habits, reminders, and progress tracking.
 
 ## Bug fixes
 
@@ -924,7 +924,7 @@ Eliza now automatically reduces prompt sizes by around 36% for general chat. The
 
 **Why a hard pin in `package.json`:** A caret range (`^2.0.0-alpha.10`) allowed the resolver to pick **`alpha.12`**, breaking fresh installs and lockfile updates. The fix is version selection, not a small dist patch (the plugin body is missing entirely).
 
-**Docs:** [Plugin resolution — pinned OpenRouter](/plugin-resolution-and-node-path#pinned-elizaosplugin-openrouter), [OpenRouter registry page](/plugin-registry/llm/openrouter#eliza-pinned-version-and-upstream-bundle-bug), root `README.md` (upstream note), and `docs/roadmap.md` (done item).
+**Docs:** [Plugin resolution — pinned OpenRouter](/plugin-resolution-and-node-path#pinned-elizaosplugin-openrouter), [OpenRouter registry page](/plugins/overview#eliza-pinned-version-and-upstream-bundle-bug), root `README.md` (upstream note), and `docs/roadmap.md` (done item).
 
 </Update>
 
@@ -1018,7 +1018,7 @@ The [heartbeats](/guides/triggers) page now includes starter templates and the a
 
 ## Steward bridge for wallet transactions
 
-Wallet trade and transfer endpoints now support delegated signing through the Steward bridge. When configured, your agent routes transactions through an external policy service that can approve, reject, or hold them for review before they are broadcast. A new status endpoint lets you check whether Steward is connected and which agent identity is in use. See the [wallet API reference](/rest/wallet) for details.
+Wallet trade and transfer endpoints now support delegated signing through the Steward bridge. When configured, your agent routes transactions through an external policy service that can approve, reject, or hold them for review before they are broadcast. A new status endpoint lets you check whether Steward is connected and which agent identity is in use. See the wallet API reference for details.
 
 ## Updates
 
@@ -1034,7 +1034,7 @@ Wallet trade and transfer endpoints now support delegated signing through the St
 <Update label="2026-03-23" description="WeChat connector, settings redesign, Windows fixes" tags={["Feature", "Update", "Fix"]}>
 ## WeChat connector
 
-Your agent can now connect to WeChat, the 21st supported messaging platform. The connector supports text and image messaging in both direct messages and group chats, multi-account management, and QR code login. Install it with `eliza plugins install wechat` and configure it in your [social settings](/guides/connectors).
+Your agent can now connect to WeChat, the 21st supported messaging platform. The connector supports text and image messaging in both direct messages and group chats, multi-account management, and QR code login. Install it with `bun add wechat` and configure it in your [social settings](/guides/connectors).
 
 ## Tagalog language support
 
@@ -1108,7 +1108,7 @@ Docs: [Desktop app — battery and energy (macOS)](/apps/desktop#battery-and-ene
 - **`scripts/dev-platform.mjs`** ( **`dev:desktop` / `dev:desktop:watch`** ) — Before spawning children, probes **`ELIZA_API_PORT`** (default **31337**) and, in Vite dev mode, **`ELIZA_PORT`** (default **2138**), advancing to the next free **127.0.0.1** TCP port when needed. **Why:** Vite’s `server.port` + proxy target and Electrobun’s **`ELIZA_RENDERER_URL` / `ELIZA_DESKTOP_API_BASE`** must match the **same** numbers the API process binds; pre-allocating in the orchestrator avoids a race where Vite loads config before the API picks a dynamic port. **Implementation:** `scripts/lib/allocate-loopback-port.mjs` (brief bind test per candidate).
 - **`apps/app/vite.config.ts`** — Dev server **`port`** reads **`ELIZA_PORT`** (default **2138**) so the Vite child started by dev-platform listens where the orchestrator chose. **Why:** the config file used to hard-code **2138**, ignoring env when the orchestrator moved the UI port.
 - **Embedded desktop agent (`apps/app/electrobun/src/native/agent.ts`)** — Resolves a free port from the preferred **`ELIZA_PORT`** via **`findFirstAvailableLoopbackPort`** (`loopback-port.ts`) instead of killing foreign PIDs by default. **Why:** coexistence with another Eliza (or any server) on the default port should not require root or surprise SIGKILL. After a healthy start, the **Electrobun main process** sets **`process.env.ELIZA_PORT` / `ELIZA_API_PORT`** to the real API port so late readers and tooling stay consistent. **Opt-in legacy reclaim:** **`ELIZA_AGENT_RECLAIM_STALE_PORT=1`** restores **`lsof` + SIGKILL** on the preferred port first (single-instance / “take over” dev workflows).
-- **`packages/app-core/src/runtime/eliza.ts`** ( **`eliza start`** server-only path) — After **`startApiServer`**, syncs **`ELIZA_PORT`** and **`ELIZA_API_PORT`** to the **actual** bound port. **Why:** upstream may fall back if the requested port is busy; the CLI banner and anything reading env must match **`/api/health`**.
+- **`packages/app-core/src/runtime/eliza.ts`** ( **`bun run dev`** server-only path) — After **`startApiServer`**, syncs **`ELIZA_PORT`** and **`ELIZA_API_PORT`** to the **actual** bound port. **Why:** upstream may fall back if the requested port is busy; the CLI banner and anything reading env must match **`/api/health`**.
 - **`packages/app-core/src/runtime/dev-server.ts`** — Syncs **`ELIZA_API_PORT`** and **`ELIZA_PORT`** to the actual bind; **does not** overwrite **`ELIZA_PORT`** when it carries the **Vite UI** port from dev-platform. **Why:** one process serves both “logical” roles in desktop dev; conflating UI and API env vars would break **`GET /api/dev/stack`** `desktop.uiPort` and proxy assumptions.
 - **Electrobun `index.ts` + `surface-windows.ts`** — On **`agent:status`** updates with a port, **`injectApiBase`** runs for the **main** window and **every** detached surface window. **Why:** dynamic API ports must reach Settings / Chat / etc. without a full reload.
 
@@ -1157,7 +1157,7 @@ Guide: [Desktop main-process reset](/apps/desktop-main-process-reset).
 
 `@elizaos/plugin-edge-tts` (via `node-edge-tts`) contacts **Microsoft’s Edge TTS cloud** when loaded; Eliza **auto-loads** it with **`@elizaos/plugin-agent-orchestrator`** for swarm `TEXT_TO_SPEECH`. **Why document:** no API key does not mean “no network.” Opt-out: **`ELIZA_DISABLE_EDGE_TTS=1`** (alias **`ELIZA_DISABLE_EDGE_TTS`**) or `plugins.entries["edge-tts"].enabled: false`; mirrored in **`brand-env.ts`**. Registry **`plugins.json`** description and env table updated.
 
-Docs: [Environment variables](/cli/environment#runtime-behavior), [TTS plugin](/plugin-registry/tts).
+Docs: [Environment variables](/cli/overview), [TTS plugin](/plugins/overview).
 
 ## Vitest: `packages/app-core/test/**` and `*.test.tsx` under `src/`
 
@@ -1286,7 +1286,7 @@ Press `Shift+?` from anywhere in the app to see all available keyboard shortcuts
 
 ## Training backend detection
 
-Before starting a fine-tuning job, Eliza now automatically detects available compute backends (MLX, CUDA, CPU) and validates your selection. If you request a backend that isn't available, you get a clear error instead of a silent failure. The detected backends are also available via the [training API](/rest/training).
+Before starting a fine-tuning job, Eliza now automatically detects available compute backends (MLX, CUDA, CPU) and validates your selection. If you request a backend that isn't available, you get a clear error instead of a silent failure. The detected backends are also available via the training API.
 
 ## Orchestrator trajectory view
 
@@ -1333,11 +1333,11 @@ Your agent can now provision and manage wallets through Privy's server-side wall
 
 ## Conversation history rollback
 
-You can now truncate a conversation from a specific message forward using the new `POST /api/conversations/:id/messages/truncate` endpoint. Pass a `messageId` to remove that message and everything after it, letting you undo a wrong turn in a conversation without starting over. See the [conversations API reference](/rest/conversations) for details.
+You can now truncate a conversation from a specific message forward using the new `POST /api/conversations/:id/messages/truncate` endpoint. Pass a `messageId` to remove that message and everything after it, letting you undo a wrong turn in a conversation without starting over. See the conversations API reference for details.
 
 ## Native Signal device linking
 
-The Signal connector now supports native device linking via QR code, replacing the previous signal-cli dependency with a purpose-built native bridge. Pairing is managed through new `/api/signal/*` endpoints that handle session lifecycle, QR code generation, and connection status — making Signal setup faster and more reliable. See the [Signal plugin docs](/plugin-registry/platform/signal) for details.
+The Signal connector now supports native device linking via QR code, replacing the previous signal-cli dependency with a purpose-built native bridge. Pairing is managed through new `/api/signal/*` endpoints that handle session lifecycle, QR code generation, and connection status — making Signal setup faster and more reliable. See the [Signal plugin docs](/connectors/signal) for details.
 
 ## Updates
 
@@ -1364,13 +1364,13 @@ The training system now supports the full fine-tuning lifecycle from the dashboa
 
 ## OpenAI-compatible API
 
-Eliza now exposes OpenAI-compatible endpoints at `/v1/models` and `/v1/chat/completions`, plus an Anthropic-compatible `/v1/messages` endpoint. External tools and scripts that work with the OpenAI API format can now talk to your agent directly without any adapter code. See the [API reference](/api-reference) for details.
+Eliza now exposes OpenAI-compatible endpoints at `/v1/models` and `/v1/chat/completions`, plus an Anthropic-compatible `/v1/messages` endpoint. External tools and scripts that work with the OpenAI API format can now talk to your agent directly without any adapter code. See the [API reference](/cli/overview) for details.
 
 ## Updates
 
-- **Wallet trading API** — New endpoints for BSC token trading are available: preflight checks, price quotes, trade execution, and transaction status tracking. Use the full trade flow programmatically via the REST API. See the [wallet API reference](/rest/wallet).
+- **Wallet trading API** — New endpoints for BSC token trading are available: preflight checks, price quotes, trade execution, and transaction status tracking. Use the full trade flow programmatically via the REST API. See the wallet API reference.
 - **Dashboard internationalization** — The dashboard is now available in five languages: English, Spanish, Korean, Portuguese, and Simplified Chinese. Language is auto-detected from your browser settings.
-- **Terminal authorization for custom actions** — Shell and code custom action handlers now require a dedicated `terminalToken` when `ELIZA_TERMINAL_RUN_TOKEN` is set, adding a second layer of authorization beyond the main API token. See the [custom actions API reference](/rest/custom-actions).
+- **Terminal authorization for custom actions** — Shell and code custom action handlers now require a dedicated `terminalToken` when `ELIZA_TERMINAL_RUN_TOKEN` is set, adding a second layer of authorization beyond the main API token. See the custom actions API reference.
 </Update>
 
 <Update label="2026-05-21" description="Week of May 15–21" tags={["Feature", "Update"]}>
@@ -1435,7 +1435,7 @@ Your agent can now connect to six additional platforms:
 - **Linear** — issue tracking integration.
 - **Zalo** — messaging on Vietnam's largest chat platform.
 
-Install any connector with `eliza plugins install <name>` and configure it in your [social settings](/guides/connectors).
+Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/guides/connectors).
 
 ## Updates
 
@@ -1483,13 +1483,13 @@ Your agent can now connect to three additional messaging platforms:
 - **Nostr** — relay-based decentralized social with private key auth, configurable relay list, and DM support.
 - **Nextcloud Talk** — webhook-based bot integration with per-room filtering.
 
-Install any connector with `eliza plugins install <name>` and configure it in your [social settings](/guides/connectors).
+Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/guides/connectors).
 
 ## Updates
 
 - **Secrets vault** — A new Secrets view in the dashboard organizes your API keys and credentials by category (AI providers, blockchain, connectors, auth). You can add, remove, and manage secrets with plugin-aware discovery that shows which plugins need which keys.
 - **Media gallery** — A new media gallery in the dashboard lets you browse photos, videos, and audio stored in your agent's database, with filtering by media type.
-- **Diagnostics and security audit API** — New endpoints expose filterable runtime logs, autonomy event replay with cursor-based pagination, and a security audit log with severity filtering and SSE streaming. See the [API reference](/api-reference) for details.
+- **Diagnostics and security audit API** — New endpoints expose filterable runtime logs, autonomy event replay with cursor-based pagination, and a security audit log with severity filtering and SSE streaming. See the [API reference](/cli/overview) for details.
 - **Streaming permissions in onboarding** — Camera and microphone permissions are now requested during the onboarding wizard and manageable from Settings, so streaming works out of the box on both mobile and desktop.
 - **Dark theme button readability** — Accent-colored buttons now use dark text for better contrast, and hover effects highlight the border instead of changing text color.
 - **Onboarding layout improvements** — The connection step now shows a Quick Start / Advanced toggle, full-width provider cards, and an always-visible Continue button on the permissions step.
@@ -1535,13 +1535,13 @@ The Telegram connector now handles unexpected errors gracefully instead of crash
 
 Your agent can now connect to six additional messaging platforms out of the box:
 
-- **Signal** — private messaging via signal-cli with attachment and read receipt support. See the [Signal plugin docs](/plugin-registry/platform/signal).
-- **Farcaster** — decentralized social protocol integration for casting, replying, and reacting on-chain. See the [Farcaster plugin docs](/plugin-registry/platform/farcaster).
-- **Microsoft Teams** — Azure Bot integration with threaded replies and media support. See the [MS Teams plugin docs](/plugin-registry/platform/msteams).
-- **Google Chat** — service account integration with webhook delivery and per-space configuration. See the [Google Chat plugin docs](/plugin-registry/platform/googlechat).
-- **Mattermost** — self-hosted team messaging with bot token auth and mention filtering. See the [Mattermost plugin docs](/plugin-registry/platform/mattermost).
+- **Signal** — private messaging via signal-cli with attachment and read receipt support. See the [Signal plugin docs](/connectors/signal).
+- **Farcaster** — decentralized social protocol integration for casting, replying, and reacting on-chain. See the [Farcaster plugin docs](/connectors/farcaster).
+- **Microsoft Teams** — Azure Bot integration with threaded replies and media support. See the [MS Teams plugin docs](/connectors/msteams).
+- **Google Chat** — service account integration with webhook delivery and per-space configuration. See the [Google Chat plugin docs](/connectors/googlechat).
+- **Mattermost** — self-hosted team messaging with bot token auth and mention filtering. See the [Mattermost plugin docs](/connectors/mattermost).
 
-Install any connector with `eliza plugins install <name>` and configure it in your [social settings](/guides/connectors).
+Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/guides/connectors).
 
 ## Lens Protocol connector
 
@@ -1555,7 +1555,7 @@ Trajectory data — the full record of every LLM call your agent makes — is no
 
 - **Connector test coverage** — The Farcaster and Lens Protocol connectors now have comprehensive end-to-end test suites verified against live APIs, confirming production readiness.
 - **API docs translated** — The API reference and agent endpoints are now available in Spanish, French, and Simplified Chinese.
-- **Character generation improvements** — The character generation endpoint now supports a `system` field and `context.topics` parameter for more targeted character creation. See the [character API reference](/rest/character).
+- **Character generation improvements** — The character generation endpoint now supports a `system` field and `context.topics` parameter for more targeted character creation. See the character API reference.
 </Update>
 
 <Update label="2026-04-09" description="Week of April 3–9" tags={["Feature", "Update", "Fix"]}>
@@ -1577,7 +1577,7 @@ When connected to Eliza Cloud, you can now enable or disable individual cloud se
 
 ## Character generation API format update
 
-The `POST /api/character/generate` endpoint now returns `chatExamples` in the `messageExamples` schema — conversation groups with `{name, content}` message objects instead of the previous `{user, content}` flat array. The `"system"` field type is also now accepted. See the [Character API reference](/rest/character) for the updated response format.
+The `POST /api/character/generate` endpoint now returns `chatExamples` in the `messageExamples` schema — conversation groups with `{name, content}` message objects instead of the previous `{user, content}` flat array. The `"system"` field type is also now accepted. See the Character API reference for the updated response format.
 
 ## Updates
 
@@ -1610,7 +1610,7 @@ The coding agent plugin is now a core plugin that loads automatically on every s
 
 ## Health endpoint and crash recovery
 
-A new `GET /api/health` endpoint returns structured status for every subsystem — runtime, database, plugins, coordinator, connectors, and uptime. The dashboard shows a connection-failed banner with a retry button when the server is unreachable, and a React error boundary prevents full white-screen crashes. See the [API reference](/api-reference) for endpoint details.
+A new `GET /api/health` endpoint returns structured status for every subsystem — runtime, database, plugins, coordinator, connectors, and uptime. The dashboard shows a connection-failed banner with a retry button when the server is unreachable, and a React error boundary prevents full white-screen crashes. See the [API reference](/cli/overview) for endpoint details.
 
 ## Updates
 
@@ -1659,7 +1659,7 @@ You can now manage cloud agents directly from the Eliza homepage. The new dashbo
 
 ## Cloud-first onboarding
 
-Running `eliza start` for the first time now asks "Where should your agent live?" with [Eliza Cloud](/guides/cloud) as the recommended option. Choose cloud for a hosted runtime with no local setup, or local to run on your own machine. Cloud configuration is saved automatically so subsequent launches reconnect without prompting. See the [cloud guide](/guides/cloud) for details.
+Running `bun run dev` for the first time now asks "Where should your agent live?" with [Eliza Cloud](/guides/cloud) as the recommended option. Choose cloud for a hosted runtime with no local setup, or local to run on your own machine. Cloud configuration is saved automatically so subsequent launches reconnect without prompting. See the [cloud guide](/guides/cloud) for details.
 
 ## Game-style notebook character editor
 
@@ -1751,9 +1751,9 @@ First-run setup has been rebuilt as a streamlined six-step flow with a three-col
 
 Three new CLI commands ship this week:
 
-- **`eliza doctor`** — runs a full environment health check, flagging missing dependencies, port conflicts, and configuration issues. See the [doctor reference](/cli/doctor).
-- **`eliza db reset`** — safely resets the database with a confirmation prompt. See the [db reference](/cli/db).
-- **`eliza setup`** — an interactive wizard that walks you through model provider selection with support for nine providers. See the [setup reference](/cli/setup).
+- **`eliza doctor`** — runs a full environment health check, flagging missing dependencies, port conflicts, and configuration issues.
+- **`eliza db reset`** — safely resets the database with a confirmation prompt.
+- **`eliza setup`** — an interactive wizard that walks you through model provider selection with support for nine providers.
 
 ## Distribution across six new package managers
 

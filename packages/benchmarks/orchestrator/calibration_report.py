@@ -11,6 +11,7 @@ from .adapters import (
     GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    OSWORLD_DOCKER_UNAVAILABLE_REASON,
     TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
     VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
     VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
@@ -234,6 +235,15 @@ def _unsupported_real_reasons(
     ):
         return {
             agent: TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON
+            for agent in unsupported_real_harnesses
+        }
+    if (
+        benchmark_id == "osworld"
+        and unsupported_real_harnesses
+        and not supported_real_harnesses
+    ):
+        return {
+            agent: OSWORLD_DOCKER_UNAVAILABLE_REASON
             for agent in unsupported_real_harnesses
         }
     if (

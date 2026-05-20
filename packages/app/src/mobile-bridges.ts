@@ -11,12 +11,12 @@ import type { PluginListenerHandle } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import { Agent } from "@elizaos/capacitor-agent";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import { getBootConfig } from "@elizaos/ui/config";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
-  getBootConfig,
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
-} from "@elizaos/ui";
+} from "@elizaos/ui/onboarding/mobile-runtime-mode";
 import { apiBaseToDeviceBridgeUrl, type IosRuntimeConfig } from "./ios-runtime";
 import type { UrlTrustPolicy } from "./url-trust-policy";
 

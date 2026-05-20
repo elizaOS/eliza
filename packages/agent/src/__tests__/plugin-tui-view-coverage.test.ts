@@ -241,6 +241,15 @@ function stringField(source: string, field: string): string | null {
   return match?.[1] ?? null;
 }
 
+function coveredViewType(
+  viewType: ViewDeclaration["viewType"],
+): CoveredViewType | undefined {
+  const normalizedViewType = viewType ?? "gui";
+  return normalizedViewType === "gui" || normalizedViewType === "tui"
+    ? normalizedViewType
+    : undefined;
+}
+
 function viewDeclarations(manifestPath: string): ViewDeclaration[] {
   return viewObjects(readManifest(manifestPath))
     .map((object): ViewDeclaration | null => {
@@ -255,7 +264,9 @@ function viewDeclarations(manifestPath: string): ViewDeclaration[] {
         id,
         label,
         ...(path === null ? {} : { path }),
-        ...(viewType === "tui" ? { viewType: "tui" as const } : {}),
+        ...(viewType === "gui" || viewType === "tui" || viewType === "xr"
+          ? { viewType }
+          : {}),
         bundlePath,
         componentExport,
         visibleInManager: true,
@@ -328,7 +339,7 @@ describe("plugin TUI view coverage", () => {
         const bundlePath = stringField(object, "bundlePath");
         if (!id || !bundlePath) continue;
         if (viewType === "tui") tuiIds.add(id);
-        else guiIds.add(id);
+        else if (viewType === "gui") guiIds.add(id);
       }
 
       for (const id of guiIds) {
@@ -363,8 +374,8 @@ describe("plugin TUI view coverage", () => {
           undefined,
         );
         for (const declaration of declarations) {
-          const viewType = declaration.viewType ?? "gui";
-          if (viewType === "xr") continue;
+          const viewType = coveredViewType(declaration.viewType);
+          if (!viewType) continue;
           views.push({
             manifestPath,
             id: declaration.id,
@@ -432,8 +443,8 @@ describe("plugin TUI view coverage", () => {
           undefined,
         );
         for (const declaration of declarations) {
-          const viewType = declaration.viewType ?? "gui";
-          if (viewType === "xr") continue;
+          const viewType = coveredViewType(declaration.viewType);
+          if (!viewType) continue;
           views.push({
             manifestPath,
             id: declaration.id,

@@ -1,0 +1,35 @@
+---
+title: Cloud Auth
+description: "OAuth, API keys, Steward JWT, redirects."
+---
+
+Eliza Cloud auth is multi-modal. Pick whichever fits the caller.
+
+## OAuth (user-facing)
+
+Supported providers: Google, Discord, X (Twitter). The flow:
+
+1. App redirects the user to `https://cloud.elizaos.ai/auth/<provider>`.
+2. Cloud handles the provider handshake.
+3. Cloud redirects back to the app's registered redirect URI with a session token.
+
+Apps that want OAuth must be registered (see [Apps](/tracks/cloud/apps)) and have allowed redirect URIs configured.
+
+## API keys (server-to-server)
+
+Issued from the dashboard. Long-lived, scoped per key. Sent as `Authorization: Bearer <key>`. Used for backend integrations, CI, scripted automation.
+
+## Steward JWT (agent-to-Cloud)
+
+Internal short-lived JWT used by Cloud-managed agents to talk to the rest of the Cloud API. Provisioned during app/container deploy; rotated automatically.
+
+## Where this lives
+
+- Auth routes: `packages/cloud-api/v1/auth/`
+- Middleware: `packages/cloud-api/src/middleware/`
+- Steward provisioning: `packages/cloud-api/src/steward/`
+
+## See also
+
+- [Apps](/tracks/cloud/apps)
+- [Cloud guide](/guides/cloud)
