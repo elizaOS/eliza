@@ -218,6 +218,41 @@ describe("shellAction", () => {
     }
   });
 
+  it("rewrites unmentioned git -C paths for local submodule status checks", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-272727272727";
+    const sessionRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-submodule-session-${Date.now()}`,
+    );
+    const staleRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-submodule-stale-${Date.now()}`,
+    );
+    await fs.mkdir(sessionRoot, { recursive: true });
+    await fs.mkdir(staleRoot, { recursive: true });
+    try {
+      const { runtime, session } = await makeRuntime();
+      session.setCwd(roomId, sessionRoot);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          roomId,
+          "is the vendored opencode submodule present and what commit is checked out? concise",
+        ),
+        undefined,
+        { command: `git -C ${staleRoot} --version` },
+      );
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(`git -C '${sessionRoot}' --version`);
+      expect(result.text).not.toContain(staleRoot);
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.cwd).toBe(sessionRoot);
+    } finally {
+      await fs.rm(sessionRoot, { recursive: true, force: true });
+      await fs.rm(staleRoot, { recursive: true, force: true });
+    }
+  });
+
   it("keeps cd prefixes when the user names that path", async () => {
     const roomId = "11111111-aaaa-bbbb-cccc-262626262626";
     const sessionRoot = path.resolve(

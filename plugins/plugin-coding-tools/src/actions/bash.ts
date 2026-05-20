@@ -157,14 +157,15 @@ function textMentionsPath(text: string, requestedPath: string): boolean {
 function asksAboutRunningRuntimeSource(text: string): boolean {
   const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
   if (!normalized) return false;
-  return (
-    /\b(?:branch|commit|head|revision|sha|cwd|directory|folder|path|repo|repository|source)\b/.test(
+  const mentionsRepoState =
+    /\b(?:branch|commit|head|revision|sha|cwd|directory|folder|path|repo|repository|source|submodule|worktree)\b/.test(
       normalized,
-    ) &&
-    /\b(?:running|runtime|process|service|bot|agent|currently|current)\b/.test(
+    );
+  const groundsToLocalRuntime =
+    /\b(?:running|runtime|process|service|bot|agent|currently|current|local|workspace|worktree|vendored|vendor|present)\b/.test(
       normalized,
-    )
-  );
+    ) || /\bchecked[- ]out\b/.test(normalized);
+  return mentionsRepoState && groundsToLocalRuntime;
 }
 
 function requestedCryptoSpotAsset(text: string): CryptoSpotAsset | undefined {
