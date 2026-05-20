@@ -49,12 +49,12 @@ from .archetype_trainer import (
     ArchetypeTrainingResult,
 )
 
-# Adversarial co-training — attacker-side helpers live in adversarial_game.
-# The old `attacker_trainer` module wrapped these in a torch-dependent trainer
-# class that was dropped when the package was unified into eliza/packages/training.
-# Re-export the surviving primitives so existing imports keep working.
-from .adversarial_game import (
-    EpisodeResult as AttackEpisode,
+# Adversarial co-training
+from .attacker_trainer import (
+    AttackEpisode,
+    AttackerConfig,
+    AttackerTrainer,
+    AttackReward,
     compute_attacker_reward,
 )
 
