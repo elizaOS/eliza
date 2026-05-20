@@ -110,6 +110,8 @@ export const facewearPlugin: Plugin = {
       path: "/apps/hearwear/xr",
       label: "Hearwear XR",
       description: "XR view for hearwear device status and control.",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "FacewearView",
       tags: ["hearwear", "xr", "smartglasses", "wearable"],
     },
     {
@@ -155,6 +157,17 @@ export const facewearPlugin: Plugin = {
             "Scan and configure headset Wi-Fi when a native bridge exposes Wi-Fi APIs.",
         },
       ],
+    },
+    {
+      id: "smartglasses",
+      viewType: "tui",
+      path: "/apps/smartglasses/tui",
+      label: "Smartglasses TUI",
+      description:
+        "Terminal UI for smartglasses setup and diagnostics from the shared view.",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "SmartglassesView",
+      tags: ["hearwear", "smartglasses", "wearable", "hardware", "tui"],
     },
     {
       id: "smartglasses",

@@ -28,17 +28,17 @@ const DEFAULT_VARIANTS = [
   {
     name: "turbo4_polar_kv",
     label: "target only, Turbo/Polar KV turbo4",
-    args: ["--cache-type-k", "turbo4", "--cache-type-v", "turbo4"],
+    args: ["--cache-type-k", "tbq4_0", "--cache-type-v", "tbq4_0"],
   },
   {
     name: "turbo3_polar_kv",
     label: "target only, Turbo/Polar KV turbo3",
-    args: ["--cache-type-k", "turbo3", "--cache-type-v", "turbo3"],
+    args: ["--cache-type-k", "tbq3_0", "--cache-type-v", "tbq3_0"],
   },
   {
     name: "qjl_tcq_forced",
     label: "target only, forced QJL/TCQ turbo3_tcq",
-    args: ["--cache-type-k", "turbo3_tcq", "--cache-type-v", "turbo3_tcq"],
+    args: ["--cache-type-k", "tbq3_tcq", "--cache-type-v", "tbq3_tcq"],
   },
   {
     name: "dflash_only",
@@ -54,13 +54,13 @@ const DEFAULT_VARIANTS = [
       "--spec-type",
       "dflash",
       "--cache-type-k",
-      "turbo4",
+      "tbq4_0",
       "--cache-type-v",
-      "turbo4",
+      "tbq4_0",
       "--cache-type-k-draft",
-      "turbo4",
+      "tbq4_0",
       "--cache-type-v-draft",
-      "turbo4",
+      "tbq4_0",
     ],
   },
   {
@@ -71,13 +71,13 @@ const DEFAULT_VARIANTS = [
       "--spec-type",
       "dflash",
       "--cache-type-k",
-      "turbo3_tcq",
+      "tbq3_tcq",
       "--cache-type-v",
-      "turbo3_tcq",
+      "tbq3_tcq",
       "--cache-type-k-draft",
-      "turbo3_tcq",
+      "tbq3_tcq",
       "--cache-type-v-draft",
-      "turbo3_tcq",
+      "tbq3_tcq",
     ],
   },
 ];
@@ -296,9 +296,10 @@ function missingVariantKernels(variant, capabilities) {
       flag === "--cache-type-k-draft" ||
       flag === "--cache-type-v-draft"
     ) {
-      if (value === "turbo3") required.add("turbo3");
-      if (value === "turbo4") required.add("turbo4");
-      if (value === "turbo3_tcq") required.add("turbo3_tcq");
+      if (value === "turbo3" || value === "tbq3_0") required.add("turbo3");
+      if (value === "turbo4" || value === "tbq4_0") required.add("turbo4");
+      if (value === "turbo3_tcq" || value === "tbq3_tcq")
+        required.add("turbo3_tcq");
     }
   }
   return Array.from(required).filter((name) => kernels[name] !== true);
@@ -609,7 +610,6 @@ async function main() {
   if (variants.length === 0) throw new Error("no variants selected");
 
   const binaryMissing = !fs.existsSync(args.binary);
-  const modelMissing = !fs.existsSync(args.model);
   const thresholds = args.gate ? loadThresholds(args.gate) : null;
 
   fs.mkdirSync(args.outDir, { recursive: true });

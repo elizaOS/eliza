@@ -35,6 +35,13 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/app-core\/ui-compat$/,
+        replacement: path.join(
+          monorepoRoot,
+          "packages/app-core/src/ui-compat.ts",
+        ),
+      },
+      {
         find: "@elizaos/app-core",
         replacement: path.join(monorepoRoot, "packages/app-core/src/index.ts"),
       },

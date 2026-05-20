@@ -8,17 +8,17 @@
     {
       "name": "turbo4_polar_kv",
       "label": "target only, Turbo/Polar KV turbo4",
-      "args": ["--cache-type-k", "turbo4", "--cache-type-v", "turbo4"]
+      "args": ["--cache-type-k", "tbq4_0", "--cache-type-v", "tbq4_0"]
     },
     {
       "name": "turbo3_polar_kv",
       "label": "target only, Turbo/Polar KV turbo3",
-      "args": ["--cache-type-k", "turbo3", "--cache-type-v", "turbo3"]
+      "args": ["--cache-type-k", "tbq3_0", "--cache-type-v", "tbq3_0"]
     },
     {
       "name": "qjl_tcq_forced",
       "label": "target only, forced QJL/TCQ turbo3_tcq",
-      "args": ["--cache-type-k", "turbo3_tcq", "--cache-type-v", "turbo3_tcq"]
+      "args": ["--cache-type-k", "tbq3_tcq", "--cache-type-v", "tbq3_tcq"]
     },
     {
       "name": "dflash_only",
@@ -34,13 +34,13 @@
         "--spec-type",
         "dflash",
         "--cache-type-k",
-        "turbo4",
+        "tbq4_0",
         "--cache-type-v",
-        "turbo4",
+        "tbq4_0",
         "--cache-type-k-draft",
-        "turbo4",
+        "tbq4_0",
         "--cache-type-v-draft",
-        "turbo4"
+        "tbq4_0"
       ]
     },
     {
@@ -51,13 +51,13 @@
         "--spec-type",
         "dflash",
         "--cache-type-k",
-        "turbo3_tcq",
+        "tbq3_tcq",
         "--cache-type-v",
-        "turbo3_tcq",
+        "tbq3_tcq",
         "--cache-type-k-draft",
-        "turbo3_tcq",
+        "tbq3_tcq",
         "--cache-type-v-draft",
-        "turbo3_tcq"
+        "tbq3_tcq"
       ]
     }
   ]

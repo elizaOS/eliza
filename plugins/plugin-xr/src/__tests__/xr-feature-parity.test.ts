@@ -46,6 +46,14 @@ function hasAppXr(): boolean {
   return appXrFileExists("package.json");
 }
 
+function hasQuestAndroidProject(): boolean {
+  return appXrFileExists("android/quest/bubblewrap.json");
+}
+
+function hasXrealAndroidProject(): boolean {
+  return appXrFileExists("android/xreal/app/src/main/AndroidManifest.xml");
+}
+
 // Parses `views: [...]` from a plugin source file
 function extractViewObjects(source: string): string[] {
   const viewsStart = source.indexOf("views:");
@@ -292,7 +300,7 @@ describe("XR feature parity audit", () => {
   // 6. Platform APK manifests ─────────────────────────────────────────────────
 
   it("axis 6 — Quest 3 Bubblewrap APK configuration is present and complete", () => {
-    if (!hasAppXr()) return;
+    if (!hasQuestAndroidProject()) return;
     expect(appXrFileExists("android/quest/bubblewrap.json")).toBe(true);
     const config = JSON.parse(readAppXr("android/quest/bubblewrap.json"));
     expect(config.packageId).toBe("com.milady.xr.quest");
@@ -303,7 +311,7 @@ describe("XR feature parity audit", () => {
   });
 
   it("axis 6 — XReal Android project has complete Gradle project structure", () => {
-    if (!hasAppXr()) return;
+    if (!hasXrealAndroidProject()) return;
     expect(appXrFileExists("android/xreal/build.gradle.kts")).toBe(true);
     expect(appXrFileExists("android/xreal/settings.gradle.kts")).toBe(true);
     expect(appXrFileExists("android/xreal/gradlew")).toBe(true);
@@ -317,7 +325,7 @@ describe("XR feature parity audit", () => {
   });
 
   it("axis 6 — XReal Kotlin source files are present", () => {
-    if (!hasAppXr()) return;
+    if (!hasXrealAndroidProject()) return;
     const base = "android/xreal/app/src/main/java/com/milady/xr/xreal";
     expect(appXrFileExists(`${base}/MainActivity.kt`)).toBe(true);
     expect(appXrFileExists(`${base}/CameraService.kt`)).toBe(true);
@@ -325,7 +333,7 @@ describe("XR feature parity audit", () => {
   });
 
   it("axis 6 — XReal AndroidManifest declares camera, audio, and XREAL tracking permissions", () => {
-    if (!hasAppXr()) return;
+    if (!hasXrealAndroidProject()) return;
     const manifest = readAppXr(
       "android/xreal/app/src/main/AndroidManifest.xml",
     );
