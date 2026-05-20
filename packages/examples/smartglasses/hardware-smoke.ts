@@ -5,6 +5,8 @@ import {
 } from "../../../plugins/plugin-smartglasses/src/index.js";
 import {
   createHardwareEvidenceReport,
+  headsetSetupHint,
+  isCradleOrChargingState,
   markHardwareMicrophoneCommand,
   missingHardwareEvidence,
   recordHardwareAudio,
@@ -134,25 +136,17 @@ function updateHeadsetState(event?: {
     headsetState.battery,
     headsetState.device,
   ].filter(Boolean);
-  const blocked =
-    headsetState.physical === "cradle_open" ||
-    headsetState.physical === "cradle_closed" ||
-    headsetState.physical === "charged_in_cradle" ||
-    headsetState.battery === "glasses_fully_charged" ||
-    headsetState.battery === "cradle_charging_cable_changed" ||
-    headsetState.battery === "cradle_fully_charged";
+  const blocked = isCradleOrChargingState(
+    headsetState.physical,
+    headsetState.battery,
+  );
   const ready = headsetState.physical === "wearing";
+  const setupHint = headsetSetupHint({ headsetState });
   headsetStateEl.classList.toggle("warning", blocked);
   headsetStateEl.classList.toggle("ready", ready);
   headsetStateEl.textContent = `Headset state: ${
     states.join(" / ") || "no state yet"
-  }. ${
-    blocked
-      ? "Remove the glasses from the charging base and wear them before tap/audio validation."
-      : ready
-        ? "Wearing state observed; tap/audio validation can run."
-        : "Tap/audio validation requires the glasses to report a wearing state."
-  }`;
+  }. ${setupHint ?? "Wearing state observed; tap/audio validation can run."}`;
 }
 
 function instrumentTransport(nextTransport: WebBluetoothG1Transport): void {
@@ -354,6 +348,17 @@ async function sendSettings(): Promise<void> {
 async function runGuidedValidation(): Promise<void> {
   if (!transport?.isConnected()) {
     log("guided validation skipped", "Connect both lenses first");
+    return;
+  }
+  updateHardwareEvidenceStatus(report, service.getStatus());
+  if (
+    isCradleOrChargingState(
+      report.headsetState.physical,
+      report.headsetState.battery,
+    )
+  ) {
+    log("guided validation skipped", report.setupHint);
+    renderMissingChecks();
     return;
   }
   guidedValidationButton.disabled = true;

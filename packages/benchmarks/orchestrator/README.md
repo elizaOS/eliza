@@ -197,15 +197,26 @@ The matrix writes one directory per `(benchmark, adapter)` cell under
 - top-level `summary.json` and `summary.md` with failure buckets, normalized
   right/wrong/total/accuracy, input/output/cached token metrics, LLM call
   counts, run configuration metadata, an ElizaOS-vs-OpenCode head-to-head
-  status per benchmark, and an explicit token-evidence section that flags
-  cells where no usable LLM/token telemetry was captured. Reports also include
-  an improvement queue pointing to logs, results, and trajectory directories
-  for inferior, weak, or missing comparisons. `weak` means both adapters
+  status per benchmark with target/baseline input, output, total, cached
+  percentage, and LLM-call counts, and an explicit token-evidence section that
+  flags cells where no usable LLM/token telemetry was captured. Reports also
+  include a combined report gate for coverage, comparability, and required
+  stats; a benchmark-coverage section showing selected included benchmarks and
+  related deferred benchmarks; and an improvement queue pointing to logs,
+  results, and trajectory directories for inferior, weak, or missing
+  comparisons. `weak` means both adapters
   produced measured zero accuracy, so the result is not accepted as meaningful
   comparability. Queue entries include compact trajectory review briefs with
-  turn/token counts, cached-token percentage, latency, and repeated-prefix
-  signals when telemetry files are present, plus rerun command templates for
-  targeted follow-up runs.
+  turn/token counts, cached-token percentage, latency, repeated-prefix signals,
+  and deterministic diagnosis strings that call out missing evidence, accuracy
+  loss, failure classes, extra token/call cost, or cache regressions. They also
+  include rerun command templates for targeted follow-up runs. Generated rerun
+  templates preserve the original
+  provider, model, task limit, timeout, smoke/dry-run mode, Docker mode, and
+  comparable/token/stat enforcement flags while intentionally omitting secret
+  env values, the original run root, and coverage enforcement. Coverage
+  enforcement is reserved for full release-style matrix reports, not targeted
+  reruns.
 
 Smoke mode uses each benchmark's cheap offline fixtures where available:
 Mind2Web `--sample --mock`, VisualWebBench `--use-sample-tasks --mock`,
@@ -239,11 +250,23 @@ Use `--compare-summary` on any full or queued rerun to add a previous-summary
 comparison table showing ElizaOS accuracy, token, cached-token, and LLM-call
 deltas by benchmark.
 
+When ElizaOS is accuracy-comparable but less efficient, `summary.json` includes
+an `efficiency_queue` and the markdown includes an Efficiency Queue section.
+This flags higher total-token use, extra LLM calls, and lower cached-token
+percentage versus OpenCode so optimization work is not hidden by a passing
+accuracy gate.
+
 Use `--enforce-comparable` in CI or release gates to exit nonzero unless every
 selected benchmark is `superior` or `comparable` for ElizaOS against OpenCode.
 Inferior, weak, and missing comparisons block the gate. The generated
 `summary.json` always includes `benchmark_gate` with the same blocking
 benchmark list.
+
+Use `--enforce-coverage` when the report must cover every benchmark currently
+marked included in `code_agent_coverage.py`. This is separate from queued or
+single-benchmark reruns: partial reruns can still produce useful comparison
+and trajectory evidence, while full release reports can require the coverage
+gate.
 
 Use `--enforce-token-evidence` for live runs where token telemetry is required.
 It exits nonzero unless every selected cell produced usable LLM-call and token
@@ -254,6 +277,23 @@ all stats required for the head-to-head benchmark claim. It checks measured
 right/wrong/total outcome evidence for every selected benchmark and requires
 token evidence for live runs. Smoke, dry-run, and summarize reports do not
 require token evidence unless `--enforce-token-evidence` is also set.
+
+Use `--enforce-report` for a single release-readiness exit code over the
+combined report gate. It fails unless coverage, comparability, and required
+stats all pass for the generated report.
+
+The generated `summary.json` includes an `exit_codes` map for automation. The
+current contract is:
+
+| code | name | meaning |
+| --- | --- | --- |
+| 0 | `ok` | run completed without an enforced gate failure |
+| 2 | `preflight_failed` | preflight checks failed |
+| 3 | `comparable_gate_failed` | ElizaOS was not comparable-or-better than OpenCode on every selected benchmark |
+| 4 | `token_evidence_failed` | one or more selected cells lacked usable LLM token telemetry |
+| 5 | `required_stats_failed` | one or more selected benchmarks lacked required outcome or token stats |
+| 6 | `coverage_gate_failed` | the run did not cover every included code-agent benchmark |
+| 7 | `report_gate_failed` | the combined release-readiness report gate failed |
 
 Before a run, use `--preflight` to check the OpenCode adapter executable,
 benchmark working directories, command executables, and provider keys for live

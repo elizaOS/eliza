@@ -7812,10 +7812,10 @@ export const allActionsSpec = {
 		{
 			name: "SMARTGLASSES_CONTROL",
 			description:
-				"Run Even Realities G1 control operations: clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
+				"Run Even Realities G1 control operations: clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
 			parameters: [],
 			descriptionCompressed:
-				"smartglasses-control: display session, raw packets, settings, dashboard, navigation, translate, notes, notifications, BMP",
+				"smartglasses-control: display session, raw packets, settings, Wi-Fi, dashboard, navigation, translate, notes, notifications, BMP",
 			similes: [
 				"EVEN_GLASSES_CONTROL",
 				"SMARTGLASSES_SETTINGS",
@@ -7826,7 +7826,7 @@ export const allActionsSpec = {
 		{
 			name: "SMARTGLASSES_DISPLAY_TEXT",
 			description:
-				"Display text on connected Even Realities G1/G2 smartglasses, wrapping text into five-line pages and sending the correct G1 display packets.",
+				"Display text on connected Even Realities G1/G2 smartglasses, wrapping text into five-line pages and sending the correct G1 display packets. JSON input may include mode, pageHoldMs, and completionDelayMs.",
 			parameters: [],
 			descriptionCompressed:
 				"smartglasses-display-text: show wrapped text on Even G1/G2 display",
@@ -7853,10 +7853,10 @@ export const allActionsSpec = {
 		{
 			name: "SMARTGLASSES_STATUS",
 			description:
-				"Report smartglasses connection, transport, microphone, latest event, and audio streaming status.",
+				"Report smartglasses connection, transport, microphone, Wi-Fi bridge capability/status, latest event, and audio streaming status.",
 			parameters: [],
 			descriptionCompressed:
-				"smartglasses-status: connection, mic, last event, audio chunks",
+				"smartglasses-status: connection, mic, Wi-Fi, last event, audio chunks",
 			similes: ["EVEN_GLASSES_STATUS", "GLASSES_STATUS"],
 		},
 		{

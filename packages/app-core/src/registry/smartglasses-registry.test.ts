@@ -42,6 +42,8 @@ describe("smartglasses registry entry", () => {
         "even-realities",
         "bluetooth",
         "wifi",
+        "display",
+        "microphone",
       ]),
     );
     expect(parsed.render.actions).toContain("launch");

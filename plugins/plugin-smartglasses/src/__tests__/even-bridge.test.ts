@@ -349,4 +349,44 @@ describe("EvenBridgeTransport", () => {
       { name: "audioControl", payload: { isOpen: true } },
     ]);
   });
+
+  it("routes Wi-Fi scan, status, and credential setup through bridge APIs", async () => {
+    const credentials: Array<{ ssid: string; password: string }> = [];
+    const transport = new EvenBridgeTransport({
+      requestWifiScan: () => ({
+        status: "scan-complete",
+        networks: [{ ssid: "Home" }, { SSID: "Office" }, "Guest"],
+      }),
+      requestWifiStatus: () => ({ connectedSsid: "Home" }),
+      setWifiCredentials: (ssid, password) => {
+        credentials.push({ ssid, password });
+        return { message: "queued" };
+      },
+    });
+
+    await expect(transport.scanWifi()).resolves.toMatchObject({
+      available: true,
+      status: "scan-complete",
+      networks: ["Home", "Office", "Guest"],
+    });
+    await expect(transport.getWifiStatus()).resolves.toMatchObject({
+      status: "Home",
+    });
+    await expect(
+      transport.configureWifi("Home", "secret"),
+    ).resolves.toMatchObject({
+      status: "queued",
+    });
+
+    expect(credentials).toEqual([{ ssid: "Home", password: "secret" }]);
+  });
+
+  it("does not advertise Wi-Fi when a display-only bridge lacks Wi-Fi hooks", async () => {
+    const transport = new EvenBridgeTransport({
+      displayText: () => undefined,
+    });
+
+    expect(transport.supportsWifi()).toBe(false);
+    await expect(transport.scanWifi()).rejects.toThrow(/Wi-Fi/);
+  });
 });

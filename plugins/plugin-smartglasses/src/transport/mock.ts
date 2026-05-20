@@ -5,11 +5,21 @@ import {
   parseG1Notification,
   type SmartglassesAudioEncoding,
 } from "../protocol.js";
-import type { SmartglassesTransport } from "./types.js";
+import type { SmartglassesTransport, SmartglassesWifiResult } from "./types.js";
 
 export class MockSmartglassesTransport implements SmartglassesTransport {
   readonly name = "mock-smartglasses";
   readonly writes: Array<{ side: GlassSide; data: Uint8Array }> = [];
+  readonly wifiRequests: Array<{
+    op: "scan" | "status" | "configure";
+    ssid?: string;
+    password?: string;
+  }> = [];
+  wifiResult: SmartglassesWifiResult = {
+    available: true,
+    status: "mock-wifi-ready",
+    networks: ["MockNet"],
+  };
   private connected = false;
   private eventCallbacks = new Set<(event: G1Event) => void>();
   private audioCallbacks = new Set<
@@ -107,5 +117,30 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
   ): void {
     for (const callback of this.transcriptCallbacks)
       callback(text, isFinal, metadata);
+  }
+
+  async scanWifi(): Promise<SmartglassesWifiResult> {
+    this.wifiRequests.push({ op: "scan" });
+    return this.wifiResult;
+  }
+
+  async getWifiStatus(): Promise<SmartglassesWifiResult> {
+    this.wifiRequests.push({ op: "status" });
+    return this.wifiResult;
+  }
+
+  async configureWifi(
+    ssid: string,
+    password: string,
+  ): Promise<SmartglassesWifiResult> {
+    this.wifiRequests.push({ op: "configure", ssid, password });
+    return {
+      ...this.wifiResult,
+      status: `mock credentials sent for ${ssid}`,
+    };
+  }
+
+  supportsWifi(): boolean {
+    return true;
   }
 }

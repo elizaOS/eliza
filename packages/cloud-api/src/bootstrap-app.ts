@@ -108,6 +108,16 @@ export function createApp(): Hono<AppEnv> {
   app.post("/api/webhooks/blooio/:orgId/bluebubbles", (c) =>
     handleBlueBubblesWebhook(c),
   );
+  app.post("/api/webhooks/blooio/:orgId", async (c, next) => {
+    const bridge =
+      c.req.header("x-eliza-bridge") ??
+      c.req.query("bridge") ??
+      new URL(c.req.url).searchParams.get("bridge");
+    if (bridge === "bluebubbles") {
+      return handleBlueBubblesWebhook(c);
+    }
+    await next();
+  });
 
   mountRoutes(app);
 

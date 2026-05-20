@@ -62,7 +62,10 @@
       "capabilities": [
         "smartglasses",
         "wearable-display",
-        "wearable-microphone"
+        "wearable-microphone",
+        "side-tap-microphone-control",
+        "wifi-provisioning",
+        "whole-headset-pairing"
       ]
     },
     "app": {

@@ -45,11 +45,8 @@ class TestTerminal implements Terminal {
   }
 
   text(): string {
-    const ansiEscape = new RegExp(
-      `${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`,
-      "g",
-    );
-    return this.writes.join("").replace(ansiEscape, "");
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: strips ANSI escape sequences
+    return this.writes.join("").replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   }
 }
 

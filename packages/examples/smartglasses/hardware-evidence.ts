@@ -47,6 +47,7 @@ export type HardwareEvidenceReport = {
     battery: string | null;
     device: string | null;
   };
+  setupHint?: string;
   error?: string;
 };
 
@@ -207,7 +208,36 @@ export function updateHardwareEvidenceStatus(
   if (status.deviceState !== null) {
     report.headsetState.device = status.deviceState;
   }
+  report.setupHint = headsetSetupHint(report);
   report.ok = missingHardwareEvidence(report).length === 0;
+}
+
+export function headsetSetupHint(
+  report: Pick<HardwareEvidenceReport, "headsetState">,
+): string | undefined {
+  const { physical, battery } = report.headsetState;
+  if (physical === "wearing") return undefined;
+  const stateText =
+    [physical, battery].filter(Boolean).join(" / ") ||
+    "no wearing state observed";
+  if (isCradleOrChargingState(physical, battery)) {
+    return `Glasses are reporting ${stateText}; remove them from the charging base and wear them before tap or microphone validation.`;
+  }
+  return `Tap and microphone validation requires the glasses to report wearing; current state is ${stateText}.`;
+}
+
+export function isCradleOrChargingState(
+  physical: string | null,
+  battery: string | null,
+): boolean {
+  return (
+    physical === "cradle_open" ||
+    physical === "cradle_closed" ||
+    physical === "charged_in_cradle" ||
+    battery === "glasses_fully_charged" ||
+    battery === "cradle_charging_cable_changed" ||
+    battery === "cradle_fully_charged"
+  );
 }
 
 export function hardwareCommandName(data: Uint8Array): string {

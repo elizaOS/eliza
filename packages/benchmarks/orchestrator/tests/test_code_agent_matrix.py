@@ -15,11 +15,16 @@ from benchmarks.orchestrator.code_agent_matrix import (
     build_previous_summary_comparison,
     build_head_to_head,
     build_benchmark_gate,
+    build_coverage_gate,
+    build_coverage_summary,
+    build_efficiency_queue,
     build_improvement_queue,
     build_required_stats_gate,
+    build_report_gate,
     build_token_evidence,
     build_run_config,
     build_cell,
+    build_exit_code_summary,
     classify_failure,
     collect_outcome_metrics,
     collect_token_metrics,
@@ -231,6 +236,142 @@ def test_default_matrix_covers_code_terminal_browser_and_computer_use() -> None:
         assert entries[benchmark].reason
     assert "swe_bench_multilingual" in deferred_benchmark_ids()
     assert entries["swe_bench_multilingual"].status == DEFERRED_STATUS
+
+
+def test_coverage_summary_reports_selected_and_deferred_benchmarks() -> None:
+    coverage = build_coverage_summary(list(DEFAULT_BENCHMARKS))
+
+    assert coverage["selection_complete"] is True
+    assert coverage["status_counts"] == {
+        "included": 6,
+        "included_selected": 6,
+        "included_unselected": 0,
+        "deferred": 2,
+    }
+    assert coverage["unselected_included_benchmarks"] == []
+    assert {item["benchmark"] for item in coverage["deferred_benchmarks"]} == {
+        "swe_bench_multilingual",
+        "nl2repo",
+    }
+
+    partial = build_coverage_summary(["swe_bench"])
+
+    assert partial["selection_complete"] is False
+    assert "terminal_bench" in partial["unselected_included_benchmarks"]
+
+
+def test_coverage_gate_blocks_partial_benchmark_selection() -> None:
+    complete_summary = {"coverage": build_coverage_summary(list(DEFAULT_BENCHMARKS))}
+    partial_summary = {"coverage": build_coverage_summary(["swe_bench"])}
+
+    assert build_coverage_gate(complete_summary)["ok"] is True
+    partial_gate = build_coverage_gate(partial_summary)
+    assert partial_gate["ok"] is False
+    assert "terminal_bench" in partial_gate["blocking_benchmarks"]
+    assert "nl2repo" in partial_gate["deferred_benchmarks"]
+
+
+def test_report_gate_combines_coverage_benchmark_and_required_stats() -> None:
+    ok_summary = {
+        "coverage_gate": {"ok": True},
+        "benchmark_gate": {"ok": True},
+        "required_stats_gate": {"ok": True},
+    }
+    blocked_summary = {
+        "coverage_gate": {"ok": False},
+        "benchmark_gate": {"ok": True},
+        "required_stats_gate": {"ok": False},
+    }
+
+    assert build_report_gate(ok_summary) == {
+        "ok": True,
+        "blocking_gates": [],
+        "gate_status": {
+            "coverage_gate": True,
+            "benchmark_gate": True,
+            "required_stats_gate": True,
+        },
+        "message": "benchmark report satisfies coverage, comparability, and required stats",
+    }
+    blocked = build_report_gate(blocked_summary)
+    assert blocked["ok"] is False
+    assert blocked["blocking_gates"] == ["benchmark coverage", "required stats"]
+    assert blocked["gate_status"] == {
+        "coverage_gate": False,
+        "benchmark_gate": True,
+        "required_stats_gate": False,
+    }
+
+
+def test_exit_code_summary_documents_gate_contract() -> None:
+    exit_codes = build_exit_code_summary()
+
+    assert exit_codes["ok"]["code"] == 0
+    assert exit_codes["preflight_failed"]["code"] == 2
+    assert exit_codes["comparable_gate_failed"]["code"] == 3
+    assert exit_codes["token_evidence_failed"]["code"] == 4
+    assert exit_codes["required_stats_failed"]["code"] == 5
+    assert exit_codes["coverage_gate_failed"]["code"] == 6
+    assert exit_codes["report_gate_failed"]["code"] == 7
+
+
+def test_efficiency_queue_flags_token_call_and_cache_regressions() -> None:
+    results = [
+        _cell_result(
+            benchmark="swe_bench",
+            adapter="elizaos",
+            right=2,
+            wrong=0,
+            input_tokens=150,
+            output_tokens=50,
+            cached_percent=10.0,
+            llm_calls=5,
+        ),
+        _cell_result(
+            benchmark="swe_bench",
+            adapter="opencode",
+            right=2,
+            wrong=0,
+            input_tokens=90,
+            output_tokens=30,
+            cached_percent=40.0,
+            llm_calls=3,
+        ),
+    ]
+    summary = summarize_results(results)
+    head_to_head = summary["head_to_head"]
+    markdown = render_markdown(summary)
+
+    queue = build_efficiency_queue(head_to_head)
+
+    assert summary["efficiency_queue"] == queue
+    assert "## Efficiency Queue" in markdown
+    assert (
+        "| swe_bench | comparable | target used more total tokens than baseline; "
+        "target made more LLM calls than baseline; target cached-token percentage "
+        "is below baseline | 0.0000 | 80 | -30.00 | 2 |"
+    ) in markdown
+    assert queue == [
+        {
+            "benchmark": "swe_bench",
+            "status": "comparable",
+            "reasons": [
+                "target used more total tokens than baseline",
+                "target made more LLM calls than baseline",
+                "target cached-token percentage is below baseline",
+            ],
+            "accuracy_delta": 0.0,
+            "total_token_delta": 80,
+            "llm_call_delta": 2,
+            "cached_token_percent_delta": -30.0,
+            "target_total_tokens": 200,
+            "baseline_total_tokens": 120,
+            "target_llm_call_count": 5,
+            "baseline_llm_call_count": 3,
+            "target_cached_token_percent": 10.0,
+            "baseline_cached_token_percent": 40.0,
+        }
+    ]
 
 
 def test_classifies_common_failure_shapes() -> None:
@@ -541,6 +682,9 @@ def test_token_evidence_flags_missing_and_present_telemetry() -> None:
     assert summary["token_evidence"]["status_counts"]["missing"] == 1
     assert "## Token Evidence" in markdown
     assert "| swe_bench | opencode | missing | 0 | 0 | 0 | 0 |" in markdown
+    assert summary["exit_codes"]["report_gate_failed"]["code"] == 7
+    assert "## Exit Codes" in markdown
+    assert "| 7 | report_gate_failed |" in markdown
 
 
 def test_run_config_records_mode_scope_and_enforcement_flags(tmp_path: Path) -> None:
@@ -557,8 +701,10 @@ def test_run_config_records_mode_scope_and_enforcement_flags(tmp_path: Path) -> 
             "--smoke",
             "--no-docker",
             "--enforce-comparable",
+            "--enforce-coverage",
             "--enforce-token-evidence",
             "--enforce-required-stats",
+            "--enforce-report",
         ]
     )
 
@@ -576,11 +722,15 @@ def test_run_config_records_mode_scope_and_enforcement_flags(tmp_path: Path) -> 
     assert config["benchmarks"] == ["swe_bench", "webshop"]
     assert config["adapters"] == ["elizaos", "opencode"]
     assert config["enforce_comparable"] is True
+    assert config["enforce_coverage"] is True
     assert config["enforce_token_evidence"] is True
     assert config["enforce_required_stats"] is True
+    assert config["enforce_report"] is True
     assert "## Run Config" in markdown
     assert "Mode: smoke" in markdown
     assert "Provider/model: cerebras/gpt-oss-120b" in markdown
+    assert "Enforce coverage: True" in markdown
+    assert "Enforce report: True" in markdown
 
 
 def test_redacts_secret_values_from_logs() -> None:
@@ -653,6 +803,114 @@ def test_enforce_token_evidence_exits_nonzero_for_missing_smoke_telemetry(tmp_pa
     assert summary["benchmark_gate"]["ok"] is True
     assert summary["token_evidence"]["ok"] is False
     assert summary["token_evidence"]["status_counts"]["missing"] == 2
+
+
+def test_enforce_coverage_exits_nonzero_for_partial_matrix(tmp_path: Path) -> None:
+    code = main(
+        [
+            "--benchmarks",
+            "webshop",
+            "--smoke",
+            "--no-docker",
+            "--max-tasks",
+            "1",
+            "--run-root",
+            str(tmp_path / "run"),
+            "--force",
+            "--timeout-seconds",
+            "120",
+            "--enforce-coverage",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))
+    assert code == 6
+    assert summary["run_config"]["enforce_coverage"] is True
+    assert summary["coverage_gate"]["ok"] is False
+    assert "swe_bench" in summary["coverage_gate"]["blocking_benchmarks"]
+
+
+def test_enforce_report_exits_nonzero_for_combined_gate_failure(tmp_path: Path) -> None:
+    code = main(
+        [
+            "--benchmarks",
+            "webshop",
+            "--smoke",
+            "--no-docker",
+            "--max-tasks",
+            "1",
+            "--run-root",
+            str(tmp_path / "run"),
+            "--force",
+            "--timeout-seconds",
+            "120",
+            "--enforce-report",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))
+    assert code == 7
+    assert summary["run_config"]["enforce_report"] is True
+    assert summary["benchmark_gate"]["ok"] is True
+    assert summary["required_stats_gate"]["ok"] is True
+    assert summary["coverage_gate"]["ok"] is False
+    assert summary["report_gate"]["ok"] is False
+    assert summary["report_gate"]["blocking_gates"] == ["benchmark coverage"]
+    assert summary["exit_codes"]["report_gate_failed"]["code"] == 7
+
+
+def test_enforce_report_takes_precedence_over_individual_gate_codes(tmp_path: Path) -> None:
+    code = main(
+        [
+            "--benchmarks",
+            "webshop",
+            "--smoke",
+            "--no-docker",
+            "--max-tasks",
+            "1",
+            "--run-root",
+            str(tmp_path / "run"),
+            "--force",
+            "--timeout-seconds",
+            "120",
+            "--enforce-report",
+            "--enforce-coverage",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))
+    assert code == 7
+    assert summary["run_config"]["enforce_report"] is True
+    assert summary["run_config"]["enforce_coverage"] is True
+    assert summary["coverage_gate"]["ok"] is False
+    assert summary["report_gate"]["blocking_gates"] == ["benchmark coverage"]
+
+
+def test_queue_rerun_template_keeps_required_stats_but_omits_coverage(tmp_path: Path) -> None:
+    code = main(
+        [
+            "--benchmarks",
+            "webshop",
+            "--smoke",
+            "--dry-run",
+            "--no-docker",
+            "--max-tasks",
+            "1",
+            "--run-root",
+            str(tmp_path / "run"),
+            "--force",
+            "--enforce-coverage",
+            "--enforce-required-stats",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))
+    command = summary["improvement_queue"][0]["rerun_command_template"]
+    assert code == 6
+    assert summary["run_config"]["enforce_coverage"] is True
+    assert summary["run_config"]["enforce_required_stats"] is True
+    assert "--enforce-required-stats" in command
+    assert "--enforce-coverage" not in command
 
 
 def test_enforce_required_stats_exits_nonzero_for_missing_outcomes(tmp_path: Path) -> None:
@@ -1256,6 +1514,15 @@ def test_improvement_queue_points_to_inferior_artifacts(tmp_path: Path) -> None:
     assert item["priority"] == "p0"
     assert item["benchmark"] == "terminal_bench"
     assert item["status"] == "inferior"
+    assert item["primary_diagnosis"] == "target accuracy is below baseline"
+    assert item["diagnosis"] == [
+        "target accuracy is below baseline",
+        "target failure class: tests_failed",
+        "baseline trajectory telemetry is missing",
+        "target repeated prompt prefixes need review",
+        "target used more total tokens than baseline",
+        "target made more LLM calls than baseline",
+    ]
     assert item["rerun_command_template"] == (
         "python -m benchmarks.orchestrator.code_agent_matrix "
         "--rerun-queue {summary_json} "
@@ -1273,6 +1540,14 @@ def test_improvement_queue_points_to_inferior_artifacts(tmp_path: Path) -> None:
     assert item["target_trajectory_review"]["trajectory_files"] == 1
     assert item["target_trajectory_review"]["turns"] == 2
     assert item["target_trajectory_review"]["input_tokens"] == 180
+    assert item["target_trajectory_review"]["output_tokens"] == 30
+    assert item["target_trajectory_review"]["cached_token_percent"] == 70 / 180 * 100
+    assert item["target_trajectory_review"]["repeated_prefix_count"] > 0
+    assert item["baseline_trajectory_review"]["review_notes"] == [
+        "no trajectory files found",
+        "no trajectory turns found",
+        "no cached-token telemetry found",
+    ]
 
 
 def test_improvement_queue_rerun_command_preserves_run_config() -> None:
@@ -1282,12 +1557,20 @@ def test_improvement_queue_rerun_command_preserves_run_config() -> None:
             adapter="elizaos",
             right=0,
             wrong=1,
+            input_tokens=100,
+            output_tokens=20,
+            cached_percent=0.0,
+            llm_calls=1,
         ),
         _cell_result(
             benchmark="terminal_bench",
             adapter="opencode",
             right=1,
             wrong=0,
+            input_tokens=100,
+            output_tokens=20,
+            cached_percent=0.0,
+            llm_calls=1,
         ),
     ]
     head_to_head = build_head_to_head(results)
@@ -1302,6 +1585,8 @@ def test_improvement_queue_rerun_command_preserves_run_config() -> None:
             "max_tasks": 2,
             "timeout_seconds": 300,
             "no_docker": True,
+            "enforce_coverage": True,
+            "enforce_required_stats": True,
         },
     )
 
@@ -1317,16 +1602,10 @@ def test_improvement_queue_rerun_command_preserves_run_config() -> None:
         "--timeout-seconds 300 "
         "--smoke "
         "--no-docker "
+        "--enforce-required-stats "
         "--force"
     )
-    assert item["target_trajectory_review"]["output_tokens"] == 30
-    assert item["target_trajectory_review"]["cached_token_percent"] == 70 / 180 * 100
-    assert item["target_trajectory_review"]["repeated_prefix_count"] > 0
-    assert item["baseline_trajectory_review"]["review_notes"] == [
-        "no trajectory files found",
-        "no trajectory turns found",
-        "no cached-token telemetry found",
-    ]
+    assert "--enforce-coverage" not in queue[0]["rerun_command_template"]
 
 
 def test_summary_and_markdown_include_outcome_token_and_head_to_head_metrics() -> None:
@@ -1355,20 +1634,32 @@ def test_summary_and_markdown_include_outcome_token_and_head_to_head_metrics() -
 
     summary = summarize_results(results)
     summary["required_stats_gate"] = build_required_stats_gate(summary, mode="live")
+    summary["report_gate"] = build_report_gate(summary)
     markdown = render_markdown(summary)
 
     assert summary["outcome_by_adapter"]["elizaos"]["right"] == 2
     assert summary["token_by_adapter"]["opencode"]["output_tokens"] == 25
     assert summary["head_to_head"]["comparisons"][0]["status"] == "superior"
+    assert summary["coverage"]["selection_complete"] is False
+    assert "terminal_bench" in summary["coverage"]["unselected_included_benchmarks"]
+    assert summary["coverage_gate"]["ok"] is False
     assert summary["benchmark_gate"]["ok"] is True
     assert summary["benchmark_gate"]["blocking_benchmarks"] == []
     assert summary["improvement_queue"] == []
+    assert "## Benchmark Coverage" in markdown
+    assert "Status: partial" in markdown
+    assert "### Deferred Related Benchmarks" in markdown
+    assert "## Report Gate" in markdown
+    assert "Blocking gates: benchmark coverage" in markdown
+    assert "## Coverage Gate" in markdown
+    assert "Blocking benchmarks: mind2web, osworld, terminal_bench, visualwebbench, webshop" in markdown
     assert "## Benchmark Gate" in markdown
     assert "Status: ok" in markdown
     assert "## Required Stats Gate" in markdown
     assert "Token evidence required: True" in markdown
     assert "## ElizaOS vs OpenCode" in markdown
-    assert "| swe_bench | superior |" in markdown
+    assert "target input | baseline input | target output | baseline output" in markdown
+    assert "| swe_bench | superior | 1.0000 | 0.5000 | 0.5000 | 2/0 | 1/1 | 100 | 200 | 50 | 25 | 150 | 225 | -75 | 20.00 | 5.00 | 15.00 | 3 | 4 | -1 |" in markdown
     assert "## Token Totals By Adapter" in markdown
 
 
@@ -1439,6 +1730,7 @@ def test_required_stats_rerun_commands_preserve_run_config() -> None:
             wrong=0,
             input_tokens=0,
             output_tokens=0,
+            cached_percent=0.0,
             llm_calls=0,
         ),
         _cell_result(
@@ -1462,6 +1754,7 @@ def test_required_stats_rerun_commands_preserve_run_config() -> None:
         "timeout_seconds": 900,
         "no_docker": True,
         "enforce_comparable": True,
+        "enforce_coverage": True,
     }
 
     gate = build_required_stats_gate(summary, mode="live")
@@ -1479,6 +1772,7 @@ def test_required_stats_rerun_commands_preserve_run_config() -> None:
         "--force "
         "--enforce-required-stats"
     )
+    assert "--enforce-coverage" not in gate["token_blocking_cells"][0]["rerun_command_template"]
 
 
 def test_required_stats_markdown_lists_outcome_blocking_comparisons() -> None:
@@ -1667,6 +1961,8 @@ def test_markdown_includes_missing_live_run_queue_items() -> None:
 
     assert summary["improvement_queue"][0]["priority"] == "p1"
     assert summary["improvement_queue"][0]["next_action"].startswith("run live benchmark")
+    assert summary["improvement_queue"][0]["primary_diagnosis"] == "missing comparable outcome evidence"
+    assert "target failure class: stopped_early" in summary["improvement_queue"][0]["diagnosis"]
     assert summary["improvement_queue"][0]["rerun_command_template"] == (
         "python -m benchmarks.orchestrator.code_agent_matrix "
         "--rerun-queue {summary_json} "
@@ -1676,7 +1972,7 @@ def test_markdown_includes_missing_live_run_queue_items() -> None:
         "--force"
     )
     assert "## Improvement Queue" in markdown
-    assert "| p1 | webshop | missing | run live benchmark" in markdown
+    assert "| p1 | webshop | missing | missing comparable outcome evidence | run live benchmark" in markdown
     assert "### Queue Rerun Commands" in markdown
     assert "--queue-statuses missing" in markdown
     assert "### Trajectory Review Briefs" in markdown

@@ -41,6 +41,9 @@ type SmartglassesControlOp =
   | "dashboard_time_weather"
   | "headup_angle"
   | "wear_detection"
+  | "wifi_scan"
+  | "wifi_status"
+  | "wifi_configure"
   | "navigation_start"
   | "navigation_directions"
   | "navigation_primary_image"
@@ -83,6 +86,9 @@ const SUPPORTED_OPS: SmartglassesControlOp[] = [
   "dashboard_time_weather",
   "headup_angle",
   "wear_detection",
+  "wifi_scan",
+  "wifi_status",
+  "wifi_configure",
   "navigation_start",
   "navigation_directions",
   "navigation_primary_image",
@@ -139,6 +145,12 @@ const OP_ALIASES = new Map<string, SmartglassesControlOp>([
   ["quick_note_fetch", "voice_note_fetch"],
   ["quick_note_delete", "voice_note_delete"],
   ["voice_note_audio", "voice_note_fetch"],
+  ["scan_wifi", "wifi_scan"],
+  ["wifi_networks", "wifi_scan"],
+  ["wifi", "wifi_status"],
+  ["wifi_connect", "wifi_configure"],
+  ["configure_wifi", "wifi_configure"],
+  ["set_wifi", "wifi_configure"],
 ]);
 
 function parseParams(message: Memory): Record<string, unknown> {
@@ -301,6 +313,23 @@ function numberArrayParam(
   return Array.from(bytesParam({ data: value }));
 }
 
+function bitPlaneParam(
+  params: Record<string, unknown>,
+  name: string,
+  expectedLength: number,
+  fallbackBit?: 0 | 1,
+): number[] {
+  const value = params[name];
+  if (value === undefined && fallbackBit !== undefined) {
+    return Array.from({ length: expectedLength }, () => fallbackBit);
+  }
+  const bits = numberArrayParam(params, name);
+  if (bits.length !== expectedLength) {
+    throw new Error(`${name} must contain ${expectedLength} bit values`);
+  }
+  return bits;
+}
+
 function dashboardLayoutParam(
   params: Record<string, unknown>,
 ): G1DashboardLayout {
@@ -331,6 +360,18 @@ function timeFormatParam(value: unknown): G1TimeFormat | undefined {
   throw new Error("timeFormat must be 12h or 24h");
 }
 
+function wifiActionValue(result: {
+  available: boolean;
+  status: string;
+  networks: string[];
+}): Record<string, unknown> {
+  return {
+    available: result.available,
+    status: result.status,
+    networks: result.networks,
+  };
+}
+
 export const smartglassesControlAction: Action = {
   name: "SMARTGLASSES_CONTROL",
   similes: [
@@ -340,9 +381,9 @@ export const smartglassesControlAction: Action = {
     "SMARTGLASSES_NOTE",
   ],
   description:
-    "Run Even Realities G1 control operations: clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
+    "Run Even Realities G1 control operations: clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
   descriptionCompressed:
-    "smartglasses-control: display session, raw packets, settings, dashboard, navigation, translate, notes, notifications, BMP",
+    "smartglasses-control: display session, raw packets, settings, Wi-Fi, dashboard, navigation, translate, notes, notifications, BMP",
   contexts: ["smartglasses", "wearable", "operations"],
   validate: async (runtime: IAgentRuntime) =>
     Boolean(getSmartglassesService(runtime)),
@@ -369,6 +410,7 @@ export const smartglassesControlAction: Action = {
       };
     }
 
+    let operationResult: Record<string, unknown> | undefined;
     switch (op) {
       case "clear":
         await service.clearDisplay();
@@ -509,6 +551,20 @@ export const smartglassesControlAction: Action = {
           boolParam(params, "enabled", true),
         );
         break;
+      case "wifi_scan":
+        operationResult = wifiActionValue(await service.scanWifi());
+        break;
+      case "wifi_status":
+        operationResult = wifiActionValue(await service.getWifiStatus());
+        break;
+      case "wifi_configure":
+        operationResult = wifiActionValue(
+          await service.configureWifi(
+            stringParam(params, "ssid"),
+            typeof params.password === "string" ? params.password : "",
+          ),
+        );
+        break;
       case "navigation_start":
         await service.startNavigation();
         break;
@@ -535,14 +591,14 @@ export const smartglassesControlAction: Action = {
         break;
       case "navigation_primary_image":
         await service.sendNavigationPrimaryImage(
-          numberArrayParam(params, "image"),
-          numberArrayParam(params, "overlay"),
+          bitPlaneParam(params, "image", 136 * 136),
+          bitPlaneParam(params, "overlay", 136 * 136, 0),
         );
         break;
       case "navigation_secondary_image":
         await service.sendNavigationSecondaryImage(
-          numberArrayParam(params, "image"),
-          numberArrayParam(params, "overlay"),
+          bitPlaneParam(params, "image", 488 * 136),
+          bitPlaneParam(params, "overlay", 488 * 136, 0),
         );
         break;
       case "navigation_poller":
@@ -657,7 +713,7 @@ export const smartglassesControlAction: Action = {
 
     const response = `Smartglasses ${op} command sent.`;
     await callback?.({ text: response });
-    return { success: true, text: response, values: { op } };
+    return { success: true, text: response, values: { op, operationResult } };
   },
   examples: [],
 };

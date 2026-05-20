@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { agentPhoneContacts } from "../../../db/schemas";
 
 const blooioApiRequest = mock();
+const sendWhatsAppMessage = mock();
 const secretsGet = mock();
 const insertValues = mock();
 const onConflictDoUpdate = mock();
@@ -46,11 +47,25 @@ mock.module("../../utils/blooio-api", () => ({
   blooioApiRequest,
 }));
 
+mock.module("../../utils/whatsapp-api", () => ({
+  sendWhatsAppMessage,
+}));
+
+mock.module("../eliza-app/config", () => ({
+  elizaAppConfig: {
+    whatsapp: {
+      accessToken: "",
+      phoneNumberId: "",
+    },
+  },
+}));
+
 const { messageRouterService } = await import("./index");
 
 describe("MessageRouterService contact recording", () => {
   beforeEach(() => {
     blooioApiRequest.mockReset();
+    sendWhatsAppMessage.mockReset();
     secretsGet.mockReset();
     dbWrite.insert.mockClear();
     insertValues.mockReset();
@@ -115,6 +130,44 @@ describe("MessageRouterService contact recording", () => {
           contact_display_name: "Friend",
           is_active: true,
         }),
+      }),
+    );
+  });
+
+  test("records a WhatsApp contact after a successful agent outbound message", async () => {
+    secretsGet
+      .mockResolvedValueOnce("whatsapp-access-token")
+      .mockResolvedValueOnce("whatsapp-phone-number-id");
+    sendWhatsAppMessage.mockResolvedValue(undefined);
+
+    const sent = await messageRouterService.sendMessage({
+      provider: "whatsapp",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+1 (415) 555-0100",
+      body: "hello on whatsapp",
+      agentId: "agent-1",
+      agentOrganizationId: "agent-org",
+      agentUserId: "agent-user",
+      contactDisplayName: "WhatsApp Friend",
+    });
+
+    expect(sent).toBe(true);
+    expect(sendWhatsAppMessage).toHaveBeenCalledWith(
+      "whatsapp-access-token",
+      "whatsapp-phone-number-id",
+      "+1 (415) 555-0100",
+      "hello on whatsapp",
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: "agent-org",
+        user_id: "agent-user",
+        agent_id: "agent-1",
+        provider: "whatsapp",
+        contact_identifier: "+14155550100",
+        contact_display_name: "WhatsApp Friend",
+        is_active: true,
       }),
     );
   });

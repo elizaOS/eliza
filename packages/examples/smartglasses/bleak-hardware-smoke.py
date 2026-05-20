@@ -121,6 +121,7 @@ def make_report(scan_timeout_ms: int, hold_ms: int, init_mode: str) -> dict[str,
             "battery": None,
             "device": None,
         },
+        "setupHint": None,
         "status": {
             "available": True,
             "connected": False,
@@ -443,6 +444,7 @@ class G1BleakSmoke:
     def finish_status(self) -> None:
         self.report["finishedAt"] = now()
         self.report["status"]["connected"] = True
+        self.report["setupHint"] = setup_hint(self.report["headsetState"])
         self.report["ok"] = all(self.report["checks"][check] for check in REQUIRED)
 
     async def write_report(self) -> None:
@@ -508,6 +510,24 @@ def parse_event(side: str, data: bytes) -> dict[str, Any]:
     if command == 0x25:
         return {"side": side, "type": "heartbeat", "label": "heartbeat"}
     return {"side": side, "type": "unknown", "label": f"unknown_0x{command:02x}"}
+
+
+def setup_hint(headset_state: dict[str, str | None]) -> str | None:
+    physical = headset_state.get("physical")
+    battery = headset_state.get("battery")
+    if physical == "wearing":
+        return None
+    state_text = " / ".join(item for item in (physical, battery) if item) or "no wearing state observed"
+    if physical in {"cradle_open", "cradle_closed", "charged_in_cradle"} or battery in {
+        "glasses_fully_charged",
+        "cradle_charging_cable_changed",
+        "cradle_fully_charged",
+    }:
+        return (
+            f"Glasses are reporting {state_text}; remove them from the charging base "
+            "and wear them before tap or microphone validation."
+        )
+    return f"Tap and microphone validation requires wearing state; current state is {state_text}."
 
 
 def encode_display_text(text: str) -> list[bytes]:

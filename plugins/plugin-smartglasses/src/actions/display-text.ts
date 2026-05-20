@@ -16,6 +16,8 @@ import {
 function displayParamsFromMessage(message: Memory): {
   text: string | null;
   mode?: SmartglassesDisplayMode;
+  pageHoldMs?: number;
+  completionDelayMs?: number;
 } {
   const content = message.content as { text?: string } | undefined;
   const raw = content?.text ?? "";
@@ -24,9 +26,18 @@ function displayParamsFromMessage(message: Memory): {
     return {
       text: typeof parsed.text === "string" ? parsed.text : null,
       mode: normalizeMode(parsed.mode),
+      pageHoldMs: optionalNonNegativeNumber(parsed.pageHoldMs),
+      completionDelayMs: optionalNonNegativeNumber(parsed.completionDelayMs),
     };
   }
   return { text: raw.trim() || null };
+}
+
+function optionalNonNegativeNumber(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+  return parsed;
 }
 
 function normalizeMode(value: unknown): SmartglassesDisplayMode | undefined {
@@ -51,7 +62,7 @@ export const displaySmartglassesTextAction: Action = {
   name: "SMARTGLASSES_DISPLAY_TEXT",
   similes: ["DISPLAY_ON_GLASSES", "EVEN_DISPLAY_TEXT", "SHOW_ON_SMARTGLASSES"],
   description:
-    "Display text on connected Even Realities G1/G2 smartglasses, wrapping text into five-line pages and sending the correct G1 display packets.",
+    "Display text on connected Even Realities G1/G2 smartglasses, wrapping text into five-line pages and sending the correct G1 display packets. JSON input may include mode, pageHoldMs, and completionDelayMs.",
   descriptionCompressed:
     "smartglasses-display-text: show wrapped text on Even G1/G2 display",
   contexts: ["smartglasses", "wearable", "display"],
@@ -67,15 +78,25 @@ export const displaySmartglassesTextAction: Action = {
     const service = getSmartglassesService(runtime);
     if (!service)
       return { success: false, text: "Smartglasses service not loaded" };
-    const { text, mode } = displayParamsFromMessage(message);
+    const { text, mode, pageHoldMs, completionDelayMs } =
+      displayParamsFromMessage(message);
     if (!text) return { success: false, text: "No display text provided" };
-    const result = await service.displayText(text, { mode });
+    const result = await service.displayText(text, {
+      mode,
+      pageHoldMs,
+      completionDelayMs,
+    });
     const response = `Displayed ${result.pages} page${result.pages === 1 ? "" : "s"} on smartglasses.`;
     await callback?.({ text: response });
     return {
       success: true,
       text: response,
-      values: { ...result, mode: mode ?? "ai" },
+      values: {
+        ...result,
+        mode: mode ?? "ai",
+        pageHoldMs,
+        completionDelayMs,
+      },
     };
   },
   examples: [],
