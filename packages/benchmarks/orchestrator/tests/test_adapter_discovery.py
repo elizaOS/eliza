@@ -985,7 +985,7 @@ def test_vision_language_multimodal_model_detection_allows_cerebras_vision_model
     assert (
         orchestrator_adapters._is_vision_language_multimodal_model(
             provider="cerebras",
-            model="kimi-k2-vl",
+            model="kimi-k2.6",
         )
         is True
     )
