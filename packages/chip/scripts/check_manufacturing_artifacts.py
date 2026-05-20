@@ -430,7 +430,9 @@ def validate_e1_phone_manifest(path: Path, release: bool) -> list[str]:
         target = {}
     for key, expected in expected_target.items():
         if target.get(key) != expected:
-            failures.append(f"{rel_manifest}: design_target.{key} expected {expected}, got {target.get(key)}")
+            failures.append(
+                f"{rel_manifest}: design_target.{key} expected {expected}, got {target.get(key)}"
+            )
     radios = target.get("radios", [])
     for radio in ["5g_redcap_cellular", "wifi_6e", "bluetooth_5_3"]:
         if radio not in radios:
@@ -449,7 +451,9 @@ def validate_e1_phone_manifest(path: Path, release: bool) -> list[str]:
     }
     missing_groups = sorted(required_groups - set(groups))
     if missing_groups:
-        failures.append(f"{rel_manifest}: missing current_artifacts groups: {', '.join(missing_groups)}")
+        failures.append(
+            f"{rel_manifest}: missing current_artifacts groups: {', '.join(missing_groups)}"
+        )
     required_paths = {
         "board/kicad/e1-phone/routed-release-plan.yaml",
         "board/kicad/e1-phone/manufacturing-closure.yaml",
@@ -478,7 +482,14 @@ def validate_e1_phone_manifest(path: Path, release: bool) -> list[str]:
     if not isinstance(gates, dict):
         failures.append(f"{rel_manifest}: release_gates must be a mapping")
         gates = {}
-    required_gates = {"schematic", "routed_pcb", "enclosure", "power_thermal", "rf_si", "manufacturing"}
+    required_gates = {
+        "schematic",
+        "routed_pcb",
+        "enclosure",
+        "power_thermal",
+        "rf_si",
+        "manufacturing",
+    }
     missing_gates = sorted(required_gates - set(gates))
     if missing_gates:
         failures.append(f"{rel_manifest}: missing release gates: {', '.join(missing_gates)}")
@@ -494,25 +505,38 @@ def validate_e1_phone_manifest(path: Path, release: bool) -> list[str]:
         if not as_list(evidence):
             failures.append(f"{rel_manifest}.release_gates.{gate_name}: missing required_evidence")
         if release:
-            failures.append(f"{rel_manifest}.release_gates.{gate_name}: release gate remains missing")
+            failures.append(
+                f"{rel_manifest}.release_gates.{gate_name}: release gate remains missing"
+            )
 
     routed_plan_path = repo_path("board/kicad/e1-phone/routed-release-plan.yaml")
     if routed_plan_path.is_file():
         routed_plan = yaml.safe_load(routed_plan_path.read_text())
-        if routed_plan.get("status") != "blocked_routed_release_requires_real_route_and_supplier_outputs":
+        if (
+            routed_plan.get("status")
+            != "blocked_routed_release_requires_real_route_and_supplier_outputs"
+        ):
             failures.append(f"{rel_manifest}: routed release plan status is not fail-closed")
         outputs = routed_plan.get("required_release_output_manifest", {})
         if not isinstance(outputs, dict) or len(outputs) < 20:
-            failures.append(f"{rel_manifest}: routed release plan must track at least 20 release outputs")
+            failures.append(
+                f"{rel_manifest}: routed release plan must track at least 20 release outputs"
+            )
         else:
             for output_name, output in outputs.items():
                 if not isinstance(output, dict):
-                    failures.append(f"{rel_manifest}: routed output {output_name} must be a mapping")
+                    failures.append(
+                        f"{rel_manifest}: routed output {output_name} must be a mapping"
+                    )
                     continue
                 if output.get("present") is not False or output.get("release_required") is not True:
-                    failures.append(f"{rel_manifest}: routed output {output_name} must be blocked and required")
+                    failures.append(
+                        f"{rel_manifest}: routed output {output_name} must be blocked and required"
+                    )
                 if release:
-                    failures.append(f"{rel_manifest}: release output remains missing: {output_name}")
+                    failures.append(
+                        f"{rel_manifest}: release output remains missing: {output_name}"
+                    )
     else:
         failures.append(f"{rel_manifest}: routed release plan is missing")
 

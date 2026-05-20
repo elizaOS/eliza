@@ -7,9 +7,9 @@ import json
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest import mock
-from io import StringIO
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
@@ -38,7 +38,12 @@ CONTRACT = {
         "devices": {
             "dma": {"base": "0x10010000", "size": "0x1000", "irq": 2, "compatible": "eliza,e1-dma"},
             "npu": {"base": "0x10020000", "size": "0x1000", "irq": 3, "compatible": "eliza,e1-npu"},
-            "display": {"base": "0x10030000", "size": "0x1000", "irq": 4, "compatible": "eliza,e1-display"},
+            "display": {
+                "base": "0x10030000",
+                "size": "0x1000",
+                "irq": 4,
+                "compatible": "eliza,e1-display",
+            },
         },
     }
 }
@@ -46,7 +51,10 @@ CONTRACT = {
 
 def dts(*, android: bool = False) -> str:
     status = '\n      status = "disabled";' if android else ""
-    radio = "" if android else """
+    radio = (
+        ""
+        if android
+        else """
   wifi_pwrseq: wifi-pwrseq {
     compatible = "mmc-pwrseq-simple";
   };
@@ -59,6 +67,7 @@ def dts(*, android: bool = False) -> str:
     status = "disabled";
   };
 """
+    )
     return f"""/dts-v1/;
 / {{
   #address-cells = <2>;
@@ -131,7 +140,10 @@ class LinuxMemoryPlatformContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         write_json(tmp / "sw/platform/e1_platform_contract.json", CONTRACT)
         write(tmp / "sw/linux/dts/eliza-e1.dts", dts())
-        write(tmp / "sw/aosp-device/device/eliza/eliza_ai_soc/dts/eliza-e1-android.dts", dts(android=True))
+        write(
+            tmp / "sw/aosp-device/device/eliza/eliza_ai_soc/dts/eliza-e1-android.dts",
+            dts(android=True),
+        )
         write(
             tmp / "sw/platform/generated/e1-platform.dtsi",
             """
@@ -140,8 +152,13 @@ serial@10001000 { compatible = "ns16550a"; };
 plic { riscv,ndev = <32>; };
 """,
         )
-        write_json(tmp / "docs/evidence/linux-memory-platform-missing-evidence.json", manifest_with_missing_evidence())
-        write(tmp / "docs/evidence/linux/eliza_e1_kernel_build.log.BLOCKED", "reason: not captured\n")
+        write_json(
+            tmp / "docs/evidence/linux-memory-platform-missing-evidence.json",
+            manifest_with_missing_evidence(),
+        )
+        write(
+            tmp / "docs/evidence/linux/eliza_e1_kernel_build.log.BLOCKED", "reason: not captured\n"
+        )
         return [
             mock.patch.object(gate, "ROOT", tmp),
             mock.patch.object(gate, "CONTRACT", tmp / "sw/platform/e1_platform_contract.json"),
@@ -151,20 +168,26 @@ plic { riscv,ndev = <32>; };
                 "AOSP_DTS",
                 tmp / "sw/aosp-device/device/eliza/eliza_ai_soc/dts/eliza-e1-android.dts",
             ),
-            mock.patch.object(gate, "GENERATED_DTSI", tmp / "sw/platform/generated/e1-platform.dtsi"),
+            mock.patch.object(
+                gate, "GENERATED_DTSI", tmp / "sw/platform/generated/e1-platform.dtsi"
+            ),
             mock.patch.object(
                 gate,
                 "MANIFEST",
                 tmp / "docs/evidence/linux-memory-platform-missing-evidence.json",
             ),
-            mock.patch.object(gate, "REPORT", tmp / "build/reports/linux_memory_platform_contract.json"),
+            mock.patch.object(
+                gate, "REPORT", tmp / "build/reports/linux_memory_platform_contract.json"
+            ),
             mock.patch.object(gate.shutil, "which", lambda name: None),
         ]
 
     def test_missing_evidence_blocks_even_when_static_contract_matches(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with PatchStack(self._patch_tree(Path(tmpdir))):
-                report, rc = gate.build_report()
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            PatchStack(self._patch_tree(Path(tmpdir))),
+        ):
+            report, rc = gate.build_report()
 
         self.assertEqual(rc, 0)
         self.assertEqual(report["status"], "blocked")
@@ -172,11 +195,13 @@ plic { riscv,ndev = <32>; };
         self.assertIn("linux_kernel_build", report["blockers"][0])
 
     def test_stale_linux_and_aosp_dts_fail_static_contract(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with PatchStack(self._patch_tree(Path(tmpdir))):
-                gate.LINUX_DTS.write_text('compatible = "e1,npu-1.0";\n', encoding="utf-8")
-                gate.AOSP_DTS.write_text('reg = <0x0 0x40000000 0x0 0x1000>;\n', encoding="utf-8")
-                report, rc = gate.build_report()
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            PatchStack(self._patch_tree(Path(tmpdir))),
+        ):
+            gate.LINUX_DTS.write_text('compatible = "e1,npu-1.0";\n', encoding="utf-8")
+            gate.AOSP_DTS.write_text("reg = <0x0 0x40000000 0x0 0x1000>;\n", encoding="utf-8")
+            report, rc = gate.build_report()
 
         self.assertEqual(rc, 1)
         self.assertEqual(report["status"], "fail")
@@ -184,12 +209,14 @@ plic { riscv,ndev = <32>; };
         self.assertTrue(any("stale token 0x40000000" in error for error in report["errors"]))
 
     def test_fail_output_does_not_emit_blocked_marker_that_masks_errors(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with PatchStack(self._patch_tree(Path(tmpdir))):
-                gate.LINUX_DTS.write_text('compatible = "e1,npu-1.0";\n', encoding="utf-8")
-                stdout = StringIO()
-                with mock.patch("sys.stdout", stdout):
-                    rc = gate.main([])
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            PatchStack(self._patch_tree(Path(tmpdir))),
+        ):
+            gate.LINUX_DTS.write_text('compatible = "e1,npu-1.0";\n', encoding="utf-8")
+            stdout = StringIO()
+            with mock.patch("sys.stdout", stdout):
+                rc = gate.main([])
 
         self.assertEqual(rc, 1)
         output = stdout.getvalue()

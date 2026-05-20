@@ -340,7 +340,7 @@ def usb_c_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
     height = float(params["device"]["envelope_mm"][1])
     aperture_w = 10.2
     aperture_z = 3.6
-    y_front = -height / 2 - 0.08
+    -height / 2 - 0.08
     y_inside = -height / 2 + 0.32
     z_center = -1.45
     return [
@@ -4574,10 +4574,8 @@ def write_camera_validation_artifacts(
             "pass": bool(
                 interface_cases.get("camera_glass_and_under_glass_strategy", {}).get("pass")
             )
-            and sum(1 for name in part_names if name.startswith("rear_camera_cover_adhesive_"))
-            >= 4
-            and sum(1 for name in part_names if name.startswith("rear_camera_light_baffle_"))
-            >= 2
+            and sum(1 for name in part_names if name.startswith("rear_camera_cover_adhesive_")) >= 4
+            and sum(1 for name in part_names if name.startswith("rear_camera_light_baffle_")) >= 2
             and "front_camera_black_mask_window" in part_names,
         },
     ]
