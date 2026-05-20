@@ -30,7 +30,10 @@ import {
   mobileCompanionCapabilityEndpointProvider,
   type UrlRemoteCapabilityEndpointProviderOptions,
 } from "../services/remote-capability-url-endpoint-providers.ts";
-import type { RemotePluginSyncResult } from "../services/remote-plugin-adapter.ts";
+import type {
+  RemotePluginSyncResult,
+  RemotePluginTrustPolicy,
+} from "../services/remote-plugin-adapter.ts";
 import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
