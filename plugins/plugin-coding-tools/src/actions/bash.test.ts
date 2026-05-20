@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SandboxService, SessionCwdService } from "../services/index.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { shellAction } from "./bash.js";
+import { resolveCryptoSpotPriceCommand, shellAction } from "./bash.js";
 
 interface RuntimeOptions {
   blockedPaths?: string;
@@ -59,13 +59,16 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   return { runtime, sandbox, session, shellHistoryService };
 }
 
-function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
+function makeMessage(
+  roomId = "11111111-aaaa-bbbb-cccc-222222222222",
+  text = "",
+): Memory {
   return {
     id: "33333333-3333-3333-3333-333333333333" as UUID,
     entityId: "44444444-4444-4444-4444-444444444444" as UUID,
     roomId: roomId as UUID,
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
-    content: { text: "" },
+    content: { text },
     createdAt: Date.now(),
   } as Memory;
 }
@@ -142,6 +145,145 @@ describe("shellAction", () => {
     );
     expect(result.success).toBe(true);
     expect(result.text).toContain(tmpRoot);
+  });
+
+  it("uses session cwd instead of an unmentioned cwd for running-source checks", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-232323232323";
+    const sessionRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-runtime-session-${Date.now()}`,
+    );
+    const staleRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-runtime-stale-${Date.now()}`,
+    );
+    await fs.mkdir(sessionRoot, { recursive: true });
+    await fs.mkdir(staleRoot, { recursive: true });
+    try {
+      const { runtime, session } = await makeRuntime();
+      session.setCwd(roomId, sessionRoot);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          roomId,
+          "Can you tell me what branch and commit the local source is running from?",
+        ),
+        undefined,
+        { command: "pwd", cwd: staleRoot },
+      );
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(sessionRoot);
+      expect(result.text).not.toContain(staleRoot);
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.cwd).toBe(sessionRoot);
+    } finally {
+      await fs.rm(sessionRoot, { recursive: true, force: true });
+      await fs.rm(staleRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("strips unmentioned cd prefixes for running-source checks", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-252525252525";
+    const sessionRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-cd-session-${Date.now()}`,
+    );
+    const staleRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-cd-stale-${Date.now()}`,
+    );
+    await fs.mkdir(sessionRoot, { recursive: true });
+    await fs.mkdir(staleRoot, { recursive: true });
+    try {
+      const { runtime, session } = await makeRuntime();
+      session.setCwd(roomId, sessionRoot);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          roomId,
+          "Can you tell me what branch and commit the local source is running from?",
+        ),
+        undefined,
+        { command: `cd ${staleRoot} && pwd` },
+      );
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(`(cwd=${sessionRoot}`);
+      expect(result.text).toContain(sessionRoot);
+      expect(result.text).not.toContain(staleRoot);
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.cwd).toBe(sessionRoot);
+    } finally {
+      await fs.rm(sessionRoot, { recursive: true, force: true });
+      await fs.rm(staleRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps cd prefixes when the user names that path", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-262626262626";
+    const sessionRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-cd-explicit-session-${Date.now()}`,
+    );
+    const requestedRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-cd-explicit-requested-${Date.now()}`,
+    );
+    await fs.mkdir(sessionRoot, { recursive: true });
+    await fs.mkdir(requestedRoot, { recursive: true });
+    try {
+      const { runtime, session } = await makeRuntime();
+      session.setCwd(roomId, sessionRoot);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          roomId,
+          `Can you tell me what branch is running from ${requestedRoot}?`,
+        ),
+        undefined,
+        { command: `cd ${requestedRoot} && pwd` },
+      );
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(requestedRoot);
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.cwd).toBe(sessionRoot);
+    } finally {
+      await fs.rm(sessionRoot, { recursive: true, force: true });
+      await fs.rm(requestedRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("respects an explicit cwd when the user names that path", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-242424242424";
+    const sessionRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-explicit-session-${Date.now()}`,
+    );
+    const requestedRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-explicit-requested-${Date.now()}`,
+    );
+    await fs.mkdir(sessionRoot, { recursive: true });
+    await fs.mkdir(requestedRoot, { recursive: true });
+    try {
+      const { runtime, session } = await makeRuntime();
+      session.setCwd(roomId, sessionRoot);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          roomId,
+          `Can you tell me what branch is running from ${requestedRoot}?`,
+        ),
+        undefined,
+        { command: "pwd", cwd: requestedRoot },
+      );
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(requestedRoot);
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.cwd).toBe(requestedRoot);
+    } finally {
+      await fs.rm(sessionRoot, { recursive: true, force: true });
+      await fs.rm(requestedRoot, { recursive: true, force: true });
+    }
   });
 
   it("falls back to the session cwd when an explicit cwd is missing", async () => {
@@ -221,6 +363,59 @@ describe("shellAction", () => {
     expect(result.success).toBe(true);
     expect(result.text).toContain(
       '"https://example.com/simple?ids=bitcoin&vs_currencies=usd"',
+    );
+  });
+
+  it("replaces unreliable BTC spot-price endpoints with a neutral no-key source", () => {
+    const coindesk = resolveCryptoSpotPriceCommand({
+      messageText: "What is the current BTC price in USD?",
+      command:
+        "curl -s https://api.coindesk.com/v1/bpi/currentprice/BTC.json | grep rate_float",
+    });
+    expect(coindesk.rewritten).toBe(true);
+    expect(coindesk.command).toContain("api.coingecko.com");
+    expect(coindesk.command).toContain("ids=bitcoin");
+    expect(coindesk.command).not.toContain("coindesk");
+
+    const binance = resolveCryptoSpotPriceCommand({
+      messageText: "What is the current BTC price in USD?",
+      command:
+        "curl -s https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
+    });
+    expect(binance.rewritten).toBe(true);
+    expect(binance.command).toContain("api.coingecko.com");
+    expect(binance.command).not.toContain("binance");
+  });
+
+  it("keeps non-price commands that happen to mention BTC endpoints", () => {
+    const result = resolveCryptoSpotPriceCommand({
+      messageText: "Show me this shell command.",
+      command:
+        "echo https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
+    });
+    expect(result.rewritten).toBe(false);
+    expect(result.command).toContain("binance.com");
+  });
+
+  it("adds user-facing text for neutral crypto spot-price JSON", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(
+        "11111111-aaaa-bbbb-cccc-535353535353",
+        "Can you check the current price of BTC in USD?",
+      ),
+      undefined,
+      {
+        command:
+          'printf \'{"bitcoin":{"usd":77296}}\' # https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('{"bitcoin":{"usd":77296}}');
+    expect(result.userFacingText).toBe(
+      "BTC price: $77,296.00 USD (source: CoinGecko).",
     );
   });
 
