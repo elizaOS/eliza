@@ -227,7 +227,7 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers signed provenance trust policy",
     pattern:
-      /enforces remote plugin trust policy before registration[\s\S]*requireSignedProvenance:\s*true[\s\S]*allowedProvenanceIssuers:\s*\["eliza-cloud-build"\][\s\S]*provenanceIssuer:\s*"eliza-cloud-build"[\s\S]*reason:\s*"missing-provenance"[\s\S]*reason:\s*"provenance-issuer-not-allowed"[\s\S]*trustedProvenancePublicKeys[\s\S]*requireVerifiedProvenance:\s*true[\s\S]*requireProvenanceDigestMatch:\s*true[\s\S]*reason:\s*"invalid-provenance-signature"[\s\S]*reason:\s*"invalid-provenance-digest"[\s\S]*reason:\s*"missing-provenance-public-key"/,
+      /enforces remote plugin trust policy before registration[\s\S]*allowedProvenanceIssuers:\s*\["eliza-cloud-build"\][\s\S]*requireSignedProvenance:\s*true[\s\S]*provenanceIssuer:\s*"eliza-cloud-build"[\s\S]*reason:\s*"missing-provenance"[\s\S]*reason:\s*"provenance-issuer-not-allowed"[\s\S]*trustedProvenancePublicKeys[\s\S]*requireVerifiedProvenance:\s*true[\s\S]*requireProvenanceDigestMatch:\s*true[\s\S]*reason:\s*"invalid-provenance-signature"[\s\S]*reason:\s*"invalid-provenance-digest"[\s\S]*reason:\s*"missing-provenance-public-key"/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove trust policy can require signed provenance, allowlist provenance issuers, verify provenance signatures, and bind provenance digests to module contents.",
