@@ -792,6 +792,83 @@ export interface RemotePluginConfig {
 	protocol?: { methods?: string[] };
 }
 
+/**
+ * Source of the worker code for a remote-mode plugin installed at runtime
+ * via {@link IAgentRuntime.installRemotePlugin}.
+ *
+ * - `inline`: agent-authored. The plugin's source files (typically the
+ *   worker entry + a manifest) are handed over as a string map. The host
+ *   writes them to a tempdir under `~/.eliza/remote-plugins/<runtime>/
+ *   <pluginName>-<instanceId>/`, then spawns the worker from there. The
+ *   inline path is intentionally restricted: workers run as
+ *   `isolated-process` always, network defaults to `loopback`, and FS
+ *   scopes to the tempdir, regardless of what the manifest requests.
+ *
+ * - `tarball`: third-party. Downloaded + verified by `attestation`
+ *   (required for tarball installs; SHA + signature). Extracted into the
+ *   store and treated like a normal install thereafter.
+ *
+ * - `workspace`: bundled. Resolves to an existing workspace package
+ *   (e.g. `@elizaos/plugin-sub-agent-claude-code`). The host trusts these
+ *   the same way it trusts a direct-mode plugin shipped in node_modules.
+ */
+export type RemotePluginInstallSource =
+	| { kind: "inline"; files: Record<string, string> }
+	| {
+			kind: "tarball";
+			url: string;
+			attestation: { signedBy: string; signature: string };
+	  }
+	| { kind: "workspace"; pkgName: string };
+
+/** Options for {@link IAgentRuntime.installRemotePlugin}. */
+export interface RemotePluginInstallOptions {
+	source: RemotePluginInstallSource;
+	/**
+	 * Override the lifetime declared on the manifest. Default:
+	 * - `"session"` when source is `"inline"` (agent-generated).
+	 * - `"persistent"` when source is `"tarball"` or `"workspace"`.
+	 */
+	lifetime?: "session" | "persistent";
+}
+
+/** Returned by {@link IAgentRuntime.installRemotePlugin}. */
+export interface RemotePluginInstanceHandle {
+	/** The Plugin.name after install. */
+	pluginName: string;
+	/**
+	 * Per-installation id. Multiple installations of the same plugin (e.g.
+	 * two sub-agent sessions) have different instanceIds and live in
+	 * different store directories.
+	 */
+	instanceId: string;
+	/**
+	 * The granted permissions for this installation, after narrowing. May
+	 * be narrower than the requested ceiling in `plugin.remote.permissions`.
+	 */
+	grantedPermissions: RemotePluginPermissions;
+	/** Tear down: stop the worker, unregister the plugin, clean up the store dir if session-lifetime. */
+	uninstall(): Promise<void>;
+}
+
+/**
+ * Thrown by {@link IAgentRuntime.installRemotePlugin} when the plugin's
+ * requested permissions narrow to nothing for at least one critical
+ * capability (e.g. asks for `fs.readwrite` but the agent only has
+ * `fs.readonly`). Caller can catch + prompt the user for elevation.
+ */
+export class PermissionNarrowedRejection extends Error {
+	constructor(
+		message: string,
+		readonly capability: string,
+		readonly requested: unknown,
+		readonly granted: unknown,
+	) {
+		super(message);
+		this.name = "PermissionNarrowedRejection";
+	}
+}
+
 export interface Plugin {
 	name: string;
 	description: string;
