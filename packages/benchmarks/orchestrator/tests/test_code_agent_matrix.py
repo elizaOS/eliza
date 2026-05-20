@@ -18,6 +18,7 @@ from benchmarks.orchestrator.code_agent_matrix import (
     build_benchmark_gate,
     build_coverage_gate,
     build_coverage_summary,
+    build_repo_local_coverage_audit,
     build_deferred_promotion_queue,
     build_efficiency_gate,
     build_efficiency_queue,
@@ -337,14 +338,22 @@ def test_coverage_summary_reports_selected_and_deferred_benchmarks() -> None:
         "included": 7,
         "included_selected": 7,
         "included_unselected": 0,
-        "deferred": 6,
+        "deferred": 11,
     }
     assert coverage["unselected_included_benchmarks"] == []
+    assert coverage["repo_local_audit"]["ok"] is True
+    assert coverage["repo_local_audit"]["existing_directory_count"] == 18
+    assert coverage["repo_local_audit"]["missing_manifest_directories"] == []
     assert {item["benchmark"] for item in coverage["deferred_benchmarks"]} == {
         "agentbench",
         "app_eval_coding",
+        "claw_eval",
+        "clawbench",
         "mint",
         "nl2repo",
+        "openclaw_benchmark",
+        "qwen_claw_bench",
+        "qwen_web_bench",
         "standard_humaneval",
         "swe_bench_pro",
     }
@@ -355,6 +364,22 @@ def test_coverage_summary_reports_selected_and_deferred_benchmarks() -> None:
     assert "OpenCode" in " ".join(
         deferred_by_id["agentbench"]["promotion_requirements"]
     )
+    assert deferred_by_id["qwen_web_bench"]["domains"] == [
+        "coding",
+        "browser",
+        "web",
+    ]
+    assert "upstream release" in " ".join(
+        deferred_by_id["qwen_web_bench"]["promotion_requirements"]
+    )
+    assert deferred_by_id["openclaw_benchmark"]["promotion_priority"] == "p1"
+    assert "Pass^3" in deferred_by_id["claw_eval"]["reason"]
+    assert "transcript" in " ".join(
+        deferred_by_id["qwen_claw_bench"]["promotion_requirements"]
+    )
+    assert "mock tools" in " ".join(
+        deferred_by_id["clawbench"]["promotion_requirements"]
+    )
 
     partial = build_coverage_summary(["swe_bench"])
 
@@ -362,20 +387,38 @@ def test_coverage_summary_reports_selected_and_deferred_benchmarks() -> None:
     assert "terminal_bench" in partial["unselected_included_benchmarks"]
 
 
+def test_repo_local_coverage_audit_tracks_manifest_directories() -> None:
+    audit = build_repo_local_coverage_audit()
+
+    assert audit["ok"] is True
+    assert audit["manifest_complete"] is True
+    assert audit["existing_directory_count"] == 18
+    by_directory = {item["directory"]: item for item in audit["directories"]}
+    assert by_directory["terminal-bench"]["benchmark"] == "terminal_bench"
+    assert by_directory["qwen-claw-bench"]["manifest_status"] == "deferred"
+    assert by_directory["OSWorld"]["manifest_status"] == "included"
+
+
 def test_deferred_promotion_queue_prioritizes_known_followup_work() -> None:
     summary = {"coverage": build_coverage_summary(list(DEFAULT_BENCHMARKS))}
 
     queue = build_deferred_promotion_queue(summary)
 
-    assert [item["benchmark"] for item in queue[:4]] == [
-        "nl2repo",
-        "agentbench",
-        "mint",
-        "swe_bench_pro",
-    ]
+    assert queue[0]["benchmark"] == "nl2repo"
     assert queue[0]["priority"] == "p0"
     assert queue[0]["next_action"] == "run Docker-backed evaluator in CI or a local daemon"
     assert queue[0]["remaining_count"] == 3
+    p1_benchmarks = {
+        item["benchmark"] for item in queue if item["priority"] == "p1"
+    }
+    assert {
+        "agentbench",
+        "claw_eval",
+        "mint",
+        "openclaw_benchmark",
+        "qwen_claw_bench",
+        "swe_bench_pro",
+    }.issubset(p1_benchmarks)
 
 
 def test_coverage_gate_blocks_partial_benchmark_selection() -> None:
@@ -383,6 +426,7 @@ def test_coverage_gate_blocks_partial_benchmark_selection() -> None:
     partial_summary = {"coverage": build_coverage_summary(["swe_bench"])}
 
     assert build_coverage_gate(complete_summary)["ok"] is True
+    assert build_coverage_gate(complete_summary)["missing_manifest_directories"] == []
     partial_gate = build_coverage_gate(partial_summary)
     assert partial_gate["ok"] is False
     assert "terminal_bench" in partial_gate["blocking_benchmarks"]
@@ -1484,6 +1528,10 @@ def test_preflight_reports_missing_provider_key_and_opencode_cli(tmp_path: Path)
         "missing_provider_key",
         "missing_opencode_cli",
     }
+    unblock_by_kind = {step["kind"]: step for step in report["unblock_steps"]}
+    assert unblock_by_kind["missing_provider_key"]["command"] == "export CEREBRAS_API_KEY=<redacted>"
+    assert unblock_by_kind["missing_opencode_cli"]["command"] == "export OPENCODE_BIN=/path/to/opencode"
+    assert report["unblock_count"] == len(report["unblock_steps"])
     assert report["cells"][0]["benchmark"] == "terminal_bench"
     assert report["cells"][0]["executable_ok"] is True
 
@@ -1512,6 +1560,8 @@ def test_preflight_passes_with_required_provider_key_and_opencode_bin(tmp_path: 
 
     assert report["ok"] is True
     assert report["issues"] == []
+    assert report["unblock_steps"] == []
+    assert report["unblock_count"] == 0
     assert report["opencode_bin"] == str(opencode_bin)
 
 
@@ -1543,6 +1593,7 @@ def test_preflight_can_skip_provider_key_for_smoke_or_dry_runs(tmp_path: Path) -
     assert report["provider_key_present"] is False
     assert report["provider_key_required"] is False
     assert report["issues"] == []
+    assert report["unblock_steps"] == []
 
 
 def test_nl2repo_preflight_blocks_live_without_agent_command_template(
@@ -1575,6 +1626,17 @@ def test_nl2repo_preflight_blocks_live_without_agent_command_template(
     assert {issue["kind"] for issue in report["issues"]} == {
         "missing_nl2repo_agent_command_template"
     }
+    assert report["unblock_steps"] == [
+        {
+            "kind": "missing_nl2repo_agent_command_template",
+            "title": "Configure NL2Repo agent command",
+            "action": (
+                "Unset NL2REPO_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
+                "or provide NL2REPO_AGENT_COMMAND_TEMPLATE for an external runner."
+            ),
+            "command": "unset NL2REPO_DISABLE_BUILTIN_AGENT_COMMAND",
+        }
+    ]
 
 
 def test_nl2repo_preflight_reports_shared_docker_issue_once(
@@ -1668,11 +1730,14 @@ def test_live_preflight_cli_persists_blocker_report(tmp_path: Path) -> None:
     report = json.loads(preflight_json.read_text(encoding="utf-8"))
     assert report["preflight"]["ok"] is False
     assert report["preflight"]["issues"][0]["kind"] == "missing_provider_key"
+    assert report["preflight"]["unblock_steps"][0]["kind"] == "missing_provider_key"
+    assert report["preflight"]["unblock_steps"][0]["command"] == "export CEREBRAS_API_KEY=<redacted>"
     assert report["run_config"]["mode"] == "live"
     assert "--run-root" in report["next_commands"]["live_evidence"]
     assert str(tmp_path / "run") in report["next_commands"]["live_evidence"]
     assert "--no-docker" in report["next_commands"]["live_evidence"]
     assert "--no-docker" not in report["next_commands"]["release_comparable"]
+    assert "### Preflight Unblock Steps" in preflight_md.read_text(encoding="utf-8")
     assert not (tmp_path / "run" / "summary.json").exists()
 
 
@@ -2274,6 +2339,8 @@ def test_summary_and_markdown_include_outcome_token_and_head_to_head_metrics() -
     assert summary["report_rows"][0]["report_gate_ok"] is False
     assert "## Benchmark Coverage" in markdown
     assert "Status: partial" in markdown
+    assert "### Repo-Local Coverage Audit" in markdown
+    assert "Audited directories: 18/18" in markdown
     assert "### Deferred Related Benchmarks" in markdown
     assert "promotion requirements" in markdown
     assert "## Deferred Promotion Queue" in markdown

@@ -617,12 +617,14 @@ Respond (YES):
 - The message directly addresses or mentions you
 - The message asks a question or makes a request you can address
 - The message is a general request for assistance or information with no specific addressee
+- Generic "someone/anyone" help requests you can fulfill (e.g., "Can someone look up X?", "Does anyone know X?")
 
 Do not respond (NO):
-- The message is addressed to someone else
+- The message is addressed to someone else by name
 - The message is purely gratitude, agreement, or acknowledgment with no request
 - The message is only an emoji, punctuation, or ambient reaction
-- The message is a social question not directed at you (e.g., "Anyone going to the party?")
+- The message is a social/group question about personal intentions (e.g., "Anyone going to the party?", "Anyone want to grab lunch?")
+- The message is an announcement or statement with no question or request
 - No response is expected or needed
 
 Output exactly one token: either YES or NO, with no surrounding whitespace.`,
@@ -637,7 +639,7 @@ Actions:
 - NOTES: Save information for later — use when the user says "note", "jot down", "remember", or captures an idea
 - NONE: No response needed
 
-NONE applies when the message is: emoji-only, single punctuation, pure reaction ("lol", "ok", "👍", "..."), or acknowledgment with no follow-up request.
+NONE applies when the message is: emoji-only, single punctuation, pure reaction ("lol", "ok", "👍", "..."), or acknowledgment with no follow-up request. Goodbyes and farewells are NOT NONE — they require REPLY.
 Default to REPLY when no other action clearly fits.
 
 Return ONLY this JSON (no extra whitespace):
@@ -686,8 +688,8 @@ current — time-bound state (stale within weeks)
 
 Rules:
 - If a claim already exists in Known facts, emit strengthen (not add)
-- "strengthen" means the same fact is reaffirmed without new information
-- "contradict" means new information conflicts with an existing fact
+- "strengthen" means the same fact is reaffirmed — this includes indirect reaffirmations (e.g., "X is treating me well" where X is a known location reaffirms presence there)
+- "contradict" means new information conflicts with an existing fact — if user says "I moved to X" or "I'm now in X" and there's a known location, emit contradict (not add_durable)
 - Paraphrases count as duplicates — match meaning, not exact words
 - Return {"ops":[]} for questions, small talk, or messages with no factual claims about the user
 
@@ -769,8 +771,14 @@ Do NOT include observations about the conversation itself, only about the user.
 JSON only. Return one JSON array. No prose, fences, thinking, or markdown.`,
 
   // MEMORY_CONTEXT_QA_TEMPLATE baseline
-  memory_qa: `Answer the query using only the provided context. If context is insufficient, say so explicitly.
-Keep the answer under 120 words.
+  memory_qa: `Answer the query using ONLY the provided memory notes and knowledge snippets.
+
+Critical rules:
+- Do NOT use any information from your training data or general knowledge
+- If the answer is not explicitly in the provided context, say so: "Context is insufficient to answer this"
+- This applies even to well-known facts (capitals, dates, famous people) — if it's not in the notes, say context is insufficient
+- Include ALL relevant information from the notes (medications AND allergies, for example)
+- Keep the answer under 120 words
 
 JSON only. Return one JSON object with an "answer" field. No prose, fences, thinking, or markdown.`,
 

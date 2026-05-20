@@ -905,7 +905,7 @@ function runDoctor({ apk, adbPath }) {
       );
     } else if (connect?.length > 0) {
       console.log(
-        `[android-sms-gateway] next: wireless adb is advertising ${connect[0].endpoint}, but no device is connected. If connect fails, open Android Developer Options > Wireless debugging > Pair device with pairing code, then run bun run --cwd packages/app-core sms-gateway:pair.`,
+        `[android-sms-gateway] next: wireless adb is advertising ${connect[0].endpoint}, but no device is connected. If connect fails, run bun run --cwd packages/app-core sms-gateway:pair, then open Android Developer Options > Wireless debugging > Pair device with pairing code.`,
       );
     }
     console.log(

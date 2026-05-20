@@ -18,6 +18,13 @@ class CodeAgentBenchmark:
     promotion_priority: str = "p2"
 
 
+@dataclass(frozen=True)
+class RepoLocalBenchmarkDirectory:
+    benchmark_id: str
+    directory: str
+    domains: tuple[str, ...]
+
+
 CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
     CodeAgentBenchmark(
         benchmark_id="swe_bench",
@@ -154,6 +161,106 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
             "record pass/fail and per-call telemetry per task",
         ),
     ),
+    CodeAgentBenchmark(
+        benchmark_id="qwen_web_bench",
+        status=DEFERRED_STATUS,
+        domains=("coding", "browser", "web"),
+        reason=(
+            "QwenWebBench is a front-end code-generation/browser-rendering "
+            "benchmark placeholder in this repo, but the upstream dataset and "
+            "runner are not public yet."
+        ),
+        promotion_requirements=(
+            "track upstream release of the public runner and dataset",
+            "add an ElizaOS/OpenCode artifact-generation adapter once runner shape is known",
+            "normalize visual judge or Elo outcomes into reportable head-to-head rows",
+        ),
+    ),
+    CodeAgentBenchmark(
+        benchmark_id="openclaw_benchmark",
+        status=DEFERRED_STATUS,
+        domains=("coding", "terminal"),
+        reason=(
+            "The local OpenClaw benchmark contains coding-assistant and "
+            "OpenCode-plugin tasks, but it is not yet normalized into the "
+            "ElizaOS/OpenCode matrix artifact schema."
+        ),
+        promotion_requirements=(
+            "map standard coding tasks to matrix benchmark cells",
+            "run ElizaOS and OpenCode through the same isolated task harness",
+            "emit right/wrong/total plus token and LLM-call telemetry per task",
+        ),
+        promotion_priority="p1",
+    ),
+    CodeAgentBenchmark(
+        benchmark_id="claw_eval",
+        status=DEFERRED_STATUS,
+        domains=("coding", "browser", "computer-use", "agent"),
+        reason=(
+            "Claw-Eval includes webpage generation, multimodal, and "
+            "real-world autonomous-agent tasks, but its Pass^3/trial runner "
+            "and judge flow are not adapted for ElizaOS/OpenCode head-to-head rows."
+        ),
+        promotion_requirements=(
+            "select coding/browser/computer-use task slices from Claw-Eval",
+            "add ElizaOS/OpenCode execution configs with matched trials",
+            "normalize Pass^3 and judge outcomes into comparable matrix rows",
+        ),
+        promotion_priority="p1",
+    ),
+    CodeAgentBenchmark(
+        benchmark_id="qwen_claw_bench",
+        status=DEFERRED_STATUS,
+        domains=("coding", "terminal", "computer-use", "agent"),
+        reason=(
+            "QwenClawBench exercises workspace, system-operations, data, "
+            "security, and orchestration tasks through OpenClaw containers, "
+            "but only OpenClaw model configs are wired today."
+        ),
+        promotion_requirements=(
+            "add ElizaOS and OpenCode agents to the QwenClawBench runner config",
+            "capture transcript, anomaly, score, token, and LLM-call artifacts per run",
+            "aggregate repeated runs into stable head-to-head matrix outcomes",
+        ),
+        promotion_priority="p1",
+    ),
+    CodeAgentBenchmark(
+        benchmark_id="clawbench",
+        status=DEFERRED_STATUS,
+        domains=("terminal", "browser", "computer-use", "tool-use"),
+        reason=(
+            "ClawBench is a deterministic multi-tool workspace benchmark with "
+            "exec, read, and web tools, but it targets OpenClaw scenarios rather "
+            "than the ElizaOS/OpenCode matrix adapters."
+        ),
+        promotion_requirements=(
+            "map ClawBench scenarios to matrix cells",
+            "add OpenCode and ElizaOS drivers against the same mock tools",
+            "convert rubric points into right/wrong/total and trajectory telemetry",
+        ),
+    ),
+)
+
+
+REPO_LOCAL_RELATED_BENCHMARK_DIRS: tuple[RepoLocalBenchmarkDirectory, ...] = (
+    RepoLocalBenchmarkDirectory("swe_bench", "swe_bench", ("coding",)),
+    RepoLocalBenchmarkDirectory("terminal_bench", "terminal-bench", ("terminal", "coding")),
+    RepoLocalBenchmarkDirectory("mind2web", "mind2web", ("browser", "web")),
+    RepoLocalBenchmarkDirectory("visualwebbench", "visualwebbench", ("browser", "vision")),
+    RepoLocalBenchmarkDirectory("webshop", "webshop", ("browser", "web")),
+    RepoLocalBenchmarkDirectory("osworld", "OSWorld", ("computer-use", "desktop")),
+    RepoLocalBenchmarkDirectory("swe_bench_multilingual", "swe-bench-multilingual", ("coding",)),
+    RepoLocalBenchmarkDirectory("nl2repo", "nl2repo", ("coding",)),
+    RepoLocalBenchmarkDirectory("swe_bench_pro", "swe-bench-pro", ("coding",)),
+    RepoLocalBenchmarkDirectory("agentbench", "agentbench", ("terminal", "browser", "web", "computer-use")),
+    RepoLocalBenchmarkDirectory("mint", "mint", ("coding", "tool-use")),
+    RepoLocalBenchmarkDirectory("app_eval_coding", "app-eval", ("coding",)),
+    RepoLocalBenchmarkDirectory("standard_humaneval", "standard", ("coding",)),
+    RepoLocalBenchmarkDirectory("qwen_web_bench", "qwen-web-bench", ("coding", "browser", "web")),
+    RepoLocalBenchmarkDirectory("openclaw_benchmark", "openclaw-benchmark", ("coding", "terminal")),
+    RepoLocalBenchmarkDirectory("claw_eval", "claw-eval", ("coding", "browser", "computer-use", "agent")),
+    RepoLocalBenchmarkDirectory("qwen_claw_bench", "qwen-claw-bench", ("coding", "terminal", "computer-use", "agent")),
+    RepoLocalBenchmarkDirectory("clawbench", "clawbench", ("terminal", "browser", "computer-use", "tool-use")),
 )
 
 
@@ -175,3 +282,7 @@ def deferred_benchmark_ids() -> tuple[str, ...]:
 
 def coverage_status_by_id() -> dict[str, CodeAgentBenchmark]:
     return {item.benchmark_id: item for item in CODE_AGENT_COVERAGE}
+
+
+def repo_local_related_benchmark_dirs() -> tuple[RepoLocalBenchmarkDirectory, ...]:
+    return REPO_LOCAL_RELATED_BENCHMARK_DIRS
