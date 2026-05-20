@@ -82,7 +82,11 @@ class StateMirrorBackend(BridgeBackend):
         *,
         real: Any,       # backend exposing `read_joint_positions()`
         sim_env: Any,    # DemoEnv (the inner MuJoCo env)
-        sync_period_s: float = 0.05,
+        # 200 Hz default — SOTA bipedal sim2real runs at 200-1000 Hz.
+        # The read_joint_positions() service round-trip is < 2 ms so
+        # 5 ms / 200 Hz is comfortable. The previous 50 ms default was
+        # 10× under-tuned (see research/sota_improvements R-?).
+        sync_period_s: float = 0.005,
         rate_limit_pause_s: float = 0.0,
     ) -> None:
         self._inner = inner
