@@ -49,10 +49,14 @@ if str(_REPO_ROOT) not in sys.path:
 from benchmarks.cpu.branch.bpu_model import (  # noqa: E402
     BR_CALL,
     BR_COND,
+    BR_IND,
     BR_RET,
     BranchEvent,
 )
-from benchmarks.cpu.branch.traces import SYNTHETIC_GENERATORS  # noqa: E402
+from benchmarks.cpu.branch.traces import (  # noqa: E402
+    SYNTHETIC_GENERATORS,
+    read_cbp5_with_count,
+)
 
 # PMU enum (zero-based; matches bpu_pkg::pmu_event_e).
 PMU_BR_PRED = 0
@@ -254,6 +258,98 @@ def _resolve_output_path() -> Path:
     return _REPO_ROOT / "docs/evidence/cpu_ap/mpki_results_synthetic.json"
 
 
+# BR_IND is a model-side distinction (indirect jump without RAS push). The
+# RTL only knows BR_NONE/BR_COND/BR_CALL/BR_RET so when driving real traces
+# we collapse BR_IND -> BR_CALL. The resulting RAS corruption is documented
+# as a calibration finding in
+# docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md.
+def _rtl_kind_for(model_kind: int) -> int:
+    if model_kind == BR_IND:
+        return BR_CALL
+    return model_kind
+
+
+async def _drive_event_rtl(dut, event: BranchEvent) -> bool:
+    """Drive a model-side event with kind collapsed for RTL consumption."""
+    rtl_event = BranchEvent(
+        pc=int(event.pc),
+        target=int(event.target),
+        taken=bool(event.taken),
+        kind=int(_rtl_kind_for(event.kind)),
+        call_return_pc=event.call_return_pc,
+    )
+    return await _drive_event(dut, rtl_event)
+
+
+async def _run_cbp5_workload(
+    dut, name: str, branches: list[BranchEvent], instruction_count: int
+) -> dict:
+    """Replay a CBP-5 trace through the RTL BPU. ``instruction_count`` is
+    the true retired-instruction count from the .gz stream; MPKI is
+    computed against it (not against branches*5)."""
+    await _reset(dut)
+    before = await _snapshot_counters(dut)
+
+    misp_total = 0
+    misp_ind = 0
+    misp_ret = 0
+    taken_count = 0
+    for event in branches:
+        misp = await _drive_event_rtl(dut, event)
+        if event.taken:
+            taken_count += 1
+        if misp:
+            misp_total += 1
+            if event.kind in (BR_CALL, BR_IND):
+                misp_ind += 1
+            elif event.kind == BR_RET:
+                misp_ret += 1
+
+    await RisingEdge(dut.clk)
+    after = await _snapshot_counters(dut)
+    delta = _diff(after, before)
+
+    branch_count = len(branches)
+    pmu_misp = delta["br_misp"]
+    mpki_pmu = (pmu_misp * 1000.0 / instruction_count) if instruction_count else 0.0
+    mpki_harness = (misp_total * 1000.0 / instruction_count) if instruction_count else 0.0
+    taken_throughput = (taken_count / branch_count) if branch_count else 0.0
+
+    return {
+        "workload": name,
+        "trace_class": "cbp5_train_traces_only",
+        "branch_count": branch_count,
+        "instruction_count": instruction_count,
+        "misprediction_count": int(pmu_misp),
+        "misprediction_count_harness_observed": int(misp_total),
+        "mpki": round(mpki_pmu, 6),
+        "mpki_harness_observed": round(mpki_harness, 6),
+        "taken_branch_throughput": round(taken_throughput, 6),
+        "ras_misp_count": int(delta["br_ret_misp"]),
+        "ras_misp_count_harness_observed": int(misp_ret),
+        "indirect_misp_count": int(delta["br_ind_misp"]),
+        "indirect_misp_count_harness_observed": int(misp_ind),
+        "pmu_counters_delta": delta,
+    }
+
+
+def _resolve_cbp5_output_path() -> Path:
+    override = os.environ.get("ELIZA_BPU_MPKI_CBP5_JSON")
+    if override:
+        return Path(override)
+    return _REPO_ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
+
+
+def _cbp5_trace_paths() -> list[Path]:
+    env = os.environ.get("ELIZA_BPU_MPKI_CBP5_TRACES")
+    if env:
+        return [Path(p) for p in env.split(":") if p]
+    default_dir = _REPO_ROOT / "external/cbp5-traces"
+    if default_dir.is_dir():
+        return sorted(default_dir.glob("*.gz"))
+    return []
+
+
 @cocotb.test()
 async def bpu_mpki_synthetic_8_workload_sweep(dut):
     """Run all 8 canonical synthetic workloads end-to-end through the RTL
@@ -318,5 +414,91 @@ async def bpu_mpki_synthetic_8_workload_sweep(dut):
     for name, r in results.items():
         dut._log.info(
             f"bpu_mpki: {name}: branches={r['branch_count']} "
+            f"misp={r['misprediction_count']} mpki={r['mpki']:.3f}"
+        )
+
+
+@cocotb.test()
+async def bpu_mpki_cbp5_real_traces(dut):
+    """Replay real CBP-5 train traces through the RTL BPU.
+
+    Gated on the presence of trace files; when neither
+    ``ELIZA_BPU_MPKI_CBP5_TRACES`` nor ``external/cbp5-traces/*.gz`` are
+    available the test exits early with a skip annotation. Output is
+    written to ``docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json`` (override
+    via ``ELIZA_BPU_MPKI_CBP5_JSON``).
+
+    These are CBP-5 train-set numbers only; ``evidence_class`` is
+    ``cbp5_train_traces_only`` and the envelope refuses SPEC/AOSP/V8
+    claims even when the run succeeds.
+    """
+    trace_paths = _cbp5_trace_paths()
+    if not trace_paths:
+        dut._log.info(
+            "bpu_mpki_cbp5: no .gz traces under external/cbp5-traces; skipping. "
+            "See docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md for download steps."
+        )
+        return
+
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+
+    results: dict[str, dict] = {}
+    for path in trace_paths:
+        dut._log.info(f"bpu_mpki_cbp5: ingesting {path.name}")
+        branches, stats = read_cbp5_with_count(path)
+        dut._log.info(
+            f"bpu_mpki_cbp5: {path.name}: inst={stats.instruction_count} "
+            f"branches={stats.branch_count} (replay starts)"
+        )
+        result = await _run_cbp5_workload(dut, path.stem, branches, stats.instruction_count)
+        result["branch_stats"] = stats.as_dict()
+        results[path.stem] = result
+
+    aggregate_inst = sum(r["instruction_count"] for r in results.values())
+    aggregate_misp = sum(r["misprediction_count"] for r in results.values())
+    aggregate_branches = sum(r["branch_count"] for r in results.values())
+    aggregate_mpki = (aggregate_misp * 1000.0 / aggregate_inst) if aggregate_inst else 0.0
+
+    envelope = {
+        "schema": "eliza.bpu_mpki.v1",
+        "generated_at_utc": datetime.now(UTC).isoformat(),
+        "harness": "cocotb-rtl-bpu_top",
+        "rtl_top": "bpu_top",
+        "evidence_class": "cbp5_train_traces_only",
+        "cbp5_tage_sc_l_reference_mpki": CBP5_TAGE_SC_L_REFERENCE_MPKI,
+        "target_2028_mpki": TARGET_2028_MPKI,
+        "aggregate": {
+            "branch_count": aggregate_branches,
+            "instruction_count": aggregate_inst,
+            "misprediction_count": aggregate_misp,
+            "mpki": round(aggregate_mpki, 6),
+        },
+        "workloads": results,
+        "claim_policy": {
+            "evidence_class": "cbp5_train_traces_only",
+            "cbp5_claim": True,
+            "spec2017_claim": False,
+            "android_claim": False,
+            "v8_claim": False,
+            "reason": (
+                "Real CBP-5 (CBP2025) train-trace MPKI measured on the BPU "
+                "RTL via the cocotb harness. Numbers compare directly to the "
+                "CBP2016 64KB TAGE-SC-L reference in "
+                "reference_results_training_set.csv. CBP-5 train traces are "
+                "not SPEC2017, AOSP, or JS-engine workloads; only the CBP-5 "
+                "claim is supported by this evidence."
+            ),
+        },
+    }
+
+    out_path = _resolve_cbp5_output_path()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
+
+    dut._log.info(f"bpu_mpki_cbp5: wrote {out_path}")
+    dut._log.info(f"bpu_mpki_cbp5: aggregate MPKI = {aggregate_mpki:.3f}")
+    for name, r in results.items():
+        dut._log.info(
+            f"bpu_mpki_cbp5: {name}: branches={r['branch_count']} "
             f"misp={r['misprediction_count']} mpki={r['mpki']:.3f}"
         )

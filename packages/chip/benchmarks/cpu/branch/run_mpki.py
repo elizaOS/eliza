@@ -40,15 +40,39 @@ sys.path.insert(0, str(ROOT))
 from benchmarks.cpu.branch.bpu_model import DEFAULT_GEOMETRY, BPUSimulator  # noqa: E402
 from benchmarks.cpu.branch.traces import (  # noqa: E402
     SYNTHETIC_GENERATORS,
-    read_cbp5,
+    read_cbp5_with_count,
     read_jsonl,
 )
 
 RESULTS_DIR = ROOT / "benchmarks/results"
 EVIDENCE_DIR = ROOT / "docs/evidence/cpu_ap"
 RTL_EVIDENCE_PATH = EVIDENCE_DIR / "mpki_results_synthetic.json"
+CBP5_EVIDENCE_PATH = EVIDENCE_DIR / "mpki_results_cbp5.json"
 MODEL_EVIDENCE_PATH = RESULTS_DIR / "branch-prediction-mpki-model.json"
 DEFAULT_SYNTHETIC = list(SYNTHETIC_GENERATORS.keys())
+
+# Workload-class averages for CBP2016 64KB TAGE-SC-L on the CBP2025 training
+# trace set, computed from reference_results_training_set.csv in
+# https://github.com/ramisheikh/cbp2025 (commit 6074966). Per-trace MPKI from
+# the CSV are used directly when the trace stem matches.
+CBP5_REFERENCE_BY_CLASS: dict[str, float] = {
+    "int": 4.700,
+    "fp": 4.015,
+    "web": 3.884,
+    "compress": 2.799,
+    "infra": 2.631,
+    "media": 1.062,
+}
+# Per-sample reference MPKI for the two sample traces shipped with the CBP2025
+# repo. The samples are short prefixes of `int_0_trace` / `fp_0_trace`; their
+# absolute MPKI is small-window noise and is recorded here only as a wiring
+# cross-check, not as a CBP-class claim.
+CBP5_REFERENCE_PER_TRACE: dict[str, float] = {
+    # Reference numbers from running the CBP2025 stock 64KB TAGE-SC-L on
+    # int_0_trace / fp_0_trace at full length (per reference CSV).
+    "int_0_trace": 5.1327,
+    "fp_0_trace": 0.5736,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -134,31 +158,129 @@ def evaluate_synthetic_model(
     return out
 
 
+def _classify_cbp5_stem(stem: str) -> str | None:
+    """Map a CBP-5 trace stem (e.g. ``int_3_trace``) to its workload class."""
+    for cls in CBP5_REFERENCE_BY_CLASS:
+        if stem.startswith(cls + "_") or stem == cls:
+            return cls
+    if stem.startswith("sample_int"):
+        return "int"
+    if stem.startswith("sample_fp"):
+        return "fp"
+    return None
+
+
 def evaluate_external_model(traces: list[Path]) -> dict[str, dict]:
+    """Run the behavioural BPU model on a list of external trace files.
+
+    For CBP-5 ``.gz`` traces, instruction and branch counts come from the
+    actual trace; MPKI is computed against the true retired-instruction
+    count so the number is directly comparable to the CBP2025 stock-sim
+    output (which uses the same formula).
+    """
     out: dict[str, dict] = {}
     for path in traces:
         ext = path.suffix.lower()
-        if ext == ".bin":
-            iterator = read_cbp5(path)
-            cls = "cbp5_binary_real_workload"
+        if ext == ".gz":
+            branches, stats = read_cbp5_with_count(path)
+            inst_count = stats.instruction_count
+            trace_class = "cbp5_train_traces_only"
+            cls = _classify_cbp5_stem(path.stem)
+            cbp5_ref = CBP5_REFERENCE_PER_TRACE.get(
+                path.stem.replace("sample_", "").replace("_trace", "_0_trace")
+            )
+            if cbp5_ref is None and cls is not None:
+                cbp5_ref = CBP5_REFERENCE_BY_CLASS[cls]
+            extra_meta: dict[str, object] = {
+                "branch_stats": stats.as_dict(),
+                "cbp5_workload_class": cls,
+                "cbp5_tage_sc_l_64kb_reference_mpki": cbp5_ref,
+            }
         elif ext == ".jsonl":
-            iterator = read_jsonl(path)
-            cls = "jsonl_external_trace"
+            branches = list(read_jsonl(path))
+            inst_count = len(branches) * 5
+            trace_class = "jsonl_external_trace"
+            extra_meta = {
+                "instruction_count_estimate_basis": "5 instructions per branch",
+            }
         else:
             raise ValueError(f"unsupported trace extension {ext} on {path}")
+
         sim = BPUSimulator()
-        branches = 0
-        for event in iterator:
-            sim.feed([event])
-            branches += 1
+        sim.feed(branches)
+        mpki = sim.mpki(inst_count) if inst_count else 0.0
+
         out[path.stem] = {
-            "trace_class": cls,
-            "branches": branches,
-            "instruction_count_estimate": branches * 5,
-            "mpki": sim.mpki(branches * 5),
+            "trace_class": trace_class,
+            "branches": len(branches),
+            "instruction_count": inst_count,
+            "mpki": round(mpki, 6),
             "counters": sim.stats(),
+            **extra_meta,
         }
     return out
+
+
+def _expand_trace_paths(inputs: Iterable[Path]) -> list[Path]:
+    """Resolve ``--trace`` arguments that may be files or directories.
+
+    Directories are searched non-recursively for ``*.gz`` and ``*.jsonl``
+    so a single ``--trace external/cbp5-traces/`` argument picks up the
+    whole CBP-5 set.
+    """
+    out: list[Path] = []
+    for p in inputs:
+        if p.is_dir():
+            out.extend(sorted(p.glob("*.gz")))
+            out.extend(sorted(p.glob("*.jsonl")))
+        elif p.is_file():
+            out.append(p)
+        else:
+            raise FileNotFoundError(f"trace path does not exist: {p}")
+    return out
+
+
+def _build_cbp5_envelope(external_results: dict[str, dict]) -> dict[str, object]:
+    """Construct the ``eliza.bpu_mpki.v1`` envelope for CBP-5 traces."""
+    aggregate_inst = sum(r["instruction_count"] for r in external_results.values())
+    aggregate_branches = sum(r["branches"] for r in external_results.values())
+    aggregate_misp = sum(int(r["counters"].get("misp", 0)) for r in external_results.values())
+    aggregate_mpki = (aggregate_misp * 1000.0 / aggregate_inst) if aggregate_inst else 0.0
+    return {
+        "schema": "eliza.bpu_mpki.v1",
+        "generated_at_utc": datetime.now(UTC).isoformat(),
+        "harness": "behavioural-bpu-model",
+        "evidence_class": "cbp5_train_traces_only",
+        "geometry": {
+            key: list(value) if isinstance(value, tuple) else value
+            for key, value in DEFAULT_GEOMETRY.items()
+        },
+        "workloads": external_results,
+        "aggregate": {
+            "branch_count": aggregate_branches,
+            "instruction_count": aggregate_inst,
+            "misprediction_count": aggregate_misp,
+            "mpki": round(aggregate_mpki, 6),
+        },
+        "cbp5_tage_sc_l_64kb_reference_mpki_by_class": CBP5_REFERENCE_BY_CLASS,
+        "cbp5_tage_sc_l_64kb_reference_mpki_by_trace": CBP5_REFERENCE_PER_TRACE,
+        "claim_policy": {
+            "evidence_class": "cbp5_train_traces_only",
+            "cbp5_claim": True,
+            "spec2017_claim": False,
+            "android_claim": False,
+            "v8_claim": False,
+            "reason": (
+                "BPU MPKI measured against CBP2025 training traces"
+                " (ramisheikh/cbp2025) using the in-tree behavioural BPU"
+                " model. Numbers compare directly to the CBP2016 64KB"
+                " TAGE-SC-L reference from"
+                " reference_results_training_set.csv. These are CBP-5"
+                " train-set numbers only; they do not back SPEC2017,"
+                " AOSP, or JS-engine MPKI claims."
+            ),
+        },
+    }
 
 
 def run_model_backend(
@@ -166,6 +288,7 @@ def run_model_backend(
     synthetic: list[str],
     external_traces: list[Path],
     print_only: bool,
+    cbp5_out: Path | None,
 ) -> int:
     synthetic_results = evaluate_synthetic_model(synthetic)
     external_results = evaluate_external_model(external_traces)
@@ -206,6 +329,13 @@ def run_model_backend(
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
         print(f"eliza-evidence: status=PASS path={out.relative_to(ROOT)}")
+
+    if cbp5_out is not None and external_results:
+        cbp5_envelope = _build_cbp5_envelope(external_results)
+        cbp5_out.parent.mkdir(parents=True, exist_ok=True)
+        cbp5_out.write_text(json.dumps(cbp5_envelope, indent=2, sort_keys=True) + "\n")
+        print(f"eliza-evidence: status=PASS cbp5 path={cbp5_out.relative_to(ROOT)}")
+
     return 0
 
 
@@ -234,10 +364,14 @@ def main() -> int:
     )
     parser.add_argument(
         "--trace",
+        "--traces",
         type=Path,
         action="append",
         default=[],
-        help="path to an external trace file (.bin CBP-5 or .jsonl); model backend only",
+        help=(
+            "path to an external trace file (.gz CBP-5 or .jsonl), or a"
+            " directory containing them; model backend only"
+        ),
     )
     parser.add_argument(
         "--out",
@@ -247,6 +381,17 @@ def main() -> int:
             "evidence JSON output path; defaults to "
             "docs/evidence/cpu_ap/mpki_results_synthetic.json (rtl) or "
             "benchmarks/results/branch-prediction-mpki-model.json (model)"
+        ),
+    )
+    parser.add_argument(
+        "--cbp5-out",
+        type=Path,
+        default=None,
+        help=(
+            "additional evidence file for CBP-5 traces only (schema"
+            " eliza.bpu_mpki.v1, evidence_class cbp5_train_traces_only);"
+            " defaults to docs/evidence/cpu_ap/mpki_results_cbp5.json when"
+            " at least one .gz trace is provided"
         ),
     )
     parser.add_argument(
@@ -291,7 +436,16 @@ def main() -> int:
 
     # Model backend.
     out = args.out or MODEL_EVIDENCE_PATH
-    return run_model_backend(out, args.synthetic, args.trace, args.print_only)
+    expanded_traces = _expand_trace_paths(args.trace)
+    has_cbp5 = any(p.suffix.lower() == ".gz" for p in expanded_traces)
+    cbp5_out: Path | None
+    if args.cbp5_out is not None:
+        cbp5_out = args.cbp5_out
+    elif has_cbp5 and not args.print_only:
+        cbp5_out = CBP5_EVIDENCE_PATH
+    else:
+        cbp5_out = None
+    return run_model_backend(out, args.synthetic, expanded_traces, args.print_only, cbp5_out)
 
 
 if __name__ == "__main__":

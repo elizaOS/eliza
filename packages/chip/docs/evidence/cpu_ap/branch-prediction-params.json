@@ -1,13 +1,38 @@
 {
   "blockers": [],
+  "cbp5_mpki_results_ref": {
+    "android_claim": false,
+    "cbp5_claim": true,
+    "comparison_table": "docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md",
+    "evidence_class": "cbp5_train_traces_only",
+    "model": {
+      "command": "python3 benchmarks/cpu/branch/run_mpki.py --backend model --traces external/cbp5-traces/",
+      "harness": "behavioural-bpu-model",
+      "path": "docs/evidence/cpu_ap/mpki_results_cbp5.json",
+      "present": true,
+      "schema": "eliza.bpu_mpki.v1",
+      "sha256": "60eaf6be3f10cd42d1ff39ff754c17cac5d4f12c877c741b86ccdb6caaa7ecf9"
+    },
+    "rtl": {
+      "command": "make mpki-eval-rtl",
+      "harness": "cocotb-rtl-bpu_top",
+      "path": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
+      "present": true,
+      "schema": "eliza.bpu_mpki.v1",
+      "sha256": "aa66ebf732e4204cb6625ffbb81edda72bc6f22a0e80cb594f10fa9f79b5e360"
+    },
+    "spec2017_claim": false,
+    "v8_claim": false
+  },
   "claim_policy": {
     "android_mpki_claim": false,
+    "cbp5_mpki_claim": true,
     "fdip_claim": false,
-    "reason": "Open RTL geometry verified against 2028 thresholds. Workload MPKI claims remain blocked until benchmarks/cpu/branch/ ingests SPEC, AOSP, and JS-engine traces.",
+    "reason": "Open RTL geometry verified against 2028 thresholds. CBP-5 train-trace MPKI is on file (evidence_class cbp5_train_traces_only); SPEC, AOSP, and JS-engine MPKI claims remain blocked until those trace sets land in benchmarks/cpu/branch/.",
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
-  "generated_at_utc": "2026-05-19T20:24:05.988695+00:00",
+  "generated_at_utc": "2026-05-20T03:29:58.609822+00:00",
   "parameters": {
     "BIM_ENTRIES": 16384,
     "FETCH_BLOCK_BYTES": 32,
@@ -54,7 +79,7 @@
     "UFTB_ENTRIES": 512
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "d28cbd6f344ad67d8935528552df174dd8528266",
+  "source_revision": "36386b9e268f9722919277476efece0f18191e53",
   "sources": {
     "contract": {
       "path": "docs/arch/branch-prediction.md",
@@ -83,7 +108,7 @@
     "path": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
     "present": true,
     "schema": "eliza.bpu_mpki.v1",
-    "sha256": "ba90218ad3b60efc461f9d26f52e62b647231bb6780733b7658d4ca25f13eb3b",
+    "sha256": "eafb50e365aae185dbb298e9ad5d1723e9ff43974a84ef482191dbcfed78f590",
     "spec2017_claim": false,
     "trace_class": "synthetic_planning_only"
   },

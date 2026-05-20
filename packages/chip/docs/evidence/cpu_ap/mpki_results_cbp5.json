@@ -1,0 +1,141 @@
+{
+  "aggregate": {
+    "branch_count": 330600,
+    "instruction_count": 1995042,
+    "misprediction_count": 5279,
+    "mpki": 2.64606
+  },
+  "cbp5_tage_sc_l_64kb_reference_mpki_by_class": {
+    "compress": 2.799,
+    "fp": 4.015,
+    "infra": 2.631,
+    "int": 4.7,
+    "media": 1.062,
+    "web": 3.884
+  },
+  "cbp5_tage_sc_l_64kb_reference_mpki_by_trace": {
+    "fp_0_trace": 0.5736,
+    "int_0_trace": 5.1327
+  },
+  "claim_policy": {
+    "android_claim": false,
+    "cbp5_claim": true,
+    "evidence_class": "cbp5_train_traces_only",
+    "reason": "BPU MPKI measured against CBP2025 training traces (ramisheikh/cbp2025) using the in-tree behavioural BPU model. Numbers compare directly to the CBP2016 64KB TAGE-SC-L reference from reference_results_training_set.csv. These are CBP-5 train-set numbers only; they do not back SPEC2017, AOSP, or JS-engine MPKI claims.",
+    "spec2017_claim": false,
+    "v8_claim": false
+  },
+  "evidence_class": "cbp5_train_traces_only",
+  "generated_at_utc": "2026-05-20T03:31:08.003566+00:00",
+  "geometry": {
+    "BIM_CTR_W": 2,
+    "BIM_ENTRIES": 16384,
+    "FETCH_BLOCK_BYTES": 32,
+    "FTB_ENTRIES": 2048,
+    "FTB_WAYS": 4,
+    "ITTAGE_CTR_W": 3,
+    "ITTAGE_ENTRIES": [
+      256,
+      256,
+      512,
+      512,
+      512
+    ],
+    "ITTAGE_HIST_LEN": [
+      4,
+      8,
+      13,
+      16,
+      32
+    ],
+    "ITTAGE_TABLES": 5,
+    "ITTAGE_TAG_W": 9,
+    "LOOP_CONF_W": 3,
+    "LOOP_CTR_W": 14,
+    "LOOP_ENTRIES": 64,
+    "RAS_ARCH_ENTRIES": 32,
+    "RAS_SPEC_ENTRIES": 64,
+    "SC_CTR_W": 6,
+    "SC_ENTRIES_TABLE": 512,
+    "SC_HIST_LEN": [
+      0,
+      4,
+      10,
+      16
+    ],
+    "SC_TABLES": 4,
+    "SC_THRESH_INIT": 6,
+    "TAGE_CTR_W": 3,
+    "TAGE_ENTRIES_TABLE": 4096,
+    "TAGE_HIST_LEN": [
+      8,
+      13,
+      32,
+      64,
+      119
+    ],
+    "TAGE_TABLES": 5,
+    "TAGE_TAG_W": 8,
+    "TAGE_USEFUL_W": 2,
+    "UFTB_ENTRIES": 512,
+    "UFTB_WAYS": 4
+  },
+  "harness": "behavioural-bpu-model",
+  "schema": "eliza.bpu_mpki.v1",
+  "workloads": {
+    "sample_fp_trace": {
+      "branch_stats": {
+        "branch_count": 148723,
+        "call_count": 10589,
+        "cond_branch_count": 111265,
+        "indirect_branch_count": 1,
+        "instruction_count": 997741,
+        "return_count": 10589
+      },
+      "branches": 148723,
+      "cbp5_tage_sc_l_64kb_reference_mpki": 0.5736,
+      "cbp5_workload_class": "fp",
+      "counters": {
+        "call": 10589,
+        "cond": 127544,
+        "cond_misp": 3066,
+        "ind": 1,
+        "ind_misp": 4,
+        "misp": 3071,
+        "pred": 148723,
+        "ret": 10589,
+        "ret_misp": 1
+      },
+      "instruction_count": 997741,
+      "mpki": 3.077953,
+      "trace_class": "cbp5_train_traces_only"
+    },
+    "sample_int_trace": {
+      "branch_stats": {
+        "branch_count": 181877,
+        "call_count": 12900,
+        "cond_branch_count": 128874,
+        "indirect_branch_count": 14255,
+        "instruction_count": 997301,
+        "return_count": 12902
+      },
+      "branches": 181877,
+      "cbp5_tage_sc_l_64kb_reference_mpki": 5.1327,
+      "cbp5_workload_class": "int",
+      "counters": {
+        "call": 12900,
+        "cond": 149840,
+        "cond_misp": 1885,
+        "ind": 6235,
+        "ind_misp": 319,
+        "misp": 2208,
+        "pred": 181877,
+        "ret": 12902,
+        "ret_misp": 4
+      },
+      "instruction_count": 997301,
+      "mpki": 2.213976,
+      "trace_class": "cbp5_train_traces_only"
+    }
+  }
+}
