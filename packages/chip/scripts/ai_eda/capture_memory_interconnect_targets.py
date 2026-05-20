@@ -119,6 +119,10 @@ def main() -> int:
             "dramsys",
             "gem5-aladdin",
             "gem5-accesys",
+            "memexplorer",
+            "lumina-gpu-architecture-dse",
+            "deepstack-3d-ai-accelerator-dse",
+            "mess-memory-system-simulator",
         ],
         "policy": {
             "changes_rtl": False,
@@ -195,10 +199,30 @@ def main() -> int:
             {
                 "id": "lpddr-dram-simulator-watch",
                 "status": "CAPTURED_NOT_MODELED",
-                "target": "future Ramulator2/DRAMsim3/DRAMSys LPDDR timing and bandwidth exploration",
+                "target": "future Ramulator2/DRAMsim3/DRAMSys/Mess LPDDR and memory-system timing, bandwidth, and contention exploration requires pinned configs, traces, simulator logs, and memory evidence comparison",
                 "acceptance_gates": [
                     "make memory-uma-claim-gate",
                     "make memory-evidence-template-check",
+                ],
+            },
+            {
+                "id": "npu-memory-hierarchy-agent-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future MemExplorer/LUMINA-style agentic memory hierarchy or bottleneck DSE must keep generated architecture reports quarantined until workload traces, prompt/model logs, simulator replay, memory-contract checks, and architecture review exist",
+                "acceptance_gates": [
+                    "make memory-interconnect-contract-check",
+                    "make npu-runtime-contract-check",
+                    "make benchmark-sim-metrics",
+                ],
+            },
+            {
+                "id": "stacked-ai-accelerator-memory-watch",
+                "status": "CAPTURED_NOT_MODELED",
+                "target": "future DeepStack-style 3D-stacked AI accelerator memory/interconnect exploration requires package, thermal, power, topology, memory-stack, and workload assumptions before any E1 relevance claim",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_chiplet_3dic_package_targets.py --run-id validation",
+                    "make memory-interconnect-contract-check",
+                    "make thermal-signoff-check",
                 ],
             },
             {
@@ -219,6 +243,9 @@ def main() -> int:
             "no license-reviewed FlooNoC/AutoNoC generator revision, config hash, generated RTL quarantine, or E1 fabric replay",
             "no MICSim/CIM workload, array, quantization, calibration, power, or thermal evidence",
             "no photonic NoC device, package, thermal, optical-link availability, or route-safety model",
+            "no approved agentic NPU memory hierarchy DSE flow with workload traces, prompt/model logs, generated-architecture quarantine, simulator replay, and memory-contract review",
+            "no approved 3D-stacked AI accelerator memory/interconnect design space with package, thermal, power, topology, and workload assumptions",
+            "no pinned Mess, MemExplorer, LUMINA, or DeepStack asset/revision path with license review and local replay evidence",
             "no real target bandwidth, latency, Android shared-buffer, or contention evidence",
         ],
     }

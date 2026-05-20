@@ -10,6 +10,22 @@ const launchManagedElizaAgent = mock();
 let cloudEnv: Record<string, string | undefined> = {};
 
 mock.module("../../cache/client", () => ({
+  CacheClient: class CacheClient {
+    private values = new Map<string, unknown>();
+    isAvailable() {
+      return true;
+    }
+    async get(key: string) {
+      return this.values.get(key) ?? null;
+    }
+    async set(key: string, value: unknown) {
+      this.values.set(key, value);
+    }
+    async expire() {}
+    async del(key: string) {
+      this.values.delete(key);
+    }
+  },
   cache: {
     get: mock(async (key: string) => sessionCache.get(key) ?? null),
     set: mock(async (key: string, value: unknown) => {
@@ -31,11 +47,16 @@ mock.module("@ai-sdk/openai", () => ({
 
 mock.module("ai", () => ({
   APICallError: class APICallError extends Error {},
+  Output: {
+    json: mock(() => ({})),
+    object: mock((value: unknown) => value),
+  },
   RetryError: class RetryError extends Error {},
   convertToModelMessages: mock((messages: unknown) => messages),
   embed: mock(async () => ({ embedding: [] })),
   embedMany: mock(async () => ({ embeddings: [] })),
   generateText,
+  jsonSchema: mock((schema: unknown) => schema),
   streamText: mock(() => {
     throw new Error("streamText is not implemented in onboarding-chat tests");
   }),
@@ -158,7 +179,9 @@ describe("runOnboardingChat", () => {
       trustedPlatformIdentity: true,
     });
 
-    expect(result.reply.endsWith(`Connect Eliza Cloud here: ${result.loginUrl}`)).toBe(true);
+    expect(
+      result.reply.endsWith(`Connect Eliza Cloud here: ${result.loginUrl}`),
+    ).toBe(true);
     expect(result.reply).not.toContain(`${result.loginUrl}**`);
   });
 
@@ -190,24 +213,32 @@ describe("runOnboardingChat", () => {
       },
     });
 
-    expect(result.reply).toBe("Open <https://elizacloud.ai/dashboard/containers>.");
+    expect(result.reply).toBe(
+      "Open <https://elizacloud.ai/dashboard/containers>.",
+    );
   });
 
   test("copies the onboarding transcript into memory once the provisioned agent is running", async () => {
     const originalFetch = globalThis.fetch;
-    const rememberRequests: Array<{ url: string; body: unknown; authorization: string | null }> =
-      [];
-    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
-      rememberRequests.push({
-        url: String(input),
-        body: init?.body ? JSON.parse(String(init.body)) : null,
-        authorization:
-          init?.headers instanceof Headers
-            ? init.headers.get("authorization")
-            : ((init?.headers as Record<string, string> | undefined)?.Authorization ?? null),
-      });
-      return new Response("{}", { status: 200 });
-    }) as typeof fetch;
+    const rememberRequests: Array<{
+      url: string;
+      body: unknown;
+      authorization: string | null;
+    }> = [];
+    globalThis.fetch = mock(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        rememberRequests.push({
+          url: String(input),
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+          authorization:
+            init?.headers instanceof Headers
+              ? init.headers.get("authorization")
+              : ((init?.headers as Record<string, string> | undefined)
+                  ?.Authorization ?? null),
+        });
+        return new Response("{}", { status: 200 });
+      },
+    ) as typeof fetch;
 
     try {
       findOrCreateByPhone.mockResolvedValue({
@@ -219,7 +250,11 @@ describe("runOnboardingChat", () => {
         status: "running",
         agentId: "agent-1",
         bridgeUrl: "https://agent-1.example",
-        sandbox: { id: "agent-1", status: "running", bridge_url: "https://agent-1.example" },
+        sandbox: {
+          id: "agent-1",
+          status: "running",
+          bridge_url: "https://agent-1.example",
+        },
       });
       launchManagedElizaAgent.mockResolvedValue({
         appUrl: "https://app.elizacloud.ai/dashboard/containers/agents/agent-1",
@@ -252,7 +287,9 @@ describe("runOnboardingChat", () => {
         userId: "user-1",
       });
       expect(rememberRequests).toHaveLength(1);
-      expect(rememberRequests[0]?.url).toBe("https://agent-1.example/api/memory/remember");
+      expect(rememberRequests[0]?.url).toBe(
+        "https://agent-1.example/api/memory/remember",
+      );
       expect(rememberRequests[0]?.authorization).toBe("Bearer agent-token");
       expect((rememberRequests[0]?.body as { text: string }).text).toContain(
         "Onboarding conversation transcript copied from Eliza Cloud.",

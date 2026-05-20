@@ -143,7 +143,9 @@ def npu_target_is_scaffold_only(target: dict[str, Any]) -> bool:
 
 def npu_roadmap_blocks_l4_l5_claims(roadmap: dict[str, Any]) -> bool:
     phases = {
-        str(phase.get("id")): phase for phase in list_values(roadmap.get("phases")) if isinstance(phase, dict)
+        str(phase.get("id")): phase
+        for phase in list_values(roadmap.get("phases"))
+        if isinstance(phase, dict)
     }
     l4 = mapping(phases.get("L4_ANDROID_HAL_DELEGATE"))
     l5 = mapping(phases.get("L5_2028_PHONE_CLASS_EVIDENCE"))
@@ -196,8 +198,7 @@ def android_template_is_fail_closed(template: dict[str, Any]) -> bool:
         == "template_only_not_android_boot_cts_vts_or_nnapi_evidence"
         and gate.get("android_boot_claim") == "none"
         and gate.get("compatibility_claim") == "none"
-        and gate.get("nnapi_acceleration_claim")
-        == "none_without_all_required_artifacts_passed"
+        and gate.get("nnapi_acceleration_claim") == "none_without_all_required_artifacts_passed"
         and set(statuses) >= REQUIRED_ANDROID_STATUSES
         and all(status == "blocked" for status in statuses.values())
         and set(artifacts) >= REQUIRED_ANDROID_ARTIFACTS
@@ -245,8 +246,7 @@ def benchmark_plan_blocks_unproven_nnapi(config: dict[str, Any]) -> bool:
         and "--use_nnapi=true" in list_values(bench.get("command"))
         and "--nnapi_accelerator_name=e1-npu" in list_values(bench.get("command"))
         and len(artifacts) == 1
-        and mapping(artifacts[0]).get("path")
-        == "benchmarks/capabilities/e1_npu_nnapi.proof.json"
+        and mapping(artifacts[0]).get("path") == "benchmarks/capabilities/e1_npu_nnapi.proof.json"
         and mapping(artifacts[0]).get("release_blocking") is True
         and mapping(artifacts[0]).get("blocked_reason") == "missing_e1_npu_nnapi_accelerator"
         and set(list_values(bench.get("required_metrics"))) >= REQUIRED_BENCHMARK_METRICS

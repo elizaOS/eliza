@@ -136,7 +136,11 @@ describe("MessageRouterService contact recording", () => {
     );
     expect(onConflictDoUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: ["provider", "contact_identifier", "agent_id"],
+        target: expect.arrayContaining([
+          expect.objectContaining({ name: "provider" }),
+          expect.objectContaining({ name: "contact_identifier" }),
+          expect.objectContaining({ name: "agent_id" }),
+        ]),
         set: expect.objectContaining({
           organization_id: "agent-org",
           user_id: "agent-user",

@@ -12,7 +12,13 @@ import {
 import { elizaAppUserService } from "./user-service";
 
 export type OnboardingChatRole = "user" | "assistant";
-export type OnboardingPlatform = "web" | "telegram" | "discord" | "whatsapp" | "twilio" | "blooio";
+export type OnboardingPlatform =
+  | "web"
+  | "telegram"
+  | "discord"
+  | "whatsapp"
+  | "twilio"
+  | "blooio";
 
 export interface OnboardingChatMessage {
   role: OnboardingChatRole;
@@ -87,7 +93,10 @@ export function createOnboardingSessionId(input?: {
   return crypto.randomUUID();
 }
 
-function sanitizeSessionId(value: string | undefined, input: OnboardingChatInput): string {
+function sanitizeSessionId(
+  value: string | undefined,
+  input: OnboardingChatInput,
+): string {
   const trimmed = value?.trim();
   if (trimmed && /^[a-zA-Z0-9:+_-]{8,180}$/.test(trimmed)) {
     return trimmed;
@@ -95,7 +104,9 @@ function sanitizeSessionId(value: string | undefined, input: OnboardingChatInput
   return createOnboardingSessionId(input);
 }
 
-async function loadSession(sessionId: string): Promise<OnboardingSession | null> {
+async function loadSession(
+  sessionId: string,
+): Promise<OnboardingSession | null> {
   return cache.get<OnboardingSession>(sessionCacheKey(sessionId));
 }
 
@@ -103,7 +114,9 @@ async function saveSession(session: OnboardingSession): Promise<void> {
   await cache.set(sessionCacheKey(session.id), session, SESSION_TTL_SECONDS);
 }
 
-function trimHistory(history: OnboardingChatMessage[]): OnboardingChatMessage[] {
+function trimHistory(
+  history: OnboardingChatMessage[],
+): OnboardingChatMessage[] {
   return history.length > MAX_HISTORY_MESSAGES
     ? history.slice(history.length - MAX_HISTORY_MESSAGES)
     : history;
@@ -119,7 +132,10 @@ function appendMessage(
   return {
     ...session,
     updatedAt: nowIso(),
-    history: trimHistory([...session.history, { role, content: message, createdAt: nowIso() }]),
+    history: trimHistory([
+      ...session.history,
+      { role, content: message, createdAt: nowIso() },
+    ]),
   };
 }
 
@@ -177,7 +193,10 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   if (!phoneNumber) return session;
 
   try {
-    await elizaAppUserService.linkPhoneToUser(input.authenticatedUser.userId, phoneNumber);
+    await elizaAppUserService.linkPhoneToUser(
+      input.authenticatedUser.userId,
+      phoneNumber,
+    );
   } catch (error) {
     logger.warn("[eliza-app onboarding] phone link after login failed", {
       userId: input.authenticatedUser.userId,
@@ -238,7 +257,10 @@ function fallbackReply(args: {
 }
 
 function sanitizeReplyText(reply: string): string {
-  return reply.replaceAll("httpshttps://", "https://").replaceAll("httphttp://", "http://").trim();
+  return reply
+    .replaceAll("httpshttps://", "https://")
+    .replaceAll("httphttp://", "http://")
+    .trim();
 }
 
 function ensureExactLoginUrl(reply: string, loginUrl: string): string {
@@ -297,7 +319,9 @@ State:
     });
     const sanitized = sanitizeReplyText(text);
     if (!sanitized) return fallbackReply(args);
-    return args.requiresLogin ? ensureExactLoginUrl(sanitized, args.loginUrl) : sanitized;
+    return args.requiresLogin
+      ? ensureExactLoginUrl(sanitized, args.loginUrl)
+      : sanitized;
   } catch (error) {
     logger.warn("[eliza-app onboarding] generation failed; using fallback", {
       error: error instanceof Error ? error.message : String(error),
@@ -323,9 +347,22 @@ function transcriptText(session: OnboardingSession): string {
 
 async function copyTranscriptToManagedAgent(
   session: OnboardingSession,
-): Promise<{ session: OnboardingSession; launchUrl: string | null; copied: boolean }> {
-  if (!session.userId || !session.organizationId || !session.agentId || session.handoffCopiedAt) {
-    return { session, launchUrl: session.launchUrl ?? null, copied: !!session.handoffCopiedAt };
+): Promise<{
+  session: OnboardingSession;
+  launchUrl: string | null;
+  copied: boolean;
+}> {
+  if (
+    !session.userId ||
+    !session.organizationId ||
+    !session.agentId ||
+    session.handoffCopiedAt
+  ) {
+    return {
+      session,
+      launchUrl: session.launchUrl ?? null,
+      copied: !!session.handoffCopiedAt,
+    };
   }
 
   try {
@@ -350,7 +387,9 @@ async function copyTranscriptToManagedAgent(
 
     if (!rememberResponse.ok) {
       const body = await rememberResponse.text().catch(() => "");
-      throw new Error(`memory copy failed (${rememberResponse.status}) ${body.slice(0, 200)}`);
+      throw new Error(
+        `memory copy failed (${rememberResponse.status}) ${body.slice(0, 200)}`,
+      );
     }
 
     return {
@@ -373,11 +412,15 @@ async function copyTranscriptToManagedAgent(
 
 function controlPanelUrl(agentId?: string | null): string {
   return onboardingAppPath(
-    agentId ? `/dashboard/containers/agents/${agentId}` : "/dashboard/containers",
+    agentId
+      ? `/dashboard/containers/agents/${agentId}`
+      : "/dashboard/containers",
   );
 }
 
-export async function runOnboardingChat(input: OnboardingChatInput): Promise<OnboardingChatResult> {
+export async function runOnboardingChat(
+  input: OnboardingChatInput,
+): Promise<OnboardingChatResult> {
   const sessionId = sanitizeSessionId(input.sessionId, input);
   const createdAt = nowIso();
   let session = (await loadSession(sessionId)) ?? {
@@ -394,7 +437,8 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
     ...session,
     platform: input.platform ?? session.platform,
     platformUserId: input.platformUserId ?? session.platformUserId,
-    platformDisplayName: input.platformDisplayName ?? session.platformDisplayName,
+    platformDisplayName:
+      input.platformDisplayName ?? session.platformDisplayName,
     updatedAt: nowIso(),
   };
 
@@ -413,7 +457,10 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
   if (userMessage) {
     session = appendMessage(session, "user", userMessage);
     const inferredName = inferName(userMessage) ?? input.platformDisplayName;
-    if (inferredName && (!session.name || isPlaceholderPhoneName(session.name))) {
+    if (
+      inferredName &&
+      (!session.name || isPlaceholderPhoneName(session.name))
+    ) {
       session.name = inferredName;
       preferredNameProvidedThisTurn = true;
     }
@@ -445,7 +492,11 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
 
   let launchUrl = session.launchUrl ?? null;
   let handoffComplete = !!session.handoffCopiedAt;
-  if (provisioning.status === "running" && session.agentId && !handoffComplete) {
+  if (
+    provisioning.status === "running" &&
+    session.agentId &&
+    !handoffComplete
+  ) {
     const copied = await copyTranscriptToManagedAgent(session);
     session = copied.session;
     launchUrl = copied.launchUrl;

@@ -91,7 +91,8 @@ describe("registerPhoneGatewayDevice", () => {
       phoneAccountLabel: "Eliza Cloud Gateway",
       friendlyName: "Eliza Cloud Gateway",
       sendMethod: "bluebubbles-local-bridge",
-      cloudWebhookUrl: "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
+      cloudWebhookUrl:
+        "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
       metadata: { eventType: "new-message" },
     });
 
@@ -106,14 +107,19 @@ describe("registerPhoneGatewayDevice", () => {
         phone_account_label: "Eliza Cloud Gateway",
         friendly_name: "Eliza Cloud Gateway",
         send_method: "bluebubbles-local-bridge",
-        cloud_webhook_url: "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
+        cloud_webhook_url:
+          "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
         metadata: '{"eventType":"new-message"}',
         is_active: true,
       }),
     );
     expect(onConflictDoUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: ["provider", "phone_number", "bridge_id"],
+        target: expect.arrayContaining([
+          expect.objectContaining({ name: "provider" }),
+          expect.objectContaining({ name: "phone_number" }),
+          expect.objectContaining({ name: "bridge_id" }),
+        ]),
         set: expect.objectContaining({
           organization_id: "org-1",
           phone_account_id: "+14159611510",
@@ -125,7 +131,9 @@ describe("registerPhoneGatewayDevice", () => {
 
   test("repairs the gateway table on first use when the migration is missing", async () => {
     returning
-      .mockRejectedValueOnce(new Error('relation "phone_gateway_devices" does not exist'))
+      .mockRejectedValueOnce(
+        new Error('relation "phone_gateway_devices" does not exist'),
+      )
       .mockResolvedValueOnce([{ id: "gateway-device-1" }]);
 
     const result = await registerPhoneGatewayDevice({

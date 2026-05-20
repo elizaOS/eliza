@@ -135,6 +135,10 @@ def main() -> int:
             "tdpnavigator-placer",
             "chipletpart",
             "chiplet-network-sim",
+            "legosim-chiplet-simulator",
+            "hisim-heterogeneous-integration",
+            "mfit-chiplet-thermal",
+            "threed-ice-4-thermal",
             "eco-chip",
             "ucie-standard",
             "chipsalliance-cde",
@@ -208,12 +212,23 @@ def main() -> int:
             {
                 "id": "package-si-pi-thermal-codesign-watch",
                 "status": "CAPTURED_NOT_ANALYZED",
-                "target": "future package co-design must tie power maps, thermal models, PDN, SI/PI, die stacking, and board constraints to local evidence",
+                "target": "future MFIT, 3D-ICE, or package co-design use must tie power maps, thermal models, PDN, SI/PI, die stacking, and board constraints to local evidence",
                 "acceptance_gates": [
                     "make power-thermal-evidence-check",
                     "make pd-signoff-manifest-check",
                     "make board-package-evidence-check",
                     "make package-cross-probe-check",
+                ],
+            },
+            {
+                "id": "heterogeneous-integration-simulator-watch",
+                "status": "CAPTURED_NOT_SIMULATED",
+                "target": "future LEGOSim or HISIM-style heterogeneous-integration simulation must remain advisory until chiplet partition, package stack, traffic traces, die-to-die assumptions, simulator revisions, and replay logs are reviewed",
+                "acceptance_gates": [
+                    "make memory-interconnect-contract-check",
+                    "make package-cross-probe-check",
+                    "make power-thermal-evidence-check",
+                    "make no-hardware-action-check",
                 ],
             },
             {
@@ -233,6 +248,7 @@ def main() -> int:
             "no UCIe or other die-to-die RTL, PHY collateral, verification suite, firmware contract, Linux contract, or package pin/bump evidence",
             "no package vendor stack-up, SI/PI extraction, thermal stack, warpage, assembly, known-good-die, or yield evidence",
             "no license-reviewed external chiplet/package simulator, placement, topology, or LLM-agent implementation with pinned revisions and local replay",
+            "no approved LEGOSim, HISIM, MFIT, or 3D-ICE setup with pinned revisions, package stack/material assumptions, power maps, traffic traces, die-to-die PHY assumptions, simulator logs, calibration, and reviewer disposition",
             "no approved RapidChiplet, PlaceIT, DiffChip, or TDPNavigator-style flow with pinned revisions/assets, package stack, power maps, traffic manifests, PHY assumptions, rewards/seeds where applicable, output hashes, thermal/SI/PI evidence, and reviewer disposition",
             "no release gate allowing AI-generated chiplet partitioning, package changes, interposer routing, or die-to-die interfaces to bypass architecture, RTL, PD, software, package, manufacturing, and review gates",
         ],

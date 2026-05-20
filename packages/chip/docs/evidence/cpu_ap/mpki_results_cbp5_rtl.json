@@ -15,7 +15,7 @@
     "v8_claim": false
   },
   "evidence_class": "cbp5_train_traces_only",
-  "generated_at_utc": "2026-05-20T03:16:56.406402+00:00",
+  "generated_at_utc": "2026-05-20T10:22:27.912564+00:00",
   "harness": "cocotb-rtl-bpu_top",
   "rtl_top": "bpu_top",
   "schema": "eliza.bpu_mpki.v1",

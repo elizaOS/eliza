@@ -115,6 +115,9 @@ def main() -> int:
             "analogcoder",
             "ams-net",
             "analog-layout-vlm-dataset",
+            "analog-circuits-sky130",
+            "spicepilot",
+            "analogseeker",
         ],
         "policy": {
             "generates_spice_netlist": False,
@@ -199,6 +202,17 @@ def main() -> int:
                 ],
             },
             {
+                "id": "analog-spice-corpus-and-model-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future SKY130/SPICE circuit corpora, SPICE-generation benchmarks, or analog-domain models must pin exact revisions, licenses, PDK and ngspice/PySpice provenance, base-model lineage, split/non-overlap review, prompt and output logs, generated SPICE quarantine, PVT/layout evidence, and analog reviewer disposition",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation",
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make padframe-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "analog-imc-research-watch",
                 "status": "RESEARCH_ONLY",
                 "target": "track analog IMC netlist-generation research without E1 source integration",
@@ -214,6 +228,8 @@ def main() -> int:
             "no quarantined analog LLM/agent harness with pinned prompts, model versions, memory snapshots, SPICE decks, simulator logs, PVT sweeps, and reviewer disposition",
             "no license-reviewed analog schematic/netlist dataset selected with exact snapshot, non-overlap review, and parser baselines",
             "no license-reviewed analog layout VLM dataset snapshot, synthetic-data boundary review, local label mapping, or download policy",
+            "no license-reviewed SKY130/SPICE analog circuit corpus selected with exact revision, PDK provenance, ngspice/PySpice replay policy, split review, and non-overlap review",
+            "no approved external analog model intake with base-model license review, training-corpus contamination review, inference logs, and reviewer disposition",
             "no approved LLM/ngspice sizing harness with prompt logs, objective definitions, generated dimension quarantine, PVT/corner sweeps, and extracted-layout replay",
             "no approved design-equation generation workflow with equation traceability, calibration data, sensitivity reports, and reviewer disposition",
             "no approved flow for AI-generated SPICE, analog layout, or foundry IP",

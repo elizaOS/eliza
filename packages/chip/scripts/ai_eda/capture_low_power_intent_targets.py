@@ -127,6 +127,9 @@ def main() -> int:
             "rtl-ppa-sog",
             "symrtlo",
             "powergear-hls-power",
+            "archpower",
+            "autopower",
+            "atompower-rtl-power",
             "openroad-two-phase-clock",
         ],
         "policy": {
@@ -194,6 +197,16 @@ def main() -> int:
                 ],
             },
             {
+                "id": "architecture-power-model-dvfs-watch",
+                "status": "CAPTURED_NOT_MODELED",
+                "target": "future ArchPower, AutoPower, or AtomPower-style CPU/AP/RTL power priors may only inform DVFS triage after local feature mapping, activity provenance, calibration labels, and held-out E1 error analysis exist",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_power_thermal_targets.py --run-id validation",
+                    "make cpu-npu-burst-sustained-policy",
+                    "make power-thermal-evidence-check",
+                ],
+            },
+            {
                 "id": "upf-retention-isolation-verification-watch",
                 "status": "CAPTURED_NOT_VERIFIED",
                 "target": "future UPF retention, isolation, level-shifter, supply-set, and power-state artifacts require power-aware simulation or formal low-power verification evidence",
@@ -243,6 +256,7 @@ def main() -> int:
             "no workload-aligned voltage, frequency, power, and thermal traces for DVFS or idle-state validation",
             "no before/after low-power PPA corpus with equivalence and signoff evidence for E1",
             "no calibrated HLS/RTL power-label corpus or held-out E1 error analysis for early-stage power estimators",
+            "no CPU/AP/RTL feature mapping, VCD/activity provenance, calibration labels, or held-out E1 error analysis for architecture-level power priors",
         ],
     }
     out_dir = (args.out_root / args.run_id).resolve()

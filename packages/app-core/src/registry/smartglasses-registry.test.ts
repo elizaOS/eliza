@@ -24,6 +24,9 @@ describe("smartglasses registry entry", () => {
     }
 
     expect(parsed.kind).toBe("plugin");
+    if (parsed.kind !== "plugin") {
+      throw new Error("Expected smartglasses registry entry to be a plugin");
+    }
     expect(parsed.subtype).toBe("media");
     expect(parsed.npmName).toBe("@elizaos/plugin-smartglasses");
     expect(parsed.config).toHaveProperty("SMARTGLASSES_TRANSPORT");

@@ -133,6 +133,7 @@ def main() -> int:
             "hwe-bench",
             "audopeda-openroad",
             "openroad-mcp",
+            "iscript-pd-tcl",
         ],
         "policy": {
             "executes_agent": False,
@@ -200,6 +201,17 @@ def main() -> int:
                 ],
             },
             {
+                "id": "physical-design-tcl-generation-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future iScript-style physical-design Tcl generation remains quarantined until command provenance, generated-script hashes, syntax/semantic review, deterministic replay logs, and signoff follow-up evidence exist",
+                "acceptance_gates": [
+                    "make no-hardware-action-check",
+                    "make commercial-eda-gate",
+                    "make openlane-run-preflight-check",
+                    "make pd-signoff-manifest-check",
+                ],
+            },
+            {
                 "id": "openroad-mcp-sandbox-watch",
                 "status": "CAPTURED_NOT_STARTED",
                 "target": "future OpenROAD MCP use requires pinned server revisions, sandbox/authentication policy, command allowlists, archived tool-call logs, artifact quarantine, and rollback",
@@ -237,6 +249,7 @@ def main() -> int:
         "blocked_by": [
             "no approved write-capable EDA agent command schema or command allowlist",
             "no policy separating read-only RAG answers from executable Tcl, shell, simulator, synthesis, PnR, signoff, or release actions",
+            "no approved physical-design Tcl generation schema, command-reference provenance, generated-script quarantine, or deterministic replay policy for iScript-style output",
             "no commercial Synopsys, Cadence, Siemens, Ansys, or foundry tool license and data-handling review for AI copilot output",
             "no local replay harness that can reproduce AI-generated EDA actions from archived inputs, commands, logs, and output hashes",
             "no accepted MCP server version, authentication model, sandbox policy, or artifact quarantine path for E1",

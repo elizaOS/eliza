@@ -64,6 +64,20 @@ bindings as authoritative:
   are bonded into a working schematic or PCB.
 - This is not a release. Treat as a forward planning placeholder.
 
+## Concept planning package
+
+The current phone-mainboard planning package is intentionally separate from
+fabrication evidence:
+
+- `docs/board/e1-phone-mainboard-end-to-end.md` — end-to-end closure plan
+  for a complete phone mainboard.
+- `docs/board/e1-phone-mainboard-metrics.yaml` — concept area, wasted-space,
+  power-efficiency, and connectivity targets.
+- `board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.svg` — CAD-style
+  floorplan preview.
+- `board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.png` — rendered
+  screenshot of the preview.
+
 ## Open decisions
 
 1. SoM vs mainboard split (MNT Pocket Reform pattern) per

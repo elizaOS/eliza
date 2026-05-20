@@ -106,6 +106,12 @@ def main() -> int:
             "scalehls",
             "autodse-hls",
             "ai4dse-hls",
+            "hlspilot",
+            "db4hls",
+            "dp-hls",
+            "hls4ml",
+            "finn-qnn",
+            "amd-hls-dataflow-case-study",
         ],
         "policy": {
             "generates_hls_code": False,
@@ -147,7 +153,7 @@ def main() -> int:
             {
                 "id": "hls-directive-agent-search-watch",
                 "source_spec": "compiler/runtime/test_e1_npu_runtime.py",
-                "target": "future LLM-DSE, iDSE, MPM-LLM4DSE, DiffHLS, HLS-Seek, TimelyHLS, AutoDSE, or AI4DSE-style directive, proxy-reward, QoR-prediction, and accelerator-parameter search for bounded E1 kernels",
+                "target": "future LLM-DSE, HLSPilot, iDSE, MPM-LLM4DSE, DiffHLS, HLS-Seek, TimelyHLS, AutoDSE, or AI4DSE-style profiling, directive, proxy-reward, QoR-prediction, and accelerator-parameter search for bounded E1 kernels",
                 "status": "CAPTURED_NOT_SEARCHED",
                 "acceptance_gates": [
                     "make npu-runtime-contract-check",
@@ -158,7 +164,7 @@ def main() -> int:
             {
                 "id": "hls-model-dataset-intake-watch",
                 "source_spec": "research/alpha_chip_macro_placement/01_sources/ai_eda_provenance_matrix.yaml",
-                "target": "future HLS QoR models, HLStrans/SAGE-HLS/Bench4HLS/ForgeHLS datasets, HLS-Seek proxy rewards, FlexLLM libraries, ScaleHLS infrastructure, AutoDSE baselines, or TAPA/RapidStream backends must remain metadata-only until revisions, licenses, tool versions, generated artifacts, overlap checks, and replay manifests are reviewed",
+                "target": "future HLS QoR models, HLStrans/SAGE-HLS/Bench4HLS/ForgeHLS/DB4HLS datasets, HLS-Seek proxy rewards, hls4ml/FINN/FlexLLM libraries, ScaleHLS infrastructure, AutoDSE baselines, or TAPA/RapidStream/DP-HLS backends must remain metadata-only until revisions, licenses, tool versions, generated artifacts, overlap checks, and replay manifests are reviewed",
                 "status": "CAPTURED_NOT_IMPORTED",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
@@ -177,6 +183,7 @@ def main() -> int:
             "no DiffHLS/HLS-Seek implementation, reward/proxy, feature extraction, calibration-label, synthesis-switch, or QoR replay review",
             "no approved MPM-LLM4DSE model/dataset intake, TimelyHLS benchmark replay, FlexLLM artifact review, or TAPA/RapidStream FPGA backend evidence",
             "no ScaleHLS/AutoDSE/AI4DSE revision, license, HLS backend, search manifest, generated-IR quarantine, prompt/model manifest, or QoR replay review",
+            "no HLSPilot, DB4HLS, DP-HLS, hls4ml, FINN, or AMD HLS dataflow case-study intake with exact revisions, licenses, model/workload manifests, generated-artifact quarantine, and replay evidence",
             "external benchmark and framework licenses not manually reviewed",
         ],
     }

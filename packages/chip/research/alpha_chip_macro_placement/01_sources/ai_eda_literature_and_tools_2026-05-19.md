@@ -85,6 +85,11 @@ candidate inputs to reproducible gates, not as standalone evidence.
 - Open-LLM-ECO: <https://github.com/YiKangOY/Open-LLM-ECO>. QoR/ECO agent
   placeholder repo for retrieve/schedule/reflect optimization; blocked until
   real code/data, license, and OpenLane replay evidence exist.
+- iScript: <https://arxiv.org/abs/2603.04476>. Physical-design Tcl generation
+  method and benchmark around a domain-adapted Qwen3-8B workflow; blocked until
+  model/data/code assets, command-reference provenance, generated-script
+  quarantine, syntax/semantic review, commercial-tool data handling, local
+  replay logs, and signoff evidence exist.
 - AgenticTCAD: <https://arxiv.org/abs/2512.23742>. Multi-agent TCAD code
   generation and device optimization research. E1 status: blocked until TCAD
   decks, simulator licenses, process authority, calibration, replay logs, and
@@ -145,6 +150,22 @@ candidate inputs to reproducible gates, not as standalone evidence.
   status: dataset-governance only until exact snapshot, license, synthetic-data
   boundary review, split manifests, local label mapping, overlap checks, and
   reviewer disposition exist.
+- Analog SPICE Circuits on SKY130:
+  <https://huggingface.co/datasets/pphilip/analog-circuits-sky130>. Public
+  SKY130/ngspice-style analog circuit corpus; E1 status: dataset-governance
+  only until exact revision, license, PDK/tool provenance, split/non-overlap
+  review, and replay policy are captured.
+- SPICEPilot: <https://arxiv.org/abs/2410.20553> and
+  <https://github.com/ACADLab/SPICEPilot>. Benchmark framework for LLM SPICE
+  generation and simulation-oriented evaluation; E1 status: benchmark-method
+  reference only until code/data license, PySpice/ngspice provenance, prompt
+  logs, generated-SPICE quarantine, and reviewer disposition exist.
+- AnalogSeeker: <https://arxiv.org/abs/2508.10409>,
+  <https://huggingface.co/analogllm/analog_model>, and
+  <https://huggingface.co/datasets/analogllm/analog_data>. Analog-domain model
+  and corpus watch source; E1 status: no download, inference, or fine-tuning
+  until base-model license, corpus contamination, split/overlap, evaluation,
+  and reviewer evidence exist.
 - OmniSch: <https://arxiv.org/abs/2604.00270>. Multimodal PCB schematic
   benchmark for structured diagram reasoning. E1 status: benchmark watch source
   only until exact dataset snapshot, license, E1 image/prompt non-overlap, and
@@ -153,6 +174,32 @@ candidate inputs to reproducible gates, not as standalone evidence.
   agentic KiCad schematic/netlist/PCB generation reference with RAG. E1 status:
   code watch source only until revisions, dependencies, license, prompt/output
   quarantine, ERC/DRC/fab logs, package cross-probe, and review are pinned.
+- Circuit Weaver: <https://circuit-weaver.com/>. AI-assisted structured KiCad
+  generation framework with design-IR, validation, placement, DFM, and
+  manufacturing-export concepts. E1 status: code/package watch only until exact
+  revisions, dependencies, model/provider manifests, prompts, generated-output
+  quarantine, ERC/DRC/DFM/SI/PI evidence, and review are pinned.
+- KiCad MCP Pro: <https://github.com/oaslananka/kicad-mcp-pro>. Write-capable
+  KiCad MCP server reference for AI-agent inspection, editing, validation,
+  simulation, DFM/SI/PI, and manufacturing-export surfaces. E1 status: no MCP
+  connection or write action until tool schemas, allowlists, sandbox/auth
+  policy, command logs, KiCad evidence, and human review are accepted.
+- Antmicro KiCad SI Wrapper:
+  <https://github.com/antmicro/kicad-si-simulation-wrapper>. Deterministic
+  KiCad trace-slicing and OpenEMS/gerber2ems preprocessing reference. E1
+  status: simulation-preprocessor watch only until exact revisions, stackup,
+  selected-net/port manifests, generated-slice hashes, simulation logs, SI/PI
+  comparison evidence, and review exist.
+- Open Schematics: <https://huggingface.co/datasets/rifxyz/open-schematics>.
+  Multimodal KiCad/schematic dataset. E1 status: dataset-governance only until
+  revision, license, split, overlap/contamination, parser-baseline, and
+  generated-output quarantine reviews exist.
+- GerberFormer: <https://huggingface.co/pulipakav-1/gerberformer> and
+  <https://huggingface.co/datasets/pulipakav-1/gerberformer-results>. Design-
+  conditioned PCB defect-detection model/data reference. E1 status: no model
+  download, data import, inference, or AOI claim until model/data revisions,
+  licenses, E1 Gerber/image/annotation hashes, held-out board error analysis,
+  and manufacturing review exist.
 - MARS-Place:
   <https://www.sciencedirect.com/science/article/pii/S016792602600026X>.
   PCB placement/routing optimization method. E1 status: paper-only target
@@ -181,6 +228,27 @@ candidate inputs to reproducible gates, not as standalone evidence.
   processor fuzzing with FPGA acceleration. E1 status: method-only until code,
   model/generator assets, seeds, legality checks, FPGA bitstreams, coverage
   logs, differential failures, and replay evidence exist.
+- DifuzzRTL: <https://github.com/compsec-snu/difuzz-rtl>. Code-bearing
+  RISC-V differential RTL fuzzer. E1 status: fuzzer reference only until exact
+  revision, license, ISA profile, DUT/reference hashes, simulator versions,
+  generated program hashes, seed manifests, coverage logs, mismatch
+  checkpoints, and review exist.
+- RFUZZ: <https://github.com/ekiwi/rfuzz>. Coverage-directed RTL fuzzing
+  reference. E1 status: method reference only until instrumentation hashes,
+  coverage definitions, generated input hashes, replay logs, and review exist.
+- Cascade: <https://comsec.ethz.ch/research/hardware-design-security/cascade-cpu-fuzzing-via-intricate-program-generation/>
+  and <https://github.com/comsec-group/cascade-artifacts>. RISC-V CPU fuzzer
+  using intricate program generation. E1 status: fuzzer reference only until
+  artifacts, ISA/privilege scope, generated program hashes, reducer logs,
+  mismatch/nontermination evidence, coverage, and review are pinned.
+- OpenXiangShan XFUZZ: <https://github.com/OpenXiangShan/xfuzz>. Coverage-guided
+  RISC-V CPU fuzzer. E1 status: co-simulation fuzzer reference only until
+  LibAFL/toolchain versions, coverage instrumentation, seed corpus, generated
+  workloads, logs, mismatch checkpoints, and review exist.
+- OpenXiangShan DiffTest: <https://github.com/OpenXiangShan/difftest>. RISC-V
+  CPU co-simulation/differential-testing framework. E1 status: co-simulation
+  reference only until trace schema, memory synchronization, nondeterminism
+  rules, logs, mismatch artifacts, and review are pinned.
 - FERIVer: <https://arxiv.org/abs/2504.05284>. FPGA-assisted RISC-V RTL
   verification with ISS-style reference comparison. E1 status: method-only
   until implementation assets, FPGA board/bitstream hashes, DUT/ISS revisions,
@@ -210,6 +278,27 @@ candidate inputs to reproducible gates, not as standalone evidence.
   optimization benchmark suite. E1 status: benchmark watch only until revision,
   license, process/model compatibility, train/test split, Monte Carlo replay,
   local macro-test evidence, and review are captured.
+- AutoCellGen: <https://github.com/The-OpenROAD-Project/AutoCellGen>. Open
+  standard-cell layout generator reference. E1 status: generator watch only
+  until PDK authority, generated GDS/LEF hashes, DRC/LVS/extraction, Liberty
+  characterization, STA, OpenLane replay, and review are available.
+- TOPCELL: <https://arxiv.org/abs/2604.14237>. LLM-assisted standard-cell
+  topology optimization method. E1 status: method-only until prompts/model/data
+  provenance, topology hashes, layout signoff, Liberty characterization,
+  block-level replay, and reviewer evidence exist.
+- CPCell: <https://arxiv.org/abs/2603.13665>. Constraint-programming standard-
+  cell generation for gear-ratio-aware DTCO. E1 status: DTCO reference only
+  until process rules, generated layout hashes, characterization, block-level
+  PPA/IR replay, and review are pinned.
+- CharLib: <https://pypi.org/project/charlib/> and
+  <https://github.com/stineje/CharLib>. Open standard-cell characterization
+  tooling. E1 status: characterization watch only until simulator, SPICE/model,
+  PVT/slew/load grid, Liberty diff, STA/synthesis replay, license, and review
+  evidence exist.
+- NVCell: <https://arxiv.org/abs/2107.07044>. RL standard-cell layout
+  generation reference. E1 status: historical method-only until exact
+  environment, PDK/design rules, generated layout, characterization, and
+  block-level replay evidence are available.
 - CircuitMind / TC-Bench: <https://arxiv.org/abs/2504.14625> and
   <https://github.com/BUAA-CLab/CircuitMind>. Multi-agent gate-level generation
   framework and benchmark using syntax locking, RAG, and dual correctness plus
@@ -279,11 +368,55 @@ candidate inputs to reproducible gates, not as standalone evidence.
   hardware Trojan generation framework; dual-use watch only, with no clone, run,
   output import, or detector claim without explicit approval, sandboxing,
   no-source-import boundaries, artifact quarantine, and human review.
+- BugWhisperer:
+  <https://huggingface.co/SiLDALab/Mistral-7B-instruct-Bug-Whisperer>.
+  Fine-tuned RTL vulnerability-detection model card; model-intake watch only
+  until revision, license, training-corpus provenance, E1 non-overlap, prompt
+  logs, deterministic confirmation, and security review are captured.
+- VeriCWEty: <https://arxiv.org/abs/2604.15375>. Embedding-enabled module and
+  line-level Verilog CWE detection method; method-only until labels, embedding
+  model revisions, taxonomy mapping, alert logs, false-positive review, and
+  deterministic follow-up checks exist.
+- LASHED: <https://arxiv.org/abs/2504.21770>. LLM plus static-analysis method
+  for early RTL security bug detection; advisory reference only until analyzer
+  versions, prompts, rule hashes, alert provenance, and review evidence exist.
+- Qihe: <https://arxiv.org/abs/2601.11408> and
+  <https://qihe.pascal-lab.net/>. General-purpose Verilog static-analysis
+  framework with bug and security clients; candidate backend only until access,
+  license, parser compatibility, command logs, alert hashes, and replay gates
+  are pinned.
 - Hardware Vulnerability Dataset:
   <https://github.com/shamstarekargho/Hardware-Vulnerability-Dataset>. Prompt
   dataset for hardware vulnerability work; dataset-governance only until exact
   revision, license, taxonomy mapping, E1 overlap scan, prompt privacy, split
   manifests, and reviewer disposition are captured.
+- CorrectBench: <https://arxiv.org/abs/2411.08510> and
+  <https://github.com/AutoBench/CorrectBench>. Self-validating HDL testbench
+  generation framework with functional correction; target-capture only until
+  code/data license, oracle independence, prompt logs, cocotb replay,
+  mutation/seeded-bug sensitivity, and review are captured.
+- UVLLM: <https://arxiv.org/abs/2411.16238>. LLM plus UVM framework for RTL
+  verification and repair; block generated UVM collateral and patches until
+  repository/license, simulator availability, prompt logs, and local
+  formal/cocotb/synthesis/equivalence replay are pinned.
+- UVM2: <https://arxiv.org/abs/2504.19959>. Coverage-driven LLM UVM machine;
+  use as future UVM workflow context only until protocol IR, coverage reports,
+  cocotb/formal correlation, and coverage-waiver disposition exist.
+- VerifLLMBench:
+  <https://dvcon-proceedings.org/document/verifllmbench-an-open-source-benchmark-for-testbenches-generated-with-large-language-models/>.
+  UVM testbench-generation benchmark methodology; benchmark-governance only
+  until assets, metrics, license, and E1 non-overlap are reviewed.
+- MEIC: <https://arxiv.org/abs/2405.06840> and
+  <https://github.com/SEU-ACAL/reproduce-MEIC-ICCAD>. Iterative RTL debug
+  framework and bug corpus; no E1 debug loop or patch may run until taxonomy,
+  prompt/output logs, patch quarantine, deterministic replay, and review exist.
+- R3A: <https://arxiv.org/abs/2511.20090>. Multi-agent fault-localization and
+  stochastic tree-of-thought RTL repair reference; method-only until assets,
+  search traces, prompt logs, replay, and reviewer disposition are available.
+- Clover RTL Repair: <https://arxiv.org/abs/2604.17288>. Neural-symbolic
+  agentic RTL repair reference; high-water-mark SOTA only until symbolic-tool
+  versions, search traces, generated diffs, formal/simulation/synthesis/
+  equivalence replay, and human review exist.
 - PostEDA-Bench: <https://arxiv.org/abs/2605.06936>. Cautionary benchmark for
   post-route EDA agents.
 - Autocomp: <https://arxiv.org/abs/2505.18574> and
@@ -302,6 +435,29 @@ candidate inputs to reproducible gates, not as standalone evidence.
   <https://github.com/ggml-org/llama.cpp>. E1 status: blocked from runtime use
   until target ISA profiles, compiler flags, binary hashes, simulator/hardware
   logs, workload hashes, calibrated metrics, and reviewer disposition exist.
+- AUTODRIVER / DRIVEBENCH: <https://arxiv.org/abs/2511.18924>. LLM driver
+  co-evolution benchmark and agent method for Linux kernel API changes. E1
+  status: paper-assets watch only until code/data release, license, kernel and
+  driver source hashes, static analysis, compile logs, QEMU/Renode transcripts,
+  generated-patch quarantine, and platform-contract review exist.
+- OS-R1: <https://arxiv.org/abs/2508.12551> and
+  <https://github.com/LHY-24/OS-R1>. Agentic Linux kernel configuration tuning
+  framework with code/assets. E1 status: code watch only until revisions,
+  kernel baselines, generated `.config` quarantine, Kconfig validation,
+  workload/power logs, boot transcripts, and review exist.
+- AutoOS: <https://openreview.net/pdf?id=Rp8R9C0Sth>. LLM-assisted Linux kernel
+  configuration method. E1 status: method-only until code/assets, kernel config
+  hashes, generated-output quarantine, boot/driver checks, workload replay, and
+  reviewer disposition exist.
+- FIRMHIVE: <https://arxiv.org/abs/2511.18438>. LLM firmware security-analysis
+  agent method. E1 status: method-only until assets, firmware corpus licenses,
+  generated finding quarantine, static/dynamic confirmation, E1 non-overlap,
+  and security review exist.
+- ADFEmu:
+  <https://www.sciencedirect.com/org/science/article/pii/S1546221825006885>.
+  LLM-assisted firmware fuzzing and DMA emulation method. E1 status:
+  method-only until implementation/assets, peripheral/DMA model manifests,
+  seed/crash logs, emulator replay, and security reviewer disposition exist.
 - Interaction Tree Semantics for RISC-V:
   <https://arxiv.org/abs/2605.04933>. Formal semantics reference for RISC-V
   compiler/hardware/software contract reasoning. E1 status: paper-assets review
@@ -326,6 +482,24 @@ candidate inputs to reproducible gates, not as standalone evidence.
   thermal objectives. E1 status: paper-only target capture until code/assets,
   reward definitions, seeds, package stack, power maps, thermal/wirelength logs,
   and reviewer disposition are pinned.
+- LEGOSim: <https://github.com/Lavender105/LEGOSim>. Code-bearing simulator
+  reference for heterogeneous multi-chiplet systems and network-on-interposer
+  modeling. E1 status: simulator watch only until revision, license, topology
+  and traffic manifests, die-to-die assumptions, package stack, replay logs,
+  and review are pinned.
+- HISIM: <https://github.com/UCSD-SEELab/HISIM>. Code-bearing heterogeneous
+  integration simulator for performance, power, and area exploration. E1
+  status: simulator watch only until revision, license, partition/floorplan
+  manifests, package/process assumptions, workload inputs, replay logs, and
+  review exist.
+- MFIT: <https://github.com/peaclab/MFIT>. Multifidelity thermal modeling code
+  for 2.5D/3D multi-chiplet architectures. E1 status: thermal watch only until
+  package stack, power-map/activity provenance, surrogate provenance where
+  used, calibration/error analysis, and reviewer disposition exist.
+- 3D-ICE 4.0: <https://github.com/esl-epfl/3d-ice>. Compact thermal simulator
+  reference for 2.5D/3D heterogeneous integration. E1 status: deterministic
+  backend watch only until thermal stack/material manifests, power-map hashes,
+  command logs, local comparison, and review are available.
 - Rule2DRC: <https://arxiv.org/abs/2605.15669> and
   <https://github.com/snu-mllab/Rule2DRC>. Current code-bearing benchmark for
   LLM DRC-script synthesis with execution-guided test generation. E1 status:
@@ -391,6 +565,32 @@ candidate inputs to reproducible gates, not as standalone evidence.
   stub generation for IDE/static checking. E1 status: optional verification
   ergonomics only until cocotb version, generated stub hashes, type-check logs,
   source-control policy, and review are captured.
+- Waveform MCP: <https://github.com/jiegec/waveform-mcp>. MCP server for VCD/FST
+  waveform hierarchy, signal-value queries, metadata, event search, and
+  conditional events. E1 status: waveform-context reference only until exact
+  revision, waveform hashes, signal/time-window allowlists, MCP logs, prompt
+  redaction, simulator replay, and review exist.
+- MCP VCD: <https://github.com/SeanMcLoughlin/mcp-vcd>. Lightweight VCD MCP
+  server reference for scoped signal-change context. E1 status:
+  waveform-context reference only until VCD hashes, selected signals,
+  timestamp policies, tool logs, prompt/output hashes, replay, and review are
+  pinned.
+- VaporView: <https://github.com/Lramseyer/vaporview>. Open waveform viewer for
+  local human waveform review. E1 status: manual-review tooling context only
+  until license, extension revision, waveform hashes, signal lists, timestamp
+  annotations, and simulator command replay are captured.
+- cocotb-coverage: <https://github.com/cocotb/cocotb-coverage>. Functional
+  coverage and constrained-random support for cocotb tests. E1 status:
+  coverage-backend reference only until bin schemas, seed manifests, simulator
+  logs, merged coverage database hashes, before/after deltas, and review exist.
+- pyuvm: <https://github.com/pyuvm/pyuvm>. Python UVM framework built around
+  cocotb-style verification. E1 status: framework reference only until a
+  protocol IR, scoreboard definitions, coverage plan, simulator logs,
+  cocotb/formal correlation, and review exist.
+- cocotbext-axi: <https://github.com/alexforencich/cocotbext-axi>. Cocotb AXI
+  drivers, monitors, RAM models, and helpers. E1 status: AXI VIP reference only
+  until exact revision, AXI-lite mapping, seed/transaction manifests,
+  scoreboard policy, protocol-error reports, coverage deltas, and review exist.
 - AutoBench: <https://arxiv.org/abs/2407.03891> and
   <https://github.com/AutoBench/AutoBench>. LLM HDL testbench generation
   baseline. E1 status: method reference only until prompt/model logs, generated
@@ -472,6 +672,32 @@ candidate inputs to reproducible gates, not as standalone evidence.
 - AI4DSE: <https://arxiv.org/abs/2411.10065>. LLM plus multi-heuristic HLS DSE
   method reference. E1 status: paper-only until prompts, models, heuristics,
   tool versions, explored configurations, and local replay evidence exist.
+- HLSPilot: <https://arxiv.org/abs/2408.06810> and
+  <https://github.com/xcw-1010/HLSPilot>. Profiling-guided C-to-HLS
+  generation and pragma DSE framework; blocked until code revision, prompts,
+  profiles, generated HLS quarantine, C-sim, HLS synthesis, generated RTL
+  checks, and review exist.
+- DB4HLS: <https://arxiv.org/abs/2101.00587> and
+  <https://www.db4hls.inf.usi.ch/>. HLS DSE database; dataset-governance only
+  until exact snapshot, license, split, non-overlap, tool/version mapping, and
+  QoR replay are reviewed.
+- DP-HLS: <https://arxiv.org/abs/2411.03398> and
+  <https://github.com/TurakhiaLab/DP-HLS>. Template HLS framework for dynamic
+  programming accelerators; architecture reference only until workload fit,
+  backend dependencies, generated source quarantine, and replay gates exist.
+- hls4ml: <https://arxiv.org/abs/2512.01463> and
+  <https://github.com/fastmachinelearning/hls4ml>. ML-model-to-HLS compiler;
+  blocked until model and quantization manifests, backend revision, generated
+  HLS/RTL quarantine, accuracy replay, and runtime integration evidence exist.
+- FINN: <https://xilinx.github.io/finn/> and <https://github.com/Xilinx/finn>.
+  Quantized neural-network dataflow compiler for FPGA; use as NPU/dataflow
+  context only until Docker/dependency, model, backend, generated HLS/RTL,
+  accuracy, and interface-mapping evidence are pinned.
+- AMD LLM-aided HLS dataflow optimization:
+  <https://www.amd.com/en/developer/resources/technical-articles/2026/llm-aided-hls-dataflow-optimization-a-sha-256.html>.
+  Practitioner workflow reference for feeding HLS reports to an LLM; no E1 use
+  without prompt logs, generated-code quarantine, C-sim/co-sim/synthesis logs,
+  and review.
 - ArchPower: <https://arxiv.org/abs/2512.06854>,
   <https://github.com/hkust-zhiyao/ArchPower>, and
   <https://huggingface.co/datasets/zqj23333/ArchPower>. Architecture-level
@@ -484,6 +710,24 @@ candidate inputs to reproducible gates, not as standalone evidence.
   power-model method using power-group decoupling. E1 status: target-capture
   context only until code revision, license, E1 CPU/AP feature extraction,
   calibration samples, error analysis, and review evidence exist.
+- AtomPower: <https://doi.org/10.1587/elex.23.20260004>. RTL-stage per-cycle
+  power-modeling method using bit-level structural representations and data
+  augmentation. E1 status: method-only until implementation/assets, RTL
+  structure extraction, VCD/activity provenance, per-cycle labels, held-out
+  local error analysis, and reviewer disposition exist.
+- Commercial Thermal Map Dataset:
+  <https://dl.acm.org/doi/10.1145/3670474.3685963> and
+  <https://github.com/sheldonucr/commercial_thermal_map_dataset>. Measured
+  CPU/GPU/TPU thermal-map corpus for runtime thermal-management research. E1
+  status: dataset-governance only until exact revision, license, device and
+  workload provenance, sensor/camera calibration, split review, package mapping,
+  and local thermal evidence are captured.
+- HotGauge: <https://sites.tufts.edu/tcal/publications/hotgauge/> and
+  <https://github.com/TuftsCompArchLab/HotGauge>. Public architecture-level
+  hotspot characterization framework with simulator and thermal-model
+  dependencies. E1 status: framework watch only until dependency licenses,
+  revisions, floorplan/power-map mapping, thermal stack assumptions, simulator
+  logs, calibration, and review exist.
 - PowerNet: <https://arxiv.org/abs/2004.04026>. Transferable dynamic IR-drop
   prediction method. E1 status: method-only until vector/activity provenance,
   dynamic signoff labels, held-out E1 transfer/error analysis, and review
@@ -495,16 +739,29 @@ candidate inputs to reproducible gates, not as standalone evidence.
   prediction method using graph and layout context. E1 status: method-only
   until PDN graph extraction, dynamic labels, held-out error analysis, and PD
   review exist.
+- LMM-IR: <https://arxiv.org/abs/2511.12581>. Netlist-aware multimodal static
+  IR-drop prediction method using layout/image and netlist context. E1 status:
+  paper-only until code/assets, feature schemas, PDNSim/signoff labels,
+  split/non-overlap review, held-out E1 error analysis, and PD review exist.
 - DuST-IRdrop: <https://github.com/cuhk-eda/DuST-IRdrop>. Code-bearing
   dynamic IR-drop prediction candidate using diffusion/transformer-style
   modeling. E1 status: code watch source only until revision, license,
   dependencies, data provenance, prediction quarantine, dynamic labels, and
   signoff replay are reviewed.
+- Accellera CDC/RDC standard 1.0:
+  <https://www.accellera.org/downloads/standards/clock-domain-crossing>.
+  Current March 2026 standardization reference for vendor-neutral CDC/RDC
+  intent and collateral exchange. E1 status: standards watch only until terms,
+  local tool mapping, waiver policy, and deterministic report evidence exist.
 - Accellera CDC/RDC draft 0.5 public review:
   <https://www.accellera.org/news/press-releases/accellera-releases-cdc-rdc-public-review-draft>.
-  Current standardization checkpoint for vendor-neutral CDC/RDC intent. E1
-  status: standards watch only until final revision, terms, local tool mapping,
-  waiver policy, and deterministic report evidence exist.
+  Historical public-review checkpoint for vendor-neutral CDC/RDC intent.
+- Veryl clock-domain annotations:
+  <https://doc.veryl-lang.org/book/05_language_reference/15_clock_domain_annotation.html>
+  and <https://github.com/veryl-lang/veryl>. Code-bearing typed-HDL reference
+  for explicit clock/reset and clock-domain annotations. E1 status: code watch
+  only until revision, license, generated SystemVerilog quarantine,
+  equivalence/formal/cocotb replay, and CDC/RDC report comparison exist.
 - Arch AI-native HDL: <https://arxiv.org/abs/2604.05983>. Typed clock/reset
   and interface methodology for AI-native HDL. E1 status: method-only until an
   implementation, generated-intent quarantine, equivalence, formal/cocotb, and
@@ -513,6 +770,12 @@ candidate inputs to reproducible gates, not as standalone evidence.
   proof-oriented HDL with clock and multi-clock simulation concepts. E1 status:
   code watch only until revision, license, subset mapping, translated-artifact
   quarantine, proof logs, RTL/cocotb equivalence, and CDC/RDC review exist.
+- SKALP: <https://github.com/girivs82/skalp>. Experimental code-bearing HDL
+  with compile-time clock-domain safety, synthesis/simulation/formal features,
+  equivalence checks, and reported ML-guided pass ordering. E1 status: code
+  watch only until revision, license, subset mapping, generated artifact
+  quarantine, ML provenance if used, formal/synthesis replay, and CDC/RDC
+  comparison exist.
 - Lighter: <https://github.com/AUCOHL/Lighter> and
   <https://woset-workshop.github.io/PDFs/2024/15_Lighter_An_Open_Source_Auto.pdf>.
   Open-source Yosys-plugin clock-gating backend for dynamic-power reduction.
@@ -633,6 +896,28 @@ candidate inputs to reproducible gates, not as standalone evidence.
   generated-pattern hashes, deterministic fault-simulation replay, and DFT
   review are available.
 
+## FPGA prototyping and fabric automation
+
+- OpenPARF: <https://github.com/PKU-IDEA/OpenPARF>. Code-bearing parallel FPGA
+  placement framework. E1 status: placement-backend reference only until exact
+  revision, license, target device, architecture files, netlist and constraint
+  hashes, downstream route/timing logs, bitstream hashes, and hardware bring-up
+  evidence exist.
+- Verilog-to-Routing: <https://github.com/verilog-to-routing/vtr-verilog-to-routing>.
+  Open FPGA CAD flow for architecture, placement, and routing experiments. E1
+  status: deterministic backend reference only until architecture assumptions,
+  command logs, seeds, route/timing reports, implementation handoff, and review
+  are pinned.
+- OpenFPGA: <https://github.com/lnis-uofu/OpenFPGA>. FPGA fabric-generation
+  framework. E1 status: fabric-generation reference only; generated fabrics,
+  wrappers, bitstreams, and verification collateral stay quarantined until
+  generated-file hashes, synthesis/verification logs, programming-flow
+  evidence, timing/area reports, and human review exist.
+- FABulous: <https://github.com/FPGA-Research-Manchester/FABulous>. Embedded
+  FPGA framework. E1 status: eFPGA/fabric context only until architecture
+  manifests, generated collateral hashes, place-route/timing logs, programming
+  evidence, and ASIC/FPGA assumption review are available.
+
 ## E1 integration ranking
 
 1. Continue Circuit Training plus OpenROAD validation as the active AlphaChip
@@ -674,9 +959,9 @@ candidate inputs to reproducible gates, not as standalone evidence.
     C-simulation, HLS synthesis, RTL simulation, equivalence where applicable,
     QoR replay/error analysis, and review.
 11. Use power/thermal and low-power target capture for ArchPower, AutoPower,
-    PowerNet, MAVIREC, PDNNet, DuST-IRdrop, Lighter, RTL-OPT, Yosys clock
-    gating, CODMAS/RTLOPT, Prompting for Power, POET, RTL PPA SOG, SymRTLO,
-    PowerGear, and UPF references. Do not import power datasets, train models,
+    AtomPower, PowerNet, MAVIREC, PDNNet, DuST-IRdrop, Lighter, RTL-OPT,
+    Yosys clock gating, CODMAS/RTLOPT, Prompting for Power, POET, RTL PPA SOG,
+    SymRTLO, PowerGear, and UPF references. Do not import power datasets, train models,
     run clock-gating plugins, import benchmark tasks, generate UPF, generate
     IR-drop maps, generate RTL rewrites, import HLS power labels, or claim
     power savings without pinned revisions, license review, feature maps,
@@ -685,9 +970,10 @@ candidate inputs to reproducible gates, not as standalone evidence.
     held-out error analysis, and review.
 12. Use memory/interconnect target capture for AI-driven NoC DSE, NOCTOPUS,
     FlooNoC, MICSim, AutoNoC, photonic-aware DRL routing, ArchGym, BookSim2,
-    Ramulator2, DRAMsim3, DRAMSys, gem5-Aladdin, and Gem5-AcceSys. Do not train
-    NoC inverse models, generate fabric parameters or RTL, run external
-    simulators, change memory maps, model CIM, or claim
+    Ramulator2, DRAMsim3, DRAMSys, gem5-Aladdin, Gem5-AcceSys, MemExplorer,
+    LUMINA, DeepStack, and Mess. Do not train NoC inverse models, generate
+    fabric parameters or RTL, run external simulators, change memory maps,
+    model CIM, accept agent-generated memory hierarchies, or claim
     bandwidth/latency/QoS/routing improvements without pinned simulator
     revisions, topology constraints, traffic traces, replay logs, local
     memory-contract gates, RTL feasibility, calibration assumptions, and review.
@@ -697,4 +983,12 @@ candidate inputs to reproducible gates, not as standalone evidence.
     testability, train RL/GNN ATPG policies, generate patterns, or claim
     coverage without pinned backends, netlist and fault-list hashes, scan
     policy, feature manifests, pattern replay, manufacturing gates, signoff,
+    and review.
+14. Use board/package/FPGA target capture for OpenPARF, VTR, OpenFPGA,
+    FABulous, DREAMPlaceFPGA, RapidWright, PCB agents, autorouters, KiCad
+    tooling, SI preprocessors, and AOI models. Do not generate board,
+    package, pinout, FPGA, bitstream, fabric, Gerber, manufacturing, or
+    inspection outputs without pinned revisions, device/fabric constraints,
+    generated-output quarantine, route/timing/bitstream evidence,
+    package-board cross-probe, KiCad/manufacturing gates, hardware bring-up,
     and review.

@@ -116,6 +116,11 @@ def main() -> int:
             "llm-firmware-validation",
             "eok-riscv-kernel-optimization",
             "intrintrans-rvv",
+            "autodriver-drivebench",
+            "os-r1-kernel-tuning",
+            "autoos-kernel-config",
+            "firmhive",
+            "adfemu-firmware-fuzzing",
             "opensbi",
             "u-boot",
             "mcp4eda",
@@ -183,6 +188,39 @@ def main() -> int:
                     "make e1-npu-nnapi-proof-check",
                 ],
             },
+            {
+                "id": "linux-driver-coevolution-watch",
+                "status": "CAPTURED_NOT_PATCHED",
+                "target": "future AUTODRIVER/DRIVEBENCH-style Linux driver co-evolution requires exact dataset/code revisions, kernel and driver source hashes, generated-patch quarantine, static analysis, compile logs, QEMU/Renode transcripts, platform-contract checks, and reviewer disposition",
+                "acceptance_gates": [
+                    "python3 scripts/check_linux_platform_contract.py",
+                    "make linux-bsp-check",
+                    "make software-bsp-evidence-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "kernel-config-tuning-watch",
+                "status": "CAPTURED_NOT_TUNED",
+                "target": "future OS-R1 or AutoOS-style kernel configuration tuning requires pinned kernel revisions, baseline/generated .config hashes, Kconfig validation, workload manifests, QEMU/Renode or hardware logs, power/performance replay, and reviewer disposition",
+                "acceptance_gates": [
+                    "make linux-bsp-check",
+                    "make qemu-check",
+                    "make power-thermal-evidence-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "firmware-security-and-fuzzing-watch",
+                "status": "CAPTURED_NOT_ANALYZED",
+                "target": "future FIRMHIVE or ADFEmu-style firmware security/fuzzing work requires pinned assets, firmware and driver hashes, corpus licenses, peripheral/DMA model manifests, seed/crash logs, generated-finding quarantine, replay, and security reviewer disposition",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation",
+                    "make software-bsp-check",
+                    "make qemu-check",
+                    "make no-hardware-action-check",
+                ],
+            },
         ],
         "blocked_by": [
             "no executable E1 Linux boot transcript through RTL-equivalent simulator",
@@ -191,6 +229,9 @@ def main() -> int:
             "no QEMU/Renode transcript tied to the E1 RTL-equivalent memory map and device tree",
             "no static-analysis, fuzzing, or runtime-monitoring gate for generated firmware patches",
             "no runnable RISC-V kernel/RVV benchmark corpus for E1 NPU software optimization",
+            "no license-reviewed Linux driver co-evolution benchmark or agent workflow with generated patch quarantine, E1 driver tests, and platform-contract replay",
+            "no approved Linux kernel configuration tuning workflow with pinned kernel revision, baseline/generated config hashes, workload logs, power evidence, and reviewer disposition",
+            "no approved firmware security/fuzzing workflow with firmware corpus license review, peripheral/DMA model, crash triage, replay logs, and security reviewer disposition",
         ],
     }
     out_dir = (args.out_root / args.run_id).resolve()

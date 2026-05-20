@@ -249,10 +249,9 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     vi.useFakeTimers();
     const { client, p } = await startClient({ timeoutMs: 10 });
 
-    const prompted = client.prompt("session-1", "keep going");
-    const promptRejection = expect(prompted).rejects.toThrow(
-      "ACP request timed out: session/prompt",
-    );
+    const timeoutResult = client
+      .prompt("session-1", "keep going")
+      .catch((error: unknown) => error);
     await waitForWrites(p, 2);
     expect(writeAt(p, 1)).toMatchObject({
       id: 2,
@@ -268,7 +267,11 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
       method: "session/cancel",
       params: { sessionId: "session-1" },
     });
-    await promptRejection;
+    const timeoutError = await timeoutResult;
+    expect(timeoutError).toBeInstanceOf(Error);
+    expect((timeoutError as Error).message).toBe(
+      "ACP request timed out: session/prompt",
+    );
     emitJson(p, { jsonrpc: "2.0", id: 3, result: {} });
   });
 

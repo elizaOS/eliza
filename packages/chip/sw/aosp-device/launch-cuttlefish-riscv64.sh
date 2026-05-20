@@ -26,6 +26,7 @@ options:
   --memory-mb=N           guest RAM in MiB (default: 12288)
   --gpu-mode=MODE         launch_cvd --gpu_mode (default: none;
                           use guest_swiftshader for home-screen boots)
+  --base-instance-num=N   first Cuttlefish instance number (default: 1)
   --boot-timeout-seconds=N
                           max wait for sys.boot_completed=1 (default: 1800)
   --launcher=PATH         override launch_cvd binary (default: auto-discover
@@ -50,6 +51,7 @@ clean=0
 cpus=8
 memory_mb=12288
 gpu_mode=none
+base_instance_num=1
 boot_timeout_seconds=1800
 launcher=
 host_path=
@@ -72,6 +74,10 @@ while [ "$#" -gt 0 ]; do
 			;;
 		--gpu-mode=*)
 			gpu_mode=${1#*=}
+			shift
+			;;
+		--base-instance-num=*)
+			base_instance_num=${1#*=}
 			shift
 			;;
 		--boot-timeout-seconds=*)
@@ -108,6 +114,7 @@ done
 
 case "$cpus" in *[!0-9]*|"") echo "error: --cpus must be a positive integer" >&2; exit 2;; esac
 case "$memory_mb" in *[!0-9]*|"") echo "error: --memory-mb must be a positive integer" >&2; exit 2;; esac
+case "$base_instance_num" in *[!0-9]*|"") echo "error: --base-instance-num must be a positive integer" >&2; exit 2;; esac
 case "$boot_timeout_seconds" in *[!0-9]*|"") echo "error: --boot-timeout-seconds must be a positive integer" >&2; exit 2;; esac
 
 log() {
@@ -125,8 +132,11 @@ if [ -n "$aosp" ]; then
 	fi
 	# envsetup.sh references $TOP which may be unset; temporarily relax nounset.
 	set +u
+	old_pwd=$(pwd)
+	cd "$aosp"
 	# shellcheck disable=SC1091
-	. "$aosp/build/envsetup.sh"
+	. build/envsetup.sh
+	cd "$old_pwd"
 	set -u
 fi
 
@@ -150,6 +160,13 @@ if [ -n "$missing_groups" ]; then
 	fail "user '$USER' is not in required groups:$missing_groups; sudo usermod -aG kvm,cvdnetwork,render \"$USER\" then re-login"
 fi
 
+if [ -n "$host_path" ]; then
+	host_qemu=$(find "$host_path/bin" -mindepth 3 -maxdepth 3 -path '*/qemu/qemu-system-riscv64' \( -type f -o -type l \) -print -quit 2>/dev/null || true)
+	if [ -n "$host_qemu" ]; then
+		PATH="$(dirname "$host_qemu"):$PATH"
+		export PATH
+	fi
+fi
 if ! command -v qemu-system-riscv64 >/dev/null 2>&1; then
 	fail "qemu-system-riscv64 not on PATH; install QEMU >= 9.2 (Cuttlefish riscv64 uses TCG, not KVM)"
 fi
@@ -213,9 +230,15 @@ if [ "$launcher" = cvd ]; then
 fi
 
 log "launcher: $launcher"
-log "launch: --cpus=$cpus --memory_mb=$memory_mb --gpu_mode=$gpu_mode"
+log "launch: --cpus=$cpus --memory_mb=$memory_mb --gpu_mode=$gpu_mode --base_instance_num=$base_instance_num"
 [ -n "$host_path" ] && log "host_path: $host_path"
 [ -n "$product_path" ] && log "product_path: $product_path"
+if [ -n "$host_path" ] && ! find "$host_path/usr/share/qemu" -path '*/efi-virtio.rom' -type f -print -quit 2>/dev/null | grep -q .; then
+	fail "Cuttlefish host tools under $host_path are missing efi-virtio.rom; install/stage ipxe-qemu-256k-compat-efi-roms into the host tools qemu data directory"
+fi
+if [ -n "$host_path" ] && ! find "$host_path/usr/share/qemu" -name 'opensbi-riscv64-generic-fw_dynamic.bin' -type f -print -quit 2>/dev/null | grep -q .; then
+	fail "Cuttlefish host tools under $host_path are missing opensbi-riscv64-generic-fw_dynamic.bin; install/stage the opensbi generic riscv64 fw_dynamic.bin under that QEMU data filename"
+fi
 
 if [ "$launcher" = cvd ]; then
 	cvd_host_arg=
@@ -231,8 +254,15 @@ if [ "$launcher" = cvd ]; then
 		--cpus="$cpus" \
 		--memory_mb="$memory_mb" \
 		--gpu_mode="$gpu_mode" \
+		--base_instance_num="$base_instance_num" \
+		--boot_slot=a \
 		--start_webrtc=false \
-		--vnc_server_port=0 \
+		--netsim=false \
+		--enable_wifi=false \
+		--enable_tap_devices=false \
+		--noresume \
+		--data_policy=always_create \
+		--nouse_sdcard \
 		--report_anonymous_usage_stats=n \
 		--daemon
 else
@@ -240,8 +270,15 @@ else
 		--cpus="$cpus" \
 		--memory_mb="$memory_mb" \
 		--gpu_mode="$gpu_mode" \
+		--base_instance_num="$base_instance_num" \
+		--boot_slot=a \
 		--start_webrtc=false \
-		--vnc_server_port=0 \
+		--netsim=false \
+		--enable_wifi=false \
+		--enable_tap_devices=false \
+		--noresume \
+		--data_policy=always_create \
+		--nouse_sdcard \
 		--report_anonymous_usage_stats=n \
 		--daemon
 fi

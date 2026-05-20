@@ -559,10 +559,7 @@ export class AcpService extends Service {
   ): Promise<PromptResult> {
     this.ensureStarted();
     const session = await this.requireSession(sessionId);
-    // File-based state check applies only to CLI transport (acpx writes
-    // .stream.ndjson on disk). Native transport manages state in-process
-    // through NativeAcpClient, so skip the check for that mode.
-    if (session.acpxSessionId && this.transportMode !== "native") {
+    if (session.acpxSessionId && !this.nativeClients.has(sessionId)) {
       const exists = await this.hasAcpxSessionState(session.acpxSessionId);
       if (!exists) {
         const message =

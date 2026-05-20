@@ -123,9 +123,15 @@ def main() -> int:
             "arm-ethos-u55-soft-error",
             "ibex-seu-formal",
             "bec-soft-error-llvm",
+            "hdfit-fault-injection",
+            "llfi-llvm-fault-injection",
+            "lltfi-mlir-fault-injection",
             "hamartia-fault-injection",
             "fies-qemu-fault-injection",
             "tensorfi",
+            "pytorchfi",
+            "pytorchalfi",
+            "mrfi",
             "ares-dnn-fault-injection",
             "caliptra-error-injection",
         ],
@@ -184,7 +190,7 @@ def main() -> int:
             {
                 "id": "soft-error-fault-injection-watch",
                 "status": "CAPTURED_NOT_INJECTED",
-                "target": "future RTL, formal, QEMU, or workload-level fault injection must quarantine results and require deterministic fault campaigns, seeds, signatures, and review",
+                "target": "future RTL, netlist, formal, QEMU, LLVM/MLIR, or workload-level fault injection must quarantine results and require deterministic fault campaigns, fault-site manifests, seeds, signatures, output classifiers, replay logs, and review",
                 "acceptance_gates": [
                     "make formal",
                     "make cocotb-npu",
@@ -195,7 +201,7 @@ def main() -> int:
             {
                 "id": "npu-resilience-target-watch",
                 "status": "CAPTURED_NOT_MODELED",
-                "target": "future NPU resilience analysis must hash workload, model, activation, fault-site, RTL, runtime, and simulator evidence before mitigation decisions",
+                "target": "future TensorFI, PyTorchFI, PyTorchALFI, MRFI, Ares, or other NPU workload resilience analysis must hash workload, model, activation, fault-site, RTL, runtime, and simulator evidence before mitigation decisions",
                 "acceptance_gates": [
                     "python3 compiler/runtime/test_e1_npu_runtime.py",
                     "python3 compiler/runtime/test_e1_npu_runtime_sim.py",
@@ -218,7 +224,7 @@ def main() -> int:
         "blocked_by": [
             "no E1 process-qualified BTI, HCI, TDDB, EM, SER, or radiation fault-rate model",
             "no calibrated activity, temperature, voltage, PDN current-density, or lifetime mission-profile evidence",
-            "no reviewed RTL/formal/QEMU fault-injection harness for E1 with fault-site manifests, random seeds, signatures, and pass/fail taxonomy",
+            "no reviewed RTL/netlist/formal/QEMU/LLVM/MLIR/workload fault-injection harness for E1 with fault-site manifests, random seeds, signatures, output classifiers, and pass/fail taxonomy",
             "no local labels linking fault campaigns, formal traces, simulator failures, or silicon logs to approved mitigations",
             "no approved TCAD/DTCO model, deck, simulator license, calibration corpus, or process-device authority for E1 reliability assumptions",
             "no approved workflow for AI-generated ECC, TMR, replay, redundancy, hardening, derating, or reliability ECO changes",

@@ -1,12 +1,22 @@
 import { createHash, randomUUID } from "crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/client";
-import { type AgentSandbox, agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import {
+  type AgentSandbox,
+  agentSandboxesRepository,
+} from "../../db/repositories/agent-sandboxes";
 import { usersRepository } from "../../db/repositories/users";
-import { agentPhoneContacts, agentPhoneNumbers, phoneMessageLog } from "../../db/schemas";
+import {
+  agentPhoneContacts,
+  agentPhoneNumbers,
+  phoneMessageLog,
+} from "../../db/schemas";
 import { logger } from "../utils/logger";
 import { normalizePhoneNumber } from "../utils/phone-normalization";
-import { type AgentGatewayRelaySession, agentGatewayRelayService } from "./agent-gateway-relay";
+import {
+  type AgentGatewayRelaySession,
+  agentGatewayRelayService,
+} from "./agent-gateway-relay";
 import {
   readManagedAgentDiscordBinding,
   readManagedAgentDiscordGateway,
@@ -125,7 +135,9 @@ function hashToUuid(input: string): string {
   const hex = createHash("sha256").update(input).digest("hex").slice(0, 32);
   const chars = hex.split("");
   chars[12] = "4";
-  chars[16] = ((Number.parseInt(chars[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+  chars[16] = ((Number.parseInt(chars[16] ?? "0", 16) & 0x3) | 0x8).toString(
+    16,
+  );
   return [
     chars.slice(0, 8).join(""),
     chars.slice(8, 12).join(""),
@@ -141,7 +153,9 @@ function buildDirectConversationRoomId(
   a: string,
   b: string,
 ): string {
-  const normalized = [normalizePhoneNumber(a), normalizePhoneNumber(b)].sort().join("-");
+  const normalized = [normalizePhoneNumber(a), normalizePhoneNumber(b)]
+    .sort()
+    .join("-");
   return hashToUuid(`room:${agentId}:${platform}:${normalized}`);
 }
 
@@ -186,14 +200,30 @@ function extractRoomId(rpc: BridgeRequest): string | undefined {
   }
 
   const roomId = (params as Record<string, unknown>).roomId;
-  return typeof roomId === "string" && roomId.trim() ? roomId.trim() : undefined;
+  return typeof roomId === "string" && roomId.trim()
+    ? roomId.trim()
+    : undefined;
 }
 
 export class AgentGatewayRouterService {
-  private phoneTargetCache = new Map<string, { value: PhoneTargetResolution; cachedAt: number }>();
-  private phoneTargetRequests = new Map<string, Promise<PhoneTargetResolution>>();
+  private phoneTargetCache = new Map<
+    string,
+    { value: PhoneTargetResolution; cachedAt: number }
+  >();
+  private phoneTargetRequests = new Map<
+    string,
+    Promise<PhoneTargetResolution>
+  >();
+  private readonly runOnboardingChat: typeof runOnboardingChat;
 
-  private async listOwnedSandboxes(orgId: string, userId: string): Promise<AgentSandbox[]> {
+  constructor(options: { runOnboardingChat?: typeof runOnboardingChat } = {}) {
+    this.runOnboardingChat = options.runOnboardingChat ?? runOnboardingChat;
+  }
+
+  private async listOwnedSandboxes(
+    orgId: string,
+    userId: string,
+  ): Promise<AgentSandbox[]> {
     const sandboxes = await agentSandboxesRepository.listByOrganization(orgId);
     return sandboxes.filter((sandbox) => sandbox.user_id === userId);
   }
@@ -208,7 +238,10 @@ export class AgentGatewayRouterService {
     agentId?: string;
     userId?: string;
   }> {
-    const localSessions = await agentGatewayRelayService.listOwnerSessions(organizationId, userId);
+    const localSessions = await agentGatewayRelayService.listOwnerSessions(
+      organizationId,
+      userId,
+    );
     if (localSessions.length >= 1) {
       return {
         target: {
@@ -220,7 +253,8 @@ export class AgentGatewayRouterService {
       };
     }
 
-    const ownedSandboxes = sandboxes ?? (await this.listOwnedSandboxes(organizationId, userId));
+    const ownedSandboxes =
+      sandboxes ?? (await this.listOwnedSandboxes(organizationId, userId));
     const resolved = chooseSingleSandboxTarget(ownedSandboxes);
     return {
       ...resolved,
@@ -240,28 +274,38 @@ export class AgentGatewayRouterService {
     const senderDiscordUserId = args.senderDiscordUserId.trim();
 
     if (args.guildId?.trim()) {
-      const linkedSandboxes = await agentSandboxesRepository.findByManagedDiscordGuildId(
-        args.guildId.trim(),
-      );
+      const linkedSandboxes =
+        await agentSandboxesRepository.findByManagedDiscordGuildId(
+          args.guildId.trim(),
+        );
       const ownedLinkedSandboxes = linkedSandboxes.filter((sandbox) => {
-        const binding = readManagedAgentDiscordBinding(asConfigRecord(sandbox.agent_config));
+        const binding = readManagedAgentDiscordBinding(
+          asConfigRecord(sandbox.agent_config),
+        );
         return binding?.adminDiscordUserId === senderDiscordUserId;
       });
 
       if (ownedLinkedSandboxes.length === 0) {
         return {
-          reason: linkedSandboxes.length > 0 ? "sender_not_guild_owner" : "not_linked",
+          reason:
+            linkedSandboxes.length > 0
+              ? "sender_not_guild_owner"
+              : "not_linked",
         };
       }
 
       const directlyBoundSandboxes = ownedLinkedSandboxes.filter(
-        (sandbox) => !readManagedAgentDiscordGateway(asConfigRecord(sandbox.agent_config)),
+        (sandbox) =>
+          !readManagedAgentDiscordGateway(asConfigRecord(sandbox.agent_config)),
       );
       if (directlyBoundSandboxes.length > 0) {
         return chooseSingleSandboxTarget(directlyBoundSandboxes);
       }
 
-      const owner = await usersRepository.findByDiscordIdWithOrganization(senderDiscordUserId);
+      const owner =
+        await usersRepository.findByDiscordIdWithOrganization(
+          senderDiscordUserId,
+        );
       if (!owner?.organization_id) {
         return {
           reason: "unknown_owner",
@@ -271,7 +315,10 @@ export class AgentGatewayRouterService {
       return this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
     }
 
-    const owner = await usersRepository.findByDiscordIdWithOrganization(senderDiscordUserId);
+    const owner =
+      await usersRepository.findByDiscordIdWithOrganization(
+        senderDiscordUserId,
+      );
     if (!owner) {
       return {
         reason: "unknown_owner",
@@ -284,14 +331,24 @@ export class AgentGatewayRouterService {
       };
     }
 
-    const sandboxes = await this.listOwnedSandboxes(owner.organization_id, owner.id);
+    const sandboxes = await this.listOwnedSandboxes(
+      owner.organization_id,
+      owner.id,
+    );
     const exactBoundMatches = sandboxes.filter((sandbox) => {
-      const binding = readManagedAgentDiscordBinding(asConfigRecord(sandbox.agent_config));
+      const binding = readManagedAgentDiscordBinding(
+        asConfigRecord(sandbox.agent_config),
+      );
       return binding?.adminDiscordUserId === senderDiscordUserId;
     });
 
-    const preferred = exactBoundMatches.length > 0 ? exactBoundMatches : sandboxes;
-    return this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id, preferred);
+    const preferred =
+      exactBoundMatches.length > 0 ? exactBoundMatches : sandboxes;
+    return this.resolveOwnedRuntimeTarget(
+      owner.organization_id,
+      owner.id,
+      preferred,
+    );
   }
 
   private async resolvePhoneTarget(args: {
@@ -346,7 +403,10 @@ export class AgentGatewayRouterService {
       : await usersRepository.findByPhoneNumberWithOrganization(args.lookupId);
 
     if (!owner) {
-      const contact = await this.resolveLoggedPhoneContactTarget(args.lookupId, args.provider);
+      const contact = await this.resolveLoggedPhoneContactTarget(
+        args.lookupId,
+        args.provider,
+      );
       return contact.target ? contact : { reason: "unknown_owner" };
     }
 
@@ -357,16 +417,24 @@ export class AgentGatewayRouterService {
       };
     }
 
-    let owned: Awaited<ReturnType<AgentGatewayRouterService["resolveOwnedRuntimeTarget"]>>;
+    let owned: Awaited<
+      ReturnType<AgentGatewayRouterService["resolveOwnedRuntimeTarget"]>
+    >;
     try {
-      owned = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
+      owned = await this.resolveOwnedRuntimeTarget(
+        owner.organization_id,
+        owner.id,
+      );
     } catch (error) {
-      logger.error("[AgentGatewayRouter] Failed to resolve phone sender's own runtime", {
-        provider: args.provider,
-        userId: owner.id,
-        organizationId: owner.organization_id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        "[AgentGatewayRouter] Failed to resolve phone sender's own runtime",
+        {
+          provider: args.provider,
+          userId: owner.id,
+          organizationId: owner.organization_id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       owned = {
         reason: "owner_agent_not_running",
         userId: owner.id,
@@ -381,7 +449,10 @@ export class AgentGatewayRouterService {
       };
     }
 
-    const contact = await this.resolveLoggedPhoneContactTarget(args.lookupId, args.provider);
+    const contact = await this.resolveLoggedPhoneContactTarget(
+      args.lookupId,
+      args.provider,
+    );
     if (contact.target) return contact;
 
     return {
@@ -436,7 +507,9 @@ export class AgentGatewayRouterService {
       if (!isUndefinedAgentPhoneContactsTableError(error)) {
         throw error;
       }
-      logger.warn("[AgentGatewayRouter] agent_phone_contacts table is not migrated yet");
+      logger.warn(
+        "[AgentGatewayRouter] agent_phone_contacts table is not migrated yet",
+      );
     }
 
     const [latestOutbound] = await dbWrite
@@ -445,7 +518,10 @@ export class AgentGatewayRouterService {
         organizationId: agentPhoneNumbers.organization_id,
       })
       .from(phoneMessageLog)
-      .innerJoin(agentPhoneNumbers, eq(phoneMessageLog.phone_number_id, agentPhoneNumbers.id))
+      .innerJoin(
+        agentPhoneNumbers,
+        eq(phoneMessageLog.phone_number_id, agentPhoneNumbers.id),
+      )
       .where(
         and(
           eq(phoneMessageLog.direction, "outbound"),
@@ -489,14 +565,19 @@ export class AgentGatewayRouterService {
         );
     } catch (error) {
       if (isUndefinedAgentPhoneContactsTableError(error)) {
-        logger.warn("[AgentGatewayRouter] agent_phone_contacts table is not migrated yet");
+        logger.warn(
+          "[AgentGatewayRouter] agent_phone_contacts table is not migrated yet",
+        );
         return;
       }
-      logger.warn("[AgentGatewayRouter] failed to update phone contact inbound timestamp", {
-        provider: args.provider,
-        agentId: args.agentId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[AgentGatewayRouter] failed to update phone contact inbound timestamp",
+        {
+          provider: args.provider,
+          agentId: args.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
   }
 
@@ -568,7 +649,8 @@ export class AgentGatewayRouterService {
       }
 
       const primary =
-        successful.find((entry) => extractReplyText(entry.response) !== null) ?? successful[0]!;
+        successful.find((entry) => extractReplyText(entry.response) !== null) ??
+        successful[0]!;
 
       return {
         handled: true,
@@ -653,12 +735,16 @@ export class AgentGatewayRouterService {
         sender: {
           id: args.sender.id,
           username: args.sender.username,
-          ...(args.sender.displayName ? { displayName: args.sender.displayName } : {}),
+          ...(args.sender.displayName
+            ? { displayName: args.sender.displayName }
+            : {}),
           metadata: {
             discord: {
               userId: args.sender.id,
               username: args.sender.username,
-              ...(args.sender.displayName ? { globalName: args.sender.displayName } : {}),
+              ...(args.sender.displayName
+                ? { globalName: args.sender.displayName }
+                : {}),
               ...(args.sender.avatar ? { avatar: args.sender.avatar } : {}),
             },
           },
@@ -690,7 +776,9 @@ export class AgentGatewayRouterService {
     mediaUrls?: string[];
     metadata?: Record<string, unknown>;
   }): Promise<AgentGatewayRouteResult> {
-    let resolved: Awaited<ReturnType<AgentGatewayRouterService["resolvePhoneTarget"]>>;
+    let resolved: Awaited<
+      ReturnType<AgentGatewayRouterService["resolvePhoneTarget"]>
+    >;
     try {
       resolved = await this.resolvePhoneTarget({
         organizationId: args.organizationId,
@@ -704,7 +792,7 @@ export class AgentGatewayRouterService {
         to: args.to,
         error: error instanceof Error ? error.message : String(error),
       });
-      const onboarding = await runOnboardingChat({
+      const onboarding = await this.runOnboardingChat({
         message: args.body,
         platform: args.provider,
         platformUserId: args.from,
@@ -724,7 +812,7 @@ export class AgentGatewayRouterService {
 
     if (!resolved.target) {
       if (resolved.reason === "unknown_owner") {
-        const onboarding = await runOnboardingChat({
+        const onboarding = await this.runOnboardingChat({
           message: args.body,
           platform: args.provider,
           platformUserId: args.from,
@@ -748,7 +836,7 @@ export class AgentGatewayRouterService {
         resolved.organizationId &&
         !resolved.agentId
       ) {
-        const onboarding = await runOnboardingChat({
+        const onboarding = await this.runOnboardingChat({
           message: args.body,
           platform: args.provider,
           platformUserId: args.from,
@@ -814,7 +902,9 @@ export class AgentGatewayRouterService {
           provider: args.provider,
           from: normalizedFrom,
           to: normalizedTo,
-          ...(args.providerMessageId ? { providerMessageId: args.providerMessageId } : {}),
+          ...(args.providerMessageId
+            ? { providerMessageId: args.providerMessageId }
+            : {}),
           ...(args.metadata ? args.metadata : {}),
         },
       },
@@ -850,7 +940,7 @@ export class AgentGatewayRouterService {
       resolved.userId &&
       resolved.organizationId
     ) {
-      const onboarding = await runOnboardingChat({
+      const onboarding = await this.runOnboardingChat({
         message: args.body,
         platform: args.provider,
         platformUserId: args.from,
@@ -887,7 +977,8 @@ export class AgentGatewayRouterService {
     sender: AgentGatewaySender;
   }): Promise<AgentGatewayRouteResult> {
     const senderTelegramId = args.sender.id.trim();
-    const owner = await usersRepository.findByTelegramIdWithOrganization(senderTelegramId);
+    const owner =
+      await usersRepository.findByTelegramIdWithOrganization(senderTelegramId);
 
     if (!owner) {
       return {
@@ -903,7 +994,10 @@ export class AgentGatewayRouterService {
       };
     }
 
-    const resolved = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
+    const resolved = await this.resolveOwnedRuntimeTarget(
+      owner.organization_id,
+      owner.id,
+    );
     if (!resolved.target) {
       return {
         handled: false,
@@ -935,12 +1029,16 @@ export class AgentGatewayRouterService {
         sender: {
           id: senderTelegramId,
           username: args.sender.username,
-          ...(args.sender.displayName ? { displayName: args.sender.displayName } : {}),
+          ...(args.sender.displayName
+            ? { displayName: args.sender.displayName }
+            : {}),
           metadata: {
             telegram: {
               userId: senderTelegramId,
               username: args.sender.username,
-              ...(args.sender.displayName ? { displayName: args.sender.displayName } : {}),
+              ...(args.sender.displayName
+                ? { displayName: args.sender.displayName }
+                : {}),
             },
           },
         },
@@ -973,14 +1071,21 @@ export class AgentGatewayRouterService {
     const senderWhatsAppId = args.from.trim();
     const normalizedPhone = normalizePhoneNumber(senderWhatsAppId);
     const owner =
-      (await usersRepository.findByWhatsAppIdWithOrganization(senderWhatsAppId)) ??
+      (await usersRepository.findByWhatsAppIdWithOrganization(
+        senderWhatsAppId,
+      )) ??
       (normalizedPhone
-        ? await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone)
+        ? await usersRepository.findByPhoneNumberWithOrganization(
+            normalizedPhone,
+          )
         : undefined);
 
     let resolved: PhoneTargetResolution;
     if (owner?.organization_id) {
-      const owned = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
+      const owned = await this.resolveOwnedRuntimeTarget(
+        owner.organization_id,
+        owner.id,
+      );
       resolved = owned.target
         ? { ...owned, organizationId: owner.organization_id }
         : await this.resolveLoggedPhoneContactTarget(
@@ -1013,7 +1118,10 @@ export class AgentGatewayRouterService {
     const targetAgentId =
       resolved.target.kind === "local-session" && resolved.target.session
         ? resolved.target.session.runtimeAgentId
-        : (resolved.target.sandbox?.id ?? resolved.agentId ?? normalizedPhone ?? senderWhatsAppId);
+        : (resolved.target.sandbox?.id ??
+          resolved.agentId ??
+          normalizedPhone ??
+          senderWhatsAppId);
     const roomId = buildDirectConversationRoomIdFromIds(
       targetAgentId,
       "whatsapp",
@@ -1046,7 +1154,9 @@ export class AgentGatewayRouterService {
           provider: "whatsapp",
           from: normalizedPhone || senderWhatsAppId,
           to: args.to.trim(),
-          ...(args.providerMessageId ? { providerMessageId: args.providerMessageId } : {}),
+          ...(args.providerMessageId
+            ? { providerMessageId: args.providerMessageId }
+            : {}),
           ...(args.metadata ? args.metadata : {}),
         },
       },
