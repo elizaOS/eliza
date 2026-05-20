@@ -154,16 +154,24 @@ describe("cloud capability sandbox provisioner", () => {
 
   it("waits until a cloud capability endpoint reports plugin availability", async () => {
     const progress: string[] = [];
-    const fetchMock = vi.fn(async () => {
-      const attempt = fetchMock.mock.calls.length;
-      if (attempt === 1) {
+    const fetchMock = vi.fn(
+      async (
+        _input: string | URL | Request,
+        _init?: RequestInit,
+      ): Promise<Response> => {
+        const attempt = fetchMock.mock.calls.length;
+        if (attempt === 1) {
+          return jsonResponse({
+            available: false,
+            capabilities: { plugin: false },
+          });
+        }
         return jsonResponse({
-          available: false,
-          capabilities: { plugin: false },
+          available: true,
+          capabilities: { plugin: true },
         });
-      }
-      return jsonResponse({ available: true, capabilities: { plugin: true } });
-    });
+      },
+    );
 
     await expect(
       waitForCloudCapabilityEndpointAvailability({

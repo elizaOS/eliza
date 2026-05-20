@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-api",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.1",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
