@@ -7,6 +7,8 @@ import {
 } from "@elizaos/core";
 
 const SUB_AGENT_SOURCE = "sub_agent";
+const EMPTY_COMPLETION_PLACEHOLDER =
+  "sub-agent reports task complete (no captured output).";
 // When the evaluator routes back to TASKS_SEND_TO_AGENT or TASKS_SPAWN_AGENT,
 // the active context must satisfy their contextGate. TASKS declares
 // `contexts: ["tasks","code","automation","agent_internal","connectors"]`,
@@ -64,6 +66,7 @@ function hasOnlyStaleCompletionHints(values: readonly string[] | undefined) {
     hints.every(
       (hint) =>
         hint === "TASKS" ||
+        hint === "ATTACHMENT" ||
         hint === "SPAWN_AGENT" ||
         hint === "TASKS_SPAWN_AGENT",
     )
@@ -83,6 +86,28 @@ function hasUserFacingUrl(text: string): boolean {
     } catch {}
   }
   return false;
+}
+
+function isEmptyCompletionPlaceholder(text: string): boolean {
+  return text.trim().toLowerCase() === EMPTY_COMPLETION_PLACEHOLDER;
+}
+
+function bodyIsOnlyUrls(text: string): boolean {
+  const lines = text
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return (
+    lines.length > 0 &&
+    lines.every((line) => {
+      try {
+        return new URL(line).toString().length > 0;
+      } catch {
+        return false;
+      }
+    })
+  );
 }
 
 // Match absolute Unix paths under a well-known top-level directory. The
@@ -228,9 +253,11 @@ function replyPatchFromCompletion(
   const verifiedUrl = userFacingVerifiedUrl(verifiedUrls);
   const cleanBody = body && !looksLikeRawToolTranscript(body) ? body : "";
   if (!body && !verifiedUrl) return undefined;
+  if (isEmptyCompletionPlaceholder(body)) return verifiedUrl;
   if (verifiedUrl && looksLikeRawToolTranscript(completionText)) {
     return verifiedUrl;
   }
+  if (verifiedUrl && bodyIsOnlyUrls(cleanBody)) return verifiedUrl;
   if (
     cleanBody &&
     !looksLikeCapturedToolOutput(cleanBody) &&
@@ -251,6 +278,11 @@ function hasVerifiedCompletionReply(
   verifiedUrls: readonly string[] = [],
 ) {
   const body = userFacingCompletionBody(completionText);
+  if (isEmptyCompletionPlaceholder(body)) {
+    return (
+      hasUrl(currentReply) || userFacingVerifiedUrl(verifiedUrls) !== undefined
+    );
+  }
   return (
     hasUrl(currentReply) ||
     hasUrl(body) ||
@@ -295,6 +327,22 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
       completionText,
       verifiedUrls,
     );
+    if (
+      isEmptyCompletionPlaceholder(userFacingCompletionBody(completionText))
+    ) {
+      if (!reply && !hasUrl(currentReply)) {
+        return {
+          processMessage: "IGNORE",
+          requiresTool: false,
+          clearReply: true,
+          clearCandidateActions: true,
+          clearParentActionHints: true,
+          debug: [
+            "verified sub-agent completion had no captured output; suppressing placeholder reply",
+          ],
+        };
+      }
+    }
     if (reply && hasUrl(reply)) {
       return {
         ...respondIfNeeded(messageHandler),

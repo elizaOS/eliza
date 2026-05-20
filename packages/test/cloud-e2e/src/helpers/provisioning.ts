@@ -64,6 +64,7 @@ export async function startAgentProvisioning(
 
 export async function tickProvisioning(
   endpoints: ProvisioningEndpoints,
+  opts: { timeoutMs?: number } = {},
 ): Promise<Response> {
   return fetch(`${endpoints.apiUrl}/api/v1/cron/process-provisioning-jobs`, {
     method: "POST",
@@ -71,6 +72,7 @@ export async function tickProvisioning(
       Authorization: `Bearer ${CRON_SECRET}`,
       "Content-Type": "application/json",
     },
+    signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
   });
 }
 

@@ -554,6 +554,7 @@ function isToolAttemptObject(value: unknown): boolean {
 function looksLikeUserFacingAnswer(text: string): boolean {
 	if (text.length < 8 || text.length > 4000) return false;
 	if (looksLikeRawToolTranscript(text)) return false;
+	if (containsInternalWorkPlanning(text)) return false;
 	if (/\{\s*"(?:action|tool|name|parameters|command)"\s*:/i.test(text)) {
 		return false;
 	}
@@ -568,6 +569,30 @@ function looksLikeUserFacingAnswer(text: string): boolean {
 		return false;
 	}
 	return true;
+}
+
+function containsInternalWorkPlanning(text: string): boolean {
+	return evaluatorProseFragments(text).some((fragment) => {
+		const normalized = fragment.trim().replace(/\s+/g, " ");
+		if (!normalized) return false;
+		return (
+			/^(?:i|we)\s+(?:need|needs|should|must|will|can|have)\s+(?:to\s+)?(?:locate|find|search|grep|inspect|check|read|open|run|use|try|verify|figure out|determine|look\s+(?:for|up))\b/i.test(
+				normalized,
+			) ||
+			/^(?:let'?s\s+)?(?:grep|search|find|inspect|check|read|open|run|try|look)\s+(?:for|through|in|at|up|again|path)\b/i.test(
+				normalized,
+			) ||
+			/^use\s+(?:grep|rg|search|find|shell|bash|curl)\b/i.test(normalized)
+		);
+	});
+}
+
+function evaluatorProseFragments(text: string): string[] {
+	return text
+		.replace(/([.!?])(?=[A-Z])/g, "$1\n")
+		.replace(/([.!?])\s+/g, "$1\n")
+		.split(/\r?\n/)
+		.flatMap((line) => line.split(/\s+(?=-\s+\*\*)/));
 }
 
 function looksLikeRawToolTranscript(text: string): boolean {
@@ -850,6 +875,7 @@ function deriveMessageFromLabeledFinalThought(
 
 function looksLikeMultilineFinalAnswer(text: string): boolean {
 	if (!text.includes("\n")) return false;
+	if (!looksLikeUserFacingAnswer(text)) return false;
 	return (
 		text.includes("```") ||
 		text.includes("\n- ") ||

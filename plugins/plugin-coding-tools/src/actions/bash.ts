@@ -400,14 +400,26 @@ export const shellAction: Action = {
             message: `cwd stat failed: ${(err as Error).message}`,
           });
         }
-        cwd = session.getCwd(conversationId);
+        const fallback = await session.getExistingCwd(conversationId);
+        cwd = fallback.cwd;
         coreLogger.warn(
           `${CODING_TOOLS_LOG_PREFIX} SHELL cwd not found; using session cwd (requested=${cwdParam}, fallback=${cwd})`,
         );
+        if (fallback.reset && fallback.previousCwd) {
+          coreLogger.warn(
+            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${fallback.previousCwd}, fallback=${cwd})`,
+          );
+        }
       }
       if (!cwd) cwd = v.resolved;
     } else {
-      cwd = session.getCwd(conversationId);
+      const sessionCwd = await session.getExistingCwd(conversationId);
+      cwd = sessionCwd.cwd;
+      if (sessionCwd.reset && sessionCwd.previousCwd) {
+        coreLogger.warn(
+          `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${sessionCwd.previousCwd}, fallback=${cwd})`,
+        );
+      }
     }
 
     const defaultTimeout = readPositiveIntSetting(

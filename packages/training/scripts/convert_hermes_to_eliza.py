@@ -117,21 +117,28 @@ def _extract_tool_calls(text: str) -> list[dict[str, Any]]:
             calls.append({"name": obj["name"], "args": obj.get("arguments", obj.get("args", {}))})
     if calls:
         return calls
-    # Glaive-style: <functioncall> {"name": ..., "arguments": ...}
-    for m in _GLAIVE_CALL_RE.finditer(text):
-        raw_json = m.group(1).strip()
-        try:
-            obj = json.loads(raw_json)
-        except json.JSONDecodeError:
+    # Glaive-style: <functioncall> {"name": "fn", "arguments": '{"k":"v"}'} or {...}
+    # The outer object is not valid JSON because arguments uses single-quote strings.
+    # Extract name and arguments with targeted regexes instead of json.loads on the outer blob.
+    for m in _GLAIVE_CALL_TEXT_RE.finditer(text):
+        blob = m.group(1).strip()
+        name_m = _GLAIVE_NAME_RE.search(blob)
+        if not name_m:
             continue
-        if isinstance(obj, dict) and "name" in obj:
-            args = obj.get("arguments", obj.get("args", {}))
-            if isinstance(args, str):
-                try:
-                    args = json.loads(args)
-                except json.JSONDecodeError:
-                    args = {}
-            calls.append({"name": obj["name"], "args": args if isinstance(args, dict) else {}})
+        func_name = name_m.group(1)
+        args: dict[str, Any] = {}
+        args_m = _GLAIVE_ARGS_RE.search(blob)
+        if args_m:
+            raw_args = args_m.group(1) or args_m.group(2) or ""
+            # group(1) = content of single-quoted string, group(2) = content of {…}
+            args_str = raw_args if args_m.group(1) is not None else "{" + raw_args + "}"
+            try:
+                parsed = json.loads(args_str)
+                if isinstance(parsed, dict):
+                    args = parsed
+            except json.JSONDecodeError:
+                pass
+        calls.append({"name": func_name, "args": args})
     return calls
 
 
@@ -141,7 +148,9 @@ def _normalize_system(system: str) -> str:
     return system.strip() or ELIZA_SYSTEM_PROMPT
 
 
-_GLAIVE_TOOL_JSON_RE = re.compile(r"\{[\s\S]*\}", re.DOTALL)
+_GLAIVE_CALL_TEXT_RE = re.compile(r"<functioncall>\s*(.+?)(?:\s*<\|endoftext\|>|$)", re.DOTALL)
+_GLAIVE_NAME_RE = re.compile(r'"name"\s*:\s*"([^"]+)"')
+_GLAIVE_ARGS_RE = re.compile(r'"arguments"\s*:\s*(?:\'([\s\S]*?)\'(?=\s*[,}])|\{([\s\S]*?)\}(?=\s*[,}]))', re.DOTALL)
 
 
 def _extract_glaive_tools(system_raw: str) -> list[dict[str, Any]]:
@@ -213,24 +222,83 @@ def _parse_glaive_chat(system_raw: str, chat: str) -> dict[str, Any] | None:
     return {"system_raw": system, "conversations": turns, "_tools_raw": tools_raw}
 
 
-def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
-    # Handle glaive format (system + chat fields)
+def _make_record(
+    system: str,
+    turns: list[dict[str, Any]],
+    assistant_content: str,
+    tools_list: list[dict[str, Any]] | None,
+    source_tag: str,
+    raw_id: Any,
+) -> dict[str, Any] | None:
+    """Build one training record from context turns + a single assistant response."""
+    if not any(t["role"] == "user" for t in turns):
+        return None
+    total_text = system + " ".join(t["content"] for t in turns) + assistant_content
+    if _estimate_tokens(total_text) > MAX_TOKEN_ESTIMATE:
+        return None
+
+    thought, response_text = _extract_think(assistant_content)
+    tool_calls = _extract_tool_calls(assistant_content)
+    rec_id = stable_id(source_tag, str(raw_id), assistant_content[:64])
+
+    if tool_calls:
+        clean_response = _TOOL_CALL_RE.sub("", response_text).strip()
+        clean_response = re.sub(r"<functioncall>[^<]*", "", clean_response).strip()
+        return native_tool_call_record(
+            system=system,
+            turns=turns,
+            thought=thought or "Use the appropriate tool to fulfill the request.",
+            tool_calls=tool_calls,
+            message_to_user=clean_response or None,
+            tools=tools_list,
+            metadata={"source": source_tag, "id": rec_id},
+        )
+
+    if _has_trope(response_text) or not response_text.strip():
+        return None
+    return native_text_record(
+        system=system,
+        user=turns,
+        response_text=response_text,
+        tools=tools_list,
+        metadata={"source": source_tag, "id": rec_id},
+    )
+
+
+def _convert_record(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Convert one source row to zero or more eliza_native_v1 records.
+
+    Multi-turn glaive conversations produce one record per assistant turn
+    so the model learns both function-call decisions and text replies.
+    """
     tools_from_system: list[dict[str, Any]] = []
     if "chat" in raw and "system" in raw and "conversations" not in raw:
         parsed = _parse_glaive_chat(raw["system"], raw["chat"])
         if parsed is None:
-            return None
+            return []
         tools_from_system = parsed.pop("_tools_raw", [])
         raw = {**raw, **parsed}
 
     conversations = raw.get("conversations") or raw.get("messages") or []
     if not conversations:
-        return None
+        return []
 
+    # Build tools list: prefer explicit field, fall back to system-prompt extraction
+    tools_field = raw.get("tools") or raw.get("functions")
+    tools_list: list[dict[str, Any]] | None = None
+    if tools_field:
+        try:
+            from lib.adapters import _normalize_tools  # type: ignore[import]
+            tools_list = _normalize_tools(tools_field) or None
+        except Exception:
+            pass
+    elif tools_from_system:
+        tools_list = tools_from_system
+
+    source_tag = "glaive" if tools_from_system else "hermes"
     system = raw.get("system_raw") or ELIZA_SYSTEM_PROMPT
-    turns: list[dict[str, Any]] = []
-    final_assistant: str | None = None
-    final_tools_str: str | None = None
+    context: list[dict[str, Any]] = []  # accumulates context as we walk forward
+    output: list[dict[str, Any]] = []
 
     for msg in conversations:
         role_raw = msg.get("role") or msg.get("from") or ""
@@ -245,68 +313,17 @@ def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
             continue
 
         if role == "assistant":
-            # Keep intermediate assistant turns (e.g. function calls) in context
-            if final_assistant is not None:
-                turns.append({"role": "assistant", "content": final_assistant})
-            final_assistant = content
-            final_tools_str = content
+            rec = _make_record(system, list(context), content, tools_list, source_tag, raw.get("id", ""))
+            if rec is not None:
+                output.append(rec)
+            # Push assistant turn into context for subsequent turns
+            context.append({"role": "assistant", "content": content})
             continue
 
         if role in ("user", "tool"):
-            turns.append({"role": role, "content": content})
+            context.append({"role": role, "content": content})
 
-    if final_assistant is None:
-        return None
-
-    if not any(t["role"] == "user" for t in turns):
-        return None
-
-    thought, response_text = _extract_think(final_assistant)
-    tool_calls = _extract_tool_calls(final_tools_str or "")
-
-    # Build tools list: prefer explicit field, fall back to system-prompt extraction
-    tools_field = raw.get("tools") or raw.get("functions")
-    tools_list: list[dict[str, Any]] | None = None
-    if tools_field:
-        from lib.adapters import _normalize_tools  # type: ignore[import]
-        tools_list = _normalize_tools(tools_field) or None
-    elif tools_from_system:
-        tools_list = tools_from_system
-
-    total_text = system + " ".join(t["content"] for t in turns) + (final_assistant or "")
-    if _estimate_tokens(total_text) > MAX_TOKEN_ESTIMATE:
-        return None
-
-    source_tag = "glaive" if tools_from_system else "hermes"
-    rec_id = stable_id(source_tag, raw.get("id", ""), final_assistant[:64])
-
-    if tool_calls:
-        clean_response = _TOOL_CALL_RE.sub("", response_text).strip()
-        # Strip glaive-style <functioncall> from display text too
-        clean_response = re.sub(r"<functioncall>[^<]*", "", clean_response).strip()
-        return native_tool_call_record(
-            system=system,
-            turns=turns,
-            thought=thought or "Use the appropriate tool to fulfill the request.",
-            tool_calls=tool_calls,
-            message_to_user=clean_response or None,
-            tools=tools_list,
-            metadata={"source": source_tag, "id": rec_id},
-        )
-
-    if _has_trope(response_text):
-        return None
-
-    if not response_text.strip():
-        return None
-
-    return native_text_record(
-        system=system,
-        user=turns,
-        response_text=response_text,
-        tools=tools_list,
-        metadata={"source": source_tag, "id": rec_id},
-    )
+    return output
 
 
 def convert_dataset(dataset_id: str, slug: str, max_records: int | None, hf_token: str | None) -> tuple[list[dict], dict[str, int]]:
@@ -325,16 +342,17 @@ def convert_dataset(dataset_id: str, slug: str, max_records: int | None, hf_toke
             break
         total += 1
         try:
-            rec = _convert_record(dict(row))
+            recs = _convert_record(dict(row))
         except Exception as exc:
             drops[f"error: {type(exc).__name__}"] = drops.get(f"error: {type(exc).__name__}", 0) + 1
             continue
-        if rec is None:
+        if not recs:
             drops["filtered"] = drops.get("filtered", 0) + 1
         else:
-            records.append(rec)
+            records.extend(recs)
 
-    log.info("%s: total=%d converted=%d dropped=%d", slug, total, len(records), total - len(records))
+    n_dropped_rows = sum(drops.values())
+    log.info("%s: rows=%d output_records=%d dropped_rows=%d", slug, total, len(records), n_dropped_rows)
     return records, drops
 
 

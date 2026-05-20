@@ -480,6 +480,8 @@ def _has_vision_language_harness_runtime() -> bool:
     model = (os.environ.get("VISION_LANGUAGE_MODEL") or "").strip()
     if not model:
         return False
+    if provider in {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}:
+        return _has_vision_language_real_inputs()
     if not _is_vision_language_multimodal_model(provider=provider, model=model):
         return False
     key_envs = {
@@ -497,6 +499,8 @@ def _is_vision_language_multimodal_model(*, provider: str, model: str) -> bool:
         return True
     provider_key = provider.strip().lower()
     model_key = model.strip().lower()
+    if provider_key in {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}:
+        return model_key.startswith("eliza-1-")
     if not model_key:
         return False
     if provider_key == "cerebras":
@@ -1219,27 +1223,29 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
     if isinstance(payment_mock_url, str) and payment_mock_url.strip():
         args.extend(["--payment-mock-url", payment_mock_url.strip()])
 
-    scenarios = ctx.request.extra_config.get("scenarios")
-    if isinstance(scenarios, list):
-        scenario_ids = [
-            str(item).strip()
-            for item in scenarios
-            if isinstance(item, str) and item.strip()
-        ]
-        if scenario_ids:
-            args.extend(["--scenarios", ",".join(scenario_ids)])
-    elif isinstance(scenarios, str) and scenarios.strip():
-        args.extend(["--scenarios", scenarios.strip()])
+    explicit_scope = False
+    for extra_key, cli_key in (
+        ("scenario", "--scenario"),
+        ("system", "--system"),
+        ("persona", "--persona"),
+    ):
+        value = ctx.request.extra_config.get(extra_key)
+        if isinstance(value, str) and value.strip():
+            args.extend([cli_key, value.strip()])
+            explicit_scope = True
 
-    if "--scenarios" not in args:
-        for extra_key, cli_key in (
-            ("scenario", "--scenario"),
-            ("system", "--system"),
-            ("persona", "--persona"),
-        ):
-            value = ctx.request.extra_config.get(extra_key)
-            if isinstance(value, str) and value.strip():
-                args.extend([cli_key, value.strip()])
+    if not explicit_scope:
+        scenarios = ctx.request.extra_config.get("scenarios")
+        if isinstance(scenarios, list):
+            scenario_ids = [
+                str(item).strip()
+                for item in scenarios
+                if isinstance(item, str) and item.strip()
+            ]
+            if scenario_ids:
+                args.extend(["--scenarios", ",".join(scenario_ids)])
+        elif isinstance(scenarios, str) and scenarios.strip():
+            args.extend(["--scenarios", scenarios.strip()])
 
     max_tasks = ctx.request.extra_config.get("max_tasks")
     has_scope_filter = False

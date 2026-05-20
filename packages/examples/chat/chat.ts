@@ -14,35 +14,34 @@ import {
 type LLMProvider = {
   name: string;
   envKey: string;
-  loadPlugin: () => Promise<Plugin>;
+  specifier: string;
 };
 
 const LLM_PROVIDERS: LLMProvider[] = [
   {
     name: "OpenAI",
     envKey: "OPENAI_API_KEY",
-    loadPlugin: async () => (await import("@elizaos/plugin-openai")).default,
+    specifier: "@elizaos/plugin-openai",
   },
   {
     name: "Anthropic (Claude)",
     envKey: "ANTHROPIC_API_KEY",
-    loadPlugin: async () => (await import("@elizaos/plugin-anthropic")).default,
+    specifier: "@elizaos/plugin-anthropic",
   },
   {
     name: "xAI (Grok)",
     envKey: "XAI_API_KEY",
-    loadPlugin: async () => (await import("@elizaos/plugin-xai")).default,
+    specifier: "@elizaos/plugin-xai",
   },
   {
     name: "Google GenAI (Gemini)",
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
-    loadPlugin: async () =>
-      (await import("@elizaos/plugin-google-genai")).default,
+    specifier: "@elizaos/plugin-google-genai",
   },
   {
     name: "Groq",
     envKey: "GROQ_API_KEY",
-    loadPlugin: async () => (await import("@elizaos/plugin-groq")).default,
+    specifier: "@elizaos/plugin-groq",
   },
 ];
 
@@ -57,8 +56,11 @@ async function detectLLMPlugin(): Promise<{
 } | null> {
   for (const provider of LLM_PROVIDERS) {
     if (hasValidApiKey(provider.envKey)) {
+      const module = (await import(/* @vite-ignore */ provider.specifier)) as {
+        default: Plugin;
+      };
       return {
-        plugin: await provider.loadPlugin(),
+        plugin: module.default,
         providerName: provider.name,
       };
     }

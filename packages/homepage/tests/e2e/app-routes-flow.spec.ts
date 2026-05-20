@@ -157,6 +157,34 @@ test("get-started covers method selection, phone input, country dropdown, and di
   ).toBeVisible();
 });
 
+test("get-started covers Discord callback errors and setup guide", async ({
+  page,
+}) => {
+  await page.goto("/get-started?code=discord_code_1&state=unexpected_state");
+
+  await expect(
+    page.getByText(/Authentication failed: invalid state/i),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Discord$/ })).toBeVisible();
+
+  await seedAuthenticatedSession(page);
+  await page.goto("/get-started?guide=discord");
+
+  await expect(
+    page.getByRole("heading", { name: "Discord Setup Guide" }),
+  ).toBeVisible();
+  await expect(page.getByText("Add Eliza to your server")).toBeVisible();
+  await expect(page.getByText("Send a direct message")).toBeVisible();
+  await expect(page.getByText("Start chatting")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Invite to Server" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open DM" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page).toHaveURL(/\/connected$/);
+});
+
 test("connected page exercises account menu, copy controls, link-phone form, and connection buttons", async ({
   context,
   page,

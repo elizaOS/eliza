@@ -231,11 +231,13 @@ nspawn:
 boot:
     scripts/boot-qemu.sh
 
-# Write the latest built ISO to a removable USB device with guard rails.
+# Write the latest built USB image to a removable USB device with guard rails.
 usb-write device:
     scripts/usb-write.sh "{{device}}"
 
-# Write a specific ISO to a removable USB device with guard rails.
+# Write a specific ISO/USB image to a removable USB device with guard rails.
+# ISO input is rejected by default unless a neighboring .img exists or
+# ELIZAOS_CREATE_USB_IMAGE_FROM_ISO=1 is set.
 usb-write-iso device iso:
     scripts/usb-write.sh "{{device}}" "{{iso}}"
 

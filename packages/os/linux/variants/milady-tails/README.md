@@ -113,13 +113,14 @@ Apache-2.0 where possible, dual-licensed under both where required.
 
 ## Status: Demo Branch Versus Production
 
-**Current branch status, 2026-05-19:** this branch has produced a fresh
-local ISO artifact that passed QEMU greeter/desktop/app onboarding
-validation. A prior artifact passed guarded USB flash/readback, but the
-latest validated artifact still needs repeat USB flash/readback, real
-hardware USB boot, and real USB Persistent Storage validation before it is
-called final USB-ready. Release promotion must rebuild and validate the
-exact release commit if the branch moves after the latest tested artifact.
+**Current branch status, 2026-05-20:** this branch has produced local
+artifacts that pass QEMU greeter/desktop/app startup validation. The latest
+VM USB pass also found and fixed source gaps in voice onboarding, USB-image
+partition labeling, direct-ISO USB writes, and Persistent Storage's `sudo`
+dependency. A fresh ISO plus persistence-compatible `.img` must be rebuilt
+from current HEAD and validated before it is called final USB-ready. Release
+promotion must rebuild and validate the exact release commit if the branch
+moves after the latest tested artifact.
 See [`docs/current-status.md`](./docs/current-status.md) for the exact
 validation state.
 
@@ -151,7 +152,7 @@ just build     # full clean ISO -> out/
 just build-cool # low-CPU demo build, skips offline docs, caps Docker+squashfs to 2 CPUs
 just build-demo # fastest full demo build; skips bundled offline website/docs
 just boot      # boot the latest ISO in QEMU
-just usb-write /dev/sdX # write the latest ISO with removable-disk guards
+just usb-write /dev/sdX # write the latest USB .img with removable-disk guards
 ```
 
 Set `ELIZAOS_BUILD_CPUS=2`, `ELIZAOS_MKSQUASHFS_PROCESSORS=2`, or

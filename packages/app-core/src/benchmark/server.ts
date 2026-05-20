@@ -227,6 +227,11 @@ function isOsworldBenchmarkName(benchmark: string): boolean {
   return normalized === "osworld" || normalized === "os-world";
 }
 
+function isWooBenchName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "woobench" || normalized === "woo-bench";
+}
+
 function isActionCallingBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return (
@@ -277,6 +282,43 @@ function normalizeActionCallingOpenAiMessages(
     role: "system",
     content:
       "Use native function/tool calls for any requested operation. If several operations are required, call every required tool; after a tool result, continue with the remaining required tool calls. Do not serialize tool calls in text, XML, markdown, or JSON. Return assistant text only when no tool call is needed.",
+  };
+  if (messages.length > 0 && messages[0]?.role === "system") {
+    messages[0] = systemMessage;
+  } else {
+    messages.unshift(systemMessage);
+  }
+  if (messages.some((message) => message.role === "user")) {
+    return messages;
+  }
+  messages.push({ role: "user", content: text });
+  return messages;
+}
+
+function normalizeWooBenchNativeMessages(
+  text: string,
+  context: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const rawMessages = Array.isArray(context.messages) ? context.messages : [];
+  const messages = rawMessages
+    .map((message) =>
+      message && typeof message === "object" && !Array.isArray(message)
+        ? { ...(message as Record<string, unknown>) }
+        : null,
+    )
+    .filter((message): message is Record<string, unknown> => message !== null)
+    .filter((message) => typeof message.role === "string");
+  const systemPrompt =
+    typeof context.system_prompt === "string" && context.system_prompt.trim()
+      ? context.system_prompt.trim()
+      : "You are running WooBench. Respond naturally, and use payment tools when charging or checking payment.";
+  const systemMessage = {
+    role: "system",
+    content:
+      systemPrompt +
+      "\n\nUse native tool calls for CREATE_APP_CHARGE and CHECK_PAYMENT. " +
+      "When you charge or check payment, include a short conversational message in assistant text. " +
+      "Do not serialize tool calls in JSON, XML, markdown, or prose.",
   };
   if (messages.length > 0 && messages[0]?.role === "system") {
     messages[0] = systemMessage;
@@ -449,19 +491,22 @@ async function callOpenAiCompatibleActionCalling(params: {
 } | null> {
   const config = resolveOpenAiCompatibleActionCallingConfig();
   if (!config) return null;
-  const requestBody = JSON.stringify({
+  const requestPayload: Record<string, unknown> = {
     model: config.model,
     messages: params.messages,
-    tools: params.tools,
-    tool_choice:
+    max_tokens: params.maxTokens,
+    temperature: params.temperature,
+  };
+  if (params.tools.length > 0) {
+    requestPayload.tools = params.tools;
+    requestPayload.tool_choice =
       params.toolChoice === "none"
         ? "none"
         : params.toolChoice === "auto"
-          ? "required"
-          : params.toolChoice || "required",
-    max_tokens: params.maxTokens,
-    temperature: params.temperature,
-  });
+          ? "auto"
+          : params.toolChoice || "required";
+  }
+  const requestBody = JSON.stringify(requestPayload);
   let response: Response | null = null;
   for (let attempt = 1; attempt <= OPENAI_COMPAT_MAX_ATTEMPTS; attempt += 1) {
     response = await fetch(chatCompletionsUrl(config.baseUrl), {
@@ -807,6 +852,30 @@ function firstLocaBenchmarkActionFromToolCalls(
     tool_name: first.function.name,
     arguments: args,
   };
+}
+
+function firstWooBenchActionFromToolCalls(
+  toolCalls: Array<{
+    function: { name: string; arguments: string };
+  }>,
+): Record<string, unknown> | null {
+  const first = toolCalls[0];
+  if (!first) return null;
+  const command = first.function.name.trim().toUpperCase();
+  if (command !== "CREATE_APP_CHARGE" && command !== "CHECK_PAYMENT") {
+    return null;
+  }
+  let args: unknown = {};
+  try {
+    args = JSON.parse(first.function.arguments || "{}");
+  } catch {
+    args = {};
+  }
+  const payload =
+    args && typeof args === "object" && !Array.isArray(args)
+      ? { ...(args as Record<string, unknown>) }
+      : {};
+  return { command, ...payload };
 }
 
 function bfclBenchmarkActionFromToolCalls(
@@ -2285,6 +2354,133 @@ export async function startBenchmarkServer() {
             context: benchmarkContext,
             image: parsed.image,
           });
+
+          if (isWooBenchName(session.benchmark)) {
+            const messages = normalizeWooBenchNativeMessages(
+              text,
+              benchmarkContext,
+            );
+            const tools = Array.isArray(benchmarkContext.tools)
+              ? benchmarkContext.tools
+              : [];
+            const maxTokens =
+              typeof benchmarkContext.max_tokens === "number"
+                ? benchmarkContext.max_tokens
+                : 2048;
+            const temperature =
+              typeof benchmarkContext.temperature === "number"
+                ? benchmarkContext.temperature
+                : 0;
+            const toolChoice =
+              tools.length === 0
+                ? "none"
+                : typeof benchmarkContext.tool_choice === "string"
+                  ? benchmarkContext.tool_choice
+                  : "auto";
+            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+            activeUsageBuffer = turnUsageBuffer;
+            let nativeResult: unknown;
+            try {
+              const directResult = await callOpenAiCompatibleActionCalling({
+                messages,
+                tools,
+                toolChoice,
+                maxTokens,
+                temperature,
+              });
+              if (directResult) {
+                if (directResult.usage) {
+                  turnUsageBuffer.push(directResult.usage);
+                }
+                nativeResult = {
+                  text: directResult.text,
+                  toolCalls: directResult.toolCalls,
+                };
+              } else {
+                const modelRequest: Record<string, unknown> = {
+                  messages,
+                  maxTokens,
+                  temperature,
+                };
+                if (tools.length > 0) {
+                  modelRequest.tools = tools;
+                  modelRequest.toolChoice = toolChoice;
+                }
+                nativeResult = await runtime.useModel(
+                  ModelType.TEXT_LARGE,
+                  modelRequest,
+                );
+              }
+            } finally {
+              activeUsageBuffer = null;
+            }
+            const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
+            const nativeRecord =
+              nativeResult && typeof nativeResult === "object"
+                ? (nativeResult as Record<string, unknown>)
+                : {};
+            const toolCalls = normalizeLocaNativeToolCalls(
+              nativeRecord.toolCalls,
+            );
+            const responseText =
+              typeof nativeRecord.text === "string"
+                ? nativeRecord.text
+                : typeof nativeResult === "string"
+                  ? nativeResult
+                  : "";
+            const params: Record<string, unknown> = {};
+            const benchmarkAction = firstWooBenchActionFromToolCalls(toolCalls);
+            if (benchmarkAction) {
+              params.BENCHMARK_ACTION = benchmarkAction;
+              params.tool_calls = toolCalls;
+            }
+            const actions =
+              benchmarkAction !== null
+                ? ["BENCHMARK_ACTION"]
+                : responseText.trim()
+                  ? ["REPLY"]
+                  : [];
+            const finishedAt = Date.now();
+
+            trajectory.push({
+              step: trajectory.length + 1,
+              startedAt,
+              finishedAt,
+              inputText: text,
+              promptText: composedPrompt,
+              context,
+              thought: null,
+              responseText,
+              actions,
+              params,
+              usage: turnUsage,
+            });
+            trajectoriesBySession.set(key, trajectory);
+            const metadata = benchmarkTurnMetadata({
+              session,
+              step: trajectory.length,
+              context: benchmarkContext,
+            });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                text: responseText,
+                thought: null,
+                actions,
+                params,
+                captured_actions: [],
+                tool_calls: toolCalls,
+                usage: turnUsage,
+                metadata,
+                benchmark: session.benchmark,
+                task_id: session.taskId,
+                room_id: session.roomId,
+                trajectory_step: trajectory.length,
+              }),
+            );
+            return;
+          }
 
           if (
             isActionCallingBenchmarkName(session.benchmark) &&

@@ -11,35 +11,19 @@ require external accounts, cloud projects, desktop apps, hardware, or credential
 Run these from the repository root after `bun install`:
 
 ```bash
-# Typecheck every example package that exposes a typecheck script.
-find packages/examples -name package.json -not -path '*/node_modules/*' -not -path '*/.next/*' -print \
-  | sort \
-  | while read package_file; do
-      dir="${package_file%/package.json}"
-      if node -e "const p=require('./${package_file}'); process.exit(p.scripts?.typecheck ? 0 : 1)"; then
-        bun run --cwd "$dir" typecheck
-      fi
-    done
+# List all example packages and scripts.
+node packages/examples/scripts/verify-examples.mjs --mode list
 
-# Test every example package that exposes a test script.
-find packages/examples -name package.json -not -path '*/node_modules/*' -not -path '*/.next/*' -print \
-  | sort \
-  | while read package_file; do
-      dir="${package_file%/package.json}"
-      if node -e "const p=require('./${package_file}'); process.exit(p.scripts?.test ? 0 : 1)"; then
-        bun run --cwd "$dir" test
-      fi
-    done
+# Check every example package has direct README coverage and top-level docs.
+node packages/examples/scripts/verify-examples.mjs --mode docs
 
-# Build every example package that exposes a build script.
-find packages/examples -name package.json -not -path '*/node_modules/*' -not -path '*/.next/*' -print \
-  | sort \
-  | while read package_file; do
-      dir="${package_file%/package.json}"
-      if node -e "const p=require('./${package_file}'); process.exit(p.scripts?.build ? 0 : 1)"; then
-        bun run --cwd "$dir" build
-      fi
-    done
+# Run local validation sweeps. These execute every package script of that kind.
+node packages/examples/scripts/verify-examples.mjs --mode typecheck
+node packages/examples/scripts/verify-examples.mjs --mode test
+node packages/examples/scripts/verify-examples.mjs --mode build
+
+# Optional full run with a machine-readable report.
+node packages/examples/scripts/verify-examples.mjs --mode all --json packages/examples/verification-report.json
 ```
 
 ## Current Local Evidence
@@ -49,10 +33,10 @@ The local examples sweep has been run in this worktree with these outcomes:
 | Scope | Evidence |
 | --- | --- |
 | Dependency install | `bun install` completed. |
-| Package typechecks | All `packages/examples/**/package.json` packages with a `typecheck` script completed after fixes. |
-| Package tests | All packages with a `test` script completed. Live endpoint clients either passed locally or skipped cleanly when no live service URL/credential was configured. |
-| Package builds | All packages with a `build` script completed. Human-gated or known bundler-limited examples use explicit skip scripts that explain the required opt-in command. |
-| Final targeted recheck | `bun run --cwd packages/examples/agent-console typecheck`, `bun run --cwd packages/examples/convex build`, and `bun run --cwd packages/examples/trader build` passed after the last example fixes. |
+| Package typechecks | `node packages/examples/scripts/verify-examples.mjs --mode typecheck` completed with 0 failures. |
+| Package tests | `node packages/examples/scripts/verify-examples.mjs --mode test` completed after dependency/build repair. Live endpoint clients either passed locally or skipped cleanly when no live service URL/credential was configured. |
+| Package builds | `node packages/examples/scripts/verify-examples.mjs --mode build` completed after targeted repairs. Human-gated or known bundler-limited examples use explicit skip scripts that explain the required opt-in command. |
+| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, and `form` passed targeted reruns after the last fixes. |
 | Static docs | `packages/examples/setup-guide.html` is linked from `packages/examples/README.md` and covers Roblox, Minecraft, cloud, social, hardware, and wallet setup links. |
 
 ## Example Matrix
@@ -72,8 +56,8 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `browser-extension/chrome` | `typecheck`, explicit build skip | `build:tsup` only after resolving browser bundling of Node-only workspace deps; load unpacked for runtime validation. |
 | `browser-extension/safari` | Typecheck skip, scripted Safari build path | Xcode and Safari extension signing. |
 | `chat` | `typecheck`, `build` | One configured provider key for live chat. |
-| `cloud/clone-ur-crush` | `build` | Live Next.js flow with required model/image provider keys. |
-| `cloud/edad` | No package verification scripts | Manual server launch via `bun run start`. |
+| `cloud/clone-ur-crush` | `typecheck`, `test`, `build` | Live Next.js flow with required model/image provider keys. |
+| `cloud/edad` | `typecheck`, `test`, `build` | Manual server launch with Eliza Cloud app ID, affiliate code, and signed-in user token. |
 | `cloudflare` | `typecheck`, `test`, `build` | Wrangler login, Worker secret, deployed or local Worker endpoint. |
 | `code` | `typecheck`, `test`, `build` | Provider-key E2E flows for subagents/game generation. |
 | `convex` | `typecheck`, `test`, `build` | `convex dev` or deployed Convex URL plus provider key in Convex env. |
@@ -81,8 +65,8 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `elizagotchi` | `typecheck`, `build` | Browser gameplay smoke test. |
 | `farcaster` | `typecheck`, `build` | Neynar/Farcaster credentials; start with dry-run. |
 | `farcaster-miniapp` | `typecheck`, `build` | Farcaster mini app host plus wallet/provider integrations. |
-| `form` | No local typecheck/build script | Manual run through shared chat entrypoint with one provider key. |
-| `game-of-life` | `typecheck`, `build` | Optional manual CLI/gameplay run. |
+| `form` | `typecheck`, `test`, `build` through shared `chat` entrypoint | Manual run through shared chat entrypoint with one provider key. |
+| `game-of-life` | `typecheck`, `test`, `build` | Test runs a short non-interactive simulation. |
 | `gcp` | `typecheck`, `build` | GCP project, Cloud Run deployment, deployed test client URL. |
 | `html` | Typecheck/build skip scripts | Browser smoke test from static server. |
 | `lp-manager` | `typecheck`, `test`, `build` | Isolated Solana/EVM wallets and RPCs for live liquidity paths. |
@@ -99,7 +83,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `supabase` | Static review; no package scripts | Supabase CLI/Deno function serve or deployment with anon key and `OPENAI_API_KEY`. |
 | `telegram` | `typecheck`, `build` | Telegram bot token and provider key. |
 | `text-adventure` | `typecheck`, `build` | Optional manual CLI playthrough. |
-| `tic-tac-toe` | `typecheck`, `build` | Optional manual/bench game modes. |
+| `tic-tac-toe` | `typecheck`, `test`, `build` | Test runs the non-interactive bench mode. |
 | `trader` | `typecheck`, `build` | Paper-trading UI flow, then isolated-wallet live testing only when intended. |
 | `twitter-xai` | `typecheck`, `build` | X/xAI credentials; start with `TWITTER_DRY_RUN=true`. |
 | `vercel` | `typecheck`, `test`, `build` | Vercel project/env plus deployed or `vercel dev` API endpoint. |

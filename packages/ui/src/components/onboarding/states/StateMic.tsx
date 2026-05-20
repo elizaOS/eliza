@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AvatarHost } from "../../../avatar-runtime";
+import { OnboardingAvatar } from "./OnboardingAvatar";
 
 export interface AudioInputDevice {
   deviceId: string;
@@ -88,12 +88,7 @@ export function StateMic(props: StateMicProps): React.JSX.Element {
   return (
     <section className="eliza-ob-screen" data-eliza-ob-state="mic">
       <div className="eliza-ob-agent">
-        <div
-          className="eliza-ob-agent-canvas"
-          style={{ width: "min(270px, 78vw)", height: 112 }}
-        >
-          <AvatarHost />
-        </div>
+        <OnboardingAvatar />
         <div className="eliza-ob-transcript">
           {transcript ??
             "You can talk to me if you'd like. But no worries if you're shy. I get it."}

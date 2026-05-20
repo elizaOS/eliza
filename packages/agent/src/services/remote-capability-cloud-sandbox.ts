@@ -34,6 +34,15 @@ export type CloudCapabilitySandboxProvisionResult = {
   jobId?: string;
 };
 
+export type WaitForCloudCapabilityEndpointAvailabilityOptions = {
+  endpoint: RemoteCapabilityEndpointConfig;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  requestTimeoutMs?: number;
+  fetch?: typeof fetch;
+  onProgress?: (detail: string) => void;
+};
+
 export type ConnectCloudCapabilitySandboxOptions =
   CloudCapabilitySandboxProvisionOptions & {
     unloadMissing?: boolean;
@@ -244,6 +253,99 @@ export async function connectCloudCapabilitySandbox(
     ...(result.jobId === undefined ? {} : { jobId: result.jobId }),
     sync: result.sync,
   };
+}
+
+export async function waitForCloudCapabilityEndpointAvailability(
+  options: WaitForCloudCapabilityEndpointAvailabilityOptions,
+): Promise<void> {
+  const request = options.fetch ?? fetch;
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const pollIntervalMs = options.pollIntervalMs ?? 5_000;
+  const requestTimeoutMs = options.requestTimeoutMs ?? 60_000;
+  const deadline = Date.now() + timeoutMs;
+  let lastError = "availability was not checked";
+
+  while (Date.now() < deadline) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+      try {
+        const response = await request(
+          new URL("/v1/capabilities", options.endpoint.baseUrl),
+          {
+            method: "GET",
+            headers: {
+              accept: "application/json",
+              ...(options.endpoint.token
+                ? { authorization: `Bearer ${options.endpoint.token}` }
+                : {}),
+            },
+            signal: controller.signal,
+          },
+        );
+        const text = await response.text();
+        if (!response.ok) {
+          lastError = `HTTP ${response.status}: ${text.slice(0, 500)}`;
+        } else {
+          const availability = JSON.parse(text) as {
+            available?: unknown;
+            capabilities?: { plugin?: unknown };
+          };
+          if (
+            availability.available === true &&
+            availability.capabilities?.plugin === true
+          ) {
+            return;
+          }
+          lastError = `unexpected availability payload: ${text.slice(0, 500)}`;
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (error) {
+      lastError = describeAvailabilityError(error);
+    }
+    options.onProgress?.(
+      `waiting for endpoint ${options.endpoint.id}: ${lastError}`,
+    );
+    await sleep(pollIntervalMs);
+  }
+
+  throw new Error(
+    `Cloud capability endpoint ${options.endpoint.id} did not report plugin availability within ${timeoutMs}ms. Last error: ${lastError}`,
+  );
+}
+
+function describeAvailabilityError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = (error as Error & { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    return `${error.message}: ${cause.message}`;
+  }
+  if (cause && typeof cause === "object") {
+    const detail = cause as {
+      code?: unknown;
+      errno?: unknown;
+      syscall?: unknown;
+      hostname?: unknown;
+      address?: unknown;
+      port?: unknown;
+    };
+    const parts = [
+      detail.code,
+      detail.errno,
+      detail.syscall,
+      detail.hostname,
+      detail.address,
+      detail.port,
+    ]
+      .filter((value) => typeof value === "string" || typeof value === "number")
+      .map(String);
+    if (parts.length > 0) {
+      return `${error.message}: ${parts.join(" ")}`;
+    }
+  }
+  return error.message;
 }
 
 export {

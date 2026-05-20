@@ -18,6 +18,7 @@ import os
 import sys
 from pathlib import Path
 
+from elizaos_gaia.dataset import find_cached_official_metadata
 from elizaos_gaia.harness import harness_env_updates, resolve_harness
 from elizaos_gaia.providers import (
     PRESETS,
@@ -284,6 +285,9 @@ def prepare_dataset_access(
     back to the built-in sample dataset.
     """
     if config.dataset_source != "gaia" or hf_token:
+        return None
+
+    if find_cached_official_metadata(split=config.split):
         return None
 
     if quick_test:

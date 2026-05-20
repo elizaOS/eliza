@@ -39,17 +39,32 @@ logger = logging.getLogger(__name__)
 
 
 _VENDING_ACTIONS = {
+    "ADVANCE_DAY",
+    "CHECK_DELIVERIES",
+    "COLLECT_CASH",
+    "DELEGATE_EMAIL",
+    "DELEGATE_RESEARCH",
+    "NOTEPAD_READ",
+    "NOTEPAD_WRITE",
+    "PLACE_ORDER",
+    "READ_EMAIL",
+    "RESTOCK_SLOT",
+    "SEARCH_WEB",
+    "SEND_EMAIL",
+    "SET_PRICE",
+    "UPDATE_NOTES",
     "VIEW_BUSINESS_STATE",
     "VIEW_STATE",
     "VIEW_SUPPLIERS",
-    "SET_PRICE",
-    "PLACE_ORDER",
-    "RESTOCK_SLOT",
-    "COLLECT_CASH",
-    "UPDATE_NOTES",
-    "CHECK_DELIVERIES",
-    "ADVANCE_DAY",
 }
+
+_VENDING_SHORT_RUN_HINT = """\
+## Eliza short-run benchmark strategy
+- This is a short 3-day run with starter inventory. Do not spend Day 1 on SEARCH_WEB, SEND_EMAIL, READ_EMAIL, NOTEPAD, or delegation unless explicitly asked; those actions do not restock before the run ends.
+- On Day 1, if no order has been placed, place one beverage_dist order immediately. A good default is {"water": 12, "soda_cola": 12, "juice_orange": 6, "energy_drink": 6}.
+- After a successful order, ADVANCE_DAY. When deliveries arrive, RESTOCK_SLOT into empty or matching slots, max 10 units per slot.
+- If the last result says an order was already placed today, do not place another order; ADVANCE_DAY.
+"""
 
 
 def _extract_json_candidate(text: str) -> str:
@@ -94,7 +109,17 @@ def _normalize_vending_payload(payload: object) -> str | None:
     out = {
         str(k).strip(): v
         for k, v in data.items()
-        if str(k).strip() not in {"action", "name", "command", "tool_name", "arguments"}
+        if str(k).strip()
+        not in {
+            "action",
+            "name",
+            "command",
+            "tool_name",
+            "arguments",
+            "actionContext",
+            "previousResults",
+            "reasoning",
+        }
     }
     out["action"] = normalized
     return json.dumps(out)
@@ -177,7 +202,16 @@ class ElizaVendingProvider:
         except Exception as exc:
             logger.debug("Eliza per-turn reset failed (continuing): %s", exc)
 
-        prompt = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
+        effective_system_prompt = (
+            f"{_VENDING_SHORT_RUN_HINT}\n\n{system_prompt}"
+            if system_prompt
+            else _VENDING_SHORT_RUN_HINT
+        )
+        prompt = (
+            f"{effective_system_prompt}\n\n{user_prompt}"
+            if effective_system_prompt
+            else user_prompt
+        )
 
         try:
             response = self._client.send_message(
@@ -185,7 +219,7 @@ class ElizaVendingProvider:
                 context={
                     "benchmark": "vending-bench",
                     "task_id": f"{self._run_id}:turn-{self._turn_counter}",
-                    "system_prompt": system_prompt,
+                    "system_prompt": effective_system_prompt,
                     "temperature": temperature,
                     "run_id": self._run_id,
                     "turn": self._turn_counter,

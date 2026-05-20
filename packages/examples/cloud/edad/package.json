@@ -5,7 +5,10 @@
   "author": "RemilioNubilio",
   "scripts": {
     "start": "bun run server.ts",
-    "dev": "bun --hot run server.ts"
+    "dev": "bun --hot run server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun run test.ts",
+    "build": "bun build server.ts --outdir=dist --target=bun --format=esm"
   },
   "dependencies": {
     "@elizaos/cloud-sdk": "workspace:*"

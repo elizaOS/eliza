@@ -7,9 +7,8 @@ import {
   STEWARD_SESSION_ENDPOINT,
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
-import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
-import { StewardClient } from "@stwd/sdk";
-import { createContext, useEffect, useMemo, useRef } from "react";
+import { createContext, lazy, Suspense, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 
 /**
  * Steward authentication provider for Eliza Cloud.
@@ -20,7 +19,7 @@ import { createContext, useEffect, useMemo, useRef } from "react";
  * Optional: NEXT_PUBLIC_STEWARD_TENANT_ID for multi-tenant setups.
  */
 
-function isPlaceholderValue(value: string | undefined): boolean {
+export function isPlaceholderValue(value: string | undefined): boolean {
   if (!value) return true;
   const normalized = value.trim().toLowerCase();
   return (
@@ -70,9 +69,26 @@ const ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT =
 const ELIZA_CLOUD_DIRECT_REFRESH_ENDPOINT =
   "https://api.elizacloud.ai/api/auth/steward-refresh";
 
-export const LocalStewardAuthContext = createContext<ReturnType<
-  typeof useStewardAuth
-> | null>(null);
+export type LocalStewardAuthValue = {
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  user: {
+    id: string;
+    email?: string;
+    walletAddress?: string;
+    wallet_address?: string;
+  } | null;
+  session: unknown;
+  signOut: () => unknown;
+  getToken: () => unknown;
+  verifyEmailCallback: (
+    token: string,
+    email: string,
+  ) => Promise<{ token: string; refreshToken?: string }>;
+};
+
+export const LocalStewardAuthContext =
+  createContext<LocalStewardAuthValue | null>(null);
 
 function isLocalhostApiBase(value: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/|$)/i.test(
@@ -87,7 +103,7 @@ function isBrowserOnElizaHost(): boolean {
   );
 }
 
-function configuredSessionEndpoint(): string {
+export function configuredSessionEndpoint(): string {
   // Vite inlines these only via the literal property name; do not rewrite
   // these to a dynamic lookup helper (see comment at top of file).
   const apiBase =
@@ -112,7 +128,7 @@ function configuredSessionEndpoint(): string {
   return STEWARD_SESSION_ENDPOINT;
 }
 
-function configuredRefreshEndpoint(): string {
+export function configuredRefreshEndpoint(): string {
   // Mirrors configuredSessionEndpoint() exactly so the cookie-based refresh
   // call hits the same host as the session sync (same cookie domain, same
   // CORS allowance, same Pages-Functions vs direct-API decision).
@@ -140,13 +156,13 @@ function stewardSessionClearUrls(): string[] {
   return [...urls];
 }
 
-function clearServerStewardSessionCookies(): void {
+export function clearServerStewardSessionCookies(): void {
   for (const url of stewardSessionClearUrls()) {
     fetch(url, { method: "DELETE", credentials: "include" }).catch(() => {});
   }
 }
 
-function readStoredToken(): string | null {
+export function readStoredToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
     return localStorage.getItem(STEWARD_TOKEN_KEY);
@@ -155,7 +171,7 @@ function readStoredToken(): string | null {
   }
 }
 
-function tokenIsExpired(token: string): boolean {
+export function tokenIsExpired(token: string): boolean {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return true;
@@ -178,12 +194,7 @@ function tokenIsExpired(token: string): boolean {
  * auth state (which can be slow/flaky to initialize from storage during
  * hydration) by reading localStorage directly.
  */
-/** How often to check token expiry and trigger refresh (ms) */
-const REFRESH_CHECK_INTERVAL_MS = 60_000; // 1 min
-/** Refresh when fewer than this many seconds remain */
-const REFRESH_AHEAD_SECS = 120;
-
-function tokenSecsRemaining(token: string): number | null {
+export function tokenSecsRemaining(token: string): number | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
@@ -229,200 +240,26 @@ export function clearStaleStewardSession(): void {
   }
 }
 
-function AuthTokenSync({ children }: { children: React.ReactNode }) {
-  const auth = useStewardAuth();
-  const { isAuthenticated, user } = auth;
-  const lastSyncedToken = useRef<string | null>(null);
-  const wasAuthenticated = useRef(false);
+const StewardAuthRuntimeProvider = lazy(
+  () => import("./StewardProviderRuntime"),
+);
 
-  // Sync localStorage access token → cookie and keep it alive via the
-  // cookie-based refresh endpoint. The refresh token itself is no longer
-  // read from localStorage — it lives only in the HttpOnly
-  // `steward-refresh-token` cookie and is replayed server-side by the
-  // /api/auth/steward-refresh route.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional re-run trigger
-  useEffect(() => {
-    const syncToken = () => {
-      const token = readStoredToken();
-      if (!token) {
-        // No token at all — clear the server cookie if we had one
-        if (wasAuthenticated.current && lastSyncedToken.current) {
-          lastSyncedToken.current = null;
-          wasAuthenticated.current = false;
-          clearServerStewardSessionCookies();
-        }
-        return;
-      }
+const STEWARD_RUNTIME_ROUTE_PATTERNS = [
+  /^\/app-auth(?:\/|$)/,
+  /^\/auth\/callback\/email(?:\/|$)/,
+  /^\/auth\/cli-login(?:\/|$)/,
+  /^\/dashboard(?:\/|$)/,
+  /^\/login(?:\/|$)/,
+  /^\/payment(?:\/|$)/,
+  /^\/sensitive-requests(?:\/|$)/,
+  /^\/approve(?:\/|$)/,
+  /^\/ballot(?:\/|$)/,
+] as const;
 
-      // If the token is expired, don't push it to the server (the server would
-      // reject it anyway), but don't delete the cookie either — the refresh
-      // path may recover. Only explicit sign-out clears cookies.
-      if (tokenIsExpired(token)) return;
-
-      if (token === lastSyncedToken.current) {
-        return;
-      }
-      lastSyncedToken.current = token;
-      wasAuthenticated.current = true;
-
-      // No refreshToken in the body — the HttpOnly steward-refresh-token
-      // cookie (set on first login) is the only persistence. credentials:
-      // 'include' keeps cross-site cookie flow on .elizacloud.ai working.
-      fetch(configuredSessionEndpoint(), {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      })
-        .then(async (res) => {
-          if (res.ok) {
-            window.dispatchEvent(
-              new CustomEvent("steward-token-sync", {
-                detail: { token, userId: user?.id },
-              }),
-            );
-            return;
-          }
-
-          // 401 from /api/auth/steward-session is ambiguous: either the
-          // token is genuinely revoked / the signing key rotated (wipe so
-          // the user signs in fresh — matches the cli-login fix) OR the
-          // Worker is missing its signing secret (wipe would lock the user
-          // out forever on a misconfigured deploy). Disambiguate via the
-          // `code` field on the body added in the steward-session route.
-          // Legacy servers without `code` get the original "wipe on 401"
-          // behavior preserved from PR #480.
-          const body = (await res.json().catch(() => null)) as {
-            code?: string;
-          } | null;
-          if (body?.code === "server_secret_missing") {
-            console.warn(
-              "[steward] /api/auth/steward-session reports server-side secret missing — keeping localStorage token; cookie path will fail until the Worker is configured.",
-            );
-            return;
-          }
-          if (res.status !== 401) {
-            console.warn("[steward] Server did not accept stored token", {
-              status: res.status,
-              code: body?.code,
-            });
-            return;
-          }
-          console.warn(
-            "[steward] Stored token rejected by server (401) — clearing",
-          );
-          lastSyncedToken.current = null;
-          wasAuthenticated.current = false;
-          clearStaleStewardSession();
-        })
-        .catch((err) =>
-          console.warn("[steward] Failed to set session cookie", err),
-        );
-    };
-
-    const checkAndRefresh = async () => {
-      const token = readStoredToken();
-      // Check if we have an access token to look at expiry. Even when
-      // localStorage is empty (cookie-only mode) we still want to attempt a
-      // refresh on visibility/online so the steward-authed marker can be
-      // re-established — but only if hasStewardAuthedCookie() suggests the
-      // server thinks we have a session. Without that we'd 401-spam.
-      if (token) {
-        const secs = tokenSecsRemaining(token);
-        // Refresh eagerly when the token is within the lookahead window OR
-        // already expired (e.g. tab was idle longer than 15 min). Dropping
-        // the `secs > 0` guard is the key fix for the silent-logout bug:
-        // previously, once the access token expired we stopped trying to
-        // refresh even though the refresh token was still good.
-        if (secs !== null && secs >= REFRESH_AHEAD_SECS) return;
-      } else {
-        // No access token in localStorage and no obvious need to refresh.
-        return;
-      }
-
-      // Cookie-based refresh: the browser sends the HttpOnly
-      // steward-refresh-token cookie automatically. The server rotates and
-      // returns ok with no body tokens; the new access cookie is now live.
-      // The access token in localStorage can no longer be refreshed by JS
-      // (we don't get it back) — call sites that rely on Authorization:
-      // Bearer should migrate to cookie-based auth. For now, on success we
-      // wipe the stored access token so the next syncToken() reads the
-      // cookie-only state cleanly; @stwd/react will repopulate it on its
-      // own auth-state cycle if still applicable.
-      try {
-        const res = await fetch(configuredRefreshEndpoint(), {
-          method: "POST",
-          credentials: "include",
-        });
-        if (res.ok) {
-          // The new access token is in the HttpOnly cookie — JS cannot read
-          // it. Bump the "we have a server session" marker so listeners
-          // re-check auth state.
-          try {
-            window.dispatchEvent(new CustomEvent("steward-token-sync"));
-          } catch {
-            // ignore
-          }
-          return;
-        }
-        if (res.status === 401) {
-          // Refresh cookie revoked / missing — full sign-out.
-          if (wasAuthenticated.current && lastSyncedToken.current) {
-            lastSyncedToken.current = null;
-            wasAuthenticated.current = false;
-          }
-          clearStaleStewardSession();
-        }
-      } catch (err) {
-        console.warn("[steward] Auto-refresh failed", err);
-      }
-    };
-
-    // Initial sync + eager refresh check (covers returning-from-idle tabs)
-    syncToken();
-    void checkAndRefresh();
-
-    // Periodic refresh check
-    const refreshInterval = setInterval(() => {
-      void checkAndRefresh();
-    }, REFRESH_CHECK_INTERVAL_MS);
-
-    // Also sync on storage events (cross-tab, login flow)
-    const handler = () => syncToken();
-    window.addEventListener("storage", handler);
-
-    // When the tab becomes visible again, immediately check-and-refresh.
-    // Browser timers (setInterval) are throttled heavily in background tabs
-    // (down to ~1 call per minute in Chrome, and suspended entirely in some
-    // cases), so a user coming back after 15 min may have an expired token
-    // even though the interval "should" have kept it alive.
-    const visibilityHandler = () => {
-      if (document.visibilityState === "visible") {
-        syncToken();
-        void checkAndRefresh();
-      }
-    };
-    document.addEventListener("visibilitychange", visibilityHandler);
-
-    // Also refresh on network reconnect, which commonly correlates with
-    // tab-wakeup scenarios (laptop opening, WiFi reconnecting).
-    const onlineHandler = () => {
-      void checkAndRefresh();
-    };
-    window.addEventListener("online", onlineHandler);
-
-    return () => {
-      clearInterval(refreshInterval);
-      window.removeEventListener("storage", handler);
-      document.removeEventListener("visibilitychange", visibilityHandler);
-      window.removeEventListener("online", onlineHandler);
-    };
-  }, [isAuthenticated, user]);
-
-  return (
-    <LocalStewardAuthContext.Provider value={auth}>
-      {children}
-    </LocalStewardAuthContext.Provider>
+function shouldLoadStewardRuntime(pathname: string): boolean {
+  if (readStoredToken()) return true;
+  return STEWARD_RUNTIME_ROUTE_PATTERNS.some((pattern) =>
+    pattern.test(pathname),
   );
 }
 
@@ -432,25 +269,12 @@ export function StewardAuthProvider({
   children: React.ReactNode;
 }) {
   const hasLoggedConfigError = useRef(false);
+  const location = useLocation();
   const playwrightTestAuthEnabled = isPlaywrightTestAuthEnabled();
 
   const apiUrl = resolveBrowserStewardApiUrl();
   const tenantId = process.env.NEXT_PUBLIC_STEWARD_TENANT_ID;
   const hasValidUrl = !isPlaceholderValue(apiUrl);
-
-  // Create a StewardClient instance once (no API key needed for user-facing auth flows)
-  const client = useMemo(
-    () =>
-      new StewardClient({
-        baseUrl: apiUrl,
-        ...(tenantId && !isPlaceholderValue(tenantId) ? { tenantId } : {}),
-      }),
-    [apiUrl, tenantId],
-  );
-
-  // Stabilize the auth prop so the inner <StewardProvider> doesn't recreate its
-  // StewardAuth instance on every render (which would thrash auth state).
-  const authConfig = useMemo(() => ({ baseUrl: apiUrl }), [apiUrl]);
 
   useEffect(() => {
     if (
@@ -471,20 +295,15 @@ export function StewardAuthProvider({
     return <>{children}</>;
   }
 
-  if (!hasValidUrl) {
+  if (!hasValidUrl || !shouldLoadStewardRuntime(location.pathname)) {
     return <>{children}</>;
   }
 
   return (
-    <StewardProvider
-      client={client}
-      agentId="eliza-cloud"
-      auth={authConfig}
-      tenantId={
-        tenantId && !isPlaceholderValue(tenantId) ? tenantId : undefined
-      }
-    >
-      <AuthTokenSync>{children}</AuthTokenSync>
-    </StewardProvider>
+    <Suspense fallback={children}>
+      <StewardAuthRuntimeProvider apiUrl={apiUrl} tenantId={tenantId}>
+        {children}
+      </StewardAuthRuntimeProvider>
+    </Suspense>
   );
 }
