@@ -1976,6 +1976,101 @@ entries:
     risk:
       - Paper benchmark accuracy is not evidence for E1 design decisions.
       - Training pipelines can leak restricted chip-design artifacts.
+  - id: forgeeda-aig
+    name: ForgeEDA AIG Dataset
+    kind: multimodal_aig_corpus
+    stage:
+      - foundation_models
+      - circuit_embeddings
+      - aig_representation
+      - corpus_governance
+    priority: P2
+    source_url: https://arxiv.org/abs/2505.02016
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/zshi0616/ForgeEDA_AIG
+    license_status: dataset_terms_review_required
+    code_status: dataset_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful as a current multimodal AIG corpus reference for future circuit
+      representation learning, but public AIG/text labels are not E1 design
+      evidence and may overlap unrelated benchmark distributions.
+    integration_action: >
+      Track as corpus-governance context only; do not download, train on, or
+      evaluate the dataset until exact revisions, licenses, splits, and local
+      non-overlap checks exist.
+    evidence_gate: >
+      Any use requires dataset revision hashes, license review, split manifest,
+      AIG extraction provenance, contamination review, held-out E1 tasks, and
+      deterministic downstream gates.
+    risk:
+      - Public AIG corpora can encode benchmark bias or train/test leakage.
+      - Text/function labels may not map to E1 hierarchy or verification scope.
+  - id: gnn4circuits
+    name: GNN4CIRCUITS
+    kind: hardware_netlist_graph_learning_toolkit
+    stage:
+      - foundation_models
+      - circuit_embeddings
+      - graph_learning
+      - netlist_security
+    priority: P2
+    source_url: https://github.com/DfX-NYUAD/GNN4CIRCUITS
+    code_url: https://github.com/DfX-NYUAD/GNN4CIRCUITS
+    model_url: null
+    dataset_url: https://github.com/DfX-NYUAD/GNN4CIRCUITS
+    license_status: review_required
+    code_status: available_to_review
+    model_status: trainable_method
+    e1_fit: >
+      Useful graph-learning plumbing for future netlist embedding and assurance
+      experiments, but E1 lacks an approved netlist-to-graph schema, labels, and
+      held-out downstream tasks.
+    integration_action: >
+      Track as toolkit context only; do not run graph extraction, training, or
+      prediction on E1 artifacts until revisions, dependencies, and labels are
+      reviewed.
+    evidence_gate: >
+      Use requires pinned code revision, dependency lockfile, netlist hashes,
+      graph schema hashes, train/test split, task labels, deterministic replay,
+      and review.
+    risk:
+      - Security-oriented graph labels may not transfer to performance, timing,
+        or functional E1 tasks.
+      - Graph extraction choices can erase hierarchy, clocking, reset, or
+        protocol context.
+  - id: hw2vec
+    name: HW2VEC
+    kind: rtl_gate_graph_embedding_tool
+    stage:
+      - foundation_models
+      - circuit_embeddings
+      - rtl_graphs
+      - gate_level_graphs
+      - hardware_assurance
+    priority: P2
+    source_url: https://cadforassurance.org/tools/design-for-trust/hw2vec/
+    code_url: https://github.com/AICPS/hw2vec
+    model_url: null
+    dataset_url: https://github.com/AICPS/hw2vec
+    license_status: review_required
+    code_status: available_to_review
+    model_status: trainable_method
+    e1_fit: >
+      Useful reference for converting RTL and gate-level designs into graph
+      embeddings, especially for future assurance and bug-triage tasks.
+    integration_action: >
+      Track as graph-extraction context only; do not embed, train, or classify
+      E1 RTL/netlists until source revision, dependencies, labels, and
+      downstream gates are reviewed.
+    evidence_gate: >
+      Use requires RTL/netlist hashes, graph extraction logs, model revision,
+      label provenance, held-out splits, deterministic replay, formal/synthesis
+      checks where applicable, and reviewer disposition.
+    risk:
+      - Embeddings can hide functional distinctions needed for chip evidence.
+      - Assurance classifiers can produce false confidence without local labels.
   - id: google-circuit-training
     name: AlphaChip / Circuit Training
     kind: reinforcement_learning_framework

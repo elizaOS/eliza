@@ -399,6 +399,21 @@ power, and manufacturing preparation.
   summaries are not evidence until tied to local artifact hashes, held-out
   tasks, formal/synthesis checks, and human review.
 
+### ForgeEDA, GNN4CIRCUITS, and HW2VEC
+
+- ForgeEDA: https://arxiv.org/abs/2505.02016 and
+  https://huggingface.co/datasets/zshi0616/ForgeEDA_AIG
+- GNN4CIRCUITS: https://github.com/DfX-NYUAD/GNN4CIRCUITS
+- HW2VEC: https://cadforassurance.org/tools/design-for-trust/hw2vec/ and
+  https://github.com/AICPS/hw2vec
+- Use: build or study graph/AIG/RTL/gate-level representations for hardware
+  learning tasks, especially corpus governance, netlist embeddings, assurance,
+  and future held-out E1 graph tasks.
+- E1 fit: metadata-only. Do not download corpora, run graph extraction, train
+  models, generate embeddings, or classify local RTL/netlists until revisions,
+  licenses, graph-schema hashes, label provenance, split manifests,
+  contamination checks, deterministic replay, and review exist.
+
 ## DTCO, TCAD, DFM, yield, lithography, and OPC
 
 ### TCAD and device optimization
@@ -870,7 +885,7 @@ power, and manufacturing preparation.
 
 ### PowerGear
 
-- Paper: https://arxiv.org/abs/2505.24198
+- Paper: https://arxiv.org/abs/2201.10114
 - Use: early-stage HLS power estimation and design-space exploration context.
 - E1 fit: useful as a method reference for accelerator/HLS power estimation,
   but blocked until E1 has exact assets, feature provenance, HLS/RTL synthesis
@@ -990,8 +1005,9 @@ power, and manufacturing preparation.
 9. Circuit foundation model target capture with
    `scripts/ai_eda/capture_circuit_foundation_model_targets.py --run-id validation`.
    Do not export training corpora, generate embeddings, train/fine-tune models,
-   run inference, or make model-quality/design-decision claims without local
-   provenance, held-out tasks, deterministic gates, and review.
+   run inference, import public graph corpora, run graph extraction, or make
+   model-quality/design-decision claims without local provenance, graph-schema
+   hashes, held-out tasks, deterministic gates, and review.
 10. DFM/yield/lithography target capture with
     `scripts/ai_eda/capture_dfm_yield_lithography_targets.py --run-id validation`.
     Do not run hotspot detectors, lithography simulation, OPC/ILT, wafer-defect

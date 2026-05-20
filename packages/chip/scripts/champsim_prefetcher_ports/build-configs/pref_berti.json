@@ -1,0 +1,6 @@
+{
+    "executable_name": "champsim_pref_berti",
+    "LLC": { "prefetcher": "no",  "replacement": "lru" },
+    "L2C": { "prefetcher": "berti" },
+    "L1D": { "prefetcher": "no" }
+}

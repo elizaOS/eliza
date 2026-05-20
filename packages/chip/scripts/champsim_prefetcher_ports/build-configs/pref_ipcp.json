@@ -1,0 +1,6 @@
+{
+    "executable_name": "champsim_pref_ipcp",
+    "LLC": { "prefetcher": "no",  "replacement": "lru" },
+    "L2C": { "prefetcher": "ipcp" },
+    "L1D": { "prefetcher": "no" }
+}

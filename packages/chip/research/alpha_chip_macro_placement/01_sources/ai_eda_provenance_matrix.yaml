@@ -412,6 +412,24 @@ entries:
     license_status: review_required
     release_use: blocked_pending_review
     allowed_current_use: schema_reference_only
+  - source_id: forgeeda-aig
+    asset_type: multimodal_aig_corpus
+    asset_url: https://huggingface.co/datasets/zshi0616/ForgeEDA_AIG
+    license_status: dataset_terms_review_required
+    release_use: blocked_pending_revision_license_split_contamination_and_local_task_review
+    allowed_current_use: metadata_reference_only
+  - source_id: gnn4circuits
+    asset_type: hardware_netlist_graph_learning_toolkit
+    asset_url: https://github.com/DfX-NYUAD/GNN4CIRCUITS
+    license_status: review_required
+    release_use: blocked_pending_revision_dependency_schema_label_and_replay_review
+    allowed_current_use: citation_reference_only
+  - source_id: hw2vec
+    asset_type: rtl_gate_graph_embedding_tool
+    asset_url: https://github.com/AICPS/hw2vec
+    license_status: review_required
+    release_use: blocked_pending_revision_dependency_graph_schema_label_and_replay_review
+    allowed_current_use: citation_reference_only
   - source_id: google-circuit-training
     asset_type: rl_framework
     asset_url: https://github.com/google-research/circuit_training
@@ -1519,7 +1537,7 @@ entries:
     allowed_current_use: citation_reference_only
   - source_id: powergear-hls-power
     asset_type: hls_power_estimation_method
-    asset_url: https://arxiv.org/abs/2505.24198
+    asset_url: https://arxiv.org/abs/2201.10114
     license_status: paper_assets_review_required
     release_use: blocked_pending_assets_feature_extractor_hls_replay_and_error_review
     allowed_current_use: citation_reference_only

@@ -562,6 +562,20 @@ candidate inputs to reproducible gates, not as standalone evidence.
   revisions, licenses, base-model review, overlap scan, prompt/embedding logs,
   patch quarantine, deterministic lint/simulation/formal/synthesis/equivalence
   replay, and reviewer disposition are pinned.
+- ForgeEDA: <https://arxiv.org/abs/2505.02016> and
+  <https://huggingface.co/datasets/zshi0616/ForgeEDA_AIG>. Multimodal AIG
+  dataset for circuit foundation model work. E1 status: metadata-only corpus
+  reference until dataset revision, license, split, label, contamination, and
+  held-out E1 task reviews are complete.
+- GNN4CIRCUITS: <https://github.com/DfX-NYUAD/GNN4CIRCUITS>. Code-bearing
+  graph-learning toolkit for hardware netlists. E1 status: toolkit reference
+  only until dependency, graph-schema, label, replay, and reviewer evidence are
+  pinned.
+- HW2VEC: <https://cadforassurance.org/tools/design-for-trust/hw2vec/> and
+  <https://github.com/AICPS/hw2vec>. RTL/gate-level graph embedding tool for
+  hardware assurance workflows. E1 status: graph-extraction reference only
+  until source revisions, extraction logs, labels, held-out splits, formal or
+  synthesis cross-checks, and review exist.
 - AI-driven NoC DSE: <https://arxiv.org/abs/2512.07877>. Current inverse-ML
   NoC design-space exploration method using BookSim-generated data and MLP,
   CVAE, and conditional-diffusion models for topology/parameter prediction.

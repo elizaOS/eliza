@@ -58,6 +58,34 @@ PROGRESS_MARKERS = (
     "SimDRAM loaded ELF entry=",
     "SimDRAM loading ELF ",
     "[UART] UART0 is here",
+    "Linux version",
+    "Machine model:",
+    "Forcing kernel command line to:",
+    "SBI specification",
+    "SBI implementation ID=",
+    "SBI TIME extension detected",
+    "SBI IPI extension detected",
+    "SBI RFENCE extension detected",
+    "SBI SRST extension detected",
+    "earlycon:",
+    "printk: bootconsole",
+    "OF: reserved mem:",
+    "Zone ranges:",
+    "Early memory node ranges",
+    "Initmem setup node",
+    "SBI HSM extension detected",
+    "riscv: base ISA extensions",
+    "riscv: ELF capabilities",
+    "percpu:",
+    "Kernel command line:",
+    "random: crng init done",
+    "Dentry cache hash table entries:",
+    "Inode-cache hash table entries:",
+    "Built 1 zonelists",
+    "mem auto-init:",
+    "Freeing unused kernel",
+    "Run /init as init process",
+    "initramfs",
     "eliza-evidence: command=",
     "eliza-evidence: timeout_after_seconds=",
     "eliza-evidence: exit_code=",
@@ -622,7 +650,7 @@ def parse_log_metadata() -> dict[str, object]:
             metadata["simdram_entry"] = line.split("=", 1)[1].strip()
             last_progress = line
         elif any(marker in line for marker in PROGRESS_MARKERS):
-            last_progress = line
+            last_progress = clean_progress_marker(line)
         if "fatal error:" in line or "%Fatal:" in line:
             fatal_errors = metadata["fatal_errors"]
             if isinstance(fatal_errors, list):
@@ -651,6 +679,14 @@ def parse_log_metadata() -> dict[str, object]:
     metadata["last_progress_marker"] = last_progress
     metadata["lines_after_raw_transcript_end"] = lines_after_raw_transcript_end
     return metadata
+
+
+def clean_progress_marker(line: str) -> str:
+    marker = line.strip()
+    for suffix in ("make: ***", "[timeout-wrapper]", "eliza-evidence: raw_transcript_end"):
+        if suffix in marker:
+            marker = marker.split(suffix, 1)[0].rstrip()
+    return marker
 
 
 def output_stem_for_payload(payload: str | None) -> str:
@@ -1112,6 +1148,8 @@ def main() -> int:
                 reason += f" after timeout_after_seconds={timeout_after}"
             blockers.append(reason)
         last_progress = log_metadata.get("last_progress_marker")
+        if exit_code and exit_code != "0" and last_progress:
+            blockers.append(f"last simulator progress before wrapper exit: {last_progress}")
         if last_progress and not (
             has_accepted_opensbi_markers(log_text) or "Linux version" in log_text
         ):

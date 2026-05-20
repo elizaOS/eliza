@@ -1889,6 +1889,9 @@ work_items:
       - nettag
       - deepgate4
       - chiplingo
+      - forgeeda-aig
+      - gnn4circuits
+      - hw2vec
     target_area:
       - foundation_models
       - circuit_embeddings
@@ -1899,9 +1902,9 @@ work_items:
     owner_scope: dry-run target capture only; no corpus export, embedding generation, model training, inference, or design-decision claims
     objective: >
       Track circuit foundation models, graph/text/layout alignment,
-      domain-adapted EDA LLMs, and netlist-function reasoning while tying any
-      future E1 use to corpus governance, provenance, local held-out tasks, and
-      deterministic verification/PD gates.
+      domain-adapted EDA LLMs, AIG/netlist graph corpora, and netlist-function
+      reasoning while tying any future E1 use to corpus governance, provenance,
+      local held-out tasks, and deterministic verification/PD gates.
     deliverables:
       - scripts/ai_eda/capture_circuit_foundation_model_targets.py
       - build/ai_eda/circuit_foundation_model_targets/<run-id>/targets_report.json
@@ -1922,12 +1925,14 @@ work_items:
       - No approved data-governance policy for exporting chip-design artifacts to a model-training pipeline
       - No pinned circuit foundation model code or model weights selected for local evaluation
       - No local graph/text/layout embedding schema with deterministic downstream tasks and held-out splits
+      - No approved AIG, RTL, or gate-level graph extraction schema with replayable logs and local labels
       - No E1 netlist-function reasoning benchmark with formal, synthesis, and human-review labels
       - No model-quality or design-decision promotion policy that can turn embeddings into release evidence
     acceptance_criteria:
       - Report hashes local source inventory, RAG, external probe, PD snapshot, RTL, and verification-debug inputs.
       - Report states no training, fine-tuning, inference, embedding generation, corpus export, model-quality claim, design-decision claim, or release use is enabled.
       - Candidate tasks list deterministic RAG, source inventory, RTL model eval, formal, synthesis, PD, RTL rewrite/equivalence, verification-debug, cocotb, and no-hardware-action gates.
+      - Public graph corpora and graph-learning toolkits remain metadata-only until revision, license, split, graph-schema, label, and non-overlap reviews pass.
   - id: p1-dfm-yield-lithography-target-capture
     title: DFM Yield And Lithography Target Capture
     priority: P1

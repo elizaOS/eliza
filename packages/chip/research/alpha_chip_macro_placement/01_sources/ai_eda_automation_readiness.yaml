@@ -410,6 +410,9 @@ stages:
       - nettag
       - deepgate4
       - chiplingo
+      - forgeeda-aig
+      - gnn4circuits
+      - hw2vec
     local_lane: p1-circuit-foundation-model-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_circuit_foundation_model_targets.py
@@ -420,8 +423,9 @@ stages:
       representation and assistant infrastructure, but embeddings, aligned
       latent spaces, and benchmark scores are not chip evidence. E1 needs
       corpus governance, license review, paired RTL/netlist/layout/log hashes,
-      held-out local tasks, and deterministic verification/PD gates before any
-      model output can influence design decisions.
+      graph-extraction provenance, held-out local tasks, and deterministic
+      verification/PD gates before any model output can influence design
+      decisions.
   - id: dfm_yield_lithography
     rating: READY_DRY_RUN
     source_ids:
