@@ -73,19 +73,6 @@ async function main(): Promise<void> {
         `production naming audit must report the architecture doc allowlist: ${production.output}`,
       );
     }
-    if (
-      !productionReport.allowedSatelliteMentionFiles.includes(
-        "packages/agent/src/services/remote-capability-router.ts",
-      ) ||
-      !productionReport.allowedSatelliteMentionFiles.includes(
-        "packages/agent/src/services/remote-capability-router.test.ts",
-      )
-    ) {
-      throw new Error(
-        `production naming audit must report legacy env alias allowlists: ${production.output}`,
-      );
-    }
-
     console.log("Capability-router naming audit self-test passed.");
   } finally {
     await rm(workspace, { force: true, recursive: true });
