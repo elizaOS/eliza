@@ -356,7 +356,145 @@ export interface EnqueueAgentSnapshotResult {
 // Public API
 // ---------------------------------------------------------------------------
 
+interface LifecycleSandboxRow {
+  id: string;
+  status: string;
+  updated_at: Date | null;
+}
+
+interface LifecycleJobOptions<TData extends Record<string, unknown>> {
+  /** Wire value for `jobs.type` (one of JOB_TYPES.*). */
+  jobType: ProvisioningJobType;
+  /** Typed job data to persist into `jobs.data` JSONB. */
+  jobData: TData;
+  /** Serializer for `jobData` — usually a one-line `{ ...data }`. */
+  toRecord: (data: TData) => Record<string, unknown>;
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  webhookUrl?: string;
+  /** How many times the daemon may retry on failure. */
+  maxAttempts: number;
+  /** Used to populate `estimated_completion_at` for UI hints. */
+  estimatedDurationMs: number;
+  /** Logged as `"agent_xxx"` in the structured log messages. */
+  logName: string;
+  /** Extra structured-log fields beyond the standard jobId/agentId/orgId. */
+  logExtras?: Record<string, unknown>;
+  /**
+   * Called inside the transaction after the sandbox row is fetched and
+   * before the existing-job lookup. Throw to abort the enqueue (e.g.
+   * provision's `expectedUpdatedAt` race check).
+   */
+  validateSandbox?: (sandbox: LifecycleSandboxRow) => void;
+  /**
+   * Called inside the transaction after the "no existing job" check
+   * and before the new job is inserted. Used by delete to flip the
+   * sandbox row to `deletion_pending` so the UI reflects intent and
+   * concurrent mutations bail. Skipped if an existing job is reused.
+   */
+  beforeInsert?: (tx: Parameters<Parameters<typeof dbWrite.transaction>[0]>[0]) => Promise<void>;
+}
+
 export class ProvisioningJobService {
+  /**
+   * Common path for the seven `enqueueAgent*Once` methods. Acquires the
+   * per-(org,agent) advisory lock, verifies the sandbox exists, runs an
+   * optional caller-supplied validation, reuses any in-flight job of
+   * the same type (idempotency), or inserts a fresh row.
+   *
+   * Each public method is now a thin wrapper that supplies the four
+   * varying bits: job type, typed data shape, retry/timing budget, and
+   * the log breadcrumb fields. Adding a new lifecycle job type is a
+   * ~10-line addition instead of ~80.
+   */
+  private async enqueueLifecycleJob<TData extends Record<string, unknown>>(
+    opts: LifecycleJobOptions<TData>,
+  ): Promise<{ job: Job; created: boolean }> {
+    if (opts.webhookUrl) {
+      await assertSafeOutboundUrl(opts.webhookUrl);
+    }
+
+    const newJob: NewJob = {
+      type: opts.jobType,
+      status: "pending",
+      data: opts.toRecord(opts.jobData),
+      data_storage: "inline",
+      organization_id: opts.organizationId,
+      user_id: opts.userId,
+      webhook_url: opts.webhookUrl,
+      max_attempts: opts.maxAttempts,
+      estimated_completion_at: new Date(Date.now() + opts.estimatedDurationMs),
+    };
+
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(elizaProvisionAdvisoryLockSql(opts.organizationId, opts.agentId));
+
+      const [sandbox] = await tx
+        .select({
+          id: agentSandboxes.id,
+          status: agentSandboxes.status,
+          updated_at: agentSandboxes.updated_at,
+        })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, opts.agentId),
+            eq(agentSandboxes.organization_id, opts.organizationId),
+          ),
+        )
+        .limit(1);
+
+      if (!sandbox) {
+        throw new Error("Agent not found");
+      }
+
+      opts.validateSandbox?.(sandbox);
+
+      const [existing] = await tx
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, opts.jobType),
+            eq(jobs.organization_id, opts.organizationId),
+            eq(jobs.agent_id, opts.agentId),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+          ),
+        )
+        .orderBy(desc(jobs.created_at))
+        .limit(1);
+
+      const logFields = {
+        agentId: opts.agentId,
+        orgId: opts.organizationId,
+        ...(opts.logExtras ?? {}),
+      };
+
+      if (existing) {
+        logger.info(`[provisioning-jobs] Reusing active ${opts.logName} job`, {
+          jobId: existing.id,
+          ...logFields,
+        });
+        return { job: await hydrateJob(existing), created: false };
+      }
+
+      await opts.beforeInsert?.(tx);
+
+      const [job] = await tx
+        .insert(jobs)
+        .values(await prepareJobInsertData(newJob))
+        .returning();
+
+      logger.info(`[provisioning-jobs] Enqueued ${opts.logName} job`, {
+        jobId: job.id,
+        ...logFields,
+      });
+
+      return { job: await hydrateJob(job), created: true };
+    });
+  }
+
   /**
    * Enqueue an Agent sandbox provisioning job.
    * Returns the job record immediately (status=pending).
@@ -380,98 +518,39 @@ export class ProvisioningJobService {
     webhookUrl?: string;
     expectedUpdatedAt?: Date | string | null;
   }): Promise<EnqueueAgentProvisionResult> {
-    // Validate webhook URL at enqueue time (fail fast) in addition to
-    // the delivery-time check in fireWebhook. This prevents storing
-    // obviously-malicious URLs that would only surface errors later.
-    if (params.webhookUrl) {
-      await assertSafeOutboundUrl(params.webhookUrl);
-    }
-
-    const jobData: AgentProvisionJobData = {
+    const expected = params.expectedUpdatedAt;
+    return this.enqueueLifecycleJob<AgentProvisionJobData>({
+      jobType: JOB_TYPES.AGENT_PROVISION,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        agentName: params.agentName,
+      },
+      toRecord: agentProvisionJobDataToRecord,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
-      agentName: params.agentName,
-    };
-
-    const newJob: NewJob = {
-      type: JOB_TYPES.AGENT_PROVISION,
-      status: "pending",
-      data: agentProvisionJobDataToRecord(jobData),
-      data_storage: "inline",
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      webhook_url: params.webhookUrl,
-      max_attempts: 3,
-      // Estimate: Neon DB (5-15s) + Docker pull/run (10-30s) + health check (up to 60s)
-      estimated_completion_at: new Date(Date.now() + 90_000),
-    };
-
-    return await dbWrite.transaction(async (tx) => {
-      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
-
-      const [sandbox] = await tx
-        .select({
-          id: agentSandboxes.id,
-          updated_at: agentSandboxes.updated_at,
-        })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.id, params.agentId),
-            eq(agentSandboxes.organization_id, params.organizationId),
-          ),
-        )
-        .limit(1);
-
-      if (!sandbox) {
-        throw new Error("Agent not found");
-      }
-
-      if (params.expectedUpdatedAt) {
-        const expectedMs = new Date(params.expectedUpdatedAt).getTime();
-        const currentMs = sandbox.updated_at ? new Date(sandbox.updated_at).getTime() : Number.NaN;
-
-        if (Number.isFinite(expectedMs) && Number.isFinite(currentMs) && currentMs !== expectedMs) {
-          throw new Error("Agent state changed while starting");
-        }
-      }
-
-      const [existing] = await tx
-        .select()
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.type, JOB_TYPES.AGENT_PROVISION),
-            eq(jobs.organization_id, params.organizationId),
-            eq(jobs.agent_id, params.agentId),
-            sql`${jobs.status} IN ('pending', 'in_progress')`,
-          ),
-        )
-        .orderBy(desc(jobs.created_at))
-        .limit(1);
-
-      if (existing) {
-        logger.info("[provisioning-jobs] Reusing active agent_provision job", {
-          jobId: existing.id,
-          agentId: params.agentId,
-          orgId: params.organizationId,
-        });
-        return { job: await hydrateJob(existing), created: false };
-      }
-
-      const [job] = await tx
-        .insert(jobs)
-        .values(await prepareJobInsertData(newJob))
-        .returning();
-
-      logger.info("[provisioning-jobs] Enqueued agent_provision job", {
-        jobId: job.id,
-        agentId: params.agentId,
-        orgId: params.organizationId,
-      });
-
-      return { job: await hydrateJob(job), created: true };
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 3,
+      // Neon DB (5-15s) + Docker pull/run (10-30s) + health check (up to 60s)
+      estimatedDurationMs: 90_000,
+      logName: "agent_provision",
+      validateSandbox: expected
+        ? (sandbox) => {
+            const expectedMs = new Date(expected).getTime();
+            const currentMs = sandbox.updated_at
+              ? new Date(sandbox.updated_at).getTime()
+              : Number.NaN;
+            if (
+              Number.isFinite(expectedMs) &&
+              Number.isFinite(currentMs) &&
+              currentMs !== expectedMs
+            ) {
+              throw new Error("Agent state changed while starting");
+            }
+          }
+        : undefined,
     });
   }
 
@@ -492,92 +571,35 @@ export class ProvisioningJobService {
     userId: string;
     webhookUrl?: string;
   }): Promise<EnqueueAgentDeleteResult> {
-    if (params.webhookUrl) {
-      await assertSafeOutboundUrl(params.webhookUrl);
-    }
-
-    const jobData: AgentDeleteJobData = {
+    return this.enqueueLifecycleJob<AgentDeleteJobData>({
+      jobType: JOB_TYPES.AGENT_DELETE,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+      },
+      toRecord: agentDeleteJobDataToRecord,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
-    };
-
-    const newJob: NewJob = {
-      type: JOB_TYPES.AGENT_DELETE,
-      status: "pending",
-      data: agentDeleteJobDataToRecord(jobData),
-      data_storage: "inline",
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      webhook_url: params.webhookUrl,
-      max_attempts: 3,
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 3,
       // SSH stop is fast (~10s graceful + ~5s force kill), DB cascade is
-      // sub-second. 30s is generous and matches the timeout enforced inside
-      // docker-sandbox-provider.stop().
-      estimated_completion_at: new Date(Date.now() + 30_000),
-    };
-
-    return await dbWrite.transaction(async (tx) => {
-      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
-
-      const [sandbox] = await tx
-        .select({ id: agentSandboxes.id, status: agentSandboxes.status })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.id, params.agentId),
-            eq(agentSandboxes.organization_id, params.organizationId),
-          ),
-        )
-        .limit(1);
-
-      if (!sandbox) {
-        throw new Error("Agent not found");
-      }
-
-      const [existing] = await tx
-        .select()
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.type, JOB_TYPES.AGENT_DELETE),
-            eq(jobs.organization_id, params.organizationId),
-            eq(jobs.agent_id, params.agentId),
-            sql`${jobs.status} IN ('pending', 'in_progress')`,
-          ),
-        )
-        .orderBy(desc(jobs.created_at))
-        .limit(1);
-
-      if (existing) {
-        logger.info("[provisioning-jobs] Reusing active agent_delete job", {
-          jobId: existing.id,
-          agentId: params.agentId,
-          orgId: params.organizationId,
-        });
-        return { job: await hydrateJob(existing), created: false };
-      }
-
-      // Flip the sandbox status so the UI shows "deleting" and concurrent
-      // mutations bail early. The actual row removal happens in
-      // executeAgentDelete (daemon side) once stop() succeeds.
-      await tx
-        .update(agentSandboxes)
-        .set({ status: "deletion_pending" as const, updated_at: new Date() })
-        .where(eq(agentSandboxes.id, params.agentId));
-
-      const [job] = await tx
-        .insert(jobs)
-        .values(await prepareJobInsertData(newJob))
-        .returning();
-
-      logger.info("[provisioning-jobs] Enqueued agent_delete job", {
-        jobId: job.id,
-        agentId: params.agentId,
-        orgId: params.organizationId,
-      });
-
-      return { job: await hydrateJob(job), created: true };
+      // sub-second. 30s matches docker-sandbox-provider.stop() timeout.
+      estimatedDurationMs: 30_000,
+      logName: "agent_delete",
+      // Flip status so the UI shows "deleting" and concurrent mutations
+      // bail. Actual row removal happens in executeAgentDelete once SSH
+      // stop() succeeds.
+      beforeInsert: async (tx) => {
+        await tx
+          .update(agentSandboxes)
+          .set({
+            status: "deletion_pending" as const,
+            updated_at: new Date(),
+          })
+          .where(eq(agentSandboxes.id, params.agentId));
+      },
     });
   }
 
@@ -599,82 +621,21 @@ export class ProvisioningJobService {
     userId: string;
     webhookUrl?: string;
   }): Promise<EnqueueAgentSuspendResult> {
-    if (params.webhookUrl) {
-      await assertSafeOutboundUrl(params.webhookUrl);
-    }
-
-    const jobData: AgentSuspendJobData = {
+    return this.enqueueLifecycleJob<AgentSuspendJobData>({
+      jobType: JOB_TYPES.AGENT_SUSPEND,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+      },
+      toRecord: agentSuspendJobDataToRecord,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
-    };
-
-    const newJob: NewJob = {
-      type: JOB_TYPES.AGENT_SUSPEND,
-      status: "pending",
-      data: agentSuspendJobDataToRecord(jobData),
-      data_storage: "inline",
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      webhook_url: params.webhookUrl,
-      max_attempts: 3,
-      // Same timing as delete: SSH stop is fast.
-      estimated_completion_at: new Date(Date.now() + 30_000),
-    };
-
-    return await dbWrite.transaction(async (tx) => {
-      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
-
-      const [sandbox] = await tx
-        .select({ id: agentSandboxes.id, status: agentSandboxes.status })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.id, params.agentId),
-            eq(agentSandboxes.organization_id, params.organizationId),
-          ),
-        )
-        .limit(1);
-
-      if (!sandbox) {
-        throw new Error("Agent not found");
-      }
-
-      const [existing] = await tx
-        .select()
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.type, JOB_TYPES.AGENT_SUSPEND),
-            eq(jobs.organization_id, params.organizationId),
-            eq(jobs.agent_id, params.agentId),
-            sql`${jobs.status} IN ('pending', 'in_progress')`,
-          ),
-        )
-        .orderBy(desc(jobs.created_at))
-        .limit(1);
-
-      if (existing) {
-        logger.info("[provisioning-jobs] Reusing active agent_suspend job", {
-          jobId: existing.id,
-          agentId: params.agentId,
-          orgId: params.organizationId,
-        });
-        return { job: await hydrateJob(existing), created: false };
-      }
-
-      const [job] = await tx
-        .insert(jobs)
-        .values(await prepareJobInsertData(newJob))
-        .returning();
-
-      logger.info("[provisioning-jobs] Enqueued agent_suspend job", {
-        jobId: job.id,
-        agentId: params.agentId,
-        orgId: params.organizationId,
-      });
-
-      return { job: await hydrateJob(job), created: true };
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 3,
+      estimatedDurationMs: 30_000,
+      logName: "agent_suspend",
     });
   }
 
@@ -694,84 +655,23 @@ export class ProvisioningJobService {
     userId: string;
     webhookUrl?: string;
   }): Promise<EnqueueAgentResumeResult> {
-    if (params.webhookUrl) {
-      await assertSafeOutboundUrl(params.webhookUrl);
-    }
-
-    const jobData: AgentResumeJobData = {
+    return this.enqueueLifecycleJob<AgentResumeJobData>({
+      jobType: JOB_TYPES.AGENT_RESUME,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+      },
+      toRecord: agentResumeJobDataToRecord,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
-    };
-
-    const newJob: NewJob = {
-      type: JOB_TYPES.AGENT_RESUME,
-      status: "pending",
-      data: agentResumeJobDataToRecord(jobData),
-      data_storage: "inline",
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      webhook_url: params.webhookUrl,
-      max_attempts: 3,
-      // docker start is fast (~5s) unless the resume falls back to a full
-      // re-provision; budget the longer path so the UI doesn't show a
-      // misleading "stuck" estimate.
-      estimated_completion_at: new Date(Date.now() + 90_000),
-    };
-
-    return await dbWrite.transaction(async (tx) => {
-      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
-
-      const [sandbox] = await tx
-        .select({ id: agentSandboxes.id, status: agentSandboxes.status })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.id, params.agentId),
-            eq(agentSandboxes.organization_id, params.organizationId),
-          ),
-        )
-        .limit(1);
-
-      if (!sandbox) {
-        throw new Error("Agent not found");
-      }
-
-      const [existing] = await tx
-        .select()
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.type, JOB_TYPES.AGENT_RESUME),
-            eq(jobs.organization_id, params.organizationId),
-            eq(jobs.agent_id, params.agentId),
-            sql`${jobs.status} IN ('pending', 'in_progress')`,
-          ),
-        )
-        .orderBy(desc(jobs.created_at))
-        .limit(1);
-
-      if (existing) {
-        logger.info("[provisioning-jobs] Reusing active agent_resume job", {
-          jobId: existing.id,
-          agentId: params.agentId,
-          orgId: params.organizationId,
-        });
-        return { job: await hydrateJob(existing), created: false };
-      }
-
-      const [job] = await tx
-        .insert(jobs)
-        .values(await prepareJobInsertData(newJob))
-        .returning();
-
-      logger.info("[provisioning-jobs] Enqueued agent_resume job", {
-        jobId: job.id,
-        agentId: params.agentId,
-        orgId: params.organizationId,
-      });
-
-      return { job: await hydrateJob(job), created: true };
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 3,
+      // docker start is ~5s on the fast path, full re-provision is ~60s.
+      // Budget the long path so the UI doesn't show a stuck estimate.
+      estimatedDurationMs: 90_000,
+      logName: "agent_resume",
     });
   }
 
@@ -792,82 +692,22 @@ export class ProvisioningJobService {
     userId: string;
     webhookUrl?: string;
   }): Promise<EnqueueAgentRestartResult> {
-    if (params.webhookUrl) {
-      await assertSafeOutboundUrl(params.webhookUrl);
-    }
-
-    const jobData: AgentRestartJobData = {
+    return this.enqueueLifecycleJob<AgentRestartJobData>({
+      jobType: JOB_TYPES.AGENT_RESTART,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+      },
+      toRecord: agentRestartJobDataToRecord,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
-    };
-
-    const newJob: NewJob = {
-      type: JOB_TYPES.AGENT_RESTART,
-      status: "pending",
-      data: agentRestartJobDataToRecord(jobData),
-      data_storage: "inline",
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      webhook_url: params.webhookUrl,
-      max_attempts: 3,
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 3,
       // shutdown ~5s + provision ~60s; budget the long path.
-      estimated_completion_at: new Date(Date.now() + 90_000),
-    };
-
-    return await dbWrite.transaction(async (tx) => {
-      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
-
-      const [sandbox] = await tx
-        .select({ id: agentSandboxes.id, status: agentSandboxes.status })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.id, params.agentId),
-            eq(agentSandboxes.organization_id, params.organizationId),
-          ),
-        )
-        .limit(1);
-
-      if (!sandbox) {
-        throw new Error("Agent not found");
-      }
-
-      const [existing] = await tx
-        .select()
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.type, JOB_TYPES.AGENT_RESTART),
-            eq(jobs.organization_id, params.organizationId),
-            eq(jobs.agent_id, params.agentId),
-            sql`${jobs.status} IN ('pending', 'in_progress')`,
-          ),
-        )
-        .orderBy(desc(jobs.created_at))
-        .limit(1);
-
-      if (existing) {
-        logger.info("[provisioning-jobs] Reusing active agent_restart job", {
-          jobId: existing.id,
-          agentId: params.agentId,
-          orgId: params.organizationId,
-        });
-        return { job: await hydrateJob(existing), created: false };
-      }
-
-      const [job] = await tx
-        .insert(jobs)
-        .values(await prepareJobInsertData(newJob))
-        .returning();
-
-      logger.info("[provisioning-jobs] Enqueued agent_restart job", {
-        jobId: job.id,
-        agentId: params.agentId,
-        orgId: params.organizationId,
-      });
-
-      return { job: await hydrateJob(job), created: true };
+      estimatedDurationMs: 90_000,
+      logName: "agent_restart",
     });
   }
 
@@ -892,83 +732,23 @@ export class ProvisioningJobService {
     tail: number;
     webhookUrl?: string;
   }): Promise<EnqueueAgentLogsResult> {
-    if (params.webhookUrl) {
-      await assertSafeOutboundUrl(params.webhookUrl);
-    }
-
-    const jobData: AgentLogsJobData = {
+    return this.enqueueLifecycleJob<AgentLogsJobData>({
+      jobType: JOB_TYPES.AGENT_LOGS,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        tail: params.tail,
+      },
+      toRecord: agentLogsJobDataToRecord,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
-      tail: params.tail,
-    };
-
-    const newJob: NewJob = {
-      type: JOB_TYPES.AGENT_LOGS,
-      status: "pending",
-      data: agentLogsJobDataToRecord(jobData),
-      data_storage: "inline",
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      webhook_url: params.webhookUrl,
-      max_attempts: 2,
-      estimated_completion_at: new Date(Date.now() + 15_000),
-    };
-
-    return await dbWrite.transaction(async (tx) => {
-      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
-
-      const [sandbox] = await tx
-        .select({ id: agentSandboxes.id })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.id, params.agentId),
-            eq(agentSandboxes.organization_id, params.organizationId),
-          ),
-        )
-        .limit(1);
-
-      if (!sandbox) {
-        throw new Error("Agent not found");
-      }
-
-      const [existing] = await tx
-        .select()
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.type, JOB_TYPES.AGENT_LOGS),
-            eq(jobs.organization_id, params.organizationId),
-            eq(jobs.agent_id, params.agentId),
-            sql`${jobs.status} IN ('pending', 'in_progress')`,
-          ),
-        )
-        .orderBy(desc(jobs.created_at))
-        .limit(1);
-
-      if (existing) {
-        logger.info("[provisioning-jobs] Reusing active agent_logs job", {
-          jobId: existing.id,
-          agentId: params.agentId,
-          orgId: params.organizationId,
-        });
-        return { job: await hydrateJob(existing), created: false };
-      }
-
-      const [job] = await tx
-        .insert(jobs)
-        .values(await prepareJobInsertData(newJob))
-        .returning();
-
-      logger.info("[provisioning-jobs] Enqueued agent_logs job", {
-        jobId: job.id,
-        agentId: params.agentId,
-        orgId: params.organizationId,
-        tail: params.tail,
-      });
-
-      return { job: await hydrateJob(job), created: true };
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 2,
+      estimatedDurationMs: 15_000,
+      logName: "agent_logs",
+      logExtras: { tail: params.tail },
     });
   }
 
@@ -989,83 +769,24 @@ export class ProvisioningJobService {
     snapshotType?: "manual" | "auto";
     webhookUrl?: string;
   }): Promise<EnqueueAgentSnapshotResult> {
-    if (params.webhookUrl) {
-      await assertSafeOutboundUrl(params.webhookUrl);
-    }
-
-    const jobData: AgentSnapshotJobData = {
+    const snapshotType = params.snapshotType ?? "manual";
+    return this.enqueueLifecycleJob<AgentSnapshotJobData>({
+      jobType: JOB_TYPES.AGENT_SNAPSHOT,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        snapshotType,
+      },
+      toRecord: agentSnapshotJobDataToRecord,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
-      snapshotType: params.snapshotType ?? "manual",
-    };
-
-    const newJob: NewJob = {
-      type: JOB_TYPES.AGENT_SNAPSHOT,
-      status: "pending",
-      data: agentSnapshotJobDataToRecord(jobData),
-      data_storage: "inline",
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      webhook_url: params.webhookUrl,
-      max_attempts: 2,
-      estimated_completion_at: new Date(Date.now() + 45_000),
-    };
-
-    return await dbWrite.transaction(async (tx) => {
-      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
-
-      const [sandbox] = await tx
-        .select({ id: agentSandboxes.id })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.id, params.agentId),
-            eq(agentSandboxes.organization_id, params.organizationId),
-          ),
-        )
-        .limit(1);
-
-      if (!sandbox) {
-        throw new Error("Agent not found");
-      }
-
-      const [existing] = await tx
-        .select()
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.type, JOB_TYPES.AGENT_SNAPSHOT),
-            eq(jobs.organization_id, params.organizationId),
-            eq(jobs.agent_id, params.agentId),
-            sql`${jobs.status} IN ('pending', 'in_progress')`,
-          ),
-        )
-        .orderBy(desc(jobs.created_at))
-        .limit(1);
-
-      if (existing) {
-        logger.info("[provisioning-jobs] Reusing active agent_snapshot job", {
-          jobId: existing.id,
-          agentId: params.agentId,
-          orgId: params.organizationId,
-        });
-        return { job: await hydrateJob(existing), created: false };
-      }
-
-      const [job] = await tx
-        .insert(jobs)
-        .values(await prepareJobInsertData(newJob))
-        .returning();
-
-      logger.info("[provisioning-jobs] Enqueued agent_snapshot job", {
-        jobId: job.id,
-        agentId: params.agentId,
-        orgId: params.organizationId,
-        snapshotType: jobData.snapshotType,
-      });
-
-      return { job: await hydrateJob(job), created: true };
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 2,
+      estimatedDurationMs: 45_000,
+      logName: "agent_snapshot",
+      logExtras: { snapshotType },
     });
   }
 
