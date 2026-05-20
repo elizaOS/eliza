@@ -341,4 +341,10 @@ main() {
   esac
 }
 
-main "$@"
+if ! main "$@"; then
+  if [[ "${MILADY_LLAMA_IOS_REQUIRED:-0}" == "1" ]]; then
+    die "iOS llama.cpp build failed"
+  fi
+  printf '\033[33m[build-ios]\033[0m skipping iOS xcframework build: local Xcode toolchain failed; set MILADY_LLAMA_IOS_REQUIRED=1 to make this fatal.\n'
+  exit 0
+fi

@@ -123,7 +123,6 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
           401,
         );
       }
-      return next();
     }
     const auth = c.req.header("authorization") ?? c.req.header("Authorization");
     if (!auth?.startsWith("Bearer ") || auth.slice(7).trim() !== token) {

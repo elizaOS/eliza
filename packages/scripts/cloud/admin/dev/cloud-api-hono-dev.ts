@@ -65,6 +65,18 @@ const blobBinding = {
   async delete(key: string) {
     store.delete(key);
   },
+  list() {
+    throw new Error("[cloud-api-hono-dev] BLOB.list is not implemented in the local dev R2 stub");
+  },
+  head() {
+    throw new Error("[cloud-api-hono-dev] BLOB.head is not implemented in the local dev R2 stub");
+  },
+  createMultipartUpload() {
+    throw new Error("[cloud-api-hono-dev] BLOB.createMultipartUpload is not implemented in the local dev R2 stub");
+  },
+  resumeMultipartUpload() {
+    throw new Error("[cloud-api-hono-dev] BLOB.resumeMultipartUpload is not implemented in the local dev R2 stub");
+  },
 };
 
 function executionContext(): ExecutionContext {

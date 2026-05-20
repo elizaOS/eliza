@@ -36,7 +36,7 @@ mock.module("../provisioning-jobs", () => ({
   },
 }));
 
-const { ensureElizaAppProvisioning } = await import("./provisioning");
+const { ensureElizaAppProvisioning } = await import("./provisioning.ts?test=provisioning");
 
 describe("ensureElizaAppProvisioning", () => {
   beforeEach(() => {
