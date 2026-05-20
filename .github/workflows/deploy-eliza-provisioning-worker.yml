@@ -86,6 +86,12 @@ jobs:
 
             rm -f .git/index.lock
 
+            # A prior deploy may have run git as root, leaving .git/logs/refs/**
+            # owned by root. Subsequent fetches as `deploy` then fail with
+            # "unable to append to '.git/logs/refs/remotes/origin/develop':
+            # Permission denied". Reclaim ownership before the fetch.
+            sudo chown -R deploy:deploy .git
+
             # Discard local drift, preserve env files. Quote globs so the
             # remote shell doesn't expand them before git sees the pattern,
             # and fail loud if clean errors out — silently swallowing it is
