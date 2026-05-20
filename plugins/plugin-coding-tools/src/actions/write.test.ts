@@ -6,6 +6,7 @@ import {
   type ElizaCapabilityRouter,
   type FileWriteTextParams,
   type IAgentRuntime,
+  UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
@@ -36,6 +37,7 @@ function makeWriteRouter(
         pty: false,
         git: false,
         model: false,
+        plugin: false,
       },
     }),
     fs: {
@@ -49,12 +51,12 @@ function makeWriteRouter(
     git: {
       status: async () => unavailableCapability("git", "git.status"),
       diff: async () => unavailableCapability("git", "git.diff"),
-      commandRun: async () =>
-        unavailableCapability("git", "git.command.run"),
+      commandRun: async () => unavailableCapability("git", "git.command.run"),
     },
     model: {
       status: async () => unavailableCapability("model", "model.status"),
     },
+    plugin: new UnavailableCapabilityRouter("desktop").plugin,
   };
 }
 

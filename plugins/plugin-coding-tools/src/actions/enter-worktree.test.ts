@@ -11,6 +11,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
+  UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -115,6 +116,7 @@ function makeGitRouter(
         pty: false,
         git: true,
         model: false,
+        plugin: false,
       },
     }),
     fs: {
@@ -147,6 +149,7 @@ function makeGitRouter(
         throw new Error("model unavailable");
       },
     },
+    plugin: new UnavailableCapabilityRouter("desktop").plugin,
   };
 }
 
@@ -239,14 +242,7 @@ describe("ENTER_WORKTREE", () => {
     expect(calls).toEqual([
       {
         root: env.repoDir,
-        args: [
-          "worktree",
-          "add",
-          "-b",
-          "routed-feature",
-          worktreePath,
-          "main",
-        ],
+        args: ["worktree", "add", "-b", "routed-feature", worktreePath, "main"],
       },
     ]);
     expect(env.session.getCwd(env.conversationId)).toBe(
