@@ -89,6 +89,7 @@
     "idb-keyval": "^6.2.2",
     "ioredis": "^5.8.2",
     "jose": "^6.2.2",
+    "lightweight-charts": "^5.0.9",
     "lucide-react": "^0.555.0",
     "nanoid": "5.1.7",
     "next": "16.2.1",

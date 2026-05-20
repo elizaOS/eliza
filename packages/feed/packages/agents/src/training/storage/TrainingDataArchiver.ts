@@ -9,7 +9,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { JsonValue } from "@feed/shared";
 import { del, list, put } from "@vercel/blob";
-import { logger } from "../../utils/logger";
+import { logger } from "@feed/shared";
 
 export interface ArchivedWindow {
   windowId: string;

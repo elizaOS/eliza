@@ -14,14 +14,14 @@ describe("feed component wiring", () => {
     const source = readFileSync(FEED_CLIENT_PATH, "utf8");
 
     expect(source).toMatch(
-      /const \[tab,\s*setTab\] = useState<FeedTab>\('forYou'\)/,
+      /const \[tab,\s*setTab\] = useState<FeedTab>\(["']forYou["']\)/,
     );
   });
 
   it("renders Stories through ForYouFeedList instead of the retired NarrativeStoryList", () => {
     const source = readFileSync(FEED_CLIENT_PATH, "utf8");
     const storiesBranchMatch = source.match(
-      /if \(tab === 'stories'\) \{([\s\S]*?)\n\s*\}\n\n\s*if \(tab === 'forYou'\) \{/m,
+      /if \(tab === ["']stories["']\) \{([\s\S]*?)\n\s*\}\n\n\s*if \(tab === ["']forYou["']\) \{/m,
     );
 
     expect(storiesBranchMatch).toBeTruthy();

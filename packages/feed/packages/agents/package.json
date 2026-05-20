@@ -22,7 +22,11 @@
     "typecheck": "echo skip (feed) >&2"
   },
   "dependencies": {
+    "@elizaos/core": "2.0.0-alpha.109",
     "@feed/a2a": "workspace:*",
+    "@feed/db": "workspace:*",
+    "@feed/shared": "workspace:*",
+    "js-tiktoken": "^1.0.21",
     "posthog-node": "^5.17.0"
   },
   "peerDependencies": {

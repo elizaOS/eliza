@@ -32,6 +32,12 @@ const filePath = resolve(
 );
 const fileContent = readFileSync(filePath, "utf-8");
 
+function expectOperationMapping(action: string, operation: string) {
+  expect(fileContent).toMatch(
+    new RegExp(`${action}:\\s*["']${operation}["']`),
+  );
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("operationMap completeness", () => {
@@ -39,31 +45,27 @@ describe("operationMap completeness", () => {
 
   describe("messaging operations", () => {
     test("sendMessage is mapped to messaging.send_message", () => {
-      expect(fileContent).toContain("sendMessage: 'messaging.send_message'");
+      expectOperationMapping("sendMessage", "messaging.send_message");
     });
 
     test("getChatMessages is mapped to messaging.get_chat_messages", () => {
-      expect(fileContent).toContain(
-        "getChatMessages: 'messaging.get_chat_messages'",
-      );
+      expectOperationMapping("getChatMessages", "messaging.get_chat_messages");
     });
 
     test("getChats is mapped to messaging.get_chats", () => {
-      expect(fileContent).toContain("getChats: 'messaging.get_chats'");
+      expectOperationMapping("getChats", "messaging.get_chats");
     });
 
     test("createGroup is mapped to messaging.create_group", () => {
-      expect(fileContent).toContain("createGroup: 'messaging.create_group'");
+      expectOperationMapping("createGroup", "messaging.create_group");
     });
 
     test("leaveChat is mapped to messaging.leave_chat", () => {
-      expect(fileContent).toContain("leaveChat: 'messaging.leave_chat'");
+      expectOperationMapping("leaveChat", "messaging.leave_chat");
     });
 
     test("getUnreadCount is mapped to messaging.get_unread_count", () => {
-      expect(fileContent).toContain(
-        "getUnreadCount: 'messaging.get_unread_count'",
-      );
+      expectOperationMapping("getUnreadCount", "messaging.get_unread_count");
     });
   });
 
