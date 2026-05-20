@@ -26,9 +26,9 @@
  *   ios-arm64-metal, ios-arm64-simulator-metal  (macOS + Xcode host)
  *   windows-x64-cpu, windows-x64-cuda, windows-x64-vulkan
  *   windows-arm64-cpu, windows-arm64-vulkan  (Snapdragon X / Copilot+ PC; native MSVC arm64 or LLVM aarch64 mingw)
- *   ...plus the desktop/server *-fused variants (omnivoice text+TTS source
- *   fusion). Android/iOS fused FFI targets are intentionally not advertised
- *   until their build flags and post-build verifier path are wired.
+ *   ...plus desktop/server and iOS *-fused variants (omnivoice text+TTS source
+ *   fusion). Android fused FFI targets are intentionally not advertised until
+ *   their build flags and post-build verifier path are wired.
  *
  * Backend selection (legacy single-target mode, when --target is omitted):
  *   macOS           -> Metal
@@ -327,14 +327,6 @@ const UNSUPPORTED_FUSED_TARGET_REASONS = new Map([
   [
     "android-riscv64-vulkan-fused",
     "Android riscv64 fused FFI is not a dflash target in this script; packages/app-core/scripts/aosp/compile-libllama.mjs owns the riscv64 system-agent fused artifacts (and Vulkan on riscv64 is not yet wired anywhere).",
-  ],
-  [
-    "ios-arm64-metal-fused",
-    "iOS fused FFI is not wired or verifier-covered in build-llama-cpp-dflash.mjs; use ios-arm64-metal until libelizainference static-archive packaging is implemented.",
-  ],
-  [
-    "ios-arm64-simulator-metal-fused",
-    "iOS simulator fused FFI is not wired or verifier-covered in build-llama-cpp-dflash.mjs; use ios-arm64-simulator-metal until libelizainference static-archive packaging is implemented.",
   ],
 ]);
 

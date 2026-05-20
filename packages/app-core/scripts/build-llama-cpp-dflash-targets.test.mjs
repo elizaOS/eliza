@@ -3,12 +3,16 @@ import { it as test } from "vitest";
 
 import { formatHelpText, parseArgs } from "./build-llama-cpp-dflash.mjs";
 
-test("help advertises linux aarch64 CUDA fused but not mobile fused targets", () => {
+test("help advertises linux aarch64 CUDA and iOS fused but not Android fused targets", () => {
   const helpText = formatHelpText();
   assert.match(helpText, /linux-aarch64-cuda-fused/);
+  assert.match(helpText, /ios-arm64-metal-fused/);
+  assert.match(helpText, /ios-arm64-simulator-metal-fused/);
   assert.doesNotMatch(helpText, /android-arm64-cpu-fused/);
   assert.doesNotMatch(helpText, /android-x86_64-cpu-fused/);
-  assert.doesNotMatch(helpText, /ios-arm64-metal-fused/);
+  assert.doesNotThrow(() =>
+    parseArgs(["--target", "ios-arm64-metal-fused", "--dry-run"]),
+  );
 });
 
 test("mobile fused targets fail closed with explicit diagnostics", () => {
@@ -23,15 +27,17 @@ test("mobile fused targets fail closed with explicit diagnostics", () => {
       "android-x86_64-vulkan-fused",
       /Android x86_64 fused FFI is not a dflash target/,
     ],
-    ["ios-arm64-metal-fused", /iOS fused FFI is not wired or verifier-covered/],
   ];
 
   for (const [target, pattern] of cases) {
-    assert.throws(() => parseArgs(["--target", target, "--dry-run"]), (err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      assert.match(message, pattern, message);
-      assert.match(message, new RegExp(target), message);
-      return true;
-    });
+    assert.throws(
+      () => parseArgs(["--target", target, "--dry-run"]),
+      (err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        assert.match(message, pattern, message);
+        assert.match(message, new RegExp(target), message);
+        return true;
+      },
+    );
   }
 });
