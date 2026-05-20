@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
+import type { Socket } from "node:net";
+import { setTimeout as delay } from "node:timers/promises";
 
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
 
@@ -11,6 +13,7 @@ interface MemorySandbox {
     status: "active";
   };
   server: Server;
+  sockets: Set<Socket>;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -87,6 +90,13 @@ export class MemorySandboxProvider implements SandboxProvider {
       res.writeHead(response.status, Object.fromEntries(response.headers));
       res.end(await response.text());
     });
+    const sockets = new Set<Socket>();
+    server.on("connection", (socket) => {
+      sockets.add(socket);
+      socket.once("close", () => {
+        sockets.delete(socket);
+      });
+    });
 
     const port = await listen(server);
     const sandboxId = `memory-${config.agentId}`;
@@ -100,7 +110,7 @@ export class MemorySandboxProvider implements SandboxProvider {
         agentId: config.agentId,
       },
     };
-    this.sandboxes.set(sandboxId, { handle, runtimeAgent, server });
+    this.sandboxes.set(sandboxId, { handle, runtimeAgent, server, sockets });
     return handle;
   }
 
@@ -108,12 +118,17 @@ export class MemorySandboxProvider implements SandboxProvider {
     const sandbox = this.sandboxes.get(sandboxId);
     if (!sandbox) return;
     this.sandboxes.delete(sandboxId);
-    await new Promise<void>((resolve, reject) => {
+    const close = new Promise<void>((resolve, reject) => {
       sandbox.server.close((error) => {
         if (error) reject(error);
         else resolve();
       });
     });
+    sandbox.server.closeIdleConnections?.();
+    for (const socket of sandbox.sockets) {
+      socket.destroy();
+    }
+    await Promise.race([close, delay(2_000)]);
   }
 
   async checkHealth(handle: SandboxHandle): Promise<boolean> {

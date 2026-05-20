@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
-import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
 const host = process.env.API_DEV_HOST || "127.0.0.1";
@@ -63,10 +64,53 @@ function createExecutionContext() {
     waitUntil(promise) {
       pending.push(Promise.resolve(promise));
     },
-    drain() {
-      void Promise.allSettled(pending);
+    async drain() {
+      while (pending.length > 0) {
+        const batch = pending.splice(0);
+        await Promise.allSettled(batch);
+      }
     },
   };
+}
+
+const HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+function filteredRequestHeaders(incomingHeaders) {
+  const headers = new Headers();
+  const connectionHeader = incomingHeaders.connection;
+  const connectionTokens = new Set(
+    (Array.isArray(connectionHeader)
+      ? connectionHeader.join(",")
+      : (connectionHeader ?? "")
+    )
+      .split(",")
+      .map((token) => token.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  for (const [name, value] of Object.entries(incomingHeaders)) {
+    const lowerName = name.toLowerCase();
+    if (HOP_BY_HOP_HEADERS.has(lowerName) || connectionTokens.has(lowerName)) {
+      continue;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        headers.append(name, item);
+      }
+    } else if (typeof value === "string") {
+      headers.set(name, value);
+    }
+  }
+  return headers;
 }
 
 const workerUrl = pathToFileURL(
@@ -88,7 +132,7 @@ const server = createServer(async (incoming, outgoing) => {
     const method = incoming.method ?? "GET";
     const request = new Request(requestUrl, {
       method,
-      headers: incoming.headers,
+      headers: filteredRequestHeaders(incoming.headers),
       body:
         method === "GET" || method === "HEAD"
           ? undefined
@@ -97,22 +141,24 @@ const server = createServer(async (incoming, outgoing) => {
     });
     const ctx = createExecutionContext();
     const response = await worker.fetch(request, env, ctx);
+    await ctx.drain();
     outgoing.writeHead(
       response.status,
       response.statusText,
       Object.fromEntries(response.headers),
     );
     if (response.body) {
-      Readable.fromWeb(response.body).pipe(outgoing);
+      await pipeline(Readable.fromWeb(response.body), outgoing);
     } else {
       outgoing.end();
     }
-    ctx.drain();
   } catch (error) {
     console.error("[cloud-api-e2e] request failed", error);
-    if (!outgoing.headersSent) {
-      outgoing.writeHead(500, { "Content-Type": "application/json" });
+    if (outgoing.headersSent) {
+      outgoing.destroy(error instanceof Error ? error : undefined);
+      return;
     }
+    outgoing.writeHead(500, { "Content-Type": "application/json" });
     outgoing.end(JSON.stringify({ error: "cloud-api-e2e request failed" }));
   }
 });

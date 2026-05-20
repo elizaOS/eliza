@@ -9,9 +9,9 @@ Last updated: 2026-05-20
 - Branch: `nubs/messylinux-cloud-e2e-hardening`
 - Previous PR #7803: https://github.com/elizaOS/eliza/pull/7803 (merged)
 - Follow-up PR #7825: https://github.com/elizaOS/eliza/pull/7825
-- Verified local base: `origin/develop@27d4aee89417a4fc921c2c39ae7bd6fa3bdb9c82`
-- Latest PR head locally validated: `7497cf6c6b5e787df1ddc71ef49844cf7283c4a0`
-- Latest local CI-fix validation: 2026-05-20 05:13 UTC
+- Verified local base: `origin/develop@f6f16699fc66650318a66ba9278504e166ffd0eb`
+- Latest locally validated code head: `e9adb7fd02de92a0da70fcdb1164d64395cefb5d`
+- Latest local CI-fix validation: 2026-05-20 05:24 UTC
 
 ## What This Package Is
 
@@ -160,8 +160,8 @@ behind the backend contract and future signed/elevated helpers.
   - `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
     against `scsi_debug`;
   - `git diff --check` passed.
-- Follow-up local validation on 2026-05-20 after rebasing PR #7825 onto
-  `origin/develop@27d4aee894`:
+- Follow-up local validation on 2026-05-20 after integrating the teardown-gap
+  fix and rebasing PR #7825 onto `origin/develop@f6f16699fc`:
   - `bun run --cwd packages/cloud-shared typecheck` passed;
   - `bun run --cwd packages/cloud-shared lint` passed;
   - `bun run --cwd packages/cloud-api typecheck` passed;
