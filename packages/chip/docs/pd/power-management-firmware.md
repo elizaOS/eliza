@@ -217,6 +217,21 @@ PMC restores the rails it had already commanded before the failure.
 - SPMI v2.0 master firmware skeleton only.
 - Secure-boot key provisioning policy not closed.
 
+## Resolved milestones
+
+- Linker script authored, ELF builds, smoke-run passes.
+  `fw/pmc/link.ld` places the firmware at the AON SRAM aperture
+  (`0x1005_0000`, 16 KiB), `fw/pmc/src/crt0.S` provides the reset vector
+  + GPR/BSS init + stack setup, and the `make elf` target produces
+  `fw/pmc/build/pmc.elf` (sha256 recorded in
+  `docs/evidence/power/pmc-fw-build-evidence.yaml`). The companion
+  `fw/pmc/link.sim.ld` retargets the image at `0x0010_0000` for the
+  `Vibex_simple_system` Verilator harness; loading the resulting ELF via
+  `--meminit=ram,pmc.sim.elf` retires 129 instructions in 195 cycles and
+  enters `pmc_main` without a trap. Production AON Ibex integration in
+  `rtl/top/` must drive `boot_addr_i = 32'h1005_0000` to match the
+  authored linker script.
+
 ## References
 
 - SBI Specification v3.0 (RVI ratified)

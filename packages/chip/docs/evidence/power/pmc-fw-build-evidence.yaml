@@ -1,0 +1,111 @@
+schema: eliza.power.firmware_build_evidence.v1
+ip_name: fw_pmc
+ip_role: aon_ibex_rv32imc_power_management_firmware
+status: linker_authored_elf_built_smoke_passed
+release_use: prototype_only
+claim_boundary: >
+  Records the executable result of authoring fw/pmc/link.ld for the AON SRAM
+  aperture, the fw/pmc/src/crt0.S startup, and the Makefile elf target. Proof
+  points:
+    - both pmc.elf (production AON SRAM placement at 0x10050000) and
+      pmc.sim.elf (ibex_simple_system smoke placement at 0x00100000) link
+      from the same nine TUs + crt0.S without warnings,
+    - readelf reports the expected sections at the expected addresses,
+    - total .text + .data + .bss + .stack fits inside the 16 KiB AON SRAM
+      budget declared by docs/pd/power-management-firmware.md,
+    - pmc.sim.elf loads on the R5-agent-built Vibex_simple_system Verilator
+      harness, retires past the reset vector and enters pmc_main without a
+      trap inside the 200-cycle smoke window.
+  This evidence does NOT cover RPMI-over-mailbox runtime correctness; the
+  simple_system harness does not model the PMC mailbox at 0x10010000. That
+  is exercised separately by the cocotb power suite under rtl/power/.
+toolchain:
+  cross_compiler: external/xpack-riscv-none-elf-gcc-15.2.0-1/bin/riscv-none-elf-gcc
+  cross_compiler_version: "riscv-none-elf-gcc (xPack GNU RISC-V Embedded GCC x86_64) 15.2.0"
+  cflags:
+    - -march=rv32imc
+    - -mabi=ilp32
+    - -mcmodel=medany
+    - -std=c11
+    - -ffreestanding
+    - -fno-builtin
+    - -fdata-sections
+    - -ffunction-sections
+    - -Os
+  ldflags:
+    - -nostartfiles
+    - -nostdlib
+    - -static
+    - -Wl,--gc-sections
+artifacts:
+  production_elf:
+    path: fw/pmc/build/pmc.elf
+    linker_script: fw/pmc/link.ld
+    entry_point: 0x10050084
+    sha256: 45459dd1a7d6520c2768b9a43a5f4eae1e8b37124d8ac79c4e6e45f906e19fee
+    aon_sram_origin: 0x10050000
+    aon_sram_length_bytes: 16384
+    section_bytes:
+      text: 1308
+      rodata: 76
+      data: 128
+      bss: 56
+      stack_reserved: 2048
+      total_resident: 3616
+    fits_aon_sram_budget: true
+  simple_system_elf:
+    path: fw/pmc/build/pmc.sim.elf
+    linker_script: fw/pmc/link.sim.ld
+    entry_point: 0x00100084
+    sha256: f6389b95ca0d3f872b851271afee9a4aec33b78d8f5964e15969e126c42fea45
+    ram_origin: 0x00100000
+    ram_length_bytes: 1048576
+    purpose: smoke_load_on_ibex_simple_system_verilator_harness
+smoke_run:
+  harness: external/ibex/ibex/build/lowrisc_ibex_ibex_simple_system_0/sim-verilator/Vibex_simple_system
+  invocation: >
+    Vibex_simple_system --term-after-cycles=200
+        --meminit=ram,fw/pmc/build/pmc.sim.elf
+  cycle_budget: 200
+  cycles_executed: 195
+  instructions_retired: 129
+  trap_observed: false
+  first_pc: 0x00100080
+  first_insn_decoded: "jal x0, 0x100084"
+  start_symbol_reached_at_cycle: 7
+  pmc_main_reached_at_cycle: 131
+  pmc_main_pc: 0x00100136
+  trace_artifact: docs/evidence/power/pmc-fw-smoke-trace.txt
+sources:
+  linker_scripts:
+    - fw/pmc/link.ld
+    - fw/pmc/link.sim.ld
+  startup: fw/pmc/src/crt0.S
+  c_translation_units:
+    - fw/pmc/src/main.c
+    - fw/pmc/src/rpmi_server.c
+    - fw/pmc/src/dvfs_arbiter.c
+    - fw/pmc/src/pmic_sequencer.c
+    - fw/pmc/src/spmi.c
+    - fw/pmc/src/i2c.c
+    - fw/pmc/src/thermal_policy.c
+    - fw/pmc/src/droop_telemetry.c
+    - fw/pmc/src/secure_boot.c
+  makefile: fw/pmc/Makefile
+reproduce:
+  - command: source tools/env.sh
+    purpose: put riscv-none-elf-gcc on PATH
+  - command: make -C fw/pmc clean
+  - command: make -C fw/pmc elf sim-elf
+  - command: make -C fw/pmc all test
+    purpose: confirm host-gcc lint build and SPMI host unit tests still pass
+  - command: >
+      external/ibex/ibex/build/lowrisc_ibex_ibex_simple_system_0/sim-verilator/Vibex_simple_system
+      --term-after-cycles=200 --meminit=ram,fw/pmc/build/pmc.sim.elf
+notes: >
+  The Ibex u_ibex_pmc boot_addr_i in rtl/power/pmc_top.sv is currently
+  hardwired to 32'h0000_0000 because the PMC instance is gated behind
+  PMC_INSTANTIATE_IBEX. When the integrator wires the real AON Ibex into
+  rtl/top/, boot_addr_i must be driven to 32'h1005_0000 to match
+  fw/pmc/link.ld; the Ibex reset entry vector is then at 0x10050080 which
+  matches the .vectors placement in this build.
