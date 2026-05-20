@@ -99,7 +99,7 @@ test("footer renders wordmark, link nav, and social links", async ({
   await expect(footer.locator("img")).toHaveCount(1);
   await expect(footer.getByRole("link", { name: "App" })).toHaveAttribute(
     "href",
-    "https://eliza.app",
+    "https://elizaos.ai",
   );
   await expect(footer.getByRole("link", { name: "Cloud" })).toHaveAttribute(
     "href",

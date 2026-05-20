@@ -31,15 +31,17 @@ const outputReaders = [
   collect(proc.stdout).catch(() => {}),
   collect(proc.stderr).catch(() => {}),
 ];
+let exited = false;
+proc.exited.then(() => {
+  exited = true;
+});
 
 try {
   const started = Date.now();
   let ready = false;
 
   while (!ready && Date.now() - started < 10_000) {
-    if ((await Promise.race([proc.exited, Promise.resolve(null)])) !== null) {
-      break;
-    }
+    if (exited) break;
     try {
       const health = await fetch(`${baseUrl}/health`);
       ready = health.status === 200 && (await health.text()) === "ok";

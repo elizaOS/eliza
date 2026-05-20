@@ -106,13 +106,13 @@ test.describe("live elizaOS marketing and hardware link integrity", () => {
     const footer = page.locator("footer.site-footer");
     await expect(footer.getByRole("link", { name: "App" })).toHaveAttribute(
       "href",
-      "https://eliza.app",
+      "https://elizaos.ai",
     );
     await expect(footer.getByRole("link", { name: "Cloud" })).toHaveAttribute(
       "href",
       /https:\/\/(www\.)?elizacloud\.ai\/login\?intent=launch/,
     );
-    liveTargets.set("https://eliza.app", "Eliza app");
+    liveTargets.set("https://elizaos.ai", "Eliza app");
     liveTargets.set("https://elizacloud.ai/login?intent=launch", "Eliza Cloud");
 
     for (const [target, label] of liveTargets) {

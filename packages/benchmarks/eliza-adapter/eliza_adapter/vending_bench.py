@@ -103,6 +103,7 @@ def _normalize_vending_payload(payload: object) -> str | None:
             "arguments",
             "actionContext",
             "previousResults",
+            "reasoning",
         }
     }
     out["action"] = normalized

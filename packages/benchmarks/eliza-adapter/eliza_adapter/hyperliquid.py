@@ -159,7 +159,14 @@ def _normalize_action_step(step: dict[str, Any]) -> dict[str, Any] | None:
         str(_first_present(step, "action", "type", "name", "tool", "tool_name") or "").lower(),
     )
 
-    if action in {"openperp", "placeorder", "perporder", "perporders", "order"}:
+    if action in {
+        "openperp",
+        "placeorder",
+        "placeperporder",
+        "perporder",
+        "perporders",
+        "order",
+    }:
         side = str(_first_present(step, "side", "direction") or "buy").strip().lower()
         if side not in {"buy", "sell"}:
             side = "buy"
@@ -186,6 +193,13 @@ def _normalize_action_step(step: dict[str, Any]) -> dict[str, Any] | None:
             inner["coin"] = _normalize_coin(coin)
         return {"cancel_all": inner}
 
+    if action in {"cancelorder", "cancellast"}:
+        coin = _first_present(step, "coin", "symbol", "asset", "market")
+        inner: dict[str, Any] = {}
+        if coin is not None:
+            inner["coin"] = _normalize_coin(coin)
+        return {"cancel_last": inner}
+
     if action in {"transfer", "usdclasstransfer", "classtransfer", "wallettransfer"}:
         to_perp_value = _first_present(step, "toPerp", "to_perp", "direction")
         if to_perp_value is None:
@@ -200,7 +214,7 @@ def _normalize_action_step(step: dict[str, Any]) -> dict[str, Any] | None:
             }
         }
 
-    if action in {"setleverage", "leverage"}:
+    if action in {"setleverage", "adjustleverage", "leverage"}:
         return {
             "set_leverage": {
                 "coin": _normalize_coin(_first_present(step, "coin", "symbol", "asset", "market")),
@@ -233,7 +247,7 @@ def _normalize_plan_steps(steps: list[Any]) -> list[Any]:
     changed = False
     for step in steps:
         if not isinstance(step, dict):
-            normalized.append(step)
+            changed = True
             continue
 
         actions = step.get("actions")
@@ -255,8 +269,10 @@ def _normalize_plan_steps(steps: list[Any]) -> list[Any]:
             changed = changed or normalized_step != step
             continue
 
-        normalized.append(step)
+        changed = True
 
+    if not normalized:
+        raise ValueError("Plan must contain at least one executable action step")
     return normalized if changed else steps
 
 

@@ -91,6 +91,23 @@ def test_vending_provider_strips_bridge_action_context() -> None:
     )
 
 
+def test_vending_provider_strips_planner_reasoning_from_action_params() -> None:
+    client = _FakeClient(
+        MessageResponse(
+            text='{"action":"VIEW_SUPPLIERS","reasoning":"Need product costs first."}',
+            thought=None,
+            actions=[],
+            params={},
+            metadata={},
+        )
+    )
+    provider = ElizaVendingProvider(client=client)
+
+    response, _tokens = asyncio.run(provider.generate("", "What next?"))
+
+    assert response == '{"action": "VIEW_SUPPLIERS"}'
+
+
 def test_vending_provider_does_not_synthesize_profitable_fallback() -> None:
     client = _FakeClient(
         MessageResponse(
