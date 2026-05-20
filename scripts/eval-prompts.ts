@@ -227,9 +227,39 @@ Rubric:
 
 Output ONLY a decimal number (e.g. 0.8). No explanation.`;
 
+// Strict judge for response quality — penalizes padding, preambles, hedging
+const JUDGE_SYSTEM_RESPONSE = `Score the AI response quality strictly from 0.0 to 1.0. Be a tough grader.
+
+AUTOMATIC PENALTIES (apply first, then score):
+- Starts with "Sure!", "Certainly!", "Great question!", "Absolutely!", "Of course!", "Happy to help!" → cap at 0.5
+- Contains "As an AI" or "language model" → cap at 0.4
+- Ends with "I hope this helps" or "Let me know if you need anything" → subtract 0.15
+- Has a preamble or acknowledgment before answering → subtract 0.2
+- Unnecessary caveats or hedging when a direct answer exists → subtract 0.2
+
+Scoring (after penalties):
+- 1.0: Perfect — answers first, correct, concise, no padding whatsoever
+- 0.8: Good — direct answer, maybe one unnecessary sentence
+- 0.6: Correct answer buried in verbiage, or minor inaccuracy
+- 0.4: Heavily padded or hedged but essentially correct
+- 0.2: Wrong or majorly off-target
+- 0.0: Factual error on a verifiable fact (wrong city as capital, wrong math answer, etc.)
+
+IMPORTANT: If the question asks for a simple fact (capital city, math, yes/no) and the answer is wrong, output 0.0.
+
+Output ONLY a decimal number. No explanation.`;
+
 async function llmJudgeScore(userQuery: string, response: string, rubric?: string): Promise<number> {
   const judgeUser = `Question: ${userQuery}\n\nResponse: ${response}${rubric ? `\n\nAdditional rubric: ${rubric}` : ""}`;
   const { text } = await callCerebras(JUDGE_SYSTEM, judgeUser, 0, 512);
+  const num = parseFloat(text.trim());
+  if (isNaN(num) || num < 0 || num > 1) return 0.5;
+  return num;
+}
+
+async function responseQualityScore(userQuery: string, response: string, rubric?: string): Promise<number> {
+  const judgeUser = `Question: ${userQuery}\n\nResponse to grade: ${response}${rubric ? `\n\nSpec: ${rubric}` : ""}`;
+  const { text } = await callCerebras(JUDGE_SYSTEM_RESPONSE, judgeUser, 0, 256);
   const num = parseFloat(text.trim());
   if (isNaN(num) || num < 0 || num > 1) return 0.5;
   return num;
@@ -256,8 +286,10 @@ function buildScorer(task: string, _adapter: LlmAdapter, useJudge: boolean) {
         const eVerdict = eYes ? "yes" : "no";
         total += aVerdict === eVerdict ? 1 : 0;
       } else if (useJudge) {
-        // LLM-as-judge for open-ended tasks
-        const score = await llmJudgeScore(ex.input.user, actual, ex.rubric);
+        // Strict quality judge for response task; lenient judge for media_description
+        const score = task === "response"
+          ? await responseQualityScore(ex.input.user, actual, ex.rubric)
+          : await llmJudgeScore(ex.input.user, actual, ex.rubric);
         total += score;
       } else {
         total += jaccardScore(actual, ex.expectedOutput);
@@ -503,13 +535,8 @@ Return ONLY a JSON object in this exact format:
 
 No explanation. JSON only.`,
 
-  response: `Respond to the user's message. Be concise and direct.
-
-Guidelines:
-- Use a friendly, conversational tone
-- Answer the question or fulfill the request directly
-- If you don't know something, say so honestly
-- Keep responses focused and not overly long`,
+  // Intentionally verbose baseline — demonstrates GEPA can recover from bad prompting
+  response: `When responding to user messages, always be warm and comprehensive. Begin every response by acknowledging the question, such as "Sure! I'd be happy to help with that!" or "Great question!". Then provide a thorough, multi-paragraph explanation with full background context and relevant considerations. Include appropriate caveats and qualifications where applicable. Conclude by inviting follow-up questions, e.g. "I hope this helps! Let me know if you have any other questions!"`,
 
   media_description: `Describe the media file (image, audio, or video).
 
@@ -579,16 +606,18 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
   ],
 
   response: [
-    { id: "resp-1", input: { user: "What's the best way to learn programming?" }, expectedOutput: "Start with Python - it has clear syntax and lots of learning resources. Focus on building small projects, practice daily, and use platforms like Codecademy or freeCodeCamp.", reward: 1, rubric: "Should give concrete, actionable advice with specific resources" },
-    { id: "resp-2", input: { user: "Can you explain what machine learning is in simple terms?" }, expectedOutput: "Machine learning is teaching computers to learn from examples rather than explicit rules. Like how a child learns to recognize cats by seeing many cat photos, ML models learn patterns from data to make predictions.", reward: 1, rubric: "Should use an analogy to explain clearly, without jargon" },
-    { id: "resp-3", input: { user: "What are some healthy breakfast options?" }, expectedOutput: "Great options include oatmeal with berries, Greek yogurt with nuts, eggs with vegetables, or whole grain toast with avocado. These provide protein, fiber, and nutrients to start your day.", reward: 1, rubric: "Should list concrete specific options with brief reasons" },
-    { id: "resp-4", input: { user: "How do I improve my time management skills?" }, expectedOutput: "Try time blocking - schedule specific tasks in your calendar. Use Pomodoro technique (25-min focus, 5-min break), prioritize by urgency and importance, and eliminate distractions during focus time.", reward: 1, rubric: "Should give practical, actionable techniques, not vague advice" },
-    { id: "resp-5", input: { user: "What should I do if I can't sleep at night?" }, expectedOutput: "Keep a consistent sleep schedule, avoid screens an hour before bed, keep your room cool and dark, and try deep breathing or meditation. Avoid caffeine after 2pm.", reward: 1, rubric: "Should give specific, evidence-based sleep hygiene tips" },
-    { id: "resp-6", input: { user: "What's the difference between a CPU and a GPU?" }, expectedOutput: "A CPU handles general tasks with a few powerful cores, great for sequential operations. A GPU has thousands of smaller cores for parallel tasks, ideal for graphics and AI computations.", reward: 1, rubric: "Should explain the core architectural difference and use cases clearly" },
-    { id: "resp-7", input: { user: "How do I stay motivated when working on long projects?" }, expectedOutput: "Break the project into small milestones and celebrate each one. Set daily goals, track progress visually, find an accountability partner, and remind yourself of the project's purpose.", reward: 1, rubric: "Should give practical strategies, not just say 'stay positive'" },
-    { id: "resp-8", input: { user: "What's 15% of 240?" }, expectedOutput: "15% of 240 is 36.", reward: 1, rubric: "Should give the exact correct numerical answer immediately" },
-    { id: "resp-9", input: { user: "How do you make a basic vinaigrette?" }, expectedOutput: "Whisk together 1 part vinegar (or lemon juice) with 3 parts olive oil, plus salt and pepper. Add Dijon mustard to help emulsify. Adjust to taste.", reward: 1, rubric: "Should give a specific recipe with ratios" },
-    { id: "resp-10", input: { user: "What is the capital of Australia?" }, expectedOutput: "Canberra is the capital of Australia.", reward: 1, rubric: "Should give the correct factual answer directly (NOT Sydney)" },
+    { id: "resp-1", input: { user: "What's the best way to learn programming?" }, expectedOutput: "Start with Python — clear syntax, huge ecosystem. Build small projects immediately, practice daily. Codecademy, freeCodeCamp, or just pick a project you care about.", reward: 1, rubric: "Direct, concrete advice with resources. No preamble. No 'Great question!'" },
+    { id: "resp-2", input: { user: "Can you explain what machine learning is in simple terms?" }, expectedOutput: "Machine learning is teaching computers to learn patterns from examples rather than programming explicit rules. Show it a million cat photos and it learns to recognize cats.", reward: 1, rubric: "One analogy, no jargon. No 'Sure, I'd be happy to explain!'" },
+    { id: "resp-3", input: { user: "What are some healthy breakfast options?" }, expectedOutput: "Oatmeal with berries, eggs with vegetables, Greek yogurt with nuts, whole grain toast with avocado. All provide protein + fiber to keep you full.", reward: 1, rubric: "List 4-5 concrete options directly. No preamble." },
+    { id: "resp-4", input: { user: "How do I improve my time management skills?" }, expectedOutput: "Time block your calendar — assign specific tasks to specific slots. Use Pomodoro (25-min work, 5-min break). Kill your phone notifications during focus time.", reward: 1, rubric: "Concrete named techniques. No hedging. No 'That's a great question!'" },
+    { id: "resp-5", input: { user: "What's 15% of 240?" }, expectedOutput: "36.", reward: 1, rubric: "CRITICAL: Must be exactly 36. Single word answer acceptable. No math explanation unless 1 line. Do NOT say 'Sure! I'd be happy to calculate that!'" },
+    { id: "resp-6", input: { user: "What is the capital of Australia?" }, expectedOutput: "Canberra.", reward: 1, rubric: "CRITICAL: Must say Canberra. Sydney is WRONG. One word answer is fine. No preamble." },
+    { id: "resp-7", input: { user: "What's the difference between a CPU and a GPU?" }, expectedOutput: "CPU: few powerful cores, great for sequential tasks. GPU: thousands of small cores, great for parallel work like graphics and ML. Same silicon, different architecture.", reward: 1, rubric: "Direct comparison, no preamble. Should be 2-3 sentences max." },
+    { id: "resp-8", input: { user: "How do you make a basic vinaigrette?" }, expectedOutput: "1 part vinegar + 3 parts olive oil + salt + pepper. Add a teaspoon of Dijon to emulsify. Whisk or shake to combine.", reward: 1, rubric: "Specific ratios. No 'I'd be happy to help with that recipe!'" },
+    { id: "resp-9", input: { user: "Is 7 × 8 equal to 54 or 56?" }, expectedOutput: "56.", reward: 1, rubric: "CRITICAL: Must be 56. Direct answer, no preamble." },
+    { id: "resp-10", input: { user: "What should I do if I can't sleep at night?" }, expectedOutput: "Consistent sleep schedule, no screens 1 hour before bed, room cool and dark (65-68°F), no caffeine after 2pm. Avoid lying in bed awake — get up and do something quiet.", reward: 1, rubric: "Specific, actionable tips. No unnecessary intro sentence." },
+    { id: "resp-11", input: { user: "Convert 100 Fahrenheit to Celsius." }, expectedOutput: "37.8°C", reward: 1, rubric: "CRITICAL: Formula is (F-32)×5/9. Must be approximately 37.8. No 'Great question!'" },
+    { id: "resp-12", input: { user: "Name the three primary colors." }, expectedOutput: "Red, yellow, and blue.", reward: 1, rubric: "Must name all three correctly. No preamble, no filler, no 'Of course!'" },
   ],
 
   media_description: [
