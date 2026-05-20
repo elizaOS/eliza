@@ -218,13 +218,20 @@ build_slice() {
   # `cmake --build` adds `-parallelizeTargets` for Xcode projects. llama.cpp's
   # generated iOS project can race inside Xcode's shared build database even
   # with `-jobs 1`, so invoke xcodebuild directly and serialize target builds.
+  local xcode_log="$build_dir/xcodebuild-$slice.log"
+  local xcode_output=("$xcode_log")
+  if [[ "${MILADY_LLAMA_XCODE_VERBOSE:-0}" == "1" ]]; then
+    xcode_output=("/dev/stdout")
+  fi
+  log "Running xcodebuild for $slice (log: $xcode_log)"
   xcodebuild \
     -project "$build_dir/llama.cpp.xcodeproj" \
     build \
     -target llama-common \
     -configuration Release \
     -jobs "$xcode_jobs" \
-    -hideShellScriptEnvironment &
+    -hideShellScriptEnvironment \
+    >"${xcode_output[0]}" 2>&1 &
   local xcode_pid=$!
   local elapsed=0
   while kill -0 "$xcode_pid" 2>/dev/null; do
@@ -237,11 +244,17 @@ build_slice() {
     fi
     sleep 1
     elapsed=$((elapsed + 1))
+    if (( elapsed % 60 == 0 )); then
+      log "Still building $slice with xcodebuild (${elapsed}s elapsed)"
+    fi
   done
   if ! wait "$xcode_pid"; then
+    err "xcodebuild failed for slice $slice; last log lines:"
+    tail -n 200 "$xcode_log" >&2 || true
     popd >/dev/null
     return 1
   fi
+  log "xcodebuild completed for $slice"
   popd >/dev/null
 
   # Locate produced .a files and fold them into a single libllama.a so
