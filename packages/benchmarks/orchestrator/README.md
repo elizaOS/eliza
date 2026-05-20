@@ -221,10 +221,13 @@ The matrix writes one directory per `(benchmark, adapter)` cell under
   LLM-call, and gate fields per benchmark. The same rows are written as
   `report-rows.jsonl` and `report-rows.csv` beside the summary.
 
-`nl2repo` remains tracked as a deferred related coding benchmark, but it is
-selectable for harness validation. Smoke mode uses canonical task metadata
-without Docker scoring. Live generation uses the repo-native helper by default;
-set `NL2REPO_AGENT_COMMAND_TEMPLATE` or
+Related benchmarks that are not yet release-comparable in this matrix are
+tracked as deferred coverage rather than ignored. Current deferred entries
+include `nl2repo`, `swe_bench_pro`, `agentbench`, `mint`,
+`app_eval_coding`, and `standard_humaneval`. `nl2repo` is selectable for
+harness validation. Smoke mode uses canonical task metadata without Docker
+scoring. Live generation uses the repo-native helper by default; set
+`NL2REPO_AGENT_COMMAND_TEMPLATE` or
 `NL2REPO_AGENT_COMMAND_TEMPLATE_<ADAPTER>` to override it. Set
 `NL2REPO_DISABLE_BUILTIN_AGENT_COMMAND=1` only when intentionally validating
 external command-template wiring. Live release-comparable scoring also requires

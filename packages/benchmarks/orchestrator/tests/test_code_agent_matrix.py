@@ -336,11 +336,16 @@ def test_coverage_summary_reports_selected_and_deferred_benchmarks() -> None:
         "included": 7,
         "included_selected": 7,
         "included_unselected": 0,
-        "deferred": 1,
+        "deferred": 6,
     }
     assert coverage["unselected_included_benchmarks"] == []
     assert {item["benchmark"] for item in coverage["deferred_benchmarks"]} == {
+        "agentbench",
+        "app_eval_coding",
+        "mint",
         "nl2repo",
+        "standard_humaneval",
+        "swe_bench_pro",
     }
 
     partial = build_coverage_summary(["swe_bench"])

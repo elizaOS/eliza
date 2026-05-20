@@ -66,7 +66,57 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
         benchmark_id="nl2repo",
         status=DEFERRED_STATUS,
         domains=("coding",),
-        reason="Needs a comparable adapter bridge before it can be scored head-to-head.",
+        reason=(
+            "Selectable for harness validation, but release-comparable scoring "
+            "still depends on Docker evaluator readiness."
+        ),
+    ),
+    CodeAgentBenchmark(
+        benchmark_id="swe_bench_pro",
+        status=DEFERRED_STATUS,
+        domains=("coding",),
+        reason=(
+            "Long-horizon SWE-bench Pro tasks require a dedicated prediction "
+            "generation bridge and Docker/Modal evaluation plumbing."
+        ),
+    ),
+    CodeAgentBenchmark(
+        benchmark_id="agentbench",
+        status=DEFERRED_STATUS,
+        domains=("terminal", "browser", "web", "computer-use"),
+        reason=(
+            "AgentBench includes OS, WebShop, and Mind2Web-related environments, "
+            "but its current harness targets Eliza/Hermes/OpenClaw rather than "
+            "the ElizaOS/OpenCode matrix adapters."
+        ),
+    ),
+    CodeAgentBenchmark(
+        benchmark_id="mint",
+        status=DEFERRED_STATUS,
+        domains=("coding", "tool-use"),
+        reason=(
+            "MINT includes HumanEval/MBPP code-generation tool tasks, but it "
+            "needs an ElizaOS/OpenCode code-agent adapter bridge before "
+            "head-to-head matrix scoring."
+        ),
+    ),
+    CodeAgentBenchmark(
+        benchmark_id="app_eval_coding",
+        status=DEFERRED_STATUS,
+        domains=("coding",),
+        reason=(
+            "App Eval has coding tasks, but they are heuristic app-agent "
+            "regression checks without an OpenCode-comparable adapter path."
+        ),
+    ),
+    CodeAgentBenchmark(
+        benchmark_id="standard_humaneval",
+        status=DEFERRED_STATUS,
+        domains=("coding",),
+        reason=(
+            "HumanEval is a model-level code-generation benchmark; it needs a "
+            "workspace/code-agent wrapper before it is comparable to OpenCode."
+        ),
     ),
 )
 
