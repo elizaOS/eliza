@@ -33,8 +33,10 @@ providers used here do not expose an embeddings endpoint.
 ## Validate
 
 ```bash
+bun run test
 bun run typecheck
 ```
 
-The example has no external service test because it requires a live model
-provider key and an interactive browser session.
+The local test covers the action scanner against a fixture repository. A full
+dashboard session still requires a live model provider key and an interactive
+browser.

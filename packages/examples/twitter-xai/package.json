@@ -6,6 +6,7 @@
   "scripts": {
     "start": "bun run agent.ts",
     "dev": "bun --watch run agent.ts",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

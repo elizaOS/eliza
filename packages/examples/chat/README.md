@@ -82,6 +82,11 @@ Run with hot reload:
 bun run dev
 ```
 
+Run the local provider-selection checks:
+```bash
+bun run test
+```
+
 ## License
 
 MIT
