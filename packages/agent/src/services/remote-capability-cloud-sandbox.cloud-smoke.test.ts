@@ -12,6 +12,7 @@ import {
 import {
   installRemoteCapabilityEndpoint,
   provisionCloudCapabilitySandbox,
+  waitForCloudCapabilityEndpointAvailability,
 } from "./remote-capability-cloud-sandbox.ts";
 import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
 import {
@@ -32,8 +33,12 @@ const cloudProvisionTimeoutMs = readPositiveIntegerEnv(
   "ELIZA_REMOTE_CAPABILITY_CLOUD_PROVISION_TIMEOUT_MS",
   600_000,
 );
+const cloudAvailabilityTimeoutMs = readPositiveIntegerEnv(
+  "ELIZA_REMOTE_CAPABILITY_CLOUD_AVAILABILITY_TIMEOUT_MS",
+  300_000,
+);
 const cloudLiveTestTimeoutMs = Math.max(
-  cloudProvisionTimeoutMs + 120_000,
+  cloudProvisionTimeoutMs + cloudAvailabilityTimeoutMs + 120_000,
   720_000,
 );
 const registeredPluginNames: string[] = [];
@@ -76,6 +81,19 @@ describe("cloud capability sandbox live smoke", () => {
           },
         });
         agentId = provisioned.agentId;
+
+        await waitForCloudCapabilityEndpointAvailability({
+          endpoint: provisioned.endpoint,
+          timeoutMs: cloudAvailabilityTimeoutMs,
+          pollIntervalMs: 5_000,
+          requestTimeoutMs: 60_000,
+          onProgress: (detail) => {
+            console.log(`[cloud-capability-live] availability: ${detail}`);
+          },
+        });
+        console.log(
+          `[cloud-capability-live] availability: endpoint ${provisioned.endpoint.id} reports plugin capability.`,
+        );
 
         installRemoteCapabilityEndpoint(runtime, {
           enabled: true,
