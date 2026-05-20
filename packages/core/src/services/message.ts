@@ -2622,6 +2622,7 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 				"Routes attachment/image inspection requests through ATTACHMENT instead of allowing unsupported direct vision claims.",
 			priority: 10,
 			shouldRun: ({ runtime, message, state }) =>
+				!isSubAgentCompletionArtifact(message) &&
 				looksLikeAttachmentInspectionRequest(message, state, runtime.agentId),
 			evaluate: () => ({
 				requiresTool: true,
