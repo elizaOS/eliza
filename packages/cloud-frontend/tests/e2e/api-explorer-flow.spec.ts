@@ -99,9 +99,7 @@ test("api explorer: search, auth, request tester, response, and OpenAPI export",
 
   await page.goto("/dashboard/api-explorer");
   await expect(page).not.toHaveURL(/\/login/);
-  await expect(
-    page.getByRole("button", { name: /Endpoints/i }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Endpoints/i })).toBeVisible();
 
   await page.getByPlaceholder("Search...").fill("chat completion");
   await expect(page.getByText(/1 endpoint matching/i)).toBeVisible();
@@ -110,13 +108,17 @@ test("api explorer: search, auth, request tester, response, and OpenAPI export",
   ).toBeVisible();
 
   await page.getByRole("button", { name: /AI Completions/i }).click();
-  await expect(page.getByRole("heading", { name: "AI Completions" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "AI Completions" }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: /Chat Completion/i }).click();
   await expect(
     page.getByRole("button", { name: /Back to endpoints/i }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Chat Completion" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Chat Completion" }),
+  ).toBeVisible();
 
   const messages = page.locator("#param-messages");
   await expect(messages).toBeVisible();
