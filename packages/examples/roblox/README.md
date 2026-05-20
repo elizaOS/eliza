@@ -40,11 +40,9 @@ Not directly via Open Cloud.
 - The bridge can generate audio (e.g. via an external TTS provider), but **Roblox playback** requires your experience to handle audio delivery (assets or runtime audio constraints).
 - In practice, most integrations start with **text chat** and add “voice-like” UI later (e.g. subtitles + local client TTS if your experience supports it).
 
-### Examples
+### Example
 
 - **TypeScript**: `packages/examples/roblox/` (canonical agent runtime + `@elizaos/plugin-roblox`)
-- **Python**: `packages/examples/roblox/python/` (canonical agent runtime + HTTP bridge)
-- **Rust**: `packages/examples/roblox/rust/` (canonical agent runtime + HTTP bridge)
 
 ### Roblox Studio scripts
 
@@ -56,4 +54,3 @@ See `packages/examples/roblox/roblox-studio/` for a minimal server-side script t
 **Recommended defaults** (already enabled in the script):
 - Only forward chat that **mentions the agent** (e.g. `eliza`, `@eliza`, `/eliza`) to avoid spamming your bridge.
 - Basic per-player throttling to reduce rate limits/cost.
-

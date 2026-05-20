@@ -181,28 +181,10 @@ const runtime = new AgentRuntime({
 
 ## Testing
 
-### TypeScript
-
 ```bash
-cd typescript
-bun test                              # Unit tests (mocked)
-LIVE_TEST=true bun test               # Live integration tests
-```
-
-### Python
-
-```bash
-cd python
-pytest                                # Unit tests (mocked)
-LIVE_TEST=true pytest                 # Live integration tests
-```
-
-### Rust
-
-```bash
-cd rust/bluesky-agent
-cargo test                            # Unit tests (mocked)
-cargo test --features live            # Live integration tests
+cd packages/examples/bluesky
+bun run test                          # Unit tests (mocked)
+LIVE_TEST=true bun run test           # Live integration tests
 ```
 
 ## Customizing the Agent

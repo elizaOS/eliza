@@ -1729,6 +1729,82 @@ def test_rebuild_latest_restores_compatibility_repair_when_harness_is_supported_
     assert "reason" not in latest["metrics"]
 
 
+def test_rebuild_latest_restores_voice_scores_from_saved_result_metrics(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["voiceagentbench", "voicebench"],
+        repo_meta={},
+    )
+    voiceagent_result = tmp_path / "voiceagentbench-result.json"
+    voiceagent_result.write_text(
+        json.dumps({"pass_at_1": 1.0}, sort_keys=True),
+        encoding="utf-8",
+    )
+    voicebench_result = tmp_path / "voicebench-result.json"
+    voicebench_result.write_text(
+        json.dumps(
+            {
+                "summary": {
+                    "local": {
+                        "transcriptionNormalizedAccuracy": 0.8,
+                    }
+                }
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    for benchmark_id, result_path in (
+        ("voiceagentbench", voiceagent_result),
+        ("voicebench", voicebench_result),
+    ):
+        _seed_run(
+            conn,
+            benchmark_id=benchmark_id,
+            agent="eliza",
+            run_id=f"run_{benchmark_id}",
+            started_at="2026-05-12T00:00:00+00:00",
+            status="incompatible",
+            score=None,
+            metrics={
+                "reason": "latest_row_violates_current_compatibility",
+                "supported_harnesses": [],
+            },
+            result_json_path=str(result_path),
+        )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {
+            "voiceagentbench": _adapter("voiceagentbench", agent_compatibility=("eliza",)),
+            "voicebench": _adapter("voicebench", agent_compatibility=("eliza",)),
+        },
+    )
+
+    voiceagent = json.loads(
+        (tmp_path / "latest" / "voiceagentbench__eliza.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    voicebench = json.loads(
+        (tmp_path / "latest" / "voicebench__eliza.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert voiceagent["status"] == "succeeded"
+    assert voiceagent["score"] == 1.0
+    assert voicebench["status"] == "succeeded"
+    assert voicebench["score"] == 0.8
+
+
 def test_rebuild_latest_prunes_unknown_benchmark_snapshots(
     tmp_path: Path,
 ) -> None:

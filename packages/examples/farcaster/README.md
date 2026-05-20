@@ -1,6 +1,7 @@
 # Farcaster Agent Example
 
-A self-contained reference showing how to run an elizaOS agent that monitors and posts on [Farcaster](https://www.farcaster.xyz/) – implemented in **TypeScript**, **Python**, and **Rust**.
+A self-contained TypeScript reference showing how to run an elizaOS agent that
+monitors and posts on [Farcaster](https://www.farcaster.xyz/).
 
 ## Overview
 
@@ -22,34 +23,12 @@ The agent responds to mentions in your Farcaster feed and can autonomously post 
 
 ## Quick Start
 
-### TypeScript (Bun)
-
 ```bash
-cd typescript
-cp ../env.example .env
+cd packages/examples/farcaster
+cp env.example .env
 # Edit .env with your credentials
 bun install
 bun run start
-```
-
-### Python
-
-```bash
-cd python
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp ../env.example .env
-# Edit .env with your credentials
-python agent.py
-```
-
-### Rust
-
-```bash
-cd rust/farcaster-agent
-cp ../../env.example .env
-# Edit .env with your credentials
-cargo run --release
 ```
 
 ## Configuration
@@ -75,30 +54,12 @@ Copy `env.example` to `.env` and fill in the required values:
 
 For each incoming mention, the examples route the event through the elizaOS "message service" for consistent state composition and response generation.
 
-### TypeScript (Plugin-Driven)
-
 - Uses `@elizaos/plugin-farcaster` which registers:
   - **Services**: `FarcasterService` (handles polling, client lifecycle)
   - **Actions**: `SEND_CAST`, `REPLY_TO_CAST`
   - **Providers**: `farcasterProfile`, `farcasterTimeline`, `farcasterThread`
 - Mentions/replies are handled by the plugin's `FarcasterService` background clients
-- Incoming mentions are routed into the runtime via `runtime.messageService.handleMessage()` inside the plugin
-
-### Python (Pipeline-Driven)
-
-- Explicitly polls mentions using `FarcasterClient` and calls `runtime.message_service.handle_message()`
-- The Python `DefaultMessageService` implements the canonical flow:
-  - State composition (providers)
-  - Model invocation (OpenAI)
-  - Response generation
-  - Memory persistence
-- Uses callback pattern to post replies to Farcaster
-
-### Rust (Pipeline-Driven)
-
-- Explicitly polls mentions using `FarcasterService` and calls `runtime.message_service().handle_message()`
-- Similar to Python, runs an explicit polling loop in the example
-- **Note**: Rust `DefaultMessageService` is response-focused (saves message, composes state, calls model, returns response)
+- Incoming mentions are routed into the runtime via `runtime.messageService.handleMessage()` inside the plugin.
 
 ### Pipeline Steps
 
@@ -109,11 +70,11 @@ For each incoming mention:
 3. Call the language runtime's **message service**
 4. **Post reply** to Farcaster (unless `FARCASTER_DRY_RUN=true`)
 
-TypeScript relies on the `plugin-farcaster` service for polling and posting; Python/Rust run explicit polling loops.
+The TypeScript example relies on the `plugin-farcaster` service for polling and posting.
 
 ## Character
 
-The default character (`FarcasterBot`) is configured as a helpful AI agent on Farcaster. Customize `character.ts` (or `character.py`/`character.rs`) to change:
+The default character (`FarcasterBot`) is configured as a helpful AI agent on Farcaster. Customize `character.ts` to change:
 
 - Name and bio
 - Topics and expertise areas
@@ -131,7 +92,7 @@ The default character (`FarcasterBot`) is configured as a helpful AI agent on Fa
 
 ## Plugin Components
 
-The `@elizaos/plugin-farcaster` plugin provides these components (auto-registered in TypeScript, available for manual use in Python/Rust):
+The `@elizaos/plugin-farcaster` plugin provides these components:
 
 ### Actions
 | Action | Description | Trigger Keywords |
@@ -154,27 +115,14 @@ The `@elizaos/plugin-farcaster` plugin provides these components (auto-registere
 ## Project Structure
 
 ```
-examples/farcaster/
+packages/examples/farcaster/
 ├── README.md           # This file
 ├── env.example         # Environment variable template
 ├── .gitignore          # Git ignore rules
-├── typescript/         # TypeScript implementation
-│   ├── agent.ts        # Main entry point
-│   ├── character.ts    # Character configuration
-│   ├── package.json    # Dependencies
-│   └── tsconfig.json   # TypeScript config
-├── python/             # Python implementation
-│   ├── agent.py        # Main entry point
-│   ├── character.py    # Character configuration
-│   └── requirements.txt
-└── rust/               # Rust implementation
-    └── farcaster-agent/
-        ├── Cargo.toml
-        ├── src/
-        │   ├── main.rs
-        │   └── character.rs
-        └── tests/
-            └── smoke.rs
+├── agent.ts            # Main entry point
+├── character.ts        # Character configuration
+├── package.json        # Dependencies
+└── tsconfig.json       # TypeScript config
 ```
 
 ## Troubleshooting
@@ -190,6 +138,6 @@ Casts are automatically truncated to `MAX_CAST_LENGTH` (default 320 characters).
 
 ## See Also
 
-- [Farcaster Plugin Documentation](../../plugins/plugin-farcaster/README.md)
-- [elizaOS Core Documentation](../../packages/docs/)
+- [Farcaster Plugin Documentation](../../../plugins/plugin-farcaster/README.md)
+- [elizaOS Docs](../../docs/)
 - [Neynar API Documentation](https://docs.neynar.com/)

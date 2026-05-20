@@ -137,7 +137,7 @@ Health check endpoint.
 ```json
 {
   "status": "healthy",
-  "runtime": "typescript|python|rust",
+  "runtime": "typescript",
   "version": "2.0.0-beta.0"
 }
 ```
