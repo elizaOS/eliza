@@ -433,7 +433,6 @@ export default defineConfig(({ mode }) => {
       rolldownOptions: {
         output: {
           codeSplitting: {
-            minSize: 20 * 1024,
             groups: false
               ? [
                   {

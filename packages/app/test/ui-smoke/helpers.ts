@@ -64,8 +64,8 @@ type RenderTelemetryIssue = {
 };
 
 const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
-  ["Basics", "basics"],
-  ["Providers", "providers"],
+  ["Basics", "identity"],
+  ["Providers", "ai-model"],
   ["Runtime", "runtime"],
   ["Appearance", "appearance"],
   ["Voice", "voice"],
