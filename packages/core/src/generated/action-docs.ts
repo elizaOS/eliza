@@ -4855,6 +4855,33 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "FACEWEAR_CONNECT",
+			description:
+				"Show connection instructions for a facewear device (Meta Quest, XReal, Even Realities, Apple Vision Pro).",
+			parameters: [],
+			similes: [
+				"CONNECT_GLASSES",
+				"CONNECT_HEADSET",
+				"PAIR_DEVICE",
+				"CONNECT_FACEWEAR",
+			],
+			descriptionCompressed:
+				"Show connection instructions for a facewear device (Meta Quest, XReal, Even Realities, Apple Vision Pro).",
+		},
+		{
+			name: "FACEWEAR_DEBUG",
+			description: "Show diagnostics for all connected facewear devices.",
+			parameters: [],
+			similes: [
+				"DEBUG_GLASSES",
+				"DIAGNOSE_HEADSET",
+				"FACEWEAR_DIAGNOSTICS",
+				"CHECK_XR",
+			],
+			descriptionCompressed:
+				"Show diagnostics for all connected facewear devices.",
+		},
+		{
 			name: "FILE",
 			description:
 				"FILE action: read/write/edit/grep/glob/ls. Use target=device for device filesystem reads/writes/ls. Workspace paths absolute unless op defaults to session cwd.",
@@ -7808,56 +7835,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-		},
-		{
-			name: "SMARTGLASSES_CONTROL",
-			description:
-				"Run Even Realities G1 control operations: whole-headset connect/disconnect, clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
-			parameters: [],
-			descriptionCompressed:
-				"smartglasses-control: connect, display session, raw packets, settings, Wi-Fi, dashboard, navigation, translate, notes, notifications, BMP",
-			similes: [
-				"EVEN_GLASSES_CONTROL",
-				"SMARTGLASSES_SETTINGS",
-				"SMARTGLASSES_NOTIFICATION",
-				"SMARTGLASSES_NOTE",
-			],
-		},
-		{
-			name: "SMARTGLASSES_DISPLAY_TEXT",
-			description:
-				"Display text on connected Even Realities G1/G2 smartglasses, wrapping text into five-line pages and sending the correct G1 display packets. JSON input may include mode, pageHoldMs, and completionDelayMs.",
-			parameters: [],
-			descriptionCompressed:
-				"smartglasses-display-text: show wrapped text on Even G1/G2 display",
-			similes: [
-				"DISPLAY_ON_GLASSES",
-				"EVEN_DISPLAY_TEXT",
-				"SHOW_ON_SMARTGLASSES",
-			],
-		},
-		{
-			name: "SMARTGLASSES_MICROPHONE",
-			description:
-				"Enable or disable microphone capture on Even Realities smartglasses. Long press / Even AI start and single tap enable, while double tap / recording stop disable automatically when events arrive.",
-			parameters: [],
-			descriptionCompressed:
-				"smartglasses-microphone: enable, disable, or toggle Even G1/G2 microphone",
-			similes: [
-				"EVEN_MICROPHONE",
-				"OPEN_GLASSES_MIC",
-				"CLOSE_GLASSES_MIC",
-				"TOGGLE_GLASSES_MIC",
-			],
-		},
-		{
-			name: "SMARTGLASSES_STATUS",
-			description:
-				"Report smartglasses connection, transport, microphone, Wi-Fi bridge capability/status, latest event, and audio streaming status.",
-			parameters: [],
-			descriptionCompressed:
-				"smartglasses-status: connection, mic, Wi-Fi, last event, audio chunks",
-			similes: ["EVEN_GLASSES_STATUS", "GLASSES_STATUS"],
 		},
 		{
 			name: "TASKS",

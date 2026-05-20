@@ -1,0 +1,55 @@
+{
+  "packageId": "com.milady.xr.quest",
+  "host": "facewear.elizaos.app",
+  "name": "Milady XR",
+  "launcherName": "MiladyXR",
+  "display": "fullscreen",
+  "metaQuest": true,
+  "orientation": "landscape",
+  "themeColor": "#000000",
+  "backgroundColor": "#000000",
+  "startUrl": "/",
+  "iconUrl": "https://facewear.elizaos.app/icons/icon-512.png",
+  "maskableIconUrl": "https://facewear.elizaos.app/icons/icon-maskable-512.png",
+  "webManifestUrl": "https://facewear.elizaos.app/manifest.json",
+  "sdkVersion": 35,
+  "minSdkVersion": 31,
+  "targetVersion": "35",
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "signingMode": "debug",
+  "androidPackage": "com.milady.xr.quest",
+  "features": {
+    "metaQuest": true,
+    "locationDelegation": {
+      "enabled": false
+    },
+    "playBilling": {
+      "enabled": false
+    },
+    "firstRunFlag": {
+      "enabled": true
+    }
+  },
+  "permissions": [
+    "android.permission.CAMERA",
+    "android.permission.RECORD_AUDIO",
+    "android.permission.INTERNET",
+    "android.permission.ACCESS_NETWORK_STATE"
+  ],
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": true,
+  "fullScopeUrl": "https://facewear.elizaos.app/",
+  "appVersionCode": 1,
+  "appVersionName": "1.0.0",
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUpdatePeriodMs": 1728000000,
+  "splashScreenFadeOutDuration": 300,
+  "enableNotifications": false,
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "additionalTrustedOrigins": []
+}

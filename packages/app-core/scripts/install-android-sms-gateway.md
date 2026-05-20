@@ -26,9 +26,11 @@ node packages/app-core/scripts/install-android-sms-gateway.mjs \
   --logcat-lines 200
 ```
 
-By default the installer uses `packages/app/android/.../app-debug.apk` when it
-exists, then falls back to the preserved artifact at
-`.eliza-local/artifacts/eliza-android-sms-gateway-debug.apk`.
+By default the installer uses the preserved audited artifact at
+`.eliza-local/artifacts/eliza-android-sms-gateway-debug.apk` when it exists,
+then falls back to `packages/app/android/.../app-debug.apk`. This keeps normal
+app builds from accidentally replacing the SMS gateway APK selected by the
+installer.
 
 Check the path that will be installed without requiring a connected device:
 
@@ -87,6 +89,15 @@ Capture the current readiness state across Android and BlueBubbles:
 ```sh
 node packages/app-core/scripts/check-sms-gateway-readiness.mjs
 ```
+
+Capture a concise objective-level completion audit without sending SMS:
+
+```sh
+node packages/app-core/scripts/check-sms-gateway-completion-audit.mjs
+```
+
+The audit separates proven software/cloud requirements from external gates such
+as public DNS, Android pairing, and real BlueBubbles outbound validation.
 
 Wait until either an Android device appears or BlueBubbles outbound becomes
 ready:

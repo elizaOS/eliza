@@ -213,6 +213,54 @@ describe("AgentGatewayRouterService phone routing", () => {
     expect(routeToSession).toHaveBeenCalledTimes(1);
   });
 
+  test("routes to the sender's own running Cloud agent before checking friend contacts", async () => {
+    findByPhoneNumberWithOrganization.mockResolvedValue({
+      id: "sender-user",
+      organization_id: "sender-org",
+    });
+    listOwnerSessions.mockResolvedValue([]);
+    listByOrganization.mockResolvedValue([
+      {
+        id: "sender-cloud-agent",
+        organization_id: "sender-org",
+        user_id: "sender-user",
+        status: "running",
+        agent_config: {},
+      },
+    ]);
+    queueSelectResult([
+      {
+        organizationId: "friend-owner-org",
+        agentId: "friend-agent",
+        userId: "friend-owner-user",
+      },
+    ]);
+    bridge.mockResolvedValue({
+      result: {
+        text: "own cloud agent reply",
+      },
+    });
+
+    const result = await newRouter().routePhoneMessage(routeArgs());
+
+    expect(result).toMatchObject({
+      handled: true,
+      replyText: "own cloud agent reply",
+      agentId: "sender-cloud-agent",
+      organizationId: "sender-org",
+      userId: "sender-user",
+    });
+    expect(selectCalls).toBe(0);
+    expect(bridge).toHaveBeenCalledWith(
+      "sender-cloud-agent",
+      "sender-org",
+      expect.objectContaining({
+        method: "message.send",
+      }),
+    );
+    expect(findRunningSandbox).not.toHaveBeenCalled();
+  });
+
   test("routes unknown senders to an agent that previously messaged them", async () => {
     findByPhoneNumberWithOrganization.mockResolvedValue(null);
     queueSelectResult([

@@ -3,6 +3,7 @@ import {
   outboundReadiness,
   recipientFromChatGuid,
   senderOptions,
+  shortcutValidationMatches,
   type BlueBubblesServerInfoForReadiness,
 } from "./bluebubbles-local-bridge-readiness";
 
@@ -82,6 +83,28 @@ describe("BlueBubbles local bridge readiness", () => {
     });
   });
 
+  it("surfaces Messages AppleEvents timeout detail", () => {
+    const options = senderOptions({
+      ...base,
+      appleEvents: [
+        ...readyAppleEvents.slice(0, 2),
+        {
+          target: "Messages" as const,
+          ok: false,
+          error:
+            "Messages AppleEvents probe timed out after 3000ms; Command failed: osascript Messages; signal=SIGTERM",
+        },
+      ],
+    });
+
+    expect(options.find((option) => option.method === "apple-script")).toMatchObject({
+      ready: false,
+      reasons: [
+        "Messages AppleEvents unavailable: Messages AppleEvents probe timed out after 3000ms; Command failed: osascript Messages; signal=SIGTERM",
+      ],
+    });
+  });
+
   it("does not treat queued replies as a Shortcuts readiness failure", () => {
     expect(
       outboundReadiness({
@@ -149,5 +172,53 @@ describe("BlueBubbles local bridge readiness", () => {
         'Shortcut "Eliza Cloud Send Message Ready" is not installed; installed shortcuts: Eliza Cloud Send Message',
       ],
     });
+  });
+
+  it("accepts a configured Shortcut id when the display name is absent", () => {
+    expect(
+      outboundReadiness({
+        ...base,
+        method: "shortcuts",
+        shortcutsSendShortcutName: "Renamed Shortcut",
+        shortcutsSendShortcutId: "785A8251-AC4B-4D3F-B0AA-C66188E6F2A3",
+        shortcuts: {
+          available: true,
+          shortcuts: ["Eliza Cloud Send Message Ready 4"],
+          shortcutIdentifiers: {
+            "Eliza Cloud Send Message Ready 4":
+              "785A8251-AC4B-4D3F-B0AA-C66188E6F2A3",
+          },
+          validation: {
+            required: true,
+            validated: true,
+          },
+        },
+      }),
+    ).toEqual({ method: "shortcuts", ready: true, reasons: [] });
+  });
+
+  it("matches Shortcut validation by id when an id is configured", () => {
+    expect(
+      shortcutValidationMatches({
+        shortcutsSendShortcutName: "Eliza Cloud Send Message Ready",
+        shortcutsSendShortcutId: "785A8251-AC4B-4D3F-B0AA-C66188E6F2A3",
+        record: {
+          method: "shortcuts",
+          shortcutName: "Eliza Cloud Send Message Ready",
+        },
+      }),
+    ).toBe(false);
+
+    expect(
+      shortcutValidationMatches({
+        shortcutsSendShortcutName: "Eliza Cloud Send Message Ready",
+        shortcutsSendShortcutId: "785A8251-AC4B-4D3F-B0AA-C66188E6F2A3",
+        record: {
+          method: "shortcuts",
+          shortcutName: "Eliza Cloud Send Message Ready",
+          shortcutId: "785A8251-AC4B-4D3F-B0AA-C66188E6F2A3",
+        },
+      }),
+    ).toBe(true);
   });
 });

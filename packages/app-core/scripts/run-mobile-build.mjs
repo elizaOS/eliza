@@ -79,9 +79,15 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url, {
 });
 const appCoreRoot = path.resolve(__dirname, "..");
 const packagesRoot = path.resolve(appCoreRoot, "..");
+const elizaRepoRoot = path.resolve(packagesRoot, "..");
 const appDir = resolveMainAppDir(repoRoot, "app");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
+const localArtifactsDir = path.join(elizaRepoRoot, ".eliza-local", "artifacts");
+const androidSmsGatewayDebugApkArtifact = path.join(
+  localArtifactsDir,
+  "eliza-android-sms-gateway-debug.apk",
+);
 const IOS_DEFAULT_DEPLOYMENT_TARGET = "16.0";
 const IOS_FULL_BUN_DEPLOYMENT_TARGET = "16.0";
 
@@ -5649,6 +5655,14 @@ function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
   return artifact;
 }
 
+function preserveAndroidSmsGatewayArtifact(artifact) {
+  fs.mkdirSync(localArtifactsDir, { recursive: true });
+  fs.copyFileSync(artifact, androidSmsGatewayDebugApkArtifact);
+  console.log(
+    `[mobile-build] android-sms-gateway preserved APK: ${androidSmsGatewayDebugApkArtifact}`,
+  );
+}
+
 async function buildAndroidCloud({ debug = false } = {}) {
   const sdk = resolveAndroidSdkRoot();
   const jdk = resolveJavaHome();
@@ -5806,6 +5820,7 @@ async function buildAndroidSmsGateway() {
     androidSdkRoot: sdk,
     javaHome: jdk,
   });
+  preserveAndroidSmsGatewayArtifact(artifact);
   console.log(`[mobile-build] android-sms-gateway debug APK: ${artifact}`);
 }
 

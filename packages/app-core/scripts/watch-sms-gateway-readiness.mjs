@@ -3,8 +3,8 @@
  * Wait until one physical SMS gateway path becomes actionable.
  *
  * By default this only reports the command to run. Pass --run-install to run
- * the Android install/watch flow automatically once exactly one adb device is
- * visible.
+ * the Android pair/connect/install/watch flow automatically once a wireless
+ * pairing endpoint or exactly one adb device is visible.
  */
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -21,7 +21,7 @@ function usage() {
     "Options:",
     "  --timeout <seconds>   Stop waiting after this many seconds. Defaults to 300.",
     "  --interval <seconds>  Poll interval. Defaults to 5.",
-    "  --run-install         Run Android install/watch flow when one adb device appears.",
+    "  --run-install         Run Android pair/connect/install/watch flow when actionable.",
   ].join("\n");
 }
 
@@ -70,6 +70,12 @@ function run(command, args) {
 }
 
 function listAdbDevices() {
+  return listAdbDeviceRows()
+    .filter((device) => device.state === "device")
+    .map((device) => device.serial);
+}
+
+function listAdbDeviceRows() {
   const result = run(adbPath, ["devices", "-l"]);
   if (result.status !== 0) return [];
   return result.stdout
@@ -77,8 +83,15 @@ function listAdbDevices() {
     .slice(1)
     .map((line) => line.trim())
     .filter(Boolean)
-    .filter((line) => /\bdevice\b/.test(line))
-    .map((line) => line.split(/\s+/)[0]);
+    .map((line) => {
+      const parts = line.split(/\s+/);
+      return {
+        serial: parts[0] ?? "",
+        state: parts[1] ?? "unknown",
+        detail: line,
+      };
+    })
+    .filter((device) => device.serial);
 }
 
 function listWirelessAdbServices() {
@@ -98,6 +111,15 @@ function listWirelessAdbServices() {
       };
     })
     .filter((service) => service.name && service.type && service.endpoint);
+}
+
+function tryConnectWirelessAdb(endpoint) {
+  const result = run(adbPath, ["connect", endpoint]);
+  const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
+  return {
+    ok: result.status === 0 && /connected to|already connected/i.test(output),
+    detail: output || "no output",
+  };
 }
 
 function listHostUsbDevices() {
@@ -147,13 +169,14 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function runInstallFlow() {
+function runInstallFlow(extraArgs = [], waitDeviceSeconds = "1") {
   const result = spawnSync(
     "node",
     [
       installScript,
+      ...extraArgs,
       "--wait-device",
-      "1",
+      waitDeviceSeconds,
       "--grant-role",
       "--clear-logcat",
       "--watch-logs",
@@ -167,13 +190,24 @@ function runInstallFlow() {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const deadline = Date.now() + args.timeoutSeconds * 1000;
+  let lastWirelessAdbSummary = "";
+  let lastWirelessAdbSeenAt = 0;
+  let printedBlueBubblesValidationHint = false;
 
   while (Date.now() <= deadline) {
+    const adbDeviceRows = listAdbDeviceRows();
     const devices = listAdbDevices();
     const wirelessAdb = listWirelessAdbServices();
     const hostUsbDevices = listHostUsbDevices();
     const bridgeDoctor = readBridgeDoctor();
     const bridgeReady = bridgeOutboundReady(bridgeDoctor);
+    const wirelessSummary = wirelessAdb
+      .map((service) => `${service.type}:${service.endpoint}`)
+      .join(", ");
+    if (wirelessSummary) {
+      lastWirelessAdbSummary = wirelessSummary;
+      lastWirelessAdbSeenAt = Date.now();
+    }
 
     if (devices.length === 1) {
       console.log(`[sms-gateway-watch] adb device ready: ${devices[0]}`);
@@ -193,10 +227,29 @@ async function main() {
 
     const pairing = wirelessAdb.find((service) => service.type.includes("_adb-tls-pairing"));
     if (pairing) {
+      if (args.runInstall) {
+        console.log(`[sms-gateway-watch] wireless pairing ready: ${pairing.endpoint}`);
+        runInstallFlow(["--pair", pairing.endpoint, "--connect", "auto"], "60");
+      }
       console.log(
         `[sms-gateway-watch] wireless pairing ready: ${pairing.endpoint}. Run: node packages/app-core/scripts/install-android-sms-gateway.mjs --pair ${pairing.endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
       );
       return;
+    }
+
+    const connectEndpoint = wirelessAdb.find((service) =>
+      service.type.includes("_adb-tls-connect"),
+    );
+    let connectProbe = null;
+    if (args.runInstall && connectEndpoint) {
+      connectProbe = tryConnectWirelessAdb(connectEndpoint.endpoint);
+      const connectedDevices = listAdbDevices();
+      if (connectProbe.ok && connectedDevices.length === 1) {
+        console.log(
+          `[sms-gateway-watch] wireless adb connected: ${connectEndpoint.endpoint}`,
+        );
+        runInstallFlow([], "60");
+      }
     }
 
     if (bridgeReady) {
@@ -207,12 +260,36 @@ async function main() {
       return;
     }
 
+    const bridgeOutbound = bridgeDoctor?.checks?.find((check) => check.name === "outbound");
+    if (
+      bridgeOutbound?.status === "blocked" &&
+      /Shortcut outbound validation missing/.test(bridgeOutbound.detail ?? "")
+    ) {
+      if (!printedBlueBubblesValidationHint) {
+        console.log(
+          "[sms-gateway-watch] BlueBubbles Shortcut is installed but needs a real validation send.",
+        );
+        console.log(
+          "After explicit real-send approval, run: bun run --cwd packages/app-core sms-gateway:validate:bluebubbles -- --confirm-real-send",
+        );
+        printedBlueBubblesValidationHint = true;
+      }
+    }
+
     const bridgeSummary = bridgeDoctor?.checks
       ?.filter((check) => check.status === "blocked")
       .map((check) => `${check.name}: ${check.detail}`)
       .join(" | ");
+    const adbSummary =
+      adbDeviceRows.length > 0
+        ? adbDeviceRows.map((device) => `${device.serial}:${device.state}`).join(", ")
+        : "none";
+    const lastWireless =
+      !wirelessSummary && lastWirelessAdbSummary
+        ? `; last-wireless=${lastWirelessAdbSummary} ${Math.round((Date.now() - lastWirelessAdbSeenAt) / 1000)}s ago`
+        : "";
     console.log(
-      `[sms-gateway-watch] waiting: adb devices=0; wireless=${wirelessAdb.map((service) => `${service.type}:${service.endpoint}`).join(", ") || "none"}; host-usb=${hostUsbDevices.join(", ") || "none"}; bridge=${bridgeDoctor?.status ?? "unknown"}${bridgeSummary ? ` (${bridgeSummary})` : ""}`,
+      `[sms-gateway-watch] waiting: adb=${adbSummary}; wireless=${wirelessSummary || "none"}${lastWireless}${connectProbe ? `; connect-probe=${connectProbe.detail}` : ""}; host-usb=${hostUsbDevices.join(", ") || "none"}; bridge=${bridgeDoctor?.status ?? "unknown"}${bridgeSummary ? ` (${bridgeSummary})` : ""}`,
     );
     await sleep(Math.max(1, args.intervalSeconds) * 1000);
   }

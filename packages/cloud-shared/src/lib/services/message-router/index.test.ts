@@ -134,6 +134,13 @@ describe("MessageRouterService contact recording", () => {
         is_active: true,
       }),
     );
+    const recordedContact = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(recordedContact.contact_identifier).toBe("+14155550100");
+    expect(recordedContact.contact_identifier).not.toBe("+14159611510");
+    expect(recordedContact.organization_id).toBe("agent-org");
+    expect(recordedContact.user_id).toBe("agent-user");
+    expect(recordedContact.agent_id).toBe("agent-1");
+    expect(recordedContact.last_outbound_at).toBeInstanceOf(Date);
     expect(onConflictDoUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         target: expect.arrayContaining(["provider", "contact_identifier", "agent_id"]),

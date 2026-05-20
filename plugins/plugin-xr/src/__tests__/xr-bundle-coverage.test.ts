@@ -189,8 +189,8 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
     manifestPath: "plugins/plugin-training/src/setup-routes.ts",
   },
   {
-    pluginDir: "plugins/plugin-smartglasses",
-    manifestPath: "plugins/plugin-smartglasses/src/index.ts",
+    pluginDir: "plugins/plugin-hearwear",
+    manifestPath: "plugins/plugin-hearwear/src/index.ts",
   },
 ];
 

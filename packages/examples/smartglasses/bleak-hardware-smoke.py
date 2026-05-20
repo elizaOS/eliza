@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 import textwrap
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -86,7 +87,9 @@ REQUIRED = (
     "settingsSent",
     "tapObserved",
     "microphoneEnabledByTap",
+    "microphoneEnableWriteAfterTap",
     "microphoneDisabledByTap",
+    "microphoneDisableWriteAfterTap",
     "audioObserved",
 )
 
@@ -115,11 +118,18 @@ def make_report(scan_timeout_ms: int, hold_ms: int, init_mode: str) -> dict[str,
             "settingsSent": False,
             "microphoneEnabled": False,
             "microphoneEnabledByTap": False,
+            "microphoneEnableWriteAfterTap": False,
             "tapObserved": False,
             "microphoneDisabledByTap": False,
+            "microphoneDisableWriteAfterTap": False,
             "microphoneDisabledByCommand": False,
             "audioObserved": False,
         },
+        "discoveredDevices": [],
+        "pairedG1Devices": [],
+        "bluetoothAdapter": None,
+        "scanDiagnosis": "not_scanned",
+        "evidenceOrder": 0,
         "writes": [],
         "events": [],
         "lenses": {
@@ -180,7 +190,23 @@ class G1BleakSmoke:
         suffix = "" if data is None else f" {json.dumps(data)}"
         print(f"[smartglasses:bleak-smoke] {message}{suffix}", flush=True)
 
+    def record_bluetooth_preflight(self) -> None:
+        bluetooth = inspect_macos_bluetooth()
+        if bluetooth is None:
+            return
+        self.report["bluetoothAdapter"] = bluetooth.get("adapter")
+        self.report["pairedG1Devices"] = bluetooth.get("pairedG1Devices", [])
+        if self.report["pairedG1Devices"]:
+            self.log(
+                "paired G1 devices",
+                {
+                    "pairedG1Devices": self.report["pairedG1Devices"],
+                    "adapter": self.report["bluetoothAdapter"],
+                },
+            )
+
     async def scan(self) -> None:
+        self.record_bluetooth_preflight()
         self.log("scanning", {"scanTimeoutMs": self.scan_timeout_ms})
         devices = await BleakScanner.discover(
             timeout=self.scan_timeout_ms / 1000,
@@ -189,12 +215,46 @@ class G1BleakSmoke:
         found: dict[str, tuple[str, Any]] = {}
         for _, (device, adv) in devices.items():
             name = device.name or adv.local_name or ""
+            service_uuids = [str(uuid).lower() for uuid in (adv.service_uuids or [])]
+            manufacturer_ids = sorted(int(key) for key in (adv.manufacturer_data or {}).keys())
+            matches_name = "Even" in name or "G1" in name
+            matches_uart = UART_SERVICE.lower() in service_uuids
+            matches_g1 = matches_name or matches_uart
+            match_reason = "name" if matches_name else "uart_service" if matches_uart else None
+            self.report["discoveredDevices"].append(
+                {
+                    "name": name or None,
+                    "address": device.address,
+                    "rssi": adv.rssi,
+                    "serviceUuids": service_uuids,
+                    "manufacturerIds": manufacturer_ids,
+                    "matchesG1": matches_g1,
+                    "matchReason": match_reason,
+                }
+            )
             if "_L_" in name and "left" not in found:
                 found["left"] = (name, device)
             elif "_R_" in name and "right" not in found:
                 found["right"] = (name, device)
-            if "Even" in name or "G1" in name:
-                self.log("found", {"name": name, "address": device.address, "rssi": adv.rssi})
+            if matches_g1:
+                self.log(
+                    "found",
+                    {
+                        "name": name,
+                        "address": device.address,
+                        "rssi": adv.rssi,
+                        "matchReason": match_reason,
+                    },
+                )
+        self.report["discoveredDevices"] = sorted(
+            self.report["discoveredDevices"],
+            key=lambda item: (
+                not item["matchesG1"],
+                -(item["rssi"] if isinstance(item.get("rssi"), int) else -999),
+                item.get("name") or "",
+            ),
+        )[:50]
+        self.report["scanDiagnosis"] = scan_diagnosis(self.report, found)
 
         missing = [side for side in ("left", "right") if side not in found]
         if missing:
@@ -207,6 +267,7 @@ class G1BleakSmoke:
         await asyncio.gather(*(self._connect_lens(lens) for lens in self.lenses.values()))
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         self.report["checks"]["connected"] = True
+        self.report["scanDiagnosis"] = "whole_headset_seen"
         self.report["status"]["connected"] = True
         for side, lens in self.lenses.items():
             lens_report = {
@@ -257,6 +318,7 @@ class G1BleakSmoke:
         self.report["writes"].append(
             {
                 "at": now(),
+                "order": next_evidence_order(self.report),
                 "side": side,
                 "command": name,
                 "bytes": len(data),
@@ -279,6 +341,7 @@ class G1BleakSmoke:
                 self.report["checks"]["microphoneEnabled"] = True
             else:
                 self.report["checks"]["microphoneDisabledByCommand"] = True
+            update_tap_driven_mic_write_checks(self.report)
 
     async def write(self, side: str, data: bytes) -> None:
         self.record_write(side, data)
@@ -408,6 +471,7 @@ class G1BleakSmoke:
         self.report["events"].append(
             {
                 "at": now(),
+                "order": next_evidence_order(self.report),
                 "side": side,
                 "type": event["type"],
                 "label": event.get("label"),
@@ -431,6 +495,7 @@ class G1BleakSmoke:
             self._mic_disable_seen.set()
         elif label and "tap" in label:
             self.report["checks"]["tapObserved"] = True
+        update_tap_driven_mic_write_checks(self.report)
 
         if event["type"] == "serial" and event.get("serialNumber"):
             self.report["checks"]["serialObserved"] = True
@@ -442,6 +507,7 @@ class G1BleakSmoke:
             self.report["audio"].append(
                 {
                     "at": now(),
+                    "order": next_evidence_order(self.report),
                     "side": side,
                     "sampleRate": 16000,
                     "encoding": "lc3",
@@ -463,7 +529,6 @@ class G1BleakSmoke:
 
     def finish_status(self) -> None:
         self.report["finishedAt"] = now()
-        self.report["status"]["connected"] = True
         for side, lens in self.lenses.items():
             lens_report = {
                 "connected": lens.client.is_connected,
@@ -472,7 +537,11 @@ class G1BleakSmoke:
             }
             self.report["lenses"][side] = lens_report
             self.report["status"]["connectedLenses"][side] = lens_report
-        self.report["setupHint"] = setup_hint(self.report["headsetState"])
+        self.report["status"]["connected"] = whole_headset_connected(self.report)
+        if self.report["status"]["connected"]:
+            self.report["scanDiagnosis"] = "whole_headset_seen"
+        self.report["setupHint"] = setup_hint_for_blocker(physical_blocker(self.report), self.report)
+        update_tap_driven_mic_write_checks(self.report)
         self.report["ok"] = len(missing_complete_hardware_evidence(self.report)) == 0
 
     async def write_report(self) -> None:
@@ -559,7 +628,13 @@ def parse_event(side: str, data: bytes) -> dict[str, Any]:
             "responseOk": ok,
         }
     if command == 0xF1:
-        return {"side": side, "type": "mic-data", "label": "mic_data", "sequence": data[1], "audioData": data[2:]}
+        return {
+            "side": side,
+            "type": "mic-data",
+            "label": "mic_data",
+            "sequence": data[1] if len(data) > 1 else None,
+            "audioData": data[2:] if len(data) > 2 else b"",
+        }
     if command == 0x34:
         serial = data[2:18].decode(errors="ignore").rstrip("\0")
         return {"side": side, "type": "serial", "label": "serial_number", "serialNumber": serial}
@@ -601,6 +676,10 @@ def missing_complete_hardware_evidence(report: dict[str, Any]) -> list[str]:
         for write in report.get("writes") or []
     ):
         failures.append("missingMicDisableWrite")
+    if not has_tap_driven_right_mic_write(report, "enable"):
+        failures.append("missingMicEnableWriteAfterTap")
+    if not has_tap_driven_right_mic_write(report, "disable"):
+        failures.append("missingMicDisableWriteAfterTap")
     if not any(
         chunk.get("side") == "right" and chunk.get("bytes", 0) > 0
         for chunk in report.get("audio") or []
@@ -611,6 +690,138 @@ def missing_complete_hardware_evidence(report: dict[str, Any]) -> list[str]:
     if physical != "wearing":
         failures.append("wearingStateNotObserved")
     return list(dict.fromkeys(failures))
+
+
+def has_tap_driven_right_mic_write(report: dict[str, Any], mode: str) -> bool:
+    labels = (
+        ("single_tap", "long_press")
+        if mode == "enable"
+        else ("double_tap", "stop_ai_recording")
+    )
+    mic_hex = "0e01" if mode == "enable" else "0e00"
+    tap_events = [
+        event
+        for event in report.get("events") or []
+        if event.get("label") in labels
+    ]
+    mic_writes = [
+        write
+        for write in report.get("writes") or []
+        if write.get("side") == "right"
+        and write.get("command") == "open-mic"
+        and str(write.get("hex", "")).startswith(mic_hex)
+    ]
+    return any(
+        evidence_happened_after(write, event)
+        for event in tap_events
+        for write in mic_writes
+    )
+
+
+def update_tap_driven_mic_write_checks(report: dict[str, Any]) -> None:
+    checks = report.setdefault("checks", {})
+    checks["microphoneEnableWriteAfterTap"] = has_tap_driven_right_mic_write(
+        report, "enable"
+    )
+    checks["microphoneDisableWriteAfterTap"] = has_tap_driven_right_mic_write(
+        report, "disable"
+    )
+
+
+def evidence_happened_after(later: dict[str, Any], earlier: dict[str, Any]) -> bool:
+    later_order = later.get("order")
+    earlier_order = earlier.get("order")
+    if isinstance(later_order, int) and isinstance(earlier_order, int):
+        return later_order > earlier_order
+    try:
+        return str(later.get("at", "")) >= str(earlier.get("at", ""))
+    except Exception:
+        return False
+
+
+def next_evidence_order(report: dict[str, Any]) -> int:
+    report["evidenceOrder"] = int(report.get("evidenceOrder") or 0) + 1
+    return report["evidenceOrder"]
+
+
+def whole_headset_connected(report: dict[str, Any]) -> bool:
+    lenses = report.get("lenses") or {}
+    status = report.get("status") or {}
+    connected_lenses = status.get("connectedLenses") or {}
+    return bool(
+        status.get("connected")
+        and (lenses.get("left") or {}).get("connected")
+        and (lenses.get("right") or {}).get("connected")
+        and (connected_lenses.get("left") or {}).get("connected")
+        and (connected_lenses.get("right") or {}).get("connected")
+    )
+
+
+def scan_diagnosis(report: dict[str, Any], found: dict[str, tuple[str, Any]] | None = None) -> str:
+    found = found or {}
+    if "left" in found and "right" in found:
+        return "whole_headset_seen"
+    if "left" in found:
+        return "right_lens_missing"
+    if "right" in found:
+        return "left_lens_missing"
+    discovered = report.get("discoveredDevices") or []
+    if not discovered:
+        return "no_ble_devices"
+    if any(device.get("matchesG1") for device in discovered):
+        return "g1_candidates_seen"
+    return "ble_seen_no_g1_candidates"
+
+
+def any_lens_connected(report: dict[str, Any]) -> bool:
+    lenses = report.get("lenses") or {}
+    status = report.get("status") or {}
+    connected_lenses = status.get("connectedLenses") or {}
+    return bool(
+        (lenses.get("left") or {}).get("connected")
+        or (lenses.get("right") or {}).get("connected")
+        or (connected_lenses.get("left") or {}).get("connected")
+        or (connected_lenses.get("right") or {}).get("connected")
+    )
+
+
+def physical_blocker(report: dict[str, Any]) -> str | None:
+    status = report.get("status") or {}
+    headset_state = report.get("headsetState") or {}
+    physical = headset_state.get("physical")
+    battery = headset_state.get("battery")
+    if status and not status.get("available", True):
+        return "transport_unavailable"
+    if status.get("available", False) and not any_lens_connected(report):
+        return "headset_not_found"
+    if not status.get("connected"):
+        return "disconnected"
+    if not whole_headset_connected(report):
+        return "partial_headset"
+    if is_cradle_or_charging_state(physical, battery):
+        return "in_charging_base"
+    return None if physical == "wearing" else "wearing_state_missing"
+
+
+def setup_hint_for_blocker(blocker: str | None, report: dict[str, Any]) -> str | None:
+    if blocker == "transport_unavailable":
+        return (
+            "The hardware transport is unavailable before headset discovery. Use the "
+            "Bleak/CoreBluetooth smoke on macOS, or install/rebuild the Noble native "
+            "BLE binding for this runtime."
+        )
+    if blocker == "disconnected":
+        return "Connect both lenses as one headset before running hardware validation."
+    if blocker == "headset_not_found":
+        return (
+            "No G1 lenses were found. Remove both lenses from the charging base, "
+            "keep them near this device, and rerun hardware pairing."
+        )
+    if blocker == "partial_headset":
+        return "Reconnect the whole headset so both left and right lenses are present."
+    if blocker is None:
+        return None
+    return setup_hint(report.get("headsetState") or {})
 
 
 def setup_hint(headset_state: dict[str, str | None]) -> str | None:
@@ -637,6 +848,64 @@ def is_cradle_or_charging_state(physical: str | None, battery: str | None) -> bo
         "cradle_charging_cable_changed",
         "cradle_fully_charged",
     }
+
+
+def inspect_macos_bluetooth() -> dict[str, Any] | None:
+    try:
+        result = subprocess.run(
+            ["system_profiler", "SPBluetoothDataType"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception:
+        return None
+    return parse_system_profiler_bluetooth(result.stdout)
+
+
+def parse_system_profiler_bluetooth(source: str) -> dict[str, Any]:
+    lines = source.splitlines()
+    adapter = {
+        "available": True,
+        "state": value_after(lines, "State:"),
+        "discoverable": value_after(lines, "Discoverable:"),
+        "chipset": value_after(lines, "Chipset:"),
+        "address": value_after(lines, "Address:"),
+    }
+    paired_g1_devices: list[dict[str, Any]] = []
+    section: str | None = None
+    for raw_line in lines:
+        line = raw_line.strip()
+        if line == "Connected:":
+            section = "connected"
+            continue
+        if line == "Not Connected:":
+            section = "not_connected"
+            continue
+        if not line.endswith(":"):
+            continue
+        name = line[:-1]
+        marker = "_L_" if "_L_" in name else "_R_" if "_R_" in name else None
+        if not marker or not name.lower().startswith("even g1"):
+            continue
+        paired_g1_devices.append(
+            {
+                "name": name,
+                "side": "left" if marker == "_L_" else "right",
+                "connected": section == "connected",
+                "section": section,
+            }
+        )
+    return {"adapter": adapter, "pairedG1Devices": paired_g1_devices}
+
+
+def value_after(lines: list[str], prefix: str) -> str | None:
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            return stripped[len(prefix) :].strip()
+    return None
 
 
 def encode_display_text(text: str) -> list[bytes]:

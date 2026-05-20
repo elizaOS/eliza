@@ -6,21 +6,52 @@
  * Android, BlueBubbles, or cloud state.
  */
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "..", "..", "..");
+const packagesRoot = path.resolve(scriptDir, "..", "..");
 const homepageScript = path.join(scriptDir, "check-homepage-public-readiness.mjs");
 const installScript = path.join(scriptDir, "install-android-sms-gateway.mjs");
 const cloudOnboardingScript = path.join(scriptDir, "verify-cloud-sms-onboarding-flow.mjs");
+const routingContractTests = [
+  path.join(
+    packagesRoot,
+    "cloud-shared",
+    "src",
+    "lib",
+    "services",
+    "phone-gateway-devices.test.ts",
+  ),
+  path.join(
+    packagesRoot,
+    "cloud-shared",
+    "src",
+    "lib",
+    "services",
+    "agent-gateway-router.test.ts",
+  ),
+  path.join(
+    packagesRoot,
+    "cloud-shared",
+    "src",
+    "lib",
+    "services",
+    "message-router",
+    "index.test.ts",
+  ),
+];
 const adbPath = "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
 const bridgeUrl = "http://127.0.0.1:8795";
 const onboardingContinuationUrl =
   "https://elizaos-homepage.pages.dev/get-started/?onboardingSession=readiness-smoke";
 let blocked = false;
 
-function run(command, args) {
+function run(command, args, { cwd = process.cwd() } = {}) {
   const result = spawnSync(command, args, {
+    cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -198,9 +229,35 @@ function printBridgeState() {
   );
 }
 
+function createRoutingContractCwd() {
+  const tmpRoot = path.join(repoRoot, ".tmp");
+  fs.mkdirSync(tmpRoot, { recursive: true });
+  const cwd = fs.mkdtempSync(path.join(tmpRoot, "sms-gateway-routing-"));
+  fs.writeFileSync(
+    path.join(cwd, "bunfig.toml"),
+    "[test]\ntimeout = 60000\ncoverage = false\n",
+  );
+  return cwd;
+}
+
+function printRoutingContractState() {
+  const cwd = createRoutingContractCwd();
+  try {
+    for (const testPath of routingContractTests) {
+      printSection(
+        `routing contract: ${path.relative(packagesRoot, testPath)}`,
+        run("bun", ["test", testPath], { cwd }),
+      );
+    }
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+}
+
 printSection("homepage public readiness", run("node", [homepageScript]));
 printOnboardingContinuationState();
 printSection("cloud sms onboarding", run("node", [cloudOnboardingScript]));
+printRoutingContractState();
 printAndroidState();
 printBridgeState();
 

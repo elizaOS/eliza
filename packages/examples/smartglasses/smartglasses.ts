@@ -3,7 +3,7 @@ import {
   G1DashboardLayout,
   MockSmartglassesTransport,
   SmartglassesService,
-} from "../../../plugins/plugin-smartglasses/src/index.js";
+} from "../../../plugins/plugin-hearwear/src/index.js";
 
 const transport = new MockSmartglassesTransport();
 const service = new SmartglassesService();
@@ -36,8 +36,10 @@ await service.pageDown();
 service.startHeartbeatLoop({ intervalMs: 1000 });
 await new Promise((resolve) => setTimeout(resolve, 0));
 service.stopHeartbeatLoop();
+await service.requestBatteryStatus();
 await service.setBrightness(10, true);
 await service.setDashboard(true, 4);
+await service.setDashboardPosition(3, 7);
 await service.setDashboardLayout(G1DashboardLayout.Dual);
 await service.sendDashboardCalendarItem({
   name: "Eliza standup",
@@ -82,8 +84,10 @@ await service.requestSerial("right");
 await service.sendAppWhitelist({ apps: ["eliza"] });
 await service.sendRaw(Uint8Array.from([0x4d, 0x01]), "left");
 await service.addOrUpdateNote(1, "Eliza", "Smartglasses example note");
+await service.requestVoiceNoteList({ syncId: 1 });
 await service.requestVoiceNoteAudio(1, { syncId: 2 });
 await service.deleteVoiceNoteAudio(1, { syncId: 3 });
+await service.deleteAllVoiceNoteAudio({ syncId: 4 });
 await service.sendMonochromeBmpImage(Uint8Array.from([0, 255, 255, 0]), {
   width: 2,
   height: 2,
@@ -96,6 +100,14 @@ await service.sendNotification({
 
 transport.emitRaw("left", Uint8Array.from([0xf5, 0x17]));
 transport.emitRaw("right", Uint8Array.from([0xf1, 1, 0, 0, 0, 64]));
+transport.emitRaw(
+  "left",
+  Uint8Array.from([G1Command.Battery, 0x66, 88, 0x02, 0x9c, 0x0f]),
+);
+transport.emitRaw(
+  "right",
+  Uint8Array.from([G1Command.Battery, 0x66, 84, 0x02, 0x88, 0x0f]),
+);
 transport.emitRaw(
   "right",
   Uint8Array.from([
@@ -232,10 +244,29 @@ if (
 if (!transport.writes.some((write) => write.data[0] === G1Command.Heartbeat)) {
   throw new Error("Example did not send heartbeat packets");
 }
+if (!transport.writes.some((write) => write.data[0] === G1Command.Battery)) {
+  throw new Error("Example did not send battery status request packets");
+}
+if (
+  service.getStatus().batteryLevels.left !== 88 ||
+  service.getStatus().batteryLevels.right !== 84
+) {
+  throw new Error("Example did not parse battery status responses");
+}
 if (
   !transport.writes.some((write) => write.data[0] === G1Command.Notification)
 ) {
   throw new Error("Example did not send notification packets");
+}
+if (
+  !transport.writes.some(
+    (write) =>
+      write.data[0] === G1Command.Note &&
+      write.data[3] === 1 &&
+      write.data[4] === 1,
+  )
+) {
+  throw new Error("Example did not send voice note list packets");
 }
 if (
   !transport.writes.some(
@@ -256,6 +287,16 @@ if (
   )
 ) {
   throw new Error("Example did not send voice note delete packets");
+}
+if (
+  !transport.writes.some(
+    (write) =>
+      write.data[0] === G1Command.Note &&
+      write.data[3] === 4 &&
+      write.data[4] === 5,
+  )
+) {
+  throw new Error("Example did not send voice note delete-all packets");
 }
 if (
   !transport.writes.some(

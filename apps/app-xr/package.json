@@ -1,0 +1,29 @@
+{
+  "name": "@elizaos/app-xr",
+  "version": "0.1.0",
+  "private": true,
+  "description": "elizaOS WebXR frontend — runs inside Meta Quest, XReal, Apple Vision Pro, and browser emulators",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src",
+    "test": "vitest run",
+    "connect": "bunx localtunnel --port 2138 --print-requests & node scripts/qr-connect.mjs",
+    "qr": "node scripts/qr-connect.mjs"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/node": "^20.0.0",
+    "localtunnel": "^2.0.2",
+    "qrcode-terminal": "^0.12.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}

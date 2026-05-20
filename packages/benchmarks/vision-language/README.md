@@ -70,6 +70,24 @@ OSWORLD_DATA_DIR=/data/osworld     bun run start -- --tier eliza-1-9b --benchmar
 The OSWorld full eval also requires the OSWorld VM image
 (see `plugins/plugin-computeruse/src/osworld/README` for setup).
 
+## Code-Agent Harness Labels
+
+For matched ElizaOS/OpenCode comparison wiring, the runner accepts
+`--harness elizaos` and `--harness opencode` in addition to the existing
+`eliza`, `hermes`, and `openclaw` labels:
+
+```bash
+bun run start -- --harness elizaos --model-provider openai --model gpt-4o-mini \
+  --benchmark screenspot --samples 5 --output elizaos-vision.json
+bun run start -- --harness opencode --model-provider openai --model gpt-4o-mini \
+  --benchmark screenspot --samples 5 --output opencode-vision.json
+```
+
+These labels route through `scripts/vision_harness_runtime.py` and the same
+Eliza benchmark bridge used by the code-agent wrappers. They are a driver
+surface for promoting `vision_language` into the code-agent matrix once real
+VLM credentials, non-stub inputs, and token/call telemetry are available.
+
 ## Outputs
 
 Reports land at `results/<tier>-<benchmark>-<date>.json` with shape:
@@ -86,6 +104,13 @@ Reports land at `results/<tier>-<benchmark>-<date>.json` with shape:
   "delta": -0.066,
   "runtime_seconds": 274.3,
   "error_count": 0,
+  "input_tokens": 12345,
+  "output_tokens": 678,
+  "total_tokens": 13023,
+  "cached_tokens": 4567,
+  "cache_creation_tokens": 0,
+  "cached_token_percent": 36.99,
+  "llm_call_count": 100,
   "samples": [{ "sampleId": "...", "score": 1, "prediction": { ... } }]
 }
 ```

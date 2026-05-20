@@ -31,6 +31,7 @@ function usage() {
     "  --gateway-phone <phone>   Shared gateway phone. Defaults to +14159611510.",
     "  --bridge <id>             Bridge id header. Defaults to bluebubbles.",
     "  --attempts <n>            Retry attempts for transient fetch failures. Defaults to 3.",
+    "  --allow-gateway-override Allow --gateway-phone to differ from +14159611510 for non-production tests.",
   ].join("\n");
 }
 
@@ -42,6 +43,7 @@ function parseArgs(argv) {
     gatewayPhone: process.env.BLUEBUBBLES_GATEWAY_PHONE_NUMBER ?? defaultGatewayPhoneNumber,
     bridge: process.env.BLUEBUBBLES_BRIDGE_ID ?? "bluebubbles",
     attempts: defaultAttempts,
+    allowGatewayOverride: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -57,6 +59,7 @@ function parseArgs(argv) {
     else if (arg === "--gateway-phone") args.gatewayPhone = next();
     else if (arg === "--bridge") args.bridge = next();
     else if (arg === "--attempts") args.attempts = Number.parseInt(next(), 10);
+    else if (arg === "--allow-gateway-override") args.allowGatewayOverride = true;
     else if (arg === "--help" || arg === "-h") {
       console.log(usage());
       process.exit(0);
@@ -75,10 +78,29 @@ function parseArgs(argv) {
   if (!args.sender) {
     args.sender = `+1415555${Math.floor(Math.random() * 9000 + 1000)}`;
   }
+  args.gatewayPhone = normalizeNorthAmericanPhone(args.gatewayPhone);
+  if (
+    args.gatewayPhone !== defaultGatewayPhoneNumber &&
+    !args.allowGatewayOverride
+  ) {
+    throw new Error(
+      `Refusing to verify non-shared gateway ${args.gatewayPhone}. Expected ${defaultGatewayPhoneNumber}; pass --allow-gateway-override only for non-production tests.`,
+    );
+  }
   if (!Number.isInteger(args.attempts) || args.attempts <= 0) {
     throw new Error("--attempts must be a positive integer");
   }
   return args;
+}
+
+function normalizeNorthAmericanPhone(value) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  const normalized =
+    digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : "";
+  if (!normalized) {
+    throw new Error(`Invalid gateway phone number: ${value}`);
+  }
+  return normalized;
 }
 
 function parseDotenvFile(filePath) {
@@ -166,6 +188,16 @@ function extractFirstUrl(text) {
   return match?.[0] ?? null;
 }
 
+function mentionsStarterCredit(text) {
+  return /\$5\b[\s\S]{0,80}\bfree\b[\s\S]{0,80}\bcredits?\b/i.test(text);
+}
+
+function assertSmsSafeReply(label, text) {
+  if (/[^\x09\x0A\x0D\x20-\x7E]/.test(text)) {
+    throw new Error(`${label} reply included non-ASCII SMS-hostile text: ${text}`);
+  }
+}
+
 async function verifyContinuationUrl(url) {
   const response = await fetchWithRetry(
     { attempts: defaultAttempts },
@@ -219,12 +251,23 @@ async function main() {
   if (first.success !== true || first.handled !== true) {
     throw new Error(`First webhook was not handled: ${JSON.stringify(first)}`);
   }
+  assertSmsSafeReply("First", firstReply);
   if (!firstReply.includes("What should I call you?")) {
     throw new Error(`First reply did not ask for a name: ${firstReply}`);
+  }
+  if (
+    !/private Eliza Cloud agents?/i.test(firstReply) ||
+    !/usage-based/i.test(firstReply) ||
+    !mentionsStarterCredit(firstReply)
+  ) {
+    throw new Error(
+      `First reply did not explain product, pricing, and starter credit: ${firstReply}`,
+    );
   }
   if (first.gatewayDeviceRegistered !== true) {
     throw new Error(`Gateway device was not registered on first webhook: ${JSON.stringify(first)}`);
   }
+  assertGatewayIdentity("First", first, args);
 
   const second = await postWebhook(args, "My name is Smoke Test", "second");
   const secondReply = String(second.replyText ?? "");
@@ -232,20 +275,62 @@ async function main() {
   if (second.success !== true || second.handled !== true) {
     throw new Error(`Second webhook was not handled: ${JSON.stringify(second)}`);
   }
+  if (second.gatewayDeviceRegistered !== true) {
+    throw new Error(`Gateway device was not registered on second webhook: ${JSON.stringify(second)}`);
+  }
+  if (
+    first.gatewayDeviceId &&
+    second.gatewayDeviceId &&
+    first.gatewayDeviceId !== second.gatewayDeviceId
+  ) {
+    throw new Error(
+      `Gateway device registration was not stable across webhooks: first=${first.gatewayDeviceId} second=${second.gatewayDeviceId}`,
+    );
+  }
+  assertGatewayIdentity("Second", second, args);
+  assertSmsSafeReply("Second", secondReply);
   if (!loginUrl || !loginUrl.includes("/get-started/") || !loginUrl.includes("onboardingSession=")) {
     throw new Error(`Second reply did not include a get-started onboarding link: ${secondReply}`);
   }
   if (/[^\x20-\x7E]/.test(loginUrl) || loginUrl.includes("**")) {
     throw new Error(`Second reply included a malformed onboarding link: ${loginUrl}`);
   }
+  if (!mentionsStarterCredit(secondReply)) {
+    throw new Error(`Second reply did not mention starter credit: ${secondReply}`);
+  }
+  if (/^\s*[*_`~]+\s*$/m.test(secondReply)) {
+    throw new Error(`Second reply included orphaned markdown punctuation: ${secondReply}`);
+  }
 
   const continuation = await verifyContinuationUrl(loginUrl);
+  const stableGatewayId =
+    first.gatewayDeviceId && second.gatewayDeviceId ? first.gatewayDeviceId : "unreported";
   console.log(
-    `[cloud-sms-onboarding] sender=${args.sender} first=handled second=login-link continuation=${continuation.status} ${continuation.url}`,
+    `[cloud-sms-onboarding] sender=${args.sender} gateway=${args.gatewayPhone} registered=yes gatewayId=${stableGatewayId} device=${first.gatewayDevicePhoneNumber}/${first.gatewayDeviceBridgeId}/${first.gatewayDeviceProvider} first=handled second=login-link continuation=${continuation.status} ${continuation.url}`,
   );
 }
 
+function assertGatewayIdentity(label, body, args) {
+  if (body.gatewayDevicePhoneNumber !== args.gatewayPhone) {
+    throw new Error(
+      `${label} webhook registered unexpected gateway number: ${JSON.stringify(body)}`,
+    );
+  }
+  if (body.gatewayDeviceBridgeId !== args.bridge) {
+    throw new Error(
+      `${label} webhook registered unexpected gateway bridge: ${JSON.stringify(body)}`,
+    );
+  }
+  if (body.gatewayDeviceProvider !== "blooio") {
+    throw new Error(
+      `${label} webhook registered unexpected gateway provider: ${JSON.stringify(body)}`,
+    );
+  }
+}
+
 main().catch((error) => {
-  console.error(`[cloud-sms-onboarding] ${error instanceof Error ? error.message : String(error)}`);
+  process.stderr.write(
+    `[cloud-sms-onboarding] ${error instanceof Error ? error.message : String(error)}\n`,
+  );
   process.exit(1);
 });

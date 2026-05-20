@@ -22,6 +22,7 @@ export type AppleEventsProbeForReadiness = {
 export type ShortcutsDiagnosticsForReadiness = {
   available: boolean;
   shortcuts?: string[];
+  shortcutIdentifiers?: Record<string, string>;
   error?: string;
   validation?: {
     required: boolean;
@@ -35,6 +36,22 @@ export type OutboundReadiness = {
   method: BlueBubblesSendMethod;
   reasons: string[];
 };
+
+export function shortcutValidationMatches(args: {
+  record?: {
+    method?: BlueBubblesSendMethod;
+    shortcutName?: string;
+    shortcutId?: string;
+  } | null;
+  shortcutsSendShortcutName: string;
+  shortcutsSendShortcutId?: string | null;
+}): boolean {
+  if (!args.record || args.record.method !== "shortcuts") return false;
+  if (args.shortcutsSendShortcutId) {
+    return args.record.shortcutId === args.shortcutsSendShortcutId;
+  }
+  return args.record.shortcutName === args.shortcutsSendShortcutName;
+}
 
 export function recipientFromChatGuid(chatGuid: string): string | null {
   const parts = chatGuid.split(";-;");
@@ -58,6 +75,7 @@ export function outboundReadiness(args: {
   appleEvents?: AppleEventsProbeForReadiness[];
   shortcuts?: ShortcutsDiagnosticsForReadiness;
   shortcutsSendShortcutName: string;
+  shortcutsSendShortcutId?: string;
 }): OutboundReadiness {
   const reasons: string[] = [];
 
@@ -100,7 +118,19 @@ export function outboundReadiness(args: {
       reasons.push(
         `Shortcuts CLI unavailable: ${args.shortcuts?.error ?? "unknown error"}`,
       );
-    } else if (!args.shortcuts.shortcuts?.includes(args.shortcutsSendShortcutName)) {
+    } else if (
+      args.shortcutsSendShortcutId &&
+      !Object.values(args.shortcuts.shortcutIdentifiers ?? {}).includes(
+        args.shortcutsSendShortcutId,
+      )
+    ) {
+      reasons.push(
+        `Shortcut id "${args.shortcutsSendShortcutId}" is not installed`,
+      );
+    } else if (
+      !args.shortcutsSendShortcutId &&
+      !args.shortcuts.shortcuts?.includes(args.shortcutsSendShortcutName)
+    ) {
       const installed = args.shortcuts.shortcuts ?? [];
       reasons.push(
         installed.length > 0

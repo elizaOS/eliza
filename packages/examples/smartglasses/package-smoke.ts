@@ -5,12 +5,13 @@ import {
   SMARTGLASSES_EVENT,
   SMARTGLASSES_SERVICE_NAME,
   SMARTGLASSES_TRANSCRIPT_EVENT,
+  SmartglassesService,
   setSmartglassesAudioDecoderForRuntime,
   setSmartglassesTransportForRuntime,
   smartglassesPlugin,
-} from "@elizaos/plugin-smartglasses";
+} from "@elizaos/plugin-hearwear";
 
-if (smartglassesPlugin.name !== "@elizaos/plugin-smartglasses") {
+if (smartglassesPlugin.name !== "@elizaos/plugin-hearwear") {
   throw new Error("Unexpected plugin name from package export");
 }
 
@@ -30,7 +31,9 @@ setSmartglassesTransportForRuntime(transport);
 setSmartglassesAudioDecoderForRuntime(() => Uint8Array.from([0, 0, 0, 64]));
 
 try {
-  const serviceClass = smartglassesPlugin.services?.[0] as
+  const serviceClass = smartglassesPlugin.services?.find(
+    (service) => service.serviceType === SMARTGLASSES_SERVICE_NAME,
+  ) as
     | { serviceType?: string; start: (runtime: unknown) => Promise<unknown> }
     | undefined;
   if (!serviceClass) {
@@ -61,6 +64,56 @@ try {
     throw new Error("Package smoke did not expose expected plugin components");
   }
 
+  const offlineService = new SmartglassesService();
+  const offlineRuntime = {
+    getService: (name: string) =>
+      name === SMARTGLASSES_SERVICE_NAME ? offlineService : null,
+  };
+  const offlineDisplayResult = await displayAction.handler(
+    offlineRuntime as never,
+    { content: { text: '{"text":"offline display"}' } } as never,
+  );
+  const offlineMicResult = await microphoneAction.handler(
+    offlineRuntime as never,
+    { content: { text: "enable microphone" } } as never,
+  );
+  const invalidControlResult = await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"brightness"}' } } as never,
+  );
+  if (
+    offlineDisplayResult.success !== false ||
+    !String(offlineDisplayResult.text).includes(
+      "Smartglasses display command failed",
+    )
+  ) {
+    throw new Error(
+      "Package smoke did not return display failure without transport",
+    );
+  }
+  if (
+    offlineMicResult.success !== false ||
+    !String(offlineMicResult.text).includes(
+      "Smartglasses microphone command failed",
+    )
+  ) {
+    throw new Error(
+      "Package smoke did not return microphone failure without transport",
+    );
+  }
+  if (
+    invalidControlResult.success !== false ||
+    !String(invalidControlResult.text).includes(
+      "Smartglasses brightness command failed",
+    ) ||
+    (invalidControlResult.values as { op?: string; error?: string } | undefined)
+      ?.op !== "brightness"
+  ) {
+    throw new Error(
+      "Package smoke did not return control failure for invalid parameters",
+    );
+  }
+
   await displayAction.handler(
     runtime as never,
     { content: { text: '{"text":"Package import smoke test"}' } } as never,
@@ -68,6 +121,58 @@ try {
   await microphoneAction.handler(
     runtime as never,
     { content: { text: "enable microphone" } } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    {
+      content: { text: '{"op":"battery_status"}' },
+    } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"clear"}' } } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"exit_dashboard"}' } } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"exit_function"}' } } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"start_ai","subcommand":"start"}' } } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"page_up"}' } } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"page_down"}' } } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"silent_mode","enabled":true}' } } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"brightness","level":4}' } } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"headup_angle","angle":8}' } } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"wear_detection","enabled":true}' } } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    {
+      content: { text: '{"op":"voice_note_list","syncId":1}' },
+    } as never,
   );
   await controlAction.handler(
     runtime as never,
@@ -84,7 +189,19 @@ try {
   await controlAction.handler(
     runtime as never,
     {
+      content: { text: '{"op":"voice_note_delete_all","syncId":4}' },
+    } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    {
       content: { text: '{"op":"dashboard_layout","layout":"dual"}' },
+    } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    {
+      content: { text: '{"op":"dashboard_position","height":3,"depth":7}' },
     } as never,
   );
   await controlAction.handler(
@@ -103,10 +220,18 @@ try {
       },
     } as never,
   );
-  await controlAction.handler(
+  const g1SetupResult = await controlAction.handler(
     runtime as never,
     {
       content: { text: '{"op":"g1_setup","json":{"calendar_enable":true}}' },
+    } as never,
+  );
+  const appWhitelistResult = await controlAction.handler(
+    runtime as never,
+    {
+      content: {
+        text: '{"op":"app_whitelist","json":{"calendar":true,"eliza":true}}',
+      },
     } as never,
   );
   const wifiScanResult = await controlAction.handler(
@@ -142,6 +267,45 @@ try {
     {
       content: {
         text: '{"op":"navigation_directions","totalDuration":"4 min","totalDistance":"1 km","direction":"Main St","distance":"200 m","speed":"30","directionTurn":3}',
+      },
+    } as never,
+  );
+  const navigationImage = Array.from({ length: 136 * 136 }, (_, index) =>
+    index % 113 === 0 ? 1 : 0,
+  );
+  const navigationOverlay = Array.from({ length: 136 * 136 }, () => 0);
+  const navigationImageResult = await controlAction.handler(
+    runtime as never,
+    {
+      content: {
+        text: JSON.stringify({
+          op: "navigation_primary_image",
+          image: navigationImage,
+          overlay: navigationOverlay,
+        }),
+      },
+    } as never,
+  );
+  const notificationResult = await controlAction.handler(
+    runtime as never,
+    {
+      content: {
+        text: '{"op":"notification","msgId":12,"appIdentifier":"eliza","title":"Eliza","message":"Package smoke notification","timeS":1800000000}',
+      },
+    } as never,
+  );
+  const bmpImageResult = await controlAction.handler(
+    runtime as never,
+    {
+      content: {
+        text: JSON.stringify({
+          op: "bmp_image",
+          pixels: Array.from({ length: 16 * 16 }, (_, index) =>
+            index % 5 === 0 ? 255 : 0,
+          ),
+          width: 16,
+          height: 16,
+        }),
       },
     } as never,
   );
@@ -280,6 +444,14 @@ try {
     Uint8Array.from([G1Command.Notification, 1, 1, 0, 123, 125]),
   );
   transport.emitRaw(
+    "left",
+    Uint8Array.from([G1Command.Battery, 0x66, 88, 0x02, 0x9c, 0x0f]),
+  );
+  transport.emitRaw(
+    "right",
+    Uint8Array.from([G1Command.Battery, 0x66, 84, 0x02, 0x88, 0x0f]),
+  );
+  transport.emitRaw(
     "right",
     Uint8Array.from([
       G1Command.GetSerial,
@@ -307,6 +479,87 @@ try {
   if (!commands.includes(G1Command.OpenMic)) {
     throw new Error("Package smoke did not send microphone packets");
   }
+  if (!commands.includes(G1Command.Battery)) {
+    throw new Error("Package smoke did not request battery status");
+  }
+  if (!commands.includes(G1Command.StartAi)) {
+    throw new Error("Package smoke did not send start AI packets");
+  }
+  if (
+    !transport.writes.some(
+      (write) =>
+        write.data[0] === G1Command.StartAi &&
+        write.data[1] === 0x18 &&
+        write.side === "left",
+    )
+  ) {
+    throw new Error("Package smoke did not send clear display packets");
+  }
+  if (
+    !transport.writes.some(
+      (write) =>
+        write.data[0] === G1Command.StartAi &&
+        write.data[1] === 0x00 &&
+        write.side === "right",
+    )
+  ) {
+    throw new Error("Package smoke did not send exit dashboard packets");
+  }
+  if (
+    !transport.writes.some(
+      (write) =>
+        write.data[0] === G1Command.StartAi &&
+        write.data[1] === 0x01 &&
+        write.side === "left",
+    )
+  ) {
+    throw new Error("Package smoke did not send page-up packets");
+  }
+  if (
+    !transport.writes.some(
+      (write) =>
+        write.data[0] === G1Command.StartAi &&
+        write.data[1] === 0x01 &&
+        write.side === "right",
+    )
+  ) {
+    throw new Error("Package smoke did not send page-down packets");
+  }
+  if (!commands.includes(G1Command.ExitFunction)) {
+    throw new Error("Package smoke did not send exit function packets");
+  }
+  if (!commands.includes(G1Command.SilentMode)) {
+    throw new Error("Package smoke did not send silent mode packets");
+  }
+  if (!commands.includes(G1Command.Brightness)) {
+    throw new Error("Package smoke did not send brightness packets");
+  }
+  if (!commands.includes(G1Command.HeadUpAngle)) {
+    throw new Error("Package smoke did not send head-up angle packets");
+  }
+  if (!commands.includes(G1Command.GlassesWear)) {
+    throw new Error("Package smoke did not send wear detection packets");
+  }
+  if (!commands.includes(G1Command.AppWhitelist)) {
+    throw new Error("Package smoke did not send app allowlist packets");
+  }
+  if (!commands.includes(G1Command.Notification)) {
+    throw new Error("Package smoke did not send notification packets");
+  }
+  if (!commands.includes(G1Command.BmpData)) {
+    throw new Error("Package smoke did not send BMP data packets");
+  }
+  if (
+    !transport.writes.some(
+      (write) =>
+        write.side === "right" &&
+        write.data[0] === G1Command.Note &&
+        write.data[3] === 1 &&
+        write.data[4] === 1,
+    )
+  ) {
+    throw new Error("Package smoke did not send voice note list packets");
+  }
   if (
     !transport.writes.some(
       (write) =>
@@ -328,6 +581,17 @@ try {
     )
   ) {
     throw new Error("Package smoke did not send voice note delete packets");
+  }
+  if (
+    !transport.writes.some(
+      (write) =>
+        write.side === "right" &&
+        write.data[0] === G1Command.Note &&
+        write.data[3] === 4 &&
+        write.data[4] === 5,
+    )
+  ) {
+    throw new Error("Package smoke did not send voice note delete-all packets");
   }
   if (
     !transport.writes.some(
@@ -375,6 +639,17 @@ try {
   if (!commands.includes(G1Command.DashboardContent)) {
     throw new Error("Package smoke did not send dashboard content packets");
   }
+  if (
+    !transport.writes.some(
+      (write) =>
+        write.data[0] === G1Command.DashboardPosition &&
+        write.data[1] === 0x08 &&
+        write.data[6] === 3 &&
+        write.data[7] === 7,
+    )
+  ) {
+    throw new Error("Package smoke did not send dashboard position packets");
+  }
   if (transport.wifiRequests.at(-3)?.op !== "scan") {
     throw new Error("Package smoke did not scan Wi-Fi through control action");
   }
@@ -407,6 +682,56 @@ try {
       ?.status !== "mock-wifi-ready"
   ) {
     throw new Error("Package smoke did not return Wi-Fi action status");
+  }
+  if (
+    (g1SetupResult.values?.operationResult as { packets?: number } | undefined)
+      ?.packets !== 1
+  ) {
+    throw new Error("Package smoke did not return G1 setup packet count");
+  }
+  if (
+    (
+      appWhitelistResult.values?.operationResult as
+        | { packets?: number }
+        | undefined
+    )?.packets !== 1
+  ) {
+    throw new Error("Package smoke did not return app allowlist packet count");
+  }
+  if (
+    !(
+      (
+        navigationImageResult.values?.operationResult as
+          | { packets?: number }
+          | undefined
+      )?.packets ?? 0
+    )
+  ) {
+    throw new Error(
+      "Package smoke did not return navigation image packet count",
+    );
+  }
+  if (
+    !(
+      (
+        notificationResult.values?.operationResult as
+          | { packets?: number }
+          | undefined
+      )?.packets ?? 0
+    )
+  ) {
+    throw new Error("Package smoke did not return notification packet count");
+  }
+  if (
+    !(
+      (
+        bmpImageResult.values?.operationResult as
+          | { packets?: number; bytes?: number }
+          | undefined
+      )?.bytes ?? 0
+    )
+  ) {
+    throw new Error("Package smoke did not return BMP byte count");
   }
   if (!commands.includes(G1Command.Navigation)) {
     throw new Error("Package smoke did not send navigation packets");
@@ -462,6 +787,12 @@ try {
   }
   if (!String(status.text).includes("serial=G1RIGHTSERIAL001")) {
     throw new Error("Package smoke provider did not report serial number");
+  }
+  if (
+    !String(status.text).includes("batteryLevels=left:88% right:84%") ||
+    String(status.text).includes("battery=right:84%")
+  ) {
+    throw new Error("Package smoke provider did not report battery levels");
   }
   if (!String(status.text).includes("lenses=left:connected right:connected")) {
     throw new Error(

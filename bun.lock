@@ -219,6 +219,7 @@
         "@elizaos/plugin-defense-of-the-agents": "workspace:*",
         "@elizaos/plugin-device-settings": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-hearwear": "workspace:*",
         "@elizaos/plugin-hyperliquid-app": "workspace:*",
         "@elizaos/plugin-hyperscape": "workspace:*",
         "@elizaos/plugin-lifeops": "workspace:*",
@@ -227,7 +228,6 @@
         "@elizaos/plugin-polymarket-app": "workspace:*",
         "@elizaos/plugin-scape": "workspace:*",
         "@elizaos/plugin-shopify-ui": "workspace:*",
-        "@elizaos/plugin-smartglasses": "workspace:*",
         "@elizaos/plugin-steward-app": "workspace:*",
         "@elizaos/plugin-task-coordinator": "workspace:*",
         "@elizaos/plugin-training": "workspace:*",
@@ -1529,7 +1529,7 @@
       "dependencies": {
         "@abandonware/noble": "^1.9.2-25",
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-smartglasses": "workspace:*",
+        "@elizaos/plugin-hearwear": "workspace:*",
         "@evenrealities/even_hub_sdk": "0.0.10",
       },
       "devDependencies": {
@@ -3345,6 +3345,38 @@
         "tsup": "^8.5.1",
       },
     },
+    "plugins/plugin-hearwear": {
+      "name": "@elizaos/plugin-hearwear",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+        "lucide-react": "^1.0.0",
+        "ws": "^8.18.0",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@types/node": "^25.0.3",
+        "@types/react": "^19.2.3",
+        "@types/react-dom": "^19.2.3",
+        "@types/ws": "^8.5.10",
+        "bun-types": "^1.3.14",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.0",
+        "vitest": "^4.0.17",
+      },
+      "optionalDependencies": {
+        "@abandonware/noble": "^1.9.2-25",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+    },
     "plugins/plugin-farcaster": {
       "name": "@elizaos/plugin-farcaster",
       "version": "2.0.1-beta.0",
@@ -4548,8 +4580,10 @@
         "@elizaos/core": "workspace:*",
       },
     },
-    "plugins/plugin-smartglasses": {
-      "name": "@elizaos/plugin-smartglasses",
+<<<<<<< HEAD
+=======
+    "plugins/plugin-hearwear": {
+      "name": "@elizaos/plugin-hearwear",
       "version": "2.0.1-beta.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
@@ -4577,6 +4611,7 @@
         "react-dom": "^19.0.0",
       },
     },
+>>>>>>> origin/develop
     "plugins/plugin-social-alpha": {
       "name": "@elizaos/plugin-social-alpha",
       "version": "2.0.1-beta.0",
@@ -5997,6 +6032,8 @@
 
     "@elizaos/plugin-elizamaker": ["@elizaos/plugin-elizamaker@workspace:plugins/plugin-elizamaker"],
 
+    "@elizaos/plugin-hearwear": ["@elizaos/plugin-hearwear@workspace:plugins/plugin-hearwear"],
+
     "@elizaos/plugin-farcaster": ["@elizaos/plugin-farcaster@workspace:plugins/plugin-farcaster"],
 
     "@elizaos/plugin-feishu": ["@elizaos/plugin-feishu@workspace:plugins/plugin-feishu"],
@@ -6094,8 +6131,6 @@
     "@elizaos/plugin-signal": ["@elizaos/plugin-signal@workspace:plugins/plugin-signal"],
 
     "@elizaos/plugin-slack": ["@elizaos/plugin-slack@workspace:plugins/plugin-slack"],
-
-    "@elizaos/plugin-smartglasses": ["@elizaos/plugin-smartglasses@workspace:plugins/plugin-smartglasses"],
 
     "@elizaos/plugin-social-alpha": ["@elizaos/plugin-social-alpha@workspace:plugins/plugin-social-alpha"],
 

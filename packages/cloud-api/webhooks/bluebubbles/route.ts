@@ -243,6 +243,9 @@ export async function handleBlueBubblesWebhookPayload(
       userId: routed.userId,
       gatewayDeviceId: gatewayDevice.id,
       gatewayDeviceRegistered: gatewayDevice.registered,
+      gatewayDevicePhoneNumber: recipient,
+      gatewayDeviceBridgeId: bridgeId,
+      gatewayDeviceProvider: "blooio",
     });
   } catch (error) {
     logger.error("[BlueBubblesWebhook] Routing failed", {
@@ -259,6 +262,9 @@ export async function handleBlueBubblesWebhookPayload(
       replyText: FIRST_CONTACT_REPLY,
       gatewayDeviceId: gatewayDevice.id,
       gatewayDeviceRegistered: gatewayDevice.registered,
+      gatewayDevicePhoneNumber: recipient,
+      gatewayDeviceBridgeId: bridgeId,
+      gatewayDeviceProvider: "blooio",
       routingError: "BlueBubbles routing failed",
     });
   }

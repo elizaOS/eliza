@@ -91,7 +91,12 @@ def _coerce_float(value: Any) -> float | None:
 
 
 def _token_detail_value(usage: dict[str, Any], keys: tuple[str, ...]) -> int | None:
-    for container_key in ("prompt_tokens_details", "input_token_details", "token_details"):
+    for container_key in (
+        "prompt_tokens_details",
+        "input_token_details",
+        "input_tokens_details",
+        "token_details",
+    ):
         details = usage.get(container_key)
         if not isinstance(details, dict):
             continue
@@ -123,12 +128,15 @@ def _nested_dict(obj: dict[str, Any], path: tuple[str, ...]) -> dict[str, Any] |
 
 
 def _tokens_from_llm_call(call: dict[str, Any]) -> TurnTokens | None:
-    prompt = _first_present_int(call, ("promptTokens", "prompt_tokens", "input_tokens"))
+    prompt = _first_present_int(
+        call,
+        ("promptTokens", "prompt_tokens", "inputTokens", "input_tokens"),
+    )
     completion = _first_present_int(
         call,
-        ("completionTokens", "completion_tokens", "output_tokens"),
+        ("completionTokens", "completion_tokens", "outputTokens", "output_tokens"),
     )
-    total = _first_present_int(call, ("totalTokens", "total_tokens"))
+    total = _first_present_int(call, ("totalTokens", "total_tokens", "totalTokenCount"))
     cached_raw = _first_present(
         call,
         (
@@ -280,37 +288,63 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
     # Shape 1: bench-server post-May-2026 — `usage: BenchmarkTurnUsage`.
     usage = obj.get("usage")
     if isinstance(usage, dict):
+        calls = usage.get("calls")
+        if isinstance(calls, list) and calls:
+            tokens = _sum_llm_call_tokens(calls)
+            if tokens is not None:
+                return tokens
+
         prompt = _first_present_int(
             usage,
-            ("promptTokens", "prompt_tokens", "input_tokens"),
+            ("promptTokens", "prompt_tokens", "inputTokens", "input_tokens"),
         )
         completion = _first_present_int(
             usage,
-            ("completionTokens", "completion_tokens", "output_tokens"),
+            ("completionTokens", "completion_tokens", "outputTokens", "output_tokens"),
         )
-        total = _first_present_int(usage, ("totalTokens", "total_tokens"))
+        total = _first_present_int(usage, ("totalTokens", "total_tokens", "totalTokenCount"))
         cached_raw = _first_present(
             usage,
-            ("cachedTokens", "cached_tokens", "cache_read_input_tokens"),
+            (
+                "cacheReadInputTokens",
+                "cache_read_input_tokens",
+                "cachedTokens",
+                "cached_tokens",
+            ),
         )
         if cached_raw is None:
             cached_raw = _token_detail_value(
                 usage,
-                ("cached_tokens", "cache_read_input_tokens"),
+                ("cached_tokens", "cache_read_input_tokens", "cacheReadInputTokens"),
             )
         cache_creation_raw = _first_present(
             usage,
-            ("cacheCreationInputTokens", "cache_creation_input_tokens"),
+            (
+                "cacheCreationInputTokens",
+                "cache_creation_input_tokens",
+                "cacheWriteInputTokens",
+                "cache_write_input_tokens",
+            ),
         )
         if cache_creation_raw is None:
             cache_creation_raw = _token_detail_value(
                 usage,
-                ("cache_creation_input_tokens", "cache_write_tokens"),
+                (
+                    "cache_creation_input_tokens",
+                    "cacheCreationInputTokens",
+                    "cache_write_tokens",
+                    "cacheWriteInputTokens",
+                    "cache_write_input_tokens",
+                ),
             )
         cache_creation = _coerce_int(cache_creation_raw)
         has_cached = cached_raw is not None
         cached = _coerce_int(cached_raw)
-        if prompt or completion or cached or cache_creation:
+        llm_calls = _first_present_int(
+            usage,
+            ("llm_call_count", "llmCallCount", "call_count", "calls_count"),
+        )
+        if prompt or completion or total or cached or cache_creation or llm_calls:
             return TurnTokens(
                 prompt=prompt,
                 completion=completion,
@@ -318,6 +352,7 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
                 cached=cached,
                 cache_creation=cache_creation,
                 has_cached=has_cached,
+                llm_calls=llm_calls or 1,
             )
 
     # Shape 1c: nested raw harness output, e.g. VisualWebBench stores
@@ -395,38 +430,6 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
         total = _coerce_int(metrics.get("tokens_used") or metrics.get("total_tokens"))
         if total:
             return TurnTokens(prompt=total, total=total)
-
-    # Shape 2: per-call list — `usage.calls[]`.
-    if isinstance(usage, dict):
-        calls = usage.get("calls")
-        if isinstance(calls, list) and calls:
-            prompt = sum(_coerce_int(c.get("promptTokens")) for c in calls if isinstance(c, dict))
-            completion = sum(
-                _coerce_int(c.get("completionTokens")) for c in calls if isinstance(c, dict)
-            )
-            total = sum(_coerce_int(c.get("totalTokens")) for c in calls if isinstance(c, dict))
-            cached = 0
-            cache_creation = 0
-            has_cached = False
-            for c in calls:
-                if isinstance(c, dict) and c.get("cachedTokens") is not None:
-                    cached += _coerce_int(c.get("cachedTokens"))
-                    has_cached = True
-                if isinstance(c, dict):
-                    cache_creation += _coerce_int(
-                        c.get("cacheCreationInputTokens")
-                        or c.get("cache_creation_input_tokens")
-                    )
-            if prompt or completion or cached or cache_creation:
-                return TurnTokens(
-                    prompt=prompt,
-                    completion=completion,
-                    total=total,
-                    cached=cached,
-                    cache_creation=cache_creation,
-                    has_cached=has_cached,
-                    llm_calls=sum(1 for c in calls if isinstance(c, dict)),
-                )
 
     # Shape 3: adhdbench-like flat fields.
     if "prompt_tokens" in obj or "completion_tokens" in obj or "cached_tokens" in obj:

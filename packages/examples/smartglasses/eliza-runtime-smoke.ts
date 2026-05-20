@@ -12,7 +12,7 @@ import {
   type SmartglassesService,
   setSmartglassesTransportForRuntime,
   smartglassesPlugin,
-} from "@elizaos/plugin-smartglasses";
+} from "@elizaos/plugin-hearwear";
 
 const characterConfig = JSON.parse(
   await readFile(new URL("./character.json", import.meta.url), "utf8"),
@@ -57,14 +57,17 @@ try {
     throw new Error("Runtime did not register smartglasses components");
   }
 
-  await displayAction.handler(runtime, {
+  const displayResult = await displayAction.handler(runtime, {
     content: { text: '{"text":"Eliza runtime smartglasses smoke"}' },
   } as never);
-  await microphoneAction.handler(runtime, {
+  const microphoneResult = await microphoneAction.handler(runtime, {
     content: { text: "enable microphone" },
   } as never);
   const wifiScanResult = await controlAction.handler(runtime, {
     content: { text: '{"op":"wifi_scan"}' },
+  } as never);
+  const invalidControlResult = await controlAction.handler(runtime, {
+    content: { text: '{"op":"brightness"}' },
   } as never);
   await controlAction.handler(runtime, {
     content: {
@@ -75,6 +78,32 @@ try {
     content: {
       text: '{"op":"wifi_setup","reason":"Runtime smoke needs headset Wi-Fi"}',
     },
+  } as never);
+  const aliasAllowlistResult = await controlAction.handler(runtime, {
+    content: {
+      text: '{"op":"app_allowlist","allowlist":{"apps":["runtime"]}}',
+    },
+  } as never);
+  const aliasWifiConnectResult = await controlAction.handler(runtime, {
+    content: {
+      text: '{"op":"wifi_connect","ssid":"RuntimeAliasNet","password":"secret"}',
+    },
+  } as never);
+  const aliasWifiSetupResult = await controlAction.handler(runtime, {
+    content: {
+      text: '{"op":"request_wifi_setup","reason":"Runtime alias setup"}',
+    },
+  } as never);
+  const aliasQuickNoteResult = await controlAction.handler(runtime, {
+    content: {
+      text: '{"op":"quick_note_fetch","noteIndex":2,"syncId":17}',
+    },
+  } as never);
+  const aliasPreviousPageResult = await controlAction.handler(runtime, {
+    content: { text: '{"op":"previous_page"}' },
+  } as never);
+  const aliasNextPageResult = await controlAction.handler(runtime, {
+    content: { text: '{"op":"next_page"}' },
   } as never);
   await controlAction.handler(runtime, {
     content: {
@@ -99,21 +128,42 @@ try {
   const dashboardPackets = transport.writes.filter(
     (write) => write.data[0] === G1Command.DashboardContent,
   );
+  const aliasResults = [
+    aliasAllowlistResult,
+    aliasWifiConnectResult,
+    aliasWifiSetupResult,
+    aliasQuickNoteResult,
+    aliasPreviousPageResult,
+    aliasNextPageResult,
+  ].map((result) => (result.values as { op?: string } | undefined)?.op);
 
   if (autoInitPackets.length < 2)
     throw new Error("Runtime smoke did not auto-init both lenses");
   if (displayPackets.length === 0)
     throw new Error("Runtime smoke did not send display packets");
+  if (
+    displayResult.success !== true ||
+    (displayResult.values as { pages?: number } | undefined)?.pages !== 1
+  ) {
+    throw new Error("Runtime smoke did not return display action page count");
+  }
   if (!micPackets.some((write) => write.data[1] === 1))
     throw new Error("Runtime smoke did not enable the microphone");
+  if (
+    microphoneResult.success !== true ||
+    (microphoneResult.values as { microphoneEnabled?: boolean } | undefined)
+      ?.microphoneEnabled !== true
+  ) {
+    throw new Error("Runtime smoke did not return microphone action state");
+  }
   if (!micPackets.some((write) => write.data[1] === 0))
     throw new Error("Runtime smoke did not disable the microphone from tap");
   if (dashboardPackets.length === 0)
     throw new Error("Runtime smoke did not route control packets");
-  if (transport.wifiRequests.at(-3)?.op !== "scan")
+  if (transport.wifiRequests[0]?.op !== "scan")
     throw new Error("Runtime smoke did not scan Wi-Fi through control action");
   if (
-    JSON.stringify(transport.wifiRequests.at(-2)) !==
+    JSON.stringify(transport.wifiRequests[1]) !==
     JSON.stringify({
       op: "configure",
       ssid: "RuntimeNet",
@@ -125,7 +175,7 @@ try {
     );
   }
   if (
-    JSON.stringify(transport.wifiRequests.at(-1)) !==
+    JSON.stringify(transport.wifiRequests[2]) !==
     JSON.stringify({
       op: "setup",
       reason: "Runtime smoke needs headset Wi-Fi",
@@ -136,11 +186,92 @@ try {
     );
   }
   if (
+    JSON.stringify(transport.wifiRequests.at(-2)) !==
+    JSON.stringify({
+      op: "configure",
+      ssid: "RuntimeAliasNet",
+      password: "secret",
+    })
+  ) {
+    throw new Error(
+      "Runtime smoke did not configure Wi-Fi through setup alias",
+    );
+  }
+  if (
+    JSON.stringify(transport.wifiRequests.at(-1)) !==
+    JSON.stringify({ op: "setup", reason: "Runtime alias setup" })
+  ) {
+    throw new Error(
+      "Runtime smoke did not request Wi-Fi setup through setup alias",
+    );
+  }
+  if (
+    JSON.stringify(aliasResults) !==
+    JSON.stringify([
+      "app_whitelist",
+      "wifi_configure",
+      "wifi_setup",
+      "voice_note_fetch",
+      "page_up",
+      "page_down",
+    ])
+  ) {
+    throw new Error("Runtime smoke did not return canonical alias op names");
+  }
+  if (
+    !transport.writes.some((write) => write.data[0] === G1Command.AppWhitelist)
+  )
+    throw new Error("Runtime smoke did not send app allowlist alias packets");
+  if (
+    !transport.writes.some(
+      (write) =>
+        write.side === "right" &&
+        write.data[0] === G1Command.Note &&
+        write.data[3] === 17 &&
+        write.data[4] === 0x02 &&
+        write.data[5] === 0x02,
+    )
+  ) {
+    throw new Error("Runtime smoke did not send QuickNote alias packets");
+  }
+  if (
+    !transport.writes.some(
+      (write) =>
+        write.side === "left" &&
+        write.data[0] === G1Command.StartAi &&
+        write.data[1] === 0x01,
+    )
+  ) {
+    throw new Error("Runtime smoke did not send previous-page alias packets");
+  }
+  if (
+    !transport.writes.some(
+      (write) =>
+        write.side === "right" &&
+        write.data[0] === G1Command.StartAi &&
+        write.data[1] === 0x01,
+    )
+  ) {
+    throw new Error("Runtime smoke did not send next-page alias packets");
+  }
+  if (
     !wifiScanResult.values ||
     (wifiScanResult.values.operationResult as { status?: string } | undefined)
       ?.status !== "mock-wifi-ready"
   ) {
     throw new Error("Runtime smoke did not return Wi-Fi action status");
+  }
+  if (
+    invalidControlResult.success !== false ||
+    !String(invalidControlResult.text).includes(
+      "Smartglasses brightness command failed",
+    ) ||
+    (invalidControlResult.values as { op?: string; error?: string } | undefined)
+      ?.op !== "brightness"
+  ) {
+    throw new Error(
+      "Runtime smoke did not return control action failure details",
+    );
   }
   if (!provider.text.includes("Smartglasses: connected=true"))
     throw new Error("Runtime smoke provider did not report connection state");

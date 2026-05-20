@@ -4,7 +4,7 @@
     "An elizaOS assistant configured to control Even Realities G1/G2 smartglasses."
   ],
   "system": "Use the smartglasses plugin for wearable display, microphone, and side-tap control workflows.",
-  "plugins": ["@elizaos/plugin-smartglasses"],
+  "plugins": ["@elizaos/plugin-hearwear"],
   "settings": {
     "SMARTGLASSES_TRANSPORT": "auto",
     "SMARTGLASSES_AUTO_INIT": true,

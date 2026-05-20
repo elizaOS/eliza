@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.util
 import json
+import math
 import os
 import re
 import shutil
@@ -32,6 +34,14 @@ from .code_agent_coverage import (
     included_benchmark_ids,
     repo_local_related_benchmark_dirs,
 )
+from .code_agent_latest_contract import (
+    CODE_AGENT_LATEST_ACCEPTABLE_COMPARISON_STATUSES,
+    CODE_AGENT_LATEST_AGENT,
+    CODE_AGENT_LATEST_REQUIRED_NUMERIC_FIELDS,
+    CODE_AGENT_LATEST_REQUIRED_PROVENANCE_FIELDS,
+    CODE_AGENT_LATEST_REQUIRED_TRUE_FIELDS,
+    expected_code_agent_comparison_status,
+)
 
 DEFAULT_ADAPTERS = ("elizaos", "opencode")
 DEFAULT_BENCHMARKS = included_benchmark_ids()
@@ -42,6 +52,16 @@ DEFAULT_PROVIDER = "cerebras"
 DEFAULT_CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 CODE_CAPABILITIES = "code.read,code.write,code.edit,code.search,code.shell"
 DEFAULT_LOG_LIMIT_BYTES = 16 * 1024 * 1024
+RUNNABLE_DEFERRED_BENCHMARKS = frozenset({"swe_bench_pro", "vision_language"})
+NON_CODE_GUARDRAIL_EXCLUDED_BENCHMARKS = tuple(
+    sorted({item.benchmark_id for item in CODE_AGENT_COVERAGE})
+)
+NON_CODE_GUARDRAIL_COMMAND = (
+    "PYTHONPATH=packages python -m benchmarks.orchestrator "
+    "validate-latest-readiness --skip-runtime-gates "
+    f"--exclude-benchmarks {','.join(NON_CODE_GUARDRAIL_EXCLUDED_BENCHMARKS)} "
+    "--json > /path/to/non-code-quality-guardrail.json"
+)
 REPORT_ROW_FIELDS = (
     "generated_at",
     "run_root",
@@ -52,6 +72,14 @@ REPORT_ROW_FIELDS = (
     "status",
     "target_adapter",
     "baseline_adapter",
+    "target_failure_class",
+    "baseline_failure_class",
+    "target_result_path",
+    "baseline_result_path",
+    "target_command_path",
+    "baseline_command_path",
+    "target_trajectory_dir",
+    "baseline_trajectory_dir",
     "target_right",
     "target_wrong",
     "target_total",
@@ -85,6 +113,9 @@ REPORT_ROW_FIELDS = (
     "trajectory_review_gate_ok",
     "live_report_gate_ok",
     "report_gate_ok",
+    "release_readiness_ok",
+    "release_readiness_blocking_requirements",
+    "release_readiness_unblock_command_ids",
 )
 EXIT_OK = 0
 EXIT_PREFLIGHT_FAILED = 2
@@ -98,6 +129,7 @@ EXIT_NO_REGRESSION_FAILED = 9
 EXIT_QUALITY_GUARDRAIL_FAILED = 10
 EXIT_TRAJECTORY_REVIEW_FAILED = 11
 EXIT_LIVE_REPORT_FAILED = 12
+EXIT_RELEASE_READINESS_FAILED = 13
 EXIT_CODE_SPECS = (
     (EXIT_OK, "ok", "run completed without an enforced gate failure"),
     (EXIT_PREFLIGHT_FAILED, "preflight_failed", "preflight checks failed"),
@@ -151,6 +183,11 @@ EXIT_CODE_SPECS = (
         "live_report_failed",
         "the report was not generated from live benchmark execution",
     ),
+    (
+        EXIT_RELEASE_READINESS_FAILED,
+        "release_readiness_failed",
+        "the final release-readiness checklist failed",
+    ),
 )
 
 FAILURE_CLASSES = (
@@ -200,6 +237,7 @@ class CellResult:
     stderr_path: str
     result_path: str | None
     failure_class: str
+    command_path: str | None = None
     notes: list[str] = field(default_factory=list)
     score: float | None = None
     outcome_metrics: dict[str, int | float | None] = field(default_factory=dict)
@@ -361,12 +399,251 @@ def _nl2repo_agent_command_template(adapter: str, env: dict[str, str] | None = N
     )
 
 
+def _standard_humaneval_command_env_name(adapter: str) -> str:
+    adapter_key = sanitize(adapter).replace("-", "_").upper()
+    return f"STANDARD_HUMANEVAL_AGENT_COMMAND_TEMPLATE_{adapter_key}"
+
+
+def _standard_humaneval_agent_command_template(adapter: str, env: dict[str, str] | None = None) -> str:
+    env = os.environ if env is None else env
+    configured = (
+        env.get(_standard_humaneval_command_env_name(adapter), "")
+        or env.get("STANDARD_HUMANEVAL_AGENT_COMMAND_TEMPLATE", "")
+    ).strip()
+    if configured:
+        return configured
+    disable_builtin = env.get("STANDARD_HUMANEVAL_DISABLE_BUILTIN_AGENT_COMMAND", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if disable_builtin:
+        return ""
+    agent_command = workspace_root() / "packages" / "benchmarks" / "standard" / "agent_command.py"
+    if not agent_command.exists():
+        return ""
+    return " ".join(
+        shlex.quote(part)
+        for part in (
+            sys.executable,
+            str(agent_command),
+            "--adapter",
+            adapter,
+            "--benchmark",
+            "standard_humaneval",
+            "--task",
+            "{task}",
+            "--prompt",
+            "{prompt}",
+            "--result-json",
+            "{result_json}",
+            "--provider",
+            "{model_provider}",
+            "--model",
+            "{model}",
+        )
+    )
+
+
+def _app_eval_coding_command_env_name(adapter: str) -> str:
+    adapter_key = sanitize(adapter).replace("-", "_").upper()
+    return f"APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE_{adapter_key}"
+
+
+def _app_eval_coding_agent_command_template(adapter: str, env: dict[str, str] | None = None) -> str:
+    env = os.environ if env is None else env
+    configured = (
+        env.get(_app_eval_coding_command_env_name(adapter), "")
+        or env.get("APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE", "")
+    ).strip()
+    if configured:
+        return configured
+    disable_builtin = env.get("APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if disable_builtin:
+        return ""
+    agent_command = workspace_root() / "packages" / "benchmarks" / "app-eval" / "agent_command.py"
+    if not agent_command.exists():
+        return ""
+    return " ".join(
+        shlex.quote(part)
+        for part in (
+            sys.executable,
+            str(agent_command),
+            "--adapter",
+            adapter,
+            "--workspace",
+            "{workspace}",
+            "--prompt",
+            "{prompt}",
+            "--task",
+            "{task}",
+            "--result-json",
+            "{result_json}",
+            "--provider",
+            "{model_provider}",
+            "--model",
+            "{model}",
+        )
+    )
+
+
+def _qwen_claw_bench_command_env_name(adapter: str) -> str:
+    adapter_key = sanitize(adapter).replace("-", "_").upper()
+    return f"QWEN_CLAW_BENCH_AGENT_COMMAND_TEMPLATE_{adapter_key}"
+
+
+def _qwen_claw_bench_agent_command_template(adapter: str, env: dict[str, str] | None = None) -> str:
+    env = os.environ if env is None else env
+    configured = (
+        env.get(_qwen_claw_bench_command_env_name(adapter), "")
+        or env.get("QWEN_CLAW_BENCH_AGENT_COMMAND_TEMPLATE", "")
+    ).strip()
+    if configured:
+        return configured
+    disable_builtin = env.get("QWEN_CLAW_BENCH_DISABLE_BUILTIN_AGENT_COMMAND", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if disable_builtin:
+        return ""
+    agent_command = workspace_root() / "packages" / "benchmarks" / "qwen_claw_bench_matrix" / "agent_command.py"
+    if not agent_command.exists():
+        return ""
+    return " ".join(
+        shlex.quote(part)
+        for part in (
+            sys.executable,
+            str(agent_command),
+            "--adapter",
+            adapter,
+            "--workspace",
+            "{workspace}",
+            "--task-path",
+            "{task_path}",
+            "--task",
+            "{task}",
+            "--result-json",
+            "{result_json}",
+            "--provider",
+            "{model_provider}",
+            "--model",
+            "{model}",
+        )
+    )
+
+
+def _claw_eval_command_env_name(adapter: str) -> str:
+    adapter_key = sanitize(adapter).replace("-", "_").upper()
+    return f"CLAW_EVAL_AGENT_COMMAND_TEMPLATE_{adapter_key}"
+
+
+def _claw_eval_agent_command_template(adapter: str, env: dict[str, str] | None = None) -> str:
+    env = os.environ if env is None else env
+    configured = (
+        env.get(_claw_eval_command_env_name(adapter), "")
+        or env.get("CLAW_EVAL_AGENT_COMMAND_TEMPLATE", "")
+    ).strip()
+    if configured:
+        return configured
+    disable_builtin = env.get("CLAW_EVAL_DISABLE_BUILTIN_AGENT_COMMAND", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if disable_builtin:
+        return ""
+    agent_command = workspace_root() / "packages" / "benchmarks" / "claw_eval_matrix" / "agent_command.py"
+    if not agent_command.exists():
+        return ""
+    return " ".join(
+        shlex.quote(part)
+        for part in (
+            sys.executable,
+            str(agent_command),
+            "--adapter",
+            adapter,
+            "--task-yaml",
+            "{task_yaml}",
+            "--task",
+            "{task}",
+            "--result-json",
+            "{result_json}",
+            "--provider",
+            "{model_provider}",
+            "--model",
+            "{model}",
+        )
+    )
+
+
+def _swe_bench_pro_command_env_name(adapter: str) -> str:
+    adapter_key = sanitize(adapter).replace("-", "_").upper()
+    return f"SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE_{adapter_key}"
+
+
+def _swe_bench_pro_agent_command_template(adapter: str, env: dict[str, str] | None = None) -> str:
+    env = os.environ if env is None else env
+    configured = (
+        env.get(_swe_bench_pro_command_env_name(adapter), "")
+        or env.get("SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE", "")
+    ).strip()
+    if configured:
+        return configured
+    disable_builtin = env.get("SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if disable_builtin:
+        return ""
+    agent_command = workspace_root() / "packages" / "benchmarks" / "swe_bench_pro_matrix" / "agent_command.py"
+    if not agent_command.exists():
+        return ""
+    return " ".join(
+        shlex.quote(part)
+        for part in (
+            sys.executable,
+            str(agent_command),
+            "--adapter",
+            adapter,
+            "--workspace",
+            "{workspace}",
+            "--prompt",
+            "{prompt}",
+            "--task",
+            "{task}",
+            "--repo",
+            "{repo}",
+            "--base-commit",
+            "{base_commit}",
+            "--result-json",
+            "{result_json}",
+            "--provider",
+            "{model_provider}",
+            "--model",
+            "{model}",
+        )
+    )
+
+
 def preflight_matrix(
     *,
     root: Path,
     cells: list[MatrixCell],
     provider: str,
     require_provider_key: bool = True,
+    require_quality_guardrail_summary: bool = False,
+    quality_guardrail_summary: str = "",
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     env = dict(os.environ if env is None else env)
@@ -381,6 +658,88 @@ def preflight_matrix(
             }
         )
 
+    quality_guardrail_summary = str(quality_guardrail_summary or "")
+    quality_guardrail_summary_present = False
+    quality_guardrail_summary_ok: bool | None = None
+    quality_guardrail_summary_findings = 0
+    quality_guardrail_summary_blocking_findings: list[dict[str, str]] = []
+    if quality_guardrail_summary:
+        quality_guardrail_path = Path(quality_guardrail_summary).expanduser()
+        quality_guardrail_summary_present = quality_guardrail_path.exists()
+        if require_quality_guardrail_summary and not quality_guardrail_summary_present:
+            issues.append(
+                {
+                    "severity": "error",
+                    "kind": "missing_quality_guardrail_summary_file",
+                    "message": f"quality guardrail summary was not found: {quality_guardrail_summary}",
+                }
+            )
+        elif require_quality_guardrail_summary:
+            guardrail_payload = read_json(quality_guardrail_path)
+            if not isinstance(guardrail_payload, dict):
+                quality_guardrail_summary_ok = False
+                issues.append(
+                    {
+                        "severity": "error",
+                        "kind": "invalid_quality_guardrail_summary",
+                        "message": f"quality guardrail summary is not valid JSON: {quality_guardrail_summary}",
+                    }
+                )
+            else:
+                validation_issues = _quality_guardrail_summary_validation(guardrail_payload)
+                findings = guardrail_payload.get("findings")
+                findings = findings if isinstance(findings, list) else []
+                quality_guardrail_summary_findings = len(findings)
+                quality_guardrail_summary_blocking_findings = [
+                    {
+                        "scope": str(finding.get("scope", "")),
+                        "reason": str(finding.get("reason", "")),
+                        "value": str(finding.get("value", "")),
+                        "next_action": _quality_guardrail_next_action(
+                            str(finding.get("scope", "")),
+                            str(finding.get("reason", "")),
+                            str(finding.get("value", "")),
+                        ),
+                    }
+                    for finding in findings
+                    if isinstance(finding, dict)
+                ]
+                quality_guardrail_summary_ok = (
+                    not validation_issues
+                    and bool(guardrail_payload.get("ok"))
+                    and not findings
+                )
+                if validation_issues:
+                    issues.append(
+                        {
+                            "severity": "error",
+                            "kind": "invalid_quality_guardrail_summary",
+                            "message": (
+                                "quality guardrail summary is not a readiness report"
+                                f": {', '.join(validation_issues)}"
+                            ),
+                        }
+                    )
+                if not quality_guardrail_summary_ok:
+                    issues.append(
+                        {
+                            "severity": "error",
+                            "kind": "quality_guardrail_summary_failed",
+                            "message": (
+                                "quality guardrail summary is not clean"
+                                f": ok={guardrail_payload.get('ok')}, findings={len(findings)}"
+                            ),
+                        }
+                    )
+    elif require_quality_guardrail_summary:
+        issues.append(
+            {
+                "severity": "error",
+                "kind": "missing_quality_guardrail_summary",
+                "message": "release readiness requires --quality-guardrail-summary",
+            }
+        )
+
     opencode_bin = _opencode_bin(root, env)
     if any(cell.adapter == "opencode" for cell in cells) and not opencode_bin:
         issues.append(
@@ -392,7 +751,7 @@ def preflight_matrix(
         )
 
     cell_checks: list[dict[str, Any]] = []
-    nl2repo_docker_checked = False
+    docker_checked = False
     for cell in cells:
         executable = cell.command[0] if cell.command else ""
         executable_ok = bool(executable and (Path(executable).exists() or shutil.which(executable)))
@@ -425,15 +784,15 @@ def preflight_matrix(
                         ),
                     }
                 )
-            if "--no-docker" not in cell.command and not nl2repo_docker_checked:
-                nl2repo_docker_checked = True
+            if "--no-docker" not in cell.command and not docker_checked:
+                docker_checked = True
                 docker = shutil.which("docker")
                 if not docker:
                     issues.append(
                         {
                             "severity": "error",
                             "kind": "missing_docker_cli",
-                            "message": "nl2repo live scoring requires the Docker CLI",
+                            "message": f"{cell.benchmark} live scoring requires the Docker CLI",
                         }
                     )
                 else:
@@ -452,7 +811,116 @@ def preflight_matrix(
                                 "severity": "error",
                                 "kind": "docker_daemon_unavailable",
                                 "message": (
-                                    "nl2repo live scoring requires a running Docker daemon"
+                                    f"{cell.benchmark} live scoring requires a running Docker daemon"
+                                    + (f": {detail}" if detail else "")
+                                ),
+                            }
+                        )
+        if cell.benchmark == "standard_humaneval" and "--mock" not in cell.command:
+            if "--agent-command-template" not in cell.command:
+                issues.append(
+                    {
+                        "severity": "error",
+                        "kind": "missing_standard_humaneval_agent_command_template",
+                        "message": (
+                            f"{cell.benchmark}/{cell.adapter} requires "
+                            "STANDARD_HUMANEVAL_AGENT_COMMAND_TEMPLATE or "
+                            f"{_standard_humaneval_command_env_name(cell.adapter)}"
+                        ),
+                    }
+                )
+        if cell.benchmark == "app_eval_coding" and "--mock" not in cell.command:
+            if "--agent-command-template" not in cell.command:
+                issues.append(
+                    {
+                        "severity": "error",
+                        "kind": "missing_app_eval_coding_agent_command_template",
+                        "message": (
+                            f"{cell.benchmark}/{cell.adapter} requires "
+                            "APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE or "
+                            f"{_app_eval_coding_command_env_name(cell.adapter)}"
+                        ),
+                    }
+                )
+        if cell.benchmark == "qwen_claw_bench" and "--mock" not in cell.command:
+            if "--agent-command-template" not in cell.command:
+                issues.append(
+                    {
+                        "severity": "error",
+                        "kind": "missing_qwen_claw_bench_agent_command_template",
+                        "message": (
+                            f"{cell.benchmark}/{cell.adapter} requires "
+                            "QWEN_CLAW_BENCH_AGENT_COMMAND_TEMPLATE or "
+                            f"{_qwen_claw_bench_command_env_name(cell.adapter)}"
+                        ),
+                    }
+                )
+        if cell.benchmark == "claw_eval" and "--mock" not in cell.command:
+            if "--agent-command-template" not in cell.command:
+                issues.append(
+                    {
+                        "severity": "error",
+                        "kind": "missing_claw_eval_agent_command_template",
+                        "message": (
+                            f"{cell.benchmark}/{cell.adapter} requires "
+                            "CLAW_EVAL_AGENT_COMMAND_TEMPLATE or "
+                            f"{_claw_eval_command_env_name(cell.adapter)}"
+                        ),
+                    }
+                )
+        if cell.benchmark == "swe_bench_pro" and "--mock" not in cell.command:
+            if "--agent-command-template" not in cell.command:
+                issues.append(
+                    {
+                        "severity": "error",
+                        "kind": "missing_swe_bench_pro_agent_command_template",
+                        "message": (
+                            f"{cell.benchmark}/{cell.adapter} requires "
+                            "SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE or "
+                            f"{_swe_bench_pro_command_env_name(cell.adapter)}"
+                        ),
+                    }
+                )
+            evaluator_backend = _swe_bench_pro_evaluator_backend(cell.command)
+            if evaluator_backend == "modal":
+                if importlib.util.find_spec("modal") is None:
+                    issues.append(
+                        {
+                            "severity": "error",
+                            "kind": "missing_modal_package",
+                            "message": (
+                                f"{cell.benchmark} Modal scoring requires the modal Python package"
+                            ),
+                        }
+                    )
+            elif "--no-docker" not in cell.command and not docker_checked:
+                docker_checked = True
+                docker = shutil.which("docker")
+                if not docker:
+                    issues.append(
+                        {
+                            "severity": "error",
+                            "kind": "missing_docker_cli",
+                            "message": f"{cell.benchmark} live scoring requires the Docker CLI",
+                        }
+                    )
+                else:
+                    completed = subprocess.run(
+                        [docker, "version"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=10,
+                        check=False,
+                    )
+                    if completed.returncode != 0:
+                        detail = (completed.stderr or completed.stdout or "").strip()
+                        issues.append(
+                            {
+                                "severity": "error",
+                                "kind": "docker_daemon_unavailable",
+                                "message": (
+                                    f"{cell.benchmark} live scoring requires a running Docker daemon"
                                     + (f": {detail}" if detail else "")
                                 ),
                             }
@@ -481,12 +949,77 @@ def preflight_matrix(
         "provider_key": key_name,
         "provider_key_present": bool(key_name and env.get(key_name)),
         "provider_key_required": bool(require_provider_key and key_name),
+        "quality_guardrail_summary": quality_guardrail_summary,
+        "quality_guardrail_summary_present": quality_guardrail_summary_present,
+        "quality_guardrail_summary_required": bool(require_quality_guardrail_summary),
+        "quality_guardrail_summary_ok": quality_guardrail_summary_ok,
+        "quality_guardrail_summary_findings": quality_guardrail_summary_findings,
+        "quality_guardrail_summary_blocking_findings": quality_guardrail_summary_blocking_findings,
         "opencode_bin": opencode_bin,
         "issues": issues,
         "unblock_steps": unblock_steps,
         "unblock_count": len(unblock_steps),
         "cells": cell_checks,
     }
+
+
+def _swe_bench_pro_evaluator_backend(command: list[str]) -> str:
+    try:
+        index = command.index("--evaluator-backend")
+    except ValueError:
+        return "local-docker"
+    if index + 1 >= len(command):
+        return "local-docker"
+    backend = str(command[index + 1]).strip()
+    return backend or "local-docker"
+
+
+def _quality_guardrail_next_action(scope: str, reason: str, value: str) -> str:
+    if scope == "matrix_contract" or scope.startswith("matrix_contract."):
+        return "Run the full benchmark matrix and publish a latest/index.json with a complete matrix_contract."
+    if scope.startswith("publishability:"):
+        return "Generate or restore packages/benchmarks/benchmark_results/latest before validating readiness."
+    if scope == "runtime_gate:gaia_official_dataset":
+        return "Set HF_TOKEN/HUGGINGFACE_HUB_TOKEN or GAIA_DATASET_PATH, or pre-cache gaia-benchmark/GAIA."
+    if scope == "runtime_gate:hyperliquid_live":
+        return "Set HL_PRIVATE_KEY and rerun the Hyperliquid harness without demo mode."
+    if scope in {
+        "runtime_gate:terminal_bench_docker",
+        "runtime_gate:swe_bench_docker",
+    }:
+        return "Start Docker Desktop or a compatible Docker daemon before running Docker-backed benchmarks."
+    if scope == "runtime_gate:hermes_sandbox":
+        return "Set MODAL_TOKEN_ID/MODAL_TOKEN_SECRET or start a reachable Docker daemon for Hermes sandbox execution."
+    if scope == "runtime_gate:vision_language_real_inputs":
+        return "Install or point the vision-language harness at the real eliza-1 VLM input bundle."
+    if scope == "runtime_gate:vision_language_harness_runtime":
+        return "Set VISION_LANGUAGE_MODEL and provider credentials for a multimodal OpenAI-compatible model."
+    if reason:
+        return f"Resolve readiness finding {reason}."
+    if value:
+        return value
+    return "Resolve this readiness finding before enforcing release readiness."
+
+
+def _quality_guardrail_summary_validation(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return ["summary is not a JSON object"]
+    issues: list[str] = []
+    latest_dir = payload.get("latest_dir")
+    if not isinstance(latest_dir, str) or not latest_dir.strip():
+        issues.append("missing latest_dir")
+    elif not Path(latest_dir).expanduser().is_dir():
+        issues.append(f"latest_dir does not exist: {latest_dir}")
+    tolerance = payload.get("tolerance")
+    if not isinstance(tolerance, (int, float)) or isinstance(tolerance, bool):
+        issues.append("missing numeric tolerance")
+    ok = payload.get("ok")
+    if not isinstance(ok, bool):
+        issues.append("missing boolean ok")
+    findings = payload.get("findings")
+    if not isinstance(findings, list):
+        issues.append("missing findings list")
+    return issues
 
 
 def build_preflight_unblock_steps(
@@ -515,6 +1048,21 @@ def build_preflight_unblock_steps(
                 "action": "Install the opencode CLI or set OPENCODE_BIN to an executable path.",
                 "command": "export OPENCODE_BIN=/path/to/opencode",
             }
+        elif kind in {
+            "missing_quality_guardrail_summary",
+            "missing_quality_guardrail_summary_file",
+            "invalid_quality_guardrail_summary",
+            "quality_guardrail_summary_failed",
+        }:
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Attach non-code quality guardrail",
+                "action": (
+                    "Generate the broader non-code readiness JSON and pass it with "
+                    "--quality-guardrail-summary before enforcing release readiness."
+                ),
+                "command": NON_CODE_GUARDRAIL_COMMAND,
+            }
         elif kind == "missing_executable":
             steps_by_kind[kind] = {
                 "kind": kind,
@@ -539,6 +1087,56 @@ def build_preflight_unblock_steps(
                 ),
                 "command": "unset NL2REPO_DISABLE_BUILTIN_AGENT_COMMAND",
             }
+        elif kind == "missing_standard_humaneval_agent_command_template":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Configure HumanEval agent command",
+                "action": (
+                    "Unset STANDARD_HUMANEVAL_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
+                    "or provide STANDARD_HUMANEVAL_AGENT_COMMAND_TEMPLATE for an external runner."
+                ),
+                "command": "unset STANDARD_HUMANEVAL_DISABLE_BUILTIN_AGENT_COMMAND",
+            }
+        elif kind == "missing_app_eval_coding_agent_command_template":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Configure App Eval coding agent command",
+                "action": (
+                    "Unset APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
+                    "or provide APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE for an external runner."
+                ),
+                "command": "unset APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND",
+            }
+        elif kind == "missing_qwen_claw_bench_agent_command_template":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Configure QwenClawBench agent command",
+                "action": (
+                    "Unset QWEN_CLAW_BENCH_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
+                    "or provide QWEN_CLAW_BENCH_AGENT_COMMAND_TEMPLATE for an external runner."
+                ),
+                "command": "unset QWEN_CLAW_BENCH_DISABLE_BUILTIN_AGENT_COMMAND",
+            }
+        elif kind == "missing_claw_eval_agent_command_template":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Configure Claw-Eval agent command",
+                "action": (
+                    "Unset CLAW_EVAL_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
+                    "or provide CLAW_EVAL_AGENT_COMMAND_TEMPLATE for an external runner."
+                ),
+                "command": "unset CLAW_EVAL_DISABLE_BUILTIN_AGENT_COMMAND",
+            }
+        elif kind == "missing_swe_bench_pro_agent_command_template":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Configure SWE-bench Pro agent command",
+                "action": (
+                    "Unset SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
+                    "or provide SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE for an external runner."
+                ),
+                "command": "unset SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND",
+            }
         elif kind == "missing_docker_cli":
             steps_by_kind[kind] = {
                 "kind": kind,
@@ -552,6 +1150,13 @@ def build_preflight_unblock_steps(
                 "title": "Start Docker daemon",
                 "action": "Start Docker Desktop or the Docker daemon before release-comparable scoring.",
                 "command": "docker version",
+            }
+        elif kind == "missing_modal_package":
+            steps_by_kind[kind] = {
+                "kind": kind,
+                "title": "Install Modal",
+                "action": "Install the modal Python package before SWE-bench Pro Modal scoring.",
+                "command": "python -m pip install modal",
             }
     return list(steps_by_kind.values())
 
@@ -734,6 +1339,272 @@ def default_command(
         if no_docker:
             cmd.append("--no-docker")
         return cmd, root
+
+    if benchmark == "standard_humaneval":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.standard.code_agent_humaneval",
+            "--task-agent",
+            adapter,
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--trajectory-dir",
+            str(trajectory_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        command_template = _standard_humaneval_agent_command_template(adapter)
+        if command_template:
+            cmd.extend(["--agent-command-template", command_template])
+        if smoke:
+            cmd.append("--mock")
+        return cmd, root
+
+    if benchmark == "app_eval_coding":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.app_eval.code_agent_coding",
+            "--task-agent",
+            adapter,
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--trajectory-dir",
+            str(trajectory_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        command_template = _app_eval_coding_agent_command_template(adapter)
+        if command_template:
+            cmd.extend(["--agent-command-template", command_template])
+        if smoke:
+            cmd.append("--mock")
+        return cmd, root
+
+    if benchmark == "mint":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.mint.code_agent_matrix",
+            "--task-agent",
+            adapter,
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--trajectory-dir",
+            str(trajectory_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        if smoke:
+            cmd.append("--mock")
+        if no_docker:
+            cmd.append("--no-docker")
+        return cmd, root
+
+    if benchmark == "openclaw_benchmark":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.openclaw_benchmark.code_agent_matrix",
+            "--task-agent",
+            adapter,
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--trajectory-dir",
+            str(trajectory_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        if smoke:
+            cmd.append("--mock")
+        if no_docker:
+            cmd.append("--no-docker")
+        return cmd, root
+
+    if benchmark == "clawbench":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.clawbench_matrix.code_agent_matrix",
+            "--task-agent",
+            adapter,
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--trajectory-dir",
+            str(trajectory_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        if smoke:
+            cmd.append("--mock")
+        if no_docker:
+            cmd.append("--no-docker")
+        return cmd, root
+
+    if benchmark == "agentbench":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.agentbench_matrix.code_agent_matrix",
+            "--task-agent",
+            adapter,
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--trajectory-dir",
+            str(trajectory_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        if smoke:
+            cmd.append("--mock")
+        if no_docker:
+            cmd.append("--no-docker")
+        return cmd, root
+
+    if benchmark == "qwen_claw_bench":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.qwen_claw_bench_matrix.code_agent_matrix",
+            "--task-agent",
+            adapter,
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--trajectory-dir",
+            str(trajectory_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        command_template = _qwen_claw_bench_agent_command_template(adapter)
+        if command_template:
+            cmd.extend(["--agent-command-template", command_template])
+        if smoke:
+            cmd.append("--mock")
+        if no_docker:
+            cmd.append("--no-docker")
+        return cmd, root
+
+    if benchmark == "claw_eval":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.claw_eval_matrix.code_agent_matrix",
+            "--task-agent",
+            adapter,
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--trajectory-dir",
+            str(trajectory_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        command_template = _claw_eval_agent_command_template(adapter)
+        if command_template:
+            cmd.extend(["--agent-command-template", command_template])
+        if smoke:
+            cmd.append("--mock")
+        if no_docker:
+            cmd.append("--no-docker")
+        return cmd, root
+
+    if benchmark == "swe_bench_pro":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.swe_bench_pro_matrix.code_agent_matrix",
+            "--task-agent",
+            adapter,
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--trajectory-dir",
+            str(trajectory_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        evaluator_backend = os.environ.get("SWE_BENCH_PRO_EVALUATOR_BACKEND", "").strip()
+        if evaluator_backend:
+            cmd.extend(["--evaluator-backend", evaluator_backend])
+        eval_num_workers = os.environ.get("SWE_BENCH_PRO_EVAL_NUM_WORKERS", "").strip()
+        if eval_num_workers:
+            cmd.extend(["--eval-num-workers", eval_num_workers])
+        command_template = _swe_bench_pro_agent_command_template(adapter)
+        if command_template:
+            cmd.extend(["--agent-command-template", command_template])
+        if smoke:
+            cmd.append("--mock")
+        if no_docker:
+            cmd.extend(["--no-docker", "--skip-clone"])
+        return cmd, root
+
+    if benchmark == "vision_language":
+        bun = os.environ.get("BUN_BIN", "").strip() or shutil.which("bun") or "bun"
+        vision_benchmark = os.environ.get("VISION_LANGUAGE_BENCHMARK", "").strip() or "screenspot"
+        cmd = [
+            bun,
+            "run",
+            "src/runner.ts",
+            "--harness",
+            adapter,
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--benchmark",
+            vision_benchmark,
+            "--output",
+            str(output_dir / "vision-language-results.json"),
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--samples", str(max_tasks)])
+        if smoke:
+            cmd.append("--smoke")
+        return cmd, root / "packages" / "benchmarks" / "vision-language"
 
     raise ValueError(f"unsupported benchmark for code-agent matrix: {benchmark}")
 
@@ -1022,7 +1893,7 @@ def collect_outcome_metrics(payload: Any) -> dict[str, int | float | None]:
 
     summary = payload.get("summary")
     if isinstance(summary, dict):
-        total = _metric_number(summary, "total_instances", "total_tasks", "total")
+        total = _metric_number(summary, "total_instances", "total_tasks", "total", "sample_count")
         right = _metric_number(summary, "resolved", "passed_tasks", "passed", "successes")
         wrong = _metric_number(summary, "unresolved", "failed_tasks", "failed", "failures")
         accuracy = _metric_number(summary, "resolve_rate", "accuracy", "score")
@@ -1037,7 +1908,7 @@ def collect_outcome_metrics(payload: Any) -> dict[str, int | float | None]:
             )
             return _complete_outcome_metrics(metrics)
 
-    total = _metric_number(payload, "total_tasks", "total_trials", "total_instances", "total")
+    total = _metric_number(payload, "total_tasks", "total_trials", "total_instances", "total", "sample_count")
     right = _metric_number(payload, "passed_tasks", "successes", "resolved", "passed")
     wrong = _metric_number(payload, "failed_tasks", "failures", "unresolved", "failed")
     accuracy = _metric_number(
@@ -1137,6 +2008,72 @@ def collect_token_metrics(trajectory_dir: Path) -> dict[str, int | float | None]
     }
 
 
+def collect_payload_token_metrics(payload: Any) -> dict[str, int | float | None]:
+    if not isinstance(payload, dict):
+        return {}
+    source = payload.get("token_metrics")
+    if not isinstance(source, dict):
+        source = payload.get("summary") if isinstance(payload.get("summary"), dict) else payload
+    if not isinstance(source, dict):
+        return {}
+    input_tokens = _metric_number(source, "input_tokens", "prompt_tokens", "promptTokens", "input")
+    output_tokens = _metric_number(
+        source,
+        "output_tokens",
+        "completion_tokens",
+        "completionTokens",
+        "output",
+    )
+    total_tokens = _metric_number(source, "total_tokens", "totalTokens", "total")
+    cached_tokens = _metric_number(
+        source,
+        "cached_tokens",
+        "cache_read_input_tokens",
+        "cacheReadInputTokens",
+        "cachedTokens",
+    )
+    cache_creation_tokens = _metric_number(
+        source,
+        "cache_creation_tokens",
+        "cache_creation_input_tokens",
+        "cacheCreationInputTokens",
+    )
+    llm_call_count = _metric_number(source, "llm_call_count", "llmCallCount")
+    if not any(
+        isinstance(value, (int, float)) and not isinstance(value, bool)
+        for value in (
+            input_tokens,
+            output_tokens,
+            total_tokens,
+            cached_tokens,
+            cache_creation_tokens,
+            llm_call_count,
+        )
+    ):
+        return {}
+    if total_tokens is None and isinstance(input_tokens, (int, float)) and isinstance(
+        output_tokens, (int, float)
+    ):
+        total_tokens = input_tokens + output_tokens
+    cached_percent = _metric_number(source, "cached_token_percent")
+    if (
+        cached_percent is None
+        and isinstance(input_tokens, (int, float))
+        and input_tokens
+        and isinstance(cached_tokens, (int, float))
+    ):
+        cached_percent = cached_tokens / input_tokens * 100.0
+    return {
+        "input_tokens": input_tokens if input_tokens is not None else 0,
+        "output_tokens": output_tokens if output_tokens is not None else 0,
+        "total_tokens": total_tokens if total_tokens is not None else 0,
+        "cached_tokens": cached_tokens if cached_tokens is not None else 0,
+        "cache_creation_tokens": cache_creation_tokens if cache_creation_tokens is not None else 0,
+        "cached_token_percent": cached_percent,
+        "llm_call_count": llm_call_count if llm_call_count is not None else 0,
+    }
+
+
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -1199,7 +2136,10 @@ def _write_cell_metadata(cell: MatrixCell) -> None:
             "command": [redact_text(part, redaction_env) for part in cell.command],
             "output_dir": cell.output_dir,
             "trajectory_dir": cell.trajectory_dir,
-            "env_overrides": cell.env_overrides,
+            "env_overrides": {
+                key: redact_text(value, redaction_env)
+                for key, value in cell.env_overrides.items()
+            },
             "secret_policy": "real process env is inherited, metadata/logs redact secret-looking values",
         },
     )
@@ -1237,6 +2177,7 @@ def _load_existing_result(cell: MatrixCell) -> CellResult | None:
             stdout_path=str(payload["stdout_path"]),
             stderr_path=str(payload["stderr_path"]),
             result_path=payload.get("result_path"),
+            command_path=payload.get("command_path") or str(_cell_root(cell) / "command.json"),
             failure_class=str(payload.get("failure_class") or "unknown_failure"),
             notes=list(payload.get("notes") or []),
             score=payload.get("score"),
@@ -1274,6 +2215,7 @@ def _result_from_cell_payload(
         stdout_path=str(stdout_path),
         stderr_path=str(stderr_path),
         result_path=str(result_path) if result_path else None,
+        command_path=str(_cell_root(cell) / "command.json"),
         failure_class=failure_class,
         notes=notes,
         score=score,
@@ -1373,6 +2315,9 @@ def run_cell(
     status = "succeeded" if exit_code == 0 and result_path is not None else "failed"
     outcome_metrics = collect_outcome_metrics(payload)
     token_metrics = collect_token_metrics(Path(cell.trajectory_dir))
+    payload_token_metrics = collect_payload_token_metrics(payload)
+    if payload_token_metrics and not token_metrics.get("llm_call_count") and not token_metrics.get("total_tokens"):
+        token_metrics.update(payload_token_metrics)
     result = _result_from_cell_payload(
         cell=cell,
         status=status,
@@ -1471,15 +2416,23 @@ def build_token_evidence(results: list[CellResult]) -> dict[str, Any]:
         total_tokens = metrics.get("total_tokens")
         input_tokens = metrics.get("input_tokens")
         output_tokens = metrics.get("output_tokens")
+        cached_percent = metrics.get("cached_token_percent")
         has_files = isinstance(files, (int, float)) and not isinstance(files, bool) and files > 0
         has_calls = isinstance(calls, (int, float)) and not isinstance(calls, bool) and calls > 0
         has_tokens = any(
             isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
             for value in (total_tokens, input_tokens, output_tokens)
         )
-        if has_calls and has_tokens:
+        has_cached_percent = (
+            isinstance(cached_percent, (int, float))
+            and not isinstance(cached_percent, bool)
+        )
+        if has_calls and has_tokens and has_cached_percent:
             status = "present"
-            note = "LLM call and token telemetry found"
+            note = "LLM call, token, and cache telemetry found"
+        elif has_calls and has_tokens:
+            status = "empty"
+            note = "LLM token telemetry found but cached-token percentage is missing"
         elif has_files:
             status = "empty"
             note = "trajectory artifacts found but no LLM token usage was extracted"
@@ -1498,7 +2451,7 @@ def build_token_evidence(results: list[CellResult]) -> dict[str, Any]:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "total_tokens": total_tokens,
-                "cached_token_percent": metrics.get("cached_token_percent"),
+                "cached_token_percent": cached_percent,
                 "trajectory_dir": str(Path(result.output_dir).parent / "trajectories"),
             }
         )
@@ -1605,10 +2558,13 @@ def build_deferred_promotion_queue(summary: dict[str, Any]) -> list[dict[str, An
     coverage = summary.get("coverage")
     coverage = coverage if isinstance(coverage, dict) else {}
     deferred = coverage.get("deferred_benchmarks")
+    run_config = summary.get("run_config")
+    run_config = run_config if isinstance(run_config, dict) else {}
     queue: list[dict[str, Any]] = []
     for item in deferred if isinstance(deferred, list) else []:
         if not isinstance(item, dict):
             continue
+        benchmark = str(item.get("benchmark") or "")
         requirements = [
             str(requirement)
             for requirement in item.get("promotion_requirements") or []
@@ -1617,11 +2573,19 @@ def build_deferred_promotion_queue(summary: dict[str, Any]) -> list[dict[str, An
         queue.append(
             {
                 "priority": str(item.get("promotion_priority") or "p2"),
-                "benchmark": item.get("benchmark"),
+                "benchmark": benchmark,
                 "domains": item.get("domains") or [],
                 "next_action": requirements[0] if requirements else item.get("reason", ""),
                 "remaining_requirements": requirements,
                 "remaining_count": len(requirements),
+                "evidence_command_template": (
+                    _deferred_promotion_evidence_command(
+                        benchmark=benchmark,
+                        run_config=run_config,
+                    )
+                    if benchmark in RUNNABLE_DEFERRED_BENCHMARKS
+                    else ""
+                ),
             }
         )
     queue.sort(
@@ -1631,6 +2595,54 @@ def build_deferred_promotion_queue(summary: dict[str, Any]) -> list[dict[str, An
         )
     )
     return queue
+
+
+def _deferred_promotion_evidence_command(
+    *,
+    benchmark: str,
+    run_config: dict[str, Any] | None = None,
+) -> str:
+    parts = [
+        "python",
+        "-m",
+        "benchmarks.orchestrator.code_agent_matrix",
+        "--benchmarks",
+        benchmark,
+        "--adapters",
+        ",".join(DEFAULT_ADAPTERS),
+    ]
+    if isinstance(run_config, dict):
+        provider = run_config.get("provider")
+        if provider:
+            parts.extend(["--provider", str(provider)])
+        model = run_config.get("model")
+        if model:
+            parts.extend(["--model", str(model)])
+        max_tasks = run_config.get("max_tasks")
+        if max_tasks is not None:
+            parts.extend(["--max-tasks", str(max_tasks)])
+        timeout_seconds = run_config.get("timeout_seconds")
+        if timeout_seconds is not None:
+            parts.extend(["--timeout-seconds", str(timeout_seconds)])
+        run_root = run_config.get("run_root")
+        if run_root:
+            parts.extend(["--run-root", str(run_root)])
+        publish_latest_dir = run_config.get("publish_latest_dir")
+        if publish_latest_dir:
+            parts.extend(["--publish-latest-dir", str(publish_latest_dir)])
+    parts.extend(
+        [
+            "--force",
+            "--enforce-live-report",
+            "--enforce-trajectory-reviews",
+            "--enforce-report",
+            "--enforce-comparable",
+            "--enforce-required-stats",
+            "--enforce-token-evidence",
+            "--enforce-efficiency",
+        ]
+    )
+    return _command_template(_with_swe_bench_pro_env(parts, run_config))
 
 
 def build_coverage_gate(summary: dict[str, Any]) -> dict[str, Any]:
@@ -1802,7 +2814,11 @@ def build_head_to_head(
     }
 
 
-def build_efficiency_queue(head_to_head: dict[str, Any]) -> list[dict[str, Any]]:
+def build_efficiency_queue(
+    head_to_head: dict[str, Any],
+    *,
+    run_config: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     queue: list[dict[str, Any]] = []
     for row in head_to_head.get("comparisons", []):
         if not isinstance(row, dict):
@@ -1834,6 +2850,10 @@ def build_efficiency_queue(head_to_head: dict[str, Any]) -> list[dict[str, Any]]
                 "baseline_llm_call_count": row.get("baseline_llm_call_count"),
                 "target_cached_token_percent": row.get("target_cached_token_percent"),
                 "baseline_cached_token_percent": row.get("baseline_cached_token_percent"),
+                "rerun_command_template": _efficiency_rerun_command_template(
+                    benchmark=str(row.get("benchmark") or ""),
+                    run_config=run_config,
+                ),
             }
         )
     queue.sort(
@@ -1999,6 +3019,77 @@ def _queue_diagnosis(
     return diagnosis
 
 
+def _numeric_delta(left: Any, right: Any) -> float | None:
+    if (
+        isinstance(left, (int, float))
+        and not isinstance(left, bool)
+        and isinstance(right, (int, float))
+        and not isinstance(right, bool)
+    ):
+        return float(left) - float(right)
+    return None
+
+
+def _trajectory_delta(
+    target_review: dict[str, Any],
+    baseline_review: dict[str, Any],
+) -> dict[str, float | None]:
+    return {
+        "turn_delta": _numeric_delta(target_review.get("turns"), baseline_review.get("turns")),
+        "input_token_delta": _numeric_delta(
+            target_review.get("input_tokens"),
+            baseline_review.get("input_tokens"),
+        ),
+        "output_token_delta": _numeric_delta(
+            target_review.get("output_tokens"),
+            baseline_review.get("output_tokens"),
+        ),
+        "total_token_delta": _numeric_delta(
+            target_review.get("total_tokens"),
+            baseline_review.get("total_tokens"),
+        ),
+        "cached_token_percent_delta": _numeric_delta(
+            target_review.get("cached_token_percent"),
+            baseline_review.get("cached_token_percent"),
+        ),
+        "repeated_prefix_delta": _numeric_delta(
+            target_review.get("repeated_prefix_count"),
+            baseline_review.get("repeated_prefix_count"),
+        ),
+        "mean_latency_ms_delta": _numeric_delta(
+            target_review.get("mean_latency_ms"),
+            baseline_review.get("mean_latency_ms"),
+        ),
+        "p95_latency_ms_delta": _numeric_delta(
+            target_review.get("p95_latency_ms"),
+            baseline_review.get("p95_latency_ms"),
+        ),
+    }
+
+
+def _improvement_focus(
+    *,
+    diagnosis: list[str],
+    trajectory_delta: dict[str, float | None],
+) -> list[str]:
+    focus: list[str] = []
+    if any("accuracy is below" in item for item in diagnosis):
+        focus.append("inspect failed tasks and patch ElizaOS task strategy")
+    if any("failure class" in item for item in diagnosis):
+        focus.append("fix target harness/runtime failure before tuning prompts")
+    if any("trajectory telemetry is missing" in item for item in diagnosis):
+        focus.append("restore trajectory capture for comparable review evidence")
+    if (trajectory_delta.get("repeated_prefix_delta") or 0) > 0:
+        focus.append("remove repeated prompt-prefix churn")
+    if (trajectory_delta.get("total_token_delta") or 0) > 0:
+        focus.append("reduce trajectory token load versus baseline")
+    if any("more total tokens" in item or "more LLM calls" in item for item in diagnosis):
+        focus.append("reduce extra LLM calls/tokens")
+    if any("cached-token percentage" in item for item in diagnosis):
+        focus.append("improve cacheable prompt structure")
+    return list(dict.fromkeys(focus))
+
+
 def build_improvement_queue(
     results: list[CellResult],
     head_to_head: dict[str, Any],
@@ -2034,6 +3125,7 @@ def build_improvement_queue(
             target_review=target_review,
             baseline_review=baseline_review,
         )
+        trajectory_delta = _trajectory_delta(target_review, baseline_review)
         priority = "p0" if status in {"inferior", "weak"} else "p1"
         queue.append(
             {
@@ -2042,6 +3134,10 @@ def build_improvement_queue(
                 "priority": priority,
                 "diagnosis": diagnosis,
                 "primary_diagnosis": diagnosis[0] if diagnosis else "",
+                "suggested_focus": _improvement_focus(
+                    diagnosis=diagnosis,
+                    trajectory_delta=trajectory_delta,
+                ),
                 "rerun_command_template": _queue_rerun_command_template(
                     priority=priority,
                     status=str(status),
@@ -2067,6 +3163,7 @@ def build_improvement_queue(
                 "baseline_artifacts": baseline_artifacts,
                 "target_trajectory_review": target_review,
                 "baseline_trajectory_review": baseline_review,
+                "trajectory_delta": trajectory_delta,
             }
         )
     queue.sort(key=lambda item: (item["priority"], item["benchmark"]))
@@ -2088,6 +3185,12 @@ def _append_config_args(parts: list[str], run_config: dict[str, Any] | None) -> 
     timeout_seconds = run_config.get("timeout_seconds")
     if timeout_seconds is not None:
         parts.extend(["--timeout-seconds", str(timeout_seconds)])
+    run_root = run_config.get("run_root")
+    if run_root:
+        parts.extend(["--run-root", str(run_root)])
+    publish_latest_dir = run_config.get("publish_latest_dir")
+    if publish_latest_dir:
+        parts.extend(["--publish-latest-dir", str(publish_latest_dir)])
     mode = run_config.get("mode")
     if mode == "smoke" or run_config.get("smoke") is True:
         parts.append("--smoke")
@@ -2101,6 +3204,33 @@ def _append_config_args(parts: list[str], run_config: dict[str, Any] | None) -> 
         parts.append("--enforce-token-evidence")
 
 
+def _swe_bench_pro_env_assignments(config: dict[str, Any] | None = None) -> list[str]:
+    config = config if isinstance(config, dict) else {}
+    backend = (
+        config.get("swe_bench_pro_evaluator_backend")
+        or config.get("SWE_BENCH_PRO_EVALUATOR_BACKEND")
+        or ""
+    )
+    workers = (
+        config.get("swe_bench_pro_eval_num_workers")
+        or config.get("SWE_BENCH_PRO_EVAL_NUM_WORKERS")
+        or ""
+    )
+    assignments: list[str] = []
+    if str(backend).strip():
+        assignments.append(f"SWE_BENCH_PRO_EVALUATOR_BACKEND={str(backend).strip()}")
+    if str(workers).strip():
+        assignments.append(f"SWE_BENCH_PRO_EVAL_NUM_WORKERS={str(workers).strip()}")
+    return assignments
+
+
+def _with_swe_bench_pro_env(
+    parts: list[str],
+    config: dict[str, Any] | None = None,
+) -> list[str]:
+    return [*_swe_bench_pro_env_assignments(config), *parts]
+
+
 def _command_template(parts: list[str]) -> str:
     return " ".join(part if part == "{summary_json}" else shlex.quote(part) for part in parts)
 
@@ -2111,12 +3241,22 @@ def _selected_scope_args(cell_pairs: tuple[tuple[str, str], ...]) -> list[str]:
     return ["--benchmarks", benchmarks, "--adapters", adapters]
 
 
+def _release_scope_args(cell_pairs: tuple[tuple[str, str], ...]) -> list[str]:
+    del cell_pairs
+    adapters = ",".join(DEFAULT_ADAPTERS)
+    return ["--benchmarks", ",".join(sorted(DEFAULT_BENCHMARKS)), "--adapters", adapters]
+
+
 def _preflight_next_commands(
     *,
     args: argparse.Namespace,
     run_root: Path,
     cell_pairs: tuple[tuple[str, str], ...],
 ) -> dict[str, str]:
+    swe_bench_pro_env = {
+        "SWE_BENCH_PRO_EVALUATOR_BACKEND": os.environ.get("SWE_BENCH_PRO_EVALUATOR_BACKEND", ""),
+        "SWE_BENCH_PRO_EVAL_NUM_WORKERS": os.environ.get("SWE_BENCH_PRO_EVAL_NUM_WORKERS", ""),
+    }
     base = [
         "python",
         "-m",
@@ -2133,7 +3273,33 @@ def _preflight_next_commands(
         "--run-root",
         str(run_root),
     ]
+    base = _with_swe_bench_pro_env(base, swe_bench_pro_env)
+    if args.publish_latest_dir:
+        base.extend(["--publish-latest-dir", str(args.publish_latest_dir)])
     preflight = [*base, "--preflight"]
+    release_base = [
+        "python",
+        "-m",
+        "benchmarks.orchestrator.code_agent_matrix",
+        *_release_scope_args(cell_pairs),
+        "--provider",
+        str(args.provider),
+        "--model",
+        str(args.model),
+        "--max-tasks",
+        str(args.max_tasks),
+        "--timeout-seconds",
+        str(args.timeout_seconds),
+        "--run-root",
+        str(run_root),
+    ]
+    release_base = _with_swe_bench_pro_env(release_base, swe_bench_pro_env)
+    if args.publish_latest_dir:
+        release_base.extend(["--publish-latest-dir", str(args.publish_latest_dir)])
+    quality_guardrail_summary = str(
+        args.quality_guardrail_summary
+        or "/path/to/non-code-quality-guardrail.json"
+    )
     live = [
         *base,
         "--force",
@@ -2143,15 +3309,74 @@ def _preflight_next_commands(
         "--enforce-coverage",
         "--enforce-comparable",
         "--enforce-required-stats",
+        "--enforce-token-evidence",
         "--enforce-efficiency",
+        "--enforce-release-readiness",
     ]
     if args.no_docker:
         preflight.append("--no-docker")
         live.append("--no-docker")
-    release = [part for part in live if part != "--no-docker"]
+    release_preflight = [
+        *release_base,
+        "--quality-guardrail-summary",
+        quality_guardrail_summary,
+        "--preflight",
+        "--enforce-release-readiness",
+    ]
+    release = [
+        *release_base,
+        "--force",
+        "--enforce-live-report",
+        "--enforce-trajectory-reviews",
+        "--enforce-report",
+        "--enforce-coverage",
+        "--enforce-comparable",
+        "--enforce-required-stats",
+        "--enforce-token-evidence",
+        "--enforce-efficiency",
+        "--quality-guardrail-summary",
+        quality_guardrail_summary,
+        "--enforce-quality-guardrail",
+        "--enforce-release-readiness",
+    ]
+    deferred_base = [
+        "python",
+        "-m",
+        "benchmarks.orchestrator.code_agent_matrix",
+        "--benchmarks",
+        ",".join(sorted(RUNNABLE_DEFERRED_BENCHMARKS)),
+        "--adapters",
+        ",".join(DEFAULT_ADAPTERS),
+        "--provider",
+        str(args.provider),
+        "--model",
+        str(args.model),
+        "--max-tasks",
+        str(args.max_tasks),
+        "--timeout-seconds",
+        str(args.timeout_seconds),
+        "--run-root",
+        str(run_root),
+    ]
+    deferred_base = _with_swe_bench_pro_env(deferred_base, swe_bench_pro_env)
+    if args.publish_latest_dir:
+        deferred_base.extend(["--publish-latest-dir", str(args.publish_latest_dir)])
+    deferred_live = [
+        *deferred_base,
+        "--force",
+        "--enforce-live-report",
+        "--enforce-trajectory-reviews",
+        "--enforce-report",
+        "--enforce-comparable",
+        "--enforce-required-stats",
+        "--enforce-token-evidence",
+        "--enforce-efficiency",
+    ]
     return {
         "retry_preflight": _command_template(preflight),
         "live_evidence": _command_template(live),
+        "deferred_live_evidence": _command_template(deferred_live),
+        "release_preflight": _command_template(release_preflight),
         "release_comparable": _command_template(release),
     }
 
@@ -2173,7 +3398,46 @@ def _matrix_rerun_command_template(
     ]
     _append_config_args(parts, summary.get("run_config"))
     parts.extend(["--force", "--enforce-required-stats"])
-    return _command_template(parts)
+    return _command_template(_with_swe_bench_pro_env(parts, summary.get("run_config")))
+
+
+def _efficiency_rerun_command_template(
+    *,
+    benchmark: str,
+    run_config: dict[str, Any] | None = None,
+) -> str:
+    parts = [
+        "python",
+        "-m",
+        "benchmarks.orchestrator.code_agent_matrix",
+        "--benchmarks",
+        benchmark,
+        "--adapters",
+        ",".join(DEFAULT_ADAPTERS),
+    ]
+    _append_config_args(parts, run_config)
+    parts.extend(["--force", "--enforce-required-stats", "--enforce-efficiency"])
+    return _command_template(_with_swe_bench_pro_env(parts, run_config))
+
+
+def _trajectory_rerun_command_template(
+    summary: dict[str, Any],
+    *,
+    benchmark: str,
+    adapter: str,
+) -> str:
+    parts = [
+        "python",
+        "-m",
+        "benchmarks.orchestrator.code_agent_matrix",
+        "--benchmarks",
+        benchmark,
+        "--adapters",
+        adapter,
+    ]
+    _append_config_args(parts, summary.get("run_config"))
+    parts.extend(["--force", "--enforce-trajectory-reviews", "--enforce-required-stats"])
+    return _command_template(_with_swe_bench_pro_env(parts, summary.get("run_config")))
 
 
 def _queue_rerun_command_template(
@@ -2199,7 +3463,7 @@ def _queue_rerun_command_template(
     if isinstance(run_config, dict) and run_config.get("enforce_required_stats") is True:
         parts.append("--enforce-required-stats")
     parts.append("--force")
-    return _command_template(parts)
+    return _command_template(_with_swe_bench_pro_env(parts, run_config))
 
 
 def _head_to_head_rows(summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -2362,19 +3626,29 @@ def build_quality_guardrail_gate(
         }
     findings = guardrail_summary.get("findings")
     findings = findings if isinstance(findings, list) else []
+    validation_issues = _quality_guardrail_summary_validation(guardrail_summary)
     ok_value = guardrail_summary.get("ok")
-    ok = bool(ok_value) and not findings
+    ok = not validation_issues and bool(ok_value) and not findings
+    normalized_findings = [
+        finding
+        for finding in findings
+        if isinstance(finding, dict)
+    ]
+    normalized_findings.extend(
+        {
+            "scope": "quality_guardrail_summary",
+            "reason": "invalid_quality_guardrail_summary",
+            "value": issue,
+        }
+        for issue in validation_issues
+    )
     return {
         "ok": ok,
         "enforced": enforced,
         "summary_path": summary_path,
         "latest_dir": guardrail_summary.get("latest_dir"),
         "tolerance": guardrail_summary.get("tolerance"),
-        "findings": [
-            finding
-            for finding in findings
-            if isinstance(finding, dict)
-        ],
+        "findings": normalized_findings,
         "message": (
             "broader benchmark readiness guardrail passed"
             if ok
@@ -2428,6 +3702,11 @@ def build_trajectory_review_gate(
                 "trajectory_turn_count": turns,
                 "cached_token_percent": cached_percent,
                 "review_notes": notes,
+                "rerun_command_template": _trajectory_rerun_command_template(
+                    summary,
+                    benchmark=str(cell.get("benchmark") or ""),
+                    adapter=str(cell.get("adapter") or ""),
+                ),
             }
         )
     return {
@@ -2644,26 +3923,409 @@ def build_report_gate(summary: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _gate_value(summary: dict[str, Any], key: str) -> dict[str, Any]:
+    gate = summary.get(key)
+    return gate if isinstance(gate, dict) else {}
+
+
+def _release_command_scope(summary: dict[str, Any]) -> tuple[list[str], list[str]]:
+    run_config = summary.get("run_config")
+    run_config = run_config if isinstance(run_config, dict) else {}
+    coverage = summary.get("coverage")
+    coverage = coverage if isinstance(coverage, dict) else {}
+    included = [
+        str(item.get("benchmark"))
+        for item in coverage.get("included_benchmarks", [])
+        if isinstance(item, dict) and item.get("benchmark")
+    ]
+    benchmarks = sorted(set(included))
+    if not benchmarks:
+        benchmarks = sorted(str(item) for item in run_config.get("benchmarks") or [])
+    if not benchmarks:
+        benchmarks = list(DEFAULT_BENCHMARKS)
+
+    adapters = list(DEFAULT_ADAPTERS)
+    return benchmarks, adapters
+
+
+def _release_base_command(summary: dict[str, Any]) -> list[str]:
+    run_config = summary.get("run_config")
+    run_config = run_config if isinstance(run_config, dict) else {}
+    benchmarks, adapters = _release_command_scope(summary)
+    parts = [
+        "python",
+        "-m",
+        "benchmarks.orchestrator.code_agent_matrix",
+        "--benchmarks",
+        ",".join(benchmarks),
+        "--adapters",
+        ",".join(adapters),
+    ]
+    provider = run_config.get("provider")
+    if provider:
+        parts.extend(["--provider", str(provider)])
+    model = run_config.get("model")
+    if model:
+        parts.extend(["--model", str(model)])
+    max_tasks = run_config.get("max_tasks")
+    if max_tasks is not None:
+        parts.extend(["--max-tasks", str(max_tasks)])
+    timeout_seconds = run_config.get("timeout_seconds")
+    if timeout_seconds is not None:
+        parts.extend(["--timeout-seconds", str(timeout_seconds)])
+    run_root = run_config.get("run_root")
+    if run_root:
+        parts.extend(["--run-root", str(run_root)])
+    publish_latest_dir = run_config.get("publish_latest_dir")
+    if publish_latest_dir:
+        parts.extend(["--publish-latest-dir", str(publish_latest_dir)])
+    return _with_swe_bench_pro_env(parts, run_config)
+
+
+def _deferred_benchmarks_from_summary(summary: dict[str, Any]) -> list[str]:
+    queue = summary.get("deferred_promotion_queue")
+    queue = queue if isinstance(queue, list) else []
+    return [
+        str(item.get("benchmark"))
+        for item in queue
+        if isinstance(item, dict) and item.get("benchmark")
+    ]
+
+
+def _release_base_command_for_benchmarks(
+    summary: dict[str, Any],
+    benchmarks: list[str],
+) -> list[str]:
+    run_config = summary.get("run_config")
+    run_config = run_config if isinstance(run_config, dict) else {}
+    _, adapters = _release_command_scope(summary)
+    parts = [
+        "python",
+        "-m",
+        "benchmarks.orchestrator.code_agent_matrix",
+        "--benchmarks",
+        ",".join(benchmarks),
+        "--adapters",
+        ",".join(adapters),
+    ]
+    provider = run_config.get("provider")
+    if provider:
+        parts.extend(["--provider", str(provider)])
+    model = run_config.get("model")
+    if model:
+        parts.extend(["--model", str(model)])
+    max_tasks = run_config.get("max_tasks")
+    if max_tasks is not None:
+        parts.extend(["--max-tasks", str(max_tasks)])
+    timeout_seconds = run_config.get("timeout_seconds")
+    if timeout_seconds is not None:
+        parts.extend(["--timeout-seconds", str(timeout_seconds)])
+    run_root = run_config.get("run_root")
+    if run_root:
+        parts.extend(["--run-root", str(run_root)])
+    publish_latest_dir = run_config.get("publish_latest_dir")
+    if publish_latest_dir:
+        parts.extend(["--publish-latest-dir", str(publish_latest_dir)])
+    return _with_swe_bench_pro_env(parts, run_config)
+
+
+def build_release_unblock_commands(
+    summary: dict[str, Any],
+    blocking_requirements: list[str],
+) -> list[dict[str, Any]]:
+    """Build rerun templates for release-readiness blockers."""
+
+    blocking = set(blocking_requirements)
+    commands: list[dict[str, Any]] = []
+    evidence_requirements = {
+        "live_execution",
+        "full_included_coverage",
+        "comparable_or_better",
+        "right_wrong_token_stats",
+        "llm_token_telemetry",
+        "trajectory_reviews",
+        "efficiency_not_worse",
+    }
+    if blocking & evidence_requirements:
+        parts = [
+            *_release_base_command(summary),
+            "--force",
+            "--enforce-live-report",
+            "--enforce-trajectory-reviews",
+            "--enforce-report",
+            "--enforce-coverage",
+            "--enforce-comparable",
+            "--enforce-required-stats",
+            "--enforce-token-evidence",
+            "--enforce-efficiency",
+            "--enforce-release-readiness",
+        ]
+        commands.append(
+            {
+                "id": "run_full_live_evidence",
+                "requirements": sorted(blocking & evidence_requirements),
+                "command_template": _command_template(parts),
+            }
+        )
+
+    if "all_related_benchmark_coverage" in blocking:
+        runnable_deferred = [
+            benchmark
+            for benchmark in _deferred_benchmarks_from_summary(summary)
+            if benchmark in RUNNABLE_DEFERRED_BENCHMARKS
+        ]
+        if runnable_deferred:
+            commands.append(
+                {
+                    "id": "run_deferred_live_evidence",
+                    "requirements": ["all_related_benchmark_coverage"],
+                    "command_template": _command_template(
+                        [
+                            *_release_base_command_for_benchmarks(summary, runnable_deferred),
+                            "--force",
+                            "--enforce-live-report",
+                            "--enforce-trajectory-reviews",
+                            "--enforce-report",
+                            "--enforce-comparable",
+                            "--enforce-required-stats",
+                            "--enforce-token-evidence",
+                            "--enforce-efficiency",
+                        ]
+                    ),
+                }
+            )
+        commands.append(
+            {
+                "id": "promote_deferred_benchmarks",
+                "requirements": ["all_related_benchmark_coverage"],
+                "command_template": _command_template(
+                    [
+                        "python",
+                        "-m",
+                        "benchmarks.orchestrator.code_agent_matrix",
+                        "--summarize",
+                        "{summary_json}",
+                    ]
+                ),
+            }
+        )
+
+    if "non_code_quality_guardrail" in blocking:
+        parts = [
+            *_release_base_command(summary),
+            "--force",
+            "--quality-guardrail-summary",
+            "/path/to/non-code-quality-guardrail.json",
+            "--enforce-quality-guardrail",
+            "--enforce-report",
+            "--enforce-release-readiness",
+        ]
+        commands.append(
+            {
+                "id": "attach_non_code_quality_guardrail",
+                "requirements": ["non_code_quality_guardrail"],
+                "command_template": _command_template(parts),
+            }
+        )
+
+    if "longitudinal_no_regression" in blocking:
+        parts = [
+            *_release_base_command(summary),
+            "--force",
+            "--compare-summary",
+            "/path/to/previous/summary.json",
+            "--enforce-no-regression",
+            "--enforce-report",
+            "--enforce-release-readiness",
+        ]
+        commands.append(
+            {
+                "id": "compare_previous_summary",
+                "requirements": ["longitudinal_no_regression"],
+                "command_template": _command_template(parts),
+            }
+        )
+    return commands
+
+
+def build_release_readiness(summary: dict[str, Any]) -> dict[str, Any]:
+    """Translate matrix gates into the user-facing release checklist."""
+
+    live_gate = _gate_value(summary, "live_report_gate")
+    coverage_gate = _gate_value(summary, "coverage_gate")
+    benchmark_gate = _gate_value(summary, "benchmark_gate")
+    required_stats_gate = _gate_value(summary, "required_stats_gate")
+    token_evidence = _gate_value(summary, "token_evidence")
+    trajectory_gate = _gate_value(summary, "trajectory_review_gate")
+    efficiency_gate = _gate_value(summary, "efficiency_gate")
+    quality_gate = _gate_value(summary, "quality_guardrail_gate")
+    no_regression_gate = _gate_value(summary, "no_regression_gate")
+    previous_comparison = summary.get("previous_summary_comparison")
+    deferred_queue = summary.get("deferred_promotion_queue")
+    deferred_queue = deferred_queue if isinstance(deferred_queue, list) else []
+    deferred_benchmarks = [
+        str(item.get("benchmark") or "")
+        for item in deferred_queue
+        if isinstance(item, dict) and item.get("benchmark")
+    ]
+    has_quality_summary = bool(
+        quality_gate.get("summary_path") or quality_gate.get("latest_dir")
+    )
+    has_previous_comparison = isinstance(previous_comparison, dict)
+
+    checks = [
+        {
+            "id": "live_execution",
+            "required": True,
+            "ok": bool(live_gate.get("ok")),
+            "evidence": live_gate.get("message", ""),
+            "next_action": "run without --smoke/--dry-run and enforce --enforce-live-report",
+        },
+        {
+            "id": "full_included_coverage",
+            "required": True,
+            "ok": bool(coverage_gate.get("ok")),
+            "evidence": coverage_gate.get("message", ""),
+            "next_action": "select every included code-agent benchmark",
+        },
+        {
+            "id": "all_related_benchmark_coverage",
+            "required": True,
+            "ok": not deferred_benchmarks,
+            "evidence": (
+                "no deferred related benchmarks remain"
+                if not deferred_benchmarks
+                else f"deferred related benchmarks remain: {', '.join(deferred_benchmarks)}"
+            ),
+            "next_action": "promote deferred related benchmarks into the release-comparable matrix",
+        },
+        {
+            "id": "comparable_or_better",
+            "required": True,
+            "ok": bool(benchmark_gate.get("ok")),
+            "evidence": benchmark_gate.get("message", ""),
+            "next_action": "review improvement_queue and improve ElizaOS on blocking benchmarks",
+        },
+        {
+            "id": "right_wrong_token_stats",
+            "required": True,
+            "ok": bool(required_stats_gate.get("ok")),
+            "evidence": required_stats_gate.get("message", ""),
+            "next_action": "rerun blocking cells until right/wrong/total and token stats are present",
+        },
+        {
+            "id": "llm_token_telemetry",
+            "required": True,
+            "ok": bool(token_evidence.get("ok")),
+            "evidence": token_evidence.get("message", ""),
+            "next_action": "enable trajectory/token capture for every selected cell",
+        },
+        {
+            "id": "trajectory_reviews",
+            "required": True,
+            "ok": bool(trajectory_gate.get("ok")),
+            "evidence": trajectory_gate.get("message", ""),
+            "next_action": "run with --enforce-trajectory-reviews and inspect trajectory artifacts",
+        },
+        {
+            "id": "efficiency_not_worse",
+            "required": True,
+            "ok": bool(efficiency_gate.get("ok")),
+            "evidence": efficiency_gate.get("message", ""),
+            "next_action": "reduce extra token/call cost or improve cache behavior versus OpenCode",
+        },
+        {
+            "id": "non_code_quality_guardrail",
+            "required": True,
+            "ok": bool(quality_gate.get("ok")) and has_quality_summary,
+            "evidence": quality_gate.get("message", ""),
+            "next_action": (
+                "generate non-code guardrail JSON with "
+                "`{command}` and pass it with --quality-guardrail-summary"
+            ).format(command=NON_CODE_GUARDRAIL_COMMAND),
+        },
+        {
+            "id": "longitudinal_no_regression",
+            "required": bool(has_previous_comparison or no_regression_gate.get("enforced")),
+            "ok": bool(no_regression_gate.get("ok")) and (
+                has_previous_comparison or not no_regression_gate.get("enforced")
+            ),
+            "evidence": no_regression_gate.get("message", ""),
+            "next_action": "compare against the previous summary with --compare-summary",
+        },
+    ]
+    required_checks = [check for check in checks if check["required"]]
+    blocking = [
+        str(check["id"])
+        for check in required_checks
+        if not check["ok"]
+    ]
+    unblock_commands = build_release_unblock_commands(summary, blocking)
+    return {
+        "ok": not blocking,
+        "blocking_requirements": blocking,
+        "required_count": len(required_checks),
+        "passed_required_count": len(required_checks) - len(blocking),
+        "checks": checks,
+        "unblock_commands": unblock_commands,
+        "message": (
+            "release readiness checklist passed"
+            if not blocking
+            else "release readiness checklist is incomplete"
+        ),
+    }
+
+
 def build_report_rows(summary: dict[str, Any]) -> list[dict[str, Any]]:
     """Build stable flat rows for longitudinal benchmark reporting."""
     run_config = summary.get("run_config")
     run_config = run_config if isinstance(run_config, dict) else {}
     generated_at = summary.get("generated_at")
+    cell_rows = summary.get("cells")
+    cells_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for cell in cell_rows if isinstance(cell_rows, list) else []:
+        if not isinstance(cell, dict):
+            continue
+        benchmark = cell.get("benchmark")
+        adapter = cell.get("adapter")
+        if isinstance(benchmark, str) and isinstance(adapter, str):
+            cells_by_key[(benchmark, adapter)] = cell
     rows: list[dict[str, Any]] = []
     comparisons = summary.get("head_to_head", {}).get("comparisons")
     for comparison in comparisons if isinstance(comparisons, list) else []:
         if not isinstance(comparison, dict):
             continue
+        benchmark = comparison.get("benchmark")
+        target_adapter = comparison.get("target_adapter")
+        baseline_adapter = comparison.get("baseline_adapter")
+        target_cell = (
+            cells_by_key.get((benchmark, target_adapter))
+            if isinstance(benchmark, str) and isinstance(target_adapter, str)
+            else None
+        )
+        baseline_cell = (
+            cells_by_key.get((benchmark, baseline_adapter))
+            if isinstance(benchmark, str) and isinstance(baseline_adapter, str)
+            else None
+        )
         row = {
             "generated_at": generated_at,
             "run_root": run_config.get("run_root"),
             "mode": run_config.get("mode"),
             "provider": run_config.get("provider"),
             "model": run_config.get("model"),
-            "benchmark": comparison.get("benchmark"),
+            "benchmark": benchmark,
             "status": comparison.get("status"),
-            "target_adapter": comparison.get("target_adapter"),
-            "baseline_adapter": comparison.get("baseline_adapter"),
+            "target_adapter": target_adapter,
+            "baseline_adapter": baseline_adapter,
+            "target_failure_class": _cell_value(target_cell, "failure_class"),
+            "baseline_failure_class": _cell_value(baseline_cell, "failure_class"),
+            "target_result_path": _cell_value(target_cell, "result_path"),
+            "baseline_result_path": _cell_value(baseline_cell, "result_path"),
+            "target_command_path": _cell_value(target_cell, "command_path"),
+            "baseline_command_path": _cell_value(baseline_cell, "command_path"),
+            "target_trajectory_dir": _cell_trajectory_dir(target_cell),
+            "baseline_trajectory_dir": _cell_trajectory_dir(baseline_cell),
             "target_right": comparison.get("target_right"),
             "target_wrong": comparison.get("target_wrong"),
             "target_total": comparison.get("target_total"),
@@ -2697,9 +4359,56 @@ def build_report_rows(summary: dict[str, Any]) -> list[dict[str, Any]]:
             "trajectory_review_gate_ok": _gate_ok(summary, "trajectory_review_gate"),
             "live_report_gate_ok": _gate_ok(summary, "live_report_gate"),
             "report_gate_ok": _gate_ok(summary, "report_gate"),
+            "release_readiness_ok": _gate_ok(summary, "release_readiness"),
+            "release_readiness_blocking_requirements": _release_readiness_csv_value(
+                summary,
+                "blocking_requirements",
+            ),
+            "release_readiness_unblock_command_ids": _release_readiness_unblock_ids(
+                summary
+            ),
         }
         rows.append({field: row.get(field) for field in REPORT_ROW_FIELDS})
     return rows
+
+
+def _cell_value(cell: dict[str, Any] | None, key: str) -> Any:
+    if not isinstance(cell, dict):
+        return None
+    return cell.get(key)
+
+
+def _cell_trajectory_dir(cell: dict[str, Any] | None) -> str | None:
+    if not isinstance(cell, dict):
+        return None
+    output_dir = cell.get("output_dir")
+    if not isinstance(output_dir, str) or not output_dir:
+        return None
+    return str(Path(output_dir).parent / "trajectories")
+
+
+def _release_readiness_csv_value(summary: dict[str, Any], key: str) -> str:
+    release_readiness = summary.get("release_readiness")
+    if not isinstance(release_readiness, dict):
+        return ""
+    value = release_readiness.get(key)
+    if not isinstance(value, list):
+        return ""
+    return ",".join(str(item) for item in value if str(item))
+
+
+def _release_readiness_unblock_ids(summary: dict[str, Any]) -> str:
+    release_readiness = summary.get("release_readiness")
+    if not isinstance(release_readiness, dict):
+        return ""
+    commands = release_readiness.get("unblock_commands")
+    if not isinstance(commands, list):
+        return ""
+    return ",".join(
+        str(command.get("id"))
+        for command in commands
+        if isinstance(command, dict) and command.get("id")
+    )
 
 
 def _gate_ok(summary: dict[str, Any], key: str) -> bool | None:
@@ -2728,6 +4437,234 @@ def write_report_rows(run_root: Path, rows: list[dict[str, Any]]) -> dict[str, s
     }
 
 
+def write_code_agent_latest_snapshots(
+    latest_dir: Path,
+    summary: dict[str, Any],
+) -> dict[str, Any]:
+    """Write one publishable latest JSON row per code-agent comparison."""
+
+    latest_dir.mkdir(parents=True, exist_ok=True)
+    rows = summary.get("report_rows")
+    rows = rows if isinstance(rows, list) else []
+    generated_at = str(summary.get("generated_at") or datetime.now(UTC).isoformat())
+    run_config = summary.get("run_config")
+    run_config = run_config if isinstance(run_config, dict) else {}
+    written: list[str] = []
+    expected_snapshot_paths: set[Path] = set()
+    index: dict[str, Any] = {
+        "updated_at": generated_at,
+        "latest": {},
+        "code_agent_matrix": {
+            "summary_json": str(
+                (summary.get("artifact_paths") or {}).get("summary_json") or ""
+            ),
+            "run_root": str(run_config.get("run_root") or ""),
+            "target_adapter": DEFAULT_TARGET_ADAPTER,
+            "baseline_adapter": DEFAULT_BASELINE_ADAPTER,
+            "row_count": 0,
+        },
+        "matrix_contract": {
+            "status": "complete",
+            "summary": {
+                "unsupported_real_cells": 0,
+                "missing_required_real_cells": 0,
+                "failed_required_real_cells": 0,
+                "no_required_real_harness_benchmarks": 0,
+            },
+            "benchmarks": {},
+        },
+    }
+    contract_benchmarks = index["matrix_contract"]["benchmarks"]
+    failed_required = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        benchmark = str(row.get("benchmark") or "").strip()
+        if not benchmark:
+            continue
+        score = row.get("target_accuracy")
+        has_score = _is_finite_number(score)
+        payload = {
+            **row,
+            "updated_at": generated_at,
+            "benchmark_id": benchmark,
+            "benchmark_directory": benchmark,
+            "agent": CODE_AGENT_LATEST_AGENT,
+            "provider": run_config.get("provider") or row.get("provider"),
+            "model": run_config.get("model") or row.get("model"),
+            "status": "pending",
+            "comparison_status": row.get("status"),
+            "score": float(score) if has_score else None,
+            "unit": "accuracy",
+            "higher_is_better": True,
+            "run_root": run_config.get("run_root") or row.get("run_root"),
+            "metrics": {
+                "target_right": row.get("target_right"),
+                "target_wrong": row.get("target_wrong"),
+                "target_total": row.get("target_total"),
+                "baseline_right": row.get("baseline_right"),
+                "baseline_wrong": row.get("baseline_wrong"),
+                "baseline_total": row.get("baseline_total"),
+                "accuracy_delta": row.get("accuracy_delta"),
+                "input_token_delta": row.get("input_token_delta"),
+                "output_token_delta": row.get("output_token_delta"),
+                "total_token_delta": row.get("total_token_delta"),
+                "cached_token_percent_delta": row.get("cached_token_percent_delta"),
+                "llm_call_delta": row.get("llm_call_delta"),
+            },
+            "token_metrics": {
+                "target_input_tokens": row.get("target_input_tokens"),
+                "target_output_tokens": row.get("target_output_tokens"),
+                "target_total_tokens": row.get("target_total_tokens"),
+                "target_cached_token_percent": row.get("target_cached_token_percent"),
+                "target_llm_call_count": row.get("target_llm_call_count"),
+                "baseline_input_tokens": row.get("baseline_input_tokens"),
+                "baseline_output_tokens": row.get("baseline_output_tokens"),
+                "baseline_total_tokens": row.get("baseline_total_tokens"),
+                "baseline_cached_token_percent": row.get("baseline_cached_token_percent"),
+                "baseline_llm_call_count": row.get("baseline_llm_call_count"),
+            },
+        }
+        payload = _json_safe_value(payload)
+        failure_reasons = _code_agent_latest_failure_reasons(payload)
+        latest_status = "succeeded" if not failure_reasons else "failed"
+        failure_reason = ", ".join(failure_reasons)
+        payload["status"] = latest_status
+        payload["failure_reason"] = failure_reason
+        payload["failure_reasons"] = failure_reasons
+        snapshot_path = (
+            latest_dir
+            / f"{sanitize(benchmark)}__{sanitize(CODE_AGENT_LATEST_AGENT)}.json"
+        )
+        expected_snapshot_paths.add(snapshot_path)
+        snapshot_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True),
+            encoding="utf-8",
+        )
+        written.append(str(snapshot_path))
+        key = f"{benchmark}::{CODE_AGENT_LATEST_AGENT}"
+        index["latest"][key] = {
+            "path": str(snapshot_path),
+            "score": payload["score"],
+            "status": latest_status,
+            "comparison_status": payload["comparison_status"],
+            "reason": failure_reason,
+            "updated_at": generated_at,
+        }
+        if latest_status != "succeeded":
+            failed_required += 1
+        contract_benchmarks[benchmark] = {
+            "complete": latest_status == "succeeded",
+            "cells": {
+                CODE_AGENT_LATEST_AGENT: {
+                    "required": True,
+                    "state": latest_status,
+                    "status": latest_status,
+                    "score": payload["score"],
+                    "reason": failure_reason,
+                }
+            },
+        }
+    index["code_agent_matrix"]["row_count"] = len(written)
+    if failed_required:
+        index["matrix_contract"]["status"] = "incomplete"
+        index["matrix_contract"]["summary"]["failed_required_real_cells"] = failed_required
+    if not written:
+        index["matrix_contract"]["status"] = "incomplete"
+        index["matrix_contract"]["summary"]["no_required_real_harness_benchmarks"] = 1
+    stale_rows = _prune_stale_code_agent_latest_rows(
+        latest_dir,
+        expected_paths=expected_snapshot_paths,
+    )
+    index["code_agent_matrix"]["stale_row_count"] = len(stale_rows)
+    index_path = latest_dir / "index.json"
+    index_path.write_text(
+        json.dumps(index, indent=2, sort_keys=True, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    return {
+        "latest_dir": str(latest_dir),
+        "latest_index": str(index_path),
+        "latest_rows": written,
+        "stale_latest_rows_pruned": [str(path) for path in stale_rows],
+    }
+
+
+def _prune_stale_code_agent_latest_rows(
+    latest_dir: Path,
+    *,
+    expected_paths: set[Path],
+) -> list[Path]:
+    stale_paths: list[Path] = []
+    suffix = f"__{sanitize(CODE_AGENT_LATEST_AGENT)}.json"
+    expected_resolved = {path.resolve() for path in expected_paths}
+    for path in latest_dir.glob(f"*{suffix}"):
+        if path.resolve() in expected_resolved:
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        stale_paths.append(path)
+    return stale_paths
+
+
+def _code_agent_latest_failure_reasons(payload: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    if not _is_finite_number(payload.get("score")):
+        reasons.append("missing numeric score")
+    if str(payload.get("mode") or "").strip() != "live":
+        reasons.append("not live mode")
+    comparison_status = str(payload.get("comparison_status") or "").strip()
+    if comparison_status not in CODE_AGENT_LATEST_ACCEPTABLE_COMPARISON_STATUSES:
+        reasons.append("not comparable or better")
+    expected_status = expected_code_agent_comparison_status(payload)
+    if expected_status is not None and comparison_status != expected_status:
+        reasons.append(f"comparison status should be {expected_status}")
+    for key in CODE_AGENT_LATEST_REQUIRED_PROVENANCE_FIELDS:
+        value = payload.get(key)
+        if not isinstance(value, str) or not value.strip():
+            reasons.append(f"missing {key}")
+    for key in CODE_AGENT_LATEST_REQUIRED_NUMERIC_FIELDS:
+        if not _is_finite_number(payload.get(key)):
+            reasons.append(f"missing numeric {key}")
+    for key in CODE_AGENT_LATEST_REQUIRED_TRUE_FIELDS:
+        if payload.get(key) is not True:
+            reasons.append(f"{key} is not true")
+    total_delta = payload.get("total_token_delta")
+    if _is_finite_number(total_delta) and float(total_delta) > 0:
+        reasons.append("total tokens worse")
+    call_delta = payload.get("llm_call_delta")
+    if _is_finite_number(call_delta) and float(call_delta) > 0:
+        reasons.append("LLM calls worse")
+    cache_delta = payload.get("cached_token_percent_delta")
+    if _is_finite_number(cache_delta) and float(cache_delta) < 0:
+        reasons.append("cached-token percent worse")
+    return reasons
+
+
+def _is_finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {str(key): _json_safe_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_value(child) for child in value]
+    if isinstance(value, tuple):
+        return [_json_safe_value(child) for child in value]
+    return value
+
+
 def write_preflight_artifacts(
     *,
     run_root: Path,
@@ -2737,6 +4674,7 @@ def write_preflight_artifacts(
 ) -> dict[str, Any]:
     preflight_json = run_root / "preflight.json"
     preflight_md = run_root / "preflight.md"
+    exit_code = EXIT_OK if preflight.get("ok") else EXIT_PREFLIGHT_FAILED
     summary = {
         "generated_at": datetime.now(UTC).isoformat(),
         "total": len(cell_pairs),
@@ -2748,6 +4686,8 @@ def write_preflight_artifacts(
             cell_pairs=cell_pairs,
         ),
         "exit_codes": build_exit_code_summary(),
+        "exit_code": exit_code,
+        "exit_reason": exit_reason_for_code(exit_code),
         "artifact_paths": {
             "run_root": str(run_root),
             "preflight_json": str(preflight_json),
@@ -2830,6 +4770,13 @@ def build_run_config(
         "resume": not bool(args.no_resume),
         "force": bool(args.force),
         "summarize": str(args.summarize or ""),
+        "publish_latest_dir": str(args.publish_latest_dir or ""),
+        "swe_bench_pro_evaluator_backend": os.environ.get(
+            "SWE_BENCH_PRO_EVALUATOR_BACKEND", ""
+        ).strip(),
+        "swe_bench_pro_eval_num_workers": os.environ.get(
+            "SWE_BENCH_PRO_EVAL_NUM_WORKERS", ""
+        ).strip(),
         "rerun_queue": str(args.rerun_queue or ""),
         "queue_priorities": str(args.queue_priorities or ""),
         "queue_statuses": str(args.queue_statuses or ""),
@@ -2845,6 +4792,7 @@ def build_run_config(
         "enforce_trajectory_reviews": bool(args.enforce_trajectory_reviews),
         "enforce_live_report": bool(args.enforce_live_report),
         "enforce_report": bool(args.enforce_report),
+        "enforce_release_readiness": bool(args.enforce_release_readiness),
     }
 
 
@@ -2886,6 +4834,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 f"Adapters: {', '.join(run_config.get('adapters') or [])}",
                 f"Max tasks: {run_config.get('max_tasks', '')}",
                 f"Timeout seconds: {run_config.get('timeout_seconds', '')}",
+                f"SWE-bench Pro evaluator backend: {run_config.get('swe_bench_pro_evaluator_backend', '')}",
+                f"SWE-bench Pro eval workers: {run_config.get('swe_bench_pro_eval_num_workers', '')}",
                 f"Enforce comparable: {run_config.get('enforce_comparable')}",
                 f"Enforce coverage: {run_config.get('enforce_coverage')}",
                 f"Enforce token evidence: {run_config.get('enforce_token_evidence')}",
@@ -2896,6 +4846,17 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 f"Enforce trajectory reviews: {run_config.get('enforce_trajectory_reviews')}",
                 f"Enforce live report: {run_config.get('enforce_live_report')}",
                 f"Enforce report: {run_config.get('enforce_report')}",
+                f"Enforce release readiness: {run_config.get('enforce_release_readiness')}",
+            ]
+        )
+    if "exit_code" in summary or "exit_reason" in summary:
+        lines.extend(
+            [
+                "",
+                "## Run Result",
+                "",
+                f"Exit code: {summary.get('exit_code', '')}",
+                f"Exit reason: {summary.get('exit_reason', '')}",
             ]
         )
     exit_codes = summary.get("exit_codes")
@@ -2940,6 +4901,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 f"Status: {'ok' if preflight.get('ok') else 'blocked'}",
                 f"Provider: {preflight.get('provider', '')}",
                 f"Provider key: {preflight.get('provider_key', '')} ({'present' if preflight.get('provider_key_present') else 'missing'}, {'required' if preflight.get('provider_key_required') else 'not required'})",
+                f"Quality guardrail summary: {preflight.get('quality_guardrail_summary') or 'missing'} ({'present' if preflight.get('quality_guardrail_summary_present') else 'missing'}, {'required' if preflight.get('quality_guardrail_summary_required') else 'not required'}, {'clean' if preflight.get('quality_guardrail_summary_ok') else 'not clean' if preflight.get('quality_guardrail_summary_ok') is False else 'not checked'})",
                 f"OpenCode: {preflight.get('opencode_bin') or 'missing'}",
             ]
         )
@@ -2954,6 +4916,28 @@ def render_markdown(summary: dict[str, Any]) -> str:
                         severity=issue.get("severity", ""),
                         kind=issue.get("kind", ""),
                         message=issue.get("message", ""),
+                    )
+                )
+        guardrail_findings = preflight.get("quality_guardrail_summary_blocking_findings")
+        if isinstance(guardrail_findings, list) and guardrail_findings:
+            lines.extend(
+                [
+                    "",
+                    "### Quality Guardrail Findings",
+                    "",
+                    "| scope | reason | value | next action |",
+                    "| --- | --- | --- | --- |",
+                ]
+            )
+            for finding in guardrail_findings:
+                if not isinstance(finding, dict):
+                    continue
+                lines.append(
+                    "| {scope} | {reason} | {value} | {next_action} |".format(
+                        scope=finding.get("scope", ""),
+                        reason=finding.get("reason", ""),
+                        value=finding.get("value", ""),
+                        next_action=finding.get("next_action", ""),
                     )
                 )
         unblock_steps = preflight.get("unblock_steps")
@@ -2990,10 +4974,74 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 f"Blocking gates: {', '.join(report_gate.get('blocking_gates') or []) or '(none)'}",
             ]
         )
+    release_readiness = summary.get("release_readiness")
+    if isinstance(release_readiness, dict):
+        lines.extend(
+            [
+                "",
+                "## Release Readiness",
+                "",
+                f"Status: {'ok' if release_readiness.get('ok') else 'blocked'}",
+                f"Message: {release_readiness.get('message', '')}",
+                f"Required checks: {release_readiness.get('passed_required_count', 0)}/{release_readiness.get('required_count', 0)}",
+                f"Blocking requirements: {', '.join(release_readiness.get('blocking_requirements') or []) or '(none)'}",
+            ]
+        )
+        checks = release_readiness.get("checks")
+        if isinstance(checks, list) and checks:
+            lines.extend(
+                [
+                    "",
+                    "| id | required | ok | evidence | next action |",
+                    "| --- | --- | --- | --- | --- |",
+                ]
+            )
+            for check in checks:
+                if not isinstance(check, dict):
+                    continue
+                lines.append(
+                    "| {id} | {required} | {ok} | {evidence} | {next_action} |".format(
+                        id=check.get("id", ""),
+                        required=check.get("required"),
+                        ok=check.get("ok"),
+                        evidence=check.get("evidence", ""),
+                        next_action=check.get("next_action", ""),
+                    )
+                )
+        unblock_commands = release_readiness.get("unblock_commands")
+        if isinstance(unblock_commands, list) and unblock_commands:
+            lines.extend(
+                [
+                    "",
+                    "### Release Unblock Commands",
+                    "",
+                    "| id | requirements | command |",
+                    "| --- | --- | --- |",
+                ]
+            )
+            for command in unblock_commands:
+                if not isinstance(command, dict):
+                    continue
+                requirements = command.get("requirements")
+                lines.append(
+                    "| {id} | {requirements} | `{command_template}` |".format(
+                        id=command.get("id", ""),
+                        requirements=", ".join(requirements)
+                        if isinstance(requirements, list)
+                        else "",
+                        command_template=str(command.get("command_template", "")).replace("`", "\\`"),
+                    )
+                )
     next_commands = summary.get("next_commands")
     if isinstance(next_commands, dict) and next_commands:
         lines.extend(["", "## Next Commands", ""])
-        for label in ("retry_preflight", "live_evidence", "release_comparable"):
+        for label in (
+            "retry_preflight",
+            "live_evidence",
+            "deferred_live_evidence",
+            "release_preflight",
+            "release_comparable",
+        ):
             command = next_commands.get(label)
             if not isinstance(command, str) or not command:
                 continue
@@ -3107,15 +5155,15 @@ def render_markdown(summary: dict[str, Any]) -> str:
             lines.extend(
                 [
                     "",
-                    "| benchmark | adapter | trajectory dir | files | turns | cached % | notes |",
-                    "| --- | --- | --- | ---: | ---: | ---: | --- |",
+                    "| benchmark | adapter | trajectory dir | files | turns | cached % | notes | rerun |",
+                    "| --- | --- | --- | ---: | ---: | ---: | --- | --- |",
                 ]
             )
             for cell in blocking_cells:
                 if not isinstance(cell, dict):
                     continue
                 lines.append(
-                    "| {benchmark} | {adapter} | {trajectory_dir} | {files} | {turns} | {cached_percent} | {notes} |".format(
+                    "| {benchmark} | {adapter} | {trajectory_dir} | {files} | {turns} | {cached_percent} | {notes} | `{rerun}` |".format(
                         benchmark=cell.get("benchmark", ""),
                         adapter=cell.get("adapter", ""),
                         trajectory_dir=cell.get("trajectory_dir", ""),
@@ -3123,6 +5171,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
                         turns=fmt(cell.get("trajectory_turn_count"), 0),
                         cached_percent=fmt(cell.get("cached_token_percent"), 2),
                         notes=", ".join(str(note) for note in cell.get("review_notes") or []),
+                        rerun=cell.get("rerun_command_template", ""),
                     )
                 )
     live_report_gate = summary.get("live_report_gate")
@@ -3241,20 +5290,21 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 "",
                 "## Deferred Promotion Queue",
                 "",
-                "| priority | benchmark | domains | next action | remaining |",
-                "| --- | --- | --- | --- | ---: |",
+                "| priority | benchmark | domains | next action | remaining | evidence command |",
+                "| --- | --- | --- | --- | ---: | --- |",
             ]
         )
         for item in promotion_queue:
             if not isinstance(item, dict):
                 continue
             lines.append(
-                "| {priority} | {benchmark} | {domains} | {next_action} | {remaining} |".format(
+                "| {priority} | {benchmark} | {domains} | {next_action} | {remaining} | `{command}` |".format(
                     priority=item.get("priority", ""),
                     benchmark=item.get("benchmark", ""),
                     domains=", ".join(str(domain) for domain in item.get("domains") or []),
                     next_action=item.get("next_action", ""),
                     remaining=item.get("remaining_count", ""),
+                    command=item.get("evidence_command_template", ""),
                 )
             )
     coverage_gate = summary.get("coverage_gate")
@@ -3420,15 +5470,15 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 "",
                 "## Efficiency Queue",
                 "",
-                "| benchmark | status | reasons | accuracy delta | total token delta | cached % delta | LLM call delta |",
-                "| --- | --- | --- | ---: | ---: | ---: | ---: |",
+                "| benchmark | status | reasons | accuracy delta | total token delta | cached % delta | LLM call delta | rerun |",
+                "| --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
             ]
         )
         for item in efficiency_queue:
             if not isinstance(item, dict):
                 continue
             lines.append(
-                "| {benchmark} | {status} | {reasons} | {accuracy_delta} | {token_delta} | {cached_delta} | {llm_delta} |".format(
+                "| {benchmark} | {status} | {reasons} | {accuracy_delta} | {token_delta} | {cached_delta} | {llm_delta} | `{rerun}` |".format(
                     benchmark=item.get("benchmark", ""),
                     status=item.get("status", ""),
                     reasons="; ".join(str(reason) for reason in item.get("reasons") or []),
@@ -3436,6 +5486,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
                     token_delta=fmt(item.get("total_token_delta"), 0),
                     cached_delta=fmt(item.get("cached_token_percent_delta"), 2),
                     llm_delta=fmt(item.get("llm_call_delta"), 0),
+                    rerun=item.get("rerun_command_template", ""),
                 )
             )
     token_by_adapter = summary.get("token_by_adapter")
@@ -3521,8 +5572,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 "",
                 "## Improvement Queue",
                 "",
-                "| priority | benchmark | status | diagnosis | next action | accuracy delta | target failure | baseline failure | target trajectories | baseline trajectories |",
-                "| --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- |",
+                "| priority | benchmark | status | diagnosis | focus | next action | accuracy delta | target failure | baseline failure | target trajectories | baseline trajectories |",
+                "| --- | --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- |",
             ]
         )
         for item in improvement_queue:
@@ -3541,11 +5592,12 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 else ""
             )
             lines.append(
-                "| {priority} | {benchmark} | {status} | {diagnosis} | {next_action} | {accuracy_delta} | {target_failure} | {baseline_failure} | {target_trajectory} | {baseline_trajectory} |".format(
+                "| {priority} | {benchmark} | {status} | {diagnosis} | {focus} | {next_action} | {accuracy_delta} | {target_failure} | {baseline_failure} | {target_trajectory} | {baseline_trajectory} |".format(
                     priority=item.get("priority", ""),
                     benchmark=item.get("benchmark", ""),
                     status=item.get("status", ""),
                     diagnosis=item.get("primary_diagnosis") or "",
+                    focus=", ".join(str(focus) for focus in item.get("suggested_focus") or []),
                     next_action=item.get("next_action", ""),
                     accuracy_delta=fmt(item.get("accuracy_delta")),
                     target_failure=item.get("target_failure_class") or "",
@@ -3600,6 +5652,34 @@ def render_markdown(summary: dict[str, Any]) -> str:
                         notes=notes,
                     )
                 )
+        lines.extend(
+            [
+                "",
+                "### Trajectory Deltas",
+                "",
+                "| benchmark | turn delta | input delta | output delta | total delta | cached % delta | repeated prefix delta | mean latency delta | p95 latency delta |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for item in improvement_queue:
+            if not isinstance(item, dict):
+                continue
+            delta = item.get("trajectory_delta")
+            if not isinstance(delta, dict):
+                continue
+            lines.append(
+                "| {benchmark} | {turn_delta} | {input_delta} | {output_delta} | {total_delta} | {cached_delta} | {repeat_delta} | {mean_latency_delta} | {p95_latency_delta} |".format(
+                    benchmark=item.get("benchmark", ""),
+                    turn_delta=fmt(delta.get("turn_delta"), 0),
+                    input_delta=fmt(delta.get("input_token_delta"), 0),
+                    output_delta=fmt(delta.get("output_token_delta"), 0),
+                    total_delta=fmt(delta.get("total_token_delta"), 0),
+                    cached_delta=fmt(delta.get("cached_token_percent_delta"), 2),
+                    repeat_delta=fmt(delta.get("repeated_prefix_delta"), 0),
+                    mean_latency_delta=fmt(delta.get("mean_latency_ms_delta"), 2),
+                    p95_latency_delta=fmt(delta.get("p95_latency_ms_delta"), 2),
+                )
+            )
     lines.extend(["", "## Failure Classes", ""])
     for klass, count in sorted((summary.get("failure_classes") or {}).items()):
         if count:
@@ -3648,6 +5728,7 @@ def summarize_existing(run_root: Path) -> list[CellResult]:
                 stderr_path=str(stderr_path),
                 result_path=str(result_path) if result_path else None,
                 failure_class=failure_class,
+                command_path=str(cell_dir / "command.json"),
                 notes=notes,
                 score=score_from_payload(payload),
                 outcome_metrics=collect_outcome_metrics(payload),
@@ -3752,7 +5833,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--quality-guardrail-summary",
         default="",
-        help="Path to validate-latest-readiness --json output for broader benchmark quality guardrail.",
+        help=(
+            "Path to non-code validate-latest-readiness JSON output. Generate with: "
+            f"{NON_CODE_GUARDRAIL_COMMAND}"
+        ),
     )
     parser.add_argument(
         "--enforce-quality-guardrail",
@@ -3774,9 +5858,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Exit nonzero unless coverage, comparability, and required stats gates all pass.",
     )
+    parser.add_argument(
+        "--enforce-release-readiness",
+        action="store_true",
+        help="Exit nonzero unless the final release-readiness checklist passes.",
+    )
     parser.add_argument("--force", action="store_true", help="Re-run cells even when cell-result.json exists.")
     parser.add_argument("--no-resume", action="store_true", help="Ignore existing cell-result.json files.")
     parser.add_argument("--summarize", default="", help="Summarize an existing run root instead of executing.")
+    parser.add_argument(
+        "--publish-latest-dir",
+        default="",
+        help="Write code-agent head-to-head latest JSON snapshots to this directory.",
+    )
     parser.add_argument(
         "--compare-summary",
         default="",
@@ -3851,6 +5945,8 @@ def main(argv: list[str] | None = None) -> int:
             cells=cells,
             provider=args.provider,
             require_provider_key=not (args.smoke or args.dry_run),
+            require_quality_guardrail_summary=bool(args.enforce_release_readiness),
+            quality_guardrail_summary=str(args.quality_guardrail_summary or ""),
         )
         if args.preflight:
             write_preflight_artifacts(
@@ -3862,6 +5958,12 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(preflight, indent=2, sort_keys=True))
             return EXIT_OK if preflight["ok"] else EXIT_PREFLIGHT_FAILED
         if not preflight["ok"]:
+            write_preflight_artifacts(
+                run_root=run_root,
+                args=args,
+                cell_pairs=cell_pairs,
+                preflight=preflight,
+            )
             print(json.dumps(preflight, indent=2, sort_keys=True))
             return EXIT_PREFLIGHT_FAILED
         results = [
@@ -3881,11 +5983,20 @@ def main(argv: list[str] | None = None) -> int:
         run_root=run_root,
         cell_pairs=cell_pairs,
     )
+    summary["next_commands"] = _preflight_next_commands(
+        args=args,
+        run_root=run_root,
+        cell_pairs=cell_pairs,
+    )
     if args.summarize and summarized_previous_mode:
         summary["run_config"]["mode"] = summarized_previous_mode
         summary["run_config"]["summarized_existing"] = True
     summary["improvement_queue"] = build_improvement_queue(
         results,
+        summary["head_to_head"],
+        run_config=summary["run_config"],
+    )
+    summary["efficiency_queue"] = build_efficiency_queue(
         summary["head_to_head"],
         run_config=summary["run_config"],
     )
@@ -3931,6 +6042,7 @@ def main(argv: list[str] | None = None) -> int:
         enforced=bool(args.enforce_live_report),
     )
     summary["report_gate"] = build_report_gate(summary)
+    summary["release_readiness"] = build_release_readiness(summary)
     summary["report_rows"] = build_report_rows(summary)
     summary["artifact_paths"] = {
         "run_root": str(run_root),
@@ -3938,9 +6050,23 @@ def main(argv: list[str] | None = None) -> int:
         "summary_md": str(run_root / "summary.md"),
         **write_report_rows(run_root, summary["report_rows"]),
     }
+    if args.publish_latest_dir:
+        summary["artifact_paths"].update(
+            write_code_agent_latest_snapshots(
+                Path(args.publish_latest_dir).expanduser().resolve(),
+                summary,
+            )
+        )
+    selected_exit_code = select_enforced_exit_code(args, summary)
+    summary["exit_code"] = selected_exit_code
+    summary["exit_reason"] = exit_reason_for_code(selected_exit_code)
     write_json(run_root / "summary.json", summary)
     (run_root / "summary.md").write_text(render_markdown(summary), encoding="utf-8")
     print(json.dumps({"run_root": str(run_root), "summary": str(run_root / "summary.json")}, indent=2))
+    return selected_exit_code
+
+
+def select_enforced_exit_code(args: argparse.Namespace, summary: dict[str, Any]) -> int:
     report_gate = summary.get("report_gate")
     if (
         args.enforce_report
@@ -4006,7 +6132,21 @@ def main(argv: list[str] | None = None) -> int:
         and not live_report_gate.get("ok")
     ):
         return EXIT_LIVE_REPORT_FAILED
+    release_readiness = summary.get("release_readiness")
+    if (
+        args.enforce_release_readiness
+        and isinstance(release_readiness, dict)
+        and not release_readiness.get("ok")
+    ):
+        return EXIT_RELEASE_READINESS_FAILED
     return EXIT_OK
+
+
+def exit_reason_for_code(code: int) -> str:
+    for spec_code, name, _description in EXIT_CODE_SPECS:
+        if spec_code == code:
+            return name
+    return "unknown"
 
 
 if __name__ == "__main__":

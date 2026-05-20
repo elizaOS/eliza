@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.ElizaFacewearXreal" parent="Theme.MaterialComponents.DayNight.NoActionBar" />
+</resources>

@@ -28,6 +28,7 @@ import type {
   Eliza1TierId,
   Point,
   PredictedAction,
+  UsageTelemetry,
   VisionRuntime,
 } from "./types.ts";
 
@@ -37,7 +38,7 @@ const PACKAGE_ROOT = path.join(HERE, "..");
 export interface RuntimeResolveArgs {
   tier: Eliza1TierId | string;
   forceStub: boolean;
-  harness?: "eliza" | "hermes" | "openclaw";
+  harness?: "eliza" | "hermes" | "openclaw" | "elizaos" | "opencode";
   provider?: string;
   model?: string;
 }
@@ -187,10 +188,19 @@ export function createStubRuntime(tier: string = "stub"): VisionRuntime {
 }
 
 function createHarnessRuntime(args: {
-  harness: "hermes" | "openclaw";
+  harness: "hermes" | "openclaw" | "elizaos" | "opencode";
   provider: string;
   model: string;
 }): VisionRuntime {
+  const usageTotals: Required<UsageTelemetry> = {
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+    cached_tokens: 0,
+    cache_creation_tokens: 0,
+    llm_call_count: 0,
+  };
+  let sawUsage = false;
   const python = process.env.PYTHON ?? process.env.PYTHON_BIN ?? "python";
   const script = path.join(
     PACKAGE_ROOT,
@@ -227,8 +237,18 @@ function createHarnessRuntime(args: {
       );
     }
     const output = (child.stdout || "").trim().split("\n").at(-1) || "";
-    const parsed = JSON.parse(output) as { text?: unknown };
-    return typeof parsed.text === "string" ? parsed.text : "";
+    const parsed = JSON.parse(output) as {
+      text?: unknown;
+      usage?: unknown;
+      params?: unknown;
+    };
+    const usage = usageFromPayload(parsed);
+    addUsage(usageTotals, usage);
+    if (Object.values(usage).some((value) => value !== undefined)) {
+      sawUsage = true;
+    }
+    const text = typeof parsed.text === "string" ? parsed.text : "";
+    return text;
   }
 
   return {
@@ -257,7 +277,80 @@ function createHarnessRuntime(args: {
       });
       return parseActionList(text).slice(0, maxSteps);
     },
+    usage() {
+      if (!sawUsage) return {};
+      const totalTokens =
+        usageTotals.total_tokens ||
+        usageTotals.input_tokens + usageTotals.output_tokens;
+      return { ...usageTotals, total_tokens: totalTokens };
+    },
   };
+}
+
+function addUsage(target: Required<UsageTelemetry>, usage: UsageTelemetry): void {
+  target.input_tokens += usage.input_tokens ?? 0;
+  target.output_tokens += usage.output_tokens ?? 0;
+  target.total_tokens += usage.total_tokens ?? 0;
+  target.cached_tokens += usage.cached_tokens ?? 0;
+  target.cache_creation_tokens += usage.cache_creation_tokens ?? 0;
+  target.llm_call_count +=
+    usage.llm_call_count ?? (Object.keys(usage).length ? 1 : 0);
+}
+
+function usageFromPayload(payload: { usage?: unknown; params?: unknown }): UsageTelemetry {
+  const direct = normalizeUsage(payload.usage);
+  if (Object.keys(direct).length) return direct;
+  const params = payload.params;
+  if (params && typeof params === "object" && "usage" in params) {
+    return normalizeUsage((params as { usage?: unknown }).usage);
+  }
+  return {};
+}
+
+function normalizeUsage(payload: unknown): UsageTelemetry {
+  if (!payload || typeof payload !== "object") return {};
+  const usage = payload as Record<string, unknown>;
+  const input = numberValue(
+    usage.input_tokens,
+    usage.prompt_tokens,
+    usage.inputTokens,
+    usage.promptTokens,
+  );
+  const output = numberValue(
+    usage.output_tokens,
+    usage.completion_tokens,
+    usage.outputTokens,
+    usage.completionTokens,
+  );
+  const total = numberValue(usage.total_tokens, usage.totalTokens);
+  const cached = numberValue(
+    usage.cached_tokens,
+    usage.cache_read_input_tokens,
+    usage.cachedTokens,
+    usage.cacheReadInputTokens,
+  );
+  const cacheCreation = numberValue(
+    usage.cache_creation_tokens,
+    usage.cache_creation_input_tokens,
+    usage.cacheCreationTokens,
+    usage.cacheCreationInputTokens,
+  );
+  const calls = numberValue(usage.llm_call_count, usage.llmCallCount);
+  const result: UsageTelemetry = {};
+  if (input !== undefined) result.input_tokens = input;
+  if (output !== undefined) result.output_tokens = output;
+  if (total !== undefined) result.total_tokens = total;
+  if (cached !== undefined) result.cached_tokens = cached;
+  if (cacheCreation !== undefined) result.cache_creation_tokens = cacheCreation;
+  if (calls !== undefined) result.llm_call_count = calls;
+  return result;
+}
+
+function numberValue(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
 }
 
 function inferStubAnswer(question: string): string {
@@ -286,7 +379,12 @@ export async function resolveRuntime(
   if (args.forceStub) return createStubRuntime(args.tier);
   if (args.tier === "stub") return createStubRuntime();
   const harness = args.harness ?? "eliza";
-  if (harness === "hermes" || harness === "openclaw") {
+  if (
+    harness === "hermes" ||
+    harness === "openclaw" ||
+    harness === "elizaos" ||
+    harness === "opencode"
+  ) {
     const model = (
       args.model ??
       process.env.VISION_LANGUAGE_MODEL ??

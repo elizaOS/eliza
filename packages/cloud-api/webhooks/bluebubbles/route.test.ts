@@ -158,6 +158,9 @@ describe("BlueBubbles webhook", () => {
       organizationId: "org-1",
       gatewayDeviceId: "gateway-device-1",
       gatewayDeviceRegistered: true,
+      gatewayDevicePhoneNumber: "+14159611510",
+      gatewayDeviceBridgeId: "default",
+      gatewayDeviceProvider: "blooio",
     });
     expect(registerPhoneGatewayDevice).toHaveBeenCalledWith({
       organizationId: "00000000-0000-4000-8000-000000000000",
@@ -221,6 +224,9 @@ describe("BlueBubbles webhook", () => {
       reason: "unknown_owner",
       gatewayDeviceId: null,
       gatewayDeviceRegistered: false,
+      gatewayDevicePhoneNumber: "+14159611510",
+      gatewayDeviceBridgeId: "default",
+      gatewayDeviceProvider: "blooio",
     });
     expect(routePhoneMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -248,6 +254,9 @@ describe("BlueBubbles webhook", () => {
       reason: "unknown_owner",
       gatewayDeviceId: null,
       gatewayDeviceRegistered: false,
+      gatewayDevicePhoneNumber: "+14159611510",
+      gatewayDeviceBridgeId: "default",
+      gatewayDeviceProvider: "blooio",
     });
     expect(routePhoneMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -283,6 +292,8 @@ describe("BlueBubbles webhook", () => {
       success: true,
       handled: true,
       gatewayDeviceRegistered: true,
+      gatewayDevicePhoneNumber: "+14159611510",
+      gatewayDeviceProvider: "blooio",
     });
     expect(registerPhoneGatewayDevice).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -320,6 +331,9 @@ describe("BlueBubbles webhook", () => {
     await expect(response.json()).resolves.toMatchObject({
       success: true,
       gatewayDeviceRegistered: true,
+      gatewayDevicePhoneNumber: "+14159611510",
+      gatewayDeviceBridgeId: "bluebubbles",
+      gatewayDeviceProvider: "blooio",
     });
     expect(registerPhoneGatewayDevice).toHaveBeenCalledWith(
       expect.objectContaining({
