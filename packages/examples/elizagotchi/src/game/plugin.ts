@@ -44,7 +44,6 @@ import type {
 const PET_STATE_SETTING_KEY = "ELIZAGOTCHI_PET_STATE_JSON";
 const SAVE_VERSION = 1 as const;
 const ELIZAGOTCHI_CONTEXTS = ["game"] as const;
-const ELIZAGOTCHI_CONTEXT_GATE = { anyOf: [...ELIZAGOTCHI_CONTEXTS] };
 const ELIZAGOTCHI_CONTEXT_TERMS = [
   "pet",
   "elizagotchi",

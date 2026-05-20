@@ -49,7 +49,9 @@ const githubLiveArtifactValidatorSelfTestSource = readFileSync(
   "utf8",
 );
 
+console.error("audit self-test check: current workflow");
 assertPasses("current workflow", workflow);
+console.error("audit self-test check: current workflow passed");
 
 assertFails(
   "live CI audit self-test is a CI gate",

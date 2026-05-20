@@ -252,6 +252,19 @@ async function installApiMocks(page: Page) {
         });
       }
 
+      if (path.endsWith("/models/status")) {
+        return route.fulfill({
+          json: {
+            models: [
+              { modelId: "openai/gpt-image-1", available: true },
+              { modelId: "black-forest-labs/flux-pro", available: true },
+              { modelId: "google/imagen-4", available: true },
+            ],
+            timestamp: Date.now(),
+          },
+        });
+      }
+
       if (path.endsWith("/models")) {
         return route.fulfill({
           json: {
