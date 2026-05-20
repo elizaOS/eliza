@@ -191,25 +191,12 @@ export function VoicePrefixSteps(
       </p>
 
       <main className="min-h-40 flex-1 overflow-y-auto rounded-sm bg-white/28 p-4 text-[var(--onboarding-text-primary)]">
-        {activeStep === "welcome" ? (
-          <WelcomeStep {...props} onPermissionResolved={setWelcomeReady} />
-        ) : activeStep === "tier" ? (
-          <VoiceReadinessStep
-            {...props}
-            tier={tier}
-            tierSummary={props.tierSummary}
-          />
-        ) : activeStep === "agent-speaks" ? (
-          <AgentSpeaksStep {...props} />
-        ) : activeStep === "user-speaks" ? (
-          <UserSpeaksStep {...props} />
-        ) : activeStep === "owner-confirm" ? (
-          <OwnerConfirmStep {...props} />
-        ) : activeStep === "family" ? (
-          <FamilyStep {...props} />
-        ) : (
-          <WelcomeStep {...props} onPermissionResolved={setWelcomeReady} />
-        )}
+        <VoicePrefixStepContent
+          {...props}
+          activeStep={activeStep}
+          tier={tier}
+          onPermissionResolved={setWelcomeReady}
+        />
       </main>
 
       <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3">
@@ -277,6 +264,40 @@ export function VoicePrefixSteps(
       </footer>
     </div>
   );
+}
+
+function VoicePrefixStepContent(
+  props: VoicePrefixStepsProps & {
+    activeStep: VoicePrefixStep;
+    tier: VoiceDeviceTier;
+    onPermissionResolved: (resolved: boolean) => void;
+  },
+): React.ReactElement {
+  switch (props.activeStep) {
+    case "tier":
+      return (
+        <VoiceReadinessStep
+          {...props}
+          tier={props.tier}
+          tierSummary={props.tierSummary}
+        />
+      );
+    case "agent-speaks":
+      return <AgentSpeaksStep {...props} />;
+    case "user-speaks":
+      return <UserSpeaksStep {...props} />;
+    case "owner-confirm":
+      return <OwnerConfirmStep {...props} />;
+    case "family":
+      return <FamilyStep {...props} />;
+    default:
+      return (
+        <WelcomeStep
+          {...props}
+          onPermissionResolved={props.onPermissionResolved}
+        />
+      );
+  }
 }
 
 // ── Step 1 — Welcome + permissions ────────────────────────────────────────

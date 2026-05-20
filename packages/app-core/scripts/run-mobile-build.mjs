@@ -938,7 +938,8 @@ function countGgufFiles(dir) {
     const fullPath = path.join(dir, entry);
     const stats = fs.statSync(fullPath);
     if (stats.isDirectory()) count += countGgufFiles(fullPath);
-    else if (stats.isFile() && entry.toLowerCase().endsWith(".gguf")) count += 1;
+    else if (stats.isFile() && entry.toLowerCase().endsWith(".gguf"))
+      count += 1;
   }
   return count;
 }
@@ -966,10 +967,9 @@ function stageIosBundledLocalModels(targetDir) {
     );
   }
   const sourceName = path.basename(sourceDir.replace(/[\\/]+$/, ""));
-  const targetModelsDir =
-    sourceName && sourceName.endsWith(".bundle")
-      ? path.join(targetDir, "models", sourceName)
-      : path.join(targetDir, "models");
+  const targetModelsDir = sourceName.endsWith(".bundle")
+    ? path.join(targetDir, "models", sourceName)
+    : path.join(targetDir, "models");
   fs.mkdirSync(targetModelsDir, { recursive: true });
   fs.cpSync(sourceDir, targetModelsDir, { recursive: true });
   const stagedCount = countGgufFiles(targetModelsDir);
@@ -4678,8 +4678,7 @@ export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES =
   ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
-    (file) =>
-      !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
+    (file) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
   );
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [
@@ -5096,9 +5095,7 @@ function removeCloudNativeArtifacts() {
 }
 
 function stripAndroidNativePlugins(strippedPlugins, label) {
-  const strippedPkgs = new Set(
-    strippedPlugins.map(([pkg]) => pkg),
-  );
+  const strippedPkgs = new Set(strippedPlugins.map(([pkg]) => pkg));
   const settingsPath = path.join(androidDir, "capacitor.settings.gradle");
   if (fs.existsSync(settingsPath)) {
     let patched = fs.readFileSync(settingsPath, "utf8");
@@ -5333,42 +5330,63 @@ function auditAndroidSmsGatewaySource(phase) {
     "main",
     "AndroidManifest.xml",
   );
+  failures.push(...auditAndroidSmsGatewayManifest(manifestPath));
+  failures.push(...missingAndroidSmsGatewayJavaFiles());
+  failures.push(...androidCloudNativePluginReferenceFailures());
+
+  if (failures.length > 0) {
+    throw new Error(
+      `[mobile-build] android-sms-gateway ${phase} audit failed:\n` +
+        failures.map((failure) => `  - ${failure}`).join("\n"),
+    );
+  }
+  console.log(`[mobile-build] android-sms-gateway ${phase} audit passed.`);
+}
+
+function auditAndroidSmsGatewayManifest(manifestPath) {
+  const failures = [];
   if (!fs.existsSync(manifestPath)) {
     failures.push("AndroidManifest.xml is missing");
-  } else {
-    const xml = stripXmlComments(fs.readFileSync(manifestPath, "utf8"));
-    for (const component of ANDROID_SMS_GATEWAY_COMPONENTS) {
-      if (!xml.includes(component)) {
-        failures.push(`AndroidManifest.xml is missing ${component}`);
-      }
-    }
-    for (const perm of ANDROID_SMS_GATEWAY_PERMISSIONS) {
-      const full = `android.permission.${perm}`;
-      if (!xml.includes(full)) {
-        failures.push(`AndroidManifest.xml is missing ${full}`);
-      }
-    }
-    for (const component of ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS) {
-      if (xml.includes(component)) {
-        failures.push(`AndroidManifest.xml still references ${component}`);
-      }
-    }
-    if (/usesCleartextTraffic="true"/.test(xml)) {
-      failures.push(
-        "AndroidManifest.xml still allows global cleartext traffic",
-      );
+    return failures;
+  }
+  const xml = stripXmlComments(fs.readFileSync(manifestPath, "utf8"));
+  for (const component of ANDROID_SMS_GATEWAY_COMPONENTS) {
+    if (!xml.includes(component)) {
+      failures.push(`AndroidManifest.xml is missing ${component}`);
     }
   }
+  for (const perm of ANDROID_SMS_GATEWAY_PERMISSIONS) {
+    const full = `android.permission.${perm}`;
+    if (!xml.includes(full)) {
+      failures.push(`AndroidManifest.xml is missing ${full}`);
+    }
+  }
+  for (const component of ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS) {
+    if (xml.includes(component)) {
+      failures.push(`AndroidManifest.xml still references ${component}`);
+    }
+  }
+  if (/usesCleartextTraffic="true"/.test(xml)) {
+    failures.push("AndroidManifest.xml still allows global cleartext traffic");
+  }
+  return failures;
+}
 
+function missingAndroidSmsGatewayJavaFiles() {
+  const missing = [];
   const javaRoot = path.join(androidDir, "app", "src", "main", "java");
   for (const file of ["ElizaSmsGatewayService.java", "ElizaSmsReceiver.java"]) {
     let found = false;
     walkFiles(javaRoot, (filePath) => {
       if (path.basename(filePath) === file) found = true;
     });
-    if (!found) failures.push(`app/src/main/java is missing ${file}`);
+    if (!found) missing.push(`app/src/main/java is missing ${file}`);
   }
+  return missing;
+}
 
+function androidCloudNativePluginReferenceFailures() {
+  const failures = [];
   for (const relPath of [
     "capacitor.settings.gradle",
     path.join("app", "capacitor.build.gradle"),
@@ -5383,14 +5401,7 @@ function auditAndroidSmsGatewaySource(phase) {
       }
     }
   }
-
-  if (failures.length > 0) {
-    throw new Error(
-      `[mobile-build] android-sms-gateway ${phase} audit failed:\n` +
-        failures.map((failure) => `  - ${failure}`).join("\n"),
-    );
-  }
-  console.log(`[mobile-build] android-sms-gateway ${phase} audit passed.`);
+  return failures;
 }
 
 function auditAndroidSystemSource(
@@ -5845,6 +5856,26 @@ function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
     );
   }
 
+  assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome);
+
+  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
+  if (!aapt) {
+    throw new Error(
+      "[mobile-build] Could not find aapt under Android SDK build-tools for android-sms-gateway artifact audit.",
+    );
+  }
+  const badging = dumpAndroidArtifactBadging(aapt, artifact);
+  assertAndroidSmsGatewayBadging(badging);
+  const manifestText = dumpAndroidArtifactManifest(aapt, artifact);
+  assertAndroidSmsGatewayArtifactManifest(manifestText);
+
+  console.log(
+    `[mobile-build] android-sms-gateway artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
+function assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome) {
   const jar = path.join(
     javaHome,
     "bin",
@@ -5854,7 +5885,9 @@ function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
   if (jarResult.status !== 0) {
     throw new Error(
       `[mobile-build] Could not inspect ${artifact}: ${
-        jarResult.stderr || jarResult.stdout || `jar exited with ${jarResult.status}`
+        jarResult.stderr ||
+        jarResult.stdout ||
+        `jar exited with ${jarResult.status}`
       }`,
     );
   }
@@ -5871,13 +5904,9 @@ function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
         packagedOffenders.map((entry) => `  - ${entry}`).join("\n"),
     );
   }
+}
 
-  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
-  if (!aapt) {
-    throw new Error(
-      "[mobile-build] Could not find aapt under Android SDK build-tools for android-sms-gateway artifact audit.",
-    );
-  }
+function dumpAndroidArtifactBadging(aapt, artifact) {
   const badging = spawnSync(aapt, ["dump", "badging", artifact], {
     encoding: "utf8",
   });
@@ -5888,14 +5917,22 @@ function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
       }`,
     );
   }
+  return badging.stdout;
+}
+
+function assertAndroidSmsGatewayBadging(badging) {
   for (const perm of ANDROID_SMS_GATEWAY_PERMISSIONS) {
-    if (!badging.stdout.includes(`uses-permission: name='android.permission.${perm}'`)) {
+    if (
+      !badging.includes(`uses-permission: name='android.permission.${perm}'`)
+    ) {
       throw new Error(
         `[mobile-build] android-sms-gateway artifact is missing android.permission.${perm}`,
       );
     }
   }
+}
 
+function dumpAndroidArtifactManifest(aapt, artifact) {
   const manifest = spawnSync(
     aapt,
     ["dump", "xmltree", artifact, "AndroidManifest.xml"],
@@ -5904,11 +5941,16 @@ function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
   if (manifest.status !== 0) {
     throw new Error(
       `[mobile-build] Could not inspect ${artifact} AndroidManifest.xml: ${
-        manifest.stderr || manifest.stdout || `aapt exited with ${manifest.status}`
+        manifest.stderr ||
+        manifest.stdout ||
+        `aapt exited with ${manifest.status}`
       }`,
     );
   }
-  const manifestText = manifest.stdout;
+  return manifest.stdout;
+}
+
+function assertAndroidSmsGatewayArtifactManifest(manifestText) {
   for (const component of ANDROID_SMS_GATEWAY_COMPONENTS) {
     if (!manifestText.includes(`${APP.appId}.${component}`)) {
       throw new Error(
@@ -5935,11 +5977,6 @@ function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
       );
     }
   }
-
-  console.log(
-    `[mobile-build] android-sms-gateway artifact audit passed: ${artifact}`,
-  );
-  return artifact;
 }
 
 function preserveAndroidSmsGatewayArtifact(artifact) {
@@ -6086,7 +6123,10 @@ async function buildAndroidSmsGateway() {
       path.join(sdk, "platform-tools"),
     ]),
   };
-  const gradleFlags = ["-PelizaCloudBuild=true", "-PelizaStripAgentAssets=true"];
+  const gradleFlags = [
+    "-PelizaCloudBuild=true",
+    "-PelizaStripAgentAssets=true",
+  ];
   await run(
     "./gradlew",
     [

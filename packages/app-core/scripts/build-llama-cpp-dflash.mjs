@@ -1087,7 +1087,7 @@ function patchOmnivoiceVoiceFilePicker(cacheDir, { dryRun = false } = {}) {
   if (!fs.existsSync(ffiPath)) {
     return;
   }
-  let source = fs.readFileSync(ffiPath, "utf8");
+  const source = fs.readFileSync(ffiPath, "utf8");
   let patched = source;
   if (!patched.includes("std::vector<std::string> tts_candidates;")) {
     const oldPicker = `    if (tts.empty()) return false;
@@ -1159,12 +1159,7 @@ function patchOmnivoiceVoiceFilePicker(cacheDir, { dryRun = false } = {}) {
 }
 
 function patchOmnivoiceStaticFfi(cacheDir, { dryRun = false } = {}) {
-  const cmakePath = path.join(
-    cacheDir,
-    "tools",
-    "omnivoice",
-    "CMakeLists.txt",
-  );
+  const cmakePath = path.join(cacheDir, "tools", "omnivoice", "CMakeLists.txt");
   if (!fs.existsSync(cmakePath)) {
     return;
   }
@@ -1191,7 +1186,8 @@ endif()`;
       `[dflash-build] patchOmnivoiceStaticFfi: elizainference add_library anchor not found in ${cmakePath}`,
     );
   }
-  const linkAnchor = "if(APPLE)\n    target_link_options(elizainference PRIVATE";
+  const linkAnchor =
+    "if(APPLE)\n    target_link_options(elizainference PRIVATE";
   if (!original.includes(linkAnchor)) {
     throw new Error(
       `[dflash-build] patchOmnivoiceStaticFfi: Apple reexport anchor not found in ${cmakePath}`,
@@ -1236,12 +1232,16 @@ function patchMobileKokoroTts(cacheDir, { dryRun = false } = {}) {
     "llama-mobile-kokoro-tts.patch",
   );
   if (!fs.existsSync(patchPath)) {
-    throw new Error(`[dflash-build] missing mobile Kokoro TTS patch ${patchPath}`);
+    throw new Error(
+      `[dflash-build] missing mobile Kokoro TTS patch ${patchPath}`,
+    );
   }
   if (!dryRun) {
     run("git", ["apply", "--whitespace=nowarn", patchPath], { cwd: cacheDir });
   }
-  console.log("[dflash-build] patched mobile Kokoro TTS and allocation preflight");
+  console.log(
+    "[dflash-build] patched mobile Kokoro TTS and allocation preflight",
+  );
 }
 
 function patchKokoroNativeIstftGuard(cacheDir, { dryRun = false } = {}) {
@@ -2632,6 +2632,15 @@ static BackendPair codec_backend_pair(BackendPair bp) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
+  patchOmnivoiceAndKokoro(cacheDir, backend, target, dryRun);
+  patchDflashDrafter(cacheDir, target, dryRun);
+  patchCpuKernels(cacheDir, dryRun);
+  patchBackendKernels(cacheDir, backend, target, dryRun);
+  patchServerStructuredOutput(cacheDir, target, dryRun);
+  patchPlatformLinkage(cacheDir, target);
+}
+
+function patchOmnivoiceAndKokoro(cacheDir, backend, target, dryRun) {
   if (backend === "metal") {
     patchOmnivoiceCodecCpuFallback(cacheDir, { dryRun });
   } else if (dryRun) {
@@ -2651,6 +2660,9 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   if (target.startsWith("ios-")) {
     patchOmnivoiceStaticFfi(cacheDir, { dryRun });
   }
+}
+
+function patchDflashDrafter(cacheDir, target, dryRun) {
   if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
     console.warn(
       `[dflash-build] skipping DFlash speculative dispatch patch for target=${target}; ` +
@@ -2668,6 +2680,9 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   } else {
     patchDflashDrafterArchImpl(cacheDir, { dryRun });
   }
+}
+
+function patchCpuKernels(cacheDir, dryRun) {
   // Wave A1: mirror the verified standalone QJL CPU SIMD TUs (AVX-VNNI int8
   // score path, ARMv8.4 dotprod, runtime-cpuid dispatcher) over the fork's
   // stale ggml-cpu/qjl/ snapshot and wire them into the ggml-cpu build. Runs
@@ -2690,6 +2705,9 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   // GGML_OP_FUSED_ATTN_QJL_TBQ over ith/nth (n_tasks bump + a real
   // disjoint-output split + per-task scratch). Both halves together.
   patchCpuThreadParallelismImpl(cacheDir, { dryRun });
+}
+
+function patchBackendKernels(cacheDir, backend, target, dryRun) {
   if (backend === "metal") {
     patchMetalKernelsImpl(cacheDir, { dryRun });
   }
@@ -2707,6 +2725,9 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
     patchCudaKernelsImpl(cacheDir, { dryRun });
     patchGgmlCudaForFusedAttn(cacheDir, { dryRun });
   }
+}
+
+function patchServerStructuredOutput(cacheDir, target, dryRun) {
   // llama-server structured-output + DFlash verifier-stream patch (Eliza-1
   // voice swarm, W4): assert grammar_lazy / json_schema / response_format /
   // prefill_assistant are present in the fork's post-refactor server sources
@@ -2737,6 +2758,9 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
       patchServerStructuredOutputImpl(cacheDir, { dryRun });
     }
   }
+}
+
+function patchPlatformLinkage(cacheDir, target) {
   // W3-3 H2.c: the fused `/v1/audio/speech` mount lives in committed fork
   // source (`tools/server/server.cpp` namespace `eliza_omnivoice`, guarded
   // by `#ifdef ELIZA_FUSE_OMNIVOICE`). The cmake-graft separately links
@@ -2774,14 +2798,12 @@ function patchOmnivoiceCmakeConflictArtifact(root, { dryRun = false } = {}) {
   const cmakePath = path.join(root, "CMakeLists.txt");
   if (!fs.existsSync(cmakePath)) return;
   const source = fs.readFileSync(cmakePath, "utf8");
-  const begin = source.indexOf(
-    "<<<<<<< HEAD\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1",
-  );
-  const divider = source.indexOf(
-    "=======\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1 (REMOVED",
-    begin,
-  );
-  const end = source.indexOf(">>>>>>>", divider);
+  const conflictStartMarker = `${"<".repeat(7)} HEAD\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1`;
+  const conflictDividerMarker = `${"=".repeat(7)}\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1 (REMOVED`;
+  const conflictEndMarker = ">".repeat(7);
+  const begin = source.indexOf(conflictStartMarker);
+  const divider = source.indexOf(conflictDividerMarker, begin);
+  const end = source.indexOf(conflictEndMarker, divider);
   if (begin === -1 || divider === -1 || end === -1) return;
   const endLine = source.indexOf("\n", end);
   const replacement =
@@ -4741,8 +4763,10 @@ function isCliEntrypoint(argvPath) {
   const resolvedArgvPath = path.resolve(argvPath);
   if (resolvedArgvPath === __filename) return true;
   try {
-    return fs.realpathSync.native(resolvedArgvPath) ===
-      fs.realpathSync.native(__filename);
+    return (
+      fs.realpathSync.native(resolvedArgvPath) ===
+      fs.realpathSync.native(__filename)
+    );
   } catch {
     return false;
   }
