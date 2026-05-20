@@ -1127,6 +1127,7 @@ def _build_latest_matrix_contract(
     for benchmark_id, adapter in sorted(adapters.items()):
         allowed_harnesses = tuple(adapter.agent_compatibility)
         supported = set(allowed_harnesses)
+        effective_supported = set(supported)
         required_count = 0
         complete = True
         cells: dict[str, dict[str, Any]] = {}
@@ -1145,6 +1146,7 @@ def _build_latest_matrix_contract(
             )
             if harness not in supported:
                 if transient_success:
+                    effective_supported.add(harness)
                     required_count += 1
                     summary["required_real_cells"] += 1
                     summary["succeeded_required_real_cells"] += 1
@@ -1209,7 +1211,11 @@ def _build_latest_matrix_contract(
         else:
             summary["incomplete_benchmarks"] += 1
         benchmarks[benchmark_id] = {
-            "compatible_harnesses": list(adapter.agent_compatibility),
+            "compatible_harnesses": [
+                harness
+                for harness in CANONICAL_REAL_HARNESSES
+                if harness in effective_supported
+            ],
             "complete": complete,
             "cells": cells,
         }

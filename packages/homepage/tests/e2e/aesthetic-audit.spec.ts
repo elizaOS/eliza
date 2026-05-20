@@ -116,7 +116,13 @@ async function seedAuthed(page: Page) {
 
 async function settle(page: Page) {
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForTimeout(250);
+  // Wait for at least one heading or substantive text content to render so
+  // the screenshot captures the page, not the empty loading background.
+  await page
+    .waitForSelector("h1, h2, button, [data-marquee]", { timeout: 10_000 })
+    .catch(() => {});
+  await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+  await page.waitForTimeout(400);
 }
 
 function dynamicMask(page: Page) {
