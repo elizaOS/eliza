@@ -286,6 +286,17 @@ def test_forbidden_absent_credits_rescinded_rejection() -> None:
     assert result.reason in {"official", "negated_forbidden_mention"}
 
 
+def test_forbidden_absent_credits_overridden_plan_reference() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "archive the old feature flag"},
+        "No. The plan to archive the old feature flag has been overridden.",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "negated_forbidden_mention"
+
+
 def test_forbidden_absent_credits_rescinded_directive_reference() -> None:
     result = evaluate_valid_hit(
         {"check": "forbidden_absent", "value": "trust user input without validation"},

@@ -1,72 +1,38 @@
 {
   "accelerator": "vulkan",
-  "atCommit": "8df74c2c3732",
-  "generatedAt": "2026-05-20T09:46:59Z",
-  "howToProduce": "Build stable-diffusion.cpp with Vulkan support on a Vulkan host, then run SD 1.5 and Z-Image one-step smokes against the published bundle assets.",
-  "macHostLimitation": "vulkaninfo proves MoltenVK device visibility on Apple M4 Max only; it does not prove the Linux/Windows Vulkan sd-cpp runtime required by the release gate.",
-  "publishBlockingReasons": [
-    "vulkan accelerator missing from sd-cpp probe accelerators",
-    "vulkan platform smoke is not-run in evidence/imagegen/sd-cpp-runtime.json",
-    "release requires CPU, Metal, CUDA, and Vulkan imagegen runtime evidence to pass"
-  ],
-  "reason": "Local Vulkan loader/device enumeration passes through MoltenVK, but no Vulkan-built stable-diffusion.cpp sd-cli binary is installed locally, so no sd-cpp Vulkan image smoke was run.",
-  "requiredSmokes": [
-    {
-      "model": "bundles/0_8b/imagegen/sd-1.5-Q5_0.gguf",
-      "prompt": "a small square on a white background",
-      "size": "64x64",
-      "steps": 1
-    },
-    {
-      "companions": [
-        "bundles/9b/imagegen/vae/ae.safetensors",
-        "bundles/9b/imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
-      ],
-      "model": "bundles/9b/imagegen/z-image-turbo-Q4_K_M.gguf",
-      "prompt": "a small square on a white background",
-      "size": "64x64",
-      "steps": 1
-    }
-  ],
+  "generatedAt": "2026-05-20T12:03:58Z",
+  "hostProbe": {
+    "arch": "arm64",
+    "cuda": "not available: no NVIDIA GPU and nvidia-smi is not installed",
+    "gpu": "Apple M4 Max 40-core GPU",
+    "machine": "Apple M4 Max MacBook local verification host",
+    "platform": "darwin",
+    "vulkan": "loader/device present via /opt/homebrew/bin/vulkaninfo and MoltenVK DRIVER_ID_MOLTENVK; sd-cpp Vulkan build and two image smokes passed locally on 2026-05-20"
+  },
+  "note": "This clears local sd-cpp Vulkan runtime smoke evidence. CUDA remains blocked on this Mac and is tracked separately in evidence/imagegen/sd-cpp-cuda-pending.json.",
   "runtime": {
-    "binaryVersion": "not built on this host",
+    "binaryVersion": "stable-diffusion.cpp version master-633-5b0267e, commit 5b0267e",
     "engine": "stable-diffusion.cpp",
     "upstreamCommit": "5b0267e941cade15bd80089d89838795d9f4baa6",
     "upstreamRepo": "leejet/stable-diffusion.cpp"
   },
   "schemaVersion": 1,
-  "status": "pending",
-  "target": "linux-x64-vulkan",
-  "hostProbe": {
-    "platform": "darwin",
-    "arch": "arm64",
-    "machine": "Apple M4 Max MacBook local verification host",
-    "gpu": "Apple M4 Max 40-core GPU",
-    "cuda": "not available: no NVIDIA GPU and nvidia-smi is not installed",
-    "vulkan": "loader/device present via /opt/homebrew/bin/vulkaninfo and MoltenVK DRIVER_ID_MOLTENVK; this is not sd-cpp Vulkan imagegen execution evidence"
-  },
-  "localProbeEvidence": {
-    "command": "vulkaninfo --summary",
-    "status": "pass",
-    "deviceName": "Apple M4 Max",
-    "driverID": "DRIVER_ID_MOLTENVK",
-    "apiVersion": "1.4.334"
-  },
-  "requiredCommandEnv": {
-    "host": "Linux or Windows x86_64 host with Vulkan ICD/device available, or a release-accepted macOS MoltenVK target if the gate is changed to accept that target",
-    "env": [
-      "export HF_TOKEN=<elizaos Hugging Face token>",
-      "export SD_CPP_BIN=/absolute/path/to/vulkan-built/sd-cli"
-    ],
-    "build": [
-      "git clone https://github.com/leejet/stable-diffusion.cpp",
-      "cmake -S stable-diffusion.cpp -B stable-diffusion.cpp/build-vulkan -DSD_VULKAN=ON -DSD_SERVER_BUILD_FRONTEND=OFF -DCMAKE_BUILD_TYPE=Release",
-      "cmake --build stable-diffusion.cpp/build-vulkan --config Release -j --target sd-cli"
-    ],
-    "probe": "SD_CPP_BIN=$SD_CPP_BIN bun plugins/plugin-local-inference/scripts/probe-sd-cpp.mjs --json",
-    "smokes": [
-      "$SD_CPP_BIN --model bundles/0_8b/imagegen/sd-1.5-Q5_0.gguf --prompt \"a small square on a white background\" --backend vulkan0 --width 64 --height 64 --steps 1 -o evidence/imagegen/sd15-0_8b-vulkan-smoke.png",
-      "$SD_CPP_BIN --diffusion-model bundles/9b/imagegen/z-image-turbo-Q4_K_M.gguf --vae bundles/9b/imagegen/vae/ae.safetensors --llm bundles/9b/imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf --prompt \"a small square on a white background\" --backend vulkan0 --width 64 --height 64 --steps 1 -o evidence/imagegen/zimage-9b-vulkan-split-smoke.png"
-    ]
-  }
+  "smokes": [
+    {
+      "model": "bundles/0_8b/imagegen/sd-1.5-Q5_0.gguf",
+      "output": "evidence/imagegen/sd15-0_8b-vulkan-smoke.png",
+      "outputSha256": "00edcf7049409afe476931e9ebe909a431a34c0e715e8563f2e79fc12eef2924",
+      "report": "evidence/imagegen/sd15-0_8b-vulkan-smoke.json",
+      "status": "pass"
+    },
+    {
+      "model": "bundles/9b/imagegen/z-image-turbo-Q4_K_M.gguf",
+      "output": "evidence/imagegen/zimage-9b-vulkan-split-smoke.png",
+      "outputSha256": "ddd68578ccb3657a514f61041f4fe4a6776c1cb21164f6aa967eb8f9d43c6061",
+      "report": "evidence/imagegen/zimage-9b-vulkan-split-smoke.json",
+      "status": "pass"
+    }
+  ],
+  "status": "pass",
+  "target": "darwin-arm64-moltenvk-local-smoke"
 }

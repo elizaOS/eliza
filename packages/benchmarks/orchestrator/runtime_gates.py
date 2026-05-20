@@ -6,7 +6,6 @@ from pathlib import Path
 
 from . import adapters as adapter_module
 from .adapters import (
-    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
     OSWORLD_DOCKER_UNAVAILABLE_REASON,
@@ -47,14 +46,6 @@ class RuntimeGateReport:
 
 def build_runtime_gate_report(_workspace_root: Path | None = None) -> RuntimeGateReport:
     gates = (
-        RuntimeGate(
-            id="gaia_official_dataset",
-            ok=adapter_module._has_gaia_official_dataset(),
-            reason=None
-            if adapter_module._has_gaia_official_dataset()
-            else GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
-            benchmarks=("gaia", "gaia_orchestrated"),
-        ),
         RuntimeGate(
             id="hyperliquid_live",
             ok=adapter_module._has_hyperliquid_live_backend(),

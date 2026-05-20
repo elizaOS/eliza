@@ -131,19 +131,31 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "phone deep link",
     path: "/phone",
-    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    readyChecks: [
+      { selector: 'main h1:has-text("Phone")' },
+      { selector: '[role="tab"]:has-text("Dialer")' },
+    ],
+    mode: "all",
     timeoutMs: 60_000,
   },
   {
     name: "messages deep link",
     path: "/messages",
-    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    readyChecks: [
+      { selector: 'main h1:has-text("Messages")' },
+      { text: "Android SMS bridge" },
+    ],
+    mode: "all",
     timeoutMs: 60_000,
   },
   {
     name: "contacts deep link",
     path: "/contacts",
-    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    readyChecks: [
+      { selector: 'main h1:has-text("Contacts")' },
+      { selector: '[aria-label="Search contacts"]' },
+    ],
+    mode: "all",
     timeoutMs: 60_000,
   },
   {

@@ -17,14 +17,6 @@ type RunEventSummary = {
   createdAt?: string | null;
 };
 
-type RunActivitySummary = {
-  id: string;
-  type: string;
-  message: string;
-  severity?: string;
-  timestamp?: string | null;
-};
-
 const PRIMARY_COMMANDS = [
   {
     id: "move-tools",
@@ -133,7 +125,7 @@ function collectRunEvents(
     })) satisfies GameOperatorEvent[];
 
   const activityEvents: GameOperatorEvent[] =
-    run.session?.activity?.map((entry: RunActivitySummary) => ({
+    run.session?.activity?.map((entry) => ({
       id: entry.id,
       label: entry.type,
       message: cleanClawvilleMessage(entry.message),
