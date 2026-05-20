@@ -36,6 +36,7 @@
 //     to the polarquant-cpu API first — a fork-source change, not a
 //     patcher.
 
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 

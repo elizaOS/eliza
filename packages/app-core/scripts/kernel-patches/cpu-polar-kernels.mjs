@@ -50,6 +50,7 @@
 // Idempotent: each mutation carries a `ELIZA-CPU-POLAR-PREHT-V1`
 // sentinel.
 
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 

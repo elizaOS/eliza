@@ -1159,10 +1159,10 @@ function writeJsonObjectFile(
 	writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function iosNativeCatalogById(
-	modelId: string,
-): NativeCatalogModelEntry | null {
-	return IOS_NATIVE_CATALOG_MODELS.find((entry) => entry.id === modelId) ?? null;
+function iosNativeCatalogById(modelId: string): NativeCatalogModelEntry | null {
+	return (
+		IOS_NATIVE_CATALOG_MODELS.find((entry) => entry.id === modelId) ?? null
+	);
 }
 
 function iosNativeCatalogByFile(
@@ -1879,7 +1879,9 @@ async function nativeLocalInferenceProviders(): Promise<
 
 function nativeCatalogModels(): Array<Record<string, unknown>> {
 	const curated = IOS_NATIVE_CATALOG_MODELS.map(nativeCatalogModelPayload);
-	const curatedIds = new Set(IOS_NATIVE_CATALOG_MODELS.map((model) => model.id));
+	const curatedIds = new Set(
+		IOS_NATIVE_CATALOG_MODELS.map((model) => model.id),
+	);
 	const installedCustom = readInstalledModels()
 		.filter((model) => !isEmbeddingModel(model) && !curatedIds.has(model.id))
 		.map((model) => {
@@ -1936,8 +1938,7 @@ function nativeDownloadJobForInstalledModel(
 	model: InstalledModelEntry,
 ): NativeDownloadJob {
 	const installedAt = model.installedAt ?? new Date().toISOString();
-	const updatedAt =
-		model.lastUsedAt ?? model.bundleVerifiedAt ?? installedAt;
+	const updatedAt = model.lastUsedAt ?? model.bundleVerifiedAt ?? installedAt;
 	const bytes = model.sizeBytes ?? 0;
 	return {
 		jobId: `installed:${model.id}`,
@@ -2041,9 +2042,7 @@ async function runNativeModelDownload(
 				received,
 				bytesPerSec,
 				etaMs:
-					bytesPerSec > 0
-						? Math.round((remaining / bytesPerSec) * 1000)
-						: null,
+					bytesPerSec > 0 ? Math.round((remaining / bytesPerSec) * 1000) : null,
 			});
 		}
 		await closeDownloadWriter(writer);
@@ -2081,7 +2080,9 @@ async function runNativeModelDownload(
 function startNativeModelDownload(modelId: string): NativeDownloadJob {
 	const model = iosNativeCatalogById(modelId);
 	if (!model) throw new Error(`Unsupported iOS local model: ${modelId}`);
-	const installed = readInstalledModels().find((entry) => entry.id === model.id);
+	const installed = readInstalledModels().find(
+		(entry) => entry.id === model.id,
+	);
 	if (installed) {
 		const job = nativeDownloadJobForInstalledModel(installed);
 		nativeDownloadState.set(model.id, job);
@@ -2287,8 +2288,7 @@ function nativeVoiceReadiness(): NativeVoiceReadiness {
 		status: "missing",
 		installedFiles: 0,
 		modelId: null,
-		message:
-			"Eliza-1 voice assets are not installed in this iOS build.",
+		message: "Eliza-1 voice assets are not installed in this iOS build.",
 	};
 }
 
@@ -2855,11 +2855,7 @@ async function handleDirectCoreRoute(
 		});
 	}
 
-	const localTts = await handleNativeIosLocalTtsRoute(
-		method,
-		rawPath,
-		payload,
-	);
+	const localTts = await handleNativeIosLocalTtsRoute(method, rawPath, payload);
 	if (localTts) return localTts;
 
 	const localInference = await handleBufferedLocalInferenceRoute(

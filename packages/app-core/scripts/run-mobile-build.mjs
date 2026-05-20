@@ -5308,7 +5308,7 @@ function auditAndroidCloudSource(phase) {
     const filePath = path.join(androidDir, relPath);
     if (!fs.existsSync(filePath)) continue;
     const source = fs.readFileSync(filePath, "utf8");
-    for (const [pkg, gradleProject] of ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS) {
+    for (const [pkg, gradleProject] of ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS) {
       if (source.includes(pkg) || source.includes(gradleProject)) {
         failures.push(`${relPath} still references ${pkg}/${gradleProject}`);
       }
