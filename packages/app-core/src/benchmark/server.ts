@@ -2498,12 +2498,12 @@ export async function startBenchmarkServer() {
               ? _normalizeTauNativeMessages(text, benchmarkContext)
               : isVendingBenchmarkName(session.benchmark)
                 ? normalizeLocaNativeMessages(benchmarkContext.messages)
-              : normalizeActionCallingNativeMessages(text, benchmarkContext);
+                : normalizeActionCallingNativeMessages(text, benchmarkContext);
             const openAiMessages = _isTauBenchmarkName(session.benchmark)
               ? nativeMessages
               : isVendingBenchmarkName(session.benchmark)
                 ? nativeMessages
-              : normalizeActionCallingOpenAiMessages(text, benchmarkContext);
+                : normalizeActionCallingOpenAiMessages(text, benchmarkContext);
             const maxTokens =
               typeof benchmarkContext.max_tokens === "number"
                 ? benchmarkContext.max_tokens
