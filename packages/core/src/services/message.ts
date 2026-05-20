@@ -28,9 +28,14 @@ import {
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
 import { retrieveActions } from "../runtime/action-retrieval";
+import { resolveActionRolePolicyRole } from "../runtime/action-role-policy";
 import { tierActionResults } from "../runtime/action-tiering";
 import { applyAddressedTo } from "../runtime/addressed-to";
-import { filterByContextGate } from "../runtime/context-gates";
+import {
+	filterByContextGate,
+	satisfiesContextGate,
+	satisfiesRoleGate,
+} from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
@@ -1970,11 +1975,11 @@ async function collectV5PlannerCandidateActions(args: {
 	// "general" — even when the user clearly asked for a habit/event/etc.
 	// (See `docs/audits/lifeops-2026-05-09/12-real-root-cause.md`.)
 	//
-	// Now: every action is a candidate. Role gates and per-action validate /
-	// account-policy checks still apply (those are correctness/security, not
-	// relevance). Retrieval scoring then uses `selectedContexts` as a
-	// *weight* (boost actions whose contexts intersect the active set) but
-	// never as a hard filter.
+	// Now: the surface starts from every action, then applies only the same
+	// execution gates the planner executor will enforce. That keeps role-policy
+	// overrides working for deployments that intentionally expose an action
+	// outside its declared context, while avoiding dead tools that the planner
+	// could select but execution would immediately reject.
 	const allRuntimeActions = args.runtime.actions;
 	const actionsByName = new Map(
 		allRuntimeActions.map((action) => [action.name, action]),
@@ -1991,12 +1996,19 @@ async function collectV5PlannerCandidateActions(args: {
 	const appendIfAllowed = async (
 		action: Action,
 		parentActionName?: string,
-		_activeContexts:
-			| readonly AgentContext[]
-			| undefined = args.selectedContexts,
+		activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
+			return false;
+		}
+		if (
+			!actionPassesPlannerExecutionGates({
+				action,
+				activeContexts,
+				userRoles: args.userRoles,
+			})
+		) {
 			return false;
 		}
 		try {
@@ -2100,6 +2112,27 @@ function mergeAgentContexts(
 		}
 	}
 	return merged;
+}
+
+function actionPassesPlannerExecutionGates(args: {
+	action: Action;
+	activeContexts?: readonly AgentContext[];
+	userRoles?: readonly RoleGateRole[];
+}): boolean {
+	const policyRole = resolveActionRolePolicyRole(args.action);
+	if (policyRole) {
+		return satisfiesRoleGate(args.userRoles, { minRole: policyRole });
+	}
+
+	const contextGate = args.action.contextGate ?? {
+		contexts: args.action.contexts,
+		roleGate: args.action.roleGate,
+	};
+	if (!satisfiesContextGate(args.activeContexts, contextGate, args.userRoles)) {
+		return false;
+	}
+
+	return satisfiesRoleGate(args.userRoles, args.action.roleGate);
 }
 
 function getMessageHandlerCandidateActions(
