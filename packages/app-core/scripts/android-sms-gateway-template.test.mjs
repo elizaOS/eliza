@@ -95,6 +95,6 @@ test("Android gateway installer supports one-command wireless pairing", () => {
 
   assert.equal(
     packageJson.scripts["sms-gateway:pair"],
-    "node ./scripts/install-android-sms-gateway.mjs --pair auto --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60",
+    "node ./scripts/install-android-sms-gateway.mjs --pair auto --wait-pair 300 --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60",
   );
 });

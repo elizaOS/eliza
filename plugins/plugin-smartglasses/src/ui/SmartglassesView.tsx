@@ -248,24 +248,52 @@ export function missingViewEvidence(
   return [...new Set(missing)];
 }
 
-function parseWifiNetworks(result: unknown): string[] {
+export function parseWifiNetworks(result: unknown): string[] {
   if (!result || typeof result !== "object") return [];
   const value = result as Record<string, unknown>;
-  const networks = value.networks ?? value.networks_neo ?? value.results;
+  const networks =
+    value.networks ??
+    value.wifiNetworks ??
+    value.accessPoints ??
+    value.networks_neo ??
+    value.results;
   if (!Array.isArray(networks)) return [];
   return networks
     .map((network) => {
       if (typeof network === "string") return network;
       if (network && typeof network === "object") {
         const record = network as Record<string, unknown>;
-        return String(record.ssid ?? record.SSID ?? "");
+        return String(record.ssid ?? record.SSID ?? record.name ?? "");
       }
       return "";
     })
-    .filter((network) => network.trim().length > 0);
+    .map((network) => network.trim())
+    .filter((network) => network.length > 0);
 }
 
-async function callWifiBridge(
+export function formatWifiStatus(
+  result: unknown,
+  fallback = "Wi-Fi status requested",
+): string {
+  if (!result || typeof result !== "object") return fallback;
+  const value = result as Record<string, unknown>;
+  const explicitStatus = value.status ?? value.state ?? value.message;
+  if (typeof explicitStatus === "string" && explicitStatus.trim()) {
+    return explicitStatus.trim();
+  }
+  const connected = value.connected ?? value.wifiConnected;
+  const ssid = value.ssid ?? value.wifiSsid ?? value.SSID;
+  const localIp = value.localIp ?? value.wifiLocalIp ?? value.ipAddress;
+  if (connected === true) {
+    return `Connected to ${String(ssid ?? "Wi-Fi")}${
+      localIp ? ` at ${String(localIp)}` : ""
+    }`;
+  }
+  if (connected === false) return "Wi-Fi disconnected";
+  return fallback;
+}
+
+export async function callWifiBridge(
   bridge: SmartglassesBridge,
   command: string,
   payload?: Record<string, unknown>,
@@ -443,12 +471,16 @@ export function SmartglassesView() {
         if (audio.byteLength > 0) markTest("audio");
         appendEvent("audio", `${side} ${audio.byteLength} bytes`);
       });
-      const transcriptDispose = nextTransport.onTranscript?.(
-        (text, isFinal) => {
-          markTest("transcript");
-          appendEvent("transcript", `${isFinal ? "final" : "partial"} ${text}`);
-        },
-      );
+      const transcriptDispose =
+        "onTranscript" in nextTransport && nextTransport.onTranscript
+          ? nextTransport.onTranscript((text, isFinal) => {
+              markTest("transcript");
+              appendEvent(
+                "transcript",
+                `${isFinal ? "final" : "partial"} ${text}`,
+              );
+            })
+          : undefined;
       try {
         if (nextTransport instanceof WebBluetoothG1Transport) {
           await connectLens(nextTransport, "left");
@@ -648,6 +680,26 @@ export function SmartglassesView() {
           : "Scan requested; waiting for bridge results",
       );
       appendEvent("wifi", "Requested Wi-Fi scan through bridge");
+    } catch (err) {
+      setError(normalizeError(err));
+      setWifiStatus(normalizeError(err));
+      appendEvent("error", normalizeError(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function refreshWifiStatus(): Promise<void> {
+    setBusy("wifi-status");
+    setError(null);
+    try {
+      if (!bridge)
+        throw new Error("No native smartglasses bridge is available");
+      const result = await callWifiBridge(bridge, "request_wifi_status");
+      const networks = parseWifiNetworks(result);
+      if (networks.length > 0) setWifiNetworks(networks);
+      setWifiStatus(formatWifiStatus(result));
+      appendEvent("wifi", "Requested Wi-Fi status through bridge");
     } catch (err) {
       setError(normalizeError(err));
       setWifiStatus(normalizeError(err));
@@ -870,6 +922,12 @@ export function SmartglassesView() {
                 disabled={!bridge || busy !== null}
               >
                 Scan
+              </ActionButton>
+              <ActionButton
+                onClick={refreshWifiStatus}
+                disabled={!bridge || busy !== null}
+              >
+                Status
               </ActionButton>
               <ActionButton
                 onClick={configureWifi}
