@@ -221,6 +221,22 @@ function userFacingCompletionBody(text: string): string {
   return userText || body;
 }
 
+function hasCleanFinalProseAfterToolOutput(text: string): boolean {
+  const body = stripRouterAnnotations(text);
+  if (
+    !body.includes("[tool output:") ||
+    !body.includes(TOOL_OUTPUT_END_MARKER)
+  ) {
+    return false;
+  }
+  const userText = userFacingCompletionBody(text);
+  return (
+    userText.length > 0 &&
+    !isEmptyCompletionPlaceholder(userText) &&
+    !looksLikeRawToolTranscript(userText)
+  );
+}
+
 function stripRouterAnnotations(text: string): string {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const body =
@@ -324,6 +340,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const verifiedUrls = verifiedUrlsFromMetadata(message);
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
+    if (hasCleanFinalProseAfterToolOutput(completionText)) return true;
     const hasConcreteFollowUp =
       hasStrings(messageHandler.plan.candidateActions) &&
       !hasOnlyStaleCompletionHints(messageHandler.plan.candidateActions);

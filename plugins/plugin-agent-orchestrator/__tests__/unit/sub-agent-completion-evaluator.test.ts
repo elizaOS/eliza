@@ -342,6 +342,32 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
   });
 
+  it("does not run a follow-up tool when tool output is followed by a clean final answer", async () => {
+    const context = makeContext({
+      text: '[sub-agent: package check (opencode) — task_complete]\n[tool output: packages/core/package.json]\n{"name":"@elizaos/core","homepage":"https://github.com/elizaOS/eliza"}\n[/tool output]The package name is `@elizaos/core`.',
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "",
+          requiresTool: true,
+          candidateActions: ["SHELL"],
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply: "The package name is `@elizaos/core`.",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
   it("promotes ignored verified task_complete messages into direct replies", async () => {
     const context = makeContext({
       text: "[sub-agent: tweet app (opencode) — task_complete]\n[tool output: Check external]\nHTTP/2 200\n[/tool output]\nBuilt data/apps/random-tweet/index.html.\nPublic URL https://example.test/apps/random-tweet/",
