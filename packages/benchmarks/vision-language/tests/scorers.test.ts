@@ -19,6 +19,14 @@ describe("normaliseAnswer", () => {
     expect(normaliseAnswer("AN orange Sign!")).toBe("orange sign");
     expect(normaliseAnswer("  ")).toBe("");
   });
+
+  it("extracts concise answers from verbose reasoning output", () => {
+    expect(
+      normaliseAnswer(
+        "<think>\n\n</think>\n\nThe answer is **Canon** because...",
+      ),
+    ).toBe("canon");
+  });
 });
 
 describe("vqaSoftScore", () => {

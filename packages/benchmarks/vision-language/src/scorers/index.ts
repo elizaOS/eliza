@@ -23,6 +23,19 @@ import type { BBox, Point, PredictedAction } from "../types.ts";
 
 const ARTICLES = new Set(["a", "an", "the"]);
 const PUNCTUATION = /[.,!?;:'"`()[\]{}]/g;
+const THINK_BLOCK_RE = /<think>[\s\S]*?<\/think>/gi;
+const MARKDOWN_BOLD_RE = /\*\*([^*\n]{1,80})\*\*/;
+
+function candidateAnswer(answer: string): string {
+  const withoutThinking = answer.replace(THINK_BLOCK_RE, " ").trim();
+  const bold = MARKDOWN_BOLD_RE.exec(withoutThinking);
+  if (bold?.[1]) return bold[1].trim();
+  const firstLine = withoutThinking
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  return (firstLine ?? withoutThinking).trim();
+}
 
 /**
  * VQA normalisation: lowercase, strip articles + punctuation, collapse
@@ -31,7 +44,7 @@ const PUNCTUATION = /[.,!?;:'"`()[\]{}]/g;
  */
 export function normaliseAnswer(answer: string): string {
   if (!answer) return "";
-  const lowered = answer.toLowerCase().trim();
+  const lowered = candidateAnswer(answer).toLowerCase().trim();
   const stripped = lowered.replace(PUNCTUATION, " ");
   const tokens = stripped
     .split(/\s+/)
