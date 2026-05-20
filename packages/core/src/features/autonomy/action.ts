@@ -293,3 +293,142 @@ export const escalateAction: Action = {
 // imports `sendToAdminAction` keeps working; new code should import
 // `escalateAction`.
 export const sendToAdminAction = escalateAction;
+
+function getAutonomyService(runtime: IAgentRuntime): AutonomyService | null {
+	return (
+		runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE) ??
+		runtime.getService<AutonomyService>("autonomy") ??
+		null
+	);
+}
+
+function autonomyServiceUnavailable(actionName: string): ActionResult {
+	return {
+		success: false,
+		text: "Autonomy service not available",
+		error: "Autonomy service not available",
+		data: {
+			actionName,
+			errorCode: "autonomy_service_unavailable",
+		},
+	};
+}
+
+function autonomyStatusData(
+	service: AutonomyService,
+): Record<string, JsonValue> {
+	const status = service.getStatus();
+	return {
+		enabled: status.enabled,
+		running: status.running,
+		thinking: status.thinking,
+		interval: status.interval,
+		autonomousRoomId: status.autonomousRoomId,
+	};
+}
+
+export const enableAutonomousModeAction: Action = {
+	name: "ENABLE_AUTONOMOUS_MODE",
+	similes: ["ENABLE_AUTONOMY", "START_AUTONOMY", "START_AUTONOMOUS_MODE"],
+	contexts: ["admin", "messaging"],
+	roleGate: { minRole: "ADMIN" },
+	description:
+		"Enable autonomous mode. OWNER and ADMIN may call this to start the continuous autonomy loop.",
+	parameters: [],
+	examples: [
+		[
+			{
+				name: "User",
+				content: {
+					text: "Enable autonomous mode.",
+					action: "ENABLE_AUTONOMOUS_MODE",
+				},
+			},
+			{
+				name: "Agent",
+				content: {
+					text: "Autonomous mode enabled.",
+				},
+			},
+		],
+	],
+	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
+		return getAutonomyService(runtime) !== null;
+	},
+	handler: async (
+		runtime: IAgentRuntime,
+		_message: Memory,
+		_state?: State,
+		_options?: HandlerOptions,
+		callback?: HandlerCallback,
+	): Promise<ActionResult> => {
+		const service = getAutonomyService(runtime);
+		if (!service) {
+			return autonomyServiceUnavailable("ENABLE_AUTONOMOUS_MODE");
+		}
+
+		await service.enableAutonomy();
+		const text = "Autonomous mode enabled.";
+		const data = {
+			actionName: "ENABLE_AUTONOMOUS_MODE",
+			...autonomyStatusData(service),
+		};
+		if (callback) {
+			await callback({ text, data });
+		}
+		return { success: true, text, data };
+	},
+};
+
+export const disableAutonomousModeAction: Action = {
+	name: "DISABLE_AUTONOMOUS_MODE",
+	similes: ["DISABLE_AUTONOMY", "STOP_AUTONOMY", "STOP_AUTONOMOUS_MODE"],
+	contexts: ["admin", "messaging"],
+	roleGate: { minRole: "ADMIN" },
+	description:
+		"Disable autonomous mode. OWNER and ADMIN may call this to stop the continuous autonomy loop.",
+	parameters: [],
+	examples: [
+		[
+			{
+				name: "User",
+				content: {
+					text: "Disable autonomous mode.",
+					action: "DISABLE_AUTONOMOUS_MODE",
+				},
+			},
+			{
+				name: "Agent",
+				content: {
+					text: "Autonomous mode disabled.",
+				},
+			},
+		],
+	],
+	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
+		return getAutonomyService(runtime) !== null;
+	},
+	handler: async (
+		runtime: IAgentRuntime,
+		_message: Memory,
+		_state?: State,
+		_options?: HandlerOptions,
+		callback?: HandlerCallback,
+	): Promise<ActionResult> => {
+		const service = getAutonomyService(runtime);
+		if (!service) {
+			return autonomyServiceUnavailable("DISABLE_AUTONOMOUS_MODE");
+		}
+
+		await service.disableAutonomy();
+		const text = "Autonomous mode disabled.";
+		const data = {
+			actionName: "DISABLE_AUTONOMOUS_MODE",
+			...autonomyStatusData(service),
+		};
+		if (callback) {
+			await callback({ text, data });
+		}
+		return { success: true, text, data };
+	},
+};

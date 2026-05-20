@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+import * as realDbSchemas from "../../db/schemas";
+
 const findByPhoneNumberWithOrganization = mock();
 const listByOrganization = mock();
 const findRunningSandbox = mock();
@@ -72,6 +74,8 @@ mock.module("../../db/repositories/agent-sandboxes", () => ({
 }));
 
 mock.module("../../db/schemas", () => ({
+  ...realDbSchemas,
+  anonymousSessions: {},
   agentPhoneContacts: {
     agent_id: "contact_agent_id",
     organization_id: "contact_organization_id",
@@ -95,6 +99,9 @@ mock.module("../../db/schemas", () => ({
     to_number: "to_number",
     created_at: "created_at",
   },
+  appRequests: {},
+  appUsers: {},
+  phoneGatewayDevices: {},
 }));
 
 mock.module("./agent-gateway-relay", () => ({

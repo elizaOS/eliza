@@ -597,6 +597,13 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);
 }
 
+function ensureUiGeneratedAssets() {
+  runBun(["run", "generate:css-strings"], {
+    cwd: UI_PACKAGE_DIR,
+    label: "Generating @elizaos/ui CSS string modules",
+  });
+}
+
 function stageDesktopBuild() {
   ensureAppDirs();
 
@@ -651,6 +658,8 @@ function stageDesktopBuild() {
     label: "Ensuring Electrobun workspace dependencies are installed",
     allowFailure: true,
   });
+
+  ensureUiGeneratedAssets();
 
   runPackageBinary("vite", ["build"], {
     cwd: APP_DIR,

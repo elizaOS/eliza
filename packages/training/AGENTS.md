@@ -4,6 +4,23 @@ This file is the canonical contract for training, quantization,
 evaluation, and HuggingFace publishing of the Eliza-1 model line. It
 applies to everything under `packages/training/`.
 
+## Locked targets
+
+- **REAL model:** `elizaos/eliza-1-2b` (the actual artifact we ship and
+  fine-tune against). All RL configs target this — see
+  `config/atropos.yaml`, `config/tinker.yaml`.
+- **EVAL judge:** `cerebras/gpt-oss-120b` (RLAIF judge for trajectory
+  scoring; reached via LiteLLM in both atropos and tinker configs).
+- **TESTING HARNESS:** Nebius (OpenAI-compatible inference endpoint
+  used for rollouts during RL — `NEBIUS_BASE_URL`, `NEBIUS_API_KEY`).
+- **Continuous RL data:** on-disk JSONL exports under
+  `${ELIZA_STATE_DIR:-~/.milady/state}/trajectories/`, written by the
+  eliza native trajectory recorder. No database dependency.
+
+Do not edit configs to point at Qwen base names or OpenAI judges —
+the lock above is the product contract.
+
+
 The inference-side companion is at [`packages/inference/AGENTS.md`](../inference/AGENTS.md).
 **Read it first.** The product mandates (three runtime modes, mandatory
 optimizations, fused pipeline, manifest schema, HF publishing flow,

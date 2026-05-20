@@ -187,7 +187,7 @@ export const checks: Check[] = [
   {
     name: "core capability protocol includes signed module provenance",
     pattern:
-      /(?=[\s\S]*export type RemotePluginModuleProvenance)(?=[\s\S]*issuer:\s*string)(?=[\s\S]*digestSha256:\s*string)(?=[\s\S]*signatureAlgorithm:\s*string)(?=[\s\S]*signature:\s*string)(?=[\s\S]*provenance\?:\s*RemotePluginModuleProvenance)(?=[\s\S]*requireRemotePluginModuleProvenance)(?=[\s\S]*digestSha256 must be a SHA-256 hex digest)/,
+      /export type RemotePluginModuleProvenance[\s\S]{0,400}issuer:\s*string[\s\S]{0,400}digestSha256:\s*string[\s\S]{0,400}signatureAlgorithm:\s*string[\s\S]{0,400}signature:\s*string[\s\S]*provenance\?:\s*RemotePluginModuleProvenance[\s\S]*requireRemotePluginModuleProvenance[\s\S]*digestSha256 must be a SHA-256 hex digest/,
     source: "core-capabilities",
     message:
       "core capability protocol must include typed signed module provenance with SHA-256 digest validation.",
@@ -203,7 +203,7 @@ export const checks: Check[] = [
   {
     name: "product connect persists redacted trust audit records",
     pattern:
-      /(?=[\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT)(?=[\s\S]*appendTrustAuditRecord)(?=[\s\S]*readTrustAuditRecords)(?=[\s\S]*redactEndpoint\(audit\.endpoint\))(?=[\s\S]*trustDecisions:\s*audit\.sync\.trustDecisions)/,
+      /ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT[\s\S]{0,500}appendTrustAuditRecord[\s\S]{0,300}readTrustAuditRecords[\s\S]*redactEndpoint\(audit\.endpoint\)[\s\S]{0,800}trustDecisions:\s*audit\.sync\.trustDecisions/,
     source: "remote-capability-routes",
     message:
       "product connect persistence must record redacted capability-router trust-audit records.",
@@ -211,7 +211,7 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers redacted product trust audit records",
     pattern:
-      /(?=[\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT)(?=[\s\S]*provider:\s*"direct")(?=[\s\S]*allowedModuleIds:\s*\["remote-demo"\])(?=[\s\S]*trustDecisions:[\s\S]*trusted:\s*true)(?=[\s\S]*JSON\.stringify\(trustAudit\)\)\.not\.toContain\("product-token"\))/,
+      /product-token[\s\S]{0,1200}allowedModuleIds:\s*\["remote-demo"\][\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT[\s\S]{0,800}provider:\s*"direct"[\s\S]{0,500}allowedModuleIds:\s*\["remote-demo"\][\s\S]{0,500}trustDecisions:[\s\S]{0,500}trusted:\s*true[\s\S]{0,500}JSON\.stringify\(trustAudit\)\)\.not\.toContain\("product-token"\)/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove product connect persists trust audit records without bearer tokens.",
@@ -219,7 +219,7 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers Cloud provision restart reopened view",
     pattern:
-      /(?=[\s\S]*reopens a persisted Cloud-provisioned remote view after restart)(?=[\s\S]*connectCloudSandbox:[\s\S]*mockResolvedValue)(?=[\s\S]*cloud-product-token)(?=[\s\S]*bootstrapRemoteCapabilityPlugins\(restartRuntime\))(?=[\s\S]*getView\("cloud\.restart\.view"\))(?=[\s\S]*\/api\/capability-router\/assets\/cloud-product\/cloud-product-plugin\/assets\/cloud-view\.js)(?=[\s\S]*plugin\.asset\.get)(?=[\s\S]*Bearer cloud-product-token)/,
+      /reopens a persisted Cloud-provisioned remote view after restart[\s\S]*connectCloudSandbox:\s*vi\.fn\(\)\.mockResolvedValue[\s\S]*cloud-product-token[\s\S]*plugin\.asset\.get[\s\S]*bootstrapRemoteCapabilityPlugins\(restartRuntime\)[\s\S]*getView\("cloud\.restart\.view"\)[\s\S]*\/api\/capability-router\/assets\/cloud-product\/cloud-product-plugin\/assets\/cloud-view\.js[\s\S]*Bearer cloud-product-token/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove Cloud provision persistence can restart, reopen the remote view, and fetch its bundle with the persisted token.",
@@ -227,10 +227,18 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers signed provenance trust policy",
     pattern:
-      /(?=[\s\S]*requireSignedProvenance:\s*true)(?=[\s\S]*allowedProvenanceIssuers:\s*\["eliza-cloud-build"\])(?=[\s\S]*provenanceIssuer:\s*"eliza-cloud-build")(?=[\s\S]*reason:\s*"missing-provenance")(?=[\s\S]*reason:\s*"provenance-issuer-not-allowed")(?=[\s\S]*requireVerifiedProvenance:\s*true)(?=[\s\S]*trustedProvenancePublicKeys)(?=[\s\S]*reason:\s*"invalid-provenance-signature")(?=[\s\S]*reason:\s*"missing-provenance-public-key")(?=[\s\S]*requireProvenanceDigestMatch:\s*true)(?=[\s\S]*reason:\s*"invalid-provenance-digest")/,
+      /enforces remote plugin trust policy before registration[\s\S]*allowedProvenanceIssuers:\s*\["eliza-cloud-build"\][\s\S]*requireSignedProvenance:\s*true[\s\S]*provenanceIssuer:\s*"eliza-cloud-build"[\s\S]*reason:\s*"missing-provenance"[\s\S]*reason:\s*"provenance-issuer-not-allowed"[\s\S]*trustedProvenancePublicKeys[\s\S]*requireVerifiedProvenance:\s*true[\s\S]*requireProvenanceDigestMatch:\s*true[\s\S]*reason:\s*"invalid-provenance-signature"[\s\S]*reason:\s*"invalid-provenance-digest"[\s\S]*reason:\s*"missing-provenance-public-key"/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove trust policy can require signed provenance, allowlist provenance issuers, verify provenance signatures, and bind provenance digests to module contents.",
+  },
+  {
+    name: "product connect persists provenance trust policy",
+    pattern:
+      /parseOptionalEndpointTrustPolicy[\s\S]*trustPolicy[\s\S]*persistEndpoint[\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_POLICY[\s\S]*mergePersistedTrustPolicies[\s\S]*normalizeEndpointTrustPolicyOptions/,
+    source: "remote-capability-routes",
+    message:
+      "product connect persistence must carry provenance trust policy so restart bootstrap can keep verified remote-module trust requirements.",
   },
   {
     name: "live report writer records runtime module surface counts",
@@ -267,7 +275,7 @@ export const checks: Check[] = [
   {
     name: "live report validator self-test covers provider runtime evidence",
     pattern:
-      /(?=[\s\S]*missingProviderEvidenceDir)(?=[\s\S]*mismatchedProviderEvidenceDir)(?=[\s\S]*makeMissingProviderEvidenceReport\(\))(?=[\s\S]*makeMismatchedProviderEvidenceReport\(\))(?=[\s\S]*providerEvidence must be an object)(?=[\s\S]*providerEvidence\.endpointRuntime must be)/,
+      /missingProviderEvidenceDir[\s\S]*mismatchedProviderEvidenceDir[\s\S]*makeMissingProviderEvidenceReport\(\)[\s\S]*makeMismatchedProviderEvidenceReport\(\)[\s\S]*providerEvidence must be an object[\s\S]*providerEvidence\.endpointRuntime must be/,
     source: "live-report-validator-self-test",
     message:
       "live report validator self-test must cover missing and mismatched provider runtime evidence.",
@@ -409,7 +417,7 @@ export const checks: Check[] = [
   {
     name: "cloud live smoke is observed only on manual or scheduled runs",
     pattern:
-      /Remote capability cloud sandbox live smoke[\s\S]*github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'[\s\S]*test:remote-capabilities:cloud-live/,
+      /Remote capability cloud sandbox live smoke[\s\S]{0,300}github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'[\s\S]{0,300}test:remote-capabilities:cloud-live/,
     message:
       "cloud live smoke must run on workflow_dispatch or schedule events.",
   },
@@ -458,7 +466,7 @@ export const checks: Check[] = [
   {
     name: "provider live smoke is observed only on manual or scheduled runs",
     pattern:
-      /Remote capability URL-backed provider live smoke[\s\S]*github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'[\s\S]*test:remote-capabilities:provider-live/,
+      /Remote capability URL-backed provider live smoke[\s\S]{0,300}github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'[\s\S]{0,300}test:remote-capabilities:provider-live/,
     message:
       "provider live smoke must run on workflow_dispatch or schedule events.",
   },
@@ -515,10 +523,16 @@ export function validateCapabilityRouterLiveCi(
     liveReportValidatorSource?: string;
     liveReportWriterSource?: string;
     workflowPath?: string;
+    onlyCheckNames?: Iterable<string>;
   } = {},
 ): LiveCiAuditFailure[] {
   const path = options.workflowPath ?? workflowPath;
+  const onlyCheckNames =
+    options.onlyCheckNames === undefined
+      ? undefined
+      : new Set(options.onlyCheckNames);
   return checks
+    .filter((check) => !onlyCheckNames || onlyCheckNames.has(check.name))
     .filter((check) => {
       const content = getCheckContent(check, workflow, options);
       return !check.pattern.test(content);

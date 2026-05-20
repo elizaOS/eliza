@@ -148,22 +148,22 @@ async function makeRepo() {
 
   await writeFile(
     repoRoot,
-    "packages/app/android/app/build.gradle",
+    "packages/app-core/platforms/android/app/build.gradle",
     `android { namespace "ai.elizaos.app" defaultConfig { applicationId "ai.elizaos.app" } }`,
   );
   await writeFile(
     repoRoot,
-    "packages/app/android/app/src/main/AndroidManifest.xml",
+    "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
     androidManifest(),
   );
   await writeFile(
     repoRoot,
-    "packages/app/android/app/src/main/assets/capacitor.config.json",
+    "packages/app-core/platforms/android/app/src/main/assets/capacitor.config.json",
     JSON.stringify({ appId: "ai.elizaos.app", appName: "elizaOS" }),
   );
   await writeFile(
     repoRoot,
-    "packages/app/android/app/src/main/assets/capacitor.plugins.json",
+    "packages/app-core/platforms/android/app/src/main/assets/capacitor.plugins.json",
     JSON.stringify([
       { pkg: "@capacitor/app" },
       { pkg: "@capacitor/keyboard" },
@@ -176,11 +176,11 @@ async function makeRepo() {
     ]),
   );
   for (const file of [
-    "packages/app/android/app/src/main/assets/public/index.html",
-    "packages/app/android/app/src/main/assets/agent/agent-bundle.js",
-    "packages/app/android/app/src/main/assets/agent/launch.sh",
-    "packages/app/android/app/src/main/assets/agent/arm64-v8a/bun",
-    "packages/app/android/app/src/main/assets/agent/x86_64/bun",
+    "packages/app-core/platforms/android/app/src/main/assets/public/index.html",
+    "packages/app-core/platforms/android/app/src/main/assets/agent/agent-bundle.js",
+    "packages/app-core/platforms/android/app/src/main/assets/agent/launch.sh",
+    "packages/app-core/platforms/android/app/src/main/assets/agent/arm64-v8a/bun",
+    "packages/app-core/platforms/android/app/src/main/assets/agent/x86_64/bun",
   ]) {
     await writeFile(repoRoot, file, "fixture");
   }
@@ -251,7 +251,7 @@ describe("mobile artifacts gate", () => {
     await fs.rm(
       path.join(
         repoRoot,
-        "packages/app/android/app/src/main/AndroidManifest.xml",
+        "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
       ),
     );
 
@@ -261,7 +261,7 @@ describe("mobile artifacts gate", () => {
     expect(result.errors).toContainEqual(
       expect.objectContaining({
         type: "missing-file",
-        file: "packages/app/android/app/src/main/AndroidManifest.xml",
+        file: "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
       }),
     );
   });

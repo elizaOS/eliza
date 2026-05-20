@@ -44,7 +44,6 @@ import type {
 const PET_STATE_SETTING_KEY = "ELIZAGOTCHI_PET_STATE_JSON";
 const SAVE_VERSION = 1 as const;
 const ELIZAGOTCHI_CONTEXTS = ["game"] as const;
-const ELIZAGOTCHI_CONTEXT_GATE = { anyOf: [...ELIZAGOTCHI_CONTEXTS] };
 const ELIZAGOTCHI_CONTEXT_TERMS = [
   "pet",
   "elizagotchi",
@@ -489,7 +488,6 @@ const elizagotchiAction: ElizaAction = {
   descriptionCompressed:
     "Elizagotchi tick|status|reset|export|import|name|feed|play|clean|sleep|medicine|light",
   contexts: [...ELIZAGOTCHI_CONTEXTS],
-  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
   roleGate: { minRole: "USER" },
   similes: ELIZAGOTCHI_SIMILES,
   validate: async (_runtime: IAgentRuntime, message, state) => {

@@ -1,0 +1,8 @@
+# Add your custom Solidity contracts here
+#
+# Example:
+# src/MyContract.sol
+# src/MyToken.sol
+#
+# Then compile with: forge build
+

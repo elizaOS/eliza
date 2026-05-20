@@ -29,12 +29,7 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { type ActionScanSort, scanRepoActions } from "./action-scanner";
 
-const [
-  { default: localEmbeddingPlugin },
-  { openaiPlugin },
-  { plugin: sqlPlugin },
-] = await Promise.all([
-  import("@elizaos/plugin-local-inference"),
+const [{ openaiPlugin }, { plugin: sqlPlugin }] = await Promise.all([
   import("@elizaos/plugin-openai"),
   import("@elizaos/plugin-sql"),
 ]);
@@ -233,7 +228,7 @@ const character: Character = createCharacter({
 
 const runtime: IAgentRuntime = new AgentRuntime({
   character,
-  plugins: [sqlPlugin, localEmbeddingPlugin, openaiPlugin],
+  plugins: [sqlPlugin, openaiPlugin],
   logLevel: "warn",
 });
 

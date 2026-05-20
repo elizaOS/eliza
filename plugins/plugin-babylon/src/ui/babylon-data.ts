@@ -1,8 +1,8 @@
 import type {
-  BabylonActivityItem,
-  BabylonAgentStatus,
-  BabylonChatMessage,
-  BabylonTeamAgent,
+  FeedActivityItem,
+  FeedAgentStatus,
+  FeedChatMessage,
+  FeedTeamAgent,
 } from "@elizaos/app-core";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -12,7 +12,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-export interface BabylonTeamSummaryTotals {
+export interface FeedTeamSummaryTotals {
   walletBalance: number;
   lifetimePnL: number;
   unrealizedPnL: number;
@@ -20,19 +20,19 @@ export interface BabylonTeamSummaryTotals {
   openPositions: number;
 }
 
-export interface BabylonTeamSummary {
+export interface FeedTeamSummary {
   ownerName?: string;
-  totals?: BabylonTeamSummaryTotals;
-  agentsOnlyTotals?: BabylonTeamSummaryTotals;
+  totals?: FeedTeamSummaryTotals;
+  agentsOnlyTotals?: FeedTeamSummaryTotals;
   updatedAt?: string;
 }
 
-export interface BabylonTeamDashboard {
-  agents: BabylonTeamAgent[];
-  summary: BabylonTeamSummary | null;
+export interface FeedTeamDashboard {
+  agents: FeedTeamAgent[];
+  summary: FeedTeamSummary | null;
 }
 
-export interface BabylonTeamConversation {
+export interface FeedTeamConversation {
   id: string;
   name: string;
   createdAt: string;
@@ -40,12 +40,12 @@ export interface BabylonTeamConversation {
   isActive: boolean;
 }
 
-export interface BabylonTeamConversationsResponse {
-  conversations: BabylonTeamConversation[];
+export interface FeedTeamConversationsResponse {
+  conversations: FeedTeamConversation[];
   activeChatId?: string | null;
 }
 
-export interface BabylonAgentPortfolio {
+export interface FeedAgentPortfolio {
   totalPnL: number;
   positions: number;
   totalAssets: number;
@@ -55,12 +55,12 @@ export interface BabylonAgentPortfolio {
   totalPoints: number;
 }
 
-export interface BabylonAgentSummaryEnvelope {
-  agent?: BabylonAgentStatus & {
+export interface FeedAgentSummaryEnvelope {
+  agent?: FeedAgentStatus & {
     totalDeposited?: number | null;
     totalWithdrawn?: number | null;
   };
-  portfolio?: BabylonAgentPortfolio;
+  portfolio?: FeedAgentPortfolio;
   positions?: {
     predictions?: { positions?: unknown[] };
     perpetuals?: { positions?: unknown[] };
@@ -90,7 +90,7 @@ function booleanField(record: Record<string, unknown>, key: string): boolean {
 
 function extractAgentStatus(
   value: unknown,
-): BabylonAgentSummaryEnvelope["agent"] {
+): FeedAgentSummaryEnvelope["agent"] {
   const record = asRecord(value);
   if (!record) return undefined;
   return {
@@ -121,7 +121,7 @@ function extractAgentStatus(
 
 function extractAgentPortfolio(
   value: unknown,
-): BabylonAgentSummaryEnvelope["portfolio"] {
+): FeedAgentSummaryEnvelope["portfolio"] {
   const record = asRecord(value);
   if (!record) return undefined;
   return {
@@ -135,7 +135,7 @@ function extractAgentPortfolio(
   };
 }
 
-export function summarizeBabylonActivity(item: BabylonActivityItem): string {
+export function summarizeFeedActivity(item: FeedActivityItem): string {
   if (item.summary) return item.summary;
 
   switch (item.type) {
@@ -158,23 +158,23 @@ export function summarizeBabylonActivity(item: BabylonActivityItem): string {
   }
 }
 
-export function extractTeamDashboard(value: unknown): BabylonTeamDashboard {
+export function extractTeamDashboard(value: unknown): FeedTeamDashboard {
   const data = asRecord(value);
   return {
     agents: Array.isArray(data?.agents)
-      ? (data.agents as BabylonTeamAgent[])
+      ? (data.agents as FeedTeamAgent[])
       : [],
-    summary: asRecord(data?.summary) as BabylonTeamSummary | null,
+    summary: asRecord(data?.summary) as FeedTeamSummary | null,
   };
 }
 
 export function extractTeamConversations(
   value: unknown,
-): BabylonTeamConversationsResponse {
+): FeedTeamConversationsResponse {
   const data = asRecord(value);
   return {
     conversations: Array.isArray(data?.conversations)
-      ? (data.conversations as BabylonTeamConversation[])
+      ? (data.conversations as FeedTeamConversation[])
       : [],
     activeChatId:
       typeof data?.activeChatId === "string" ? data.activeChatId : null,
@@ -183,21 +183,21 @@ export function extractTeamConversations(
 
 export function extractAgentSummary(
   value: unknown,
-): BabylonAgentSummaryEnvelope {
+): FeedAgentSummaryEnvelope {
   const data = asRecord(value);
   return {
     agent: extractAgentStatus(data?.agent),
     portfolio: extractAgentPortfolio(data?.portfolio),
     positions: asRecord(
       data?.positions,
-    ) as BabylonAgentSummaryEnvelope["positions"],
+    ) as FeedAgentSummaryEnvelope["positions"],
   };
 }
 
-export function extractChatMessages(value: unknown): BabylonChatMessage[] {
+export function extractChatMessages(value: unknown): FeedChatMessage[] {
   const data = asRecord(value);
   return Array.isArray(data?.messages)
-    ? (data.messages as BabylonChatMessage[])
+    ? (data.messages as FeedChatMessage[])
     : [];
 }
 

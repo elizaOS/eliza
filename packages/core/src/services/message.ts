@@ -1714,9 +1714,9 @@ function parsePlatformReplyReferenceBlock(
 	if (!text) return null;
 	const lines = text.replace(/\r\n/g, "\n").split("\n");
 	let start = -1;
-	for (let i = lines.length - 1; i >= 0; i--) {
-		if (lines[i]!.trim() === PLATFORM_REPLY_REFERENCE_START) {
-			start = i;
+	for (let index = lines.length - 1; index >= 0; index--) {
+		if (lines[index]?.trim() === PLATFORM_REPLY_REFERENCE_START) {
+			start = index;
 			break;
 		}
 	}

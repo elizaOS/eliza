@@ -86,7 +86,13 @@ function providerConfig(
 }
 
 function isCerebrasBaseUrl(value: string | undefined): boolean {
-  return Boolean(value && /(^|[/.])cerebras\.ai(?:\/|$)/i.test(value));
+  if (!value) return false;
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === "cerebras.ai" || hostname.endsWith(".cerebras.ai");
+  } catch {
+    return false;
+  }
 }
 
 function usableApiKey(value: string | undefined): string | undefined {

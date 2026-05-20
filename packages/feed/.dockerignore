@@ -1,0 +1,108 @@
+# =============================================================================
+# Docker Ignore - Monorepo Root
+# =============================================================================
+# Reduces build context size significantly for faster builds
+
+# Git
+.git
+.gitignore
+.github
+
+# Dependencies (reinstalled in container)
+node_modules
+**/node_modules
+
+# Python virtual environments
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# Build outputs
+dist
+**/dist
+build
+**/build
+.turbo
+**/.turbo
+.next
+**/.next
+
+# IDE and editor
+.vscode
+.idea
+*.swp
+*.swo
+.cursor
+
+# Testing
+coverage
+**/coverage
+.nyc_output
+
+# Logs
+*.log
+logs
+**/logs
+
+# Caches
+.cache
+**/.cache
+.pytest_cache
+**/.pytest_cache
+.bun
+**/.bun
+
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Training artifacts (large files)
+packages/training/trained_models
+packages/training/python/trained_models
+packages/training/data/*.csv
+packages/training/data/**/*.parquet
+packages/training/data/**/*.json
+!packages/training/data/benchmarks/scenarios/*.json
+!packages/training/data/**/.gitkeep
+packages/training/rollout_dumps
+packages/training/benchmark-results
+packages/training/hf_dataset
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+!packages/training/deploy/docker/Dockerfile*
+
+# Documentation and misc
+*.md
+!README.md
+LICENSE
+CHANGELOG*
+docs
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Foundry/Solidity (not needed for training/benchmark)
+packages/contracts/out
+packages/contracts/cache
+packages/contracts/dependencies
+packages/contracts/broadcast
+
+# Large test fixtures
+**/*.fixture.json
+**/fixtures
+
+# Temporary files
+tmp
+temp
+*.tmp
+*.temp
+

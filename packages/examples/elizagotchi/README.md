@@ -17,7 +17,7 @@ A Tamagotchi-style virtual pet game running on **elizaOS** with **NO LLM require
 
 ```bash
 # From the monorepo root
-cd examples/elizagotchi
+cd packages/examples/elizagotchi
 
 # Install dependencies
 bun install

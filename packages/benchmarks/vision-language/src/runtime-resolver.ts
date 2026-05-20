@@ -13,8 +13,9 @@
  * `useModel(IMAGE_DESCRIPTION, ...)` is the canonical entrypoint per
  * CLAUDE.md / Task 15 spec.
  */
-import { existsSync } from "node:fs";
+
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,7 +192,11 @@ function createHarnessRuntime(args: {
   model: string;
 }): VisionRuntime {
   const python = process.env.PYTHON ?? process.env.PYTHON_BIN ?? "python";
-  const script = path.join(PACKAGE_ROOT, "scripts", "vision_harness_runtime.py");
+  const script = path.join(
+    PACKAGE_ROOT,
+    "scripts",
+    "vision_harness_runtime.py",
+  );
 
   async function askHarness({
     imagePath,
@@ -202,23 +207,19 @@ function createHarnessRuntime(args: {
     question: string;
     maxTokens?: number;
   }): Promise<string> {
-    const child = spawnSync(
-      python,
-      [script],
-      {
-        input: JSON.stringify({
-          harness: args.harness,
-          provider: args.provider,
-          model: args.model,
-          imagePath,
-          question,
-          maxTokens,
-        }),
-        encoding: "utf8",
-        env: process.env,
-        maxBuffer: 16 * 1024 * 1024,
-      },
-    );
+    const child = spawnSync(python, [script], {
+      input: JSON.stringify({
+        harness: args.harness,
+        provider: args.provider,
+        model: args.model,
+        imagePath,
+        question,
+        maxTokens,
+      }),
+      encoding: "utf8",
+      env: process.env,
+      maxBuffer: 16 * 1024 * 1024,
+    });
     if (child.error) throw child.error;
     if (child.status !== 0) {
       throw new Error(
@@ -244,7 +245,11 @@ function createHarnessRuntime(args: {
       });
       return parseClickFromText(text);
     },
-    async runActionLoop({ instruction, initialScreenshotPath, maxSteps }): Promise<PredictedAction[]> {
+    async runActionLoop({
+      instruction,
+      initialScreenshotPath,
+      maxSteps,
+    }): Promise<PredictedAction[]> {
       const text = await askHarness({
         imagePath: initialScreenshotPath,
         question: actionListPrompt(instruction),
@@ -275,12 +280,18 @@ function inferStubAnswer(question: string): string {
   return "unknown";
 }
 
-export async function resolveRuntime(args: RuntimeResolveArgs): Promise<VisionRuntime> {
+export async function resolveRuntime(
+  args: RuntimeResolveArgs,
+): Promise<VisionRuntime> {
   if (args.forceStub) return createStubRuntime(args.tier);
   if (args.tier === "stub") return createStubRuntime();
   const harness = args.harness ?? "eliza";
   if (harness === "hermes" || harness === "openclaw") {
-    const model = (args.model ?? process.env.VISION_LANGUAGE_MODEL ?? "").trim();
+    const model = (
+      args.model ??
+      process.env.VISION_LANGUAGE_MODEL ??
+      ""
+    ).trim();
     if (!model) {
       throw new Error(
         `vision-language ${harness} runtime requires --model or VISION_LANGUAGE_MODEL`,
@@ -288,7 +299,12 @@ export async function resolveRuntime(args: RuntimeResolveArgs): Promise<VisionRu
     }
     return createHarnessRuntime({
       harness,
-      provider: (args.provider ?? process.env.VISION_LANGUAGE_PROVIDER ?? "openai").trim() || "openai",
+      provider:
+        (
+          args.provider ??
+          process.env.VISION_LANGUAGE_PROVIDER ??
+          "openai"
+        ).trim() || "openai",
       model,
     });
   }

@@ -223,6 +223,7 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
         "dflash/target-meta.json",
         *(("dflash/validation-real.json",) if tier in DFLASH_TIERS else ()),
         *(("dflash/runtime-smoke-native.json",) if tier in DFLASH_TIERS else ()),
+        *(("evals/dflash-tuning-report.json",) if tier in DFLASH_TIERS else ()),
     )
     vision_files = (
         (f"vision/mmproj-{tier}.gguf",)

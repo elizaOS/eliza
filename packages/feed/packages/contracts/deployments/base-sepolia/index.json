@@ -1,0 +1,23 @@
+{
+  "chainId": 84532,
+  "network": "base-sepolia",
+  "deployer": "0xFfA6A2Ac8bcAE47af29b623B97071E676647556A",
+  "timestamp": "2025-10-30T01:30:00.000Z",
+  "contracts": {
+    "diamond": "0xdC3f0aD2f76Cea9379af897fa8EAD4A6d5e43990",
+    "identityRegistry": "0x4102F9b209796b53a18B063A438D05C7C9Af31A2",
+    "reputationSystem": "0x7960E6044bbeE480F5388be1903b3A1dd69c126D",
+    "diamondCutFacet": "0xA47E18989FDBE79CA7Ea7726662aD99d0D2514c1",
+    "diamondLoupeFacet": "0x322Ded7A129E654C827eF1288c56087652610205",
+    "predictionMarketFacet": "0x95A1aEe004de01267daDD1e55C1a3fc2818636cE",
+    "oracleFacet": "0x58A0Cd5307CdE4F2ccD8E2cA71510206F1365D9B",
+    "chainlinkOracle": "0x2b66946c747DDc3fB0e303d40c3f2F6CE89928FB",
+    "mockOracle": "0xC128cb3A64077983c3036D5a8b08d1B67FF6A3c4"
+  },
+  "gasUsed": "0.000013251950070528 ETH",
+  "explorer": {
+    "identityRegistry": "https://sepolia.basescan.org/address/0x4102F9b209796b53a18B063A438D05C7C9Af31A2",
+    "reputationSystem": "https://sepolia.basescan.org/address/0x7960E6044bbeE480F5388be1903b3A1dd69c126D",
+    "diamond": "https://sepolia.basescan.org/address/0xdC3f0aD2f76Cea9379af897fa8EAD4A6d5e43990"
+  }
+}

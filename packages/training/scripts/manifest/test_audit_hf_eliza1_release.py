@@ -141,6 +141,7 @@ def _text_fetcher(
     dflash_accept_reports: Mapping[str, str] | None = None,
     dflash_validation_reports: Mapping[str, str] | None = None,
     dflash_runtime_reports: Mapping[str, str] | None = None,
+    dflash_tuning_reports: Mapping[str, str] | None = None,
     release_evidence: Mapping[str, str] | None = None,
     aggregate_reports: Mapping[str, str] | None = None,
     platform_evidence: Mapping[str, str] | None = None,
@@ -219,6 +220,13 @@ def _text_fetcher(
             dflash_runtime_reports[tier]
             if dflash_runtime_reports and tier in dflash_runtime_reports
             else _passing_dflash_runtime_report(tier)
+        )
+        payloads[
+            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/evals/dflash-tuning-report.json"
+        ] = (
+            dflash_tuning_reports[tier]
+            if dflash_tuning_reports and tier in dflash_tuning_reports
+            else _passing_dflash_tuning_report(tier)
         )
         payloads[
             f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/evidence/release.json"
@@ -663,6 +671,34 @@ def _passing_dflash_runtime_report(tier: str) -> str:
     )
 
 
+def _passing_dflash_tuning_report(tier: str) -> str:
+    return __import__("json").dumps(
+        {
+            "schemaVersion": 1,
+            "kind": "dflash-tuning-report",
+            "tier": tier,
+            "status": "publishable",
+            "publishEligible": True,
+            "acceptanceGate": 0.48,
+            "runtimeSmoke": {
+                "metadataStatus": "metadata_loadable",
+                "drafted": 2000,
+                "accepted": 1440,
+                "acceptanceRate": 0.72,
+                "draftingActive": True,
+            },
+            "releaseBench": {
+                "status": "pass",
+                "acceptanceRate": 0.72,
+                "speedup": 1.21,
+                "drafted": 2000,
+                "accepted": 1440,
+            },
+            "blockers": [],
+        }
+    )
+
+
 def _passing_release_evidence(tier: str) -> str:
     required_weights = sorted(
         rel
@@ -1016,6 +1052,28 @@ def test_hf_release_audit_blocks_required_file_missing_from_manifest_files() -> 
     )
 
 
+def test_hf_release_audit_blocks_dflash_tuning_report_missing_from_manifest_files() -> None:
+    bad_manifest = __import__("json").loads(_passing_model_manifest("0_8b"))
+    bad_manifest["files"]["evals"] = [
+        entry
+        for entry in bad_manifest["files"]["evals"]
+        if entry["path"] != "evals/dflash-tuning-report.json"
+    ]
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(model_manifests={"0_8b": __import__("json").dumps(bad_manifest)}),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "0_8b manifest files cover required runtime artifacts"
+        and "evals/dflash-tuning-report.json" in check["detail"]
+        for check in failed
+    )
+
+
 def test_hf_release_audit_blocks_missing_runtime_component_lineage() -> None:
     bad_manifest = __import__("json").loads(_passing_model_manifest("0_8b"))
     del bad_manifest["lineage"]["imagegen"]
@@ -1258,6 +1316,39 @@ def test_hf_release_audit_requires_native_mtp_runtime_smoke_pass() -> None:
         and "dflash/runtime-smoke-native.json.bench.acceptanceRate: 0.1 < gate 0.48"
         in check["detail"]
         and "dflash/runtime-smoke-native.json.bench.speedup: 0.95" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_requires_mtp_tuning_report_publishable() -> None:
+    bad_report = __import__("json").loads(_passing_dflash_tuning_report("0_8b"))
+    bad_report["status"] = "optimization-blocked"
+    bad_report["publishEligible"] = False
+    bad_report["releaseBench"]["status"] = "fail"
+    bad_report["releaseBench"]["speedup"] = None
+    bad_report["blockers"] = [
+        "native release bench did not prove acceptance plus speedup > 1.0"
+    ]
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(
+            dflash_tuning_reports={"0_8b": __import__("json").dumps(bad_report)}
+        ),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "0_8b MTP drafter release evidence passed"
+        and "evals/dflash-tuning-report.json.status: 'optimization-blocked'"
+        in check["detail"]
+        and "evals/dflash-tuning-report.json.publishEligible: False"
+        in check["detail"]
+        and "evals/dflash-tuning-report.json.releaseBench.status: 'fail'"
+        in check["detail"]
+        and "evals/dflash-tuning-report.json.releaseBench.speedup: None"
+        in check["detail"]
         for check in failed
     )
 

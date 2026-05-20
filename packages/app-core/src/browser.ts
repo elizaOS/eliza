@@ -2,10 +2,10 @@ export { resolveAppBranding } from "@elizaos/shared";
 export {
   type AppRunSummary,
   type AppSessionJsonValue,
-  type BabylonActivityItem,
-  type BabylonAgentStatus,
-  type BabylonChatMessage,
-  type BabylonTeamAgent,
+  type FeedActivityItem,
+  type FeedAgentStatus,
+  type FeedChatMessage,
+  type FeedTeamAgent,
   client,
 } from "@elizaos/ui/api";
 export * from "@elizaos/ui/browser";

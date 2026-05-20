@@ -1235,9 +1235,14 @@ function resolveConfiguredRemotePluginTrustPolicy(
   const endpointIds = configuredEndpointIds(routerConfig);
   if (endpointIds.length === 0) return undefined;
   const allowedModuleIds = configuredAllowedModuleIds(runtime, endpointIds);
+  const trustPolicy = configuredRemotePluginTrustPolicyOptions(
+    runtime,
+    endpointIds,
+  );
   return {
     allowedEndpointIds: endpointIds,
     ...(allowedModuleIds.length === 0 ? {} : { allowedModuleIds }),
+    ...trustPolicy,
     requireEndpointId: true,
   };
 }
@@ -1283,6 +1288,94 @@ function configuredAllowedModuleIds(
   } catch {
     return [];
   }
+}
+
+function configuredRemotePluginTrustPolicyOptions(
+  runtime: IAgentRuntime,
+  endpointIds: string[],
+): RemotePluginTrustPolicy {
+  const configured = runtime.getSetting?.(
+    "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+  );
+  const raw =
+    typeof configured === "string" && configured.trim()
+      ? configured
+      : process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
+  if (typeof raw !== "string" || !raw.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const record = parsed as Record<string, unknown>;
+    const candidates = endpointIds
+      .map((endpointId) => record[endpointId])
+      .filter(
+        (value): value is Record<string, unknown> =>
+          !!value && typeof value === "object" && !Array.isArray(value),
+      );
+    const globalCandidate =
+      "allowedProvenanceIssuers" in record ||
+      "trustedProvenancePublicKeys" in record ||
+      "requireSignedProvenance" in record ||
+      "requireVerifiedProvenance" in record ||
+      "requireProvenanceDigestMatch" in record
+        ? [record]
+        : [];
+    return mergeConfiguredTrustPolicyOptions([
+      ...globalCandidate,
+      ...candidates,
+    ]);
+  } catch {
+    return {};
+  }
+}
+
+function mergeConfiguredTrustPolicyOptions(
+  values: Array<Record<string, unknown>>,
+): RemotePluginTrustPolicy {
+  const allowedProvenanceIssuers = new Set<string>();
+  const trustedProvenancePublicKeys: Record<string, string> = {};
+  let requireSignedProvenance = false;
+  let requireVerifiedProvenance = false;
+  let requireProvenanceDigestMatch = false;
+  for (const value of values) {
+    for (const issuer of uniqueStrings(value.allowedProvenanceIssuers)) {
+      allowedProvenanceIssuers.add(issuer);
+    }
+    const keys = value.trustedProvenancePublicKeys;
+    if (keys && typeof keys === "object" && !Array.isArray(keys)) {
+      for (const [issuer, publicKey] of Object.entries(keys)) {
+        if (typeof publicKey !== "string") continue;
+        const nextIssuer = issuer.trim();
+        const nextPublicKey = publicKey.trim();
+        if (nextIssuer && nextPublicKey) {
+          trustedProvenancePublicKeys[nextIssuer] = nextPublicKey;
+        }
+      }
+    }
+    requireSignedProvenance ||= value.requireSignedProvenance === true;
+    requireVerifiedProvenance ||= value.requireVerifiedProvenance === true;
+    requireProvenanceDigestMatch ||=
+      value.requireProvenanceDigestMatch === true;
+  }
+  return {
+    ...(allowedProvenanceIssuers.size === 0
+      ? {}
+      : { allowedProvenanceIssuers: [...allowedProvenanceIssuers] }),
+    ...(Object.keys(trustedProvenancePublicKeys).length === 0
+      ? {}
+      : { trustedProvenancePublicKeys }),
+    ...(requireSignedProvenance ||
+    requireVerifiedProvenance ||
+    requireProvenanceDigestMatch
+      ? { requireSignedProvenance: true }
+      : {}),
+    ...(requireVerifiedProvenance ? { requireVerifiedProvenance: true } : {}),
+    ...(requireProvenanceDigestMatch
+      ? { requireProvenanceDigestMatch: true }
+      : {}),
+  };
 }
 
 function uniqueStrings(value: unknown): string[] {

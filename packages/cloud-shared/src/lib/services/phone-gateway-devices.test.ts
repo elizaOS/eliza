@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { phoneGatewayDevices } from "../../db/schemas";
+
+import * as realDbSchemas from "../../db/schemas";
 
 const values = mock();
 const onConflictDoUpdate = mock();
@@ -24,6 +25,26 @@ mock.module("../../db/client", () => ({
   runWithDbCacheAsync: async (fn: () => Promise<unknown>) => fn(),
   withReadDb: async (fn: (db: unknown) => Promise<unknown>) => fn({}),
   withWriteDb: async (fn: (db: unknown) => Promise<unknown>) => fn({}),
+}));
+
+mock.module("../../db/schemas", () => ({
+  ...realDbSchemas,
+  anonymousSessions: {},
+  agentPhoneContacts: {
+    provider: "provider",
+    contact_identifier: "contact_identifier",
+    agent_id: "agent_id",
+  },
+  agentPhoneNumbers: {},
+  appRequests: {},
+  appUsers: {},
+  phoneMessageLog: {},
+  phoneGatewayDevices: {
+    id: "id",
+    provider: "provider",
+    phone_number: "phone_number",
+    bridge_id: "bridge_id",
+  },
 }));
 
 const { registerPhoneGatewayDevice } = await import("./phone-gateway-devices");
@@ -72,11 +93,7 @@ describe("registerPhoneGatewayDevice", () => {
     );
     expect(onConflictDoUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: [
-          phoneGatewayDevices.provider,
-          phoneGatewayDevices.phone_number,
-          phoneGatewayDevices.bridge_id,
-        ],
+        target: ["provider", "phone_number", "bridge_id"],
         set: expect.objectContaining({
           organization_id: "org-1",
           phone_account_id: "+14159611510",

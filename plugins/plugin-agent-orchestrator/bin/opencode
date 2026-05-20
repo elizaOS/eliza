@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Shim that forwards `opencode` to the vendored elizaOS/opencode source tree.
 # plugin-agent-orchestrator's AcpService points acpx at this shim so we run
-# the PR #26763 (Cerebras reasoning fix) vendored source without needing a
-# compiled binary.
+# the vendored source with provider-specific compatibility fixes without
+# needing a compiled binary.
 SHIM_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 OC_DIR="$SHIM_DIR/../vendor/opencode/packages/opencode"
 if [ -f "$OC_DIR/src/index.ts" ]; then

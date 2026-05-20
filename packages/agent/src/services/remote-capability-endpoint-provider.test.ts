@@ -29,11 +29,26 @@ describe("remote capability endpoint providers", () => {
       buildRemoteCapabilityEndpointTrustPolicy(
         { id: "home-runner", baseUrl: "https://home-runner.example.test" },
         ["home-plugin", "home-plugin"],
+        {
+          allowedProvenanceIssuers: ["eliza-cloud-build"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build": "trusted-public-key",
+          },
+          requireVerifiedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
       ),
     ).toEqual({
       allowedEndpointIds: ["home-runner"],
       allowedModuleIds: ["home-plugin"],
+      allowedProvenanceIssuers: ["eliza-cloud-build"],
+      trustedProvenancePublicKeys: {
+        "eliza-cloud-build": "trusted-public-key",
+      },
       requireEndpointId: true,
+      requireSignedProvenance: true,
+      requireVerifiedProvenance: true,
+      requireProvenanceDigestMatch: true,
     });
   });
 

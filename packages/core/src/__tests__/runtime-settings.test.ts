@@ -58,3 +58,21 @@ describe("AgentRuntime.getSetting", () => {
 		expect(runtime.getSetting("ROUTE_POLICY")).toBe('{"default":"guest"}');
 	});
 });
+
+describe("AgentRuntime prompt batcher", () => {
+	it("creates a prompt batcher for production autonomy drains", () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "prompt-batcher-runtime-test",
+			} as Character,
+		});
+
+		expect(runtime.promptBatcher).toBeDefined();
+		expect(runtime.promptBatcher.getStats()).toMatchObject({
+			totalDrains: 0,
+			totalCalls: 0,
+		});
+
+		runtime.promptBatcher.dispose();
+	});
+});

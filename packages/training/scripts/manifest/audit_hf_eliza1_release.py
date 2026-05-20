@@ -591,9 +591,14 @@ def _manifest_required_file_blockers(
             if isinstance(entry, Mapping) and isinstance(entry.get("path"), str):
                 manifest_paths.add(entry["path"])
     runtime_roots = {"text", "tts", "asr", "vad", "imagegen", "vision", "dflash", "cache"}
+    runtime_eval_files = {"evals/dflash-tuning-report.json"}
     return sorted(
         rel for rel in required_files
-        if rel.split("/", 1)[0] in runtime_roots and rel not in manifest_paths
+        if (
+            rel.split("/", 1)[0] in runtime_roots
+            or rel in runtime_eval_files
+        )
+        and rel not in manifest_paths
     )
 
 
@@ -755,6 +760,7 @@ def _dflash_target_meta_blockers(
     acceptance_report: Mapping[str, Any] | None = None,
     validation_report: Mapping[str, Any] | None = None,
     runtime_report: Mapping[str, Any] | None = None,
+    tuning_report: Mapping[str, Any] | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     if meta.get("publishEligible") is not True:
@@ -918,6 +924,43 @@ def _dflash_target_meta_blockers(
                         "dflash/runtime-smoke-native.json.bench.summary.dflashDraftingActive: "
                         f"{summary.get('dflashDraftingActive')!r}"
                     )
+    if tuning_report is None:
+        blockers.append("evals/dflash-tuning-report.json: missing")
+    else:
+        if tuning_report.get("status") != "publishable":
+            blockers.append(
+                f"evals/dflash-tuning-report.json.status: {tuning_report.get('status')!r}"
+            )
+        if tuning_report.get("publishEligible") is not True:
+            blockers.append(
+                "evals/dflash-tuning-report.json.publishEligible: "
+                f"{tuning_report.get('publishEligible')!r}"
+            )
+        tuning_blockers = tuning_report.get("blockers")
+        if tuning_blockers not in (None, []):
+            blockers.append(
+                f"evals/dflash-tuning-report.json.blockers: {tuning_blockers!r}"
+            )
+        release_bench = tuning_report.get("releaseBench")
+        if not isinstance(release_bench, Mapping):
+            blockers.append("evals/dflash-tuning-report.json.releaseBench: missing")
+        else:
+            bench_rate = release_bench.get("acceptanceRate")
+            if release_bench.get("status") != "pass":
+                blockers.append(
+                    "evals/dflash-tuning-report.json.releaseBench.status: "
+                    f"{release_bench.get('status')!r}"
+                )
+            if isinstance(gate, (int, float)) and isinstance(bench_rate, (int, float)) and bench_rate < gate:
+                blockers.append(
+                    "evals/dflash-tuning-report.json.releaseBench.acceptanceRate: "
+                    f"{bench_rate} < gate {gate}"
+                )
+            speedup = release_bench.get("speedup")
+            if not isinstance(speedup, (int, float)) or speedup <= 1.0:
+                blockers.append(
+                    f"evals/dflash-tuning-report.json.releaseBench.speedup: {speedup!r}"
+                )
     return blockers
 
 
@@ -1547,12 +1590,21 @@ def audit_hf_release(
                 runtime_report = json.loads(runtime_report_text)
             except (RuntimeError, json.JSONDecodeError):
                 runtime_report = None
+            tuning_report = None
+            try:
+                tuning_report_text = fetch_text(
+                    _raw_model_url(model_repo, f"{prefix}evals/dflash-tuning-report.json")
+                )
+                tuning_report = json.loads(tuning_report_text)
+            except (RuntimeError, json.JSONDecodeError):
+                tuning_report = None
             dflash_meta_blockers = _dflash_target_meta_blockers(
                 dflash_meta,
                 tier=tier,
                 acceptance_report=acceptance_report,
                 validation_report=validation_report,
                 runtime_report=runtime_report,
+                tuning_report=tuning_report,
             )
             report.check(
                 f"{tier} MTP drafter release evidence passed",

@@ -1,0 +1,66 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "types": ["bun-types"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@feed/db": ["../../packages/db/src/index.ts"],
+      "@feed/db/*": ["../../packages/db/src/*"],
+      "@feed/api": ["../../packages/api/src/index.ts"],
+      "@feed/api/*": ["../../packages/api/src/*"],
+      "@feed/agents": ["../../packages/agents/src/index.ts"],
+      "@feed/agents/*": ["../../packages/agents/src/*"],
+      "@feed/a2a": ["../../packages/a2a/src/index.ts"],
+      "@feed/a2a/*": ["../../packages/a2a/src/*"],
+      "@feed/mcp": ["../../packages/mcp/src/index.ts"],
+      "@feed/mcp/*": ["../../packages/mcp/src/*"],
+      "@feed/engine": ["../../packages/engine/src/index.ts"],
+      "@feed/engine/*": ["../../packages/engine/src/*"],
+      "@feed/core": ["../../packages/core/markets/index.ts"],
+      "@feed/core/markets/*": ["../../packages/core/markets/*"],
+      "@feed/shared": ["../../packages/shared/src/index.ts"],
+      "@feed/shared/*": ["../../packages/shared/src/*"],
+      "@feed/pack-default": ["../../packages/pack-default/src/index.ts"],
+      "@feed/pack-default/*": ["../../packages/pack-default/src/*"],
+      "@/*": ["../web/src/*"],
+      "@web/*": ["../web/src/*"],
+      "@/mobile/*": ["./src/*"]
+    },
+    "baseUrl": "."
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../web/src/**/*.ts",
+    "../web/src/**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "out/types/**/*.ts",
+    "out/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "out",
+    "ios",
+    "android",
+    "../web/src/app/sw.ts",
+    "../web/public/sw.js"
+  ]
+}

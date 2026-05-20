@@ -232,43 +232,56 @@ app.patch("/", async (c) => {
       });
     }
 
-    const result = await elizaSandboxService.shutdown(
-      agentId,
-      user.organization_id,
-    );
-    if (!result.success) {
-      const status =
-        result.error === "Agent not found"
-          ? 404
-          : result.error === "Agent provisioning is in progress"
-            ? 409
-            : 400;
+    // Enqueue `agent_suspend` job — the orchestrator does the docker stop
+    // via SSH and flips the DB. Workers can't SSH the cores; the previous
+    // inline `shutdown()` path silently failed to stop the container and
+    // left a stale DB row claiming `stopped` while the container kept
+    // running. See suspend/route.ts for the same refactor.
+    if (agent.status === "provisioning") {
       return c.json(
-        {
-          success: false,
-          error: result.error ?? `${parsed.data.action} failed`,
-        },
-        status,
+        { success: false, error: "Agent provisioning is in progress" },
+        409,
       );
     }
 
-    logger.info(`[agent-api] Agent ${parsed.data.action} complete`, {
+    const enqueueResult = await provisioningJobService.enqueueAgentSuspendOnce({
       agentId,
-      orgId: user.organization_id,
+      organizationId: user.organization_id,
+      userId: user.id,
     });
 
-    return c.json({
-      success: true,
-      data: {
-        agentId,
-        action: parsed.data.action,
-        message:
-          parsed.data.action === "shutdown"
-            ? "Agent shutdown complete"
-            : "Agent suspended with snapshot. Use resume or provision to restart.",
-        previousStatus: agent.status,
-      },
+    void provisioningJobService.triggerImmediate(c.env).catch(() => {
+      // Logged inside the service.
     });
+
+    logger.info(
+      `[agent-api] Agent ${parsed.data.action} enqueued (suspend job)`,
+      {
+        agentId,
+        orgId: user.organization_id,
+        jobId: enqueueResult.job.id,
+        created: enqueueResult.created,
+      },
+    );
+
+    return c.json(
+      {
+        success: true,
+        created: enqueueResult.created,
+        alreadyInProgress: !enqueueResult.created,
+        data: {
+          agentId,
+          action: parsed.data.action,
+          jobId: enqueueResult.job.id,
+          status: enqueueResult.job.status,
+          message: enqueueResult.created
+            ? `${parsed.data.action} job created. Poll the job endpoint for status.`
+            : `${parsed.data.action} is already in progress.`,
+          previousStatus: agent.status,
+        },
+      },
+      202,
+    );
   } catch (error) {
     logger.error("[agent-api] PATCH /agents/:agentId error", { error });
     return failureResponse(c, error);

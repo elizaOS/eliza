@@ -79,7 +79,7 @@ Self-hosting closes the loop: app earnings refill the org's credit balance via t
 
 ```bash
 # 1. build + push to your ECR (or any registry the cloud can pull from)
-docker build -t edad-chat:latest -f apps/edad-chat/Dockerfile apps/edad-chat
+docker build -t edad-chat:latest -f packages/examples/cloud/edad/Dockerfile packages/examples/cloud/edad
 docker tag edad-chat:latest <account>.dkr.ecr.<region>.amazonaws.com/edad-chat:latest
 docker push <account>.dkr.ecr.<region>.amazonaws.com/edad-chat:latest
 

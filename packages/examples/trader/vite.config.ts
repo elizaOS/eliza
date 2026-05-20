@@ -81,6 +81,7 @@ export default defineConfig({
       external: [
         "technicalindicators",
         "@elizaos/plugin-auto-trader",
+        "@elizaos/plugin-elizacloud",
         "@elizaos/plugin-trajectory-logger",
       ],
       output: {

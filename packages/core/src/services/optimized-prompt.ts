@@ -4,7 +4,7 @@
  * Native MIPRO/GEPA/bootstrap-fewshot optimizers (under
  * `plugins/plugin-training/src/optimizers/`) write a JSON artifact per task into
  * `~/.eliza/optimized-prompts/<task>/`. The runtime consults this service
- * before constructing the system prompt for one of the five core decision
+ * before constructing the system prompt for one of the core decision
  * tasks and substitutes the optimized prompt (plus any few-shot
  * demonstrations) when an artifact is available.
  *
@@ -67,7 +67,8 @@ export type OptimizedPromptTask =
 	| "action_planner"
 	| "response"
 	| "media_description"
-	| "action_descriptions";
+	| "action_descriptions"
+	| "autonomy";
 
 export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"should_respond",
@@ -75,6 +76,7 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"response",
 	"media_description",
 	"action_descriptions",
+	"autonomy",
 ] as const;
 
 export type OptimizerName =

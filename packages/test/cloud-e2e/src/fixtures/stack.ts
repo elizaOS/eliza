@@ -5,7 +5,7 @@
  *   1. PGlite TCP bridge (via packages/scripts/cloud/admin/dev/pglite-server.ts)
  *   2. Hetzner mock (in-process, free port)
  *   3. Control-plane mock (in-process, free port, points at Hetzner mock)
- *   4. cloud-api worker subprocess (cloud-api-dev.mjs → wrangler dev)
+ *   4. cloud-api Hono subprocess (same app, local Bun server)
  *   5. cloud-frontend Vite dev subprocess
  *
  * Returns a handle with URLs and a `stop()` that tears everything down.
@@ -29,8 +29,9 @@ import {
 
 import { buildSharedEnv } from "./env";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
-const LOG_DIR = resolve(import.meta.dirname, "../../.logs");
+const CLOUD_E2E_ROOT = resolve(import.meta.dirname, "../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
+const LOG_DIR = resolve(CLOUD_E2E_ROOT, ".logs");
 
 export interface StackHandle {
   stop: () => Promise<void>;
@@ -155,17 +156,50 @@ function spawnLogged(
 }
 
 async function killProc(proc: SpawnedProc): Promise<void> {
-  if (proc.child.exitCode !== null || proc.child.signalCode !== null) return;
-  proc.child.kill("SIGTERM");
-  const deadline = Date.now() + 5_000;
-  while (proc.child.exitCode === null && proc.child.signalCode === null) {
-    if (Date.now() > deadline) {
-      proc.child.kill("SIGKILL");
-      break;
+  try {
+    if (proc.child.exitCode === null && proc.child.signalCode === null) {
+      proc.child.kill("SIGTERM");
+      const deadline = Date.now() + 5_000;
+      while (proc.child.exitCode === null && proc.child.signalCode === null) {
+        if (Date.now() > deadline) {
+          proc.child.kill("SIGKILL");
+          break;
+        }
+        await delay(100);
+      }
     }
-    await delay(100);
+  } finally {
+    await new Promise<void>((r) => proc.log.end(() => r()));
   }
-  await new Promise<void>((r) => proc.log.end(() => r()));
+}
+
+async function runLogged(
+  name: string,
+  command: string,
+  args: string[],
+  options: { env: NodeJS.ProcessEnv; cwd: string; logFile: string },
+): Promise<void> {
+  const proc = spawnLogged(name, command, args, options);
+  const result = await new Promise<{
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  }>((resolveResult, rejectResult) => {
+    proc.child.once("error", rejectResult);
+    proc.child.once("exit", (code, signal) => resolveResult({ code, signal }));
+  });
+  await killProc(proc);
+  if (result.code !== 0) {
+    throw new Error(
+      `[stack] ${name} exited with code=${result.code} signal=${result.signal}`,
+    );
+  }
+}
+
+async function closeProcessDbConnections(): Promise<void> {
+  const { closeDatabaseConnectionsForTests } = await import(
+    "@elizaos/cloud-shared/db/client"
+  );
+  await closeDatabaseConnectionsForTests();
 }
 
 export interface StartCloudStackOptions {
@@ -193,7 +227,6 @@ export async function startCloudStack(
   const pglitePort = await pickFreePort();
   const apiPort = opts.apiPort ?? (await pickFreePort());
   const frontendPort = opts.frontendPort ?? (await pickFreePort());
-
   // 1. In-process mocks
   const hetzner = await startHetznerMock({
     port: hetznerPort,
@@ -202,6 +235,8 @@ export async function startCloudStack(
   const controlPlane = await startControlPlaneMock({
     port: controlPlanePort,
     hetznerUrl: hetzner.url,
+    token: "test-token",
+    expectedAuxToken: "test-token",
     tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
   });
 
@@ -213,8 +248,6 @@ export async function startCloudStack(
       pglitePort,
     },
     {
-      DATABASE_URL: `pglite://${pgDataDir}`,
-      TEST_DATABASE_URL: "",
       PGLITE_DATA_DIR: pgDataDir,
       DEV_CLOUD_PGLITE_DATA_DIR: pgDataDir,
       DEV_CLOUD_PGLITE_PORT: String(pglitePort),
@@ -224,95 +257,13 @@ export async function startCloudStack(
   );
 
   const procs: SpawnedProc[] = [];
-
-  // 2. PGlite TCP bridge. We start it directly (rather than letting
-  //    cloud-api-dev.mjs manage it) because cloud-api-dev only spawns PGlite
-  //    when DATABASE_URL is empty or `pglite://...`, and we set it to a
-  //    real postgres URL pointing at this very bridge.
-  const pgliteEnv = {
-    ...sharedEnv,
-    PGLITE_HOST: "127.0.0.1",
-    PGLITE_PORT: String(pglitePort),
-    PGLITE_DATA_DIR: pgDataDir,
-    PGLITE_MAX_CONNECTIONS: process.env.PGLITE_MAX_CONNECTIONS ?? "16",
-  };
-  procs.push(
-    spawnLogged(
-      "pglite",
-      "bun",
-      ["run", "packages/scripts/cloud/admin/dev/pglite-server.ts"],
-      {
-        env: pgliteEnv,
-        cwd: REPO_ROOT,
-        logFile: join(LOG_DIR, "pglite.log"),
-      },
-    ),
-  );
-  await waitForTcp("127.0.0.1", pglitePort, {
-    timeoutMs: 60_000,
-    label: "pglite",
-  });
-
-  // 3. cloud-api worker subprocess. cloud-api-dev.mjs will see DATABASE_URL is
-  //    a real postgres URL, skip its own PGlite, run migrations, and exec
-  //    wrangler dev on `apiPort`.
-  const apiEnv = {
-    ...sharedEnv,
-    DEV_CLOUD_SKIP_MIGRATE: opts.skipMigrate ? "1" : "0",
-  };
-  procs.push(
-    spawnLogged(
-      "cloud-api",
-      "node",
-      ["packages/scripts/cloud/admin/dev/cloud-api-dev.mjs"],
-      {
-        env: apiEnv,
-        cwd: REPO_ROOT,
-        logFile: join(LOG_DIR, "cloud-api.log"),
-      },
-    ),
-  );
-
-  const apiUrl = `http://127.0.0.1:${apiPort}`;
-  const databaseUrl = `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`;
   const previousDatabaseUrl = process.env.DATABASE_URL;
   const previousTestDatabaseUrl = process.env.TEST_DATABASE_URL;
-  await waitForHttpOk(`${apiUrl}/api/health`, {
-    timeoutMs: 180_000,
-    label: "cloud-api",
-  });
-  process.env.DATABASE_URL = databaseUrl;
-  process.env.TEST_DATABASE_URL = databaseUrl;
-
-  // 3. cloud-frontend Vite dev
-  const frontendEnv = {
-    ...sharedEnv,
-    PORT: String(frontendPort),
-    VITE_API_BASE_URL: apiUrl,
-    NEXT_PUBLIC_API_BASE_URL: apiUrl,
-  };
-  procs.push(
-    spawnLogged("cloud-frontend", "bun", ["run", "dev"], {
-      env: frontendEnv,
-      cwd: join(REPO_ROOT, "packages", "cloud-frontend"),
-      logFile: join(LOG_DIR, "cloud-frontend.log"),
-    }),
-  );
-
-  const frontendUrl = `http://127.0.0.1:${frontendPort}`;
-  await waitForHttpOk(frontendUrl, {
-    timeoutMs: 120_000,
-    label: "cloud-frontend",
-  });
-
   let stopped = false;
-  const stop = async () => {
-    if (stopped) return;
-    stopped = true;
-    // Reverse order: frontend, api, then mocks
-    for (const proc of [...procs].reverse()) {
-      await killProc(proc).catch(() => undefined);
-    }
+  let processEnvUsesStackDatabase = false;
+  const restoreProcessDatabaseEnv = () => {
+    if (!processEnvUsesStackDatabase) return;
+    processEnvUsesStackDatabase = false;
     if (previousDatabaseUrl === undefined) {
       delete process.env.DATABASE_URL;
     } else {
@@ -323,29 +274,146 @@ export async function startCloudStack(
     } else {
       process.env.TEST_DATABASE_URL = previousTestDatabaseUrl;
     }
+  };
+  const stop = async () => {
+    if (stopped) return;
+    stopped = true;
+    // Reverse order, but keep PGlite alive until process-local pg pools are
+    // closed. Otherwise Playwright can pass all tests and then report a
+    // teardown-level "Connection terminated unexpectedly" outside any test.
+    const reverseProcs = [...procs].reverse();
+    for (const proc of reverseProcs) {
+      if (proc.name === "pglite") continue;
+      await killProc(proc).catch(() => undefined);
+    }
+    await closeProcessDbConnections().catch(() => undefined);
+    for (const proc of reverseProcs) {
+      if (proc.name !== "pglite") continue;
+      await killProc(proc).catch(() => undefined);
+    }
+    restoreProcessDatabaseEnv();
     await controlPlane.stop().catch(() => undefined);
     await hetzner.stop().catch(() => undefined);
     await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
   };
 
-  // Best-effort cleanup if a test runner SIGINTs us
-  const handler = () => {
-    void stop();
-  };
-  process.once("SIGINT", handler);
-  process.once("SIGTERM", handler);
+  try {
+    // 2. PGlite TCP bridge. We start it directly (rather than letting
+    //    cloud-api-dev.mjs manage it) because cloud-api-dev only spawns PGlite
+    //    when DATABASE_URL is empty or `pglite://...`, and we set it to a
+    //    real postgres URL pointing at this very bridge.
+    const pgliteEnv = {
+      ...sharedEnv,
+      PGLITE_HOST: "127.0.0.1",
+      PGLITE_PORT: String(pglitePort),
+      PGLITE_DATA_DIR: pgDataDir,
+      PGLITE_MAX_CONNECTIONS: process.env.PGLITE_MAX_CONNECTIONS ?? "16",
+    };
+    procs.push(
+      spawnLogged(
+        "pglite",
+        "bun",
+        ["run", "packages/scripts/cloud/admin/dev/pglite-server.ts"],
+        {
+          env: pgliteEnv,
+          cwd: REPO_ROOT,
+          logFile: join(LOG_DIR, "pglite.log"),
+        },
+      ),
+    );
+    await waitForTcp("127.0.0.1", pglitePort, {
+      timeoutMs: 60_000,
+      label: "pglite",
+    });
 
-  return {
-    stop,
-    urls: {
-      api: apiUrl,
-      frontend: frontendUrl,
-      hetzner: hetzner.url,
-      controlPlane: controlPlane.url,
-      pglite: `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`,
-    },
-    mocks: { hetzner, controlPlane },
-    dataDir,
-    logDir: LOG_DIR,
-  };
+    const databaseUrl = `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`;
+    process.env.DATABASE_URL = databaseUrl;
+    process.env.TEST_DATABASE_URL = databaseUrl;
+    processEnvUsesStackDatabase = true;
+
+    if (!opts.skipMigrate) {
+      await runLogged("cloud-api-migrate", "bun", ["run", "db:cloud:migrate"], {
+        env: sharedEnv,
+        cwd: REPO_ROOT,
+        logFile: join(LOG_DIR, "cloud-api.log"),
+      });
+    }
+
+    // 3. cloud-api subprocess. The mock stack uses the same Hono app as the
+    //    Worker, but runs it under Bun instead of Wrangler/workerd so CI
+    //    validates provisioning/onboarding behavior without coupling these
+    //    tests to Wrangler's local dev proxy startup.
+    const apiEnv = {
+      ...sharedEnv,
+      DEV_CLOUD_SKIP_MIGRATE: opts.skipMigrate ? "1" : "0",
+    };
+    procs.push(
+      spawnLogged(
+        "cloud-api",
+        "bun",
+        ["run", "packages/scripts/cloud/admin/dev/cloud-api-hono-dev.ts"],
+        {
+          env: apiEnv,
+          cwd: REPO_ROOT,
+          logFile: join(LOG_DIR, "cloud-api.log"),
+        },
+      ),
+    );
+
+    const apiUrl = `http://127.0.0.1:${apiPort}`;
+    await waitForHttpOk(`${apiUrl}/api/health`, {
+      timeoutMs: 180_000,
+      label: "cloud-api",
+    });
+
+    // 4. cloud-frontend Vite dev
+    const frontendEnv = {
+      ...sharedEnv,
+      PORT: String(frontendPort),
+      VITE_API_BASE_URL: apiUrl,
+      NEXT_PUBLIC_API_BASE_URL: apiUrl,
+    };
+    procs.push(
+      spawnLogged(
+        "cloud-frontend",
+        "bun",
+        ["run", "dev", "--", "--host", "127.0.0.1"],
+        {
+          env: frontendEnv,
+          cwd: join(REPO_ROOT, "packages", "cloud-frontend"),
+          logFile: join(LOG_DIR, "cloud-frontend.log"),
+        },
+      ),
+    );
+
+    const frontendUrl = `http://127.0.0.1:${frontendPort}`;
+    await waitForHttpOk(frontendUrl, {
+      timeoutMs: 120_000,
+      label: "cloud-frontend",
+    });
+
+    // Best-effort cleanup if a test runner SIGINTs us
+    const handler = () => {
+      void stop();
+    };
+    process.once("SIGINT", handler);
+    process.once("SIGTERM", handler);
+
+    return {
+      stop,
+      urls: {
+        api: apiUrl,
+        frontend: frontendUrl,
+        hetzner: hetzner.url,
+        controlPlane: controlPlane.url,
+        pglite: `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`,
+      },
+      mocks: { hetzner, controlPlane },
+      dataDir,
+      logDir: LOG_DIR,
+    };
+  } catch (error) {
+    await stop().catch(() => undefined);
+    throw error;
+  }
 }

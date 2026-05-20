@@ -5,7 +5,12 @@
  */
 
 // Action
-export { escalateAction, sendToAdminAction } from "./action";
+export {
+	disableAutonomousModeAction,
+	enableAutonomousModeAction,
+	escalateAction,
+	sendToAdminAction,
+} from "./action";
 // Providers
 export { adminChatProvider, autonomyStatusProvider } from "./providers";
 // Routes
@@ -28,6 +33,8 @@ export type { AutonomyConfig, AutonomyStatus } from "./types";
 import {
 	sendToAdminAction as _bs_1_sendToAdminAction,
 	escalateAction as _bs_1a_escalateAction,
+	enableAutonomousModeAction as _bs_1b_enableAutonomousModeAction,
+	disableAutonomousModeAction as _bs_1c_disableAutonomousModeAction,
 } from "./action";
 import {
 	adminChatProvider as _bs_2_adminChatProvider,
@@ -46,6 +53,8 @@ import {
 const __bundle_safety_FEATURES_AUTONOMY_INDEX__ = [
 	_bs_1_sendToAdminAction,
 	_bs_1a_escalateAction,
+	_bs_1b_enableAutonomousModeAction,
+	_bs_1c_disableAutonomousModeAction,
 	_bs_2_adminChatProvider,
 	_bs_3_autonomyStatusProvider,
 	_bs_4_autonomyRoutes,

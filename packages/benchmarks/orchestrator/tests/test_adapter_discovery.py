@@ -598,6 +598,7 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_terminal_bench_docker_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_swe_bench_docker_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_hermes_sandbox_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_vision_language_compatible_harnesses", lambda: ("eliza", "hermes", "openclaw"))
     report = build_cross_matrix_report(
@@ -733,6 +734,11 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     )
     monkeypatch.setattr(
         orchestrator_adapters,
+        "_has_swe_bench_docker_backend",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
         "_has_gauntlet_real_surfpool_backend",
         lambda: False,
     )
@@ -740,6 +746,11 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
         orchestrator_adapters,
         "_has_hyperliquid_live_backend",
         lambda: True,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_vision_language_compatible_harnesses",
+        lambda: ("eliza",),
     )
 
     report = build_cross_matrix_report(
@@ -3154,6 +3165,38 @@ def test_vision_language_harness_runtime_requires_multimodal_model(
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     assert orchestrator_adapters._has_vision_language_harness_runtime() is True
+
+
+def test_vision_language_bundle_accepts_current_manifest_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bundle = (
+        tmp_path
+        / ".eliza"
+        / "local-inference"
+        / "models"
+        / "eliza-1-9b.bundle"
+    )
+    (bundle / "text").mkdir(parents=True)
+    (bundle / "vision").mkdir()
+    (bundle / "dflash").mkdir()
+    (bundle / "text" / "eliza-1-9b-128k.gguf").write_text("text", encoding="utf-8")
+    (bundle / "vision" / "mmproj-9b.gguf").write_text("vision", encoding="utf-8")
+    (bundle / "dflash" / "drafter-9b.gguf").write_text("dflash", encoding="utf-8")
+    (bundle / "eliza-1.manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "eliza-1-9b",
+                "kernels": {"required": ["dflash"]},
+                "files": {"dflash": [{"path": "dflash/drafter-9b.gguf"}]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / ".eliza"))
+
+    assert orchestrator_adapters._has_vision_language_bundle("eliza-1-9b") is True
 
 
 def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:

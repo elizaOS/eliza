@@ -389,6 +389,33 @@ if (
   );
 }
 
+const productTrustPolicyFailure = assertFails(
+  "product connect persists provenance trust policy",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource,
+  githubLiveArtifactValidatorSource,
+  githubLiveArtifactValidatorSelfTestSource,
+  remotePluginAdapterTestSource,
+  remoteCapabilityRoutesSource.replaceAll(
+    "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+    "ELIZA_CAPABILITY_ROUTER_TRUST_CONFIG",
+  ),
+);
+if (
+  productTrustPolicyFailure.sourcePath !==
+  "packages/agent/src/api/remote-capability-routes.ts"
+) {
+  throw new Error(
+    `product trust policy failure reported wrong source path: ${productTrustPolicyFailure.sourcePath}`,
+  );
+}
+
 const writerFailure = assertFails(
   "live report writer records runtime module surface counts",
   workflow,
@@ -986,6 +1013,11 @@ function assertFails(
   candidateRemoteCapabilityRoutesSource = remoteCapabilityRoutesSource,
   candidateCoreCapabilitiesSource = coreCapabilitiesSource,
 ): ReturnType<typeof validateCapabilityRouterLiveCi>[number] {
+  const check = checks.find((candidate) => candidate.name === expectedCheckName);
+  if (!check) throw new Error(`unknown check "${expectedCheckName}"`);
+  if (process.env.DEBUG_CAPABILITY_ROUTER_AUDIT_SELF_TEST === "true") {
+    console.error(`audit self-test check: ${expectedCheckName}`);
+  }
   const failures = validateCapabilityRouterLiveCi(candidate, {
     agentPackageJson: candidateAgentPackageJson,
     coreCapabilitiesSource: candidateCoreCapabilitiesSource,
@@ -1003,15 +1035,12 @@ function assertFails(
     remotePluginAdapterTestSource: candidateRemotePluginAdapterTestSource,
     rootPackageJson: candidateRootPackageJson,
     workflowPath: "mutated-workflow.yml",
+    onlyCheckNames: [expectedCheckName],
   });
-  const expectedFailure = failures.find(
-    (failure) => failure.name === expectedCheckName,
-  );
+  const expectedFailure = failures[0];
   if (!expectedFailure) {
     throw new Error(
-      `mutated workflow did not fail "${expectedCheckName}"; failures: ${failures
-        .map((failure) => failure.name)
-        .join(", ")}`,
+      `mutated workflow did not fail "${expectedCheckName}".`,
     );
   }
   return expectedFailure;

@@ -1,0 +1,610 @@
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
+
+:root {
+  --bottom-nav-height: 56px;
+  --background: #ffffff;
+  --foreground: #0f1419;
+  --card: #f7f8f8;
+  --card-foreground: #0f1419;
+  --popover: #ffffff;
+  --popover-foreground: #0f1419;
+  --primary: #0066ff;
+  --primary-foreground: #ffffff;
+  --secondary: #0f1419;
+  --secondary-foreground: #ffffff;
+  --muted: #e5e5e6;
+  --muted-foreground: #0f1419;
+  --accent: #e3ecf6;
+  --accent-foreground: #0066ff;
+  --destructive: #f4212e;
+  --destructive-foreground: #ffffff;
+  --border: #3c3a3a2a;
+  --input: #f7f9fa;
+  --ring: #0066ff;
+  --chart-1: #0066ff;
+  --chart-2: #00b87a;
+  --chart-3: #f7b928;
+  --chart-4: #17bf63;
+  --chart-5: #e0245e;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f1419;
+  --sidebar-primary: #0066ff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eeeeee;
+  --sidebar-accent-foreground: #0066ff;
+  --sidebar-border: #e1e8ed;
+  --sidebar-ring: #0066ff;
+  --scrollbar-track: #e5e5e6;
+  --scrollbar-thumb: #0066ff;
+  --scrollbar-thumb-hover: #2952d9;
+  /* Reserved for onboarding theme overrides. Currently aliases --primary but can be
+     customized for onboarding-specific styling without affecting the global theme. */
+  --onboarding-primary: var(--primary);
+  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: "Courier New", Courier, monospace;
+  --radius: 0;
+  --shadow-x: 0px;
+  --shadow-y: 1px;
+  --shadow-blur: 3px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.08;
+  --shadow-color: rgba(101, 119, 134, 0.2);
+  --shadow-2xs: 0px 2px 0px 0px hsl(226 89% 58% / 0);
+  --shadow-xs: 0px 2px 0px 0px hsl(226 89% 58% / 0);
+  --shadow-sm:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 1px 2px -1px hsl(226 89% 58% / 0);
+  --shadow:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 1px 2px -1px hsl(226 89% 58% / 0);
+  --shadow-md:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 2px 4px -1px hsl(226 89% 58% / 0);
+  --shadow-lg:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 4px 6px -1px hsl(226 89% 58% / 0);
+  --shadow-xl:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 8px 10px -1px hsl(226 89% 58% / 0);
+  --shadow-2xl: 0px 2px 0px 0px hsl(226 89% 58% / 0);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  --background: #000000;
+  --foreground: #e7e9ea;
+  --card: #17181c;
+  --card-foreground: #d9d9d9;
+  --popover: #000000;
+  --popover-foreground: #e7e9ea;
+  --primary: #0066ff;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f3f4;
+  --secondary-foreground: #0f1419;
+  --muted: #181818;
+  --muted-foreground: #72767a;
+  --accent: #061622;
+  --accent-foreground: #0066ff;
+  --destructive: #f4212e;
+  --destructive-foreground: #ffffff;
+  --border: #393d41;
+  --input: #22303c;
+  --ring: #0066ff;
+  --chart-1: #0066ff;
+  --chart-2: #00b87a;
+  --chart-3: #f7b928;
+  --chart-4: #17bf63;
+  --chart-5: #e0245e;
+  --sidebar: #000000;
+  --sidebar-foreground: #d9d9d9;
+  --sidebar-primary: #0066ff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2a2a2a;
+  --sidebar-accent-foreground: #0066ff;
+  --sidebar-border: #393d41;
+  --sidebar-ring: #0066ff;
+  --scrollbar-track: #000000;
+  --scrollbar-thumb: #0066ff;
+  --scrollbar-thumb-hover: #2952d9;
+  /* Reserved for onboarding theme overrides. Currently aliases --primary but can be
+     customized for onboarding-specific styling without affecting the global theme. */
+  --onboarding-primary: var(--primary);
+  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: Menlo, monospace;
+  --radius: 0;
+  --shadow-x: 0px;
+  --shadow-y: 2px;
+  --shadow-blur: 0px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0;
+  --shadow-color: rgba(52, 98, 243, 0.25);
+  --shadow-2xs: 0px 2px 0px 0px hsl(226 89% 58% / 0);
+  --shadow-xs: 0px 2px 0px 0px hsl(226 89% 58% / 0);
+  --shadow-sm:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 1px 2px -1px hsl(226 89% 58% / 0);
+  --shadow:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 1px 2px -1px hsl(226 89% 58% / 0);
+  --shadow-md:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 2px 4px -1px hsl(226 89% 58% / 0);
+  --shadow-lg:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 4px 6px -1px hsl(226 89% 58% / 0);
+  --shadow-xl:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 8px 10px -1px hsl(226 89% 58% / 0);
+  --shadow-2xl: 0px 2px 0px 0px hsl(226 89% 58% / 0);
+}
+
+.writing-vertical-lr {
+  writing-mode: vertical-lr;
+}
+
+/* @tailwind-css v4 theme block */
+/* stylelint-disable-next-line at-rule-no-unknown */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-onboarding-primary: var(--onboarding-primary);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-feature-settings:
+    "rlig" 1,
+    "calt" 1;
+  /* Prevent native pull-to-refresh and overscroll effects */
+  overscroll-behavior-y: contain;
+}
+
+body {
+  --toast-band-height: 72px;
+}
+
+.app-shell-root {
+  transition: padding-top 0.2s ease;
+}
+
+body:has([data-sonner-toast]) .app-shell-root {
+  padding-top: var(--toast-band-height);
+}
+
+body [data-sonner-toaster] {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  inset: 0 0 auto 0;
+  width: 100vw;
+  transform: none;
+  padding: 0;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+
+body [data-sonner-toaster][data-x-position="center"] {
+  right: 0;
+  left: 0;
+}
+
+body [data-sonner-toaster] [data-sonner-toast] {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  border-right: 0;
+  border-left: 0;
+}
+
+/* Prevent pull-to-refresh on the entire app */
+html {
+  overscroll-behavior-y: contain;
+  /* Always show scrollbar and reserve space to prevent layout shift */
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
+/* All buttons and links should have pointer cursor */
+button:not(:disabled),
+a[href] {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Mobile-first touch targets */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Smooth scrolling */
+.smooth-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Custom Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 0;
+  border: 1px solid var(--scrollbar-track);
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Remove scrollbar arrows/buttons */
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* Hide scrollbar but keep functionality */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom animations */
+.animate-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.slide-up {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* Safe area utilities for notched phones */
+.safe-area-bottom,
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+.pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+
+.pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Word breaking for long content (URLs, long words) */
+.break-anywhere {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Improved post content typography */
+.post-content {
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
+}
+
+/* Overscroll behavior utilities for pull-to-refresh */
+.overscroll-none {
+  overscroll-behavior: none;
+}
+
+.overscroll-contain {
+  overscroll-behavior: contain;
+}
+
+.overscroll-auto {
+  overscroll-behavior: auto;
+}
+
+/* Prevent pull-to-refresh on specific elements */
+.no-pull-refresh {
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Touch action for better pull-to-refresh control */
+.touch-pan-y {
+  touch-action: pan-y;
+}
+
+.touch-none {
+  touch-action: none;
+}
+
+/* Chat neumorphic styles */
+.chat-card {
+  box-shadow:
+    inset 5px 5px 5px rgba(0, 0, 0, 0.1),
+    inset -5px -5px 5px rgba(255, 255, 255, 0.05);
+}
+
+.message-input {
+  box-shadow: none;
+}
+
+.message-bubble {
+  box-shadow: none;
+}
+
+.chat-tab {
+  box-shadow:
+    inset 3px 3px 5px rgba(0, 0, 0, 0.1),
+    inset -3px -3px 5px rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
+}
+
+.chat-tab-active {
+  box-shadow:
+    inset 3px 3px 5px var(--primary-glow, rgba(0, 102, 255, 0.3)),
+    inset -3px -3px 5px var(--primary-glow-secondary, rgba(0, 102, 255, 0.1));
+}
+
+/* Dark mode adjustments for chat styles */
+.dark .chat-card {
+  box-shadow:
+    inset 5px 5px 5px rgba(0, 0, 0, 0.3),
+    inset -5px -5px 5px rgba(255, 255, 255, 0.02);
+}
+
+.dark .message-input {
+  box-shadow: none;
+}
+
+.dark .message-bubble {
+  box-shadow: none;
+}
+
+.dark .chat-tab {
+  box-shadow:
+    inset 3px 3px 5px rgba(0, 0, 0, 0.3),
+    inset -3px -3px 5px rgba(255, 255, 255, 0.02);
+}
+
+/* Confetti Animation (used by RevealModal, OutcomeNotificationPopup) */
+@keyframes confetti {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.animate-confetti {
+  animation: confetti 3s ease-out forwards;
+}
+
+/* Confetti burst — two separate animations layered:
+   1. burst: fast explosive outward (horizontal + initial vertical)
+   2. fall:  smooth continuous gravity pull (vertical only)
+   Layering via separate elements so each has its own easing curve. */
+
+@keyframes confetti-burst-out {
+  0% {
+    transform: translate(0, 0) scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--cx), var(--cy)) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes confetti-fall-gravity {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(var(--fall-distance)) rotate(var(--spin));
+    opacity: 1;
+  }
+}
+
+@keyframes confetti-fade {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes confetti-sway {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(var(--sway-amount));
+  }
+  75% {
+    transform: translateX(calc(var(--sway-amount) * -0.6));
+  }
+}
+
+/* Wave container — stays hidden until its delay, then appears */
+@keyframes confetti-wave-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Outer wrapper: burst outward fast */
+.confetti-burst-wrapper {
+  animation: confetti-burst-out 0.4s cubic-bezier(0, 0.7, 0.3, 1) forwards;
+}
+
+/* Middle wrapper: continuous gravity + delayed slow fade. */
+.confetti-gravity {
+  animation:
+    confetti-fall-gravity 5s cubic-bezier(0.2, 0, 1, 1) forwards,
+    confetti-fade 1.5s ease-out 2s forwards;
+}
+
+/* Inner piece: gentle sway oscillation */
+.confetti-piece {
+  animation: confetti-sway var(--sway-speed) ease-in-out infinite;
+}
+
+/* 3D tumble — each particle gets a unique rotation axis */
+@keyframes confetti-3d-spin {
+  0% {
+    transform: rotateX(0deg) rotateY(0deg);
+  }
+  100% {
+    transform: rotateX(var(--rot-x)) rotateY(var(--rot-y));
+  }
+}
+
+.confetti-3d-spin {
+  animation:
+    confetti-sway var(--sway-speed) ease-in-out infinite,
+    confetti-3d-spin var(--spin-speed) linear infinite;
+}
+
+/* Daily Login Modal - Confetti Animation */
+@keyframes shrink-bar {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-10px) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+/* Ticker embed - scrolling strip */
+@keyframes ticker-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}

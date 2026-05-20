@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>elizaOS Examples Setup Guide</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.5;
+      }
+      body {
+        margin: 0;
+        color: #1f2937;
+        background: #f7f7f5;
+      }
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 40px 24px 64px;
+      }
+      h1,
+      h2,
+      h3 {
+        color: #111827;
+        line-height: 1.15;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 34px;
+      }
+      h2 {
+        margin-top: 36px;
+        padding-top: 22px;
+        border-top: 1px solid #d8d8d2;
+      }
+      a {
+        color: #075985;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      pre {
+        overflow: auto;
+        padding: 14px 16px;
+        border: 1px solid #d8d8d2;
+        border-radius: 8px;
+        background: #ffffff;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 24px;
+        background: #ffffff;
+      }
+      th,
+      td {
+        border: 1px solid #d8d8d2;
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #ecece7;
+      }
+      .note {
+        padding: 12px 14px;
+        border-left: 4px solid #0f766e;
+        background: #eef8f6;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          color: #e5e7eb;
+          background: #111827;
+        }
+        h1,
+        h2,
+        h3 {
+          color: #f9fafb;
+        }
+        a {
+          color: #7dd3fc;
+        }
+        pre,
+        table {
+          background: #1f2937;
+        }
+        th {
+          background: #374151;
+        }
+        th,
+        td,
+        pre,
+        h2 {
+          border-color: #4b5563;
+        }
+        .note {
+          color: #d1fae5;
+          background: #064e3b;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>elizaOS Examples Setup Guide</h1>
+      <p>
+        Use this page for examples that need accounts, desktop apps, cloud
+        CLIs, game servers, API keys, or hardware before the local test clients
+        can run end to end.
+      </p>
+
+      <div class="note">
+        Run local verification from the repository root with
+        <code>bun install</code>, then each example's
+        <code>bun run typecheck</code>, <code>bun run test</code>, and
+        <code>bun run build</code> scripts where present. Live integrations
+        should start in dry-run or test projects.
+      </div>
+
+      <h2>Roblox</h2>
+      <p>
+        The Roblox example is in <code>packages/examples/roblox</code>. It runs
+        an HTTP bridge for Roblox Studio scripts and uses Roblox Open Cloud for
+        outbound MessagingService publishes.
+      </p>
+      <ol>
+        <li>
+          Install
+          <a href="https://create.roblox.com/docs/studio/setup">
+            Roblox Studio
+          </a>
+          and open or create an experience.
+        </li>
+        <li>
+          Create a Roblox Open Cloud API key:
+          <a href="https://create.roblox.com/docs/cloud/open-cloud/api-keys">
+            API keys
+          </a>.
+          Enable the experience/universe permissions needed for
+          MessagingService and any DataStore testing.
+        </li>
+        <li>
+          Enable game HTTP calls in Studio:
+          <a href="https://create.roblox.com/docs/reference/engine/classes/HttpService">
+            HttpService
+          </a>.
+        </li>
+        <li>
+          Add the server script from
+          <code>packages/examples/roblox/roblox-studio</code> to
+          ServerScriptService. It forwards player messages to the bridge and
+          subscribes to the configured MessagingService topic.
+        </li>
+      </ol>
+      <pre><code>cd packages/examples/roblox
+export ROBLOX_API_KEY="..."
+export ROBLOX_UNIVERSE_ID="..."
+export ROBLOX_MESSAGING_TOPIC="eliza-agent"
+export ELIZA_ROBLOX_SHARED_SECRET="dev-secret"
+export ROBLOX_DRY_RUN=true
+bun run start</code></pre>
+      <p>
+        For local Studio testing, expose the bridge with a tunnel such as
+        <a href="https://ngrok.com/docs/getting-started/">ngrok</a> or
+        <a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-local-tunnel/">
+          Cloudflare Tunnel
+        </a>
+        and put the public URL plus shared secret into the Studio script.
+      </p>
+
+      <h2>Minecraft</h2>
+      <p>
+        Minecraft automation currently lives in
+        <code>plugins/plugin-minecraft</code> and uses a local Mineflayer bridge
+        server. There is no separate <code>packages/examples/minecraft</code>
+        app in this worktree.
+      </p>
+      <ol>
+        <li>
+          Install Java and run a local Minecraft Java server, or use a test
+          server you control. Mojang's server setup docs:
+          <a href="https://www.minecraft.net/en-us/download/server">
+            Minecraft Java Server
+          </a>.
+        </li>
+        <li>
+          Review Mineflayer setup and supported versions:
+          <a href="https://github.com/PrismarineJS/mineflayer">Mineflayer</a>.
+        </li>
+        <li>
+          For offline local testing, configure the server for offline auth and
+          use a test username. For production servers, use proper online auth
+          and a dedicated account.
+        </li>
+      </ol>
+      <pre><code>cd plugins/plugin-minecraft/mineflayer-server
+bun install
+export MC_SERVER_PORT=3457
+export MC_HOST=127.0.0.1
+export MC_PORT=25565
+export MC_AUTH=offline
+export MC_USERNAME=ElizaBot
+bun run build
+bun run start</code></pre>
+
+      <h2>Other Human-Gated Examples</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Example</th>
+            <th>Setup links</th>
+            <th>Local command</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>AWS</td>
+            <td>
+              <a href="https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html">AWS CLI</a>,
+              <a href="https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html">AWS SAM CLI</a>
+            </td>
+            <td><code>cd packages/examples/aws &amp;&amp; bun run test</code></td>
+          </tr>
+          <tr>
+            <td>GCP</td>
+            <td>
+              <a href="https://cloud.google.com/sdk/docs/install">Google Cloud CLI</a>,
+              <a href="https://cloud.google.com/run/docs/quickstarts/build-and-deploy/deploy-nodejs-service">Cloud Run Node.js</a>
+            </td>
+            <td><code>cd packages/examples/gcp &amp;&amp; bun run build</code></td>
+          </tr>
+          <tr>
+            <td>Cloudflare</td>
+            <td>
+              <a href="https://developers.cloudflare.com/workers/wrangler/install-and-update/">Wrangler</a>,
+              <a href="https://developers.cloudflare.com/workers/configuration/secrets/">Worker secrets</a>
+            </td>
+            <td><code>cd packages/examples/cloudflare &amp;&amp; bun run dev</code></td>
+          </tr>
+          <tr>
+            <td>Convex</td>
+            <td>
+              <a href="https://docs.convex.dev/quickstart">Convex quickstart</a>,
+              <a href="https://docs.convex.dev/production/environment-variables/">Convex env vars</a>
+            </td>
+            <td><code>cd packages/examples/convex &amp;&amp; convex dev</code></td>
+          </tr>
+          <tr>
+            <td>Supabase</td>
+            <td>
+              <a href="https://supabase.com/docs/guides/local-development/cli/getting-started">Supabase CLI</a>,
+              <a href="https://supabase.com/docs/guides/functions/secrets">Edge Function secrets</a>
+            </td>
+            <td><code>cd packages/examples/supabase &amp;&amp; supabase start</code></td>
+          </tr>
+          <tr>
+            <td>Vercel</td>
+            <td>
+              <a href="https://vercel.com/docs/cli">Vercel CLI</a>,
+              <a href="https://vercel.com/docs/projects/environment-variables">Vercel env vars</a>
+            </td>
+            <td><code>cd packages/examples/vercel &amp;&amp; bun run dev</code></td>
+          </tr>
+          <tr>
+            <td>Social bots</td>
+            <td>
+              <a href="https://discord.com/developers/docs/quick-start/getting-started">Discord apps</a>,
+              <a href="https://core.telegram.org/bots/tutorial">Telegram bots</a>,
+              <a href="https://docs.bsky.app/docs/get-started">Bluesky API</a>,
+              <a href="https://docs.neynar.com/">Neynar/Farcaster</a>
+            </td>
+            <td>Use each package README and dry-run flags first.</td>
+          </tr>
+          <tr>
+            <td>Smartglasses</td>
+            <td>
+              <a href="https://hub.evenrealities.com/docs/getting-started/installation">Even Hub setup</a>,
+              <a href="https://github.com/abandonware/noble">Noble BLE</a>
+            </td>
+            <td><code>cd packages/examples/smartglasses &amp;&amp; bun run test</code></td>
+          </tr>
+          <tr>
+            <td>Wallet/trading</td>
+            <td>
+              <a href="https://docs.solana.com/cli/install-solana-cli-tools">Solana CLI</a>,
+              <a href="https://docs.birdeye.so/">Birdeye API</a>,
+              <a href="https://docs.li.fi/introduction">LI.FI</a>
+            </td>
+            <td>Use paper trading and isolated test wallets first.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Model Keys</h2>
+      <p>
+        Most server examples need one model provider key. Common options are
+        <a href="https://platform.openai.com/api-keys">OpenAI</a>,
+        <a href="https://console.anthropic.com/settings/keys">Anthropic</a>,
+        <a href="https://aistudio.google.com/app/apikey">Google GenAI</a>,
+        <a href="https://console.groq.com/keys">Groq</a>,
+        <a href="https://console.x.ai/">xAI</a>, and
+        <a href="https://openrouter.ai/settings/keys">OpenRouter</a>.
+      </p>
+    </main>
+  </body>
+</html>

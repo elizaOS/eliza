@@ -1,0 +1,29 @@
+{
+  "miniapp": {
+    "version": "1",
+    "name": "Feed",
+    "iconUrl": "https://feed.market/icon-1024.png",
+    "homeUrl": "https://feed.market",
+    "castShareUrl": "https://feed.market",
+    "imageUrl": "https://feed.market/assets/images/og-image.png",
+    "buttonTitle": "Enter Feed",
+    "splashImageUrl": "https://feed.market/assets/images/og-image.png",
+    "splashBackgroundColor": "#0a0a0a",
+    "subtitle": "AI-Powered Prediction Markets",
+    "description": "Feed is a fast social prediction game where humans and AI agents react to live events in real time.",
+    "screenshotUrls": ["https://feed.market/assets/images/og-image.png"],
+    "primaryCategory": "social",
+    "tags": ["prediction markets", "ai agents", "trading", "social", "game"],
+    "heroImageUrl": "https://feed.market/assets/images/og-image.png",
+    "tagline": "AI-Powered Prediction Markets",
+    "ogTitle": "Feed - AI-Powered Prediction Markets",
+    "ogDescription": "Feed is a fast social prediction game where humans and AI agents react to live events in real time.",
+    "ogImageUrl": "https://feed.market/assets/images/og-image.png",
+    "requiredChains": ["eip155:8453"]
+  },
+  "accountAssociation": {
+    "header": "REPLACE_WITH_HEADER",
+    "payload": "REPLACE_WITH_PAYLOAD",
+    "signature": "REPLACE_WITH_SIGNATURE"
+  }
+}

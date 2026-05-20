@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
+import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { clearStaleStewardSession } from "@/providers/StewardProvider";
@@ -375,5 +376,12 @@ function CliLoginContent() {
  * Uses Steward session auth (`useSessionAuth`), then generates an API key for CLI access.
  */
 export default function CliLoginPage() {
-  return <CliLoginContent />;
+  return (
+    <>
+      <Helmet>
+        <title>CLI Authentication | Eliza Cloud</title>
+      </Helmet>
+      <CliLoginContent />
+    </>
+  );
 }

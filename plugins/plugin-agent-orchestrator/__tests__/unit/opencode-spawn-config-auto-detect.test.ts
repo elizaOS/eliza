@@ -38,10 +38,36 @@ describe("buildOpencodeSpawnConfig", () => {
     expect(result?.model).toBe("cerebras/gpt-oss-120b");
   });
 
+  it("detects Cerebras by URL host, including subdomains", () => {
+    const result = buildOpencodeSpawnConfig(runtime(), {
+      ELIZA_OPENCODE_BASE_URL: "https://gateway.cerebras.ai/v1",
+      ELIZA_OPENCODE_API_KEY: "csk-test",
+      ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
+    });
+    expect(result?.providerId).toBe("cerebras");
+    const config = JSON.parse(result?.configContent ?? "{}");
+    expect(config.provider.cerebras.options.baseURL).toBe(
+      "https://gateway.cerebras.ai/v1",
+    );
+  });
+
+  it("does not treat Cerebras text in a non-Cerebras URL path as Cerebras", () => {
+    const result = buildOpencodeSpawnConfig(runtime(), {
+      ELIZA_OPENCODE_BASE_URL: "https://proxy.example/v1/cerebras.ai",
+      ELIZA_OPENCODE_API_KEY: "custom-key",
+      ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
+    });
+    expect(result?.providerId).toBe("eliza-local");
+    const config = JSON.parse(result?.configContent ?? "{}");
+    expect(config.provider["eliza-local"].options.baseURL).toBe(
+      "https://proxy.example/v1/cerebras.ai",
+    );
+  });
+
   it("does not pass unresolved vault pointers as provider API keys", () => {
     const result = buildOpencodeSpawnConfig(runtime(), {
       ELIZA_OPENCODE_BASE_URL: "https://api.cerebras.ai/v1",
-      ELIZA_OPENCODE_API_KEY: "vault://PARALLAX_OPENCODE_API_KEY",
+      ELIZA_OPENCODE_API_KEY: "vault://ELIZA_OPENCODE_API_KEY",
       CEREBRAS_API_KEY: "csk-resolved",
       ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
     });

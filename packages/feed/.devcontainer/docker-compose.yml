@@ -1,0 +1,26 @@
+services:
+  workspace:
+    build:
+      context: .devcontainer
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace:cached
+    # Keep the container alive
+    command: sleep infinity
+    environment:
+      # Point to Docker-network service names instead of localhost ports
+      DATABASE_URL: postgresql://feed:feed_dev_password@postgres:5432/feed
+      POSTGRES_URL: postgresql://feed:feed_dev_password@postgres:5432/feed
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: feed
+      MINIO_SECRET_KEY: feed_dev_password
+    ports:
+      - "3000:3000"   # Next.js (web)
+      - "3077:3077"   # Next.js (mobile)
+      - "8545:8545"   # Hardhat node
+      - "4000:4000"   # A2A / agents
+    depends_on:
+      - postgres
+      - redis
+      - minio

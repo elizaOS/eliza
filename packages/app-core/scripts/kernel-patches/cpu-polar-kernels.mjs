@@ -63,7 +63,8 @@ const POLAR_CPU_SRC_DIR = path.resolve(
   "..",
   "..",
   "..",
-  "native-plugins",
+  "native",
+  "plugins",
   "polarquant-cpu",
 );
 

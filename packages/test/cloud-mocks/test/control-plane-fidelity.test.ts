@@ -149,6 +149,16 @@ describe("Gap 2: Dual-token auth", () => {
     expect(res.ok).toBe(true);
   });
 
+  test("internal cron accepts matching aux without bearer", async () => {
+    const res = await fetchOn(
+      dual,
+      "/api/v1/cron/deployment-monitor",
+      { method: "POST" },
+      { auth: "none", aux: AUX_TOKEN },
+    );
+    expect(res.ok).toBe(true);
+  });
+
   test("when expectedAuxToken unset (single server), no aux header needed → 200", async () => {
     const res = await fetchOn(
       single,

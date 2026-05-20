@@ -333,6 +333,14 @@ export default defineConfig(({ mode }) => {
           replacement: `${r("../cloud-shared/src")}/$1`,
         },
         {
+          find: /^@elizaos\/shared$/,
+          replacement: r("../shared/src/index.ts"),
+        },
+        {
+          find: /^@elizaos\/shared\/(.*)$/,
+          replacement: `${r("../shared/src")}/$1`,
+        },
+        {
           find: /^@\/lib\/hooks\/(.*)$/,
           replacement: `${r("./src/hooks")}/$1`,
         },

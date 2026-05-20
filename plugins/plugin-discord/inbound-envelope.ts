@@ -170,7 +170,9 @@ export async function formatInboundEnvelope(
 
 	let replyContextText = "";
 	const refContext =
-		knownReplyContext ?? (await getDiscordReplyContext(message));
+		knownReplyContext === undefined
+			? await getDiscordReplyContext(message)
+			: knownReplyContext;
 	if (refContext) {
 		const truncated = truncateText(
 			refContext.content,
@@ -193,7 +195,7 @@ export async function formatInboundEnvelope(
 
 	const header = `[Discord ${channelLabel}] @${senderName} (${timestamp})`;
 	return {
-		formattedContent: `${header}: ${rawContent}${replyContextText}`,
+		formattedContent: `${header}: ${sanitizeReplyReferenceText(rawContent)}${replyContextText}`,
 		chatType,
 	};
 }

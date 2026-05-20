@@ -1,16 +1,13 @@
-# Desktop Release Heavy Inventory
+# Desktop Release Regression Inventory
 
-The release regression matrix keeps hardware, OS-lifecycle, and subjective visual checks out of the deterministic PR gate. These items remain tracked here so release owners can cover them manually or through heavier packaged-app jobs.
+This inventory records desktop regression coverage that is intentionally outside
+the deterministic PR gate. The release matrix validator keeps these entries
+visible so they are reviewed before a production desktop release.
+
+## Packaged and E2E Coverage
 
 - gameOpenWindow — full round-trip with openGameWindow mock (needs canvas mock update)
 - Abnormal window position (off-screen) is corrected to safe defaults (e2e)
-- Microphone input works after permission is granted (hardware)
-- Swabble fires 'wakeWordDetected' event when wake word is spoken (hardware)
-- Audio transcription produces non-empty text for clear speech (hardware)
-- Camera preview renders in the UI when stream is started (hardware)
-- Switching between front/rear camera works (hardware)
-- takeScreenshot returns a non-empty base64 PNG (hardware)
-- Frame capture mode streams frames at configured interval (hardware)
 - Deep link received while app is closed causes app to launch (e2e)
 - Deep link received while app is open does not launch second instance (e2e)
 - Shortcuts survive window focus changes (e2e)
@@ -31,6 +28,16 @@ The release regression matrix keeps hardware, OS-lifecycle, and subjective visua
 - Tray icon persists after main window is closed (e2e)
 - Main window has native vibrancy effect on macOS (e2e)
 - Context menu closes when clicking elsewhere (e2e)
+
+## Hardware and Manual Coverage
+
+- Microphone input works after permission is granted (hardware)
+- Swabble fires 'wakeWordDetected' event when wake word is spoken (hardware)
+- Audio transcription produces non-empty text for clear speech (hardware)
+- Camera preview renders in the UI when stream is started (hardware)
+- Switching between front/rear camera works (hardware)
+- takeScreenshot returns a non-empty base64 PNG (hardware)
+- Frame capture mode streams frames at configured interval (hardware)
 - Left-clicking the tray icon opens the companion window (visual)
 - Right-clicking the tray icon shows the tray context menu (visual)
 - Window can be dragged by clicking the header region (visual)

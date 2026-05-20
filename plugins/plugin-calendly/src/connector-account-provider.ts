@@ -343,11 +343,19 @@ export function createCalendlyConnectorAccountProvider(
         expiresAt,
         oauthCredentialVersion,
       };
+      const flowMetadata =
+        (request.flow.metadata as Record<string, unknown> | undefined) ?? {};
+      const requestedRoleRaw = flowMetadata.requestedRole;
+      const role: "OWNER" | "AGENT" | "TEAM" =
+        requestedRoleRaw === "AGENT" || requestedRoleRaw === "TEAM"
+          ? requestedRoleRaw
+          : "OWNER";
+
       const pendingAccount = await manager.upsertAccount(
         CALENDLY_PROVIDER_NAME,
         {
           provider: CALENDLY_PROVIDER_NAME,
-          role: "OWNER",
+          role,
           purpose: DEFAULT_PURPOSES,
           accessGate: "open",
           status: "pending",

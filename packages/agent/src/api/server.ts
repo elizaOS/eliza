@@ -145,20 +145,30 @@ type BrowserWorkspaceTabKind = NonNullable<
   Parameters<BrowserPluginModule["openBrowserWorkspaceTab"]>[0]["kind"]
 >;
 
-let agentSkillsApiPromise: Promise<any> | undefined;
-function getAgentSkillsApi(): Promise<any> {
+let agentSkillsApiPromise:
+  | Promise<typeof import("@elizaos/plugin-agent-skills")>
+  | undefined;
+function getAgentSkillsApi(): Promise<
+  typeof import("@elizaos/plugin-agent-skills")
+> {
   agentSkillsApiPromise ??= import("@elizaos/plugin-agent-skills");
   return agentSkillsApiPromise;
 }
 
-let appManagerApiPromise: Promise<any> | undefined;
-function getAppManagerApi(): Promise<any> {
+let appManagerApiPromise:
+  | Promise<typeof import("@elizaos/plugin-app-manager")>
+  | undefined;
+function getAppManagerApi(): Promise<
+  typeof import("@elizaos/plugin-app-manager")
+> {
   appManagerApiPromise ??= import("@elizaos/plugin-app-manager");
   return appManagerApiPromise;
 }
 
-let walletApiPromise: Promise<any> | undefined;
-function getWalletApi(): Promise<any> {
+let walletApiPromise:
+  | Promise<typeof import("@elizaos/plugin-wallet")>
+  | undefined;
+function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
   walletApiPromise ??= import("@elizaos/plugin-wallet");
   return walletApiPromise;
 }
