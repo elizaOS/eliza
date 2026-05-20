@@ -1,17 +1,20 @@
 /**
- * The Undesirables — ElizaOS Plugin v2.0
+ * The Undesirables — ElizaOS Plugin v2.3
  * ========================================
  * Pioneers "Personality-as-Code" via verifiable soul workspaces.
  * Each of 4,444 NFTs generates a unique AI personality from its visual traits.
  *
+ * Access Model:
+ * - NFT Holders: Full soul workspace (unique personality, 24 skills, memory)
+ * - Non-Holders: Demo soul (community personality, 5 basic skills)
+ * - All Users: Live TCG Oracle data via free search endpoint
+ *
  * Features:
- * - Load any of 4,444 unique soul personalities
- * - 9 actions + 24 skill matchers across the collection
+ * - 10 actions + 24 skill matchers
+ * - Live Oracle provider (real market data from 427K+ products)
+ * - Demo soul for non-holders (drives mint conversion)
  * - Market analysis with personality-driven perspective
  * - Business Pilot — 23 AI-powered business modules
- * - Meme Machine — content creation & marketing
- * - Portfolio analysis with risk guardrails
- * - Persistent memory across sessions
  * - Multi-agent safe (workspaces keyed by agentId)
  *
  * @see https://the-undesirables.com
@@ -36,6 +39,81 @@ import * as path from "path";
 import * as yaml from "js-yaml";
 import { validateUndesirableConfig } from "./environment.js";
 import { MemeTrendService } from "./services.js";
+
+// ============================================================
+// Constants
+// ============================================================
+
+const ORACLE_BASE_URL = "https://oracle.the-undesirables.com";
+const ORACLE_SEARCH_ENDPOINT = `${ORACLE_BASE_URL}/api/v1/search`;
+const SCATTER_MINT_URL = "https://scatter.art/the-undesirables";
+const COLLECTION_TOTAL = 4444;
+const MINTED_COUNT = 273;
+
+// ============================================================
+// Demo Soul — Ships with the plugin for non-holders
+// ============================================================
+
+const DEMO_SOUL: SoulWorkspace = {
+  soulMd: `---
+name: Demo Undesirable
+archetype: The Observer
+strategy: Cautious Analyst
+token_id: demo
+adjectives:
+  - curious
+  - measured
+  - direct
+  - pragmatic
+risk_tolerance: moderate
+---
+# Demo Soul
+You are a demo Undesirable — a shared community personality.
+You give measured, data-driven perspectives on markets and trading.
+You are direct and avoid hype.
+
+> This is a demo soul. ${COLLECTION_TOTAL - MINTED_COUNT} unique souls with their own personality, voice, memories, and risk tolerance are waiting to be claimed.
+> Mint yours at ${SCATTER_MINT_URL} to unlock your unique AI identity.`,
+  systemPrompt: `You are a Demo Undesirable — a cautious, data-driven AI agent from The Undesirables collection on Ethereum. You provide measured analysis without hype. When asked about your personality, explain that you are a shared demo soul and that unique personalities with persistent memory and individual traits are available by minting an Undesirable NFT at ${SCATTER_MINT_URL}.`,
+  memory: "",
+  predictions: [],
+  skills: {
+    market_analysis: "Analyze the market using available data. Be factual, cite numbers when available, and give a clear directional view with conviction score (1-10).",
+    meme_machine: "Create meme concepts with template name, top text, bottom text, and caption. Keep it relevant and shareable.",
+    check_portfolio: "Evaluate portfolio diversification, concentration risk, and overall health. Rate A through F.",
+    entry_signal: "Provide GO / WAIT / NO-GO verdict with support/resistance levels and risk/reward ratio.",
+    risk_assessment: "Rate risk 1-10, identify top 3 risk factors, give SAFE / CAUTION / DANGER verdict.",
+    content_creation: "Create engaging social media content — tweets, threads, captions. Match the tone to the target platform.",
+    conviction_score: "Rate conviction 1-10 on any trade thesis. Explain the bull case, bear case, and where you land.",
+    image_generation: "Describe image concepts for AI generation — specify style, composition, mood, and key elements.",
+    music_generation: "Describe music concepts — genre, tempo, mood, instruments, and use case.",
+    prediction_log: "Make a time-bound price prediction with entry, target, stop, and timeframe. Track accuracy over time.",
+    video_production: "Plan video content — shot list, b-roll ideas, music sync points, and effects.",
+    farm_yield: "Analyze yield farming opportunities — APY, TVL, impermanent loss risk, and protocol safety.",
+    compound_strategy: "Design auto-compounding strategies — optimal harvest frequency, gas cost analysis, and net APY.",
+    snipe_launch: "Evaluate new token launches — contract safety, liquidity depth, team verification, and entry timing.",
+    memecoin_scanner: "Scan for memecoin opportunities — community strength, holder distribution, and momentum signals.",
+    ape_checklist: "Run the ape checklist — contract audit, liquidity lock, team doxx, social sentiment, and risk rating.",
+    whale_tracker: "Track whale wallet movements — accumulation patterns, large transfers, and smart money flows.",
+    copy_trade: "Evaluate copy trade setups — wallet track record, win rate, average PnL, and correlation risk.",
+    position_sizing: "Calculate position size based on portfolio %, risk tolerance, and stop loss distance.",
+    volatility_scan: "Scan for high-volatility assets — Bollinger Band width, ATR, and momentum divergence.",
+    liquidation_watch: "Monitor liquidation levels — long/short ratio, funding rates, and cascade risk zones.",
+    mev_detect: "Detect MEV exposure — sandwich attack risk, front-running indicators, and safe execution strategies.",
+    exit_strategy: "Plan exits — TP1/TP2/TP3 levels, trailing stop rules, and time-based exit triggers.",
+    diversify_check: "Assess diversification — sector exposure, correlation matrix, and concentration risk scoring.",
+    sector_rotation: "Analyze sector rotation patterns — which sectors are leading, lagging, and transitioning.",
+    rebalance_check: "Check portfolio drift against target allocation — flag overweight/underweight positions.",
+  },
+  meta: {
+    name: "Demo Undesirable",
+    archetype: "The Observer",
+    strategy: "Cautious Analyst",
+    token_id: "demo",
+    adjectives: ["curious", "measured", "direct", "pragmatic"],
+    risk_tolerance: "moderate",
+  },
+};
 
 // ============================================================
 // Types
@@ -793,6 +871,77 @@ const riskAssessmentAction: Action = {
 // PROVIDERS
 // ============================================================
 
+/**
+ * Oracle Provider — Fetches live TCG market data from the free search endpoint.
+ * Available to ALL plugin users (no auth, no cost).
+ * Injects real product prices into the agent's context window.
+ */
+const oracleProvider: Provider = {
+  name: "undesirables-oracle",
+  description: "Live TCG market intelligence from the Undesirables Oracle API (427K+ products, real prices)",
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
+    const text = message?.content?.text || "";
+    if (!text || text.length < 3) {
+      return { text: "" };
+    }
+
+    // Extract potential product/card names from the message
+    const marketKeywords = ["price", "worth", "value", "cost", "market", "card", "grade",
+      "pokemon", "charizard", "pikachu", "magic", "yugioh", "yu-gi-oh", "tcg",
+      "psa", "beckett", "bgs", "cgc", "buy", "sell", "invest"];
+    const hasMarketIntent = marketKeywords.some(kw => text.toLowerCase().includes(kw));
+
+    if (!hasMarketIntent) {
+      return { text: "" };
+    }
+
+    try {
+      const searchTerms = text.replace(/[^a-zA-Z0-9\s-]/g, "").trim().slice(0, 100);
+      const url = `${ORACLE_SEARCH_ENDPOINT}?query=${encodeURIComponent(searchTerms)}&limit=5`;
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { "User-Agent": "plugin-undesirables/2.3.0" },
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!response.ok) {
+        return { text: "" };
+      }
+
+      const data = await response.json() as Record<string, unknown>;
+      const results = (data?.data as Record<string, unknown>)?.results as Array<Record<string, unknown>> || [];
+
+      if (results.length === 0) {
+        return { text: "" };
+      }
+
+      const formatted = results.map((r: Record<string, unknown>) =>
+        `• ${r.name} — Market: $${Number(r.market_price || 0).toFixed(2)} | Low: $${Number(r.low_price || 0).toFixed(2)} | Mid: $${Number(r.mid_price || 0).toFixed(2)} | High: $${Number(r.high_price || 0).toFixed(2)} (${r.price_date})`
+      ).join("\n");
+
+      return {
+        text: `[ORACLE — LIVE MARKET DATA]
+Source: oracle.the-undesirables.com (427K+ products indexed)
+Query matched ${results.length} products:
+${formatted}
+
+Use this real market data to inform your response. These are actual prices, not estimates.`,
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown";
+      console.error(`[Undesirables Oracle] Fetch failed: ${msg}`);
+      return { text: "" };
+    }
+  },
+};
+
+/**
+ * Soul Provider — Injects personality context into every agent response.
+ *
+ * Access model:
+ * - If UNDESIRABLES_WORKSPACE is set → loads the holder's full soul (verified owner)
+ * - If not set → loads the demo soul (community personality, 5 skills)
+ */
 const soulProvider: Provider = {
   name: "undesirables-soul",
   description: "Injects Undesirable soul personality context into every agent response",
@@ -810,15 +959,22 @@ const soulProvider: Provider = {
         console.log(
           `🐸 Loaded Undesirable soul: ${loaded.meta.name || "Unknown"} (agent: ${runtime.agentId})`
         );
+      } else {
+        // No workspace path — load the demo soul
+        workspaces.set(runtime.agentId, DEMO_SOUL);
+        console.log(
+          `🐸 Loaded Demo Undesirable soul (agent: ${runtime.agentId}). Mint a unique soul at ${SCATTER_MINT_URL}`
+        );
       }
     }
 
-    const workspace = getWorkspace(runtime);
-    if (!workspace) {
-      return {
-        text: "No Undesirable soul workspace loaded. Set UNDESIRABLES_WORKSPACE env var to your downloaded workspace path.",
-      };
-    }
+    const workspace = getWorkspace(runtime)!;
+    const isDemo = workspace.meta.token_id === "demo";
+    const skillCount = Object.keys(workspace.skills).filter((k) => k !== "_index").length;
+
+    const demoNotice = isDemo
+      ? `\n\n⚠️ DEMO MODE: You're using a shared community personality. All ${skillCount} skills are available, but you're missing what makes each Undesirable unique — your own personality, persistent memory, predictions ledger, and custom voice. ${COLLECTION_TOTAL - MINTED_COUNT} unique souls are unclaimed at ${SCATTER_MINT_URL}`
+      : "";
 
     return {
       text: `[SOUL CONTEXT]
@@ -826,7 +982,8 @@ Name: ${workspace.meta.name || "Unknown Undesirable"}
 Archetype: ${workspace.meta.archetype || "Unknown"}
 Strategy: ${workspace.meta.strategy || "Unknown"}
 Token ID: ${workspace.meta.token_id || "?"}
-Skills loaded: ${Object.keys(workspace.skills).filter((k) => k !== "_index").length}
+Mode: ${isDemo ? "DEMO (community soul)" : "FULL (NFT holder)"}
+Skills loaded: ${skillCount}${isDemo ? "/5 (demo)" : "/24 (full)"}
 Memory entries: ${workspace.memory.split("\n").filter((l) => l.trim()).length}
 Predictions: ${workspace.predictions.length}
 
@@ -834,12 +991,13 @@ Personality: ${(workspace.meta.adjectives || []).join(", ")}
 
 The agent should respond using the personality and style defined in its soul.
 Collection: The Undesirables — 4,444 autonomous AI agents on Ethereum.
-Website: https://the-undesirables.com`,
+Website: https://the-undesirables.com${demoNotice}`,
       values: {
         soulName: workspace.meta.name || "Unknown",
         archetype: workspace.meta.archetype || "Unknown",
         strategy: workspace.meta.strategy || "Unknown",
         tokenId: workspace.meta.token_id || "?",
+        isDemo,
       },
     };
   },
@@ -854,13 +1012,14 @@ const undesirablePlugin: Plugin = {
   description:
     "The Undesirables — 4,444 autonomous AI agents on Ethereum. " +
     "Pioneers 'Personality-as-Code' via verifiable soul workspaces. " +
-    "Adds soul personality, market analysis, Business Pilot, " +
-    "Meme Machine, whale tracking, entry signals, portfolio checks, " +
-    "exit strategies, risk assessment, and 24 skill matchers to any ElizaOS agent.",
+    "Live TCG Oracle data (427K+ products), personality-driven market analysis, " +
+    "Business Pilot, whale tracking, and 24 skill matchers. " +
+    "NFT holders get unique souls; everyone gets the demo + real market data.",
   init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
     const validation = validateUndesirableConfig(runtime);
     if (!validation.valid) {
-      console.warn(`⚠️ Undesirables: ${validation.error}`);
+      console.log(`🐸 Undesirables: No workspace set — demo soul will be loaded automatically.`);
+      console.log(`   Mint a unique soul at ${SCATTER_MINT_URL}`);
     } else {
       console.log(`🐸 Undesirable soul workspace loaded: ${validation.workspacePath}`);
     }
@@ -876,7 +1035,7 @@ const undesirablePlugin: Plugin = {
     exitStrategyAction,
     riskAssessmentAction,
   ],
-  providers: [soulProvider],
+  providers: [oracleProvider, soulProvider],
   evaluators: [],
   services: [MemeTrendService],
 };
