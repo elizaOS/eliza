@@ -32,8 +32,7 @@ function makeAutonomyService() {
 			running,
 			thinking: false,
 			interval: 30000,
-			autonomousRoomId:
-				"00000000-0000-0000-0000-000000000014" as UUID,
+			autonomousRoomId: "00000000-0000-0000-0000-000000000014" as UUID,
 		}),
 	};
 }
@@ -55,9 +54,12 @@ describe("autonomous mode control actions", () => {
 		const callbackCalls: unknown[] = [];
 
 		expect(enableAutonomousModeAction.roleGate).toEqual({ minRole: "ADMIN" });
-		expect(await enableAutonomousModeAction.validate?.(makeRuntime(service), MESSAGE)).toBe(
-			true,
-		);
+		expect(
+			await enableAutonomousModeAction.validate?.(
+				makeRuntime(service),
+				MESSAGE,
+			),
+		).toBe(true);
 
 		const result = await enableAutonomousModeAction.handler(
 			makeRuntime(service),
@@ -101,9 +103,9 @@ describe("autonomous mode control actions", () => {
 	});
 
 	test("actions fail closed when autonomy service is unavailable", async () => {
-		expect(await enableAutonomousModeAction.validate?.(makeRuntime(null), MESSAGE)).toBe(
-			false,
-		);
+		expect(
+			await enableAutonomousModeAction.validate?.(makeRuntime(null), MESSAGE),
+		).toBe(false);
 
 		const result = await enableAutonomousModeAction.handler(
 			makeRuntime(null),

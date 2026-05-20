@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
-import type { IAgentRuntime } from "../../types/runtime";
 import type {
-	ResolvedSection,
 	BatcherResult,
+	ResolvedSection,
 } from "../../types/prompt-batcher";
-import type { DispatchOutcome } from "./shared";
+import type { IAgentRuntime } from "../../types/runtime";
 import { PromptBatcher } from "./batcher";
+import type { DispatchOutcome } from "./shared";
 
 function makeRuntime() {
 	const cache = new Map<string, unknown>();

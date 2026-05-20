@@ -717,8 +717,6 @@ def main() -> int:
         warmup_ratio=0.03,
         weight_decay=0.0,
         bf16=device == "cuda",
-        # MPS uses bfloat16 but TRL's bf16 flag is CUDA-only; set use_mps_device
-        use_mps_device=device == "mps",
         logging_steps=10,
         save_steps=500,
         save_total_limit=3,

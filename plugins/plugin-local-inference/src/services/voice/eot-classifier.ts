@@ -596,7 +596,10 @@ function toBigInt64Array(
 	return out;
 }
 
-function probabilityFromOnnxOutput(tensor: OrtTensor, imEndTokenId: number): number {
+function probabilityFromOnnxOutput(
+	tensor: OrtTensor,
+	imEndTokenId: number,
+): number {
 	const data = tensor.data;
 	if (!(data instanceof Float32Array || data instanceof Float64Array)) {
 		throw new Error(

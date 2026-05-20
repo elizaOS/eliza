@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
-import type { IAgentRuntime } from "../../types";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptArtifact,
 	OptimizedPromptService,
 } from "../../services/optimized-prompt";
+import type { IAgentRuntime } from "../../types";
 import { AutonomyService } from "./service";
 
 function makeOptimizedAutonomyService(prompt: string): OptimizedPromptService {

@@ -576,6 +576,11 @@ modules stamped by the installed endpoint can enter the runtime. Connect
 requests may also provide `allowedModuleIds` to pin the exact remote modules
 that are allowed to register from that endpoint; the CLI exposes this as
 `elizaos capability-router connect --allowed-module <module-id...>`.
+Product requests may also provide a `trustPolicy` with
+`allowedProvenanceIssuers`, `trustedProvenancePublicKeys`,
+`requireSignedProvenance`, `requireVerifiedProvenance`, and
+`requireProvenanceDigestMatch`, which is merged with the endpoint allowlist
+before plugin sync.
 Endpoint-provider connects apply module allowlists before sync, so a shared
 remote endpoint can expose multiple modules while the agent materializes only
 the trusted subset and records non-allowlisted plugin names in `sync.skipped`.
@@ -586,10 +591,12 @@ inside the `cloud` object. Supplying both is rejected so a trust policy cannot
 silently prefer one source over another.
 When endpoint connection is persisted, the redacted local config also stores
 module allowlists in `ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES` as a JSON object
-keyed by endpoint id. On restart, `bootstrapRemoteCapabilityPlugins` derives a
-trust policy from configured endpoint ids and these saved module allowlists, so
-restart sync does not broaden trust beyond the original connected endpoint or
-operator-selected modules.
+keyed by endpoint id and provenance trust requirements in
+`ELIZA_CAPABILITY_ROUTER_TRUST_POLICY`, also keyed by endpoint id. On restart,
+`bootstrapRemoteCapabilityPlugins` derives a trust policy from configured
+endpoint ids, saved module allowlists, and saved provenance trust policy, so
+restart sync does not broaden trust beyond the original connected endpoint,
+operator-selected modules, or operator-selected provenance requirements.
 Persisted endpoint connects also write a redacted
 `ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT` config record containing the connect mode,
 provider id, redacted endpoint metadata, module allowlist, registered/skipped/

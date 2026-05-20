@@ -110,9 +110,7 @@ test("login routes anonymous and authenticated users to the correct next page", 
   await seedAuthenticatedSession(page);
   await page.goto("/login");
   await expect(page).toHaveURL(/\/connected$/);
-  await expect(
-    page.getByRole("heading", { name: "Connected." }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connected." })).toBeVisible();
 });
 
 test("get-started covers method selection, phone input, country dropdown, and direct messaging options", async ({
@@ -128,7 +126,9 @@ test("get-started covers method selection, phone input, country dropdown, and di
     page.getByRole("heading", { name: "Ready to chat!" }),
   ).toBeVisible();
   await page.getByRole("button", { name: /copy/i }).click();
-  await expect(page.locator("main")).toContainText("I also want to use Telegram");
+  await expect(page.locator("main")).toContainText(
+    "I also want to use Telegram",
+  );
 
   await page.getByRole("button", { name: "Back" }).click();
   await page.getByRole("button", { name: /^WhatsApp$/ }).click();
@@ -156,9 +156,7 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await seedAuthenticatedSession(page);
   await page.goto("/connected");
 
-  await expect(
-    page.getByRole("heading", { name: "Connected." }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connected." })).toBeVisible();
   await expect(page.getByText("$42.50")).toBeVisible();
 
   await page.getByLabel("Open user menu").click();
