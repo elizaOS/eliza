@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+import * as realDbSchemas from "../../db/schemas";
+
 const values = mock();
 const onConflictDoUpdate = mock();
 const returning = mock();
@@ -26,6 +28,7 @@ mock.module("../../db/client", () => ({
 }));
 
 mock.module("../../db/schemas", () => ({
+  ...realDbSchemas,
   anonymousSessions: {},
   agentPhoneContacts: {
     provider: "provider",

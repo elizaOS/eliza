@@ -53,7 +53,11 @@ for (const entry of entries) {
     continue;
   }
   await fs.rm(path.join(distDir, entry), { recursive: true, force: true });
-  await fs.rename(nestedEntry, path.join(distDir, entry));
+  try {
+    await fs.rename(nestedEntry, path.join(distDir, entry));
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
 }
 
 await fs.rm(path.join(distDir, "packages"), { recursive: true, force: true });
