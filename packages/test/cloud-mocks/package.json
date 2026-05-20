@@ -19,6 +19,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@elizaos/cloud-shared": "workspace:*",
     "hono": "4.12.18"
   },
   "devDependencies": {

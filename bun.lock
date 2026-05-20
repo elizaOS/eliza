@@ -1862,6 +1862,7 @@
         "control-plane-mock": "./bin/control-plane-mock.ts",
       },
       "dependencies": {
+        "@elizaos/cloud-shared": "workspace:*",
         "hono": "4.12.18",
       },
       "devDependencies": {

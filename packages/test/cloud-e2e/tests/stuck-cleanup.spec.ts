@@ -24,10 +24,6 @@ test.describe("stuck-cleanup", () => {
       health_url: "http://127.0.0.1:65535/health",
       database_status: "provisioning",
       environment_vars: {},
-    });
-
-    // Backdate after create so cleanup sees the row as older than the cutoff.
-    await agentSandboxesRepository.update(sandbox.id, {
       created_at: past,
       updated_at: past,
     });
