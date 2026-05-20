@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { IAgentRuntime, Plugin, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

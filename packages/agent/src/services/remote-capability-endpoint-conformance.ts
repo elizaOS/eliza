@@ -755,7 +755,9 @@ function assertAppBridgeResult(
 
 function assertEvaluatorResult(
   endpointId: string,
-  result: NonNullable<RemoteCapabilityEndpointConformanceReport["evaluatorResult"]>,
+  result: NonNullable<
+    RemoteCapabilityEndpointConformanceReport["evaluatorResult"]
+  >,
 ): void {
   if (typeof result.shouldRun.shouldRun !== "boolean") {
     throw new Error(
@@ -1038,7 +1040,10 @@ async function exerciseUncoveredModules(
           `Capability endpoint "${options.endpoint.id}" returned a non-JavaScript view asset content type.`,
         );
       }
-      if (view.integrity !== undefined && assetResult.integrity !== view.integrity) {
+      if (
+        view.integrity !== undefined &&
+        assetResult.integrity !== view.integrity
+      ) {
         throw new Error(
           `Capability endpoint "${options.endpoint.id}" returned a view asset integrity value that does not match its manifest.`,
         );

@@ -414,10 +414,7 @@ describe("remote capability endpoint providers", () => {
     }) as unknown as typeof fetch;
 
     await connectRemoteCapabilityEndpointProvider(runtime, {
-      provider: sharedEndpointProvider([
-        "allowed-plugin",
-        "retired-plugin",
-      ]),
+      provider: sharedEndpointProvider(["allowed-plugin", "retired-plugin"]),
       provisionOptions: {},
       unloadMissing: true,
     });

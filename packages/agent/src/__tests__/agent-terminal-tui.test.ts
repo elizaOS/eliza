@@ -45,7 +45,11 @@ class TestTerminal implements Terminal {
   }
 
   text(): string {
-    return this.writes.join("").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+    const ansiEscape = new RegExp(
+      `${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`,
+      "g",
+    );
+    return this.writes.join("").replace(ansiEscape, "");
   }
 }
 
