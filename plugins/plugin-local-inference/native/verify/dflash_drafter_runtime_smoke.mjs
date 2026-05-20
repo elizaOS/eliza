@@ -204,6 +204,9 @@ function parseArgs(argv) {
   }
 
   args.tier = args.tier || inferTier(args.targetModel, args.drafterModel) || "0_8b";
+  if (!args.specType && DFLASH_TIERS.has(args.tier)) {
+    args.specType = "dflash";
+  }
   return args;
 }
 

@@ -31,10 +31,20 @@ export type ProvisionedRemoteCapabilityEndpoint = {
   providerId: RemoteCapabilityEndpointProviderId;
   endpoint: RemoteCapabilityEndpointConfig;
   allowedModuleIds?: string[];
+  trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions;
   agentId?: string;
   jobId?: string;
   metadata?: Record<string, unknown>;
 };
+
+export type RemoteCapabilityEndpointTrustPolicyOptions = Pick<
+  RemotePluginTrustPolicy,
+  | "allowedProvenanceIssuers"
+  | "trustedProvenancePublicKeys"
+  | "requireSignedProvenance"
+  | "requireVerifiedProvenance"
+  | "requireProvenanceDigestMatch"
+>;
 
 export type RemoteCapabilityEndpointProvider<TOptions = unknown> = {
   id: RemoteCapabilityEndpointProviderId;
@@ -55,6 +65,7 @@ export type ConnectRemoteCapabilityEndpointProviderOptions<TOptions = unknown> =
     unloadMissing?: boolean;
     requestTimeoutMs?: number;
     allowedModuleIds?: string[];
+    trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions;
   };
 
 export type ConnectRemoteCapabilityEndpointProviderResult =
@@ -76,6 +87,7 @@ export function directRemoteCapabilityEndpointProvider(): RemoteCapabilityEndpoi
 export function buildRemoteCapabilityEndpointTrustPolicy(
   endpoint: RemoteCapabilityEndpointConfig,
   allowedModuleIds?: string[],
+  trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions,
 ): RemotePluginTrustPolicy {
   const nextAllowedModuleIds = uniqueNonEmptyStrings(allowedModuleIds);
   return {
@@ -83,6 +95,7 @@ export function buildRemoteCapabilityEndpointTrustPolicy(
     ...(nextAllowedModuleIds.length === 0
       ? {}
       : { allowedModuleIds: nextAllowedModuleIds }),
+    ...normalizeEndpointTrustPolicyOptions(trustPolicy),
     requireEndpointId: true,
   };
 }
@@ -127,6 +140,9 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
     options.allowedModuleIds ??
     provisioned.allowedModuleIds ??
     allowedModuleIdsFromProvisionOptions(options.provisionOptions);
+  const trustPolicy = normalizeEndpointTrustPolicyOptions(
+    options.trustPolicy ?? provisioned.trustPolicy,
+  );
 
   const router = installRemoteCapabilityEndpoint(runtime, {
     enabled: true,
@@ -149,6 +165,7 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
     trustPolicy: buildRemoteCapabilityEndpointTrustPolicy(
       endpoint,
       allowedModuleIds,
+      trustPolicy,
     ),
   });
 
@@ -156,6 +173,7 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
     ...provisioned,
     endpoint,
     ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+    ...(Object.keys(trustPolicy).length === 0 ? {} : { trustPolicy }),
     sync: {
       ...sync,
       skipped: mergeSkippedRemoteCapabilityPlugins(sync.skipped, skipped, {
@@ -164,6 +182,50 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
       trustDecisions: [...sync.trustDecisions, ...skippedTrustDecisions],
     },
   };
+}
+
+export function normalizeEndpointTrustPolicyOptions(
+  trustPolicy: RemoteCapabilityEndpointTrustPolicyOptions | undefined,
+): RemoteCapabilityEndpointTrustPolicyOptions {
+  if (!trustPolicy) return {};
+  const allowedProvenanceIssuers = uniqueNonEmptyStrings(
+    trustPolicy.allowedProvenanceIssuers,
+  );
+  const trustedProvenancePublicKeys = normalizeTrustedProvenancePublicKeys(
+    trustPolicy.trustedProvenancePublicKeys,
+  );
+  return {
+    ...(allowedProvenanceIssuers.length === 0
+      ? {}
+      : { allowedProvenanceIssuers }),
+    ...(Object.keys(trustedProvenancePublicKeys).length === 0
+      ? {}
+      : { trustedProvenancePublicKeys }),
+    ...(trustPolicy.requireSignedProvenance === true
+      ? { requireSignedProvenance: true }
+      : {}),
+    ...(trustPolicy.requireVerifiedProvenance === true
+      ? { requireVerifiedProvenance: true, requireSignedProvenance: true }
+      : {}),
+    ...(trustPolicy.requireProvenanceDigestMatch === true
+      ? { requireProvenanceDigestMatch: true, requireSignedProvenance: true }
+      : {}),
+  };
+}
+
+function normalizeTrustedProvenancePublicKeys(
+  value: Record<string, string> | undefined,
+): Record<string, string> {
+  if (!value) return {};
+  const result: Record<string, string> = {};
+  for (const [issuer, publicKey] of Object.entries(value)) {
+    const nextIssuer = issuer.trim();
+    const nextPublicKey = publicKey.trim();
+    if (nextIssuer && nextPublicKey) {
+      result[nextIssuer] = nextPublicKey;
+    }
+  }
+  return result;
 }
 
 function existingEndpointConfigs(

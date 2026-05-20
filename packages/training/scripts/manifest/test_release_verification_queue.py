@@ -291,6 +291,7 @@ def test_build_queue_expands_mtp_and_finetune_blockers() -> None:
     assert "--report-out /bundles/eliza-1-4b.bundle/dflash/validation-real.json" in mtp.command
     assert "dflash_drafter_runtime_smoke.mjs" in mtp.command
     assert "--target-model /bundles/eliza-1-4b.bundle/text/eliza-1-4b-256k.gguf" in mtp.command
+    assert "--spec-type dflash" in mtp.command
     assert "--bench --bench-tokens 128" in mtp.command
     assert "--report /bundles/eliza-1-4b.bundle/dflash/runtime-smoke-native.json" in mtp.command
     assert "--bench-report /bundles/eliza-1-4b.bundle/evals/dflash-native-bench.json" in mtp.command

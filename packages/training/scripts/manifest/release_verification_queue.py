@@ -193,6 +193,7 @@ def _mtp_command(bundle_root: str, tier: str, eval_python: str) -> str:
         f"--tier {tier} "
         f"--target-model {target_gguf} "
         f"--drafter-model {bundle}/dflash/drafter-{tier}.gguf "
+        "--spec-type dflash "
         "--bench --bench-tokens 128 "
         f"--report {bundle}/dflash/runtime-smoke-native.json "
         f"--bench-report {bundle}/evals/dflash-native-bench.json && "
