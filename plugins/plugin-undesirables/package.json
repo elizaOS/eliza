@@ -1,7 +1,7 @@
 {
   "name": "plugin-undesirables",
-  "version": "2.4.0",
-  "description": "ElizaOS plugin: Persistent personality via NFT soul workspaces. 4,444 unique AI agents on Ethereum with Big Five psychology, market analysis, Business Pilot, Meme Machine, and 24 skills.",
+  "version": "2.4.3",
+  "description": "ElizaOS plugin — Personality-as-Code for AI agents. Live TCG market data from 370K+ products, passive market intelligence evaluator, 24 skills, 9 actions, and zero-config demo soul. NFT holders get unique Big Five psychology profiles. Oracle API integration for card grading, Monte Carlo simulations, and arbitrage scanning.",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -30,26 +30,32 @@
   },
   "keywords": [
     "elizaos",
+    "elizaos-plugin",
     "elizaos-plugins",
+    "eliza",
     "ai-agents",
-    "nft",
-    "ethereum",
-    "undesirables",
-    "mcp",
-    "ollama",
+    "ai-personality",
+    "agent-personality",
     "autonomous-agents",
-    "defi",
     "personality",
     "soul",
-    "byos",
-    "x402",
+    "nft",
+    "ethereum",
+    "market-data",
+    "live-pricing",
     "trading-cards",
     "tcg",
-    "coinbase",
+    "pokemon",
+    "oracle-api",
+    "x402",
+    "monte-carlo",
+    "ai-grading",
+    "mcp",
     "base",
     "usdc",
     "content-creation",
-    "business-automation"
+    "business-automation",
+    "market-intelligence"
   ],
   "author": "The Undesirables LLC (sailorpepe)",
   "license": "BUSL-1.1",
@@ -58,6 +64,9 @@
     "url": "https://github.com/sailorpepe/plugin-undesirables"
   },
   "homepage": "https://the-undesirables.com",
+  "bugs": {
+    "url": "https://github.com/sailorpepe/plugin-undesirables/issues"
+  },
   "funding": {
     "type": "individual",
     "url": "https://the-undesirables.com"
@@ -70,8 +79,8 @@
     "pluginParameters": {
       "UNDESIRABLES_WORKSPACE": {
         "type": "string",
-        "description": "Path to the downloaded Undesirables soul workspace directory (contains SOUL.md, SYSTEM_PROMPT.txt, skills/)",
-        "required": true,
+        "description": "Path to an Undesirables soul workspace directory. Optional — a demo soul loads automatically if not set.",
+        "required": false,
         "sensitive": false
       },
       "OLLAMA_BASE_URL": {
@@ -87,10 +96,14 @@
     "plugin": {
       "capabilities": [
         "personality",
+        "market-data",
+        "market-intelligence",
+        "oracle",
         "market-analysis",
         "business-automation",
         "content-creation",
-        "risk-assessment"
+        "risk-assessment",
+        "trading"
       ]
     }
   },
