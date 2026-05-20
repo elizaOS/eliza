@@ -17,8 +17,10 @@
 
 export { bootstrap, type BootstrapOptions } from "./bootstrap.ts";
 export {
-	createWorkerChannel,
+	createDefaultChannel,
 	createRequestIdAllocator,
+	createSubprocessChannel,
+	createWorkerChannel,
 	type WorkerChannel,
 } from "./envelope.ts";
 export {

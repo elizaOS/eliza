@@ -31,8 +31,8 @@ import {
 } from "./descriptor.ts";
 import { createWorkerRpcDispatcher } from "./dispatch.ts";
 import {
+	createDefaultChannel,
 	createRequestIdAllocator,
-	createWorkerChannel,
 	type WorkerChannel,
 } from "./envelope.ts";
 import { toWireError } from "./error.ts";
@@ -61,7 +61,7 @@ export async function bootstrap(
 	plugin: WorkerPluginShape,
 	options: BootstrapOptions = {},
 ): Promise<void> {
-	const channel = options.channel ?? createWorkerChannel();
+	const channel = options.channel ?? createDefaultChannel();
 	const allocRequestId = createRequestIdAllocator();
 	const registry = createHandlerRegistry();
 	const proxy = new RuntimeProxy({
