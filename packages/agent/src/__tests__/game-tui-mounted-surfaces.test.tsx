@@ -1,8 +1,23 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import React from "react";
+import { createRequire } from "node:module";
+import { fireEvent, screen } from "@testing-library/dom";
+import type ReactTypes from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const pluginRequire = createRequire(
+  new URL(
+    "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
+    import.meta.url,
+  ),
+);
+const React = pluginRequire("react") as typeof ReactTypes;
+const { createRoot } = pluginRequire("react-dom/client") as typeof import("react-dom/client");
+const { act } = React;
+const mountedRoots: Array<{
+  container: HTMLElement;
+  root: ReturnType<typeof createRoot>;
+}> = [];
 
 const sendAppRunMessage = vi.hoisted(() => vi.fn());
 const controlAppRun = vi.hoisted(() => vi.fn());
@@ -28,14 +43,14 @@ function latestRunForApp(
 }
 
 function stubComponent(name: string) {
-  return ({ children }: { children?: React.ReactNode }) =>
+  return ({ children }: { children?: ReactTypes.ReactNode }) =>
     React.createElement("div", { "data-stub": name }, children);
 }
 
 const uiMock = vi.hoisted(() => ({
-  Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+  Button: (props: ReactTypes.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement("button", { type: "button", ...props }, props.children),
-  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
+  Input: (props: ReactTypes.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
   client: { sendAppRunMessage, controlAppRun },
   GameOperatorShell: stubComponent("GameOperatorShell"),
@@ -87,14 +102,34 @@ const baseRun = {
   recentEvents: [],
 };
 
-function renderState(component: React.ReactElement) {
-  const { container } = render(component);
+function renderSurface(component: ReactTypes.ReactElement) {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mountedRoots.push({ container, root });
+  act(() => {
+    root.render(component);
+  });
+  return { container, root };
+}
+
+function cleanupSurfaces() {
+  for (const { container, root } of mountedRoots.splice(0)) {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  }
+}
+
+function renderState(component: ReactTypes.ReactElement) {
+  const { container } = renderSurface(component);
   const element = container.querySelector("[data-view-state]");
   return JSON.parse(element?.getAttribute("data-view-state") ?? "{}");
 }
 
 afterEach(() => {
-  cleanup();
+  cleanupSurfaces();
   vi.clearAllMocks();
   appState.appRuns = [];
   vi.unstubAllGlobals();
@@ -178,7 +213,7 @@ describe("game TUI mounted surfaces", () => {
       knowledgeCount: 7,
       canSend: true,
     });
-    cleanup();
+    cleanupSurfaces();
 
     expect(
       renderState(React.createElement(DefenseAgentsTuiView)),
@@ -187,7 +222,7 @@ describe("game TUI mounted surfaces", () => {
       heroLane: "mid",
       canSend: true,
     });
-    cleanup();
+    cleanupSurfaces();
 
     expect(renderState(React.createElement(HyperscapeTuiView))).toMatchObject({
       viewId: "hyperscape",
@@ -195,7 +230,7 @@ describe("game TUI mounted surfaces", () => {
       followEntity: "agent-1",
       canSend: true,
     });
-    cleanup();
+    cleanupSurfaces();
 
     expect(renderState(React.createElement(ScapeTuiView))).toMatchObject({
       viewId: "scape",
@@ -203,7 +238,7 @@ describe("game TUI mounted surfaces", () => {
       canSend: true,
       agent: { name: "scape-agent", position: { x: 1, z: 2 } },
     });
-    cleanup();
+    cleanupSurfaces();
 
     expect(
       renderState(React.createElement(TwoThousandFourScapeTuiView)),
@@ -229,8 +264,10 @@ describe("game TUI mounted surfaces", () => {
       },
     ];
 
-    render(React.createElement(ClawvilleTuiView));
-    fireEvent.click(screen.getByText("Visit nearest"));
+    renderSurface(React.createElement(ClawvilleTuiView));
+    await act(async () => {
+      fireEvent.click(screen.getByText("Visit nearest"));
+    });
     await vi.waitFor(() =>
       expect(sendAppRunMessage).toHaveBeenCalledWith("run-1", "Visit nearest"),
     );
