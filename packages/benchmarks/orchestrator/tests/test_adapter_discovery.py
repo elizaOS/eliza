@@ -3193,6 +3193,14 @@ def test_vision_language_harness_runtime_requires_multimodal_model(
 
     assert orchestrator_adapters._has_vision_language_harness_runtime() is True
 
+    monkeypatch.setenv("VISION_LANGUAGE_PROVIDER", "local-eliza")
+    monkeypatch.setenv("VISION_LANGUAGE_MODEL", "eliza-1-9b")
+    monkeypatch.setattr(
+        orchestrator_adapters, "_has_vision_language_real_inputs", lambda: True
+    )
+
+    assert orchestrator_adapters._has_vision_language_harness_runtime() is True
+
 
 def test_vision_language_bundle_accepts_current_manifest_schema(
     tmp_path: Path,
