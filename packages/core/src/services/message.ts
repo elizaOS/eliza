@@ -1681,6 +1681,43 @@ function currentMessageContentForContext(message: Memory): Memory["content"] {
 	};
 }
 
+function readMessageContentString(
+	message: Memory,
+	key: string,
+): string | undefined {
+	const content = message.content;
+	if (!content || typeof content !== "object") return undefined;
+	const value = (content as Record<string, unknown>)[key];
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function replyReferenceEventForContext(message: Memory): ContextEvent | null {
+	const text = readMessageContentString(message, "replyToMessageText");
+	if (!text) return null;
+	const sender = readMessageContentString(message, "replyToSenderName");
+	const externalId = readMessageContentString(
+		message,
+		"replyToExternalMessageId",
+	);
+	const header = sender ? `${sender}: ${text}` : text;
+	const id = `reply-reference:${message.id ?? externalId ?? "current"}`;
+	return {
+		id,
+		type: "segment",
+		source: message.content.source ?? "platform",
+		segment: {
+			id,
+			label: "reply_reference",
+			content: externalId
+				? `${header}\n(platform message id: ${externalId})`
+				: header,
+			stable: false,
+		},
+	};
+}
+
 function isSubAgentCompletionArtifact(memory: Memory): boolean {
 	const content = memory.content;
 	if (!content || typeof content !== "object") return false;
@@ -2240,8 +2277,13 @@ async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content:
-			"current_turn_boundary: The prior_message blocks above are context only. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them.",
+			"current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them.",
 	});
+
+	const replyReferenceEvent = replyReferenceEventForContext(args.message);
+	if (replyReferenceEvent) {
+		events.push(replyReferenceEvent);
+	}
 
 	events.push({
 		id: String(args.message.id ?? "current-message"),
@@ -2422,13 +2464,21 @@ function availableAttachmentCount(message: Memory, state: State): number {
 	return ids.size;
 }
 
-function latestPriorUserText(state: State): string {
+function latestPriorUserText(
+	state: State,
+	runtimeAgentId: string | undefined,
+): string {
 	const recentData = providerDataRecord(state, "RECENT_MESSAGES");
 	const recentMessages = Array.isArray(recentData?.recentMessages)
 		? (recentData.recentMessages as Memory[])
 		: [];
 	const latest = [...recentMessages]
-		.filter((memory) => memory.entityId !== memory.agentId)
+		.filter((memory) => {
+			if (runtimeAgentId && memory.entityId === runtimeAgentId) {
+				return false;
+			}
+			return memory.entityId !== memory.agentId;
+		})
 		.sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
 		.at(-1);
 	return typeof latest?.content?.text === "string" ? latest.content.text : "";
@@ -2445,6 +2495,7 @@ const PRONOUN_ATTACHMENT_FOLLOWUP_RE = /\b(?:it|this|that|them|those)\b/iu;
 function looksLikeAttachmentInspectionRequest(
 	message: Memory,
 	state: State,
+	runtimeAgentId: string | undefined,
 ): boolean {
 	if (availableAttachmentCount(message, state) === 0) return false;
 	const text =
@@ -2456,7 +2507,7 @@ function looksLikeAttachmentInspectionRequest(
 	if (VISUAL_INSPECTION_RE.test(text)) {
 		return true;
 	}
-	const priorText = latestPriorUserText(state);
+	const priorText = latestPriorUserText(state, runtimeAgentId);
 	return (
 		ATTACHMENT_NOUN_RE.test(priorText) &&
 		PRONOUN_ATTACHMENT_FOLLOWUP_RE.test(text) &&
@@ -2491,8 +2542,8 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 			description:
 				"Routes attachment/image inspection requests through ATTACHMENT instead of allowing unsupported direct vision claims.",
 			priority: 10,
-			shouldRun: ({ message, state }) =>
-				looksLikeAttachmentInspectionRequest(message, state),
+			shouldRun: ({ runtime, message, state }) =>
+				looksLikeAttachmentInspectionRequest(message, state, runtime.agentId),
 			evaluate: () => ({
 				requiresTool: true,
 				addContexts: ["media", "messaging"],

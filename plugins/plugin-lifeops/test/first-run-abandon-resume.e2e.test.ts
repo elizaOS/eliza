@@ -3,7 +3,7 @@
  * who walks away mid-customize can pick up where they left off.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { ChannelType, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { FirstRunService } from "../src/lifeops/first-run/service.ts";
 import {
@@ -17,6 +17,21 @@ function newService(runtime: IAgentRuntime): FirstRunService {
     stateStore: createFirstRunStateStore(runtime),
     factStore: createOwnerFactStore(runtime),
   });
+}
+
+function firstRunMessage(
+  runtime: IAgentRuntime,
+  text: string,
+  channelType: ChannelType,
+) {
+  return {
+    id: "msg" as never,
+    entityId: runtime.agentId,
+    roomId: runtime.agentId,
+    agentId: runtime.agentId,
+    content: { text, channelType },
+    createdAt: Date.now(),
+  } as never;
 }
 
 describe("first-run abandon / resume e2e", () => {
@@ -56,6 +71,44 @@ describe("first-run abandon / resume e2e", () => {
     expect(res.status).toBe("ok");
     expect(res.facts.preferredName).toBe("Sam");
     expect(res.facts.timezone).toBe("America/Chicago");
+  });
+
+  it("keeps pending first-run quiet in unrelated group turns", async () => {
+    const runtime = createMinimalRuntimeStub();
+
+    const { firstRunProvider } = await import("../src/providers/first-run.ts");
+    const surface = await firstRunProvider.get(
+      runtime,
+      firstRunMessage(runtime, "can you try this?", ChannelType.GROUP),
+      { values: {}, data: {}, text: "" } as never,
+    );
+
+    expect(surface.values?.firstRunPending).toBe(false);
+    expect(surface.text).toBe("");
+  });
+
+  it("surfaces pending first-run in private or explicit setup turns", async () => {
+    const runtime = createMinimalRuntimeStub();
+
+    const { firstRunProvider } = await import("../src/providers/first-run.ts");
+    const privateSurface = await firstRunProvider.get(
+      runtime,
+      firstRunMessage(runtime, "hello", ChannelType.DM),
+      { values: {}, data: {}, text: "" } as never,
+    );
+    const explicitGroupSurface = await firstRunProvider.get(
+      runtime,
+      firstRunMessage(
+        runtime,
+        "has first-run setup already been done?",
+        ChannelType.GROUP,
+      ),
+      { values: {}, data: {}, text: "" } as never,
+    );
+
+    expect(privateSurface.values?.firstRunPending).toBe(true);
+    expect(explicitGroupSurface.values?.firstRunPending).toBe(true);
+    expect(explicitGroupSurface.text).toMatch(/first-run setup/i);
   });
 
   it("provider stays loud while abandoned-in-progress and goes quiet on completion", async () => {
