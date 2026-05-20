@@ -441,6 +441,18 @@ export default defineConfig(({ mode }) => {
                 priority: 50,
               },
               {
+                name: "vendor-query",
+                test: /node_modules[\\/]@tanstack[\\/]/,
+                priority: 48,
+                maxSize: 450 * 1024,
+              },
+              {
+                name: "vendor-polyfills",
+                test: /node_modules[\\/](base64-js|base-x|bs58|buffer|ieee754|eventemitter3)[\\/]/,
+                priority: 47,
+                maxSize: 450 * 1024,
+              },
+              {
                 // Wallet stack — modal UI + connector code. Loaded on demand
                 // when the user opens a wallet flow. Generic crypto/encoding
                 // primitives (@noble, @scure, bs58, base-x) and the Node
@@ -468,8 +480,8 @@ export default defineConfig(({ mode }) => {
                 // so we lift the maxSize ceiling here.
                 name: "vendor-chain-codec",
                 test: /node_modules[\\/](viem|ethers|ox|abitype)[\\/]/,
-                priority: 38,
-                maxSize: 900 * 1024,
+                priority: 46,
+                maxSize: 2400 * 1024,
               },
               {
                 name: "vendor-charts",

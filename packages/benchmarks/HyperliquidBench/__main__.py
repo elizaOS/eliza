@@ -363,6 +363,18 @@ async def _main() -> int:
     print(f"  Result file: {out_file}")
     print("=" * 60)
 
+    if summary["passed_scenarios"] != summary["total_scenarios"]:
+        return 1
+    if not demo_mode:
+        live_signatures = [
+            sig
+            for scenario in summary["scenarios"]  # type: ignore[union-attr]
+            for sig in scenario.get("unique_signatures", [])  # type: ignore[union-attr]
+        ]
+        if not live_signatures:
+            logging.error("No confirmed live action signatures were recorded")
+            return 1
+
     return 0
 
 

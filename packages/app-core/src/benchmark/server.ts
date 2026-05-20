@@ -491,19 +491,22 @@ async function callOpenAiCompatibleActionCalling(params: {
 } | null> {
   const config = resolveOpenAiCompatibleActionCallingConfig();
   if (!config) return null;
-  const requestBody = JSON.stringify({
+  const requestPayload: Record<string, unknown> = {
     model: config.model,
     messages: params.messages,
-    tools: params.tools,
-    tool_choice:
+    max_tokens: params.maxTokens,
+    temperature: params.temperature,
+  };
+  if (params.tools.length > 0) {
+    requestPayload.tools = params.tools;
+    requestPayload.tool_choice =
       params.toolChoice === "none"
         ? "none"
         : params.toolChoice === "auto"
           ? "required"
-          : params.toolChoice || "required",
-    max_tokens: params.maxTokens,
-    temperature: params.temperature,
-  });
+          : params.toolChoice || "required";
+  }
+  const requestBody = JSON.stringify(requestPayload);
   let response: Response | null = null;
   for (let attempt = 1; attempt <= OPENAI_COMPAT_MAX_ATTEMPTS; attempt += 1) {
     response = await fetch(chatCompletionsUrl(config.baseUrl), {
@@ -2352,15 +2355,14 @@ export async function startBenchmarkServer() {
             image: parsed.image,
           });
 
-          if (
-            isWooBenchName(session.benchmark) &&
-            Array.isArray(benchmarkContext.tools) &&
-            benchmarkContext.tools.length > 0
-          ) {
+          if (isWooBenchName(session.benchmark)) {
             const messages = normalizeWooBenchNativeMessages(
               text,
               benchmarkContext,
             );
+            const tools = Array.isArray(benchmarkContext.tools)
+              ? benchmarkContext.tools
+              : [];
             const maxTokens =
               typeof benchmarkContext.max_tokens === "number"
                 ? benchmarkContext.max_tokens
@@ -2370,7 +2372,9 @@ export async function startBenchmarkServer() {
                 ? benchmarkContext.temperature
                 : 0;
             const toolChoice =
-              typeof benchmarkContext.tool_choice === "string"
+              tools.length === 0
+                ? "none"
+                : typeof benchmarkContext.tool_choice === "string"
                 ? benchmarkContext.tool_choice
                 : "auto";
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
@@ -2379,7 +2383,7 @@ export async function startBenchmarkServer() {
             try {
               const directResult = await callOpenAiCompatibleActionCalling({
                 messages,
-                tools: benchmarkContext.tools,
+                tools,
                 toolChoice,
                 maxTokens,
                 temperature,
@@ -2393,13 +2397,19 @@ export async function startBenchmarkServer() {
                   toolCalls: directResult.toolCalls,
                 };
               } else {
-                nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                const modelRequest: Record<string, unknown> = {
                   messages,
-                  tools: benchmarkContext.tools,
-                  toolChoice,
                   maxTokens,
                   temperature,
-                });
+                };
+                if (tools.length > 0) {
+                  modelRequest.tools = tools;
+                  modelRequest.toolChoice = toolChoice;
+                }
+                nativeResult = await runtime.useModel(
+                  ModelType.TEXT_LARGE,
+                  modelRequest,
+                );
               }
             } finally {
               activeUsageBuffer = null;

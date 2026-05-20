@@ -718,6 +718,25 @@ def _publication_quarantine_reason(
     if isinstance(failed_scenarios, (int, float)) and not isinstance(failed_scenarios, bool):
         if failed_scenarios > 0:
             return "failed_scenarios"
+    successful_runs = metrics.get("successful_runs")
+    total_runs = metrics.get("total_runs")
+    if (
+        isinstance(total_runs, (int, float))
+        and not isinstance(total_runs, bool)
+        and total_runs > 0
+        and isinstance(successful_runs, (int, float))
+        and not isinstance(successful_runs, bool)
+        and successful_runs <= 0
+    ):
+        return "zero_successful_runs"
+    if (
+        score == 0
+        and metrics.get("avg_net_worth") == 0
+        and metrics.get("avg_items_sold") == 0
+        and metrics.get("avg_orders_placed") == 0
+        and metrics.get("total_revenue") == 0
+    ):
+        return "no_activity_zero_score"
     if metrics.get("interrupted") is True:
         return "interrupted_run"
     return None

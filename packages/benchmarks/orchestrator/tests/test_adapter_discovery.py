@@ -60,6 +60,7 @@ from benchmarks.registry import (
     _score_from_taubench_json,
     _score_from_terminalbench_json,
     _score_from_trajectory_replay_json,
+    _score_from_vendingbench_json,
     _score_from_vision_language_json,
     _score_from_visualwebbench_json,
     _score_from_voiceagentbench_json,
@@ -258,12 +259,31 @@ def test_hyperliquid_rejects_demo_mode_execution_artifacts() -> None:
         "model": "gpt-oss-120b",
         "network": "testnet",
         "demo_mode": True,
+        "scenarios": [
+            {
+                "success": True,
+                "unique_signatures": ["perp.order.GTC:false:none"],
+            }
+        ],
     }
     with pytest.raises(ValueError, match="demo-mode result"):
         _score_from_hyperliquid_bench_json(payload)
 
     payload["demo_mode"] = False
     assert _score_from_hyperliquid_bench_json(payload).score == 3.5
+
+    payload["scenarios"] = [{"success": True, "unique_signatures": []}]
+    with pytest.raises(ValueError, match="no confirmed live action signatures"):
+        _score_from_hyperliquid_bench_json(payload)
+
+    payload["scenarios"] = [
+        {
+            "success": False,
+            "unique_signatures": ["perp.order.GTC:false:none"],
+        }
+    ]
+    with pytest.raises(ValueError, match="failed scenarios"):
+        _score_from_hyperliquid_bench_json(payload)
 
 
 def test_voiceagentbench_requires_real_audio_dataset_for_harness_rows(
@@ -2551,6 +2571,24 @@ def test_woobench_score_extractor_marks_interrupted_for_quarantine(tmp_path: Pat
     assert score.metrics["total_revenue"] == 9.0
     assert score.metrics["avg_revenue_per_scenario"] == 9.0
     assert score.metrics["payment_converted_count"] == 1
+
+
+def test_vending_score_rejects_zero_successful_runs() -> None:
+    with pytest.raises(ValueError, match="zero successful runs"):
+        _score_from_vendingbench_json(
+            {
+                "metadata": {"total_runs": 1, "successful_runs": 0},
+                "metrics": {"avg_net_worth": "0"},
+                "results": [
+                    {
+                        "run_id": "run_001",
+                        "simulation_days": 0,
+                        "final_net_worth": "0",
+                        "error": "Remote end closed connection without response",
+                    }
+                ],
+            }
+        )
 
 
 def test_compactbench_score_accepts_valid_hit_file_from_locator(tmp_path: Path) -> None:

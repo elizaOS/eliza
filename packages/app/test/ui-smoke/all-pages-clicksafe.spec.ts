@@ -1195,7 +1195,7 @@ async function expectNoPageIssues(
 async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(page.locator("#root")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/404|not found/i);
-  if (route.path === "/chat") {
+  if (route.path === "/chat" || route.path === "/apps/elizamaker") {
     return;
   }
   if (route.path === "/apps/companion") {

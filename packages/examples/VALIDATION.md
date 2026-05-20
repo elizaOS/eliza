@@ -56,8 +56,8 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `browser-extension/chrome` | `typecheck`, explicit build skip | `build:tsup` only after resolving browser bundling of Node-only workspace deps; load unpacked for runtime validation. |
 | `browser-extension/safari` | Typecheck skip, scripted Safari build path | Xcode and Safari extension signing. |
 | `chat` | `typecheck`, `build` | One configured provider key for live chat. |
-| `cloud/clone-ur-crush` | `build` | Live Next.js flow with required model/image provider keys. |
-| `cloud/edad` | No package verification scripts | Manual server launch via `bun run start`. |
+| `cloud/clone-ur-crush` | `typecheck`, `test`, `build` | Live Next.js flow with required model/image provider keys. |
+| `cloud/edad` | `typecheck`, `test`, `build` | Manual server launch with Eliza Cloud app ID, affiliate code, and signed-in user token. |
 | `cloudflare` | `typecheck`, `test`, `build` | Wrangler login, Worker secret, deployed or local Worker endpoint. |
 | `code` | `typecheck`, `test`, `build` | Provider-key E2E flows for subagents/game generation. |
 | `convex` | `typecheck`, `test`, `build` | `convex dev` or deployed Convex URL plus provider key in Convex env. |
@@ -65,7 +65,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `elizagotchi` | `typecheck`, `build` | Browser gameplay smoke test. |
 | `farcaster` | `typecheck`, `build` | Neynar/Farcaster credentials; start with dry-run. |
 | `farcaster-miniapp` | `typecheck`, `build` | Farcaster mini app host plus wallet/provider integrations. |
-| `form` | No local typecheck/build script | Manual run through shared chat entrypoint with one provider key. |
+| `form` | `typecheck`, `test`, `build` through shared `chat` entrypoint | Manual run through shared chat entrypoint with one provider key. |
 | `game-of-life` | `typecheck`, `build` | Optional manual CLI/gameplay run. |
 | `gcp` | `typecheck`, `build` | GCP project, Cloud Run deployment, deployed test client URL. |
 | `html` | Typecheck/build skip scripts | Browser smoke test from static server. |

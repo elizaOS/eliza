@@ -8,6 +8,7 @@ import {
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
 import { createContext, lazy, Suspense, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 
 /**
  * Steward authentication provider for Eliza Cloud.
@@ -248,12 +249,32 @@ const StewardAuthRuntimeProvider = lazy(
   () => import("./StewardProviderRuntime"),
 );
 
+const STEWARD_RUNTIME_ROUTE_PATTERNS = [
+  /^\/app-auth(?:\/|$)/,
+  /^\/auth\/callback\/email(?:\/|$)/,
+  /^\/auth\/cli-login(?:\/|$)/,
+  /^\/dashboard(?:\/|$)/,
+  /^\/login(?:\/|$)/,
+  /^\/payment(?:\/|$)/,
+  /^\/sensitive-requests(?:\/|$)/,
+  /^\/approve(?:\/|$)/,
+  /^\/ballot(?:\/|$)/,
+] as const;
+
+function shouldLoadStewardRuntime(pathname: string): boolean {
+  if (readStoredToken()) return true;
+  return STEWARD_RUNTIME_ROUTE_PATTERNS.some((pattern) =>
+    pattern.test(pathname),
+  );
+}
+
 export function StewardAuthProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const hasLoggedConfigError = useRef(false);
+  const location = useLocation();
   const playwrightTestAuthEnabled = isPlaywrightTestAuthEnabled();
 
   const apiUrl = resolveBrowserStewardApiUrl();
@@ -279,7 +300,7 @@ export function StewardAuthProvider({
     return <>{children}</>;
   }
 
-  if (!hasValidUrl) {
+  if (!hasValidUrl || !shouldLoadStewardRuntime(location.pathname)) {
     return <>{children}</>;
   }
 

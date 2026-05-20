@@ -6,6 +6,9 @@
   "scripts": {
     "start": "bun ../chat/chat.ts",
     "dev": "bun --watch ../chat/chat.ts",
+    "typecheck": "bun run --cwd ../chat typecheck",
+    "test": "bun run --cwd ../chat typecheck",
+    "build": "bun run --cwd ../chat build",
     "lint": "bunx @biomejs/biome check --write --unsafe ."
   },
   "engines": {
