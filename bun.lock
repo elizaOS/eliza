@@ -919,7 +919,6 @@
       "version": "2.0.0-beta.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "typescript": "^6.0.3",
@@ -1221,10 +1220,8 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-google-genai": "workspace:*",
-        "@elizaos/plugin-groq": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
-        "@elizaos/plugin-xai": "workspace:*",
         "convex": "^1.25.2",
         "dotenv": "^17.0.0",
       },
