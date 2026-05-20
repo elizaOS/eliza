@@ -219,7 +219,7 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers Cloud provision restart reopened view",
     pattern:
-      /reopens a persisted Cloud-provisioned remote view after restart[\s\S]*connectCloudSandbox:\s*vi\.fn\(\)\.mockResolvedValue[\s\S]*cloud-product-token[\s\S]*bootstrapRemoteCapabilityPlugins\(restartRuntime\)[\s\S]*getView\("cloud\.restart\.view"\)[\s\S]*\/api\/capability-router\/assets\/cloud-product\/cloud-product-plugin\/assets\/cloud-view\.js[\s\S]*plugin\.asset\.get[\s\S]*Bearer cloud-product-token/,
+      /reopens a persisted Cloud-provisioned remote view after restart[\s\S]*connectCloudSandbox:\s*vi\.fn\(\)\.mockResolvedValue[\s\S]*cloud-product-token[\s\S]*plugin\.asset\.get[\s\S]*bootstrapRemoteCapabilityPlugins\(restartRuntime\)[\s\S]*getView\("cloud\.restart\.view"\)[\s\S]*\/api\/capability-router\/assets\/cloud-product\/cloud-product-plugin\/assets\/cloud-view\.js[\s\S]*Bearer cloud-product-token/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove Cloud provision persistence can restart, reopen the remote view, and fetch its bundle with the persisted token.",
@@ -227,7 +227,7 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers signed provenance trust policy",
     pattern:
-      /requireSignedProvenance:\s*true[\s\S]*allowedProvenanceIssuers:\s*\["eliza-cloud-build"\][\s\S]*provenanceIssuer:\s*"eliza-cloud-build"[\s\S]*reason:\s*"missing-provenance"[\s\S]*reason:\s*"provenance-issuer-not-allowed"[\s\S]*requireVerifiedProvenance:\s*true[\s\S]*trustedProvenancePublicKeys[\s\S]*reason:\s*"invalid-provenance-signature"[\s\S]*requireProvenanceDigestMatch:\s*true[\s\S]*reason:\s*"invalid-provenance-digest"[\s\S]*reason:\s*"missing-provenance-public-key"/,
+      /enforces remote plugin trust policy before registration[\s\S]*requireSignedProvenance:\s*true[\s\S]*allowedProvenanceIssuers:\s*\["eliza-cloud-build"\][\s\S]*provenanceIssuer:\s*"eliza-cloud-build"[\s\S]*reason:\s*"missing-provenance"[\s\S]*reason:\s*"provenance-issuer-not-allowed"[\s\S]*trustedProvenancePublicKeys[\s\S]*requireVerifiedProvenance:\s*true[\s\S]*requireProvenanceDigestMatch:\s*true[\s\S]*reason:\s*"invalid-provenance-signature"[\s\S]*reason:\s*"invalid-provenance-digest"[\s\S]*reason:\s*"missing-provenance-public-key"/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove trust policy can require signed provenance, allowlist provenance issuers, verify provenance signatures, and bind provenance digests to module contents.",

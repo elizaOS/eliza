@@ -36,11 +36,10 @@ async function installCheckoutMocks(page: Page) {
   return requests;
 }
 
-test("checkout product picker, color swatches, email login, and Stripe handoff are wired", async ({
+test("checkout product picker, color swatches, and email login are wired", async ({
   page,
 }) => {
-  test.setTimeout(60_000);
-  const requests = await installCheckoutMocks(page);
+  await installCheckoutMocks(page);
 
   await page.goto("/checkout?sku=elizaos-usb");
   await expect(page.getByRole("heading", { name: "ElizaOS USB" })).toBeVisible();
@@ -59,11 +58,18 @@ test("checkout product picker, color swatches, email login, and Stripe handoff a
     .fill("checkout-controls@example.com");
   await page.getByRole("button", { name: "Email link" }).click();
   await expect(page.getByText("Check your inbox.")).toBeVisible();
+});
+
+test("checkout accepts a Steward token and posts the selected product to Stripe", async ({
+  page,
+}) => {
+  const requests = await installCheckoutMocks(page);
 
   await page.goto(
     "/checkout?sku=elizaos-phone#token=steward-token-1&refreshToken=refresh-token-1",
   );
   await expect(page.getByRole("button", { name: "Pay deposit" })).toBeVisible();
+  await page.getByRole("button", { name: "Select Blue glass" }).click();
   await page.getByRole("button", { name: "Pay deposit" }).click();
   await expect(page).toHaveURL(/\/checkout\/success\?sku=elizaos-phone$/);
 
