@@ -21,6 +21,32 @@ import type {
 /** Live handler registered by the descriptor builder. */
 export type AnyHandler = (...args: unknown[]) => unknown;
 
+/**
+ * Shape a service class must satisfy to be exported from a remote-mode
+ * plugin. Note the `static rpcMethods` opt-in: only methods named in
+ * this array are reachable from the host. The host runtime synthesises
+ * a `ServiceProxy` with exactly those methods, plus the standard
+ * `start` / `stop` lifecycle. Constructors and other methods stay
+ * private to the worker.
+ */
+export type RemoteServiceClass = {
+	/** Identifier used by `runtime.getService(serviceType)`. */
+	serviceType: string;
+	/** Explicit allowlist of methods that can be invoked via host RPC. */
+	rpcMethods: string[];
+	/** Optional human-readable description; passes through to the host. */
+	capabilityDescription?: string;
+	/** Factory; the bootstrap calls this to materialise the service. */
+	start: (runtime: unknown) => Promise<RemoteServiceInstance>;
+	/** Optional per-runtime teardown. */
+	stopRuntime?: (runtime: unknown) => Promise<void>;
+};
+
+export type RemoteServiceInstance = {
+	stop?: () => Promise<void> | void;
+	[methodName: string]: unknown;
+};
+
 /** Mapping from rpc.id → live handler, plus its surface kind for routing. */
 export interface HandlerRegistry {
 	get(id: string): HandlerEntry | undefined;
@@ -76,7 +102,7 @@ export type WorkerPluginShape = {
 		private?: boolean;
 		get: AnyHandler;
 	}>;
-	services?: Array<unknown>;
+	services?: Array<RemoteServiceClass>;
 	models?: Record<string, AnyHandler>;
 	events?: Record<string, Array<AnyHandler>>;
 	routes?: Array<{
@@ -105,6 +131,38 @@ export type WorkerPluginShape = {
  * handler, and return a JSON descriptor with `{ rpc: true, id }` in
  * lieu of each function.
  */
+/**
+ * Lazy service-instance cache keyed by serviceType. The first method
+ * invocation on a service triggers `service.start(runtime)`; subsequent
+ * calls reuse the cached instance until the worker shuts down or the
+ * service's stop() is called externally.
+ */
+const serviceInstances = new WeakMap<RemoteServiceClass, Promise<RemoteServiceInstance>>();
+
+async function serviceMethodTrampoline(
+	service: RemoteServiceClass,
+	method: string,
+	args: unknown[],
+): Promise<unknown> {
+	let instancePromise = serviceInstances.get(service);
+	if (!instancePromise) {
+		// First call: bootstrap the service. The runtime arg is the
+		// RuntimeProxyApi the dispatcher injects (see dispatch.ts).
+		const [runtime] = args;
+		instancePromise = service.start(runtime as unknown);
+		serviceInstances.set(service, instancePromise);
+	}
+	const instance = await instancePromise;
+	const fn = instance[method];
+	if (typeof fn !== "function") {
+		throw new Error(
+			`Service ${service.serviceType} has no rpcMethod "${method}".`,
+		);
+	}
+	// args[0] is runtime; args[1..] are the actual method args.
+	return (fn as (...a: unknown[]) => unknown).apply(instance, args.slice(1));
+}
+
 export function buildAnnounceDescriptor(
 	plugin: WorkerPluginShape,
 	registry: HandlerRegistry,
@@ -189,6 +247,33 @@ export function buildAnnounceDescriptor(
 			);
 		}
 		descriptor.events = eventDescriptor;
+	}
+
+	if (plugin.services?.length) {
+		descriptor.services = plugin.services.map((service) => {
+			const entry: JsonObject = {
+				serviceType: service.serviceType,
+				rpcMethods: service.rpcMethods,
+			};
+			if (service.capabilityDescription) {
+				entry.capabilityDescription = service.capabilityDescription;
+			}
+			// Each rpcMethod becomes a registered handler keyed by the
+			// service.method combo. The actual instance is started lazily
+			// when the host first invokes a method (see dispatch.ts).
+			for (const method of service.rpcMethods) {
+				const target = `${service.serviceType}.${method}`;
+				// Register a closure that defers to the service instance
+				// resolved by dispatch.ts when this id is invoked. The handler
+				// receives the runtime + method args.
+				const handler: AnyHandler = async (...args: unknown[]) =>
+					serviceMethodTrampoline(service, method, args);
+				const id = allocId("service", target);
+				registry.set(id, { id, surface: "service", target, handler });
+				entry[`rpc:${method}`] = { rpc: true, id } as unknown as JsonValue;
+			}
+			return entry;
+		});
 	}
 
 	if (plugin.evaluators?.length) {

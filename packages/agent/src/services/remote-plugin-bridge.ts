@@ -207,6 +207,34 @@ export class RemotePluginBridge {
 			plugin.models = modelMap;
 		}
 
+		// Services: opt-in via `static rpcMethods`. The descriptor carries
+		// one entry per service with the methods list and per-method rpc
+		// ids; we synthesise a ServiceClass with dynamic methods.
+		const services = descriptor.services as
+			| Array<
+					JsonObject & {
+						serviceType: string;
+						rpcMethods: string[];
+						capabilityDescription?: string;
+					}
+			  >
+			| undefined;
+		if (services?.length) {
+			plugin.services = services.map((svc) => this.makeServiceClassStub(svc));
+		}
+
+		// Routes: the agent's existing plugin-route lifecycle will pick
+		// these up. Each routeHandler is wrapped to forward
+		// RouteHandlerContext via worker-rpc and return RouteHandlerResult.
+		const routes = descriptor.routes as
+			| Array<JsonObject & { path: string; routeHandler?: RemoteFunctionRef }>
+			| undefined;
+		if (routes?.length) {
+			plugin.routes = routes
+				.map((r) => this.makeRouteStub(r))
+				.filter((r): r is NonNullable<Plugin["routes"]>[number] => r !== null);
+		}
+
 		// Views/widgets/componentTypes are pure JSON metadata; pass them
 		// through unchanged so the existing view registry serves the
 		// remote plugin's bundle the same way it does direct plugins'.
@@ -312,6 +340,93 @@ export class RemotePluginBridge {
 		if (priv) provider.private = true;
 		if (position !== undefined) provider.position = position;
 		return provider;
+	}
+
+	/**
+	 * Build a {@link ServiceClass} stub from a service descriptor. The
+	 * returned class has the announced serviceType and a static `start`
+	 * factory that constructs an instance whose declared rpcMethods
+	 * worker-rpc into the worker's service trampoline.
+	 *
+	 * Methods not in rpcMethods are absent — there is no way to reach
+	 * private worker methods from the host, which is the whole point of
+	 * the opt-in.
+	 */
+	private makeServiceClassStub(descriptor: {
+		serviceType: string;
+		rpcMethods: string[];
+		capabilityDescription?: string;
+		[rpcKey: string]: unknown;
+	}): unknown {
+		const bridge = this;
+		const serviceType = descriptor.serviceType;
+		const description = descriptor.capabilityDescription ?? "";
+		const methodIdMap = new Map<string, RpcId>();
+		for (const method of descriptor.rpcMethods) {
+			const ref = descriptor[`rpc:${method}`] as RemoteFunctionRef | undefined;
+			if (ref?.rpc) methodIdMap.set(method, ref.id);
+		}
+
+		// Build the proxy class on the fly. The Service base class isn't
+		// imported here to avoid pulling all of @elizaos/core into this
+		// module; the runtime only needs the static fields it checks.
+		class RemoteServiceProxy {
+			static readonly serviceType = serviceType;
+			static readonly capabilityDescription = description;
+			readonly capabilityDescription = description;
+			static async start(runtime: IAgentRuntime): Promise<RemoteServiceProxy> {
+				const instance = new RemoteServiceProxy(runtime);
+				return instance;
+			}
+			constructor(_runtime: IAgentRuntime) {
+				for (const method of descriptor.rpcMethods) {
+					const id = methodIdMap.get(method);
+					if (!id) continue;
+					(this as unknown as Record<string, unknown>)[method] = async (
+						...callArgs: unknown[]
+					) =>
+						bridge.workerRpc("service", id, {
+							args: callArgs.map((a) => bridge.normalize(a)),
+						});
+				}
+			}
+			async stop(): Promise<void> {
+				// Stopping the proxy doesn't tear down the worker; the
+				// RemotePluginHost owns the worker lifecycle.
+			}
+		}
+		return RemoteServiceProxy;
+	}
+
+	/**
+	 * Build a route stub. The agent's plugin-route registration code
+	 * picks up `plugin.routes[i]` exactly as for direct plugins; the
+	 * `routeHandler` here forwards via worker-rpc.
+	 */
+	private makeRouteStub(descriptor: {
+		path: string;
+		routeHandler?: RemoteFunctionRef;
+		type?: unknown;
+		name?: unknown;
+		public?: unknown;
+		isMultipart?: unknown;
+	}): NonNullable<Plugin["routes"]>[number] | null {
+		if (!descriptor.routeHandler) return null;
+		const ref = descriptor.routeHandler;
+		const routeHandler = async (ctx: unknown) =>
+			this.workerRpc("route", ref.id, { ctx: this.normalize(ctx) });
+
+		const route = {
+			path: descriptor.path,
+			...(descriptor.type ? { type: descriptor.type as string } : {}),
+			...(descriptor.name ? { name: descriptor.name as string } : {}),
+			...(descriptor.public !== undefined ? { public: Boolean(descriptor.public) } : {}),
+			...(descriptor.isMultipart !== undefined
+				? { isMultipart: Boolean(descriptor.isMultipart) }
+				: {}),
+			routeHandler,
+		} as unknown as NonNullable<Plugin["routes"]>[number];
+		return route;
 	}
 
 	private makeEventHandlerStub(ref: RemoteFunctionRef) {

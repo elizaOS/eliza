@@ -150,10 +150,19 @@ async function invokeBySurface(
 			const result = await (entry.handler as RouteHandler)(params.ctx);
 			return (result ?? null) as JsonValue;
 		}
-		case "service":
+		case "service": {
+			// Trampoline expects (runtime, ...methodArgs). The host sends
+			// `{ args: unknown[] }`; pass through.
+			const params = args as { args: unknown[] };
+			const result = await (entry.handler as ServiceHandler)(
+				context.runtime,
+				...(params.args ?? []),
+			);
+			return (result ?? null) as JsonValue;
+		}
 		case "tests":
 			throw new Error(
-				`Surface "${entry.surface}" not yet supported in P1. See P2 for service/route/view parity.`,
+				`Surface "tests" is not host-RPC reachable; run via the worker's existing test runner.`,
 			);
 		default: {
 			const _exhaustive: never = entry.surface;
@@ -186,6 +195,10 @@ type EvaluatorHandler = (
 	state: JsonValue,
 ) => Promise<JsonValue> | JsonValue;
 type RouteHandler = (ctx: JsonValue) => Promise<JsonValue> | JsonValue;
+type ServiceHandler = (
+	runtime: RuntimeProxyApi,
+	...args: unknown[]
+) => Promise<JsonValue> | JsonValue;
 
 function makeNoopCallback(): (data: JsonValue) => Promise<void> {
 	return async () => {
