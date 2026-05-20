@@ -73,21 +73,24 @@ export function loadRegistryFromRawEntries(raws: RawEntry[]): LoadedRegistry {
 // Legacy `auth` → `accounts.agent` auto-mapping. Connector manifests that
 // only declared `auth` keep working without edits — the resulting `accounts`
 // shape lets the UI render a single agent section (backwards compatible) and
-// gives downstream code a uniform field to read. When a manifest already
-// declares `accounts`, the legacy `auth` is left untouched.
+// gives downstream code a uniform field to read.
+//
+// The guard checks `accounts?.agent` (not just `accounts`) so that incremental
+// migrations — a manifest that adds `accounts.owner` first while keeping
+// `auth` as the agent credential source — still get the legacy auth mapped
+// onto `accounts.agent`. A pre-existing explicit `accounts.agent` is always
+// preserved.
 export function normalizeConnectorAuth(entry: ConnectorEntry): ConnectorEntry {
-  if (!entry.auth || entry.accounts) {
+  if (!entry.auth || entry.accounts?.agent) {
     return entry;
   }
-  const authKind: AccountAuthKind =
-    entry.auth.kind === "oauth"
-      ? "oauth-cloud"
-      : entry.auth.kind === "none"
-        ? "none"
-        : "api-key";
+  const authKind: AccountAuthKind = mapLegacyAuthKindToAccountAuthKind(
+    entry.auth.kind,
+  );
   return {
     ...entry,
     accounts: {
+      ...(entry.accounts ?? {}),
       agent: {
         supported: true,
         authKind,
@@ -95,6 +98,27 @@ export function normalizeConnectorAuth(entry: ConnectorEntry): ConnectorEntry {
       },
     },
   };
+}
+
+// Maps the legacy four-value auth.kind enum onto the richer AccountAuthKind.
+// `credentials` (username + password) is materially different from `api-key`
+// (a single opaque token) but the current AccountAuthKind enum has no
+// dedicated arm — both flows land on a manual paste of secret fields in the
+// connector setup UI, so they coalesce here. Connectors with username+password
+// flows should declare `accounts.agent.authKind` explicitly in their manifest
+// when they need to distinguish, rather than relying on this auto-mapping.
+function mapLegacyAuthKindToAccountAuthKind(
+  kind: "token" | "oauth" | "credentials" | "none",
+): AccountAuthKind {
+  switch (kind) {
+    case "oauth":
+      return "oauth-cloud";
+    case "none":
+      return "none";
+    case "credentials":
+    case "token":
+      return "api-key";
+  }
 }
 
 export function indexEntries(entries: RegistryEntry[]): LoadedRegistry {
