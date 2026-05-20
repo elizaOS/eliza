@@ -265,6 +265,44 @@ async function responseQualityScore(userQuery: string, response: string, rubric?
   return num;
 }
 
+// Struct-aware judge for tasks that require JSON output with specific structure
+const JUDGE_SYSTEM_STRUCT = `Score the correctness of this AI response to 0.0–1.0.
+The response should produce a specific JSON structure. Check against the rubric.
+
+Scoring:
+- 1.0: Correct op type, category, field values — exactly right
+- 0.8: Mostly correct, minor field variation (e.g. slightly different keywords or wording)
+- 0.6: Right op type but wrong category, or vice versa
+- 0.4: Partially correct structure but meaningful errors
+- 0.2: Wrong op entirely, or response fails to parse as valid JSON
+- 0.0: Empty output when ops were needed, or ops when empty was correct
+
+Output ONLY a decimal number. No explanation.`;
+
+async function structJudgeScore(userContext: string, actual: string, rubric: string): Promise<number> {
+  const judgeUser = `Context: ${userContext}\n\nActual output: ${actual}\n\nRubric: ${rubric}`;
+  const { text } = await callCerebras(JUDGE_SYSTEM_STRUCT, judgeUser, 0, 256);
+  const num = parseFloat(text.trim());
+  if (isNaN(num) || num < 0 || num > 1) return 0.5;
+  return num;
+}
+
+// Extract action name from autonomy decision output
+function extractAutonomyAction(text: string): string | null {
+  try {
+    const obj = JSON.parse(text.trim().replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, ""));
+    if (Array.isArray(obj.actions) && obj.actions.length > 0 && obj.actions[0]?.name) {
+      return (obj.actions[0].name as string).toUpperCase().trim();
+    }
+    if (Array.isArray(obj.actions) && obj.actions.length === 0) return "NONE";
+    if (obj.action?.name) return (obj.action.name as string).toUpperCase().trim();
+  } catch {}
+  const m = text.match(/"name"\s*:\s*"([A-Z][A-Z0-9_]+)"/);
+  if (m) return m[1]!;
+  if (text.includes('"actions":[]') || text.includes('"actions": []')) return "NONE";
+  return null;
+}
+
 function buildScorer(task: string, _adapter: LlmAdapter, useJudge: boolean) {
   return async (prompt: string, examples: OptimizationExample[]): Promise<number> => {
     if (examples.length === 0) return 0;
@@ -276,17 +314,21 @@ function buildScorer(task: string, _adapter: LlmAdapter, useJudge: boolean) {
         const a = extractPlannerAction(actual);
         const e = extractPlannerAction(ex.expectedOutput);
         total += a && e && a === e ? 1 : 0;
-      } else if (task === "should_respond") {
-        const aYes = actual.toLowerCase().includes("yes") || actual.toLowerCase().includes("respond") || actual.toLowerCase().includes('"action":"respond"') || actual.toLowerCase().includes("respond");
+      } else if (task === "should_respond" || task === "should_respond_runtime") {
+        const aYes = actual.toLowerCase().includes("yes") || actual.toLowerCase().includes("respond");
         const eYes = ex.expectedOutput.toLowerCase().includes("yes") || ex.expectedOutput.toLowerCase().includes("respond");
-        const aNo = !aYes || actual.toLowerCase().includes("no") || actual.toLowerCase().includes("ignore");
-        const eNo = !eYes;
-        // Both "YES/NO" and "RESPOND/IGNORE" formats
         const aVerdict = aYes && !actual.toLowerCase().includes("ignore") ? "yes" : "no";
         const eVerdict = eYes ? "yes" : "no";
         total += aVerdict === eVerdict ? 1 : 0;
+      } else if (task === "autonomy_decision") {
+        const expectedAction = extractAutonomyAction(ex.expectedOutput) ?? "NONE";
+        const actualAction = extractAutonomyAction(actual) ?? "NONE";
+        total += actualAction === expectedAction ? 1 : 0;
+      } else if (task === "fact_extraction" || task === "extract_action_params") {
+        // Struct-aware judge for JSON output with specific structure
+        const score = await structJudgeScore(ex.input.user, actual, ex.rubric ?? ex.expectedOutput);
+        total += score;
       } else if (useJudge) {
-        // Strict quality judge for response task; lenient judge for media_description
         const score = task === "response"
           ? await responseQualityScore(ex.input.user, actual, ex.rubric)
           : await llmJudgeScore(ex.input.user, actual, ex.rubric);
@@ -403,8 +445,12 @@ async function runGepa(
     const score = await scorer(prompt, dataset);
     logTrajectory({ timestamp: ts(), task, optimizer: "gepa", step: `gen${round}-score`, score, notes: `origin=${origin} variant=${variant} tokens=${approxTokens(prompt)}` });
 
-    // Reflect: sample a few failures
-    const batch = dataset.slice(0, Math.min(4, dataset.length));
+    // Reflect: sample diverse examples — first 2 + last 2 to catch edge cases at both ends
+    const n = dataset.length;
+    const reflectSet = n <= 4
+      ? dataset
+      : [...dataset.slice(0, 2), ...dataset.slice(n - 2)];
+    const batch = reflectSet.slice(0, 4);
     const transcripts: string[] = [];
     for (let i = 0; i < batch.length; i++) {
       const ex = batch[i]!;
@@ -522,13 +568,15 @@ Output format: Just "YES" or "NO" on a single line.`,
 
   action_planner: `Select the next action to take based on the conversation context.
 
-Available actions:
-- REPLY: Send a text response to the user
-- SEARCH: Look up information on the internet
-- SCHEDULE: Create a calendar event
-- REMIND: Set a reminder for the user
-- NOTES: Save a note or piece of information
-- NONE: No action needed
+Available actions and when to use them:
+- REPLY: Send a text response (greetings, factual answers, conversational responses)
+- SEARCH: Look up information on the internet (current events, product info, unknown facts)
+- SCHEDULE: Create a calendar event (meetings, appointments, time blocks)
+- REMIND: Set a reminder (future tasks, time-based alerts, medication reminders)
+- NOTES: Save a note or piece of information (ideas, lists, things to remember)
+- NONE: No action needed — use when message is: emoji-only (👍, 🎉), single punctuation (. or ...), ambient acknowledgment with no request, or pure reaction content that needs no response
+
+NONE examples: "👍", "...", ".", "👌", "ok cool" (with no follow-up ask), reactions to prior messages
 
 Return ONLY a JSON object in this exact format:
 {"toolCalls": [{"name": "ACTION_NAME", "args": {}}]}
@@ -560,6 +608,79 @@ rules:
 - when unsure, default IGNORE
 
 Output ONLY one of: YES (respond) or NO (ignore/stop)`,
+
+  // FACT_EXTRACTION_TEMPLATE baseline (real elizaOS template, Handlebars vars inlined as context in user turn)
+  fact_extraction: `# Task: Classify and extract facts from this message
+
+You maintain two fact stores. Decide what to insert, strengthen, decay, or contradict. Return JSON ops only.
+
+Stores:
+- durable: stable identity-level claims that matter in a year.
+  Categories: identity, health, relationship, life_event, business_role, preference, goal.
+- current: time-bound state about now or near term.
+  Categories: feeling, physical_state, working_on, going_through, schedule_context.
+
+Rules:
+- If a claim feels stale or surprising to retrieve in a year, use current.
+- Empty output is right for small talk or claim-free questions.
+- Before add_durable/add_current, scan known facts. If meaning exists, emit strengthen with that factId.
+- Paraphrases count as duplicates. Match meaning, not surface form.
+
+Ops:
+- add_durable: claim, category, structured_fields, keywords
+- add_current: claim, category, structured_fields, keywords
+- strengthen: factId, optional reason
+- decay: factId, optional reason
+- contradict: factId, reason, optional proposedText
+
+For add_durable/add_current, include keywords: 3-8 lowercase retrieval terms.
+
+Return {"ops":[]} when nothing to extract.
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // INITIAL_SUMMARIZATION_TEMPLATE baseline
+  conversation_summary: `# Task: Summarize Conversation
+
+Create a concise summary capturing key points, topics, and details.
+
+# Instructions
+Generate a summary that:
+1. Captures main topics
+2. Highlights key information
+3. Notes decisions and questions
+4. Maintains context for future reference
+5. Is concise but comprehensive
+
+Also extract:
+- topics: main topics (array)
+- keyPoints: important facts or decisions (array)
+
+JSON:
+text: Your comprehensive summary here
+topics: [topic1, topic2]
+keyPoints: [First key point, Second key point]
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE baseline
+  autonomy_decision: `Your job: reflect on context, decide what you want to do next, and act if appropriate.
+- Use available actions/tools when they can advance the goal.
+- Do NOT speak out loud. This loop is internal-only.
+- Output structure: a JSON object with a thought field plus an optional actions list.
+- If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
+- If you cannot act, explain what is missing inside thought and take no action.
+- Keep the response concise, focused on the next action.
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // EXTRACT_ACTION_PARAMS_TEMPLATE baseline
+  extract_action_params: `Extract missing parameter values for an action from the conversation context.
+
+The action name and description are provided. Fill in ONLY the missing required fields from context.
+If a value is genuinely indeterminable from the conversation, return null for that field.
+
+Return a JSON object containing values for the missing fields only.
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 };
 
 // ── Synthetic training examples ───────────────────────────────────────────────
@@ -590,19 +711,27 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
   ],
 
   action_planner: [
-    { id: "ap-1", input: { user: "User wants to schedule a dentist appointment for next Tuesday at 2pm." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{"title":"Dentist appointment","time":"next Tuesday 2pm"}}]}', reward: 1 },
-    { id: "ap-2", input: { user: "User asked what the weather is like today in San Francisco." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{"query":"weather San Francisco today"}}]}', reward: 1 },
-    { id: "ap-3", input: { user: "User said hello and asked how you're doing." }, expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{"message":"I\'m doing well, thanks for asking!"}}]}', reward: 1 },
-    { id: "ap-4", input: { user: "User wants to be reminded to call their doctor in 2 hours." }, expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{"message":"Call doctor","delay":"2 hours"}}]}', reward: 1 },
-    { id: "ap-5", input: { user: "User wants to save a note about a new project idea: a mobile app for tracking workouts." }, expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{"content":"Project idea: mobile app for tracking workouts"}}]}', reward: 1 },
-    { id: "ap-6", input: { user: "User said goodbye and that they'll talk later." }, expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{"message":"Goodbye! Talk later!"}}]}', reward: 1 },
-    { id: "ap-7", input: { user: "User wants to find restaurants near downtown Seattle." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{"query":"restaurants near downtown Seattle"}}]}', reward: 1 },
-    { id: "ap-8", input: { user: "User wants a reminder to submit the quarterly report on Friday at 5pm." }, expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{"message":"Submit quarterly report","time":"Friday 5pm"}}]}', reward: 1 },
-    // Harder examples
-    { id: "ap-9", input: { user: "User is asking who won the Super Bowl last year." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{"query":"Super Bowl winner last year"}}]}', reward: 1 },
-    { id: "ap-10", input: { user: "User says 'block off 2-3pm Thursday for a team sync'." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{"title":"Team sync","time":"Thursday 2-3pm"}}]}', reward: 1 },
-    { id: "ap-11", input: { user: "User wants to jot down that they need to pick up milk and eggs." }, expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{"content":"Pick up milk and eggs"}}]}', reward: 1 },
+    { id: "ap-1", input: { user: "User wants to schedule a dentist appointment for next Tuesday at 2pm." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{}}]}', reward: 1 },
+    { id: "ap-2", input: { user: "User asked what the weather is like today in San Francisco." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
+    { id: "ap-3", input: { user: "User said hello and asked how you're doing." }, expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{}}]}', reward: 1 },
+    { id: "ap-4", input: { user: "User wants to be reminded to call their doctor in 2 hours." }, expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{}}]}', reward: 1 },
+    { id: "ap-5", input: { user: "User wants to save a note about a new project idea: a mobile app for tracking workouts." }, expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{}}]}', reward: 1 },
+    { id: "ap-6", input: { user: "User said goodbye and that they'll talk later." }, expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{}}]}', reward: 1 },
+    { id: "ap-7", input: { user: "User wants to find restaurants near downtown Seattle." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
+    { id: "ap-8", input: { user: "User wants a reminder to submit the quarterly report on Friday at 5pm." }, expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{}}]}', reward: 1 },
+    { id: "ap-9", input: { user: "User is asking who won the Super Bowl last year." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
+    { id: "ap-10", input: { user: "User says 'block off 2-3pm Thursday for a team sync'." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{}}]}', reward: 1 },
+    { id: "ap-11", input: { user: "User wants to jot down that they need to pick up milk and eggs." }, expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{}}]}', reward: 1 },
     { id: "ap-12", input: { user: "User just sent a thumbs up emoji." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 0 },
+    // Extended coverage — edge cases and ambiguous scenarios
+    { id: "ap-13", input: { user: "User typed '...' with no other text." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 0 },
+    { id: "ap-14", input: { user: "User wants to look up today's top news headlines." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
+    { id: "ap-15", input: { user: "User says 'note to self: buy birthday card for mom before Saturday'." }, expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{}}]}', reward: 1 },
+    { id: "ap-16", input: { user: "User asks 'what time is it?'" }, expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{}}]}', reward: 1 },
+    { id: "ap-17", input: { user: "User wants to put a 1-hour lunch break on their calendar for tomorrow at noon." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{}}]}', reward: 1 },
+    { id: "ap-18", input: { user: "User typed a single period '.' with nothing else." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 0 },
+    { id: "ap-19", input: { user: "User wants to search for the best TypeScript ORM libraries in 2025." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{}}]}', reward: 1 },
+    { id: "ap-20", input: { user: "User wants a reminder in 30 minutes to take their medication." }, expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{}}]}', reward: 1 },
   ],
 
   response: [
@@ -645,12 +774,266 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
     { id: "srr-11", input: { user: "Hey AI, summarize what we've discussed so far" }, expectedOutput: "YES", reward: 1 },
     { id: "srr-12", input: { user: "john: sure thing, I'll handle it" }, expectedOutput: "NO", reward: 0 },
   ],
+
+  // FACT_EXTRACTION_TEMPLATE — tests durable/current classification, strengthen, contradict, empty
+  fact_extraction: [
+    {
+      id: "fe-1",
+      input: { user: "Message: \"I'm a senior TypeScript developer with 8 years of backend experience.\"\nKnown durable facts: []\nKnown current facts: []" },
+      expectedOutput: '{"ops":[{"op":"add_durable","category":"identity","claim":"senior TypeScript developer with 8 years of backend experience","keywords":["typescript","developer","backend","senior","experience"]}]}',
+      reward: 1,
+      rubric: "Must emit add_durable with category=identity. Keywords must include typescript/developer. No add_current for stable career identity.",
+    },
+    {
+      id: "fe-2",
+      input: { user: "Message: \"I'm really anxious this morning — have a big presentation.\"\nKnown durable facts: []\nKnown current facts: []" },
+      expectedOutput: '{"ops":[{"op":"add_current","category":"feeling","claim":"anxious this morning due to big presentation","keywords":["anxious","morning","presentation"]}]}',
+      reward: 1,
+      rubric: "Must emit add_current with category=feeling (anxious is transient, not durable). Do NOT emit add_durable.",
+    },
+    {
+      id: "fe-3",
+      input: { user: "Message: \"Berlin's been treating me well lately.\"\nKnown durable facts: [fact_abc] (durable.identity) lives in Berlin\nKnown current facts: []" },
+      expectedOutput: '{"ops":[{"op":"strengthen","factId":"fact_abc"}]}',
+      reward: 1,
+      rubric: "Must emit strengthen pointing to fact_abc (city reaffirmed). Do NOT emit add_durable — fact already exists.",
+    },
+    {
+      id: "fe-4",
+      input: { user: "Message: \"Actually I moved to Tokyo last month.\"\nKnown durable facts: [fact_abc] (durable.identity) lives in Berlin\nKnown current facts: []" },
+      expectedOutput: '{"ops":[{"op":"contradict","factId":"fact_abc","proposedText":"lives in Tokyo","reason":"user moved to Tokyo, contradicts Berlin"}]}',
+      reward: 1,
+      rubric: "Must emit contradict with factId=fact_abc and proposedText=Tokyo. Old location (Berlin) is wrong.",
+    },
+    {
+      id: "fe-5",
+      input: { user: "Message: \"How's the weather in Paris?\"\nKnown durable facts: []\nKnown current facts: []" },
+      expectedOutput: '{"ops":[]}',
+      reward: 1,
+      rubric: "Must return empty ops. This is a question, not a claim about the user. No facts to extract.",
+    },
+    {
+      id: "fe-6",
+      input: { user: "Message: \"I love hiking on weekends, it's my main way to unwind.\"\nKnown durable facts: []\nKnown current facts: []" },
+      expectedOutput: '{"ops":[{"op":"add_durable","category":"preference","claim":"loves hiking on weekends to unwind","keywords":["hiking","weekends","unwind","preference"]}]}',
+      reward: 1,
+      rubric: "Must emit add_durable with category=preference. Hiking preference is stable/durable, not transient.",
+    },
+    {
+      id: "fe-7",
+      input: { user: "Message: \"I'm currently working on the auth migration for the payments system.\"\nKnown durable facts: []\nKnown current facts: []" },
+      expectedOutput: '{"ops":[{"op":"add_current","category":"working_on","claim":"working on auth migration for payments system","keywords":["auth","migration","payments","working"]}]}',
+      reward: 1,
+      rubric: "Must emit add_current with category=working_on. Current project is transient, not durable identity.",
+    },
+    {
+      id: "fe-8",
+      input: { user: "Message: \"lol yeah totally\"\nKnown durable facts: []\nKnown current facts: []" },
+      expectedOutput: '{"ops":[]}',
+      reward: 1,
+      rubric: "Must return empty ops. This is casual acknowledgment with no facts to extract.",
+    },
+    {
+      id: "fe-9",
+      input: { user: "Message: \"I graduated from MIT with a CS degree in 2018.\"\nKnown durable facts: []\nKnown current facts: []" },
+      expectedOutput: '{"ops":[{"op":"add_durable","category":"life_event","claim":"graduated from MIT with CS degree in 2018","keywords":["mit","cs","graduated","2018","degree"]}]}',
+      reward: 1,
+      rubric: "Must emit add_durable with category=life_event. Education credential is a stable durable fact.",
+    },
+    {
+      id: "fe-10",
+      input: { user: "Message: \"ok sounds good\"\nKnown durable facts: [fact_x] (durable.identity) software engineer at Acme Corp\nKnown current facts: []" },
+      expectedOutput: '{"ops":[]}',
+      reward: 1,
+      rubric: "Must return empty ops. Acknowledgment only — no new facts. Do NOT strengthen existing facts from an unrelated message.",
+    },
+  ],
+
+  // INITIAL_SUMMARIZATION_TEMPLATE — tests summarization quality
+  conversation_summary: [
+    {
+      id: "cs-1",
+      input: { user: "Recent conversation:\nUser: I need help planning a trip to Japan in March.\nAssistant: Great! Japan in March is beautiful — cherry blossom season. Do you prefer Tokyo or Kyoto?\nUser: Tokyo for the first 3 days, then Kyoto.\nAssistant: Perfect. For Tokyo I recommend Shibuya, Shinjuku, and Akihabara. For Kyoto: Fushimi Inari, Arashiyama, and Nishiki Market.\nUser: What about the JR Pass?\nAssistant: Yes, the JR Pass is worth it for Japan-wide travel. Buy it before you arrive — 14-day pass for your trip duration." },
+      expectedOutput: '{"text":"User is planning a trip to Japan in March (cherry blossom season). Itinerary: Tokyo (3 days) then Kyoto. Tokyo highlights: Shibuya, Shinjuku, Akihabara. Kyoto highlights: Fushimi Inari, Arashiyama, Nishiki Market. Advice: Buy 14-day JR Pass before arriving.","topics":["Japan trip","Tokyo","Kyoto","JR Pass"],"keyPoints":["Trip planned for March (cherry blossom season)","3 days Tokyo then Kyoto","Purchase 14-day JR Pass before departure"]}',
+      reward: 1,
+      rubric: "Must capture: Japan/March, Tokyo 3 days then Kyoto, key attractions for each city, JR Pass advice. JSON with text+topics+keyPoints.",
+    },
+    {
+      id: "cs-2",
+      input: { user: "Recent conversation:\nUser: Can you help debug this Python error: TypeError: list object is not callable\nAssistant: This happens when you name a variable 'list' and then call it as a function. Check if you have: list = [1,2,3] then later list(something)\nUser: Oh yes! I had list = [] at the top. Fixed it by renaming to my_list.\nAssistant: Good fix. Avoid shadowing built-in names: list, dict, str, int, etc." },
+      expectedOutput: '{"text":"User had a Python TypeError caused by shadowing the built-in \'list\' name. Fixed by renaming variable to \'my_list\'. Key lesson: avoid using built-in names as variable names.","topics":["Python debugging","TypeError","variable naming"],"keyPoints":["Bug: variable named \'list\' shadowed the built-in","Fix: rename to my_list","Lesson: avoid shadowing built-ins: list, dict, str, int"]}',
+      reward: 1,
+      rubric: "Must capture: Python TypeError, cause (shadowing built-in 'list'), fix (rename to my_list), general lesson. JSON format required.",
+    },
+    {
+      id: "cs-3",
+      input: { user: "Recent conversation:\nUser: What's the best way to lose weight?\nAssistant: The most evidence-based approach: caloric deficit (eat 300-500 calories less than maintenance), high protein diet (0.8-1g per pound bodyweight), strength training 3x/week, and prioritize sleep 7-9 hours.\nUser: How do I figure out my maintenance calories?\nAssistant: Use the Harris-Benedict equation: for men, BMR = 88.36 + (13.4 × kg) + (4.8 × cm) − (5.7 × age). Multiply by activity factor: sedentary=1.2, light=1.375, moderate=1.55.\nUser: Got it, I'll start tracking." },
+      expectedOutput: '{"text":"Discussion about evidence-based weight loss. Key approach: 300-500 calorie deficit, high protein (0.8-1g/lb), strength training 3x/week, 7-9 hours sleep. Maintenance calories calculated via Harris-Benedict equation × activity factor.","topics":["weight loss","nutrition","caloric deficit","BMR calculation"],"keyPoints":["300-500 calorie deficit from maintenance","Protein: 0.8-1g per pound bodyweight","Strength training 3x/week","Sleep 7-9 hours","Harris-Benedict equation for BMR","Activity multipliers: sedentary=1.2, light=1.375, moderate=1.55"]}',
+      reward: 1,
+      rubric: "Must capture: caloric deficit numbers, protein targets, exercise frequency, sleep recommendation, Harris-Benedict equation, activity multipliers.",
+    },
+    {
+      id: "cs-4",
+      input: { user: "Recent conversation:\nUser: hi\nAssistant: Hello! How can I help you today?\nUser: nothing just saying hi\nAssistant: Happy to chat! Let me know if you need anything." },
+      expectedOutput: '{"text":"Brief casual exchange with no substantive content. User greeted the assistant and had no specific request.","topics":["casual conversation"],"keyPoints":["No action items or decisions","User had no specific request"]}',
+      reward: 1,
+      rubric: "Must correctly handle trivial/short conversation. Summary should be short and accurate. No invented details.",
+    },
+    {
+      id: "cs-5",
+      input: { user: "Recent conversation:\nUser: We need to decide on the database for our new app — PostgreSQL or MongoDB?\nAssistant: For structured relational data with complex queries: PostgreSQL. For flexible schema, documents, high write throughput: MongoDB. What's your data model like?\nUser: We have users, orders, products — all relational.\nAssistant: PostgreSQL is the right choice. ACID compliance, great for joins, mature ecosystem.\nUser: Agreed. Let's go with PostgreSQL. Can we use Drizzle ORM?\nAssistant: Yes, Drizzle works great with PostgreSQL. Type-safe, lightweight, great DX." },
+      expectedOutput: '{"text":"Team decided to use PostgreSQL over MongoDB for a new app. Reason: structured relational data model (users, orders, products) requires ACID compliance and complex joins. Selected Drizzle ORM for type-safe PostgreSQL integration.","topics":["database selection","PostgreSQL","MongoDB","Drizzle ORM"],"keyPoints":["Decision: PostgreSQL chosen over MongoDB","Reason: relational data model needs ACID/joins","ORM: Drizzle selected for PostgreSQL","Data model: users, orders, products"]}',
+      reward: 1,
+      rubric: "Must capture: decision (PostgreSQL), reason (relational data model), ORM choice (Drizzle), data model description.",
+    },
+    {
+      id: "cs-6",
+      input: { user: "Recent conversation:\nUser: Remind me to call Dr. Smith tomorrow at 9am.\nAssistant: I'll set a reminder for tomorrow at 9am to call Dr. Smith.\nUser: Also note that I take metformin 500mg twice daily.\nAssistant: Noted. I've saved your medication: metformin 500mg twice daily.\nUser: Thanks!" },
+      expectedOutput: '{"text":"User set a reminder to call Dr. Smith tomorrow at 9am. User also shared medication information: metformin 500mg twice daily.","topics":["reminders","medication","health"],"keyPoints":["Reminder set: call Dr. Smith tomorrow at 9am","Medication noted: metformin 500mg twice daily"]}',
+      reward: 1,
+      rubric: "Must capture both actions: reminder for Dr. Smith at 9am, and medication note (metformin 500mg twice daily).",
+    },
+    {
+      id: "cs-7",
+      input: { user: "Recent conversation:\nUser: What does the 'yield' keyword do in Python?\nAssistant: 'yield' turns a function into a generator. Instead of returning all values at once, it yields one at a time, pausing execution between yields. This is memory-efficient for large sequences.\nUser: Can you show me an example?\nAssistant: def count_up(n):\\n    for i in range(n):\\n        yield i\\n\\nfor x in count_up(5):\\n    print(x)  # prints 0,1,2,3,4 one at a time" },
+      expectedOutput: '{"text":"Explained Python \'yield\' keyword. It creates generators — functions that return values lazily one at a time rather than all at once. Memory-efficient for large sequences. Example: count_up() generator yielding 0-4.","topics":["Python","generators","yield keyword"],"keyPoints":["yield turns function into generator","Returns values lazily, one at a time","Memory-efficient vs returning full list","Example: count_up(n) yields 0 to n-1"]}',
+      reward: 1,
+      rubric: "Must capture: what yield does (generator), lazy evaluation, memory efficiency, the count_up example.",
+    },
+    {
+      id: "cs-8",
+      input: { user: "Recent conversation:\nUser: I'm considering switching from Vim to VSCode. Thoughts?\nAssistant: VSCode has better out-of-box experience, extensions ecosystem, and integrated debugging. Vim has lower overhead, powerful once mastered, faster for text operations. Most devs prefer VSCode for daily use, Vim for server/quick edits.\nUser: I do a lot of React work, would VSCode be better?\nAssistant: Definitely VSCode for React. Better JSX support, ES6/TS intellisense, React-specific extensions (React DevTools, Prettier, ESLint).\nUser: Alright, I'll make the switch." },
+      expectedOutput: '{"text":"User decided to switch from Vim to VSCode for daily React development. VSCode advantages: better out-of-box experience, extensions, debugging, JSX support, and React-specific tooling (Prettier, ESLint, React DevTools).","topics":["VSCode","Vim","React development","editor choice"],"keyPoints":["Decision: switching from Vim to VSCode","Reason: better React/JSX support","VSCode advantages: extensions, debugging, intellisense","React extensions: React DevTools, Prettier, ESLint"]}',
+      reward: 1,
+      rubric: "Must capture: decision (switch to VSCode), reason (React work), key advantages, specific React extensions mentioned.",
+    },
+  ],
+
+  // AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE — tests when to act vs wait; which action to take
+  autonomy_decision: [
+    {
+      id: "ad-1",
+      input: { user: "Context: User asked me to check the status of their GitHub PR #1234.\nLast thought: Need to call the GitHub API to get PR status.\nAvailable actions: GITHUB_GET_PR, REPLY" },
+      expectedOutput: '{"thought":"Need to fetch PR status from GitHub before I can reply.","actions":[{"name":"GITHUB_GET_PR"}]}',
+      reward: 1,
+      rubric: "Must take action (GITHUB_GET_PR). Actions array must be non-empty. Have clear goal and available tool.",
+    },
+    {
+      id: "ad-2",
+      input: { user: "Context: Checked GitHub PR #1234. Status: merged 2 hours ago by @alice.\nLast thought: PR status retrieved. Need to report back to user.\nAvailable actions: GITHUB_GET_PR, REPLY" },
+      expectedOutput: '{"thought":"PR #1234 is merged. Ready to inform the user.","actions":[{"name":"REPLY"}]}',
+      reward: 1,
+      rubric: "Must select REPLY since data is ready. The loop should transition to reporting back to user.",
+    },
+    {
+      id: "ad-3",
+      input: { user: "Context: Waiting for user to confirm whether to proceed with the database migration.\nLast thought: Asked user for confirmation; no response yet.\nAvailable actions: RUN_MIGRATION, REPLY, SEARCH" },
+      expectedOutput: '{"thought":"Still waiting for user confirmation. Cannot proceed with migration without explicit approval.","actions":[]}',
+      reward: 1,
+      rubric: "Must take NO action (empty actions). Waiting for user input — should not proceed autonomously.",
+    },
+    {
+      id: "ad-4",
+      input: { user: "Context: User asked me to research and summarize the top 3 JavaScript frameworks in 2025.\nLast thought: Starting research task.\nAvailable actions: SEARCH, NOTES, REPLY" },
+      expectedOutput: '{"thought":"Need to search for current JavaScript framework rankings before summarizing.","actions":[{"name":"SEARCH"}]}',
+      reward: 1,
+      rubric: "Must take SEARCH action. Research task needs data before summary.",
+    },
+    {
+      id: "ad-5",
+      input: { user: "Context: User asked what 2+2 equals.\nLast thought: Simple math question requiring direct reply.\nAvailable actions: SEARCH, REPLY, CALCULATE" },
+      expectedOutput: '{"thought":"Simple math — can answer directly without tools.","actions":[{"name":"REPLY"}]}',
+      reward: 1,
+      rubric: "Must REPLY immediately. Simple fact doesn't require SEARCH or CALCULATE.",
+    },
+    {
+      id: "ad-6",
+      input: { user: "Context: Asked to deploy the app to production. No deployment credentials available.\nLast thought: Missing credentials to complete the deploy.\nAvailable actions: DEPLOY, REPLY" },
+      expectedOutput: '{"thought":"Cannot deploy — missing production credentials. Need to inform user.","actions":[{"name":"REPLY"}]}',
+      reward: 1,
+      rubric: "Must REPLY to inform user of missing credentials. Cannot DEPLOY without them.",
+    },
+    {
+      id: "ad-7",
+      input: { user: "Context: User wants me to save a note about their meeting tomorrow at 3pm with the board.\nLast thought: Clear note-taking request.\nAvailable actions: NOTES, SCHEDULE, REPLY" },
+      expectedOutput: '{"thought":"User wants to save a note about tomorrow\'s board meeting.","actions":[{"name":"NOTES"}]}',
+      reward: 1,
+      rubric: "Must select NOTES. User explicitly said 'save a note', not 'schedule'.",
+    },
+    {
+      id: "ad-8",
+      input: { user: "Context: Monitoring a long-running build. Build started 2 minutes ago, estimated 5 more minutes.\nLast thought: Build in progress. Nothing to do until it completes.\nAvailable actions: CHECK_BUILD_STATUS, REPLY, CANCEL_BUILD" },
+      expectedOutput: '{"thought":"Build still in progress (~5 min remaining). No action needed this round — will check again next iteration.","actions":[]}',
+      reward: 1,
+      rubric: "Must take NO action. Build is running, nothing to act on. Not CHECK_BUILD_STATUS yet (5 min remaining).",
+    },
+  ],
+
+  // EXTRACT_ACTION_PARAMS_TEMPLATE — tests parameter extraction from conversation context
+  extract_action_params: [
+    {
+      id: "eap-1",
+      input: { user: "Action: SEND_EMAIL\nDescription: Send an email to a contact\nMissing required fields: to, subject\nRecent conversation:\nUser: Can you email sarah@company.com about the Q3 budget review?\nAssistant: I'll draft that now.\nCurrent message: Please send it." },
+      expectedOutput: '{"to":"sarah@company.com","subject":"Q3 budget review"}',
+      reward: 1,
+      rubric: "Must extract: to=sarah@company.com, subject=Q3 budget review. Both clearly stated in conversation.",
+    },
+    {
+      id: "eap-2",
+      input: { user: "Action: SCHEDULE_MEETING\nDescription: Create a calendar event\nMissing required fields: title, time, duration\nRecent conversation:\nUser: Schedule a standup with the team tomorrow at 9am for 30 minutes.\nCurrent message: Yeah that works." },
+      expectedOutput: '{"title":"Team standup","time":"tomorrow 9am","duration":"30 minutes"}',
+      reward: 1,
+      rubric: "Must extract: title=Team standup, time=tomorrow 9am, duration=30 minutes. All present in conversation.",
+    },
+    {
+      id: "eap-3",
+      input: { user: "Action: SET_REMINDER\nDescription: Set a reminder for the user\nMissing required fields: message, delay\nRecent conversation:\nUser: Remind me to take my medicine\nCurrent message: in an hour" },
+      expectedOutput: '{"message":"Take medicine","delay":"1h"}',
+      reward: 1,
+      rubric: "Must extract: message=Take medicine (or similar), delay=1h. Delay is in the current message.",
+    },
+    {
+      id: "eap-4",
+      input: { user: "Action: SEARCH\nDescription: Search the internet\nMissing required fields: query\nRecent conversation:\nUser: Can you look something up for me?\nCurrent message: I want to know the current price of Bitcoin" },
+      expectedOutput: '{"query":"current Bitcoin price"}',
+      reward: 1,
+      rubric: "Must extract query from current message. Query should be about Bitcoin price.",
+    },
+    {
+      id: "eap-5",
+      input: { user: "Action: CREATE_NOTE\nDescription: Save a note\nMissing required fields: content, title\nRecent conversation:\nUser: Note this down: our team uses TypeScript, React, and PostgreSQL for the main stack.\nCurrent message: Title it 'Tech Stack'" },
+      expectedOutput: '{"content":"Our team uses TypeScript, React, and PostgreSQL for the main stack.","title":"Tech Stack"}',
+      reward: 1,
+      rubric: "Must extract content from prior message and title from current message.",
+    },
+    {
+      id: "eap-6",
+      input: { user: "Action: SEND_SLACK_MESSAGE\nDescription: Post a message in a Slack channel\nMissing required fields: channel, message\nRecent conversation:\nUser: Can you post in #general that the server maintenance is complete?\nCurrent message: Yeah go ahead." },
+      expectedOutput: '{"channel":"general","message":"Server maintenance is complete."}',
+      reward: 1,
+      rubric: "Must extract: channel=general (strip the #), message about server maintenance being complete.",
+    },
+    {
+      id: "eap-7",
+      input: { user: "Action: CREATE_TICKET\nDescription: Create a Jira/GitHub issue\nMissing required fields: title, description, priority\nRecent conversation:\nUser: Log a bug: the login button breaks on mobile Safari.\nCurrent message: Make it high priority." },
+      expectedOutput: '{"title":"Login button broken on mobile Safari","description":"Login button breaks on mobile Safari","priority":"high"}',
+      reward: 1,
+      rubric: "Must extract: title/description about the mobile Safari login bug, priority=high from current message.",
+    },
+    {
+      id: "eap-8",
+      input: { user: "Action: BOOK_FLIGHT\nDescription: Book a flight\nMissing required fields: from, to, date\nRecent conversation:\nUser: I need to fly somewhere next week.\nCurrent message: Actually I haven't decided where yet." },
+      expectedOutput: '{"from":null,"to":null,"date":null}',
+      reward: 1,
+      rubric: "Must return null for all fields. User explicitly said they haven't decided. Do NOT invent values.",
+    },
+  ],
 };
 
 // ── Task configuration ─────────────────────────────────────────────────────────
 
-// Tasks that benefit from LLM-as-judge (open-ended responses)
-const JUDGE_TASKS = new Set(["response", "media_description"]);
+// Tasks that benefit from LLM-as-judge (open-ended or structured JSON responses)
+const JUDGE_TASKS = new Set(["response", "media_description", "conversation_summary"]);
 
 // ── Main eval loop ────────────────────────────────────────────────────────────
 
