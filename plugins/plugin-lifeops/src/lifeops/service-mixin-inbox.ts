@@ -36,6 +36,11 @@ const INBOX_CACHE_WARM_LIMIT = 200;
 const INBOX_CACHE_READ_LIMIT = 800;
 const INBOX_CACHE_FULL_LIMIT = 5000;
 const INBOX_CHANNEL_SET = new Set<LifeOpsInboxChannel>(LIFEOPS_INBOX_CHANNELS);
+const PHONE_BACKED_INBOX_CHANNELS = new Set<LifeOpsInboxChannel>([
+  "imessage",
+  "sms",
+  "whatsapp",
+]);
 const SUBJECT_REPLY_PREFIX = /^(?:\s*(?:re|fwd|fw)\s*:\s*)+/i;
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
@@ -52,6 +57,31 @@ export function normalizeInboxChannel(
     return trimmed as LifeOpsInboxChannel;
   }
   return null;
+}
+
+function normalizePhoneAccountKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function isPhoneBackedInboxChannel(channel: LifeOpsInboxChannel): boolean {
+  return PHONE_BACKED_INBOX_CHANNELS.has(channel);
+}
+
+function matchesPhoneAccountFilter(
+  message: LifeOpsInboxMessage,
+  phoneAccountIds: ReadonlySet<string>,
+): boolean {
+  const candidates = [
+    message.phoneAccountId,
+    message.phoneNumber,
+    message.sourceRef.phoneAccountId,
+    message.sourceRef.phoneNumber,
+  ];
+  return candidates.some(
+    (value) =>
+      typeof value === "string" &&
+      phoneAccountIds.has(normalizePhoneAccountKey(value)),
+  );
 }
 
 function emptyChannelCounts(): Record<
@@ -148,12 +178,22 @@ export function toInboxMessage(
     sourceRef: {
       channel,
       externalId: externalId,
+      ...(message.phoneAccountId
+        ? { phoneAccountId: message.phoneAccountId }
+        : {}),
+      ...(message.phoneAccountLabel
+        ? { phoneAccountLabel: message.phoneAccountLabel }
+        : {}),
+      ...(message.phoneNumber ? { phoneNumber: message.phoneNumber } : {}),
     },
     threadId,
     chatType,
     participantCount: message.participantCount,
     gmailAccountId: message.gmailAccountId,
     gmailAccountEmail: message.gmailAccountEmail,
+    phoneAccountId: message.phoneAccountId,
+    phoneAccountLabel: message.phoneAccountLabel,
+    phoneNumber: message.phoneNumber,
     lastSeenAt: message.lastSeenAt,
     repliedAt: message.repliedAt,
     priorityScore: message.priorityScore,
@@ -181,6 +221,7 @@ interface InboxBuildOptions {
   chatTypeFilter?: ReadonlyArray<InboxChatType>;
   maxParticipants?: number;
   gmailAccountId?: string;
+  phoneAccountIds?: ReadonlySet<string>;
   ownerName?: string | null;
   missedOnly?: boolean;
   /**
@@ -476,6 +517,14 @@ export function buildInboxFromMessages(
     ) {
       continue;
     }
+    if (
+      options.phoneAccountIds &&
+      options.phoneAccountIds.size > 0 &&
+      isPhoneBackedInboxChannel(channel) &&
+      !matchesPhoneAccountFilter(normalized, options.phoneAccountIds)
+    ) {
+      continue;
+    }
 
     collected.push(normalized);
     const channelCount = counts[channel];
@@ -580,6 +629,7 @@ export interface ResolvedInboxRequest {
   chatTypeFilter?: ReadonlyArray<InboxChatType>;
   maxParticipants?: number;
   gmailAccountId?: string;
+  phoneAccountIds?: ReadonlySet<string>;
   missedOnly: boolean;
   sortByPriority: boolean;
   cacheMode: LifeOpsInboxCacheMode;
@@ -624,6 +674,16 @@ export function resolveInboxRequest(
         : INBOX_CACHE_FULL_LIMIT),
     INBOX_CACHE_FULL_LIMIT,
   );
+  const phoneAccountIds =
+    Array.isArray(request.phoneAccountIds) && request.phoneAccountIds.length > 0
+      ? new Set(
+          request.phoneAccountIds
+            .map((value) =>
+              typeof value === "string" ? normalizePhoneAccountKey(value) : "",
+            )
+            .filter(Boolean),
+        )
+      : undefined;
   return {
     limit,
     allowed: new Set<LifeOpsInboxChannel>(requestedChannels),
@@ -640,6 +700,7 @@ export function resolveInboxRequest(
       request.gmailAccountId.trim().length > 0
         ? request.gmailAccountId.trim()
         : undefined,
+    phoneAccountIds,
     missedOnly: request.missedOnly === true,
     sortByPriority: request.sortByPriority === true,
     cacheMode,
@@ -717,6 +778,7 @@ async function buildInboxWithLlm(
     chatTypeFilter: resolved.chatTypeFilter,
     maxParticipants: resolved.maxParticipants,
     gmailAccountId: resolved.gmailAccountId,
+    phoneAccountIds: resolved.phoneAccountIds,
     ownerName,
     // groupByThread/missedOnly are deferred to the second pass so we can
     // factor in LLM scores before grouping/filtering.
@@ -737,6 +799,7 @@ async function buildInboxWithLlm(
     chatTypeFilter: resolved.chatTypeFilter,
     maxParticipants: resolved.maxParticipants,
     gmailAccountId: resolved.gmailAccountId,
+    phoneAccountIds: resolved.phoneAccountIds,
     ownerName,
     groupByThread: resolved.groupByThread,
     missedOnly: resolved.missedOnly,
@@ -794,6 +857,7 @@ export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
           chatTypeFilter: resolved.chatTypeFilter,
           maxParticipants: resolved.maxParticipants,
           gmailAccountId: resolved.gmailAccountId,
+          phoneAccountIds: resolved.phoneAccountIds,
           ownerName,
           groupByThread: resolved.groupByThread,
           missedOnly: resolved.missedOnly,

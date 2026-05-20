@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import json
 import re
@@ -105,14 +106,73 @@ def metric(metrics: dict[str, Any], key: str, default: Any = 0) -> Any:
     return metrics.get(key, default)
 
 
+def number_from_metric(metrics: dict[str, Any], key: str, default: float = 0) -> float:
+    value = metric(metrics, key, default)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def parse_antenna_violations(text: str) -> int:
+    total = 0
+    for match in re.finditer(r"Found\s+([0-9]+)\s+(?:net|pin)\s+violations?", text, re.I):
+        total += int(match.group(1))
+    if total:
+        return total
+    return len(re.findall(r"\(VIOLATED\)", text, re.I))
+
+
+def parse_sta_summary(text: str, metrics: dict[str, Any]) -> dict[str, float | int]:
+    values: dict[str, float | int] = {
+        "setup_wns": number_from_metric(metrics, "timing__setup__wns", 0),
+        "hold_wns": number_from_metric(metrics, "timing__hold__wns", 0),
+        "setup_tns": number_from_metric(metrics, "timing__setup__tns", 0),
+        "hold_tns": number_from_metric(metrics, "timing__hold__tns", 0),
+        "setup_violations": int(number_from_metric(metrics, "timing__setup__vio__count", 0)),
+        "hold_violations": int(number_from_metric(metrics, "timing__hold__vio__count", 0)),
+        "max_cap_violations": int(
+            number_from_metric(metrics, "design__max_cap_violation__count", 0)
+        ),
+        "max_slew_violations": int(
+            number_from_metric(metrics, "design__max_slew_violation__count", 0)
+        ),
+    }
+    for line in text.splitlines():
+        if "Overall" not in line:
+            continue
+        cells = [cell.strip() for cell in line.strip("│| ").split("│")]
+        if len(cells) < 13 or cells[0] != "Overall":
+            continue
+        with contextlib.suppress(IndexError, ValueError):
+            values.update(
+                {
+                    "hold_wns": float(cells[1]),
+                    "hold_tns": float(cells[3]),
+                    "hold_violations": int(float(cells[4])),
+                    "setup_wns": float(cells[6]),
+                    "setup_tns": float(cells[8]),
+                    "setup_violations": int(float(cells[9])),
+                    "max_cap_violations": int(float(cells[11])),
+                    "max_slew_violations": int(float(cells[12])),
+                }
+            )
+        break
+    return values
+
+
 def write_report_summaries(
     run_dir: Path, signoff_dir: Path, metrics: dict[str, Any]
-) -> dict[str, str]:
+) -> tuple[dict[str, str], dict[str, float | int]]:
     magic_drc = first_file(run_dir, "*-magic-drc/reports/*magic.rpt")
     klayout_drc = first_file(run_dir, "*-klayout-drc/reports/*klayout.xml")
     lvs = first_file(run_dir, "*-netgen-lvs/reports/*.rpt")
     antenna = first_file(run_dir, "*-openroad-checkantennas*/reports/antenna.rpt")
     sta_summary = first_file(run_dir, "*-openroad-stapostpnr/summary.rpt")
+    antenna_text = antenna.read_text(errors="ignore")
+    antenna_violations = parse_antenna_violations(antenna_text)
+    sta_text = sta_summary.read_text(errors="ignore")
+    sta = parse_sta_summary(sta_text, metrics)
 
     reports = {
         "drc": copy_text(magic_drc, signoff_dir / "drc.magic.rpt").relative_to(run_dir),
@@ -121,20 +181,22 @@ def write_report_summaries(
         "antenna": copy_text(
             antenna,
             signoff_dir / "antenna.rpt",
-            header=f"antenna violations: {metric(metrics, 'route__antenna_violation__count', 0)}",
+            header=f"antenna violations: {antenna_violations}",
         ).relative_to(run_dir),
         "sta": write_text(
             signoff_dir / "sta.rpt",
             "\n".join(
                 [
-                    f"wns: {metric(metrics, 'timing__setup__wns', 0)}",
-                    f"hold_wns: {metric(metrics, 'timing__hold__wns', 0)}",
-                    f"setup_tns: {metric(metrics, 'timing__setup__tns', 0)}",
-                    f"hold_tns: {metric(metrics, 'timing__hold__tns', 0)}",
-                    f"max_slew_violations: {metric(metrics, 'design__max_slew_violation__count', 0)}",
-                    f"max_cap_violations: {metric(metrics, 'design__max_cap_violation__count', 0)}",
+                    f"wns: {sta['setup_wns']}",
+                    f"hold_wns: {sta['hold_wns']}",
+                    f"setup_tns: {sta['setup_tns']}",
+                    f"hold_tns: {sta['hold_tns']}",
+                    f"setup_violations: {sta['setup_violations']}",
+                    f"hold_violations: {sta['hold_violations']}",
+                    f"max_slew_violations: {sta['max_slew_violations']}",
+                    f"max_cap_violations: {sta['max_cap_violations']}",
                     "",
-                    sta_summary.read_text(errors="ignore"),
+                    sta_text,
                 ]
             ),
         ).relative_to(run_dir),
@@ -173,7 +235,17 @@ def write_report_summaries(
             ),
         ).relative_to(run_dir),
     }
-    return {key: str(value) for key, value in reports.items()}
+    report_metrics: dict[str, float | int] = {
+        "antenna_violations": antenna_violations,
+        **sta,
+    }
+    return {key: str(value) for key, value in reports.items()}, report_metrics
+
+
+def check_status(blocked: bool, reason: str) -> dict[str, str]:
+    if blocked:
+        return {"status": "blocked", "reason": reason}
+    return {"status": "clean"}
 
 
 def write_tool_versions(
@@ -223,7 +295,7 @@ def main() -> int:
     signoff_dir.mkdir(parents=True, exist_ok=True)
 
     corner_manifest = build_corner_manifest(run_dir, signoff_dir)
-    reports = write_report_summaries(run_dir, signoff_dir, metrics)
+    reports, report_metrics = write_report_summaries(run_dir, signoff_dir, metrics)
     tool_versions = write_tool_versions(run_dir, signoff_dir, manifest, resolved)
 
     gds = first_file(run_dir, "final/gds/*.gds")
@@ -235,11 +307,33 @@ def main() -> int:
 
     runner = manifest.get("runner", {}) if isinstance(manifest.get("runner"), dict) else {}
     corners_payload = yaml.safe_load(corner_manifest.read_text()) or {}
+    antenna_blocked = int(report_metrics["antenna_violations"]) > 0
+    sta_blocked = any(
+        [
+            float(report_metrics["hold_wns"]) < 0,
+            int(report_metrics["hold_violations"]) > 0,
+            int(report_metrics["setup_violations"]) > 0,
+            int(report_metrics["max_slew_violations"]) > 0,
+            int(report_metrics["max_cap_violations"]) > 0,
+        ]
+    )
     checks = {
         "drc": {"status": "clean", "report": reports["drc"]},
         "lvs": {"status": "clean", "report": reports["lvs"]},
-        "antenna": {"status": "clean", "report": reports["antenna"]},
-        "sta": {"status": "clean", "report": reports["sta"]},
+        "antenna": {
+            **check_status(
+                antenna_blocked,
+                f"{int(report_metrics['antenna_violations'])} antenna violations remain",
+            ),
+            "report": reports["antenna"],
+        },
+        "sta": {
+            **check_status(
+                sta_blocked,
+                "post-route hold/slew/cap violations remain",
+            ),
+            "report": reports["sta"],
+        },
         "utilization": {"status": "clean", "report": reports["utilization"]},
         "congestion": {"status": "clean", "report": reports["congestion"]},
         "density_fill": {"status": "clean", "report": reports["density_fill"]},

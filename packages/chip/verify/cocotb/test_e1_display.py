@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 import cocotb
@@ -6,6 +7,38 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from coverage_helpers import CoverPointSet  # noqa: E402
+
+DISPLAY_MMIO_REGIONS = (
+    "framebuffer_addr",
+    "mode",
+    "format",
+    "enable",
+    "vsync_irq",
+    "underflow_count",
+    "fetch_count",
+    "stride",
+    "frame_bytes_lo",
+    "frame_bytes_hi",
+)
+_DISPLAY_COVER = CoverPointSet("display")
+_DISPLAY_COVER.declare("mmio_region", "register", DISPLAY_MMIO_REGIONS)
+
+
+def _classify_display_reg(addr: int) -> str:
+    return {
+        0: "framebuffer_addr",
+        1: "mode",
+        2: "format",
+        3: "enable",
+        4: "vsync_irq",
+        5: "underflow_count",
+        6: "fetch_count",
+        7: "stride",
+        8: "frame_bytes_lo",
+        9: "frame_bytes_hi",
+    }.get(addr, "framebuffer_addr")
 
 
 async def reset(dut):
@@ -24,6 +57,7 @@ async def reset(dut):
 
 
 async def write_reg(dut, addr, data):
+    _DISPLAY_COVER.sample("mmio_region", "register", _classify_display_reg(addr))
     dut.addr.value = addr
     dut.wdata.value = data
     dut.write.value = 1
@@ -35,6 +69,7 @@ async def write_reg(dut, addr, data):
 
 
 async def read_reg(dut, addr):
+    _DISPLAY_COVER.sample("mmio_region", "register", _classify_display_reg(addr))
     dut.addr.value = addr
     dut.write.value = 0
     dut.valid.value = 1
@@ -63,6 +98,7 @@ def write_coverage_artifact(extra):
     out = REPO_ROOT / "build/reports/display_cocotb_coverage.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(coverage, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _DISPLAY_COVER.write_json(extra={"covered_contracts": sorted(extra)})
 
 
 @cocotb.test()

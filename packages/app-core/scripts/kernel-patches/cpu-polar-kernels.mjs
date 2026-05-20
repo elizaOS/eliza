@@ -50,29 +50,22 @@
 // Idempotent: each mutation carries a `ELIZA-CPU-POLAR-PREHT-V1`
 // sentinel.
 
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-function firstExistingPath(candidates) {
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
-}
-
-const POLAR_CPU_SRC_DIR = firstExistingPath([
-  path.resolve(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "native",
-    "plugins",
-    "polarquant-cpu",
-  ),
-  path.resolve(__dirname, "..", "..", "..", "native-plugins", "polarquant-cpu"),
-]);
+// packages/app-core/scripts/kernel-patches -> packages/native/plugins/polarquant-cpu
+const POLAR_CPU_SRC_DIR = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "native",
+  "plugins",
+  "polarquant-cpu",
+);
 
 const SENTINEL = "ELIZA-CPU-POLAR-PREHT-V1";
 

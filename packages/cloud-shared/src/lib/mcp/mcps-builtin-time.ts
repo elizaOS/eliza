@@ -3,7 +3,8 @@
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import { z } from "zod/v3";
+import { registerTypedTool } from "./register-typed-tool";
 
 const TIMEZONE_ALIASES: Record<string, string> = {
   EST: "America/New_York",
@@ -28,7 +29,8 @@ function isValidTimezone(tz: string): boolean {
 }
 
 export function registerTimeMcpTools(server: McpServer): void {
-  server.tool(
+  registerTypedTool<{ timezone?: string; format?: "iso" | "unix" | "readable" | "all" }>(
+    server,
     "get_current_time",
     "Get the current date and time in various formats for any timezone.",
     {

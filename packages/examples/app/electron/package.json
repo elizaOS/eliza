@@ -7,6 +7,7 @@
     "dev:electron": "bun run --cwd backend dev",
     "build:renderer": "bun run --cwd frontend build",
     "start": "bun run --cwd backend start",
+    "test": "bun test smoke.test.js && bun run --cwd frontend test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "echo 'No TypeScript config; skipping typecheck'",
     "build": "echo 'No build step configured; skipping build'"

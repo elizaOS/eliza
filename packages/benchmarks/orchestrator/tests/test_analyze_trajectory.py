@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from benchmarks.orchestrator.analyze_trajectory import extract_tokens, summarize
 
@@ -46,6 +51,80 @@ def test_extract_tokens_does_not_invent_cache_field_when_absent() -> None:
     assert tokens.has_cached is False
 
 
+def test_extract_tokens_accepts_camel_case_usage_aliases() -> None:
+    tokens = extract_tokens(
+        {
+            "usage": {
+                "inputTokens": 100,
+                "outputTokens": 25,
+                "totalTokenCount": 125,
+                "cacheReadInputTokens": 40,
+                "cacheWriteInputTokens": 6,
+                "llmCallCount": 3,
+            }
+        }
+    )
+
+    assert tokens is not None
+    assert tokens.prompt == 100
+    assert tokens.completion == 25
+    assert tokens.total == 125
+    assert tokens.cached == 40
+    assert tokens.cache_creation == 6
+    assert tokens.has_cached is True
+    assert tokens.llm_calls == 3
+
+
+def test_extract_tokens_sums_usage_calls_with_aliases() -> None:
+    tokens = extract_tokens(
+        {
+            "usage": {
+                "calls": [
+                    {
+                        "inputTokens": 100,
+                        "outputTokens": 20,
+                        "cacheReadInputTokens": 30,
+                    },
+                    {
+                        "prompt_tokens": 80,
+                        "completion_tokens": 10,
+                        "cached_tokens": 0,
+                        "cache_creation_input_tokens": 7,
+                    },
+                ]
+            }
+        }
+    )
+
+    assert tokens is not None
+    assert tokens.prompt == 180
+    assert tokens.completion == 30
+    assert tokens.cached == 30
+    assert tokens.cache_creation == 7
+    assert tokens.has_cached is True
+    assert tokens.llm_calls == 2
+
+
+def test_extract_tokens_reads_input_tokens_details_cache_aliases() -> None:
+    tokens = extract_tokens(
+        {
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 25,
+                "input_tokens_details": {
+                    "cacheReadInputTokens": 30,
+                    "cacheWriteInputTokens": 9,
+                },
+            }
+        }
+    )
+
+    assert tokens is not None
+    assert tokens.cached == 30
+    assert tokens.cache_creation == 9
+    assert tokens.has_cached is True
+
+
 def test_summarize_telemetry_jsonl_preserves_zero_cache_fields(tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     output_dir = run_dir / "output"
@@ -80,4 +159,105 @@ def test_summarize_telemetry_jsonl_preserves_zero_cache_fields(tmp_path: Path) -
     assert summary.total_tokens == 55
     assert summary.cached_tokens == 0
     assert summary.cache_creation_tokens == 3
+    assert summary.turns_with_cached_field == 1
+    assert summary.llm_call_count == 1
+
+
+def test_summarize_eliza_core_trajectory_llm_calls(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    trajectory_dir = run_dir / "trajectories"
+    trajectory_dir.mkdir(parents=True)
+    (trajectory_dir / "trajectory-core.json").write_text(
+        json.dumps(
+            {
+                "trajectoryId": "trajectory-1",
+                "steps": [
+                    {
+                        "stepId": "step-1",
+                        "llmCalls": [
+                            {
+                                "systemPrompt": "system",
+                                "userPrompt": "first user prompt",
+                                "response": "first",
+                                "promptTokens": 100,
+                                "completionTokens": 20,
+                                "cacheReadInputTokens": 30,
+                                "cacheCreationInputTokens": 5,
+                                "latencyMs": 250,
+                            },
+                            {
+                                "systemPrompt": "system",
+                                "userPrompt": "second user prompt",
+                                "response": "second",
+                                "promptTokens": 80,
+                                "completionTokens": 10,
+                                "cacheReadInputTokens": 0,
+                                "latencyMs": 150,
+                            },
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary, records = summarize(run_dir)
+
+    assert len(records) == 1
+    assert summary.turns == 1
+    assert summary.llm_call_count == 2
+    assert summary.prompt_tokens == 180
+    assert summary.completion_tokens == 30
+    assert summary.total_tokens == 210
+    assert summary.cached_tokens == 30
+    assert summary.cache_creation_tokens == 5
+    assert summary.turns_with_cached_field == 1
+
+
+def test_summarize_opencode_step_finish_part_tokens(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    trajectory_dir = run_dir / "trajectories"
+    trajectory_dir.mkdir(parents=True)
+    (trajectory_dir / "opencode-messages.json").write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "providerID": "cerebras",
+                        "modelID": "gpt-oss-120b",
+                        "parts": [
+                            {
+                                "type": "text",
+                                "text": "working",
+                            },
+                            {
+                                "type": "step-finish",
+                                "reason": "stop",
+                                "tokens": {
+                                    "input": 120,
+                                    "output": 30,
+                                    "reasoning": 4,
+                                    "cache": {"read": 40, "write": 8},
+                                },
+                            },
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary, records = summarize(run_dir)
+
+    assert len(records) == 1
+    assert summary.turns == 1
+    assert summary.llm_call_count == 1
+    assert summary.prompt_tokens == 120
+    assert summary.completion_tokens == 30
+    assert summary.total_tokens == 150
+    assert summary.cached_tokens == 40
+    assert summary.cache_creation_tokens == 8
     assert summary.turns_with_cached_field == 1

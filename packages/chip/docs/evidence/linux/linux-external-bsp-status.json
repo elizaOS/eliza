@@ -2,7 +2,7 @@
   "blockers": [
     {
       "detail": "/home/shaw/milady/eliza/packages/chip/external/linux",
-      "id": "external_linux_tree_missing"
+      "id": "external_linux_tree_invalid"
     },
     {
       "detail": "set CROSS_COMPILE=... or install a riscv64 Linux compiler",

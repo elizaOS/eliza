@@ -192,10 +192,14 @@ export class ElizaClient {
 
     const bootBase = getBootConfig().apiBase;
     const injectedBase = getElizaApiBase();
-    const storedBaseRaw =
-      typeof window !== "undefined" && window.localStorage
-        ? window.localStorage.getItem(LOCAL_STORAGE_API_BASE_KEY)
+    const localStorageGetItem =
+      typeof window !== "undefined" &&
+      typeof window.localStorage?.getItem === "function"
+        ? window.localStorage.getItem.bind(window.localStorage)
         : null;
+    const storedBaseRaw = localStorageGetItem
+      ? localStorageGetItem(LOCAL_STORAGE_API_BASE_KEY)
+      : null;
     const storedBase = isElizaCloudControlPlaneBase(storedBaseRaw)
       ? null
       : storedBaseRaw;

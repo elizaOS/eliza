@@ -1,0 +1,29 @@
+From 5404fb770915a3e1ff953d1d8dfb219d8aa270f4 Mon Sep 17 00:00:00 2001
+From: bun-riscv64 build <bun-riscv64@milady.local>
+Date: Tue, 19 May 2026 04:36:07 -0700
+Subject: [PATCH 5/7] deps/tinycc: refuse to build on riscv64
+
+oven-sh/tinycc has no riscv64 backend. cfg.tinycc is already off by default on riscv64; this catches manual --tinycc=on overrides loudly.
+---
+ scripts/build/deps/tinycc.ts | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/scripts/build/deps/tinycc.ts b/scripts/build/deps/tinycc.ts
+index f0b8870..6f84578 100644
+--- a/scripts/build/deps/tinycc.ts
++++ b/scripts/build/deps/tinycc.ts
+@@ -31,6 +31,11 @@ export const tinycc: Dependency = {
+   patches: ["patches/tinycc/tcc.h.patch"],
+ 
+   build: cfg => {
++    if (cfg.riscv64) {
++      throw new Error(
++        "deps/tinycc: oven-sh/tinycc has no riscv64 backend. Build with --tinycc=off (default on riscv64).",
++      );
++    }
+     const sources = ["libtcc.c", "tccpp.c", "tccgen.c", "tccdbg.c", "tccelf.c", "tccasm.c", "tccrun.c"];
+     if (cfg.arm64) sources.push("arm64-gen.c", "arm64-link.c", "arm64-asm.c");
+     else sources.push("x86_64-gen.c", "x86_64-link.c", "i386-asm.c");
+-- 
+2.43.0
+

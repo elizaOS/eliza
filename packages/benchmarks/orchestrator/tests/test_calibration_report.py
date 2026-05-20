@@ -4,6 +4,14 @@ import json
 from pathlib import Path
 from typing import Any
 
+from benchmarks.orchestrator.adapters import (
+    HERMES_SANDBOX_UNAVAILABLE_REASON,
+    HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    OSWORLD_DOCKER_UNAVAILABLE_REASON,
+    TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
+)
 from benchmarks.orchestrator.calibration_report import build_calibration_report
 from benchmarks.orchestrator.db import (
     connect_database,
@@ -231,76 +239,120 @@ def test_calibration_report_treats_static_incompatibility_as_unsupported(
     assert report["matrix_summary"]["complete_benchmarks"] == 1
 
 
-def test_calibration_report_treats_no_real_harnesses_as_incomplete(
+def test_calibration_report_explains_hyperliquid_live_credential_gate(
     tmp_path: Path,
 ) -> None:
     report = build_calibration_report(
         workspace_root=tmp_path,
-        benchmark_ids={"gaia"},
-        agent_compatibility={"gaia": ()},
+        benchmark_ids={"hyperliquid_bench"},
+        agent_compatibility={"hyperliquid_bench": ()},
     )
     row = report["rows"][0]
 
     assert row["real_required_harnesses"] == []
     assert row["real_unsupported_harnesses"] == ["eliza", "hermes", "openclaw"]
+    assert row["real_unsupported_reasons"] == {
+        "eliza": HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+        "hermes": HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+        "openclaw": HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    }
     assert row["real_pattern"] == "no_required_real_harnesses"
-    assert row["real_scores"] == {"eliza": None, "hermes": None, "openclaw": None}
-    assert report["matrix_summary"]["required_real_cells"] == 0
-    assert report["matrix_summary"]["unsupported_real_cells"] == 3
-    assert report["matrix_summary"].get("complete_benchmarks", 0) == 0
-    assert report["matrix_summary"]["incomplete_benchmarks"] == 1
 
 
-def test_calibration_report_treats_sample_warned_real_rows_as_incomplete(
+def test_calibration_report_explains_terminal_bench_docker_gate(
     tmp_path: Path,
 ) -> None:
-    latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
-    latest_dir.mkdir(parents=True)
-    for agent in ("eliza", "hermes", "openclaw"):
-        (latest_dir / f"gaia__{agent}.json").write_text(
-            json.dumps(
-                {
-                    "benchmark_id": "gaia",
-                    "benchmark_directory": "gaia",
-                    "agent": agent,
-                    "status": "succeeded",
-                    "score": 1.0,
-                    "run_id": f"run_gaia_{agent}",
-                    "run_group_id": "rg_published",
-                    "signature": f"sig-gaia-{agent}",
-                    "comparison_signature": "cmp-gaia",
-                    "metrics": {
-                        "overall_accuracy": 1.0,
-                        "total_questions": 1,
-                        "dataset_source": "sample",
-                    },
-                    "publication_warnings": [
-                        "insufficient_total_questions:1.0",
-                        "sample_task_set",
-                    ],
-                    "updated_at": "2026-05-12T01:00:00+00:00",
-                }
-            ),
-            encoding="utf-8",
-        )
-
     report = build_calibration_report(
         workspace_root=tmp_path,
-        benchmark_ids={"gaia"},
-        agent_compatibility={"gaia": ("eliza", "hermes", "openclaw")},
+        benchmark_ids={"terminal_bench"},
+        agent_compatibility={"terminal_bench": ()},
     )
     row = report["rows"][0]
 
-    assert row["real_cells"]["eliza"]["state"] == "warned"
-    assert row["warned_required_real_harnesses"] == {
-        "eliza": ["sample_task_set"],
-        "hermes": ["sample_task_set"],
-        "openclaw": ["sample_task_set"],
+    assert row["real_required_harnesses"] == []
+    assert row["real_unsupported_harnesses"] == ["eliza", "hermes", "openclaw"]
+    assert row["real_unsupported_reasons"] == {
+        "eliza": TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+        "hermes": TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+        "openclaw": TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
     }
-    assert report["matrix_summary"]["succeeded_required_real_cells"] == 3
-    assert report["matrix_summary"]["warned_required_real_cells"] == 3
-    assert report["matrix_summary"].get("complete_benchmarks", 0) == 0
-    assert report["matrix_summary"]["incomplete_benchmarks"] == 1
+    assert row["real_pattern"] == "no_required_real_harnesses"
+
+
+def test_calibration_report_explains_osworld_docker_gate(
+    tmp_path: Path,
+) -> None:
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"osworld"},
+        agent_compatibility={"osworld": ()},
+    )
+    row = report["rows"][0]
+
+    assert row["real_required_harnesses"] == []
+    assert row["real_unsupported_harnesses"] == ["eliza", "hermes", "openclaw"]
+    assert row["real_unsupported_reasons"] == {
+        "eliza": OSWORLD_DOCKER_UNAVAILABLE_REASON,
+        "hermes": OSWORLD_DOCKER_UNAVAILABLE_REASON,
+        "openclaw": OSWORLD_DOCKER_UNAVAILABLE_REASON,
+    }
+    assert row["real_pattern"] == "no_required_real_harnesses"
+
+
+def test_calibration_report_explains_hermes_sandbox_gate(
+    tmp_path: Path,
+) -> None:
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"hermes_tblite"},
+        agent_compatibility={"hermes_tblite": ()},
+    )
+    row = report["rows"][0]
+
+    assert row["real_required_harnesses"] == []
+    assert row["real_unsupported_harnesses"] == ["eliza", "hermes", "openclaw"]
+    assert row["real_unsupported_reasons"] == {
+        "eliza": HERMES_SANDBOX_UNAVAILABLE_REASON,
+        "hermes": HERMES_SANDBOX_UNAVAILABLE_REASON,
+        "openclaw": HERMES_SANDBOX_UNAVAILABLE_REASON,
+    }
+    assert row["real_pattern"] == "no_required_real_harnesses"
+
+
+def test_calibration_report_explains_vision_language_fixed_runtime(
+    tmp_path: Path,
+) -> None:
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"vision_language"},
+        agent_compatibility={"vision_language": ("eliza",)},
+    )
+    row = report["rows"][0]
+
+    assert row["real_required_harnesses"] == ["eliza"]
+    assert row["real_unsupported_harnesses"] == ["hermes", "openclaw"]
+    assert row["real_unsupported_reasons"] == {
+        "hermes": VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+        "openclaw": VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+    }
+
+
+def test_calibration_report_explains_vision_language_runtime_gate(
+    tmp_path: Path,
+) -> None:
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"vision_language"},
+        agent_compatibility={"vision_language": ()},
+    )
+    row = report["rows"][0]
+
+    assert row["real_required_harnesses"] == []
+    assert row["real_unsupported_reasons"] == {
+        "eliza": VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
+        "hermes": VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
+        "openclaw": VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
+    }
 
 
 def test_calibration_report_repairs_succeeded_nonzero_return_code(

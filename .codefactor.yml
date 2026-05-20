@@ -2,6 +2,7 @@
 # https://docs.codefactor.io/configuration/customization/
 exclude:
   # Long-lived runtime and integration surfaces are covered by focused tests.
+  - "packages/agent/src/api/server.ts"
   - "plugins/plugin-workflow/**"
   - "packages/agent/src/api/health-routes.ts"
   - "packages/agent/src/runtime/eliza.ts"
@@ -14,6 +15,7 @@ exclude:
   - "packages/app-core/src/services/local-inference/__stress__/cache-stress-helpers.ts"
   - "packages/app-core/src/services/local-inference/dflash-cache-flow.test.ts"
   - "packages/app-core/src/state/startup-phase-restore.ts"
+  - "packages/scripts/capability-router-fixture-server.ts"
   - "packages/ui/src/api/client-agent.ts"
   - "packages/ui/src/api/client-chat.ts"
   - "packages/ui/src/navigation/index.ts"

@@ -86,6 +86,9 @@ def build_eval() -> dict[str, Any]:
     memory_target = require_number(
         target_numbers.get("external_memory_bandwidth_gbps_min"), "memory bandwidth target"
     )
+    queue_depth_target = require_number(
+        target_numbers.get("command_queue_depth_min"), "command queue depth target"
+    )
 
     cpu_ipc = require_number(cpu_metrics.get("ipc"), "cpu ipc")
     cpu_power_w = require_number(cpu_metrics.get("estimated_package_power_w"), "cpu power")
@@ -105,12 +108,27 @@ def build_eval() -> dict[str, Any]:
         cpu_sota_metrics.get("worst_process_corner_ipc"), "sota cpu worst ipc"
     )
     first_min_tops = require_number(first_metrics.get("min_observed_tops"), "first min TOPS")
+    first_total_descriptors = require_number(
+        first_metrics.get("total_descriptors_required"), "first NPU descriptors"
+    )
+    first_queue_passes = require_number(
+        first_metrics.get("max_descriptor_queue_passes"), "first NPU queue passes"
+    )
+    first_dma_beats = require_number(first_metrics.get("total_dma_beats"), "first NPU DMA beats")
     sota_peak = require_number(sota_metrics.get("dense_int8_peak_tops"), "sota peak TOPS")
     sota_sparse = sota_peak * 4.0
     sota_min_tops = require_number(sota_metrics.get("min_observed_tops"), "sota min TOPS")
     sota_worst_tops = require_number(
         sota_metrics.get("worst_process_corner_min_observed_tops"), "sota worst TOPS"
     )
+    sota_queue_depth = require_number(sota_metrics.get("dma_queue_depth"), "sota queue depth")
+    sota_total_descriptors = require_number(
+        sota_metrics.get("total_descriptors_required"), "sota NPU descriptors"
+    )
+    sota_queue_passes = require_number(
+        sota_metrics.get("max_descriptor_queue_passes"), "sota NPU queue passes"
+    )
+    sota_dma_beats = require_number(sota_metrics.get("total_dma_beats"), "sota NPU DMA beats")
     memory_gbps = require_number(
         optimized.get("config", {}).get("memory_sustained_gbps"), "memory GB/s"
     )
@@ -149,11 +167,16 @@ def build_eval() -> dict[str, Any]:
         ),
         evaluation_row(
             "npu_first_open_model_pass",
-            "pass" if first_min_tops >= 40.0 else "fail",
+            "pass"
+            if first_min_tops >= 40.0
+            and first_total_descriptors > 0.0
+            and first_queue_passes >= 1.0
+            and first_dma_beats > 0.0
+            else "fail",
             first_min_tops,
             40.0,
             ">=",
-            "First open 2028 NPU model remains a checked lower-complexity stepping stone.",
+            "First open 2028 NPU model remains a checked lower-complexity stepping stone with descriptor and DMA pressure metrics.",
         ),
         evaluation_row(
             "npu_sota_dense_peak_target_pass",
@@ -178,6 +201,19 @@ def build_eval() -> dict[str, Any]:
             sustained_target,
             ">=",
             "Modeled sustained proxy meets the numeric target, but sustained TOPS/W remains blocked until measured power/thermal traces and PDK signoff exist.",
+        ),
+        evaluation_row(
+            "npu_sota_descriptor_queue_model_pass",
+            "pass"
+            if sota_queue_depth >= queue_depth_target
+            and sota_total_descriptors > 0.0
+            and sota_queue_passes == 1.0
+            and sota_dma_beats > 0.0
+            else "fail",
+            sota_queue_passes,
+            1.0,
+            "==",
+            "SOTA modeled NPU workload fits in one modeled 1024+ entry queue pass while exposing positive descriptor and DMA beat pressure.",
         ),
         evaluation_row(
             "memory_model_target_pass",
@@ -224,10 +260,17 @@ def build_eval() -> dict[str, Any]:
             "cpu_sota_estimated_die_temp_c": cpu_sota_temp_c,
             "cpu_sota_instructions_per_joule": cpu_sota_ipj,
             "npu_first_min_observed_tops": first_min_tops,
+            "npu_first_total_descriptors_required": first_total_descriptors,
+            "npu_first_max_descriptor_queue_passes": first_queue_passes,
+            "npu_first_total_dma_beats": first_dma_beats,
             "npu_sota_dense_int8_peak_tops": sota_peak,
             "npu_sota_sparse_int4_projected_tops": sota_sparse,
             "npu_sota_min_observed_tops": sota_min_tops,
             "npu_sota_worst_process_corner_min_observed_tops": sota_worst_tops,
+            "npu_sota_dma_queue_depth": sota_queue_depth,
+            "npu_sota_total_descriptors_required": sota_total_descriptors,
+            "npu_sota_max_descriptor_queue_passes": sota_queue_passes,
+            "npu_sota_total_dma_beats": sota_dma_beats,
             "optimized_memory_sustained_gbps": memory_gbps,
             "robust_max_total_power_w": robust_power,
             "robust_max_die_temp_c": robust_temp,
@@ -238,6 +281,7 @@ def build_eval() -> dict[str, Any]:
             "dense_int8_sustained_tops_min": sustained_target,
             "sparse_int4_peak_tops_min": sparse_target,
             "external_memory_bandwidth_gbps_min": memory_target,
+            "command_queue_depth_min": queue_depth_target,
         },
         "checks": checks,
         "release_claim_forbidden_until": [
@@ -259,7 +303,7 @@ def validate_eval(data: dict[str, Any]) -> list[str]:
     if "not AOSP" not in str(data.get("claim_boundary", "")):
         errors.append("claim boundary must block AOSP evidence use")
     checks = data.get("checks")
-    if not isinstance(checks, list) or len(checks) < 9:
+    if not isinstance(checks, list) or len(checks) < 10:
         errors.append("checks must list the modeled CPU/NPU/memory/power evaluations")
         return errors
     by_id = {row.get("id"): row for row in checks if isinstance(row, dict)}
@@ -271,6 +315,7 @@ def validate_eval(data: dict[str, Any]) -> list[str]:
         "npu_sota_dense_peak_target_pass",
         "npu_sota_sparse_int4_target_pass",
         "npu_sota_sustained_model_gap",
+        "npu_sota_descriptor_queue_model_pass",
         "memory_model_target_pass",
         "robust_power_thermal_model_pass",
     }

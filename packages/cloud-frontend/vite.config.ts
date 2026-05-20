@@ -333,6 +333,14 @@ export default defineConfig(({ mode }) => {
           replacement: `${r("../cloud-shared/src")}/$1`,
         },
         {
+          find: /^@elizaos\/shared$/,
+          replacement: r("../shared/src/index.ts"),
+        },
+        {
+          find: /^@elizaos\/shared\/(.*)$/,
+          replacement: `${r("../shared/src")}/$1`,
+        },
+        {
           find: /^@\/lib\/hooks\/(.*)$/,
           replacement: `${r("./src/hooks")}/$1`,
         },
@@ -424,58 +432,44 @@ export default defineConfig(({ mode }) => {
       },
       rolldownOptions: {
         output: {
+          // Explicit code-splitting groups. With `groups: []` (the previous
+          // value) Rolldown auto-derives `vendor-wallet-*` chunks from the
+          // wagmi/viem/RainbowKit/WalletConnect graph and emits multiple
+          // cross-importing chunks. Under the wagmi 3.x layout that produced
+          // a circular import: the chunk holding `@wagmi/core` `connect` +
+          // `ConnectorUnavailableReconnectingError` ran a top-level
+          // `n()` against a binding imported from a sibling wallet chunk
+          // that wasn't initialized yet, throwing
+          // `TypeError: n is not a function` and killing hydration on every
+          // page that loads the wallet stack (/login, /bsc, dashboard).
+          //
+          // Each `test` below collapses one logical graph into a single
+          // chunk. Rolldown's `includeDependenciesRecursively` default
+          // (true) then pulls each module's deps in with it, so no
+          // sibling-chunk cycles can form. `priority` is set so the more
+          // specific groups (wallet stack, solana) match before the
+          // generic `vendor-core` fallback.
           codeSplitting: {
-            minSize: 20 * 1024,
             groups: [
               {
-                name: "vendor-react",
-                test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|use-sync-external-store)[\\/]/,
-                priority: 50,
-              },
-              {
-                // Wallet stack — modal UI + connector code. Loaded on demand
-                // when the user opens a wallet flow. Generic crypto/encoding
-                // primitives (@noble, @scure, bs58, base-x) and the Node
-                // Buffer polyfill are intentionally *not* grouped here so they
-                // fall into vendor-core — keeping them in vendor-wallet would
-                // force rolldown to label many shared modules as "wallet" and
-                // confuse the modulepreload hints emitted from index.html for
-                // non-wallet routes.
                 name: "vendor-wallet",
-                test: /node_modules[\\/](@rainbow-me|@solana|@walletconnect|@wagmi|wagmi)[\\/]/,
-                priority: 40,
-                maxSize: 450 * 1024,
-              },
-              {
-                // Chain hex/ABI codecs. These are imported by many non-wallet
-                // routes (anything that reads on-chain data or decodes ABI
-                // payloads), so they must NOT be tagged "vendor-wallet" — that
-                // would let the modulePreload filter strip them from the entry
-                // preload set even though hot paths depend on them. One stable
-                // shared chunk maximises HTTP-cache reuse across navigations,
-                // so we lift the maxSize ceiling here.
-                name: "vendor-chain-codec",
-                test: /node_modules[\\/](viem|ethers|ox|abitype)[\\/]/,
-                priority: 38,
-                maxSize: 900 * 1024,
-              },
-              {
-                name: "vendor-charts",
-                test: /node_modules[\\/](recharts|victory|d3-|d3|@visx)[\\/]/,
-                priority: 35,
-                maxSize: 450 * 1024,
-              },
-              {
-                name: "vendor-docs",
-                test: /node_modules[\\/](mermaid|highlight.js|react-syntax-highlighter|hast-|mdast-|micromark|unified|remark-|rehype-)[\\/]/,
+                test: /[\\/]node_modules[\\/](wagmi|@wagmi[\\/]|viem[\\/]|@rainbow-me[\\/]|@walletconnect[\\/]|@reown[\\/]|@coinbase[\\/]wallet|mipd|eventemitter3)([\\/]|$)/,
                 priority: 30,
-                maxSize: 450 * 1024,
+              },
+              {
+                name: "vendor-solana",
+                test: /[\\/]node_modules[\\/]@solana[\\/]/,
+                priority: 25,
+              },
+              {
+                name: "vendor-react",
+                test: /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|@tanstack[\\/]react-query|scheduler)[\\/]/,
+                priority: 20,
               },
               {
                 name: "vendor-core",
-                test: /node_modules[\\/]/,
+                test: /[\\/]node_modules[\\/]/,
                 priority: 10,
-                maxSize: 450 * 1024,
               },
             ],
           },

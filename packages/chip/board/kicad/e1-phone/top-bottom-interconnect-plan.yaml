@@ -1,0 +1,131 @@
+schema: eliza.e1_phone_top_bottom_interconnect_plan.v1
+status: blocked_interconnect_requires_connector_stackup_and_si
+date: 2026-05-20
+claim_boundary: >
+  Top/bottom island interconnect plan only. This maps the buses that must cross
+  the selected split-board topology and identifies candidate connector families.
+  It is not a routed rigid-flex, FPC fabrication drawing, USB SI result,
+  assembly signoff, or proof that the selected battery fits the current PCB.
+
+source_artifacts:
+  - board/kicad/e1-phone/board-topology-decision.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - package/interconnect/e1-phone-top-bottom-flex.yaml
+  - package/usb-c/e1-phone-usb-c-port.yaml
+  - package/audio/v0-codec.yaml
+
+selected_topology: top_bottom_rigid_islands_with_flex_or_board_to_board
+preferred_interconnect_family: Hirose_BM28
+fallback_interconnect_families: [Hirose_FH58_signal_flex_plus_power_tabs, Molex_SlimStack_two_board_stack]
+
+island_partition:
+  top_logic_rf_island:
+    keep_on_top:
+      - U_SOC
+      - U_LPDDR_UFS
+      - U_PMIC
+      - U_CHARGER
+      - U_USB_PD
+      - U_CELL
+      - U_WIFI_BT
+      - U_SIM_ESIM
+      - U_NFC_SENSOR
+      - J_DISPLAY_TOUCH
+      - J_CAM0
+      - J_CAM1
+    rationale: keep memory, MIPI, PCIe, RF, PMIC, charger, and display/camera on one rigid controlled-impedance island.
+  bottom_io_audio_island:
+    move_or_keep_bottom:
+      - J_USB_C
+      - U_AUDIO_HAPTIC
+      - bottom_speaker_module
+      - bottom_microphones
+      - haptic_driver_or_haptic_connector
+      - factory_test_pads
+    rationale: preserve bottom USB-C aperture, speaker chamber, microphones, haptic service, and factory access.
+  side_key_strategy:
+    implementation: side_key_flex_to_top_island_or_enclosure_mounted_switch_subassembly
+    rationale: side-key spine cannot remain in the full-width battery zone.
+
+cross_island_buses:
+  - name: USB2_FROM_BOTTOM_PORT_TO_TOP_SOC_PD
+    nets: [USB_DP, USB_DN, USB_CC1, USB_CC2, VBUS, SHIELD_GND, GND]
+    required_connector_policy:
+      - USB_DP_USB_DN_flanked_by_ground_or_return
+      - CC_ESD_and_VBUS_TVS_remain_near_bottom_USB_C
+      - VBUS_uses_power_contacts_or_parallel_pins
+    routing_constraint_refs: [USB_DP_DN]
+  - name: POWER_FROM_TOP_CHARGER_TO_BOTTOM_IO
+    nets: [SYS, AON_1V8, IO_1V8, VDD_AUDIO_3V3, VDD_AMP_3V3, GND]
+    required_connector_policy:
+      - interleave_power_and_ground
+      - allocate_current_per_contact_from_connector_datasheet
+      - add_bottom_island_bulk_and_local_decoupling
+    routing_constraint_refs: []
+  - name: AUDIO_DIGITAL_TO_BOTTOM_CODEC_MICS
+    nets: [I2S_BCLK, I2S_LRCLK, I2S_DOUT, I2S_DIN, PDM_CLK, PDM_DAT, AUDIO_I2C_SCL, AUDIO_I2C_SDA, CODEC_INT, AMP_INT]
+    required_connector_policy:
+      - group_audio_clocks_with_ground_returns
+      - keep_audio_bus_away_from_vbus_and_haptic_drive
+      - preserve_max_length_and_group_skew_from_routing_constraints
+    routing_constraint_refs: [AUDIO_I2S_PDM, AUDIO_I2C_IRQ]
+  - name: HAPTIC_AND_FACTORY_TEST
+    nets: [HAPTIC_OUT, VBUS, VBAT, SYS, AON_1V8, IO_1V8, RF_VBAT]
+    required_connector_policy:
+      - haptic_return_close_to_drive
+      - expose_vbus_vbat_sys_aon_io_rf_test_points_on_bottom_or_fixture_edge
+      - do_not_share_haptic_return_with_usb2_pair_return_without_si_review
+    routing_constraint_refs: []
+
+candidate_connector_stack:
+  primary:
+    family: Hirose_BM28
+    expected_role: one_or_two_hybrid_fpc_bridges_between_top_and_bottom_islands
+    why: 0.35 mm pitch, 0.6 mm stacking height, high-current contacts, and high-speed support fit phone-class split-board constraints.
+    unresolved:
+      - exact_circuit_count_and_power_contact_count
+      - mating_pair_orderable_part_numbers
+      - flex_width_and_stiffener_clearance_next_to_battery
+  signal_flex_alternate:
+    family: Hirose_FH58
+    expected_role: high-retention signal FPC with separate power contacts or tabs.
+    why: 0.2/0.25 mm pitch and 0.9 mm height are attractive for a narrow side flex if high current is moved elsewhere.
+    unresolved:
+      - separate_power_path
+      - USB2_impedance_coupon
+      - retention_under_drop_and_service
+  stacked_board_fallback:
+    family: Molex_SlimStack_ACB6_Plus_or_equivalent
+    expected_role: fallback if mechanical team chooses a stacked daughterboard instead of a long flex.
+    why: 0.35 mm pitch, low mated height, 10-60 circuits, and power-nail options are suitable for compact electronics.
+    unresolved:
+      - z_stack_margin_in_9p6mm_enclosure
+      - assembly_service_sequence
+      - drop_and_torsion_load_path
+
+minimum_pin_budget:
+  signal_or_power_nets_counted: 31
+  required_ground_or_return_pins_min: 12
+  required_spares_min: 6
+  recommended_contacts_min: 49
+  rationale: >
+    Counts named crossing nets plus extra returns around USB2/audio clocks,
+    parallel power/ground contacts, and EVT rework spares. Exact count must be
+    recomputed after connector family and bottom-island partition freeze.
+
+release_blockers:
+  - exact connector circuit count and orderable mating part numbers not selected
+  - flex stackup, bend radius, stiffener, and strain relief not drawn
+  - USB2 and audio SI across the flex not simulated or measured
+  - power contact current rise and return allocation not reviewed
+  - bottom island decoupling, ESD, and test fixture edge not implemented in KiCad
+  - assembly sequence for battery insertion and split-board connection not validated
+
+forbidden_claims:
+  - interconnect_ready
+  - split_board_routed
+  - rigid_flex_ready
+  - usb_si_closed
+  - bottom_island_ready
+  - enclosure_ready

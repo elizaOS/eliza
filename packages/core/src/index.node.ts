@@ -25,6 +25,7 @@ export * from "./connection";
 export * from "./connectors";
 export * from "./connectors/account-manager";
 export * from "./connectors/connector-config";
+export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
 // Export additional constants not re-exported by character-utils
 export {
@@ -262,6 +263,7 @@ export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
 export * from "./services/relationships-graph-builder";
+export * from "./services/runtime-capability-service";
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,

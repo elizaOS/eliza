@@ -15,7 +15,6 @@ import { PluginManagerServiceType } from "./types.ts";
 // Actions
 export {
 	createPluginAction,
-	type PluginMode,
 	type PluginSubaction,
 	pluginAction,
 } from "./actions/plugin.ts";

@@ -1,13 +1,13 @@
 import {
   Archive,
   Brain,
-  Carrot,
   KeyRound,
   LayoutGrid,
   Lock,
   type LucideIcon,
   Mic,
   Palette,
+  Puzzle,
   RefreshCw,
   Server,
   Shield,
@@ -24,11 +24,11 @@ import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
 import { AppPermissionsSection } from "./AppPermissionsSection";
 import { AppsManagementSection } from "./AppsManagementSection";
 import { CapabilitiesSection } from "./CapabilitiesSection";
-import { CarrotManagerSection } from "./CarrotManagerSection";
 import { ConnectorsSection } from "./ConnectorsSection";
 import { IdentitySettingsSection } from "./IdentitySettingsSection";
 import { PermissionsSection } from "./PermissionsSection";
 import { ProviderSwitcher } from "./ProviderSwitcher";
+import { RemotePluginHostSection } from "./RemotePluginHostSection";
 import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
 import { SecretsManagerSection } from "./SecretsManagerSection";
 import { SecuritySettingsSection } from "./SecuritySettingsSection";
@@ -134,14 +134,14 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     Component: AppsManagementSection,
   },
   {
-    id: "carrots",
-    label: "settings.sections.carrots.label",
-    defaultLabel: "Carrots",
-    icon: Carrot,
+    id: "remote-plugins",
+    label: "settings.sections.remote-plugins.label",
+    defaultLabel: "Remote Plugins",
+    icon: Puzzle,
     tone: "accent",
-    titleKey: "settings.sections.carrots.label",
-    defaultTitle: "Carrots",
-    Component: CarrotManagerSection,
+    titleKey: "settings.sections.remote-plugins.label",
+    defaultTitle: "Remote Plugins",
+    Component: RemotePluginHostSection,
   },
   {
     id: "connectors",

@@ -19,6 +19,11 @@ export type {
   WriteRequest,
 } from "./types";
 export { WindowsUsbInstallerBackend } from "./windows-backend";
+export {
+  assertDriveMatchesExpected,
+  assertWritePlanAllowed,
+  hasTrustedChecksum,
+} from "./write-safety";
 
 import { DryRunUsbInstallerBackend } from "./dry-run-backend";
 import { LinuxUsbInstallerBackend } from "./linux-backend";

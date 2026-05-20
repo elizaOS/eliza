@@ -24,7 +24,6 @@ const WALLET_ROUTE_PATTERNS = [
   "/dashboard/affiliates/*",
   "/checkout",
   "/checkout/*",
-  "/bsc",
   "/payment/:paymentRequestId",
 ];
 
@@ -34,6 +33,9 @@ const LazyStewardWalletProviders = lazy(async () => {
 });
 
 function isWalletRoute(pathname: string): boolean {
+  if (pathname === "/payment/success") {
+    return false;
+  }
   return WALLET_ROUTE_PATTERNS.some((pattern) =>
     matchPath({ path: pattern, end: !pattern.endsWith("*") }, pathname),
   );

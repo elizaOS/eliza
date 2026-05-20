@@ -272,6 +272,6 @@ Each account inherits the base config and can override any field.
 
 ## Related
 
-- [Discord plugin reference](/plugin-registry/platform/discord)
+- [Discord plugin reference](/connectors/discord)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

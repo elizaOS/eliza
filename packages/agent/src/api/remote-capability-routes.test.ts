@@ -305,6 +305,15 @@ describe("handleRemoteCapabilityRoutes", () => {
         },
         requestTimeoutMs: 15_000,
         allowedModuleIds: ["remote-plugin"],
+        trustPolicy: {
+          allowedProvenanceIssuers: ["eliza-cloud-build"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build":
+              "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+          },
+          requireVerifiedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
       },
       { connectEndpointProvider },
     );
@@ -337,6 +346,16 @@ describe("handleRemoteCapabilityRoutes", () => {
       unloadMissing: true,
       requestTimeoutMs: 15_000,
       allowedModuleIds: ["remote-plugin"],
+      trustPolicy: {
+        allowedProvenanceIssuers: ["eliza-cloud-build"],
+        trustedProvenancePublicKeys: {
+          "eliza-cloud-build":
+            "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+        },
+        requireSignedProvenance: true,
+        requireVerifiedProvenance: true,
+        requireProvenanceDigestMatch: true,
+      },
     });
     expect(error).not.toHaveBeenCalled();
     expect(json).toHaveBeenCalledWith(ctx.res, {
@@ -395,6 +414,35 @@ describe("handleRemoteCapabilityRoutes", () => {
     );
     expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toBe(
       JSON.stringify({ tools: ["remote-plugin"] }),
+    );
+    expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY).toBe(
+      JSON.stringify({
+        tools: {
+          allowedProvenanceIssuers: ["eliza-cloud-build"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build":
+              "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+          },
+          requireSignedProvenance: true,
+          requireVerifiedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
+      }),
+    );
+    expect(ctx.persistConfigEnv).toHaveBeenCalledWith(
+      "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+      JSON.stringify({
+        tools: {
+          allowedProvenanceIssuers: ["eliza-cloud-build"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build":
+              "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+          },
+          requireSignedProvenance: true,
+          requireVerifiedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
+      }),
     );
   });
 
@@ -1074,6 +1122,59 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(error).toHaveBeenCalledWith(
       ctx.res,
       "Cloud requests must set allowedModuleIds either at the top level or inside 'cloud', not both.",
+      400,
+    );
+    expect(connectCloudSandbox).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed endpoint trust policy input", async () => {
+    const connectEndpointProvider = vi.fn();
+    const { ctx, error, json } = makeCtx(
+      {
+        endpoint: { baseUrl: "https://capability.example.test" },
+        trustPolicy: {
+          requireVerifiedProvenance: "yes",
+        },
+      },
+      { connectEndpointProvider },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "trustPolicy.requireVerifiedProvenance must be a boolean.",
+      400,
+    );
+    expect(connectEndpointProvider).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects cloud requests with duplicate trust policy sources", async () => {
+    const connectCloudSandbox = vi.fn();
+    const { ctx, error, json } = makeCtx(
+      {
+        trustPolicy: {
+          allowedProvenanceIssuers: ["top-level-build"],
+        },
+        cloud: {
+          cloudApiBase: "https://api.elizacloud.ai",
+          authToken: "cloud-auth",
+          name: "Cloud Tools",
+          trustPolicy: {
+            allowedProvenanceIssuers: ["nested-build"],
+          },
+        },
+      },
+      { connectCloudSandbox },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "Cloud requests must set trustPolicy either at the top level or inside 'cloud', not both.",
       400,
     );
     expect(connectCloudSandbox).not.toHaveBeenCalled();

@@ -1,0 +1,96 @@
+{
+  "host": "192.168.1.218:9090",
+  "probe_angles_rel_home": [
+    -0.4,
+    -0.2,
+    0.0,
+    0.2,
+    0.4
+  ],
+  "fits": {
+    "head_pan": {
+      "name": "head_pan",
+      "strength": 0.9885699999999997,
+      "offset": -0.006687999999999991,
+      "rmse": 0.0038763725311172018,
+      "n_samples": 5
+    },
+    "head_tilt": {
+      "name": "head_tilt",
+      "strength": 0.9404999999999998,
+      "offset": -0.01253999999999999,
+      "rmse": 0.009531866553828794,
+      "n_samples": 5
+    },
+    "r_sho_pitch": {
+      "name": "r_sho_pitch",
+      "strength": 1.0052900000000002,
+      "offset": -0.010032000000000004,
+      "rmse": 0.005639128301430983,
+      "n_samples": 5
+    },
+    "r_sho_roll": {
+      "name": "r_sho_roll",
+      "strength": 0.8694399999999999,
+      "offset": 0.13951167999999986,
+      "rmse": 0.020579868221152327,
+      "n_samples": 5
+    },
+    "r_el_pitch": {
+      "name": "r_el_pitch",
+      "strength": 0.6479,
+      "offset": -0.09614,
+      "rmse": 0.01495482263351859,
+      "n_samples": 5
+    },
+    "r_el_yaw": {
+      "name": "r_el_yaw",
+      "strength": -1.1049239225901211e-15,
+      "offset": 1.864280000000001,
+      "rmse": 3.8459253727671276e-16,
+      "n_samples": 5
+    },
+    "r_gripper": {
+      "name": "r_gripper",
+      "strength": 0.9885699999999997,
+      "offset": -0.005851999999999991,
+      "rmse": 0.0038763725311172013,
+      "n_samples": 5
+    },
+    "l_sho_pitch": {
+      "name": "l_sho_pitch",
+      "strength": 0.9969300000000001,
+      "offset": -0.004179999999999996,
+      "rmse": 0.004221593064235339,
+      "n_samples": 5
+    },
+    "l_sho_roll": {
+      "name": "l_sho_roll",
+      "strength": 0.9990200000000004,
+      "offset": -0.01372293999999988,
+      "rmse": 0.0016719999999999847,
+      "n_samples": 5
+    },
+    "l_el_pitch": {
+      "name": "l_el_pitch",
+      "strength": -4.3885418357208765e-17,
+      "offset": 0.14629999999999996,
+      "rmse": 3.284083995358298e-17,
+      "n_samples": 5
+    },
+    "l_el_yaw": {
+      "name": "l_el_yaw",
+      "strength": 0.9990199999999995,
+      "offset": -0.007465480000000425,
+      "rmse": 0.0011822825381438652,
+      "n_samples": 5
+    },
+    "l_gripper": {
+      "name": "l_gripper",
+      "strength": 0.9760300000000001,
+      "offset": -0.008360000000000006,
+      "rmse": 0.0042215930642353315,
+      "n_samples": 5
+    }
+  }
+}

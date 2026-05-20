@@ -4,8 +4,10 @@ import { Check, ChevronDown, ChevronUp, Copy, Terminal } from "lucide-react";
 import { useState } from "react";
 import { useCopyFeedback } from "@/hooks/use-copy-feedback";
 import { cn } from "@/lib/utils";
+import { useT } from "@/providers/I18nProvider";
 
 export function DeployFromCLI() {
+  const t = useT();
   const [isExpanded, setIsExpanded] = useState(false);
   const { copied, markCopied } = useCopyFeedback();
 
@@ -26,9 +28,16 @@ export function DeployFromCLI() {
         <div className="flex min-w-0 items-start gap-3 sm:items-center">
           <Terminal className="h-5 w-5 shrink-0 text-[#FF5800]" />
           <div className="min-w-0">
-            <p className="text-sm font-medium text-white">Deploy from CLI</p>
+            <p className="text-sm font-medium text-white">
+              {t("cloud.containers.deployCli.title", {
+                defaultValue: "Deploy from CLI",
+              })}
+            </p>
             <p className="text-xs text-neutral-500">
-              Deploy additional elizaOS projects using the command line
+              {t("cloud.containers.deployCli.desc", {
+                defaultValue:
+                  "Deploy additional elizaOS projects using the command line",
+              })}
             </p>
           </div>
         </div>
@@ -64,7 +73,10 @@ export function DeployFromCLI() {
             </button>
           </div>
           <p className="text-xs text-neutral-500 mt-2">
-            Run this command from your elizaOS project directory
+            {t("cloud.containers.deployCli.hint", {
+              defaultValue:
+                "Run this command from your elizaOS project directory",
+            })}
           </p>
         </div>
       </div>

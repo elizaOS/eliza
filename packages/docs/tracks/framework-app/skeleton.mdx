@@ -1,0 +1,51 @@
+---
+title: Skeleton
+description: "The minimum app that drives @elizaos/core."
+---
+
+```ts
+// src/index.ts
+import { AgentRuntime, type Character } from '@elizaos/core';
+import sql from '@elizaos/plugin-sql';
+import anthropic from '@elizaos/plugin-anthropic';
+
+const character: Character = {
+  name: 'Eliza',
+  bio: 'A focused single-task agent.',
+  plugins: [],
+};
+
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sql, anthropic],
+});
+
+await runtime.initialize();
+
+// Drive the runtime however your app wants.
+const response = await runtime.useModel('TEXT_LARGE', {
+  prompt: 'Hello, world.',
+});
+
+console.log(response);
+
+await runtime.stop();
+```
+
+## Boot once, drive many
+
+For long-lived apps, initialize the runtime at startup and route every request through `runtime.messageManager.handleMessage(...)` (chat-style) or `runtime.useModel(...)` (one-shot). Don't construct a new runtime per request — boot is expensive.
+
+## Per-request lifecycles
+
+For serverless, treat the runtime as a singleton across warm invocations. Cold starts pay the boot cost; use a remote database adapter (Postgres) so state isn't lost between cold starts.
+
+## Configuration
+
+The runtime reads from `process.env` directly. Set model provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) and any plugin-specific variables in your deploy environment. See [Configuration](/configuration) for the full list.
+
+## See also
+
+- [Extend](/tracks/framework-app/extend)
+- [Beginners development guide](/guides/beginners-development-guide)
+- [Examples](https://github.com/elizaOS/eliza/tree/develop/packages/examples)

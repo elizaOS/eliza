@@ -1,4 +1,4 @@
-import { ErrorBoundary } from "@elizaos/ui";
+import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
 import { VoicePill } from "@elizaos/ui/components/voice-pill";
 import "@elizaos/ui/styles";
 
@@ -28,6 +28,17 @@ import type {
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/shared";
 import { getStylePresets } from "@elizaos/shared";
+import { App } from "@elizaos/ui/App";
+import { client } from "@elizaos/ui/api";
+import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
+import {
+  isElectrobunRuntime,
+  subscribeDesktopBridgeEvent,
+} from "@elizaos/ui/bridge";
+import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
+import { initializeStorageBridge } from "@elizaos/ui/bridge/storage-bridge";
+import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
+import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
@@ -41,58 +52,62 @@ import type {
   StewardTransactionHistoryProps,
   VincentStateHookArgs,
   VincentStateHookResult,
-} from "@elizaos/ui";
+} from "@elizaos/ui/config";
+import {
+  type AppBootConfig,
+  getBootConfig,
+  setBootConfig,
+  shouldUseCloudOnlyBranding,
+} from "@elizaos/ui/config";
 import {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
-  App,
-  type AppBootConfig,
-  AppProvider,
-  AppWindowRenderer,
-  applyForceFreshOnboardingReset,
-  applyLaunchConnection,
-  applyLaunchConnectionFromUrl,
-  applyUiTheme,
-  CharacterEditor,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
-  client,
   dispatchAppEvent,
-  ELIZA_DEFAULT_THEME,
-  getBootConfig,
-  getWindowNavigationPath,
-  IOS_LOCAL_AGENT_IPC_BASE,
-  initializeCapacitorBridge,
-  initializeStorageBridge,
-  installAndroidNativeAgentFetchBridge,
-  installDesktopPermissionsClientPatch,
-  installForceFreshOnboardingClientPatch,
-  installLocalProviderCloudPreferencePatch,
-  isAppWindowRoute,
-  isDetachedWindowShell,
-  isElectrobunRuntime,
-  isElizaOS,
-  loadUiTheme,
-  MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-  MOBILE_RUNTIME_MODE_STORAGE_KEY,
   NETWORK_STATUS_CHANGE_EVENT,
   type NetworkStatusChangeDetail,
-  normalizeMobileRuntimeMode,
-  preSeedAndroidLocalRuntimeIfFresh,
-  resolveWindowShellRoute,
-  routeOnboardingDeepLink,
   SHARE_TARGET_EVENT,
-  type ShareTargetPayload,
-  setBootConfig,
-  shouldInstallMainWindowOnboardingPatches,
-  shouldUseCloudOnlyBranding,
-  subscribeDesktopBridgeEvent,
-  syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
-} from "@elizaos/ui";
-import React, { type ComponentType, lazy, StrictMode, Suspense } from "react";
+} from "@elizaos/ui/events";
+import {
+  getWindowNavigationPath,
+  isAppWindowRoute,
+} from "@elizaos/ui/navigation/index";
+import { routeOnboardingDeepLink } from "@elizaos/ui/onboarding/deep-link-handler";
+import {
+  IOS_LOCAL_AGENT_IPC_BASE,
+  MOBILE_LOCAL_AGENT_API_BASE,
+  MOBILE_RUNTIME_MODE_STORAGE_KEY,
+  normalizeMobileRuntimeMode,
+} from "@elizaos/ui/onboarding/mobile-runtime-mode";
+import { preSeedAndroidLocalRuntimeIfFresh } from "@elizaos/ui/onboarding/pre-seed-local-runtime";
+import type { ShareTargetPayload } from "@elizaos/ui/platform";
+import {
+  applyLaunchConnection,
+  applyLaunchConnectionFromUrl,
+} from "@elizaos/ui/platform/browser-launch";
+import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
+import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
+import { isElizaOS } from "@elizaos/ui/platform/init";
+import {
+  applyForceFreshOnboardingReset,
+  installForceFreshOnboardingClientPatch,
+} from "@elizaos/ui/platform/onboarding-reset";
+import {
+  isDetachedWindowShell,
+  resolveWindowShellRoute,
+  shouldInstallMainWindowOnboardingPatches,
+  syncDetachedShellLocation,
+} from "@elizaos/ui/platform/window-shell";
+import { AppProvider } from "@elizaos/ui/state";
+import { applyUiTheme, loadUiTheme } from "@elizaos/ui/state/persistence";
+import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
+// biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
+import * as React from "react";
+import { type ComponentType, lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import {
   APP_BRANDING_BASE,
@@ -521,6 +536,7 @@ function initializeAppModules(): Promise<void> {
     );
 
     companionModule.registerCompanionApp();
+    lifeOpsModule.registerLifeOpsApp();
     loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
     loadedVincentStateHook = vincentModule.useVincentState;
     dispatchQueuedLifeOpsGithubCallback =
@@ -1635,7 +1651,7 @@ async function initializeDesktopShell(): Promise<void> {
   subscribeDesktopBridgeEvent({
     rpcMessage: "desktopShortcutPressed",
     ipcChannel: "desktop:shortcutPressed",
-    listener: (payload) => {
+    listener: (payload: unknown) => {
       const id = (payload as { id?: string } | null | undefined)?.id;
       if (id === "command-palette") {
         dispatchAppEvent(COMMAND_PALETTE_EVENT);
@@ -1657,7 +1673,7 @@ async function initializeDesktopShell(): Promise<void> {
   subscribeDesktopBridgeEvent({
     rpcMessage: "shareTargetReceived",
     ipcChannel: "desktop:shareTargetReceived",
-    listener: (payload) => {
+    listener: (payload: unknown) => {
       const url = (payload as { url?: string } | null | undefined)?.url;
       if (typeof url !== "string" || url.trim().length === 0) {
         return;

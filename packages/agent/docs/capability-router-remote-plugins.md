@@ -142,6 +142,13 @@ The standard methods currently implemented in core are:
       "id": "device-tools",
       "name": "@remote/device-tools",
       "version": "1.0.0",
+      "provenance": {
+        "issuer": "eliza-cloud-build",
+        "subject": "cloud://agents/example/modules/device-tools",
+        "digestSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "signatureAlgorithm": "ed25519",
+        "signature": "base64-signature"
+      },
       "description": "Device-backed tools",
       "config": {
         "DEVICE_MODE": "production",
@@ -297,15 +304,25 @@ The standard methods currently implemented in core are:
 ```
 
 The manifest is structural. Runtime behavior must not depend on prompt text.
-`module.id` is the remote routing key; `module.name` is the local plugin name
-registered into the runtime lifecycle.
+`module.id` is the remote routing key and must use only letters, numbers,
+dots, underscores, or hyphens. Colons are reserved for the live/conformance
+`moduleId:target` notation, and path/query separators are not valid module
+identity. `module.name` is the local plugin name registered into the runtime
+lifecycle.
 
 Manifest decoding is strict at the capability-router boundary:
 
-- `module.id`, `module.name`, action `name`, action `description`, provider
-  `name`, evaluator `name`, evaluator `description`, evaluator `prompt`, model
-  `modelType`, widget `id`, widget `label`, route `path`, view `id`, and view
-  `label` must be non-empty strings.
+- `module.id` must be a valid remote module identifier. `module.name`, action
+  `name`, action `description`, provider `name`, evaluator `name`, evaluator
+  `description`, evaluator `prompt`, model `modelType`, widget `id`, widget
+  `label`, route `path`, view `id`, and view `label` must be non-empty
+  strings.
+- `provenance`, when present, must include non-empty `issuer`, `subject`,
+  `signatureAlgorithm`, and `signature` strings plus a 64-character SHA-256
+  hex `digestSha256`. The digest is normalized to lowercase. This metadata is
+  available to local trust policy before registration, and the adapter can
+  verify Ed25519 provenance signatures and require the digest to match the
+  module manifest contents when a policy supplies trusted issuer public keys.
 - Route `method` must be one of `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, or
   `STATIC`. The remote plugin adapter currently rejects remote `STATIC` routes
   because local route dispatch skips static routes and there is no remote static
@@ -522,15 +539,35 @@ an optional `trustPolicy` on `registerRemoteCapabilityPlugins`,
 - `allowedEndpointIds` rejects modules whose `capabilityEndpointId` is missing
   or not in the allowlist.
 - `allowedModuleIds` rejects modules whose `module.id` is not in the allowlist.
+- `allowedProvenanceIssuers` rejects modules whose signed provenance issuer is
+  missing or not in the allowlist.
 - `requireEndpointId` rejects modules without endpoint provenance.
+- `requireSignedProvenance` rejects modules without the manifest `provenance`
+  block.
+- `requireVerifiedProvenance` verifies the manifest provenance signature with a
+  PEM SPKI public key from `trustedProvenancePublicKeys[issuer]`. The supported
+  signature algorithm is `ed25519`, the manifest `signature` is base64, and the
+  canonical signed payload is:
+
+```text
+issuer:<issuer>
+subject:<subject>
+digestSha256:<lowercase digest>
+```
+- `requireProvenanceDigestMatch` hashes a canonical JSON copy of the module
+  manifest, excluding `capabilityEndpointId` and `provenance`, and rejects the
+  module when that SHA-256 digest does not match the signed
+  `provenance.digestSha256`.
 
 This gives product flows a concrete allow/deny boundary before remote modules
 become normal runtime plugins. `syncRemoteCapabilityPlugins` and
 `bootstrapRemoteCapabilityPlugins` return `trustDecisions` for accepted modules,
 and trust-policy rejections include the rejected decision in the structured
-`CapabilityError.details`. The policy is local to registration; stronger
-attestation, signatures, and durable operator audit records still belong in the
-provider/product layer.
+`CapabilityError.details`. The policy is local to registration and can require
+typed signed-provenance metadata from approved issuers, including Ed25519
+signature verification with product-provided trusted public keys and digest
+binding to the module manifest contents. Endpoint attestation still belongs in
+the provider/product layer.
 
 Product connection flows use this policy by default. Direct endpoint connect
 and cloud sandbox provisioning install one endpoint, then sync with
@@ -539,15 +576,32 @@ modules stamped by the installed endpoint can enter the runtime. Connect
 requests may also provide `allowedModuleIds` to pin the exact remote modules
 that are allowed to register from that endpoint; the CLI exposes this as
 `elizaos capability-router connect --allowed-module <module-id...>`.
+Product requests may also provide a `trustPolicy` with
+`allowedProvenanceIssuers`, `trustedProvenancePublicKeys`,
+`requireSignedProvenance`, `requireVerifiedProvenance`, and
+`requireProvenanceDigestMatch`, which is merged with the endpoint allowlist
+before plugin sync.
+Endpoint-provider connects apply module allowlists before sync, so a shared
+remote endpoint can expose multiple modules while the agent materializes only
+the trusted subset and records non-allowlisted plugin names in `sync.skipped`.
+The lower-level sync/register APIs remain strict and raise a structured trust
+error when asked to register a non-allowlisted module directly.
 Cloud connect requests accept module allowlists either at the top level or
 inside the `cloud` object. Supplying both is rejected so a trust policy cannot
 silently prefer one source over another.
 When endpoint connection is persisted, the redacted local config also stores
 module allowlists in `ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES` as a JSON object
-keyed by endpoint id. On restart, `bootstrapRemoteCapabilityPlugins` derives a
-trust policy from configured endpoint ids and these saved module allowlists, so
-restart sync does not broaden trust beyond the original connected endpoint or
-operator-selected modules.
+keyed by endpoint id and provenance trust requirements in
+`ELIZA_CAPABILITY_ROUTER_TRUST_POLICY`, also keyed by endpoint id. On restart,
+`bootstrapRemoteCapabilityPlugins` derives a trust policy from configured
+endpoint ids, saved module allowlists, and saved provenance trust policy, so
+restart sync does not broaden trust beyond the original connected endpoint,
+operator-selected modules, or operator-selected provenance requirements.
+Persisted endpoint connects also write a redacted
+`ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT` config record containing the connect mode,
+provider id, redacted endpoint metadata, module allowlist, registered/skipped/
+unloaded plugin names, and trust decisions, so operator review does not depend
+on the transient HTTP response.
 
 ## Why Not "Satellite" As The Abstraction
 
@@ -852,7 +906,7 @@ Current focused tests cover:
 - CLI endpoint conformance checks for arbitrary capability-router URLs,
   including bearer auth, action/provider/evaluator/response-handler
   evaluator/response-handler field evaluator/route/model/lifecycle/event/service
-  /app bridge/view-asset exercise, route status validation, and
+  /app bridge/view-asset exercise, route status and non-empty body validation, and
   required-surface validation,
 - duplicate module ID rejection,
 - real localhost HTTP capability-server integration,
@@ -938,11 +992,31 @@ The GitHub `Tests` workflow now runs `bun run test:remote-capabilities`,
 `bun run test:remote-capabilities:naming-audit`,
 `bun run test:remote-capabilities:source-build`,
 `bun run test:remote-capabilities:fixture-server`, and
-`bun run test:remote-capabilities:validate-live-reports:self-test`, and
+`bun run test:remote-capabilities:validate-live-reports:self-test`,
+`bun run test:remote-capabilities:github-live-evidence:self-test`, and
 `bun run test:remote-capabilities:docker` in the server job for pull requests
-and pushes. The validator self-test generates complete and partial live report
-fixtures so the artifact validator is itself covered without external
-credentials. The source-build smoke builds a temporary remote plugin source tree
+and pushes. The live Cloud/provider artifact smokes are observed only on
+`workflow_dispatch` and `schedule`, where the final `test-status` gate treats
+the live jobs as strict. Use
+`gh run view <run-id> --json databaseId,event,status,conclusion,jobs | bun run
+test:remote-capabilities:github-live-evidence -` to prove a scheduled/manual
+run actually observed Cloud and provider live smoke, validation, and artifact
+upload steps. Use
+`bun run test:remote-capabilities:github-live-artifacts <run-id>` for the
+stronger proof: it validates the run metadata, downloads
+`remote-capability-cloud-live-report` and
+`remote-capability-provider-live-report`, then validates the downloaded report
+contents with the Cloud and provider artifact validators. Push runs
+intentionally fail that evidence validator unless
+`--allow-unobserved` is passed, because skipped-success live jobs are not live
+artifact evidence. Provider live reports must include `providerEvidence`
+showing the provider family, canonical endpoint runtime (`e2b-sandbox`,
+`home-machine`, `mobile-companion`, or `desktop-companion`), `github-actions`
+as the observing agent runtime, and the `url-backed-provider` adapter path.
+The validator self-tests generate complete and partial live report fixtures and
+mocked GitHub artifact downloads so the live report validators and GitHub
+artifact validator are covered without external credentials. The
+source-build smoke builds a temporary remote plugin source tree
 and consumes it only through the capability protocol, then repeats the same
 runtime path across a child-process endpoint. The fixture-server smoke builds a
 temporary remote view bundle, starts the runnable reference endpoint with that
@@ -982,20 +1056,45 @@ report-level endpoint id to match the conformance endpoint id, requires
 `cloud.json` for Cloud and `<provider>.json` for provider reports, and rejects
 stale or future-dated observations, missing malformed, or mismatched GitHub run
 metadata, duplicate endpoint ids, duplicate provider reports, malformed endpoint
-ids, non-lowercase provider names, invalid Cloud API base URLs, Cloud API base
-URLs with query or fragment components, non-2xx route results, non-JavaScript
-view asset paths/content types, missing or malformed view asset SHA-256 digests,
-and credential-shaped field names or string values such as tokens,
+ids, non-lowercase provider names, missing or mismatched provider IDs, invalid
+Cloud API base URLs, Cloud API base URLs with query or fragment components,
+cloud artifacts with provider-only fields, provider artifacts with cloud-only fields,
+non-2xx route results, route results without a non-empty observable body payload,
+non-JavaScript view asset paths/content types, missing, malformed, or
+empty-content view asset SHA-256 digests, missing model results, failed
+lifecycle calls, unhandled event calls, asset integrity values that do not match
+the recorded asset digest, empty action/provider/evaluator/response handler
+outputs, missing service/app-bridge results, and credential-shaped field
+names or string values such as tokens,
 authorization headers, API keys, passwords, secrets, bearer/basic auth values,
 and URLs with embedded credentials anywhere in the artifact. Every exercised RPC
 target must also start with one of the module ids observed in the live manifest,
 and that same module id must also appear in the trusted registered module set.
 Every registered module id must be exercised by at least one conformance RPC
-target recorded in `conformance.moduleExercises`.
+target recorded in `conformance.moduleExercises`. The conformance harness keeps
+the required surface summary in `conformance.exercised`, then performs
+additional cheap RPC calls for untouched modules so multi-module endpoints still
+produce per-module exercise evidence without overwriting the summary target.
+The harness fails at observation time when action, provider, evaluator,
+response-handler evaluator, response-handler field evaluator, service, or app
+bridge calls return empty success-shaped payloads, and when lifecycle or event
+calls do not report success.
+When a view asset includes subresource integrity metadata, the harness verifies
+that value against the fetched bundle bytes before recording the observation.
+The live report writer rejects unknown report kinds before writing, only accepts
+lowercase hyphenated report names, enforces `cloud.json` for Cloud and
+`<provider>.json` for provider reports, requires provider report `providerId`
+to match `provider`, rejects provider-only fields on Cloud artifacts and
+cloud-only fields on provider artifacts, and writes with exclusive create so a
+second artifact cannot overwrite the first observation.
 `sync.registered` and `sync.registeredModules` must not contain duplicate
 materialized plugin/module identities, and every registered module must have a
 unique trusted `sync.trustDecisions` entry, so full-surface evidence is tied
-back to unique endpoint modules that actually materialized locally.
+back to unique endpoint modules that actually materialized locally. Individual
+modules may be partial plugins; the validator requires each registered module to
+materialize at least one remote plugin surface and requires the aggregate
+registered module counts to cover every required surface, including remote event
+handlers through `eventCount` and remote app metadata through `appCount`.
 `sync.skipped` and `sync.unloaded` must be unique plugin-name lists and cannot
 contradict `sync.registered` or each other. The report is written only after
 remote modules sync into the runtime and includes
@@ -1041,8 +1140,9 @@ remote plugin surface to be present in each configured provider observation,
 requiring E2B/home/mobile provider reports, and rejecting inconsistent endpoint
 ids, malformed provider labels, leaked credential-shaped fields, or exercised
 targets that do not belong to an observed module. Provider reports also include
-the sync summary, registered remote module identities, and runtime
-materialization counts from the agent that connected to the endpoint.
+the provider ID returned by the endpoint provider, the sync summary, registered
+remote module identities, and runtime materialization counts from the agent that
+connected to the endpoint.
 If provider endpoint secrets exist but the workflow event is not
 `workflow_dispatch` or `schedule`, the job writes an explicit notice and step
 summary saying the provider live smoke was not observed for that run.
@@ -1116,11 +1216,13 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
   building a temporary remote view bundle, starting the reference endpoint,
   running CLI conformance against it with bearer auth, importing the returned
   bundle as JavaScript, and tearing it down.
-- `bun run --cwd packages/agent test:remote-capabilities` passed with 158
-  tests passing and 1 skipped after adding registered-remote component
-  ownership checks, cross-module/local model collision checks, and stale
-  contribution cleanup coverage for disappearing remote modules, plus runtime
-  app route-module collision protection for remote app bridges.
+- `bun run --cwd packages/agent test:remote-capabilities` passed with 188
+  tests passing and 3 skipped. The canonical suite covers registered-remote
+  component ownership checks, cross-module/local model collision checks, stale
+  contribution cleanup coverage for disappearing remote modules, runtime app
+  route-module collision protection for remote app bridges, and live report
+  writer safety for report names, identity, duplicate artifacts, and weak
+  conformance result rejection.
 - `bun run --cwd packages/agent test:remote-capabilities:source-build` passed
   with 2 focused tests passing and 35 adapter tests skipped by name filter.
 - `bun run --cwd packages/agent test:remote-capabilities:provider-live` found
@@ -1137,11 +1239,16 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
   invalid Cloud API base URLs, Cloud API base URLs with query or fragment
   components, provider report filename/provider mismatches, failed route
   responses, non-JavaScript view assets, missing or malformed view asset SHA-256
-  digests, wrong artifact report counts, stale or future-dated observations,
-  missing, malformed, or mismatched CI run metadata, duplicate artifact
-  endpoint/provider identities, accidental credential-shaped fields and string
-  values, unknown provider-family reports, missing required provider-family
-  observations, exercised RPC targets without `moduleId:target` syntax,
+  digests, wrong artifact report counts, stale, future-dated, or malformed
+  observations, Cloud/provider reports with valid CI metadata, Cloud/provider
+  GitHub-env match and mismatch checks, missing, malformed, mismatched, or
+  non-observed-event CI run metadata, missing required GitHub environment variables under
+  `--match-github-env`, duplicate artifact endpoint/provider identities,
+  missing, malformed, or duplicate provider endpoint URL fingerprints, accidental
+  credential-shaped fields and string values, valid required-only and
+  required-plus-desktop provider report sets, unknown provider-family reports,
+  missing required provider-family observations, malformed remote module ids,
+  exercised RPC targets without `moduleId:target` syntax,
   exercised RPC targets that reference unobserved module ids, exercised RPC
   targets from manifest-only modules that did not register locally, registered
   modules that were never exercised by conformance RPC, duplicate
@@ -1181,6 +1288,111 @@ packages/agent/src/services/remote-capability-cloud-sandbox.test.ts
 packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 --coverage.enabled=false` passed with 5 tests passing and 1 skipped after
   moving Cloud live validation onto the reusable endpoint conformance harness.
+- `bun run test:remote-capabilities:live-ci-audit` passes and statically
+  enforces that the workflow keeps the Cloud and provider live jobs wired to
+  strict scheduled/manual observation, and that the final `test-status` gate
+  treats observed live runs (`workflow_dispatch` and `schedule`) as strict,
+  with required provider endpoints, strict
+  live report validation, required artifact upload, and matching live report
+  directories between smoke producers, validators, and uploaded artifacts. It
+  also audits the package-level `test:remote-capabilities` script so live report
+  writer safety remains in the canonical remote-capability suite, audits the
+  provider live smoke source so provider reports keep recording `providerId`
+  plus provider runtime evidence, audits the live report writer so runtime
+  remote plugin entries keep per-module surface counts, audits the live report
+  validator so those runtime counts keep matching `sync.registeredModules` and
+  so provider artifacts keep proving their canonical endpoint runtime and
+  URL-backed adapter path, audits the endpoint conformance harness and live
+  report validator so route evidence keeps
+  requiring non-empty JSON body payloads, and audits endpoint conformance so
+  view assets keep being fetched as non-empty bytes with SHA-256 evidence and
+  integrity checks against those bytes, and audits the live report validator so
+  uploaded artifacts keep rejecting non-JavaScript, manifest-mismatched,
+  missing-digest, empty-digest, malformed-digest, and integrity-mismatched view
+  asset evidence. It also audits the validator self-test source so route-body
+  asset, and provider runtime-evidence failure fixtures and assertions stay present,
+  requires the live report validator self-test to stay in CI, and audits the
+  root package scripts that invoke the live report validator, the validator
+  self-test, the live CI audit, and the live CI audit self-test.
+- `bun run test:remote-capabilities:live-ci-audit:self-test` mutates those
+  report-directory env vars, artifact upload paths, provider live report
+  `providerId` evidence, provider runtime evidence, runtime remote plugin
+  per-module count evidence, route
+  body evidence in both source conformance and report validation, view asset
+  byte/digest/integrity evidence in endpoint conformance and live report
+  validation, validator self-test route-body and asset fixture coverage, root
+  package live validator and live CI audit
+  script wiring, package-level remote capability suite membership, final
+  `test-status` live job gating,
+  scheduled/manual live observation gates, Cloud
+  freshness/identity validation flags, provider primary endpoint secret
+  enforcement, provider allowed/required lists, and provider GitHub-env
+  matching, and proves the live-CI audit fails when smoke output no longer
+  feeds the validator/artifact path or when the Cloud/E2B/home/mobile
+  observation contract is weakened.
+- Provider live reports include `endpointUrlSha256`, a SHA-256 fingerprint of
+  the normalized endpoint base URL. The live report validator requires this
+  fingerprint for provider artifacts and rejects duplicates across the provider
+  report set, so E2B/home/mobile evidence cannot silently come from the same
+  configured transport URL. The fingerprint helper also strips query/fragment
+  components and rejects embedded URL credentials before hashing, matching the
+  URL-backed endpoint provider's accepted base URL shape.
+- Provider live reports also include `providerId` from the endpoint provider,
+  and the validator requires it to match the report provider label, so a live
+  artifact cannot be relabeled across E2B, home-machine, mobile-companion, or
+  desktop-companion provider families.
+- Live report writers only accept lowercase report names with numbers or
+  hyphens, require Cloud reports to be named `cloud`, require provider reports
+  to be named after their provider, require provider IDs to match provider
+  labels, and create report files with exclusive writes, so a duplicate Cloud or
+  provider report cannot silently overwrite an earlier artifact before
+  validation/upload.
+- Conformance reports include an `rpcCalls` ledger that records every canonical
+  protocol method used for each exercised surface and module. The live report
+  validator requires this ledger to cover every `moduleExercises` entry, every
+  summarized required surface, and every evaluator phase (`shouldRun`,
+  `prepare`, `prompt`, `process`, response-handler `evaluate`, and field
+  `parse`/`handle`), so live evidence proves the endpoint was exercised through
+  the standard RPC-like protocol, not only materialized in a manifest.
+- Model, lifecycle, event, service, and app-bridge conformance results must
+  carry their required protocol success fields: `modelResult.result`,
+  `lifecycleResult.ok: true`, `eventResult.handled: true`,
+  `serviceResult.result`, and `appBridgeResult.result`.
+- View-asset conformance now preserves manifest-declared asset metadata and
+  rejects fetched bundles whose content type or integrity value contradicts the
+  manifest, whose integrity value does not include a SHA-256 token, or whose
+  integrity value does not match the fetched bytes. The live CI audit now also
+  statically protects the source-side byte fetch, non-empty byte check,
+  SHA-256 digest recording, and integrity-to-byte comparison. The live report
+  validator also rejects artifacts whose recorded manifest asset metadata
+  disagrees with the fetched asset metadata, whose integrity value lacks or does
+  not match the recorded SHA-256 digest, or whose fetched JavaScript bundle
+  digest is the empty SHA-256 digest; the live CI audit now statically protects
+  those artifact-side validator rules as well.
+- Runtime live summaries include `runtime.remotePlugins`, keyed by plugin name,
+  endpoint id, module id, and per-module surface counts. The validator requires
+  this runtime identity list and each module's runtime surface counts to match
+  `sync.registeredModules` exactly, so aggregate count totals cannot stand in
+  for proof that the synced remote modules actually reached the runtime with the
+  expected actions, providers, routes, views, app bridges, lifecycle hooks, and
+  other plugin surfaces, and stale remote modules did not remain loaded.
+- Provider allowlist skips now emit rejected trust decisions (`trusted: false`,
+  `reason: "module-not-allowed"`) with endpoint, module, and plugin identity.
+  The live report validator requires every `sync.skipped` entry to have a
+  rejected trust decision, so skipped modules are auditable rather than just
+  unexplained plugin names.
+- `bun run test:remote-capabilities:surface-audit` also audits the canonical
+  plugin RPC method union. Every `plugin.*` method must be implemented by the
+  fixture server, and every non-list plugin RPC method must appear in endpoint
+  conformance plus the live report validator's required-method matrix. The
+  audit also rejects validator-required plugin methods that are not canonical
+  non-list RPC methods, and verifies endpoint conformance surfaces, validator
+  required surfaces, and validator method-matrix keys stay in exact agreement.
+  This keeps protocol expansion from bypassing the full-surface proof path.
+- Endpoint conformance reports type `rpcCalls.method` from the core
+  `RuntimeBrokerCapabilityMethod` plugin-method union, excluding only
+  `plugin.modules.list`, so conformance evidence cannot drift to ad-hoc method
+  names while the validator and surface audit enforce coverage.
 - `bun run --cwd packages/agent test:remote-capabilities:cloud-live` skipped
   locally because no `ELIZAOS_CLOUD_API_KEY` is configured. A real Cloud run
   remains a required live-provider observation before claiming the Cloud side
@@ -1196,8 +1408,8 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 | Mobile bundle reachability                                 | Android and iOS JSC mobile agent bundles include the capability-router service, bootstrap plugin sync, endpoint-provider contract, and connect route; remote frontend asset proxy is blocked for restricted mobile platforms.                                                                                                                                                                                                                                                     | Implemented for protocol reachability; dynamic frontend bundles intentionally restricted on app-store platforms |
 | Agent product flow can connect remote capability endpoints | API, CLI, and Settings UI connect direct endpoints, URL-backed E2B/home/mobile/desktop-companion providers, and Cloud provisioning payloads.                                                                                                                                                                                                                                                                                                                                      | Implemented with focused smokes                                                                                 |
 | Frontend bundles load from remote plugins                  | View registry metadata, same-origin asset proxy for token-bearing bundles, app-shell loader tests, and Playwright UI smoke cover compiled remote bundles on web/desktop. The same proxy is blocked for iOS/Android clients to respect dynamic-code-loading policy.                                                                                                                                                                                                                | Implemented for web/desktop; restricted on app-store mobile                                                     |
-| Endpoint and module trust is explicit                      | Connect flows use endpoint allowlists, optional module allowlists, duplicate/colliding identities are rejected, and restart bootstrap derives trust from persisted endpoint/module config.                                                                                                                                                                                                                                                                                        | Implemented                                                                                                     |
-| Real CI exercises the path                                 | Server CI runs focused remote-capability tests and Docker smoke; UI smoke runs compiled remote bundle and Settings connect flows; live Cloud and URL-backed provider smokes are scheduled/manual with secrets and emit explicit notices when not observed for the current workflow event.                                                                                                                                                                                         | Implemented, live provider observations pending                                                                 |
+| Endpoint and module trust is explicit                      | Connect flows use endpoint allowlists, optional module allowlists, optional signed-provenance issuer allowlists, optional verified provenance public keys, optional module-manifest digest binding, duplicate/colliding identities are rejected, restart bootstrap derives trust from persisted endpoint/module config, and persisted connects record redacted trust-audit entries for operator review.                                                                    | Implemented                                                                                                     |
+| Real CI exercises the path                                 | Server CI runs focused remote-capability tests and Docker smoke; UI smoke runs compiled remote bundle and Settings connect flows; a live-CI audit statically enforces that Cloud and URL-backed provider smokes stay wired to scheduled/manual observation, strict live report validation, required provider endpoints, required artifact upload, and matching report directories from smoke output through validation/upload. Provider live report validation also requires unique redacted endpoint URL fingerprints across provider artifacts. | Implemented, live provider observations pending                                                                 |
 | Real Cloud sandbox provider                                | Live smoke provisions an Eliza Cloud endpoint, verifies manifest/view asset, syncs modules, and executes action/provider/evaluator/response-handler evaluator/response-handler field evaluator/route/model/lifecycle/event/service/app-bridge when `ELIZAOS_CLOUD_API_KEY` is present.                                                                                                                                                                                            | Implemented but must be observed green                                                                          |
 | E2B/home-machine/mobile provider coverage                  | Exported URL-backed providers normalize and validate concrete E2B, home-machine, mobile-companion, and desktop-companion endpoints; focused conformance exercises E2B/home/mobile through action/provider/evaluator/response-handler evaluator/response-handler field evaluator/route/model/lifecycle/event/service/app-bridge/view/asset RPC; optional scheduled/manual provider-live CI smokes use the reusable endpoint conformance harness against configured real endpoints. | Implemented for URL-backed provider layer; live endpoint observations pending                                   |
 
@@ -1257,8 +1469,9 @@ This is not complete until the following are true:
   endpoints into a runtime with verified restart persistence through
   `config.env`; the product Settings UI now exposes and smoke-tests direct
   endpoint connection and Cloud provisioning payload construction. Direct
-  product-route restart hydration is covered; Cloud provision, persist, restart,
-  and reopen-view E2E remains pending.
+  product-route restart hydration is covered, and a mocked Cloud provision path
+  now persists, restarts, reopens the remote view, and fetches its bundle through
+  the asset proxy with the persisted bearer token.
 - Auth is specified and enforced for endpoint registration, invocation, and
   frontend asset access.
 - Endpoint identity, module identity, route namespace, view registry identity,
@@ -1266,14 +1479,17 @@ This is not complete until the following are true:
   bridge route key, and model type collision rules are enforced in the local
   adapter/router, including collisions against already-registered remote modules
   and local runtime handlers. The adapter also accepts an explicit trust policy for
-  endpoint/module allowlists before registration. Remaining trust work is
-  attestation and operator audit records for those decisions.
+  endpoint/module/provenance-issuer allowlists, verified provenance public keys,
+  and module-manifest digest binding before registration, and persisted connect
+  flows write redacted operator audit records for those decisions. Remaining
+  trust work is endpoint/provider attestation beyond the signed manifest.
 - Remote view loading is covered through the browser-facing view registry
   metadata path, real compiled bundle fetch/evaluation smokes, app-shell loader
   unit coverage, and a focused Playwright app-shell smoke against a running
   remote capability-style server. The Settings connect flow is now covered for
-  direct endpoints and Cloud provisioning payloads; a fuller E2E that provisions
-  through Cloud, persists, restarts, and reopens the remote view is still needed.
+  direct endpoints and Cloud provisioning payloads, and the mocked product route
+  covers Cloud provision, persistence, restart, remote view reopening, and asset
+  proxy fetch with the persisted token. Real Cloud observation is still required.
 - CI runs focused remote-capability tests plus a Docker-backed container smoke
   without external credentials.
 - Credentialed nightly/manual CI runs a real Eliza Cloud capability sandbox

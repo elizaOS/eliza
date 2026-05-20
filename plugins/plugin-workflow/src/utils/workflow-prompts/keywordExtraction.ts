@@ -1,4 +1,4 @@
-export const KEYWORD_EXTRACTION_SYSTEM_PROMPT = `You are an expert at extracting relevant search terms for finding workflows nodes.
+export const KEYWORD_EXTRACTION_SYSTEM_PROMPT = `Extract relevant search terms for finding workflow nodes.
 
 Given a user prompt describing an workflow, extract up to 5 concise keywords or phrases that best represent the core actions, services, or data transformations involved.
 

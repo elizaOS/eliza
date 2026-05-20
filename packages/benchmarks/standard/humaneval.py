@@ -61,6 +61,12 @@ SYSTEM_PROMPT = (
     "body (no markdown fence, no commentary, no repeat of the signature). "
     "Indent every line of the body with 4 spaces."
 )
+EMPTY_RETRY_SYSTEM_PROMPT = (
+    "You are an expert Python programmer. The previous answer was empty, "
+    "which is invalid for HumanEval. Return ONLY executable Python code for "
+    "the function body. Do not use markdown, prose, or repeat the signature. "
+    "Indent every non-blank line with 4 spaces."
+)
 
 # Tiny in-repo fixture used for the smoke test. Real runs pull
 # ``openai_humaneval`` via ``datasets``.
@@ -347,6 +353,18 @@ class HumanEvalRunner:
             except Exception as exc:  # noqa: BLE001
                 log.warning("generation failed (idx=%d): %s", i, exc)
                 continue
+            if not gen.text.strip():
+                retry_messages = [
+                    ChatMessage(role="system", content=EMPTY_RETRY_SYSTEM_PROMPT),
+                    ChatMessage(role="user", content=prompt),
+                ]
+                try:
+                    retry_gen = client.generate(retry_messages, config)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("empty-output retry failed (idx=%d): %s", i, exc)
+                else:
+                    if retry_gen.text.strip():
+                        gen = retry_gen
             empty_output = not gen.text.strip()
             if empty_output:
                 empty_outputs += 1

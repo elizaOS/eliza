@@ -30,6 +30,7 @@ if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
 from scripts.manifest import eliza1_manifest as M  # noqa: E402
+from scripts.manifest.eliza1_platform_plan import required_files_for_tier  # noqa: E402
 
 TIERS: tuple[str, ...] = tuple(M.ELIZA_1_TIERS)
 DEFAULT_REPO_ID = M.ELIZA_1_HF_REPO
@@ -170,6 +171,36 @@ def _publishable_bundle_relpaths(
             if path.is_file():
                 rels.add(path.relative_to(bundle_dir).as_posix())
     return sorted(rels)
+
+
+def _platform_plan_errors(
+    bundle_dir: Path,
+    tier: str,
+    manifest: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    required_files = required_files_for_tier(tier)
+    manifest_paths = set(_iter_manifest_paths(manifest))
+    missing_files: list[str] = []
+    missing_manifest_payloads: list[str] = []
+    for rel in required_files:
+        try:
+            target = _safe_bundle_child(bundle_dir, rel)
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        if not target.is_file():
+            missing_files.append(rel)
+        if rel.split("/", 1)[0] in WEIGHT_PAYLOAD_DIRS and rel not in manifest_paths:
+            missing_manifest_payloads.append(rel)
+    if missing_files:
+        errors.append(f"platform plan missing required file(s): {missing_files}")
+    if missing_manifest_payloads:
+        errors.append(
+            "manifest missing platform-plan payload path(s): "
+            f"{sorted(missing_manifest_payloads)}"
+        )
+    return errors
 
 
 def _safe_bundle_child(bundle_dir: Path, rel: str) -> Path:
@@ -410,8 +441,8 @@ def _release_evidence_errors(
                     )
                 else:
                     required_paths = {
-                        f"bundles/{tier}/eliza-1.manifest.json",
-                        f"bundles/{tier}/README.md",
+                        f"bundles/{tier}/{rel}"
+                        for rel in _publishable_bundle_relpaths(bundle_dir, manifest)
                     }
                     missing_paths = sorted(required_paths - set(uploaded_paths))
                     if missing_paths:
@@ -506,6 +537,7 @@ def plan_bundle(
             errors.extend(voice_warnings)
         else:
             warnings.extend(voice_warnings)
+        errors.extend(_platform_plan_errors(bundle_dir, tier, manifest))
         publishable_rels = _publishable_bundle_relpaths(bundle_dir, manifest)
         errors.extend(_release_evidence_errors(bundle_dir, tier, manifest))
         errors.extend(

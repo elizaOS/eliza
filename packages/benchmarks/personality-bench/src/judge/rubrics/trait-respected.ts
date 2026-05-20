@@ -148,7 +148,7 @@ export async function gradeTraitRespected(
 ): Promise<PersonalityVerdict> {
   const { trait, forbiddenPhrases, lastName, shortPassUpTo, shortFailOver } =
     readOptions(scenario);
-  const checkTurns = scenario.personalityExpect.checkTurns ?? [];
+  const checkTurns = scenario.personalityExpect.checkTurns;
   const layers: LayerResult[] = [];
 
   if (checkTurns.length === 0) {
@@ -225,7 +225,7 @@ export async function gradeTraitRespected(
       if (
         firstFailed &&
         result.verdict === "FAIL" &&
-        t === (first?.t ?? -1) &&
+        t === first?.t &&
         restPassRate >= 0.5
       ) {
         // Downgrade the first-turn fail to NEEDS_REVIEW — the agent held the

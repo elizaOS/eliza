@@ -14,6 +14,7 @@ import { VoicePrefixSteps } from "./VoicePrefixSteps";
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
 });
 
 function makeClient(overrides?: Partial<VoiceProfilesClient>) {
@@ -32,7 +33,7 @@ const baseProps = {
 describe("VoicePrefixSteps", () => {
   it("renders the welcome step with the mic permission CTA", () => {
     const onAdvance = vi.fn();
-    render(
+    const { container } = render(
       <VoicePrefixSteps
         {...baseProps}
         step="welcome"
@@ -41,7 +42,34 @@ describe("VoicePrefixSteps", () => {
       />,
     );
     expect(screen.getByTestId("voice-prefix-welcome")).toBeTruthy();
-    expect(screen.getByTestId("voice-prefix-welcome-request-mic")).toBeTruthy();
+    expect(screen.getByTestId("voice-prefix-steps").className).toContain(
+      "text-[#06133F]",
+    );
+    expect(container.querySelector("main")?.className).toContain(
+      "bg-[#FFFFFF]",
+    );
+    expect(
+      screen.getByTestId("voice-prefix-welcome-request-mic").className,
+    ).toContain("bg-[#0B35F1]");
+  });
+
+  it("lets users skip voice setup from the welcome step without microphone access", () => {
+    const onSkipPrefix = vi.fn();
+    render(
+      <VoicePrefixSteps
+        {...baseProps}
+        step="welcome"
+        onSkipPrefix={onSkipPrefix}
+        profilesClient={makeClient()}
+      />,
+    );
+
+    expect(
+      (screen.getByTestId("voice-prefix-continue") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByTestId("voice-prefix-skip-prefix"));
+    expect(onSkipPrefix).toHaveBeenCalledTimes(1);
   });
 
   it("does not play the greeting when mic permission is granted", async () => {

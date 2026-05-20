@@ -1,0 +1,12 @@
+{
+  "schema": "eliza.cpu_pmu_event_alignment.v1",
+  "generated_at": "2026-05-19T20:33:59Z",
+  "bpu_event_count": 20,
+  "zihpm_branch_block_count": 20,
+  "remap_pair_count": 20,
+  "aliases": {
+    "PMU_FTB_MISS": "EVT_BTB_MISS"
+  },
+  "errors": [],
+  "verdict": "ok"
+}

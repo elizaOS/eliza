@@ -1,4 +1,4 @@
-import type { JsonValue } from "@elizaos/electrobun-carrots";
+import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 
 export type TraceErrorCode =
   | "TRACE_INVALID_REQUEST"

@@ -95,7 +95,7 @@ export async function loadScenarios(
       };
       scenarios.push({
         ...wrapped.scenario,
-        trajectory: wrapped.trajectory ?? wrapped.scenario.trajectory ?? [],
+        trajectory: wrapped.trajectory ?? wrapped.scenario.trajectory,
         agent: wrapped.agent ?? wrapped.scenario.agent,
       });
     } else if (

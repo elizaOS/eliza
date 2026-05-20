@@ -1191,6 +1191,29 @@ describe("capability router", () => {
 		expect(calls).toEqual([]);
 	});
 
+	it("rejects outbound remote plugin action calls with ambiguous module ids", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return {};
+			},
+		});
+
+		await expect(
+			router.plugin.invokeAction({
+				moduleId: "remote:weather",
+				action: "WEATHER_LOOKUP",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.action.invoke",
+			message:
+				"moduleId must use letters, numbers, dots, underscores, or hyphens.",
+		});
+		expect(calls).toEqual([]);
+	});
+
 	it("rejects outbound remote plugin provider calls with empty names", async () => {
 		const calls: string[] = [];
 		const router = new RuntimeBrokerCapabilityRouter({
@@ -1332,6 +1355,46 @@ describe("capability router", () => {
 			code: "CAPABILITY_DECODE_FAILED",
 			method: "plugin.modules.list.modules",
 			message: "id must be a non-empty string.",
+		});
+	});
+
+	it("rejects remote plugin manifests with ambiguous module identifiers", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [{ id: "remote:weather", name: "@remote/weather" }],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules",
+			message: "id must use letters, numbers, dots, underscores, or hyphens.",
+		});
+	});
+
+	it("rejects remote plugin manifests with malformed provenance digests", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						provenance: {
+							issuer: "cloud-build",
+							subject: "cloud://remote-weather",
+							digestSha256: "not-a-sha256",
+							signatureAlgorithm: "ed25519",
+							signature: "signature",
+						},
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.provenance",
+			message: "digestSha256 must be a SHA-256 hex digest.",
 		});
 	});
 

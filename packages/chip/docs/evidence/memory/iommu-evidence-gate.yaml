@@ -1,0 +1,127 @@
+schema: eliza.iommu_evidence_gate.v1
+status: blocked_until_evidence
+scope:
+  - rtl/iommu/e1_riscv_iommu.sv
+  - rtl/iommu/e1_riscv_iommu_pkg.sv
+
+specification:
+  name: RISC-V IOMMU
+  version: v1.0.1
+  ratified_utc: 2024-09-11T00:00:00Z
+  url: https://docs.riscv.org/reference/hardware/iommu/v20240911/_attachments/riscv-iommu.pdf
+
+required_capabilities:
+  device_context_walk:
+    description: >
+      DDT walker with 1-level / 2-level / 3-level modes; matches the
+      DDTP.iommu_mode encoding defined in spec section 3.1.2.
+  pasid:
+    width_bits: 20
+    description: >
+      Process address-space identifier with PDT walk. Required for NPU
+      command-queue contexts and Android NN HAL SVA.
+  two_stage_translation:
+    first_stage_modes: [Sv39, Sv48]
+    second_stage_modes: [Sv39x4, Sv48x4]
+    description: G-stage translation required for virtualization hosts.
+  fault_queue:
+    record_size_bytes: 32
+    causes_supported:
+      - DDT_ENTRY_NOT_VALID
+      - DDT_ENTRY_MISCONFIGURED
+      - TRANSACTION_TYPE_DISALLOWED
+      - LOAD_PAGE_FAULT
+      - STORE_PAGE_FAULT
+      - LOAD_GUEST_PAGE_FAULT
+      - STORE_GUEST_PAGE_FAULT
+    description: Fault records carry master DID, PASID, IOVA, TTYP, cause.
+  page_request_interface:
+    description: PRI / PQB ring for shared virtual memory.
+  ats:
+    description: PCIe-style ATS translation request/response.
+  msi_translation:
+    igs_mode: 2
+    description: MSI translation matching the Linux v6.x driver expectations.
+
+required_tests:
+  - id: capabilities_register_advertises_v1_features
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: CAPABILITIES.version == 0x10 and required feature bits set.
+  - id: bare_mode_passes_traffic_with_no_fault
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: DDTP=BARE forwards every transaction without faulting.
+  - id: translate_mode_blocks_unknown_devid_with_fault
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: Unauthorised devid raises CAUSE_DDT_ENTRY_NOT_VALID once.
+  - id: translate_mode_allows_known_devid
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: Authorised devid completes without faulting.
+  - id: pasid_isolation_via_allowlist_revoke
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: Revoking a DID causes the next request to fault.
+  - id: two_stage_translation_via_3lvl_ddt
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: DDTP=3LVL gates both S1 and S2 stages on the allowlist.
+  - id: pasid_context_switch_across_two_streams
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: Same devid + two PASIDs honour allowlist revoke / re-auth.
+  - id: page_request_interface_counter_visible
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: PQB/PQH/PQT registers and page_req_count_dbg are observable.
+  - id: ats_translation_capability_advertised
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: CAPABILITIES advertises ATS, PRI, PAS, T2GPA, PD20, IGS=MSI.
+  - id: translation_request_interface_round_trip
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: TR_REQ_IOVA / TR_REQ_CTL latch and read-back.
+
+required_artifacts:
+  - docs/evidence/memory/iommu_capabilities_report.json
+  - docs/evidence/memory/iommu_fault_injection_report.json
+  - docs/evidence/memory/iommu_ats_round_trip_report.json
+  - docs/evidence/memory/iommu_pri_round_trip_report.json
+  - docs/evidence/memory/iommu_linux_driver_attach_transcript.json
+  - docs/evidence/memory/iommu_pasid_isolation_report.json
+
+required_artifact_schemas:
+  docs/evidence/memory/iommu_capabilities_report.json: eliza.memory.iommu_capabilities.v1
+  docs/evidence/memory/iommu_fault_injection_report.json: eliza.memory.iommu_fault_injection.v1
+  docs/evidence/memory/iommu_ats_round_trip_report.json: eliza.memory.iommu_ats_round_trip.v1
+  docs/evidence/memory/iommu_pri_round_trip_report.json: eliza.memory.iommu_pri_round_trip.v1
+  docs/evidence/memory/iommu_linux_driver_attach_transcript.json: eliza.memory.iommu_linux_driver.v1
+  docs/evidence/memory/iommu_pasid_isolation_report.json: eliza.memory.iommu_pasid_isolation.v1
+
+reference_model:
+  manifest: verify/cocotb/iommu/refmodel/riscv-iommu.manifest.yaml
+  schema: eliza.external_dependency_manifest.v1
+  required_state: pinned_reference_model_unfetched
+  blocked_reason: >
+    No outbound network in the build environment. Operators must fetch
+    the pinned reference model when network is provisioned; never run
+    against an unverified checkout. The manifest lives in
+    verify/cocotb/iommu/refmodel/ so it survives clean clones; the
+    cloned tree itself goes under verify/external/ which is gitignored.
+
+unblock_requires:
+  - Every required cocotb test passes under verilator or icarus.
+  - The reference-model manifest pins a specific commit hash.
+  - All required artifact paths exist and validate against their schema.
+  - The Linux RISC-V IOMMU driver attaches the IOMMU during a kernel
+    boot transcript with no error messages.
+  - ATS and PRI round-trips are exercised against at least one bus master.
+  - PASID isolation is exercised across at least two concurrently
+    active masters with different PASIDs.
+
+claim_rules:
+  - IOMMU claims require executable cocotb evidence, a reference-model
+    pin, and at least one Linux boot transcript.
+  - Closed BSPs that route around the IOMMU fail this gate.
+  - Authorised translations must never silently fail; the implementation
+    fails closed by returning SLVERR upstream and recording a fault.
+  - Promoting any phone-class memory claim requires this gate to clear
+    plus every entry under uma-dram-evidence-gate.yaml::blocked_real_claims.
+
+next_commands:
+  rtl_elaboration: make rtl-check
+  iommu_tests: make cocotb-iommu
+  gate_check: make iommu-evidence-check

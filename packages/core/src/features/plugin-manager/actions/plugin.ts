@@ -59,8 +59,6 @@ export type PluginSubaction =
 	| "core_status"
 	| "create";
 
-export type PluginMode = PluginSubaction;
-
 const SUBACTIONS: readonly PluginSubaction[] = [
 	"install",
 	"eject",

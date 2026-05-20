@@ -127,6 +127,7 @@ parts:
         const keep = new Set([
           "plugin-agent-skills",
           "plugin-anthropic",
+          "plugin-aosp-local-inference",
           "plugin-browser",
           "plugin-capacitor-bridge",
           "plugin-elizacloud",
@@ -493,6 +494,7 @@ parts:
         --filter=@elizaos/app-core \
         --filter=@elizaos/agent \
         --filter=@elizaos/plugin-agent-skills \
+        --filter=@elizaos/plugin-aosp-local-inference \
         --filter=@elizaos/plugin-browser \
         --filter=@elizaos/plugin-elizamaker \
         --filter=@elizaos/plugin-imessage \
@@ -511,7 +513,7 @@ parts:
         --filter=@elizaos/plugin-wallet-ui \
         --filter=@elizaos/plugin-wechat \
         --filter=@elizaos/plugin-whatsapp \
-        --filter=@elizaos/scenario-runner/schema
+        --filter=@elizaos/scenario-runner
       rm -rf node_modules/@types
       rm -rf "$SNAP_BUILD_TYPES_DIR"
 

@@ -17,6 +17,9 @@ REQUIRED_KERNEL_KEYS = {
     "macs",
     "bytes_read",
     "bytes_written",
+    "external_bytes_read",
+    "external_bytes_written",
+    "local_sram_bytes",
     "compute_cycles",
     "memory_cycles",
     "memory_wait_cycles",
@@ -25,6 +28,27 @@ REQUIRED_KERNEL_KEYS = {
     "modeled_frequency_hz",
     "throughput_ops_s",
     "observed_tops",
+    "energy_nj",
+    "average_power_w",
+    "tops_per_watt",
+    "arithmetic_intensity_macs_per_external_byte",
+    "descriptor_counters",
+}
+REQUIRED_DESCRIPTOR_COUNTER_KEYS = {
+    "schema",
+    "claim_boundary",
+    "descriptor_bytes",
+    "descriptor_queue_depth",
+    "descriptor_payload_bytes",
+    "descriptors_required",
+    "descriptor_queue_passes",
+    "descriptor_ring_bytes",
+    "dma_read_beats",
+    "dma_write_beats",
+    "dma_total_beats",
+    "dma_bytes_per_cycle",
+    "modeled_read_bytes",
+    "modeled_written_bytes",
 }
 REQUIRED_PRECISIONS = {"INT4", "INT8", "FP16", "BF16", "FP8"}
 REQUIRED_PROCESS_CORNERS = {
@@ -48,6 +72,8 @@ REQUIRED_PROCESS_CORNER_KEYS = {
     "min_observed_tops",
     "max_observed_tops",
     "min_utilization_percent",
+    "min_tops_per_watt",
+    "max_average_power_w",
     "kernels",
     "claim_boundary",
     "release_use",
@@ -86,6 +112,15 @@ def main() -> int:
             errors.append("first open target must model descriptor queue depth >=1024")
         if int(config.get("scratchpad_kib", 0)) < 1024:
             errors.append("first open target must model at least 1 MiB aggregate scratchpad")
+        for field in (
+            "energy_pj_per_int8_mac",
+            "local_sram_pj_per_byte",
+            "external_memory_pj_per_byte",
+            "static_power_w",
+        ):
+            value = config.get(field)
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+                errors.append(f"scale simulator config.{field} must be positive numeric")
         precision_matrix = config.get("precision_matrix")
         if not isinstance(precision_matrix, list):
             errors.append("scale simulator config must report precision_matrix")
@@ -157,15 +192,84 @@ def main() -> int:
                 "macs",
                 "bytes_read",
                 "bytes_written",
+                "external_bytes_read",
+                "external_bytes_written",
+                "local_sram_bytes",
                 "modeled_frequency_hz",
             ):
                 value = kernel.get(field)
                 if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                     errors.append(f"kernels[{index}].{field} must be a positive integer")
-            for field in ("utilization_percent", "throughput_ops_s", "observed_tops"):
+            for field in (
+                "utilization_percent",
+                "throughput_ops_s",
+                "observed_tops",
+                "energy_nj",
+                "average_power_w",
+                "tops_per_watt",
+                "arithmetic_intensity_macs_per_external_byte",
+            ):
                 value = kernel.get(field)
                 if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
                     errors.append(f"kernels[{index}].{field} must be positive numeric")
+            descriptor_counters = kernel.get("descriptor_counters")
+            if not isinstance(descriptor_counters, dict):
+                errors.append(f"kernels[{index}].descriptor_counters must be an object")
+            else:
+                missing_counter_keys = sorted(
+                    REQUIRED_DESCRIPTOR_COUNTER_KEYS - set(descriptor_counters)
+                )
+                if missing_counter_keys:
+                    errors.append(
+                        f"kernels[{index}].descriptor_counters missing keys: "
+                        + ", ".join(missing_counter_keys)
+                    )
+                if (
+                    descriptor_counters.get("schema")
+                    != "eliza.npu_scale_descriptor_counter_model.v1"
+                ):
+                    errors.append(f"kernels[{index}].descriptor_counters schema mismatch")
+                if "not_rtl_dma_or_silicon" not in str(
+                    descriptor_counters.get("claim_boundary", "")
+                ):
+                    errors.append(f"kernels[{index}].descriptor_counters must block silicon claims")
+                for field in (
+                    "descriptor_bytes",
+                    "descriptor_queue_depth",
+                    "descriptor_payload_bytes",
+                    "descriptors_required",
+                    "descriptor_queue_passes",
+                    "descriptor_ring_bytes",
+                    "dma_read_beats",
+                    "dma_write_beats",
+                    "dma_total_beats",
+                    "dma_bytes_per_cycle",
+                    "modeled_read_bytes",
+                    "modeled_written_bytes",
+                ):
+                    value = descriptor_counters.get(field)
+                    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                        errors.append(
+                            f"kernels[{index}].descriptor_counters.{field} "
+                            "must be a positive integer"
+                        )
+                if descriptor_counters.get("descriptor_bytes") != 16:
+                    errors.append(f"kernels[{index}].descriptor_counters descriptor size drifted")
+                if descriptor_counters.get("modeled_read_bytes") != kernel.get("bytes_read"):
+                    errors.append(
+                        f"kernels[{index}].descriptor_counters read bytes must match kernel"
+                    )
+                if descriptor_counters.get("modeled_written_bytes") != kernel.get("bytes_written"):
+                    errors.append(
+                        f"kernels[{index}].descriptor_counters written bytes must match kernel"
+                    )
+                if descriptor_counters.get("descriptor_ring_bytes") != (
+                    descriptor_counters.get("descriptors_required", 0)
+                    * descriptor_counters.get("descriptor_bytes", 0)
+                ):
+                    errors.append(
+                        f"kernels[{index}].descriptor_counters ring bytes must match descriptors"
+                    )
 
     corners = data.get("process_corners")
     if not isinstance(corners, list) or len(corners) < len(REQUIRED_PROCESS_CORNERS):
@@ -193,6 +297,8 @@ def main() -> int:
                 "min_observed_tops",
                 "max_observed_tops",
                 "min_utilization_percent",
+                "min_tops_per_watt",
+                "max_average_power_w",
             ):
                 value = corner.get(field)
                 if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
@@ -223,6 +329,39 @@ def main() -> int:
             != "modeled_derates_only_not_14a_pdk_or_signoff_evidence"
         ):
             errors.append("summary must keep process corners as modeled-only evidence")
+        for field in ("min_tops_per_watt", "max_average_power_w"):
+            value = summary.get(field)
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+                errors.append(f"summary.{field} must be positive numeric")
+        for field in (
+            "total_descriptors_required",
+            "max_descriptor_queue_passes",
+            "total_dma_read_beats",
+            "total_dma_write_beats",
+            "total_dma_beats",
+        ):
+            value = summary.get(field)
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                errors.append(f"summary.{field} must be a positive integer")
+        if isinstance(kernels, list):
+            descriptor_counters = [
+                kernel.get("descriptor_counters")
+                for kernel in kernels
+                if isinstance(kernel, dict) and isinstance(kernel.get("descriptor_counters"), dict)
+            ]
+            if descriptor_counters:
+                if summary.get("total_descriptors_required") != sum(
+                    counter.get("descriptors_required", 0) for counter in descriptor_counters
+                ):
+                    errors.append("summary.total_descriptors_required mismatch")
+                if summary.get("max_descriptor_queue_passes") != max(
+                    counter.get("descriptor_queue_passes", 0) for counter in descriptor_counters
+                ):
+                    errors.append("summary.max_descriptor_queue_passes mismatch")
+                if summary.get("total_dma_beats") != sum(
+                    counter.get("dma_total_beats", 0) for counter in descriptor_counters
+                ):
+                    errors.append("summary.total_dma_beats mismatch")
 
     return report(errors)
 

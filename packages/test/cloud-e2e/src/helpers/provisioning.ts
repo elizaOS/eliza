@@ -14,8 +14,57 @@ export interface ProvisioningEndpoints {
   apiUrl: string;
 }
 
+export async function createCloudAgent(
+  endpoints: ProvisioningEndpoints,
+  apiKey: string,
+  agentName: string,
+): Promise<string> {
+  const res = await fetch(`${endpoints.apiUrl}/api/v1/eliza/agents`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ agentName }),
+  });
+
+  expect(
+    [200, 201, 202],
+    `agent create returned ${res.status}: ${await res.clone().text()}`,
+  ).toContain(res.status);
+
+  const body = (await res.json()) as {
+    id?: string;
+    sandboxId?: string;
+    data?: { id?: string; sandboxId?: string };
+  };
+  const sandboxId =
+    body.sandboxId ?? body.id ?? body.data?.sandboxId ?? body.data?.id;
+  expect(sandboxId, "expected sandbox id from create response").toBeTruthy();
+  return sandboxId as string;
+}
+
+export async function startAgentProvisioning(
+  endpoints: ProvisioningEndpoints,
+  apiKey: string,
+  sandboxId: string,
+): Promise<void> {
+  const res = await fetch(
+    `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/provision`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    },
+  );
+  expect(
+    [200, 202, 409],
+    `agent provision returned ${res.status}: ${await res.clone().text()}`,
+  ).toContain(res.status);
+}
+
 export async function tickProvisioning(
   endpoints: ProvisioningEndpoints,
+  opts: { timeoutMs?: number } = {},
 ): Promise<Response> {
   return fetch(`${endpoints.apiUrl}/api/v1/cron/process-provisioning-jobs`, {
     method: "POST",
@@ -23,6 +72,7 @@ export async function tickProvisioning(
       Authorization: `Bearer ${CRON_SECRET}`,
       "Content-Type": "application/json",
     },
+    signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
   });
 }
 

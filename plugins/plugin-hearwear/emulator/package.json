@@ -1,0 +1,22 @@
+{
+  "name": "@elizaos/plugin-hearwear-emulator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "build:watch": "vite build --watch",
+    "cli": "bun run src/cli.ts",
+    "emulator:cli": "bun run src/cli.ts"
+  },
+  "dependencies": {
+    "iwer": "^2.2.1",
+    "ws": "^8.20.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.1",
+    "@types/ws": "^8.5.10",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.13"
+  }
+}

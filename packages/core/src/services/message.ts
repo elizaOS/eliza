@@ -28,9 +28,14 @@ import {
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
 import { retrieveActions } from "../runtime/action-retrieval";
+import { resolveActionRolePolicyRole } from "../runtime/action-role-policy";
 import { tierActionResults } from "../runtime/action-tiering";
 import { applyAddressedTo } from "../runtime/addressed-to";
-import { filterByContextGate } from "../runtime/context-gates";
+import {
+	filterByContextGate,
+	satisfiesContextGate,
+	satisfiesRoleGate,
+} from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
@@ -905,6 +910,14 @@ function isBenchmarkForcingToolCall(message: Memory): boolean {
 	if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL !== "1") return false;
 	const content = message.content;
 	if (!content) return false;
+	const benchmark = (content.metadata as Record<string, unknown> | undefined)
+		?.benchmark;
+	if (
+		typeof benchmark === "string" &&
+		benchmark.trim().toLowerCase() === "vending-bench"
+	) {
+		return false;
+	}
 	if (content.source === "benchmark") return true;
 	const contentMetadata = content.metadata as
 		| Record<string, unknown>
@@ -1681,6 +1694,114 @@ function currentMessageContentForContext(message: Memory): Memory["content"] {
 	};
 }
 
+function readMessageContentString(
+	message: Memory,
+	key: string,
+): string | undefined {
+	const content = message.content;
+	if (!content || typeof content !== "object") return undefined;
+	const value = (content as Record<string, unknown>)[key];
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
+}
+
+type PlatformReplyReference = {
+	text: string;
+	sender?: string;
+	externalId?: string;
+};
+
+const PLATFORM_REPLY_REFERENCE_START = "[platform_reply_reference]";
+const PLATFORM_REPLY_REFERENCE_END = "[/platform_reply_reference]";
+
+function valueAfterPrefix(line: string, prefix: string): string | undefined {
+	if (!line.startsWith(prefix)) return undefined;
+	const value = line.slice(prefix.length).trim();
+	return value.length > 0 ? value : undefined;
+}
+
+function parsePlatformReplyReferenceBlock(
+	text: string | undefined,
+): PlatformReplyReference | null {
+	if (!text) return null;
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
+	let start = -1;
+	for (let index = lines.length - 1; index >= 0; index--) {
+		if (lines[index]?.trim() === PLATFORM_REPLY_REFERENCE_START) {
+			start = index;
+			break;
+		}
+	}
+	if (start === -1) return null;
+	const end = lines.findIndex(
+		(line, index) =>
+			index > start && line.trim() === PLATFORM_REPLY_REFERENCE_END,
+	);
+	if (end === -1) return null;
+
+	const body = lines.slice(start + 1, end);
+	const textIndex = body.findIndex((line) => line.trim() === "text:");
+	if (textIndex === -1) return null;
+
+	let sender: string | undefined;
+	let externalId: string | undefined;
+	for (const line of body.slice(0, textIndex)) {
+		const trimmed = line.trim();
+		sender ??= valueAfterPrefix(trimmed, "author:");
+		externalId ??= valueAfterPrefix(trimmed, "message_id:");
+	}
+
+	const referenceText = body
+		.slice(textIndex + 1)
+		.join("\n")
+		.trim();
+	return referenceText ? { text: referenceText, sender, externalId } : null;
+}
+
+function replyReferenceForContext(
+	message: Memory,
+): PlatformReplyReference | null {
+	const explicitText = readMessageContentString(message, "replyToMessageText");
+	if (explicitText) {
+		return {
+			text: explicitText,
+			sender: readMessageContentString(message, "replyToSenderName"),
+			externalId: readMessageContentString(message, "replyToExternalMessageId"),
+		};
+	}
+
+	const content = message.content;
+	return parsePlatformReplyReferenceBlock(
+		content && typeof content === "object" && typeof content.text === "string"
+			? content.text
+			: undefined,
+	);
+}
+
+function replyReferenceEventForContext(message: Memory): ContextEvent | null {
+	const reference = replyReferenceForContext(message);
+	if (!reference) return null;
+	const header = reference.sender
+		? `${reference.sender}: ${reference.text}`
+		: reference.text;
+	const externalId = reference.externalId;
+	const id = `reply-reference:${message.id ?? externalId ?? "current"}`;
+	return {
+		id,
+		type: "segment",
+		source: message.content.source ?? "platform",
+		segment: {
+			id,
+			label: "reply_reference",
+			content: externalId
+				? `${header}\n(platform message id: ${externalId})`
+				: header,
+			stable: false,
+		},
+	};
+}
+
 function isSubAgentCompletionArtifact(memory: Memory): boolean {
 	const content = memory.content;
 	if (!content || typeof content !== "object") return false;
@@ -1854,11 +1975,11 @@ async function collectV5PlannerCandidateActions(args: {
 	// "general" — even when the user clearly asked for a habit/event/etc.
 	// (See `docs/audits/lifeops-2026-05-09/12-real-root-cause.md`.)
 	//
-	// Now: every action is a candidate. Role gates and per-action validate /
-	// account-policy checks still apply (those are correctness/security, not
-	// relevance). Retrieval scoring then uses `selectedContexts` as a
-	// *weight* (boost actions whose contexts intersect the active set) but
-	// never as a hard filter.
+	// Now: the surface starts from every action, then applies only the same
+	// execution gates the planner executor will enforce. That keeps role-policy
+	// overrides working for deployments that intentionally expose an action
+	// outside its declared context, while avoiding dead tools that the planner
+	// could select but execution would immediately reject.
 	const allRuntimeActions = args.runtime.actions;
 	const actionsByName = new Map(
 		allRuntimeActions.map((action) => [action.name, action]),
@@ -1875,12 +1996,19 @@ async function collectV5PlannerCandidateActions(args: {
 	const appendIfAllowed = async (
 		action: Action,
 		parentActionName?: string,
-		_activeContexts:
-			| readonly AgentContext[]
-			| undefined = args.selectedContexts,
+		activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
+			return false;
+		}
+		if (
+			!actionPassesPlannerExecutionGates({
+				action,
+				activeContexts,
+				userRoles: args.userRoles,
+			})
+		) {
 			return false;
 		}
 		try {
@@ -1984,6 +2112,27 @@ function mergeAgentContexts(
 		}
 	}
 	return merged;
+}
+
+function actionPassesPlannerExecutionGates(args: {
+	action: Action;
+	activeContexts?: readonly AgentContext[];
+	userRoles?: readonly RoleGateRole[];
+}): boolean {
+	const policyRole = resolveActionRolePolicyRole(args.action);
+	if (policyRole) {
+		return satisfiesRoleGate(args.userRoles, { minRole: policyRole });
+	}
+
+	const contextGate = args.action.contextGate ?? {
+		contexts: args.action.contexts,
+		roleGate: args.action.roleGate,
+	};
+	if (!satisfiesContextGate(args.activeContexts, contextGate, args.userRoles)) {
+		return false;
+	}
+
+	return satisfiesRoleGate(args.userRoles, args.action.roleGate);
 }
 
 function getMessageHandlerCandidateActions(
@@ -2240,8 +2389,13 @@ async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content:
-			"current_turn_boundary: The prior_message blocks above are context only. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them.",
+			"current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them.",
 	});
+
+	const replyReferenceEvent = replyReferenceEventForContext(args.message);
+	if (replyReferenceEvent) {
+		events.push(replyReferenceEvent);
+	}
 
 	events.push({
 		id: String(args.message.id ?? "current-message"),
@@ -2422,13 +2576,21 @@ function availableAttachmentCount(message: Memory, state: State): number {
 	return ids.size;
 }
 
-function latestPriorUserText(state: State): string {
+function latestPriorUserText(
+	state: State,
+	runtimeAgentId: string | undefined,
+): string {
 	const recentData = providerDataRecord(state, "RECENT_MESSAGES");
 	const recentMessages = Array.isArray(recentData?.recentMessages)
 		? (recentData.recentMessages as Memory[])
 		: [];
 	const latest = [...recentMessages]
-		.filter((memory) => memory.entityId !== memory.agentId)
+		.filter((memory) => {
+			if (runtimeAgentId && memory.entityId === runtimeAgentId) {
+				return false;
+			}
+			return memory.entityId !== memory.agentId;
+		})
 		.sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
 		.at(-1);
 	return typeof latest?.content?.text === "string" ? latest.content.text : "";
@@ -2445,6 +2607,7 @@ const PRONOUN_ATTACHMENT_FOLLOWUP_RE = /\b(?:it|this|that|them|those)\b/iu;
 function looksLikeAttachmentInspectionRequest(
 	message: Memory,
 	state: State,
+	runtimeAgentId: string | undefined,
 ): boolean {
 	if (availableAttachmentCount(message, state) === 0) return false;
 	const text =
@@ -2456,7 +2619,7 @@ function looksLikeAttachmentInspectionRequest(
 	if (VISUAL_INSPECTION_RE.test(text)) {
 		return true;
 	}
-	const priorText = latestPriorUserText(state);
+	const priorText = latestPriorUserText(state, runtimeAgentId);
 	return (
 		ATTACHMENT_NOUN_RE.test(priorText) &&
 		PRONOUN_ATTACHMENT_FOLLOWUP_RE.test(text) &&
@@ -2491,8 +2654,9 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 			description:
 				"Routes attachment/image inspection requests through ATTACHMENT instead of allowing unsupported direct vision claims.",
 			priority: 10,
-			shouldRun: ({ message, state }) =>
-				looksLikeAttachmentInspectionRequest(message, state),
+			shouldRun: ({ runtime, message, state }) =>
+				!isSubAgentCompletionArtifact(message) &&
+				looksLikeAttachmentInspectionRequest(message, state, runtime.agentId),
 			evaluate: () => ({
 				requiresTool: true,
 				addContexts: ["media", "messaging"],
@@ -2727,27 +2891,23 @@ function formatRoleGateForPrompt(
 }
 
 /**
- * The Stage-1 `messageHandlerTemplate` covers three optimized-prompt tasks:
+ * The Stage-1 `messageHandlerTemplate` covers two optimized-prompt tasks:
  *
- *   - `context_routing` — when the role-filtered context catalog is non-empty
- *     the prompt asks the model to pick which contexts to consume. Optimizing
- *     this task tunes the routing instructions.
- *   - `should_respond` — when no contexts are available (direct messages, or
- *     callers that haven't registered any) the prompt collapses to a respond
- *     /ignore decision. Optimizing this task tunes that classifier.
+ *   - `should_respond` — the prompt asks the model to decide whether to
+ *     respond or ignore the message. Optimizing this task tunes the classifier.
  *   - `response` — Stage-1 also emits the assistant's draft reply when it
  *     decides to respond, so a separately-trained `response` artifact
  *     replaces the same baseline when present and the operator wants that
  *     variant active.
- *
- * The dispatch here is keyed on call-site state (whether contexts are
- * available), not on an `if (task === 'X')` branch — we ask the resolver for
- * one task name per call.
  */
 function selectMessageHandlerTask(
-	availableContexts: readonly ContextDefinition[],
+	_availableContexts: readonly ContextDefinition[],
 ): OptimizedPromptTask {
-	return availableContexts.length > 0 ? "context_routing" : "should_respond";
+	// context_routing was retired (inferContextRoutingFromText is pure regex,
+	// no LLM call to optimize); the message-handler template falls back to the
+	// should_respond task for both the contexts-available and contexts-empty
+	// callers.
+	return "should_respond";
 }
 
 function renderMessageHandlerInstructions(
@@ -5377,7 +5537,10 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
  * Tracks the latest response ID per agent+room to handle message superseding
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
-const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 5_000;
+// Sub-agent completions emit follow-up evaluators (URL verification, attachment
+// routing, transcript stripping) that legitimately take >5s; 30s gives them
+// room without indefinitely blocking response finalization.
+const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 30_000;
 
 function clearLatestResponseId(
 	agentId: UUID,
@@ -6159,7 +6322,7 @@ function looksLikeLocalShellRequest(text: string): boolean {
 	}
 
 	const mentionsCommand =
-		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|disk (?:space|usage)|storage usage)\b/iu.test(
+		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|submodules?|disk (?:space|usage)|storage usage|health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time)\b/iu.test(
 			normalized,
 		);
 	const asksToInspect =
@@ -6168,11 +6331,37 @@ function looksLikeLocalShellRequest(text: string): boolean {
 		);
 	const mentionsLocalSurface =
 		/(?:^|\s)(?:\/home\/|~\/|\.\/|\.\.\/)/u.test(normalized) ||
-		/\b(?:this vps|local(?:ly)?|workspace|worktree|repo|repository|branch|head|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|logs?|service|systemd)\b/iu.test(
+		/\b(?:this vps|local(?:ly)?|server|workspace|worktree|repo|repository|branch|head|vendored|submodules?|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time|logs?|service|systemd)\b/iu.test(
+			normalized,
+		);
+	const asksRepoStateQuestion =
+		/\b(?:is|are|what|which|where)\b[^.?!\n]{0,80}\b(?:submodules?|commit|branch|head|checked\s+out|worktree|repo|repository)\b/iu.test(
+			normalized,
+		) &&
+		/\b(?:local(?:ly)?|running|workspace|worktree|repo|repository|vendored|submodules?|checked\s+out)\b/iu.test(
+			normalized,
+		);
+	const asksLocalStatusQuestion =
+		/\b(?:check|inspect|show|summarize|what|how\s+much|is|are)\b[\s\S]{0,160}\b(?:health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time)\b/iu.test(
+			normalized,
+		) &&
+		/\b(?:local|server|bot|runtime|right now|current|ready)\b/iu.test(
+			normalized,
+		);
+	const asksLocalSourceInspection =
+		/\b(?:does|do|is|are|can|could|check|verify|inspect|show)\b[\s\S]{0,160}\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b[\s\S]{0,160}\b(?:include|contain|have|support|implement|detect|use)\b/iu.test(
+			normalized,
+		) &&
+		/\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b/iu.test(
 			normalized,
 		);
 
-	return mentionsCommand && asksToInspect && mentionsLocalSurface;
+	return (
+		(mentionsCommand && asksToInspect && mentionsLocalSurface) ||
+		asksRepoStateQuestion ||
+		asksLocalStatusQuestion ||
+		asksLocalSourceInspection
+	);
 }
 
 function looksLikeActionExplanationRequest(text: string): boolean {

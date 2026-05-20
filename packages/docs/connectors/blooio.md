@@ -104,6 +104,6 @@ All fields are defined under `connectors.blooio` in `eliza.json`.
 
 ## Related
 
-- [Blooio plugin reference](/plugin-registry/platform/blooio)
+- [Blooio plugin reference](/connectors/blooio)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

@@ -1,8 +1,7 @@
 diff --git a/android/build.gradle b/android/build.gradle
-index 772361a..dca211f 100644
 --- a/android/build.gradle
 +++ b/android/build.gradle
-@@ -5,6 +5,22 @@ ext {
+@@ -5,6 +5,44 @@
      androidxEspressoCoreVersion = project.hasProperty('androidxEspressoCoreVersion') ? rootProject.ext.androidxEspressoCoreVersion : '3.6.1'
  }
  
@@ -10,69 +9,97 @@ index 772361a..dca211f 100644
 +    return rootProject.projectDir.toPath().resolve('../../..').normalize().toFile().absolutePath
 +}
 +
-+def resolveElizaDflashAndroidLibDir = { ->
-+    def fromProp = project.findProperty('eliza.dflash.android.libdir')
++// Per-ABI resolver for the DFlash cross-compile output produced by
++// `packages/app-core/scripts/build-llama-cpp-dflash.mjs` and
++// `packages/app-core/scripts/aosp/compile-libllama.mjs`. Each ABI has
++// its own gradle property (`eliza.dflash.android.libdir.<abi>`) and env
++// var (`ELIZA_DFLASH_ANDROID_LIBDIR_<ABI>`). For arm64-v8a the legacy
++// unsuffixed names are still honored for backwards compatibility.
++// riscv64 has no Vulkan path yet (Wave 2 ships CPU-only), so only the
++// `cpu` backend is searched on that ABI.
++def resolveElizaDflashAndroidLibDir = { String abi ->
++    def propSuffix = abi == 'arm64-v8a' ? '' : ".${abi}"
++    def envSuffix = abi == 'arm64-v8a' ? '' : "_${abi.replace('-', '_').toUpperCase()}"
++    def fromProp = project.findProperty("eliza.dflash.android.libdir${propSuffix}")
 +    if (fromProp) return fromProp.toString()
-+    def fromEnv = System.getenv('ELIZA_DFLASH_ANDROID_LIBDIR')
++    def fromEnv = System.getenv("ELIZA_DFLASH_ANDROID_LIBDIR${envSuffix}")
 +    if (fromEnv) return fromEnv
 +    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "${System.getProperty('user.home')}/.eliza"
-+    def candidates = ['vulkan', 'cpu'].collect { backend ->
-+        "${stateDir}/local-inference/bin/dflash/android-arm64-${backend}"
++    def abiToken = [
++        'arm64-v8a': 'android-arm64',
++        'x86_64'   : 'android-x86_64',
++        'riscv64'  : 'android-riscv64',
++    ][abi]
++    if (abiToken == null) return ''
++    def backends = abi == 'riscv64' ? ['cpu'] : ['vulkan', 'cpu']
++    def candidates = backends.collect { backend ->
++        "${stateDir}/local-inference/bin/dflash/${abiToken}-${backend}"
 +    }
 +    return candidates.find { new File(it).isDirectory() } ?: ''
++}
++
++def resolveElizaSkipDflashAndroidLib = { ->
++    return project.findProperty('elizaSkipForkLlamaLib') == 'true' ||
++        System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'
 +}
 +
  buildscript {
      repositories {
          google()
-@@ -18,7 +34,7 @@ buildscript {
- apply plugin: 'com.android.library'
- 
- android {
--    namespace "ai.annadata.plugin.capacitor"
-+    namespace = "ai.annadata.plugin.capacitor"
-     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
-     defaultConfig {
-         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
-@@ -30,26 +46,33 @@ android {
+@@ -26,12 +64,21 @@
+         versionCode 1
+         versionName "1.0"
+         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+-        
++
          ndk {
-             abiFilters 'arm64-v8a'
-         }
+-            abiFilters 'arm64-v8a'
++            abiFilters 'arm64-v8a', 'riscv64'
++        }
 +
 +        externalNativeBuild {
 +            cmake {
 +                arguments "-DELIZA_REPO_ROOT=${resolveElizaRepoRoot()}",
-+                    "-DELIZA_DFLASH_ANDROID_LIBDIR=${resolveElizaDflashAndroidLibDir()}"
++                    "-DELIZA_DFLASH_ANDROID_LIBDIR_ARM64_V8A=${resolveElizaDflashAndroidLibDir('arm64-v8a')}",
++                    "-DELIZA_DFLASH_ANDROID_LIBDIR_RISCV64=${resolveElizaDflashAndroidLibDir('riscv64')}",
++                    "-DELIZA_SKIP_DFLASH_ANDROID_LIB=${resolveElizaSkipDflashAndroidLib() ? 'ON' : 'OFF'}"
 +            }
-+        }
+         }
      }
-     
+-    
++
      externalNativeBuild {
          cmake {
              path "src/main/CMakeLists.txt"
--            version "3.22.1"
-+            version = "3.22.1"
-             // Explicitly set NDK version to avoid Windows dependencies
--            ndkVersion "29.0.13113456"
-+            ndkVersion = "29.0.13113456"
+@@ -40,23 +87,23 @@
+             ndkVersion = "29.0.13113456"
          }
      }
-     
+-    
++
      buildTypes {
          release {
              minifyEnabled false
--            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
          }
      }
-     
+-    
++
      lintOptions {
--        abortOnError false
-+        abortOnError = false
+         abortOnError = false
      }
-     
+-    
++
      compileOptions {
-@@ -64,13 +87,6 @@ android {
+         sourceCompatibility JavaVersion.VERSION_21
+         targetCompatibility JavaVersion.VERSION_21
+     }
+-    
++
+     sourceSets {
+         main {
+             java {
+@@ -64,13 +111,6 @@
              }
          }
      }
@@ -87,10 +114,9 @@ index 772361a..dca211f 100644
  
  repositories {
 diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
-index f849d84..2c5a9dc 100644
 --- a/android/src/main/CMakeLists.txt
 +++ b/android/src/main/CMakeLists.txt
-@@ -1,131 +1,88 @@
+@@ -1,131 +1,157 @@
 -cmake_minimum_required(VERSION 3.10)
 +cmake_minimum_required(VERSION 3.22)
  
@@ -106,6 +132,30 @@ index f849d84..2c5a9dc 100644
 -    ${LLAMACPP_LIB_DIR}/ggml-cpu
 -    ${LLAMACPP_LIB_DIR}/tools/mtmd
 -)
++option(ELIZA_SKIP_DFLASH_ANDROID_LIB "Build a no-op JNI library for Android smoke builds without DFlash libs" OFF)
++
++find_library(LOG_LIB log)
++find_library(ANDROID_LIB android)
++
++if(ELIZA_SKIP_DFLASH_ANDROID_LIB)
++    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/eliza-dflash-stub.cpp" "extern \"C\" int eliza_dflash_stub() { return 0; }\n")
++    if(ANDROID_ABI STREQUAL "riscv64")
++        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-riscv64")
++    else()
++        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-arm64")
++    endif()
++    add_library(${ELIZA_STUB_OUTPUT_NAME} SHARED "${CMAKE_CURRENT_BINARY_DIR}/eliza-dflash-stub.cpp")
++    target_link_libraries(${ELIZA_STUB_OUTPUT_NAME} PRIVATE ${LOG_LIB} ${ANDROID_LIB})
++    set_target_properties(
++        ${ELIZA_STUB_OUTPUT_NAME}
++        PROPERTIES
++        OUTPUT_NAME "${ELIZA_STUB_OUTPUT_NAME}"
++        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/${ANDROID_ABI}"
++    )
++    message(STATUS "Building Eliza DFlash JNI smoke stub for Android ${ANDROID_ABI}")
++    return()
++endif()
++
 +if(NOT DEFINED ELIZA_REPO_ROOT)
 +    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza DFlash Android JNI bridge")
 +endif()
@@ -180,15 +230,55 @@ index f849d84..2c5a9dc 100644
 -    ${LLAMACPP_LIB_DIR}/cap-tts.cpp
 -    ${CMAKE_SOURCE_DIR}/jni-utils.h
 -    ${CMAKE_SOURCE_DIR}/jni.cpp
--)
-+if(NOT DEFINED ELIZA_DFLASH_ANDROID_LIBDIR)
-+    message(FATAL_ERROR "ELIZA_DFLASH_ANDROID_LIBDIR is required for the Eliza DFlash Android JNI bridge")
++if(NOT DEFINED ELIZA_REPO_ROOT)
++    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza DFlash Android JNI bridge")
++endif()
++
++# Per-ABI DFlash lib dirs are passed by android/build.gradle. Only the
++# entry for the currently-building ABI is required; the other can be empty.
++# riscv64 is CPU-only today (no ggml-vulkan.so produced yet).
++if(ANDROID_ABI STREQUAL "arm64-v8a")
++    set(ELIZA_DFLASH_LIBDIR "${ELIZA_DFLASH_ANDROID_LIBDIR_ARM64_V8A}")
++    set(ELIZA_OUTPUT_NAME "llama-cpp-arm64")
++    set(ELIZA_HAS_VULKAN TRUE)
++elseif(ANDROID_ABI STREQUAL "riscv64")
++    set(ELIZA_DFLASH_LIBDIR "${ELIZA_DFLASH_ANDROID_LIBDIR_RISCV64}")
++    set(ELIZA_OUTPUT_NAME "llama-cpp-riscv64")
++    set(ELIZA_HAS_VULKAN FALSE)
++else()
++    message(FATAL_ERROR "Unsupported ANDROID_ABI for Eliza DFlash JNI bridge: ${ANDROID_ABI} (expected arm64-v8a or riscv64)")
++endif()
++
++if(NOT ELIZA_DFLASH_LIBDIR OR ELIZA_DFLASH_LIBDIR STREQUAL "")
++    message(FATAL_ERROR "DFlash Android lib dir is empty for ABI ${ANDROID_ABI}; set -Peliza.dflash.android.libdir.${ANDROID_ABI} or ELIZA_DFLASH_ANDROID_LIBDIR_<ABI>, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-${ANDROID_ABI}-cpu (or aosp/compile-libllama.mjs)")
 +endif()
 +
 +set(ELIZA_LLAMA_CPP_DIR "${ELIZA_REPO_ROOT}/plugins/plugin-local-inference/native/llama.cpp")
-+set(ELIZA_DFLASH_LIBDIR "${ELIZA_DFLASH_ANDROID_LIBDIR}")
 +
-+foreach(required_lib libllama.so libggml.so libggml-base.so libggml-cpu.so libggml-vulkan.so)
++# Resolve the Eliza DFlash JNI bridge source. The canonical workspace
++# path moved during the os-linux cleanup: prefer the new location
++# (packages/native/plugins/llama) but fall back to the historical
++# alternates so older checkouts keep building.
++foreach(candidate_jni
++    "${ELIZA_REPO_ROOT}/packages/native/plugins/llama/android/eliza-dflash-jni.cpp"
++    "${ELIZA_REPO_ROOT}/plugins/plugin-native-llama/android/eliza-dflash-jni.cpp"
++    "${ELIZA_REPO_ROOT}/packages/native-plugins/llama/android/eliza-dflash-jni.cpp"
+ )
++    if(EXISTS "${candidate_jni}")
++        set(ELIZA_DFLASH_JNI_CPP "${candidate_jni}")
++        break()
++    endif()
++endforeach()
++
++if(NOT DEFINED ELIZA_DFLASH_JNI_CPP)
++    message(FATAL_ERROR "Could not locate eliza-dflash-jni.cpp under ${ELIZA_REPO_ROOT} (looked under packages/native/plugins/llama, plugins/plugin-native-llama, packages/native-plugins/llama)")
++endif()
++
++set(_eliza_required_libs libllama.so libggml.so libggml-base.so libggml-cpu.so)
++if(ELIZA_HAS_VULKAN)
++    list(APPEND _eliza_required_libs libggml-vulkan.so)
++endif()
++foreach(required_lib ${_eliza_required_libs})
 +    if(NOT EXISTS "${ELIZA_DFLASH_LIBDIR}/${required_lib}")
 +        message(FATAL_ERROR "Missing DFlash Android library: ${ELIZA_DFLASH_LIBDIR}/${required_lib}")
 +    endif()
@@ -206,8 +296,10 @@ index f849d84..2c5a9dc 100644
 +add_library(eliza_ggml_cpu SHARED IMPORTED)
 +set_target_properties(eliza_ggml_cpu PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libggml-cpu.so")
 +
-+add_library(eliza_ggml_vulkan SHARED IMPORTED)
-+set_target_properties(eliza_ggml_vulkan PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libggml-vulkan.so")
++if(ELIZA_HAS_VULKAN)
++    add_library(eliza_ggml_vulkan SHARED IMPORTED)
++    set_target_properties(eliza_ggml_vulkan PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libggml-vulkan.so")
++endif()
  
 -# Find Android libraries
  find_library(LOG_LIB log)
@@ -256,14 +348,14 @@ index f849d84..2c5a9dc 100644
 -message(STATUS "Optimizations: ARMv8-A, Cortex-A76 tuning")
 -message(STATUS "Output directory: ${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/arm64-v8a")
 +add_library(
-+    llama-cpp-arm64
++    ${ELIZA_OUTPUT_NAME}
 +    SHARED
-+    ${ELIZA_REPO_ROOT}/packages/native-plugins/llama/android/eliza-dflash-jni.cpp
++    ${ELIZA_DFLASH_JNI_CPP}
 +    ${ELIZA_LLAMA_CPP_DIR}/common/json-schema-to-grammar.cpp
 +)
 +
 +target_include_directories(
-+    llama-cpp-arm64
++    ${ELIZA_OUTPUT_NAME}
 +    PRIVATE
 +    ${ELIZA_LLAMA_CPP_DIR}/include
 +    ${ELIZA_LLAMA_CPP_DIR}/ggml/include
@@ -272,52 +364,70 @@ index f849d84..2c5a9dc 100644
 +)
 +
 +target_compile_options(
-+    llama-cpp-arm64
++    ${ELIZA_OUTPUT_NAME}
 +    PRIVATE
 +    -O3
 +    -DNDEBUG
 +    -fno-finite-math-only
 +)
 +
++set(_eliza_link_libs eliza_llama eliza_ggml eliza_ggml_cpu eliza_ggml_base)
++if(ELIZA_HAS_VULKAN)
++    list(APPEND _eliza_link_libs eliza_ggml_vulkan)
++endif()
++
 +target_link_libraries(
-+    llama-cpp-arm64
++    ${ELIZA_OUTPUT_NAME}
 +    PRIVATE
-+    eliza_llama
-+    eliza_ggml
-+    eliza_ggml_cpu
-+    eliza_ggml_vulkan
-+    eliza_ggml_base
++    ${_eliza_link_libs}
 +    ${LOG_LIB}
 +    ${ANDROID_LIB}
 +)
 +
 +set_target_properties(
-+    llama-cpp-arm64
++    ${ELIZA_OUTPUT_NAME}
 +    PROPERTIES
-+    OUTPUT_NAME "llama-cpp-arm64"
-+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/arm64-v8a"
++    OUTPUT_NAME "${ELIZA_OUTPUT_NAME}"
++    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/${ANDROID_ABI}"
 +)
 +
-+message(STATUS "Building Eliza DFlash JNI bridge for Android ARM64")
++message(STATUS "Building Eliza DFlash JNI bridge for Android ${ANDROID_ABI}")
 +message(STATUS "Eliza repo root: ${ELIZA_REPO_ROOT}")
 +message(STATUS "DFlash lib dir: ${ELIZA_DFLASH_LIBDIR}")
++message(STATUS "Vulkan backend: ${ELIZA_HAS_VULKAN}")
 diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
-index b037159..aa1672c 100644
 --- a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
 +++ b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
-@@ -312,6 +312,24 @@ public class LlamaCpp {
+@@ -305,13 +305,40 @@
+                 case "x86_64":
+                     libraryName = "llama-cpp-x86_64";
+                     break;
++                case "riscv64":
++                    libraryName = "llama-cpp-riscv64";
++                    break;
+                 default:
+                     Log.w(TAG, "Unsupported ABI: " + abi + ", falling back to arm64-v8a");
+                     libraryName = "llama-cpp-arm64";
+                     break;
              }
-             
+-            
++
              Log.i(TAG, "Loading native library for ABI: " + abi + " (library: " + libraryName + ")");
-+            if ("arm64-v8a".equals(abi)) {
-+                String[] dflashDependencies = new String[] {
-+                    "omp",
-+                    "ggml-base",
-+                    "ggml-cpu",
-+                    "ggml-vulkan",
-+                    "ggml",
-+                    "llama"
-+                };
++            // Preload DFlash dependency libraries before our JNI bridge so
++            // dlopen resolves the chain without ld.so probing LD_LIBRARY_PATH.
++            // riscv64 currently has no ggml-vulkan.so (Wave 2 CPU-only); the
++            // preload is wrapped in try/catch and an absent dependency is
++            // logged as a warning rather than failing the load.
++            if ("arm64-v8a".equals(abi) || "riscv64".equals(abi)) {
++                java.util.List<String> dflashDependencies = new java.util.ArrayList<>();
++                dflashDependencies.add("omp");
++                dflashDependencies.add("ggml-base");
++                dflashDependencies.add("ggml-cpu");
++                if ("arm64-v8a".equals(abi)) {
++                    dflashDependencies.add("ggml-vulkan");
++                }
++                dflashDependencies.add("ggml");
++                dflashDependencies.add("llama");
 +                for (String dependency : dflashDependencies) {
 +                    try {
 +                        System.loadLibrary(dependency);

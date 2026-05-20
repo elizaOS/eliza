@@ -557,6 +557,9 @@ artifacts/
 !packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework/
 !packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework/**
 research/native-tool-calling
+research/even-realities/
+# Build artifacts from old ios-native-deps location (moved to packages/native/ios-deps/)
+packages/ios-native-deps/
 test/mocks/mockoon/.mockoon-pids/
 lifeops_bench_results/
 reports/ai-qa/

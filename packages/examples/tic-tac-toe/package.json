@@ -9,6 +9,7 @@
     "play": "bun run game.ts --human",
     "watch": "bun run game.ts --watch",
     "bench": "bun run game.ts --bench",
+    "test": "bun run game.ts --bench --no-prompt --iterations=5",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit",
     "build": "bun run typecheck"

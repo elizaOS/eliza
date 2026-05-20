@@ -29,10 +29,16 @@
       "@clack/prompts": ["../../../agent/node_modules/@clack/prompts"],
       "@elizaos/app-core": ["../../src/index.ts"],
       "@elizaos/app-core/*": ["../../src/*"],
-      "@elizaos/electrobun-carrots": [
-        "../../../electrobun-carrots/src/index.ts"
+      "@elizaos/plugin-remote-manifest": [
+        "../../../plugin-remote-manifest/src/index.ts"
       ],
-      "@elizaos/electrobun-carrots/*": ["../../../electrobun-carrots/src/*"],
+      "@elizaos/plugin-remote-manifest/*": ["../../../plugin-remote-manifest/src/*"],
+      "@elizaos/plugin-worker-runtime": [
+        "../../../plugin-worker-runtime/src/index.ts"
+      ],
+      "@elizaos/plugin-worker-runtime/*": [
+        "../../../plugin-worker-runtime/src/*"
+      ],
       "@elizaos/agent": ["../../../agent/src/index.ts"],
       "@elizaos/agent/*": ["../../../agent/src/*"],
       "@elizaos/core": ["../../../core/src/index.node.ts"],

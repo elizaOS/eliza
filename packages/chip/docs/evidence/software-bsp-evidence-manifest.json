@@ -55,7 +55,7 @@
         {
           "artifact": "Buildroot target e1-npu ML smoke",
           "path": "docs/evidence/buildroot/e1-npu-ml-smoke.log",
-          "capture_command": "E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu' sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke",
+          "capture_command": "E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke",
           "claim_boundary": "driver_ioctl_gemm_only_not_nnapi_or_hardware_benchmark",
           "min_bytes": 180,
           "required_strings": [
@@ -64,6 +64,8 @@
             "eliza-evidence: started_utc=",
             "e1-npu-ml-smoke: PASS",
             "workload=gemm_s8_int8_2x2x3",
+            "--workload gemm_s8_int8_2x2x3",
+            "--require-npu",
             "claim_boundary=driver_ioctl_gemm_only_not_nnapi_or_hardware_benchmark",
             "/dev/e1-npu",
             "E1_NPU_ML_SMOKE_PASS",
@@ -397,6 +399,41 @@
             "boot timeout",
             "adb: device offline",
             "Android booted on e1_soc",
+            "Android compatible",
+            "CDD compliant",
+            "CTS passed",
+            "VTS passed"
+          ]
+        },
+        {
+          "artifact": "AOSP Cuttlefish HAL registration smoke transcript",
+          "path": "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log",
+          "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+          "capture_command": "sw/aosp-device/check-cvd-hal-smoke.sh /path/to/aosp",
+          "external_artifacts": [
+            "Cuttlefish instance adb transport",
+            "/vendor/bin/hw/vendor.eliza.e1_npu@1.0-service.sim"
+          ],
+          "min_bytes": 200,
+          "required_strings": [
+            "eliza-evidence: target=aosp artifact=eliza_ai_soc_cvd_hal_smoke",
+            "eliza-evidence: claim_boundary=virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+            "eliza-evidence: command=",
+            "eliza-evidence: started_utc=",
+            "adb shell lshal",
+            "vendor.eliza.e1_npu@1.0::IE1Npu/default",
+            "HAL_REGISTERED=true",
+            "INTERFACE_AVAILABLE=true",
+            "sys.boot_completed=1",
+            "eliza-evidence: ended_utc=",
+            "eliza-evidence: status=PASS"
+          ],
+          "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+          "forbidden_strings": [
+            "expected_hal_missing",
+            "hal_interface_not_available",
+            "boot timeout",
+            "adb: device offline",
             "Android compatible",
             "CDD compliant",
             "CTS passed",

@@ -1,6 +1,7 @@
-# Telegram Agent Examples
+# Telegram Agent Example
 
-Telegram bots using elizaOS with the full message pipeline (providers → LLM → actions → ALWAYS_AFTER hook actions).
+TypeScript Telegram bot using elizaOS with the full message pipeline
+(providers -> LLM -> actions -> ALWAYS_AFTER hook actions).
 
 ## Quick Start
 
@@ -10,17 +11,16 @@ export OPENAI_API_KEY="your-key"
 # Optional: export POSTGRES_URL="postgresql://..."
 ```
 
-| Language | Command |
-|----------|---------|
-| TypeScript | `cd typescript && bun install && bun run start` |
-| Python | `cd python && pip install -r requirements.txt && python telegram_agent.py` |
-| Rust | `cd rust/telegram-agent && cargo run --release` |
+```bash
+cd packages/examples/telegram
+bun install
+bun run start
+```
 
 ## How It Works
 
-**TypeScript**: The `telegramPlugin` auto-integrates with the runtime - just include it and messages flow through the full pipeline automatically.
-
-**Python/Rust**: Manually bridge Telegram to `runtime.message_service.handle_message()` which runs the full pipeline.
+The `telegramPlugin` auto-integrates with the runtime. Include it and messages
+flow through the full pipeline automatically.
 
 ## Message Pipeline
 
@@ -52,3 +52,13 @@ const character = {
 | `TELEGRAM_BOT_TOKEN` | Yes | From @BotFather |
 | `OPENAI_API_KEY` | Yes | OpenAI API key |
 | `POSTGRES_URL` | No | PostgreSQL URL (defaults to PGLite) |
+
+## Validate
+
+```bash
+bun run test
+bun run typecheck
+```
+
+The test suite validates required environment checks and character wiring
+without connecting to Telegram.

@@ -141,8 +141,13 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
         cache: "no-store",
         credentials: "include",
         headers: {
+          // Don't send `Pragma: no-cache`. It's HTTP/1.0-era cruft and the
+          // `Cache-Control` directive above already disables caching for any
+          // modern proxy. Adding it forces a CORS preflight to list `pragma`
+          // in `Access-Control-Allow-Headers`, which `api.elizacloud.ai`
+          // doesn't — so the cross-origin balance poll was failing with
+          // `Request header field pragma is not allowed`.
           "Cache-Control": "no-cache, no-store, must-revalidate",
-          Pragma: "no-cache",
         },
       });
 

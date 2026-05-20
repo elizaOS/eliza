@@ -331,7 +331,7 @@ class TailRuntimeBridge extends MockRuntimeBridge {
       id: targetId,
       events: [
         {
-          carrotId: targetId,
+          remotePluginId: targetId,
           satelliteId: targetId,
           sequence: 1,
           name: "agent.message.stream.delta",

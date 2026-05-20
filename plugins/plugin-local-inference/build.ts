@@ -5,13 +5,13 @@ import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
 const external = await externalsFromPackageJson("./package.json", {
 	// Transitive workspace deps + native sub-packages + wildcards the prior
-	// hand-list relied on. The `@node-llama-cpp/*` glob covers per-platform
-	// subpackages that aren't direct deps.
+	// hand-list relied on. `llama-cpp-capacitor` is the canonical mobile
+	// binding; bun:* covers the desktop bun:ffi loader. node-llama-cpp has
+	// been removed.
 	extra: [
 		"@elizaos/agent",
 		"@elizaos/plugin-omnivoice",
-		"@node-llama-cpp",
-		"@node-llama-cpp/*",
+		"llama-cpp-capacitor",
 		"@reflink/reflink",
 		"ws",
 		"node:*",

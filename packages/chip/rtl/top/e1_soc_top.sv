@@ -25,6 +25,10 @@
 `timescale 1ns/1ps
 
 module e1_soc_top (
+`ifdef USE_POWER_PINS
+    inout  wire         VPWR,
+    inout  wire         VGND,
+`endif
     input  logic        clk,
     input  logic        rst_n,
     input  logic        mmio_valid,
@@ -71,6 +75,16 @@ module e1_soc_top (
     logic dma_m_rready;
     logic [31:0] dma_m_rdata;
     logic [1:0] dma_m_rresp;
+    logic npu_m_awvalid;
+    logic npu_m_awready;
+    logic [31:0] npu_m_awaddr;
+    logic npu_m_wvalid;
+    logic npu_m_wready;
+    logic [31:0] npu_m_wdata;
+    logic [3:0] npu_m_wstrb;
+    logic npu_m_bvalid;
+    logic npu_m_bready;
+    logic [1:0] npu_m_bresp;
     logic npu_m_arvalid;
     logic npu_m_arready;
     logic [31:0] npu_m_araddr;
@@ -97,6 +111,7 @@ module e1_soc_top (
     logic periph_sel;
     logic dram_sel;
     logic clint_sel;
+    logic wbuf_sel;
     logic word_aligned;
     logic implemented_window;
     logic [31:0] dram_mem [0:DRAM_WORDS-1];
@@ -106,13 +121,16 @@ module e1_soc_top (
 
     wire [DRAM_INDEX_BITS-1:0] mmio_dram_word = mmio_addr[2 +: DRAM_INDEX_BITS];
     wire [DRAM_INDEX_BITS-1:0] dma_wr_word = dma_m_awaddr[2 +: DRAM_INDEX_BITS];
+    wire [DRAM_INDEX_BITS-1:0] npu_wr_word = npu_m_awaddr[2 +: DRAM_INDEX_BITS];
     wire [DRAM_INDEX_BITS-1:0] dma_rd_word = dma_m_araddr[2 +: DRAM_INDEX_BITS];
     wire [DRAM_INDEX_BITS-1:0] npu_rd_word = npu_m_araddr[2 +: DRAM_INDEX_BITS];
     wire [DRAM_INDEX_BITS-1:0] display_rd_word = display_fb_read_addr[2 +: DRAM_INDEX_BITS];
     wire        dma_wr_fire = dma_m_awvalid && dma_m_awready && dma_m_wvalid && dma_m_wready;
+    wire        npu_wr_fire = npu_m_awvalid && npu_m_awready && npu_m_wvalid && npu_m_wready;
     wire        dma_rd_fire = dma_m_arvalid && dma_m_arready;
     wire        npu_rd_fire = npu_m_arvalid && npu_m_arready;
     wire        dma_wr_ok = (dma_m_awaddr[31:12] == 20'h8000_0) && (dma_m_awaddr[1:0] == 2'b00);
+    wire        npu_wr_ok = (npu_m_awaddr[31:12] == 20'h8000_0) && (npu_m_awaddr[1:0] == 2'b00);
     wire        dma_rd_ok = (dma_m_araddr[31:12] == 20'h8000_0) && (dma_m_araddr[1:0] == 2'b00);
     wire        npu_rd_ok = (npu_m_araddr[31:12] == 20'h8000_0) && (npu_m_araddr[1:0] == 2'b00);
     wire        display_rd_ok = display_fb_read_valid &&
@@ -126,6 +144,7 @@ module e1_soc_top (
     assign dma_sel     = implemented_window && mmio_addr[31:12] == 20'h1001_0;
     assign npu_sel     = implemented_window && mmio_addr[31:12] == 20'h1002_0;
     assign display_sel = implemented_window && mmio_addr[31:12] == 20'h1003_0;
+    assign wbuf_sel    = word_aligned && mmio_addr[31:12] == 20'h1004_0;
     assign clint_sel   = word_aligned && mmio_addr[31:16] == 16'h0200 &&
                          mmio_addr[15:14] != 2'b11;
     assign dram_sel    = word_aligned && mmio_addr[31:12] == 20'h8000_0;
@@ -177,8 +196,10 @@ module e1_soc_top (
     };
     /* verilator lint_on UNUSEDSIGNAL */
 
-    assign dma_m_awready = !dma_m_bvalid;
-    assign dma_m_wready  = !dma_m_bvalid;
+    assign dma_m_awready = !dma_m_bvalid && !npu_m_bvalid;
+    assign dma_m_wready  = !dma_m_bvalid && !npu_m_bvalid;
+    assign npu_m_awready = !npu_m_bvalid && !dma_m_awvalid && !dma_m_bvalid;
+    assign npu_m_wready  = !npu_m_bvalid && !dma_m_wvalid && !dma_m_bvalid;
     assign dma_m_arready = !dma_m_rvalid && !npu_m_arvalid;
     assign npu_m_arready = !npu_m_rvalid && !dma_m_arvalid && !dma_m_rvalid;
     assign display_fb_read_ready = display_rd_ok;
@@ -188,6 +209,8 @@ module e1_soc_top (
         if (!rst_n) begin
             dma_m_bvalid <= 1'b0;
             dma_m_bresp  <= 2'b00;
+            npu_m_bvalid <= 1'b0;
+            npu_m_bresp  <= 2'b00;
             dma_m_rvalid <= 1'b0;
             dma_m_rdata  <= 32'h0;
             dma_m_rresp  <= 2'b00;
@@ -197,6 +220,10 @@ module e1_soc_top (
         end else begin
             if (dma_m_bvalid && dma_m_bready) begin
                 dma_m_bvalid <= 1'b0;
+            end
+
+            if (npu_m_bvalid && npu_m_bready) begin
+                npu_m_bvalid <= 1'b0;
             end
 
             if (dma_m_rvalid && dma_m_rready) begin
@@ -222,6 +249,19 @@ module e1_soc_top (
                     dma_m_bresp <= 2'b10;
                 end
                 dma_m_bvalid <= 1'b1;
+            end
+
+            if (npu_wr_fire) begin
+                if (npu_wr_ok) begin
+                    if (npu_m_wstrb[0]) dram_mem[npu_wr_word][7:0]   <= npu_m_wdata[7:0];
+                    if (npu_m_wstrb[1]) dram_mem[npu_wr_word][15:8]  <= npu_m_wdata[15:8];
+                    if (npu_m_wstrb[2]) dram_mem[npu_wr_word][23:16] <= npu_m_wdata[23:16];
+                    if (npu_m_wstrb[3]) dram_mem[npu_wr_word][31:24] <= npu_m_wdata[31:24];
+                    npu_m_bresp <= 2'b00;
+                end else begin
+                    npu_m_bresp <= 2'b10;
+                end
+                npu_m_bvalid <= 1'b1;
             end
 
             if (dma_rd_fire) begin
@@ -279,6 +319,10 @@ module e1_soc_top (
     logic [1:0]  cpu_axi_aw_burst;
     logic        cpu_axi_aw_lock;
     logic [3:0]  cpu_axi_aw_cache;
+    logic [2:0]  cpu_axi_aw_prot;
+    logic [3:0]  cpu_axi_aw_qos;
+    logic [3:0]  cpu_axi_aw_region;
+    logic [5:0]  cpu_axi_aw_atop;
     logic        cpu_axi_aw_user;
     logic        cpu_axi_aw_valid;
     logic        cpu_axi_aw_ready;
@@ -319,7 +363,15 @@ module e1_soc_top (
     /* verilator lint_off UNUSEDSIGNAL */
     logic [63:0] cpu_dbg_pc;
     logic        cpu_dbg_valid;
+    logic [2:0]  cpu_axi_aw_prot_unused;
+    logic [3:0]  cpu_axi_aw_qos_unused;
+    logic [3:0]  cpu_axi_aw_region_unused;
+    logic [5:0]  cpu_axi_aw_atop_unused;
     /* verilator lint_on UNUSEDSIGNAL */
+    assign cpu_axi_aw_prot_unused   = cpu_axi_aw_prot;
+    assign cpu_axi_aw_qos_unused    = cpu_axi_aw_qos;
+    assign cpu_axi_aw_region_unused = cpu_axi_aw_region;
+    assign cpu_axi_aw_atop_unused   = cpu_axi_aw_atop;
 
     // ── External interrupt from PLIC/interrupt controller ─────────────────
     // Wire to the e1_interrupt_controller claim output when the PLIC is
@@ -372,6 +424,10 @@ module e1_soc_top (
         .axi_aw_burst   (cpu_axi_aw_burst),
         .axi_aw_lock    (cpu_axi_aw_lock),
         .axi_aw_cache   (cpu_axi_aw_cache),
+        .axi_aw_prot    (cpu_axi_aw_prot),
+        .axi_aw_qos     (cpu_axi_aw_qos),
+        .axi_aw_region  (cpu_axi_aw_region),
+        .axi_aw_atop    (cpu_axi_aw_atop),
         .axi_aw_user    (cpu_axi_aw_user),
         .axi_aw_valid   (cpu_axi_aw_valid),
         .axi_aw_ready   (cpu_axi_aw_ready),
@@ -386,6 +442,7 @@ module e1_soc_top (
         .axi_b_user     (cpu_axi_b_user),
         .axi_b_valid    (cpu_axi_b_valid),
         .axi_b_ready    (cpu_axi_b_ready),
+        .hart_id_i      (64'd0),
         // Observability
         .dbg_pc_o       (cpu_dbg_pc),
         .dbg_valid_o    (cpu_dbg_valid)
@@ -546,6 +603,16 @@ module e1_soc_top (
         .wdata(mmio_wdata),
         .rdata(npu_rdata),
         .irq(irq_npu),
+        .m_axil_awvalid(npu_m_awvalid),
+        .m_axil_awready(npu_m_awready),
+        .m_axil_awaddr(npu_m_awaddr),
+        .m_axil_wvalid(npu_m_wvalid),
+        .m_axil_wready(npu_m_wready),
+        .m_axil_wdata(npu_m_wdata),
+        .m_axil_wstrb(npu_m_wstrb),
+        .m_axil_bvalid(npu_m_bvalid),
+        .m_axil_bready(npu_m_bready),
+        .m_axil_bresp(npu_m_bresp),
         .m_axil_arvalid(npu_m_arvalid),
         .m_axil_arready(npu_m_arready),
         .m_axil_araddr(npu_m_araddr),
@@ -577,6 +644,35 @@ module e1_soc_top (
         .fb_read_ready(display_fb_read_ready)
     );
 
+    // NPU weight-staging SRAM. This is the first hard macro on the e1 SoC
+    // floorplan; it carries the AlphaChip / DREAMPlace / OpenROAD macro-
+    // placement evidence loop. Address window 0x1004_0000–0x1004_07FF
+    // (2 KB, 512 x 32). Behavioral model in simulation, Sky130 OpenRAM
+    // pre-built macro at signoff via E1_HAVE_HARD_SRAM.
+    logic [31:0] wbuf_rdata;
+    logic [3:0]  wbuf_wmask;
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic [31:0] wbuf_p1_dout_unused;
+    /* verilator lint_on UNUSEDSIGNAL */
+    assign wbuf_wmask = {4{mmio_write}};
+    e1_weight_buffer_sram u_weight_buffer (
+`ifdef USE_POWER_PINS
+        .VPWR    (VPWR),
+        .VGND    (VGND),
+`endif
+        .clk     (clk),
+        .rst_n   (rst_n),
+        .p0_csb  (~(mmio_valid && wbuf_sel)),
+        .p0_web  (~mmio_write),
+        .p0_wmask(wbuf_wmask),
+        .p0_addr (mmio_addr[10:2]),
+        .p0_din  (mmio_wdata),
+        .p0_dout (wbuf_rdata),
+        .p1_csb  (1'b1),
+        .p1_addr (9'h0),
+        .p1_dout (wbuf_p1_dout_unused)
+    );
+
     always_comb begin
         mmio_ready = mmio_valid;
         unique case (1'b1)
@@ -585,6 +681,7 @@ module e1_soc_top (
             dma_sel:      mmio_rdata = dma_rdata;
             npu_sel:      mmio_rdata = npu_rdata;
             display_sel:  mmio_rdata = display_rdata;
+            wbuf_sel:     mmio_rdata = wbuf_rdata;
             clint_sel:    mmio_rdata = clint_rdata;
             dram_sel:     mmio_rdata = dram_mem[mmio_dram_word];
             default:      mmio_rdata = 32'hDEAD_BEEF;

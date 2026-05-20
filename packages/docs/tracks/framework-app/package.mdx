@@ -1,0 +1,33 @@
+---
+title: Package & Deploy
+description: "Bundle, run, and deploy a framework app."
+---
+
+A framework app is a plain TypeScript project. Deployment looks like any other Node / Bun app.
+
+## Build
+
+Use whatever bundler fits — `tsdown`, `tsup`, `bun build`, `esbuild`. The runtime is ESM-first; if your host requires CJS, configure the bundler accordingly.
+
+## Run
+
+The runtime needs:
+
+- A writable location for the database (PGLite local or a Postgres URL).
+- Network access to model providers (or a local model server).
+- Environment variables for plugin credentials.
+
+## Deploy targets
+
+- **Long-lived Node / Bun** — most natural fit. PM2, systemd, fly.io, Railway, render, your VPS.
+- **Containers** — package as a Docker image. Use a remote Postgres for persistence.
+- **Serverless** — works if cold-start latency is acceptable. Use a remote Postgres; pin a singleton runtime in the warm scope.
+- **Eliza Cloud** — register the app for `appId`, hosted auth, domains, and container deploys. See [Cloud](/tracks/cloud/overview).
+- **Edge** — `@elizaos/core` supports Cloudflare Workers via the `index.node.ts` vs. `index.ts` split. See [`packages/examples/cloudflare/`](https://github.com/elizaOS/eliza/tree/develop/packages/examples/cloudflare).
+
+## See also
+
+- [Deployment](/deployment)
+- [Bare-metal deployment](/deployment-bare-metal)
+- [Build and release](/build-and-release)
+- [Cloud track](/tracks/cloud/overview)

@@ -27,9 +27,14 @@ python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+make kicad-setup
 make tools
 make smoke
 ```
+
+For a one-command package bootstrap, run `make setup`. It creates the Python
+environment, installs the repo-scoped KiCad CLI/render toolchain when possible,
+and checks the required package tools.
 
 `make smoke` runs the locally available low-cost checks. Some checks report `BLOCKED` when an external EDA, simulator, BSP, Android, or hardware dependency is absent; those blockers are expected on a minimal laptop setup and are captured as evidence rather than hidden.
 
@@ -92,7 +97,10 @@ Linux caveats:
 
 ```text
 make tools                         show local tool availability
+make setup                         install Python deps and KiCad render tools
 make venv                          create .venv and install Python dependencies
+make kicad-setup                   install repo-scoped KiCad CLI/render tools
+make kicad-tools-check             verify KiCad CLI and render tools
 make lint                          run ruff
 make typecheck                     run mypy
 make docs-check                    validate documentation skeletons

@@ -1086,6 +1086,13 @@ export default defineConfig({
       // Bare Node built-in polyfills for browser — pathe provides ESM path,
       // events is pre-bundled via optimizeDeps.
       { find: /^path$/, replacement: patheEntry },
+      {
+        find: /^lucide-react$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "packages/ui/node_modules/lucide-react",
+        ),
+      },
       { find: /^@capacitor\/core$/, replacement: capacitorCoreEntry },
       // Aliases for Capacitor packages that may not be hoisted to root node_modules
       // by bun workspaces. Apps/app resolves them; eliza submodule sources cannot.
@@ -1172,6 +1179,10 @@ export default defineConfig({
         [
           "@elizaos/plugin-wifi/register",
           "plugins/plugin-wifi/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-hearwear/register",
+          "plugins/plugin-hearwear/src/register.ts",
         ],
       ].map(([pkgName, relativeEntry]) => ({
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),

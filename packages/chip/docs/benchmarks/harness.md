@@ -101,16 +101,7 @@ make venv
 scripts/install_benchmark_smoke_tools.sh
 .venv/bin/python benchmarks/models/generate_mobile_smoke_tflite.py \
   --out benchmarks/models/mobile_smoke.tflite
-PATH="$PWD/.venv/bin:$PWD/benchmarks/tools:$PATH" \
-  .venv/bin/python benchmarks/run_benchmarks.py run \
-    --allow-host-smoke-tools \
-    --report-id local-host-smoke \
-    --platform eliza-host-smoke \
-    --platform-revision "$(uname -m)" \
-    --claim-level L2_ARCH_SIM \
-    --bench coremark --bench stream --bench lmbench_bw_mem \
-    --bench lmbench_lat_mem_rd --bench fio_seq_read \
-    --bench fio_rand_rw --bench tflite_cpu
+PATH="$PWD/.venv/bin:$PWD/benchmarks/tools:$PATH" make benchmarks-local-host-evidence
 ```
 
 For strict CoreMark and STREAM runs, install real upstream builds ahead of the
@@ -189,25 +180,16 @@ For local dependency smoke testing, use the repository venv path:
 make venv
 .venv/bin/python -m pip install tensorflow
 make benchmark-tools
-PATH="$PWD/.venv/bin:$PATH" .venv/bin/python benchmarks/run_benchmarks.py run \
-  --bench coremark \
-  --bench stream \
-  --bench lmbench_bw_mem \
-  --bench lmbench_lat_mem_rd \
-  --bench fio_seq_read \
-  --bench fio_rand_rw \
-  --bench tflite_cpu \
-  --report-id local-host-tools-pass \
-  --platform eliza-local-host \
-  --platform-revision venv-tools \
-  --claim-level L2_ARCH_SIM \
-  --metadata benchmarks/metadata/local-host-smoke.json \
-  --strict-missing
+PATH="$PWD/.venv/bin:$PATH" make benchmarks-local-host-evidence
 ```
 
 The venv tools under `benchmarks/tools/` are host smoke wrappers. They prove the
 harness can execute and parse each benchmark family on this workstation; they
 are not target-board, prototype-silicon, or complete-phone performance evidence.
+The release runner intentionally blocks `benchmarks/metadata/local-host-smoke.json`;
+use target metadata with UTC calibration timestamps and SHA-256 calibration
+asset digests before invoking `benchmarks/run_benchmarks.py --strict-missing`
+for a claimable benchmark report.
 `tflite_e1_npu` must still fail until a real `e1-npu` NNAPI path exists,
 and `simulator_arch_metrics` must still reject QEMU liveness-only data as
 calibrated benchmark evidence. For local CPU/AP modeling, run
@@ -270,3 +252,10 @@ auditability.
 Blocked model assets include stable `blocker_id`, `pipeline_visible`, and
 `release_blocking` fields. Release and CI jobs should fail on any blocked asset
 where both booleans are true.
+
+For any real `passed` benchmark result, calibration metadata must identify a
+UTC calibration instant and immutable evidence digests. The runner rejects
+local timestamps such as `2026-05-19 12:00:00`, non-UTC offsets, and placeholder
+hashes such as `host-smoke`; use ISO-8601 UTC (`Z` or `+00:00`) for
+`calibration.last_calibrated_utc` and 64-character lowercase SHA-256 hex for
+each required calibration asset `sha256`.

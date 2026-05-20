@@ -1,14 +1,22 @@
 import { Hono } from "hono";
 /**
- * GET /api/compat/agents/[id]/logs — container logs for thin clients
+ * GET /api/compat/agents/[id]/logs
  *
- * Fetches logs from the bridge URL if the agent is running,
- * or returns a descriptive status message otherwise.
+ * Compat path for thin clients. Enqueues an `agent_logs` job for the
+ * orchestrator daemon to SSH `docker logs --tail N` on the assigned
+ * core. Returns 202 + jobId; the client polls
+ * `/api/v1/jobs/<id>` for the logs envelope.
+ *
+ * Previously this route called `fetch(bridge_url + "/logs")` directly
+ * from the CF Worker. That path returned empty for any non-running
+ * container (no bridge HTTP when the agent is stopped or crashed) and
+ * was also subject to SSRF guards / firewall on the Worker→core hop.
+ * The daemon path works uniformly.
  */
 import { envelope, errorEnvelope } from "@/lib/api/compat-envelope";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
-import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireCompatAuth } from "../../../_lib/auth";
@@ -20,6 +28,7 @@ const CORS_METHODS = "GET, OPTIONS";
 async function __hono_GET(
   request: Request,
   { params }: RouteContext<{ id: string }>,
+  env: AppEnv["Bindings"],
 ) {
   try {
     const { user } = await requireCompatAuth(request);
@@ -43,41 +52,39 @@ async function __hono_GET(
       Math.min(Number.isFinite(rawTail) ? rawTail : 100, 5000),
     );
 
-    // Try bridge logs if agent is running
-    if (agent.bridge_url && agent.status === "running") {
-      try {
-        const logsUrl = `${agent.bridge_url}/logs?tail=${tail}`;
-        // SSRF guard: validate bridge_url resolves to a safe destination
-        await assertSafeOutboundUrl(logsUrl);
-        const res = await fetch(logsUrl, {
-          signal: AbortSignal.timeout(10_000),
-        });
-        if (res.ok) {
-          const logs = await res.text();
-          return withCompatCors(Response.json(envelope(logs)), CORS_METHODS);
-        }
-      } catch (fetchErr) {
-        logger.warn("[compat] Failed to fetch logs from bridge", {
-          agentId,
-          error:
-            fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
-        });
-      }
-    }
+    const enqueueResult = await provisioningJobService.enqueueAgentLogsOnce({
+      agentId,
+      organizationId: user.organization_id,
+      userId: user.id,
+      tail,
+    });
 
-    // Fallback: status-based message
-    const statusMsg: Record<string, string> = {
-      pending: "Agent is pending — not yet provisioned.",
-      provisioning: "Agent is being provisioned...",
-      running: "Agent is running but logs are unavailable.",
-      stopped: "Agent is stopped. No logs available.",
-      disconnected: "Agent is disconnected. Last known status: disconnected.",
-      error: `Agent is in error state: ${agent.error_message ?? "unknown error"}`,
-    };
+    void provisioningJobService.triggerImmediate(env).catch(() => {
+      // Logged inside the service.
+    });
+
+    logger.info("[compat] Logs job enqueued", {
+      agentId,
+      tail,
+      jobId: enqueueResult.job.id,
+      created: enqueueResult.created,
+    });
 
     return withCompatCors(
       Response.json(
-        envelope(statusMsg[agent.status] ?? `Agent status: ${agent.status}`),
+        envelope({
+          jobId: enqueueResult.job.id,
+          status: enqueueResult.job.status,
+          tail,
+          agentStatus: agent.status,
+          alreadyInProgress: !enqueueResult.created,
+          polling: {
+            endpoint: `/api/v1/jobs/${enqueueResult.job.id}`,
+            intervalMs: 2_000,
+            expectedDurationMs: 15_000,
+          },
+        }),
+        { status: 202 },
       ),
       CORS_METHODS,
     );
@@ -89,8 +96,12 @@ async function __hono_GET(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCompatCorsOptions(CORS_METHODS));
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
-  }),
+  __hono_GET(
+    c.req.raw,
+    {
+      params: Promise.resolve({ id: c.req.param("id")! }),
+    },
+    c.env,
+  ),
 );
 export default __hono_app;

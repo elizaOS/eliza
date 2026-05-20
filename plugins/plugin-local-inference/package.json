@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-local-inference",
-	"version": "2.0.0-beta.4",
+	"version": "2.0.1-beta.0",
 	"description": "Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
 	"type": "module",
 	"main": "dist/index.js",
@@ -75,7 +75,7 @@
 	"scripts": {
 		"build": "bun run build.ts",
 		"dev": "bun run build.ts",
-		"test": "vitest run",
+		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run",
 		"probe:sd-cpp": "node scripts/probe-sd-cpp.mjs --human",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -87,6 +87,7 @@
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-capacitor-bridge": "workspace:*",
+		"@elizaos/plugin-computeruse": "workspace:*",
 		"@elizaos/plugin-aosp-local-inference": "workspace:*",
 		"@elizaos/shared": "workspace:*",
 		"phonemizer": "^1.2.1"

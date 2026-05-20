@@ -13,7 +13,7 @@ import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.BridgeActivity;
 
-import app.eliza.BuildConfig;
+import ai.elizaos.app.BuildConfig;
 
 import java.lang.reflect.Method;
 
@@ -69,6 +69,7 @@ public class MainActivity extends BridgeActivity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
+        registerPlugin(AgentPlugin.class);
         registerPlugin(BatteryOptimizationPlugin.class);
         super.onCreate(savedInstanceState);
 

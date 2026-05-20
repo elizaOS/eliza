@@ -34,6 +34,15 @@ const MAX_CONNECTOR_CONTEXTS = 8;
 // rooms (e.g. Discord default account + Discord stealth account) were
 // double-counting and pushing ~130K extra characters into the prompt.
 const MAX_RECENT_MESSAGES = 5;
+const PLATFORM_OUTPUT_GUIDANCE: Record<string, string[]> = {
+	discord: [
+		"Format replies for Discord: avoid markdown tables; prefer short bullets or plain lines.",
+		"When sending multiple links, wrap each URL in angle brackets to avoid noisy embeds.",
+	],
+	whatsapp: [
+		"Format replies for WhatsApp: avoid markdown tables and markdown headings; prefer concise plain text.",
+	],
+};
 
 type RuntimeWithMessageConnectors = IAgentRuntime & {
 	getMessageConnectors?: () => MessageConnector[];
@@ -121,6 +130,14 @@ function getMemorySource(
 	}
 	const roomSource = typeof room?.source === "string" ? room.source.trim() : "";
 	return roomSource || undefined;
+}
+
+function outputGuidanceForSource(
+	source: string | undefined,
+): string[] | undefined {
+	const normalized = source?.trim().toLowerCase();
+	if (!normalized) return undefined;
+	return PLATFORM_OUTPUT_GUIDANCE[normalized];
 }
 
 function getRoomThreadId(room: RoomLike | null): string | undefined {
@@ -363,6 +380,7 @@ export const platformChatContextProvider: Provider = {
 			source,
 			roomId: message.roomId,
 			entityId: message.entityId,
+			outputGuidance: outputGuidanceForSource(source),
 			connectorCount: connectors.length,
 			relevantConnectorCount: relevantConnectors.length,
 			chatContextCount: contexts.length,

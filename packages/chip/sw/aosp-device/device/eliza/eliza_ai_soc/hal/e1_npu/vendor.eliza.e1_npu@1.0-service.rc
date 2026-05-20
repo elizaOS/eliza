@@ -3,8 +3,6 @@ service vendor.e1_npu /vendor/bin/hw/vendor.eliza.e1_npu@1.0-service
     class hal
     user system
     group system
-    disabled
-    oneshot
 
 on property:vendor.e1_npu.ready=1
     start vendor.e1_npu

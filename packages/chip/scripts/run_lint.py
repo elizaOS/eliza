@@ -11,7 +11,16 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXCLUDED_DIRS = {".git", ".venv", "build", "external", "tools", ".claude", "__pycache__"}
+EXCLUDED_DIRS = {
+    ".git",
+    ".venv",
+    "build",
+    "external",
+    "tools",
+    ".tools",
+    ".claude",
+    "__pycache__",
+}
 
 
 def repo_files(*suffixes: str) -> list[Path]:
@@ -40,12 +49,16 @@ def shell_files() -> list[Path]:
 
 
 def run(name: str, cmd: list[str], *, optional: bool = False) -> bool:
-    if shutil.which(cmd[0]) is None:
+    env = os.environ.copy()
+    local_paths = [ROOT / "tools/bin", ROOT / ".venv/bin", ROOT / "external/oss-cad-suite/bin"]
+    env["PATH"] = os.pathsep.join(
+        [str(path) for path in local_paths if path.is_dir()] + [env.get("PATH", "")]
+    )
+    if shutil.which(cmd[0], path=env["PATH"]) is None:
         status = "BLOCK" if optional else "FAIL"
         print(f"{status}: {name}: missing tool {cmd[0]}")
         return optional
     print(f"RUN: {name}: {' '.join(cmd)}")
-    env = os.environ.copy()
     if cmd[0] == "ruff":
         cache_dir = ROOT / "build" / "cache" / "ruff"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -104,7 +117,7 @@ def main() -> int:
     if rev_parse.returncode == 0:
         ok &= run(
             "git whitespace",
-            ["git", "-c", f"safe.directory={ROOT}", "diff", "--check"],
+            ["git", "-c", f"safe.directory={ROOT}", "diff", "--check", "--", "."],
         )
     else:
         print("SKIP: git whitespace: not in a git checkout (no .git visible)")

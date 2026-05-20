@@ -31,6 +31,10 @@ class TestSWEBenchDataset:
             SWEBenchDataset.DATASET_MAPPING[SWEBenchVariant.VERIFIED]
             == "SWE-bench/SWE-bench_Verified"
         )
+        assert (
+            SWEBenchDataset.DATASET_MAPPING[SWEBenchVariant.MULTILINGUAL]
+            == "SWE-bench/SWE-bench_Multilingual"
+        )
 
     def test_get_instances_not_loaded(self) -> None:
         """Test getting instances before loading raises error."""

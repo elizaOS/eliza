@@ -1,0 +1,25 @@
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 24
+prove: mode prove
+prove: depth 16
+multiclock off
+
+[engines]
+smtbmc z3
+smtbmc bitwuzla
+
+[script]
+read -formal -sv axi_lite_protocol.sv
+read -formal e1_axi_lite_dram.sv
+read -formal e1_axi_lite_dram_bind.sv
+prep -top e1_axi_lite_dram_props_top
+
+[files]
+verify/properties/axi_lite_protocol.sv
+rtl/memory/e1_axi_lite_dram.sv
+verify/formal/e1_axi_lite_dram_bind.sv

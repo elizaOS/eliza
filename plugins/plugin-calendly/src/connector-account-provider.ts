@@ -25,6 +25,7 @@ import {
   type ConnectorOAuthStartResult,
   type IAgentRuntime,
   logger,
+  readRequestedConnectorRole,
 } from "@elizaos/core";
 import { readCalendlyAccounts, resolveCalendlyAccountId } from "./accounts.js";
 import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
@@ -343,11 +344,18 @@ export function createCalendlyConnectorAccountProvider(
         expiresAt,
         oauthCredentialVersion,
       };
+      const flowMetadata =
+        (request.flow.metadata as Record<string, unknown> | undefined) ?? {};
+      const role = readRequestedConnectorRole(
+        flowMetadata,
+        "plugin:calendly:connector",
+      );
+
       const pendingAccount = await manager.upsertAccount(
         CALENDLY_PROVIDER_NAME,
         {
           provider: CALENDLY_PROVIDER_NAME,
-          role: "OWNER",
+          role,
           purpose: DEFAULT_PURPOSES,
           accessGate: "open",
           status: "pending",

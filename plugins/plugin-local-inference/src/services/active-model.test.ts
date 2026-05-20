@@ -242,7 +242,7 @@ const baseHardwareProbe: HardwareProbe = {
 	arch: "x64",
 	appleSilicon: false,
 	recommendedBucket: "large",
-	source: "node-llama-cpp",
+	source: "os-fallback",
 };
 
 describe("ActiveModelCoordinator effective runtime reporting", () => {

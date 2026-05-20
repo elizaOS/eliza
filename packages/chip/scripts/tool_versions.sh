@@ -37,6 +37,9 @@ print_version() {
         klayout)
             printf "SKIPPED_VERSION_PROBE\n"
             ;;
+        netgen|nix)
+            printf "SKIPPED_VERSION_PROBE\n"
+            ;;
         *)
             "$tool" --version 2>&1 | head -n 1 || true
             ;;

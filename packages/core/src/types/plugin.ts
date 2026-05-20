@@ -437,10 +437,59 @@ export interface PluginAppUiExtension {
 }
 
 /** Platform availability for a view. */
-export type ViewPlatform = "web" | "desktop" | "ios" | "android";
+export type ViewPlatform =
+	| "web"
+	| "desktop"
+	| "ios"
+	| "android"
+	| "quest"
+	| "xreal";
 
 /** Presentation/runtime family for a view. */
-export type ViewType = "gui" | "tui";
+export type ViewType = "gui" | "tui" | "xr";
+
+/**
+ * XR-specific panel options for a view rendered in a WebXR overlay.
+ * All fields are optional and have sensible defaults for headset use.
+ */
+export interface XRViewOptions {
+	/**
+	 * Panel width in meters when rendered in world space.
+	 * Defaults to 1.0 m (roughly a letter-size page at arm's length).
+	 */
+	defaultWidthMeters?: number;
+	/**
+	 * Panel height in meters. Defaults to 0.75 m.
+	 */
+	defaultHeightMeters?: number;
+	/**
+	 * How the panel follows the user's gaze / camera.
+	 *  - "billboard"  — always faces the camera, orbits at fixed distance (default).
+	 *  - "fixed"      — stays at its world-space transform once opened.
+	 *  - "follow"     — smoothly lag-follows the camera without rotating.
+	 */
+	followMode?: "billboard" | "fixed" | "follow";
+	/**
+	 * Distance from the camera origin the panel is placed at (meters).
+	 * Defaults to 1.5 m.
+	 */
+	defaultDistance?: number;
+	/**
+	 * Preferred initial position relative to the camera in meters [x, y, z].
+	 * e.g. [0, 0, -1.5] is directly in front.
+	 */
+	defaultOffset?: [number, number, number];
+	/**
+	 * Whether this view supports voice input to its form fields.
+	 * Defaults to true — app-xr will pipe Whisper transcripts to focused inputs.
+	 */
+	voiceInputEnabled?: boolean;
+	/**
+	 * Whether this view should render in the full overlay (true) or as a
+	 * side panel / mini panel (false). Defaults to false.
+	 */
+	fullscreen?: boolean;
+}
 
 /** A discrete capability the agent can exercise on a mounted view. */
 export interface ViewCapability {
@@ -530,6 +579,11 @@ export interface ViewDeclaration {
 	desktopTabEnabled?: boolean;
 	/** Show this view in the view manager grid. Default true. */
 	visibleInManager?: boolean;
+	/**
+	 * XR-specific panel behaviour. Only meaningful when viewType === "xr".
+	 * Omit to accept all defaults (1m-wide billboard panel at 1.5 m distance).
+	 */
+	xrOptions?: XRViewOptions;
 }
 
 export interface PluginApp {
@@ -603,9 +657,238 @@ export interface PluginOwnership {
 	registeredAt: number;
 }
 
+/**
+ * Plugin execution mode.
+ *
+ * - `direct`: loaded in-process via `import` and registered with the runtime as
+ *   a normal Plugin object. Trusted, full agent privilege, shared crash domain.
+ *   This is the default for every existing plugin in the monorepo.
+ * - `remote`: hosted by `RemotePluginHost` as a sandboxed Bun Worker (or
+ *   isolated Bun process when `remote.isolation === "isolated-process"`).
+ *   Communicates with the agent via the wire envelope defined in
+ *   `@elizaos/plugin-remote-manifest`. Permissions are declared by the plugin
+ *   and enforced by the host. Typically installed dynamically at runtime via
+ *   `runtime.installRemotePlugin(...)` by an agent that has authored a plugin
+ *   on the fly (e.g. a coding sub-agent).
+ */
+export type PluginMode = "direct" | "remote";
+
+/**
+ * High-level role of a remote-mode plugin. Used to classify the plugin and
+ * to inform the `RuntimeCapabilityService` whether to surface the plugin as
+ * a capability provider.
+ */
+export type RemotePluginRole =
+	| "capability"
+	| "sub-agent"
+	| "view-host"
+	| "system"
+	| "user";
+
+/**
+ * Permission grants for a remote-mode plugin. The author declares the request
+ * ceiling; the host narrows against (a) the agent's own granted permissions
+ * and (b) the inline-source defaults for agent-authored plugins, taking the
+ * intersection. A plugin runs with the *narrowed* grant, never with what it
+ * requested verbatim.
+ */
+export interface RemotePluginPermissions {
+	/** Bun runtime permissions inside the worker. */
+	bun: {
+		/** Outbound network policy. */
+		network?: "none" | "loopback" | "allowlist" | "any";
+		/** Host allowlist used when `network === "allowlist"`. */
+		networkAllowlist?: string[];
+		/** Filesystem access policy. */
+		fs?: "none" | "readonly" | "readwrite";
+		/** Filesystem path allowlist when `fs !== "none"`. */
+		fsAllowlist?: string[];
+		/** May spawn child processes (`Bun.spawn`, `child_process`). */
+		process?: boolean;
+		/** Environment variable names the worker may read. */
+		env?: string[];
+	};
+	/** Host-side proxy permissions (what the worker can ask the runtime for). */
+	host: {
+		/** `runtime.getService(serviceType)` allowlist. Empty array = none. */
+		services?: string[];
+		/** `runtime.useModel(modelType, ...)` allowlist. */
+		models?: string[];
+		/** Event-name allowlist (both emit and listen). */
+		events?: string[];
+		/** Memory API access. */
+		memory?: "none" | "read" | "readwrite";
+	};
+}
+
+/**
+ * Isolation strategy for the remote plugin worker.
+ *
+ * - `shared-worker`: a Bun `Worker` sharing the host process. Cheap, but a
+ *   panic crashes the host. Use for trusted first-party plugins that need
+ *   shared-memory access (e.g. GPU-backed local-model plugins).
+ * - `isolated-process`: a separate Bun subprocess (`Bun.spawn`). The worker
+ *   crashing only affects itself. Required for `role: "sub-agent"` and for
+ *   any agent-authored plugin with `source.kind === "inline"`.
+ */
+export type RemotePluginIsolation = "shared-worker" | "isolated-process";
+
+/**
+ * Deployment-target constraints for a remote plugin. Declares where the
+ * plugin is *allowed* to run; the actual target is inferred by the host at
+ * install time based on which environments are reachable.
+ */
+export interface RemotePluginDeployment {
+	/** Hint to the host. Default `"auto"`. */
+	preferred?: "host" | "cloud" | "auto";
+	/** Hard constraint on allowed deploy targets. Default `["host", "cloud"]`. */
+	allowedTargets?: ("host" | "cloud")[];
+	/**
+	 * When `true`, the plugin must be hosted with `isolation: "isolated-process"`
+	 * and cannot be downgraded to a `shared-worker`. Forced for `role: "sub-agent"`.
+	 */
+	requiresProcess?: boolean;
+}
+
+/**
+ * Configuration block required when {@link Plugin.mode} is `"remote"`.
+ * Describes how, where, and with what privileges the plugin's worker runs.
+ */
+export interface RemotePluginConfig {
+	/** Classification for routing and discovery. */
+	role?: RemotePluginRole;
+	/** Permission request ceiling (narrowed by the host at install time). */
+	permissions: RemotePluginPermissions;
+	/** Worker isolation strategy. */
+	isolation: RemotePluginIsolation;
+	/** Path to the worker entrypoint, relative to the plugin package root. */
+	worker: { relativePath: string };
+	/** Optional view bundle entrypoint for plugins that contribute UI. */
+	view?: { relativePath: string; hidden?: boolean };
+	/** Deployment constraints. */
+	deployment?: RemotePluginDeployment;
+	/**
+	 * Lifetime of the plugin installation.
+	 * - `"session"`: uninstalled on runtime shutdown. Default for
+	 *   `runtime.installRemotePlugin(...)`.
+	 * - `"persistent"`: registration is written to the local plugin store and
+	 *   re-installed on next boot.
+	 */
+	lifetime?: "session" | "persistent";
+	/**
+	 * Sub-agent runner configuration. Present iff `role === "sub-agent"`.
+	 * Describes which coding-agent CLI the worker drives and how prompts are
+	 * delivered to it.
+	 */
+	subAgent?: {
+		runner: "claude-code" | "codex" | "opencode" | "eliza";
+		promptInjection: "stdin-only" | "argv" | "env";
+	};
+	/**
+	 * Optional explicit allowlist of host-callable RPC methods. When omitted,
+	 * the announced surface (actions/providers/services/...) defines what's
+	 * reachable.
+	 */
+	protocol?: { methods?: string[] };
+}
+
+/**
+ * Source of the worker code for a remote-mode plugin installed at runtime
+ * via {@link IAgentRuntime.installRemotePlugin}.
+ *
+ * - `inline`: agent-authored. The plugin's source files (typically the
+ *   worker entry + a manifest) are handed over as a string map. The host
+ *   writes them to a tempdir under `~/.eliza/remote-plugins/<runtime>/
+ *   <pluginName>-<instanceId>/`, then spawns the worker from there. The
+ *   inline path is intentionally restricted: workers run as
+ *   `isolated-process` always, network defaults to `loopback`, and FS
+ *   scopes to the tempdir, regardless of what the manifest requests.
+ *
+ * - `tarball`: third-party. Downloaded + verified by `attestation`
+ *   (required for tarball installs; SHA + signature). Extracted into the
+ *   store and treated like a normal install thereafter.
+ *
+ * - `workspace`: bundled. Resolves to an existing workspace package
+ *   (e.g. `@elizaos/plugin-sub-agent-claude-code`). The host trusts these
+ *   the same way it trusts a direct-mode plugin shipped in node_modules.
+ */
+export type RemotePluginInstallSource =
+	| { kind: "inline"; files: Record<string, string> }
+	| {
+			kind: "tarball";
+			url: string;
+			attestation: { signedBy: string; signature: string };
+	  }
+	| { kind: "workspace"; pkgName: string };
+
+/** Options for {@link IAgentRuntime.installRemotePlugin}. */
+export interface RemotePluginInstallOptions {
+	source: RemotePluginInstallSource;
+	/**
+	 * Override the lifetime declared on the manifest. Default:
+	 * - `"session"` when source is `"inline"` (agent-generated).
+	 * - `"persistent"` when source is `"tarball"` or `"workspace"`.
+	 */
+	lifetime?: "session" | "persistent";
+}
+
+/** Returned by {@link IAgentRuntime.installRemotePlugin}. */
+export interface RemotePluginInstanceHandle {
+	/** The Plugin.name after install. */
+	pluginName: string;
+	/**
+	 * Per-installation id. Multiple installations of the same plugin (e.g.
+	 * two sub-agent sessions) have different instanceIds and live in
+	 * different store directories.
+	 */
+	instanceId: string;
+	/**
+	 * The granted permissions for this installation, after narrowing. May
+	 * be narrower than the requested ceiling in `plugin.remote.permissions`.
+	 */
+	grantedPermissions: RemotePluginPermissions;
+	/** Tear down: stop the worker, unregister the plugin, clean up the store dir if session-lifetime. */
+	uninstall(): Promise<void>;
+}
+
+/**
+ * Thrown by {@link IAgentRuntime.installRemotePlugin} when the plugin's
+ * requested permissions narrow to nothing for at least one critical
+ * capability (e.g. asks for `fs.readwrite` but the agent only has
+ * `fs.readonly`). Caller can catch + prompt the user for elevation.
+ */
+export class PermissionNarrowedRejection extends Error {
+	constructor(
+		message: string,
+		readonly capability: string,
+		readonly requested: unknown,
+		readonly granted: unknown,
+	) {
+		super(message);
+		this.name = "PermissionNarrowedRejection";
+	}
+}
+
 export interface Plugin {
 	name: string;
 	description: string;
+
+	/**
+	 * Execution mode. Default `"direct"` — i.e., the plugin is loaded in-process
+	 * and registered with the runtime exactly as plugins have always been.
+	 * Setting `"remote"` requires a {@link Plugin.remote} block; the host
+	 * installs the plugin via `RemotePluginHost` and the runtime mirrors its
+	 * surfaces through stubs that proxy across the wire envelope.
+	 *
+	 * For remote-mode plugins, the surface arrays (`actions`, `providers`,
+	 * `services`, `models`, `events`, `routes`, `views`, `widgets`,
+	 * `componentTypes`, `evaluators`, `init`) describe what the WORKER
+	 * contributes; the host runtime materialises matching stubs.
+	 */
+	mode?: PluginMode;
+
+	/** Remote-mode configuration. Required when {@link Plugin.mode} is `"remote"`. */
+	remote?: RemotePluginConfig;
 
 	// Initialize plugin with runtime services
 	init?: (

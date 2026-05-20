@@ -390,6 +390,24 @@ describe("LifeOpsFakeBackend", () => {
     expect(doc.stores.email.e1.folder).toBe("archive");
   });
 
+  it("MESSAGE manage(archive) accepts targetKind thread alias", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("MESSAGE", {
+      operation: "manage",
+      manageOperation: "archive",
+      target: "t1",
+      targetKind: "thread",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({
+      thread_id: "t1",
+      archived_ids: ["e1"],
+    });
+    const doc = backend.toDocument();
+    expect(doc.stores.email.e1.folder).toBe("archive");
+  });
+
   it("MESSAGE manage(trash) flips folder to trash", () => {
     const path = writeFixture();
     const backend = LifeOpsFakeBackend.fromJsonFile(path);

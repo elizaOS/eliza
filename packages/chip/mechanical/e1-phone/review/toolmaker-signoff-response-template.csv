@@ -1,0 +1,8 @@
+review_item_id,toolmaker_name,report_or_drawing_received,accepted,reviewer,returned_artifact,measured_or_predicted_value,notes
+mold_flow_fill_pack_warp,,,,,,,"Mold-flow report with pressure, fill time, weld lines, air traps, sink, shrink, and warp plots."
+gate_runner_balance,,,,,,,"Signed gate/runner recommendation with gate land, gate area, vestige location, and alternate fan-gate decision."
+ejector_layout,,,,,,,Ejector layout markup with witness-mark acceptance and any added blade/sleeve ejectors.
+cooling_layout,,,,,,,"Cooling layout with channel diameter, clearance, circuiting, expected cycle time, and hot-spot risk."
+shrink_warp_allowance,,,,,,,Shrink/warp allowance table tied to GD&T datums and first-article CMM plan.
+orange_cmf_texture,,,,,,,"Color plaque, texture plaque, gate-blush limit sample, and signed CMF acceptance criteria."
+first_shot_doe,,,,,,,DOE run sheet and acceptance plan for first shots before DVT tool tuning.

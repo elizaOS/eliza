@@ -1,0 +1,6 @@
+{
+  "schema": "eliza.memory.lmbench_blocked.v1",
+  "status": "blocked_no_toolchain_or_source",
+  "reason": "RV64 cross toolchain or lmbench source absent",
+  "expected_command": "make build && make run"
+}

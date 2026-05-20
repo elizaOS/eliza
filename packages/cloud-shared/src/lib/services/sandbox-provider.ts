@@ -17,12 +17,25 @@ export type {
  * - `DockerSandboxProvider` (SSH-into-remote-nodes) otherwise.
  */
 export async function createSandboxProvider(): Promise<SandboxProvider> {
+  if (shouldUseMemoryTestProvider()) {
+    const { MemorySandboxProvider } = await import("./memory-sandbox-provider");
+    return new MemorySandboxProvider();
+  }
   if (shouldUseLocalDockerProvider()) {
     const { LocalDockerSandboxProvider } = await import("./local-docker-sandbox-provider");
     return new LocalDockerSandboxProvider();
   }
   const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
   return new DockerSandboxProvider();
+}
+
+function shouldUseMemoryTestProvider(): boolean {
+  const env = process.env;
+  if (env.ELIZA_TEST_SANDBOX_PROVIDER !== "memory") return false;
+  if (env.NODE_ENV === "test" || env.CLOUD_E2E === "1") return true;
+  throw new Error(
+    "ELIZA_TEST_SANDBOX_PROVIDER=memory is only allowed under NODE_ENV=test or CLOUD_E2E=1",
+  );
 }
 
 function shouldUseLocalDockerProvider(): boolean {

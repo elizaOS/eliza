@@ -1,0 +1,67 @@
+schema: eliza.compiler.autofdo_evidence.v1
+as_of: 2026-05-19
+claim_boundary: |
+  AutoFDO + Propeller + BOLT pipeline recipe committed; no executable
+  evidence is accepted until the canonical container build produces the
+  end-to-end roundtrip on a benchmark (CoreMark or equivalent).
+
+round3_attempt:
+  status: BLOCKED
+  blocked_stage: autofdo.coremark.clang_missing
+  blocked_reason: |
+    compiler/autofdo-harness/coremark_roundtrip.sh fails closed at the
+    initial dependency check because build/llvm-stage2/bin/clang is absent.
+    Root cause is upstream of compiler-agent: the canonical container build
+    is BLOCKED by an out-of-domain requirements.txt regression (see
+    docs/evidence/compiler/llvm-build-evidence.yaml::round3_attempt).
+  secondary_blockers_identified:
+    - external/coremark/ checkout missing (CoreMark v1.0.2 not cloned;
+      benchmarks/cpu/coremark/manifest.json::upstream.pinned_commit is
+      "BLOCKED_until_first_clone_resolves_tag")
+    - qemu-user-riscv64 absent on host (qemu-system-misc present in
+      canonical container Dockerfile, but qemu-user-static needed for
+      user-mode profile capture is a separate package)
+    - llvm-profgen absent on host (ships with stage-2 build)
+    - perf present on host (/usr/bin/perf), but its sample format requires
+      a host-perf-counter-enabled kernel that is not the canonical container
+  next_action: |
+    Once the requirements.txt blocker is resolved and the canonical container
+    builds end-to-end, run compiler/autofdo-harness/coremark_roundtrip.sh
+    inside the container. The harness already fails closed for each missing
+    dependency individually so the BLOCK chain is observable per-stage.
+
+blocked_until:
+  - build/llvm-stage2/bin/clang exists
+  - perf + create_llvm_prof or llvm-profgen available in the canonical container
+  - external/coremark/ checked out at v1.0.2 with resolved 40-char SHA
+  - qemu-user-riscv64 installed in the canonical container
+  - build/reports/compiler/coremark-baseline.json measured
+  - build/reports/compiler/coremark-autofdo.json measured
+  - build/reports/compiler/coremark-autofdo-propeller.json measured
+  - build/reports/compiler/coremark-autofdo-propeller-bolt.json measured
+  - measured uplift (autofdo+propeller+bolt vs baseline) >= 5% after Spectre
+
+required_artifacts:
+  - path: compiler/autofdo-harness/capture.sh
+    purpose: perf record + create_llvm_prof / llvm-profgen wrapper
+  - path: compiler/autofdo-harness/apply.sh
+    purpose: clang rebuild with -fprofile-sample-use
+  - path: compiler/autofdo-harness/coremark_roundtrip.sh
+    purpose: end-to-end CoreMark stage0 -> perf -> profile -> stage1 -> delta
+  - path: compiler/propeller-harness/relink.sh
+    purpose: lld relink with Propeller symbol order
+  - path: compiler/bolt-harness/optimize.sh
+    purpose: llvm-bolt post-link
+  - path: docs/toolchain/autofdo-propeller-bolt.md
+    purpose: pipeline documentation
+
+verification_commands:
+  - compiler/autofdo-harness/coremark_roundtrip.sh
+  - AUTOFDO_BINARY=build/coremark-rva23 AUTOFDO_WORKLOAD=scripts/run_coremark.sh scripts/run_autofdo_capture.sh
+  - compiler/autofdo-harness/apply.sh --profile build/reports/compiler/autofdo.prof --source benchmarks/coremark/core_main.c --output build/coremark-autofdo.o
+  - compiler/propeller-harness/relink.sh --inputs build/coremark-autofdo.o --symbol-order build/reports/compiler/propeller-order.txt --output build/coremark-autofdo-propeller
+  - compiler/bolt-harness/optimize.sh --binary build/coremark-autofdo-propeller --workload scripts/run_coremark.sh --output build/coremark-autofdo-propeller-bolt
+
+forbidden_claims_without_required_evidence:
+  - "AutoFDO/Propeller/BOLT measured uplift"
+  - "5-10% net system-image perf gain"

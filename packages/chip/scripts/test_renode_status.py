@@ -14,7 +14,8 @@ RUN_RENODE = ROOT / "scripts/run_renode.sh"
 RENODE_ELF = ROOT / "build/qemu/e1_qemu_firmware.elf"
 RENODE_LOG = ROOT / "build/reports/renode_smoke.log"
 RENODE_MANIFEST = ROOT / "build/reports/renode_smoke.manifest"
-RENODE_ATTEMPT_LOG = ROOT / "build/reports/renode_smoke_attempt.log"
+RENODE_ATTEMPT_LOG = ROOT / "build/renode/eliza_e1_uart.transcript"
+RENODE_JSON = ROOT / "build/renode/eliza_e1_smoke.json"
 BANNER = "eliza e1 qemu"
 
 
@@ -69,7 +70,9 @@ def assert_contains(text: str, expected: str) -> None:
 
 
 def test_missing_renode_is_non_strict_blocked() -> None:
-    result = run_check({"PATH": "/usr/bin:/bin", "REQUIRE_RENODE": "0"})
+    result = run_check(
+        {"PATH": "/usr/bin:/bin", "REQUIRE_RENODE": "0", "ELIZA_RENODE_USE_REPO_TOOLS": "0"}
+    )
     if result.returncode != 0:
         raise AssertionError(
             f"expected non-strict blocked check to exit 0, got {result.returncode}\n{result.stdout}"
@@ -85,7 +88,9 @@ def test_missing_renode_is_non_strict_blocked() -> None:
 
 
 def test_missing_renode_is_strict_blocked() -> None:
-    result = run_check({"PATH": "/usr/bin:/bin", "REQUIRE_RENODE": "1"})
+    result = run_check(
+        {"PATH": "/usr/bin:/bin", "REQUIRE_RENODE": "1", "ELIZA_RENODE_USE_REPO_TOOLS": "0"}
+    )
     if result.returncode != 2:
         raise AssertionError(
             f"expected strict blocked check to exit 2, got {result.returncode}\n{result.stdout}"
@@ -98,7 +103,10 @@ def test_transcript_intake_blocks_without_renode() -> None:
     with tempfile.TemporaryDirectory() as td:
         transcript = Path(td) / "renode.log"
         transcript.write_text(f"Renode serial analyzer\n{BANNER}\n")
-        result = run_script(["--check", "--transcript", str(transcript)], {"PATH": "/usr/bin:/bin"})
+        result = run_script(
+            ["--check", "--transcript", str(transcript)],
+            {"PATH": "/usr/bin:/bin", "ELIZA_RENODE_USE_REPO_TOOLS": "0"},
+        )
     if result.returncode != 2:
         raise AssertionError(
             f"expected transcript intake without renode to exit 2, got {result.returncode}\n{result.stdout}"
@@ -119,7 +127,7 @@ def test_transcript_intake_blocks_without_firmware() -> None:
         transcript.write_text(f"Renode serial analyzer\n{BANNER}\n")
         result = run_script(
             ["--check", "--transcript", str(transcript)],
-            {"PATH": f"{bindir}:/usr/bin:/bin"},
+            {"PATH": f"{bindir}:/usr/bin:/bin", "ELIZA_RENODE_USE_REPO_TOOLS": "0"},
         )
     if result.returncode != 2:
         raise AssertionError(
@@ -136,11 +144,17 @@ def test_renode_with_firmware_fails_without_banner() -> None:
         renode = bindir / "renode"
         write_renode_test_double(renode)
         write_firmware_fixture()
+        # Provide a valid QEMU transcript so the equivalence check passes;
+        # the failure should come from Renode not printing the banner.
+        qemu_log = Path(td) / "qemu_smoke.log"
+        qemu_log.write_text(f"fake qemu output\n{BANNER}\n")
         result = run_check(
             {
                 "PATH": f"{bindir}:/usr/bin:/bin",
                 "REQUIRE_RENODE": "0",
                 "RENODE_SMOKE_SECONDS": "1",
+                "ELIZA_RENODE_USE_REPO_TOOLS": "0",
+                "RENODE_QEMU_TRANSCRIPT": str(qemu_log),
             }
         )
     if result.returncode != 1:
@@ -150,7 +164,7 @@ def test_renode_with_firmware_fails_without_banner() -> None:
     assert_contains(result.stdout, "STATUS: PASS renode.semantic")
     assert_contains(result.stdout, "STATUS: PASS renode.preflight")
     assert_contains(result.stdout, "STATUS: FAIL renode.run")
-    assert_contains(result.stdout, "renode_smoke_attempt.log")
+    assert_contains(result.stdout, "build/renode/eliza_e1_uart.transcript")
 
 
 def test_renode_with_firmware_and_banner_passes() -> None:
@@ -159,26 +173,29 @@ def test_renode_with_firmware_and_banner_passes() -> None:
         renode = bindir / "renode"
         write_renode_banner_test_double(renode)
         write_firmware_fixture()
+        # Provide a valid QEMU transcript so the equivalence check passes.
+        qemu_log = Path(td) / "qemu_smoke.log"
+        qemu_log.write_text(f"fake qemu output\n{BANNER}\n")
         result = run_check(
             {
                 "PATH": f"{bindir}:/usr/bin:/bin",
                 "REQUIRE_RENODE": "0",
                 "RENODE_SMOKE_SECONDS": "1",
+                "ELIZA_RENODE_USE_REPO_TOOLS": "0",
+                "RENODE_QEMU_TRANSCRIPT": str(qemu_log),
             }
         )
     if result.returncode != 0:
         raise AssertionError(
             f"expected bounded Renode run with banner to exit 0, got {result.returncode}\n{result.stdout}"
         )
-    assert_contains(result.stdout, "STATUS: PASS renode.run")
+    assert_contains(result.stdout, "STATUS: PASS renode.transcript")
     assert_contains(result.stdout, "STATUS: PASS renode.check")
-    assert_contains(RENODE_LOG.read_text(errors="ignore"), BANNER)
-    manifest = RENODE_MANIFEST.read_text(errors="ignore")
-    assert_contains(manifest, "status=PASS")
-    assert_contains(manifest, "banner_contract=sim/renode/expected_serial_banner.txt")
-    assert_contains(
-        manifest, "renode_command=renode --console --disable-xwt sim/renode/eliza_e1.resc"
-    )
+    assert_contains(RENODE_ATTEMPT_LOG.read_text(errors="ignore"), BANNER)
+    manifest = RENODE_JSON.read_text(errors="ignore")
+    assert_contains(manifest, '"exit_code": 0')
+    assert_contains(manifest, '"observed_banner": "eliza e1 qemu"')
+    assert_contains(manifest, '"transcript": "build/renode/eliza_e1_uart.transcript"')
 
 
 def test_invalid_transcript_fails_closed() -> None:
@@ -192,7 +209,7 @@ def test_invalid_transcript_fails_closed() -> None:
         transcript.write_text("Renode started but no banner appeared\n")
         result = run_script(
             ["--check", "--transcript", str(transcript)],
-            {"PATH": f"{bindir}:/usr/bin:/bin"},
+            {"PATH": f"{bindir}:/usr/bin:/bin", "ELIZA_RENODE_USE_REPO_TOOLS": "0"},
         )
     if result.returncode != 1:
         raise AssertionError(
@@ -227,7 +244,7 @@ def test_valid_transcript_intake_archives_manifest() -> None:
         transcript.write_text(f"Renode serial analyzer\n{BANNER}\n")
         result = run_script(
             ["--check", "--transcript", str(transcript)],
-            {"PATH": f"{bindir}:/usr/bin:/bin"},
+            {"PATH": f"{bindir}:/usr/bin:/bin", "ELIZA_RENODE_USE_REPO_TOOLS": "0"},
         )
     if result.returncode != 0:
         raise AssertionError(

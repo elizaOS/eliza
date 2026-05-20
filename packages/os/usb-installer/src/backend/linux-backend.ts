@@ -22,6 +22,10 @@ import type {
   WritePlan,
   WriteRequest,
 } from "./types";
+import {
+  assertDriveMatchesExpected,
+  assertWritePlanAllowed,
+} from "./write-safety";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,11 +33,19 @@ const STEP_LABELS: Record<InstallerStepId, string> = {
   "resolve-image": "Resolve image",
   checksum: "Validate checksum",
   write: "Write image",
-  verify: "Verify media",
+  verify: "Finalize media",
   complete: "Complete",
 };
 
 const INSTALLER_TMP_DIR = "/tmp/elizaos-installer";
+const SYSTEM_MOUNTPOINTS = new Set([
+  "/",
+  "/boot",
+  "/boot/efi",
+  "/run/live/medium",
+  "/run/live/persistence",
+  "/live/medium",
+]);
 
 interface LsblkDevice {
   name: string;
@@ -43,6 +55,8 @@ interface LsblkDevice {
   model: string | null;
   tran: string | null;
   hotplug: boolean | string;
+  mountpoint?: string | null;
+  mountpoints?: string[] | string | null;
   children?: LsblkDevice[];
 }
 
@@ -58,6 +72,212 @@ function isRemovable(device: LsblkDevice): boolean {
     device.hotplug === "1" ||
     device.tran === "usb"
   );
+}
+
+function mountpointsForDevice(device: LsblkDevice): string[] {
+  const values: string[] = [];
+  const add = (value: string | null | undefined) => {
+    const normalized = value?.trim();
+    if (normalized) values.push(normalized);
+  };
+
+  add(device.mountpoint);
+  if (Array.isArray(device.mountpoints)) {
+    for (const mountpoint of device.mountpoints) add(mountpoint);
+  } else if (typeof device.mountpoints === "string") {
+    add(device.mountpoints);
+  }
+
+  for (const child of device.children ?? []) {
+    values.push(...mountpointsForDevice(child));
+  }
+
+  return values;
+}
+
+function currentSystemMountpoint(device: LsblkDevice): string | null {
+  for (const mountpoint of mountpointsForDevice(device)) {
+    if (SYSTEM_MOUNTPOINTS.has(mountpoint)) {
+      return mountpoint;
+    }
+  }
+
+  return null;
+}
+
+function decodeMountInfoField(value: string): string {
+  return value.replace(/\\([0-7]{3})/g, (_, octal: string) =>
+    String.fromCharCode(Number.parseInt(octal, 8)),
+  );
+}
+
+function blockNameFromDevPath(devicePath: string): string | null {
+  if (!devicePath.startsWith("/dev/")) {
+    return null;
+  }
+  return path.basename(devicePath);
+}
+
+function fallbackParentDiskName(blockName: string): string | null {
+  const partitionPatterns = [/^(?<disk>.+\d+)p\d+$/, /^(?<disk>[a-z]+)\d+$/i];
+
+  for (const pattern of partitionPatterns) {
+    const match = blockName.match(pattern);
+    const disk = match?.groups?.disk;
+    if (disk && disk !== blockName) {
+      return disk;
+    }
+  }
+
+  return null;
+}
+
+async function sysfsBlockAncestors(
+  blockName: string,
+  visited = new Set<string>(),
+): Promise<Set<string>> {
+  const names = new Set<string>();
+  if (visited.has(blockName)) {
+    return names;
+  }
+  visited.add(blockName);
+  names.add(blockName);
+
+  const sysfsPath = path.join("/sys/class/block", blockName);
+  try {
+    const slaves = await fs.readdir(path.join(sysfsPath, "slaves"));
+    for (const slave of slaves) {
+      for (const name of await sysfsBlockAncestors(slave, visited)) {
+        names.add(name);
+      }
+    }
+  } catch {
+    // Devices without mapper/slave ancestry simply do not have this directory.
+  }
+
+  try {
+    const realPath = await fs.realpath(sysfsPath);
+    const parentName = path.basename(path.dirname(realPath));
+    if (parentName && parentName !== blockName && parentName !== "block") {
+      await fs.access(path.join("/sys/class/block", parentName));
+      for (const name of await sysfsBlockAncestors(parentName, visited)) {
+        names.add(name);
+      }
+    }
+  } catch {
+    const fallback = fallbackParentDiskName(blockName);
+    if (fallback) {
+      names.add(fallback);
+    }
+  }
+
+  return names;
+}
+
+async function currentSystemDiskNamesFromMountInfo(): Promise<Set<string>> {
+  const diskNames = new Set<string>();
+  let mountInfo: string;
+  try {
+    mountInfo = await fs.readFile("/proc/self/mountinfo", "utf8");
+  } catch {
+    return diskNames;
+  }
+
+  for (const line of mountInfo.split("\n")) {
+    if (!line.trim()) {
+      continue;
+    }
+
+    const separatorIndex = line.indexOf(" - ");
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const fields = line.slice(0, separatorIndex).split(" ");
+    const mountpoint = fields[4] ? decodeMountInfoField(fields[4]) : undefined;
+    if (!mountpoint || !SYSTEM_MOUNTPOINTS.has(mountpoint)) {
+      continue;
+    }
+
+    const postFields = line.slice(separatorIndex + 3).split(" ");
+    const source = postFields[1]
+      ? decodeMountInfoField(postFields[1])
+      : undefined;
+    if (!source?.startsWith("/dev/")) {
+      continue;
+    }
+
+    let realSource = source;
+    try {
+      realSource = await fs.realpath(source);
+    } catch {
+      // Some mount sources may not resolve in constrained containers; use the
+      // visible source path as a conservative fallback.
+    }
+
+    const blockName = blockNameFromDevPath(realSource);
+    if (!blockName) {
+      continue;
+    }
+
+    for (const name of await sysfsBlockAncestors(blockName)) {
+      diskNames.add(name);
+    }
+  }
+
+  return diskNames;
+}
+
+function parseLsblkOutput(stdout: string): LsblkOutput {
+  try {
+    return JSON.parse(stdout) as LsblkOutput;
+  } catch (error) {
+    throw new LsblkParseError(
+      stdout,
+      error instanceof Error ? error : new Error(String(error)),
+    );
+  }
+}
+
+function busForLsblkDevice(device: LsblkDevice): RemovableDrive["bus"] {
+  if (device.tran === "usb") {
+    return "usb";
+  }
+  if (device.tran === "mmc" || device.tran === "sd") {
+    return "sd";
+  }
+  return "unknown";
+}
+
+function removableDriveFromLsblkDevice(
+  device: LsblkDevice,
+  systemDiskNames: Set<string>,
+): RemovableDrive {
+  const removable = isRemovable(device);
+  const systemMountpoint = currentSystemMountpoint(device);
+  const isCurrentSystemDevice = systemDiskNames.has(device.name);
+  const description = [
+    device.tran ? `transport: ${device.tran}` : null,
+    systemMountpoint ? `current system mount: ${systemMountpoint}` : null,
+    isCurrentSystemDevice ? "current system device" : null,
+  ].filter((part): part is string => part !== null);
+
+  const entry: RemovableDrive = {
+    id: device.name,
+    name: device.model ?? device.name,
+    devicePath: `/dev/${device.name}`,
+    sizeBytes: Number(device.size),
+    bus: busForLsblkDevice(device),
+    platform: "linux",
+    safety:
+      removable && !systemMountpoint && !isCurrentSystemDevice
+        ? "safe-removable"
+        : "blocked-system",
+  };
+  if (description.length > 0) {
+    entry.description = description.join("; ");
+  }
+  return entry;
 }
 
 async function fetchGitHubIsoImages(): Promise<ElizaOsImage[]> {
@@ -87,10 +307,12 @@ async function fetchGitHubIsoImages(): Promise<ElizaOsImage[]> {
               for (const asset of release.assets) {
                 if (!asset.name.endsWith(".iso")) continue;
                 const arch: ElizaOsImage["architecture"] = asset.name.includes(
-                  "arm64",
+                  "riscv64",
                 )
-                  ? "arm64"
-                  : "x86_64";
+                  ? "riscv64"
+                  : asset.name.includes("arm64")
+                    ? "arm64"
+                    : "x86_64";
                 const channel: ElizaOsImage["channel"] = release.prerelease
                   ? "nightly"
                   : "stable";
@@ -318,6 +540,8 @@ export interface LinuxBackendDeps {
   heartbeatIntervalMs?: number;
   /** Heartbeat stall threshold. Default 5000ms. */
   heartbeatStallMs?: number;
+  /** Override current root/live disk detection for tests. */
+  currentSystemDiskNames?: () => Promise<Set<string>>;
 }
 
 export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
@@ -328,51 +552,28 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
   }
 
   async listRemovableDrives(): Promise<RemovableDrive[]> {
-    const { stdout } = await execFileAsync("lsblk", [
+    const execFileFn =
+      this.deps.execFile ??
+      (async (cmd: string, args: readonly string[]) => {
+        const r = await execFileAsync(cmd, [...args]);
+        return { stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+      });
+
+    const { stdout } = await execFileFn("lsblk", [
       "--json",
       "--output",
-      "NAME,SIZE,TYPE,RM,MODEL,TRAN,HOTPLUG",
+      "NAME,SIZE,TYPE,RM,MODEL,TRAN,HOTPLUG,MOUNTPOINTS",
       "--bytes",
     ]);
 
-    let parsed: LsblkOutput;
-    try {
-      parsed = JSON.parse(stdout) as LsblkOutput;
-    } catch (error) {
-      throw new LsblkParseError(
-        stdout,
-        error instanceof Error ? error : new Error(String(error)),
-      );
-    }
-    const drives: RemovableDrive[] = [];
+    const parsed = parseLsblkOutput(stdout);
+    const systemDiskNames = this.deps.currentSystemDiskNames
+      ? await this.deps.currentSystemDiskNames()
+      : await currentSystemDiskNamesFromMountInfo();
 
-    for (const device of parsed.blockdevices) {
-      if (device.type !== "disk") continue;
-
-      const removable = isRemovable(device);
-      const isUsb = device.tran === "usb";
-      const bus: RemovableDrive["bus"] = isUsb
-        ? "usb"
-        : device.tran === "mmc" || device.tran === "sd"
-          ? "sd"
-          : "unknown";
-
-      const entry: RemovableDrive = {
-        id: device.name,
-        name: device.model ?? device.name,
-        devicePath: `/dev/${device.name}`,
-        sizeBytes: Number(device.size),
-        bus,
-        platform: "linux",
-        safety: removable ? "safe-removable" : "blocked-system",
-      };
-      if (device.tran) {
-        entry.description = `transport: ${device.tran}`;
-      }
-      drives.push(entry);
-    }
-
-    return drives;
+    return parsed.blockdevices
+      .filter((device) => device.type === "disk")
+      .map((device) => removableDriveFromLsblkDevice(device, systemDiskNames));
   }
 
   async listImages(): Promise<ElizaOsImage[]> {
@@ -387,6 +588,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
 
     const drive = drives.find((d) => d.id === request.driveId);
     if (!drive) throw new Error(`Unknown drive id: ${request.driveId}`);
+    assertDriveMatchesExpected(request, drive);
 
     const image = images.find((img) => img.id === request.imageId);
     if (!image) throw new Error(`Unknown image id: ${request.imageId}`);
@@ -433,12 +635,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
     plan: WritePlan,
     onProgress: (step: InstallerStepId, progress: number) => void,
   ): Promise<void> {
-    if (!plan.request.acknowledgeDataLoss) {
-      throw new Error("Data-loss acknowledgement is required.");
-    }
-    if (plan.drive.safety !== "safe-removable") {
-      throw new Error("Drive is not safe-removable; write aborted.");
-    }
+    assertWritePlanAllowed(plan);
 
     const { image, drive } = plan;
     const imagePath = path.join(INSTALLER_TMP_DIR, `${image.id}.iso`);

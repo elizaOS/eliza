@@ -1,3 +1,6 @@
+import { readdirSync, statSync } from "node:fs";
+import pathModule from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 
 // In live-prod mode the mocked-API specs do not apply (cookies are scoped to
@@ -10,6 +13,8 @@ test.skip(
 test.describe.configure({ mode: "serial" });
 
 const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
+const HERE = pathModule.dirname(fileURLToPath(import.meta.url));
+const CONTENT_DIR = pathModule.resolve(HERE, "../../content");
 
 // Console messages we explicitly tolerate. Keep this list short and
 // document each entry — anything that lands here is a regression candidate.
@@ -34,7 +39,40 @@ const NETWORK_FAILURE_ALLOWLIST: RegExp[] = [/\/__telemetry__/];
 const HOMEPAGE_TITLE_FALLBACK = /Eliza Cloud - Launch Eliza/i;
 const ROUTE_TITLE_RULES: Record<string, RegExp> = {
   "/": HOMEPAGE_TITLE_FALLBACK,
+  "/os": HOMEPAGE_TITLE_FALLBACK,
+  "/blog": HOMEPAGE_TITLE_FALLBACK,
+  "/sandbox-proxy": HOMEPAGE_TITLE_FALLBACK,
 };
+
+function discoverDocsRoutes(): string[] {
+  const routes: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      const fullPath = pathModule.join(dir, entry);
+      const stats = statSync(fullPath);
+      if (stats.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (!entry.endsWith(".mdx")) continue;
+      const rel = pathModule
+        .relative(CONTENT_DIR, fullPath)
+        .replace(/\\/g, "/")
+        .replace(/\.mdx$/, "");
+      if (rel === "index") {
+        routes.push("/docs");
+      } else if (rel.endsWith("/index")) {
+        routes.push(`/docs/${rel.slice(0, -"/index".length)}`);
+      } else {
+        routes.push(`/docs/${rel}`);
+      }
+    }
+  };
+  walk(CONTENT_DIR);
+  return [...new Set(routes)].sort();
+}
+
+const docsRoutes = discoverDocsRoutes();
 
 interface CapturedFailures {
   pageErrors: string[];
@@ -98,10 +136,21 @@ function assertNoFailures(route: string, captured: CapturedFailures) {
 
 const publicRoutes = [
   "/",
+  "/os",
+  "/blog",
   "/login",
   "/terms-of-service",
   "/privacy-policy",
-  "/docs",
+  ...docsRoutes,
+  "/sandbox-proxy",
+  "/bsc",
+  "/chat/agent_1",
+  "/auth/success?platform=github",
+  "/auth/cli-login?session=cli_session_1",
+  "/auth/error?reason=auth_failed",
+  "/auth/callback/email",
+  "/app-auth/authorize",
+  "/invite/accept",
   "/payment/pay_req_1",
   "/payment/app-charge/app_1/charge_1",
   "/payment/success?payment_request_id=pay_req_1",
@@ -118,6 +167,7 @@ const dashboardRoutes = [
   "/dashboard/billing/success",
   "/dashboard/agents",
   "/dashboard/agents/agent_1",
+  "/dashboard/agents/agent_1/chat",
   "/dashboard/apps",
   "/dashboard/apps/app_1",
   "/dashboard/my-agents",
@@ -128,6 +178,7 @@ const dashboardRoutes = [
   "/dashboard/earnings",
   "/dashboard/affiliates",
   "/dashboard/invoices/inv_1",
+  "/dashboard/chat",
   "/dashboard/containers",
   "/dashboard/containers/container_1",
   "/dashboard/containers/agents/agent_1",
@@ -148,6 +199,14 @@ const dashboardRedirects: Array<[from: string, toPattern: RegExp]> = [
   ["/dashboard/video", /\/dashboard\/api-explorer$/],
   ["/dashboard/gallery", /\/dashboard\/api-explorer$/],
   ["/dashboard/voices", /\/dashboard\/api-explorer$/],
+];
+
+const publicRedirects: Array<[from: string, to: string, bodyText: string]> = [
+  [
+    "/checkout?collection=elizaos-hardware",
+    "https://elizaos.ai/checkout?collection=elizaos-hardware",
+    "elizaOS checkout",
+  ],
 ];
 
 async function installApiMocks(page: Page) {
@@ -197,6 +256,75 @@ async function installApiMocks(page: Page) {
         });
       }
 
+      if (path.includes("/characters/agent_1/public")) {
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: "agent_1",
+              name: "Test Agent",
+              username: "test-agent",
+              avatarUrl: null,
+              bio: "A shared test agent.",
+              creatorUsername: "tester",
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/eliza/agents") {
+        const now = new Date().toISOString();
+        return route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                id: "agent_1",
+                agentName: "Test Agent",
+                name: "Test Agent",
+                status: "running",
+                createdAt: now,
+                updatedAt: now,
+                lastHeartbeatAt: now,
+                adminDetails: {
+                  webUiUrl: "https://agent.example.test",
+                },
+              },
+            ],
+          },
+        });
+      }
+
+      if (path === "/api/v1/eliza/agents/agent_1") {
+        const now = new Date().toISOString();
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: "agent_1",
+              agentName: "Test Agent",
+              name: "Test Agent",
+              status: "running",
+              createdAt: now,
+              updatedAt: now,
+              lastHeartbeatAt: now,
+              adminDetails: {
+                webUiUrl: "https://agent.example.test",
+              },
+            },
+          },
+        });
+      }
+
+      if (path.includes("/api/v1/cli-login/")) {
+        return route.fulfill({
+          json: {
+            success: true,
+            apiKeyPrefix: "eliza_test",
+          },
+        });
+      }
+
       if (path.includes("/sensitive-requests/")) {
         return route.fulfill({
           json: {
@@ -213,6 +341,108 @@ async function installApiMocks(page: Page) {
         });
       }
 
+      if (path === "/api/v1/redemptions/balance") {
+        return route.fulfill({
+          json: {
+            balance: {
+              totalEarned: 250,
+              availableBalance: 125,
+              pendingBalance: 25,
+              totalRedeemed: 100,
+              totalPending: 25,
+              totalConvertedToCredits: 0,
+            },
+            bySource: [
+              { source: "agent", totalEarned: 150, count: 3 },
+              { source: "miniapp", totalEarned: 100, count: 2 },
+            ],
+            recentEarnings: [
+              {
+                id: "earning_1",
+                source: "agent",
+                sourceId: "agent_1",
+                amount: 25,
+                description: "Test agent usage",
+                createdAt: new Date().toISOString(),
+              },
+            ],
+            limits: {
+              minRedemptionUsd: 10,
+              maxSingleRedemptionUsd: 1000,
+              userDailyLimitUsd: 1000,
+              userHourlyLimitUsd: 250,
+            },
+            eligibility: {
+              canRedeem: true,
+              dailyLimitRemaining: 1000,
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/redemptions/status") {
+        return route.fulfill({
+          json: {
+            operational: true,
+            networks: {
+              base: { available: true },
+              solana: { available: true },
+              ethereum: { available: true },
+              bnb: { available: true },
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/redemptions") {
+        return route.fulfill({
+          json: {
+            redemptions: [],
+          },
+        });
+      }
+
+      if (path === "/api/v1/containers/container_1/deployments") {
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              deployments: [
+                {
+                  id: "deployment_1",
+                  status: "success",
+                  cost: 1.25,
+                  metadata: {
+                    container_id: "container_1",
+                    container_name: "Test Container",
+                    desired_count: 1,
+                    cpu: 256,
+                    memory: 512,
+                    port: 3000,
+                    image_tag: "test",
+                  },
+                  deployed_at: new Date().toISOString(),
+                  duration_ms: 1200,
+                },
+              ],
+            },
+          },
+        });
+      }
+
+      if (path.endsWith("/models/status")) {
+        return route.fulfill({
+          json: {
+            models: [
+              { modelId: "openai/gpt-image-1", available: true },
+              { modelId: "black-forest-labs/flux-pro", available: true },
+              { modelId: "google/imagen-4", available: true },
+            ],
+            timestamp: Date.now(),
+          },
+        });
+      }
+
       if (path.endsWith("/models")) {
         return route.fulfill({
           json: {
@@ -225,6 +455,119 @@ async function installApiMocks(page: Page) {
                 type: "text",
               },
             ],
+          },
+        });
+      }
+
+      if (path === "/api/analytics/breakdown") {
+        const now = new Date();
+        const startDate = new Date(now);
+        startDate.setDate(now.getDate() - 7);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              filters: {
+                startDate: startDate.toISOString(),
+                endDate: now.toISOString(),
+                granularity: "day",
+                timeRange: "weekly",
+              },
+              overallStats: {
+                totalRequests: 12,
+                totalInputTokens: 1200,
+                totalOutputTokens: 800,
+                totalCost: 0.42,
+                successRate: 0.98,
+              },
+              timeSeriesData: [
+                {
+                  timestamp: startDate.toISOString(),
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  inputTokens: 1200,
+                  outputTokens: 800,
+                  successRate: 0.98,
+                  successRatePercent: 98,
+                },
+              ],
+              costTrending: {
+                currentDailyBurn: 0.06,
+                previousDailyBurn: 0.04,
+                burnChangePercent: 50,
+                projectedMonthlyBurn: 1.8,
+                daysUntilBalanceZero: null,
+                monthlyBurnPercent: 2,
+                monthlyBurnPercentClamped: 2,
+                burnAlertThresholdExceeded: false,
+              },
+              providerBreakdown: [
+                {
+                  provider: "openai",
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  totalTokens: 2000,
+                  successRate: 0.98,
+                  percentage: 100,
+                },
+              ],
+              modelBreakdown: [
+                {
+                  model: "gpt-4.1-mini",
+                  provider: "openai",
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  totalTokens: 2000,
+                  avgCostPerToken: 0.00021,
+                  successRate: 0.98,
+                },
+              ],
+              trends: {
+                requestsChange: 10,
+                costChange: 5,
+                tokensChange: 8,
+                successRateChange: 1,
+                period: "previous week",
+              },
+              organization: {
+                creditBalance: "100.00",
+              },
+            },
+          },
+        });
+      }
+
+      if (path === "/api/analytics/projections") {
+        const now = new Date();
+        const next = new Date(now);
+        next.setDate(now.getDate() + 1);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              historicalData: [
+                {
+                  timestamp: now.toISOString(),
+                  totalRequests: 12,
+                  totalCost: 0.42,
+                  inputTokens: 1200,
+                  outputTokens: 800,
+                  successRate: 0.98,
+                  successRatePercent: 98,
+                },
+              ],
+              projections: [
+                {
+                  timestamp: next.toISOString(),
+                  projectedCost: 0.5,
+                  projectedRequests: 14,
+                  confidenceLower: 0.35,
+                  confidenceUpper: 0.7,
+                },
+              ],
+              alerts: [],
+              creditBalance: 100,
+            },
           },
         });
       }
@@ -288,7 +631,9 @@ for (const route of publicRoutes) {
     // the global RootLayout <title> and trip the homepage-leak assertion).
     await page.goto(route, { waitUntil: "networkidle" });
     await expect(page.locator("body")).toBeVisible();
-    await expect(page.locator("text=Not found")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: /^Page Not Found$/i }),
+    ).toHaveCount(0);
     const screenshot = await captureRouteScreenshot(page);
     expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
 
@@ -296,7 +641,7 @@ for (const route of publicRoutes) {
     // must not silently fall back to the homepage title.
     const pathKey = route.split("?")[0];
     const titleRule = ROUTE_TITLE_RULES[pathKey];
-    if (pathKey !== "/") {
+    if (pathKey !== "/" && !titleRule) {
       // Wait up to 5s for Helmet on the actual page to win over the global
       // RootLayout title. Lazy-loaded routes (Suspense + dynamic import)
       // need a beat after networkidle before their <Helmet> applies.
@@ -323,7 +668,9 @@ for (const route of dashboardRoutes) {
     await page.goto(route);
     await expect(page.locator("body")).toBeVisible();
     await expect(page).not.toHaveURL(/\/login/);
-    await expect(page.locator("text=Not found")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: /^Page Not Found$/i }),
+    ).toHaveCount(0);
     const screenshot = await page.screenshot({ fullPage: true });
     expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
     assertNoFailures(route, captured);
@@ -346,6 +693,21 @@ for (const [from, toPattern] of dashboardRedirects) {
     await setTestAuth(page);
     await page.goto(from);
     await expect(page).toHaveURL(toPattern);
+  });
+}
+
+for (const [from, to, bodyText] of publicRedirects) {
+  test(`public redirect route: ${from}`, async ({ page }) => {
+    await page.route("https://elizaos.ai/**", (route) =>
+      route.fulfill({
+        body: `<html><body>${bodyText}</body></html>`,
+        contentType: "text/html",
+      }),
+    );
+
+    await page.goto(from);
+    await expect(page).toHaveURL(to);
+    await expect(page.getByText(bodyText)).toBeVisible();
   });
 }
 

@@ -84,6 +84,39 @@ void tbq_quantize_tbq4_block(const float src[32], tbq_block_tbq4_0 * dst);
 void tbq_decode_tbq3_block(const tbq_block_tbq3_0 * src, float dst[32]);
 void tbq_decode_tbq4_block(const tbq_block_tbq4_0 * src, float dst[32]);
 
+/* ---- per-SIMD lane entry points -----------------------------------
+ *
+ * The no-suffix functions above dispatch to one of these at runtime
+ * based on the host CPU. They are exposed so parity tests can pin a
+ * specific lane and cross-check it against the scalar reference.
+ *
+ * `_ref` is always present. `_rvv` exists only when the library was
+ * built for riscv64 (TBQ_HAVE_RVV=1); on other targets calling them
+ * is a link error. NEON / AVX2 sister entries will land in follow-up
+ * tasks following the same naming pattern. */
+
+void tbq_quantize_tbq3_block_ref(const float src[32], tbq_block_tbq3_0 * dst);
+void tbq_quantize_tbq4_block_ref(const float src[32], tbq_block_tbq4_0 * dst);
+void tbq_decode_tbq3_block_ref(const tbq_block_tbq3_0 * src, float dst[32]);
+void tbq_decode_tbq4_block_ref(const tbq_block_tbq4_0 * src, float dst[32]);
+
+#if defined(TBQ_HAVE_RVV) && TBQ_HAVE_RVV
+void tbq_quantize_tbq3_block_rvv(const float src[32], tbq_block_tbq3_0 * dst);
+void tbq_quantize_tbq4_block_rvv(const float src[32], tbq_block_tbq4_0 * dst);
+void tbq_decode_tbq3_block_rvv(const tbq_block_tbq3_0 * src, float dst[32]);
+void tbq_decode_tbq4_block_rvv(const tbq_block_tbq4_0 * src, float dst[32]);
+#endif
+
+/* Name of the SIMD path the dispatcher will use on this host:
+ *   "rvv", "neon", "avx2", or "ref". */
+const char * tbq_active_simd(void);
+
+/* Override the dispatcher's choice (for tests / benchmarks). Pass
+ * value 0..3 matching the tbq_simd_t enum in tbq_cpu_features.h. A
+ * lane whose symbols are not linked into this build falls back to
+ * the scalar reference. */
+void tbq_force_simd(int lane);
+
 /* ---- fp16 helpers (same conversion as eliza_fp{16,32}_to_fp{32,16}) - */
 
 uint16_t tbq_fp32_to_fp16(float f);

@@ -1,0 +1,25 @@
+{
+  "protocol_version": "1.0.0",
+  "server": {
+    "host": "0.0.0.0",
+    "port": 9100
+  },
+  "backends": {
+    "default": "ros_real",
+    "allowed": [
+      "mock",
+      "ros_real",
+      "ros_sim",
+      "isaac"
+    ]
+  },
+  "safety": {
+    "command_rate_limit_hz": 30,
+    "deadman_timeout_sec": 1.0,
+    "queue_size": 256
+  },
+  "logging": {
+    "trace_log_path": ""
+  }
+}
+

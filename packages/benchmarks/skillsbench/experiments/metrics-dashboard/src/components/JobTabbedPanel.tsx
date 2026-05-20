@@ -178,7 +178,7 @@ export function JobTabbedPanel({
         if (isNaN(finishedTime)) return false;
         return finishedTime >= cutoff;
       })
-      .sort((a, b) => parseDate(a.finishedAt!) - parseDate(b.finishedAt!));
+      .sort((a, b) => parseDate(a.finishedAt) - parseDate(b.finishedAt));
   }, [jobTrials, timeRange]);
 
   // Timeline chart data
@@ -212,7 +212,7 @@ export function JobTabbedPanel({
     for (let t = startTime; t <= endTime; t += bucketSize) {
       while (trialIdx < timeFilteredTrials.length) {
         const trial = timeFilteredTrials[trialIdx];
-        const trialTime = parseDate(trial.finishedAt!);
+        const trialTime = parseDate(trial.finishedAt);
         if (trialTime > t + bucketSize) break;
 
         cumTotal++;
@@ -454,7 +454,7 @@ export function JobTabbedPanel({
                       </div>
                     ) : (
                       <div className="space-y-2 flex-1 overflow-auto">
-                        {activity?.inProgress?.map((trial, i) => (
+                        {activity.inProgress.map((trial, i) => (
                           <div
                             key={i}
                             className={`p-3 rounded-lg text-sm ${
@@ -513,7 +513,7 @@ export function JobTabbedPanel({
                       </div>
                     ) : (
                       <div className="space-y-2 flex-1 overflow-auto">
-                        {activity?.recentCompleted?.map((trial, i) => (
+                        {activity.recentCompleted.map((trial, i) => (
                           <div
                             key={i}
                             className="p-3 bg-muted/30 rounded-lg text-sm"

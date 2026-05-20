@@ -142,14 +142,22 @@ function requireCoordinator(
 
 describe("EngineVoiceBridge — W3-9 cancellation wiring (production path)", () => {
 	let bundleRoot: string;
+	let previousPowerSource: string | undefined;
 
 	beforeEach(() => {
+		previousPowerSource = process.env.ELIZA_VOICE_POWER_SOURCE;
+		process.env.ELIZA_VOICE_POWER_SOURCE = "unknown";
 		bundleRoot = mkdtempSync(path.join(tmpdir(), "eliza-f1-cancel-"));
 		writePresetBundle(bundleRoot);
 	});
 
 	afterEach(() => {
 		rmSync(bundleRoot, { recursive: true, force: true });
+		if (previousPowerSource === undefined) {
+			delete process.env.ELIZA_VOICE_POWER_SOURCE;
+		} else {
+			process.env.ELIZA_VOICE_POWER_SOURCE = previousPowerSource;
+		}
 	});
 
 	it("instantiates a VoiceCancellationCoordinator + OptimisticGenerationPolicy when runtime is supplied", () => {

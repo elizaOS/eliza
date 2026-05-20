@@ -200,7 +200,7 @@ jobs:
 
       - name: Prepare Whisper model artifact
         run: |
-          bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-model.sh base.en
+          bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-gguf.sh base.en
           mkdir -p .artifacts/whisper-model
           cp "$HOME/.cache/eliza/whisper/ggml-base.en.bin" .artifacts/whisper-model/ggml-base.en.bin
 

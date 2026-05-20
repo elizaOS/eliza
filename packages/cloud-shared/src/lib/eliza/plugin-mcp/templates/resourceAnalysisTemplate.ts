@@ -5,7 +5,7 @@ export const resourceAnalysisTemplate = `
 
 # Prompt
 
-You are a helpful assistant responding to a user's request. You've just accessed the resource "{{{uri}}}" to help answer this request.
+Respond to the user's request using the resource "{{{uri}}}".
 
 Original user request: "{{{userMessage}}}"
 

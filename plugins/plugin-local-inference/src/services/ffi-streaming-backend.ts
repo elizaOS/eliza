@@ -188,17 +188,16 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 	async persistConversationKv(
 		conversationId: string,
 		slotId: number,
-	): Promise<boolean> {
-		if (!this.session) return false; // no-op when not loaded
+	): Promise<void> {
+		if (!this.session) return; // no-op when not loaded
 		const { binding } = this.session;
-		if (!binding.llmStreamSaveSlot) return false; // adapter doesn't support save
+		if (!binding.llmStreamSaveSlot) return; // adapter doesn't support save
 		const filename = slotFilename(conversationId, slotId);
 		// llmStreamSaveSlot is per-stream in the binding API; the desktop
 		// adapter currently saves the ctx-wide seq=0 state, so the stream
 		// handle is informational. We pass the runner's most recent
 		// stream id when available — empty-bigint placeholder otherwise.
 		binding.llmStreamSaveSlot({ stream: 0n, filename });
-		return true;
 	}
 
 	/** Restore a previously persisted KV state. Mirror of `persistConversationKv`. */

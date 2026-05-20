@@ -284,10 +284,10 @@ export class RemoteCapabilityRouterService
     for (const result of results) {
       for (const module of result.modules) {
         const moduleId = module.id;
-        if (typeof moduleId !== "string" || !moduleId) {
+        if (!isValidRemotePluginModuleId(moduleId)) {
           throw new CapabilityError({
             code: "CAPABILITY_DECODE_FAILED",
-            message: `Remote endpoint ${result.endpoint.id} returned a plugin module without id.`,
+            message: `Remote endpoint ${result.endpoint.id} returned a plugin module with invalid id.`,
             capability: "plugin",
             method: "plugin.modules.list",
             details: module,
@@ -352,9 +352,7 @@ export function resolveRemoteCapabilityRouterConfig(
     return typeof env === "string" && env.trim() ? env.trim() : undefined;
   };
   const baseUrl =
-    get("ELIZA_CAPABILITY_ROUTER_URL") ??
-    get("ELIZA_REMOTE_CAPABILITY_URL") ??
-    get("ELIZA_SATELLITE_RUNNER_URL");
+    get("ELIZA_CAPABILITY_ROUTER_URL") ?? get("ELIZA_REMOTE_CAPABILITY_URL");
   const endpoints = parseEndpointList(
     get("ELIZA_CAPABILITY_ROUTER_URLS"),
     get("ELIZA_CAPABILITY_ROUTER_TOKEN"),
@@ -368,8 +366,7 @@ export function resolveRemoteCapabilityRouterConfig(
     baseUrl: baseUrl ? stripTrailingSlash(baseUrl) : undefined,
     token:
       get("ELIZA_CAPABILITY_ROUTER_TOKEN") ??
-      get("ELIZA_REMOTE_CAPABILITY_TOKEN") ??
-      get("ELIZA_SATELLITE_RUNNER_TOKEN"),
+      get("ELIZA_REMOTE_CAPABILITY_TOKEN"),
     ...(endpoints.length === 0 ? {} : { endpoints }),
     environment:
       parseEnvironment(get("ELIZA_CAPABILITY_ROUTER_ENVIRONMENT")) ?? "server",
@@ -1054,4 +1051,8 @@ function parseEnvironment(
 
 function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function isValidRemotePluginModuleId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9._-]+$/.test(value);
 }

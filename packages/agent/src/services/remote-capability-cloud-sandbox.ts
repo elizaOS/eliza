@@ -5,6 +5,7 @@ import {
   installRemoteCapabilityEndpoint,
   type ProvisionedRemoteCapabilityEndpoint,
   type RemoteCapabilityEndpointProvider,
+  type RemoteCapabilityEndpointTrustPolicyOptions,
 } from "./remote-capability-endpoint-provider.ts";
 import type { RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
 import type { RemotePluginSyncResult } from "./remote-plugin-adapter.ts";
@@ -24,12 +25,22 @@ export type CloudCapabilitySandboxProvisionOptions = {
   fetch?: typeof fetch;
   onProgress?: (status: string, detail?: string) => void;
   allowedModuleIds?: string[];
+  trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions;
 };
 
 export type CloudCapabilitySandboxProvisionResult = {
   agentId: string;
   endpoint: RemoteCapabilityEndpointConfig;
   jobId?: string;
+};
+
+export type WaitForCloudCapabilityEndpointAvailabilityOptions = {
+  endpoint: RemoteCapabilityEndpointConfig;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  requestTimeoutMs?: number;
+  fetch?: typeof fetch;
+  onProgress?: (detail: string) => void;
 };
 
 export type ConnectCloudCapabilitySandboxOptions =
@@ -40,6 +51,7 @@ export type ConnectCloudCapabilitySandboxOptions =
 
 export type ConnectCloudCapabilitySandboxResult =
   CloudCapabilitySandboxProvisionResult & {
+    providerId: string;
     sync: RemotePluginSyncResult;
   };
 
@@ -54,6 +66,9 @@ export const cloudCapabilityEndpointProvider: RemoteCapabilityEndpointProvider<C
       ...(options.allowedModuleIds === undefined
         ? {}
         : { allowedModuleIds: options.allowedModuleIds }),
+      ...(options.trustPolicy === undefined
+        ? {}
+        : { trustPolicy: options.trustPolicy }),
     }),
   };
 
@@ -173,6 +188,8 @@ export async function provisionCloudCapabilitySandbox(
     Date.now() + (options.timeoutMs ?? DEFAULT_CLOUD_PROVISION_TIMEOUT_MS);
   const pollIntervalMs =
     options.pollIntervalMs ?? DEFAULT_CLOUD_PROVISION_POLL_MS;
+  let lastStatus: string | undefined;
+  let lastError: string | undefined;
   while (Date.now() < deadline) {
     await sleep(pollIntervalMs);
     const job = await cloudJson<JobResponse>(
@@ -187,6 +204,8 @@ export async function provisionCloudCapabilitySandbox(
     const status = job.data?.data?.status ?? job.data?.status;
     const result = job.data?.data?.result ?? job.data?.result;
     const error = job.data?.data?.error ?? job.data?.error;
+    lastStatus = status;
+    lastError = error;
     const endpoint = endpointFromProvisionPayload(options, result);
     if (status === "completed" && endpoint) {
       options.onProgress?.("ready", "Cloud capability endpoint ready.");
@@ -203,7 +222,11 @@ export async function provisionCloudCapabilitySandbox(
     );
   }
 
-  throw new Error("Cloud capability sandbox provisioning timed out.");
+  throw new Error(
+    `Cloud capability sandbox provisioning timed out.${
+      lastStatus ? ` Last status: ${lastStatus}.` : ""
+    }${lastError ? ` Last error: ${lastError}.` : ""}`,
+  );
 }
 
 export async function connectCloudCapabilitySandbox(
@@ -218,14 +241,111 @@ export async function connectCloudCapabilitySandbox(
     ...(options.allowedModuleIds === undefined
       ? {}
       : { allowedModuleIds: options.allowedModuleIds }),
+    ...(options.trustPolicy === undefined
+      ? {}
+      : { trustPolicy: options.trustPolicy }),
   });
   assertCloudProvisionResult(result);
   return {
     agentId: result.agentId,
+    providerId: result.providerId,
     endpoint: result.endpoint,
     ...(result.jobId === undefined ? {} : { jobId: result.jobId }),
     sync: result.sync,
   };
+}
+
+export async function waitForCloudCapabilityEndpointAvailability(
+  options: WaitForCloudCapabilityEndpointAvailabilityOptions,
+): Promise<void> {
+  const request = options.fetch ?? fetch;
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const pollIntervalMs = options.pollIntervalMs ?? 5_000;
+  const requestTimeoutMs = options.requestTimeoutMs ?? 60_000;
+  const deadline = Date.now() + timeoutMs;
+  let lastError = "availability was not checked";
+
+  while (Date.now() < deadline) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+      try {
+        const response = await request(
+          new URL("/v1/capabilities", options.endpoint.baseUrl),
+          {
+            method: "GET",
+            headers: {
+              accept: "application/json",
+              ...(options.endpoint.token
+                ? { authorization: `Bearer ${options.endpoint.token}` }
+                : {}),
+            },
+            signal: controller.signal,
+          },
+        );
+        const text = await response.text();
+        if (!response.ok) {
+          lastError = `HTTP ${response.status}: ${text.slice(0, 500)}`;
+        } else {
+          const availability = JSON.parse(text) as {
+            available?: unknown;
+            capabilities?: { plugin?: unknown };
+          };
+          if (
+            availability.available === true &&
+            availability.capabilities?.plugin === true
+          ) {
+            return;
+          }
+          lastError = `unexpected availability payload: ${text.slice(0, 500)}`;
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (error) {
+      lastError = describeAvailabilityError(error);
+    }
+    options.onProgress?.(
+      `waiting for endpoint ${options.endpoint.id}: ${lastError}`,
+    );
+    await sleep(pollIntervalMs);
+  }
+
+  throw new Error(
+    `Cloud capability endpoint ${options.endpoint.id} did not report plugin availability within ${timeoutMs}ms. Last error: ${lastError}`,
+  );
+}
+
+function describeAvailabilityError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = (error as Error & { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    return `${error.message}: ${cause.message}`;
+  }
+  if (cause && typeof cause === "object") {
+    const detail = cause as {
+      code?: unknown;
+      errno?: unknown;
+      syscall?: unknown;
+      hostname?: unknown;
+      address?: unknown;
+      port?: unknown;
+    };
+    const parts = [
+      detail.code,
+      detail.errno,
+      detail.syscall,
+      detail.hostname,
+      detail.address,
+      detail.port,
+    ]
+      .filter((value) => typeof value === "string" || typeof value === "number")
+      .map(String);
+    if (parts.length > 0) {
+      return `${error.message}: ${parts.join(" ")}`;
+    }
+  }
+  return error.message;
 }
 
 export {

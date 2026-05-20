@@ -1,0 +1,128 @@
+schema: eliza.pd_library_manifest.v1
+pdk: sky130A
+node_class: open_130nm_planar_cmos
+status: open_pdk_libraries_available
+evidence_class: real_open_pdk_library_set
+
+claim_boundary:
+  allowed:
+    - Open Sky130 stdcell, SRAM (OpenRAM), IO, and primitive libraries.
+    - Pinning the open-PDK Volare commit + STD_CELL_LIBRARY version is the contract.
+  blocked:
+    - SRAM compilers from foundry vendors (closed) — not available at Sky130.
+    - Aging/EM/SI library views from foundry vendors — not available at Sky130.
+
+stdcell_libraries:
+  - name: sky130_fd_sc_hd
+    role: primary_high_density
+    version_pin: open_pdks_sky130A
+    cell_count: 426
+  - name: sky130_fd_sc_hs
+    role: high_speed
+    version_pin: open_pdks_sky130A
+  - name: sky130_fd_sc_hdll
+    role: low_leakage
+    version_pin: open_pdks_sky130A
+  - name: sky130_fd_sc_ms
+    role: medium_speed
+    version_pin: open_pdks_sky130A
+
+sram_compiler:
+  name: OpenRAM
+  url: https://github.com/VLSIDA/OpenRAM
+  version_pin: openram-sky130A-2024
+  modes_supported:
+    - 1RW_single_port
+    - 1R1W_dual_port
+  size_band_bits: "1KiB..256KiB per macro"
+  status: real_open_sram_compiler
+
+# Macros cross-referenced from pd/macros/manifest.yaml.
+# Pinned OpenRAM configurations for each macro the PD agent expects to place.
+# LEF / GDS / Liberty are BLOCKED until OpenRAM runs locally; this manifest
+# documents the intent so the portability checker can detect drift.
+sram_macros:
+  source_of_truth: pd/macros/manifest.yaml
+  generator: OpenRAM
+  generator_pinned_commit: BLOCKED_pin_after_first_local_run
+  prebuilt_pdk_macro_root: external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros
+  macros:
+    - name: sky130_sram_2kbyte_1rw1r_32x512_8
+      kind: SRAM_1RW1R
+      words: 512
+      word_size_bits: 32
+      size_bytes: 2048
+      source: pdk_prebuilt
+      intended_use:
+        - npu_weight_buffer_scaffold_first_hard_macro_on_release_floorplan
+    - name: e1_sram_4kb_1rw
+      kind: SRAM_1RW
+      words: 1024
+      word_size_bits: 32
+      openram_config:
+        num_rw_ports: 1
+        num_r_ports: 0
+        num_w_ports: 0
+        tech_name: sky130
+        nominal_corner_only: false
+      intended_use:
+        - cpu_l1_dcache_data_bank
+        - cpu_l1_icache_data_bank
+      lef: BLOCKED_run_openram
+      gds: BLOCKED_run_openram
+      lib: BLOCKED_run_openram
+      spice: BLOCKED_run_openram
+    - name: e1_sram_16kb_1rw
+      kind: SRAM_1RW
+      words: 4096
+      word_size_bits: 32
+      openram_config:
+        num_rw_ports: 1
+        num_r_ports: 0
+        num_w_ports: 0
+        tech_name: sky130
+      intended_use:
+        - npu_weight_buffer_scaffold
+        - cpu_l2_slice_bank
+      lef: BLOCKED_run_openram
+      gds: BLOCKED_run_openram
+      lib: BLOCKED_run_openram
+      spice: BLOCKED_run_openram
+    - name: e1_sram_64kb_1rw
+      kind: SRAM_1RW
+      words: 16384
+      word_size_bits: 32
+      openram_config:
+        num_rw_ports: 1
+        num_r_ports: 0
+        num_w_ports: 0
+        tech_name: sky130
+      intended_use:
+        - cpu_l3_slice_scaffold
+        - npu_activation_buffer_scaffold
+      lef: BLOCKED_run_openram
+      gds: BLOCKED_run_openram
+      lib: BLOCKED_run_openram
+      spice: BLOCKED_run_openram
+
+io_ring_library:
+  name: sky130_fd_io
+  version_pin: open_pdks_sky130A
+  pad_types:
+    - sky130_fd_io__top_gpiov2
+    - sky130_fd_io__top_power_hvc_wpad
+    - sky130_fd_io__top_ground_hvc_wpad
+
+pll_and_clock_ip:
+  name: open_sky130_pll
+  status: limited_open_pll_macros_only
+  notes: No high-Q production PLL hard macro at Sky130. Clock generation via on-chip RC oscillator + external crystal in the demonstrator path.
+
+lpddr_phy:
+  status: not_available_at_open_130nm
+  notes: LPDDR5X/LPDDR6 PHY is fundamentally not a 130 nm capability. Memory aperture is the in-RTL SRAM stand-in.
+
+required_provenance_fields:
+  - PDK_root (Volare-pinned commit)
+  - STD_CELL_LIBRARY name + revision
+  - OpenLane container digest used at build time

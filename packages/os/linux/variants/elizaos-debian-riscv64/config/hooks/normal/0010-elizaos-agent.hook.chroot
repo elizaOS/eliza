@@ -1,0 +1,67 @@
+#!/bin/sh
+set -eu
+
+INSTALL_ROOT="/opt/elizaos"
+ARTIFACT_ROOT="/opt/elizaos-artifacts"
+AGENT_DIR="${ARTIFACT_ROOT}/elizaos-agent-riscv64"
+AGENT_BIN_SOURCE="${AGENT_DIR}/elizaos"
+BUN_ZIP="${ARTIFACT_ROOT}/bun-linux-riscv64-musl.zip"
+BUN_SHA256_FILE="${BUN_ZIP}.sha256"
+BUN_EXTRACT_ROOT="${INSTALL_ROOT}/runtime"
+BUN_EXTRACT_DIR="${BUN_EXTRACT_ROOT}/bun-linux-riscv64-musl"
+INSTALL_MARKER="${INSTALL_ROOT}/INSTALL_STATE.json"
+BUILD_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+fail() {
+    echo "[0010-elizaos-agent] ERROR: $*" >&2
+    exit 1
+}
+
+require_file() {
+    [ -f "$1" ] || fail "missing required artifact: $1"
+}
+
+require_file "${AGENT_BIN_SOURCE}"
+require_file "${BUN_ZIP}"
+require_file "${BUN_SHA256_FILE}"
+
+EXPECTED_BUN_SHA256="$(awk '{print tolower($1)}' "${BUN_SHA256_FILE}")"
+printf '%s\n' "${EXPECTED_BUN_SHA256}" | grep -Eq '^[0-9a-f]{64}$' \
+    || fail "invalid SHA-256 in ${BUN_SHA256_FILE}"
+
+ACTUAL_BUN_SHA256="$(sha256sum "${BUN_ZIP}" | awk '{print tolower($1)}')"
+[ "${ACTUAL_BUN_SHA256}" = "${EXPECTED_BUN_SHA256}" ] || fail "bun-linux-riscv64-musl.zip SHA-256 mismatch"
+
+rm -rf "${INSTALL_ROOT}"
+mkdir -p "${INSTALL_ROOT}/bin" "${INSTALL_ROOT}/state" "${INSTALL_ROOT}/var/log" "${BUN_EXTRACT_ROOT}"
+
+install -m 0755 "${AGENT_BIN_SOURCE}" "${INSTALL_ROOT}/bin/elizaos"
+unzip -q "${BUN_ZIP}" -d "${BUN_EXTRACT_ROOT}"
+[ -x "${BUN_EXTRACT_DIR}/bun" ] || fail "bun payload did not contain executable ${BUN_EXTRACT_DIR}/bun"
+chmod 0755 "${BUN_EXTRACT_DIR}/bun"
+
+cat > "${INSTALL_MARKER}" <<JSON
+{
+  "schemaVersion": 1,
+  "variant": "elizaos-debian-riscv64",
+  "installRoot": "${INSTALL_ROOT}",
+  "stagedAt": "${BUILD_TS}",
+  "agentArtifact": "elizaos-agent-riscv64/elizaos",
+  "bunArtifact": "bun-linux-riscv64-musl.zip",
+  "bunSha256": "${ACTUAL_BUN_SHA256}",
+  "bunInternalLayout": "bun-linux-riscv64-musl/bun"
+}
+JSON
+
+chmod 0644 "${INSTALL_MARKER}"
+chown -R root:root "${INSTALL_ROOT}"
+
+if [ -f /etc/ssh/sshd_config ]; then
+    sed -i \
+        -e 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' \
+        -e 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' \
+        -e 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' \
+        /etc/ssh/sshd_config
+fi
+
+echo "[0010-elizaos-agent] installed elizaOS agent and bun-linux-riscv64-musl.zip into ${INSTALL_ROOT}"

@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { createServer } from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
@@ -13,7 +14,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SandboxService, SessionCwdService } from "../services/index.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { shellAction } from "./bash.js";
+import {
+  resolveCryptoSpotPriceCommand,
+  resolveDiskInspectionCommand,
+  resolveLocalStatusCommand,
+  resolveSourceInspectionCommand,
+  shellAction,
+} from "./bash.js";
 
 interface RuntimeOptions {
   blockedPaths?: string;
@@ -115,13 +122,16 @@ function makeShellRouter(
   };
 }
 
-function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
+function makeMessage(
+  roomId = "11111111-aaaa-bbbb-cccc-222222222222",
+  text = "",
+): Memory {
   return {
     id: "33333333-3333-3333-3333-333333333333" as UUID,
     entityId: "44444444-4444-4444-4444-444444444444" as UUID,
     roomId: roomId as UUID,
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
-    content: { text: "" },
+    content: { text },
     createdAt: Date.now(),
   } as Memory;
 }
@@ -213,6 +223,21 @@ describe("shellAction", () => {
     expect(result.text).toContain("timeout");
   });
 
+  it("times out shell pipelines without waiting for orphaned children", async () => {
+    const started = Date.now();
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: "sleep 5 | cat", timeout: 200 },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("timeout");
+    expect(Date.now() - started).toBeLessThan(2_500);
+  });
+
   it("respects an explicit cwd", async () => {
     const tmpRoot = path.resolve(os.tmpdir());
     const { runtime } = await makeRuntime();
@@ -224,6 +249,180 @@ describe("shellAction", () => {
     );
     expect(result.success).toBe(true);
     expect(result.text).toContain(tmpRoot);
+  });
+
+  it("uses session cwd instead of an unmentioned cwd for running-source checks", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-232323232323";
+    const sessionRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-runtime-session-${Date.now()}`,
+    );
+    const staleRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-runtime-stale-${Date.now()}`,
+    );
+    await fs.mkdir(sessionRoot, { recursive: true });
+    await fs.mkdir(staleRoot, { recursive: true });
+    try {
+      const { runtime, session } = await makeRuntime();
+      session.setCwd(roomId, sessionRoot);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          roomId,
+          "Can you tell me what branch and commit the local source is running from?",
+        ),
+        undefined,
+        { command: "pwd", cwd: staleRoot },
+      );
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(sessionRoot);
+      expect(result.text).not.toContain(staleRoot);
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.cwd).toBe(sessionRoot);
+    } finally {
+      await fs.rm(sessionRoot, { recursive: true, force: true });
+      await fs.rm(staleRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("strips unmentioned cd prefixes for running-source checks", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-252525252525";
+    const sessionRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-cd-session-${Date.now()}`,
+    );
+    const staleRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-cd-stale-${Date.now()}`,
+    );
+    await fs.mkdir(sessionRoot, { recursive: true });
+    await fs.mkdir(staleRoot, { recursive: true });
+    try {
+      const { runtime, session } = await makeRuntime();
+      session.setCwd(roomId, sessionRoot);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          roomId,
+          "Can you tell me what branch and commit the local source is running from?",
+        ),
+        undefined,
+        { command: `cd ${staleRoot} && pwd` },
+      );
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(`(cwd=${sessionRoot}`);
+      expect(result.text).toContain(sessionRoot);
+      expect(result.text).not.toContain(staleRoot);
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.cwd).toBe(sessionRoot);
+    } finally {
+      await fs.rm(sessionRoot, { recursive: true, force: true });
+      await fs.rm(staleRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rewrites unmentioned git -C paths for local submodule status checks", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-272727272727";
+    const sessionRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-submodule-session-${Date.now()}`,
+    );
+    const staleRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-submodule-stale-${Date.now()}`,
+    );
+    await fs.mkdir(sessionRoot, { recursive: true });
+    await fs.mkdir(staleRoot, { recursive: true });
+    try {
+      const { runtime, session } = await makeRuntime();
+      session.setCwd(roomId, sessionRoot);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          roomId,
+          "is the vendored opencode submodule present and what commit is checked out? concise",
+        ),
+        undefined,
+        { command: `git -C ${staleRoot} --version` },
+      );
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(`git -C '${sessionRoot}' --version`);
+      expect(result.text).not.toContain(staleRoot);
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.cwd).toBe(sessionRoot);
+    } finally {
+      await fs.rm(sessionRoot, { recursive: true, force: true });
+      await fs.rm(staleRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps cd prefixes when the user names that path", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-262626262626";
+    const sessionRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-cd-explicit-session-${Date.now()}`,
+    );
+    const requestedRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-cd-explicit-requested-${Date.now()}`,
+    );
+    await fs.mkdir(sessionRoot, { recursive: true });
+    await fs.mkdir(requestedRoot, { recursive: true });
+    try {
+      const { runtime, session } = await makeRuntime();
+      session.setCwd(roomId, sessionRoot);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          roomId,
+          `Can you tell me what branch is running from ${requestedRoot}?`,
+        ),
+        undefined,
+        { command: `cd ${requestedRoot} && pwd` },
+      );
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(requestedRoot);
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.cwd).toBe(sessionRoot);
+    } finally {
+      await fs.rm(sessionRoot, { recursive: true, force: true });
+      await fs.rm(requestedRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("respects an explicit cwd when the user names that path", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-242424242424";
+    const sessionRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-explicit-session-${Date.now()}`,
+    );
+    const requestedRoot = path.resolve(
+      process.cwd(),
+      `.tmp-shell-explicit-requested-${Date.now()}`,
+    );
+    await fs.mkdir(sessionRoot, { recursive: true });
+    await fs.mkdir(requestedRoot, { recursive: true });
+    try {
+      const { runtime, session } = await makeRuntime();
+      session.setCwd(roomId, sessionRoot);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          roomId,
+          `Can you tell me what branch is running from ${requestedRoot}?`,
+        ),
+        undefined,
+        { command: "pwd", cwd: requestedRoot },
+      );
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(requestedRoot);
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.cwd).toBe(requestedRoot);
+    } finally {
+      await fs.rm(sessionRoot, { recursive: true, force: true });
+      await fs.rm(requestedRoot, { recursive: true, force: true });
+    }
   });
 
   it("falls back to the session cwd when an explicit cwd is missing", async () => {
@@ -246,6 +445,27 @@ describe("shellAction", () => {
     } finally {
       await fs.rm(tmpRoot, { recursive: true, force: true });
     }
+  });
+
+  it("resets a stale session cwd before running a command", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-444444444444";
+    const stale = path.join(process.cwd(), `.tmp-shell-stale-${Date.now()}`);
+    const { runtime, session } = await makeRuntime();
+    session.setCwd(roomId, stale);
+
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(roomId),
+      undefined,
+      { command: "pwd" },
+    );
+
+    const defaultCwd = path.resolve(process.cwd());
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(defaultCwd);
+    expect(session.getCwd(roomId)).toBe(defaultCwd);
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.cwd).toBe(defaultCwd);
   });
 
   it("quotes bare URLs with shell metacharacters before execution", async () => {
@@ -282,6 +502,227 @@ describe("shellAction", () => {
     expect(result.success).toBe(true);
     expect(result.text).toContain(
       '"https://example.com/simple?ids=bitcoin&vs_currencies=usd"',
+    );
+  });
+
+  it("replaces unreliable BTC spot-price endpoints with a neutral no-key source", () => {
+    const coindesk = resolveCryptoSpotPriceCommand({
+      messageText: "What is the current BTC price in USD?",
+      command:
+        "curl -s https://api.coindesk.com/v1/bpi/currentprice/BTC.json | grep rate_float",
+    });
+    expect(coindesk.rewritten).toBe(true);
+    expect(coindesk.command).toContain("api.coingecko.com");
+    expect(coindesk.command).toContain("ids=bitcoin");
+    expect(coindesk.command).not.toContain("coindesk");
+
+    const binance = resolveCryptoSpotPriceCommand({
+      messageText: "What is the current BTC price in USD?",
+      command:
+        "curl -s https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
+    });
+    expect(binance.rewritten).toBe(true);
+    expect(binance.command).toContain("api.coingecko.com");
+    expect(binance.command).not.toContain("binance");
+  });
+
+  it("keeps non-price commands that happen to mention BTC endpoints", () => {
+    const result = resolveCryptoSpotPriceCommand({
+      messageText: "Show me this shell command.",
+      command:
+        "echo https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
+    });
+    expect(result.rewritten).toBe(false);
+    expect(result.command).toContain("binance.com");
+  });
+
+  it("replaces broad disk cleanup scans with a bounded candidate probe", () => {
+    const result = resolveDiskInspectionCommand({
+      messageText:
+        "check disk space on / and /home and name the biggest cleanup candidate you can see",
+      command:
+        "df -h / /home && echo '---' && du -sh /* 2>/dev/null | sort -hr | head -n 5",
+    });
+
+    expect(result.rewritten).toBe(true);
+    expect(result.command).toContain("df -h / /home");
+    expect(result.command).toContain("/tmp");
+    expect(result.command).toContain("$HOME/.cache");
+    expect(result.command).not.toContain("/*");
+    expect(result.command).not.toContain("/home/*");
+  });
+
+  it("keeps targeted disk commands unchanged", () => {
+    const command = "df -h / /home; du -sh /tmp 2>/dev/null";
+    const result = resolveDiskInspectionCommand({
+      messageText: "check disk space and cleanup candidates",
+      command,
+    });
+
+    expect(result).toEqual({ command, rewritten: false });
+  });
+
+  it("canonicalizes local bot health endpoint probes", () => {
+    const result = resolveLocalStatusCommand({
+      messageText:
+        "check the local bot health endpoint and summarize ready status and plugin counts, concise",
+      command: "curl -s http://localhost:3000/health",
+    });
+
+    expect(result.rewritten).toBe(true);
+    expect(result.kind).toBe("health");
+    expect(result.command).toContain("ELIZA_API_PORT");
+    expect(result.command).toContain("/api/health");
+  });
+
+  it("canonicalizes RAM status probes", () => {
+    const result = resolveLocalStatusCommand({
+      messageText: "how much RAM is free right now? concise",
+      command: "top -b -n 1 | head",
+    });
+
+    expect(result).toEqual({
+      command: "free -m",
+      kind: "memory",
+      rewritten: true,
+    });
+  });
+
+  it("bounds broad local source searches to the current workspace", () => {
+    const result = resolveSourceInspectionCommand({
+      messageText:
+        "does the vendored opencode source include Cerebras endpoint detection? concise",
+      command: 'grep -R "Cerebras" /home/example -n 2>/dev/null | head -n 20',
+    });
+
+    expect(result.rewritten).toBe(true);
+    expect(result.command).toContain("git grep -n --recurse-submodules");
+    expect(result.command).toContain("rg -n");
+    expect(result.command).toContain("'Cerebras'");
+    expect(result.command).toContain(".");
+    expect(result.command).not.toContain("grep -R");
+    expect(result.command).not.toContain("/home/example");
+    expect(result.command).not.toContain("head -n");
+  });
+
+  it("adds user-facing text for neutral crypto spot-price JSON", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(
+        "11111111-aaaa-bbbb-cccc-535353535353",
+        "Can you check the current price of BTC in USD?",
+      ),
+      undefined,
+      {
+        command:
+          'printf \'{"bitcoin":{"usd":77296}}\' # https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('{"bitcoin":{"usd":77296}}');
+    expect(result.userFacingText).toBe(
+      "BTC price: $77,296.00 USD (source: CoinGecko).",
+    );
+  });
+
+  it("adds user-facing text for local health JSON", async () => {
+    const previousPort = process.env.ELIZA_API_PORT;
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end('{"ready":true,"plugins":{"loaded":24,"failed":0}}');
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      server.close();
+      throw new Error("test server did not expose a TCP port");
+    }
+    process.env.ELIZA_API_PORT = String(address.port);
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-545454545454",
+          "check the local bot health endpoint and summarize ready status and plugin counts, concise",
+        ),
+        undefined,
+        {
+          command: "curl -s http://localhost:3000/health",
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.userFacingText).toBe(
+        "Health: ready=true; plugins loaded=24, failed=0.",
+      );
+    } finally {
+      if (previousPort === undefined) delete process.env.ELIZA_API_PORT;
+      else process.env.ELIZA_API_PORT = previousPort;
+      server.close();
+    }
+  });
+
+  it("preserves local health JSON returned with a non-2xx status", async () => {
+    const previousPort = process.env.ELIZA_API_PORT;
+    const server = createServer((_req, res) => {
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end('{"ready":false,"plugins":{"loaded":23,"failed":1}}');
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      server.close();
+      throw new Error("test server did not expose a TCP port");
+    }
+    process.env.ELIZA_API_PORT = String(address.port);
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-565656565656",
+          "check the local bot health endpoint and summarize ready status and plugin counts, concise",
+        ),
+        undefined,
+        {
+          command: "curl -fsS http://localhost:3000/health",
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.userFacingText).toBe(
+        "Health: ready=false; plugins loaded=23, failed=1.",
+      );
+    } finally {
+      if (previousPort === undefined) delete process.env.ELIZA_API_PORT;
+      else process.env.ELIZA_API_PORT = previousPort;
+      server.close();
+    }
+  });
+
+  it("adds user-facing text for RAM status output", async () => {
+    if (process.platform !== "linux") return;
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(
+        "11111111-aaaa-bbbb-cccc-555555555555",
+        "how much RAM is free right now? concise",
+      ),
+      undefined,
+      { command: "top -b -n 1 | head" },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.userFacingText).toMatch(
+      /^Free RAM: \d+ MB \(\d+ MB available\) of \d+ MB total\.$/,
     );
   });
 

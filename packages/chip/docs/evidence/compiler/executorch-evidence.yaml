@@ -1,0 +1,73 @@
+schema: eliza.compiler.executorch_evidence.v1
+as_of: 2026-05-20
+claim_boundary: |
+  ExecuTorch backend skeleton + partitioner + op-support table committed;
+  the partitioner has been exercised against a 2-layer MLP and against
+  the first Conv2d block of a MobileNet-v3-shaped graph and emits a
+  structured npu/cpu-fallback report. Full PTE generation through
+  ExecuTorch + IREE remains BLOCKED on the canonical Linux container
+  build; the partitioner test class is micro_model_partitioner_only and
+  does not establish phone-class benchmark evidence.
+
+pinned_sha: 5eb84927cb9380f2a56d1f39f28d799dd7573254
+pinned_sha_resolved_at_utc: 2026-05-19T10:15:30Z
+pinned_sha_source: git ls-remote https://github.com/pytorch/executorch.git HEAD
+
+evidence_class: micro_model_partitioner_only
+
+partitioner_tiny_mlp:
+  status: PASS
+  description: |
+    ``ElizaPartitioner`` routes a 2-layer MLP (linear -> relu -> linear)
+    into a single contiguous NPU partition. The unsupported-op boundary
+    (softmax, layer_norm) is verified to break the partition and emit
+    explicit cpu_nodes.
+  tests:
+    - compiler/executorch-eliza/tests/test_partition.py::test_partition_two_layer_mlp_routes_linear_and_relu_to_npu
+    - compiler/executorch-eliza/tests/test_partition.py::test_softmax_breaks_partition
+    - compiler/executorch-eliza/tests/test_partition.py::test_partition_json_round_trip
+
+partitioner_first_conv2d_partial_model:
+  status: PASS
+  evidence_class: micro_model_partitioner_only
+  description: |
+    Single-Conv2d step from the MLPerf Mobile MobileNet-v3 INT8 shape:
+    the first Conv2d + ReLU lands on the NPU partition and a known
+    unsupported tail (softmax) is reported as CPU fallback. The
+    partitioner emits the eliza.executorch_partition.v1 JSON report
+    consumed by the lowering delegate.
+  tests:
+    - compiler/runtime/test_e1_npu_tiny_mlp_e2e.py::test_mobilenet_first_conv2d_partitioner_emits_cpu_fallback_set
+  cpu_fallback_set:
+    - aten.softmax.int
+  npu_partition_targets:
+    - aten.conv2d.default
+    - aten.relu.default
+
+pte_generation:
+  status: BLOCKED
+  blocked_until:
+    - torch>=2.5 and executorch installed in the canonical container
+    - build/iree/install/bin/iree-compile exists
+    - build/reports/compiler/eliza-2layer-mlp.pte produced
+    - build/reports/compiler/executorch-partition.json valid against
+      eliza.executorch_partition.v1
+
+required_artifacts:
+  - path: compiler/executorch-eliza/backend/__init__.py
+  - path: compiler/executorch-eliza/backend/ElizaPartitioner.py
+  - path: compiler/executorch-eliza/backend/ElizaPreprocessor.py
+  - path: compiler/executorch-eliza/backend/eliza_op_support.py
+  - path: compiler/executorch-eliza/tests/test_partition.py
+  - path: compiler/runtime/test_e1_npu_tiny_mlp_e2e.py
+  - path: docs/toolchain/executorch-riscv.md
+
+verification_commands:
+  - python3 -m pytest compiler/executorch-eliza/tests/
+  - python3 -m pytest compiler/runtime/test_e1_npu_tiny_mlp_e2e.py::test_mobilenet_first_conv2d_partitioner_emits_cpu_fallback_set
+
+forbidden_claims_without_required_evidence:
+  - "ExecuTorch on e1 NPU end-to-end"
+  - "PyTorch 2 export -> elizanpu IREE roundtrip"
+  - "MLPerf Mobile results from partitioner JSON only"
+  - "phone-class NPU benchmark from a single-Conv2d partition"

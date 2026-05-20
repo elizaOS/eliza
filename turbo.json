@@ -244,6 +244,7 @@
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/plugin-capacitor-bridge#build",
+        "@elizaos/plugin-aosp-local-inference#build",
         "^build"
       ],
       "outputs": ["dist/**"]

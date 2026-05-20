@@ -11,6 +11,8 @@ export class ImageGenBackendUnavailableError extends Error {
 			| "binary_missing"
 			| "binary_version_mismatch"
 			| "cuda_binary_missing"
+			| "vulkan_binary_missing"
+			| "metal_binary_missing"
 			| "cuda_unavailable"
 			| "model_missing"
 			| "binding_unavailable"

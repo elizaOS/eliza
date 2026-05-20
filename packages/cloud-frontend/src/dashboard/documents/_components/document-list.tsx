@@ -33,6 +33,7 @@ import { FileText, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import type { CloudDocument } from "@/lib/types/documents";
+import { useT } from "@/providers/I18nProvider";
 
 interface DocumentListProps {
   documents: CloudDocument[];
@@ -47,6 +48,7 @@ export function DocumentList({
   onDelete,
   onRefresh,
 }: DocumentListProps) {
+  const t = useT();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] =
     useState<CloudDocument | null>(null);
@@ -71,13 +73,17 @@ export function DocumentList({
     return (
       doc.metadata?.fileName ||
       doc.metadata?.originalFilename ||
-      `Document ${doc.id.slice(0, 8)}`
+      t("cloud.documents.list.fallbackName", {
+        defaultValue: "Document {{id}}",
+        id: doc.id.slice(0, 8),
+      })
     );
   };
 
   const getDocumentSize = (doc: CloudDocument): string => {
     const size = doc.metadata?.fileSize;
-    if (!size) return "Unknown";
+    if (!size)
+      return t("cloud.documents.list.unknownSize", { defaultValue: "Unknown" });
     if (size < 1024) return `${size} B`;
     if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)} KB`;
     return `${(size / (1024 * 1024)).toFixed(2)} MB`;
@@ -100,9 +106,15 @@ export function DocumentList({
     return (
       <div className="text-center py-12">
         <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-        <h3 className="text-lg font-semibold mb-2">No files yet</h3>
+        <h3 className="text-lg font-semibold mb-2">
+          {t("cloud.documents.list.emptyTitle", {
+            defaultValue: "No files yet",
+          })}
+        </h3>
         <p className="text-muted-foreground mb-4">
-          Upload your first file to get started.
+          {t("cloud.documents.list.emptyBody", {
+            defaultValue: "Upload your first file to get started.",
+          })}
         </p>
       </div>
     );
@@ -112,11 +124,18 @@ export function DocumentList({
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <p className="text-sm text-muted-foreground">
-          {documents.length} document{documents.length !== 1 ? "s" : ""}
+          {documents.length}{" "}
+          {documents.length !== 1
+            ? t("cloud.documents.list.documentsPlural", {
+                defaultValue: "documents",
+              })
+            : t("cloud.documents.list.documentSingular", {
+                defaultValue: "document",
+              })}
         </p>
         <Button variant="outline" size="sm" onClick={onRefresh}>
           <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
+          {t("cloud.documents.list.refresh", { defaultValue: "Refresh" })}
         </Button>
       </div>
 
@@ -124,10 +143,22 @@ export function DocumentList({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead>Uploaded</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>
+                {t("cloud.documents.list.col.name", { defaultValue: "Name" })}
+              </TableHead>
+              <TableHead>
+                {t("cloud.documents.list.col.size", { defaultValue: "Size" })}
+              </TableHead>
+              <TableHead>
+                {t("cloud.documents.list.col.uploaded", {
+                  defaultValue: "Uploaded",
+                })}
+              </TableHead>
+              <TableHead className="text-right">
+                {t("cloud.documents.list.col.actions", {
+                  defaultValue: "Actions",
+                })}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -163,15 +194,23 @@ export function DocumentList({
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Document</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("cloud.documents.list.deleteTitle", {
+                defaultValue: "Delete Document",
+              })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &quot;
-              {documentToDelete ? getDocumentName(documentToDelete) : ""}
-              &quot;? This action cannot be undone.
+              {t("cloud.documents.list.deleteConfirm", {
+                defaultValue:
+                  'Are you sure you want to delete "{{name}}"? This action cannot be undone.',
+                name: documentToDelete ? getDocumentName(documentToDelete) : "",
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>
+              {t("cloud.documents.list.cancel", { defaultValue: "Cancel" })}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               disabled={deleting}
@@ -180,10 +219,12 @@ export function DocumentList({
               {deleting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting...
+                  {t("cloud.documents.list.deleting", {
+                    defaultValue: "Deleting...",
+                  })}
                 </>
               ) : (
-                "Delete"
+                t("cloud.documents.list.delete", { defaultValue: "Delete" })
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

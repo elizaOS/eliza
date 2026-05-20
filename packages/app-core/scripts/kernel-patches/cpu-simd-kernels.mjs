@@ -36,21 +36,22 @@
 //     to the polarquant-cpu API first — a fork-source change, not a
 //     patcher.
 
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-function firstExistingPath(candidates) {
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
-}
-
-const QJL_CPU_SRC_DIR = firstExistingPath([
-  path.resolve(__dirname, "..", "..", "..", "native", "plugins", "qjl-cpu"),
-  path.resolve(__dirname, "..", "..", "..", "native-plugins", "qjl-cpu"),
-]);
+// packages/app-core/scripts/kernel-patches -> packages/native/plugins/qjl-cpu
+const QJL_CPU_SRC_DIR = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "native",
+  "plugins",
+  "qjl-cpu",
+);
 
 const SENTINEL = "# ELIZA-CPU-SIMD-PATCH-V1";
 

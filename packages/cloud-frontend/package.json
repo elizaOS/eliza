@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-frontend",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.1-beta.0",
   "type": "module",
   "scripts": {
     "dev": "bun --bun vite",
@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node scripts/run-e2e.mjs",
+    "test:e2e:live-auth": "node scripts/run-e2e.mjs tests/e2e/live-auth-backend.spec.ts",
     "test:e2e:update": "node scripts/run-e2e.mjs --update-snapshots",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

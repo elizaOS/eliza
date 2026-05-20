@@ -6,5 +6,8 @@
   "description": "Cloud infrastructure: local-dev values files, Kubernetes manifests, and Terraform for the elizaOS cloud stack.",
   "scripts": {
     "test": "bun test tests"
+  },
+  "devDependencies": {
+    "yaml": "^2.9.0"
   }
 }

@@ -48,6 +48,8 @@ import type { PairingAllowlistEntry, PairingRequest } from "./pairing";
 import type {
 	Plugin,
 	PluginOwnership,
+	RemotePluginInstallOptions,
+	RemotePluginInstanceHandle,
 	Route,
 	RuntimeEventStorage,
 	ServiceClass,
@@ -566,6 +568,30 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	registerPlugin(plugin: Plugin): Promise<void>;
 	unloadPlugin(pluginName: string): Promise<PluginOwnership | null>;
 	reloadPlugin(plugin: Plugin): Promise<void>;
+
+	/**
+	 * Install a remote-mode plugin at runtime. Used both for
+	 * agent-generated plugins (a code-agent sub-plugin writes a Plugin
+	 * object and asks the runtime to materialise it) and for
+	 * user-installed third-party remote plugins shipped as a tarball.
+	 *
+	 * @param plugin   The Plugin object. Must have mode === "remote" and
+	 *                 a valid `remote` config block. Permission requests
+	 *                 in `plugin.remote.permissions` are *ceilings*; the
+	 *                 host narrows them against `runtime.grantedPermissions`
+	 *                 and inline-source defaults at install time.
+	 * @param options  `source` controls where the worker code comes from.
+	 *                 `lifetime` controls cleanup ("session" default for
+	 *                 agent-generated; "persistent" persists across boots).
+	 *                 `attestation` is required for third-party tarballs.
+	 * @returns        A handle to the installation; call `uninstall()` to
+	 *                 tear down (worker stops, plugin unregisters,
+	 *                 store dir cleans up if `lifetime: "session"`).
+	 */
+	installRemotePlugin(
+		plugin: Plugin,
+		options?: RemotePluginInstallOptions,
+	): Promise<RemotePluginInstanceHandle>;
 	applyPluginConfig(
 		pluginName: string,
 		config: Record<string, string>,

@@ -7,9 +7,26 @@ claim_boundary: >
   workload vectors, power/thermal correlation, and signoff reports for the
   exact selected process option.
 node_target:
-  marketing_name: 14A / 1.4 nm class
+  marketing_name: N2P / A14 / Intel 14A class (2 nm to 1.4 nm node range)
   production_assumption: 2028 mobile-class planning target
-  selected_process_option: blocked_until_foundry_pdk_and_library_selection
+  selected_process_option: blocked_until_foundry_pdk_and_library_selection_from_shortlist
+  selected_process_option_shortlist:
+    primary:
+      pdk: TSMC_N2P
+      access_gate: pd/n2p-stub/access-gate.yaml
+      rationale: HVM 2H 2026, mobile-mature 2028, HD 313 MTr/mm², 38.1 Mb/mm² SRAM, frontside PDN, wafer ~$30-33k, broadest mobile customer surface
+    stretch:
+      pdk: TSMC_A14
+      access_gate: pd/a14-stub/access-gate.yaml
+      rationale: HVM 2028, +15% perf @ iso-power or -30% power @ iso-perf vs N2, +20% logic density, frontside baseline (A14P SPR-BSPDN slips to 2029)
+    second_source:
+      pdk: Intel_14A
+      access_gate: pd/intel-14a-stub/access-gate.yaml
+      rationale: 2nd-gen PowerVia BSPDN + industry-first commercial High-NA EUV, strategic non-Apple foundry diversification, possible DARPA/RAMP-C alignment
+    backup:
+      pdk: Samsung_SF2P
+      access_gate: pd/sf2p-stub/access-gate.yaml
+      rationale: Frontside MBCFET GAA backup if both TSMC and Intel paths blocked; competitive wafer pricing; SF1.4 slipped 2028-2029
   transistor_architecture: nanosheet_or_successor_gate_all_around_required
   power_delivery_variant: frontside_power_delivery_until_specific_bspdn_option_is_selected
   minimum_supported_variants:
@@ -127,6 +144,132 @@ required_effects:
       - docs/manufacturing/product-feature-evidence-manifest.yaml
       - docs/security/secure-boot-lifecycle-evidence.md
     blocker: dft_yield_debug_lock_evidence_missing
+variant_requirements:
+  rationale: >
+    Each variant in node_target.minimum_supported_variants carries its own
+    PD signoff. Frontside and backside power delivery have different IR,
+    routing, cell, via, thermal, and DFM constraints, so PD evidence is
+    not transferable between variants.
+  per_variant_artifacts_required:
+    - pd_signoff_run_manifest
+    - pdn_ir_drop_report
+    - pdn_em_report
+    - pdn_pdn_impedance_curve
+    - thermal_model_per_variant
+    - reliability_derate_per_variant
+  inputs:
+    - id: intel_powervia_vlsi2023
+      url: https://www.intel.com/content/www/us/en/foundry/library/intel-18a-powervia.html
+    - id: tsmc_super_power_rail
+      url: https://www.tsmc.com/english
+    - id: samsung_bspdn_iedm2023
+      url: https://semiconductor.samsung.com/foundry/
+    - id: imec_backside_pdn_dtco
+      url: https://www.imec-int.com/en/articles/backside-power-delivery-options-dtco-study
+
+library_variant_binding:
+  rationale: >
+    NanoFlex (TSMC) and FinFLEX (Samsung) expose different cell-height,
+    fin-count, and drive-strength variants within a single PDK. PD signoff
+    must record the variant per cell-library cell consumed.
+  required_artifacts:
+    - library_variant_manifest_per_run
+    - cell_variant_summary_per_design
+  inputs:
+    - id: tsmc_nanoflex
+      url: https://www.tsmc.com/english
+    - id: samsung_finflex
+      url: https://semiconductor.samsung.com/foundry/
+    - id: synopsys_dtco_overview
+      url: https://www.synopsys.com/glossary/what-is-design-technology-co-optimization.html
+
+reliability_derate_sources:
+  rationale: >
+    Lifetime derates must use nanosheet-era physics, not FinFET-era physics.
+    Required inputs to BTI, HCI, TDDB, EM, and self-heating derates:
+  inputs:
+    - id: bti_nanosheet_ted2023
+      reference: IEEE TED 2023 nanosheet BTI characterization papers
+    - id: self_heating_nanosheet_edl2024
+      reference: IEEE EDL 2024 nanosheet self-heating papers
+    - id: em_advanced_beol_tdmr2024
+      reference: IEEE TDMR 2024 Mo/Ru BEOL electromigration papers
+    - id: irds_2024_more_moore
+      url: https://irds.ieee.org/editions/2024/21-roadmap-2024-edition
+
+sram_vmin_ecc_repair_plan:
+  rationale: >
+    Cross-reference for SRAM macro Vmin, retention, soft-error, repair, and
+    ECC policy. Tied to docs/arch/memory-subsystem.md and
+    docs/arch/npu-microarch.md.
+  required_policy:
+    - SECDED on all L1/L2/NPU local SRAM
+    - parity_or_ECC on flop-heavy pipelines (NPU accumulators, CPU rename/ROB)
+    - bit_interleaving in SRAM layout to bound MBU
+    - repair_fuse_and_BIST_coverage
+    - latch_FIT_and_bit_FIT_separately_budgeted
+  inputs:
+    - id: tsmc_2nm_sram_iedm2023
+      reference: TSMC IEDM 2023 N2 SRAM macro paper
+    - id: samsung_2nm_sram_isscc2024
+      reference: Samsung ISSCC 2024 SF2 SRAM macro paper
+    - id: soft_error_advanced_node_iolts2024
+      reference: IOLTS 2024 soft-error / latch FIT analysis
+
+thermal_capture_phases:
+  rationale: >
+    Phone-class thermal capture must separate the vapor-chamber transient
+    phase (high heat absorption, short duration) from the post-saturation
+    steady-state phase. Sustained TOPS/W reports must come from the steady-
+    state phase, not the transient phase.
+  phases:
+    - id: vapor_chamber_transient
+      duration_s_range: [10, 30]
+      absorbed_power_w_range: [4.0, 8.0]
+      sustained_metric_allowed: false
+    - id: vapor_chamber_steady_state
+      after_phase: vapor_chamber_transient
+      sustained_power_w_range: [4.0, 6.0]
+      sustained_metric_allowed: true
+  skin_temperature_limit:
+    standard:
+      - IEC 60950-1
+      - IEC 62368-1
+    limit_c: 45
+    stop_condition: hard
+  inputs:
+    - id: vapor_chamber_phone_review
+      reference: Mobile vapor chamber teardown literature
+    - id: aosp_thermal_hal
+      url: https://source.android.com/docs/core/architecture/hidl/thermal
+    - id: aosp_thermal_mitigation
+      url: https://source.android.com/docs/core/perf/thermal-mitigation
+
+packaging_default:
+  baseline:
+    type: monolithic_die
+    memory: on_package_lpddr5x_or_lpddr6_via_info_os
+    rationale: >
+      Monolithic compute die with memory-on-package via InFO_oS-class
+      packaging is the 2028 mobile baseline. Compute-chiplet splits open a
+      separate variant entry with its own packaging-evidence row.
+  forbidden_in_e1_envelope:
+    - CoWoS_silicon_interposer
+    - SoW_wafer_scale
+    - CoWoS_L_with_silicon_bridge
+    - rationale_for_forbiddens: out_of_mobile_power_and_cost_envelope
+  inputs:
+    - id: intel_lunar_lake
+      url: https://www.intel.com/content/www/us/en/products/details/processors/core-ultra/lunar-lake.html
+    - id: snapdragon_x_elite
+      url: https://www.qualcomm.com/laptops/products/snapdragon-x-elite
+    - id: apple_m_ultra_fusion
+      url: https://www.apple.com/newsroom/2022/03/apples-new-m1-ultra-is-the-worlds-most-powerful-chip-for-a-personal-computer/
+    - id: tsmc_info
+      url: https://www.tsmc.com/english
+    - id: jedec_lpddr5x_lpddr6
+      url: https://www.jedec.org/
+
 release_gate:
   required_status_for_claim: complete_measured_and_signoff_evidence
   forbidden_claims_until_complete:
@@ -134,6 +277,8 @@ release_gate:
     - 1.4nm power/performance achieved
     - Pixel-class or 2028 SOTA efficiency
     - sustained CPU or NPU TOPS/W at target
+    - chiplet_packaging_validated
+    - backside_pdn_signoff_complete
   must_pass_before_release_claim:
     - process_14a_effects_check
     - pd_signoff_release_check

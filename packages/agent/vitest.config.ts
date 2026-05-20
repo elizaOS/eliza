@@ -42,6 +42,50 @@ export default defineConfig({
         find: "@elizaos/ui",
         replacement: path.join(monorepoRoot, "packages/ui/src/index.ts"),
       },
+      {
+        find: /^@elizaos\/tui$/,
+        replacement: path.join(monorepoRoot, "packages/tui/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/tui\/(.+)$/,
+        replacement: path.join(monorepoRoot, "packages/tui/src/$1"),
+      },
+      // Explicitly pin react/react-dom to the workspace copies in the bun-managed
+      // flat hoisted structure. Without this, bun's module resolver can walk up
+      // to parent directories and pick up a different react version (e.g., a
+      // react@19.2.6 from ~/.../milaidy/node_modules when the workspace has
+      // react@19.2.5), which breaks the React hook dispatcher interface.
+      // These MUST come before ...baseAliases because the base config's
+      // resolveInstalledPackageRoot("react") walks up to the parent repo and
+      // picks up react@19.2.6, producing a wrong alias that would otherwise win.
+      {
+        find: /^react$/,
+        replacement: path.join(
+          repoRoot,
+          "node_modules/.bun/node_modules/react/index.js",
+        ),
+      },
+      {
+        find: /^react\/jsx-runtime$/,
+        replacement: path.join(
+          repoRoot,
+          "node_modules/.bun/node_modules/react/jsx-runtime.js",
+        ),
+      },
+      {
+        find: /^react-dom$/,
+        replacement: path.join(
+          repoRoot,
+          "node_modules/.bun/node_modules/react-dom/index.js",
+        ),
+      },
+      {
+        find: /^react-dom\/client$/,
+        replacement: path.join(
+          repoRoot,
+          "node_modules/.bun/node_modules/react-dom/client.js",
+        ),
+      },
       ...baseAliases,
       {
         find: /^@elizaos\/vault$/,
@@ -62,22 +106,6 @@ export default defineConfig({
           "index.ts",
         ),
       },
-      {
-        find: /^react$/,
-        replacement: path.join(repoRoot, "node_modules/react"),
-      },
-      {
-        find: /^react\/jsx-runtime$/,
-        replacement: path.join(repoRoot, "node_modules/react/jsx-runtime.js"),
-      },
-      {
-        find: /^react-dom$/,
-        replacement: path.join(repoRoot, "node_modules/react-dom"),
-      },
-      {
-        find: /^react-dom\/client$/,
-        replacement: path.join(repoRoot, "node_modules/react-dom/client.js"),
-      },
     ],
   },
   test: {
@@ -89,7 +117,7 @@ export default defineConfig({
     hookTimeout: 120_000,
     server: {
       deps: {
-        inline: [/@elizaos\//],
+        inline: [/@elizaos\//, /\/plugins\/plugin-/],
       },
     },
     include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],

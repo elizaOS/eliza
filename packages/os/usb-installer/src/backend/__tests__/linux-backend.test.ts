@@ -5,7 +5,11 @@ import {
   UnmountFailedError,
   WriteIncompleteError,
 } from "../errors";
-import { findPrivilegeEscalator } from "../linux-backend";
+import {
+  type ExecFileResult,
+  findPrivilegeEscalator,
+  LinuxUsbInstallerBackend,
+} from "../linux-backend";
 
 describe("findPrivilegeEscalator", () => {
   const env = {} as NodeJS.ProcessEnv;
@@ -75,6 +79,143 @@ describe("findPrivilegeEscalator", () => {
       expect((err as Error).message).toMatch(/kdesu/);
       expect((err as Error).message).toMatch(/doas/);
     }
+  });
+});
+
+describe("LinuxUsbInstallerBackend.listRemovableDrives", () => {
+  function makeBackend(stdout: string) {
+    return new LinuxUsbInstallerBackend({
+      execFile: async (
+        command: string,
+        args: readonly string[],
+      ): Promise<ExecFileResult> => {
+        expect(command).toBe("lsblk");
+        expect(args).toContain(
+          "NAME,SIZE,TYPE,RM,MODEL,TRAN,HOTPLUG,MOUNTPOINTS",
+        );
+        return { stdout, stderr: "" };
+      },
+    });
+  }
+
+  function makeBackendWithSystemDiskNames(
+    stdout: string,
+    currentSystemDiskNames: Set<string>,
+  ) {
+    return new LinuxUsbInstallerBackend({
+      execFile: async (
+        command: string,
+        args: readonly string[],
+      ): Promise<ExecFileResult> => {
+        expect(command).toBe("lsblk");
+        expect(args).toContain(
+          "NAME,SIZE,TYPE,RM,MODEL,TRAN,HOTPLUG,MOUNTPOINTS",
+        );
+        return { stdout, stderr: "" };
+      },
+      currentSystemDiskNames: async () => currentSystemDiskNames,
+    });
+  }
+
+  it("blocks a removable disk when it is the current live/root disk", async () => {
+    const backend = makeBackend(
+      JSON.stringify({
+        blockdevices: [
+          {
+            name: "sdb",
+            size: String(16 * 1024 ** 3),
+            type: "disk",
+            rm: true,
+            model: "Live USB",
+            tran: "usb",
+            hotplug: true,
+            children: [
+              {
+                name: "sdb1",
+                type: "part",
+                mountpoints: ["/run/live/medium"],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const [drive] = await backend.listRemovableDrives();
+
+    expect(drive).toMatchObject({
+      id: "sdb",
+      safety: "blocked-system",
+      description: expect.stringContaining(
+        "current system mount: /run/live/medium",
+      ),
+    });
+  });
+
+  it("blocks a removable disk when mountinfo identifies it as the current system disk", async () => {
+    const backend = makeBackendWithSystemDiskNames(
+      JSON.stringify({
+        blockdevices: [
+          {
+            name: "sdb",
+            size: String(16 * 1024 ** 3),
+            type: "disk",
+            rm: true,
+            model: "Live USB",
+            tran: "usb",
+            hotplug: true,
+            children: [
+              {
+                name: "sdb1",
+                type: "part",
+                mountpoints: ["/media/amnesia/ELIZAOS"],
+              },
+            ],
+          },
+        ],
+      }),
+      new Set(["sdb"]),
+    );
+
+    const [drive] = await backend.listRemovableDrives();
+
+    expect(drive).toMatchObject({
+      id: "sdb",
+      safety: "blocked-system",
+      description: expect.stringContaining("current system device"),
+    });
+  });
+
+  it("allows a normal removable disk mounted under the user media path", async () => {
+    const backend = makeBackend(
+      JSON.stringify({
+        blockdevices: [
+          {
+            name: "sdc",
+            size: String(16 * 1024 ** 3),
+            type: "disk",
+            rm: true,
+            model: "Target USB",
+            tran: "usb",
+            hotplug: true,
+            children: [
+              {
+                name: "sdc1",
+                type: "part",
+                mountpoints: ["/media/nubs/ELIZAOS"],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const [drive] = await backend.listRemovableDrives();
+
+    expect(drive).toMatchObject({
+      id: "sdc",
+      safety: "safe-removable",
+    });
   });
 });
 

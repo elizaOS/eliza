@@ -346,7 +346,7 @@ def test_agent_query_exposes_eliza_catalog_in_live_category(monkeypatch) -> None
         for tool in captured["context"]["tools"]
         if isinstance(tool, dict)
     }
-    assert "custom.func" in tool_names
+    assert "custom_func" in tool_names
     assert "PAYMENT" in tool_names
     assert "SHELL" in tool_names
 
@@ -404,4 +404,4 @@ def test_agent_query_does_not_inject_catalog_in_non_live_category(monkeypatch) -
         for tool in captured["context"]["tools"]
         if isinstance(tool, dict)
     }
-    assert tool_names == {"custom.func"}
+    assert tool_names == {"custom_func"}

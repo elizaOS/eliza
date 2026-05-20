@@ -9,17 +9,21 @@ export {
   handleAppsRoutes,
 } from "@elizaos/plugin-app-manager";
 // === Phase 4D: wallet routes extracted to @elizaos/plugin-wallet ===
-// Re-export `handleWalletRoutes` (and supporting types) from the plugin so
-// downstream callers that imported from `@elizaos/agent` keep working
-// during the transition. New callers should import from
-// `@elizaos/plugin-wallet` directly.
-export {
-  handleWalletRoutes,
-  type WalletAddressesSnapshot,
-  type WalletRouteContext,
-  type WalletRouteDependencies,
-  type WalletRpcReadinessSnapshot,
+// Keep the compatibility surface, but lazy-load the wallet implementation.
+// The agent API barrel is loaded during local-server startup, and a static
+// re-export would make every runtime require the full wallet/trading stack
+// before any wallet route is used.
+export type {
+  WalletAddressesSnapshot,
+  WalletRouteContext,
+  WalletRouteDependencies,
+  WalletRpcReadinessSnapshot,
 } from "@elizaos/plugin-wallet";
+export const handleWalletRoutes: typeof import("@elizaos/plugin-wallet").handleWalletRoutes =
+  async (context) => {
+    const walletApi = await import("@elizaos/plugin-wallet");
+    return walletApi.handleWalletRoutes(context);
+  };
 export * from "./accounts-routes.ts";
 export * from "./agent-admin-routes.ts";
 export * from "./agent-lifecycle-routes.ts";

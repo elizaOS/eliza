@@ -1,0 +1,93 @@
+# E1 Phone Part Review Index
+
+Status: generated part index and contact sheet for every assembly part.
+
+- `mechanical/e1-phone/review/part-review-contact-sheet.png`
+
+## Parts
+
+- `orange_back_shell`: role `molded enclosure`, span [78.0, 153.6, 1.2] mm, material PC+ABS orange rounded back shell
+- `orange_side_frame`: role `molded enclosure`, span [78.0, 153.6, 9.6] mm, material PC+ABS orange rounded perimeter frame
+- `screen_cover_glass`: role `screen`, span [77.1, 151.77, 0.7] mm, material black rounded cover glass
+- `display_lcm`: role `screen`, span [70.78, 129.17, 1.7] mm, material LCM
+- `main_pcb`: role `PCB`, span [64.0, 132.0, 0.8] mm, material 8L HDI FR-4 top/bottom islands around full-width battery
+- `battery_pouch`: role `battery`, span [64.0, 87.0, 4.4] mm, material LiPo pouch
+- `usb_c_receptacle`: role `I/O`, span [8.94, 7.8, 3.25] mm, material stainless shell
+- `usb_c_external_aperture`: role `I/O`, span [10.2, 0.35, 3.6] mm, material USB-C molded aperture visual check
+- `usb_c_perimeter_gasket_top`: role `I/O seal`, span [11.4, 0.45, 0.35] mm, material silicone USB-C perimeter gasket top rail
+- `usb_c_perimeter_gasket_bottom`: role `I/O seal`, span [11.4, 0.45, 0.35] mm, material silicone USB-C perimeter gasket bottom rail
+- `usb_c_perimeter_gasket_left`: role `I/O seal`, span [0.35, 0.45, 4.3] mm, material silicone USB-C perimeter gasket side rail
+- `usb_c_perimeter_gasket_right`: role `I/O seal`, span [0.35, 0.45, 4.3] mm, material silicone USB-C perimeter gasket side rail
+- `usb_c_molded_drip_break_lip`: role `I/O seal`, span [13.2, 0.45, 0.45] mm, material molded PC+ABS internal drip-break lip below USB-C aperture
+- `usb_c_internal_drain_shelf`: role `I/O seal`, span [12.8, 2.2, 0.28] mm, material molded PC+ABS internal drain shelf under USB-C receptacle
+- `bottom_speaker_module`: role `audio`, span [15.0, 11.0, 3.5] mm, material speaker module
+- `earpiece_receiver`: role `audio`, span [12.0, 6.0, 2.5] mm, material receiver
+- `bottom_mic`: role `audio`, span [3.5, 2.65, 1.0] mm, material MEMS mic
+- `top_mic`: role `audio`, span [3.5, 2.65, 1.0] mm, material MEMS mic
+- `rear_camera_module`: role `camera`, span [10.0, 10.0, 5.1] mm, material OV13855 class module
+- `rear_camera_lens_window`: role `camera`, span [6.8, 0.8, 6.8] mm, material glass lens window
+- `front_camera_module`: role `camera`, span [6.5, 6.5, 3.2] mm, material front MIPI camera
+- `front_camera_under_glass`: role `camera`, span [3.4, 0.35, 3.4] mm, material under-glass aperture
+- `power_button_cap`: role `button`, span [2.0, 12.0, 1.1] mm, material orange molded cap
+- `volume_button_cap`: role `button`, span [2.0, 21.0, 1.1] mm, material orange molded cap
+- `handset_acoustic_slot`: role `audio`, span [16.0, 1.0, 0.25] mm, material gasketed handset slot
+- `handset_acoustic_mesh`: role `audio`, span [17.5, 0.12, 0.4] mm, material hydrophobic acoustic mesh behind handset slot
+- `bottom_speaker_grille_slot_1`: role `audio`, span [1.2, 0.35, 4.0] mm, material molded loudspeaker grille slot
+- `bottom_speaker_grille_slot_2`: role `audio`, span [1.2, 0.35, 4.0] mm, material molded loudspeaker grille slot
+- `bottom_speaker_grille_slot_3`: role `audio`, span [1.2, 0.35, 4.0] mm, material molded loudspeaker grille slot
+- `bottom_speaker_grille_slot_4`: role `audio`, span [1.2, 0.35, 4.0] mm, material molded loudspeaker grille slot
+- `bottom_speaker_grille_slot_5`: role `audio`, span [1.2, 0.35, 4.0] mm, material molded loudspeaker grille slot
+- `bottom_speaker_dust_mesh`: role `audio`, span [16.0, 0.12, 4.8] mm, material hydrophobic dust mesh behind bottom speaker grille
+- `split_interconnect_top_connector`: role `split-board interconnect`, span [16.0, 2.4, 0.9] mm, material Hirose BM28-class 49-pin top-island board connector envelope
+- `split_interconnect_bottom_connector`: role `split-board interconnect`, span [16.0, 2.4, 0.9] mm, material Hirose BM28-class 49-pin bottom-island board connector envelope
+- `split_interconnect_side_flex`: role `split-board interconnect`, span [2.4, 88.0, 0.18] mm, material polyimide FPC side service loop envelope
+- `split_interconnect_top_flex_tail`: role `split-board interconnect`, span [12.5, 2.0, 0.18] mm, material polyimide FPC top connector tail envelope
+- `split_interconnect_bottom_flex_tail`: role `split-board interconnect`, span [12.5, 2.0, 0.18] mm, material polyimide FPC bottom connector tail envelope
+- `bottom_microphone_port_1`: role `audio`, span [0.9, 0.4, 0.886] mm, material molded microphone acoustic port
+- `bottom_microphone_mesh_1`: role `audio`, span [1.4, 0.12, 1.4] mm, material hydrophobic dust mesh behind bottom microphone port
+- `bottom_microphone_port_2`: role `audio`, span [0.9, 0.4, 0.886] mm, material molded microphone acoustic port
+- `bottom_microphone_mesh_2`: role `audio`, span [1.4, 0.12, 1.4] mm, material hydrophobic dust mesh behind bottom microphone port
+- `top_microphone_port`: role `audio`, span [0.9, 0.4, 0.886] mm, material molded top microphone acoustic port
+- `top_microphone_mesh`: role `audio`, span [1.4, 0.12, 1.4] mm, material hydrophobic dust mesh behind top microphone port
+- `power_button_elastomer_gasket`: role `button seal`, span [0.5, 13.0, 1.55] mm, material shore-a silicone side-key gasket behind power button
+- `power_button_labyrinth_upper_rail`: role `button seal`, span [0.55, 0.8, 1.85] mm, material molded PC+ABS side-key labyrinth rail
+- `power_button_labyrinth_lower_rail`: role `button seal`, span [0.55, 0.8, 1.85] mm, material molded PC+ABS side-key labyrinth rail
+- `volume_button_elastomer_gasket`: role `button seal`, span [0.5, 22.0, 1.55] mm, material shore-a silicone side-key gasket behind volume button
+- `volume_button_labyrinth_upper_rail`: role `button seal`, span [0.55, 0.8, 1.85] mm, material molded PC+ABS side-key labyrinth rail
+- `volume_button_labyrinth_lower_rail`: role `button seal`, span [0.55, 0.8, 1.85] mm, material molded PC+ABS side-key labyrinth rail
+- `screen_adhesive_top`: role `screen retention`, span [77.1, 1.0, 0.18] mm, material die-cut display adhesive
+- `screen_adhesive_bottom`: role `screen retention`, span [77.1, 1.0, 0.18] mm, material die-cut display adhesive
+- `screen_adhesive_left`: role `screen retention`, span [1.0, 151.77, 0.18] mm, material die-cut display adhesive
+- `screen_adhesive_right`: role `screen retention`, span [1.0, 151.77, 0.18] mm, material die-cut display adhesive
+- `orange_screw_boss_1`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
+- `orange_screw_boss_2`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
+- `orange_screw_boss_3`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
+- `orange_screw_boss_4`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
+- `orange_screw_boss_5`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
+- `orange_screw_boss_6`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
+- `orange_snap_hook_1`: role `molded enclosure`, span [1.3, 5.0, 1.4] mm, material PC+ABS snap hook
+- `orange_snap_hook_2`: role `molded enclosure`, span [1.3, 5.0, 1.4] mm, material PC+ABS snap hook
+- `orange_snap_hook_3`: role `molded enclosure`, span [1.3, 5.0, 1.4] mm, material PC+ABS snap hook
+- `orange_snap_hook_4`: role `molded enclosure`, span [1.3, 5.0, 1.4] mm, material PC+ABS snap hook
+- `orange_snap_hook_5`: role `molded enclosure`, span [1.3, 5.0, 1.4] mm, material PC+ABS snap hook
+- `orange_snap_hook_6`: role `molded enclosure`, span [1.3, 5.0, 1.4] mm, material PC+ABS snap hook
+- `orange_snap_hook_7`: role `molded enclosure`, span [1.3, 5.0, 1.4] mm, material PC+ABS snap hook
+- `orange_snap_hook_8`: role `molded enclosure`, span [1.3, 5.0, 1.4] mm, material PC+ABS snap hook
+- `orange_battery_left_rib`: role `molded enclosure`, span [0.75, 98.0, 1.4] mm, material battery locating rib
+- `orange_battery_right_rib`: role `molded enclosure`, span [0.75, 98.0, 1.4] mm, material battery locating rib
+- `orange_usb_reinforcement_saddle`: role `molded enclosure`, span [18.0, 2.0, 2.0] mm, material USB-C insertion load saddle
+- `display_fpc_connector`: role `connector`, span [19.0, 3.2, 1.15] mm, material board-mounted display/touch FPC connector
+- `display_fpc_bend_keepout`: role `connector`, span [22.0, 10.0, 0.3] mm, material display FPC bend keepout
+- `bottom_speaker_acoustic_chamber`: role `audio`, span [18.0, 13.0, 2.2] mm, material molded loudspeaker rear chamber
+- `earpiece_gasket`: role `audio`, span [14.5, 2.0, 0.55] mm, material compressed earpiece acoustic gasket
+- `cellular_top_antenna_keepout`: role `RF keepout`, span [62.0, 6.0, 2.0] mm, material top plastic antenna keepout volume
+- `cellular_bottom_antenna_keepout`: role `RF keepout`, span [62.0, 6.0, 2.0] mm, material bottom plastic antenna keepout volume
+- `wifi_bt_side_antenna_keepout`: role `RF keepout`, span [34.0, 5.0, 2.0] mm, material side Wi-Fi/Bluetooth antenna keepout volume
+- `soc_shield_can`: role `EMI shield`, span [18.0, 16.0, 1.2] mm, material stamped RF/SoC shield can
+- `pmic_shield_can`: role `EMI shield`, span [11.0, 10.0, 1.1] mm, material stamped PMIC shield can
+- `radio_shield_can`: role `EMI shield`, span [18.0, 20.0, 1.2] mm, material stamped radio shield can
+- `haptic_lra`: role `haptics`, span [6.0, 12.0, 2.5] mm, material compact 0612 X-axis linear resonant actuator
+- `sim_tray_keepout`: role `service`, span [14.5, 22.0, 2.0] mm, material side SIM tray keepout
+- `sim_tray_outline`: role `service`, span [0.8, 18.0, 4.0] mm, material orange side service tray outline
+- `rear_camera_cover_glass`: role `camera`, span [9.2, 9.2, 0.55] mm, material rear camera cover glass
+- `service_label_recess`: role `service`, span [32.0, 9.0, 0.25] mm, material recessed regulatory/service label pad

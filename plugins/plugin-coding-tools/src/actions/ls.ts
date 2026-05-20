@@ -295,7 +295,8 @@ export async function lsHandler(
   }
 
   const requestedPath = readStringParam(options, "path");
-  const targetPath = requestedPath ?? services.session.getCwd(conversationId);
+  const targetPath =
+    requestedPath ?? (await services.session.getExistingCwd(conversationId)).cwd;
 
   const validation = await services.sandbox.validatePath(
     conversationId,

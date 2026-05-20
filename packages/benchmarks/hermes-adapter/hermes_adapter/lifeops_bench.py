@@ -127,6 +127,45 @@ def _recover_text_tool_calls(
     return out
 
 
+def _normalize_lifeops_tool_call(
+    name: str,
+    args: object,
+) -> tuple[str, object]:
+    if name != "CALENDAR":
+        return name, args
+    if isinstance(args, str):
+        try:
+            parsed = json.loads(args)
+        except json.JSONDecodeError:
+            return name, args
+        if not isinstance(parsed, dict):
+            return name, args
+        args_dict: dict[str, Any] = dict(parsed)
+    elif isinstance(args, dict):
+        args_dict = dict(args)
+    else:
+        return name, args
+
+    action = str(args_dict.get("subaction") or args_dict.get("action") or "").lower()
+    has_window = any(k in args_dict for k in ("startAt", "endAt", "windowStart", "windowEnd"))
+    intent = str(args_dict.get("intent") or "").lower()
+    looks_like_availability = has_window and (
+        action in {"search_events", "check_availability"}
+        or "availab" in intent
+        or "free" in intent
+    )
+    if not looks_like_availability:
+        return name, args
+
+    if "windowStart" in args_dict and "startAt" not in args_dict:
+        args_dict["startAt"] = args_dict.pop("windowStart")
+    if "windowEnd" in args_dict and "endAt" not in args_dict:
+        args_dict["endAt"] = args_dict.pop("windowEnd")
+    args_dict["action"] = "check_availability"
+    args_dict["subaction"] = "check_availability"
+    return "CALENDAR_CHECK_AVAILABILITY", args_dict
+
+
 def _compute_cost_usd(
     model: str | None, prompt_tokens: int, completion_tokens: int
 ) -> float | None:
@@ -341,6 +380,7 @@ def build_lifeops_bench_agent_fn(
                     args = dict(args_raw)
                 else:
                     args = {}
+                name, args = _normalize_lifeops_tool_call(name, args)
                 tool_calls.append(
                     {
                         "id": str(entry.get("id") or f"call_{len(tool_calls)}"),

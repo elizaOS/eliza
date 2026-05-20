@@ -3,6 +3,9 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "paths": {
+      "@elizaos/shared/brand": ["../../shared/src/brand/index.ts"]
+    },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "strict": true,
@@ -17,5 +20,5 @@
     "noEmit": true,
     "types": ["bun", "node", "react"]
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "server.ts", "vite.config.ts", "vitest.config.ts"]
 }

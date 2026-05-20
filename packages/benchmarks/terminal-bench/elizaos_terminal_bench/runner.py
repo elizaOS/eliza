@@ -304,6 +304,9 @@ class TerminalBenchRunner:
 
     async def _run_single_task(self, task: TerminalTask) -> TerminalBenchResult:
         """Run a single task and return the result."""
+        if (self.config.execution_backend or "").lower() == "mock":
+            return await self._run_mock_task(task)
+
         if self.config.oracle:
             # Oracle mode: execute the reference solution and then run the test script.
             env = self._create_environment(task)
@@ -354,6 +357,55 @@ class TerminalBenchRunner:
                 await env.stop()
 
         return await self._run_with_bridge(task)
+
+    async def _run_mock_task(self, task: TerminalTask) -> TerminalBenchResult:
+        """Run deterministic mock smoke without starting an agent bridge."""
+        env = self._create_environment(task)
+        session = TerminalSession(
+            session_id=f"mock_{task.task_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            task=task,
+            commands=[],
+            working_directory="/workspace",
+            environment_vars={},
+            start_time=datetime.now(),
+            prompt=task.instruction,
+        )
+
+        try:
+            await env.start(task)
+            if task.reference_solution:
+                cmd = await env.execute(task.reference_solution)
+                session.commands.append(cmd)
+                session.model_responses.append(task.reference_solution)
+                session.tool_calls.append(
+                    {
+                        "type": "command",
+                        "name": "terminal.execute",
+                        "params": cmd.params or {"command": cmd.command},
+                        "command": cmd.command,
+                        "exit_code": cmd.exit_code,
+                    }
+                )
+
+            success, test_output, test_exit_code = await env.run_test(task.test_script)
+            session.end_time = datetime.now()
+            session.final_test_output = test_output
+            session.final_test_exit_code = test_exit_code
+
+            return TerminalBenchResult(
+                task_id=task.task_id,
+                success=success,
+                commands_executed=len(session.commands),
+                total_execution_time_ms=sum(c.execution_time_ms for c in session.commands),
+                test_output=test_output,
+                test_exit_code=test_exit_code,
+                tokens_used=0,
+                session=session,
+                category=task.category,
+                difficulty=task.difficulty,
+            )
+        finally:
+            await env.stop()
 
     def _create_environment(self, task: TerminalTask) -> TerminalEnvironment | LocalTerminalEnvironment:
         backend = (self.config.execution_backend or "tmux").lower()

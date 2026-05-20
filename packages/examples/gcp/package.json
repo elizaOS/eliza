@@ -5,6 +5,7 @@
   "type": "module",
   "main": "dist/handler.js",
   "scripts": {
+    "test": "bun run test-client.ts --check",
     "test-client": "bun run test-client.ts",
     "test-client:stream": "bun run test-client.ts --stream",
     "build": "esbuild handler.ts --bundle --platform=node --target=node20 --outfile=dist/handler.js --format=esm --external:@elizaos/core --external:@elizaos/plugin-openai --external:@elizaos/plugin-sql --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",

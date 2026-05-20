@@ -1,0 +1,60 @@
+{
+  "id": "elizaos-debian-riscv64-live",
+  "kind": "raw-image",
+  "target": {
+    "platform": "linux",
+    "architecture": "riscv64",
+    "device": null,
+    "hypervisor": null,
+    "firmware": null
+  },
+  "filename": "@@FILENAME@@",
+  "downloadUrl": "https://download.elizaos.ai/os/linux/@@FILENAME@@",
+  "status": "planned",
+  "sizeBytes": @@SIZE_BYTES@@,
+  "sha256": "@@SHA256@@",
+  "signature": {
+    "status": "pending",
+    "url": null
+  },
+  "validation": {
+    "requiredEvidence": [
+      "qemu-virt-boot",
+      "grub-efi-riscv64-boot",
+      "elizaos-agent-live"
+    ],
+    "evidence": [
+      {
+        "id": "qemu-virt-boot",
+        "status": "missing",
+        "path": null,
+        "notes": "qemu-system-riscv64 -M virt boot transcript not yet collected."
+      },
+      {
+        "id": "u-boot-extlinux-boot",
+        "status": "not-required",
+        "path": null,
+        "notes": "Not required for this GRUB EFI qemu-virt artifact. config/includes.binary/extlinux/extlinux.conf remains staged for distroboot follow-up evidence."
+      },
+      {
+        "id": "grub-efi-riscv64-boot",
+        "status": "missing",
+        "path": null,
+        "notes": "config/hooks/normal/0020-grub-efi-riscv64.hook.binary stages BOOTRISCV64.EFI + grub.cfg. Boot transcript not yet captured."
+      },
+      {
+        "id": "elizaos-agent-live",
+        "status": "missing",
+        "path": null,
+        "notes": "Capture elizaos-agent.service active state and http://127.0.0.1:31337/api/health from the riscv64 boot target before publishing."
+      },
+      {
+        "id": "hardware-board-boot",
+        "status": "not-required",
+        "path": null,
+        "notes": "Not required for qemu-virt emulator release evidence. No silicon or physical-board claim is made by this artifact."
+      }
+    ]
+  },
+  "notes": "Live-build artifact template. Replace @@-prefixed placeholders from build.sh output. build_ts=@@BUILD_TIMESTAMP@@ arch=@@ARCH@@ kernel_flavour=@@KERNEL_FLAVOUR@@."
+}

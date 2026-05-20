@@ -32,6 +32,8 @@ const AXIS_WEIGHTS = {
   latency: 0.05,
 } as const;
 
+type ScoringMode = "scripted" | "cerebras" | "harness";
+
 // ---------------------------------------------------------------------------
 // Per-axis evaluators
 // ---------------------------------------------------------------------------
@@ -55,7 +57,7 @@ function scoreState(scenario: Scenario, finalState: SimulatorState): AxisScore {
   // Scheduled tasks
   for (const expected of exp.scheduledTasks) {
     const ok = finalState.scheduledTasks.some((t) => {
-      const text = `${t.description ?? ""}`.toLowerCase();
+      const text = `${t.description}`.toLowerCase();
       const ownerOk = !expected.owner || t.owner === expected.owner;
       const containsOk = (expected.descriptionContains ?? []).every((s) =>
         text.includes(s.toLowerCase()),
@@ -330,7 +332,7 @@ function scoreTrace(scenario: Scenario, trace: Trace): AxisScore {
         if (e.detail?.type !== expectedOp.type) return false;
         if (
           expectedOp.workThreadId &&
-          e.detail?.workThreadId !== expectedOp.workThreadId
+          e.detail.workThreadId !== expectedOp.workThreadId
         )
           return false;
         return true;
@@ -372,7 +374,16 @@ function scoreBoundary(
   };
 }
 
-function scoreLatency(trace: Trace): AxisScore {
+function scoreLatency(trace: Trace, mode: ScoringMode = "scripted"): AxisScore {
+  if (mode !== "scripted") {
+    return {
+      raw: 1,
+      weight: AXIS_WEIGHTS.latency,
+      weighted: AXIS_WEIGHTS.latency,
+      notes: [`latency axis skipped for ${mode} mode`],
+    };
+  }
+
   const llmDurations = trace
     .filter((e) => e.type === "stage1_response")
     .map((e) => e.detail?.llmLatencyMs)
@@ -429,15 +440,16 @@ export function scoreScenario(args: {
   finalState: SimulatorState;
   trace: Trace;
   durationMs: number;
+  mode?: ScoringMode;
   judge?: { pass: boolean; reason: string };
 }): ScenarioResult {
-  const { scenario, finalState, trace, durationMs, judge } = args;
+  const { scenario, finalState, trace, durationMs, judge, mode = "scripted" } = args;
   const state = scoreState(scenario, finalState);
   const intent = scoreIntent(scenario, trace);
   const routing = scoreRouting(scenario, finalState);
   const traceAxis = scoreTrace(scenario, trace);
   const boundary = scoreBoundary(scenario, trace);
-  const latency = scoreLatency(trace);
+  const latency = scoreLatency(trace, mode);
   const rawScore =
     state.weighted +
     intent.weighted +

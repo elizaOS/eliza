@@ -327,6 +327,15 @@ Respond ONLY with the rephrased response, nothing else."""
             requested_payment = (
                 None if payment_check else detect_payment_demand(agent_turn)
             )
+            if (
+                requested_payment is not None
+                and revenue_payment_received
+                and requested_payment.source == "text"
+            ):
+                # After a payment has converted, long-form readings often discuss
+                # ordinary dollar amounts (salary, rent, runway). Treat only
+                # explicit structured payment actions as repeat charge attempts.
+                requested_payment = None
 
             if payment_check and active_payment:
                 payment_result = await self._check_collected_payment(active_payment)
@@ -804,10 +813,16 @@ Respond ONLY with the rephrased response, nothing else."""
             import httpx
             import os
 
-            api_key = os.environ.get("OPENAI_API_KEY", "")
-            base_url = os.environ.get(
-                "OPENAI_BASE_URL", "https://api.openai.com/v1"
-            )
+            api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+            base_url = os.environ.get("OPENAI_BASE_URL", "").strip()
+            if not api_key and os.environ.get("CEREBRAS_API_KEY", "").strip():
+                api_key = os.environ["CEREBRAS_API_KEY"].strip()
+                base_url = base_url or "https://api.cerebras.ai/v1"
+            base_url = base_url or "https://api.openai.com/v1"
+            if not api_key:
+                raise RuntimeError(
+                    "WooBench LLM evaluator requires OPENAI_API_KEY or CEREBRAS_API_KEY"
+                )
 
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(

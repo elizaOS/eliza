@@ -76,7 +76,7 @@ def run_humanevalpack_swe_smoke(
                 },
             )
             raw_text = str(getattr(response, "text", "") or "")
-            candidate_code = _extract_python(raw_text)
+            candidate_code = _extract_python(raw_text, prompt=prompt)
             ok, error = _execute_candidate(
                 candidate_code=candidate_code,
                 item=item,
@@ -180,14 +180,39 @@ def _build_prompt(item: Mapping[str, Any]) -> str:
     )
 
 
-def _extract_python(text: str) -> str:
+def _extract_python(text: str, *, prompt: str = "") -> str:
     match = _CODE_BLOCK_RE.search(text)
     if match:
-        return textwrap.dedent(match.group("body")).strip() + "\n"
+        code = textwrap.dedent(match.group("body")).strip()
+        return _with_prompt_imports(code, prompt) + "\n"
+    stripped = text.lstrip()
+    for opener in ("```python", "```py", "```"):
+        if stripped.lower().startswith(opener):
+            text = stripped[len(opener) :]
+            break
     marker = "from typing"
     if marker in text:
-        return textwrap.dedent(text[text.index(marker) :]).strip() + "\n"
-    return textwrap.dedent(text).strip() + "\n"
+        code = textwrap.dedent(text[text.index(marker) :]).strip()
+        return code + "\n"
+    code = textwrap.dedent(text).strip()
+    return _with_prompt_imports(code, prompt) + "\n"
+
+
+def _with_prompt_imports(code: str, prompt: str) -> str:
+    if not prompt:
+        return code
+    existing_lines = {line.strip() for line in code.splitlines()}
+    imports: list[str] = []
+    for line in textwrap.dedent(prompt).splitlines():
+        stripped = line.strip()
+        if not (stripped.startswith("import ") or stripped.startswith("from ")):
+            continue
+        if stripped in existing_lines or stripped in imports:
+            continue
+        imports.append(stripped)
+    if not imports:
+        return code
+    return "\n".join([*imports, code]).strip()
 
 
 def _execute_candidate(

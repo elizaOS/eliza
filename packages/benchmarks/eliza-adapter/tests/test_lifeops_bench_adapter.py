@@ -257,6 +257,49 @@ def test_agent_fn_handles_no_user_message_safely() -> None:
     assert turn.tool_calls is None
 
 
+def test_agent_fn_normalizes_message_manage_target_thread_alias() -> None:
+    client, _ = _make_fake_client(
+        {
+            ("POST", "/api/benchmark/lifeops_bench/reset"): {"ok": True, "world_hash": "h"},
+            ("POST", "/api/benchmark/lifeops_bench/message"): {
+                "text": "",
+                "tool_calls": [
+                    {
+                        "id": "c1",
+                        "name": "MESSAGE",
+                        "arguments": {
+                            "action": "manage",
+                            "source": "gmail",
+                            "manageOperation": "archive",
+                            "target": "thread_01464",
+                            "targetKind": "thread",
+                        },
+                    }
+                ],
+                "usage": {},
+            },
+        }
+    )
+    agent_fn = build_lifeops_bench_agent_fn(
+        client=client,
+        world_snapshot_path="/tmp/world.json",
+    )
+
+    turn = asyncio.run(
+        agent_fn([_StubMessageTurn(role="user", content="archive thread_01464")], [])
+    )
+
+    assert turn.tool_calls is not None
+    assert turn.tool_calls[0]["function"]["arguments"] == {
+        "action": "manage",
+        "operation": "manage",
+        "source": "gmail",
+        "manageOperation": "archive",
+        "targetKind": "thread",
+        "threadId": "thread_01464",
+    }
+
+
 def test_agent_fn_starts_managed_server_when_no_bridge_env(monkeypatch) -> None:
     ready_client, _ = _make_fake_client({})
     started: list[str] = []

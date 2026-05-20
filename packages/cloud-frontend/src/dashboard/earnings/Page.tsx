@@ -1,5 +1,6 @@
 import { DashboardLoadingState } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
+import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { EarningsPageWrapper } from "./_components/earnings-page-wrapper";
 
@@ -9,19 +10,30 @@ import { EarningsPageWrapper } from "./_components/earnings-page-wrapper";
  * auth.
  */
 export default function EarningsPage() {
+  const t = useT();
   const { ready, authenticated } = useRequireAuth();
 
   return (
     <>
       <Helmet>
-        <title>Earnings & Redemptions</title>
+        <title>
+          {t("cloud.earnings.metaTitle", {
+            defaultValue: "Earnings & Redemptions",
+          })}
+        </title>
         <meta
           name="description"
-          content="View your earnings and redeem for elizaOS tokens"
+          content={t("cloud.earnings.metaDescription", {
+            defaultValue: "View your earnings and redeem for elizaOS tokens",
+          })}
         />
       </Helmet>
       {!ready || !authenticated ? (
-        <DashboardLoadingState label="Loading earnings" />
+        <DashboardLoadingState
+          label={t("cloud.earnings.loading", {
+            defaultValue: "Loading earnings",
+          })}
+        />
       ) : (
         <EarningsPageWrapper />
       )}

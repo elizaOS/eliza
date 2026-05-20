@@ -56,18 +56,13 @@ const TASKS = [
       "vitest",
       "run",
       "--config",
-      "packages/ui/vitest.config.ts",
-      "packages/ui/src/api/client-cloud-direct-auth.test.ts",
-      "packages/ui/src/state/persistence-cloud-active-server.test.ts",
+      "packages/app-core/vitest.config.ts",
       "packages/app-core/scripts/startup-integration-script-drift.test.ts",
     ],
     requiredFiles: [
-      "packages/ui/src/api/client-cloud-direct-auth.test.ts",
-      "packages/ui/src/state/persistence-cloud-active-server.test.ts",
       "packages/app-core/scripts/startup-integration-script-drift.test.ts",
     ],
-    description:
-      "Focused app-core cloud auth, persistence, and startup script drift tests",
+    description: "Focused app-core startup script drift tests",
   },
   {
     id: "agent-focused",
@@ -83,7 +78,7 @@ const TASKS = [
     requiredFiles: [
       "packages/agent/test/runtime/operations/vault-integration.test.ts",
     ],
-    description: "Focused agent search and vault runtime tests",
+    description: "Focused agent vault runtime tests",
   },
   {
     id: "lifeops-focused",
@@ -107,7 +102,7 @@ const TASKS = [
     id: "training-focused",
     tier: 0,
     command: "bun",
-    args: ["run", "--cwd", "plugins/app-training", "test"],
+    args: ["run", "--cwd", "plugins/plugin-training", "test"],
     description: "App-training dataset, privacy, optimizer, and trigger tests",
   },
   {

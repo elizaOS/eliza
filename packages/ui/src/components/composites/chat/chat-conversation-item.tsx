@@ -7,8 +7,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { Z_OVERLAY } from "../../../lib/floating-layers";
 import { cn } from "../../../lib/utils";
+
+// z-[200] mirrors Z_OVERLAY in ../../../lib/floating-layers.ts.
+// Tailwind v4 cannot detect classes built from runtime template literals,
+// so the value is kept inline so the scanner emits the utility.
 import { Button } from "../../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import type {
@@ -89,7 +92,7 @@ function TruncatingConversationTitle({
         align="start"
         sideOffset={10}
         collisionPadding={12}
-        className={`z-[${Z_OVERLAY}] max-w-[min(90vw,22rem)] whitespace-normal break-words px-3 py-2 text-sm leading-snug`}
+        className="z-[200] max-w-[min(90vw,22rem)] whitespace-normal break-words px-3 py-2 text-sm leading-snug"
       >
         {displayTitle}
       </TooltipContent>

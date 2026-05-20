@@ -222,6 +222,12 @@ def test_npu_scale_parser_preserves_process_corner_metrics() -> None:
         raise AssertionError(result.stdout)
     metrics = run_benchmarks.parse_eliza_npu_scale_sim(result.stdout)
     assert_equal(metrics["process_corner_count"], 4, "process corner count")
+    if metrics["total_descriptors_required"] <= 0:
+        raise AssertionError("NPU scale parser must preserve descriptor count")
+    if metrics["max_descriptor_queue_passes"] <= 0:
+        raise AssertionError("NPU scale parser must preserve queue pass count")
+    if metrics["total_dma_beats"] <= 0:
+        raise AssertionError("NPU scale parser must preserve DMA beat count")
     if metrics["worst_process_corner_min_observed_tops"] <= 0:
         raise AssertionError("worst process corner TOPS must be positive")
 

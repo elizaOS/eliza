@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -5,6 +6,7 @@ import baseConfig from "../../packages/test/vitest/default.config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
+const require = createRequire(import.meta.url);
 const pluginElizaCloudSrc = path.join(
   repoRoot,
   "plugins",
@@ -106,19 +108,19 @@ export default defineConfig({
       },
       {
         find: /^react$/,
-        replacement: path.join(repoRoot, "node_modules/react"),
+        replacement: path.dirname(require.resolve("react/package.json")),
       },
       {
         find: /^react\/jsx-runtime$/,
-        replacement: path.join(repoRoot, "node_modules/react/jsx-runtime.js"),
+        replacement: require.resolve("react/jsx-runtime"),
       },
       {
         find: /^react-dom$/,
-        replacement: path.join(repoRoot, "node_modules/react-dom"),
+        replacement: path.dirname(require.resolve("react-dom/package.json")),
       },
       {
         find: /^react-dom\/client$/,
-        replacement: path.join(repoRoot, "node_modules/react-dom/client.js"),
+        replacement: require.resolve("react-dom/client"),
       },
       ...baseAliases,
     ],

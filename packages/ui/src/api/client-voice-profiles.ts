@@ -154,10 +154,10 @@ export class VoiceProfilesClient {
         "/api/voice/onboarding/profile/start",
         { method: "POST" },
       );
-      return normaliseCaptureSession(raw) ?? fallbackOwnerCaptureSession();
+      return normaliseCaptureSession(raw);
     } catch (err) {
       if (isMissingEndpointError(err)) {
-        return fallbackOwnerCaptureSession();
+        return fallbackCaptureSession();
       }
       throw new VoiceProfilesUnavailableError(
         "/api/voice/onboarding/profile/start",
@@ -352,9 +352,9 @@ const OWNER_CAPTURE_FALLBACK_PROMPTS: VoiceCapturePrompt[] = [
   },
 ];
 
-function fallbackOwnerCaptureSession(): VoiceCaptureSession {
+function fallbackCaptureSession(sessionId?: string): VoiceCaptureSession {
   return {
-    sessionId: `local-${Date.now().toString(36)}`,
+    sessionId: sessionId ?? `local-${Date.now().toString(36)}`,
     prompts: OWNER_CAPTURE_FALLBACK_PROMPTS,
     expectedSeconds: OWNER_CAPTURE_FALLBACK_PROMPTS.reduce(
       (sum, prompt) => sum + prompt.targetSeconds,
@@ -371,50 +371,48 @@ function fallbackOwnerSubmitResult(sessionId: string): VoiceCaptureSubmitResult 
   };
 }
 
-function normaliseCaptureSession(raw: unknown): VoiceCaptureSession | null {
-  if (!raw || typeof raw !== "object") return null;
+function normaliseCaptureSession(raw: unknown): VoiceCaptureSession {
+  if (!raw || typeof raw !== "object") return fallbackCaptureSession();
   const r = raw as Record<string, unknown>;
-  const sessionId = typeof r.sessionId === "string" ? r.sessionId : null;
-  if (!sessionId) return null;
+  const sessionId =
+    typeof r.sessionId === "string" && r.sessionId.length > 0
+      ? r.sessionId
+      : undefined;
 
+  let prompts: VoiceCapturePrompt[] = [];
   if (Array.isArray(r.prompts)) {
-    const prompts = r.prompts.map(normaliseCapturePrompt).filter(isPrompt);
-    if (prompts.length > 0) {
-      return {
-        sessionId,
-        prompts,
-        expectedSeconds:
-          typeof r.expectedSeconds === "number"
-            ? r.expectedSeconds
-            : prompts.reduce((sum, prompt) => sum + prompt.targetSeconds, 0),
-      };
-    }
+    prompts = r.prompts.map(normaliseCapturePrompt).filter(isCapturePrompt);
   }
 
-  if (Array.isArray(r.script)) {
-    const prompts = r.script.map(normaliseScriptPrompt).filter(isPrompt);
-    if (prompts.length > 0) {
-      return {
-        sessionId,
-        prompts,
-        expectedSeconds: prompts.reduce(
-          (sum, prompt) => sum + prompt.targetSeconds,
-          0,
-        ),
-      };
-    }
+  if (prompts.length === 0 && Array.isArray(r.script)) {
+    prompts = r.script.map(normaliseScriptPrompt).filter(isCapturePrompt);
   }
 
-  return null;
+  if (prompts.length === 0) {
+    return fallbackCaptureSession(sessionId);
+  }
+
+  const expectedSeconds =
+    typeof r.expectedSeconds === "number" && r.expectedSeconds > 0
+      ? r.expectedSeconds
+      : prompts.reduce((sum, p) => sum + p.targetSeconds, 0);
+
+  return {
+    sessionId: sessionId ?? `local-${Date.now().toString(36)}`,
+    prompts,
+    expectedSeconds,
+  };
 }
 
 function normaliseCapturePrompt(raw: unknown): VoiceCapturePrompt | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  if (typeof r.id !== "string" || typeof r.text !== "string") return null;
+  const id = typeof r.id === "string" && r.id.length > 0 ? r.id : null;
+  const text = typeof r.text === "string" && r.text.length > 0 ? r.text : null;
+  if (!id || !text) return null;
   return {
-    id: r.id,
-    text: r.text,
+    id,
+    text,
     targetSeconds:
       typeof r.targetSeconds === "number" && r.targetSeconds > 0
         ? r.targetSeconds
@@ -436,7 +434,9 @@ function normaliseScriptPrompt(raw: unknown): VoiceCapturePrompt | null {
   };
 }
 
-function isPrompt(value: VoiceCapturePrompt | null): value is VoiceCapturePrompt {
+function isCapturePrompt(
+  value: VoiceCapturePrompt | null,
+): value is VoiceCapturePrompt {
   return value !== null;
 }
 

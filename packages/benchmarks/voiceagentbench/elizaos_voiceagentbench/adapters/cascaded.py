@@ -65,6 +65,29 @@ def _eliza_post(path: str, body: dict[str, object]) -> dict[str, object]:
         ) from exc
 
 
+def _openai_tool_manifest(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize VoiceAgentBench tool manifests to OpenAI function tools."""
+    normalized: list[dict[str, Any]] = []
+    for tool in tools:
+        fn = tool.get("function") if isinstance(tool.get("function"), dict) else None
+        name = (fn or tool).get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        description = (fn or tool).get("description")
+        parameters = (fn or tool).get("parameters")
+        normalized.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": name.strip(),
+                    "description": description if isinstance(description, str) else "",
+                    "parameters": parameters if isinstance(parameters, dict) else {"type": "object"},
+                },
+            }
+        )
+    return normalized
+
+
 def _wait_for_eliza(timeout: float = 60.0, poll: float = 1.0) -> None:
     """Poll /api/benchmark/health until the runtime is ready."""
     import socket
@@ -122,8 +145,14 @@ class _ElizaHttpAgent:
                 break
 
         context: dict[str, object] = {
-            "benchmark": "voiceagentbench",
-            "tools": tool_manifest,
+            # VoiceAgentBench scores tool selection/argument extraction. Route
+            # through the benchmark server's native action-calling path so the
+            # real Eliza runtime gets the same function-tool contract as the
+            # Hermes and OpenClaw cascaded baselines.
+            "benchmark": "action-calling",
+            "source_benchmark": "voiceagentbench",
+            "tools": _openai_tool_manifest(tool_manifest),
+            "tool_choice": "required",
         }
         body: dict[str, object] = {"text": user_text, "context": context}
         raw = _eliza_post("/api/benchmark/message", body)

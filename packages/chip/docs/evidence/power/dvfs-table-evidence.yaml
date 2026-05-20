@@ -1,0 +1,74 @@
+schema: eliza.dvfs_table_evidence.v1
+status: blocked
+release_use: prohibited_until_external_review
+claim_boundary: >
+  Fail-closed gate for per-corner DVFS tables. Requires SS / TT / FF YAMLs
+  at 0 / 25 / 85 / 105 C (12 total) under docs/pd/dvfs-tables/, generated
+  from silicon STA corner sweep at pd/signoff/sta/<corner>/<temp>c/. Today
+  placeholders are present and schema-valid, but every numeric cell that
+  would fall outside the rail plan voltage window is marked
+  `pending_silicon_corner_sta`. Until those sentinel cells are replaced by
+  STA-derived integers AND every per-rail operating point is signed off in
+  pd/signoff/sta/, this gate remains BLOCKED.
+source_artifacts:
+  - docs/pd/dvfs-tables/README.md
+  - docs/pd/dvfs-tables/dvfs-table-tt-25c.yaml
+  - docs/pd/rail-plan-2028.yaml
+  - fw/pmc/src/dvfs_arbiter.c
+  - scripts/check_dvfs_tables.py
+  - scripts/gen_dvfs_table_placeholders.py
+required_files:
+  - id: ss_0c
+    path: docs/pd/dvfs-tables/dvfs-table-ss-0c.yaml
+    status: placeholder_present_with_sentinels
+  - id: ss_25c
+    path: docs/pd/dvfs-tables/dvfs-table-ss-25c.yaml
+    status: placeholder_present_with_sentinels
+  - id: ss_85c
+    path: docs/pd/dvfs-tables/dvfs-table-ss-85c.yaml
+    status: placeholder_present_with_sentinels
+  - id: ss_105c
+    path: docs/pd/dvfs-tables/dvfs-table-ss-105c.yaml
+    status: placeholder_present_with_sentinels
+  - id: tt_0c
+    path: docs/pd/dvfs-tables/dvfs-table-tt-0c.yaml
+    status: placeholder_present_with_sentinels
+  - id: tt_25c
+    path: docs/pd/dvfs-tables/dvfs-table-tt-25c.yaml
+    status: placeholder_present_anchor_no_sentinels
+  - id: tt_85c
+    path: docs/pd/dvfs-tables/dvfs-table-tt-85c.yaml
+    status: placeholder_present_with_sentinels
+  - id: tt_105c
+    path: docs/pd/dvfs-tables/dvfs-table-tt-105c.yaml
+    status: placeholder_present_with_sentinels
+  - id: ff_0c
+    path: docs/pd/dvfs-tables/dvfs-table-ff-0c.yaml
+    status: placeholder_present_with_sentinels
+  - id: ff_25c
+    path: docs/pd/dvfs-tables/dvfs-table-ff-25c.yaml
+    status: placeholder_present_with_sentinels
+  - id: ff_85c
+    path: docs/pd/dvfs-tables/dvfs-table-ff-85c.yaml
+    status: placeholder_present_with_sentinels
+  - id: ff_105c
+    path: docs/pd/dvfs-tables/dvfs-table-ff-105c.yaml
+    status: placeholder_present_with_sentinels
+required_per_table_rails:
+  - VDD_CPU_BIG
+  - VDD_CPU_LITTLE
+  - VDD_NPU
+  - VDD_GPU
+  - VDD_SOC_FABRIC
+  - VDD_SRAM
+acceptance_thresholds:
+  guardband_mv_min: 6.25
+  per_rail_operating_points_min: 2
+  per_rail_operating_points_max: 16
+  pending_silicon_corner_sta_cells_max: 0
+release_blockers:
+  - Silicon characterization data not available.
+  - PDK selection not finalized; STA corner sweep not run for any of the 12 corners.
+  - 47 pending_silicon_corner_sta cells across SS/FF tables and hot-corner TT tables remain (regen with scripts/gen_dvfs_table_placeholders.py to refresh count).
+  - Voltage guardband policy not formally adopted; placeholder uses 1 DVFS LSB (6.25 mV) per direction.
+check_command: python3 scripts/check_dvfs_tables.py

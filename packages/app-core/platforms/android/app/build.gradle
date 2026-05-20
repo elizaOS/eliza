@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "app.eliza"
+    namespace "ai.elizaos.app"
     compileSdk rootProject.ext.compileSdkVersion
     // BuildConfig is needed for AOSP_BUILD gating in ElizaAgentService.java —
     // see eliza/packages/agent/src/runtime/aosp-llama-adapter.ts and
@@ -10,7 +10,7 @@ android {
         buildConfig true
     }
     defaultConfig {
-        applicationId "app.eliza"
+        applicationId "ai.elizaos.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode System.getenv("ELIZAOS_VERSION_CODE")?.toInteger() ?: 1
@@ -23,6 +23,11 @@ android {
         // to decide whether to export ELIZA_LOCAL_LLAMA=1 to the bun
         // process so the AOSP-only libllama.so loader takes over inference.
         buildConfigField "boolean", "AOSP_BUILD", "${project.findProperty('elizaAospBuild') ?: 'false'}"
+        buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "${["1", "true", "yes"].contains((System.getenv("ELIZA_ANDROID_SMS_GATEWAY_ENABLED") ?: "false").toLowerCase())}"
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_SECRET", "\"${(System.getenv("ELIZA_ANDROID_SMS_GATEWAY_SECRET") ?: "").replace("\\", "\\\\").replace("\"", "\\\"")}\""
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\"${(System.getenv("ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL") ?: "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles").replace("\\", "\\\\").replace("\"", "\\\"")}\""
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\"${(System.getenv("ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER") ?: "+14159611510").replace("\\", "\\\\").replace("\"", "\\\"")}\""
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\"${(System.getenv("ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL") ?: "Eliza Cloud Gateway (+14159611510)").replace("\\", "\\\\").replace("\"", "\\\"")}\""
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61

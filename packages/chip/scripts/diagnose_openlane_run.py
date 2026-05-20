@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUN_ROOT = ROOT / "pd/openlane/runs"
 LOCK_DIR = ROOT / ".openlane-run.lock"
 STEP_RE = re.compile(r"^(?P<index>\d+)-(?P<name>.+)$")
+RUN_TAG_RE = re.compile(r"^RUN_(?P<stamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})$")
 
 
 def rel(path: Path) -> str:
@@ -30,7 +31,14 @@ def newest_run(run_root: Path) -> Path | None:
     runs = [path for path in run_root.iterdir() if path.is_dir()]
     if not runs:
         return None
-    return max(runs, key=lambda path: path.stat().st_mtime)
+
+    def sort_key(path: Path) -> tuple[int, str, float]:
+        match = RUN_TAG_RE.match(path.name)
+        if match:
+            return (1, match.group("stamp"), path.stat().st_mtime)
+        return (0, "", path.stat().st_mtime)
+
+    return max(runs, key=sort_key)
 
 
 def step_dirs(run_dir: Path) -> list[Path]:

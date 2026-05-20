@@ -206,7 +206,7 @@ jobs:
         run: bun run preflight:android:store
 
       - name: Build signed AAB
-        working-directory: packages/app/android
+        working-directory: packages/app-core/platforms/android
         env:
           ELIZAOS_VERSION_NAME: ${{ steps.version.outputs.name }}
           ELIZAOS_VERSION_CODE: ${{ steps.version.outputs.code }}
@@ -219,7 +219,7 @@ jobs:
           ./gradlew -PelizaCloudBuild=true -PelizaStripAgentAssets=true bundleRelease
 
       - name: Build signed APK
-        working-directory: packages/app/android
+        working-directory: packages/app-core/platforms/android
         env:
           ELIZAOS_VERSION_NAME: ${{ steps.version.outputs.name }}
           ELIZAOS_VERSION_CODE: ${{ steps.version.outputs.code }}
@@ -233,29 +233,29 @@ jobs:
 
       - name: Verify Android release artifacts
         run: |
-          AAB_PATH="packages/app/android/app/build/outputs/bundle/release/app-release.aab"
-          APK_PATH="packages/app/android/app/build/outputs/apk/release/app-release.apk"
+          AAB_PATH="packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab"
+          APK_PATH="packages/app-core/platforms/android/app/build/outputs/apk/release/app-release.apk"
           if [[ ! -f "$AAB_PATH" ]]; then
             echo "ERROR: AAB not found at $AAB_PATH"
-            ls -la packages/app/android/app/build/outputs/bundle/release/ 2>/dev/null || echo "Release dir not found"
+            ls -la packages/app-core/platforms/android/app/build/outputs/bundle/release/ 2>/dev/null || echo "Release dir not found"
             exit 1
           fi
           if [[ ! -f "$APK_PATH" ]]; then
             echo "ERROR: APK not found at $APK_PATH"
-            ls -la packages/app/android/app/build/outputs/apk/release/ 2>/dev/null || echo "Release dir not found"
+            ls -la packages/app-core/platforms/android/app/build/outputs/apk/release/ 2>/dev/null || echo "Release dir not found"
             exit 1
           fi
           echo "AAB size: $(du -h "$AAB_PATH" | cut -f1)"
           echo "APK size: $(du -h "$APK_PATH" | cut -f1)"
           file "$AAB_PATH"
           file "$APK_PATH"
-          sha256sum "$AAB_PATH" "$APK_PATH" > packages/app/android/app/build/outputs/release-SHA256SUMS.txt
-          cat packages/app/android/app/build/outputs/release-SHA256SUMS.txt
+          sha256sum "$AAB_PATH" "$APK_PATH" > packages/app-core/platforms/android/app/build/outputs/release-SHA256SUMS.txt
+          cat packages/app-core/platforms/android/app/build/outputs/release-SHA256SUMS.txt
 
       - name: Stage sideload APK with canonical name
         run: |
           VERSION="${{ steps.version.outputs.name }}"
-          APK_SRC="packages/app/android/app/build/outputs/apk/release/app-release.apk"
+          APK_SRC="packages/app-core/platforms/android/app/build/outputs/apk/release/app-release.apk"
           SIDELOAD_APK="elizaos-android-${VERSION}-release.apk"
           cp "$APK_SRC" "$SIDELOAD_APK"
           sha256sum "$SIDELOAD_APK" > "${SIDELOAD_APK}.sha256"
@@ -267,9 +267,9 @@ jobs:
         with:
           name: eliza-android-release
           path: |
-            packages/app/android/app/build/outputs/bundle/release/app-release.aab
-            packages/app/android/app/build/outputs/apk/release/app-release.apk
-            packages/app/android/app/build/outputs/release-SHA256SUMS.txt
+            packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab
+            packages/app-core/platforms/android/app/build/outputs/apk/release/app-release.apk
+            packages/app-core/platforms/android/app/build/outputs/release-SHA256SUMS.txt
             elizaos-android-${{ steps.version.outputs.name }}-release.apk
             elizaos-android-${{ steps.version.outputs.name }}-release.apk.sha256
           retention-days: 90
@@ -285,11 +285,11 @@ jobs:
             echo "::error::No GitHub release found for $TAG; cannot attach AAB."
             exit 1
           fi
-          cp packages/app/android/app/build/outputs/bundle/release/app-release.aab \
+          cp packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab \
              "Eliza-${VERSION}.aab"
-          cp packages/app/android/app/build/outputs/apk/release/app-release.apk \
+          cp packages/app-core/platforms/android/app/build/outputs/apk/release/app-release.apk \
              "Eliza-${VERSION}.apk"
-          cp packages/app/android/app/build/outputs/release-SHA256SUMS.txt \
+          cp packages/app-core/platforms/android/app/build/outputs/release-SHA256SUMS.txt \
              "Eliza-${VERSION}.android.SHA256SUMS.txt"
           gh release upload "$TAG" \
             "Eliza-${VERSION}.aab" \
@@ -349,7 +349,7 @@ jobs:
             --aab "$GITHUB_WORKSPACE/aab/app-release.aab" \
             --track "${{ steps.track.outputs.track }}" \
             --json_key "$PLAY_STORE_JSON_KEY" \
-            --package_name "ai.elizaos.app"
+            --package_name "app.eliza"
 
       - name: Clean up credentials
         if: always()

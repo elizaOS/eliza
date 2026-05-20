@@ -32,6 +32,7 @@ CMD = os.path.basename(sys.argv[0])
 #  - tails-iuk-get-upgrade-description never uses more than 95 * 10^6 bytes
 MIN_AVAILABLE_MEMORY = 200 * 1024 * 1024  # In Bytes
 RUN_AS_USER = "tails-upgrade-frontend"
+BASE_UPDATES_FLAG = "/etc/elizaos/base-updates-enabled"
 
 ERROR_MESSAGE = _(
     """<b>Not enough memory available to check for upgrades.</b>
@@ -48,11 +49,39 @@ See {manual_upgrade_url}"""
 )
 
 
+def base_updates_configured():
+    """Return whether automatic base OS updates are configured for this image."""
+    return os.path.exists(BASE_UPDATES_FLAG)
+
+
+def report_base_updates_disabled():
+    text = _(
+        """Automatic elizaOS base updates are not configured in this build.
+
+Use signed elizaOS ISO releases and the guarded USB writer for base OS updates.
+The signed app/runtime updater can be enabled separately when a production
+keyring, channel manifest, and rollback policy are installed."""
+    )
+    print(text)
+    sh.zenity(
+        "--info",
+        "--title",
+        _("elizaOS Base Updates"),
+        "--text",
+        text,
+        _ok_code=[0, 1, 5],
+    )
+
+
 def main(*args):
     if "--no-wait" in args:
         args = (arg for arg in args if arg != "--no-wait")
     else:
         time.sleep(30)
+
+    if not base_updates_configured():
+        report_base_updates_disabled()
+        return
 
     check_free_memory(MIN_AVAILABLE_MEMORY)
 

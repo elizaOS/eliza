@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-agent-orchestrator",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.1-beta.0",
   "description": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via native Agent Client Protocol transports — combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
   "type": "module",
   "main": "dist/node/index.node.js",
@@ -105,9 +105,71 @@
     "pluginParameters": {
       "ELIZA_ACP_CLI": {
         "type": "string",
-        "description": "Legacy path or command name for an ACP-compatible subprocess transport. Prefer the native TypeScript ACP transport when available.",
+        "description": "Path or command name for the legacy acpx command-wrapper transport when ELIZA_ACP_TRANSPORT=cli.",
         "required": false,
         "default": "acpx",
+        "sensitive": false
+      },
+      "ELIZA_ACP_TRANSPORT": {
+        "type": "string",
+        "description": "ACP transport mode. Native/direct uses the embedded TypeScript ACP client; cli/acpx keeps the legacy command-wrapper transport.",
+        "required": false,
+        "default": "native",
+        "sensitive": false
+      },
+      "ELIZA_ACP_DEFAULT_AGENT": {
+        "type": "string",
+        "description": "Default coding agent adapter for TASKS create/spawn_agent when the user or planner does not choose one. Supported defaults include elizaos, pi-agent, and opencode.",
+        "required": false,
+        "default": "elizaos",
+        "sensitive": false
+      },
+      "ELIZA_DEFAULT_AGENT_TYPE": {
+        "type": "string",
+        "description": "Compatibility alias for the default coding agent adapter. Use elizaos, pi-agent, or opencode to switch the default code agent from settings.",
+        "required": false,
+        "default": "elizaos",
+        "sensitive": false
+      },
+      "ELIZA_AGENT_SELECTION_STRATEGY": {
+        "type": "string",
+        "description": "Task-agent selection policy. fixed makes the configured default adapter authoritative; dynamic allows runtime selection when implemented.",
+        "required": false,
+        "default": "fixed",
+        "sensitive": false
+      },
+      "ELIZA_ELIZAOS_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for ElizaOS coding-agent sessions when ELIZA_ACP_TRANSPORT=native.",
+        "required": false,
+        "default": "elizaos",
+        "sensitive": false
+      },
+      "ELIZA_PI_AGENT_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for Pi Agent sessions when ELIZA_ACP_TRANSPORT=native.",
+        "required": false,
+        "default": "pi-agent",
+        "sensitive": false
+      },
+      "ELIZA_CODEX_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for Codex sessions when ELIZA_ACP_TRANSPORT=native. Pin this in production to avoid implicit package upgrades.",
+        "required": false,
+        "default": "npx -y @zed-industries/codex-acp@0.14.0",
+        "sensitive": false
+      },
+      "ELIZA_CLAUDE_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for Claude sessions when ELIZA_ACP_TRANSPORT=native. Pin this in production to avoid implicit package upgrades.",
+        "required": false,
+        "default": "npx -y @agentclientprotocol/claude-agent-acp@0.34.0",
+        "sensitive": false
+      },
+      "ELIZA_OPENCODE_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for OpenCode sessions when ELIZA_ACP_TRANSPORT=native. Defaults to the bundled OpenCode shim when available, otherwise opencode acp.",
+        "required": false,
         "sensitive": false
       },
       "ELIZA_ACP_FORMAT": {

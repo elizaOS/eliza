@@ -1,0 +1,32 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "moduleResolution": "bundler",
+    "strict": false,
+    "strictNullChecks": true,
+    "skipLibCheck": true,
+    "types": ["node", "bun"],
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "paths": {
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/*": ["../../node_modules/@elizaos/*"],
+      "@elizaos/contracts": ["../../packages/contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["../../packages/contracts/src/*"],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "react": ["./node_modules/react"],
+      "react/jsx-runtime": ["./node_modules/react/jsx-runtime"],
+      "react/jsx-dev-runtime": ["./node_modules/react/jsx-dev-runtime"],
+      "react-dom": ["./node_modules/react-dom"],
+      "lucide-react": ["./node_modules/lucide-react"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "exclude": ["src/**/*.stories.ts"]
+}

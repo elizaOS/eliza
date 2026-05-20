@@ -4,7 +4,7 @@ import { DynamicViewSessionManager } from "../dynamic-views/session-manager";
 import { createDatabaseSnapshot } from "../database";
 import { LaunchOrchestrator } from "./launch-orchestrator";
 import type { LaunchBugReportBundleInfo } from "./types";
-import type { JsonValue } from "@elizaos/electrobun-carrots";
+import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 
 class FakeCanvas {
   readonly windows: Array<{ id: string; title?: string }> = [];

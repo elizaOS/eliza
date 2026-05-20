@@ -88,10 +88,6 @@ import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { getCameraManager } from "./native/camera";
 import { getCanvasManager } from "./native/canvas";
 import {
-  configureCarrotManagerEvents,
-  getCarrotManager,
-} from "./native/carrots";
-import {
   scanAndValidateProviderCredentials,
   scanProviderCredentials,
 } from "./native/credentials";
@@ -105,6 +101,10 @@ import { getLocationManager } from "./native/location";
 import { getMusicPlayerManager } from "./native/music-player";
 import { getPermissionManager } from "./native/permissions";
 import type { AllPermissionsState } from "./native/permissions-shared";
+import {
+  configureRemotePluginHostEvents,
+  getRemotePluginHost,
+} from "./native/remote-plugin-host";
 import { getScreenCaptureManager } from "./native/screencapture";
 import {
   getStewardStatus,
@@ -304,26 +304,26 @@ export function buildBunRpcHandlers({
   const talkmode = getTalkModeManager();
   const musicPlayer = getMusicPlayerManager();
   const browserWorkspace = getBrowserWorkspaceManager();
-  const carrots = getCarrotManager();
+  const remotePluginHost = getRemotePluginHost();
   registerBuiltInDynamicViews();
   const dynamicViewRegistry = getDynamicViewRegistry();
   const dynamicViewSessions = getDynamicViewSessionManager({
     registry: dynamicViewRegistry,
     canvas,
     workerStatusProvider: {
-      getWorkerStatus: (id) => carrots.getWorkerStatus(id),
+      getWorkerStatus: (id) => remotePluginHost.getWorkerStatus(id),
     },
   });
-  carrots.setDynamicViewHost(
+  remotePluginHost.setDynamicViewHost(
     createDynamicViewHostForRuntime(dynamicViewSessions),
   );
   const traceService = getTraceService({
     dynamicViewRegistry,
     dynamicViewSessions,
   });
-  carrots.setTraceHost(createTraceHostForRuntime(traceService));
+  remotePluginHost.setTraceHost(createTraceHostForRuntime(traceService));
   const voiceService = new VoiceService({ traceService });
-  carrots.setVoiceHost(createVoiceHostForRuntime(voiceService));
+  remotePluginHost.setVoiceHost(createVoiceHostForRuntime(voiceService));
   const launchOrchestrator = new LaunchOrchestrator({
     agent,
     readBootProgress: async () => {
@@ -341,7 +341,7 @@ export function buildBunRpcHandlers({
     listSatelliteStatuses: () =>
       getFirstPartySatelliteDefinitions({ includeDev: true }).map(
         (definition) => {
-          const status = carrots.getWorkerStatus(definition.id);
+          const status = remotePluginHost.getWorkerStatus(definition.id);
           return {
             id: definition.id,
             state: status?.state ?? "stopped",
@@ -354,7 +354,7 @@ export function buildBunRpcHandlers({
     dynamicViewRegistry,
     dynamicViewSessions,
   });
-  configureCarrotManagerEvents(sendToWebview);
+  configureRemotePluginHostEvents(sendToWebview);
 
   return {
     // ---- Agent ----
@@ -856,32 +856,40 @@ export function buildBunRpcHandlers({
       success: desktop.setManagedWindowAlwaysOnTop(params.id, params.flag),
     }),
 
-    // ---- Carrots ----
-    carrotGetStoreRoot: async () => ({ storeRoot: carrots.getStoreRoot() }),
-    carrotList: async () => ({ carrots: carrots.listCarrots() }),
-    carrotGetStoreSnapshot: async () => carrots.getStoreSnapshot(),
-    carrotGet: async (params: { id: string }) => carrots.getCarrot(params.id),
-    carrotInstallFromDirectory: async (params) =>
-      carrots.installFromDirectory(params),
-    carrotUninstall: async (params: { id: string }) =>
-      carrots.uninstall(params.id),
-    carrotStartWorker: async (params: { id: string }) => {
-      setFirstPartySatelliteDisabled(params.id, false, carrots);
-      return carrots.startWorker(params.id);
-    },
-    carrotStopWorker: async (params: { id: string }) => {
-      setFirstPartySatelliteDisabled(params.id, true, carrots);
-      return carrots.stopWorker(params.id);
-    },
-    carrotGetWorkerStatus: async (params: { id: string }) =>
-      carrots.getWorkerStatus(params.id),
-    carrotListWorkerStatuses: async () => ({
-      workers: carrots.listWorkerStatuses(),
+    // ---- Remote Plugins ----
+    remotePluginGetStoreRoot: async () => ({
+      storeRoot: remotePluginHost.getStoreRoot(),
     }),
-    carrotGetLogs: async (params) =>
-      carrots.getLogs(params.id, params.maxBytes),
-    carrotInvokeWorker: async (params) => carrots.invokeWorker(params),
-    carrotTailWorkerEvents: async (params) => carrots.tailWorkerEvents(params),
+    remotePluginList: async () => ({
+      remotePlugins: remotePluginHost.listRemotePlugins(),
+    }),
+    remotePluginGetStoreSnapshot: async () =>
+      remotePluginHost.getStoreSnapshot(),
+    remotePluginGet: async (params: { id: string }) =>
+      remotePluginHost.getRemotePlugin(params.id),
+    remotePluginInstallFromDirectory: async (params) =>
+      remotePluginHost.installFromDirectory(params),
+    remotePluginUninstall: async (params: { id: string }) =>
+      remotePluginHost.uninstall(params.id),
+    remotePluginStartWorker: async (params: { id: string }) => {
+      setFirstPartySatelliteDisabled(params.id, false, remotePluginHost);
+      return remotePluginHost.startWorker(params.id);
+    },
+    remotePluginStopWorker: async (params: { id: string }) => {
+      setFirstPartySatelliteDisabled(params.id, true, remotePluginHost);
+      return remotePluginHost.stopWorker(params.id);
+    },
+    remotePluginGetWorkerStatus: async (params: { id: string }) =>
+      remotePluginHost.getWorkerStatus(params.id),
+    remotePluginListWorkerStatuses: async () => ({
+      workers: remotePluginHost.listWorkerStatuses(),
+    }),
+    remotePluginGetLogs: async (params) =>
+      remotePluginHost.getLogs(params.id, params.maxBytes),
+    remotePluginInvokeWorker: async (params) =>
+      remotePluginHost.invokeWorker(params),
+    remotePluginTailWorkerEvents: async (params) =>
+      remotePluginHost.tailWorkerEvents(params),
     dynamicViewRegister: async (params) =>
       dynamicViewRegistry.register(params.manifest, { update: params.update }),
     dynamicViewUnregister: async (params) => ({

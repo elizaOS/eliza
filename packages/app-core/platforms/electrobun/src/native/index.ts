@@ -5,13 +5,13 @@ import { getAgentManager } from "./agent";
 import { getBrowserWorkspaceManager } from "./browser-workspace";
 import { getCameraManager } from "./camera";
 import { getCanvasManager } from "./canvas";
-import { getCarrotManager } from "./carrots";
 import { getDesktopManager } from "./desktop";
 import { getGatewayDiscovery } from "./gateway";
 import { getGpuWindowManager } from "./gpu-window";
 import { getLocationManager } from "./location";
 import { getMusicPlayerManager } from "./music-player";
 import { getPermissionManager } from "./permissions";
+import { getRemotePluginHost } from "./remote-plugin-host";
 import { getScreenCaptureManager } from "./screencapture";
 import { isStewardLocalEnabled, stopSteward } from "./steward";
 import { getSwabbleManager } from "./swabble";
@@ -48,7 +48,7 @@ export async function disposeNativeModules(): Promise<void> {
     ["browser-workspace", getBrowserWorkspaceManager()],
     ["camera", getCameraManager()],
     ["canvas", getCanvasManager()],
-    ["carrots", getCarrotManager()],
+    ["remote-plugins", getRemotePluginHost()],
     ["desktop", getDesktopManager()],
     ["gateway", getGatewayDiscovery()],
     ["gpu-window", getGpuWindowManager()],

@@ -22,6 +22,34 @@ interface CapturedHandler {
   fn?: (sessionId: string, event: string, data: unknown) => void;
 }
 
+const stubbedGlobals = new Map<PropertyKey, unknown>();
+
+function stubGlobalValue(key: keyof typeof globalThis, value: unknown): void {
+  if (!stubbedGlobals.has(key)) {
+    stubbedGlobals.set(key, globalThis[key]);
+  }
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+
+function restoreStubbedGlobals(): void {
+  for (const [key, value] of stubbedGlobals.entries()) {
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      writable: true,
+      value,
+    });
+  }
+  stubbedGlobals.clear();
+}
+
+function stubFetch(fetchMock: typeof fetch): void {
+  stubGlobalValue("fetch", fetchMock);
+}
+
 function makeAcpService(session: SessionInfo): {
   service: {
     onSessionEvent: ReturnType<typeof vi.fn>;
@@ -277,6 +305,7 @@ describe("SubAgentRouter", () => {
       },
       expect.objectContaining({
         text: "done",
+        source: "sub_agent_complete",
         inReplyTo: CONNECTOR_MSG,
       }),
     );
@@ -558,7 +587,7 @@ describe("SubAgentRouter", () => {
       if (origSettle === undefined)
         delete process.env.ELIZA_URL_VERIFY_SETTLE_MS;
       else process.env.ELIZA_URL_VERIFY_SETTLE_MS = origSettle;
-      vi.unstubAllGlobals();
+      restoreStubbedGlobals();
     });
 
     // A localhost port that reliably refuses — fast, no external network.
@@ -646,10 +675,7 @@ describe("SubAgentRouter", () => {
       // GET. 405 means the server responded — the URL exists — so it must
       // not be flagged dead and must not trigger a retry of a build that
       // actually succeeded.
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async () => new Response(null, { status: 405 })),
-      );
+      stubFetch(vi.fn(async () => new Response(null, { status: 405 })));
       session = sessionWithTask("build it at https://example.test/apps/x/");
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -668,19 +694,47 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).not.toContain("[verification:");
     });
 
+    it("does not verify repository URLs found while inspecting package metadata", async () => {
+      const fetchMock = vi.fn(async () => {
+        return new Response("not found", { status: 404 });
+      });
+      stubFetch(fetchMock);
+      session = sessionWithTask(
+        "Read packages/core/package.json and reply with the package name.",
+      );
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response:
+          '[tool output: Read packages/core/package.json]\n{"name":"@elizaos/core","homepage":"https://github.com/elizaOS/eliza","repository":{"type":"git","url":"git+https://github.com/elizaOS/eliza.git","directory":"packages/core"}}\n[/tool output]\n@elizaos/core',
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      expect(posted?.content?.text).toContain("@elizaos/core");
+      expect(posted?.content?.text).not.toContain("[verification:");
+    });
+
     it("ignores route-template URL stems when a concrete app URL verifies", async () => {
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url === "https://nubilio.org/apps/") {
+        if (url === "https://example.test/apps/") {
           return new Response("not found", { status: 404 });
         }
-        if (url === "https://nubilio.org/apps/counter/") {
+        if (url === "https://example.test/apps/counter/") {
           return new Response('<script src="app.js"></script>', {
             status: 200,
             headers: { "content-type": "text/html" },
           });
         }
-        if (url === "https://nubilio.org/apps/counter/app.js") {
+        if (url === "https://example.test/apps/counter/app.js") {
           return new Response("let count = 0;", {
             status: 200,
             headers: { "content-type": "application/javascript" },
@@ -688,7 +742,7 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask("build a counter");
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -698,12 +752,12 @@ describe("SubAgentRouter", () => {
 
       acp.emit(SESSION_ID, "task_complete", {
         response:
-          "Route note: verify https://nubilio.org/apps/<slug>/. Built and verified https://nubilio.org/apps/counter/",
+          "Route note: verify https://example.test/apps/<slug>/. Built and verified https://example.test/apps/counter/",
       });
       await new Promise((r) => setTimeout(r, 200));
 
       expect(fetchMock).not.toHaveBeenCalledWith(
-        "https://nubilio.org/apps/",
+        "https://example.test/apps/",
         expect.anything(),
       );
       expect(spawnSession).not.toHaveBeenCalled();
@@ -720,7 +774,7 @@ describe("SubAgentRouter", () => {
           headers: { "content-type": "text/html" },
         });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(`build and verify ${appBase}`);
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -744,8 +798,7 @@ describe("SubAgentRouter", () => {
 
     it("uses verified URLs instead of raw tool-only completion transcripts", async () => {
       const appBase = "https://example.test/apps/tool-only/";
-      vi.stubGlobal(
-        "fetch",
+      stubFetch(
         vi.fn(async () => {
           return new Response("<html><body>ok</body></html>", {
             status: 200,
@@ -864,7 +917,7 @@ describe("SubAgentRouter", () => {
             headers: { "content-type": "text/html" },
           });
         });
-        vi.stubGlobal("fetch", fetchMock);
+        stubFetch(fetchMock);
         session = {
           ...sessionWithTask(`build and verify ${appUrl}`, 2, {
             workdirRoute: {
@@ -912,7 +965,7 @@ describe("SubAgentRouter", () => {
             headers: { "content-type": "text/html" },
           });
         }
-        if (url === "https://nubilio.org/apps/asset-check/") {
+        if (url === "https://example.test/apps/asset-check/") {
           return new Response("<html><body>ok</body></html>", {
             status: 200,
             headers: { "content-type": "text/html" },
@@ -920,9 +973,9 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(
-        "build and verify https://nubilio.org/apps/asset-check/",
+        "build and verify https://example.test/apps/asset-check/",
       );
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -932,14 +985,16 @@ describe("SubAgentRouter", () => {
 
       acp.emit(SESSION_ID, "task_complete", {
         response:
-          "Done — local: http://127.0.0.1:6900/apps/asset-check/, mirror: https://nubidio.org/apps/asset-check/, public: https://nubilio.org/apps/asset-check/",
+          "Done — local: http://127.0.0.1:6900/apps/asset-check/, mirror: https://wrong.example.test/apps/asset-check/, public: https://example.test/apps/asset-check/",
       });
       await new Promise((r) => setTimeout(r, 200));
 
       const fetched = fetchMock.mock.calls.map(([url]) => String(url));
       expect(fetched).toContain("http://127.0.0.1:6900/apps/asset-check/");
-      expect(fetched).toContain("https://nubilio.org/apps/asset-check/");
-      expect(fetched).not.toContain("https://nubidio.org/apps/asset-check/");
+      expect(fetched).toContain("https://example.test/apps/asset-check/");
+      expect(fetched).not.toContain(
+        "https://wrong.example.test/apps/asset-check/",
+      );
       expect(spawnSession).not.toHaveBeenCalled();
       expect(handleMessage).toHaveBeenCalledTimes(1);
       const posted = handleMessage.mock.calls[0]?.[1];
@@ -969,7 +1024,7 @@ describe("SubAgentRouter", () => {
           }
           return new Response("not found", { status: 404 });
         });
-        vi.stubGlobal("fetch", fetchMock);
+        stubFetch(fetchMock);
         session = {
           ...sessionWithTask(`build and verify ${publicUrl}`, undefined, {
             workdirRoute: {
@@ -1019,12 +1074,12 @@ describe("SubAgentRouter", () => {
     });
 
     it("focuses verification on the referenced app route instead of header telemetry", async () => {
-      const appBase = "https://nubilio.org/apps/cache-safe/";
+      const appBase = "https://example.test/apps/cache-safe/";
       const styleUrl = `${appBase}style-v2.css`;
       const scriptUrl = `${appBase}app-v2.js`;
       const telemetryUrl =
         "https://a.nel.cloudflare.com/report/v4?s=header-noise";
-      const unrelatedUrl = "https://nubilio.org/apps/recipe-4/style.css";
+      const unrelatedUrl = "https://example.test/apps/recipe-4/style.css";
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url === styleUrl) {
@@ -1041,7 +1096,7 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(`build and verify ${appBase}`);
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -1084,7 +1139,7 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(`build a counter at ${assetUrl}`);
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -1128,7 +1183,7 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(`build a counter at ${assetUrl}`);
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -1171,7 +1226,7 @@ describe("SubAgentRouter", () => {
         }
         return new Response("not found", { status: 404 });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       session = sessionWithTask(`build a counter at ${staleUrl}`, 1, {
         cachedStaleMissUrls: [staleUrl],
       });
@@ -1215,15 +1270,15 @@ describe("SubAgentRouter", () => {
 });
 
 describe("extractSubResources", () => {
-  const PAGE = "https://nubilio.org/apps/bmi/index.html";
+  const PAGE = "https://example.test/apps/bmi/index.html";
 
   it("extracts <link href> and <script src>, resolved absolute", () => {
     const html = `<!doctype html><html><head>
       <link rel="stylesheet" href="style.css" />
       </head><body><script src="app.js"></script></body></html>`;
     expect(extractSubResources(html, PAGE).sort()).toEqual([
-      "https://nubilio.org/apps/bmi/app.js",
-      "https://nubilio.org/apps/bmi/style.css",
+      "https://example.test/apps/bmi/app.js",
+      "https://example.test/apps/bmi/style.css",
     ]);
   });
 
@@ -1231,7 +1286,7 @@ describe("extractSubResources", () => {
     const html = `<link href="/global.css"><script src="https://cdn.example.com/lib.js"></script>`;
     expect(extractSubResources(html, PAGE).sort()).toEqual([
       "https://cdn.example.com/lib.js",
-      "https://nubilio.org/global.css",
+      "https://example.test/global.css",
     ]);
   });
 
@@ -1259,9 +1314,9 @@ describe("normalizeUrlsInText", () => {
   it("replaces a Unicode non-breaking hyphen inside a URL with ASCII hyphen", () => {
     // gpt-oss-class models emit U+2011 where they meant "-", so the link
     // 404s even though the directory exists under the ASCII-hyphen name.
-    const text = "app is live at https://nubilio.org/apps/bmi‑calc‑1/";
+    const text = "app is live at https://example.test/apps/bmi‑calc‑1/";
     expect(normalizeUrlsInText(text)).toBe(
-      "app is live at https://nubilio.org/apps/bmi-calc-1/",
+      "app is live at https://example.test/apps/bmi-calc-1/",
     );
   });
 
@@ -1280,9 +1335,9 @@ describe("normalizeUrlsInText", () => {
   });
 
   it("normalizes every URL when several are present", () => {
-    const text = "http://127.0.0.1/a‑b/ and https://nubilio.org/c‑d/";
+    const text = "http://127.0.0.1/a‑b/ and https://example.test/c‑d/";
     expect(normalizeUrlsInText(text)).toBe(
-      "http://127.0.0.1/a-b/ and https://nubilio.org/c-d/",
+      "http://127.0.0.1/a-b/ and https://example.test/c-d/",
     );
   });
 

@@ -16,8 +16,8 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import app.eliza.BuildConfig;
-import app.eliza.R;
+import ai.elizaos.app.BuildConfig;
+import ai.elizaos.app.R;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -390,7 +390,11 @@ public class ElizaAgentService extends Service {
         String[] supported = Build.SUPPORTED_ABIS;
         if (supported != null) {
             for (String abi : supported) {
-                if ("arm64-v8a".equals(abi) || "x86_64".equals(abi)) return abi;
+                if (
+                    "arm64-v8a".equals(abi) ||
+                    "x86_64".equals(abi) ||
+                    "riscv64".equals(abi)
+                ) return abi;
             }
             if (supported.length > 0) return supported[0];
         }
@@ -527,10 +531,9 @@ public class ElizaAgentService extends Service {
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(root, "pglite.wasm"));
         copyAssetIfPresent(assets, "agent/initdb.wasm", new File(root, "initdb.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(root, "pglite.data"));
-        // ONNX Runtime Web sidecars used by the Android Kokoro TTS path.
-        // The mobile agent bundle imports onnxruntime-web/wasm; Bun resolves
-        // the module relative to agent-bundle.js, so these files must be
-        // extracted next to the bundle just like the PGlite WASM assets.
+        // Legacy ONNX Runtime Web sidecars used by the removed Android Kokoro
+        // TTS path. Current AOSP TTS uses fused OmniVoice, so fresh bundles do
+        // not ship these files; keep extraction best-effort for older APKs.
         copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.mjs",
             new File(root, "ort-wasm-simd-threaded.mjs"));
         copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.wasm",
@@ -689,6 +692,7 @@ public class ElizaAgentService extends Service {
     private String packagedMuslLoaderName(String abi) {
         if ("arm64-v8a".equals(abi)) return "libeliza_ld_musl_aarch64.so";
         if ("x86_64".equals(abi)) return "libeliza_ld_musl_x86_64.so";
+        if ("riscv64".equals(abi)) return "libeliza_ld_musl_riscv64.so";
         return null;
     }
 

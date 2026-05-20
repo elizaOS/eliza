@@ -1019,6 +1019,33 @@ export class DockerSandboxProvider implements SandboxProvider {
     return output;
   }
 
+  /**
+   * SSH `docker logs --tail N <container>` on the assigned core and
+   * return the combined stdout/stderr. Used by the `agent_logs` job
+   * type so the cloud-api Worker doesn't have to reach the container
+   * bridge HTTP endpoint (which is unreachable for stopped/crashed
+   * agents).
+   */
+  async fetchLogs(sandboxId: string, tail: number): Promise<string> {
+    const meta = await this.resolveContainer(sandboxId);
+
+    const safeTail = Math.max(1, Math.min(Math.floor(tail), 5000));
+
+    const ssh = DockerSSHClient.getClient(
+      meta.hostname,
+      meta.sshPort,
+      meta.hostKeyFingerprint,
+      meta.sshUser,
+    );
+    // `2>&1` merges stderr so the user sees boot errors when an agent
+    // is crash-looping — agents in node tend to write the interesting
+    // failure traces to stderr.
+    return await ssh.exec(
+      `docker logs --tail ${safeTail} ${shellQuote(meta.containerName)} 2>&1`,
+      DOCKER_CMD_TIMEOUT_MS,
+    );
+  }
+
   // ------------------------------------------------------------------
   // Helpers
   // ------------------------------------------------------------------

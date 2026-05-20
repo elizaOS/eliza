@@ -281,17 +281,6 @@ def _framework_payload(score: float) -> dict[str, Any]:
     }
 
 
-def _gaia_payload(score: float) -> dict[str, Any]:
-    total = 2
-    return {
-        "metrics": {
-            "overall_accuracy": score,
-            "total_questions": total,
-            "correct_answers": _passed_count(score, total),
-        }
-    }
-
-
 def _hermes_env_payload(score: float) -> dict[str, Any]:
     return {
         "score": score,
@@ -303,6 +292,7 @@ def _hermes_env_payload(score: float) -> dict[str, Any]:
 
 
 def _hyperliquid_payload(score: float) -> dict[str, Any]:
+    signature = f"synthetic-calibration-{score:.6f}"
     return {
         "final_score": score,
         "total_score": score,
@@ -311,7 +301,15 @@ def _hyperliquid_payload(score: float) -> dict[str, Any]:
         "penalty": 0,
         "total_scenarios": 2,
         "passed_scenarios": _passed_count(score),
+        "scenarios": [
+            {
+                "id": "synthetic-calibration",
+                "success": True,
+                "unique_signatures": [signature],
+            }
+        ],
         "mode": "synthetic-calibration",
+        "demo_mode": False,
     }
 
 
@@ -702,8 +700,6 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "evm": ("metrics/evm_random_v1_metrics.json", _evm_payload),
     "experience": ("experience-results.json", _experience_payload),
     "framework": ("framework-results.json", _framework_payload),
-    "gaia": ("gaia-results.json", _gaia_payload),
-    "gaia_orchestrated": ("gaia-orchestrated-results.json", _gaia_payload),
     "gauntlet": ("gauntlet-results.json", _gauntlet_payload),
     "gsm8k": ("gsm8k-results.json", _metrics_score_payload),
     "hermes_swe_env": ("hermes_hermes_swe_env_random_v1.json", _hermes_env_payload),

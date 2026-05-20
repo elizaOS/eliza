@@ -121,6 +121,126 @@ ALLOWLIST = (
         "replace the stub AXI-Lite mux",
         "CPU/DMA arbitration is tracked as a known interconnect integration gap.",
     ),
+    AllowedFinding(
+        "rtl/cache/l1d/e1_l1d_cache.sv",
+        "corrector is a stub",
+        "L1D ECC correction is tracked as a cache implementation gap.",
+    ),
+    AllowedFinding(
+        "rtl/cache/prefetch/e1_pythia_stub.sv",
+        "stub",
+        "Pythia prefetcher module is explicitly a bounded integration stub.",
+    ),
+    AllowedFinding(
+        "rtl/cpu/cluster/e1_cluster_top.sv",
+        "stub",
+        "Cluster core wrappers are explicit fail-closed integration placeholders.",
+    ),
+    AllowedFinding(
+        "rtl/cpu/cluster/e1_cluster_top.sv",
+        "placeholder",
+        "Cluster lite variant is a documented non-production integration placeholder.",
+    ),
+    AllowedFinding(
+        "rtl/cpu/csr/ztso_ctrl.sv",
+        "stub",
+        "Ztso CSR control is a documented CPU feature gap.",
+    ),
+    AllowedFinding(
+        "rtl/cpu/rvv/rvv_unit_stub.sv",
+        "stub",
+        "RVV unit is explicitly blocked and covered by CPU/AP evidence docs.",
+    ),
+    AllowedFinding(
+        "rtl/cpu/rvv/rvv_unit_stub.sv",
+        "placeholder",
+        "RVV unit is explicitly blocked and covered by CPU/AP evidence docs.",
+    ),
+    AllowedFinding(
+        "rtl/interconnect/axi4/e1_axi4_interconnect.sv",
+        "scaffold",
+        "AXI4 interconnect currently preserves the existing AXI-Lite scaffold boundary.",
+    ),
+    AllowedFinding(
+        "rtl/iommu/e1_riscv_iommu.sv",
+        "stub",
+        "RISC-V IOMMU model is a bounded verification implementation.",
+    ),
+    AllowedFinding(
+        "rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
+        "stub",
+        "DRAM controller is a DFI-facing scaffold with blocked production memory evidence.",
+    ),
+    AllowedFinding(
+        "rtl/top/e1_soc_integrated.sv",
+        "scaffold",
+        "Integrated SoC top carries the documented AXI-Lite scaffold boundary.",
+    ),
+    AllowedFinding(
+        "rtl/top/e1_soc_integrated.sv",
+        "synthesises to a stub that drives the counters",
+        "CVA6-disabled integrated SoC shape drives slot-0 observability counters safe-idle.",
+    ),
+    AllowedFinding(
+        "rtl/top/e1_soc_integrated.sv",
+        "Stub the CVA6 slot-0 observability ports to zero",
+        "CVA6-disabled integrated SoC shape drives slot-0 observability ports safe-idle.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/axi4/e1_dram_ctrl_tb.sv",
+        "stub",
+        "DFI cocotb test documents the current DRAM-controller scaffold behavior.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/axi4/test_dfi_traffic.py",
+        "stub",
+        "DFI cocotb test documents the current DRAM-controller scaffold behavior.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/cpu/README.md",
+        "stub",
+        "CPU cocotb README documents tests that remain blocked on a real core.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/cpu/README.md",
+        "placeholder",
+        "CPU cocotb README documents tests that remain blocked on a real core.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/cpu/test_csr_trap.py",
+        "stub",
+        "CSR trap test is explicitly fail-closed until a real CPU wrapper is present.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/cpu/test_csr_trap.py",
+        "placeholder",
+        "CSR trap test rejects empty core placeholders.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/cpu/test_mmu_sv39.py",
+        "stub",
+        "Sv39 test is explicitly blocked until a real MMU-capable CPU is present.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/integration/test_cross_domain_interfaces.py",
+        "scaffold",
+        "Cross-domain integration tests name the current AXI-Lite scaffold boundary.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/integration/test_cross_domain_interfaces.py",
+        "stub",
+        "Cross-domain integration tests name the current safe-idle CPU fallback.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/integration/test_opensbi_mpxy_to_pmc_rpmi.py",
+        "stub-out",
+        "PMC RPMI integration tests explicitly block on the remaining SPMI binding work order.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/power/test_pmc_rpmi_envelope.py",
+        "placeholder",
+        "PMC RPMI test payload uses a non-release rail id marker.",
+    ),
 )
 
 

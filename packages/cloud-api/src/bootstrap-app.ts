@@ -16,8 +16,8 @@ import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
 import { mountRoutes } from "./_router.generated";
-
 import { authMiddleware } from "./middleware/auth";
 import { embeddedStewardHandler } from "./steward/embedded";
 
@@ -100,6 +100,23 @@ export function createApp(): Hono<AppEnv> {
       health: "/api/health",
       openapi: "/api/openapi.json",
     });
+  });
+
+  app.get("/api/webhooks/blooio/:orgId/bluebubbles", (c) =>
+    c.json({ status: "ok", service: "bluebubbles-blooio-bridge" }),
+  );
+  app.post("/api/webhooks/blooio/:orgId/bluebubbles", (c) =>
+    handleBlueBubblesWebhook(c),
+  );
+  app.post("/api/webhooks/blooio/:orgId", async (c, next) => {
+    const bridge =
+      c.req.header("x-eliza-bridge") ??
+      c.req.query("bridge") ??
+      new URL(c.req.url).searchParams.get("bridge");
+    if (bridge === "bluebubbles") {
+      return handleBlueBubblesWebhook(c);
+    }
+    await next();
   });
 
   mountRoutes(app);

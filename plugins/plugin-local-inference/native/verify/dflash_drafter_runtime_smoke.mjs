@@ -30,13 +30,13 @@ const MODELS_ROOT = path.join(
 );
 const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-0_8b.bundle");
 const DEFAULT_TARGET = firstExisting(
-  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-64k.gguf"),
-  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-32k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-256k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-128k.gguf"),
 );
 const DEFAULT_DRAFTER = firstExisting(
   path.join(DEFAULT_BUNDLE, "dflash", "drafter-0_8b.gguf"),
 );
-const DFLASH_TIERS = new Set(["2b", "4b", "9b", "27b", "27b-256k"]);
+const DFLASH_TIERS = new Set(["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]);
 const TOKENIZER_COMPATIBILITY_KEYS = [
   "tokenizer.ggml.model",
   "tokenizer.ggml.pre",
@@ -136,6 +136,20 @@ function parseArgs(argv) {
       process.env.ELIZA_DFLASH_BENCH_TOKENS || "128",
       10,
     ),
+    benchContext: Number.parseInt(
+      process.env.ELIZA_DFLASH_BENCH_CONTEXT || "2048",
+      10,
+    ),
+    benchPrompt:
+      process.env.ELIZA_DFLASH_BENCH_PROMPT ||
+      "Write a short paragraph about speculative decoding.",
+    benchDraftMin: process.env.ELIZA_DFLASH_BENCH_DRAFT_MIN || "2",
+    benchDraftMax: process.env.ELIZA_DFLASH_BENCH_DRAFT_MAX || "6",
+    benchDraftPMin: process.env.ELIZA_DFLASH_BENCH_DRAFT_P_MIN || "0.1",
+    benchTimeoutMs: Number.parseInt(
+      process.env.ELIZA_DFLASH_BENCH_TIMEOUT_MS || "600000",
+      10,
+    ),
     benchReport:
       process.env.ELIZA_DFLASH_BENCH_REPORT ||
       timestampedSpeculativeReportPath(__dirname, "dflash"),
@@ -168,6 +182,14 @@ function parseArgs(argv) {
     else if (arg === "--bench") args.bench = true;
     else if (arg === "--bench-tokens")
       args.benchTokens = Number.parseInt(next(), 10);
+    else if (arg === "--bench-context")
+      args.benchContext = Number.parseInt(next(), 10);
+    else if (arg === "--bench-prompt") args.benchPrompt = next();
+    else if (arg === "--bench-draft-n-min") args.benchDraftMin = next();
+    else if (arg === "--bench-draft-n-max") args.benchDraftMax = next();
+    else if (arg === "--bench-draft-p-min") args.benchDraftPMin = next();
+    else if (arg === "--bench-timeout-ms")
+      args.benchTimeoutMs = Number.parseInt(next(), 10);
     else if (arg === "--bench-report") args.benchReport = next();
     else if (arg === "--help" || arg === "-h") {
       console.log(
@@ -194,6 +216,12 @@ function parseArgs(argv) {
           "  --bench                        Also run a short generation with vs without -md and",
           "                                 record tok/s + DFlash acceptance rate to a speedup report",
           "  --bench-tokens <N>             Tokens to generate per bench run (default: 128)",
+          "  --bench-context <N>            Context for bench runs (default: 2048)",
+          "  --bench-prompt <text>          Prompt for bench runs (default: speculative decoding paragraph)",
+          "  --bench-draft-n-min <N>        Draft min for with-drafter bench pass (default: 2)",
+          "  --bench-draft-n-max <N>        Draft max for with-drafter bench pass (default: 6)",
+          "  --bench-draft-p-min <N>        Draft probability floor for with-drafter bench pass (default: 0.1)",
+          "  --bench-timeout-ms <N>         Timeout per bench pass (default: 600000)",
           "  --bench-report <path>          Speedup report JSON path (default: packages/inference/reports/dflash-bench/)",
         ].join("\n"),
       );
@@ -204,6 +232,9 @@ function parseArgs(argv) {
   }
 
   args.tier = args.tier || inferTier(args.targetModel, args.drafterModel) || "0_8b";
+  if (!args.specType && DFLASH_TIERS.has(args.tier)) {
+    args.specType = "dflash";
+  }
   return args;
 }
 
@@ -1163,34 +1194,45 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
     };
   }
   const n = String(options.benchTokens > 0 ? options.benchTokens : 128);
+  const context = String(options.benchContext > 0 ? options.benchContext : 2048);
+  const draftMin = withDrafter ? String(options.benchDraftMin ?? "2") : "0";
+  const draftMax = withDrafter ? String(options.benchDraftMax ?? "6") : "0";
+  const draftPMin = withDrafter ? String(options.benchDraftPMin ?? "0.1") : "1";
   const args = [
     "-m",
     targetModel,
     "-md",
     drafterModel,
     "-p",
-    "Write a short paragraph about speculative decoding.",
+    options.benchPrompt,
     "-n",
     n,
     "-c",
-    "2048",
+    context,
     "-ngl",
     options.ngl,
     "-ngld",
     options.ngld,
   ];
-  pushDraftContextFlag(args, skippedCliFlags, options.cliFeatures, "2048");
+  pushDraftContextFlag(args, skippedCliFlags, options.cliFeatures, context);
   pushDraftMinFlag(
     args,
     skippedCliFlags,
     options.cliFeatures,
-    withDrafter ? "2" : "0",
+    draftMin,
   );
   pushDraftMaxFlag(
     args,
     skippedCliFlags,
     options.cliFeatures,
-    withDrafter ? "6" : "0",
+    draftMax,
+  );
+  pushOptionalFlag(
+    args,
+    skippedCliFlags,
+    options.cliFeatures,
+    "--spec-draft-p-min",
+    draftPMin,
   );
   if (options.deviceNone) {
     pushOptionalFlag(
@@ -1230,14 +1272,29 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
   const result = spawnSync(binary, args, {
     encoding: "utf8",
     env: { ...process.env },
+    timeout: Number.isFinite(options.benchTimeoutMs)
+      ? Math.max(1, Number(options.benchTimeoutMs))
+      : 600000,
+    killSignal: "SIGKILL",
     maxBuffer: 32 * 1024 * 1024,
   });
   const wallMs = Date.now() - started;
   const output = `${result.stdout || ""}${result.stderr || ""}`;
   const parsed = parseBenchOutput(output);
   const draftingActive = (parsed.drafted ?? 0) > 0;
+  const processFailure =
+    result.error?.code === "ETIMEDOUT"
+      ? `bench process timed out after ${options.benchTimeoutMs}ms`
+      : result.error
+        ? `bench process error: ${result.error.message}`
+        : result.signal
+          ? `bench process terminated by ${result.signal}`
+          : result.status !== 0
+            ? `bench process exited ${result.status}`
+            : null;
   const dflashFailure =
-    withDrafter &&
+    processFailure ??
+    (withDrafter &&
     !draftingActive &&
     (parsed.vocabIncompatibleWarning ||
       options.tokenizerCompatibility?.compatible === false)
@@ -1245,7 +1302,7 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
         "target and DFlash drafter tokenizers are incompatible; runtime produced zero drafted tokens"
       : withDrafter && !draftingActive
         ? "runtime produced zero drafted tokens"
-        : null;
+        : null);
   return {
     available: true,
     binary,
@@ -1253,7 +1310,18 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
     args,
     skippedCliFlags,
     status: result.status,
+    signal: result.signal,
+    error: result.error
+      ? {
+          name: result.error.name,
+          message: result.error.message,
+          code: result.error.code,
+        }
+      : null,
     wallMs,
+    contextTokens: Number(context),
+    draftMin: Number(draftMin),
+    draftMax: Number(draftMax),
     tokensRequested: Number(n),
     ...parsed,
     draftingActive,
@@ -1293,6 +1361,13 @@ function blockedBenchPass(binary, options, withDrafter, reason) {
     tokenizerCompatible: false,
     outputTail: "",
   };
+}
+
+function requiresTrueDflashDraftingForShape({
+  upstreamShapeOk,
+  plainArShapeOk,
+}) {
+  return Boolean(upstreamShapeOk || plainArShapeOk);
 }
 
 /**
@@ -1493,10 +1568,30 @@ function makeTokenizerSelfTestSummary(overrides = {}) {
 }
 
 function runSelfTest() {
-  assert.equal(DFLASH_TIERS.has("0_8b"), false);
-  for (const tier of ["2b", "4b", "9b", "27b", "27b-256k"]) {
+  for (const tier of ["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]) {
     assert.equal(DFLASH_TIERS.has(tier), true);
   }
+  assert.equal(
+    requiresTrueDflashDraftingForShape({
+      upstreamShapeOk: false,
+      plainArShapeOk: true,
+    }),
+    true,
+  );
+  assert.equal(
+    requiresTrueDflashDraftingForShape({
+      upstreamShapeOk: true,
+      plainArShapeOk: false,
+    }),
+    true,
+  );
+  assert.equal(
+    requiresTrueDflashDraftingForShape({
+      upstreamShapeOk: false,
+      plainArShapeOk: false,
+    }),
+    false,
+  );
 
   assert.equal(
     compareTokenizers(
@@ -1768,12 +1863,17 @@ function main() {
     (tensorNames.has("token_embd.weight") ||
       (tensorNames.has("blk.0.attn_q.weight") &&
         tensorNames.has("blk.0.attn_k.weight")));
-  const requiresTrueDflashDrafting = upstreamShapeOk;
+  const requiresTrueDflashDrafting = requiresTrueDflashDraftingForShape({
+    upstreamShapeOk,
+    plainArShapeOk,
+  });
   report.runtimePolicy = {
     requiresTrueDflashDrafting,
     reason: requiresTrueDflashDrafting
-      ? "upstream dflash-draft drafter"
-      : "plain autoregressive drafter smoke",
+      ? isUpstreamDflashArch
+        ? "upstream dflash-draft drafter"
+        : "plain autoregressive drafter smoke"
+      : "drafter metadata did not match a loadable speculative shape",
   };
 
   report.checks = {

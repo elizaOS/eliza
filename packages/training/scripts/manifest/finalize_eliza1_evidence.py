@@ -46,6 +46,7 @@ try:
     from scripts.manifest.eliza1_platform_plan import (
         REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
         _target_backend,
+        required_files_for_tier,
     )
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_licenses import verify_bundle_licenses, write_bundle_licenses  # type: ignore
@@ -53,6 +54,7 @@ except ImportError:  # pragma: no cover - script execution path
     from eliza1_platform_plan import (  # type: ignore
         REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
         _target_backend,
+        required_files_for_tier,
     )
 
 # How an operator produces each kind of evidence. Keyed by backend.
@@ -761,6 +763,8 @@ def _manifest_weight_paths(bundle_dir: Path) -> list[str]:
         "embedding",
         "dflash",
         "wakeword",
+        "imagegen",
+        "cache",
     }
     out: set[str] = set()
     for entries in files.values():
@@ -773,6 +777,60 @@ def _manifest_weight_paths(bundle_dir: Path) -> list[str]:
             if isinstance(rel, str) and rel.split("/", 1)[0] in weight_dirs:
                 out.add(rel)
     return sorted(out)
+
+
+_WEIGHT_PAYLOAD_DIRS: Final[frozenset[str]] = frozenset(
+    {
+        "text",
+        "tts",
+        "asr",
+        "vad",
+        "vision",
+        "embedding",
+        "dflash",
+        "wakeword",
+        "imagegen",
+        "cache",
+    }
+)
+
+
+def _required_uploaded_paths(tier: str) -> set[str]:
+    return {
+        f"bundles/{tier}/eliza-1.manifest.json",
+        *(f"bundles/{tier}/{rel}" for rel in required_files_for_tier(tier)),
+    }
+
+
+def _platform_plan_errors(bundle_dir: Path, tier: str) -> list[str]:
+    manifest = _read_json(bundle_dir / "eliza-1.manifest.json") or {}
+    files = manifest.get("files")
+    manifest_paths: set[str] = set()
+    if isinstance(files, dict):
+        for entries in files.values():
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+                    manifest_paths.add(entry["path"])
+
+    missing_files: list[str] = []
+    missing_manifest_payloads: list[str] = []
+    for rel in required_files_for_tier(tier):
+        if not (bundle_dir / rel).is_file():
+            missing_files.append(rel)
+        if rel.split("/", 1)[0] in _WEIGHT_PAYLOAD_DIRS and rel not in manifest_paths:
+            missing_manifest_payloads.append(rel)
+
+    errors: list[str] = []
+    if missing_files:
+        errors.append(f"platform plan missing required file(s): {missing_files}")
+    if missing_manifest_payloads:
+        errors.append(
+            "manifest missing platform-plan payload path(s): "
+            f"{sorted(missing_manifest_payloads)}"
+        )
+    return errors
 
 
 def _has_upload_evidence(evidence: Mapping[str, Any], tier: str) -> bool:
@@ -791,11 +849,11 @@ def _has_upload_evidence(evidence: Mapping[str, Any], tier: str) -> bool:
     if not isinstance(upload.get("url"), str) or not upload.get("url"):
         return False
     uploaded_paths = upload.get("uploadedPaths")
-    return (
-        isinstance(uploaded_paths, list)
-        and all(isinstance(p, str) for p in uploaded_paths)
-        and any(p.startswith(f"bundles/{tier}/") for p in uploaded_paths)
-    )
+    if not isinstance(uploaded_paths, list) or not all(
+        isinstance(p, str) for p in uploaded_paths
+    ):
+        return False
+    return not (_required_uploaded_paths(tier) - set(uploaded_paths))
 
 
 def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
@@ -827,6 +885,8 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
         (bundle_dir / "text").iterdir()
     )
     manifest_ok, manifest_errors = _manifest_validation(bundle_dir, tier)
+    platform_plan_errors = _platform_plan_errors(bundle_dir, tier)
+    platform_plan_ok = not platform_plan_errors
     hashes_ok = _hashes_ok(bundle_dir)
     evals_ok, eval_failures = _evals_pass(bundle_dir)
     required_targets = REQUIRED_PLATFORM_EVIDENCE_BY_TIER[tier]
@@ -889,7 +949,12 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
             "sizeFirstRepoIds",
         )
     )
-    publish_eligible = bool((base_v1_ok or full_final_ok) and manifest_ok and hashes_ok)
+    publish_eligible = bool(
+        (base_v1_ok or full_final_ok)
+        and manifest_ok
+        and platform_plan_ok
+        and hashes_ok
+    )
     default_eligible = publish_eligible
 
     # 6. Blocking reasons — accurate, live list.
@@ -904,6 +969,11 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
         blocking.append(
             "manifest validation failed for staged bytes: "
             + "; ".join(manifest_errors[:6])
+        )
+    if not platform_plan_ok:
+        blocking.append(
+            "platform release plan failed for staged bytes: "
+            + "; ".join(platform_plan_errors[:6])
         )
     if not final["licenses"]:
         blocking.append("licenses/ set incomplete: " + "; ".join(license_problems))
@@ -952,6 +1022,10 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
     evidence["manifestValidation"] = {
         "ok": manifest_ok,
         "errors": manifest_errors,
+    }
+    evidence["platformPlanValidation"] = {
+        "ok": platform_plan_ok,
+        "errors": platform_plan_errors,
     }
     # licenseFiles must equal what the orchestrator's _license_files_for_layout
     # expects: the always-required four + a component license only when that

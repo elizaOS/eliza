@@ -170,7 +170,7 @@ async function resolveGroqPlugin(): Promise<Plugin | null> {
     );
     return null;
   }
-  const plugin = mod?.groqPlugin ?? mod?.default;
+  const plugin = mod.groqPlugin ?? mod.default;
   if (!plugin) {
     console.warn(
       "[three-agent-dialogue] @elizaos/plugin-groq did not export a plugin. Using synthetic fallback.",
@@ -581,7 +581,7 @@ export async function runDialogue(options: {
         asrText =
           typeof asrResult === "string"
             ? asrResult.trim()
-            : String(asrResult ?? "").trim();
+            : String(asrResult).trim();
         console.log(`[three-agent-dialogue]   ASR: "${asrText}"`);
       } catch (err) {
         console.warn(
@@ -799,7 +799,7 @@ if (
   ((import.meta as { main?: boolean }).main === true ||
     (typeof process !== "undefined" &&
       process.argv[1] &&
-      import.meta.url?.endsWith(process.argv[1].replace(/\\/g, "/"))))
+      import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))))
 ) {
   main().catch((err) => {
     console.error("[three-agent-dialogue] Fatal error:", err);

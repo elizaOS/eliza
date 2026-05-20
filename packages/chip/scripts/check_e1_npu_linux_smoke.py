@@ -25,8 +25,8 @@ LINUX_EVIDENCE = ROOT / "docs/evidence/linux/eliza_e1_npu_ml_smoke.log"
 CAPTURE_COMMANDS = {
     "buildroot": "make BR2_EXTERNAL=$PWD/sw/buildroot eliza_e1_defconfig && make BR2_EXTERNAL=$PWD/sw/buildroot",
     "kernel_import": "sw/linux/scripts/import-linux-bsp.sh /path/to/linux",
-    "target_smoke": "ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu",
-    "capture_wrapper": "E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu' sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke",
+    "target_smoke": "ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu",
+    "capture_wrapper": "E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke",
 }
 
 
@@ -80,7 +80,10 @@ def build_report() -> dict[str, Any]:
         require(problems, path.is_file(), f"missing required source: {rel(path)}")
 
     require(problems, "e1-npu-ml-smoke" in smoke, "smoke source lacks command identity")
+    require(problems, "--workload" in smoke, "smoke source lacks workload CLI option")
+    require(problems, "--require-npu" in smoke, "smoke source lacks require-npu CLI option")
     require(problems, "E1_NPU_IOC_RUN_GEMM_S8" in smoke, "smoke does not use RUN_GEMM_S8")
+    require(problems, "E1_NPU_OP_RELU4_S8" in smoke, "smoke does not use RELU4_S8")
     require(
         problems, "E1_NPU_IOC_GET_CONTRACT" in smoke, "smoke does not validate the runtime contract"
     )
@@ -96,6 +99,8 @@ def build_report() -> dict[str, Any]:
         "smoke lacks input/output hash markers",
     )
     require(problems, "E1_NPU_IOC_RUN_GEMM_S8" in uapi, "UAPI lacks RUN_GEMM_S8 ioctl")
+    require(problems, "E1_NPU_OP_RELU4_S8" in uapi, "UAPI lacks RELU4_S8 opcode")
+    require(problems, "E1_NPU_OP_VRELU_S8" in uapi, "UAPI lacks VRELU_S8 opcode")
     require(problems, "E1_NPU_IOC_GET_CONTRACT" in uapi, "UAPI lacks GET_CONTRACT ioctl")
     require(problems, "E1_NPU_IOC_SUBMIT_DESCRIPTORS" in uapi, "UAPI lacks descriptor submit ioctl")
     require(
@@ -152,6 +157,8 @@ def build_report() -> dict[str, Any]:
             "eliza-evidence: target=linux artifact=e1_npu_ml_smoke",
             "COMMAND=",
             "/usr/bin/e1-npu-ml-smoke",
+            "--workload gemm_s8_int8_2x2x3",
+            "--require-npu",
             "e1-npu-ml-smoke: PASS",
             "workload=gemm_s8_int8_2x2x3",
             "contract_version=1",

@@ -15,6 +15,7 @@ export * from "./character-utils";
 export * from "./connection";
 export * from "./connectors";
 export * from "./connectors/account-manager";
+export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
 export {
 	CANONICAL_SECRET_KEYS,
@@ -62,6 +63,7 @@ export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
+export * from "./services/runtime-capability-service";
 export * from "./services/tool-policy";
 export * from "./services/trajectories";
 export * from "./settings";

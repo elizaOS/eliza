@@ -1,0 +1,1305 @@
+schema: eliza.npu_accelerator_2026.source_inventory.v1
+captured_date: "2026-05-19"
+scope:
+  - mobile NPU microarchitecture
+  - tile / systolic / dataflow accelerator architecture
+  - open-source NPU/GPU/tensor RTL and generators
+  - quantization and low-precision (INT4/INT2/FP8/MX)
+  - sparsity (N:M, unstructured, dynamic activation)
+  - compute-in-memory and processing-in-memory
+  - attention and transformer accelerators
+  - on-device LLM serving (KV cache, speculative decoding, paged attention)
+  - dataflow taxonomies and hardware/compiler scheduling
+  - mobile multimodal (speech, SSM, vision)
+claim_boundary: >
+  Public papers, vendor briefs, open project pages, and standards. Vendor
+  performance, power, and process claims are marked as such and never treated
+  as silicon proof. None of these sources establish E1 implementation status;
+  phase gates remain governed by docs/spec-db/npu-2028-roadmap.yaml.
+
+sources:
+
+  # ---------------------------------------------------------------------------
+  # 1) Mobile NPU microarchitecture
+  # ---------------------------------------------------------------------------
+  - id: qualcomm_snapdragon_8_elite_gen5_brief
+    title: "Snapdragon 8 Elite Gen 5 Product Brief"
+    url: "https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/Snapdragon-8-Elite-Gen-5-product-brief.pdf"
+    authors_or_vendor: "Qualcomm Technologies"
+    year: 2025
+    venue: vendor_product_brief
+    topic_tags: [mobile_npu, hexagon_npu6, int2, fp8, mixed_precision]
+    relevance: |
+      Hexagon NPU6 fused 12 scalar + 8 vector + 1 accelerator architecture
+      with native INT2 and FP8 support. Confirms phone-class flagships have
+      already shipped the precision matrix targeted by
+      docs/spec-db/npu-2028-target.yaml (int2, int4, int8, fp8, fp16) and
+      explicitly cites INT2 as enabling significantly larger on-device
+      models. Anchor for E1 precision-matrix gates at L2_SINGLE_TILE.
+
+  - id: qualcomm_snapdragon_8_elite_gen5_press
+    title: "Snapdragon 8 Elite Gen 5: World's Fastest Mobile SoC"
+    url: "https://www.qualcomm.com/news/releases/2025/09/snapdragon-8-elite-gen-5--the-world-s-fastest-mobile-system-on-a"
+    authors_or_vendor: "Qualcomm Technologies"
+    year: 2025
+    venue: vendor_press_release
+    topic_tags: [mobile_npu, hexagon, agentic_on_device_ai]
+    relevance: |
+      Press headline numbers (37% faster NPU, 16% better NPU perf/W,
+      generation-over-generation). Used as a directional 2025 reference
+      point; relevance vs E1 is purely competitive positioning and is
+      explicitly marked vendor-claim only.
+
+  - id: mediatek_dimensity_9500_product
+    title: "MediaTek Dimensity 9500 product page"
+    url: "https://www.mediatek.com/products/smartphones/mediatek-dimensity-9500"
+    authors_or_vendor: "MediaTek"
+    year: 2025
+    venue: vendor_product_page
+    topic_tags: [mobile_npu, npu_990, cim, bitnet, generative_ai_engine_2]
+    relevance: |
+      First mobile NPU shipping with claimed compute-in-memory NPU
+      ("Super Efficient NPU"), Generative AI Engine 2.0, native BitNet
+      1-bit processing, and 128K context support. Direct evidence that the
+      INT2/BitNet and CIM angles in npu-2028-target.yaml are not just
+      research but in-market 2025 baselines.
+
+  - id: mediatek_dimensity_9500_press
+    title: "MediaTek Dimensity 9500 launch press release"
+    url: "https://www.mediatek.com/press-room/mediatek-dimensity-9500-unleashes-best-in-class-performance-ai-experiences-and-power-efficiency-for-the-next-generation-of-mobile-devices"
+    authors_or_vendor: "MediaTek"
+    year: 2025
+    venue: vendor_press_release
+    topic_tags: [mobile_npu, npu_990, cim, on_device_image_generation]
+    relevance: |
+      Quantified claims: doubled compute throughput vs prior gen,
+      "industry-first" CIM NPU for always-on AI, on-device 4K image
+      generation. Marketing-level claims; useful only as competitive
+      anchor, not as architectural proof.
+
+  - id: samsung_exynos_2600_page
+    title: "Samsung Exynos 2600 mobile processor"
+    url: "https://semiconductor.samsung.com/processor/mobile-processor/exynos-2600/"
+    authors_or_vendor: "Samsung Semiconductor"
+    year: 2025
+    venue: vendor_product_page
+    topic_tags: [mobile_npu, generative_ai, executorch]
+    relevance: |
+      Samsung's 2025 mobile NPU. Claims 113% higher generative-AI perf vs
+      predecessor and explicit ExecuTorch deployment path. Confirms that
+      a viable Android NPU stack now includes ExecuTorch alongside NNAPI
+      successor runtimes, which is relevant to L4_ANDROID_HAL_DELEGATE.
+
+  - id: apple_a19_pro_overview
+    title: "Apple A19 / A19 Pro overview"
+    url: "https://en.wikipedia.org/wiki/Apple_A19"
+    authors_or_vendor: "Wikipedia (consolidating Apple press disclosures)"
+    year: 2025
+    venue: secondary_summary
+    topic_tags: [mobile_npu, neural_engine, gpu_neural_accelerators]
+    relevance: |
+      Records the public claims around the 16-core Neural Engine plus
+      per-GPU-core "Neural Accelerators". Confirms that the dominant
+      mobile architecture now has both a dedicated NPU and a GPU-integrated
+      tensor core, which is the topology choice E1 must answer.
+
+  - id: apple_a19_pro_notebookcheck
+    title: "Apple A19 Pro: benchmarks and specs"
+    url: "https://www.notebookcheck.net/Apple-A19-Pro-Processor-Benchmarks-and-Specs.1126974.0.html"
+    authors_or_vendor: "NotebookCheck"
+    year: 2025
+    venue: secondary_review
+    topic_tags: [mobile_npu, neural_engine, lpddr5x_bandwidth]
+    relevance: |
+      Memory bandwidth figure (LPDDR5X 9600 MT/s, 76.8 GB/s) is the
+      sustained-bandwidth ceiling for the 2025 Apple AP. E1's 180 GB/s
+      target (external_memory_bandwidth_gbps_min) is 2.3x this; only used
+      to scale the bandwidth target against today's flagship.
+
+  - id: qualcomm_x2_elite_semiaccurate
+    title: "A Deep Dive Into The Qualcomm Snapdragon X2 Elite SoC Details"
+    url: "https://semiaccurate.com/2025/11/27/a-deep-dive-into-the-qualcomm-snapdragon-x2-elite-soc-details/"
+    authors_or_vendor: "SemiAccurate"
+    year: 2025
+    venue: technical_press
+    topic_tags: [laptop_npu, hexagon, lpddr5x, memory_bandwidth]
+    relevance: |
+      Laptop-class Hexagon NPU details (80 TOPS class, 152 GB/s LPDDR5X
+      bandwidth) shows the achievable phone-adjacent NPU envelope on a
+      2025 process node. Anchors the burst-vs-sustained discussion in
+      `02_analysis/mobile_npu_landscape.md`.
+
+  - id: arm_ethos_u55_resiliency
+    title: "Characterizing Soft-Error Resiliency in Arm's Ethos-U55 Embedded Machine Learning Accelerator"
+    url: "https://arxiv.org/abs/2404.09317"
+    arxiv_id: "2404.09317"
+    authors_or_vendor: "various academic, Arm-licensed RTL"
+    year: 2024
+    venue: arxiv
+    topic_tags: [embedded_npu, ethos_u55, resiliency, asil_d]
+    relevance: |
+      RTL-level fault-injection study of an industrial embedded NPU. Sets
+      the bar for L3 fault-isolation evidence in E1: ECC/parity, command
+      timeout, per-context fault isolation listed in
+      npu-2028-target.yaml under reliability.
+
+  - id: ethos_u_energy_eval
+    title: "Evaluating the Energy Efficiency of NPU-Accelerated ML Inference on Embedded Microcontrollers"
+    url: "https://arxiv.org/abs/2509.17533"
+    arxiv_id: "2509.17533"
+    authors_or_vendor: "various academic"
+    year: 2025
+    venue: arxiv
+    topic_tags: [embedded_npu, ethos_u55, energy_efficiency, mcu]
+    relevance: |
+      Measured latency improvement 7x..125x and per-inference energy
+      reduction up to 143x using ARM Cortex-M55 + Ethos-U55 vs CPU-only.
+      Useful baseline for the always-on micro-NPU target
+      (always_on_micro_npu_power_mw_max=20 in npu-2028-target.yaml).
+
+  - id: google_edge_tpu_paper
+    title: "Deep Learning on Edge TPUs"
+    url: "https://arxiv.org/abs/2108.13732"
+    arxiv_id: "2108.13732"
+    authors_or_vendor: "Andreas Kist"
+    year: 2021
+    venue: arxiv
+    topic_tags: [edge_tpu, mobile_inference, quantization_constraints]
+    relevance: |
+      Production lessons on edge-TPU operator coverage and quantization
+      limits. Reinforces unsupported_operator_percent_max=1 and
+      cpu_fallback_percent_max=1 targets in npu-2028-target.yaml.
+
+  # ---------------------------------------------------------------------------
+  # 2) Tile / systolic / dataflow architectures
+  # ---------------------------------------------------------------------------
+  - id: tpu_v4_paper
+    title: "TPU v4: An Optically Reconfigurable Supercomputer for Machine Learning with Hardware Support for Embeddings"
+    url: "https://arxiv.org/abs/2304.01433"
+    arxiv_id: "2304.01433"
+    authors_or_vendor: "Norm Jouppi et al., Google"
+    year: 2023
+    venue: ISCA_2023
+    topic_tags: [tpu, systolic, sparse_embeddings, optical_interconnect]
+    relevance: |
+      Reference systolic AI accelerator at scale. SparseCore embedding
+      acceleration informs the sparsity-decode engine option in
+      microarchitecture_targets.engines. Carried over from the prior
+      packet for completeness.
+
+  - id: google_ironwood_blog
+    title: "Ironwood: The first Google TPU for the age of inference"
+    url: "https://blog.google/innovation-and-ai/infrastructure-and-cloud/google-cloud/ironwood-tpu-age-of-inference/"
+    authors_or_vendor: "Google"
+    year: 2025
+    venue: vendor_blog
+    topic_tags: [tpu_v7, ironwood, hbm3e, sparsecore, inference_perf_per_w]
+    relevance: |
+      Vendor numbers: 192 GB HBM3e, 7.4 TB/s HBM bandwidth, 1.2 TB/s ICI,
+      2x perf/W vs Trillium. Used as a directional 2025 perf/W reference
+      point only.
+
+  - id: ironwood_servethehome_hotchips2025
+    title: "Google Ironwood TPU Swings for Reasoning Model Leadership at Hot Chips 2025"
+    url: "https://www.servethehome.com/google-ironwood-tpu-swings-for-reasoning-model-leadership-at-hot-chips-2025/"
+    authors_or_vendor: "ServeTheHome (covering HotChips 2025)"
+    year: 2025
+    venue: technical_press_hotchips
+    topic_tags: [tpu_v7, ironwood, chiplet, dual_tensorcore, sparsecore]
+    relevance: |
+      Architectural detail: two TensorCores + four SparseCores per chip
+      configured as two chiplets each with 96 GB HBM3e, 4614 TFLOPs per
+      chip. Justifies the multi-tile + sparse-core split in the
+      tiled-NPU section of `02_analysis/dataflow_and_scheduling.md`.
+
+  - id: tpu_v7_introl_overview
+    title: "Google TPU Architecture: 7 Generations Explained"
+    url: "https://introl.com/blog/google-tpu-architecture-complete-guide-7-generations"
+    authors_or_vendor: "Introl (industry blog)"
+    year: 2025
+    venue: secondary_blog
+    topic_tags: [tpu_history, generational_summary]
+    relevance: |
+      Cross-generation TPU summary used only as orientation; substantive
+      claims must defer to Google or arXiv primary sources.
+
+  - id: nvidia_blackwell_architecture
+    title: "NVIDIA Blackwell Architecture"
+    url: "https://www.nvidia.com/en-us/data-center/technologies/blackwell-architecture/"
+    authors_or_vendor: "NVIDIA"
+    year: 2024
+    venue: vendor_page
+    topic_tags: [blackwell, transformer_engine, fp4, mxfp4, mxfp6]
+    relevance: |
+      Second-generation Transformer Engine with MXFP4 and MXFP6. Confirms
+      that the highest-end datacenter parts now align with OCP MX format
+      direction. Direct support for E1 picking MXFP8/MXFP6/MXFP4 over
+      ad-hoc FP8 in `02_analysis/quantization_int4_int2_fp8.md`.
+
+  - id: blackwell_wikipedia
+    title: "Blackwell (microarchitecture)"
+    url: "https://en.wikipedia.org/wiki/Blackwell_(microarchitecture)"
+    authors_or_vendor: "Wikipedia (Blackwell)"
+    year: 2024
+    venue: secondary_summary
+    topic_tags: [blackwell, fp4_tensor_core, micro_tensor_scaling]
+    relevance: |
+      Records FP4 Tensor Core peak (20 PFLOPS B200, 18 PFLOPS B100) and
+      MX/micro-tensor-scaling. Used for the FP4/FP6 narrative; specific
+      vendor numbers explicitly flagged as such.
+
+  - id: trainium2_aws_docs
+    title: "Trainium2 Architecture"
+    url: "https://awsdocs-neuron.readthedocs-hosted.com/en/latest/about-neuron/arch/neuron-hardware/trainium2.html"
+    authors_or_vendor: "Amazon Web Services"
+    year: 2024
+    venue: vendor_docs
+    topic_tags: [trainium2, neuroncore_v3, sparse_fp8, hbm]
+    relevance: |
+      Eight NeuronCore-V3 cores per chip; 1.3 PFLOPS dense FP8, 5.2 PFLOPS
+      sparse FP8, 2.9 TB/s HBM. Confirms 4x sparse-vs-dense ratio for
+      FP8/INT4 sparse tiers, which matches E1's target ratio
+      (160 dense INT8 -> 512 sparse INT4 ~ 3.2x). Justifies the 2:4 sparse
+      tier sizing.
+
+  - id: trainium2_semianalysis
+    title: "Amazon's AI Self Sufficiency | Trainium2 Architecture and Networking"
+    url: "https://semianalysis.com/2024/12/03/amazons-ai-self-sufficiency-trainium2-architecture-networking/"
+    authors_or_vendor: "SemiAnalysis"
+    year: 2024
+    venue: technical_press
+    topic_tags: [trainium2, ultraserver, neuronlink]
+    relevance: |
+      Independent architectural commentary. Used to triangulate the
+      official AWS docs on UltraServer scale and HBM bandwidth.
+
+  - id: mtia_v2_meta_blog
+    title: "Our next generation Meta Training and Inference Accelerator (MTIA v2)"
+    url: "https://ai.meta.com/blog/next-generation-meta-training-inference-accelerator-AI-MTIA/"
+    authors_or_vendor: "Meta AI"
+    year: 2024
+    venue: vendor_blog
+    topic_tags: [mtia_v2, pe_grid, sparse_compute, recommendation]
+    relevance: |
+      8x8 PE grid; 3.5x dense and 7x sparse compute uplift vs MTIA v1;
+      90 W TDP at 1.35 GHz; doubled SRAM capacity and tripled SRAM
+      bandwidth to 2.7 TB/s. Validates the SRAM-bandwidth-as-first-class
+      design pressure assumed in npu-2028-target.local_sram_bandwidth_tbps_min.
+
+  - id: mtia_v2_isca25
+    title: "Meta's Second Generation AI Chip: Model-Chip Co-Design and Productionization Experiences"
+    url: "https://aisystemcodesign.github.io/papers/MTIA-ISCA25.pdf"
+    authors_or_vendor: "Meta engineering team"
+    year: 2025
+    venue: ISCA_2025
+    topic_tags: [mtia_v2, model_chip_co_design, productionization, ranking]
+    relevance: |
+      Peer-reviewed ISCA paper documenting Meta MTIA v2 design tradeoffs:
+      memory hierarchy, on-chip SRAM, ranking workload co-design. Cited
+      to justify "model-chip co-design" framing in
+      `03_implementation/npu_e1_recommendations.md`.
+
+  - id: tenstorrent_blackhole_microbench
+    title: "Dissecting the Tenstorrent Blackhole Architecture via Microbenchmarking"
+    url: "https://asplos.dev/wordpress/wp-content/uploads/2025/09/TT_bench-1.pdf"
+    authors_or_vendor: "Independent academic"
+    year: 2025
+    venue: asplos_workshop
+    topic_tags: [tenstorrent, blackhole, tensix, risc_v, microbench]
+    relevance: |
+      Independent microbenchmarking of Blackhole's 140 Tensix cores, each
+      with 5 RISC-V baby cores. Validates the RISC-V-driven dataflow tile
+      architecture as a viable, instrumentable design pattern. Cited in
+      `02_analysis/dataflow_and_scheduling.md`.
+
+  - id: tenstorrent_wormhole_press
+    title: "Tenstorrent launches new Wormhole high-performance AI chip using RISC-V architecture"
+    url: "https://www.design-reuse.com/news/202501820-tenstorrent-launches-new-wormhole-high-performance-ai-chip-using-risc-v-architecture/"
+    authors_or_vendor: "Tenstorrent (via Design&Reuse)"
+    year: 2025
+    venue: technical_press
+    topic_tags: [tenstorrent, wormhole, tensix, fp8]
+    relevance: |
+      Wormhole product card details: n150 single-chip 262 TFLOPS FP8,
+      160 W TDP, 72 Tensix cores. Used as a non-confidential anchor for
+      Tenstorrent architecture choices.
+
+  - id: cerebras_wse3_comparison_paper
+    title: "A Comparison of the Cerebras Wafer-Scale Integration Technology with Nvidia GPU-based Systems for Artificial Intelligence"
+    url: "https://arxiv.org/abs/2503.11698"
+    arxiv_id: "2503.11698"
+    authors_or_vendor: "various academic"
+    year: 2025
+    venue: arxiv
+    topic_tags: [cerebras_wse3, wafer_scale, on_chip_sram, perf_per_w]
+    relevance: |
+      Independent comparison of WSE-3 vs. H100/B200. Useful contrast for
+      arguing that for a phone NPU, the WSE approach is irrelevant but
+      its 21 PB/s on-chip SRAM bandwidth dramatizes why every modern
+      accelerator pours its area into local SRAM, not external memory.
+
+  - id: groq_tsp_isca20
+    title: "Think Fast: A Tensor Streaming Processor (TSP) for Accelerating Deep Learning Workloads"
+    url: "http://pkamath.com/publications/papers/tsp-isca20.pdf"
+    authors_or_vendor: "Dennis Abts et al., Groq"
+    year: 2020
+    venue: ISCA_2020
+    topic_tags: [groq, tsp, functionally_sliced, deterministic_dataflow]
+    relevance: |
+      Original Groq TSP architecture paper. Functionally-sliced
+      microarchitecture, deterministic compiler-scheduled dataflow,
+      producer-consumer streams. Direct evidence for compiler-led
+      static scheduling vs. dynamic descriptor scheduling; cited in
+      `02_analysis/dataflow_and_scheduling.md`.
+
+  - id: groq_tsp_atpesc
+    title: "Software-defined Tensor Streaming Multiprocessor for Large-scale ML"
+    url: "https://extremecomputingtraining.anl.gov/wp-content/uploads/sites/96/2022/11/ATPESC-2022-Track-1-Talk-4-Ling-Groq.pdf"
+    authors_or_vendor: "Groq / Argonne ATPESC"
+    year: 2022
+    venue: tutorial_atpesc
+    topic_tags: [groq, multi_chip, deterministic_compilation]
+    relevance: |
+      Multi-chip TSP scale-out details. Used as a contrast point for
+      static compilation vs the descriptor-ring dynamic dispatch the E1
+      uses today (docs/arch/npu-microarch.md).
+
+  # ---------------------------------------------------------------------------
+  # 3) Open-source NPU/GPU/tensor RTL and generators
+  # ---------------------------------------------------------------------------
+  - id: gemmini_paper
+    title: "Gemmini: Enabling Systematic Deep-Learning Architecture Evaluation via Full-Stack Integration"
+    url: "https://arxiv.org/abs/1911.09925"
+    arxiv_id: "1911.09925"
+    authors_or_vendor: "Hasan Genc et al., Berkeley ADEPT"
+    year: 2021
+    venue: DAC_2021
+    topic_tags: [gemmini, systolic_generator, chipyard, rocc]
+    relevance: |
+      The systolic-array generator selected by docs/arch/npu-microarch.md
+      as the wrapped tile for E1 v0. Defines the configurable dataflows,
+      scratchpad, and accumulator semantics the E1 wrapper depends on.
+
+  - id: gemmini_repo
+    title: "Gemmini: Berkeley's Spatial Array Generator (GitHub)"
+    url: "https://github.com/ucb-bar/gemmini"
+    authors_or_vendor: "UCB BAR"
+    year: 2026
+    venue: open_source_project
+    topic_tags: [gemmini, dnn_accelerator, configurable_dataflow]
+    relevance: |
+      Up-to-date source for parameter configurations, dataflows, and
+      software stack. The version the e1_npu_gemmini_wrapper.sv plan
+      depends on.
+
+  - id: gemmini_chipyard_docs
+    title: "Gemmini section, Chipyard documentation"
+    url: "https://chipyard.readthedocs.io/en/1.4.0/Generators/Gemmini.html"
+    authors_or_vendor: "Chipyard authors"
+    year: 2024
+    venue: open_source_docs
+    topic_tags: [gemmini, chipyard, integration]
+    relevance: |
+      Build-flow integration that E1's Chipyard pipeline already uses
+      (see packages/chip/scripts/bootstrap_chipyard.sh).
+
+  - id: nvdla
+    title: "NVIDIA Deep Learning Accelerator (NVDLA)"
+    url: "https://nvdla.org/"
+    authors_or_vendor: "NVIDIA"
+    year: 2018
+    venue: open_source_project
+    topic_tags: [nvdla, inference_accelerator, configurable]
+    relevance: |
+      Verilog + C-model + compiler + Linux driver reference architecture.
+      Used to inform the IRQ + descriptor + bus-fault semantics in
+      docs/arch/npu-microarch.md.
+
+  - id: vta_tvm
+    title: "VTA: Versatile Tensor Accelerator (Apache TVM)"
+    url: "https://github.com/apache/tvm-vta"
+    authors_or_vendor: "Apache TVM"
+    year: 2024
+    venue: open_source_project
+    topic_tags: [vta, tvm, two_level_isa, jit]
+    relevance: |
+      Open hardware-software stack with a two-level ISA and JIT compiler.
+      Reference for how to expose tile-level instructions to a tensor
+      compiler without committing the RTL to a specific operator set.
+
+  - id: vta_blueprint_paper
+    title: "A Hardware-Software Blueprint for Flexible Deep Learning Specialization"
+    url: "https://arxiv.org/abs/1807.04188"
+    arxiv_id: "1807.04188"
+    authors_or_vendor: "Thierry Moreau et al., U.Washington / OctoML"
+    year: 2018
+    venue: arxiv
+    topic_tags: [vta, deep_learning_compiler, jit, isa]
+    relevance: |
+      Foundational paper for VTA's design choices; informs the
+      compiler/runtime seam in `02_analysis/dataflow_and_scheduling.md`.
+
+  - id: iree_repo
+    title: "IREE: MLIR-based ML compiler and runtime"
+    url: "https://github.com/iree-org/iree"
+    authors_or_vendor: "IREE project (LF AI & Data)"
+    year: 2026
+    venue: open_source_project
+    topic_tags: [iree, mlir, on_device, compiler_runtime]
+    relevance: |
+      The retargetable compiler/runtime the npu-2028-target.compiler list
+      already names. Concrete option for E1's L2/L3/L4 software backend.
+
+  - id: vortex_gpgpu
+    title: "Vortex: Open-source RISC-V GPGPU"
+    url: "https://github.com/vortexgpgpu/vortex"
+    authors_or_vendor: "Vortex project"
+    year: 2024
+    venue: open_source_project
+    topic_tags: [vortex, risc_v, gpgpu, opencl]
+    relevance: |
+      Open GPGPU under RISC-V with OpenCL stack. Considered and rejected
+      for E1's NPU role; useful as a contrast point in
+      `02_analysis/open_accelerator_rtl.md` to justify why a Gemmini-style
+      systolic tile is the better fit for mobile inference TOPS/W.
+
+  - id: esp_columbia
+    title: "ESP Open SoC Platform"
+    url: "https://www.esp.cs.columbia.edu/"
+    authors_or_vendor: "Columbia SLD Group"
+    year: 2024
+    venue: open_source_project
+    topic_tags: [esp, soc_platform, accelerator_integration, vortex]
+    relevance: |
+      Open SoC platform with HLS + RTL accelerator flows. Reference for
+      heterogeneous accelerator integration patterns and tile-based fabric
+      reasoning.
+
+  - id: snitch_cluster_repo
+    title: "Snitch cluster: Energy-efficient RISC-V FP compute cluster"
+    url: "https://github.com/pulp-platform/snitch_cluster"
+    authors_or_vendor: "PULP Platform / ETH Zurich"
+    year: 2025
+    venue: open_source_project
+    topic_tags: [snitch, risc_v_cluster, fp_compute, pulp]
+    relevance: |
+      Reference cluster organization for tightly-coupled compute around
+      shared scratchpad; informs how to organize multiple Gemmini tiles
+      inside a single E1 NPU complex.
+
+  - id: redmule_paper
+    title: "RedMulE: A Compact FP16 Matrix-Multiplication Accelerator for Adaptive Deep Learning on RISC-V-Based Ultra-Low-Power SoCs"
+    url: "https://arxiv.org/abs/2204.11192"
+    arxiv_id: "2204.11192"
+    authors_or_vendor: "Yvan Tortorella et al., ETH Zurich"
+    year: 2022
+    venue: arxiv
+    topic_tags: [redmule, fp16, fp8, mixed_precision, pulp_cluster]
+    relevance: |
+      Compact mixed-precision GEMM accelerator achieving 1.19 TFLOPS/W
+      (FP16) and 1.67 TFLOPS/W (FP8) in 22 nm at 0.65 V. A direct
+      datapoint for FP8/FP16 perf/W in a phone-relevant process, well
+      below the 18 TOPS/W INT8 target but valuable as a sanity baseline.
+
+  - id: redmule_engine_paper
+    title: "RedMulE: A Mixed-Precision Matrix-Matrix Operation Engine for Flexible and Energy-Efficient On-Chip Linear Algebra"
+    url: "https://arxiv.org/abs/2301.03904"
+    arxiv_id: "2301.03904"
+    authors_or_vendor: "Yvan Tortorella et al., ETH Zurich"
+    year: 2023
+    venue: arxiv
+    topic_tags: [redmule, mixed_precision, gemm_ops, fp8]
+    relevance: |
+      Extended RedMulE paper with GEMM-Op fused ops. Reference for
+      operator-fusion patterns appropriate for E1's vector_activation
+      engine listed under microarchitecture_targets.engines.
+
+  - id: opengemm
+    title: "OpenGeMM: A High-Utilization GEMM Accelerator Generator"
+    url: "https://arxiv.org/abs/2411.09543"
+    arxiv_id: "2411.09543"
+    authors_or_vendor: "various academic"
+    year: 2024
+    venue: arxiv
+    topic_tags: [gemm_generator, utilization, open_source]
+    relevance: |
+      4.68 TOPS/W in a recent open GEMM generator. Used to contrast with
+      Gemmini's strong-integration / weak-utilization tradeoff in
+      `02_analysis/open_accelerator_rtl.md`.
+
+  - id: opencelerity
+    title: "OpenCelerity: Open-source RISC-V tiered accelerator fabric SoC"
+    url: "https://opencelerity.org/"
+    authors_or_vendor: "OpenCelerity"
+    year: 2024
+    venue: open_source_project
+    topic_tags: [open_soc, accelerator_fabric, risc_v]
+    relevance: |
+      Reference for manycore + accelerator fabric organization, relevant
+      to L3_TILED_MULTI_CONTEXT_NPU and the IOMMU / context-isolation
+      gates.
+
+  - id: tpu_gen_paper
+    title: "TPU-Gen: LLM-Driven Custom Tensor Processing Unit Generator"
+    url: "https://arxiv.org/abs/2503.05951"
+    arxiv_id: "2503.05951"
+    authors_or_vendor: "various academic"
+    year: 2025
+    venue: arxiv
+    topic_tags: [tpu_generator, llm_driven_eda, parameterization]
+    relevance: |
+      LLM-driven TPU-style generator. Demonstrates that the design-space
+      exploration for systolic arrays is now an LLM-assisted task;
+      relevant to long-horizon E1 generator strategy.
+
+  # ---------------------------------------------------------------------------
+  # 4) Quantization and low-precision
+  # ---------------------------------------------------------------------------
+  - id: gptq_paper
+    title: "GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers"
+    url: "https://arxiv.org/abs/2210.17323"
+    arxiv_id: "2210.17323"
+    authors_or_vendor: "Elias Frantar, Saleh Ashkboos, Torsten Hoefler, Dan Alistarh"
+    year: 2022
+    venue: arxiv
+    topic_tags: [gptq, ptq, int4, weight_only_quant]
+    relevance: |
+      Canonical INT4 weight-only PTQ. Defines the data path the E1 INT4
+      tier in the precision matrix must run unchanged from existing
+      pretrained checkpoints.
+
+  - id: awq_paper
+    title: "AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration"
+    url: "https://arxiv.org/abs/2306.00978"
+    arxiv_id: "2306.00978"
+    authors_or_vendor: "Ji Lin et al., MIT HAN Lab"
+    year: 2023
+    venue: arxiv
+    topic_tags: [awq, ptq, activation_aware, int4, w4a16]
+    relevance: |
+      Hardware-friendly INT4 PTQ that aligns weight quantization with
+      activation outliers. Required reference for E1 GEMM_S4 / sparse
+      INT4 tier compatibility claims.
+
+  - id: smoothquant_paper
+    title: "SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models"
+    url: "https://arxiv.org/abs/2211.10438"
+    arxiv_id: "2211.10438"
+    authors_or_vendor: "Guangxuan Xiao et al., MIT HAN Lab"
+    year: 2022
+    venue: arxiv
+    topic_tags: [smoothquant, w8a8, activation_smoothing]
+    relevance: |
+      Channel-wise smoothing that enables W8A8 inference without
+      retraining. Defines the activation handling E1's dense INT8 tier
+      must support.
+
+  - id: spinquant_paper
+    title: "SpinQuant: LLM Quantization with Learned Rotations"
+    url: "https://arxiv.org/abs/2405.16406"
+    arxiv_id: "2405.16406"
+    authors_or_vendor: "Zechun Liu et al., Meta"
+    year: 2024
+    venue: arxiv
+    topic_tags: [spinquant, learned_rotations, w4a4kv4, hadamard]
+    relevance: |
+      W4A4KV4 with learned rotations beats SmoothQuant by 25 points on
+      LLaMA-2-7B. Direct evidence that aggressive INT4 activation
+      quantization is achievable at acceptable accuracy, justifying E1's
+      sparse_int4_peak_tops_min=512 target.
+
+  - id: quarot_paper
+    title: "QuaRot: Outlier-Free 4-Bit Inference in Rotated LLMs"
+    url: "https://arxiv.org/abs/2404.00456"
+    arxiv_id: "2404.00456"
+    authors_or_vendor: "Saleh Ashkboos et al."
+    year: 2024
+    venue: arxiv
+    topic_tags: [quarot, hadamard, w4a4, kv4]
+    relevance: |
+      Random-rotation outlier removal that enables 4-bit weights,
+      activations, and KV cache simultaneously. Pairs with SpinQuant for
+      a full-INT4 transformer inference path on E1.
+
+  - id: hqq_repo
+    title: "HQQ: Half-Quadratic Quantization for LLMs"
+    url: "https://github.com/mobiusml/hqq"
+    authors_or_vendor: "Mobius Labs"
+    year: 2024
+    venue: open_source_project
+    topic_tags: [hqq, fast_ptq, calibration_free, w4_w3_w2]
+    relevance: |
+      Calibration-free PTQ at 4/3/2 bits, fast and practical. Reference
+      for tooling-side compatibility expectations on E1's INT4 / INT2
+      pipeline.
+
+  - id: omniquant_paper
+    title: "OmniQuant: Omnidirectionally Calibrated Quantization for Large Language Models"
+    url: "https://arxiv.org/abs/2308.13137"
+    arxiv_id: "2308.13137"
+    authors_or_vendor: "Wenqi Shao et al."
+    year: 2023
+    venue: ICLR_2024
+    topic_tags: [omniquant, ptq, lwc, let, w4a4_w4a8]
+    relevance: |
+      Learnable Weight Clipping + Learnable Equivalent Transformation.
+      A reference PTQ pipeline against which E1's accuracy budget for
+      INT4 should be checked.
+
+  - id: bitnet_b1_58_paper
+    title: "The Era of 1-bit LLMs: All Large Language Models are in 1.58 Bits"
+    url: "https://arxiv.org/abs/2402.17764"
+    arxiv_id: "2402.17764"
+    authors_or_vendor: "Shuming Ma et al., Microsoft"
+    year: 2024
+    venue: arxiv
+    topic_tags: [bitnet, b1_58, ternary, llm]
+    relevance: |
+      Ternary {-1, 0, +1} weights with 8-bit activations matching FP16
+      LLaMA-2 accuracy at >=3B params. Justifies E1's
+      int2_bitnet_peak_tops_min=900 path: DOT16_S2 today, BitNet GEMM
+      tier later.
+
+  - id: bitnet_a4_8_paper
+    title: "BitNet a4.8: 4-bit Activations for 1-bit LLMs"
+    url: "https://www.microsoft.com/en-us/research/publication/bitnet-a4-8-4-bit-activations-for-1-bit-llms/"
+    authors_or_vendor: "Microsoft Research"
+    year: 2024
+    venue: msr_publication
+    topic_tags: [bitnet_a4_8, mixed_1bit_4bit, 3bit_kv]
+    relevance: |
+      Combines 1-bit weights with 4-bit activations and 3-bit KV cache.
+      Defines a realistic on-device LLM data path that maps to E1's
+      INT2/INT4/INT8 + KV-bit-width design.
+
+  - id: bitnet_2b4t_hf
+    title: "microsoft/bitnet-b1.58-2B-4T"
+    url: "https://huggingface.co/microsoft/bitnet-b1.58-2B-4T"
+    authors_or_vendor: "Microsoft Research"
+    year: 2025
+    venue: huggingface_model
+    topic_tags: [bitnet, 2b_native, open_weights]
+    relevance: |
+      First open native 1-bit LLM at 2B params, 4T tokens. Provides a
+      concrete checkpoint we can target for E1's INT2 lowering and
+      eventual L5 evidence collection.
+
+  - id: ocp_mx_spec
+    title: "OCP Microscaling Formats (MX) Specification v1.0"
+    url: "https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf"
+    authors_or_vendor: "OCP MX Alliance (AMD, Arm, Intel, Meta, Microsoft, NVIDIA, Qualcomm)"
+    year: 2023
+    venue: standard_spec
+    topic_tags: [mxfp8, mxfp6, mxfp4, mxint8, block_floating_point]
+    relevance: |
+      Canonical reference for the MX data formats: 32-element blocks with
+      a shared E8M0 scale. Strongly recommended as the format for E1 FP8
+      / FP4 / future FP6 paths. Cited heavily in
+      `02_analysis/quantization_int4_int2_fp8.md`.
+
+  - id: ocp_mx_blog
+    title: "AMD, Arm, Intel, Meta, Microsoft, NVIDIA, and Qualcomm Standardize Next-Generation Narrow Precision Data Formats for AI"
+    url: "https://www.opencompute.org/blog/amd-arm-intel-meta-microsoft-nvidia-and-qualcomm-standardize-next-generation-narrow-precision-data-formats-for-ai"
+    authors_or_vendor: "OCP"
+    year: 2023
+    venue: standard_announcement
+    topic_tags: [ocp, mx_alliance, narrow_precision]
+    relevance: |
+      Authoritative announcement of cross-vendor MX standardization;
+      industry alignment evidence for picking MX over proprietary block
+      formats.
+
+  - id: microxcaling_repo
+    title: "microsoft/microxcaling: PyTorch emulation for MX-compatible formats"
+    url: "https://github.com/microsoft/microxcaling"
+    authors_or_vendor: "Microsoft"
+    year: 2024
+    venue: open_source_project
+    topic_tags: [mx_emulation, pytorch, mxfp4, mxint8]
+    relevance: |
+      Reference emulation library. Practical path for E1's compiler/SDK
+      to validate MX quantization before silicon.
+
+  - id: mx_formats_paper
+    title: "Microscaling Data Formats for Deep Learning"
+    url: "https://arxiv.org/abs/2310.10537"
+    arxiv_id: "2310.10537"
+    authors_or_vendor: "Bita Rouhani et al., Microsoft / collaborators"
+    year: 2023
+    venue: arxiv
+    topic_tags: [mx_data_formats, accuracy_study, block_scale]
+    relevance: |
+      Accuracy study of MX formats vs full-precision. Provides the
+      accuracy evidence underlying the MX standardization.
+
+  - id: ptq_mx_paper
+    title: "Post Training Quantization of Large Language Models with Microscaling Formats"
+    url: "https://arxiv.org/abs/2405.07135"
+    arxiv_id: "2405.07135"
+    authors_or_vendor: "various academic"
+    year: 2024
+    venue: arxiv
+    topic_tags: [ptq, mxfp8, mxfp6, mxfp4, mxint8]
+    relevance: |
+      Empirical PTQ comparison across MX formats. Reference for picking
+      MXFP6 vs MXFP4 for a given accuracy budget in E1's compiler.
+
+  # ---------------------------------------------------------------------------
+  # 5) Sparsity
+  # ---------------------------------------------------------------------------
+  - id: sparsegpt_paper
+    title: "SparseGPT: Massive Language Models Can Be Accurately Pruned in One-Shot"
+    url: "https://arxiv.org/abs/2301.00774"
+    arxiv_id: "2301.00774"
+    authors_or_vendor: "Elias Frantar, Dan Alistarh"
+    year: 2023
+    venue: arxiv
+    topic_tags: [sparsegpt, one_shot_pruning, 2_4_sparsity, n_m]
+    relevance: |
+      One-shot pruning that hits 50% / 2:4 / 4:8 sparsity on 175B-class
+      LLMs. Anchors the 2:4 N:M-sparsity support requirement in
+      microarchitecture_targets.engines.sparsity_decode.
+
+  - id: wanda_paper
+    title: "A Simple and Effective Pruning Approach for Large Language Models (Wanda)"
+    url: "https://arxiv.org/abs/2306.11695"
+    arxiv_id: "2306.11695"
+    authors_or_vendor: "Mingjie Sun et al."
+    year: 2023
+    venue: ICLR_2024
+    topic_tags: [wanda, magnitude_x_activation, 2_4_sparsity]
+    relevance: |
+      Pruning by weight magnitude * activation norm. Cheaper than
+      SparseGPT, equivalent at unstructured 50%, and competitive at
+      2:4. Tool of choice for repeatable 2:4 sparse LLMs on E1.
+
+  - id: maskllm_paper
+    title: "MaskLLM: Learnable Semi-Structured Sparsity for Large Language Models"
+    url: "https://arxiv.org/abs/2409.17481"
+    arxiv_id: "2409.17481"
+    authors_or_vendor: "Gongfan Fang et al., NVIDIA / NUS"
+    year: 2024
+    venue: arxiv
+    topic_tags: [maskllm, learnable_2_4, gumbel_softmax]
+    relevance: |
+      Learnable 2:4 masks via Gumbel-Softmax. Demonstrates that 2:4 is
+      not just a hardware capability but a trainable concept; informs
+      E1's sparse pipeline accuracy budget.
+
+  - id: spatten_paper
+    title: "SpAtten: Efficient Sparse Attention Architecture with Cascade Token and Head Pruning"
+    url: "https://arxiv.org/abs/2012.09852"
+    arxiv_id: "2012.09852"
+    authors_or_vendor: "Hanrui Wang, Zhekai Zhang, Song Han, MIT HAN Lab"
+    year: 2021
+    venue: HPCA_2021
+    topic_tags: [spatten, sparse_attention, token_pruning, head_pruning]
+    relevance: |
+      Hardware co-design for sparse attention with progressive
+      KV quantization. Reference architecture if E1 adds a dedicated
+      attention engine for KV-cache pruning.
+
+  - id: spatten_repo
+    title: "mit-han-lab/spatten"
+    url: "https://github.com/mit-han-lab/spatten"
+    authors_or_vendor: "MIT HAN Lab"
+    year: 2024
+    venue: open_source_project
+    topic_tags: [spatten, rtl_simulation, generative_eval]
+    relevance: |
+      RTL + behavior models for SpAtten. Concrete starting point for
+      benchmarking an attention engine variant against E1's bounded
+      GEMM-only attention smoke path.
+
+  # ---------------------------------------------------------------------------
+  # 6) CIM / PIM
+  # ---------------------------------------------------------------------------
+  - id: cim_tpu_paper
+    title: "Leveraging Compute-in-Memory for Efficient Generative Model Inference in TPUs"
+    url: "https://arxiv.org/abs/2503.00461"
+    arxiv_id: "2503.00461"
+    authors_or_vendor: "Google et al."
+    year: 2025
+    venue: arxiv
+    topic_tags: [cim, tpu, digital_cim, generative_inference]
+    relevance: |
+      Digital SRAM CIM substitution for the MXU. Validates the digital
+      CIM direction for a large-scale accelerator and gives an
+      energy-model template E1 could adopt to evaluate optional CIM
+      tiles.
+
+  - id: cim_landscape_survey
+    title: "The Landscape of Compute-near-memory and Compute-in-memory: A Research and Commercial Overview"
+    url: "https://arxiv.org/abs/2401.14428"
+    arxiv_id: "2401.14428"
+    authors_or_vendor: "Asif Ali Khan et al."
+    year: 2024
+    venue: arxiv
+    topic_tags: [cim, cnm, survey, commercial, research]
+    relevance: |
+      Comprehensive CIM/CNM survey covering analog, digital, ReRAM, and
+      DRAM-PIM variants. Primary scaffold for
+      `02_analysis/cim_and_near_memory.md`.
+
+  - id: hbm_pim_samsung
+    title: "HBM-PIM: Cutting-Edge Memory Technology to Accelerate Next-Generation AI"
+    url: "https://semiconductor.samsung.com/news-events/tech-blog/hbm-pim-cutting-edge-memory-technology-to-accelerate-next-generation-ai/"
+    authors_or_vendor: "Samsung Semiconductor"
+    year: 2023
+    venue: vendor_blog
+    topic_tags: [hbm_pim, fimdram, simd_in_bank, generative_ai]
+    relevance: |
+      Samsung's 16-SIMD-engine-per-bank HBM-PIM. Useful as a phone NPU
+      anti-pattern (HBM is not on a phone), but its bank-level
+      parallelism informs LPDDR-side near-memory acceleration thinking
+      for E1.
+
+  - id: skhynix_aim
+    title: "SK hynix Develops PIM, Next-Generation AI Accelerator"
+    url: "https://news.skhynix.com/sk-hynix-develops-pim-next-generation-ai-accelerator/"
+    authors_or_vendor: "SK hynix"
+    year: 2022
+    venue: vendor_press_release
+    topic_tags: [aim, gddr6_pim, bank_level_compute]
+    relevance: |
+      AiM (Accelerator-in-Memory) productized at GDDR6 level. Demonstrates
+      vendor willingness to ship PIM standard memory devices, relevant
+      to evaluating LPDDR5X/6 PIM partnerships for E1 in 2028.
+
+  - id: upmem_hotchips
+    title: "UPMEM: True Processing-In-Memory Accelerator"
+    url: "https://old.hotchips.org/hc31/HC31_1.4_UPMEM.FabriceDevaux.v2_1.pdf"
+    authors_or_vendor: "UPMEM"
+    year: 2019
+    venue: HotChips_31
+    topic_tags: [upmem, dpu, ddr4_pim, general_purpose_pim]
+    relevance: |
+      Commercial general-purpose PIM at DDR4 DIMM scale. Direct evidence
+      that general-purpose PIM has been productized; sets a realistic
+      lower bound on PIM programmability if E1 ever incorporates a PIM
+      side path.
+
+  - id: encharge_ieee_spectrum
+    title: "EnCharge's Analog AI Chip Promises Low-Power and Precision"
+    url: "https://spectrum.ieee.org/analog-ai-chip-architecture"
+    authors_or_vendor: "IEEE Spectrum, EnCharge AI"
+    year: 2024
+    venue: trade_press
+    topic_tags: [encharge, analog_cim, capacitor_based, 40_tops_per_w]
+    relevance: |
+      Capacitor-based analog CIM claiming >40 TOPS/W INT8 and
+      ~150 TOPS at 1 W. If E1 were to license analog CIM IP, this is the
+      best public datapoint. Marked vendor / press claim.
+
+  - id: encharge_en100_dcd
+    title: "EnCharge AI launches its analog in-memory EN100 AI accelerator"
+    url: "https://www.datacenterdynamics.com/en/news/encharge-ai-launches-its-analog-in-memory-en100-aiaccelerator/"
+    authors_or_vendor: "DataCenterDynamics / EnCharge"
+    year: 2025
+    venue: trade_press
+    topic_tags: [encharge, en100, m2, pcie, edge]
+    relevance: |
+      EN100 form factor and TOPS/W claim (200 TOPS INT8 at 8.25 W).
+      Marketing-level; useful for sizing analog-CIM-IP expectations.
+
+  - id: tsmc_dcim_isscc2024
+    title: "Compute-In-Memory Session, ISSCC 2024 (overview)"
+    url: "https://www.collegesidekick.com/study-docs/7107073"
+    authors_or_vendor: "ISSCC 2024"
+    year: 2024
+    venue: ISSCC_2024
+    topic_tags: [tsmc_dcim, 3nm, 6t_sram, isscc]
+    relevance: |
+      TSMC 3 nm 6T-SRAM digital CIM macro (INT12 x INT12). Confirms that
+      foundry-grade digital SRAM CIM is available for 3 nm-class designs
+      and is a candidate IP for an E1 successor in 2028+.
+
+  - id: syndcim_paper
+    title: "SynDCIM: A Performance-Aware Digital Computing-in-Memory Compiler with Multi-Spec-Oriented Subcircuit Synthesis"
+    url: "https://arxiv.org/abs/2411.16806"
+    arxiv_id: "2411.16806"
+    authors_or_vendor: "various academic"
+    year: 2024
+    venue: arxiv
+    topic_tags: [dcim, compiler, performance_aware, subcircuit_synthesis]
+    relevance: |
+      Digital CIM macro compiler. Reference if E1 ever moves to a
+      generator-based CIM macro instead of fixed SRAM scratchpad.
+
+  # ---------------------------------------------------------------------------
+  # 7) Attention / transformer accelerators
+  # ---------------------------------------------------------------------------
+  - id: flashattention_paper
+    title: "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness"
+    url: "https://arxiv.org/abs/2205.14135"
+    arxiv_id: "2205.14135"
+    authors_or_vendor: "Tri Dao et al."
+    year: 2022
+    venue: arxiv
+    topic_tags: [flashattention, io_aware, tiling, exact_attention]
+    relevance: |
+      Tile-by-tile attention without materializing the full score matrix.
+      Mandatory reference for E1's eventual attention kernel.
+
+  - id: flashattention2_paper
+    title: "FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning"
+    url: "https://arxiv.org/abs/2307.08691"
+    arxiv_id: "2307.08691"
+    authors_or_vendor: "Tri Dao"
+    year: 2023
+    venue: arxiv
+    topic_tags: [flashattention2, parallelism, work_partitioning]
+    relevance: |
+      Improved warp-level work partitioning; 50-73% of theoretical FLOPs
+      on A100. Maps the attention algorithm closer to systolic-tile
+      friendly access patterns.
+
+  - id: flashattention3_paper
+    title: "FlashAttention-3: Fast and Accurate Attention with Asynchrony and Low-Precision"
+    url: "https://arxiv.org/abs/2407.08608"
+    arxiv_id: "2407.08608"
+    authors_or_vendor: "Jay Shah, Ganesh Bikshandi, Ying Zhang, Vijay Thakkar, Pradeep Ramani, Tri Dao"
+    year: 2024
+    venue: NeurIPS_2024
+    topic_tags: [flashattention3, fp8, async, hopper, warp_specialization]
+    relevance: |
+      FP8 attention with 2.6x lower numerical error vs baseline FP8.
+      Direct reference for the FP8 attention path the E1 FP8 tier must
+      eventually run.
+
+  - id: fusemax_paper
+    title: "FuseMax: Leveraging Extended Einsums to Optimize Attention Accelerator Design"
+    url: "https://arxiv.org/abs/2406.10491"
+    arxiv_id: "2406.10491"
+    authors_or_vendor: "Nandeeka Nayak et al., UIUC"
+    year: 2024
+    venue: MICRO_2024
+    topic_tags: [fusemax, einsum, spatial_attention, softmax_bottleneck]
+    relevance: |
+      Spatial attention accelerator with ~100% PE utilization,
+      seq-length-independent on-chip buffer. Best architectural reference
+      for a future E1 dedicated attention engine.
+
+  - id: a3_paper
+    title: "A3: Accelerating Attention Mechanisms in Neural Networks with Approximation"
+    url: "https://arxiv.org/abs/2002.10941"
+    arxiv_id: "2002.10941"
+    authors_or_vendor: "Tae Jun Ham et al."
+    year: 2020
+    venue: HPCA_2020
+    topic_tags: [a3, attention, approximation, top_k]
+    relevance: |
+      Early attention-mechanism accelerator using top-k approximation;
+      historical anchor for the sparse-attention research line.
+
+  - id: ringattention_paper
+    title: "Ring Attention with Blockwise Transformers for Near-Infinite Context"
+    url: "https://arxiv.org/abs/2310.01889"
+    arxiv_id: "2310.01889"
+    authors_or_vendor: "Hao Liu et al."
+    year: 2023
+    venue: ICLR_2024
+    topic_tags: [ring_attention, blockwise, long_context, distributed]
+    relevance: |
+      Sequence parallelism that overlaps comm with compute. Not directly
+      relevant to single-chip E1 but informs how a multi-NPU phone
+      cluster could handle 1M+ context if that target shifts.
+
+  - id: int_flashattention_paper
+    title: "INT-FlashAttention: Enabling Flash Attention for INT8 Quantization"
+    url: "https://arxiv.org/abs/2409.16997"
+    arxiv_id: "2409.16997"
+    authors_or_vendor: "various academic"
+    year: 2024
+    venue: arxiv
+    topic_tags: [flashattention, int8, integer_attention]
+    relevance: |
+      INT8 flash attention; pairs with E1's existing INT8 GEMM smoke
+      path to set up a future integer attention kernel before the FP8
+      tier lands.
+
+  # ---------------------------------------------------------------------------
+  # 8) On-device LLM serving
+  # ---------------------------------------------------------------------------
+  - id: vllm_paged_attention
+    title: "Efficient Memory Management for Large Language Model Serving with PagedAttention"
+    url: "https://arxiv.org/abs/2309.06180"
+    arxiv_id: "2309.06180"
+    authors_or_vendor: "Woosuk Kwon et al., UC Berkeley"
+    year: 2023
+    venue: SOSP_2023
+    topic_tags: [vllm, paged_attention, kv_cache, virtual_memory]
+    relevance: |
+      OS-style paging applied to KV cache; 2-4x throughput uplift vs
+      FasterTransformer. Direct reference for the IOMMU + page-table
+      side of E1's L3 cache_coherent_cpu_submission gate.
+
+  - id: streamingllm_paper
+    title: "Efficient Streaming Language Models with Attention Sinks"
+    url: "https://arxiv.org/abs/2309.17453"
+    arxiv_id: "2309.17453"
+    authors_or_vendor: "Guangxuan Xiao et al."
+    year: 2023
+    venue: arxiv
+    topic_tags: [streamingllm, attention_sink, infinite_context]
+    relevance: |
+      Few initial tokens act as "attention sink" enabling arbitrary
+      stream lengths with a fixed cache. Cheap KV-cache management
+      pattern for E1 on-device LLM mode.
+
+  - id: h2o_paper
+    title: "H2O: Heavy-Hitter Oracle for Efficient Generative Inference of Large Language Models"
+    url: "https://arxiv.org/abs/2306.14048"
+    arxiv_id: "2306.14048"
+    authors_or_vendor: "Zhenyu Zhang et al."
+    year: 2023
+    venue: NeurIPS_2023
+    topic_tags: [h2o, heavy_hitter, kv_eviction]
+    relevance: |
+      Dynamic heavy-hitter KV retention. Reference for KV-cache eviction
+      policy when E1 implements a real attention engine.
+
+  - id: kivi_paper
+    title: "KIVI: A Tuning-Free Asymmetric 2-bit Quantization for KV Cache"
+    url: "https://arxiv.org/abs/2402.02750"
+    arxiv_id: "2402.02750"
+    authors_or_vendor: "Zirui Liu et al."
+    year: 2024
+    venue: arxiv
+    topic_tags: [kivi, kv_cache_quant, 2bit, asymmetric]
+    relevance: |
+      Tuning-free 2-bit KV quantization. Combines with E1's INT2 tier to
+      give a coherent low-precision KV-cache + weight path.
+
+  - id: deepseek_v2_mla
+    title: "DeepSeek-V2: A Strong, Economical, and Efficient Mixture-of-Experts Language Model"
+    url: "https://arxiv.org/abs/2405.04434"
+    arxiv_id: "2405.04434"
+    authors_or_vendor: "DeepSeek-AI"
+    year: 2024
+    venue: arxiv
+    topic_tags: [deepseek_v2, mla, moe, kv_compression]
+    relevance: |
+      Introduces Multi-Head Latent Attention (MLA): low-rank KV
+      compression that dramatically reduces KV memory and decode
+      bandwidth. E1 attention engine plans should explicitly support MLA.
+
+  - id: mla_hardware_paper
+    title: "Hardware-Centric Analysis of DeepSeek's Multi-Head Latent Attention"
+    url: "https://arxiv.org/abs/2506.02523"
+    arxiv_id: "2506.02523"
+    authors_or_vendor: "various academic"
+    year: 2025
+    venue: arxiv
+    topic_tags: [mla, hardware_analysis, accelerator_implications]
+    relevance: |
+      Direct hardware-implications study of MLA vs MHA. Required reading
+      before designing a phone NPU attention engine in 2026+.
+
+  - id: medusa_paper
+    title: "Medusa: Simple LLM Inference Acceleration Framework with Multiple Decoding Heads"
+    url: "https://arxiv.org/abs/2401.10774"
+    arxiv_id: "2401.10774"
+    authors_or_vendor: "Tianle Cai et al."
+    year: 2024
+    venue: arxiv
+    topic_tags: [medusa, speculative_decoding, tree_attention]
+    relevance: |
+      Tree-attention speculative decoding; 2.3-3.6x token-rate uplift.
+      Software-side multiplier on E1's
+      llm_3b_int4_tokens_per_second_sustained_min target.
+
+  - id: eagle2_paper
+    title: "EAGLE-2: Faster Inference of Language Models with Dynamic Draft Trees"
+    url: "https://arxiv.org/abs/2406.16858"
+    arxiv_id: "2406.16858"
+    authors_or_vendor: "Yuhui Li et al."
+    year: 2024
+    venue: EMNLP_2024
+    topic_tags: [eagle2, dynamic_draft_tree, speculative_decoding]
+    relevance: |
+      3.05-4.26x speedup via context-aware dynamic draft trees. Same
+      role as Medusa but stronger; informs sizing of E1's batched
+      decode path.
+
+  # ---------------------------------------------------------------------------
+  # 9) Dataflow taxonomies and scheduling
+  # ---------------------------------------------------------------------------
+  - id: eyeriss_paper
+    title: "Eyeriss: A Spatial Architecture for Energy-Efficient Dataflow for Convolutional Neural Networks"
+    url: "https://www.semanticscholar.org/paper/Eyeriss:-A-Spatial-Architecture-for-Dataflow-for-Chen-Emer/5ec594e9f5ca4b629be28625cd78c882514ea3be"
+    authors_or_vendor: "Yu-Hsin Chen, Joel Emer, Vivienne Sze, MIT"
+    year: 2016
+    venue: ISCA_2016
+    topic_tags: [eyeriss, row_stationary, spatial_dataflow]
+    relevance: |
+      Row-stationary dataflow, canonical reference for energy-efficient
+      CNN dataflow. Sets the baseline for the "weight stationary vs
+      output stationary" choice in
+      microarchitecture_targets.dataflow.
+
+  - id: eyeriss_v2_paper
+    title: "Eyeriss v2: A Flexible Accelerator for Emerging Deep Neural Networks on Mobile Devices"
+    url: "https://arxiv.org/abs/1807.07928"
+    arxiv_id: "1807.07928"
+    authors_or_vendor: "Yu-Hsin Chen, Tien-Ju Yang, Joel Emer, Vivienne Sze, MIT"
+    year: 2018
+    venue: JETCAS_2019
+    topic_tags: [eyeriss_v2, hierarchical_mesh_noc, sparse_compressed]
+    relevance: |
+      Hierarchical-mesh NoC, sparse compressed domain processing. Direct
+      reference for the NoC structure of a tiled mobile NPU like E1.
+
+  - id: maeri_paper
+    title: "MAERI: Enabling Flexible Dataflow Mapping over DNN Accelerators via Reconfigurable Interconnects"
+    url: "https://dl.acm.org/doi/pdf/10.1145/3173162.3173176"
+    authors_or_vendor: "Hyoukjun Kwon et al., Georgia Tech"
+    year: 2018
+    venue: ASPLOS_2018
+    topic_tags: [maeri, reconfigurable_interconnect, dataflow_flexibility]
+    relevance: |
+      Reconfigurable interconnect that supports varying dataflows on the
+      same fabric. Reference for the design space between rigid
+      systolic and fully flexible NoC.
+
+  - id: sigma_paper
+    title: "SIGMA: A Sparse and Irregular GEMM Accelerator with Flexible Interconnects for DNN Training"
+    url: "https://www.cc.gatech.edu/~thkrishna/index_files/SIGMA_HPCA2020.pdf"
+    authors_or_vendor: "Eric Qin et al., Georgia Tech"
+    year: 2020
+    venue: HPCA_2020
+    topic_tags: [sigma, sparse_gemm, forwarding_adder_network]
+    relevance: |
+      Sparse/irregular GEMM with reconfigurable forwarding adder
+      network. Reference architecture for the irregular-sparsity engine
+      considered for E1's sparse INT4 tier.
+
+  - id: pim_mmu_paper
+    title: "PIM-MMU: A Memory Management Unit for Accelerating Data Transfers in Commercial PIM Systems"
+    url: "https://arxiv.org/abs/2409.06204"
+    arxiv_id: "2409.06204"
+    authors_or_vendor: "various academic"
+    year: 2024
+    venue: MICRO_2024
+    topic_tags: [pim_mmu, dma, near_memory_dataflow]
+    relevance: |
+      MMU specifically for PIM dataflow; informs IOMMU + DMA contract
+      for E1's L1_DESCRIPTOR_DMA_RUNTIME and L3 coherent submission
+      gates.
+
+  # ---------------------------------------------------------------------------
+  # 10) Multimodal: speech / vision / SSM / Mamba
+  # ---------------------------------------------------------------------------
+  - id: mamba2_paper
+    title: "Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality (Mamba-2)"
+    url: "https://arxiv.org/abs/2405.21060"
+    arxiv_id: "2405.21060"
+    authors_or_vendor: "Tri Dao, Albert Gu"
+    year: 2024
+    venue: ICML_2024
+    topic_tags: [mamba2, state_space_duality, ssm, linear_attention]
+    relevance: |
+      Unifies transformers and SSMs through SSD. Important hedge: if SSMs
+      take over on-device LLMs, E1's tile must run SSD chunks well, not
+      just GEMM + softmax attention.
+
+  - id: lightmamba_paper
+    title: "LightMamba: Efficient Mamba Acceleration on FPGA with Quantization and Hardware Co-design"
+    url: "https://arxiv.org/abs/2502.15260"
+    arxiv_id: "2502.15260"
+    authors_or_vendor: "various academic"
+    year: 2025
+    venue: arxiv
+    topic_tags: [mamba, fpga, quantization, hardware_co_design]
+    relevance: |
+      4.65-6.06x energy efficiency over GPU baseline for Mamba on FPGA.
+      Data point for SSM accelerator perf/W expectations on a phone.
+
+  - id: whisperkit_paper
+    title: "WhisperKit: On-device Real-time ASR with Billion-Scale Transformers"
+    url: "https://arxiv.org/abs/2507.10860"
+    arxiv_id: "2507.10860"
+    authors_or_vendor: "various academic / Argmax"
+    year: 2025
+    venue: arxiv
+    topic_tags: [whisper, asr, ane, streaming]
+    relevance: |
+      Whisper streaming on the Apple Neural Engine. Provides the
+      latency/utilization template E1's speech path should aim for in
+      L4+L5 evidence.
+
+  - id: folding_attention_paper
+    title: "Folding Attention: Memory and Power Optimization for On-Device Transformer-based Streaming Speech Recognition"
+    url: "https://arxiv.org/abs/2309.07988"
+    arxiv_id: "2309.07988"
+    authors_or_vendor: "Yang Li et al."
+    year: 2023
+    venue: arxiv
+    topic_tags: [streaming_asr, on_device, attention_compression]
+    relevance: |
+      Linear-projection reduction for streaming ASR. Useful pattern when
+      designing the always-on micro-NPU portion of E1.
+
+  # ---------------------------------------------------------------------------
+  # 11) Cross-cutting: surveys, AI accelerator design space
+  # ---------------------------------------------------------------------------
+  - id: llm_accelerator_survey
+    title: "AI Accelerators for Large Language Model Inference: Architecture Analysis and Scaling Strategies"
+    url: "https://arxiv.org/abs/2506.00008"
+    arxiv_id: "2506.00008"
+    authors_or_vendor: "various academic"
+    year: 2025
+    venue: arxiv
+    topic_tags: [llm_accelerator, scaling, memory_bottleneck, survey]
+    relevance: |
+      Comprehensive LLM-accelerator survey across decoder, attention,
+      MoE, and serving. Anchors the on-device LLM section of
+      `02_analysis/sparsity_and_attention.md`.
+
+  - id: kv_cache_survey
+    title: "Rethinking Key-Value Cache Compression Techniques for Large Language Model Inference"
+    url: "https://arxiv.org/abs/2503.24000"
+    arxiv_id: "2503.24000"
+    authors_or_vendor: "various academic"
+    year: 2025
+    venue: arxiv
+    topic_tags: [kv_cache, compression, survey]
+    relevance: |
+      Most current KV-cache compression survey. Maps SnapKV, AdaKV,
+      H2O, KIVI into a single taxonomy; informs E1 KV-cache strategy.
+
+  - id: sllm_workshop_iclr2025
+    title: "ICLR 2025 Workshop on Sparsity in LLMs (SLLM) – workshop summary"
+    url: "https://arxiv.org/abs/2503.04992"
+    arxiv_id: "2503.04992"
+    authors_or_vendor: "workshop organizers"
+    year: 2025
+    venue: ICLR_2025_workshop
+    topic_tags: [sparsity, workshop, llm, taxonomy]
+    relevance: |
+      Workshop summary covering recent sparsity-in-LLM work. Cited as a
+      survey-level overlay for `02_analysis/sparsity_and_attention.md`.
+
+  - id: bspdn_thermal_paper
+    title: "Thermal Implications of Non-Uniform Power in BSPDN-Enabled 2.5D/3D Chiplet Systems"
+    url: "https://arxiv.org/abs/2508.02284"
+    arxiv_id: "2508.02284"
+    authors_or_vendor: "various academic"
+    year: 2025
+    venue: arxiv
+    topic_tags: [bspdn, thermal, 2_5d, 3d, npu_hotspot]
+    relevance: |
+      Backside power delivery changes 2.5D/3D thermal behavior; hotspot
+      asymmetry matters for NPU tile placement. Relevant when E1 moves
+      past v0 to a tiled multi-context part.
+
+  - id: subnm_reliability
+    title: "Transistor-to-GDS Reliability Analysis in Sub-3nm"
+    url: "https://portal.fis.tum.de/en/publications/transistor-to-gds-reliability-analysis-in-sub-3nm-impact-of-self-/"
+    authors_or_vendor: "TUM et al."
+    year: 2025
+    venue: paper_metadata
+    topic_tags: [sub_3nm, reliability, ai_accelerator_aging]
+    relevance: |
+      Sub-3 nm reliability and self-heating data showing AI accelerators
+      age faster than RISC-V cores. Cited for reliability gate planning.

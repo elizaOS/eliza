@@ -396,6 +396,21 @@ def test_build_openai_messages_replaces_system_prompt_when_context_augmented() -
     assert messages[1] == {"role": "user", "content": "last turn"}
 
 
+def test_build_openai_messages_preserves_multimodal_user_content() -> None:
+    image_content = [
+        {"type": "text", "text": "What text is visible?"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,abcd"}},
+    ]
+
+    messages = _build_openai_messages(
+        raw_messages=[{"role": "user", "content": image_content}],
+        system_prompt=None,
+        fallback_user_text="fallback",
+    )
+
+    assert messages == [{"role": "user", "content": image_content}]
+
+
 def test_client_is_ready_returns_bool(client_with_fake_venv: HermesClient) -> None:
     with patch("hermes_adapter.client.subprocess.run") as mock_run:
         mock_run.return_value = _fake_completed(stdout="ok", rc=0)

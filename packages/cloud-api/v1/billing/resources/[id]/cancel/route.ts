@@ -62,6 +62,7 @@ app.post("/", async (c) => {
         | BillableResourceType
         | undefined,
       mode: parsed.data.mode,
+      triggerEnv: c.env,
     });
 
     return c.json({ success: true, ...result });

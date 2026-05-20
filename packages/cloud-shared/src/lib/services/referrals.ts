@@ -514,7 +514,7 @@ export class SocialRewardsService {
   /**
    * Record a share intent and award credits immediately.
    *
-   * This follows Babylon's pattern:
+   * This follows Feed's pattern:
    * 1. User clicks share button
    * 2. We record the intent and award credits server-side
    * 3. Share window opens (client-side)

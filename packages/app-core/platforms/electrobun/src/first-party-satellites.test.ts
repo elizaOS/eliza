@@ -1,8 +1,10 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CarrotWorkerMessage } from "@elizaos/electrobun-carrots";
-import { assertCarrotPayload } from "@elizaos/electrobun-carrots";
+import {
+	assertRemotePluginPayload,
+	type RemotePluginWorkerMessage,
+} from "@elizaos/plugin-remote-manifest";
 import { describe, expect, it } from "vitest";
 import {
 	getFirstPartySatelliteDefinitions,
@@ -10,16 +12,20 @@ import {
 	seedFirstPartySatellites,
 	setFirstPartySatelliteDisabled,
 } from "./first-party-satellites";
-import { CarrotManager, type CarrotWorkerHandle } from "./native/carrots";
+import {
+	RemotePluginHost,
+	type RemotePluginWorkerHandle,
+} from "./native/remote-plugin-host";
 
-class FakeWorkerHandle implements CarrotWorkerHandle {
-	readonly messages: CarrotWorkerMessage[] = [];
+class FakeWorkerHandle implements RemotePluginWorkerHandle {
+	readonly messages: RemotePluginWorkerMessage[] = [];
 	terminated = false;
-	private messageListener: ((message: CarrotWorkerMessage) => void) | null =
-		null;
+	private messageListener:
+		| ((message: RemotePluginWorkerMessage) => void)
+		| null = null;
 	private errorListener: ((error: Error) => void) | null = null;
 
-	postMessage(message: CarrotWorkerMessage): void {
+	postMessage(message: RemotePluginWorkerMessage): void {
 		this.messages.push(message);
 	}
 
@@ -27,7 +33,7 @@ class FakeWorkerHandle implements CarrotWorkerHandle {
 		this.terminated = true;
 	}
 
-	onMessage(listener: (message: CarrotWorkerMessage) => void): void {
+	onMessage(listener: (message: RemotePluginWorkerMessage) => void): void {
 		this.messageListener = listener;
 	}
 
@@ -35,7 +41,7 @@ class FakeWorkerHandle implements CarrotWorkerHandle {
 		this.errorListener = listener;
 	}
 
-	emit(message: CarrotWorkerMessage): void {
+	emit(message: RemotePluginWorkerMessage): void {
 		this.messageListener?.(message);
 	}
 
@@ -44,17 +50,17 @@ class FakeWorkerHandle implements CarrotWorkerHandle {
 	}
 }
 
-function withTempManager<T>(fn: (manager: CarrotManager) => T): T {
+function withTempManager<T>(fn: (manager: RemotePluginHost) => T): T {
 	const dir = mkdtempSync(join(tmpdir(), "electrobun-first-party-"));
 	const workers = new Map<string, FakeWorkerHandle>();
 	try {
-		const manager = new CarrotManager({
+		const manager = new RemotePluginHost({
 			storeRoot: join(dir, "store"),
 			now: () => 1700000000000,
 			workerRunner: {
-				start: (carrot) => {
+				start: (remotePlugin) => {
 					const worker = new FakeWorkerHandle();
-					workers.set(carrot.manifest.id, worker);
+					workers.set(remotePlugin.manifest.id, worker);
 					return worker;
 				},
 			},
@@ -69,7 +75,7 @@ describe("first-party Satellites", () => {
 	it("validates bundled manifests", () => {
 		const manifests = getFirstPartySatelliteDefinitions({
 			includeDev: true,
-		}).map((definition) => assertCarrotPayload(definition.sourceDir));
+		}).map((definition) => assertRemotePluginPayload(definition.sourceDir));
 
 		expect(manifests.map((manifest) => manifest.id).sort()).toEqual([
 			"eliza.fs",
@@ -108,7 +114,7 @@ describe("first-party Satellites", () => {
 					.map((result) => result.id)
 					.sort(),
 			).toEqual(["eliza.fs", "eliza.local-model", "eliza.runtime"]);
-			expect(manager.getCarrot("eliza.runtime")?.currentHash).toBe(
+			expect(manager.getRemotePlugin("eliza.runtime")?.currentHash).toBe(
 				second.find((result) => result.id === "eliza.runtime")?.hash,
 			);
 		}));

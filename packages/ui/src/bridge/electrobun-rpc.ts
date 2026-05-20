@@ -114,15 +114,19 @@ export interface DesktopRuntimeModeInfo {
   externalApiSource?: string | null;
 }
 
-export type DesktopCarrotPermissionTag =
-  | `host:${"windows" | "tray" | "notifications" | "storage" | "manage-carrots"}`
+export type DesktopRemotePluginPermissionTag =
+  | `host:${"windows" | "tray" | "notifications" | "storage" | "manage-remote-plugins"}`
   | `bun:${"read" | "write" | "env" | "run" | "ffi" | "addons" | "worker"}`
   | `isolation:${"shared-worker" | "isolated-process"}`;
 
-export interface DesktopCarrotPermissionGrant {
+export interface DesktopRemotePluginPermissionGrant {
   host?: Partial<
     Record<
-      "windows" | "tray" | "notifications" | "storage" | "manage-carrots",
+      | "windows"
+      | "tray"
+      | "notifications"
+      | "storage"
+      | "manage-remote-plugins",
       boolean
     >
   >;
@@ -135,7 +139,7 @@ export interface DesktopCarrotPermissionGrant {
   isolation?: "shared-worker" | "isolated-process";
 }
 
-export interface DesktopCarrotViewInfo {
+export interface DesktopRemotePluginViewInfo {
   relativePath: string;
   hidden?: boolean;
   title: string;
@@ -146,18 +150,18 @@ export interface DesktopCarrotViewInfo {
   viewUrl: string;
 }
 
-export interface DesktopCarrotListEntry {
+export interface DesktopRemotePluginListEntry {
   id: string;
   name: string;
   description: string;
   version: string;
   mode: "window" | "background";
-  permissions: DesktopCarrotPermissionTag[];
+  permissions: DesktopRemotePluginPermissionTag[];
   status: "installed" | "broken";
   devMode: boolean;
 }
 
-export interface DesktopInstalledCarrotSnapshot {
+export interface DesktopInstalledRemotePluginSnapshot {
   id: string;
   name: string;
   description: string;
@@ -171,33 +175,33 @@ export interface DesktopInstalledCarrotSnapshot {
   devMode: boolean;
   lastBuildAt: number | null;
   lastBuildError: string | null;
-  requestedPermissions: DesktopCarrotPermissionGrant;
-  grantedPermissions: DesktopCarrotPermissionGrant;
-  view: DesktopCarrotViewInfo;
+  requestedPermissions: DesktopRemotePluginPermissionGrant;
+  grantedPermissions: DesktopRemotePluginPermissionGrant;
+  view: DesktopRemotePluginViewInfo;
   worker: { relativePath: string };
   remoteUIs?: Record<string, { name: string; path: string }>;
 }
 
-export interface DesktopCarrotStoreSnapshot {
+export interface DesktopRemotePluginStoreSnapshot {
   version: 1;
-  carrots: DesktopInstalledCarrotSnapshot[];
+  remotePlugins: DesktopInstalledRemotePluginSnapshot[];
 }
 
-export type DesktopCarrotWorkerState =
+export type DesktopRemotePluginWorkerState =
   | "stopped"
   | "starting"
   | "running"
   | "error";
 
-export interface DesktopCarrotWorkerStatus {
+export interface DesktopRemotePluginWorkerStatus {
   id: string;
-  state: DesktopCarrotWorkerState;
+  state: DesktopRemotePluginWorkerState;
   startedAt: number | null;
   stoppedAt: number | null;
   error: string | null;
 }
 
-export interface DesktopCarrotLogsSnapshot {
+export interface DesktopRemotePluginLogsSnapshot {
   id: string;
   path: string;
   text: string;
@@ -307,118 +311,120 @@ export async function getDesktopRuntimeMode(): Promise<DesktopRuntimeModeInfo | 
   });
 }
 
-export async function getDesktopCarrotStoreRoot(): Promise<string | null> {
+export async function getDesktopRemotePluginStoreRoot(): Promise<
+  string | null
+> {
   const result = await invokeDesktopBridgeRequest<{ storeRoot: string }>({
-    rpcMethod: "carrotGetStoreRoot",
-    ipcChannel: "carrot:getStoreRoot",
+    rpcMethod: "remotePluginGetStoreRoot",
+    ipcChannel: "remote-plugin:getStoreRoot",
   });
   return result?.storeRoot ?? null;
 }
 
-export async function listDesktopCarrots(): Promise<
-  DesktopCarrotListEntry[] | null
+export async function listDesktopRemotePlugins(): Promise<
+  DesktopRemotePluginListEntry[] | null
 > {
   const result = await invokeDesktopBridgeRequest<{
-    carrots: DesktopCarrotListEntry[];
+    remotePlugins: DesktopRemotePluginListEntry[];
   }>({
-    rpcMethod: "carrotList",
-    ipcChannel: "carrot:list",
+    rpcMethod: "remotePluginList",
+    ipcChannel: "remote-plugin:list",
   });
-  return result?.carrots ?? null;
+  return result?.remotePlugins ?? null;
 }
 
-export async function getDesktopCarrotStoreSnapshot(): Promise<DesktopCarrotStoreSnapshot | null> {
-  return invokeDesktopBridgeRequest<DesktopCarrotStoreSnapshot>({
-    rpcMethod: "carrotGetStoreSnapshot",
-    ipcChannel: "carrot:getStoreSnapshot",
+export async function getDesktopRemotePluginStoreSnapshot(): Promise<DesktopRemotePluginStoreSnapshot | null> {
+  return invokeDesktopBridgeRequest<DesktopRemotePluginStoreSnapshot>({
+    rpcMethod: "remotePluginGetStoreSnapshot",
+    ipcChannel: "remote-plugin:getStoreSnapshot",
   });
 }
 
-export async function getDesktopCarrot(
+export async function getDesktopRemotePlugin(
   id: string,
-): Promise<DesktopInstalledCarrotSnapshot | null> {
-  return invokeDesktopBridgeRequest<DesktopInstalledCarrotSnapshot>({
-    rpcMethod: "carrotGet",
-    ipcChannel: "carrot:get",
+): Promise<DesktopInstalledRemotePluginSnapshot | null> {
+  return invokeDesktopBridgeRequest<DesktopInstalledRemotePluginSnapshot>({
+    rpcMethod: "remotePluginGet",
+    ipcChannel: "remote-plugin:get",
     params: { id },
   });
 }
 
-export async function installDesktopCarrotFromDirectory(options: {
+export async function installDesktopRemotePluginFromDirectory(options: {
   sourceDir: string;
   devMode?: boolean;
-  permissionsGranted?: DesktopCarrotPermissionGrant;
-}): Promise<DesktopInstalledCarrotSnapshot | null> {
-  return invokeDesktopBridgeRequest<DesktopInstalledCarrotSnapshot>({
-    rpcMethod: "carrotInstallFromDirectory",
-    ipcChannel: "carrot:installFromDirectory",
+  permissionsGranted?: DesktopRemotePluginPermissionGrant;
+}): Promise<DesktopInstalledRemotePluginSnapshot | null> {
+  return invokeDesktopBridgeRequest<DesktopInstalledRemotePluginSnapshot>({
+    rpcMethod: "remotePluginInstallFromDirectory",
+    ipcChannel: "remote-plugin:installFromDirectory",
     params: options,
   });
 }
 
-export async function uninstallDesktopCarrot(id: string): Promise<{
+export async function uninstallDesktopRemotePlugin(id: string): Promise<{
   removed: boolean;
-  carrot: DesktopCarrotListEntry | null;
+  remotePlugin: DesktopRemotePluginListEntry | null;
 } | null> {
   return invokeDesktopBridgeRequest<{
     removed: boolean;
-    carrot: DesktopCarrotListEntry | null;
+    remotePlugin: DesktopRemotePluginListEntry | null;
   }>({
-    rpcMethod: "carrotUninstall",
-    ipcChannel: "carrot:uninstall",
+    rpcMethod: "remotePluginUninstall",
+    ipcChannel: "remote-plugin:uninstall",
     params: { id },
   });
 }
 
-export async function startDesktopCarrotWorker(
+export async function startDesktopRemotePluginWorker(
   id: string,
-): Promise<DesktopCarrotWorkerStatus | null> {
-  return invokeDesktopBridgeRequest<DesktopCarrotWorkerStatus>({
-    rpcMethod: "carrotStartWorker",
-    ipcChannel: "carrot:startWorker",
+): Promise<DesktopRemotePluginWorkerStatus | null> {
+  return invokeDesktopBridgeRequest<DesktopRemotePluginWorkerStatus>({
+    rpcMethod: "remotePluginStartWorker",
+    ipcChannel: "remote-plugin:startWorker",
     params: { id },
   });
 }
 
-export async function stopDesktopCarrotWorker(
+export async function stopDesktopRemotePluginWorker(
   id: string,
-): Promise<DesktopCarrotWorkerStatus | null> {
-  return invokeDesktopBridgeRequest<DesktopCarrotWorkerStatus>({
-    rpcMethod: "carrotStopWorker",
-    ipcChannel: "carrot:stopWorker",
+): Promise<DesktopRemotePluginWorkerStatus | null> {
+  return invokeDesktopBridgeRequest<DesktopRemotePluginWorkerStatus>({
+    rpcMethod: "remotePluginStopWorker",
+    ipcChannel: "remote-plugin:stopWorker",
     params: { id },
   });
 }
 
-export async function getDesktopCarrotWorkerStatus(
+export async function getDesktopRemotePluginWorkerStatus(
   id: string,
-): Promise<DesktopCarrotWorkerStatus | null> {
-  return invokeDesktopBridgeRequest<DesktopCarrotWorkerStatus>({
-    rpcMethod: "carrotGetWorkerStatus",
-    ipcChannel: "carrot:getWorkerStatus",
+): Promise<DesktopRemotePluginWorkerStatus | null> {
+  return invokeDesktopBridgeRequest<DesktopRemotePluginWorkerStatus>({
+    rpcMethod: "remotePluginGetWorkerStatus",
+    ipcChannel: "remote-plugin:getWorkerStatus",
     params: { id },
   });
 }
 
-export async function listDesktopCarrotWorkerStatuses(): Promise<
-  DesktopCarrotWorkerStatus[] | null
+export async function listDesktopRemotePluginWorkerStatuses(): Promise<
+  DesktopRemotePluginWorkerStatus[] | null
 > {
   const result = await invokeDesktopBridgeRequest<{
-    workers: DesktopCarrotWorkerStatus[];
+    workers: DesktopRemotePluginWorkerStatus[];
   }>({
-    rpcMethod: "carrotListWorkerStatuses",
-    ipcChannel: "carrot:listWorkerStatuses",
+    rpcMethod: "remotePluginListWorkerStatuses",
+    ipcChannel: "remote-plugin:listWorkerStatuses",
   });
   return result?.workers ?? null;
 }
 
-export async function getDesktopCarrotLogs(
+export async function getDesktopRemotePluginLogs(
   id: string,
   maxBytes?: number,
-): Promise<DesktopCarrotLogsSnapshot | null> {
-  return invokeDesktopBridgeRequest<DesktopCarrotLogsSnapshot>({
-    rpcMethod: "carrotGetLogs",
-    ipcChannel: "carrot:getLogs",
+): Promise<DesktopRemotePluginLogsSnapshot | null> {
+  return invokeDesktopBridgeRequest<DesktopRemotePluginLogsSnapshot>({
+    rpcMethod: "remotePluginGetLogs",
+    ipcChannel: "remote-plugin:getLogs",
     params: { id, ...(maxBytes === undefined ? {} : { maxBytes }) },
   });
 }
@@ -439,28 +445,29 @@ export function subscribeDesktopBridgeEvent(options: {
   return () => {};
 }
 
-export function subscribeDesktopCarrotStoreChanged(
-  listener: (snapshot: DesktopCarrotStoreSnapshot) => void,
+export function subscribeDesktopRemotePluginStoreChanged(
+  listener: (snapshot: DesktopRemotePluginStoreSnapshot) => void,
 ): () => void {
   return subscribeDesktopBridgeEvent({
-    rpcMessage: "carrotStoreChanged",
-    ipcChannel: "carrot:storeChanged",
+    rpcMessage: "remotePluginStoreChanged",
+    ipcChannel: "remote-plugin:storeChanged",
     listener: (payload) => {
-      const snapshot = (payload as { snapshot?: DesktopCarrotStoreSnapshot })
-        ?.snapshot;
+      const snapshot = (
+        payload as { snapshot?: DesktopRemotePluginStoreSnapshot }
+      )?.snapshot;
       if (snapshot) listener(snapshot);
     },
   });
 }
 
-export function subscribeDesktopCarrotWorkerChanged(
-  listener: (status: DesktopCarrotWorkerStatus) => void,
+export function subscribeDesktopRemotePluginWorkerChanged(
+  listener: (status: DesktopRemotePluginWorkerStatus) => void,
 ): () => void {
   return subscribeDesktopBridgeEvent({
-    rpcMessage: "carrotWorkerChanged",
-    ipcChannel: "carrot:workerChanged",
+    rpcMessage: "remotePluginWorkerChanged",
+    ipcChannel: "remote-plugin:workerChanged",
     listener: (payload) => {
-      const status = (payload as { status?: DesktopCarrotWorkerStatus })
+      const status = (payload as { status?: DesktopRemotePluginWorkerStatus })
         ?.status;
       if (status) listener(status);
     },

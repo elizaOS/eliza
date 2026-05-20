@@ -17,27 +17,18 @@ PRODUCT_COPY_FILES += \
     device/eliza/eliza_ai_soc/init.eliza.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.eliza.rc \
     device/eliza/eliza_ai_soc/fstab.eliza:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.eliza
 
-# HAL service binaries.
-#
-# Future integration points:
-#   android.hardware.graphics.composer@2.4-service
-#   hwcomposer.eliza_ai_soc
-#   vendor.eliza.e1_npu@1.0-service
-# HAL package names are intentionally not listed until source or prebuilts are
-# imported into the external AOSP tree. Keeping these out of PRODUCT_PACKAGES
-# prevents vendorimage from passing with misleading, unimplemented services.
-#
-# Future external-tree packages:
-#   hwcomposer.eliza_ai_soc
-#   e1_npu.default
-#
+PRODUCT_PACKAGES += \
+    android.hardware.graphics.composer@2.4-service.eliza_ai_soc \
+    hwcomposer.eliza_ai_soc \
+    vendor.eliza.e1_npu@1.0-service
+
 # WiFi/Bluetooth packages, permissions, overlays, supplicant/hostapd configs,
 # and Android feature XML are intentionally absent until the external module
 # has host-controller, firmware, regulatory, and framework evidence.
 
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.soc.manufacturer=Eliza \
-    ro.soc.model=eliza_ai_soc \
+    vendor.eliza.soc.manufacturer=Eliza \
+    vendor.eliza.soc.model=eliza_ai_soc \
     vendor.e1_npu.ready=0 \
     ro.hardware.hwcomposer=eliza \
     ro.hardware.gralloc=eliza

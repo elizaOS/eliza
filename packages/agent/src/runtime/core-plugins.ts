@@ -28,11 +28,13 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
  * adds based on the user's API keys. They are statically imported in the agent
  * runtime so they bundle cleanly without filesystem-based plugin resolution.
  *
- * `@elizaos/plugin-local-inference` is intentionally excluded from the mobile
- * boot list: it pulls in `node-llama-cpp`, which has no Android build. On
- * mobile, embeddings come either from a cloud provider or from the
- * AOSP-only FFI bridge (`@elizaos/plugin-aosp-local-inference`) when
- * `ELIZA_LOCAL_LLAMA=1`.
+ * `@elizaos/plugin-local-inference` is intentionally excluded from the
+ * default mobile boot list: it pulls in the bun:ffi desktop dylib path plus
+ * a sizeable runtime (catalog, dflash subprocess client, voice pipeline)
+ * that the Capacitor WebView agent does not need. On mobile, embeddings
+ * come either from a cloud provider, the WebView-side llama-cpp-capacitor
+ * binding, or the AOSP-only FFI bridge
+ * (`@elizaos/plugin-aosp-local-inference`) when `ELIZA_LOCAL_LLAMA=1`.
  */
 export const MOBILE_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",

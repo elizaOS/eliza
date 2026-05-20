@@ -53,14 +53,12 @@ import {
   type TextToSpeechParams,
   type TranscriptionParams,
 } from "@elizaos/core";
-import {
-  findKokoroVoice,
-  type KokoroEngineDiscoveryResult,
-  KokoroOnnxRuntime,
-  type KokoroRuntime,
-  KokoroTtsBackend,
-  resolveKokoroEngineConfig,
-} from "@elizaos/shared";
+// @elizaos/shared/local-inference is no longer imported here: every AOSP TTS
+// path now flows through `makeAospFusedOmnivoiceTextToSpeechHandler` below,
+// which dlopen's `libomnivoice.so` via bun:ffi. The legacy Kokoro/ONNX
+// import block (KokoroOnnxRuntime, KokoroTtsBackend, KokoroEngineDiscoveryResult,
+// resolveKokoroEngineConfig, findKokoroVoice, KokoroRuntime) and the matching
+// `onnxruntime-web` dependency were removed in the GGUF-only migration.
 import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
 import {
   registerAospLlamaLoader,
@@ -271,7 +269,7 @@ type TextToSpeechHandler = (
   params: TextToSpeechParams | string,
 ) => Promise<Uint8Array>;
 
-interface KokoroPrewarmOptions {
+interface AospOmnivoicePrewarmOptions {
   shouldSkip?: () => boolean;
 }
 
@@ -1486,83 +1484,6 @@ function makeEmbeddingHandler(
   };
 }
 
-interface AospKokoroTtsHandlerOptions {
-  discover?: () => KokoroEngineDiscoveryResult | null;
-  runtime?: KokoroRuntime;
-  loadOrt?: ConstructorParameters<typeof KokoroOnnxRuntime>[0]["loadOrt"];
-}
-
-type AospKokoroOrtLoader = NonNullable<
-  ConstructorParameters<typeof KokoroOnnxRuntime>[0]["loadOrt"]
->;
-
-const DEFAULT_AOSP_KOKORO_ORT_MODULE = "onnxruntime-web/wasm";
-
-function wrapKokoroWebOrtModule(
-  module: unknown,
-): Awaited<ReturnType<AospKokoroOrtLoader>> {
-  const candidate = module as {
-    default?: unknown;
-    env?: { wasm?: { numThreads?: number } };
-    InferenceSession?: {
-      create: (
-        model: unknown,
-        opts?: Record<string, unknown>,
-      ) => Promise<unknown>;
-    };
-    Tensor?: unknown;
-  };
-  const ort = (
-    candidate.InferenceSession
-      ? candidate
-      : (candidate.default as typeof candidate | undefined)
-  ) as typeof candidate;
-  if (!ort?.InferenceSession?.create || !ort.Tensor) {
-    throw new Error(
-      "[aosp-local-inference] Android Kokoro ORT module is missing InferenceSession/Tensor exports",
-    );
-  }
-  const baseInferenceSession = ort.InferenceSession;
-  if (ort.env?.wasm) {
-    // Pixel stock-APK Bun currently crashes ONNX Runtime Web's worker path
-    // when numThreads > 1 ("Error in worker"). Keep the production default
-    // single-threaded, while preserving an explicit env knob for future AOSP
-    // / runtime experiments.
-    const wasmThreads = readPositiveIntEnv("ELIZA_KOKORO_WASM_THREADS", 1);
-    ort.env.wasm.numThreads = wasmThreads;
-    logger.info(
-      `[aosp-local-inference] Kokoro ORT wasm numThreads=${wasmThreads}`,
-    );
-  }
-  return {
-    ...ort,
-    InferenceSession: {
-      ...baseInferenceSession,
-      create: async (modelPath: string, opts?: Record<string, unknown>) => {
-        const model = existsSync(modelPath)
-          ? readFileSync(modelPath)
-          : modelPath;
-        return baseInferenceSession.create(model, {
-          ...opts,
-          executionProviders: ["wasm"],
-        });
-      },
-    },
-  } as Awaited<ReturnType<AospKokoroOrtLoader>>;
-}
-
-export async function loadAospKokoroOrt(): ReturnType<AospKokoroOrtLoader> {
-  const spec = process.env.ELIZA_AOSP_KOKORO_ORT_MODULE?.trim();
-  if (!spec || spec === DEFAULT_AOSP_KOKORO_ORT_MODULE) {
-    const mod = await import("onnxruntime-web/wasm");
-    return wrapKokoroWebOrtModule(mod);
-  }
-  const mod = await import(spec);
-  return spec.includes("onnxruntime-web")
-    ? wrapKokoroWebOrtModule(mod)
-    : (mod as Awaited<ReturnType<AospKokoroOrtLoader>>);
-}
-
 function extractSpeechText(params: TextToSpeechParams | string): string {
   if (typeof params === "string") return params;
   if (params && typeof params === "object" && typeof params.text === "string") {
@@ -1573,33 +1494,12 @@ function extractSpeechText(params: TextToSpeechParams | string): string {
   );
 }
 
-function extractSpeechVoice(
-  params: TextToSpeechParams | string,
-): string | null {
-  return typeof params === "object" && params !== null
-    ? (params.voice ?? null)
-    : null;
-}
-
 function extractSpeechSignal(
   params: TextToSpeechParams | string,
 ): AbortSignal | undefined {
   return typeof params === "object" && params !== null
     ? params.signal
     : undefined;
-}
-
-function resolveStagedSpeechVoice(
-  params: TextToSpeechParams | string,
-  config: KokoroEngineDiscoveryResult,
-): string {
-  const requested = extractSpeechVoice(params);
-  if (!requested) return config.defaultVoiceId;
-  const pack = findKokoroVoice(requested);
-  if (pack && existsSync(path.join(config.layout.voicesDir, pack.file))) {
-    return pack.id;
-  }
-  return config.defaultVoiceId;
 }
 
 function encodeWavPcm16(pcm: Float32Array, sampleRate: number): Uint8Array {
@@ -1635,141 +1535,30 @@ function encodeWavPcm16(pcm: Float32Array, sampleRate: number): Uint8Array {
 }
 
 /**
- * AOSP Kokoro TEXT_TO_SPEECH handler.
- *
- * The Kokoro model/voice discovery and runtime live in
- * `@elizaos/shared/local-inference`; this package only supplies the Android
- * registration boundary and returns WAV bytes for the core model contract.
+ * Pre-warm the fused OmniVoice TTS pipeline on a delayed timer so the
+ * first user-facing synthesis does not pay the ~5–10 s GGUF mmap +
+ * codec init cost inside a request handler. Best-effort: failures are
+ * logged at WARN since the foreground request will surface a clean
+ * error if the FFI surface is unavailable.
  */
-export function makeKokoroTextToSpeechHandler(
-  opts: AospKokoroTtsHandlerOptions = {},
-): TextToSpeechHandler {
-  let backendPromise: Promise<{
-    backend: KokoroTtsBackend;
-    config: KokoroEngineDiscoveryResult;
-  }> | null = null;
-
-  async function ensureBackend(): Promise<{
-    backend: KokoroTtsBackend;
-    config: KokoroEngineDiscoveryResult;
-  }> {
-    if (backendPromise) return backendPromise;
-    const started = Date.now();
-    const promise = Promise.resolve().then(() => {
-      const config = opts.discover
-        ? opts.discover()
-        : resolveKokoroEngineConfig();
-      if (!config) {
-        throw new Error(
-          "[aosp-local-inference] Kokoro TEXT_TO_SPEECH is not available: stage an ONNX Kokoro model plus at least one voice .bin under <state-dir>/local-inference/models/kokoro/.",
-        );
-      }
-      if (config.runtimeKind !== "onnx" && !opts.runtime) {
-        throw new Error(
-          `[aosp-local-inference] Kokoro TEXT_TO_SPEECH discovered ${config.runtimeKind} artifacts, but the AOSP handler currently supports the CPU ONNX runtime path.`,
-        );
-      }
-      const runtime =
-        opts.runtime ??
-        new KokoroOnnxRuntime({
-          layout: config.layout,
-          expectedSha256: process.env.ELIZA_KOKORO_MODEL_SHA256 ?? null,
-          loadOrt: opts.loadOrt ?? loadAospKokoroOrt,
-        });
-      return {
-        config,
-        backend: new KokoroTtsBackend({
-          layout: config.layout,
-          runtime,
-          defaultVoiceId: config.defaultVoiceId,
-        }),
-      };
-    });
-    promise
-      .then(({ config }) => {
-        logger.info(
-          `[aosp-local-inference] Kokoro TEXT_TO_SPEECH backend ready in ${Date.now() - started}ms (${config.runtimeKind}, voice=${config.defaultVoiceId})`,
-        );
-      })
-      .catch(() => {
-        // The awaited handler path reports the actual startup error.
-      });
-    backendPromise = promise.catch((err) => {
-      backendPromise = null;
-      throw err;
-    });
-    return backendPromise;
-  }
-
-  return async (_runtime, params) => {
-    const text = extractSpeechText(params).trim();
-    if (!text) {
-      throw new Error(
-        "[aosp-local-inference] TEXT_TO_SPEECH requires non-empty text",
-      );
-    }
-
-    const signal = extractSpeechSignal(params);
-    const cancelSignal = { cancelled: Boolean(signal?.aborted) };
-    const abort = () => {
-      cancelSignal.cancelled = true;
-    };
-    signal?.addEventListener("abort", abort, { once: true });
-    try {
-      const started = Date.now();
-      const { backend, config } = await ensureBackend();
-      const backendReadyMs = Date.now() - started;
-      const synthStarted = Date.now();
-      const audio = await backend.synthesize({
-        phrase: {
-          id: 0,
-          text,
-          fromIndex: 0,
-          toIndex: text.length,
-          terminator: "punctuation",
-        },
-        preset: {
-          voiceId: resolveStagedSpeechVoice(params, config),
-          embedding: new Float32Array(0),
-          bytes: new Uint8Array(0),
-        },
-        cancelSignal,
-      });
-      const synthMs = Date.now() - synthStarted;
-      if (cancelSignal.cancelled) {
-        throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
-      }
-      const encodeStarted = Date.now();
-      const wav = encodeWavPcm16(audio.pcm, audio.sampleRate);
-      const encodeMs = Date.now() - encodeStarted;
-      logger.info(
-        `[aosp-local-inference] Kokoro TEXT_TO_SPEECH completed chars=${text.length} voice=${resolveStagedSpeechVoice(params, config)} backendReadyMs=${backendReadyMs} synthMs=${synthMs} encodeMs=${encodeMs} pcmSamples=${audio.pcm.length} wavBytes=${wav.byteLength}`,
-      );
-      return wav;
-    } finally {
-      signal?.removeEventListener("abort", abort);
-    }
-  };
-}
-
-export function prewarmKokoroTextToSpeechHandler(
+export function prewarmAospOmnivoiceTextToSpeechHandler(
   handler: TextToSpeechHandler,
-  opts: KokoroPrewarmOptions = {},
+  opts: AospOmnivoicePrewarmOptions = {},
 ): void {
-  if (readBooleanEnv("ELIZA_KOKORO_PREWARM") !== true) return;
+  if (readBooleanEnv("ELIZA_AOSP_TTS_PREWARM") !== true) return;
 
-  const delayMs = readPositiveIntEnv("ELIZA_KOKORO_PREWARM_DELAY_MS", 5_000);
+  const delayMs = readPositiveIntEnv("ELIZA_AOSP_TTS_PREWARM_DELAY_MS", 5_000);
   const timeoutMs = readPositiveIntEnv(
-    "ELIZA_KOKORO_PREWARM_TIMEOUT_MS",
+    "ELIZA_AOSP_TTS_PREWARM_TIMEOUT_MS",
     45_000,
   );
   const text =
-    process.env.ELIZA_KOKORO_PREWARM_TEXT?.trim() || "Hello from Eliza.";
+    process.env.ELIZA_AOSP_TTS_PREWARM_TEXT?.trim() || "Hello from Eliza.";
 
   setTimeout(() => {
     if (opts.shouldSkip?.()) {
       logger.info(
-        "[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm skipped; foreground TTS already warmed the backend",
+        "[aosp-local-inference] OmniVoice TEXT_TO_SPEECH pre-warm skipped; foreground TTS already warmed the backend",
       );
       return;
     }
@@ -1782,12 +1571,12 @@ export function prewarmKokoroTextToSpeechHandler(
     })
       .then((bytes) => {
         logger.info(
-          `[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm completed in ${Date.now() - started}ms (${bytes.byteLength} bytes)`,
+          `[aosp-local-inference] OmniVoice TEXT_TO_SPEECH pre-warm completed in ${Date.now() - started}ms (${bytes.byteLength} bytes)`,
         );
       })
       .catch((err) => {
         logger.warn(
-          "[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm failed: " +
+          "[aosp-local-inference] OmniVoice TEXT_TO_SPEECH pre-warm failed: " +
             (err instanceof Error ? err.message : String(err)),
         );
       })
@@ -1884,14 +1673,14 @@ export function resolveAospOmnivoiceConfig(
   return { libPath, modelPath, codecPath };
 }
 
+// TTS backend selection used to gate Kokoro/OmniVoice. With ONNX deleted
+// the AOSP build only supports the fused OmniVoice (libomnivoice.so via
+// libelizainference.so) path; the env knob is kept for forward-compat
+// logging but currently has no behavioural effect.
 function resolveAospTtsBackend(env: NodeJS.ProcessEnv = process.env): string {
   const explicit =
     env.ELIZA_AOSP_TTS_BACKEND?.trim() || env.ELIZA_LOCAL_TTS_BACKEND?.trim();
-  if (explicit) return explicit.toLowerCase();
-  // Stock APKs should prefer the release-safe Kokoro path unless the user
-  // explicitly asks for fused OmniVoice. Branded AOSP builds keep auto mode
-  // so product images can opt into the full local voice stack by default.
-  return env.ELIZA_AOSP_BUILD === "1" ? "auto" : "kokoro";
+  return (explicit ?? "omnivoice").toLowerCase();
 }
 
 async function loadOmnivoicePluginModule(): Promise<OmnivoicePluginModule> {
@@ -2154,30 +1943,15 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(): TextToSpeechHandler
 
 export function makeAospTextToSpeechHandler(
   opts: {
-    kokoro?: TextToSpeechHandler;
     omnivoice?: TextToSpeechHandler;
-    env?: NodeJS.ProcessEnv;
     onForegroundUse?: () => void;
   } = {},
 ): TextToSpeechHandler {
-  const kokoro = opts.kokoro ?? makeKokoroTextToSpeechHandler();
   const omnivoice =
     opts.omnivoice ?? makeAospFusedOmnivoiceTextToSpeechHandler();
   return async (runtime, params) => {
     opts.onForegroundUse?.();
-    const backend = resolveAospTtsBackend(opts.env ?? process.env);
-    if (backend !== "kokoro") {
-      try {
-        return await omnivoice(runtime, params);
-      } catch (err) {
-        if (backend === "omnivoice") throw err;
-        logger.warn(
-          "[aosp-local-inference] OmniVoice TEXT_TO_SPEECH unavailable; falling back to Kokoro: " +
-            (err instanceof Error ? err.message : String(err)),
-        );
-      }
-    }
-    return kokoro(runtime, params);
+    return omnivoice(runtime, params);
   };
 }
 
@@ -2603,12 +2377,13 @@ export async function ensureAospLocalInferenceHandlers(
     ModelType.TEXT_TO_SPEECH,
     ModelType.TRANSCRIPTION,
   ];
-  const baseKokoroTextToSpeechHandler = makeKokoroTextToSpeechHandler();
-  let foregroundKokoroTextToSpeechUsed = false;
+  const baseOmnivoiceTextToSpeechHandler =
+    makeAospFusedOmnivoiceTextToSpeechHandler();
+  let foregroundOmnivoiceTextToSpeechUsed = false;
   const textToSpeechHandler = makeAospTextToSpeechHandler({
-    kokoro: baseKokoroTextToSpeechHandler,
+    omnivoice: baseOmnivoiceTextToSpeechHandler,
     onForegroundUse: () => {
-      foregroundKokoroTextToSpeechUsed = true;
+      foregroundOmnivoiceTextToSpeechUsed = true;
     },
   });
   for (const modelType of slots) {
@@ -2660,14 +2435,9 @@ export async function ensureAospLocalInferenceHandlers(
         (err instanceof Error ? err.message : String(err)),
     );
   });
-  if (
-    resolveAospTtsBackend() === "kokoro" ||
-    resolveAospOmnivoiceConfig() === null
-  ) {
-    prewarmKokoroTextToSpeechHandler(baseKokoroTextToSpeechHandler, {
-      shouldSkip: () => foregroundKokoroTextToSpeechUsed,
-    });
-  }
+  prewarmAospOmnivoiceTextToSpeechHandler(baseOmnivoiceTextToSpeechHandler, {
+    shouldSkip: () => foregroundOmnivoiceTextToSpeechUsed,
+  });
 
   console.log(
     `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH / TRANSCRIPTION (priority ${LOCAL_INFERENCE_PRIORITY})`,

@@ -6,6 +6,7 @@
     "dev": "bun --bun vite",
     "build": "tsc && bun --bun vite build",
     "preview": "bun --bun vite preview",
+    "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . || true",
     "typecheck": "tsc --noEmit"

@@ -1,0 +1,56 @@
+{
+  "version": "1.0.0",
+  "description": "Canonical public configuration for Feed",
+
+  "networks": {
+    "local": {
+      "chainId": 31337,
+      "name": "Localnet (Hardhat)",
+      "rpcUrl": "http://localhost:8545",
+      "contracts": {
+        "identityRegistry": "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82",
+        "reputationSystem": "0x9A676e781A523b5d0C0e43731313A708CB607508"
+      }
+    },
+    "baseSepolia": {
+      "chainId": 84532,
+      "name": "Base Sepolia (Staging)",
+      "rpcUrl": "https://sepolia.base.org",
+      "contracts": {
+        "identityRegistry": "0x4102F9b209796b53a18B063A438D05C7C9Af31A2",
+        "reputationSystem": "0x7960E6044bbeE480F5388be1903b3A1dd69c126D"
+      }
+    },
+    "base": {
+      "chainId": 8453,
+      "name": "Base Mainnet (Production)",
+      "rpcUrl": "https://mainnet.base.org",
+      "contracts": {
+        "identityRegistry": "0x0000000000000000000000000000000000000000",
+        "reputationSystem": "0x0000000000000000000000000000000000000000"
+      }
+    },
+    "ethereum": {
+      "chainId": 1,
+      "name": "Ethereum Mainnet",
+      "rpcUrl": "https://eth.llamarpc.com",
+      "contracts": {
+        "identityRegistry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+        "reputationSystem": "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+        "nft": "0x0000000000000000000000000000000000000000"
+      }
+    }
+  },
+
+  "environments": {
+    "development": {
+      "network": "local"
+    },
+    "staging": {
+      "network": "baseSepolia"
+    },
+    "production": {
+      "network": "base"
+    }
+  }
+}

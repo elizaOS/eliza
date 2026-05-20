@@ -38,6 +38,7 @@ declare module "@elizaos/plugin-lifeops" {
   export function dispatchQueuedLifeOpsGithubCallbackFromUrl(
     url: string,
   ): void | Promise<void>;
+  export function registerLifeOpsApp(): void;
   export const lifeOpsPlugin: unknown;
   export default lifeOpsPlugin;
 }

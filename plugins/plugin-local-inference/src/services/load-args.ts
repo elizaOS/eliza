@@ -9,7 +9,7 @@
  */
 
 /**
- * KV cache placement strategy. `node-llama-cpp` does not currently expose a
+ * KV cache placement strategy. `capacitor-llama` does not currently expose a
  * direct KV-cache placement knob distinct from the model-level `gpuLayers`
  * setting (the KV cache lives wherever the layer that owns it lives). We
  * keep the type here so the API/UI surface and the upstream out-of-process
@@ -27,6 +27,12 @@ export type KvOffloadMode = "cpu" | "gpu" | "split" | { gpuLayers: number };
  */
 export interface LocalInferenceLoadArgs {
 	modelPath: string;
+	/**
+	 * Catalog id for direct bundle loads where `modelPath` points at a GGUF
+	 * inside an Eliza-1 bundle that is not present in the installed-model
+	 * registry yet.
+	 */
+	modelId?: string;
 	contextSize?: number;
 	useGpu?: boolean;
 	maxThreads?: number;

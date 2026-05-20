@@ -109,26 +109,114 @@ def _resolve_telemetry_path() -> str | None:
 
 
 def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
-    def pick(*keys: str) -> int | None:
+    token_payload_raw = usage.get("tokens")
+    token_payload = token_payload_raw if isinstance(token_payload_raw, Mapping) else usage
+    cache_payload_raw = token_payload.get("cache") if isinstance(token_payload, Mapping) else None
+    cache_payload = cache_payload_raw if isinstance(cache_payload_raw, Mapping) else {}
+
+    def pick_from(payload: Mapping[str, object], *keys: str) -> int | None:
         for key in keys:
-            value = usage.get(key)
+            value = payload.get(key)
             if isinstance(value, (int, float)):
                 return int(value)
         return None
 
+    def pick_detail(*keys: str) -> int | None:
+        for container_key in ("prompt_tokens_details", "input_token_details", "token_details"):
+            details = usage.get(container_key)
+            if not isinstance(details, Mapping):
+                continue
+            value = pick_from(details, *keys)
+            if value is not None:
+                return value
+        return None
+
+    def first_not_none(*values: int | None) -> int | None:
+        for value in values:
+            if value is not None:
+                return value
+        return None
+
+    prompt = pick_from(
+        token_payload,
+        "prompt_tokens",
+        "promptTokens",
+        "input_tokens",
+        "input",
+    )
+    completion = pick_from(
+        token_payload,
+        "completion_tokens",
+        "completionTokens",
+        "output_tokens",
+        "output",
+    )
+    total = pick_from(token_payload, "total_tokens", "totalTokens", "total")
+    if total is None and (prompt is not None or completion is not None):
+        total = (prompt or 0) + (completion or 0)
+    cached = first_not_none(
+        pick_from(
+            token_payload,
+            "cache_read_input_tokens",
+            "cachedTokens",
+            "cached_tokens",
+        ),
+        pick_detail(
+            "cached_tokens",
+            "cache_read_input_tokens",
+            "prompt_cache_hit_tokens",
+        ),
+        pick_from(cache_payload, "read", "cached", "hit"),
+    )
+    cache_creation = first_not_none(
+        pick_from(
+            token_payload,
+            "cache_creation_input_tokens",
+            "cacheCreationInputTokens",
+        ),
+        pick_detail(
+            "cache_creation_input_tokens",
+            "cache_write_tokens",
+            "prompt_cache_miss_tokens",
+        ),
+        pick_from(cache_payload, "write", "created", "miss"),
+    )
     return {
-        "prompt_tokens": pick("prompt_tokens", "promptTokens", "input_tokens"),
-        "completion_tokens": pick(
-            "completion_tokens", "completionTokens", "output_tokens"
-        ),
-        "total_tokens": pick("total_tokens", "totalTokens"),
-        "cache_read_input_tokens": pick(
-            "cache_read_input_tokens", "cachedTokens", "cached_tokens"
-        ),
-        "cache_creation_input_tokens": pick(
-            "cache_creation_input_tokens", "cacheCreationInputTokens"
-        ),
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "total_tokens": total,
+        "cache_read_input_tokens": cached,
+        "cache_creation_input_tokens": cache_creation,
     }
+
+
+def _normalize_usage_payload(usage: Mapping[str, object]) -> dict[str, object]:
+    normalized = dict(usage)
+    tokens = _extract_usage_tokens(normalized)
+    aliases = {
+        "prompt_tokens": tokens["prompt_tokens"],
+        "completion_tokens": tokens["completion_tokens"],
+        "total_tokens": tokens["total_tokens"],
+        "cache_read_input_tokens": tokens["cache_read_input_tokens"],
+        "cache_creation_input_tokens": tokens["cache_creation_input_tokens"],
+    }
+    for key, value in aliases.items():
+        if value is not None:
+            normalized[key] = value
+    return normalized
+
+
+def _usage_from_response_params(params: Mapping[str, object]) -> dict[str, object]:
+    usage_raw = params.get("usage")
+    if isinstance(usage_raw, Mapping):
+        return _normalize_usage_payload(usage_raw)
+    meta_raw = params.get("_meta")
+    if isinstance(meta_raw, Mapping) and isinstance(meta_raw.get("usage"), Mapping):
+        return _normalize_usage_payload(meta_raw["usage"])  # type: ignore[index]
+    metadata_raw = params.get("eliza_metadata")
+    if isinstance(metadata_raw, Mapping) and isinstance(metadata_raw.get("usage"), Mapping):
+        return _normalize_usage_payload(metadata_raw["usage"])  # type: ignore[index]
+    return {}
 
 
 def _context_tool_schemas(context: Mapping[str, object] | None) -> list[dict[str, object]]:
@@ -236,12 +324,11 @@ def _write_telemetry(
         return
     usage: dict[str, object] = {}
     if response is not None:
-        usage_raw = response.params.get("usage")
-        if isinstance(usage_raw, Mapping):
-            usage = dict(usage_raw)
+        usage = _usage_from_response_params(response.params)
     prompt = _prompt_text(text, context)
     tool_schemas = _context_tool_schemas(context)
     metadata = _metadata_from_response(response)
+    response_text = response.text if response is not None else ""
     tool_calls = []
     if response is not None:
         raw_tool_calls = response.params.get("tool_calls")
@@ -267,6 +354,10 @@ def _write_telemetry(
     }
     record: dict[str, Any] = {
         "harness": "eliza",
+        "benchmark_task_agent": os.environ.get("BENCHMARK_TASK_AGENT", ""),
+        "acp_default_agent": os.environ.get("ELIZA_ACP_DEFAULT_AGENT", ""),
+        "default_agent_type": os.environ.get("ELIZA_DEFAULT_AGENT_TYPE", ""),
+        "agent_selection_strategy": os.environ.get("ELIZA_AGENT_SELECTION_STRATEGY", ""),
         "provider": os.environ.get("BENCHMARK_MODEL_PROVIDER", ""),
         "model": os.environ.get("BENCHMARK_MODEL_NAME", ""),
         "benchmark": context.get("benchmark") if isinstance(context, Mapping) else None,
@@ -277,6 +368,7 @@ def _write_telemetry(
         "prompt_text": _redact(prompt),
         "prompt_chars": len(prompt),
         "latency_ms": latency_ms,
+        "duration_ms": latency_ms,
         "usage": _jsonable(_redact(usage)),
         "prompt_tokens": tokens["prompt_tokens"],
         "completion_tokens": tokens["completion_tokens"],
@@ -289,7 +381,8 @@ def _write_telemetry(
         "tool_calls": _jsonable(_redact(tool_calls)),
         "tool_call_count": len(tool_calls),
         "actions": list(response.actions) if response is not None else [],
-        "response_text": _redact(response.text if response is not None else ""),
+        "response_text": _redact(response_text),
+        "response_chars": len(response_text),
         "metadata": _jsonable(_redact(metadata)),
         "trajectory_snapshot": _jsonable(_redact(trajectory_snapshot))
         if trajectory_snapshot is not None
@@ -346,11 +439,11 @@ class ElizaClient:
     # Public API
     # ------------------------------------------------------------------
 
-    def health(self) -> dict[str, object]:
+    def health(self, timeout_s: float | None = None) -> dict[str, object]:
         """GET /api/benchmark/health — check if the server is up."""
         if self._delegate is not None:
             return self._delegate.health()
-        return self._get("/api/benchmark/health")
+        return self._get("/api/benchmark/health", timeout_s=timeout_s)
 
     def reset(
         self,
@@ -488,6 +581,9 @@ class ElizaClient:
             value = raw.get(key)
             if value is not None and key not in params:
                 params[key if key != "metadata" else "eliza_metadata"] = value
+        usage = _usage_from_response_params(params)
+        if usage:
+            params["usage"] = usage
         captured_actions = raw.get("captured_actions")
         if isinstance(captured_actions, list) and "BENCHMARK_ACTIONS" not in params:
             normalized_actions: list[object] = []
@@ -615,10 +711,10 @@ class ElizaClient:
             return {"Authorization": f"Bearer {self._token}"}
         return {}
 
-    def _get(self, path: str) -> dict[str, object]:
+    def _get(self, path: str, *, timeout_s: float | None = None) -> dict[str, object]:
         url = f"{self.base_url}{path}"
         req = urllib.request.Request(url, method="GET", headers=self._auth_headers())
-        return self._do(req)
+        return self._do(req, timeout_s=timeout_s)
 
     def _post(self, path: str, body: dict[str, object]) -> dict[str, object]:
         url = f"{self.base_url}{path}"
@@ -633,14 +729,15 @@ class ElizaClient:
         return self._do(req)
 
     @staticmethod
-    def _do(req: urllib.request.Request) -> dict[str, object]:
+    def _do(req: urllib.request.Request, *, timeout_s: float | None = None) -> dict[str, object]:
         # Long ceiling: vending-bench day 1 with a fresh runtime (full plugin
         # init + first slow LLM call) regularly takes >5 min. Override via
         # ELIZA_BENCH_HTTP_TIMEOUT env var if the operator wants a tighter cap.
-        try:
-            timeout_s = float(os.environ.get("ELIZA_BENCH_HTTP_TIMEOUT", "1800"))
-        except ValueError:
-            timeout_s = 1800.0
+        if timeout_s is None:
+            try:
+                timeout_s = float(os.environ.get("ELIZA_BENCH_HTTP_TIMEOUT", "1800"))
+            except ValueError:
+                timeout_s = 1800.0
         try:
             with urllib.request.urlopen(req, timeout=timeout_s) as resp:
                 raw = resp.read().decode("utf-8")

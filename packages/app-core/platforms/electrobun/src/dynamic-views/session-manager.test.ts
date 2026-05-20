@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { JsonValue } from "@elizaos/electrobun-carrots";
+import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { describe, expect, it } from "vitest";
 import { DynamicViewError } from "./errors";
 import { DynamicViewRegistry } from "./registry";

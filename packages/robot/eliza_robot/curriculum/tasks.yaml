@@ -1,0 +1,413 @@
+# Curriculum task specification — single source of truth for the
+# text-conditioned RL policy.
+#
+# Every task here is consumed by:
+#   - the bridge's policy.start handler (task name lookup)
+#   - the Brax-PPO trainer (env factory + reward + text embedding)
+#   - the motion-analysis testbed (programmatic success criteria)
+#   - the plugin's action surface (text variants → similes)
+#
+# Tiers reflect training order: a policy must converge on tier-1 before
+# moving to tier-2 (curriculum learning).
+#
+# Required fields per task:
+#   id              kebab-case canonical id (Python identifier-safe)
+#   tier            1 | 2 | 3
+#   verbs           list of text variants (English first; other languages
+#                   prefixed by ISO code if added later)
+#   description     1-sentence description for text encoder
+#   action_dim      24 (always — AiNex DoF)
+#   reward          high-level structure (parsed by env factory)
+#   success         programmatic success predicate (parsed by testbed)
+#   max_episode_s   episode timeout in seconds
+#   requires_target boolean — does the task need a target entity in the scene
+
+version: 1
+default_action_dim: 24
+default_max_episode_s: 8.0
+
+tiers:
+  1:
+    name: "fundamentals"
+    description: "Single-skill behaviours the robot must master before composition."
+  2:
+    name: "compositional"
+    description: "Behaviours that chain or modulate the tier-1 skills."
+  3:
+    name: "long-horizon"
+    description: "Goal-directed behaviours requiring perception + navigation."
+
+# =============================================================================
+# Tier 1: fundamentals
+# =============================================================================
+tasks:
+
+  - id: stand_up
+    tier: 1
+    verbs:
+      en: ["stand up", "stand", "get up", "rise", "stand still", "hold still",
+           "be still", "go upright", "stand to attention"]
+      es: ["levántate", "ponte de pie", "quédate quieto"]
+      fr: ["lève-toi", "reste debout", "tiens-toi droit"]
+      ja: ["立て", "立ち上がれ", "じっとして"]
+      zh: ["站起来", "站好", "保持站立"]
+    description: "Return to and maintain the calibrated standing pose."
+    reward:
+      torso_height_target_m: 0.27   # nominal AiNex stand
+      torso_height_tolerance_m: 0.03
+      upright_weight: 2.0
+      action_rate_weight: -0.01
+      energy_weight: -0.0001
+    success:
+      torso_z_min_m: 0.24
+      torso_z_max_m: 0.32
+      hold_s: 2.0
+      fall_pitch_rad: 0.5
+      fall_roll_rad: 0.5
+    max_episode_s: 4.0
+
+  - id: sit_down
+    tier: 1
+    verbs:
+      en: ["sit down", "sit", "crouch", "lower yourself", "take a seat", "rest"]
+      es: ["siéntate", "agáchate"]
+      ja: ["座って", "しゃがんで"]
+      zh: ["坐下", "蹲下"]
+    description: "Lower the hips into a stable seated/crouched pose without tipping."
+    reward:
+      torso_height_target_m: 0.16
+      torso_height_tolerance_m: 0.03
+      upright_weight: 1.0
+      action_rate_weight: -0.01
+    success:
+      torso_z_min_m: 0.13
+      torso_z_max_m: 0.20
+      hold_s: 1.0
+    max_episode_s: 4.0
+
+  - id: walk_forward
+    tier: 1
+    verbs:
+      en: ["walk forward", "go forward", "walk", "move forward", "step forward",
+           "advance", "go", "march forward", "head forward"]
+      es: ["camina adelante", "avanza", "ve adelante"]
+      ja: ["前に歩け", "前進"]
+      zh: ["向前走", "前进"]
+    description: "Walk in the +x body direction without falling."
+    reward:
+      target_velocity_x_m_s: 0.10
+      velocity_track_weight: 8.0
+      upright_weight: 1.5
+      gait_phase_weight: 0.5
+      action_rate_weight: -0.01
+    success:
+      delta_x_m_min: 0.30
+      window_s: 5.0
+      max_lateral_drift_m: 0.20
+      no_fall: true
+    max_episode_s: 8.0
+
+  - id: walk_backward
+    tier: 1
+    verbs:
+      en: ["walk backward", "walk back", "go backward", "step back", "back up",
+           "move backward", "retreat"]
+      es: ["camina atrás", "retrocede"]
+      ja: ["後ろに歩け", "後退"]
+    description: "Walk in the -x body direction without falling."
+    reward:
+      target_velocity_x_m_s: -0.08
+      velocity_track_weight: 8.0
+      upright_weight: 1.5
+      action_rate_weight: -0.01
+    success:
+      delta_x_m_max: -0.20
+      window_s: 5.0
+      no_fall: true
+    max_episode_s: 8.0
+
+  - id: sidestep_left
+    tier: 1
+    verbs:
+      en: ["sidestep left", "step left", "strafe left", "shuffle left",
+           "go left", "move left", "slide left"]
+      ja: ["左にステップ", "左に横歩き"]
+    description: "Translate in the +y body direction (robot's left)."
+    reward:
+      target_velocity_y_m_s: 0.06
+      velocity_track_weight: 8.0
+      upright_weight: 1.5
+    success:
+      delta_y_m_min: 0.20
+      window_s: 5.0
+      no_fall: true
+    max_episode_s: 8.0
+
+  - id: sidestep_right
+    tier: 1
+    verbs:
+      en: ["sidestep right", "step right", "strafe right", "shuffle right",
+           "go right", "move right", "slide right"]
+      ja: ["右にステップ", "右に横歩き"]
+    description: "Translate in the -y body direction (robot's right)."
+    reward:
+      target_velocity_y_m_s: -0.06
+      velocity_track_weight: 8.0
+      upright_weight: 1.5
+    success:
+      delta_y_m_max: -0.20
+      window_s: 5.0
+      no_fall: true
+    max_episode_s: 8.0
+
+  - id: turn_left
+    tier: 1
+    verbs:
+      en: ["turn left", "rotate left", "spin left", "yaw left", "look left",
+           "face left", "pivot left"]
+      ja: ["左に回れ", "左を向け"]
+      zh: ["向左转"]
+    description: "Yaw in the positive (counterclockwise) direction."
+    reward:
+      target_yaw_rate_rad_s: 0.6
+      yaw_track_weight: 6.0
+      upright_weight: 1.5
+    success:
+      delta_yaw_rad_min: 0.7   # ~40°
+      window_s: 4.0
+      no_fall: true
+    max_episode_s: 8.0
+
+  - id: turn_right
+    tier: 1
+    verbs:
+      en: ["turn right", "rotate right", "spin right", "yaw right",
+           "look right", "face right", "pivot right"]
+      ja: ["右に回れ", "右を向け"]
+      zh: ["向右转"]
+    description: "Yaw in the negative (clockwise) direction."
+    reward:
+      target_yaw_rate_rad_s: -0.6
+      yaw_track_weight: 6.0
+      upright_weight: 1.5
+    success:
+      delta_yaw_rad_max: -0.7
+      window_s: 4.0
+      no_fall: true
+    max_episode_s: 8.0
+
+  - id: turn_around
+    tier: 1
+    verbs:
+      en: ["turn around", "spin around", "face the other way", "about-face",
+           "do a 180", "turn 180 degrees"]
+      ja: ["振り向け", "180度回れ"]
+      zh: ["转身", "向后转"]
+    description: "Yaw 180° in either direction."
+    reward:
+      target_yaw_change_rad: 3.0   # ~172°
+      yaw_track_weight: 6.0
+      upright_weight: 1.5
+    success:
+      abs_delta_yaw_rad_min: 2.6
+      hold_s: 0.5
+      no_fall: true
+    max_episode_s: 8.0
+
+  - id: look_up
+    tier: 1
+    verbs:
+      en: ["look up", "tilt head up", "raise head", "head up"]
+      ja: ["上を見ろ"]
+    description: "Drive head_tilt to a positive angle (camera pointing up)."
+    reward:
+      head_tilt_target_rad: 0.6
+      head_track_weight: 4.0
+    success:
+      head_tilt_min_rad: 0.4
+      hold_s: 0.5
+    max_episode_s: 3.0
+
+  - id: look_down
+    tier: 1
+    verbs:
+      en: ["look down", "tilt head down", "lower head", "head down"]
+      ja: ["下を見ろ"]
+    description: "Drive head_tilt to a negative angle (camera pointing down)."
+    reward:
+      head_tilt_target_rad: -0.5
+      head_track_weight: 4.0
+    success:
+      head_tilt_max_rad: -0.3
+      hold_s: 0.5
+    max_episode_s: 3.0
+
+# =============================================================================
+# Tier 2: compositional
+# =============================================================================
+
+  - id: lie_down
+    tier: 2
+    verbs:
+      en: ["lie down", "lay down", "lie flat", "go prone", "drop to the floor"]
+    description: "Transition from standing to a stable prone pose."
+    reward:
+      torso_height_target_m: 0.05
+      torso_height_tolerance_m: 0.03
+      stillness_weight: 1.0
+    success:
+      torso_z_max_m: 0.10
+      hold_s: 1.0
+    max_episode_s: 6.0
+
+  - id: get_up
+    tier: 2
+    verbs:
+      en: ["get up", "stand back up", "recover", "get back on your feet",
+           "rise from the floor"]
+    description: "From a fallen / prone start state, return to standing."
+    reward:
+      torso_height_target_m: 0.27
+      upright_weight: 2.0
+      progress_weight: 1.5
+    success:
+      torso_z_min_m: 0.24
+      hold_s: 1.0
+    max_episode_s: 10.0
+    init_state: "prone"
+
+  - id: pushup
+    tier: 2
+    verbs:
+      en: ["do a pushup", "do pushups", "push-up", "press up"]
+    description: "From a prone pose, push the torso up by extending the arms, then lower."
+    reward:
+      torso_oscillation_target_amplitude_m: 0.06
+      oscillation_track_weight: 3.0
+      upright_weight: 0.5
+    success:
+      pushup_count_min: 1
+    max_episode_s: 8.0
+    init_state: "prone"
+
+  - id: wave_left
+    tier: 2
+    verbs:
+      en: ["wave with your left arm", "wave left hand", "wave left", "greet with left"]
+    description: "Raise the left shoulder and oscillate the elbow while standing."
+    reward:
+      torso_height_target_m: 0.27
+      upright_weight: 2.0
+      left_arm_oscillation_weight: 3.0
+    success:
+      torso_z_min_m: 0.22
+      l_sho_pitch_oscillation: true
+      cycles_min: 1
+    max_episode_s: 6.0
+
+  - id: wave_right
+    tier: 2
+    verbs:
+      en: ["wave with your right arm", "wave right hand", "wave right", "greet with right"]
+    description: "Raise the right shoulder and oscillate the elbow while standing."
+    reward:
+      torso_height_target_m: 0.27
+      upright_weight: 2.0
+      right_arm_oscillation_weight: 3.0
+    success:
+      torso_z_min_m: 0.22
+      r_sho_pitch_oscillation: true
+      cycles_min: 1
+    max_episode_s: 6.0
+
+  - id: squat
+    tier: 2
+    verbs:
+      en: ["squat", "do a squat", "knee bend", "bend your knees"]
+    description: "From standing, lower hips ~0.10 m then return; repeat."
+    reward:
+      squat_amplitude_m: 0.10
+      oscillation_track_weight: 3.0
+      upright_weight: 1.5
+    success:
+      squat_cycles_min: 1
+    max_episode_s: 6.0
+
+  - id: touch_hands
+    tier: 2
+    verbs:
+      en: ["touch your hands together", "bring hands together", "clap", "fold hands"]
+    description: "Move both grippers to a shared midline point in front of the body."
+    reward:
+      gripper_separation_target_m: 0.05
+      gripper_separation_weight: 4.0
+      upright_weight: 1.5
+    success:
+      gripper_separation_max_m: 0.10
+      hold_s: 0.5
+    max_episode_s: 5.0
+
+# =============================================================================
+# Tier 3: long-horizon
+# =============================================================================
+
+  - id: walk_to_target
+    tier: 3
+    verbs:
+      en: ["go to the target", "walk to the target", "approach the target",
+           "head over there", "navigate to the marker"]
+    description: "Reach a target XY position visible as a coloured ball in the scene."
+    requires_target: true
+    reward:
+      distance_to_target_weight: 8.0
+      upright_weight: 1.5
+      action_rate_weight: -0.01
+    success:
+      distance_to_target_m_max: 0.20
+      hold_s: 1.0
+    max_episode_s: 20.0
+
+  - id: pick_up_box
+    tier: 3
+    verbs:
+      en: ["pick up the box", "grab the box", "lift the box", "take the box"]
+    description: "Reach to a box at known position, close grippers, lift."
+    requires_target: true
+    reward:
+      gripper_to_box_distance_weight: 6.0
+      grasp_contact_weight: 5.0
+      lift_height_weight: 10.0
+    success:
+      box_z_min_m: 0.15
+      box_in_grippers: true
+    max_episode_s: 12.0
+
+  - id: move_box_a_to_b
+    tier: 3
+    verbs:
+      en: ["move the box from A to B", "carry the box to the target",
+           "bring the box over here", "transport the box"]
+    description: "Pick up the box at point A then deposit it at point B."
+    requires_target: true
+    reward:
+      box_to_b_distance_weight: 10.0
+      grasp_hold_weight: 5.0
+    success:
+      box_at_target_xy_m_max: 0.20
+      box_released: true
+    max_episode_s: 25.0
+
+  - id: go_to_moving_target
+    tier: 3
+    verbs:
+      en: ["follow the moving target", "chase the target", "track the marker",
+           "keep up with the moving object"]
+    description: "Target moves in the scene; maintain proximity within a tolerance."
+    requires_target: true
+    reward:
+      distance_to_target_weight: 8.0
+      tracking_consistency_weight: 2.0
+    success:
+      mean_distance_m_max: 0.30
+      window_s: 10.0
+    max_episode_s: 30.0

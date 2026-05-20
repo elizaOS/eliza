@@ -1,0 +1,101 @@
+# Cocotb Makefile for the standalone CVA6 wrapper integration tests.
+#
+# Invoked by `make cocotb-cva6-cpu` at the repo root.  This Makefile is
+# separated from `Makefile` (the lite-mode integration suite) so the
+# CVA6 source tree only enters the compile when explicitly requested;
+# the existing 18 integration tests stay independent of the CVA6 pin.
+#
+# Environment overrides:
+#   CVA6_REPO_DIR = absolute path to external/cva6/cva6 checkout pinned
+#                   to v5.3.0 (commit 2ef1c1b1fca419354920c5487293bc605294904e).
+#   HPDCACHE_DIR  = $(CVA6_REPO_DIR)/core/cache_subsystem/hpdcache
+#   TARGET_CFG    = config-package prefix (default cv64a6_imafdc_sv39).
+
+TOPLEVEL_LANG ?= verilog
+SIM           ?= verilator
+
+PWD  := $(shell pwd)
+REPO := $(abspath ../../..)
+
+CVA6_REPO_DIR ?= $(REPO)/external/cva6/cva6
+HPDCACHE_DIR  ?= $(CVA6_REPO_DIR)/core/cache_subsystem/hpdcache
+TARGET_CFG    ?= cv64a6_imafdc_sv39
+
+# The Verilator 5.049 V3Delayed internal error on
+# external/cva6/cva6/core/frontend/btb.sv:188 (whole-array NBA on the
+# 2D unpacked struct array btb_q) is unblocked by the tracked patches
+# under patches/cva6/, which are applied just-in-time by
+# scripts/apply_cva6_patches.sh below.  The patches replace whole-array
+# NBAs with semantically-equivalent per-element nested loops that
+# V3Delayed lowers correctly.
+#
+# Optional escape hatches:
+#   - CVA6_SKIP_LOCAL_PATCHES=1   skip the patch step (eg. to reproduce
+#                                 the upstream Verilator crash).
+#   - CVA6_VERILATOR_FULL_OK=1    historical opt-in retained so the
+#                                 cocotb test files keep their explicit
+#                                 run gate; defaulted to 1 here now that
+#                                 the local patch covers the blocker.
+CVA6_VERILATOR_FULL_OK ?= 1
+export CVA6_VERILATOR_FULL_OK
+
+# Optional CVA6 cocotb tracing.  Set CVA6_COCOTB_TRACE=1 to enable VCD dump
+# (the TB contains an $test$plusargs("trace") gate that calls $dumpvars).
+ifeq ($(CVA6_COCOTB_TRACE),1)
+VERILATOR_TRACE := 1
+export VERILATOR_TRACE
+PLUSARGS += +trace
+endif
+
+ifeq ($(CVA6_SKIP_LOCAL_PATCHES),)
+CVA6_PATCH_RC := $(shell $(REPO)/scripts/apply_cva6_patches.sh >&2 && echo OK || echo FAIL)
+ifneq ($(CVA6_PATCH_RC),OK)
+$(error scripts/apply_cva6_patches.sh failed — CVA6 sources cannot be Verilator-lowered without local patches)
+endif
+endif
+
+CVA6_FLIST_OUT  := $(PWD)/.cva6_flist.txt
+CVA6_INCDIR_OUT := $(PWD)/.cva6_incdir.txt
+
+# Expand the CVA6 flist eagerly so EXTRA_ARGS / VERILOG_SOURCES have the
+# right values before cocotb's Makefile.sim consumes them.  The Python
+# helper writes the file lists to the two .txt sidecars.
+CVA6_EXPAND_RC := $(shell \
+  CVA6_REPO_DIR=$(CVA6_REPO_DIR) \
+  HPDCACHE_DIR=$(HPDCACHE_DIR) \
+  TARGET_CFG=$(TARGET_CFG) \
+  python3 $(REPO)/scripts/expand_cva6_flist.py \
+    --flist $(CVA6_REPO_DIR)/core/Flist.cva6 \
+    --files-out $(CVA6_FLIST_OUT) \
+    --incdir-out $(CVA6_INCDIR_OUT) >&2 && echo OK || echo FAIL)
+
+ifneq ($(CVA6_EXPAND_RC),OK)
+$(error CVA6 flist expansion failed; check CVA6_REPO_DIR=$(CVA6_REPO_DIR))
+endif
+
+CVA6_INCDIRS := $(shell cat $(CVA6_INCDIR_OUT) | tr '\n' ' ')
+CVA6_FILES   := $(shell cat $(CVA6_FLIST_OUT))
+
+VERILOG_SOURCES := \
+	$(CVA6_FILES) \
+	$(REPO)/rtl/top/adapters/e1_cva6_to_e1axi4.sv \
+	$(REPO)/rtl/cpu/e1_cva6_wrapper.sv \
+	$(PWD)/e1_cva6_unit_tb.sv
+
+TOPLEVEL ?= e1_cva6_unit_tb
+MODULE   ?= test_cva6_executes_bootrom_program
+PYTHON   ?= python3
+
+COMPILE_ARGS += +define+E1_HAVE_CVA6 +define+WT_DCACHE
+
+EXTRA_ARGS += $(CVA6_INCDIRS)
+EXTRA_ARGS += \
+	-Wno-fatal -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM \
+	-Wno-WIDTH -Wno-UNOPTFLAT -Wno-CASEINCOMPLETE -Wno-IMPLICITSTATIC \
+	-Wno-PINCONNECTEMPTY -Wno-SYNCASYNCNET -Wno-WIDTHEXPAND \
+	-Wno-WIDTHTRUNC -Wno-COMBDLY -Wno-ALWCOMBORDER -Wno-LATCH \
+	-Wno-VARHIDDEN -Wno-UNUSED -Wno-LITENDIAN -Wno-TIMESCALEMOD \
+	-Wno-MULTITOP -Wno-MODDUP -Wno-STMTDLY -Wno-CASEX -Wno-SELRANGE \
+	-Wno-UNSIGNED -Wno-SYMRSVDWORD
+
+include $(shell $(PYTHON) -m cocotb.config --makefiles)/Makefile.sim

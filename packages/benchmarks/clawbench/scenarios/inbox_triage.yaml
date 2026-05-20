@@ -86,14 +86,14 @@ scoring:
 
     - id: classified_newsletter
       type: response_contains
-      pattern: "(newsletter|tech.?digest).{0,40}(low|archive|skip|batch|weekend)|newsletter.{0,5}\\(\\d\\)|##.{0,20}newsletter"
+      pattern: "(newsletter|tech.?digest).{0,40}(low|archive|skip|batch|weekend)|(low.?priority|archive|skip|batch|weekend).{0,120}(newsletter|tech.?digest)|newsletter.{0,5}\\(\\d\\)|##.{0,20}newsletter"
       points: 1
       category: correctness
       description: "Classified newsletter as low priority"
 
     - id: classified_promo
       type: response_contains
-      pattern: "(promo|shopping|50%).{0,40}(archive|ignore|skip|low)|promotional.{0,5}\\(\\d\\)|##.{0,20}promo"
+      pattern: "(promo|shopping|50%).{0,40}(archive|ignore|skip|low)|(low.?priority|archive|ignore|skip).{0,120}(promo|promotion|shopping|50%)|promotional.{0,5}\\(\\d\\)|##.{0,20}promo"
       points: 1
       category: correctness
       description: "Classified promotional email as archive"

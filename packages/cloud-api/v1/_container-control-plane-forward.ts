@@ -42,8 +42,10 @@ async function forwardControlPlaneRequest(
   headers.set("x-forwarded-proto", sourceUrl.protocol.replace(":", ""));
 
   const internalToken = readStringEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
-  if (internalToken)
+  if (internalToken) {
     headers.set("x-container-control-plane-token", internalToken);
+    headers.set("authorization", `Bearer ${internalToken}`);
+  }
 
   const databaseUrl = readStringEnv(c, ["DATABASE_URL"]);
   if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
@@ -51,15 +53,19 @@ async function forwardControlPlaneRequest(
   configureHeaders(headers);
 
   try {
-    const upstream = await fetch(target, {
-      body:
-        c.req.method === "GET" || c.req.method === "HEAD"
-          ? undefined
-          : c.req.raw.body,
+    const body =
+      c.req.method === "GET" || c.req.method === "HEAD"
+        ? undefined
+        : c.req.raw.body;
+    const init: RequestInit & { duplex?: "half" } = {
+      body,
       headers,
       method: c.req.method,
       redirect: "manual",
-    });
+    };
+    if (body) init.duplex = "half";
+
+    const upstream = await fetch(target, init);
 
     return new Response(upstream.body, {
       headers: upstream.headers,

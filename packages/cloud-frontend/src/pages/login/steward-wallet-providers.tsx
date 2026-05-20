@@ -82,7 +82,7 @@ export function StewardWalletProviders({
   );
 
   return (
-    <WagmiProvider config={evmConfig} reconnectOnMount={false}>
+    <WagmiProvider config={evmConfig}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider theme={rainbowTheme} modalSize="compact">
           <ConnectionProvider endpoint={solanaEndpoint}>

@@ -1,4 +1,4 @@
-import type { JsonValue } from "@elizaos/electrobun-carrots";
+import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import type { TraceService } from "../trace/trace-service";
 import type { TraceEventKind, TraceSession } from "../trace/types";
 import type { VoiceLatencyMark, VoiceTurn } from "./types";

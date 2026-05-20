@@ -1,6 +1,45 @@
+import sys
+from pathlib import Path
+
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from coverage_helpers import CoverPointSet  # noqa: E402
+
+SOC_MMIO_REGIONS = (
+    "bootrom",
+    "gpio",
+    "timer",
+    "clint",
+    "dma",
+    "npu",
+    "display",
+    "unmapped",
+)
+SOC_IRQ_VECTORS = ("timer", "dma", "npu", "vsync")
+_SOC_COVER = CoverPointSet("soc")
+_SOC_COVER.declare("mmio_region", "addr_region", SOC_MMIO_REGIONS)
+_SOC_COVER.declare("irq_vector", "soc_irq", SOC_IRQ_VECTORS)
+
+
+def _classify_mmio(addr: int) -> str:
+    if addr < 0x1000_0000:
+        if 0x0200_0000 <= addr < 0x0201_0000:
+            return "clint"
+        return "bootrom"
+    if 0x1000_0000 <= addr < 0x1001_0000:
+        if addr & 0xFFFF in {0x0010}:
+            return "timer"
+        return "gpio"
+    if 0x1001_0000 <= addr < 0x1002_0000:
+        return "dma"
+    if 0x1002_0000 <= addr < 0x1003_0000:
+        return "npu"
+    if 0x1003_0000 <= addr < 0x1004_0000:
+        return "display"
+    return "unmapped"
 
 
 async def reset(dut):
@@ -17,6 +56,7 @@ async def reset(dut):
 
 
 async def write32(dut, addr, data):
+    _SOC_COVER.sample("mmio_region", "addr_region", _classify_mmio(addr))
     dut.mmio_addr.value = addr
     dut.mmio_wdata.value = data
     dut.mmio_write.value = 1
@@ -28,6 +68,7 @@ async def write32(dut, addr, data):
 
 
 async def read32(dut, addr):
+    _SOC_COVER.sample("mmio_region", "addr_region", _classify_mmio(addr))
     dut.mmio_addr.value = addr
     dut.mmio_write.value = 0
     dut.mmio_valid.value = 1
@@ -79,6 +120,7 @@ async def timer_dma_npu_display_interrupts(dut):
     for _ in range(10):
         await RisingEdge(dut.clk)
     assert int(dut.irq_timer.value) == 1
+    _SOC_COVER.sample("irq_vector", "soc_irq", "timer")
 
     for idx in range(16):
         await write32(dut, 0x8000_0000 + idx * 4, 0xC000_0000 + idx)
@@ -89,6 +131,7 @@ async def timer_dma_npu_display_interrupts(dut):
     status = await poll_done(dut, 0x1001_000C)
     assert status == 0x2
     assert int(dut.irq_dma.value) == 1
+    _SOC_COVER.sample("irq_vector", "soc_irq", "dma")
     assert await read32(dut, 0x1001_0014) == 64
     assert await read32(dut, 0x1001_0018) == 16
     assert await read32(dut, 0x1001_0024) == 0x8000_003C
@@ -106,6 +149,7 @@ async def timer_dma_npu_display_interrupts(dut):
     assert await poll_done(dut, 0x1002_000C) == 0x2
     assert await read32(dut, 0x1002_0008) == 42
     assert int(dut.irq_npu.value) == 1
+    _SOC_COVER.sample("irq_vector", "soc_irq", "npu")
 
     await write32(dut, 0x1002_000C, 2)
     await write32(dut, 0x1002_0000, 0x04FD_0201)
@@ -345,6 +389,7 @@ async def display_enable_gates_vsync(dut):
         await RisingEdge(dut.clk)
         seen = seen or int(dut.irq_vsync.value) == 1
     assert seen
+    _SOC_COVER.sample("irq_vector", "soc_irq", "vsync")
 
 
 @cocotb.test()
@@ -371,3 +416,4 @@ async def display_fetches_top_level_dram_framebuffer(dut):
     assert seen_rgb & {0x112233, 0x445566, 0x778899, 0xAABBCC}
     assert await read32(dut, 0x1003_0014) == 0
     assert await read32(dut, 0x1003_0018) >= 4
+    _SOC_COVER.write_json()

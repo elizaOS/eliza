@@ -2,9 +2,12 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCarrotPayload } from "@elizaos/electrobun-carrots";
+import { assertRemotePluginPayload } from "@elizaos/plugin-remote-manifest";
 import { logger } from "./logger";
-import { type CarrotManager, getCarrotManager } from "./native/carrots";
+import {
+	type RemotePluginHost,
+	getRemotePluginHost,
+} from "./native/remote-plugin-host";
 
 export type FirstPartySatelliteKind = "required" | "recommended" | "dev";
 
@@ -104,7 +107,7 @@ export function getFirstPartySatelliteDefinitions(options?: {
 export function setFirstPartySatelliteDisabled(
 	id: string,
 	disabled: boolean,
-	manager: CarrotManager = getCarrotManager(),
+	manager: RemotePluginHost = getRemotePluginHost(),
 ): void {
 	const state = readFirstPartySatelliteState(manager);
 	if (disabled) {
@@ -117,24 +120,24 @@ export function setFirstPartySatelliteDisabled(
 
 export function isFirstPartySatelliteDisabled(
 	id: string,
-	manager: CarrotManager = getCarrotManager(),
+	manager: RemotePluginHost = getRemotePluginHost(),
 ): boolean {
 	return readFirstPartySatelliteState(manager).disabled[id] === true;
 }
 
 export function seedFirstPartySatellites(options?: {
-	manager?: CarrotManager;
+	manager?: RemotePluginHost;
 	includeDev?: boolean;
 	startAutoStart?: boolean;
 }): FirstPartySatelliteSeedResult[] {
-	const manager = options?.manager ?? getCarrotManager();
+	const manager = options?.manager ?? getRemotePluginHost();
 	const startAutoStart = options?.startAutoStart ?? true;
 	const results: FirstPartySatelliteSeedResult[] = [];
 
 	for (const definition of getFirstPartySatelliteDefinitions({
 		includeDev: options?.includeDev,
 	})) {
-		const manifest = assertCarrotPayload(definition.sourceDir);
+		const manifest = assertRemotePluginPayload(definition.sourceDir);
 		if (manifest.id !== definition.id) {
 			throw new Error(
 				`First-party Satellite id mismatch: registry=${definition.id} manifest=${manifest.id}`,
@@ -142,7 +145,7 @@ export function seedFirstPartySatellites(options?: {
 		}
 
 		const hash = hashDirectory(definition.sourceDir);
-		const existing = manager.getCarrot(definition.id);
+		const existing = manager.getRemotePlugin(definition.id);
 		let action: FirstPartySatelliteSeedResult["action"] = "unchanged";
 		if (!existing) {
 			manager.installFromDirectory({
@@ -201,7 +204,7 @@ export function seedFirstPartySatellitesForStartup(): void {
 }
 
 function readFirstPartySatelliteState(
-	manager: CarrotManager,
+	manager: RemotePluginHost,
 ): FirstPartySatelliteState {
 	const statePath = firstPartySatelliteStatePath(manager);
 	if (!fs.existsSync(statePath)) return { version: 1, disabled: {} };
@@ -213,7 +216,7 @@ function readFirstPartySatelliteState(
 }
 
 function writeFirstPartySatelliteState(
-	manager: CarrotManager,
+	manager: RemotePluginHost,
 	state: FirstPartySatelliteState,
 ): void {
 	const statePath = firstPartySatelliteStatePath(manager);
@@ -221,7 +224,7 @@ function writeFirstPartySatelliteState(
 	fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
-function firstPartySatelliteStatePath(manager: CarrotManager): string {
+function firstPartySatelliteStatePath(manager: RemotePluginHost): string {
 	return path.join(manager.getStoreRoot(), stateFileName);
 }
 

@@ -9,16 +9,31 @@ import {
   CardTitle,
   CloudVideoBackground,
   DashboardErrorState,
-  DashboardLoadingState,
   Input,
 } from "@elizaos/ui";
 import { Gift } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import type { CryptoStatusResponse } from "@/lib/types/crypto-status";
-import { DirectCryptoCreditCard } from "../../dashboard/billing/_components/direct-crypto-credit-card";
 import { useUserProfile } from "../../lib/data/user";
+
+const LazyStewardWalletProviders = lazy(async () => {
+  const mod = await import("../login/steward-wallet-providers");
+  return { default: mod.StewardWalletProviders };
+});
+
+const LazyDirectCryptoCreditCard = lazy(async () => {
+  const mod = await import(
+    "../../dashboard/billing/_components/direct-crypto-credit-card"
+  );
+  return { default: mod.DirectCryptoCreditCard };
+});
+
+const LazyAttachWalletCard = lazy(async () => {
+  const mod = await import("./_components/attach-wallet-card");
+  return { default: mod.AttachWalletCard };
+});
 
 export default function BscPromoPage() {
   const { user, isReady, isAuthenticated, isLoading, isError, error } =
@@ -26,18 +41,27 @@ export default function BscPromoPage() {
   const [amount, setAmount] = useState("10");
   const [status, setStatus] = useState<CryptoStatusResponse | null>(null);
 
-  const fetchCryptoStatus = useCallback(async () => {
-    const response = await fetch("/api/crypto/status");
-    if (!response.ok) return;
-    // Guard against the SPA fallback serving index.html for unknown /api/* paths.
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.includes("application/json")) return;
-    setStatus(await response.json());
-  }, []);
-
+  // `/api/crypto/status` is a public endpoint (no auth required). Firing it on
+  // mount instead of after `useUserProfile` resolves cuts a serial roundtrip:
+  // by the time the user-profile fetch finishes, status is usually already in
+  // hand, so DirectCryptoCreditCard doesn't flash an empty/"not configured"
+  // state.
   useEffect(() => {
-    fetchCryptoStatus();
-  }, [fetchCryptoStatus]);
+    let cancelled = false;
+    void (async () => {
+      const response = await fetch("/api/crypto/status");
+      if (cancelled || !response.ok) return;
+      // Guard against the SPA fallback serving index.html for unknown /api/*
+      // paths.
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) return;
+      const data = (await response.json()) as CryptoStatusResponse;
+      if (!cancelled) setStatus(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const parsed = Number.parseFloat(amount);
   const amountValue = Number.isFinite(parsed) ? parsed : null;
@@ -97,8 +121,79 @@ export default function BscPromoPage() {
             </div>
 
             <div className="space-y-4">
+              {/*
+                Cloud credit summary is static (amount input + derived "you
+                pay / you receive") — nothing in it depends on auth state, the
+                user profile, or the crypto-status fetch. Render it on first
+                paint so the form is interactable immediately, instead of
+                blanking the right column for ~5s while user-profile +
+                crypto-status round-trip. The auth/wallet panel below it
+                streams in as data arrives.
+              */}
+              <Card className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md">
+                <CardHeader className="p-5 pb-4">
+                  <CardTitle className="text-lg text-black">
+                    Cloud credit
+                  </CardTitle>
+                  <p className="text-sm text-black/62">
+                    The $5 BSC bonus applies at $10 or more.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4 border-t border-black/10 p-5">
+                  <label
+                    className="block space-y-2"
+                    htmlFor="bsc-credit-amount"
+                  >
+                    <span className="text-xs font-medium text-black/62">
+                      Purchase amount
+                    </span>
+                    <div className="flex items-center rounded-xs border border-black/14 bg-white">
+                      <span className="px-3 text-black/56">$</span>
+                      <Input
+                        id="bsc-credit-amount"
+                        type="number"
+                        min={10}
+                        max={10000}
+                        value={amount}
+                        onChange={(event) => setAmount(event.target.value)}
+                        variant="config"
+                        density="relaxed"
+                        className="border-0 bg-transparent px-0 text-base text-black focus:border-0 focus:ring-0"
+                      />
+                    </div>
+                  </label>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-xs border border-black/10 bg-black/[0.03] p-3">
+                      <p className="text-xs text-black/58">You pay</p>
+                      <p className="mt-1 text-lg font-semibold text-black">
+                        ${amountValue?.toFixed(2) ?? "0.00"}
+                      </p>
+                    </div>
+                    <div className="rounded-xs border border-black/10 bg-black/[0.03] p-3">
+                      <p className="text-xs text-black/58">You receive</p>
+                      <p className="mt-1 text-lg font-semibold text-black">
+                        {totalCredits.toFixed(2)} credits
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Auth-gated panel below the static form. While the user
+                  profile resolves we show a card-shaped skeleton, sized to
+                  roughly match the final wallet/sign-in card so layout
+                  doesn't jank in. */}
               {!isReady || (isAuthenticated && isLoading) ? (
-                <DashboardLoadingState label="Loading account" />
+                <Card
+                  aria-busy="true"
+                  className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md"
+                >
+                  <CardContent className="space-y-3 p-5">
+                    <div className="h-4 w-32 animate-pulse rounded-xs bg-black/10" />
+                    <div className="h-3 w-64 max-w-full animate-pulse rounded-xs bg-black/8" />
+                    <div className="mt-2 h-10 w-full animate-pulse rounded-xs bg-black/10" />
+                  </CardContent>
+                </Card>
               ) : isError ? (
                 <DashboardErrorState
                   message={
@@ -118,65 +213,43 @@ export default function BscPromoPage() {
                   </CardContent>
                 </Card>
               ) : (
-                <>
-                  <Card className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md">
-                    <CardHeader className="p-5 pb-4">
-                      <CardTitle className="text-lg text-black">
-                        Cloud credit
-                      </CardTitle>
-                      <p className="text-sm text-black/62">
-                        The $5 BSC bonus applies at $10 or more.
-                      </p>
-                    </CardHeader>
-                    <CardContent className="space-y-4 border-t border-black/10 p-5">
-                      <label
-                        className="block space-y-2"
-                        htmlFor="bsc-credit-amount"
-                      >
-                        <span className="text-xs font-medium text-black/62">
-                          Purchase amount
-                        </span>
-                        <div className="flex items-center rounded-xs border border-black/14 bg-white">
-                          <span className="px-3 text-black/56">$</span>
-                          <Input
-                            id="bsc-credit-amount"
-                            type="number"
-                            min={10}
-                            max={10000}
-                            value={amount}
-                            onChange={(event) => setAmount(event.target.value)}
-                            variant="config"
-                            density="relaxed"
-                            className="border-0 bg-transparent px-0 text-base text-black focus:border-0 focus:ring-0"
-                          />
-                        </div>
-                      </label>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div className="rounded-xs border border-black/10 bg-black/[0.03] p-3">
-                          <p className="text-xs text-black/58">You pay</p>
-                          <p className="mt-1 text-lg font-semibold text-black">
-                            ${amountValue?.toFixed(2) ?? "0.00"}
-                          </p>
-                        </div>
-                        <div className="rounded-xs border border-black/10 bg-black/[0.03] p-3">
-                          <p className="text-xs text-black/58">You receive</p>
-                          <p className="mt-1 text-lg font-semibold text-black">
-                            {totalCredits.toFixed(2)} credits
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <DirectCryptoCreditCard
-                    amount={amountValue}
-                    promoCode="bsc"
-                    status={status}
-                    accountWalletAddress={user.wallet_address ?? null}
-                    surface="cloud"
-                    lockedNetwork="bsc"
-                    onSuccess={() => undefined}
-                  />
-                </>
+                <Suspense
+                  fallback={
+                    <Card
+                      aria-busy="true"
+                      className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md"
+                    >
+                      <CardContent className="space-y-3 p-5">
+                        <div className="h-4 w-40 animate-pulse rounded-xs bg-black/10" />
+                        <div className="h-3 w-56 max-w-full animate-pulse rounded-xs bg-black/8" />
+                        <div className="mt-2 h-10 w-full animate-pulse rounded-xs bg-black/10" />
+                      </CardContent>
+                    </Card>
+                  }
+                >
+                  <LazyStewardWalletProviders>
+                    {user.wallet_address ? (
+                      <LazyDirectCryptoCreditCard
+                        amount={amountValue}
+                        promoCode="bsc"
+                        status={status}
+                        accountWalletAddress={user.wallet_address}
+                        surface="cloud"
+                        lockedNetwork="bsc"
+                        onSuccess={() => undefined}
+                      />
+                    ) : (
+                      // OAuth signups (Google / Discord / GitHub / Magic
+                      // Link / Passkey) land here. The direct-crypto-payments
+                      // endpoint requires `user.wallet_address`, so until
+                      // they verify a wallet against their account the pay
+                      // button is a dead-end. AttachWalletCard drives the
+                      // SIWE flow that fixes that, then `useUserProfile`
+                      // refetches and this branch swaps to the purchase UI.
+                      <LazyAttachWalletCard chainId={56} />
+                    )}
+                  </LazyStewardWalletProviders>
+                </Suspense>
               )}
             </div>
           </section>

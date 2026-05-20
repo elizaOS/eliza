@@ -343,9 +343,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
         CodingWorkspaceService.serviceType,
       ];
       setTimeout(() => {
-        void Promise.all(
-          types.map((sType) =>
-            runtime.getServiceLoadPromise(sType).catch((err: unknown) =>
+        void (async () => {
+          for (const sType of types) {
+            await runtime.getServiceLoadPromise(sType).catch((err: unknown) =>
               runtime.logger?.warn?.(
                 {
                   src: "@elizaos/plugin-agent-orchestrator",
@@ -354,9 +354,8 @@ export function createAgentOrchestratorPlugin(): Plugin {
                 },
                 "Failed to eager-start orchestrator service",
               ),
-            ),
-          ),
-        ).then(() => {
+            );
+          }
           disposeProgressHook = registerProgressHook(runtime);
           // Orphan recovery runs AFTER the progress hook so resumed-session
           // events (tool_running / task_complete / heartbeat) flow into the
@@ -371,7 +370,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
               "resumeOrphanedBusySessions failed",
             ),
           );
-        });
+        })();
       }, 0);
     },
     async dispose(runtime) {
@@ -504,7 +503,7 @@ export function extractCompletionSummary(raw: string): string {
  * concise status the parent agent would give the user when asked "where
  * are you?".
  */
-const HEARTBEAT_SUMMARY_PROMPT = `You are a thin progress reporter for an autonomous coding sub-agent.
+const HEARTBEAT_SUMMARY_PROMPT = `Thin progress reporter for an autonomous coding sub-agent.
 Below is recent activity. It may include:
 - prose narration the sub-agent wrote ("Now let me build...")
 - a list of CONCRETE tool calls with args (most recent last), e.g. \`Read(…/site/index.html)\`, \`Bash(wrangler pages deploy)\`, \`Edit(…/styles.css)\`, \`Grep("color-accent")\`

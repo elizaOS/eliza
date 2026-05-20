@@ -52,6 +52,24 @@ def resolve_dir_path(config_path: Path, value: str) -> Path:
     return (ROOT / value).resolve()
 
 
+def resolve_pdk_dir(pdk_root: Path, pdk: str) -> Path | None:
+    flat_pdk = pdk_root / pdk
+    if flat_pdk.is_dir():
+        return flat_pdk
+    volare_families = [pdk]
+    if pdk == "sky130A":
+        volare_families.insert(0, "sky130")
+    elif pdk.startswith("gf180mcu"):
+        volare_families.insert(0, "gf180mcu")
+    for family in volare_families:
+        volare_versions = pdk_root / "volare" / family / "versions"
+        if volare_versions.is_dir():
+            for candidate in sorted(volare_versions.glob(f"*/{pdk}"), reverse=True):
+                if candidate.is_dir():
+                    return candidate
+    return None
+
+
 def load_config(config_path: Path, failures: list[str]) -> dict | None:
     try:
         return json.loads(config_path.read_text())
@@ -127,7 +145,7 @@ def check_pdk_environment(
     if not root_path.is_dir():
         blockers.append(f"PDK_ROOT does not exist or is not a directory: {pdk_root}")
         return
-    if pdk and not (root_path / pdk).is_dir():
+    if pdk and resolve_pdk_dir(root_path, pdk) is None:
         blockers.append(
             f"{display_path(config_path)}: PDK_ROOT is set but missing PDK directory {root_path / pdk}"
         )

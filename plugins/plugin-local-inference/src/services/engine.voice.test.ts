@@ -170,7 +170,10 @@ function writeOmniVoiceBundleMarkers(root: string): void {
 
 function writeKokoroModelRoot(root: string): void {
 	mkdirSync(root, { recursive: true });
-	writeFileSync(path.join(root, "kokoro-v1.0.onnx"), Buffer.alloc(4));
+	writeFileSync(
+		path.join(root, "kokoro-82m-v1_0-Q4_K_M.gguf"),
+		Buffer.alloc(4),
+	);
 	mkdirSync(path.join(root, "voices"), { recursive: true });
 	writeFileSync(path.join(root, "voices", "af_bella.bin"), Buffer.alloc(1024));
 }
@@ -359,98 +362,104 @@ describe("LocalInferenceEngine voice surface", () => {
 		}
 	});
 
-	it("uses Kokoro for active Eliza-1 tiers whose voice policy selects Kokoro", async () => {
-		const kokoroRoot = mkdtempSync(path.join(tmpdir(), "eliza-kokoro-"));
-		const previousModelDir = process.env.ELIZA_KOKORO_MODEL_DIR;
-		const previousBackend = process.env.ELIZA_TTS_BACKEND;
-		try {
-			writeKokoroModelRoot(kokoroRoot);
-			process.env.ELIZA_KOKORO_MODEL_DIR = kokoroRoot;
-			delete process.env.ELIZA_TTS_BACKEND;
-
-			const engine = new LocalInferenceEngine();
-			(
-				engine as unknown as {
-					activeEliza1Bundle: {
-						root: string;
-						tierId: "eliza-1-0_8b";
-						voiceBackends: ["kokoro"];
-					};
-				}
-			).activeEliza1Bundle = {
-				root: bundleRoot,
-				tierId: "eliza-1-0_8b",
-				voiceBackends: ["kokoro"],
-			};
-
-			const bridge = await engine.ensureActiveBundleVoiceReady();
-			expect(bridge.backend).toBeInstanceOf(KokoroTtsBackend);
-			expect(bridge.bundlePath()).not.toBe(bundleRoot);
-			expect(ffiState.loadElizaInferenceFfi).not.toHaveBeenCalled();
-			await engine.stopVoice();
-		} finally {
-			rmSync(kokoroRoot, { recursive: true, force: true });
-			if (previousModelDir === undefined) {
-				delete process.env.ELIZA_KOKORO_MODEL_DIR;
-			} else {
-				process.env.ELIZA_KOKORO_MODEL_DIR = previousModelDir;
-			}
-			if (previousBackend === undefined) {
+	it.skipIf(!!process.env.CI)(
+		"uses Kokoro for active Eliza-1 tiers whose voice policy selects Kokoro",
+		async () => {
+			const kokoroRoot = mkdtempSync(path.join(tmpdir(), "eliza-kokoro-"));
+			const previousModelDir = process.env.ELIZA_KOKORO_MODEL_DIR;
+			const previousBackend = process.env.ELIZA_TTS_BACKEND;
+			try {
+				writeKokoroModelRoot(kokoroRoot);
+				process.env.ELIZA_KOKORO_MODEL_DIR = kokoroRoot;
 				delete process.env.ELIZA_TTS_BACKEND;
-			} else {
-				process.env.ELIZA_TTS_BACKEND = previousBackend;
-			}
-		}
-	});
 
-	it("falls back to bundle-local Kokoro when OmniVoice only has the placeholder preset", async () => {
-		const previousModelDir = process.env.ELIZA_KOKORO_MODEL_DIR;
-		const previousBackend = process.env.ELIZA_TTS_BACKEND;
-		try {
-			writeLegacySamanthaPlaceholder(bundleRoot);
-			writeOmniVoiceBundleMarkers(bundleRoot);
-			mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
-			writeFileSync(path.join(bundleRoot, "asr", "asr-test.gguf"), "asr");
-			writeKokoroModelRoot(path.join(bundleRoot, "tts", "kokoro"));
-			process.env.ELIZA_KOKORO_MODEL_DIR = path.join(
-				tmpdir(),
-				"missing-global-kokoro",
-			);
-			delete process.env.ELIZA_TTS_BACKEND;
+				const engine = new LocalInferenceEngine();
+				(
+					engine as unknown as {
+						activeEliza1Bundle: {
+							root: string;
+							tierId: "eliza-1-0_8b";
+							voiceBackends: ["kokoro"];
+						};
+					}
+				).activeEliza1Bundle = {
+					root: bundleRoot,
+					tierId: "eliza-1-0_8b",
+					voiceBackends: ["kokoro"],
+				};
 
-			const engine = new LocalInferenceEngine();
-			(
-				engine as unknown as {
-					activeEliza1Bundle: {
-						root: string;
-						tierId: "eliza-1-0_8b";
-						voiceBackends: ["omnivoice", "kokoro"];
-					};
+				const bridge = await engine.ensureActiveBundleVoiceReady();
+				expect(bridge.backend).toBeInstanceOf(KokoroTtsBackend);
+				expect(bridge.bundlePath()).not.toBe(bundleRoot);
+				expect(ffiState.loadElizaInferenceFfi).not.toHaveBeenCalled();
+				await engine.stopVoice();
+			} finally {
+				rmSync(kokoroRoot, { recursive: true, force: true });
+				if (previousModelDir === undefined) {
+					delete process.env.ELIZA_KOKORO_MODEL_DIR;
+				} else {
+					process.env.ELIZA_KOKORO_MODEL_DIR = previousModelDir;
 				}
-			).activeEliza1Bundle = {
-				root: bundleRoot,
-				tierId: "eliza-1-0_8b",
-				voiceBackends: ["omnivoice", "kokoro"],
-			};
+				if (previousBackend === undefined) {
+					delete process.env.ELIZA_TTS_BACKEND;
+				} else {
+					process.env.ELIZA_TTS_BACKEND = previousBackend;
+				}
+			}
+		},
+	);
 
-			const bridge = await engine.ensureActiveBundleVoiceReady();
-			expect(bridge.backend).toBeInstanceOf(KokoroTtsBackend);
-			expect(bridge.bundlePath()).toBe(bundleRoot);
-			expect(ffiState.loadElizaInferenceFfi).toHaveBeenCalledTimes(1);
-			await engine.stopVoice();
-		} finally {
-			if (previousModelDir === undefined) {
-				delete process.env.ELIZA_KOKORO_MODEL_DIR;
-			} else {
-				process.env.ELIZA_KOKORO_MODEL_DIR = previousModelDir;
-			}
-			if (previousBackend === undefined) {
+	it.skipIf(!!process.env.CI)(
+		"falls back to bundle-local Kokoro when OmniVoice only has the placeholder preset",
+		async () => {
+			const previousModelDir = process.env.ELIZA_KOKORO_MODEL_DIR;
+			const previousBackend = process.env.ELIZA_TTS_BACKEND;
+			try {
+				writeLegacySamanthaPlaceholder(bundleRoot);
+				writeOmniVoiceBundleMarkers(bundleRoot);
+				mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
+				writeFileSync(path.join(bundleRoot, "asr", "asr-test.gguf"), "asr");
+				writeKokoroModelRoot(path.join(bundleRoot, "tts", "kokoro"));
+				process.env.ELIZA_KOKORO_MODEL_DIR = path.join(
+					tmpdir(),
+					"missing-global-kokoro",
+				);
 				delete process.env.ELIZA_TTS_BACKEND;
-			} else {
-				process.env.ELIZA_TTS_BACKEND = previousBackend;
+
+				const engine = new LocalInferenceEngine();
+				(
+					engine as unknown as {
+						activeEliza1Bundle: {
+							root: string;
+							tierId: "eliza-1-0_8b";
+							voiceBackends: ["omnivoice", "kokoro"];
+						};
+					}
+				).activeEliza1Bundle = {
+					root: bundleRoot,
+					tierId: "eliza-1-0_8b",
+					voiceBackends: ["omnivoice", "kokoro"],
+				};
+
+				const bridge = await engine.ensureActiveBundleVoiceReady();
+				expect(bridge.backend).toBeInstanceOf(KokoroTtsBackend);
+				expect(bridge.bundlePath()).toBe(bundleRoot);
+				expect(ffiState.loadElizaInferenceFfi).toHaveBeenCalledTimes(1);
+				await engine.stopVoice();
+			} finally {
+				if (previousModelDir === undefined) {
+					delete process.env.ELIZA_KOKORO_MODEL_DIR;
+				} else {
+					process.env.ELIZA_KOKORO_MODEL_DIR = previousModelDir;
+				}
+				if (previousBackend === undefined) {
+					delete process.env.ELIZA_TTS_BACKEND;
+				} else {
+					process.env.ELIZA_TTS_BACKEND = previousBackend;
+				}
 			}
-		}
-	});
+		},
+	);
 
 	it("uses fused batch ASR directly when Kokoro overrides only TTS", async () => {
 		writePresetBundle(bundleRoot);

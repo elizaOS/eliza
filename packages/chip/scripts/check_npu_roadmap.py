@@ -55,6 +55,7 @@ REQUIRED_LATER_GATES = {
         "local_sram_mib_min",
         "per_context_fault_isolation",
         "queue_fairness_and_qos_trace",
+        "modeled_context_queue_fairness_preflight",
     },
     "L4_ANDROID_HAL_DELEGATE": {
         "android_proof_manifest_template",

@@ -197,6 +197,33 @@ describe("VoiceProfilesClient.appendOwnerCapture", () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  it("falls back to local prompts when the endpoint returns a partial session", async () => {
+    const client = makeClient(async () => ({
+      sessionId: "partial-session",
+    }));
+    const session = await client.startOwnerCapture();
+    expect(session.sessionId).toBe("partial-session");
+    expect(session.prompts.length).toBeGreaterThanOrEqual(2);
+    expect(session.expectedSeconds).toBeGreaterThan(0);
+  });
+
+  it("normalises malformed prompts instead of returning an unsafe session", async () => {
+    const client = makeClient(async () => ({
+      sessionId: "mixed-session",
+      prompts: [
+        { id: "valid", text: "Say a short phrase" },
+        { id: "bad" },
+        null,
+      ],
+    }));
+    const session = await client.startOwnerCapture();
+    expect(session.sessionId).toBe("mixed-session");
+    expect(session.prompts).toEqual([
+      { id: "valid", text: "Say a short phrase", targetSeconds: 5 },
+    ]);
+    expect(session.expectedSeconds).toBe(5);
+  });
 });
 
 describe("VoiceProfilesClient.finalizeOwnerCapture", () => {

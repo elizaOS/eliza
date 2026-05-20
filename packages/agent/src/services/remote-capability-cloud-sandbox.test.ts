@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   connectCloudCapabilitySandbox,
   provisionCloudCapabilitySandbox,
+  waitForCloudCapabilityEndpointAvailability,
 } from "./remote-capability-cloud-sandbox.ts";
 import type { RemoteCapabilityRouterService } from "./remote-capability-router.ts";
 
@@ -69,7 +70,6 @@ describe("cloud capability sandbox provisioner", () => {
   });
 
   it("polls a job until the cloud capability endpoint is ready", async () => {
-    vi.useFakeTimers();
     const progress: Array<{ status: string; detail?: string }> = [];
     const fetchMock = vi.fn(async (url: string | URL) => {
       const href = String(url);
@@ -101,14 +101,12 @@ describe("cloud capability sandbox provisioner", () => {
       cloudApiBase: "https://api.elizacloud.ai",
       authToken: "cloud-token",
       name: "Capability Sandbox",
-      pollIntervalMs: 1000,
+      pollIntervalMs: 1,
       timeoutMs: 10_000,
       fetch: fetchMock as unknown as typeof fetch,
       onProgress: (status, detail) => progress.push({ status, detail }),
     });
 
-    await vi.advanceTimersByTimeAsync(1000);
-    await vi.advanceTimersByTimeAsync(1000);
     await expect(resultPromise).resolves.toEqual({
       agentId: "agent-2",
       jobId: "job-2",
@@ -154,8 +152,78 @@ describe("cloud capability sandbox provisioner", () => {
     });
   });
 
+  it("waits until a cloud capability endpoint reports plugin availability", async () => {
+    const progress: string[] = [];
+    const fetchMock = vi.fn(
+      async (
+        _input: string | URL | Request,
+        _init?: RequestInit,
+      ): Promise<Response> => {
+        const attempt = fetchMock.mock.calls.length;
+        if (attempt === 1) {
+          return jsonResponse({
+            available: false,
+            capabilities: { plugin: false },
+          });
+        }
+        return jsonResponse({
+          available: true,
+          capabilities: { plugin: true },
+        });
+      },
+    );
+
+    await expect(
+      waitForCloudCapabilityEndpointAvailability({
+        endpoint: {
+          id: "cloud-capability",
+          baseUrl: "https://capability.example.test",
+          token: "capability-token",
+        },
+        timeoutMs: 1_000,
+        pollIntervalMs: 1,
+        requestTimeoutMs: 1_000,
+        fetch: fetchMock as unknown as typeof fetch,
+        onProgress: (detail) => progress.push(detail),
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toEqual(
+      new URL("https://capability.example.test/v1/capabilities"),
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        authorization: "Bearer capability-token",
+      },
+    });
+    expect(progress[0]).toContain("unexpected availability payload");
+  });
+
+  it("reports the last readiness failure when cloud availability never starts", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ error: "not ready" }, 503),
+    );
+
+    await expect(
+      waitForCloudCapabilityEndpointAvailability({
+        endpoint: {
+          id: "cloud-capability",
+          baseUrl: "https://capability.example.test",
+        },
+        timeoutMs: 1,
+        pollIntervalMs: 1,
+        requestTimeoutMs: 1_000,
+        fetch: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(
+      'Cloud capability endpoint cloud-capability did not report plugin availability within 1ms. Last error: HTTP 503: {"error":"not ready"}',
+    );
+  });
+
   it("fails when provisioning completes without an endpoint", async () => {
-    vi.useFakeTimers();
     const fetchMock = vi.fn(async (url: string | URL) => {
       const href = String(url);
       if (href.endsWith("/api/v1/eliza/agents")) {
@@ -171,16 +239,14 @@ describe("cloud capability sandbox provisioner", () => {
       cloudApiBase: "https://api.elizacloud.ai",
       authToken: "cloud-token",
       name: "Broken Sandbox",
-      pollIntervalMs: 1000,
-      timeoutMs: 1500,
+      pollIntervalMs: 1,
+      timeoutMs: 2,
       fetch: fetchMock as unknown as typeof fetch,
     });
 
-    const expectation = expect(resultPromise).rejects.toThrow(
+    await expect(resultPromise).rejects.toThrow(
       "Cloud capability sandbox provisioning timed out.",
     );
-    await vi.advanceTimersByTimeAsync(2000);
-    await expectation;
   });
 
   it("connects a provisioned cloud endpoint and syncs remote plugins", async () => {
@@ -427,6 +493,7 @@ describe("cloud capability sandbox provisioner", () => {
 
     expect(result).toMatchObject({
       agentId: "agent-5",
+      providerId: "cloud",
       endpoint: {
         id: "cloud-capability",
         baseUrl: "https://capability-cloud.example.test",

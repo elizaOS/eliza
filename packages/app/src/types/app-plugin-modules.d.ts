@@ -13,12 +13,23 @@ import type {
   StewardTransactionHistoryProps,
   VincentStateHookArgs,
   VincentStateHookResult,
-} from "@elizaos/ui";
+} from "@elizaos/ui/config";
 import type { ComponentType } from "react";
 
 type EmptyComponent = ComponentType<Record<string, never>>;
 
 declare module "@elizaos/app-core" {
+  export const AppWindowRenderer: ComponentType<{ slug: string }>;
+  export const DESKTOP_TRAY_MENU_ITEMS: ReadonlyArray<{
+    id: string;
+    label: string;
+  }>;
+  export const DesktopSurfaceNavigationRuntime: ComponentType<
+    Record<string, never>
+  >;
+  export const DesktopTrayRuntime: ComponentType<Record<string, never>>;
+  export const DetachedShellRoot: ComponentType<{ route: unknown }>;
+
   export interface BuildOnboardingConnectionArgs {
     onboardingServerTarget?:
       | ""
@@ -102,6 +113,7 @@ declare module "@elizaos/app-lifeops" {
   export const AppBlockerSettingsCard: ComponentType<AppBlockerSettingsCardProps>;
   export const WebsiteBlockerSettingsCard: ComponentType<WebsiteBlockerSettingsCardProps>;
   export function dispatchQueuedLifeOpsGithubCallbackFromUrl(url: string): void;
+  export function registerLifeOpsApp(): void;
 }
 
 declare module "@elizaos/plugin-lifeops" {
@@ -137,7 +149,7 @@ declare module "@elizaos/plugin-task-coordinator" {
 }
 
 declare module "@elizaos/app-training" {
-  import type { FineTuningViewProps } from "@elizaos/ui";
+  import type { FineTuningViewProps } from "@elizaos/ui/config";
 
   export const FineTuningView: ComponentType<FineTuningViewProps>;
 }

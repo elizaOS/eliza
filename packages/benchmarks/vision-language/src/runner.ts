@@ -35,6 +35,7 @@ import type {
   Prediction,
   Sample,
   SampleResult,
+  UsageTelemetry,
   VisionRuntime,
 } from "./types.ts";
 
@@ -61,6 +62,9 @@ const VALID_TIERS = new Set<string>([
 
 interface Args {
   tier: Eliza1TierId | "stub";
+  harness: "eliza" | "hermes" | "openclaw" | "elizaos" | "opencode";
+  provider: string;
+  model?: string;
   benchmarks: BenchmarkName[];
   samples: number;
   output?: string;
@@ -75,6 +79,10 @@ Flags:
   --tier <id>          eliza-1 tier; one of eliza-1-0_8b, eliza-1-2b,
                        eliza-1-4b, eliza-1-9b, eliza-1-27b, eliza-1-27b-256k.
                        Default: eliza-1-9b.
+  --harness <name>     eliza, hermes, openclaw, elizaos, or opencode.
+                       Default: eliza.
+  --model-provider <p> OpenAI-compatible provider for hermes/openclaw VLM runs.
+  --model <id>         Multimodal model id for hermes/openclaw VLM runs.
   --benchmark <name>   one of textvqa, docvqa, chartqa, screenspot, osworld.
                        May be repeated; "all" expands to every benchmark.
                        Default: all.
@@ -92,6 +100,8 @@ Flags:
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     tier: "eliza-1-9b",
+    harness: "eliza",
+    provider: "openai",
     benchmarks: ALL_BENCHMARKS,
     samples: 100,
     smoke: false,
@@ -112,6 +122,25 @@ function parseArgs(argv: string[]): Args {
         );
       }
       args.tier = next as Eliza1TierId | "stub";
+    } else if (arg === "--harness") {
+      const next = argv[++i];
+      if (!next) throw new Error("--harness requires a value");
+      if (
+        !["eliza", "hermes", "openclaw", "elizaos", "opencode"].includes(next)
+      ) {
+        throw new Error(
+          "--harness must be one of eliza, hermes, openclaw, elizaos, opencode",
+        );
+      }
+      args.harness = next as Args["harness"];
+    } else if (arg === "--model-provider") {
+      const next = argv[++i];
+      if (!next) throw new Error("--model-provider requires a value");
+      args.provider = next;
+    } else if (arg === "--model") {
+      const next = argv[++i];
+      if (!next) throw new Error("--model requires a value");
+      args.model = next;
     } else if (arg === "--benchmark") {
       const next = argv[++i];
       if (!next) throw new Error("--benchmark requires a value");
@@ -253,6 +282,7 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
   const sampleResults: SampleResult[] = [];
   let total = 0;
   let errorCount = 0;
+  const usage = aggregateUsage(predictions, args.runtime);
   for (let i = 0; i < samples.length; i += 1) {
     const sample = samples[i];
     const pred = predictions[i];
@@ -282,8 +312,62 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
     delta: baselineScore === null ? null : score - baselineScore,
     runtime_seconds: runtimeSec,
     error_count: errorCount,
+    input_tokens: usage.input_tokens ?? 0,
+    output_tokens: usage.output_tokens ?? 0,
+    total_tokens: usage.total_tokens ?? 0,
+    cached_tokens: usage.cached_tokens ?? 0,
+    cache_creation_tokens: usage.cache_creation_tokens ?? 0,
+    cached_token_percent:
+      usage.input_tokens && usage.cached_tokens !== undefined
+        ? (usage.cached_tokens / usage.input_tokens) * 100
+        : null,
+    llm_call_count: usage.llm_call_count ?? 0,
     samples: sampleResults,
   };
+}
+
+function aggregateUsage(
+  predictions: Prediction[],
+  runtime: VisionRuntime,
+): UsageTelemetry {
+  const runtimeUsage = runtime.usage?.();
+  if (runtimeUsage && Object.keys(runtimeUsage).length) {
+    return normalizeTotalTokens(runtimeUsage);
+  }
+  const totals: Required<UsageTelemetry> = {
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+    cached_tokens: 0,
+    cache_creation_tokens: 0,
+    llm_call_count: 0,
+  };
+  let sawUsage = false;
+  for (const prediction of predictions) {
+    if (!prediction.usage) continue;
+    sawUsage = true;
+    totals.input_tokens += prediction.usage.input_tokens ?? 0;
+    totals.output_tokens += prediction.usage.output_tokens ?? 0;
+    totals.total_tokens += prediction.usage.total_tokens ?? 0;
+    totals.cached_tokens += prediction.usage.cached_tokens ?? 0;
+    totals.cache_creation_tokens += prediction.usage.cache_creation_tokens ?? 0;
+    totals.llm_call_count += prediction.usage.llm_call_count ?? 0;
+  }
+  if (!sawUsage) return {};
+  if (!totals.total_tokens && (totals.input_tokens || totals.output_tokens)) {
+    totals.total_tokens = totals.input_tokens + totals.output_tokens;
+  }
+  return normalizeTotalTokens(totals);
+}
+
+function normalizeTotalTokens(usage: UsageTelemetry): UsageTelemetry {
+  if (!usage.total_tokens && (usage.input_tokens || usage.output_tokens)) {
+    return {
+      ...usage,
+      total_tokens: (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0),
+    };
+  }
+  return usage;
 }
 
 function reportPath(
@@ -319,6 +403,8 @@ function renderSummary(report: BenchReport): string {
     `  baseline      : ${baseline}`,
     `  delta         : ${delta}`,
     `  errors        : ${report.error_count}`,
+    `  tokens        : ${report.total_tokens}`,
+    `  llm calls     : ${report.llm_call_count}`,
     `  runtime (sec) : ${report.runtime_seconds.toFixed(2)}`,
   ].join("\n");
 }
@@ -334,12 +420,15 @@ async function main(): Promise<void> {
     process.exit(2);
   }
   process.stdout.write(
-    `vision-language bench — tier=${args.tier} benchmarks=${args.benchmarks.join(",")} ` +
+    `vision-language bench — tier=${args.tier} harness=${args.harness} benchmarks=${args.benchmarks.join(",")} ` +
       `samples=${args.samples} smoke=${args.smoke}\n`,
   );
   const runtime = await resolveRuntime({
     tier: args.tier,
     forceStub: args.forceStub,
+    harness: args.harness,
+    provider: args.provider,
+    model: args.model,
   });
   process.stdout.write(`runtime: ${runtime.id}\n`);
   const reports: BenchReport[] = [];

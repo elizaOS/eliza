@@ -1,8 +1,15 @@
 /**
  * POST /api/v1/agents/[agentId]/suspend
  *
- * Service-to-service: shutdown a running agent (snapshot + stop).
- * Auth: X-Service-Key header.
+ * Service-to-service: enqueue an `agent_suspend` job for the
+ * orchestrator daemon to SSH-stop the container. Returns 202 + jobId;
+ * caller polls `/api/v1/jobs/<id>` for the final status.
+ *
+ * Previously this route called `elizaSandboxService.shutdown()` inline,
+ * which silently failed because Cloudflare Workers can't SSH the
+ * Hetzner cores — the DB row flipped to `stopped` while the container
+ * kept burning RAM. The async path moves the actual stop to the
+ * daemon (the only context with SSH keys).
  */
 
 import { Hono } from "hono";
@@ -10,6 +17,7 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -30,23 +38,65 @@ app.post("/", async (c) => {
       ? parsed.data.reason
       : "owner requested suspension";
 
-    logger.info("[service-api] Suspending agent", { agentId, reason });
+    logger.info("[service-api] Suspend requested", { agentId, reason });
 
-    const result = await elizaSandboxService.shutdown(
+    const agent = await elizaSandboxService.getAgentForWrite(
       agentId,
       identity.organizationId,
     );
-    if (!result.success) {
-      const status =
-        result.error === "Agent not found"
-          ? 404
-          : result.error === "Agent provisioning is in progress"
-            ? 409
-            : 500;
-      return c.json({ success: false, error: result.error }, status);
+    if (!agent) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
-    return c.json({ success: true }, 200);
+    if (agent.status === "stopped") {
+      return c.json({
+        success: true,
+        data: {
+          agentId,
+          action: "suspend",
+          message: "Agent is already suspended",
+          previousStatus: agent.status,
+        },
+      });
+    }
+
+    if (agent.status === "provisioning") {
+      return c.json(
+        { success: false, error: "Agent provisioning is in progress" },
+        409,
+      );
+    }
+
+    const enqueueResult = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: identity.organizationId,
+      userId: identity.userId,
+    });
+
+    void provisioningJobService.triggerImmediate(c.env).catch(() => {
+      // Logged inside the service.
+    });
+
+    return c.json(
+      {
+        success: true,
+        created: enqueueResult.created,
+        alreadyInProgress: !enqueueResult.created,
+        data: {
+          agentId,
+          action: "suspend",
+          jobId: enqueueResult.job.id,
+          status: enqueueResult.job.status,
+          previousStatus: agent.status,
+        },
+        polling: {
+          endpoint: `/api/v1/jobs/${enqueueResult.job.id}`,
+          intervalMs: 5_000,
+          expectedDurationMs: 30_000,
+        },
+      },
+      202,
+    );
   } catch (error) {
     return failureResponse(c, error);
   }

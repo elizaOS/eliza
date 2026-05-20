@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-screenshare",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.1-beta.0",
   "type": "module",
   "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
   "main": "./dist/index.js",
@@ -85,6 +85,12 @@
     "dist"
   ],
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "vite": "^8.0.0",
     "vitest": "^4.1.5"

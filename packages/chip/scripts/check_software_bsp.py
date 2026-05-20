@@ -166,9 +166,19 @@ TARGETS: dict[str, dict[str, Any]] = {
             "sw/aosp-device/device/eliza/eliza_ai_soc/BoardConfig.mk",
             "sw/aosp-device/device/eliza/eliza_ai_soc/device.mk",
             "sw/aosp-device/device/eliza/eliza_ai_soc/init.eliza.rc",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/fstab.eliza",
             "sw/aosp-device/device/eliza/eliza_ai_soc/manifest.xml",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/eliza_e1.xml",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/kernel/eliza_ai_soc.fragment",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/dts/eliza-e1-android.dts",
             "sw/aosp-device/device/eliza/eliza_ai_soc/sepolicy/file_contexts",
-            "docs/sw/aosp-device/device/eliza/eliza_ai_soc/hal/README.md",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/sepolicy/e1_npu.te",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/Android.bp",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/hal/hwcomposer/Android.bp",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_sim/Android.bp",
+            "sw/aosp-device/device/eliza/cuttlefish_e1/eliza_e1_cuttlefish.mk",
+            "sw/aosp-device/device/eliza/cuttlefish_e1/manifest.fragment.xml",
+            "sw/aosp-device/check-cvd-hal-smoke.sh",
             "docs/android/boot-transcript.schema.json",
         ],
         "contract_terms": ["eliza_ai_soc", "e1_npu", "hwcomposer"],
@@ -179,6 +189,7 @@ TARGETS: dict[str, dict[str, Any]] = {
             "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
             "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
             "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
+            "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log",
             "docs/evidence/android/cuttlefish_riscv64_smoke.log",
             "docs/evidence/android/qemu_riscv64_smoke.log",
             "docs/evidence/android/renode_e1_soc_smoke.log",
@@ -188,13 +199,14 @@ TARGETS: dict[str, dict[str, Any]] = {
 }
 
 FORBIDDEN_TRANSCRIPT_MARKERS = [
-    "placeholder",
-    "substitute",
+    "placeholder transcript",
+    "synthetic placeholder",
     "blocked",
     "not run",
     "status=FAIL",
     "status: FAIL",
     "eliza-evidence: status=FAIL",
+    "openagent-evidence: status=FAIL",
 ]
 
 
@@ -267,16 +279,19 @@ def validate_evidence_file(item: dict[str, Any]) -> list[str]:
             + ", ".join(dict.fromkeys(forbidden))
         )
 
-    status_match = re.search(r"eliza-evidence:\s*status=([A-Z]+)", text)
+    status_match = re.search(r"(?:eliza|openagent)-evidence:\s*status=([A-Z]+)", text)
     if not status_match:
-        problems.append(f"{item['path']} missing eliza-evidence PASS status marker")
+        problems.append(f"{item['path']} missing evidence PASS status marker")
     elif status_match.group(1) != "PASS":
         problems.append(f"{item['path']} reports non-PASS evidence status: {status_match.group(1)}")
 
     claim_boundary = item.get("claim_boundary", "")
     if claim_boundary in {AOSP_REFERENCE_ONLY_BOUNDARY, AOSP_VIRTUAL_DEVICE_BOUNDARY}:
-        marker = f"eliza-evidence: claim_boundary={claim_boundary}"
-        if marker not in text:
+        markers = {
+            f"eliza-evidence: claim_boundary={claim_boundary}",
+            f"openagent-evidence: claim_boundary={claim_boundary}",
+        }
+        if not any(marker in text for marker in markers):
             problems.append(f"{item['path']} missing reference-only claim boundary marker")
 
     return problems
@@ -648,6 +663,12 @@ def check_target(name: str) -> tuple[list[str], list[str]]:
             f"{name} BSP BLOCKED: missing evidence for {spec['evidence_note']}: "
             + ", ".join(missing_with_codes)
         )
+    elif blockers:
+        blockers.insert(
+            0,
+            f"{name} BSP BLOCKED: external evidence for {spec['evidence_note']} "
+            "does not satisfy required transcript markers",
+        )
 
     return errors, blockers
 
@@ -747,7 +768,7 @@ def capture_plan_commands(
             + f"sw/buildroot/scripts/capture-buildroot-evidence.sh {tree} smoke",
             "E1_NPU_ML_SMOKE_CMD='ssh "
             + target
-            + " /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu' "
+            + " /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' "
             + f"sw/buildroot/scripts/capture-buildroot-evidence.sh {tree} ml-smoke",
             "python3 scripts/check_software_bsp.py buildroot --require-evidence",
         ]

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-wallet-ui",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.1-beta.0",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -53,6 +53,12 @@
     "dist"
   ],
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "vitest": "^4.0.17",
     "vite": "^8.0.0"

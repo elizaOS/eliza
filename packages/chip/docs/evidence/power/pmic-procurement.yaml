@@ -1,0 +1,90 @@
+schema: eliza.pmic_procurement.v1
+status: path_selected_blocked
+release_use: prohibited_until_external_review
+claim_boundary: >
+  Records the PMIC procurement decision and outstanding work to convert the
+  decision into a buildable BOM. The 2028 v0 path is catalog daughtercard
+  (Path A in docs/pd/pmic-selection.md). Closed-IP and custom-analog paths
+  are deferred to v1/v2.
+source_artifacts:
+  - docs/pd/pmic-selection.md
+  - docs/pd/rail-plan-2028.yaml
+  - docs/pd/power-management-firmware.md
+  - board/kicad/e1-pmic-daughtercard/README.md
+  - board/kicad/e1-pmic-daughtercard/bom-planning.csv
+  - external/ibex/pin-manifest.json
+  - external/opensbi/pin-manifest.json
+selected_path: catalog_daughtercard_v0
+candidate_vendors:
+  - Renesas_mobile_buck_family
+  - Texas_Instruments_TPS6594x_family
+  - Maxim_MAX77xxx_family
+  - MPS_MP8869_family
+  - MIPI_SPMI_v2_master_specification
+opensbi_release_pin:
+  status: cloned_and_built_rv64_generic
+  candidate_tag: v1.5
+  pin_manifest: external/opensbi/pin-manifest.json
+  resolved_commit: 455de672dd7c2aa1992df54dfb08dc11abbc1b1a
+  pin_check: scripts/check_opensbi_pin.py PASS
+  build_evidence: docs/evidence/power/opensbi-pin-evidence.yaml
+  rationale: >
+    OpenSBI v1.5 (Oct 2024) is the first release with merged SBI MPxy +
+    RPMI proxy support. v1.6 is acceptable; older releases do not expose
+    the required mailbox transport.
+ibex_pmc_pin:
+  status: cloned_and_simulator_built
+  candidate_tag: master@9742d89
+  pin_manifest: external/ibex/pin-manifest.json
+  resolved_commit: 9742d89f54fc297bed026841c8e68454ddfd7cc0
+  pin_check: scripts/check_ibex_pin.py PASS
+  build_evidence: docs/evidence/power/ibex-pin-evidence.yaml
+  rationale: >
+    lowRISC Ibex (Apache-2.0) is the AON PMC core. Pin against master
+    branch HEAD snapshot until silicon characterization indicates a newer
+    release. The config target is RV32IMC with no I$ / no branch predictor
+    / no writeback stage (declared in the pin manifest config_target
+    field).
+external_pin_gates:
+  schema: eliza.power.external_pin_gate_status.v1
+  resolved_at: "2026-05-20T01:30:15Z"
+  gates:
+    - id: power.ibex_pin
+      checker: scripts/check_ibex_pin.py
+      previous: BLOCKED
+      current: PASS
+      head_sha: 9742d89f54fc297bed026841c8e68454ddfd7cc0
+      evidence: docs/evidence/power/ibex-pin-evidence.yaml
+    - id: power.opensbi_pin
+      checker: scripts/check_opensbi_pin.py
+      previous: BLOCKED
+      current: PASS
+      head_sha: 455de672dd7c2aa1992df54dfb08dc11abbc1b1a
+      evidence: docs/evidence/power/opensbi-pin-evidence.yaml
+  follow_on_work:
+    - pmc_linker_script_authored_for_aon_sram_region
+    - opensbi_mpxy_lands_upstream_then_bump_tag_to_v1_6_plus
+    - silicon_characterization_promotes_pin_beyond_prototype
+required_artifacts:
+  - id: catalog_bom
+    status: planning_only_csv_present
+    artifact: board/kicad/e1-pmic-daughtercard/bom-planning.csv
+    checker: scripts/check_pmic_daughtercard_bom.py
+    note: 16 rails covered by 16 catalog rows; KiCad schematic still missing.
+  - id: spmi_master_implementation
+    status: skeleton_only
+    artifact: fw/pmc/src/spmi.c
+  - id: i2c_fallback_implementation
+    status: skeleton_only
+    artifact: fw/pmc/src/i2c.c
+  - id: pmic_per_rail_register_map
+    status: planning_only
+    artifact: fw/pmc/src/pmic_sequencer.c
+  - id: qualification_package_imports
+    status: missing
+    artifact_glob: "pd/signoff/si-pi/package-models/pmic/**/*"
+release_blockers:
+  - KiCad schematic for daughtercard not authored (board/kicad/e1-pmic-daughtercard/ has README + BOM only).
+  - Specific catalog part numbers not selected; BOM is planning-only.
+  - SPMI v2.0 master firmware skeleton only.
+  - Qualification package import (IBIS/SPICE/thermal) not landed.

@@ -10,6 +10,14 @@ import {
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock(
+  "react",
+  async () =>
+    await import(
+      "../../../../node_modules/.bun/react@19.2.5/node_modules/react/index.js"
+    ),
+);
+
 const lifeOpsClient = vi.hoisted(() => ({
   getLifeOpsAppState: vi.fn(),
   updateLifeOpsAppState: vi.fn(),

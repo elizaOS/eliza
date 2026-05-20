@@ -2,6 +2,109 @@
   "version": "1.0.0",
   "actions": [
     {
+      "name": "AINEX_BOW",
+      "description": "Play the `bow` action group on the AiNex robot.",
+      "parameters": [],
+      "similes": ["BOW", "TAKE_A_BOW"]
+    },
+    {
+      "name": "AINEX_PICK_UP",
+      "description": "Run the learned `pick_up` policy. Starts a policy.start with task='pick_up'; options: target_label (default 'red ball'), max_steps.",
+      "parameters": [],
+      "similes": ["PICK_UP", "GRAB", "GRASP_OBJECT"]
+    },
+    {
+      "name": "AINEX_PLACE_DOWN",
+      "description": "Run the learned `place_down` policy. Starts a policy.start with task='place_down'.",
+      "parameters": [],
+      "similes": ["PLACE_DOWN", "PUT_DOWN", "RELEASE", "DROP"]
+    },
+    {
+      "name": "AINEX_RUN_ACTION_GROUP",
+      "description": "Play a named Hiwonder action group (pre-recorded multi-servo motion). Options: name (required, must match a key in the profile's actions.groups).",
+      "parameters": [],
+      "similes": ["RUN_ACTION_GROUP", "PLAY_ACTION", "PLAY_ACTION_GROUP"]
+    },
+    {
+      "name": "AINEX_RUN_RL",
+      "description": "Run a text-conditioned learned policy on the AiNex. Pass `options.text` ",
+      "parameters": [],
+      "similes": [
+        "RUN_RL",
+        "TEXT_COMMAND",
+        "ROBOT_DO",
+        "ROBOT_SAY",
+        "PERFORM_TASK",
+        "EXECUTE_TASK"
+      ]
+    },
+    {
+      "name": "AINEX_SET_SERVO",
+      "description": "Drive one or more AiNex servos to target pulse positions over a duration. Options: positions=[{id, position}], duration (seconds, default 0.5).",
+      "parameters": [],
+      "similes": ["SET_SERVO", "MOVE_SERVO", "MOVE_JOINT", "SET_JOINT"]
+    },
+    {
+      "name": "AINEX_SIDE_STEP_LEFT",
+      "description": "Strafe the AiNex robot to its left. Fire-and-forget — robot walks until AINEX_STOP.",
+      "parameters": [],
+      "similes": ["SIDE_STEP_LEFT", "STRAFE_LEFT", "SHUFFLE_LEFT"]
+    },
+    {
+      "name": "AINEX_SIDE_STEP_RIGHT",
+      "description": "Strafe the AiNex robot to its right. Fire-and-forget — robot walks until AINEX_STOP.",
+      "parameters": [],
+      "similes": ["SIDE_STEP_RIGHT", "STRAFE_RIGHT", "SHUFFLE_RIGHT"]
+    },
+    {
+      "name": "AINEX_SIT",
+      "description": "Play the `sit` action group — moves the AiNex into a seated pose.",
+      "parameters": [],
+      "similes": ["SIT", "SIT_DOWN", "CROUCH"]
+    },
+    {
+      "name": "AINEX_STAND",
+      "description": "Play the `stand` action group — moves the AiNex into its calibrated home pose.",
+      "parameters": [],
+      "similes": ["STAND", "STAND_UP", "GET_UP"]
+    },
+    {
+      "name": "AINEX_STOP",
+      "description": "Stop the AiNex robot immediately. Sends walk.command:stop with preempt=true so any in-flight commands or active policy are cleared.",
+      "parameters": [],
+      "similes": ["STOP", "HALT", "FREEZE", "EMERGENCY_STOP"]
+    },
+    {
+      "name": "AINEX_TURN_LEFT",
+      "description": "Turn the AiNex robot in place to its left (positive yaw). Fire-and-forget — robot keeps turning until AINEX_STOP.",
+      "parameters": [],
+      "similes": ["TURN_LEFT", "ROTATE_LEFT", "SPIN_LEFT"]
+    },
+    {
+      "name": "AINEX_TURN_RIGHT",
+      "description": "Turn the AiNex robot in place to its right (negative yaw). Fire-and-forget — robot keeps turning until AINEX_STOP.",
+      "parameters": [],
+      "similes": ["TURN_RIGHT", "ROTATE_RIGHT", "SPIN_RIGHT"]
+    },
+    {
+      "name": "AINEX_WALK_BACKWARD",
+      "description": "Start walking the AiNex robot backward. Sends walk.set+walk.command:start to the bridge; robot keeps walking until AINEX_STOP. Options: speed (1-4).",
+      "parameters": [],
+      "similes": ["WALK_BACKWARD", "MOVE_BACKWARD", "GO_BACK", "BACK_UP"]
+    },
+    {
+      "name": "AINEX_WALK_FORWARD",
+      "description": "Start walking the AiNex robot forward. Sends walk.set+walk.command:start to the bridge; the robot keeps walking until AINEX_STOP is issued. Options: speed (1-4), x (0-0.05).",
+      "parameters": [],
+      "similes": ["WALK_FORWARD", "MOVE_FORWARD", "GO_FORWARD"]
+    },
+    {
+      "name": "AINEX_WAVE",
+      "description": "Play the `wave` action group on the AiNex robot.",
+      "parameters": [],
+      "similes": ["WAVE", "WAVE_HAND", "GREET", "SAY_HI"]
+    },
+    {
       "name": "ALARM",
       "description": "Manage native macOS alarms via UNUserNotificationCenter. Subactions: set (schedule a new alarm), cancel (remove a scheduled alarm by id), list (show pending alarms). Subaction inferred from message text when not explicitly provided.",
       "parameters": [
@@ -1570,6 +1673,28 @@
             }
           }
         }
+      ]
+    },
+    {
+      "name": "FACEWEAR_CONNECT",
+      "description": "Show connection instructions for a facewear device (Meta Quest, XReal, Even Realities, Apple Vision Pro).",
+      "parameters": [],
+      "similes": [
+        "CONNECT_GLASSES",
+        "CONNECT_HEADSET",
+        "PAIR_DEVICE",
+        "CONNECT_FACEWEAR"
+      ]
+    },
+    {
+      "name": "FACEWEAR_DEBUG",
+      "description": "Show diagnostics for all connected facewear devices.",
+      "parameters": [],
+      "similes": [
+        "DEBUG_GLASSES",
+        "DIAGNOSE_HEADSET",
+        "FACEWEAR_DIAGNOSTICS",
+        "CHECK_XR"
       ]
     },
     {
@@ -3944,7 +4069,7 @@
     },
     {
       "name": "SHELL",
-      "description": "Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Prefer bounded commands; avoid recursive whole-filesystem scans unless explicitly requested. For JSON API inspection, prefer jq or node; if Python is needed, call python3 rather than assuming a python alias exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. If a command exits 0 with empty stdout/stderr, the command produced no output; try another source or parser when data is still needed instead of claiming the shell did not return output. For disk checks, use df for every requested mount/path (for root plus home: df -h / /home) plus targeted du on likely cleanup directories; when asked for cleanup candidates, inspect one readable largest directory one level deeper before ranking candidates. Use separators that still allow later inspection commands to run when du hits expected permission-denied paths.",
+      "description": "Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Prefer bounded commands; avoid recursive whole-filesystem scans unless explicitly requested. Omit cwd unless the user supplied an exact directory or the session was explicitly moved; do not invent cwd from remembered repo paths. For questions about the currently running agent/runtime/source, use the default session cwd and inspect current process/service evidence before reporting git metadata. For JSON API inspection, prefer jq or node; if Python is needed, call python3 rather than assuming a python alias exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. For crypto spot prices, prefer neutral no-key APIs such as CoinGecko simple price or Coinbase spot before exchange-gated APIs; do not start with legacy Coindesk or Binance when the same value can be fetched elsewhere. If a command exits 0 with empty stdout/stderr, the command produced no output; try another source or parser when data is still needed instead of claiming the shell did not return output. For disk checks, use df for every requested mount/path (for root plus home: df -h / /home) plus targeted du on likely cleanup directories; when asked for cleanup candidates, inspect one readable largest directory one level deeper before ranking candidates. Use separators that still allow later inspection commands to run when du hits expected permission-denied paths.",
       "parameters": [
         {
           "name": "action",
@@ -3957,7 +4082,7 @@
         },
         {
           "name": "command",
-          "description": "For action=run: shell command, executed via /bin/bash -c. Keep routine inspection commands bounded; avoid broad scans like du -sh /* when a targeted path is enough. For JSON API data, prefer jq or node; use python3, not python, unless the environment explicitly shows python exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. If stdout/stderr are marked empty, the command produced no output; try a different command/source when the user still needs a value. Include every requested path in df, e.g. df -h / /home. For cleanup candidates, follow the first bounded du result with a targeted du on the largest readable directory before answering; avoid && between du probes when permission-denied paths are expected.",
+          "description": "For action=run: shell command, executed via /bin/bash -c. Keep routine inspection commands bounded; avoid broad scans like du -sh /* when a targeted path is enough. For JSON API data, prefer jq or node; use python3, not python, unless the environment explicitly shows python exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. For crypto spot prices, prefer CoinGecko simple price or Coinbase spot before exchange-gated APIs; avoid legacy Coindesk and Binance when a neutral source can answer. If stdout/stderr are marked empty, the command produced no output; try a different command/source when the user still needs a value. Include every requested path in df, e.g. df -h / /home. For cleanup candidates, follow the first bounded du result with a targeted du on the largest readable directory before answering; avoid && between du probes when permission-denied paths are expected.",
           "required": false,
           "schema": {
             "type": "string"
@@ -3981,7 +4106,7 @@
         },
         {
           "name": "cwd",
-          "description": "Absolute cwd; must not resolve under blocked path. Default session cwd.",
+          "description": "Absolute cwd; must not resolve under blocked path. Omit unless the user supplied this exact directory or the session was explicitly moved; default session cwd is safer than remembered paths.",
           "required": false,
           "schema": {
             "type": "string"
@@ -4140,7 +4265,7 @@
     },
     {
       "name": "TASKS",
-      "description": "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (claude / codex / opencode). ",
+      "description": "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). ",
       "parameters": [
         {
           "name": "action",
@@ -4176,7 +4301,7 @@
         },
         {
           "name": "agentType",
-          "description": "Agent type (codex, claude, or opencode) for create / spawn_agent / control.resume.",
+          "description": "Agent type (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. Defaults to ELIZA_ACP_DEFAULT_AGENT, normally elizaos.",
           "required": false,
           "schema": {
             "type": "string"
@@ -4534,14 +4659,30 @@
         },
         {
           "name": "metadata",
-          "description": "Additional metadata for action=create.",
+          "description": "Additional metadata for action=create / action=spawn_agent.",
           "required": false,
           "schema": {
             "type": "object"
           }
+        },
+        {
+          "name": "taskRoomId",
+          "description": "Optional task-owner swarm room id for action=create / action=spawn_agent.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "worktreeRoomId",
+          "description": "Optional worktree coordination swarm room id for action=create / action=spawn_agent.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
         }
       ],
-      "descriptionCompressed": "ACP coding sub-agent claude|codex|opencode: spawn|send|control|list|history",
+      "descriptionCompressed": "ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
       "similes": [
         "CREATE_AGENT_TASK",
         "CREATE_TASK",
@@ -4688,7 +4829,9 @@
               "validator": "example",
               "maxRetries": "example",
               "onVerificationFail": "retry",
-              "metadata": "example"
+              "metadata": "example",
+              "taskRoomId": "example",
+              "worktreeRoomId": "example"
             }
           }
         }
@@ -5616,6 +5759,51 @@
           }
         }
       ]
+    },
+    {
+      "name": "XR_CLOSE_VIEW",
+      "description": "Closes a specific view panel on the connected XR headset.",
+      "parameters": [],
+      "similes": ["CLOSE_XR_VIEW", "HIDE_XR_PANEL", "XR_CLOSE", "XR_DISMISS"]
+    },
+    {
+      "name": "XR_LIST_VIEWS",
+      "description": "Lists all views available on the XR device and optionally sends a launcher catalog to the headset. Use this before XR_OPEN_VIEW.",
+      "parameters": [],
+      "similes": [
+        "LIST_XR_VIEWS",
+        "XR_VIEWS",
+        "WHAT_XR_VIEWS",
+        "SHOW_XR_LAUNCHER"
+      ]
+    },
+    {
+      "name": "XR_OPEN_VIEW",
+      "description": "Opens a view panel on the connected XR headset by view id. Use XR_LIST_VIEWS first to discover available view ids.",
+      "parameters": [],
+      "similes": ["OPEN_XR_VIEW", "SHOW_XR_PANEL", "XR_SHOW", "XR_LAUNCH"]
+    },
+    {
+      "name": "XR_QUERY_VISION",
+      "description": "Describe what the user is currently looking at through their XR headset camera. Use this when the user asks 'what do you see', 'look at this', or any question about their surroundings.",
+      "parameters": []
+    },
+    {
+      "name": "XR_RESIZE_VIEW",
+      "description": "Resizes or repositions the active XR view panel. Accepts scale (0.5 = half, 2.0 = double) and distance.",
+      "parameters": [],
+      "similes": [
+        "RESIZE_XR_PANEL",
+        "XR_MAKE_BIGGER",
+        "XR_MAKE_SMALLER",
+        "XR_SCALE"
+      ]
+    },
+    {
+      "name": "XR_SWITCH_VIEW",
+      "description": "Switches the active (foreground) view on the XR headset without closing others.",
+      "parameters": [],
+      "similes": ["SWITCH_XR_VIEW", "XR_GO_TO", "XR_NAVIGATE"]
     }
   ]
 }

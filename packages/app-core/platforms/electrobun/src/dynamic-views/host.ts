@@ -1,4 +1,4 @@
-import type { JsonValue } from "@elizaos/electrobun-carrots";
+import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { DynamicViewError } from "./errors";
 import type { DynamicViewRegistry } from "./registry";
 import type { DynamicViewSessionManager } from "./session-manager";

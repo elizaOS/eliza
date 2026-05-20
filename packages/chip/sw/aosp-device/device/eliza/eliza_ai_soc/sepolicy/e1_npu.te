@@ -15,13 +15,18 @@ type e1_npu_device, dev_type;
 
 type hal_e1_npu_default, domain;
 type hal_e1_npu_default_exec, exec_type, vendor_file_type, file_type;
+type hal_e1_npu_hwservice, hwservice_manager_type;
+type vendor_e1_npu_prop, property_type;
 
 init_daemon_domain(hal_e1_npu_default)
+hal_server_domain(hal_e1_npu_default, hal_e1_npu)
 
 # Allow the HAL to open and ioctl the kernel device. Read/write only; no
 # create/unlink/relabel.
 allow hal_e1_npu_default e1_npu_device:chr_file { open read write ioctl getattr };
+set_prop(init, vendor_e1_npu_prop)
+get_prop(hal_e1_npu_default, vendor_e1_npu_prop)
+add_hwservice(hal_e1_npu_default, hal_e1_npu_hwservice)
 
-# Property gating: HAL reads vendor.e1_npu.ready (declared via
-# property_contexts in a future change). Until that context is added, the
-# HAL falls back to a default-deny read which is safe.
+# Property gating: init owns vendor.e1_npu.ready and the HAL may read it for
+# diagnostics. The concrete label lives in property_contexts.

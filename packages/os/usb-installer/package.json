@@ -20,14 +20,15 @@
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
+    "test:linux-virtual-usb": "ELIZAOS_USB_TEST_SCSI_DEBUG=1 vitest run --config ./vitest.config.ts src/__tests__/linux-virtual-block-device-e2e.test.ts",
     "test:e2e": "playwright test",
-    "lint": "bunx @biomejs/biome check src vite.config.ts vitest.config.ts",
+    "lint": "bunx @biomejs/biome check src tests server.ts vite.config.ts vitest.config.ts playwright.config.ts",
     "server": "bun run server.ts",
     "start": "bash run-dev.sh",
-    "build:app": "electrobun build",
-    "package:darwin": "electrobun build --platform darwin",
-    "package:linux": "electrobun build --platform linux",
-    "package:win32": "electrobun build --platform win32"
+    "build:app": "bunx electrobun build",
+    "package:darwin": "bunx electrobun build --platform darwin",
+    "package:linux": "bunx electrobun build --platform linux",
+    "package:win32": "bunx electrobun build --platform win32"
   },
   "dependencies": {
     "vite": "^8.0.0",

@@ -132,6 +132,7 @@ export type {
   ModelHubSnapshot,
 } from "./client-local-inference";
 export * from "./client-types";
+export type { XRDeviceConnection, XRPairState } from "./client-xr";
 export type { AgentRequestTransport } from "./transport";
 export type {
   AllPermissionsState,
@@ -239,10 +240,16 @@ import "./client-workflow";
 import "./client-skills";
 import "./client-vault";
 import "./client-wallet";
+import "./client-xr";
 
 // ---------------------------------------------------------------------------
 // Singleton
 // ---------------------------------------------------------------------------
 
+import type { ElizaClient } from "./client-base";
 import { ElizaClient as _ElizaClient } from "./client-base";
-export const client = new _ElizaClient();
+// External plugins augment ElizaClient via `declare module "@elizaos/ui"`.
+// Annotating with ElizaClient (which TypeScript normalizes to the canonical
+// @elizaos/ui export) makes augmented methods visible to callers. The
+// prototype has all methods at runtime via the augmenting side-effect imports.
+export const client: ElizaClient = new _ElizaClient() as unknown as ElizaClient;

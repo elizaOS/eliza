@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import type { JsonValue } from "@elizaos/electrobun-carrots";
+import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { DynamicViewRegistry } from "../dynamic-views/registry";
 import { DynamicViewSessionManager } from "../dynamic-views/session-manager";
 import { TraceService } from "../trace/trace-service";

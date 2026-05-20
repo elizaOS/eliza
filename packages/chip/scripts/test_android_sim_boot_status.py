@@ -12,6 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BOOT = ROOT / "scripts/boot_android_simulator.sh"
 CHECK = ROOT / "scripts/check_android_sim_boot.py"
 PREFLIGHT = ROOT / "scripts/check_aosp_linux_preflight.py"
+CAPTURE_AOSP = ROOT / "sw/aosp-device/capture-aosp-evidence.sh"
+IMPORT_AOSP = ROOT / "sw/aosp-device/import-aosp-device.sh"
+BOARD_CONFIG = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/BoardConfig.mk"
+FRAMEWORK_MATRIX = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/device_framework_matrix.xml"
 TEST_REPORT_DIR = tempfile.TemporaryDirectory()
 REPORT = Path(TEST_REPORT_DIR.name) / "android_sim_boot.json"
 PREFLIGHT_REPORT = Path(TEST_REPORT_DIR.name) / "aosp_linux_preflight.json"
@@ -226,6 +230,78 @@ def test_aosp_linux_preflight_reports_uninstalled_repo_launcher() -> None:
             PREFLIGHT_REPORT.write_bytes(saved)
 
 
+def test_aosp_linux_preflight_allows_existing_checkout_without_repo() -> None:
+    saved = PREFLIGHT_REPORT.read_bytes() if PREFLIGHT_REPORT.is_file() else None
+    try:
+        with tempfile.TemporaryDirectory() as checkout, tempfile.TemporaryDirectory() as path_dir:
+            checkout_path = Path(checkout)
+            (checkout_path / "build").mkdir()
+            (checkout_path / "build/envsetup.sh").write_text("# fake envsetup\n")
+            (checkout_path / "device").mkdir()
+            result = run(
+                [
+                    sys.executable,
+                    str(PREFLIGHT),
+                    "--json",
+                    "--write-report",
+                    "--aosp-dir",
+                    str(checkout_path),
+                ],
+                {"PATH": fake_repo_path(Path(path_dir))},
+            )
+        data = json.loads(result.stdout)
+        blockers = data.get("blockers", [])
+        if any("repo is not installed" in item for item in blockers):
+            raise AssertionError(
+                "existing checkout should not be blocked by an uninstalled repo launcher: "
+                f"{blockers}"
+            )
+        warnings = data.get("warnings", [])
+        if not any("repo is not installed" in item for item in warnings):
+            raise AssertionError(
+                f"existing checkout should still warn about the broken repo launcher: {warnings}"
+            )
+    finally:
+        if saved is None:
+            PREFLIGHT_REPORT.unlink(missing_ok=True)
+        else:
+            PREFLIGHT_REPORT.parent.mkdir(parents=True, exist_ok=True)
+            PREFLIGHT_REPORT.write_bytes(saved)
+
+
+def test_android_handoff_uses_shared_build_evidence_helpers() -> None:
+    boot_text = BOOT.read_text()
+    for mode in ("sepolicy-build", "selinux-neverallow"):
+        expected = f"run_helper_stage {mode}"
+        if expected not in boot_text:
+            raise AssertionError(f"boot handoff must use shared {mode} evidence helper")
+    if "capture_aosp_shell \\\n\teliza_ai_soc_sepolicy_build" in boot_text:
+        raise AssertionError("boot handoff must not bypass shared sepolicy-build helper")
+
+
+def test_aosp_vintf_evidence_maps_all_output_partitions() -> None:
+    capture_text = CAPTURE_AOSP.read_text()
+    if "checkvintf framework_compatibility_matrix.device.xml" not in capture_text:
+        raise AssertionError("checkvintf evidence must rebuild the device framework matrix")
+    for partition in ("/system", "/vendor", "/odm", "/product", "/system_ext", "/apex"):
+        expected = f'--dirmap {partition}:"$product_out{partition}"'
+        if expected not in capture_text:
+            raise AssertionError(f"checkvintf evidence must map {partition}")
+
+
+def test_eliza_device_framework_matrix_is_imported() -> None:
+    board_text = BOARD_CONFIG.read_text()
+    if "DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE" not in board_text:
+        raise AssertionError("BoardConfig must register the Eliza framework matrix")
+    matrix_text = FRAMEWORK_MATRIX.read_text()
+    for marker in ("vendor.eliza.e1_npu", "IE1Npu", "default"):
+        if marker not in matrix_text:
+            raise AssertionError(f"framework matrix missing {marker}")
+    import_text = IMPORT_AOSP.read_text()
+    if "device_framework_matrix.xml" not in import_text:
+        raise AssertionError("import helper must copy/check the framework matrix")
+
+
 def main() -> int:
     saved = REPORT.read_bytes() if REPORT.is_file() else None
     try:
@@ -236,6 +312,10 @@ def main() -> int:
             test_boot_script_reports_uninstalled_repo_launcher,
             test_aosp_linux_preflight_blocks_without_aosp_dir,
             test_aosp_linux_preflight_reports_uninstalled_repo_launcher,
+            test_aosp_linux_preflight_allows_existing_checkout_without_repo,
+            test_android_handoff_uses_shared_build_evidence_helpers,
+            test_aosp_vintf_evidence_maps_all_output_partitions,
+            test_eliza_device_framework_matrix_is_imported,
         ):
             test()
             print(f"PASS {test.__name__}")

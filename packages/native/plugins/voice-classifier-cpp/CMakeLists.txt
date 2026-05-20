@@ -28,6 +28,13 @@ include_directories(include)
 # `*_open(gguf_path, &h)` to validate that the GGUF parses, and surface
 # a structured error (rather than the bare construction-time exception
 # they raise today) when the forward graph is missing.
+#
+# Architecture portability: every TU below is plain scalar C with no
+# x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
+# aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
+# When the forward graphs land and pull in SIMD, mirror the qjl-cpu
+# pattern (per-arch TUs gated on CMAKE_SYSTEM_PROCESSOR + runtime
+# dispatch via cpuid/hwcap/riscv_hwprobe).
 
 set(VOICE_CLASSIFIER_SRCS
     src/voice_emotion.c

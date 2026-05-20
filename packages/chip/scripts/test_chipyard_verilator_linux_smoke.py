@@ -74,20 +74,48 @@ def test_path_repair_check_and_rewrite_modes() -> None:
             raise AssertionError("stale path survived rewrite")
 
 
+def test_generated_model_artifact_failure_classifier_is_narrow() -> None:
+    generated_failures = (
+        "make: *** No rule to make target 'generated-src/mm/VTestDriver.d', needed by 'sim'.\n",
+        "fatal error: generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/"
+        "VTestDriver___024root.h: No such file or directory\n",
+        "cc1plus: fatal error: mm/VTestDriver__ALL.cpp: No such file or directory\n",
+    )
+    for log_text in generated_failures:
+        if not smoke.is_generated_model_artifact_failure(log_text):
+            raise AssertionError(f"expected generated artifact failure: {log_text}")
+
+    unrelated_failures = (
+        "fatal error: linux/init.h: No such file or directory\n",
+        "make: *** No rule to make target 'payload.elf', needed by 'run-binary'.\n",
+        "%Error: generated-src/TestDriver.v:147: Verilog $stop\n",
+    )
+    for log_text in unrelated_failures:
+        if smoke.is_generated_model_artifact_failure(log_text):
+            raise AssertionError(f"unexpected generated artifact classification: {log_text}")
+
+
 def test_smoke_progress_classification_distinguishes_stages() -> None:
     complete_log = {"raw_transcript_closed": True}
     no_trace = {"bootrom_to_payload_handoff": False}
-    payload_trace = {"bootrom_to_payload_handoff": True}
+    payload_trace = {"bootrom_to_payload_handoff": True, "fresh_for_log": True}
 
     cases = {
         "cpu_progress_to_payload": ("SimDRAM loaded ELF entry=0x80000000\n", payload_trace),
-        "opensbi_boot": ("OpenSBI v1.5\nDomain0 Next Address\n", payload_trace),
-        "opensbi_banner_only": ("OpenSBI v1.5\n", payload_trace),
+        "opensbi_boot": ("OpenSBI v1.8.1\nDomain0 Next Address\n", payload_trace),
+        "opensbi_banner_only": ("OpenSBI v1.8.1\n", payload_trace),
         "linux_boot": (
-            "OpenSBI v1.5\nDomain0 Next Address\nLinux version 6.6.0\nKernel command line:\n",
+            "OpenSBI v1.8.1\nDomain0 Next Address\nLinux version 6.12.\nKernel command line:\n",
             payload_trace,
         ),
-        "linux_banner_only": ("OpenSBI v1.5\nLinux version 6.6.0\n", payload_trace),
+        "linux_kernel_panic": (
+            "OpenSBI v1.8.1\n"
+            "Domain0 Next Address\n"
+            "Linux version 6.12.\n"
+            "Kernel panic - not syncing: memory_present: Failed to allocate memmap\n",
+            payload_trace,
+        ),
+        "linux_banner_only": ("OpenSBI v1.8.1\nLinux version 6.12.\n", payload_trace),
         "payload_loaded_no_cpu_progress": (
             "SimDRAM loaded ELF entry=0x80000000\n",
             no_trace,
@@ -99,6 +127,64 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
         if classified["stage"] != expected:
             raise AssertionError(f"expected {expected}, got {classified}")
 
+    timeout_progress = smoke.classify_smoke_progress(
+        "OpenSBI v1.8.1\nLinux version 6.12.\n*** FAILED *** (timeout) after 200 cycles\n",
+        payload_trace,
+        {"raw_transcript_closed": True, "sim_failures": ["*** FAILED *** (timeout)"]},
+    )
+    if timeout_progress["stage"] != "linux_banner_then_max_cycles":
+        raise AssertionError(f"expected max-cycle timeout stage, got {timeout_progress}")
+    if "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES" not in timeout_progress["next_step"]:
+        raise AssertionError(f"expected timeout-cycle guidance, got {timeout_progress}")
+
+    build_timeout = smoke.classify_smoke_progress(
+        "[timeout-wrapper] label=chipyard-generated-ap-linux-smoke status=timeout\n"
+        "g++ -include VTestDriver__pch.h.fast -c VTestDriver___024root__61.cpp\n",
+        no_trace,
+        {"raw_transcript_closed": True, "exit_code": "124"},
+    )
+    if build_timeout["stage"] != "simulator_model_build_timeout":
+        raise AssertionError(f"expected model-build timeout stage, got {build_timeout}")
+    if "CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS" not in build_timeout["next_step"]:
+        raise AssertionError(f"expected wall-time guidance, got {build_timeout}")
+
+    testdriver_assert = smoke.classify_smoke_progress(
+        "OpenSBI v1.2\n"
+        "[10000001000] %Fatal: TestDriver.v:147: Assertion failed in TestDriver\n"
+        "%Error: generated-src/TestDriver.v:147: Verilog $stop\n",
+        payload_trace,
+        {
+            "raw_transcript_closed": True,
+            "fatal_errors": ["%Fatal: TestDriver.v:147: Assertion failed in TestDriver"],
+            "sim_failures": [
+                "%Fatal: TestDriver.v:147: Assertion failed in TestDriver",
+                "%Error: generated-src/TestDriver.v:147: Verilog $stop",
+            ],
+        },
+    )
+    if testdriver_assert["stage"] != "opensbi_banner_then_testdriver_assert":
+        raise AssertionError(f"expected TestDriver assertion stage, got {testdriver_assert}")
+    if "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES" not in testdriver_assert["next_step"]:
+        raise AssertionError(f"expected timeout-cycle guidance, got {testdriver_assert}")
+
+    opensbi_timeout = smoke.classify_smoke_progress(
+        "OpenSBI v1.2\n"
+        "Domain0 Name              : root\n"
+        "*** FAILED ***                       (timeout) after 100000001 simulation cycles\n"
+        "[100000001000] %Fatal: TestDriver.v:147: Assertion failed in TestDriver\n",
+        payload_trace,
+        {
+            "raw_transcript_closed": True,
+            "fatal_errors": ["[100000001000] %Fatal: TestDriver.v:147: Assertion failed"],
+            "sim_failures": [
+                "*** FAILED ***                       (timeout) after 100000001 simulation cycles",
+                "[100000001000] %Fatal: TestDriver.v:147: Assertion failed in TestDriver",
+            ],
+        },
+    )
+    if opensbi_timeout["stage"] != "opensbi_banner_then_max_cycles":
+        raise AssertionError(f"expected OpenSBI max-cycle stage, got {opensbi_timeout}")
+
 
 def main() -> int:
     tests = (
@@ -108,6 +194,7 @@ def main() -> int:
         test_non_container_absolute_path_is_not_flagged_by_this_gate,
         test_path_rewrite_replaces_work_root_deterministically,
         test_path_repair_check_and_rewrite_modes,
+        test_generated_model_artifact_failure_classifier_is_narrow,
         test_smoke_progress_classification_distinguishes_stages,
     )
     for test in tests:

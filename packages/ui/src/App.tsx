@@ -513,6 +513,11 @@ function ViewRouter({
         </TabContentView>
       );
     }
+    if (tab === "lifeops") {
+      // LifeOpsPageView owns its own AppWorkspaceChrome (nav rail + main
+      // + right chat), so don't double-wrap or route it through /api/views.
+      return LifeOpsPageView ? <LifeOpsPageView /> : <ChatView />;
+    }
     // Check if the current tab matches a dynamically-registered view with a
     // remote bundle URL. These are plugin-contributed views loaded at runtime
     // from /api/views — they live outside the main bundle.
@@ -526,11 +531,15 @@ function ViewRouter({
         : navigationPath;
     const remoteView =
       availableViews.find(
-        (v) => v.bundleUrl && v.path === normalizedNavigationPath,
+        (v) =>
+          v.bundleUrl &&
+          v.available !== false &&
+          v.path === normalizedNavigationPath,
       ) ??
       availableViews.find(
         (v) =>
           v.bundleUrl &&
+          v.available !== false &&
           (v.id === tab ||
             v.path === `/${tab}` ||
             v.path === `/apps/${tab}` ||
@@ -578,10 +587,6 @@ function ViewRouter({
         ) : (
           <ChatView />
         );
-      case "lifeops":
-        // LifeOpsPageView owns its own AppWorkspaceChrome (nav rail + main
-        // + right chat), so don't double-wrap.
-        return LifeOpsPageView ? <LifeOpsPageView /> : <ChatView />;
       case "browser":
         // BrowserWorkspaceView owns its own AppWorkspaceChrome, so don't
         // double-wrap.

@@ -1,0 +1,98 @@
+schema: eliza.dvfs_table.v1
+status: placeholder_release_blocked
+corner: tt
+process_temperature_c: 25
+release_use: prohibited_until_external_review
+corner_status: placeholder_pending_silicon_corner_sta
+claim_boundary: >
+  Canonical TT/25 C placeholder. Values are planning estimates derived from
+  docs/architecture-optimization/soc-optimized-operating-point.yaml and
+  docs/pd/rail-plan-2028.yaml. Every operating point lies inside the rail
+  plan's [dvfs_min_v, dvfs_max_v] window (enforced by
+  scripts/check_dvfs_tables.py). Other corner files derate from this anchor
+  via scripts/gen_dvfs_table_placeholders.py. Not silicon characterization
+  data; not release-grade.
+source_artifacts:
+  - docs/pd/rail-plan-2028.yaml
+  - docs/architecture-optimization/soc-optimized-operating-point.yaml
+rails:
+  VDD_CPU_BIG:
+    operating_points:
+      - frequency_hz: 800000000
+        nominal_code: 0x60
+        min_code: 0x5C
+        max_code: 0x64
+      - frequency_hz: 1600000000
+        nominal_code: 0x70
+        min_code: 0x6C
+        max_code: 0x74
+      - frequency_hz: 2400000000
+        nominal_code: 0x84
+        min_code: 0x80
+        max_code: 0x88
+      - frequency_hz: 3200000000
+        nominal_code: 0x94
+        min_code: 0x90
+        max_code: 0x98
+  VDD_CPU_LITTLE:
+    operating_points:
+      - frequency_hz: 600000000
+        nominal_code: 0x54
+        min_code: 0x50
+        max_code: 0x58
+      - frequency_hz: 1200000000
+        nominal_code: 0x68
+        min_code: 0x64
+        max_code: 0x6C
+      - frequency_hz: 1800000000
+        nominal_code: 0x80
+        min_code: 0x7C
+        max_code: 0x84
+  VDD_NPU:
+    operating_points:
+      - frequency_hz: 800000000
+        nominal_code: 0x60
+        min_code: 0x5C
+        max_code: 0x64
+      - frequency_hz: 1200000000
+        nominal_code: 0x74
+        min_code: 0x70
+        max_code: 0x78
+      - frequency_hz: 1600000000
+        nominal_code: 0x88
+        min_code: 0x84
+        max_code: 0x8C
+  VDD_GPU:
+    operating_points:
+      - frequency_hz: 600000000
+        nominal_code: 0x60
+        min_code: 0x5C
+        max_code: 0x64
+      - frequency_hz: 1000000000
+        nominal_code: 0x80
+        min_code: 0x7C
+        max_code: 0x84
+  VDD_SOC_FABRIC:
+    operating_points:
+      - frequency_hz: 1000000000
+        nominal_code: 0x70
+        min_code: 0x6C
+        max_code: 0x74
+      - frequency_hz: 1500000000
+        nominal_code: 0x80
+        min_code: 0x7C
+        max_code: 0x84
+  VDD_SRAM:
+    operating_points:
+      - frequency_hz: 1600000000
+        nominal_code: 0x7C
+        min_code: 0x78
+        max_code: 0x80
+      - frequency_hz: 2400000000
+        nominal_code: 0x84
+        min_code: 0x80
+        max_code: 0x88
+release_blockers:
+  - Silicon characterization data not available; values are planning only.
+  - PDK selection not finalized; STA corner sweep not run.
+  - Voltage guardband policy not formally adopted; placeholder uses 1 DVFS LSB (6.25 mV) per direction.

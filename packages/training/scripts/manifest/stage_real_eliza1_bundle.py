@@ -108,6 +108,7 @@ DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "4b": (6000, 8000),
     "9b": (10000, 14000),
     "27b": (24000, 32000),
+    "27b-256k": (24000, 32000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = ("tts", "emotion-tags", "singing")
 CHECKSUM_PATH: Final[Path] = Path("checksums/SHA256SUMS")
@@ -261,7 +262,8 @@ def _remove_stale_text_variants(
         return []
     expected_resolved = {p.resolve() for p in expected}
     removed: list[str] = []
-    for path in sorted(text_dir.glob(f"eliza-1-{tier}-*.gguf")):
+    stem = "27b" if tier == "27b-256k" else tier
+    for path in sorted(text_dir.glob(f"eliza-1-{stem}-*.gguf")):
         if path.resolve() in expected_resolved:
             continue
         path.unlink()
@@ -432,7 +434,15 @@ def _write_target_meta(
 ) -> None:
     if not text_files:
         raise ValueError("_write_target_meta requires at least one text file")
-    primary_text = text_files[0]
+    native_text_path = text_artifact_name(tier, "256k")
+    primary_text = next(
+        (
+            it
+            for it in text_files
+            if str(Path(it.destination).relative_to(bundle_dir)) == native_text_path
+        ),
+        text_files[-1],
+    )
     required_kernels = list(REQUIRED_KERNELS_BY_TIER.get(tier, ()))
     if tier not in DFLASH_TIERS:
         policy_rel = f"dflash/dflash-disabled-{tier}.release-policy.json"

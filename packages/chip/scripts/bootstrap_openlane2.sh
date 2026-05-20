@@ -1,14 +1,6 @@
 #!/usr/bin/env sh
 set -eu
 
-# OpenLane2 pinned reference for reproducible PD flows.
-# The pinned tag should track the image digest in scripts/install_openlane_image.sh
-# (currently ghcr.io/efabless/openlane2:2.4.0.dev1 @ sha256:bcaabac3...).
-#
-# TODO(toolchain-ci): if you want a different release, update both this script
-# and scripts/install_openlane_image.sh in lockstep and refresh the digest
-# documented in docs/toolchain/reproducibility.md.
-
 OPENLANE2_REPO="${OPENLANE2_REPO:-https://github.com/efabless/openlane2.git}"
 OPENLANE2_TAG="${OPENLANE2_TAG:-2.4.0.dev1}"
 OPENLANE2_SHA="${OPENLANE2_SHA:-198d9cbf7dd4f38a947bd739588680297835bc44}"
@@ -29,10 +21,30 @@ if [ "$resolved" != "$OPENLANE2_SHA" ]; then
 fi
 echo "OpenLane2 checked out at $OPENLANE2_SHA (tag $OPENLANE2_TAG)."
 
-if ! python3 -m venv .venv; then
-    if ! python3 -m virtualenv .venv; then
-        echo "bootstrap_openlane2: python3 venv failed and virtualenv is unavailable." >&2
-        echo "Install python3-venv or run: python3 -m pip install --user --break-system-packages virtualenv" >&2
+OPENLANE2_PYTHON="${OPENLANE2_PYTHON:-}"
+if [ -z "$OPENLANE2_PYTHON" ]; then
+    for candidate in \
+        "$HOME/.local/share/uv/python/cpython-3.11.14-linux-x86_64-gnu/bin/python3.11" \
+        "$(command -v python3.11 || true)" \
+        "$(command -v python3 || true)"; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ] && "$candidate" -c 'import tkinter' >/dev/null 2>&1; then
+            OPENLANE2_PYTHON="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$OPENLANE2_PYTHON" ]; then
+    echo "bootstrap_openlane2: no python3 with tkinter found. OpenLane2 requires tkinter." >&2
+    echo "Install python3-tk or use a uv-managed CPython:" >&2
+    echo "  uv python install 3.11" >&2
+    echo "Then re-run with OPENLANE2_PYTHON=/path/to/python3 if needed." >&2
+    exit 1
+fi
+echo "bootstrap_openlane2: using interpreter $OPENLANE2_PYTHON"
+
+if ! "$OPENLANE2_PYTHON" -m venv .venv; then
+    if ! "$OPENLANE2_PYTHON" -m virtualenv .venv; then
+        echo "bootstrap_openlane2: venv creation failed and virtualenv is unavailable." >&2
         exit 1
     fi
 fi
@@ -40,6 +52,7 @@ fi
 . .venv/bin/activate
 pip install --upgrade pip
 pip install .
+pip install 'click<8.2'
 
 echo "OpenLane2 Python entry point installed in external/openlane2/.venv."
 echo "A PDK is still required before running pd/openlane/config.json."

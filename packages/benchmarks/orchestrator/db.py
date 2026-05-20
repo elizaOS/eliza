@@ -759,8 +759,6 @@ def _nonpublishable_success_reason(
 
     positive_sample_keys: dict[str, tuple[str, ...]] = {
         "abliteration-robustness": ("n",),
-        "gaia": ("total_questions",),
-        "gaia_orchestrated": ("total_questions",),
         "humaneval": ("n",),
         "lifeops_bench": ("seeds",),
         "mmlu": ("n",),

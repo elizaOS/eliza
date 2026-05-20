@@ -8,9 +8,11 @@
 import { Button } from "@elizaos/ui";
 import { Plus } from "lucide-react";
 import { useState } from "react";
+import { useT } from "@/providers/I18nProvider";
 import { CreateAppDialog } from "./create-app-dialog";
 
 export function CreateAppButton() {
+  const t = useT();
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -21,7 +23,7 @@ export function CreateAppButton() {
         data-onboarding="apps-create"
       >
         <Plus className="h-4 w-4 mr-2" />
-        Create App
+        {t("cloud.apps.createApp", { defaultValue: "Create App" })}
       </Button>
       <CreateAppDialog open={isOpen} onOpenChange={setIsOpen} />
     </>

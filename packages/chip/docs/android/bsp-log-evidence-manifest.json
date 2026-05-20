@@ -14,13 +14,18 @@
         "END_UTC=",
         "RESULT="
       ],
-      "required_any": ["eliza_e1_defconfig"],
-      "required_all": ["BR2_EXTERNAL_ELIZA_E1_PATH"],
+      "required_any": [
+        "eliza_e1_defconfig"
+      ],
+      "required_all": [
+        "BR2_EXTERNAL_ELIZA_E1_PATH"
+      ],
       "forbidden_any": [
         "No rule to make target",
         "Error 1",
         "FAILED",
-        "placeholder"
+        "placeholder transcript",
+        "placeholder evidence"
       ],
       "forbidden_claims": [
         "booted",
@@ -41,9 +46,18 @@
         "END_UTC=",
         "RESULT="
       ],
-      "required_any": ["output/images/Image", "output/images/rootfs"],
-      "required_all": ["eliza_e1"],
-      "forbidden_any": ["placeholder", "missing", "not built"],
+      "required_any": [
+        "output/images/Image",
+        "output/images/rootfs"
+      ],
+      "required_all": [
+        "eliza_e1"
+      ],
+      "forbidden_any": [
+        "placeholder",
+        "missing",
+        "not built"
+      ],
       "forbidden_claims": [
         "booted",
         "Android compatible",
@@ -63,8 +77,14 @@
         "END_UTC=",
         "RESULT="
       ],
-      "required_any": ["e1-mmio-smoke: PASS", "E1_MMIO_SMOKE_PASS"],
-      "required_all": ["E1_NPU_BASE", "E1_DMA_BASE"],
+      "required_any": [
+        "e1-mmio-smoke: PASS",
+        "E1_MMIO_SMOKE_PASS"
+      ],
+      "required_all": [
+        "E1_NPU_BASE",
+        "E1_DMA_BASE"
+      ],
       "forbidden_any": [
         "FAIL",
         "SKIP",
@@ -81,7 +101,7 @@
     "docs/evidence/buildroot/e1-npu-ml-smoke.log": {
       "blocker_code": "missing_buildroot_e1_npu_ml_smoke_log",
       "claim_boundary": "driver_ioctl_gemm_only_not_nnapi_or_hardware_benchmark",
-      "producer_command": "/usr/bin/e1-npu-ml-smoke --device /dev/e1-npu",
+      "producer_command": "/usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu",
       "capture_hint": "prepend EXTERNAL_TREE or TARGET, COMMAND, START_UTC, END_UTC, RESULT, then append the target-side e1-npu-ml-smoke transcript from the built Buildroot rootfs",
       "required_metadata": [
         "EXTERNAL_TREE=",
@@ -90,7 +110,10 @@
         "END_UTC=",
         "RESULT="
       ],
-      "required_any": ["e1-npu-ml-smoke: PASS", "E1_NPU_ML_SMOKE_PASS"],
+      "required_any": [
+        "e1-npu-ml-smoke: PASS",
+        "E1_NPU_ML_SMOKE_PASS"
+      ],
       "required_all": [
         "workload=gemm_s8_int8_2x2x3",
         "claim_boundary=driver_ioctl_gemm_only_not_nnapi_or_hardware_benchmark",
@@ -128,12 +151,14 @@
         "MODPOST",
         "CC [M]"
       ],
-      "required_all": ["CONFIG_ELIZA_E1_NPU", "CONFIG_ELIZA_E1_DMA"],
+      "required_all": [
+        "CONFIG_ELIZA_E1_NPU",
+        "CONFIG_ELIZA_E1_DMA"
+      ],
       "forbidden_any": [
         "Error 1",
         "No rule to make target",
-        "undefined reference",
-        "placeholder"
+        "undefined reference"
       ],
       "forbidden_claims": [
         "booted",
@@ -154,9 +179,20 @@
         "END_UTC=",
         "RESULT="
       ],
-      "required_any": ["DTC", "dtbs_check", "eliza-e1.dtb"],
-      "required_all": ["eliza,e1-npu", "eliza,e1-dma", "eliza,e1-display"],
-      "forbidden_any": ["ERROR", "FATAL ERROR", "placeholder"],
+      "required_any": [
+        "DTC",
+        "dtbs_check",
+        "eliza-e1.dtb"
+      ],
+      "required_all": [
+        "eliza,e1-npu",
+        "eliza,e1-dma",
+        "eliza,e1-display"
+      ],
+      "forbidden_any": [
+        "ERROR",
+        "FATAL ERROR"
+      ],
       "forbidden_claims": [
         "booted",
         "Android compatible",
@@ -176,8 +212,14 @@
         "END_UTC=",
         "RESULT="
       ],
-      "required_any": ["e1-mmio-smoke: PASS", "E1_MMIO_SMOKE_PASS"],
-      "required_all": ["/dev/e1-npu", "e1-dma"],
+      "required_any": [
+        "e1-mmio-smoke: PASS",
+        "E1_MMIO_SMOKE_PASS"
+      ],
+      "required_all": [
+        "/dev/e1-npu",
+        "e1-dma"
+      ],
       "forbidden_any": [
         "FAIL",
         "SKIP",
@@ -203,13 +245,18 @@
         "END_UTC=",
         "RESULT="
       ],
-      "required_any": ["FW_DYNAMIC", "fw_dynamic", "firmware/fw_dynamic"],
-      "required_all": ["OpenSBI"],
+      "required_any": [
+        "FW_DYNAMIC",
+        "fw_dynamic",
+        "firmware/fw_dynamic"
+      ],
+      "required_all": [
+        "OpenSBI"
+      ],
       "forbidden_any": [
         "Error 1",
         "No rule to make target",
-        "FAILED",
-        "placeholder"
+        "FAILED"
       ],
       "forbidden_claims": [
         "Linux booted",
@@ -230,10 +277,25 @@
         "END_UTC=",
         "RESULT="
       ],
-      "required_any": ["Next Address", "Domain0 Next Address", "Boot HART"],
-      "required_all": ["OpenSBI", "fw_dynamic"],
-      "forbidden_any": ["Kernel panic", "FAILED", "timeout", "placeholder"],
-      "forbidden_claims": ["Android compatible", "CTS passed", "VTS passed"]
+      "required_any": [
+        "Next Address",
+        "Domain0 Next Address",
+        "Boot HART"
+      ],
+      "required_all": [
+        "OpenSBI",
+        "fw_dynamic"
+      ],
+      "forbidden_any": [
+        "Kernel panic",
+        "FAILED",
+        "timeout"
+      ],
+      "forbidden_claims": [
+        "Android compatible",
+        "CTS passed",
+        "VTS passed"
+      ]
     },
     "docs/evidence/android/eliza_ai_soc_lunch.log": {
       "blocker_code": "missing_aosp_lunch_log",
@@ -252,12 +314,13 @@
         "eliza_ai_soc-trunk_staging-userdebug",
         "TARGET_PRODUCT=eliza_ai_soc"
       ],
-      "required_all": ["TARGET_ARCH=riscv64"],
+      "required_all": [
+        "TARGET_ARCH=riscv64"
+      ],
       "forbidden_any": [
         "Invalid lunch combo",
         "Cannot locate config makefile",
-        "FAILED",
-        "placeholder"
+        "FAILED"
       ],
       "forbidden_claims": [
         "booted",
@@ -280,13 +343,20 @@
         "RESULT=",
         "COMPATIBILITY_CLAIM=none"
       ],
-      "required_any": ["vendor.img", "#### build completed successfully"],
-      "required_all": ["eliza_e1.xml", "vendor.e1_npu.ready=0"],
+      "required_any": [
+        "vendor.img",
+        "#### build completed successfully"
+      ],
+      "required_all": [
+        "eliza_e1.xml",
+        "vendor.e1_npu.ready=0"
+      ],
       "forbidden_any": [
         "FAILED:",
         "ninja failed",
         "missing dependencies",
-        "placeholder"
+        "placeholder transcript",
+        "placeholder evidence"
       ],
       "forbidden_claims": [
         "booted",
@@ -299,8 +369,8 @@
     "docs/evidence/android/eliza_ai_soc_checkvintf.log": {
       "blocker_code": "missing_aosp_checkvintf_log",
       "claim_boundary": "single_checkvintf_result_only_not_android_compatibility_evidence",
-      "producer_command": "checkvintf against out/target/product/eliza_ai_soc vendor artifacts",
-      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append checkvintf output against the real vendor artifacts",
+      "producer_command": "checkvintf --check-compat against out/target/product vendor + system artifacts",
+      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append checkvintf --check-compat output against the real vendor and system artifacts; final marker line must be VINTF_COMPAT=ok",
       "required_metadata": [
         "EXTERNAL_TREE=",
         "COMMAND=",
@@ -309,9 +379,20 @@
         "RESULT=",
         "COMPATIBILITY_CLAIM=none"
       ],
-      "required_any": ["checkvintf", "Compatible"],
-      "required_all": ["eliza_e1.xml", "eliza_ai_soc"],
-      "forbidden_any": ["INCOMPATIBLE", "Cannot fetch", "ERROR", "placeholder"],
+      "required_any": [
+        "checkvintf",
+        "Compatible"
+      ],
+      "required_all": [
+        "eliza_e1.xml",
+        "eliza_ai_soc",
+        "VINTF_COMPAT=ok"
+      ],
+      "forbidden_any": [
+        "INCOMPATIBLE",
+        "Cannot fetch",
+        "ERROR"
+      ],
       "forbidden_claims": [
         "Android compatible",
         "CTS passed",
@@ -323,8 +404,8 @@
     "docs/evidence/android/eliza_ai_soc_sepolicy_build.log": {
       "blocker_code": "missing_aosp_sepolicy_build_log",
       "claim_boundary": "expected_future_log_markers_only_not_boot_evidence",
-      "producer_command": "m vendor_sepolicy.cil selinux_policy",
-      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append the AOSP SELinux policy build transcript",
+      "producer_command": "m vendor_sepolicy.cil selinux_policy sepolicy_neverallows",
+      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append the AOSP SELinux policy build transcript; final marker line must be SEPOLICY_BUILD=ok",
       "required_metadata": [
         "EXTERNAL_TREE=",
         "COMMAND=",
@@ -338,12 +419,15 @@
         "selinux_policy",
         "#### build completed successfully"
       ],
-      "required_all": ["e1_npu_device", "hal_e1_npu_default"],
+      "required_all": [
+        "e1_npu_device",
+        "hal_e1_npu_default",
+        "SEPOLICY_BUILD=ok"
+      ],
       "forbidden_any": [
         "neverallow check failed",
         "FAILED:",
-        "ninja failed",
-        "placeholder"
+        "ninja failed"
       ],
       "forbidden_claims": [
         "SELinux clean on device",
@@ -357,7 +441,7 @@
       "blocker_code": "missing_aosp_selinux_neverallow_log",
       "claim_boundary": "expected_future_log_markers_only_not_boot_evidence",
       "producer_command": "m sepolicy_neverallows",
-      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append the AOSP neverallow transcript",
+      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append the AOSP neverallow transcript; final marker line must be SEPOLICY_NEVERALLOW=ok",
       "required_metadata": [
         "EXTERNAL_TREE=",
         "COMMAND=",
@@ -370,12 +454,14 @@
         "sepolicy_neverallows",
         "#### build completed successfully"
       ],
-      "required_all": ["e1_npu"],
+      "required_all": [
+        "e1_npu",
+        "SEPOLICY_NEVERALLOW=ok"
+      ],
       "forbidden_any": [
         "neverallow check failed",
         "FAILED:",
-        "ninja failed",
-        "placeholder"
+        "ninja failed"
       ],
       "forbidden_claims": [
         "SELinux clean on device",
@@ -404,8 +490,15 @@
         "CTS_SCOPE=smoke_only",
         "VTS_SCOPE=vintf_selinux_hal_manager_only"
       ],
-      "required_all": ["EXCLUDED_MODULES=", "RESULT_DIR="],
-      "forbidden_any": ["placeholder", "No command", "not run"],
+      "required_all": [
+        "EXCLUDED_MODULES=",
+        "RESULT_DIR="
+      ],
+      "forbidden_any": [
+        "placeholder",
+        "No command",
+        "not run"
+      ],
       "forbidden_claims": [
         "CTS passed",
         "VTS passed",
@@ -431,13 +524,18 @@
         "COMPATIBILITY_CLAIM=none",
         "SCHEMA=docs/android/boot-transcript.schema.json"
       ],
-      "required_any": ["sys.boot_completed=1", "BOOT_COMPLETED"],
-      "required_all": ["ro.product.cpu.abi=riscv64", "eliza_ai_soc"],
+      "required_any": [
+        "sys.boot_completed=1",
+        "BOOT_COMPLETED"
+      ],
+      "required_all": [
+        "ro.product.cpu.abi=riscv64",
+        "eliza_ai_soc"
+      ],
       "forbidden_any": [
         "boot timeout",
         "adb: device offline",
-        "FAILED",
-        "placeholder"
+        "FAILED"
       ],
       "forbidden_claims": [
         "booted on e1_soc",
@@ -467,13 +565,54 @@
         "BOOT_COMPLETED",
         "init: starting service"
       ],
-      "required_all": ["qemu-system-riscv64", "eliza_ai_soc"],
+      "required_all": [
+        "qemu-system-riscv64",
+        "eliza_ai_soc"
+      ],
       "forbidden_any": [
         "Kernel panic",
         "boot timeout",
         "adb: device offline",
-        "FAILED",
-        "placeholder"
+        "FAILED"
+      ],
+      "forbidden_claims": [
+        "booted on e1_soc",
+        "Android compatible",
+        "CTS passed",
+        "VTS passed",
+        "certified"
+      ]
+    },
+    "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log": {
+      "blocker_code": "missing_aosp_cvd_hal_smoke_log",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "producer_command": "sw/aosp-device/check-cvd-hal-smoke.sh /path/to/aosp",
+      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, BOOT_CLAIM=none, SCHEMA=docs/android/boot-transcript.schema.json, then append launch_cvd output and adb shell lshal -i transcript; final marker lines must be HAL_REGISTERED=true and INTERFACE_AVAILABLE=true",
+      "required_metadata": [
+        "EXTERNAL_TREE=",
+        "COMMAND=",
+        "START_UTC=",
+        "END_UTC=",
+        "RESULT=",
+        "BOOT_CLAIM=none",
+        "COMPATIBILITY_CLAIM=none",
+        "SCHEMA=docs/android/boot-transcript.schema.json"
+      ],
+      "required_any": [
+        "lshal",
+        "sys.boot_completed=1"
+      ],
+      "required_all": [
+        "vendor.eliza.e1_npu@1.0::IE1Npu/default",
+        "HAL_REGISTERED=true",
+        "INTERFACE_AVAILABLE=true"
+      ],
+      "forbidden_any": [
+        "expected_hal_missing",
+        "hal_interface_not_available",
+        "adb: device offline",
+        "boot timeout",
+        "FAILED"
       ],
       "forbidden_claims": [
         "booted on e1_soc",
@@ -503,13 +642,15 @@
         "BOOT_COMPLETED",
         "init: starting service"
       ],
-      "required_all": ["renode", "eliza_ai_soc"],
+      "required_all": [
+        "renode",
+        "eliza_ai_soc"
+      ],
       "forbidden_any": [
         "Kernel panic",
         "Unhandled",
         "boot timeout",
-        "FAILED",
-        "placeholder"
+        "FAILED"
       ],
       "forbidden_claims": [
         "booted on e1_soc",

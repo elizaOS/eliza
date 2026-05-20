@@ -15,13 +15,28 @@ MANUAL_REVIEW = ROOT / "docs/architecture-optimization/cpu-npu-2028-manual-revie
 COMPETITIVE = ROOT / "benchmarks/results/cpu-npu-2028-competitive-envelope.json"
 PROCESS_EVAL = ROOT / "benchmarks/results/cpu-npu-2028-14a-process-eval.json"
 MODELED_EVAL = ROOT / "benchmarks/results/cpu-npu-2028-modeled-eval.json"
+NPU_CONTEXT_QUEUE_SIM = ROOT / "benchmarks/results/npu-context-queue-sim.json"
+MEMORY_IOMMU_QOS_SIM = ROOT / "benchmarks/results/memory-iommu-qos-sim.json"
 DRY_RUN_REPORT = ROOT / "benchmarks/results/dry-run/report.json"
+LOCAL_HOST_BENCHMARK_REPORT = ROOT / "benchmarks/results/local-host-benchmark-evidence.json"
+CHIPYARD_IMPORT_PREFLIGHT_REPORTS = (
+    ROOT / "build/chipyard/eliza_rocket/bootstrap-preflight.json",
+    ROOT / "benchmarks/results/chipyard/bootstrap-preflight.json",
+)
 OUT = ROOT / "benchmarks/results/cpu-npu-2028-tapeout-readiness-audit.json"
 
 REQUIRED_MODELED_REPORTS = {
     "modeled_benchmark_eval": (
         ROOT / "benchmarks/results/cpu-npu-2028-modeled-eval.json",
         "modeled_eval_release_blocked",
+    ),
+    "npu_context_queue_sim": (
+        ROOT / "benchmarks/results/npu-context-queue-sim.json",
+        "pass",
+    ),
+    "memory_iommu_qos_sim": (
+        ROOT / "benchmarks/results/memory-iommu-qos-sim.json",
+        "pass",
     ),
     "burst_sustained_policy": (
         ROOT / "benchmarks/results/cpu-npu-2028-burst-sustained-policy.json",
@@ -264,17 +279,80 @@ def benchmark_release_rows() -> list[dict[str, Any]]:
     return rows
 
 
+def local_host_benchmark_summary() -> dict[str, Any]:
+    if not LOCAL_HOST_BENCHMARK_REPORT.is_file():
+        return {
+            "status": "missing",
+            "passed_count": 0,
+            "partial_timeout_count": 0,
+            "release_claim_allowed": False,
+        }
+    data = load_json_object(LOCAL_HOST_BENCHMARK_REPORT)
+    summary = data.get("summary")
+    if not isinstance(summary, dict):
+        raise ValueError("local host benchmark report missing summary")
+    if data.get("status") != "local_host_evidence_not_release":
+        raise ValueError("local host benchmark report must remain non-release evidence")
+    boundary = str(data.get("claim_boundary", ""))
+    if "not target silicon" not in boundary or "must not be used for release" not in boundary:
+        raise ValueError("local host benchmark report claim boundary is too weak")
+    return {
+        "status": str(data.get("status")),
+        "passed_count": int(summary.get("passed_count", 0)),
+        "partial_timeout_count": int(summary.get("partial_timeout_count", 0)),
+        "release_claim_allowed": False,
+    }
+
+
+def chipyard_import_preflight_summary() -> dict[str, Any]:
+    for path in CHIPYARD_IMPORT_PREFLIGHT_REPORTS:
+        if not path.is_file():
+            continue
+        data = load_json_object(path)
+        if data.get("schema") != "eliza.cpu_ap_bootstrap_preflight.v1":
+            raise ValueError(f"{rel(path)} schema mismatch")
+        status = str(data.get("status", "missing"))
+        selected = data.get("selected_path")
+        chipyard = data.get("chipyard")
+        if not isinstance(selected, dict) or not isinstance(chipyard, dict):
+            raise ValueError(f"{rel(path)} missing Chipyard selected path metadata")
+        return {
+            "status": status,
+            "artifact": rel(path),
+            "checkout": str(data.get("checkout", "")),
+            "config_name": str(selected.get("config_name", "")),
+            "chipyard_tag": str(chipyard.get("tag", "")),
+            "chipyard_commit": str(chipyard.get("commit", "")),
+            "blocker_count": len(data.get("blockers") or []),
+            "error_count": len(data.get("errors") or []),
+        }
+    return {
+        "status": "missing",
+        "artifact": "",
+        "checkout": "",
+        "config_name": "",
+        "chipyard_tag": "",
+        "chipyard_commit": "",
+        "blocker_count": 0,
+        "error_count": 0,
+    }
+
+
 def build_report() -> dict[str, Any]:
     scorecard = load_yaml_object(SCORECARD)
     manual_review = load_yaml_object(MANUAL_REVIEW)
     competitive = load_json_object(COMPETITIVE)
     process_eval = load_json_object(PROCESS_EVAL)
     modeled_eval = load_json_object(MODELED_EVAL)
+    npu_context_queue = load_json_object(NPU_CONTEXT_QUEUE_SIM)
+    memory_iommu_qos = load_json_object(MEMORY_IOMMU_QOS_SIM)
 
     modeled_rows = modeled_report_rows()
     proof_rows = proof_domain_rows(scorecard)
     tools = tool_rows()
     benchmark_rows = benchmark_release_rows()
+    local_host_summary = local_host_benchmark_summary()
+    chipyard_preflight = chipyard_import_preflight_summary()
 
     competitive_metrics = competitive.get("envelope_metrics")
     process_metrics = process_eval.get("baseline_metrics")
@@ -283,6 +361,14 @@ def build_report() -> dict[str, Any]:
         raise ValueError("competitive envelope missing envelope_metrics")
     if not isinstance(process_metrics, dict) or not isinstance(modeled_metrics, dict):
         raise ValueError("process/modeled eval missing metrics")
+    queue_config = npu_context_queue.get("config")
+    queue_summary = npu_context_queue.get("summary")
+    if not isinstance(queue_config, dict) or not isinstance(queue_summary, dict):
+        raise ValueError("NPU context queue simulator missing config/summary")
+    memory_qos_config = memory_iommu_qos.get("config")
+    memory_qos_summary = memory_iommu_qos.get("summary")
+    if not isinstance(memory_qos_config, dict) or not isinstance(memory_qos_summary, dict):
+        raise ValueError("memory IOMMU/QoS simulator missing config/summary")
 
     modeled_local_complete = all(row["status"] == "pass" for row in modeled_rows)
     blocked_domains = [row["id"] for row in proof_rows if row["status"] == "blocked"]
@@ -347,6 +433,8 @@ def build_report() -> dict[str, Any]:
             "process_eval": rel(PROCESS_EVAL),
             "modeled_eval": rel(MODELED_EVAL),
             "benchmark_dry_run_report": rel(DRY_RUN_REPORT),
+            "local_host_benchmark_report": rel(LOCAL_HOST_BENCHMARK_REPORT),
+            "chipyard_import_preflight_report": chipyard_preflight["artifact"],
         },
         "modeled_reports": modeled_rows,
         "proof_domains": proof_rows,
@@ -362,6 +450,18 @@ def build_report() -> dict[str, Any]:
             "blocked_tools": blocked_tools,
             "blocked_benchmarks": blocked_benchmarks,
             "blocked_benchmark_requirements": blocked_benchmark_requirements,
+            "local_host_benchmark_status": local_host_summary["status"],
+            "local_host_benchmark_passed_count": local_host_summary["passed_count"],
+            "local_host_benchmark_partial_timeout_count": local_host_summary[
+                "partial_timeout_count"
+            ],
+            "local_host_benchmark_release_claim_allowed": local_host_summary[
+                "release_claim_allowed"
+            ],
+            "chipyard_import_preflight_status": chipyard_preflight["status"],
+            "chipyard_import_preflight_artifact": chipyard_preflight["artifact"],
+            "chipyard_import_preflight_blocker_count": chipyard_preflight["blocker_count"],
+            "chipyard_import_preflight_error_count": chipyard_preflight["error_count"],
             "competitive_npu_process_derated_dense_tops": require_number(
                 competitive_metrics.get("npu_process_derated_dense_tops"),
                 "process derated dense TOPS",
@@ -371,6 +471,53 @@ def build_report() -> dict[str, Any]:
             ),
             "competitive_burst_hotspot_die_c": require_number(
                 competitive_metrics.get("burst_hotspot_die_c"), "burst hotspot"
+            ),
+            "modeled_npu_sota_dma_queue_depth": require_number(
+                modeled_metrics.get("npu_sota_dma_queue_depth"), "SOTA NPU queue depth"
+            ),
+            "modeled_npu_sota_total_descriptors_required": require_number(
+                modeled_metrics.get("npu_sota_total_descriptors_required"),
+                "SOTA NPU descriptors",
+            ),
+            "modeled_npu_sota_max_descriptor_queue_passes": require_number(
+                modeled_metrics.get("npu_sota_max_descriptor_queue_passes"),
+                "SOTA NPU queue passes",
+            ),
+            "modeled_npu_sota_total_dma_beats": require_number(
+                modeled_metrics.get("npu_sota_total_dma_beats"), "SOTA NPU DMA beats"
+            ),
+            "modeled_npu_context_queue_contexts": require_number(
+                queue_config.get("concurrent_contexts"), "NPU context count"
+            ),
+            "modeled_npu_context_queue_depth": require_number(
+                queue_config.get("descriptor_queue_depth"), "NPU context queue depth"
+            ),
+            "modeled_npu_context_queue_jain_fairness": require_number(
+                queue_summary.get("jain_fairness_index"), "NPU context queue fairness"
+            ),
+            "modeled_npu_context_queue_max_service_gap_cycles": require_number(
+                queue_summary.get("max_service_gap_cycles"), "NPU context queue service gap"
+            ),
+            "modeled_npu_context_queue_total_dma_beats": require_number(
+                queue_summary.get("total_dma_beats_served"), "NPU context queue DMA beats"
+            ),
+            "modeled_memory_iommu_qos_streams": require_number(
+                memory_qos_config.get("stream_count"), "memory IOMMU/QoS stream count"
+            ),
+            "modeled_memory_iommu_fault_probes": require_number(
+                memory_qos_summary.get("fault_probe_count"), "memory IOMMU fault probes"
+            ),
+            "modeled_memory_iommu_deny_by_default_faults": require_number(
+                memory_qos_summary.get("deny_by_default_fault_count"),
+                "memory IOMMU deny-by-default faults",
+            ),
+            "modeled_memory_qos_display_underflows": require_number(
+                memory_qos_summary.get("display_underflow_count"),
+                "memory QoS display underflows",
+            ),
+            "modeled_memory_qos_isochronous_max_gap_cycles": require_number(
+                memory_qos_summary.get("isochronous_max_service_gap_cycles"),
+                "memory QoS isochronous gap",
             ),
             "manual_review_status": str(manual_review.get("status")),
             "scorecard_status": str(scorecard.get("status")),
@@ -404,9 +551,53 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("audit must keep release blocked until proof domains are real")
     if require_number(summary.get("blocked_benchmark_count"), "blocked benchmark count") <= 0:
         errors.append("audit must enumerate blocked benchmark release rows")
+    if require_number(summary.get("modeled_npu_sota_dma_queue_depth"), "NPU queue depth") < 1024:
+        errors.append("audit must preserve modeled NPU queue depth")
+    if (
+        require_number(
+            summary.get("modeled_npu_sota_max_descriptor_queue_passes"), "NPU queue passes"
+        )
+        != 1.0
+    ):
+        errors.append("audit must preserve one-pass SOTA descriptor queue budget")
+    if require_number(summary.get("modeled_npu_sota_total_dma_beats"), "NPU DMA beats") <= 0:
+        errors.append("audit must preserve modeled NPU DMA beats")
+    if require_number(summary.get("modeled_npu_context_queue_contexts"), "context count") < 8:
+        errors.append("audit must preserve modeled 8-context NPU queue evidence")
+    if require_number(summary.get("modeled_npu_context_queue_depth"), "context queue depth") < 1024:
+        errors.append("audit must preserve modeled NPU context queue depth")
+    if require_number(summary.get("modeled_npu_context_queue_jain_fairness"), "fairness") < 0.99:
+        errors.append("audit must preserve modeled NPU context queue fairness")
+    if require_number(summary.get("modeled_npu_context_queue_max_service_gap_cycles"), "gap") > 32:
+        errors.append("audit must preserve modeled NPU no-starvation service gap")
+    if require_number(summary.get("modeled_memory_iommu_qos_streams"), "memory streams") < 9:
+        errors.append("audit must preserve modeled memory IOMMU stream coverage")
+    if require_number(summary.get("modeled_memory_iommu_fault_probes"), "IOMMU faults") < 4:
+        errors.append("audit must preserve modeled memory IOMMU fault coverage")
+    if (
+        require_number(
+            summary.get("modeled_memory_iommu_deny_by_default_faults"),
+            "deny-by-default faults",
+        )
+        < 1
+    ):
+        errors.append("audit must preserve modeled deny-by-default IOMMU fault coverage")
+    if require_number(summary.get("modeled_memory_qos_display_underflows"), "underflows") != 0:
+        errors.append("audit must preserve no-underflow modeled display QoS")
+    if (
+        require_number(
+            summary.get("modeled_memory_qos_isochronous_max_gap_cycles"),
+            "isochronous gap",
+        )
+        > 32
+    ):
+        errors.append("audit must preserve modeled isochronous QoS service gap")
     requirements = summary.get("blocked_benchmark_requirements")
-    if not isinstance(requirements, list) or "benchmark_model" not in requirements:
-        errors.append("audit must list benchmark_model as a blocked benchmark requirement")
+    if (
+        not isinstance(requirements, list)
+        or "benchmarks/capabilities/e1_npu_nnapi.proof.json" not in requirements
+    ):
+        errors.append("audit must list e1 NPU NNAPI proof as a blocked benchmark requirement")
     benchmark_rows = data.get("benchmark_release_readiness")
     if not isinstance(benchmark_rows, list):
         errors.append("benchmark_release_readiness must be a list")

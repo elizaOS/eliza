@@ -1,0 +1,182 @@
+{
+  "full_front_iso.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      248.033,
+      243.63,
+      241.683
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "nonwhite_pixel_ratio": 0.05366,
+    "orange_pixel_ratio_of_nonwhite": 0.43302,
+    "dark_pixel_ratio_of_nonwhite": 0.5465,
+    "pass": true
+  },
+  "full_back_iso.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      254.578,
+      245.083,
+      240.854
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "nonwhite_pixel_ratio": 0.05702,
+    "orange_pixel_ratio_of_nonwhite": 0.97389,
+    "dark_pixel_ratio_of_nonwhite": 0.01315,
+    "pass": true
+  },
+  "rear_feature_detail.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      254.12,
+      245.157,
+      241.209
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "nonwhite_pixel_ratio": 0.11003,
+    "orange_pixel_ratio_of_nonwhite": 0.00173,
+    "dark_pixel_ratio_of_nonwhite": 0.00943,
+    "pass": true
+  },
+  "full_left_side.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      254.414,
+      249.722,
+      247.633
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "nonwhite_pixel_ratio": 0.02973,
+    "orange_pixel_ratio_of_nonwhite": 0.92483,
+    "dark_pixel_ratio_of_nonwhite": 0.06132,
+    "pass": true
+  },
+  "full_bottom_port.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      253.786,
+      250.604,
+      249.189
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "nonwhite_pixel_ratio": 0.02397,
+    "orange_pixel_ratio_of_nonwhite": 0.77781,
+    "dark_pixel_ratio_of_nonwhite": 0.19595,
+    "pass": true
+  },
+  "full_top_down.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      229.549,
+      228.215,
+      227.563
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "nonwhite_pixel_ratio": 0.11026,
+    "orange_pixel_ratio_of_nonwhite": 0.068,
+    "dark_pixel_ratio_of_nonwhite": 0.92223,
+    "pass": true
+  },
+  "exploded_iso.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      244.953,
+      238.985,
+      236.312
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "nonwhite_pixel_ratio": 0.07599,
+    "orange_pixel_ratio_of_nonwhite": 0.45795,
+    "dark_pixel_ratio_of_nonwhite": 0.52474,
+    "pass": true
+  },
+  "component_stack.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      237.56,
+      239.5,
+      238.55
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "nonwhite_pixel_ratio": 0.07952,
+    "orange_pixel_ratio_of_nonwhite": 0.01139,
+    "dark_pixel_ratio_of_nonwhite": 0.67433,
+    "pass": true
+  },
+  "mold_tooling.png": {
+    "size": [
+      1350,
+      1650
+    ],
+    "mean_rgb": [
+      251.436,
+      247.307,
+      245.563
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "nonwhite_pixel_ratio": 0.04052,
+    "orange_pixel_ratio_of_nonwhite": 0.13278,
+    "dark_pixel_ratio_of_nonwhite": 0.02522,
+    "pass": true
+  }
+}

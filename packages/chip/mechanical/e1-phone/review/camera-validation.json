@@ -1,0 +1,132 @@
+{
+  "claim_boundary": "CAD-derived camera optical package validation and result template; not supplier module approval, image-quality calibration, or Camera HAL evidence.",
+  "status": "cad_camera_validation_ready",
+  "camera_components": {
+    "rear_camera": "OV13855/OV13850 13 MP autofocus MIPI module",
+    "front_camera": "5-8 MP fixed-focus MIPI module behind cover glass",
+    "rear_camera_glass": "chemically strengthened rear camera cover window"
+  },
+  "cases": [
+    {
+      "id": "rear_camera_cover_window_margin",
+      "actual": {
+        "cover_window_mm": [
+          9.2,
+          9.2
+        ],
+        "lens_diameter_mm": 6.8,
+        "radial_margin_mm": 1.2
+      },
+      "target": ">=0.8 mm radial margin around rear AF lens",
+      "pass": true
+    },
+    {
+      "id": "rear_camera_z_stack",
+      "actual": {
+        "module_depth_mm": 5.1,
+        "rear_camera_to_battery_gap_mm": 16.3
+      },
+      "target": "rear AF stack depth <=5.5 mm and >=2.0 mm battery gap",
+      "pass": true
+    },
+    {
+      "id": "front_under_glass_margin",
+      "actual": {
+        "module_mm": [
+          6.5,
+          6.5,
+          3.2
+        ],
+        "lens_diameter_mm": 3.4,
+        "radial_margin_mm": 1.55,
+        "cover_glass_thickness_mm": 0.7
+      },
+      "target": ">=1.0 mm radial module margin and <=0.8 mm cover glass for front under-glass camera",
+      "pass": true
+    },
+    {
+      "id": "front_camera_earpiece_clearance",
+      "actual": {
+        "front_camera_to_earpiece_gap_mm": 9.75
+      },
+      "target": ">=1.0 mm front camera to earpiece receiver gap",
+      "pass": true
+    },
+    {
+      "id": "camera_interface_strategy",
+      "actual": {
+        "interface_case_pass": true,
+        "rear_exposed_window": true,
+        "front_under_cover_glass": true
+      },
+      "target": "front camera under glass, rear AF camera through dedicated cover window",
+      "pass": true
+    }
+  ],
+  "measurement_count": 7,
+  "measurements": [
+    {
+      "measurement_id": "rear_camera_lens_center_error_mm",
+      "unit": "mm",
+      "min": 0.0,
+      "max": 0.25,
+      "fixture": "evt_fixture_rear_camera_alignment_pin",
+      "notes": "Rear lens optical center to rear cover-window datum."
+    },
+    {
+      "measurement_id": "front_camera_under_glass_center_error_mm",
+      "unit": "mm",
+      "min": 0.0,
+      "max": 0.3,
+      "fixture": "evt_fixture_front_camera_alignment_pin",
+      "notes": "Front camera optical center to under-glass aperture datum."
+    },
+    {
+      "measurement_id": "rear_camera_focus_mtf50_lp_per_mm",
+      "unit": "lp/mm",
+      "min": 35.0,
+      "max": "",
+      "fixture": "iso12233_chart",
+      "notes": "AF rear module focus and cover-window optical quality check."
+    },
+    {
+      "measurement_id": "front_camera_mtf50_lp_per_mm",
+      "unit": "lp/mm",
+      "min": 25.0,
+      "max": "",
+      "fixture": "iso12233_chart_through_cover_glass",
+      "notes": "Front fixed-focus module through cover-glass image sharpness."
+    },
+    {
+      "measurement_id": "front_cover_glass_color_delta_e",
+      "unit": "deltaE",
+      "min": 0.0,
+      "max": 3.0,
+      "fixture": "color_chart_lightbox",
+      "notes": "Color shift from cover-glass/black mask stack over front camera."
+    },
+    {
+      "measurement_id": "rear_camera_dust_or_vignette_defects",
+      "unit": "count",
+      "min": 0.0,
+      "max": 0.0,
+      "fixture": "flat_field_capture",
+      "notes": "Dust, vignette, or gasket intrusion defects in rear cover window."
+    },
+    {
+      "measurement_id": "camera_streaming_bringup_logs",
+      "unit": "pass_flag",
+      "min": 1.0,
+      "max": 1.0,
+      "fixture": "v4l2_or_android_camera_hal",
+      "notes": "Both front and rear cameras enumerate and stream with selected module pinout."
+    }
+  ],
+  "results_template": "mechanical/e1-phone/review/camera-results-template.csv",
+  "release_blockers": [
+    "Need supplier drawings/STEP for rear and front module optical center, FPC exit, and lens stack.",
+    "Need rear cover-window dust gasket drawing and first-article center/MTF measurements.",
+    "Need front under-glass capture validation through selected cover glass and black mask.",
+    "Need V4L2 or Android Camera HAL streaming logs with selected sensor drivers and pinout."
+  ]
+}

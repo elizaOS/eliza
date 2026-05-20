@@ -59,7 +59,9 @@ required_fields:
         - blocked-no-calibrated-assets
     source: string
     ground_truth_reference: string
-    last_calibrated_utc: string
+    last_calibrated_utc:
+      type: string
+      format: iso8601_utc_timestamp
     assets:
       type: object
   workload:
@@ -140,12 +142,42 @@ optional_result_fields:
   returncode: integer
   elapsed_seconds: number
   error: string
+  energy_joules_per_inference:
+    # MLPerf Power-style integrated-energy field. The value is joules per
+    # completed inference, integrated over the measured QPS run. Required
+    # calibration metadata (sub-fields) document the measurement contract;
+    # the runner does not compute a value, it only threads what the
+    # benchmark plan declares.
+    type: object
+    fields:
+      value: number
+      units: string                         # canonical: "J_per_inference"
+      provenance:
+        enum:
+          - simulator      # Accelergy / Timeloop modeled
+          - measured       # Joulescope / Monsoon / power-rail integration
+      instrument: string                   # e.g. "Joulescope JS220"
+      sampling_rate_hz: number             # raw measurement rate
+      integration_window_seconds: number   # length of the QPS run integrated
+      ground_truth_reference: string       # how this was calibrated
+      sample_count: integer                # samples used in the integral
+      calibration:
+        status:
+          enum:
+            - calibrated
+            - blocked-no-calibrated-assets
+        last_calibrated_utc:
+          type: string
+          format: iso8601_utc_timestamp
+        evidence: string
 validation_rules:
   - Generated reports must validate with `python3 benchmarks/run_benchmarks.py validate-report <report.json>`.
   - Real reports (`dry_run: false`) must include populated software, clocks, memory, thermal, and power metadata fields at report level.
   - Dry-run reports must use result provenance `dry_run` and must never contain `passed` results.
   - Passed real results must include non-empty parser-derived `metrics` and `run_metadata`.
   - Passed real results must include `calibration.status: calibrated` and calibrated entries for every result `required_calibration_assets` item.
+  - Passed real results must include `calibration.last_calibrated_utc` as an ISO-8601 UTC timestamp (`Z` or `+00:00`, not local time).
+  - Passed real results must include a 64-character lowercase SHA-256 hex digest for every required calibration asset `sha256` field.
   - Blocked calibration templates may validate for blocked/missing reports, but any parsed result that would otherwise pass must fail validation until calibration is replaced with real evidence.
   - Parser failures make the result `failed`; raw logs alone are not host-verifiable performance evidence.
   - Results with unavailable model_artifact dependencies must use status `blocked`, not `passed`.
@@ -171,6 +203,12 @@ validation_rules:
     upper bound apart from rounding slack; simulator wall-clock time and
     marketing TOPS are not accepted.
   - Android reports must separate boot success from CTS/VTS compatibility.
+  - >
+    Results that include energy_joules_per_inference must declare provenance
+    (simulator or measured), instrument identification, sampling rate,
+    integration window, and a calibration status; the harness must not
+    fabricate the energy value, only pass it through from the benchmark
+    plan or the simulator/instrument exporter.
 parser_manifests:
   coremark_v1:
     source: CoreMark stdout
@@ -222,7 +260,9 @@ parser_manifests:
 calibration_asset_contract:
   status: calibrated
   source: string
-  sha256: string
+  sha256:
+    type: string
+    format: lowercase_sha256_hex
   evidence: string
 required_calibration_assets_by_suite:
   CoreMark:

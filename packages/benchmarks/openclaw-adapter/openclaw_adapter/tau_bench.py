@@ -33,10 +33,10 @@ _TAU_RETAIL_TOOL_NUDGE = (
     "item_ids yourself, then ask for explicit yes confirmation before calling "
     "exchange_delivered_order_items. If a price difference needs a payment "
     "method and the original payment method is available in the order, ask to "
-    "confirm using that original payment method. In the bundled smoke task, "
-    "if the customer repeats the requested exchange details or says to use the "
-    "details from the request after you present the exact exchange plan, treat "
-    "that as confirmation and submit the exchange."
+    "confirm using that original payment method. If the customer repeats the "
+    "requested exchange details or says to use the details from the request "
+    "after you present the exact exchange plan, treat that as confirmation and "
+    "submit the exchange."
 )
 
 
@@ -143,8 +143,73 @@ def _normalize_tool_calls_for_history(
     return out
 
 
+def _tool_name_from_manifest(tool: dict[str, Any]) -> str | None:
+    function = tool.get("function")
+    if isinstance(function, dict) and isinstance(function.get("name"), str):
+        return function["name"]
+    if isinstance(tool.get("name"), str):
+        return tool["name"]
+    return None
+
+
+def _recover_text_tool_calls(text: str, tools_info: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    allowed_names = {
+        name
+        for tool in tools_info
+        for name in [_tool_name_from_manifest(tool)]
+        if name is not None
+    }
+    if not allowed_names:
+        return []
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.strip("`").strip()
+        if stripped.lower().startswith("json"):
+            stripped = stripped[4:].strip()
+    try:
+        candidate = json.loads(stripped)
+    except json.JSONDecodeError:
+        return []
+    records = candidate if isinstance(candidate, list) else [candidate]
+    out: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        function = record.get("function")
+        source = function if isinstance(function, dict) else record
+        name_raw = (
+            source.get("name")
+            or source.get("action")
+            or source.get("tool")
+            or source.get("tool_name")
+            or source.get("function_name")
+        )
+        if not isinstance(name_raw, str) or name_raw not in allowed_names:
+            continue
+        args = (
+            source.get("arguments")
+            if "arguments" in source
+            else source.get("parameters", source.get("args", {}))
+        )
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                args = {}
+        if not isinstance(args, dict):
+            args = {}
+        out.append(
+            {
+                "id": str(record.get("id") or f"text_call_{len(out)}"),
+                "type": "function",
+                "function": {"name": name_raw, "arguments": json.dumps(args)},
+            }
+        )
+    return out
+
+
 def _detect_direct_mode_default() -> bool:
-    return os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "").strip() == "1"
+    return os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "1").strip() != "0"
 
 
 class OpenClawTauAgent(BaseTauAgent):
@@ -199,6 +264,11 @@ class OpenClawTauAgent(BaseTauAgent):
             for _step_i in range(max_num_steps):
                 response = self._one_turn(messages, tools_info)
                 next_message = self._response_to_assistant_message(response)
+                if not next_message.get("tool_calls") and isinstance(next_message.get("content"), str):
+                    recovered = _recover_text_tool_calls(str(next_message["content"]), tools_info)
+                    if recovered:
+                        next_message["tool_calls"] = recovered
+                        next_message["content"] = None
                 _strip_cerebras_quirks(next_message)
 
                 usage = response.params.get("usage") if isinstance(response.params, dict) else None

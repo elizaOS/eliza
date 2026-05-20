@@ -72,6 +72,7 @@ fi
 
 COCOTB_TOP="${COCOTB_TOPLEVEL:-e1_chip_top}"
 COCOTB_MOD="${COCOTB_MODULE:-test_e1_chip}"
+COCOTB_DIR="${COCOTB_DIR:-verify/cocotb}"
 COCOTB_BUILD="$REPO_ROOT/build/cocotb/${COCOTB_TOP}_${COCOTB_MOD}"
 COCOTB_LOCK="$REPO_ROOT/build/cocotb/.${COCOTB_TOP}_${COCOTB_MOD}.lock"
 COCOTB_RESULTS_LOCK="$REPO_ROOT/build/cocotb/.results.lock"
@@ -96,27 +97,36 @@ while ! mkdir "$COCOTB_RESULTS_LOCK" 2>/dev/null; do
 done
 trap 'rmdir "$COCOTB_RESULTS_LOCK" "$COCOTB_LOCK" 2>/dev/null || true' EXIT INT TERM
 
-rm -rf "$COCOTB_BUILD" verify/cocotb/results.xml "$COCOTB_RESULT_FILE" "$COCOTB_RAW_RESULT"
+rm -rf "$COCOTB_BUILD" "$COCOTB_DIR/results.xml" "$COCOTB_RESULT_FILE" "$COCOTB_RAW_RESULT"
+
+run_make() {
+    _sim="$1"
+    if [ -n "${COCOTB_MAKEFILE:-}" ]; then
+        $(command -v make) -C "$COCOTB_DIR" -f "$COCOTB_MAKEFILE" "SIM=$_sim" \
+            MODULE="$COCOTB_MOD" \
+            TOPLEVEL="$COCOTB_TOP" \
+            PYTHON="$PYTHON_BIN" \
+            SIM_BUILD="$COCOTB_BUILD"
+    else
+        $(command -v make) -C "$COCOTB_DIR" "SIM=$_sim" \
+            MODULE="$COCOTB_MOD" \
+            TOPLEVEL="$COCOTB_TOP" \
+            PYTHON="$PYTHON_BIN" \
+            SIM_BUILD="$COCOTB_BUILD"
+    fi
+}
 
 if command -v verilator >/dev/null 2>&1; then
-    $(command -v make) -C verify/cocotb SIM=verilator \
-        MODULE="$COCOTB_MOD" \
-        TOPLEVEL="$COCOTB_TOP" \
-        PYTHON="$PYTHON_BIN" \
-        SIM_BUILD="$COCOTB_BUILD"
+    run_make verilator
 elif command -v iverilog >/dev/null 2>&1; then
-    $(command -v make) -C verify/cocotb SIM=icarus \
-        MODULE="$COCOTB_MOD" \
-        TOPLEVEL="$COCOTB_TOP" \
-        PYTHON="$PYTHON_BIN" \
-        SIM_BUILD="$COCOTB_BUILD"
+    run_make icarus
 else
     echo "No cocotb simulator found. Install Verilator or Icarus Verilog."
     exit 1
 fi
 
-cp verify/cocotb/results.xml "$COCOTB_RESULT_FILE"
-cp verify/cocotb/results.xml "$COCOTB_RAW_RESULT"
+cp "$COCOTB_DIR/results.xml" "$COCOTB_RESULT_FILE"
+cp "$COCOTB_DIR/results.xml" "$COCOTB_RAW_RESULT"
 "$PYTHON_BIN" scripts/check_cocotb_results.py \
     --result "$COCOTB_RAW_RESULT" \
     --module "$COCOTB_MOD" \

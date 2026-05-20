@@ -13,6 +13,8 @@
  * `useModel(IMAGE_DESCRIPTION, ...)` is the canonical entrypoint per
  * CLAUDE.md / Task 15 spec.
  */
+
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -26,10 +28,20 @@ import type {
   Eliza1TierId,
   Point,
   PredictedAction,
+  UsageTelemetry,
   VisionRuntime,
 } from "./types.ts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
+const PACKAGE_ROOT = path.join(HERE, "..");
+
+export interface RuntimeResolveArgs {
+  tier: Eliza1TierId | string;
+  forceStub: boolean;
+  harness?: "eliza" | "hermes" | "openclaw" | "elizaos" | "opencode";
+  provider?: string;
+  model?: string;
+}
 
 interface AppCoreVisionLike {
   /** Plugin-local-inference's IMAGE_DESCRIPTION handler factory. */
@@ -107,7 +119,7 @@ function wrapVisionImpl(
       const text = await impl.describe({
         imagePath,
         prompt: [
-          "You are a UI grounding model. Output the click coordinate as `x, y` in pixel space.",
+          "UI grounding model. Output the click coordinate as `x, y` in pixel space.",
           `Instruction: ${instruction}`,
         ].join("\n"),
         maxTokens: 32,
@@ -175,6 +187,178 @@ export function createStubRuntime(tier: string = "stub"): VisionRuntime {
   };
 }
 
+function createHarnessRuntime(args: {
+  harness: "hermes" | "openclaw" | "elizaos" | "opencode";
+  provider: string;
+  model: string;
+}): VisionRuntime {
+  const usageTotals: Required<UsageTelemetry> = {
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+    cached_tokens: 0,
+    cache_creation_tokens: 0,
+    llm_call_count: 0,
+  };
+  let sawUsage = false;
+  const python = process.env.PYTHON ?? process.env.PYTHON_BIN ?? "python";
+  const script = path.join(
+    PACKAGE_ROOT,
+    "scripts",
+    "vision_harness_runtime.py",
+  );
+
+  async function askHarness({
+    imagePath,
+    question,
+    maxTokens,
+  }: {
+    imagePath: string;
+    question: string;
+    maxTokens?: number;
+  }): Promise<string> {
+    const child = spawnSync(python, [script], {
+      input: JSON.stringify({
+        harness: args.harness,
+        provider: args.provider,
+        model: args.model,
+        imagePath,
+        question,
+        maxTokens,
+      }),
+      encoding: "utf8",
+      env: process.env,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    if (child.error) throw child.error;
+    if (child.status !== 0) {
+      throw new Error(
+        `${args.harness} vision runtime failed rc=${child.status}: ${child.stderr || child.stdout}`,
+      );
+    }
+    const output = (child.stdout || "").trim().split("\n").at(-1) || "";
+    const parsed = JSON.parse(output) as {
+      text?: unknown;
+      usage?: unknown;
+      params?: unknown;
+    };
+    const usage = usageFromPayload(parsed);
+    addUsage(usageTotals, usage);
+    if (Object.values(usage).some((value) => value !== undefined)) {
+      sawUsage = true;
+    }
+    const text = typeof parsed.text === "string" ? parsed.text : "";
+    return text;
+  }
+
+  return {
+    id: `${args.harness}:${args.provider}/${args.model}`,
+    ask: askHarness,
+    async ground({ imagePath, instruction }): Promise<Point | null> {
+      const text = await askHarness({
+        imagePath,
+        question: [
+          "You are a UI grounding model. Output the click coordinate as `x, y` in pixel space.",
+          `Instruction: ${instruction}`,
+        ].join("\n"),
+        maxTokens: 32,
+      });
+      return parseClickFromText(text);
+    },
+    async runActionLoop({
+      instruction,
+      initialScreenshotPath,
+      maxSteps,
+    }): Promise<PredictedAction[]> {
+      const text = await askHarness({
+        imagePath: initialScreenshotPath,
+        question: actionListPrompt(instruction),
+        maxTokens: 256,
+      });
+      return parseActionList(text).slice(0, maxSteps);
+    },
+    usage() {
+      if (!sawUsage) return {};
+      const totalTokens =
+        usageTotals.total_tokens ||
+        usageTotals.input_tokens + usageTotals.output_tokens;
+      return { ...usageTotals, total_tokens: totalTokens };
+    },
+  };
+}
+
+function addUsage(
+  target: Required<UsageTelemetry>,
+  usage: UsageTelemetry,
+): void {
+  target.input_tokens += usage.input_tokens ?? 0;
+  target.output_tokens += usage.output_tokens ?? 0;
+  target.total_tokens += usage.total_tokens ?? 0;
+  target.cached_tokens += usage.cached_tokens ?? 0;
+  target.cache_creation_tokens += usage.cache_creation_tokens ?? 0;
+  target.llm_call_count +=
+    usage.llm_call_count ?? (Object.keys(usage).length ? 1 : 0);
+}
+
+function usageFromPayload(payload: {
+  usage?: unknown;
+  params?: unknown;
+}): UsageTelemetry {
+  const direct = normalizeUsage(payload.usage);
+  if (Object.keys(direct).length) return direct;
+  const params = payload.params;
+  if (params && typeof params === "object" && "usage" in params) {
+    return normalizeUsage((params as { usage?: unknown }).usage);
+  }
+  return {};
+}
+
+function normalizeUsage(payload: unknown): UsageTelemetry {
+  if (!payload || typeof payload !== "object") return {};
+  const usage = payload as Record<string, unknown>;
+  const input = numberValue(
+    usage.input_tokens,
+    usage.prompt_tokens,
+    usage.inputTokens,
+    usage.promptTokens,
+  );
+  const output = numberValue(
+    usage.output_tokens,
+    usage.completion_tokens,
+    usage.outputTokens,
+    usage.completionTokens,
+  );
+  const total = numberValue(usage.total_tokens, usage.totalTokens);
+  const cached = numberValue(
+    usage.cached_tokens,
+    usage.cache_read_input_tokens,
+    usage.cachedTokens,
+    usage.cacheReadInputTokens,
+  );
+  const cacheCreation = numberValue(
+    usage.cache_creation_tokens,
+    usage.cache_creation_input_tokens,
+    usage.cacheCreationTokens,
+    usage.cacheCreationInputTokens,
+  );
+  const calls = numberValue(usage.llm_call_count, usage.llmCallCount);
+  const result: UsageTelemetry = {};
+  if (input !== undefined) result.input_tokens = input;
+  if (output !== undefined) result.output_tokens = output;
+  if (total !== undefined) result.total_tokens = total;
+  if (cached !== undefined) result.cached_tokens = cached;
+  if (cacheCreation !== undefined) result.cache_creation_tokens = cacheCreation;
+  if (calls !== undefined) result.llm_call_count = calls;
+  return result;
+}
+
+function numberValue(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
 function inferStubAnswer(question: string): string {
   const q = question.toLowerCase();
   if (q.includes("time")) return "3:15";
@@ -195,12 +379,39 @@ function inferStubAnswer(question: string): string {
   return "unknown";
 }
 
-export async function resolveRuntime(args: {
-  tier: Eliza1TierId | string;
-  forceStub: boolean;
-}): Promise<VisionRuntime> {
+export async function resolveRuntime(
+  args: RuntimeResolveArgs,
+): Promise<VisionRuntime> {
   if (args.forceStub) return createStubRuntime(args.tier);
   if (args.tier === "stub") return createStubRuntime();
+  const harness = args.harness ?? "eliza";
+  if (
+    harness === "hermes" ||
+    harness === "openclaw" ||
+    harness === "elizaos" ||
+    harness === "opencode"
+  ) {
+    const model = (
+      args.model ??
+      process.env.VISION_LANGUAGE_MODEL ??
+      ""
+    ).trim();
+    if (!model) {
+      throw new Error(
+        `vision-language ${harness} runtime requires --model or VISION_LANGUAGE_MODEL`,
+      );
+    }
+    return createHarnessRuntime({
+      harness,
+      provider:
+        (
+          args.provider ??
+          process.env.VISION_LANGUAGE_PROVIDER ??
+          "openai"
+        ).trim() || "openai",
+      model,
+    });
+  }
   const plugin = await tryLoadPluginVision(args.tier as Eliza1TierId);
   if (plugin) return plugin;
   throw new Error(

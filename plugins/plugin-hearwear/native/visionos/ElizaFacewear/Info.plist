@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App metadata -->
+    <key>CFBundleName</key>
+    <string>Eliza Facewear</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.elizaos.facewear.visionos</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleExecutable</key>
+    <string>ElizaFacewear</string>
+
+    <!-- Privacy usage descriptions — required for App Store / TestFlight -->
+    <key>NSCameraUsageDescription</key>
+    <string>Eliza Facewear uses the camera to stream your view to the elizaOS agent for vision analysis and AR overlay.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Eliza Facewear uses the microphone to capture voice input and send it to the elizaOS agent for speech recognition.</string>
+
+    <!-- Network access -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <!-- Allow local network for development (ws:// agent on LAN) -->
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+        <!-- Restrict arbitrary loads in production — remove this for App Store submission -->
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
+
+    <!-- visionOS scene manifest -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <true/>
+        <key>UISceneConfigurations</key>
+        <dict/>
+    </dict>
+
+    <!-- Supported platforms -->
+    <key>LSMinimumSystemVersion</key>
+    <string>2.4</string>
+    <key>XRCapabilities</key>
+    <array>
+        <string>worldTracking</string>
+        <string>handTracking</string>
+    </array>
+</dict>
+</plist>

@@ -1,0 +1,140 @@
+{
+  "blockers": [],
+  "cbp5_mpki_results_ref": {
+    "android_claim": false,
+    "cbp5_claim": true,
+    "comparison_table": "docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md",
+    "evidence_class": "cbp5_train_traces_only",
+    "model": {
+      "command": "python3 benchmarks/cpu/branch/run_mpki.py --backend model --traces external/cbp5-traces/",
+      "harness": "behavioural-bpu-model",
+      "path": "docs/evidence/cpu_ap/mpki_results_cbp5.json",
+      "present": true,
+      "schema": "eliza.bpu_mpki.v1",
+      "sha256": "7d2efa738bb30bf8e02d4850e19d015b2ff2cd93380fc95cf31599563a7bc825"
+    },
+    "rtl": {
+      "command": "make mpki-eval-rtl",
+      "harness": "cocotb-rtl-bpu_top",
+      "path": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
+      "present": true,
+      "schema": "eliza.bpu_mpki.v1",
+      "sha256": "57d3616b8d8b86b1376817bff4b383633ba9f138e88ec5bb8ab4ed026eb03c21"
+    },
+    "spec2017_claim": false,
+    "v8_claim": false
+  },
+  "claim_policy": {
+    "android_mpki_claim": false,
+    "cbp5_mpki_claim": true,
+    "fdip_claim": false,
+    "reason": "Open RTL geometry verified against 2028 thresholds. CBP-5 train-trace MPKI is on file (evidence_class cbp5_train_traces_only); SPEC, AOSP, and JS-engine MPKI claims remain blocked until those trace sets land in benchmarks/cpu/branch/.",
+    "spec2017_mpki_claim": false,
+    "two_taken_per_cycle_claim": false
+  },
+  "generated_at_utc": "2026-05-20T10:14:13.034613+00:00",
+  "parameters": {
+    "BIM_ENTRIES": 16384,
+    "FETCH_BLOCK_BYTES": 32,
+    "FTB_ENTRIES": 4096,
+    "FTB_WAYS": 4,
+    "FTQ_ENTRIES": 64,
+    "ITTAGE_ENTRIES": [
+      512,
+      512,
+      1024,
+      1024,
+      1024
+    ],
+    "ITTAGE_HIST_LEN": [
+      4,
+      8,
+      13,
+      16,
+      32
+    ],
+    "ITTAGE_TABLES": 5,
+    "LOOP_ENTRIES": 64,
+    "MAX_BR_PER_BLOCK": 2,
+    "RAS_ARCH_ENTRIES": 32,
+    "RAS_SPEC_ENTRIES": 64,
+    "SC_ENTRIES_TABLE": 512,
+    "SC_HIST_LEN": [
+      0,
+      4,
+      10,
+      16
+    ],
+    "SC_TABLES": 4,
+    "TAGE_ENTRIES_TABLE": 4096,
+    "TAGE_HIST_LEN": [
+      8,
+      13,
+      32,
+      64,
+      119
+    ],
+    "TAGE_HIST_LEN_MAX": 119,
+    "TAGE_TABLES": 5,
+    "UFTB_ENTRIES": 512
+  },
+  "schema": "eliza.bpu_params.v1",
+  "source_revision": "bd21824ee48d26781db4c9bb5ad2424d74688030",
+  "sources": {
+    "contract": {
+      "path": "docs/arch/branch-prediction.md",
+      "sha256": "be8c609b43f7b3bf3abd55b7b2286be3fcb489ab3ecabd9a03cc49cbce1a5976"
+    },
+    "manifest": {
+      "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",
+      "sha256": "c26d12c683a4f0c1fda36d541b25a80efd894592efb62e85ef35924d49dff926"
+    },
+    "package": {
+      "path": "rtl/cpu/bpu/bpu_pkg.sv",
+      "sha256": "3bbb09c368c5fd4e655a70de57e0258ca21bf6a2d75e151c27232bd2c328ce9a"
+    },
+    "top": {
+      "path": "rtl/cpu/bpu/bpu_top.sv",
+      "sha256": "526af26ea13452950c8f4e638fe34dff4006befe8f4f70c45fe5c5e2d4071d83"
+    }
+  },
+  "status": "clean",
+  "synthetic_mpki_results_ref": {
+    "android_claim": false,
+    "cbp5_claim": false,
+    "command": "make mpki-eval-rtl",
+    "comparison_table": "docs/evidence/cpu_ap/mpki_synthetic_vs_cbp5_reference.md",
+    "harness": "cocotb-rtl-bpu_top",
+    "path": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+    "present": true,
+    "schema": "eliza.bpu_mpki.v1",
+    "sha256": "a2ca589f5ca10e714dc02339d8aaaf1590ae35317cb385c850aeba894917ce7f",
+    "spec2017_claim": false,
+    "trace_class": "synthetic_planning_only"
+  },
+  "thresholds": {
+    "BIM_ENTRIES": 8192,
+    "FETCH_BLOCK_BYTES": 32,
+    "FTB_ENTRIES": 2048,
+    "FTB_WAYS": 4,
+    "FTQ_ENTRIES": 32,
+    "ITTAGE_TABLES": 5,
+    "LOOP_ENTRIES": 32,
+    "MAX_BR_PER_BLOCK": 1,
+    "RAS_ARCH_ENTRIES": 16,
+    "RAS_SPEC_ENTRIES": 32,
+    "SC_ENTRIES_TABLE": 512,
+    "SC_TABLES": 4,
+    "TAGE_ENTRIES_TABLE": 4096,
+    "TAGE_HIST_LEN_MAX": 100,
+    "TAGE_TABLES": 4,
+    "UFTB_ENTRIES": 256
+  },
+  "tool_versions": {
+    "cocotb": "cocotb 1.9.2",
+    "iverilog": "unavailable",
+    "sby": "unavailable",
+    "verilator": "unavailable",
+    "yosys": "unavailable"
+  }
+}

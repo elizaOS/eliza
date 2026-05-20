@@ -31,7 +31,7 @@ An autonomous liquidity position (LP) management agent for DeFi. This agent moni
 ### 1. Install Dependencies
 
 ```bash
-cd examples/lp-manager
+cd packages/examples/lp-manager
 bun install
 ```
 

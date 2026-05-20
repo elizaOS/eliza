@@ -18,7 +18,7 @@
     "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true,
     "paths": {
-      "@elizaos/core": ["../../../core/src"]
+      "@elizaos/core": ["../../packages/core/dist/node"]
     },
     "types": ["node", "bun-types"]
   },

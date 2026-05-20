@@ -204,6 +204,9 @@
         "min_observed_tops",
         "max_observed_tops",
         "min_utilization_percent",
+        "total_descriptors_required",
+        "max_descriptor_queue_passes",
+        "total_dma_beats",
         "process_corner_count",
         "worst_process_corner_min_observed_tops"
       ],
@@ -229,6 +232,9 @@
         "min_observed_tops",
         "max_observed_tops",
         "min_utilization_percent",
+        "total_descriptors_required",
+        "max_descriptor_queue_passes",
+        "total_dma_beats",
         "process_corner_count",
         "worst_process_corner_min_observed_tops"
       ],
@@ -465,6 +471,28 @@
         "worst_process_corner_die_temp_c"
       ],
       "timeout_seconds": 600
+    },
+    {
+      "name": "simulator_energy_metrics_timeloop",
+      "suite": "Eliza simulator energy",
+      "version": "v1/timeloop",
+      "command": [
+        "python3",
+        "benchmarks/sim/run_npu_timeloop.py",
+        "--config",
+        "min-real-v1"
+      ],
+      "requires": ["timeloop-mapper", "accelergy"],
+      "install": "Install timeloop-mapper and accelergy on PATH (tools/bin acceptable). This entry produces modeled joules-per-inference only; never measured silicon energy.",
+      "input_dataset": "e1_npu_timeloop_arch.yaml",
+      "primary_metric": "energy_joules_per_inference",
+      "units": "joules_per_inference",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "energy_joules_per_inference"
+      ],
+      "timeout_seconds": 1800
     }
   ]
 }

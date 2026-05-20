@@ -1,0 +1,680 @@
+schema: eliza.e1_phone_pinout_footprint_freeze.v1
+status: blocked_pinout_footprint_freeze_missing_supplier_evidence
+date: '2026-05-20'
+claim_boundary: Supplier pinout, footprint, and mechanical freeze matrix only. No item is approved for
+  fabrication until missing supplier documents, real KiCad symbols/footprints, routed DRC, and STEP fit
+  evidence are closed.
+source_artifacts:
+  - board/kicad/e1-phone/preliminary-bom.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+freeze_records:
+  - name: display_touch_fpc
+    status: blocked_waiting_supplier_pinout_footprint_mechanical_data
+    refdes_group: J_DISPLAY_TOUCH
+    bom_function: display_touch
+    selected_primary: Chenghao_CH550FH01A_CT_or_pin_compatible_5p5_FHD_MIPI_CTP
+    alternates:
+      - META_055WU01_class
+      - 5p5_ILI7807D_1200nit_MIPI_40pin_class
+      - 5p5_AMOLED_RM67191_class
+    package_binding:
+      - package/display/v0-dsi-720x1280.yaml
+    placement_region_mm:
+      x: 47.0
+      y: 8.0
+      width: 15.0
+      height: 24.0
+    footprint_strategy: supplier_defined_40pin_or_equivalent_mipi_touch_fpc
+    planned_contract_nets:
+      - DISP_BL_EN
+      - DISP_BL_PWM
+      - DISP_RESET_N
+      - DISP_TE
+      - DSI_CLK_N
+      - DSI_CLK_P
+      - DSI_D0_N
+      - DSI_D0_P
+      - DSI_D1_N
+      - DSI_D1_P
+      - DSI_D2_N
+      - DSI_D2_P
+      - DSI_D3_N
+      - DSI_D3_P
+      - TOUCH_I2C_SCL
+      - TOUCH_I2C_SDA
+    missing_contract_nets: []
+    mechanical_datums_required:
+      - cover_glass_outline
+      - tft_outline
+      - fpc_exit_side
+      - stiffener_thickness
+      - minimum_bend_radius
+    supplier_evidence_required:
+      - name: 2d_dimensioned_drawing
+        status: missing_supplier_document
+      - name: full_connector_pinout
+        status: missing_supplier_document
+      - name: mating_connector_part_number
+        status: missing_supplier_document
+      - name: fpc_stack_and_stiffener_drawing
+        status: missing_supplier_document
+      - name: panel_init_sequence
+        status: missing_supplier_document
+      - name: backlight_or_bias_power_spec
+        status: missing_supplier_document
+      - name: touch_controller_pinout_and_i2c_address
+        status: missing_supplier_document
+    freeze_blockers:
+      - exact_pinout
+      - fpc_drawing
+      - init_sequence
+      - touch_controller
+  - name: rear_camera_fpc
+    status: blocked_waiting_supplier_pinout_footprint_mechanical_data
+    refdes_group: J_CAM0_CAM1
+    bom_function: rear_camera
+    selected_primary: Sincere_First_SF_XR3855A_A0_OV13855_13MP_AF_MIPI
+    alternates:
+      - AR1335_13MP_AF_4lane_MIPI_module
+    package_binding:
+      - package/camera/oem-mipi-csi-modules.yaml
+    placement_region_mm:
+      x: 47.0
+      y: 8.0
+      width: 15.0
+      height: 34.0
+    footprint_strategy: supplier_defined_24_to_30pin_mipi_csi_camera_fpc
+    planned_contract_nets:
+      - CAM0_CSI_CLK_N
+      - CAM0_CSI_CLK_P
+      - CAM0_CSI_D0_N
+      - CAM0_CSI_D0_P
+      - CAM0_CSI_D1_N
+      - CAM0_CSI_D1_P
+      - CAM0_CSI_D2_N
+      - CAM0_CSI_D2_P
+      - CAM0_CSI_D3_N
+      - CAM0_CSI_D3_P
+      - CAM0_MCLK
+      - CAM0_RESET_N
+      - CAM1_CSI_CLK_N
+      - CAM1_CSI_CLK_P
+      - CAM1_CSI_D0_N
+      - CAM1_CSI_D0_P
+      - CAM1_CSI_D1_N
+      - CAM1_CSI_D1_P
+      - CAM1_MCLK
+      - CAM1_RESET_N
+      - CAM_AVDD_2V8
+      - IO_1V8
+    missing_contract_nets: []
+    mechanical_datums_required:
+      - lens_axis_xy
+      - lens_z_height
+      - module_outline
+      - fpc_exit_side
+      - shield_can_height
+    supplier_evidence_required:
+      - name: exact_fpc_pinout
+        status: missing_supplier_document
+      - name: mating_connector_part_number
+        status: missing_supplier_document
+      - name: lane_count_and_lane_order
+        status: missing_supplier_document
+      - name: power_sequence_timing
+        status: missing_supplier_document
+      - name: clock_frequency
+        status: missing_supplier_document
+      - name: otp_calibration_flow
+        status: missing_supplier_document
+      - name: v4l2_or_android_hal_driver_plan
+        status: missing_supplier_document
+    freeze_blockers:
+      - exact_pinout
+      - z_height
+      - lens_axis
+      - driver_support
+      - otp_calibration
+  - name: front_camera_fpc
+    status: blocked_waiting_supplier_pinout_footprint_mechanical_data
+    refdes_group: J_CAM0_CAM1
+    bom_function: front_camera
+    selected_primary: Sincere_First_SF_G5035S60FY_GC5035_5MP_FF_MIPI
+    alternates:
+      - Junde_IMX219_8MP_fixed_focus_MIPI_lab_or_front_alternate
+    package_binding:
+      - package/camera/oem-mipi-csi-modules.yaml
+    placement_region_mm:
+      x: 47.0
+      y: 8.0
+      width: 15.0
+      height: 34.0
+    footprint_strategy: supplier_defined_small_mipi_csi_fpc_after_z_stack_freeze
+    planned_contract_nets:
+      - CAM0_CSI_CLK_N
+      - CAM0_CSI_CLK_P
+      - CAM0_CSI_D0_N
+      - CAM0_CSI_D0_P
+      - CAM0_CSI_D1_N
+      - CAM0_CSI_D1_P
+      - CAM0_CSI_D2_N
+      - CAM0_CSI_D2_P
+      - CAM0_CSI_D3_N
+      - CAM0_CSI_D3_P
+      - CAM0_MCLK
+      - CAM0_RESET_N
+      - CAM1_CSI_CLK_N
+      - CAM1_CSI_CLK_P
+      - CAM1_CSI_D0_N
+      - CAM1_CSI_D0_P
+      - CAM1_CSI_D1_N
+      - CAM1_CSI_D1_P
+      - CAM1_MCLK
+      - CAM1_RESET_N
+      - CAM_AVDD_2V8
+      - IO_1V8
+    missing_contract_nets: []
+    mechanical_datums_required:
+      - lens_axis_xy
+      - lens_z_height
+      - cover_glass_clearance
+      - fpc_exit_side
+    supplier_evidence_required:
+      - name: selected_supplier_part_number
+        status: missing_supplier_document
+      - name: exact_fpc_pinout
+        status: missing_supplier_document
+      - name: mating_connector_part_number
+        status: missing_supplier_document
+      - name: lane_count_and_lane_order
+        status: missing_supplier_document
+      - name: power_sequence_timing
+        status: missing_supplier_document
+      - name: clock_frequency
+        status: missing_supplier_document
+    freeze_blockers:
+      - exact_pinout
+      - lens_z_height
+      - enclosure_z_stack
+      - driver_support
+  - name: usb_c_receptacle
+    status: blocked_waiting_supplier_pinout_footprint_mechanical_data
+    refdes_group: J_USB_C
+    bom_function: usb_c_receptacle_evt0
+    selected_primary: GCT_USB4105_USB2_Type_C
+    alternates:
+      - Molex_221632_or_217804_waterproof_24pin_if_USB3_required
+    package_binding:
+      - package/usb-c/e1-phone-usb-c-port.yaml
+    placement_region_mm:
+      x: 26.0
+      y: 124.0
+      width: 16.0
+      height: 6.0
+    footprint_strategy: gct_usb4105_usb2_evt0_or_waterproof_usb3_variant_controlled
+    planned_contract_nets:
+      - SHIELD_GND
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBUS
+    missing_contract_nets: []
+    mechanical_datums_required:
+      - shell_stake_locations
+      - midplane_height
+      - plug_overmold_clearance
+      - port_cutout
+      - enclosure_capture_surface
+    supplier_evidence_required:
+      - name: datasheet_with_recommended_footprint
+        status: missing_supplier_document
+      - name: 3d_step_model
+        status: missing_supplier_document
+      - name: mating_plug_clearance_drawing
+        status: missing_supplier_document
+      - name: esd_layout_reference
+        status: missing_supplier_document
+      - name: pd_cc_orientation_policy
+        status: missing_supplier_document
+      - name: usb2_or_usb3_variant_decision
+        status: missing_supplier_document
+    freeze_blockers:
+      - mechanical_capture
+      - port_cutout
+      - pd_policy
+      - esd_selection
+  - name: side_power_volume_controls
+    status: blocked_waiting_supplier_pinout_footprint_mechanical_data
+    refdes_group: SW_POWER_VOL
+    bom_function: side_buttons
+    selected_primary: Panasonic_EVQ_P7_or_EVQ_P3_side_push_tactile
+    alternates:
+      - C_and_K_KMR2_with_enclosure_plunger
+    package_binding:
+      - package/human-interface/side-buttons.yaml
+    placement_region_mm:
+      x: 4.0
+      y: 50.0
+      width: 7.0
+      height: 46.0
+    footprint_strategy: direct_side_push_tactile_or_side_key_flex_variant_controlled
+    planned_contract_nets:
+      - AON_1V8
+      - GND
+      - PWR_KEY_N
+      - VOL_DOWN_N
+      - VOL_UP_N
+    missing_contract_nets: []
+    mechanical_datums_required:
+      - actuator_rib_geometry
+      - button_travel
+      - force_curve
+      - solder_joint_load_path
+      - left_side_keepout
+    supplier_evidence_required:
+      - name: switch_datasheet_with_land_pattern
+        status: missing_supplier_document
+      - name: actuator_stack_drawing
+        status: missing_supplier_document
+      - name: wake_gpio_mapping
+        status: missing_supplier_document
+      - name: recovery_combo_firmware_mapping
+        status: missing_supplier_document
+      - name: lifetime_cycle_rating
+        status: missing_supplier_document
+    freeze_blockers:
+      - button_travel_stack
+      - actuator_rib
+      - wake_gpio_assignment
+  - name: cellular_module
+    status: blocked_waiting_supplier_pinout_footprint_mechanical_data
+    refdes_group: U_CELL
+    bom_function: cellular
+    selected_primary: Quectel_RG255C_LGA_or_RM255C_M2_5G_RedCap
+    alternates:
+      - Quectel_RM520N_GL_M2_lab_fallback
+    package_binding:
+      - package/cellular/quectel-5g-redcap.yaml
+    placement_region_mm:
+      x: 4.0
+      y: 8.0
+      width: 13.0
+      height: 19.0
+    footprint_strategy: quectel_rg255c_lga_or_rm255c_m2_lab_variant
+    planned_contract_nets:
+      - AP_WAKE_CELL
+      - CELL_PCIE_RX_N
+      - CELL_PCIE_RX_P
+      - CELL_PCIE_TX_N
+      - CELL_PCIE_TX_P
+      - CELL_RESET_N
+      - CELL_USB2_DN
+      - CELL_USB2_DP
+      - CELL_WAKE_AP
+      - CELL_W_DISABLE_N
+      - IO_1V8
+      - RF_VBAT
+      - USIM_CLK
+      - USIM_IO
+      - USIM_RST
+    missing_contract_nets: []
+    mechanical_datums_required:
+      - module_land_pattern_or_m2_socket
+      - shield_can_height
+      - sim_or_esim_location
+      - antenna_feed_datum
+    supplier_evidence_required:
+      - name: hardware_design_guide
+        status: missing_supplier_document
+      - name: recommended_lga_or_socket_footprint
+        status: missing_supplier_document
+      - name: region_sku_band_matrix
+        status: missing_supplier_document
+      - name: usim_esim_reference_design
+        status: missing_supplier_document
+      - name: antenna_reference_design
+        status: missing_supplier_document
+      - name: certification_scope_statement
+        status: missing_supplier_document
+      - name: peak_current_profile
+        status: missing_supplier_document
+    freeze_blockers:
+      - region_sku
+      - bands
+      - antenna_plan
+      - carrier_certification_plan
+  - name: battery_pack_connector
+    status: blocked_waiting_supplier_pinout_footprint_mechanical_data
+    refdes_group: J_BATTERY
+    bom_function: battery_pack
+    selected_primary: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
+    alternates:
+      - Made_in_China_736072_4500mAh_LiPo_family
+      - Alibaba_custom_3p85V_4500mAh_pack_quote_pool
+    package_binding:
+      - package/battery/e1-phone-17p3wh-pack.yaml
+    placement_region_mm:
+      x: 14.0
+      y: 44.0
+      width: 45.0
+      height: 4.0
+    footprint_strategy: 4pin_battery_connector_or_soldered_pack_variant_after_pack_supplier_freeze
+    planned_contract_nets:
+      - BAT_ID
+      - BAT_NTC
+      - GND
+      - VBAT
+    missing_contract_nets: []
+    mechanical_datums_required:
+      - pack_cell_outline
+      - pcm_tail_location
+      - connector_mating_direction
+      - compression_pad_stack
+      - swelling_clearance
+    supplier_evidence_required:
+      - name: dimensioned_pack_drawing
+        status: missing_supplier_document
+      - name: connector_pinout_and_mating_part
+        status: missing_supplier_document
+      - name: ntc_beta_or_resistance_temperature_table
+        status: missing_supplier_document
+      - name: pcm_protection_spec
+        status: missing_supplier_document
+      - name: max_charge_discharge_current
+        status: missing_supplier_document
+      - name: UN38_3_test_summary
+        status: missing_supplier_document
+      - name: MSDS
+        status: missing_supplier_document
+    freeze_blockers:
+      - pack_supplier_quote
+      - connector_pinout
+      - ntc_curve
+      - pcm_limits
+      - safety_docs
+      - battery_cavity_resize_or_custom_pack
+  - name: wifi_bluetooth_module
+    status: blocked_waiting_supplier_pinout_footprint_mechanical_data
+    refdes_group: U_WIFI_BT
+    bom_function: wifi_bluetooth
+    selected_primary: Murata_LBEE5XV2EA_802_Type_2EA_WiFi6E_BT5p3
+    alternates:
+      - Murata_Type_1DX_SDIO_UART_fallback
+    package_binding:
+      - package/wifi/murata-type-2ea-wifi6e.yaml
+    placement_region_mm:
+      x: 33.0
+      y: 33.0
+      width: 17.0
+      height: 9.0
+    footprint_strategy: murata_type_2ea_reference_land_pattern_and_rf_feed
+    planned_contract_nets:
+      - BT_EN
+      - BT_UART_CTS_N
+      - BT_UART_RTS_N
+      - BT_UART_RX
+      - BT_UART_TX
+      - IO_1V8
+      - WIFI_EN
+      - WIFI_HOST_WAKE
+      - WIFI_IRQ
+      - WIFI_PCIE_RX_N
+      - WIFI_PCIE_RX_P
+      - WIFI_PCIE_TX_N
+      - WIFI_PCIE_TX_P
+      - WIFI_SDIO_CLK
+      - WIFI_SDIO_CMD
+      - WIFI_SDIO_D0
+      - WIFI_SDIO_D1
+      - WIFI_SDIO_D2
+      - WIFI_SDIO_D3
+    missing_contract_nets: []
+    mechanical_datums_required:
+      - module_land_pattern
+      - shield_can_height
+      - rf_feed_point
+      - antenna_keepout
+    supplier_evidence_required:
+      - name: module_datasheet
+        status: missing_supplier_document
+      - name: hardware_integration_guide
+        status: missing_supplier_document
+      - name: recommended_land_pattern
+        status: missing_supplier_document
+      - name: antenna_reference_design
+        status: missing_supplier_document
+      - name: firmware_license_and_blobs
+        status: missing_supplier_document
+      - name: regulatory_certification_scope
+        status: missing_supplier_document
+      - name: coexistence_guidance
+        status: missing_supplier_document
+    freeze_blockers:
+      - firmware_license
+      - antenna_layout
+      - regulatory_scope
+  - name: audio_speaker_microphone_flexes
+    status: blocked_waiting_supplier_pinout_footprint_mechanical_data
+    refdes_group: U_AUDIO_SPK_MIC
+    bom_function: audio_codec_amp_mics
+    selected_primary: v0_audio_codec_binding
+    alternates: []
+    package_binding:
+      - package/audio/v0-codec.yaml
+    placement_region_mm:
+      x: 5.0
+      y: 104.0
+      width: 57.0
+      height: 10.0
+    footprint_strategy: bottom_audio_flex_or_board_mount_codec_with_speaker_mic_contacts
+    planned_contract_nets:
+      - AMP_INT
+      - AON_1V8
+      - AUDIO_I2C_SCL
+      - AUDIO_I2C_SDA
+      - CODEC_INT
+      - HAPTIC_OUT
+      - I2S_BCLK
+      - I2S_DIN
+      - I2S_DOUT
+      - I2S_LRCLK
+      - PDM_CLK
+      - PDM_DAT
+      - SPK_N
+      - SPK_P
+      - VDD_AMP_3V3
+      - VDD_AUDIO_3V3
+    missing_contract_nets: []
+    mechanical_datums_required:
+      - speaker_chamber
+      - mic_port_locations
+      - acoustic_gaskets
+      - haptic_mass_clearance
+    supplier_evidence_required:
+      - name: speaker_box_drawing
+        status: missing_supplier_document
+      - name: microphone_port_drawing
+        status: missing_supplier_document
+      - name: codec_amp_reference_schematic
+        status: missing_supplier_document
+      - name: haptic_lra_part_and_driver_choice
+        status: missing_supplier_document
+      - name: acoustic_leakage_review
+        status: missing_supplier_document
+    freeze_blockers:
+      - speaker_box
+      - mic_port_locations
+      - acoustic_gaskets
+  - name: top_bottom_interconnect_pair
+    status: blocked_waiting_supplier_pinout_footprint_mechanical_data
+    refdes_group:
+      - J_TOP_BOTTOM_FLEX_TOP
+      - J_TOP_BOTTOM_FLEX_BOTTOM
+    bom_function: top_bottom_interconnect
+    selected_primary: Hirose_BM28_hybrid_power_signal_fpc_bridge_class
+    alternates:
+      - Hirose_FH58_signal_flex_plus_power_tabs
+      - Molex_SlimStack_ACB6_Plus_or_equivalent
+    package_binding:
+      - package/interconnect/e1-phone-top-bottom-flex.yaml
+    placement_region_mm:
+      top_mate: {x: 46.0, y: 27.0, width: 16.0, height: 3.0}
+      bottom_mate: {x: 46.0, y: 117.0, width: 16.0, height: 3.0}
+    footprint_strategy: supplier_defined_49plus_contact_split_board_fpc_or_board_to_board_pair
+    planned_contract_nets:
+      - USB_DP
+      - USB_DN
+      - USB_CC1
+      - USB_CC2
+      - VBUS
+      - SHIELD_GND
+      - SYS
+      - AON_1V8
+      - IO_1V8
+      - VDD_AUDIO_3V3
+      - VDD_AMP_3V3
+      - I2S_BCLK
+      - I2S_LRCLK
+      - I2S_DOUT
+      - I2S_DIN
+      - PDM_CLK
+      - PDM_DAT
+      - AUDIO_I2C_SCL
+      - AUDIO_I2C_SDA
+      - CODEC_INT
+      - AMP_INT
+      - HAPTIC_OUT
+      - VBAT
+      - RF_VBAT
+      - GND
+    missing_contract_nets: []
+    mechanical_datums_required:
+      - top_island_mating_location
+      - bottom_island_mating_location
+      - flex_bend_radius
+      - stiffener_clearance
+      - battery_insertion_sequence
+      - strain_relief_or_clamp
+    supplier_evidence_required:
+      - name: exact_mating_part_numbers
+        status: missing_supplier_document
+      - name: recommended_land_patterns
+        status: missing_supplier_document
+      - name: flex_stackup_and_stiffener_drawing
+        status: missing_supplier_document
+      - name: usb2_impedance_coupon
+        status: missing_supplier_document
+      - name: current_temperature_rise_data
+        status: missing_supplier_document
+      - name: retention_and_cycle_rating
+        status: missing_supplier_document
+      - name: assembly_sequence_and_rework_plan
+        status: missing_supplier_document
+    freeze_blockers:
+      - exact_mating_part_numbers
+      - circuit_count
+      - flex_stackup
+      - usb2_si
+      - current_temperature_rise
+      - assembly_sequence
+cross_checks:
+  missing_package_bindings: []
+  missing_required_nets: {}
+  rf_matching_nets_requiring_physical_footprints:
+    - CELL_RF_MAIN
+    - CELL_RF_DIV
+    - CELL_GNSS_RF
+    - WIFI_BT_RF0
+    - WIFI_BT_RF1
+  records_with_missing_supplier_evidence:
+    display_touch_fpc:
+      - 2d_dimensioned_drawing
+      - full_connector_pinout
+      - mating_connector_part_number
+      - fpc_stack_and_stiffener_drawing
+      - panel_init_sequence
+      - backlight_or_bias_power_spec
+      - touch_controller_pinout_and_i2c_address
+    rear_camera_fpc:
+      - exact_fpc_pinout
+      - mating_connector_part_number
+      - lane_count_and_lane_order
+      - power_sequence_timing
+      - clock_frequency
+      - otp_calibration_flow
+      - v4l2_or_android_hal_driver_plan
+    front_camera_fpc:
+      - selected_supplier_part_number
+      - exact_fpc_pinout
+      - mating_connector_part_number
+      - lane_count_and_lane_order
+      - power_sequence_timing
+      - clock_frequency
+    usb_c_receptacle:
+      - datasheet_with_recommended_footprint
+      - 3d_step_model
+      - mating_plug_clearance_drawing
+      - esd_layout_reference
+      - pd_cc_orientation_policy
+      - usb2_or_usb3_variant_decision
+    side_power_volume_controls:
+      - switch_datasheet_with_land_pattern
+      - actuator_stack_drawing
+      - wake_gpio_mapping
+      - recovery_combo_firmware_mapping
+      - lifetime_cycle_rating
+    cellular_module:
+      - hardware_design_guide
+      - recommended_lga_or_socket_footprint
+      - region_sku_band_matrix
+      - usim_esim_reference_design
+      - antenna_reference_design
+      - certification_scope_statement
+      - peak_current_profile
+    battery_pack_connector:
+      - dimensioned_pack_drawing
+      - connector_pinout_and_mating_part
+      - ntc_beta_or_resistance_temperature_table
+      - pcm_protection_spec
+      - max_charge_discharge_current
+      - UN38_3_test_summary
+      - MSDS
+    wifi_bluetooth_module:
+      - module_datasheet
+      - hardware_integration_guide
+      - recommended_land_pattern
+      - antenna_reference_design
+      - firmware_license_and_blobs
+      - regulatory_certification_scope
+      - coexistence_guidance
+    audio_speaker_microphone_flexes:
+      - speaker_box_drawing
+      - microphone_port_drawing
+      - codec_amp_reference_schematic
+      - haptic_lra_part_and_driver_choice
+      - acoustic_leakage_review
+    top_bottom_interconnect_pair:
+      - exact_mating_part_numbers
+      - recommended_land_patterns
+      - flex_stackup_and_stiffener_drawing
+      - usb2_impedance_coupon
+      - current_temperature_rise_data
+      - retention_and_cycle_rating
+      - assembly_sequence_and_rework_plan
+promotion_requirements:
+  - replace scaffold symbols with real KiCad symbols from supplier pinouts
+  - replace concept rectangles with reviewed footprints and courtyards
+  - bind every connector pin to schematic nets and ERC-clean sheets
+  - route USB2, MIPI DSI/CSI, PCIe/SDIO, RF, side-key, and power nets
+  - export STEP assembly with exact connector, camera, display, and button models
+  - run DRC/ERC/SI/PI/DFM/RF checks before any fabrication-ready claim
+forbidden_claims:
+  - pinout_frozen
+  - footprints_frozen
+  - schematic_release_ready
+  - routed_pcb_ready
+  - enclosure_ready
+  - fabrication_ready

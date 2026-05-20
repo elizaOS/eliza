@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   const outputDir =
     outputIndex >= 0 && args[outputIndex + 1]
       ? resolve(args[outputIndex + 1])
-      : join(import.meta.dir ?? process.cwd(), "..", "results");
+      : join(import.meta.dir, "..", "results");
 
   const limitIndex = args.indexOf("--limit");
   const limit =

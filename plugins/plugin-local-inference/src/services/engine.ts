@@ -251,6 +251,11 @@ function toBackendLoadOverrides(
 	if (args.mlock !== undefined) overrides.mlock = args.mlock;
 	if (args.useGpu !== undefined) overrides.useGpu = args.useGpu;
 	if (args.mmprojPath !== undefined) overrides.mmprojPath = args.mmprojPath;
+	if (args.modelId?.startsWith("eliza-1-")) {
+		const bundleRoot = path.dirname(path.dirname(args.modelPath));
+		overrides.bundleRoot = bundleRoot;
+		overrides.manifestPath = path.join(bundleRoot, "eliza-1.manifest.json");
+	}
 	return overrides;
 }
 
@@ -427,7 +432,7 @@ interface LlamaBindingModule {
  * `LlamaModelOptions`.
  */
 export class NodeLlamaCppBackend implements LocalInferenceBackend {
-	readonly id = "node-llama-cpp" as const;
+	readonly id = "capacitor-llama" as const;
 
 	private llama: Llama | null = null;
 	private loadedModel: LlamaModel | null = null;
@@ -1061,7 +1066,11 @@ export class LocalInferenceEngine {
 		return this.dispatcher.hasLoadedModel();
 	}
 
-	activeBackendId(): "node-llama-cpp" | "llama-server" | null {
+	activeBackendId():
+		| "capacitor-llama"
+		| "node-llama-cpp"
+		| "llama-server"
+		| null {
 		return this.dispatcher.activeBackendId();
 	}
 
@@ -1101,7 +1110,8 @@ export class LocalInferenceEngine {
 	): Promise<void> {
 		const installed = await listInstalledModels();
 		const target = installed.find((m) => m.path === modelPath);
-		const catalog = target ? findCatalogModel(target.id) : undefined;
+		const modelId = target?.id ?? resolved?.modelId;
+		const catalog = modelId ? findCatalogModel(modelId) : undefined;
 
 		// Resolve the active Eliza-1 bundle (root + tier) so `embed()` can build
 		// the local-embedding route. An Eliza-1 InstalledModel carries a
@@ -1124,7 +1134,7 @@ export class LocalInferenceEngine {
 
 		const plan: BackendPlan = {
 			modelPath,
-			modelId: target?.id,
+			modelId,
 			catalog,
 			overrides,
 		};
@@ -2558,7 +2568,7 @@ export class LocalInferenceEngine {
 		_mode: "prefer" | "force",
 		loraPath: string | undefined,
 	): import("./voice/eot-classifier").Eliza1EotClassifier | null {
-		if (this.dispatcher.activeBackendId() !== "node-llama-cpp") return null;
+		if (this.dispatcher.activeBackendId() !== "capacitor-llama") return null;
 		const model = this.nodeBackend.getLoadedLlamaModel();
 		if (!model) return null;
 		const eotMod =

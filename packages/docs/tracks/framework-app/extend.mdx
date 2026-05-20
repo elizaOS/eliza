@@ -1,0 +1,54 @@
+---
+title: Extend
+description: "Add app-specific actions, providers, evaluators, and services."
+---
+
+In a framework app, you typically write your custom surfaces inline (rather than as a separate npm plugin). The runtime accepts them through a one-off plugin object.
+
+```ts
+import type { Plugin, Action, Provider } from '@elizaos/core';
+
+const greet: Action = {
+  name: 'GREET',
+  description: 'Greet the user.',
+  examples: [],
+  validate: async () => true,
+  handler: async (runtime, message, state, options, callback) => {
+    await callback({ text: 'Hi!' });
+    return true;
+  },
+};
+
+const time: Provider = {
+  name: 'time',
+  position: 0,
+  get: async () => ({ text: `Now: ${new Date().toISOString()}` }),
+};
+
+const appPlugin: Plugin = {
+  name: 'my-app',
+  actions: [greet],
+  providers: [time],
+};
+
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sql, anthropic, appPlugin],
+});
+```
+
+## When to graduate to a real plugin
+
+Pull the surfaces into a separate `@your-org/plugin-*` package as soon as:
+
+- The surfaces are reused across more than one app.
+- You want to publish them.
+- The action / provider count grows past ~5 and the inline definitions clutter your app entry.
+
+See the [Plugin track](/tracks/plugin/overview) for the standalone-package workflow.
+
+## See also
+
+- [Actions, providers, evaluators](/tracks/framework/actions-providers-evaluators)
+- [Custom actions](/guides/custom-actions)
+- [Plugin anatomy](/tracks/plugin/anatomy)

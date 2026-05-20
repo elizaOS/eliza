@@ -57,6 +57,16 @@ npm run convert
 | Groq | Yes | GPT-OSS 120B |
 | xAI (Grok) | Yes | Grok-3, Grok-3-mini |
 
+## Validation
+
+```bash
+bun run test
+bun run typecheck
+bun run build
+```
+
+The local smoke tests check workspace registration and shared runtime/type files, then run the Chrome and Safari package smoke tests. Loading the unpacked extension and Safari signing remain manual.
+
 ## Usage
 
 1. **Install the extension** following the instructions above

@@ -4,6 +4,7 @@ import asyncio
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Sequence
 
 import pytest
 
@@ -29,6 +30,14 @@ class TestRepositoryManager:
         """Test initialization creates workspace."""
         manager = RepositoryManager(str(temp_workspace / "new_workspace"))
         assert manager.workspace_dir.exists()
+        assert manager.cache_dir == manager.workspace_dir / ".repo-cache"
+
+    def test_repo_cache_path_is_repo_scoped(self, repo_manager: RepositoryManager) -> None:
+        """Test repository mirror cache paths are stable per source repo."""
+        assert (
+            repo_manager._repo_cache_path("astropy/astropy").name
+            == "astropy__astropy.git"
+        )
 
     def test_read_file_no_repo(self, repo_manager: RepositoryManager) -> None:
         """Test reading file with no repo set up."""
@@ -90,6 +99,103 @@ class TestRepositoryManager:
             diff = await manager.get_diff()
             assert "diff --git a/new_file.txt b/new_file.txt" in diff
             assert "+hello from untracked" in diff
+
+        asyncio.run(test())
+
+    def test_cleanup_current_repo_removes_checkout_but_keeps_cache(
+        self,
+        temp_workspace: Path,
+    ) -> None:
+        """Test per-instance cleanup preserves the workspace cache directory."""
+        manager = RepositoryManager(str(temp_workspace))
+        repo_dir = temp_workspace / "instance_repo"
+        repo_dir.mkdir()
+        cache_dir = manager.cache_dir
+        cache_dir.mkdir(parents=True)
+
+        manager.current_repo = repo_dir
+        manager._current_repo_resolved = repo_dir.resolve()
+        manager.cleanup_current_repo()
+
+        assert not repo_dir.exists()
+        assert cache_dir.exists()
+        assert manager.current_repo is None
+        assert manager.current_instance is None
+
+    def test_cleanup_current_repo_ignores_paths_outside_workspace(
+        self,
+        temp_workspace: Path,
+    ) -> None:
+        """Test cleanup does not delete monkeypatched or external repositories."""
+        manager = RepositoryManager(str(temp_workspace / "workspace"))
+        external_repo = temp_workspace / "external_repo"
+        external_repo.mkdir()
+
+        manager.current_repo = external_repo
+        manager._current_repo_resolved = external_repo.resolve()
+        manager.cleanup_current_repo()
+
+        assert external_repo.exists()
+        assert manager.current_repo is None
+
+    def test_apply_patch_falls_back_to_unidiff_zero(
+        self,
+        temp_workspace: Path,
+        repo_manager: RepositoryManager,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test low-context model diffs can fall back to zero-context apply."""
+
+        async def test() -> None:
+            commands: list[list[str]] = []
+            repo_manager.current_repo = temp_workspace
+
+            async def fake_run_command(
+                cmd: Sequence[str],
+                **kwargs: object,
+            ) -> subprocess.CompletedProcess[str]:
+                command = list(cmd)
+                commands.append(command)
+                if command == ["git", "apply", "--check", "-"]:
+                    return subprocess.CompletedProcess(
+                        command,
+                        returncode=1,
+                        stdout="",
+                        stderr="normal context failed",
+                    )
+                if command == ["git", "apply", "--check", "--unidiff-zero", "-"]:
+                    return subprocess.CompletedProcess(
+                        command,
+                        returncode=0,
+                        stdout="",
+                        stderr="",
+                    )
+                if command == ["git", "apply", "--unidiff-zero", "-"]:
+                    return subprocess.CompletedProcess(
+                        command,
+                        returncode=0,
+                        stdout="",
+                        stderr="",
+                    )
+                raise AssertionError(f"Unexpected command: {command}")
+
+            monkeypatch.setattr(repo_manager, "_run_command", fake_run_command)
+
+            success, error = await repo_manager.apply_patch(
+                "diff --git a/module.py b/module.py\n"
+                "--- a/module.py\n"
+                "+++ b/module.py\n"
+                "@@ -5,1 +5,1 @@\n"
+                "-old\n"
+                "+new\n"
+            )
+
+            assert success, error
+            assert commands == [
+                ["git", "apply", "--check", "-"],
+                ["git", "apply", "--check", "--unidiff-zero", "-"],
+                ["git", "apply", "--unidiff-zero", "-"],
+            ]
 
         asyncio.run(test())
 

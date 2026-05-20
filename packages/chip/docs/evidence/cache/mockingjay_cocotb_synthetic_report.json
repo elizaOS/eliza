@@ -1,0 +1,103 @@
+{
+  "schema": "eliza.cache.mockingjay_cocotb_synthetic.v1",
+  "status": "measured_above_threshold",
+  "evidence_class": "cocotb_synthetic_stream",
+  "captured_utc": "2026-05-19T23:15:00+00:00",
+  "harness": "verify/cocotb/cache/test_mockingjay_accuracy.py",
+  "dut": "rtl/cache/replacement/e1_mockingjay_prod.sv",
+  "simulator": "verilator-5.049",
+  "stream": {
+    "type": "scan+reuse synthetic",
+    "warmup_ops": 10000,
+    "measure_ops": 90000,
+    "num_ops": 100000,
+    "hot_sets": 4,
+    "hot_tags_per_set": 4,
+    "hot_reps_per_burst": 4,
+    "scan_unique_tags_per_set": 8,
+    "ways": 8,
+    "sets": 64,
+    "tag_w": 24
+  },
+  "result": {
+    "mockingjay_hit_rate": 0.587833,
+    "lru_hit_rate": 0.500267,
+    "abs_gain": 0.087567,
+    "rel_gain": 0.175040,
+    "dut_hits_total_stream": 58773,
+    "dut_misses_total_stream": 41227,
+    "warmup_mockingjay_hit_rate": 0.5868,
+    "measurement_window_used": "warmup-stripped"
+  },
+  "previous_results_for_reference": [
+    {
+      "captured_utc": "2026-05-19T22:00:00+00:00",
+      "label": "R4 — pre-LFSR, 2k ops, deterministic argmax",
+      "num_ops": 2000,
+      "tie_break": "deterministic_argmax",
+      "mockingjay_hit_rate": 0.064,
+      "lru_hit_rate": 0.504,
+      "abs_gain": -0.440
+    },
+    {
+      "captured_utc": "2026-05-19T22:30:00+00:00",
+      "label": "R5 — LFSR tie-break, ETR-unit RTP scale, still PC-keyed STT",
+      "num_ops": 100000,
+      "tie_break": "lfsr_random_among_tied",
+      "stt_key": "(pc, set_id)",
+      "mockingjay_hit_rate": 0.221467,
+      "lru_hit_rate": 0.500267,
+      "abs_gain": -0.278800
+    }
+  ],
+  "pass_threshold_abs_or_rel": 0.10,
+  "passed_threshold": true,
+  "test_status": "PASS",
+  "unblock_plan_applied": [
+    "Lengthened NUM_OPS from 2000 to 100000 (10000-op warmup + 90000-op measurement window).",
+    "Added LFSR-driven random tie-break in `find_victim` (parameter TIE_BREAK_LFSR_SEED=0xACE1) so all-MAX_ETR initial state no longer collapses to way 0.",
+    "Scaled reuse-distance delta from global-access units to ETR-time-units (delta >> ETR_W) before writing into the per-PC RTP, so 16-op hot-PC reuse distances no longer saturate to MAX_ETR.",
+    "Rekeyed the Sampled Cache Tracker (STT) from `(pc, set_id)` to `(set_id, tag)` per the HPCA'22 paper section 4. Added `parameter TAG_W` and `input acc_tag` to `e1_mockingjay_prod`; the STT entry now stores `{valid, set_id, tag, ts}` (PC dropped from entry). The RTP remains indexed by the demand PC `acc_pc`; the reuse distance fed into it is observed via the line-address-keyed STT, so a scan PC that walks distinct tags no longer registers as a same-PC STT hit with a 1-op reuse distance."
+  ],
+  "unblock_plan_outcome": "PASS. With line-address STT keying, the scan PC `0x20_0000` no longer registers spurious 1-op reuse distances against the STT; the PC-keyed RTP learns the hot-set PCs as short-reuse (insert with low ETR, keep) and the scan PC stays unlearned, so scan lines are inserted at the conservative mid-range ETR and the tie-broken victim selection lands on scan lines first. Mockingjay measurement-window hit-rate improves from 22.15% (R5) to 58.78%, a +36.6 percentage point absolute and +165 % relative jump from R5; vs LRU the policy now leads by +8.76 percentage points absolute (+17.50 % relative), clearing the +10 % relative pass threshold.",
+  "root_cause_history": [
+    {
+      "release": "R4",
+      "root_cause": "Deterministic argmax collapsed victim selection onto way 0 at reset; reuse-distance fed into RTP in global-access units instead of ETR units, saturating fast paths to MAX_ETR; NUM_OPS=2000 too short to warm STT/RTP."
+    },
+    {
+      "release": "R5",
+      "root_cause": "STT keyed by `(pc, set_id)`. The scan PC `0x20_0000` was reused across every scan tag at the same set, so the second scan op matched the STT and reported a ~1-global-op reuse distance; the PC-keyed RTP then learned scan_pc as short-reuse, scan lines were inserted with ETR=0 (most-kept), and they evicted the hot lines."
+    },
+    {
+      "release": "R6",
+      "root_cause": null,
+      "resolution": "Rekey STT by line address (set_id, tag). Scan accesses are now STT misses (fresh tag at the same set), so scan_pc's RTP entry is not updated with false short-reuse signals. Hot accesses (same tag reused) remain STT hits and feed the hot PCs' RTP with their true short reuse distance."
+    }
+  ],
+  "rtl_changes": [
+    "Added parameter TIE_BREAK_LFSR_SEED (default 0xACE1).",
+    "Added 16-bit Galois LFSR `tie_lfsr_q` (polynomial x^16+x^14+x^13+x^11+1) advanced each acc_valid cycle.",
+    "Rewrote `find_victim` to do a 3-pass argmax: find max ETR, count ways tied at max, pick the (rnd mod tied_count)-th tied way.",
+    "Scaled `delta` to ETR-time-units (delta >> ETR_W) in the RTP update path; saturate to MAX_ETR.",
+    "Added module-header documentation of the tie-break randomization rationale.",
+    "Added `e1_mockingjay_prod.sv` to scripts/run_rtl_check.sh per-module verilator-strict lint loop; lints clean.",
+    "Added parameter TAG_W (default 36) and input port `acc_tag` to `e1_mockingjay_prod`.",
+    "Changed `stt_entry_t` from `{valid, pc, set_id, ts}` to `{valid, set_id, tag, ts}` — removed PC from the STT entry.",
+    "Updated `stt_lookup` to key on `(set_id, tag)` instead of `(pc, set_id)`.",
+    "Updated the STT allocation path to record `acc_tag` (with `acc_set`); RTP still indexed and matched by `acc_pc`."
+  ],
+  "test_changes": [
+    "NUM_OPS extended to 100k (10k warmup + 90k measure).",
+    "Measurement counters split by warmup vs measure window; LRU counters snapshotted at the warmup boundary so both policies are compared over the same window.",
+    "Updated `MOCKINGJAY_VS_LRU_SUMMARY` summary line to include warmup_ops and measure_ops.",
+    "Added `acc_tag` input to `e1_mockingjay_prod_tb` (parameter TAG_W=24) and threaded it through to `u_mj`.",
+    "cocotb harness drives `dut.acc_tag` from the stream's tag value (masked to TAG_W bits) on every access; reset clears it."
+  ],
+  "lint_verification": {
+    "command": "verilator --lint-only -Wall <cache waivers> --top-module e1_mockingjay_prod <cache_pkg + cache cohort>",
+    "result": "clean (no warnings or errors)"
+  },
+  "phone_class_claim_blocked": true,
+  "phone_class_claim_blocked_reason": "cocotb synthetic stream is not phone-class; remains blocked until full-system-simulator or silicon evidence."
+}

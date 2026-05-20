@@ -15,7 +15,6 @@ class HighScore:
 HIGH_SCORES: dict[str, HighScore] = {
     "realm": HighScore("GPT-4-Turbo", 82.1),
     "context_bench": HighScore("claude-opus-4-7", 0.95),
-    "gaia": HighScore("Human Performance", 0.92),
     "swe_bench": HighScore("SWE-bench Lite:OpenHands + Claude Sonnet 4.6", 53.0),
     "mint": HighScore("gpt-4-0613", 0.72),
     "vending_bench": HighScore("grok_4", 4694.15),

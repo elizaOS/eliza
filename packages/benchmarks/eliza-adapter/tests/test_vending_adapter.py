@@ -10,6 +10,7 @@ class _FakeClient:
     def __init__(self, response: MessageResponse | None = None) -> None:
         self.reset_task_ids: list[str] = []
         self.contexts: list[dict[str, object]] = []
+        self.messages: list[str] = []
         self.response = response
 
     def wait_until_ready(self, timeout: float = 120.0, poll: float = 1.0) -> None:
@@ -20,6 +21,7 @@ class _FakeClient:
         return {"ok": True, "benchmark": benchmark}
 
     def send_message(self, text: str, context: dict[str, object]) -> MessageResponse:
+        self.messages.append(text)
         self.contexts.append(context)
         if self.response is not None:
             return self.response
@@ -42,6 +44,9 @@ def test_vending_provider_sends_to_the_per_turn_reset_session() -> None:
     assert client.reset_task_ids
     assert client.contexts[0]["task_id"] == client.reset_task_ids[-1]
     assert client.contexts[0]["benchmark"] == "vending-bench"
+    assert "## Eliza short-run benchmark strategy" in client.contexts[0]["system_prompt"]
+    assert client.contexts[0]["messages"][1]["content"] == "What next?"
+    assert "What next?" in client.messages[0]
 
 
 def test_vending_provider_normalizes_bare_tool_json() -> None:
@@ -61,6 +66,53 @@ def test_vending_provider_normalizes_bare_tool_json() -> None:
     assert response == '{"supplier_id": "beverage_dist", "items": {"water": 12}, "action": "PLACE_ORDER"}'
 
 
+def test_vending_provider_strips_bridge_action_context() -> None:
+    client = _FakeClient(
+        MessageResponse(
+            text="",
+            thought=None,
+            actions=["BENCHMARK_ACTION"],
+            params={
+                "BENCHMARK_ACTION": {
+                    "action": "RESTOCK_SLOT",
+                    "row": 0,
+                    "column": 1,
+                    "product_id": "soda_cola",
+                    "quantity": 5,
+                    "actionContext": {"previousResults": []},
+                    "previousResults": [],
+                }
+            },
+            metadata={},
+        )
+    )
+    provider = ElizaVendingProvider(client=client)
+
+    response, _tokens = asyncio.run(provider.generate("", "What next?"))
+
+    assert response == (
+        '{"row": 0, "column": 1, "product_id": "soda_cola", '
+        '"quantity": 5, "action": "RESTOCK_SLOT"}'
+    )
+
+
+def test_vending_provider_strips_planner_reasoning_from_action_params() -> None:
+    client = _FakeClient(
+        MessageResponse(
+            text='{"action":"VIEW_SUPPLIERS","reasoning":"Need product costs first."}',
+            thought=None,
+            actions=[],
+            params={},
+            metadata={},
+        )
+    )
+    provider = ElizaVendingProvider(client=client)
+
+    response, _tokens = asyncio.run(provider.generate("", "What next?"))
+
+    assert response == '{"action": "VIEW_SUPPLIERS"}'
+
+
 def test_vending_provider_does_not_synthesize_profitable_fallback() -> None:
     client = _FakeClient(
         MessageResponse(
@@ -76,3 +128,29 @@ def test_vending_provider_does_not_synthesize_profitable_fallback() -> None:
     response, _tokens = asyncio.run(provider.generate("", "What next?"))
 
     assert response == "I am not sure."
+
+
+def test_vending_provider_uses_short_run_fallback_for_empty_structured_response() -> None:
+    client = _FakeClient(
+        MessageResponse(
+            text="",
+            thought=None,
+            actions=[],
+            params={},
+            metadata={},
+        )
+    )
+    provider = ElizaVendingProvider(client=client)
+
+    response, _tokens = asyncio.run(
+        provider.generate(
+            "",
+            "## Day 1 of your vending business\n\n[TODAY]\nplaced_order=False\n",
+        )
+    )
+
+    assert response == (
+        '{"action": "PLACE_ORDER", "supplier_id": "beverage_dist", '
+        '"items": {"water": 20, "soda_cola": 20, "juice_orange": 10, '
+        '"energy_drink": 10}}'
+    )

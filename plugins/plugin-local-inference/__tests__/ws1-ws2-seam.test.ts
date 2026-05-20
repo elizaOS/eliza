@@ -27,7 +27,7 @@
  *      register a half-broken capability.
  *
  *   5. mmproj missing → vision-describe capability stays unregistered:
- *      the node-llama-cpp loader throws VisionBackendUnavailableError
+ *      the capacitor-llama loader throws VisionBackendUnavailableError
  *      with reason "mmproj_missing" when neither mtmd nor a vision
  *      manager fallback is wired AND the mmproj path doesn't exist.
  *      Documents that the arbiter should NOT have the capability when
@@ -54,7 +54,7 @@ import {
 	type VisionDescribeBackend,
 	VisionBackendUnavailableError,
 	loadAospVisionBackend,
-	loadNodeLlamaCppVisionBackend,
+	loadCapacitorLlamaVisionBackend,
 } from "../src/services/vision";
 import { SharedResourceRegistry } from "../src/services/voice/shared-resources";
 
@@ -483,10 +483,10 @@ describe("WS1↔WS2 seam — AOSP backend unavailable surfaces cleanly", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (5) mmproj missing → node-llama-cpp loader signals unavailability
+// (5) mmproj missing → capacitor-llama loader signals unavailability
 // ---------------------------------------------------------------------------
 
-describe("WS1↔WS2 seam — node-llama-cpp loader handles mmproj_missing", () => {
+describe("WS1↔WS2 seam — capacitor-llama loader handles mmproj_missing", () => {
 	it("throws VisionBackendUnavailableError with reason mmproj_missing when mtmd binding is wired but mmproj file doesn't exist", async () => {
 		const fakeBinding = {
 			async loadVisionModel() {
@@ -494,7 +494,7 @@ describe("WS1↔WS2 seam — node-llama-cpp loader handles mmproj_missing", () =
 			},
 		};
 		await expect(
-			loadNodeLlamaCppVisionBackend({
+			loadCapacitorLlamaVisionBackend({
 				loadArgs: {
 					modelPath: "/tmp/no-such-text.gguf",
 					mmprojPath: "/tmp/no-such-mmproj.gguf",
@@ -509,7 +509,7 @@ describe("WS1↔WS2 seam — node-llama-cpp loader handles mmproj_missing", () =
 
 	it("throws when no mtmd binding AND no VisionManager fallback is provided", async () => {
 		await expect(
-			loadNodeLlamaCppVisionBackend({
+			loadCapacitorLlamaVisionBackend({
 				loadArgs: {
 					modelPath: "/tmp/x.gguf",
 					mmprojPath: "/tmp/m.gguf",

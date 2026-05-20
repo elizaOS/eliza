@@ -13,9 +13,9 @@ A simple trading bot interface that demonstrates the `@elizaos/plugin-auto-trade
 ## Quick Start
 
 ```bash
-cd typescript
+cd packages/examples/trader
 bun install
-bun dev
+bun run dev
 ```
 
 Then open http://localhost:5173 in your browser.
@@ -75,25 +75,28 @@ Configurable technical indicator rules:
 - **Stop-Loss Protection**: Automatic position exits on losses
 - **Daily Loss Limits**: Stops trading after reaching max daily loss
 
+## Validation
+
+```bash
+bun run test
+bun run typecheck
+bun run build
+```
+
+The local smoke test checks the Vite mount point, core trading panels, visible risk warning, and default paper-trading runtime configuration. Real wallet or live-trading validation must use isolated funds and explicit intent.
+
 ## Architecture
 
 ```
-trader/
-├── typescript/
-│   ├── src/
-│   │   ├── main.tsx           # React entry point
-│   │   ├── App.tsx            # Main application
-│   │   ├── components/
-│   │   │   ├── WalletSetup.tsx
-│   │   │   ├── TradingPanel.tsx
-│   │   │   ├── PositionList.tsx
-│   │   │   ├── TradeHistory.tsx
-│   │   │   └── StrategySelect.tsx
-│   │   ├── runtime/
-│   │   │   ├── index.ts       # Runtime singleton
-│   │   │   └── character.ts   # Trader character config
-│   │   └── hooks/
-│   │       └── useTrading.ts  # Trading state hook
+packages/examples/trader/
+├── src/
+│   ├── main.tsx           # React entry point
+│   ├── App.tsx            # Main application
+│   └── styles.css         # UI styles
+├── index.html
+├── package.json
+├── tsconfig.json
+└── vite.config.ts
 ```
 
 ## License

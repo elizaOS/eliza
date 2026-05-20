@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Single source of truth for the Bun riscv64-linux-musl cross-build. Read by build.sh + Dockerfile build args + any downstream artifact-hosting publish step. Bump these together with the matching webkit-patches/ and bun-patches/ series.",
+
+  "bun": {
+    "tag": "bun-v1.3.13",
+    "channel": "canary",
+    "rationale": "Pinned to match stage-android-agent.mjs:BUN_VERSION + DEFAULT_BUN_CHANNEL so the resulting binary stays compatible with the rest of the Android agent matrix. Canary tracks the same 1.3.13+ fix train as the arm64/x64 artifacts that staging downloads."
+  },
+
+  "webkit": {
+    "fork": "oven-sh/WebKit",
+    "fork_commit": "4d5e75ebd84a14edbc7ae264245dcd77fe597c10",
+    "fork_commit_source": "scripts/build/deps/webkit.ts:WEBKIT_VERSION on oven-sh/bun@bun-v1.3.13 (verified 2026-05-19)",
+    "rationale": "Bun's WebKit fork has zero riscv64 patches. We checkout this commit, apply the checked WebKit-side patch files, and build the production artifact with the portable C_LOOP interpreter until the LLInt/Baseline cherry-pick recipes are realized as actual patch files.",
+    "jit_tier": "c_loop",
+    "jit_rationale": "The production riscv64-linux-musl artifact is C_LOOP-only: build.sh defaults to ENABLE_C_LOOP=ON, ENABLE_JIT=OFF, ENABLE_DFG_JIT=OFF, and ENABLE_FTL_JIT=OFF. Upstream WebKit has LLInt + Baseline support for riscv64, but the local cherry-pick chain is still represented by recipe files rather than checked patch files. Operators may set BUN_RISCV64_FORCE_CLOOP=0 to test the experimental Baseline path after realizing those recipes; that is not the publishable artifact contract.",
+    "cherry_pick_targets": {
+      "llint_landing_sha": "d9b48eb602eb0269030f018afddd16c560d0b501",
+      "llint_landing_date": "2021-08-30",
+      "llint_bug": "https://bugs.webkit.org/show_bug.cgi?id=229035",
+      "baseline_enable_sha": "2abfe1cc0ddc0aa1cc65e9141e0548294a921713",
+      "baseline_enable_date": "2022-04-25",
+      "baseline_bug": "https://bugs.webkit.org/show_bug.cgi?id=239708",
+      "first_pick": "d9b48eb602eb0269030f018afddd16c560d0b501",
+      "last_pick": "2abfe1cc0ddc0aa1cc65e9141e0548294a921713",
+      "pick_count_approx": 15,
+      "rationale": "These two SHAs bracket the cherry-pick chain that needs to land on top of webkit.fork_commit. The full ordered list is in webkit-patches/0001-cherry-pick-llint-riscv64.recipe. An operator with two WebKit clones produces the patch series mechanically from this range."
+    }
+  },
+
+  "toolchain": {
+    "llvm": {
+      "version": "21.1.8",
+      "rationale": "Pinned by Bun upstream (LLVM_VERSION in scripts/build/config.ts on main). Mismatches between the LLVM used to build WebKit/Bun and the one packed into the artifact cause memory-allocation failures at runtime."
+    },
+    "zig": {
+      "version": "0.14.1",
+      "sha256_x86_64_linux": "24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c",
+      "rationale": "Bun's codegen uses Zig 0.14+ (target syntax: <arch>-<os>-<abi>). 0.14.1 accepts `riscv64-linux-musl`. The codegen runs on the build host (x86_64) and emits source files that are then compiled by clang for the target, so the Zig binary itself does not have to be a riscv64 build."
+    },
+    "rust": {
+      "channel": "nightly-2025-12-10",
+      "channel_source": "rust-toolchain.toml on oven-sh/bun@bun-v1.3.13 (verified 2026-05-19)",
+      "target": "riscv64gc-unknown-linux-musl",
+      "tier": 2,
+      "rationale": "Bun pins this exact nightly via rust-toolchain.toml. riscv64gc-unknown-linux-musl is a Tier-2 target with prebuilt std, so we get it via `rustup target add` rather than -Zbuild-std."
+    },
+    "musl": {
+      "version": "1.2.5",
+      "alpine_branch": "v3.21",
+      "alpine_branch_source": "stage-android-agent.mjs:ALPINE_BRANCH",
+      "rationale": "Alpine v3.21 ships musl 1.2.5 across all arches including riscv64. Matching musl versions between the Bun binary and the Android runtime sysroot is mandatory — the ld-musl-riscv64.so.1 we pack with the APK comes from this same Alpine branch."
+    }
+  },
+
+  "dependencies": {
+    "_rationale": "Everything outside WebKit + TinyCC builds on riscv64gc-linux-musl with no patches. TinyCC has no riscv64 backend in oven-sh/tinycc, so we disable bun:ffi JIT-compile for this artifact.",
+    "boringssl": { "status": "supported", "notes": "Uses C fallbacks for AES on riscv64." },
+    "mimalloc": { "status": "supported" },
+    "c-ares": { "status": "supported" },
+    "zstd": { "status": "supported" },
+    "libdeflate": { "status": "supported" },
+    "lol-html": { "status": "supported", "notes": "Rust crate, std is Tier-2." },
+    "zlib": { "status": "supported" },
+    "libarchive": { "status": "supported" },
+    "ls-hpack": { "status": "supported" },
+    "tinycc": {
+      "status": "disabled",
+      "rationale": "oven-sh/tinycc fork has no riscv64-gen.c / riscv64-asm.c / riscv64-link.c — the upstream `mob` branch lands the riscv64 backend ad-hoc but it has never been merged into oven-sh/tinycc. Disabling means bun:ffi JIT-compile is unavailable on riscv64; static FFI bindings still work. Acceptable for the Android agent runtime."
+    }
+  },
+
+  "artifact": {
+    "filename": "bun-linux-riscv64-musl.zip",
+    "internal_layout": "bun-linux-riscv64-musl/bun",
+    "matches_oven_release_naming": true,
+    "matches_rationale": "stage-android-agent.mjs:ensureBunBinary unzips and expects the inner directory to be `bun-linux-${bunArch}-musl`. Keeping the layout identical to upstream's other release zips lets the existing fetch path work unmodified once MILADY_BUN_RISCV64_URL is set."
+  },
+
+  "patch_series": {
+    "_rationale": "SHA256 of every patch + recipe under bun-patches/ and webkit-patches/. validate.sh checks these match before invoking the build. Bump alongside the patch content.",
+    "bun_patches": {
+      "0001-config-add-riscv64-arch.patch": "676339a226c857a6a3cdb517a2d93d260bb2ca9e44264b55874ed4624a05f6c9",
+      "0002-flags-add-riscv64-march-mabi.patch": "12bdf6dab5ba7ba4160d314a4480c1f020094dc8dde0857d71c81769b584c7ec",
+      "0003-zig-add-riscv64-target-triple-and-cpu.patch": "5afd37f103c82d96cafccf2cafb1cc1255c44b2c7cafe9c813f6f8e6dd667ffc",
+      "0004-webkit-force-local-mode-on-riscv64.patch": "9fff024c2d7b4e227a6886fa6f558c79a0d8776d0b1c36f66dd5f346bb63ae7e",
+      "0005-tinycc-disable-on-riscv64.patch": "72c9bc1b2c33b966c866e526fdb602b098acabddb28b69b0586bc53738070620",
+      "0006-build-add-riscv64-cli-validation.patch": "38c5a067aee61499050e2807db369d91fe8cfa50a01bfc0b409c856f5a87d102",
+      "0007-deps-per-dep-riscv64-checks.patch": "0522f60453db719ac9cf31b753077b66d8e3eabc03931cebcdce1eb2e693dde6"
+    },
+    "bun_patches_apply_status": "All 7 patches verified to apply cleanly in sequence to a fresh clone of oven-sh/bun @ bun-v1.3.13 via `git apply --check` and full sequential `git apply` (validated 2026-05-19). Touch 7 files, +56/-11 lines total.",
+    "bun_patches_target": {
+      "scripts/build/config.ts": ["0001", "0004"],
+      "scripts/build/flags.ts": ["0002"],
+      "scripts/build/zig.ts": ["0003"],
+      "scripts/build/deps/webkit.ts": ["0004"],
+      "scripts/build/deps/tinycc.ts": ["0005"],
+      "scripts/build.ts": ["0006"],
+      "scripts/build/deps/lolhtml.ts": ["0007"]
+    },
+    "webkit_patches": {
+      "0003-disable-dfg-ftl-on-riscv64.patch": "1a288e9c4fbded9df6e7b15d311343511bd18efad58cf90a79f4737e34ea34f9"
+    },
+    "webkit_recipes": {
+      "0001-cherry-pick-llint-riscv64.recipe": "8017bed5bf3f6fc22585b802c0016734ab48f0f70ddc675613c9b6930b8ea6b6",
+      "0002-cherry-pick-baseline-jit-riscv64.recipe": "4ee6709e6e30ccbdc1b50641dd924835fb1b28fd3d5b874625307fb699dc39b4"
+    },
+    "webkit_recipes_status": "Recipe files document the optional LLInt/Baseline cherry-pick chain. The publishable riscv64 artifact contract is C_LOOP-only until that chain is checked in as patch files and validated."
+  }
+}

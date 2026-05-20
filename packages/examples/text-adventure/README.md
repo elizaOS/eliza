@@ -14,8 +14,7 @@ export OPENAI_API_KEY=your_key_here
 ## Run
 
 ```bash
-cd examples/text-adventure
-cp .env.example .env   # set OPENAI_API_KEY
+cd packages/examples/text-adventure
 bun install
 
 # Quieter logs
@@ -25,6 +24,16 @@ LOG_LEVEL=fatal bun run game.ts
 PGLITE_DATA_DIR=./adventure-db LOG_LEVEL=fatal bun run game.ts
 ```
 
+## Test
+
+```bash
+bun test
+```
+
+The test suite exercises the local dungeon engine with a deterministic no-LLM
+playthrough. Running the interactive or autonomous CLI still requires
+`OPENAI_API_KEY`.
+
 ## Features
 
 - Multiple rooms, items, and enemies
@@ -33,6 +42,6 @@ PGLITE_DATA_DIR=./adventure-db LOG_LEVEL=fatal bun run game.ts
 
 ## Related examples
 
-- `examples/chat/chat.ts` — CLI chat
-- `examples/tic-tac-toe/game.ts` — no-LLM minimax demo
-- `examples/game-of-life/game.ts` — no-LLM multi-agent simulation
+- `packages/examples/chat/chat.ts` — CLI chat
+- `packages/examples/tic-tac-toe/game.ts` — no-LLM minimax demo
+- `packages/examples/game-of-life/game.ts` — no-LLM multi-agent simulation

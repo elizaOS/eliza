@@ -1,0 +1,2235 @@
+{
+  "claim_boundary": "Automated part-by-part CAD review index; thumbnails are top-view bounding-box proxies.",
+  "status": "pass",
+  "part_count": 85,
+  "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
+  "contact_sheet_check": {
+    "size": [
+      1871,
+      3900
+    ],
+    "mean_rgb": [
+      242.023,
+      236.203,
+      233.3
+    ],
+    "channel_spans": [
+      255,
+      255,
+      255
+    ],
+    "pass": true
+  },
+  "parts": [
+    {
+      "name": "orange_back_shell",
+      "role": "molded enclosure",
+      "material": "PC+ABS orange rounded back shell",
+      "bounds_mm": [
+        [
+          -39.0,
+          -76.8,
+          -4.8
+        ],
+        [
+          39.0,
+          76.8,
+          -3.6
+        ]
+      ],
+      "span_mm": [
+        78.0,
+        153.6,
+        1.2
+      ],
+      "volume_mm3": 14302.89,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_back_shell.obj",
+      "stl": "mechanical/e1-phone/out/orange_back_shell.stl"
+    },
+    {
+      "name": "orange_side_frame",
+      "role": "molded enclosure",
+      "material": "PC+ABS orange rounded perimeter frame",
+      "bounds_mm": [
+        [
+          -39.0,
+          -76.8,
+          -4.8
+        ],
+        [
+          39.0,
+          76.8,
+          4.8
+        ]
+      ],
+      "span_mm": [
+        78.0,
+        153.6,
+        9.6
+      ],
+      "volume_mm3": 4911.279,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_side_frame.obj",
+      "stl": "mechanical/e1-phone/out/orange_side_frame.stl"
+    },
+    {
+      "name": "screen_cover_glass",
+      "role": "screen",
+      "material": "black rounded cover glass",
+      "bounds_mm": [
+        [
+          -38.55,
+          -75.885,
+          4.1
+        ],
+        [
+          38.55,
+          75.885,
+          4.8
+        ]
+      ],
+      "span_mm": [
+        77.1,
+        151.77,
+        0.7
+      ],
+      "volume_mm3": 8152.377,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/screen_cover_glass.obj",
+      "stl": "mechanical/e1-phone/out/screen_cover_glass.stl"
+    },
+    {
+      "name": "display_lcm",
+      "role": "screen",
+      "material": "LCM",
+      "bounds_mm": [
+        [
+          -35.39,
+          -70.085,
+          1.15
+        ],
+        [
+          35.39,
+          59.085,
+          2.85
+        ]
+      ],
+      "span_mm": [
+        70.78,
+        129.17,
+        1.7
+      ],
+      "volume_mm3": 15542.509,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/display_lcm.obj",
+      "stl": "mechanical/e1-phone/out/display_lcm.stl"
+    },
+    {
+      "name": "main_pcb",
+      "role": "PCB",
+      "material": "8L HDI FR-4 top/bottom islands around full-width battery",
+      "bounds_mm": [
+        [
+          -32.0,
+          -66.0,
+          -2.5
+        ],
+        [
+          32.0,
+          66.0,
+          -1.7
+        ]
+      ],
+      "span_mm": [
+        64.0,
+        132.0,
+        0.8
+      ],
+      "volume_mm3": 2252.8,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/main_pcb.obj",
+      "stl": "mechanical/e1-phone/out/main_pcb.stl"
+    },
+    {
+      "name": "battery_pouch",
+      "role": "battery",
+      "material": "LiPo pouch",
+      "bounds_mm": [
+        [
+          -32.0,
+          -50.5,
+          -4.7
+        ],
+        [
+          32.0,
+          36.5,
+          -0.3
+        ]
+      ],
+      "span_mm": [
+        64.0,
+        87.0,
+        4.4
+      ],
+      "volume_mm3": 24499.2,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/battery_pouch.obj",
+      "stl": "mechanical/e1-phone/out/battery_pouch.stl"
+    },
+    {
+      "name": "usb_c_receptacle",
+      "role": "I/O",
+      "material": "stainless shell",
+      "bounds_mm": [
+        [
+          -4.47,
+          -76.6,
+          -3.225
+        ],
+        [
+          4.47,
+          -68.8,
+          0.025
+        ]
+      ],
+      "span_mm": [
+        8.94,
+        7.8,
+        3.25
+      ],
+      "volume_mm3": 226.629,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/usb_c_receptacle.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_receptacle.stl"
+    },
+    {
+      "name": "usb_c_external_aperture",
+      "role": "I/O",
+      "material": "USB-C molded aperture visual check",
+      "bounds_mm": [
+        [
+          -5.1,
+          -77.055,
+          -3.25
+        ],
+        [
+          5.1,
+          -76.705,
+          0.35
+        ]
+      ],
+      "span_mm": [
+        10.2,
+        0.35,
+        3.6
+      ],
+      "volume_mm3": 12.852,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/usb_c_external_aperture.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_external_aperture.stl"
+    },
+    {
+      "name": "usb_c_perimeter_gasket_top",
+      "role": "I/O seal",
+      "material": "silicone USB-C perimeter gasket top rail",
+      "bounds_mm": [
+        [
+          -5.7,
+          -76.705,
+          0.495
+        ],
+        [
+          5.7,
+          -76.255,
+          0.845
+        ]
+      ],
+      "span_mm": [
+        11.4,
+        0.45,
+        0.35
+      ],
+      "volume_mm3": 1.795,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_top.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_top.stl"
+    },
+    {
+      "name": "usb_c_perimeter_gasket_bottom",
+      "role": "I/O seal",
+      "material": "silicone USB-C perimeter gasket bottom rail",
+      "bounds_mm": [
+        [
+          -5.7,
+          -76.705,
+          -3.745
+        ],
+        [
+          5.7,
+          -76.255,
+          -3.395
+        ]
+      ],
+      "span_mm": [
+        11.4,
+        0.45,
+        0.35
+      ],
+      "volume_mm3": 1.795,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_bottom.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_bottom.stl"
+    },
+    {
+      "name": "usb_c_perimeter_gasket_left",
+      "role": "I/O seal",
+      "material": "silicone USB-C perimeter gasket side rail",
+      "bounds_mm": [
+        [
+          -5.595,
+          -76.705,
+          -3.6
+        ],
+        [
+          -5.245,
+          -76.255,
+          0.7
+        ]
+      ],
+      "span_mm": [
+        0.35,
+        0.45,
+        4.3
+      ],
+      "volume_mm3": 0.677,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_left.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_left.stl"
+    },
+    {
+      "name": "usb_c_perimeter_gasket_right",
+      "role": "I/O seal",
+      "material": "silicone USB-C perimeter gasket side rail",
+      "bounds_mm": [
+        [
+          5.245,
+          -76.705,
+          -3.6
+        ],
+        [
+          5.595,
+          -76.255,
+          0.7
+        ]
+      ],
+      "span_mm": [
+        0.35,
+        0.45,
+        4.3
+      ],
+      "volume_mm3": 0.677,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_right.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_right.stl"
+    },
+    {
+      "name": "usb_c_molded_drip_break_lip",
+      "role": "I/O seal",
+      "material": "molded PC+ABS internal drip-break lip below USB-C aperture",
+      "bounds_mm": [
+        [
+          -6.6,
+          -76.605,
+          -4.195
+        ],
+        [
+          6.6,
+          -76.155,
+          -3.745
+        ]
+      ],
+      "span_mm": [
+        13.2,
+        0.45,
+        0.45
+      ],
+      "volume_mm3": 2.673,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/usb_c_molded_drip_break_lip.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_molded_drip_break_lip.stl"
+    },
+    {
+      "name": "usb_c_internal_drain_shelf",
+      "role": "I/O seal",
+      "material": "molded PC+ABS internal drain shelf under USB-C receptacle",
+      "bounds_mm": [
+        [
+          -6.4,
+          -76.2,
+          -3.94
+        ],
+        [
+          6.4,
+          -74.0,
+          -3.66
+        ]
+      ],
+      "span_mm": [
+        12.8,
+        2.2,
+        0.28
+      ],
+      "volume_mm3": 7.885,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/usb_c_internal_drain_shelf.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_internal_drain_shelf.stl"
+    },
+    {
+      "name": "bottom_speaker_module",
+      "role": "audio",
+      "material": "speaker module",
+      "bounds_mm": [
+        [
+          11.0,
+          -69.3,
+          -4.1
+        ],
+        [
+          26.0,
+          -58.3,
+          -0.6
+        ]
+      ],
+      "span_mm": [
+        15.0,
+        11.0,
+        3.5
+      ],
+      "volume_mm3": 577.5,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/bottom_speaker_module.obj",
+      "stl": "mechanical/e1-phone/out/bottom_speaker_module.stl"
+    },
+    {
+      "name": "earpiece_receiver",
+      "role": "audio",
+      "material": "receiver",
+      "bounds_mm": [
+        [
+          -6.0,
+          65.8,
+          -0.25
+        ],
+        [
+          6.0,
+          71.8,
+          2.25
+        ]
+      ],
+      "span_mm": [
+        12.0,
+        6.0,
+        2.5
+      ],
+      "volume_mm3": 180.0,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/earpiece_receiver.obj",
+      "stl": "mechanical/e1-phone/out/earpiece_receiver.stl"
+    },
+    {
+      "name": "bottom_mic",
+      "role": "audio",
+      "material": "MEMS mic",
+      "bounds_mm": [
+        [
+          -19.75,
+          -69.925,
+          -1.8
+        ],
+        [
+          -16.25,
+          -67.275,
+          -0.8
+        ]
+      ],
+      "span_mm": [
+        3.5,
+        2.65,
+        1.0
+      ],
+      "volume_mm3": 9.275,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/bottom_mic.obj",
+      "stl": "mechanical/e1-phone/out/bottom_mic.stl"
+    },
+    {
+      "name": "top_mic",
+      "role": "audio",
+      "material": "MEMS mic",
+      "bounds_mm": [
+        [
+          16.25,
+          67.275,
+          -1.8
+        ],
+        [
+          19.75,
+          69.925,
+          -0.8
+        ]
+      ],
+      "span_mm": [
+        3.5,
+        2.65,
+        1.0
+      ],
+      "volume_mm3": 9.275,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/top_mic.obj",
+      "stl": "mechanical/e1-phone/out/top_mic.stl"
+    },
+    {
+      "name": "rear_camera_module",
+      "role": "camera",
+      "material": "OV13855 class module",
+      "bounds_mm": [
+        [
+          16.0,
+          52.8,
+          -3.6
+        ],
+        [
+          26.0,
+          62.8,
+          1.5
+        ]
+      ],
+      "span_mm": [
+        10.0,
+        10.0,
+        5.1
+      ],
+      "volume_mm3": 510.0,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/rear_camera_module.obj",
+      "stl": "mechanical/e1-phone/out/rear_camera_module.stl"
+    },
+    {
+      "name": "rear_camera_lens_window",
+      "role": "camera",
+      "material": "glass lens window",
+      "bounds_mm": [
+        [
+          17.6,
+          57.4,
+          -8.3
+        ],
+        [
+          24.4,
+          58.2,
+          -1.5
+        ]
+      ],
+      "span_mm": [
+        6.8,
+        0.8,
+        6.8
+      ],
+      "volume_mm3": 28.971,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/rear_camera_lens_window.obj",
+      "stl": "mechanical/e1-phone/out/rear_camera_lens_window.stl"
+    },
+    {
+      "name": "front_camera_module",
+      "role": "camera",
+      "material": "front MIPI camera",
+      "bounds_mm": [
+        [
+          -22.25,
+          64.55,
+          -0.6
+        ],
+        [
+          -15.75,
+          71.05,
+          2.6
+        ]
+      ],
+      "span_mm": [
+        6.5,
+        6.5,
+        3.2
+      ],
+      "volume_mm3": 135.2,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/front_camera_module.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_module.stl"
+    },
+    {
+      "name": "front_camera_under_glass",
+      "role": "camera",
+      "material": "under-glass aperture",
+      "bounds_mm": [
+        [
+          -20.7,
+          67.625,
+          3.15
+        ],
+        [
+          -17.3,
+          67.975,
+          6.55
+        ]
+      ],
+      "span_mm": [
+        3.4,
+        0.35,
+        3.4
+      ],
+      "volume_mm3": 3.169,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/front_camera_under_glass.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_under_glass.stl"
+    },
+    {
+      "name": "power_button_cap",
+      "role": "button",
+      "material": "orange molded cap",
+      "bounds_mm": [
+        [
+          38.55,
+          14.0,
+          -0.95
+        ],
+        [
+          40.55,
+          26.0,
+          0.15
+        ]
+      ],
+      "span_mm": [
+        2.0,
+        12.0,
+        1.1
+      ],
+      "volume_mm3": 26.4,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/power_button_cap.obj",
+      "stl": "mechanical/e1-phone/out/power_button_cap.stl"
+    },
+    {
+      "name": "volume_button_cap",
+      "role": "button",
+      "material": "orange molded cap",
+      "bounds_mm": [
+        [
+          -40.55,
+          3.5,
+          -0.95
+        ],
+        [
+          -38.55,
+          24.5,
+          0.15
+        ]
+      ],
+      "span_mm": [
+        2.0,
+        21.0,
+        1.1
+      ],
+      "volume_mm3": 46.2,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/volume_button_cap.obj",
+      "stl": "mechanical/e1-phone/out/volume_button_cap.stl"
+    },
+    {
+      "name": "handset_acoustic_slot",
+      "role": "audio",
+      "material": "gasketed handset slot",
+      "bounds_mm": [
+        [
+          -8.0,
+          68.7,
+          4.755
+        ],
+        [
+          8.0,
+          69.7,
+          5.005
+        ]
+      ],
+      "span_mm": [
+        16.0,
+        1.0,
+        0.25
+      ],
+      "volume_mm3": 4.0,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/handset_acoustic_slot.obj",
+      "stl": "mechanical/e1-phone/out/handset_acoustic_slot.stl"
+    },
+    {
+      "name": "handset_acoustic_mesh",
+      "role": "audio",
+      "material": "hydrophobic acoustic mesh behind handset slot",
+      "bounds_mm": [
+        [
+          -8.75,
+          69.14,
+          4.32
+        ],
+        [
+          8.75,
+          69.26,
+          4.72
+        ]
+      ],
+      "span_mm": [
+        17.5,
+        0.12,
+        0.4
+      ],
+      "volume_mm3": 0.84,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/handset_acoustic_mesh.obj",
+      "stl": "mechanical/e1-phone/out/handset_acoustic_mesh.stl"
+    },
+    {
+      "name": "bottom_speaker_grille_slot_1",
+      "role": "audio",
+      "material": "molded loudspeaker grille slot",
+      "bounds_mm": [
+        [
+          10.9,
+          -77.065,
+          -3.35
+        ],
+        [
+          12.1,
+          -76.715,
+          0.65
+        ]
+      ],
+      "span_mm": [
+        1.2,
+        0.35,
+        4.0
+      ],
+      "volume_mm3": 1.68,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_speaker_grille_slot_1.obj",
+      "stl": "mechanical/e1-phone/out/bottom_speaker_grille_slot_1.stl"
+    },
+    {
+      "name": "bottom_speaker_grille_slot_2",
+      "role": "audio",
+      "material": "molded loudspeaker grille slot",
+      "bounds_mm": [
+        [
+          13.9,
+          -77.065,
+          -3.35
+        ],
+        [
+          15.1,
+          -76.715,
+          0.65
+        ]
+      ],
+      "span_mm": [
+        1.2,
+        0.35,
+        4.0
+      ],
+      "volume_mm3": 1.68,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_speaker_grille_slot_2.obj",
+      "stl": "mechanical/e1-phone/out/bottom_speaker_grille_slot_2.stl"
+    },
+    {
+      "name": "bottom_speaker_grille_slot_3",
+      "role": "audio",
+      "material": "molded loudspeaker grille slot",
+      "bounds_mm": [
+        [
+          16.9,
+          -77.065,
+          -3.35
+        ],
+        [
+          18.1,
+          -76.715,
+          0.65
+        ]
+      ],
+      "span_mm": [
+        1.2,
+        0.35,
+        4.0
+      ],
+      "volume_mm3": 1.68,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_speaker_grille_slot_3.obj",
+      "stl": "mechanical/e1-phone/out/bottom_speaker_grille_slot_3.stl"
+    },
+    {
+      "name": "bottom_speaker_grille_slot_4",
+      "role": "audio",
+      "material": "molded loudspeaker grille slot",
+      "bounds_mm": [
+        [
+          19.9,
+          -77.065,
+          -3.35
+        ],
+        [
+          21.1,
+          -76.715,
+          0.65
+        ]
+      ],
+      "span_mm": [
+        1.2,
+        0.35,
+        4.0
+      ],
+      "volume_mm3": 1.68,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_speaker_grille_slot_4.obj",
+      "stl": "mechanical/e1-phone/out/bottom_speaker_grille_slot_4.stl"
+    },
+    {
+      "name": "bottom_speaker_grille_slot_5",
+      "role": "audio",
+      "material": "molded loudspeaker grille slot",
+      "bounds_mm": [
+        [
+          22.9,
+          -77.065,
+          -3.35
+        ],
+        [
+          24.1,
+          -76.715,
+          0.65
+        ]
+      ],
+      "span_mm": [
+        1.2,
+        0.35,
+        4.0
+      ],
+      "volume_mm3": 1.68,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_speaker_grille_slot_5.obj",
+      "stl": "mechanical/e1-phone/out/bottom_speaker_grille_slot_5.stl"
+    },
+    {
+      "name": "bottom_speaker_dust_mesh",
+      "role": "audio",
+      "material": "hydrophobic dust mesh behind bottom speaker grille",
+      "bounds_mm": [
+        [
+          9.5,
+          -76.64,
+          -3.75
+        ],
+        [
+          25.5,
+          -76.52,
+          1.05
+        ]
+      ],
+      "span_mm": [
+        16.0,
+        0.12,
+        4.8
+      ],
+      "volume_mm3": 9.216,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/bottom_speaker_dust_mesh.obj",
+      "stl": "mechanical/e1-phone/out/bottom_speaker_dust_mesh.stl"
+    },
+    {
+      "name": "split_interconnect_top_connector",
+      "role": "split-board interconnect",
+      "material": "Hirose BM28-class 49-pin top-island board connector envelope",
+      "bounds_mm": [
+        [
+          14.0,
+          36.3,
+          -1.7
+        ],
+        [
+          30.0,
+          38.7,
+          -0.8
+        ]
+      ],
+      "span_mm": [
+        16.0,
+        2.4,
+        0.9
+      ],
+      "volume_mm3": 34.56,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/split_interconnect_top_connector.obj",
+      "stl": "mechanical/e1-phone/out/split_interconnect_top_connector.stl"
+    },
+    {
+      "name": "split_interconnect_bottom_connector",
+      "role": "split-board interconnect",
+      "material": "Hirose BM28-class 49-pin bottom-island board connector envelope",
+      "bounds_mm": [
+        [
+          14.0,
+          -53.7,
+          -1.7
+        ],
+        [
+          30.0,
+          -51.3,
+          -0.8
+        ]
+      ],
+      "span_mm": [
+        16.0,
+        2.4,
+        0.9
+      ],
+      "volume_mm3": 34.56,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/split_interconnect_bottom_connector.obj",
+      "stl": "mechanical/e1-phone/out/split_interconnect_bottom_connector.stl"
+    },
+    {
+      "name": "split_interconnect_side_flex",
+      "role": "split-board interconnect",
+      "material": "polyimide FPC side service loop envelope",
+      "bounds_mm": [
+        [
+          33.3,
+          -51.5,
+          -1.94
+        ],
+        [
+          35.7,
+          36.5,
+          -1.76
+        ]
+      ],
+      "span_mm": [
+        2.4,
+        88.0,
+        0.18
+      ],
+      "volume_mm3": 38.016,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/split_interconnect_side_flex.obj",
+      "stl": "mechanical/e1-phone/out/split_interconnect_side_flex.stl"
+    },
+    {
+      "name": "split_interconnect_top_flex_tail",
+      "role": "split-board interconnect",
+      "material": "polyimide FPC top connector tail envelope",
+      "bounds_mm": [
+        [
+          22.0,
+          36.5,
+          -1.94
+        ],
+        [
+          34.5,
+          38.5,
+          -1.76
+        ]
+      ],
+      "span_mm": [
+        12.5,
+        2.0,
+        0.18
+      ],
+      "volume_mm3": 4.5,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/split_interconnect_top_flex_tail.obj",
+      "stl": "mechanical/e1-phone/out/split_interconnect_top_flex_tail.stl"
+    },
+    {
+      "name": "split_interconnect_bottom_flex_tail",
+      "role": "split-board interconnect",
+      "material": "polyimide FPC bottom connector tail envelope",
+      "bounds_mm": [
+        [
+          22.0,
+          -53.5,
+          -1.94
+        ],
+        [
+          34.5,
+          -51.5,
+          -1.76
+        ]
+      ],
+      "span_mm": [
+        12.5,
+        2.0,
+        0.18
+      ],
+      "volume_mm3": 4.5,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/split_interconnect_bottom_flex_tail.obj",
+      "stl": "mechanical/e1-phone/out/split_interconnect_bottom_flex_tail.stl"
+    },
+    {
+      "name": "bottom_microphone_port_1",
+      "role": "audio",
+      "material": "molded microphone acoustic port",
+      "bounds_mm": [
+        [
+          -22.45,
+          -77.12,
+          -1.793
+        ],
+        [
+          -21.55,
+          -76.72,
+          -0.907
+        ]
+      ],
+      "span_mm": [
+        0.9,
+        0.4,
+        0.886
+      ],
+      "volume_mm3": 0.249,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_microphone_port_1.obj",
+      "stl": "mechanical/e1-phone/out/bottom_microphone_port_1.stl"
+    },
+    {
+      "name": "bottom_microphone_mesh_1",
+      "role": "audio",
+      "material": "hydrophobic dust mesh behind bottom microphone port",
+      "bounds_mm": [
+        [
+          -22.7,
+          -76.66,
+          -2.05
+        ],
+        [
+          -21.3,
+          -76.54,
+          -0.65
+        ]
+      ],
+      "span_mm": [
+        1.4,
+        0.12,
+        1.4
+      ],
+      "volume_mm3": 0.235,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/bottom_microphone_mesh_1.obj",
+      "stl": "mechanical/e1-phone/out/bottom_microphone_mesh_1.stl"
+    },
+    {
+      "name": "bottom_microphone_port_2",
+      "role": "audio",
+      "material": "molded microphone acoustic port",
+      "bounds_mm": [
+        [
+          -17.45,
+          -77.12,
+          -1.793
+        ],
+        [
+          -16.55,
+          -76.72,
+          -0.907
+        ]
+      ],
+      "span_mm": [
+        0.9,
+        0.4,
+        0.886
+      ],
+      "volume_mm3": 0.249,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_microphone_port_2.obj",
+      "stl": "mechanical/e1-phone/out/bottom_microphone_port_2.stl"
+    },
+    {
+      "name": "bottom_microphone_mesh_2",
+      "role": "audio",
+      "material": "hydrophobic dust mesh behind bottom microphone port",
+      "bounds_mm": [
+        [
+          -17.7,
+          -76.66,
+          -2.05
+        ],
+        [
+          -16.3,
+          -76.54,
+          -0.65
+        ]
+      ],
+      "span_mm": [
+        1.4,
+        0.12,
+        1.4
+      ],
+      "volume_mm3": 0.235,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/bottom_microphone_mesh_2.obj",
+      "stl": "mechanical/e1-phone/out/bottom_microphone_mesh_2.stl"
+    },
+    {
+      "name": "top_microphone_port",
+      "role": "audio",
+      "material": "molded top microphone acoustic port",
+      "bounds_mm": [
+        [
+          17.55,
+          76.72,
+          -1.793
+        ],
+        [
+          18.45,
+          77.12,
+          -0.907
+        ]
+      ],
+      "span_mm": [
+        0.9,
+        0.4,
+        0.886
+      ],
+      "volume_mm3": 0.249,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/top_microphone_port.obj",
+      "stl": "mechanical/e1-phone/out/top_microphone_port.stl"
+    },
+    {
+      "name": "top_microphone_mesh",
+      "role": "audio",
+      "material": "hydrophobic dust mesh behind top microphone port",
+      "bounds_mm": [
+        [
+          17.3,
+          76.54,
+          -2.05
+        ],
+        [
+          18.7,
+          76.66,
+          -0.65
+        ]
+      ],
+      "span_mm": [
+        1.4,
+        0.12,
+        1.4
+      ],
+      "volume_mm3": 0.235,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/top_microphone_mesh.obj",
+      "stl": "mechanical/e1-phone/out/top_microphone_mesh.stl"
+    },
+    {
+      "name": "power_button_elastomer_gasket",
+      "role": "button seal",
+      "material": "shore-a silicone side-key gasket behind power button",
+      "bounds_mm": [
+        [
+          38.1,
+          13.5,
+          -1.175
+        ],
+        [
+          38.6,
+          26.5,
+          0.375
+        ]
+      ],
+      "span_mm": [
+        0.5,
+        13.0,
+        1.55
+      ],
+      "volume_mm3": 10.075,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/power_button_elastomer_gasket.obj",
+      "stl": "mechanical/e1-phone/out/power_button_elastomer_gasket.stl"
+    },
+    {
+      "name": "power_button_labyrinth_upper_rail",
+      "role": "button seal",
+      "material": "molded PC+ABS side-key labyrinth rail",
+      "bounds_mm": [
+        [
+          37.775,
+          26.15,
+          -1.325
+        ],
+        [
+          38.325,
+          26.95,
+          0.525
+        ]
+      ],
+      "span_mm": [
+        0.55,
+        0.8,
+        1.85
+      ],
+      "volume_mm3": 0.814,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/power_button_labyrinth_upper_rail.obj",
+      "stl": "mechanical/e1-phone/out/power_button_labyrinth_upper_rail.stl"
+    },
+    {
+      "name": "power_button_labyrinth_lower_rail",
+      "role": "button seal",
+      "material": "molded PC+ABS side-key labyrinth rail",
+      "bounds_mm": [
+        [
+          37.775,
+          13.05,
+          -1.325
+        ],
+        [
+          38.325,
+          13.85,
+          0.525
+        ]
+      ],
+      "span_mm": [
+        0.55,
+        0.8,
+        1.85
+      ],
+      "volume_mm3": 0.814,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/power_button_labyrinth_lower_rail.obj",
+      "stl": "mechanical/e1-phone/out/power_button_labyrinth_lower_rail.stl"
+    },
+    {
+      "name": "volume_button_elastomer_gasket",
+      "role": "button seal",
+      "material": "shore-a silicone side-key gasket behind volume button",
+      "bounds_mm": [
+        [
+          -38.6,
+          3.0,
+          -1.175
+        ],
+        [
+          -38.1,
+          25.0,
+          0.375
+        ]
+      ],
+      "span_mm": [
+        0.5,
+        22.0,
+        1.55
+      ],
+      "volume_mm3": 17.05,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/volume_button_elastomer_gasket.obj",
+      "stl": "mechanical/e1-phone/out/volume_button_elastomer_gasket.stl"
+    },
+    {
+      "name": "volume_button_labyrinth_upper_rail",
+      "role": "button seal",
+      "material": "molded PC+ABS side-key labyrinth rail",
+      "bounds_mm": [
+        [
+          -38.325,
+          24.65,
+          -1.325
+        ],
+        [
+          -37.775,
+          25.45,
+          0.525
+        ]
+      ],
+      "span_mm": [
+        0.55,
+        0.8,
+        1.85
+      ],
+      "volume_mm3": 0.814,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/volume_button_labyrinth_upper_rail.obj",
+      "stl": "mechanical/e1-phone/out/volume_button_labyrinth_upper_rail.stl"
+    },
+    {
+      "name": "volume_button_labyrinth_lower_rail",
+      "role": "button seal",
+      "material": "molded PC+ABS side-key labyrinth rail",
+      "bounds_mm": [
+        [
+          -38.325,
+          2.55,
+          -1.325
+        ],
+        [
+          -37.775,
+          3.35,
+          0.525
+        ]
+      ],
+      "span_mm": [
+        0.55,
+        0.8,
+        1.85
+      ],
+      "volume_mm3": 0.814,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/volume_button_labyrinth_lower_rail.obj",
+      "stl": "mechanical/e1-phone/out/volume_button_labyrinth_lower_rail.stl"
+    },
+    {
+      "name": "screen_adhesive_top",
+      "role": "screen retention",
+      "material": "die-cut display adhesive",
+      "bounds_mm": [
+        [
+          -38.55,
+          74.885,
+          3.86
+        ],
+        [
+          38.55,
+          75.885,
+          4.04
+        ]
+      ],
+      "span_mm": [
+        77.1,
+        1.0,
+        0.18
+      ],
+      "volume_mm3": 13.878,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/screen_adhesive_top.obj",
+      "stl": "mechanical/e1-phone/out/screen_adhesive_top.stl"
+    },
+    {
+      "name": "screen_adhesive_bottom",
+      "role": "screen retention",
+      "material": "die-cut display adhesive",
+      "bounds_mm": [
+        [
+          -38.55,
+          -75.885,
+          3.86
+        ],
+        [
+          38.55,
+          -74.885,
+          4.04
+        ]
+      ],
+      "span_mm": [
+        77.1,
+        1.0,
+        0.18
+      ],
+      "volume_mm3": 13.878,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/screen_adhesive_bottom.obj",
+      "stl": "mechanical/e1-phone/out/screen_adhesive_bottom.stl"
+    },
+    {
+      "name": "screen_adhesive_left",
+      "role": "screen retention",
+      "material": "die-cut display adhesive",
+      "bounds_mm": [
+        [
+          -38.55,
+          -75.885,
+          3.86
+        ],
+        [
+          -37.55,
+          75.885,
+          4.04
+        ]
+      ],
+      "span_mm": [
+        1.0,
+        151.77,
+        0.18
+      ],
+      "volume_mm3": 27.319,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/screen_adhesive_left.obj",
+      "stl": "mechanical/e1-phone/out/screen_adhesive_left.stl"
+    },
+    {
+      "name": "screen_adhesive_right",
+      "role": "screen retention",
+      "material": "die-cut display adhesive",
+      "bounds_mm": [
+        [
+          37.55,
+          -75.885,
+          3.86
+        ],
+        [
+          38.55,
+          75.885,
+          4.04
+        ]
+      ],
+      "span_mm": [
+        1.0,
+        151.77,
+        0.18
+      ],
+      "volume_mm3": 27.319,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/screen_adhesive_right.obj",
+      "stl": "mechanical/e1-phone/out/screen_adhesive_right.stl"
+    },
+    {
+      "name": "orange_screw_boss_1",
+      "role": "molded enclosure",
+      "material": "PC+ABS screw boss, core pin required",
+      "bounds_mm": [
+        [
+          -31.1,
+          55.9,
+          -4.2
+        ],
+        [
+          -26.9,
+          60.1,
+          -1.4
+        ]
+      ],
+      "span_mm": [
+        4.2,
+        4.2,
+        2.8
+      ],
+      "volume_mm3": 38.544,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_screw_boss_1.obj",
+      "stl": "mechanical/e1-phone/out/orange_screw_boss_1.stl"
+    },
+    {
+      "name": "orange_screw_boss_2",
+      "role": "molded enclosure",
+      "material": "PC+ABS screw boss, core pin required",
+      "bounds_mm": [
+        [
+          26.9,
+          55.9,
+          -4.2
+        ],
+        [
+          31.1,
+          60.1,
+          -1.4
+        ]
+      ],
+      "span_mm": [
+        4.2,
+        4.2,
+        2.8
+      ],
+      "volume_mm3": 38.544,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_screw_boss_2.obj",
+      "stl": "mechanical/e1-phone/out/orange_screw_boss_2.stl"
+    },
+    {
+      "name": "orange_screw_boss_3",
+      "role": "molded enclosure",
+      "material": "PC+ABS screw boss, core pin required",
+      "bounds_mm": [
+        [
+          -31.1,
+          -60.1,
+          -4.2
+        ],
+        [
+          -26.9,
+          -55.9,
+          -1.4
+        ]
+      ],
+      "span_mm": [
+        4.2,
+        4.2,
+        2.8
+      ],
+      "volume_mm3": 38.544,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_screw_boss_3.obj",
+      "stl": "mechanical/e1-phone/out/orange_screw_boss_3.stl"
+    },
+    {
+      "name": "orange_screw_boss_4",
+      "role": "molded enclosure",
+      "material": "PC+ABS screw boss, core pin required",
+      "bounds_mm": [
+        [
+          26.9,
+          -60.1,
+          -4.2
+        ],
+        [
+          31.1,
+          -55.9,
+          -1.4
+        ]
+      ],
+      "span_mm": [
+        4.2,
+        4.2,
+        2.8
+      ],
+      "volume_mm3": 38.544,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_screw_boss_4.obj",
+      "stl": "mechanical/e1-phone/out/orange_screw_boss_4.stl"
+    },
+    {
+      "name": "orange_screw_boss_5",
+      "role": "molded enclosure",
+      "material": "PC+ABS screw boss, core pin required",
+      "bounds_mm": [
+        [
+          -31.1,
+          -22.1,
+          -4.2
+        ],
+        [
+          -26.9,
+          -17.9,
+          -1.4
+        ]
+      ],
+      "span_mm": [
+        4.2,
+        4.2,
+        2.8
+      ],
+      "volume_mm3": 38.544,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_screw_boss_5.obj",
+      "stl": "mechanical/e1-phone/out/orange_screw_boss_5.stl"
+    },
+    {
+      "name": "orange_screw_boss_6",
+      "role": "molded enclosure",
+      "material": "PC+ABS screw boss, core pin required",
+      "bounds_mm": [
+        [
+          26.9,
+          -22.1,
+          -4.2
+        ],
+        [
+          31.1,
+          -17.9,
+          -1.4
+        ]
+      ],
+      "span_mm": [
+        4.2,
+        4.2,
+        2.8
+      ],
+      "volume_mm3": 38.544,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_screw_boss_6.obj",
+      "stl": "mechanical/e1-phone/out/orange_screw_boss_6.stl"
+    },
+    {
+      "name": "orange_snap_hook_1",
+      "role": "molded enclosure",
+      "material": "PC+ABS snap hook",
+      "bounds_mm": [
+        [
+          -37.75,
+          49.5,
+          -1.7
+        ],
+        [
+          -36.45,
+          54.5,
+          -0.3
+        ]
+      ],
+      "span_mm": [
+        1.3,
+        5.0,
+        1.4
+      ],
+      "volume_mm3": 9.1,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_snap_hook_1.obj",
+      "stl": "mechanical/e1-phone/out/orange_snap_hook_1.stl"
+    },
+    {
+      "name": "orange_snap_hook_2",
+      "role": "molded enclosure",
+      "material": "PC+ABS snap hook",
+      "bounds_mm": [
+        [
+          -37.75,
+          21.5,
+          -1.7
+        ],
+        [
+          -36.45,
+          26.5,
+          -0.3
+        ]
+      ],
+      "span_mm": [
+        1.3,
+        5.0,
+        1.4
+      ],
+      "volume_mm3": 9.1,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_snap_hook_2.obj",
+      "stl": "mechanical/e1-phone/out/orange_snap_hook_2.stl"
+    },
+    {
+      "name": "orange_snap_hook_3",
+      "role": "molded enclosure",
+      "material": "PC+ABS snap hook",
+      "bounds_mm": [
+        [
+          -37.75,
+          -26.5,
+          -1.7
+        ],
+        [
+          -36.45,
+          -21.5,
+          -0.3
+        ]
+      ],
+      "span_mm": [
+        1.3,
+        5.0,
+        1.4
+      ],
+      "volume_mm3": 9.1,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_snap_hook_3.obj",
+      "stl": "mechanical/e1-phone/out/orange_snap_hook_3.stl"
+    },
+    {
+      "name": "orange_snap_hook_4",
+      "role": "molded enclosure",
+      "material": "PC+ABS snap hook",
+      "bounds_mm": [
+        [
+          -37.75,
+          -54.5,
+          -1.7
+        ],
+        [
+          -36.45,
+          -49.5,
+          -0.3
+        ]
+      ],
+      "span_mm": [
+        1.3,
+        5.0,
+        1.4
+      ],
+      "volume_mm3": 9.1,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_snap_hook_4.obj",
+      "stl": "mechanical/e1-phone/out/orange_snap_hook_4.stl"
+    },
+    {
+      "name": "orange_snap_hook_5",
+      "role": "molded enclosure",
+      "material": "PC+ABS snap hook",
+      "bounds_mm": [
+        [
+          36.45,
+          49.5,
+          -1.7
+        ],
+        [
+          37.75,
+          54.5,
+          -0.3
+        ]
+      ],
+      "span_mm": [
+        1.3,
+        5.0,
+        1.4
+      ],
+      "volume_mm3": 9.1,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_snap_hook_5.obj",
+      "stl": "mechanical/e1-phone/out/orange_snap_hook_5.stl"
+    },
+    {
+      "name": "orange_snap_hook_6",
+      "role": "molded enclosure",
+      "material": "PC+ABS snap hook",
+      "bounds_mm": [
+        [
+          36.45,
+          21.5,
+          -1.7
+        ],
+        [
+          37.75,
+          26.5,
+          -0.3
+        ]
+      ],
+      "span_mm": [
+        1.3,
+        5.0,
+        1.4
+      ],
+      "volume_mm3": 9.1,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_snap_hook_6.obj",
+      "stl": "mechanical/e1-phone/out/orange_snap_hook_6.stl"
+    },
+    {
+      "name": "orange_snap_hook_7",
+      "role": "molded enclosure",
+      "material": "PC+ABS snap hook",
+      "bounds_mm": [
+        [
+          36.45,
+          -26.5,
+          -1.7
+        ],
+        [
+          37.75,
+          -21.5,
+          -0.3
+        ]
+      ],
+      "span_mm": [
+        1.3,
+        5.0,
+        1.4
+      ],
+      "volume_mm3": 9.1,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_snap_hook_7.obj",
+      "stl": "mechanical/e1-phone/out/orange_snap_hook_7.stl"
+    },
+    {
+      "name": "orange_snap_hook_8",
+      "role": "molded enclosure",
+      "material": "PC+ABS snap hook",
+      "bounds_mm": [
+        [
+          36.45,
+          -54.5,
+          -1.7
+        ],
+        [
+          37.75,
+          -49.5,
+          -0.3
+        ]
+      ],
+      "span_mm": [
+        1.3,
+        5.0,
+        1.4
+      ],
+      "volume_mm3": 9.1,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_snap_hook_8.obj",
+      "stl": "mechanical/e1-phone/out/orange_snap_hook_8.stl"
+    },
+    {
+      "name": "orange_battery_left_rib",
+      "role": "molded enclosure",
+      "material": "battery locating rib",
+      "bounds_mm": [
+        [
+          -29.375,
+          -56.0,
+          -3.7
+        ],
+        [
+          -28.625,
+          42.0,
+          -2.3
+        ]
+      ],
+      "span_mm": [
+        0.75,
+        98.0,
+        1.4
+      ],
+      "volume_mm3": 102.9,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_battery_left_rib.obj",
+      "stl": "mechanical/e1-phone/out/orange_battery_left_rib.stl"
+    },
+    {
+      "name": "orange_battery_right_rib",
+      "role": "molded enclosure",
+      "material": "battery locating rib",
+      "bounds_mm": [
+        [
+          28.625,
+          -56.0,
+          -3.7
+        ],
+        [
+          29.375,
+          42.0,
+          -2.3
+        ]
+      ],
+      "span_mm": [
+        0.75,
+        98.0,
+        1.4
+      ],
+      "volume_mm3": 102.9,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_battery_right_rib.obj",
+      "stl": "mechanical/e1-phone/out/orange_battery_right_rib.stl"
+    },
+    {
+      "name": "orange_usb_reinforcement_saddle",
+      "role": "molded enclosure",
+      "material": "USB-C insertion load saddle",
+      "bounds_mm": [
+        [
+          -9.0,
+          -69.4,
+          -3.9
+        ],
+        [
+          9.0,
+          -67.4,
+          -1.9
+        ]
+      ],
+      "span_mm": [
+        18.0,
+        2.0,
+        2.0
+      ],
+      "volume_mm3": 72.0,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_usb_reinforcement_saddle.obj",
+      "stl": "mechanical/e1-phone/out/orange_usb_reinforcement_saddle.stl"
+    },
+    {
+      "name": "display_fpc_connector",
+      "role": "connector",
+      "material": "board-mounted display/touch FPC connector",
+      "bounds_mm": [
+        [
+          13.5,
+          53.4,
+          -1.575
+        ],
+        [
+          32.5,
+          56.6,
+          -0.425
+        ]
+      ],
+      "span_mm": [
+        19.0,
+        3.2,
+        1.15
+      ],
+      "volume_mm3": 69.92,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/display_fpc_connector.obj",
+      "stl": "mechanical/e1-phone/out/display_fpc_connector.stl"
+    },
+    {
+      "name": "display_fpc_bend_keepout",
+      "role": "connector",
+      "material": "display FPC bend keepout",
+      "bounds_mm": [
+        [
+          12.0,
+          56.5,
+          0.15
+        ],
+        [
+          34.0,
+          66.5,
+          0.45
+        ]
+      ],
+      "span_mm": [
+        22.0,
+        10.0,
+        0.3
+      ],
+      "volume_mm3": 66.0,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/display_fpc_bend_keepout.obj",
+      "stl": "mechanical/e1-phone/out/display_fpc_bend_keepout.stl"
+    },
+    {
+      "name": "bottom_speaker_acoustic_chamber",
+      "role": "audio",
+      "material": "molded loudspeaker rear chamber",
+      "bounds_mm": [
+        [
+          9.5,
+          -70.3,
+          -5.2
+        ],
+        [
+          27.5,
+          -57.3,
+          -3.0
+        ]
+      ],
+      "span_mm": [
+        18.0,
+        13.0,
+        2.2
+      ],
+      "volume_mm3": 514.8,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_speaker_acoustic_chamber.obj",
+      "stl": "mechanical/e1-phone/out/bottom_speaker_acoustic_chamber.stl"
+    },
+    {
+      "name": "earpiece_gasket",
+      "role": "audio",
+      "material": "compressed earpiece acoustic gasket",
+      "bounds_mm": [
+        [
+          -7.25,
+          68.2,
+          3.525
+        ],
+        [
+          7.25,
+          70.2,
+          4.075
+        ]
+      ],
+      "span_mm": [
+        14.5,
+        2.0,
+        0.55
+      ],
+      "volume_mm3": 15.95,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/earpiece_gasket.obj",
+      "stl": "mechanical/e1-phone/out/earpiece_gasket.stl"
+    },
+    {
+      "name": "cellular_top_antenna_keepout",
+      "role": "RF keepout",
+      "material": "top plastic antenna keepout volume",
+      "bounds_mm": [
+        [
+          -31.0,
+          68.4,
+          -2.1
+        ],
+        [
+          31.0,
+          74.4,
+          -0.1
+        ]
+      ],
+      "span_mm": [
+        62.0,
+        6.0,
+        2.0
+      ],
+      "volume_mm3": 744.0,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/cellular_top_antenna_keepout.obj",
+      "stl": "mechanical/e1-phone/out/cellular_top_antenna_keepout.stl"
+    },
+    {
+      "name": "cellular_bottom_antenna_keepout",
+      "role": "RF keepout",
+      "material": "bottom plastic antenna keepout volume",
+      "bounds_mm": [
+        [
+          -31.0,
+          -74.4,
+          -2.1
+        ],
+        [
+          31.0,
+          -68.4,
+          -0.1
+        ]
+      ],
+      "span_mm": [
+        62.0,
+        6.0,
+        2.0
+      ],
+      "volume_mm3": 744.0,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/cellular_bottom_antenna_keepout.obj",
+      "stl": "mechanical/e1-phone/out/cellular_bottom_antenna_keepout.stl"
+    },
+    {
+      "name": "wifi_bt_side_antenna_keepout",
+      "role": "RF keepout",
+      "material": "side Wi-Fi/Bluetooth antenna keepout volume",
+      "bounds_mm": [
+        [
+          4.0,
+          40.5,
+          -2.1
+        ],
+        [
+          38.0,
+          45.5,
+          -0.1
+        ]
+      ],
+      "span_mm": [
+        34.0,
+        5.0,
+        2.0
+      ],
+      "volume_mm3": 340.0,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/wifi_bt_side_antenna_keepout.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_side_antenna_keepout.stl"
+    },
+    {
+      "name": "soc_shield_can",
+      "role": "EMI shield",
+      "material": "stamped RF/SoC shield can",
+      "bounds_mm": [
+        [
+          -16.0,
+          47.0,
+          -1.5
+        ],
+        [
+          2.0,
+          63.0,
+          -0.3
+        ]
+      ],
+      "span_mm": [
+        18.0,
+        16.0,
+        1.2
+      ],
+      "volume_mm3": 345.6,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/soc_shield_can.obj",
+      "stl": "mechanical/e1-phone/out/soc_shield_can.stl"
+    },
+    {
+      "name": "pmic_shield_can",
+      "role": "EMI shield",
+      "material": "stamped PMIC shield can",
+      "bounds_mm": [
+        [
+          7.0,
+          50.0,
+          -1.5
+        ],
+        [
+          18.0,
+          60.0,
+          -0.4
+        ]
+      ],
+      "span_mm": [
+        11.0,
+        10.0,
+        1.1
+      ],
+      "volume_mm3": 121.0,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/pmic_shield_can.obj",
+      "stl": "mechanical/e1-phone/out/pmic_shield_can.stl"
+    },
+    {
+      "name": "radio_shield_can",
+      "role": "EMI shield",
+      "material": "stamped radio shield can",
+      "bounds_mm": [
+        [
+          -31.0,
+          40.0,
+          -1.5
+        ],
+        [
+          -13.0,
+          60.0,
+          -0.3
+        ]
+      ],
+      "span_mm": [
+        18.0,
+        20.0,
+        1.2
+      ],
+      "volume_mm3": 432.0,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/radio_shield_can.obj",
+      "stl": "mechanical/e1-phone/out/radio_shield_can.stl"
+    },
+    {
+      "name": "haptic_lra",
+      "role": "haptics",
+      "material": "compact 0612 X-axis linear resonant actuator",
+      "bounds_mm": [
+        [
+          32.5,
+          -50.0,
+          -4.45
+        ],
+        [
+          38.5,
+          -38.0,
+          -1.95
+        ]
+      ],
+      "span_mm": [
+        6.0,
+        12.0,
+        2.5
+      ],
+      "volume_mm3": 180.0,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/haptic_lra.obj",
+      "stl": "mechanical/e1-phone/out/haptic_lra.stl"
+    },
+    {
+      "name": "sim_tray_keepout",
+      "role": "service",
+      "material": "side SIM tray keepout",
+      "bounds_mm": [
+        [
+          24.55,
+          -29.0,
+          -1.8
+        ],
+        [
+          39.05,
+          -7.0,
+          0.2
+        ]
+      ],
+      "span_mm": [
+        14.5,
+        22.0,
+        2.0
+      ],
+      "volume_mm3": 638.0,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/sim_tray_keepout.obj",
+      "stl": "mechanical/e1-phone/out/sim_tray_keepout.stl"
+    },
+    {
+      "name": "sim_tray_outline",
+      "role": "service",
+      "material": "orange side service tray outline",
+      "bounds_mm": [
+        [
+          38.45,
+          -27.0,
+          -2.8
+        ],
+        [
+          39.25,
+          -9.0,
+          1.2
+        ]
+      ],
+      "span_mm": [
+        0.8,
+        18.0,
+        4.0
+      ],
+      "volume_mm3": 57.6,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/sim_tray_outline.obj",
+      "stl": "mechanical/e1-phone/out/sim_tray_outline.stl"
+    },
+    {
+      "name": "rear_camera_cover_glass",
+      "role": "camera",
+      "material": "rear camera cover glass",
+      "bounds_mm": [
+        [
+          16.4,
+          53.2,
+          -4.8
+        ],
+        [
+          25.6,
+          62.4,
+          -4.25
+        ]
+      ],
+      "span_mm": [
+        9.2,
+        9.2,
+        0.55
+      ],
+      "volume_mm3": 46.552,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/rear_camera_cover_glass.obj",
+      "stl": "mechanical/e1-phone/out/rear_camera_cover_glass.stl"
+    },
+    {
+      "name": "service_label_recess",
+      "role": "service",
+      "material": "recessed regulatory/service label pad",
+      "bounds_mm": [
+        [
+          -16.0,
+          -56.3,
+          -4.65
+        ],
+        [
+          16.0,
+          -47.3,
+          -4.4
+        ]
+      ],
+      "span_mm": [
+        32.0,
+        9.0,
+        0.25
+      ],
+      "volume_mm3": 72.0,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/service_label_recess.obj",
+      "stl": "mechanical/e1-phone/out/service_label_recess.stl"
+    }
+  ]
+}

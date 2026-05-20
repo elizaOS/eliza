@@ -1,39 +1,39 @@
 // node-llama-cpp stub for the mobile agent bundle.
 //
-// node-llama-cpp ships native prebuilds for x64/arm64-darwin/linux/win, none
-// for Android bionic. The agent already gates every call site behind a
-// dynamic import wrapped in try/catch (see embedding-manager.ts and
-// services/local-inference/engine.ts). Returning a module that throws on
-// every getter keeps that pattern honest: the bundle resolves, the runtime
-// short-circuits, and nothing crashes import-side.
+// The mobile agent does not load node-llama-cpp or its platform prebuilds.
+// Android AOSP local inference goes through bun:ffi + libllama.so, while the
+// Capacitor app path uses the WebView-side llama-cpp-capacitor binding.
 "use strict";
 
 const NOT_AVAILABLE_MSG =
-  "node-llama-cpp is not available on Android — local on-device inference must use the llama-cpp-capacitor JNI binding instead";
+  "node-llama-cpp is not available in mobile agent bundles";
 
 function unavailable() {
   throw new Error(NOT_AVAILABLE_MSG);
 }
 
-const LlamaLogLevel = Object.freeze({
-  disabled: "disabled",
-  fatal: "fatal",
-  error: "error",
-  warn: "warn",
-  info: "info",
-  log: "log",
-  debug: "debug",
-});
+class LlamaModel {
+  constructor() {
+    unavailable();
+  }
+}
+
+class LlamaContext {
+  constructor() {
+    unavailable();
+  }
+}
+
+class LlamaChatSession {
+  constructor() {
+    unavailable();
+  }
+}
 
 const capabilities = Object.freeze({
   provider: "node-llama-cpp",
   available: false,
   platform: "mobile-stub",
-  text: false,
-  embeddings: false,
-  vision: false,
-  mmproj: false,
-  imagegen: false,
   reason: NOT_AVAILABLE_MSG,
 });
 
@@ -41,17 +41,21 @@ module.exports = {
   __mobileStub: true,
   __mobileCapabilities: capabilities,
   capabilities,
+  LlamaModel,
+  LlamaContext,
+  LlamaChatSession,
   getLlama: unavailable,
-  Llama: unavailable,
-  LlamaModel: unavailable,
-  LlamaContext: unavailable,
-  LlamaEmbeddingContext: unavailable,
-  LlamaChatSession: unavailable,
-  LlamaJsonSchemaGrammar: unavailable,
-  LlamaGrammar: unavailable,
-  ChatHistoryItem: unavailable,
-  Token: unavailable,
-  resolveModelFile: unavailable,
-  isLlamaText: () => false,
-  LlamaLogLevel,
+  getLlamaForOptions: unavailable,
+  getLlamaForOptionsOrDownload: unavailable,
+  default: {
+    __mobileStub: true,
+    __mobileCapabilities: capabilities,
+    capabilities,
+    LlamaModel,
+    LlamaContext,
+    LlamaChatSession,
+    getLlama: unavailable,
+    getLlamaForOptions: unavailable,
+    getLlamaForOptionsOrDownload: unavailable,
+  },
 };

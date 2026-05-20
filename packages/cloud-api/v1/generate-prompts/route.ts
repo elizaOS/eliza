@@ -33,7 +33,7 @@ app.post("/", async (c) => {
       messages: [
         {
           role: "system",
-          content: `You are a practical AI agent concept generator. Generate 4 SHORT, USEFUL agent concepts (max 8 words each) that are DIVERSE and practical for real-world utility.
+          content: `Generate 4 SHORT, USEFUL agent concepts (max 8 words each) that are DIVERSE and practical for real-world utility.
 
 CRITICAL: Focus on UTILITY-BASED agents that help with real tasks. Mix different domains:
 - Business & productivity (sales, support, analytics, scheduling)

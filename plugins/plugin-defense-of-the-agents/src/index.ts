@@ -37,6 +37,20 @@ export function createAppDefenseOfTheAgentsPlugin(): Plugin {
       },
       {
         id: "defense-of-the-agents",
+        label: "Defense of the Agents XR",
+        description:
+          "Defense of the Agents spectator and operator surface — strategy and telemetry",
+        icon: "Gamepad2",
+        path: "/defense-of-the-agents",
+        viewType: "xr",
+        bundlePath: "dist/views/bundle.js",
+        componentExport: "DefenseAgentsOperatorSurface",
+        tags: ["game", "strategy", "defense-of-the-agents"],
+        visibleInManager: true,
+        desktopTabEnabled: true,
+      },
+      {
+        id: "defense-of-the-agents",
         label: "Defense of the Agents TUI",
         description: "Terminal Defense of the Agents strategy and telemetry",
         icon: "Gamepad2",

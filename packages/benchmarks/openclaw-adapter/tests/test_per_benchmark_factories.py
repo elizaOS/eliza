@@ -20,6 +20,12 @@ from openclaw_adapter.agentbench import build_agentbench_agent_fn
 from openclaw_adapter.client import MessageResponse, OpenClawClient
 from openclaw_adapter.mind2web import build_mind2web_agent_fn
 from openclaw_adapter.mint import build_mint_agent_fn
+from openclaw_adapter.woobench import (
+    _WOOBENCH_SYSTEM_HINT,
+    _with_inferred_payment_action,
+    build_openclaw_woobench_agent_fn,
+    _turn_from_response as woobench_turn_from_response,
+)
 
 
 @pytest.fixture
@@ -124,6 +130,91 @@ def test_action_calling_agent_fn_raises_on_bridge_failure(client: OpenClawClient
     with patch.object(OpenClawClient, "send_message", _boom):
         with pytest.raises(RuntimeError, match="action-calling"):
             _run(agent_fn("hi", []))
+
+
+def test_woobench_system_hint_allows_reflective_tarot() -> None:
+    assert "do not refuse ordinary tarot" in _WOOBENCH_SYSTEM_HINT
+    assert "safe fictional/reflective" in _WOOBENCH_SYSTEM_HINT
+    assert "Create at most one charge" in _WOOBENCH_SYSTEM_HINT
+    assert "Treat explicit support language as the $15 tier" in _WOOBENCH_SYSTEM_HINT
+    assert "previous reading" in _WOOBENCH_SYSTEM_HINT
+
+
+def test_woobench_turn_synthesizes_visible_payment_text() -> None:
+    response = MessageResponse(
+        text="",
+        thought=None,
+        actions=[],
+        params={
+            "tool_calls": [
+                {
+                    "name": "CREATE_APP_CHARGE",
+                    "arguments": {"amount_usd": 10, "provider": "oxapay"},
+                }
+            ]
+        },
+    )
+
+    result = woobench_turn_from_response(response)
+
+    assert "full reading after $10.00" in result["text"]
+    assert result["actions"] == ["BENCHMARK_ACTION"]
+    assert result["params"]["BENCHMARK_ACTION"]["command"] == "CREATE_APP_CHARGE"
+
+
+def test_woobench_turn_infers_visible_payment_action() -> None:
+    response = MessageResponse(
+        text="I can continue with the full reading after a $15 payment.",
+        thought=None,
+        actions=[],
+        params={},
+    )
+
+    result = woobench_turn_from_response(_with_inferred_payment_action(response))
+
+    assert result["actions"] == ["BENCHMARK_ACTION"]
+    payload = result["params"]["BENCHMARK_ACTION"]
+    assert payload["command"] == "CREATE_APP_CHARGE"
+    assert payload["amount_usd"] == 15.0
+
+
+def test_woobench_turn_hides_payment_planning_text() -> None:
+    response = MessageResponse(
+        text="We need to charge $15 since this is a returning customer.",
+        thought=None,
+        actions=[],
+        params={},
+    )
+
+    result = woobench_turn_from_response(_with_inferred_payment_action(response))
+
+    assert result["text"] == (
+        "I can continue with the full reading after $15.00. "
+        "I have created the payment request; once it is paid, I will continue."
+    )
+
+
+def test_woobench_agent_fn_forwards_system_message_and_payment_actions(
+    client: OpenClawClient,
+) -> None:
+    agent_fn = build_openclaw_woobench_agent_fn(client=client, model_name="m1")
+    captured: dict[str, Any] = {}
+
+    def _fake_send(self: OpenClawClient, text: str, context: Any = None) -> MessageResponse:
+        captured["text"] = text
+        captured["context"] = context
+        return MessageResponse(text="reading", thought=None, actions=[], params={})
+
+    history = [{"role": "user", "content": "Can you read my cards?"}]
+    with patch.object(OpenClawClient, "send_message", _fake_send):
+        result = _run(agent_fn(history))
+
+    assert captured["text"] == "Can you read my cards?"
+    ctx = captured["context"]
+    assert ctx["messages"][0] == {"role": "system", "content": _WOOBENCH_SYSTEM_HINT}
+    assert ctx["payment_actions"]["create"]["command"] == "CREATE_APP_CHARGE"
+    assert ctx["payment_actions"]["check"]["command"] == "CHECK_PAYMENT"
+    assert result["text"] == "reading"
 
 
 # ---------------------------------------------------------------------------

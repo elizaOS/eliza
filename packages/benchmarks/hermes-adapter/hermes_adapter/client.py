@@ -934,6 +934,7 @@ def _build_openai_messages(
     """
     messages: list[dict[str, object]] = []
     had_raw = False
+    tool_names_by_id: dict[str, str] = {}
     if isinstance(raw_messages, Sequence) and not isinstance(raw_messages, (str, bytes)):
         for item in raw_messages:
             if not isinstance(item, Mapping):
@@ -942,8 +943,15 @@ def _build_openai_messages(
             if role not in {"system", "user", "assistant", "tool"}:
                 continue
             content = item.get("content")
-            content_str = "" if content is None else str(content)
-            msg: dict[str, object] = {"role": str(role), "content": content_str}
+            content_for_message: object
+            content_str = ""
+            if isinstance(content, list) and role == "user":
+                content_for_message = _jsonable(content)
+                content_str = json.dumps(content_for_message, ensure_ascii=True)
+            else:
+                content_str = "" if content is None else str(content)
+                content_for_message = content_str
+            msg: dict[str, object] = {"role": str(role), "content": content_for_message}
             if role == "assistant":
                 tcs = item.get("tool_calls")
                 if isinstance(tcs, Sequence) and not isinstance(tcs, (str, bytes)):
@@ -965,6 +973,8 @@ def _build_openai_messages(
                             args_str = "{}"
                         if not isinstance(fn_name, str) or not fn_name:
                             continue
+                        if tc_id:
+                            tool_names_by_id[str(tc_id)] = fn_name
                         normalized.append(
                             {
                                 "id": str(tc_id) if tc_id else "",
@@ -985,6 +995,8 @@ def _build_openai_messages(
                 tname = item.get("name")
                 if isinstance(tname, str) and tname:
                     msg["name"] = tname
+                elif isinstance(tcid, str) and tcid in tool_names_by_id:
+                    msg["name"] = tool_names_by_id[tcid]
             messages.append(msg)
             had_raw = True
     if isinstance(system_prompt, str) and system_prompt:
@@ -1224,6 +1236,7 @@ def _main() -> int:
     context = payload.get("context")
     raw_messages = context.get("messages") if isinstance(context, dict) else None
     had_raw_messages = False
+    tool_names_by_id = {}
     if isinstance(raw_messages, list):
         for item in raw_messages:
             if not isinstance(item, dict):
@@ -1232,8 +1245,13 @@ def _main() -> int:
             if role not in {"system", "user", "assistant", "tool"}:
                 continue
             content = item.get("content")
-            content_str = "" if content is None else str(content)
-            msg = {"role": role, "content": content_str}
+            if isinstance(content, list) and role == "user":
+                content_for_message = content
+                content_str = json.dumps(content, ensure_ascii=True)
+            else:
+                content_str = "" if content is None else str(content)
+                content_for_message = content_str
+            msg = {"role": role, "content": content_for_message}
             if role == "assistant":
                 tcs = item.get("tool_calls")
                 if isinstance(tcs, list):
@@ -1255,6 +1273,8 @@ def _main() -> int:
                         else:
                             args_str = "{}"
                         tc_id = tc.get("id")
+                        if tc_id:
+                            tool_names_by_id[str(tc_id)] = fn_name
                         normalized.append(
                             {
                                 "id": str(tc_id) if tc_id else "",
@@ -1273,6 +1293,8 @@ def _main() -> int:
                 tname = item.get("name")
                 if isinstance(tname, str) and tname:
                     msg["name"] = tname
+                elif isinstance(tcid, str) and tcid in tool_names_by_id:
+                    msg["name"] = tool_names_by_id[tcid]
             messages.append(msg)
             had_raw_messages = True
     if isinstance(system_prompt, str) and system_prompt:

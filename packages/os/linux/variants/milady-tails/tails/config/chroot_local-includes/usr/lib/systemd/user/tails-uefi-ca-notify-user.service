@@ -1,6 +1,6 @@
 [Unit]
 Description=Warn the user if the computer is not shipping up-to-date UEFI CA
-Documentation=https://tails.net/support/known_issues/secure_boot_certificates
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 ConditionUser=1000
 
 [Service]
@@ -10,4 +10,3 @@ RemainAfterExit=yes
 
 [Install]
 WantedBy=desktop.target
-

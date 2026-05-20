@@ -384,7 +384,7 @@ async function runTasksServerMode(
 
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed?.startsWith("{")) continue;
+        if (!trimmed.startsWith("{")) continue;
         try {
           const result: BenchmarkResult = JSON.parse(trimmed);
           results.push(result);

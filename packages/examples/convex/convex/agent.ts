@@ -34,22 +34,10 @@ const LLM_PROVIDERS: LLMProvider[] = [
       (await import("@elizaos/plugin-anthropic")).default as Plugin,
   },
   {
-    name: "xAI (Grok)",
-    envKey: "XAI_API_KEY",
-    loadPlugin: async () =>
-      (await import("@elizaos/plugin-xai")).default as Plugin,
-  },
-  {
     name: "Google GenAI (Gemini)",
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
     loadPlugin: async () =>
       (await import("@elizaos/plugin-google-genai")).default as Plugin,
-  },
-  {
-    name: "Groq",
-    envKey: "GROQ_API_KEY",
-    loadPlugin: async () =>
-      (await import("@elizaos/plugin-groq")).default as unknown as Plugin,
   },
 ];
 

@@ -350,6 +350,24 @@
             "reset": "0x00000000"
           },
           {
+            "offset": "0x74",
+            "name": "PERF_STALL_CYCLES",
+            "access": "RO",
+            "reset": "0x00000000"
+          },
+          {
+            "offset": "0x78",
+            "name": "PERF_SCRATCH_BYTES",
+            "access": "RO",
+            "reset": "0x00000000"
+          },
+          {
+            "offset": "0x7C",
+            "name": "PERF_THERMAL_THROTTLE",
+            "access": "RW",
+            "reset": "0x00000000"
+          },
+          {
             "offset": "0x80",
             "name": "SCRATCH0",
             "access": "RW",

@@ -9,9 +9,9 @@
  * `elizaos/eliza-1` under `voice/turn-detector/onnx/turn-detector-en-q8.gguf`
  * (and the multilingual variant at
  * `voice/turn/intl/turn-detector-intl-q8.gguf`), running through the
- * canonical fork wrapper `node-llama-cpp` (per
+ * canonical fork wrapper `capacitor-llama` (per
  * `plugins/plugin-local-inference/native/AGENTS.md` §1 — the npm
- * `node-llama-cpp` dep is the elizaOS fork's republish, binding to the
+ * `capacitor-llama` dep is the elizaOS fork's republish, binding to the
  * fork's `libllama`).
  *
  * Why this exists: per I1's single-runtime audit
@@ -22,7 +22,7 @@
  * head on the `<|im_end|>` logit) is exactly what `LLM_ARCH_QWEN2`
  * already implements in the fork. The work is wiring, not porting.
  *
- * No silent fallback (AGENTS.md §3): when `node-llama-cpp` is
+ * No silent fallback (AGENTS.md §3): when `capacitor-llama` is
  * unavailable, the GGUF is missing, or the model load fails, this
  * class throws `EotGgmlUnavailableError` with a structured code. The
  * resolver above this binding picks `HeuristicEotClassifier` or the
@@ -158,7 +158,11 @@ export function turnDetectorGgufForTier(tierId: string): {
 }
 
 // ---------------------------------------------------------------------------
-// node-llama-cpp lazy import (fork wrapper — per native/AGENTS.md §1)
+// Legacy llama.cpp controlled-evaluate surface (held over from the removed
+// node-llama-cpp binding). The shapes below describe the API the GGUF-backed
+// LiveKit detector needs (controlledEvaluate → next-token probability map).
+// Until capacitor-llama / the bun:ffi shim expose an equivalent entry point,
+// `loadNlc()` throws and the resolver above falls back to HeuristicEotClassifier.
 // ---------------------------------------------------------------------------
 
 interface NlcModule {
@@ -220,30 +224,32 @@ interface NlcLlamaSequence {
 	dispose?(): Promise<void>;
 }
 
-let cachedNlcModule: NlcModule | null = null;
 async function loadNlc(): Promise<NlcModule> {
-	if (cachedNlcModule) return cachedNlcModule;
-	try {
-		const mod = (await import("node-llama-cpp")) as unknown as NlcModule;
-		cachedNlcModule = mod;
-		return mod;
-	} catch (err) {
-		throw new EotGgmlUnavailableError(
-			"native-missing",
-			`[eot-ggml] node-llama-cpp is not installed: ${err instanceof Error ? err.message : String(err)}. The fork's canonical wrapper is required (see plugins/plugin-local-inference/native/AGENTS.md §1).`,
-		);
-	}
+	// The legacy `node-llama-cpp` binding (now removed) exposed
+	// `LlamaContextSequence.controlledEvaluate({ generateNext: { probabilities:
+	// true } })` to read the next-token probability distribution after a
+	// truncated prompt. The current `capacitor-llama` adapter and the desktop
+	// bun:ffi shim do not yet expose an equivalent (both surface `completion()`,
+	// which consumes tokens rather than returning a logit map without sampling).
+	//
+	// The resolver above this binding (`tryBuildEliza1EotClassifier`) is gated
+	// on the dispatcher's active backend and model pointer, so this path is
+	// only reached if a future caller bypasses the resolver. Throwing here
+	// keeps fail-closed semantics: the binding never fabricates a probability.
+	throw new EotGgmlUnavailableError(
+		"native-missing",
+		"[eot-ggml] the active llama.cpp adapter (capacitor-llama / bun:ffi shim) does not yet expose a controlled-evaluate API for next-token probabilities. Use HeuristicEotClassifier until the shim exposes `llama_get_logits_ith`.",
+	);
 }
 
-let cachedLlama: NlcLlama | null = null;
 async function getLlama(): Promise<NlcLlama> {
-	if (cachedLlama) return cachedLlama;
-	const mod = await loadNlc();
-	// CPU-only for the turn-detector: the model is small (~40-280 MB), the
-	// classification call is single-token, and putting it on GPU would
-	// contend with the text model that's already there.
-	cachedLlama = await mod.getLlama({ gpu: false });
-	return cachedLlama;
+	// Unreachable while loadNlc() throws — kept so the signature still
+	// satisfies the call sites below.
+	await loadNlc();
+	throw new EotGgmlUnavailableError(
+		"native-missing",
+		"[eot-ggml] llama runtime unavailable",
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -272,7 +278,7 @@ export interface LiveKitGgmlTurnDetectorOptions {
 
 /**
  * Local GGUF-backed LiveKit turn-detector. Replaces the ONNX path in
- * `LiveKitTurnDetector` with a `node-llama-cpp` evaluation of the same
+ * `LiveKitTurnDetector` with a `capacitor-llama` evaluation of the same
  * Qwen2-style decoder, reading `P(<|im_end|>)` from the next-token
  * distribution after the truncated user-template prefix.
  *
@@ -476,8 +482,7 @@ export class LiveKitGgmlTurnDetector implements EotClassifier {
  *   4. `<modelDir>/<intl GGUF name>` (multilingual).
  *
  * Returns `null` if no GGUF is found alongside the directory — the
- * caller falls back to the legacy ONNX path (`createBundledLiveKitTurnDetector`)
- * which itself falls back to `HeuristicEotClassifier`.
+ * caller falls back to `HeuristicEotClassifier`.
  */
 export async function createBundledLiveKitGgmlTurnDetector(
 	opts: {

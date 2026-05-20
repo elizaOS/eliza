@@ -374,7 +374,15 @@ export type RemotePluginLifecycleManifest = {
 };
 
 export type RemotePluginConfigValue = string | number | boolean | null;
-export type RemotePluginConfig = Record<string, RemotePluginConfigValue>;
+export type RemotePluginConfigMap = Record<string, RemotePluginConfigValue>;
+
+export type RemotePluginModuleProvenance = {
+	issuer: string;
+	subject: string;
+	digestSha256: string;
+	signatureAlgorithm: string;
+	signature: string;
+};
 
 export type RemotePluginModuleManifest = {
 	id: string;
@@ -385,7 +393,7 @@ export type RemotePluginModuleManifest = {
 	description?: string;
 	priority?: number;
 	contexts?: string[];
-	config?: RemotePluginConfig;
+	config?: RemotePluginConfigMap;
 	schema?: JsonObject;
 	actions?: RemotePluginActionManifest[];
 	providers?: RemotePluginProviderManifest[];
@@ -402,6 +410,7 @@ export type RemotePluginModuleManifest = {
 	lifecycle?: RemotePluginLifecycleManifest;
 	routes?: RemotePluginRouteManifest[];
 	views?: RemotePluginViewManifest[];
+	provenance?: RemotePluginModuleProvenance;
 	metadata?: JsonObject;
 };
 
@@ -846,6 +855,14 @@ export const CAPABILITY_ROUTER_PROTOCOL_FIXTURE = {
 				contentType: "text/javascript",
 			},
 		],
+		provenance: {
+			issuer: "fixture-build",
+			subject: "fixture://remote-plugin",
+			digestSha256:
+				"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			signatureAlgorithm: "ed25519",
+			signature: "fixture-signature",
+		},
 		metadata: {
 			fixtureVersion: CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION,
 		},
@@ -2220,6 +2237,16 @@ function requireNonEmptyString(
 	throw decodeError(method, `${key} must be a non-empty string.`);
 }
 
+function requireRemotePluginModuleId(
+	object: JsonObject,
+	key: string,
+	method: string,
+): string {
+	const value = requireNonEmptyString(object, key, method);
+	validateRemotePluginModuleId(value, key, method);
+	return value;
+}
+
 function optionalString(
 	object: JsonObject,
 	key: string,
@@ -2257,13 +2284,13 @@ function optionalRemotePluginConfig(
 	object: JsonObject,
 	key: string,
 	method: string,
-): RemotePluginConfig | undefined {
+): RemotePluginConfigMap | undefined {
 	const value = object[key];
 	if (value === undefined) return undefined;
 	if (!isJsonObject(value)) {
 		throw decodeError(method, `${key} must be an object when present.`);
 	}
-	const config: RemotePluginConfig = {};
+	const config: RemotePluginConfigMap = {};
 	for (const [configKey, configValue] of Object.entries(value)) {
 		if (
 			typeof configValue === "string" ||
@@ -2643,9 +2670,16 @@ function requireRemotePluginModule(
 		requireRemotePluginRoute,
 	);
 	const views = optionalArray(object, "views", method, requireRemotePluginView);
+	const provenance =
+		object.provenance === undefined
+			? undefined
+			: requireRemotePluginModuleProvenance(
+					object.provenance,
+					`${method}.provenance`,
+				);
 	const metadata = optionalJsonObject(object, "metadata", method);
 	return {
-		id: requireNonEmptyString(object, "id", method),
+		id: requireRemotePluginModuleId(object, "id", method),
 		name: requireNonEmptyString(object, "name", method),
 		...(capabilityEndpointId === undefined ? {} : { capabilityEndpointId }),
 		...(version === undefined ? {} : { version }),
@@ -2673,7 +2707,30 @@ function requireRemotePluginModule(
 		...(lifecycle === undefined ? {} : { lifecycle }),
 		...(routes === undefined ? {} : { routes }),
 		...(views === undefined ? {} : { views }),
+		...(provenance === undefined ? {} : { provenance }),
 		...(metadata === undefined ? {} : { metadata }),
+	};
+}
+
+function requireRemotePluginModuleProvenance(
+	value: JsonValue,
+	method: string,
+): RemotePluginModuleProvenance {
+	const object = requireObject(value, method);
+	const digestSha256 = requireNonEmptyString(object, "digestSha256", method);
+	if (!/^[0-9a-f]{64}$/i.test(digestSha256)) {
+		throw decodeError(method, "digestSha256 must be a SHA-256 hex digest.");
+	}
+	return {
+		issuer: requireNonEmptyString(object, "issuer", method),
+		subject: requireNonEmptyString(object, "subject", method),
+		digestSha256: digestSha256.toLowerCase(),
+		signatureAlgorithm: requireNonEmptyString(
+			object,
+			"signatureAlgorithm",
+			method,
+		),
+		signature: requireNonEmptyString(object, "signature", method),
 	};
 }
 
@@ -2946,6 +3003,22 @@ function validateRemotePluginCallTarget(
 ): void {
 	if (typeof value !== "string" || value.trim().length === 0) {
 		throw decodeError(method, `${key} must be a non-empty string.`);
+	}
+	if (key === "moduleId") {
+		validateRemotePluginModuleId(value, key, method);
+	}
+}
+
+function validateRemotePluginModuleId(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+		throw decodeError(
+			method,
+			`${key} must use letters, numbers, dots, underscores, or hyphens.`,
+		);
 	}
 }
 

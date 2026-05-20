@@ -22,22 +22,39 @@ bundle manifest evidence.
 
 ## Text SFT
 
-Run the 0.8B APOLLO path against canonical `eliza_native_v1` trajectory
-splits:
+Run the 0.8B APOLLO path against the active `sft/0_8b` release package in
+`elizaos/eliza-1-training`. The current published 0.8B SFT package is
+`chat_messages` JSONL (`{"messages":[...]}`), not `eliza_native_v1`; it is
+validated by `sft/0_8b/validation.json` and is compatible with
+`train_local.py --train-file`.
 
 ```bash
+hf download elizaos/eliza-1-training \
+  --type dataset \
+  --include 'sft/0_8b/*' \
+  --local-dir /tmp/eliza-1-training
+
 uv run --extra train python scripts/run_pipeline.py \
   --registry-key qwen3.5-0.8b \
+  --train-file /tmp/eliza-1-training/sft/0_8b/train.jsonl \
+  --val-file /tmp/eliza-1-training/sft/0_8b/val.jsonl \
+  --test-file /tmp/eliza-1-training/sft/0_8b/test.jsonl \
   --epochs 1 \
-  --max-samples 1000
+  --run-name eliza-1-0_8b-finetuned-v2
 ```
 
 Required evidence:
 
-- baseline native tool-call benchmark before SFT
-- finetuned native tool-call benchmark after SFT
-- `scripts/eval/eliza1_eval_suite.py` output for `bundles/0_8b/evals/`
-- comparison note showing finetuned-vs-base deltas
+- `bundles/0_8b/finetuned-v2/eliza-1-0_8b-sft.gguf`
+- provenance metadata tying the artifact to `elizaos/eliza-1-training/sft/0_8b`
+- baseline and finetuned `eliza_bench` reports
+- baseline and finetuned `native_tool_call` reports
+- baseline and finetuned `structured_response` reports
+- `evidence/training/fine-tune-comparison.json` with
+  `comparisons.0_8b.passed=true` and `beatsBaseline=true`
+
+Do not reuse the legacy `0_6b` SFT artifact or comparison reports for the
+active release gate; the live audit rejects legacy-only evidence.
 
 ## DFlash Drafter
 
@@ -46,12 +63,16 @@ Distill the smallest drafter only after the 0.8B target model is fixed:
 ```bash
 bash scripts/dflash/jobs/distill_dflash_0_8b.sh
 python scripts/dflash/validate_drafter.py \
-  --target bundles/0_8b/text/eliza-1-0_8b-128k.gguf \
-  --drafter bundles/0_8b/dflash/drafter-0_8b.gguf
+  --tier 0_8b \
+  --target-gguf bundles/0_8b/text/eliza-1-0_8b-256k.gguf \
+  --drafter-gguf bundles/0_8b/dflash/drafter-0_8b.gguf \
+  --report-out bundles/0_8b/dflash/validation-real.json
 ```
 
 Publish only if the DFlash acceptance gate improves or preserves latency
 without regressing correctness.
+The half-context 128k text GGUF remains a runtime variant, but drafter
+validation targets the native 256k text artifact.
 
 ## ASR
 

@@ -12,6 +12,7 @@ playwright-report-synpress
 
 # Next.js
 /.next/
+/.next-build/
 /out/
 .turbo
 
@@ -40,4 +41,3 @@ next-env.d.ts
 
 # Synpress
 .cache-synpress
-

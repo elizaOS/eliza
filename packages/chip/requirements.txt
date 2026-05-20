@@ -1,7 +1,14 @@
 cocotb>=1.9,<2
+cocotb-coverage>=1.2,<2
+hypothesis>=6,<7
 pytest>=9,<10
 numpy>=2,<3
+scipy>=1.14,<2
 pyyaml>=6,<7
+matplotlib>=3.8,<4
+pillow>=10,<13
+trimesh>=4,<5
+cadquery>=2.7,<3
 ruff>=0.8,<1
 mypy>=1.13,<2
 yamllint>=1.35,<2

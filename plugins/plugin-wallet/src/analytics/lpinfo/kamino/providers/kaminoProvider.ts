@@ -484,7 +484,7 @@ async function generateEnhancedKaminoLendingReport(
 ): Promise<string> {
   try {
     // Create a focused prompt for the LLM
-    const lendingPrompt = `You are a professional DeFi analyst specializing in Kamino Finance lending protocols. Generate a comprehensive, well-crafted lending analysis report for the user.
+    const lendingPrompt = `Generate a comprehensive lending analysis report for Kamino Finance lending.
 
 USER ACCOUNT DATA:
 ${formatAccountForPrompt(data.account)}

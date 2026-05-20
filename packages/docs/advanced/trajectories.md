@@ -58,4 +58,4 @@ The detail view for an individual trajectory shows:
 | POST | `/api/trajectories/export` | Export trajectories (JSON, CSV, ART, or ZIP) |
 | DELETE | `/api/trajectories` | Delete trajectories (by IDs or all) |
 
-See the [REST API Reference](/rest/trajectories) for full endpoint documentation.
+See the REST API Reference for full endpoint documentation.

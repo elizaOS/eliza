@@ -1,9 +1,0 @@
-{
-  "appName": "Milady",
-  "appId": "ai.milady.milady",
-  "namespace": "milady",
-  "urlScheme": "milady",
-  "configDirName": "Milady",
-  "appDescription": "Open framework for autonomous agents",
-  "buildVariant": "direct"
-}

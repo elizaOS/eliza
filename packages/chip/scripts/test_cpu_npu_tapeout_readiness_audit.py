@@ -108,13 +108,7 @@ def test_benchmark_release_rows_enumerate_dry_run_blockers() -> None:
                         {
                             "name": "tflite_e1_npu",
                             "status": "blocked",
-                            "blocked_requirements": [
-                                {
-                                    "kind": "executable",
-                                    "name": "benchmark_model",
-                                    "reason": "missing_executable",
-                                }
-                            ],
+                            "blocked_requirements": [],
                             "blocked_assets": [
                                 {
                                     "kind": "capability_artifact",
@@ -126,7 +120,8 @@ def test_benchmark_release_rows_enumerate_dry_run_blockers() -> None:
                                 {
                                     "kind": "executable",
                                     "name": "benchmark_model",
-                                    "blocked_reason": "repo_local_host_smoke_tool",
+                                    "available": True,
+                                    "path": "/tmp/tools/bin/benchmark_model",
                                 }
                             ],
                         },
@@ -150,12 +145,48 @@ def test_benchmark_release_rows_enumerate_dry_run_blockers() -> None:
         if by_id["npu_arch_sim_sota_2028"]["status"] != "pass":
             raise AssertionError("simulator-only planned row should pass release-readiness audit")
         if by_id["tflite_e1_npu"]["blocked_requirement_names"] != [
-            "benchmark_model",
             "benchmarks/capabilities/e1_npu_nnapi.proof.json",
         ]:
             raise AssertionError(by_id["tflite_e1_npu"]["blocked_requirement_names"])
-        if by_id["tflite_e1_npu"]["rejected_host_smoke_tools"] != ["benchmark_model"]:
+        if by_id["tflite_e1_npu"]["rejected_host_smoke_tools"] != []:
             raise AssertionError(by_id["tflite_e1_npu"]["rejected_host_smoke_tools"])
+
+
+def test_chipyard_preflight_summary_accepts_fallback_report() -> None:
+    module = load_check_module()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        module.ROOT = root
+        report = root / "benchmarks/results/chipyard/bootstrap-preflight.json"
+        module.CHIPYARD_IMPORT_PREFLIGHT_REPORTS = (
+            root / "build/chipyard/eliza_rocket/bootstrap-preflight.json",
+            report,
+        )
+        report.parent.mkdir(parents=True)
+        report.write_text(
+            json.dumps(
+                {
+                    "schema": "eliza.cpu_ap_bootstrap_preflight.v1",
+                    "status": "pass",
+                    "checkout": "external/chipyard",
+                    "chipyard": {
+                        "tag": "main-2026-05-20",
+                        "commit": "48f904aefbb3903dce6efa7901982642853ae6a7",
+                    },
+                    "selected_path": {"config_name": "ElizaRocketConfig"},
+                    "blockers": [],
+                    "errors": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        summary = module.chipyard_import_preflight_summary()
+        if summary["status"] != "pass":
+            raise AssertionError(summary)
+        if summary["artifact"] != "benchmarks/results/chipyard/bootstrap-preflight.json":
+            raise AssertionError(summary)
 
 
 def main() -> int:
@@ -163,6 +194,7 @@ def main() -> int:
         test_repo_local_flow_tools_count_as_available,
         test_host_smoke_benchmark_model_stays_blocked,
         test_benchmark_release_rows_enumerate_dry_run_blockers,
+        test_chipyard_preflight_summary_accepts_fallback_report,
     ):
         test()
         print(f"PASS {test.__name__}")

@@ -6,10 +6,15 @@
  */
 
 import { createHash, randomUUID } from "crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { dbWrite } from "../../../db/client";
-import { agentPhoneNumbers, type NewPhoneMessageLog, phoneMessageLog } from "../../../db/schemas";
+import { agentPhoneContacts } from "../../../db/schemas/agent-phone-contacts";
+import {
+  agentPhoneNumbers,
+  type NewPhoneMessageLog,
+  phoneMessageLog,
+} from "../../../db/schemas/agent-phone-numbers";
 import { ObjectNamespaces } from "../../storage/object-namespace";
 import { offloadTextField } from "../../storage/object-store";
 import { logger } from "../../utils/logger";
@@ -32,8 +37,73 @@ const messageMetadataSchema = z
   )
   .optional();
 
+function isUndefinedTableError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  if ("code" in error && (error as { code?: unknown }).code === "42P01") {
+    return true;
+  }
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause && cause !== error) return isUndefinedTableError(cause);
+  const message = (error as { message?: unknown }).message;
+  return (
+    typeof message === "string" &&
+    message.includes('relation "agent_phone_contacts" does not exist')
+  );
+}
+
 // Maximum metadata size to prevent DoS via large payloads (10KB)
 const MAX_METADATA_SIZE = 10 * 1024;
+
+let ensureAgentPhoneContactsTablePromise: Promise<void> | null = null;
+
+async function ensureAgentPhoneContactsTable(): Promise<void> {
+  ensureAgentPhoneContactsTablePromise ??= (async () => {
+    await dbWrite.execute(sql`
+      CREATE TABLE IF NOT EXISTS "agent_phone_contacts" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE cascade,
+        "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE cascade,
+        "agent_id" uuid NOT NULL REFERENCES "agent_sandboxes"("id") ON DELETE cascade,
+        "provider" text NOT NULL,
+        "contact_identifier" text NOT NULL,
+        "contact_display_name" text,
+        "first_contacted_at" timestamp with time zone DEFAULT now() NOT NULL,
+        "last_contacted_at" timestamp with time zone DEFAULT now() NOT NULL,
+        "last_inbound_at" timestamp with time zone,
+        "last_outbound_at" timestamp with time zone,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "metadata" text DEFAULT '{}' NOT NULL,
+        "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+        "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+      )
+    `);
+    await dbWrite.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS "agent_phone_contacts_agent_contact_idx"
+      ON "agent_phone_contacts" ("provider", "contact_identifier", "agent_id")
+    `);
+    await dbWrite.execute(sql`
+      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_lookup_idx"
+      ON "agent_phone_contacts" ("provider", "contact_identifier", "is_active", "last_contacted_at")
+    `);
+    await dbWrite.execute(sql`
+      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_agent_idx"
+      ON "agent_phone_contacts" ("agent_id")
+    `);
+    await dbWrite.execute(sql`
+      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_organization_idx"
+      ON "agent_phone_contacts" ("organization_id")
+    `);
+    await dbWrite.execute(sql`
+      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_user_idx"
+      ON "agent_phone_contacts" ("user_id")
+    `);
+  })().catch((error) => {
+    ensureAgentPhoneContactsTablePromise = null;
+    throw error;
+  });
+
+  return ensureAgentPhoneContactsTablePromise;
+}
 
 async function preparePhoneMessagePayload(
   data: NewPhoneMessageLog,
@@ -166,6 +236,10 @@ export interface SendMessageParams {
   provider: "twilio" | "blooio" | "whatsapp";
   mediaUrls?: string[];
   organizationId: string;
+  agentId?: string;
+  agentOrganizationId?: string;
+  agentUserId?: string;
+  contactDisplayName?: string;
 }
 
 class MessageRouterService {
@@ -429,11 +503,17 @@ class MessageRouterService {
       });
 
       if (params.provider === "twilio") {
-        return await this.sendViaTwilio(params);
+        const sent = await this.sendViaTwilio(params);
+        if (sent) await this.recordAgentPhoneContact(params);
+        return sent;
       } else if (params.provider === "blooio") {
-        return await this.sendViaBlooio(params);
+        const sent = await this.sendViaBlooio(params);
+        if (sent) await this.recordAgentPhoneContact(params);
+        return sent;
       } else if (params.provider === "whatsapp") {
-        return await this.sendViaWhatsApp(params);
+        const sent = await this.sendViaWhatsApp(params);
+        if (sent) await this.recordAgentPhoneContact(params);
+        return sent;
       }
 
       logger.error("[MessageRouter] Unknown provider", {
@@ -443,6 +523,78 @@ class MessageRouterService {
     } catch (error) {
       logger.error("[MessageRouter] Error sending message", { error });
       return false;
+    }
+  }
+
+  private normalizeContactIdentifier(value: string): string {
+    const trimmed = value.trim();
+    return trimmed.includes("@") ? trimmed.toLowerCase() : normalizePhoneNumber(trimmed);
+  }
+
+  private async recordAgentPhoneContact(params: SendMessageParams): Promise<void> {
+    if (!params.agentId || !params.agentOrganizationId || !params.agentUserId) {
+      return;
+    }
+
+    const agentId = params.agentId;
+    const agentOrganizationId = params.agentOrganizationId;
+    const agentUserId = params.agentUserId;
+    const contactIdentifier = this.normalizeContactIdentifier(params.to);
+    if (!contactIdentifier) {
+      return;
+    }
+
+    const now = new Date();
+    const contactDisplayName = params.contactDisplayName ?? null;
+    const contactValues: typeof agentPhoneContacts.$inferInsert = {
+      organization_id: agentOrganizationId,
+      user_id: agentUserId,
+      agent_id: agentId,
+      provider: params.provider,
+      contact_identifier: contactIdentifier,
+      contact_display_name: contactDisplayName,
+      first_contacted_at: now,
+      last_contacted_at: now,
+      last_outbound_at: now,
+      is_active: true,
+    };
+    const upsert = async () =>
+      await dbWrite
+        .insert(agentPhoneContacts)
+        .values(contactValues)
+        .onConflictDoUpdate({
+          target: [
+            agentPhoneContacts.provider,
+            agentPhoneContacts.contact_identifier,
+            agentPhoneContacts.agent_id,
+          ],
+          set: {
+            organization_id: agentOrganizationId,
+            user_id: agentUserId,
+            contact_display_name: contactDisplayName,
+            last_contacted_at: now,
+            last_outbound_at: now,
+            is_active: true,
+            updated_at: now,
+          },
+        });
+
+    try {
+      await upsert();
+    } catch (error) {
+      if (isUndefinedTableError(error)) {
+        try {
+          await ensureAgentPhoneContactsTable();
+          await upsert();
+          return;
+        } catch (ensureError) {
+          logger.warn("[MessageRouter] agent_phone_contacts table is not migrated yet", {
+            error: ensureError instanceof Error ? ensureError.message : String(ensureError),
+          });
+          return;
+        }
+      }
+      throw error;
     }
   }
 

@@ -5,7 +5,7 @@ import { config as loadDotEnv } from "dotenv";
 
 import { character } from "./character";
 
-function requireEnv(key: string): string {
+export function requireEnv(key: string): string {
   const value = process.env[key];
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`Missing required environment variable: ${key}`);
@@ -13,7 +13,7 @@ function requireEnv(key: string): string {
   return value;
 }
 
-function validateEnvironment(): void {
+export function validateEnvironment(): void {
   // OpenAI is the model provider for this example.
   requireEnv("OPENAI_API_KEY");
 
@@ -23,7 +23,7 @@ function validateEnvironment(): void {
   requireEnv("FARCASTER_NEYNAR_API_KEY");
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   // Load environment variables from parent directory and current directory.
   loadDotEnv({ path: "../.env" });
   loadDotEnv();
@@ -78,8 +78,10 @@ async function main(): Promise<void> {
   await new Promise(() => {});
 }
 
-main().catch((err) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`Fatal error: ${message}`);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Fatal error: ${message}`);
+    process.exit(1);
+  });
+}

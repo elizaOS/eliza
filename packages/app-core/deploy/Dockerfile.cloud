@@ -18,8 +18,14 @@ ARG REVISION=""
 # Format: https://cdn.jsdelivr.net/gh/{org}/{repo}@{tag}/packages/app/public/
 # Leave empty for local/dev builds (assets served from origin).
 ARG VITE_ASSET_BASE_URL=""
+# BUN_BASE selects the Bun base image used by the `deps` stage. Default targets
+# linux/amd64 + linux/arm64 via upstream oven/bun. For linux/riscv64 (no upstream
+# image — oven-sh/bun#6266, #21923), build a local Bun image via
+# packages/app-core/scripts/bun-riscv64/build.sh and pass --build-arg
+# BUN_BASE=<local-tag>. The runtime stages are node:slim and arch-portable.
+ARG BUN_BASE=oven/bun:${BUN_VERSION}-slim
 
-FROM oven/bun:${BUN_VERSION}-slim AS deps
+FROM ${BUN_BASE} AS deps
 WORKDIR /src
 
 # Copy only the manifests Bun needs to resolve the production dependency graph.

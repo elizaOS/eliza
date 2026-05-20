@@ -159,7 +159,10 @@ question for v1.0.
 optional `.img` USB image and needs UDisks (a D-Bus daemon + GI
 bindings) that the container doesn't carry. It runs *after* the `.iso`
 is fully built. `build-iso.sh` treats a `lb build` failure with the
-`.iso` present as success — the `.iso` is the deliverable and is fine
-for QEMU testing and isohybrid USB writes. Generating the `.img`
-properly (UDisks-in-container, or a separate step) is revisited if/when
-Phase 10 bare-metal work needs it.
+`.iso` present as success for VM/CD-ROM testing, but the `.iso` is not
+the final USB deliverable. Persistent Storage expects the USB-image
+layout, including the upstream-compatible internal GPT system partition
+name. Release and hardware validation must generate and write the `.img`
+artifact, either in a UDisks-capable build step or via
+`ELIZAOS_CREATE_USB_IMAGE_FROM_ISO=1 scripts/usb-write.sh ...` on a Linux
+host.

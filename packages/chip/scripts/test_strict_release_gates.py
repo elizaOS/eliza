@@ -105,6 +105,12 @@ def main() -> int:
             required_tokens=("product release check failed", "KiCad release blockers"),
         ),
         Check(
+            name="SOTA parity strict audit blocks until full phone evidence exists",
+            command=["python3", "scripts/check_sota_parity_audit.py", "--strict"],
+            expected_codes={2},
+            required_tokens=("STATUS: BLOCKED sota_parity",),
+        ),
+        Check(
             name="software bsp evidence blocks missing external Android/Linux logs",
             command=["python3", "scripts/check_software_bsp.py", "all", "--require-evidence"],
             expected_codes={1},
@@ -125,7 +131,12 @@ def main() -> int:
             command=["scripts/run_renode.sh", "--check"],
             expected_codes={2},
             required_tokens=("STATUS: BLOCKED renode.check", "Renode executable missing"),
-            env={"PATH": "/usr/bin:/bin", "REQUIRE_RENODE": "1"},
+            env={
+                "PATH": "/usr/bin:/bin",
+                "REQUIRE_RENODE": "1",
+                "ELIZA_RENODE_USE_REPO_TOOLS": "0",
+                "RENODE_STATUS_REPORT": "build/renode/unavailable-test-status.json",
+            },
         ),
         Check(
             name="benchmark strict blocks missing calibrated assets",

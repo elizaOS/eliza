@@ -1,0 +1,508 @@
+"""Behavioural Python model of the Eliza E1 BPU.
+
+This is a functional companion to ``rtl/cpu/bpu/bpu_top.sv``: every storage
+table, history register, and update rule has the same shape as the RTL, but
+the data structures are dicts/lists for iteration speed. The model is used
+by :mod:`benchmarks.cpu.branch.run_mpki` to evaluate MPKI on branch traces
+without paying for a cycle-accurate cosim.
+
+The numerical results of this model are not silicon evidence. They are a
+pre-silicon planning tool that complements the cocotb regression. Real
+phone-class MPKI claims remain blocked until the harness ingests SPEC, AOSP,
+and JS-engine traces — the policy is enforced by
+``scripts/check_branch_prediction.py`` and the gate JSON it writes.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+
+BR_NONE = 0
+BR_COND = 1
+BR_CALL = 2
+BR_RET = 3
+# Indirect jump (e.g. switch dispatch, vtable, PLT). Predicted by ITTAGE
+# but does NOT push or pop the RAS. Kept distinct from BR_CALL so that
+# real traces (CBP-5, SPEC, AOSP) do not corrupt the RAS.
+BR_IND = 4
+
+# Per-table geometry mirrors rtl/cpu/bpu/bpu_pkg.sv.
+DEFAULT_GEOMETRY: dict[str, object] = {
+    "FETCH_BLOCK_BYTES": 32,
+    "BIM_ENTRIES": 16384,
+    "BIM_CTR_W": 2,
+    "TAGE_TABLES": 5,
+    "TAGE_ENTRIES_TABLE": 4096,
+    "TAGE_TAG_W": 8,
+    "TAGE_CTR_W": 3,
+    "TAGE_USEFUL_W": 2,
+    "TAGE_HIST_LEN": (8, 13, 32, 64, 119),
+    "SC_TABLES": 4,
+    "SC_ENTRIES_TABLE": 512,
+    "SC_CTR_W": 6,
+    "SC_HIST_LEN": (0, 4, 10, 16),
+    "SC_THRESH_INIT": 6,
+    "LOOP_ENTRIES": 64,
+    "LOOP_CTR_W": 14,
+    "LOOP_CONF_W": 3,
+    "FTB_ENTRIES": 2048,
+    "FTB_WAYS": 4,
+    "UFTB_ENTRIES": 512,
+    "UFTB_WAYS": 4,
+    "RAS_ARCH_ENTRIES": 32,
+    "RAS_SPEC_ENTRIES": 64,
+    "ITTAGE_TABLES": 5,
+    "ITTAGE_ENTRIES": (256, 256, 512, 512, 512),
+    "ITTAGE_HIST_LEN": (4, 8, 13, 16, 32),
+    "ITTAGE_TAG_W": 9,
+    "ITTAGE_CTR_W": 3,
+}
+
+
+@dataclass
+class BranchEvent:
+    """A single retired branch event consumed by the model.
+
+    ``call_return_pc`` is the architectural fall-through address that
+    should be pushed onto the RAS when ``kind == BR_CALL``. For CBP-5
+    traces (RV64 / ARM64) that is ``pc + 4``; the synthetic generators
+    use larger strides and rely on the default of
+    ``pc + FETCH_BLOCK_BYTES``. ``None`` means "derive from the geometry
+    default".
+    """
+
+    pc: int
+    target: int
+    taken: bool
+    kind: int
+    call_return_pc: int | None = None
+
+
+def _mask(width: int) -> int:
+    return (1 << width) - 1
+
+
+def _fold(value: int, width: int) -> int:
+    out = 0
+    while value:
+        out ^= value & _mask(width)
+        value >>= width
+    return out
+
+
+def _index_hash(pc: int, hist: int, hist_len: int, width: int, salt: int) -> int:
+    pc_folded = _fold(pc, width)
+    hist_folded = _fold(hist & _mask(hist_len), width)
+    return (pc_folded ^ hist_folded ^ salt) & _mask(width)
+
+
+def _tag_hash(pc: int, hist: int, hist_len: int, width: int, salt: int) -> int:
+    pc_folded = _fold(pc, width)
+    hist_folded = _fold(hist & _mask(hist_len), width)
+    # Rotate the history fold so tag and index do not collapse.
+    rot = ((hist_folded << 1) | (hist_folded >> (width - 1))) & _mask(width)
+    return (pc_folded ^ rot ^ salt) & _mask(width)
+
+
+@dataclass
+class _BimodalTable:
+    entries: list[int]
+    ctr_w: int
+
+    def lookup(self, pc: int) -> bool:
+        idx = (pc >> 1) % len(self.entries)
+        return self.entries[idx] >> (self.ctr_w - 1) == 1
+
+    def update(self, pc: int, taken: bool) -> None:
+        idx = (pc >> 1) % len(self.entries)
+        ctr = self.entries[idx]
+        if taken and ctr != _mask(self.ctr_w):
+            self.entries[idx] = ctr + 1
+        elif not taken and ctr != 0:
+            self.entries[idx] = ctr - 1
+
+
+@dataclass
+class _TageTable:
+    entries_count: int
+    tag_w: int
+    ctr_w: int
+    useful_w: int
+    hist_len: int
+    table_id: int
+    storage: dict[int, dict[str, int]] = field(default_factory=dict)
+
+    def _index_tag(self, pc: int, hist: int) -> tuple[int, int]:
+        idx_w = max(1, (self.entries_count - 1).bit_length())
+        idx = _index_hash(pc, hist, self.hist_len, idx_w, self.table_id)
+        tag = _tag_hash(pc, hist, self.hist_len, self.tag_w, self.table_id + 1)
+        return idx % self.entries_count, tag
+
+    def lookup(self, pc: int, hist: int) -> dict | None:
+        idx, tag = self._index_tag(pc, hist)
+        entry = self.storage.get(idx)
+        if entry is None or entry["tag"] != tag:
+            return None
+        return entry
+
+    def update(self, pc: int, hist: int, taken: bool, correct: bool) -> None:
+        idx, _tag = self._index_tag(pc, hist)
+        entry = self.storage.get(idx)
+        if entry is None:
+            return
+        if taken and entry["ctr"] != _mask(self.ctr_w):
+            entry["ctr"] += 1
+        elif not taken and entry["ctr"] != 0:
+            entry["ctr"] -= 1
+        if correct and entry["useful"] < _mask(self.useful_w):
+            entry["useful"] += 1
+
+    def try_allocate(self, pc: int, hist: int, taken: bool) -> bool:
+        idx, tag = self._index_tag(pc, hist)
+        existing = self.storage.get(idx)
+        if existing is not None and existing["useful"] != 0:
+            return False
+        center_high = 1 << (self.ctr_w - 1)
+        center_low = center_high - 1
+        self.storage[idx] = {
+            "tag": tag,
+            "ctr": center_high if taken else center_low,
+            "useful": 0,
+        }
+        return True
+
+
+@dataclass
+class _Tage:
+    geo: dict
+    tables: list[_TageTable]
+    bim: _BimodalTable
+
+    @classmethod
+    def build(cls, geo: dict) -> _Tage:
+        bim = _BimodalTable(
+            entries=[1 << (geo["BIM_CTR_W"] - 1)] * geo["BIM_ENTRIES"],
+            ctr_w=geo["BIM_CTR_W"],
+        )
+        tables = [
+            _TageTable(
+                entries_count=geo["TAGE_ENTRIES_TABLE"],
+                tag_w=geo["TAGE_TAG_W"],
+                ctr_w=geo["TAGE_CTR_W"],
+                useful_w=geo["TAGE_USEFUL_W"],
+                hist_len=geo["TAGE_HIST_LEN"][t],
+                table_id=t,
+            )
+            for t in range(geo["TAGE_TABLES"])
+        ]
+        return cls(geo=geo, tables=tables, bim=bim)
+
+    def predict(self, pc: int, hist: int) -> tuple[bool, int, bool]:
+        provider = 0
+        provider_taken = self.bim.lookup(pc)
+        provider_ctr = 0
+        for t_idx in range(len(self.tables) - 1, -1, -1):
+            entry = self.tables[t_idx].lookup(pc, hist)
+            if entry is not None:
+                provider = t_idx + 1
+                provider_ctr = entry["ctr"]
+                provider_taken = (entry["ctr"] >> (self.geo["TAGE_CTR_W"] - 1)) == 1
+                break
+        center_low = (1 << (self.geo["TAGE_CTR_W"] - 1)) - 1
+        center_high = 1 << (self.geo["TAGE_CTR_W"] - 1)
+        low_conf = provider != 0 and provider_ctr in (center_low, center_high)
+        return provider_taken, provider, low_conf
+
+    def update(
+        self,
+        pc: int,
+        hist_pred_time: int,
+        hist_resolve_time: int,
+        taken: bool,
+        provider: int,
+        misp: bool,
+    ) -> None:
+        self.bim.update(pc, taken)
+        if provider > 0:
+            self.tables[provider - 1].update(pc, hist_resolve_time, taken, not misp)
+        if misp:
+            # Allocate the next-longer history table that has a victim.
+            for higher in range(provider, len(self.tables)):
+                if self.tables[higher].try_allocate(pc, hist_resolve_time, taken):
+                    return
+
+
+@dataclass
+class _LoopPredictor:
+    entries: int
+    storage: dict[int, dict[str, int]] = field(default_factory=dict)
+    rr: int = 0
+
+    def predict(self, pc: int) -> tuple[bool, bool]:
+        entry = self.storage.get(pc & 0xFFFF)
+        if entry is None:
+            return False, False
+        confident = entry["conf"] == 0x7
+        taken = confident and entry["iter_cur"] < entry["iter_max"]
+        return confident, taken
+
+    def update(self, pc: int, taken: bool) -> None:
+        key = pc & 0xFFFF
+        entry = self.storage.get(key)
+        if entry is None:
+            if taken:
+                self.storage[key] = {"iter_cur": 1, "iter_max": 0, "conf": 0}
+            return
+        if taken:
+            entry["iter_cur"] += 1
+        else:
+            if entry["iter_max"] == entry["iter_cur"]:
+                if entry["conf"] < 0x7:
+                    entry["conf"] += 1
+            else:
+                entry["iter_max"] = entry["iter_cur"]
+                entry["conf"] = 0
+            entry["iter_cur"] = 0
+
+
+@dataclass
+class _RAS:
+    spec_capacity: int
+    arch_capacity: int
+    spec: list[int] = field(default_factory=list)
+    arch: list[int] = field(default_factory=list)
+    overflow: int = 0
+
+    def push(self, addr: int) -> bool:
+        if len(self.spec) == self.spec_capacity:
+            self.overflow += 1
+            return False
+        self.spec.append(addr)
+        return True
+
+    def pop(self) -> int | None:
+        if not self.spec:
+            return None
+        if self.overflow > 0:
+            self.overflow -= 1
+            return self.spec[-1]
+        return self.spec.pop()
+
+    def commit_push(self, addr: int) -> None:
+        if len(self.arch) == self.arch_capacity:
+            self.arch.pop(0)
+        self.arch.append(addr)
+
+    def commit_pop(self) -> None:
+        if self.arch:
+            self.arch.pop()
+
+
+@dataclass
+class _FTB:
+    entries: int
+    storage: dict[int, dict] = field(default_factory=dict)
+
+    def lookup(self, pc: int):
+        return self.storage.get(pc)
+
+    def update(self, pc: int, target: int, kind: int) -> None:
+        self.storage[pc] = {"target": target, "kind": kind}
+        # Bound storage at `entries`; oldest insertions are dropped first.
+        if len(self.storage) > self.entries:
+            oldest = next(iter(self.storage))
+            del self.storage[oldest]
+
+
+@dataclass
+class _ITTAGE:
+    geo: dict
+    storage: list[dict[int, dict]] = field(default_factory=list)
+
+    @classmethod
+    def build(cls, geo: dict) -> _ITTAGE:
+        return cls(geo=geo, storage=[{} for _ in range(geo["ITTAGE_TABLES"])])
+
+    def _index_tag(self, table_id: int, pc: int, hist: int) -> tuple[int, int]:
+        size = self.geo["ITTAGE_ENTRIES"][table_id]
+        idx_w = max(1, (size - 1).bit_length())
+        idx = _index_hash(pc, hist, self.geo["ITTAGE_HIST_LEN"][table_id], idx_w, table_id) % size
+        tag = _tag_hash(
+            pc, hist, self.geo["ITTAGE_HIST_LEN"][table_id], self.geo["ITTAGE_TAG_W"], table_id + 7
+        )
+        return idx, tag
+
+    def predict(self, pc: int, hist: int) -> tuple[int | None, int]:
+        for t in range(self.geo["ITTAGE_TABLES"] - 1, -1, -1):
+            idx, tag = self._index_tag(t, pc, hist)
+            entry = self.storage[t].get(idx)
+            if entry is not None and entry["tag"] == tag:
+                return entry["target"], t + 1
+        return None, 0
+
+    def update(self, pc: int, hist: int, target: int, provider: int, misp: bool) -> None:
+        if provider > 0:
+            idx, tag = self._index_tag(provider - 1, pc, hist)
+            entry = self.storage[provider - 1].get(idx)
+            if entry is not None and entry["tag"] == tag:
+                if entry["target"] == target:
+                    entry["ctr"] = min(entry["ctr"] + 1, _mask(self.geo["ITTAGE_CTR_W"]))
+                elif entry["ctr"] == 0:
+                    self.storage[provider - 1].pop(idx, None)
+                else:
+                    entry["ctr"] -= 1
+        if misp:
+            for higher in range(max(provider, 0), self.geo["ITTAGE_TABLES"]):
+                idx, tag = self._index_tag(higher, pc, hist)
+                if idx not in self.storage[higher]:
+                    self.storage[higher][idx] = {
+                        "tag": tag,
+                        "target": target,
+                        "ctr": 1 << (self.geo["ITTAGE_CTR_W"] - 1),
+                    }
+                    return
+
+
+@dataclass
+class BPUSimulator:
+    """End-to-end BPU model, indexable by branch events."""
+
+    geometry: dict = field(default_factory=lambda: dict(DEFAULT_GEOMETRY))
+    tage: _Tage = field(init=False)
+    loop: _LoopPredictor = field(init=False)
+    ras: _RAS = field(init=False)
+    ftb: _FTB = field(init=False)
+    ittage: _ITTAGE = field(init=False)
+    hist: int = 0
+    counters: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+
+    def __post_init__(self) -> None:
+        self.tage = _Tage.build(self.geometry)
+        self.loop = _LoopPredictor(entries=self.geometry["LOOP_ENTRIES"])
+        self.ras = _RAS(
+            spec_capacity=self.geometry["RAS_SPEC_ENTRIES"],
+            arch_capacity=self.geometry["RAS_ARCH_ENTRIES"],
+        )
+        self.ftb = _FTB(entries=self.geometry["FTB_ENTRIES"])
+        self.ittage = _ITTAGE.build(self.geometry)
+
+    def feed(self, events: Iterable[BranchEvent]) -> None:
+        for event in events:
+            self._step(event)
+
+    def _predict(self, event: BranchEvent) -> tuple[bool, int]:
+        ftb_entry = self.ftb.lookup(event.pc)
+        if event.kind == BR_RET:
+            top = self.ras.pop()
+            predicted_target = (
+                top if top is not None else (event.pc + self.geometry["FETCH_BLOCK_BYTES"])
+            )
+            return True, predicted_target
+        if event.kind == BR_CALL:
+            itt_target, _provider = self.ittage.predict(event.pc, self.hist)
+            target = (
+                itt_target
+                if itt_target is not None
+                else (
+                    ftb_entry["target"]
+                    if ftb_entry
+                    else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+                )
+            )
+            return_pc = (
+                event.call_return_pc
+                if event.call_return_pc is not None
+                else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+            )
+            self.ras.push(return_pc)
+            return True, target
+        if event.kind == BR_IND:
+            itt_target, _provider = self.ittage.predict(event.pc, self.hist)
+            target = (
+                itt_target
+                if itt_target is not None
+                else (
+                    ftb_entry["target"]
+                    if ftb_entry
+                    else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+                )
+            )
+            return True, target
+        if event.kind == BR_COND:
+            loop_conf, loop_taken = self.loop.predict(event.pc)
+            tage_taken, provider, low_conf = self.tage.predict(event.pc, self.hist)
+            taken = loop_taken if loop_conf else tage_taken
+            target = (
+                ftb_entry["target"]
+                if (ftb_entry and taken)
+                else (event.pc + self.geometry["FETCH_BLOCK_BYTES"])
+            )
+            return taken, target
+        return False, event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+
+    def _step(self, event: BranchEvent) -> None:
+        pred_taken, pred_target = self._predict(event)
+        actual_taken = event.taken
+        actual_target = event.target
+        misp = (pred_taken != actual_taken) or (actual_taken and pred_target != actual_target)
+
+        # Update PMU-style counters.
+        self.counters["pred"] += 1
+        if event.kind == BR_COND:
+            self.counters["cond"] += 1
+            if misp:
+                self.counters["cond_misp"] += 1
+        elif event.kind == BR_CALL:
+            self.counters["call"] += 1
+            if misp:
+                self.counters["ind_misp"] += 1
+        elif event.kind == BR_IND:
+            self.counters["ind"] = self.counters.get("ind", 0) + 1
+            if misp:
+                self.counters["ind_misp"] += 1
+        elif event.kind == BR_RET:
+            self.counters["ret"] += 1
+            if misp:
+                self.counters["ret_misp"] += 1
+        if misp:
+            self.counters["misp"] += 1
+
+        # Train tables.
+        if event.kind == BR_COND:
+            _, provider, _low_conf = self.tage.predict(event.pc, self.hist)
+            self.tage.update(event.pc, self.hist, self.hist, actual_taken, provider, misp)
+            self.loop.update(event.pc, actual_taken)
+            self.ftb.update(event.pc, actual_target, event.kind)
+        elif event.kind == BR_CALL:
+            _, provider = self.ittage.predict(event.pc, self.hist)
+            self.ittage.update(event.pc, self.hist, actual_target, provider, misp)
+            return_pc = (
+                event.call_return_pc
+                if event.call_return_pc is not None
+                else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+            )
+            self.ras.commit_push(return_pc)
+            self.ftb.update(event.pc, actual_target, event.kind)
+        elif event.kind == BR_IND:
+            _, provider = self.ittage.predict(event.pc, self.hist)
+            self.ittage.update(event.pc, self.hist, actual_target, provider, misp)
+            self.ftb.update(event.pc, actual_target, event.kind)
+        elif event.kind == BR_RET:
+            self.ras.commit_pop()
+            self.ftb.update(event.pc, actual_target, event.kind)
+
+        # Shift the global history register.
+        if event.kind == BR_COND:
+            self.hist = ((self.hist << 1) | int(actual_taken)) & _mask(
+                self.geometry["TAGE_HIST_LEN"][-1]
+            )
+
+    def mpki(self, instruction_count: int) -> float:
+        if instruction_count <= 0:
+            return float("nan")
+        return self.counters["misp"] * 1000.0 / instruction_count
+
+    def stats(self) -> dict[str, int | float]:
+        return dict(self.counters)

@@ -8,6 +8,9 @@ config="${CHIPYARD_CONFIG:-ElizaRocketConfig}"
 config_package="${CHIPYARD_CONFIG_PACKAGE:-eliza}"
 
 cd "$repo_dir"
+if [ "${CHIPYARD_PREPARE_SPIKE_LIBRARIES:-1}" = "1" ]; then
+	CHIPYARD_CHECKOUT="$checkout" python3 scripts/prepare_chipyard_spike_libraries.py
+fi
 CHIPYARD_CHECKOUT="$checkout" python3 scripts/check_chipyard_verilator_preflight.py
 python3 scripts/check_chipyard_verilator_linux_smoke.py --repair-stale-generated
 
@@ -19,9 +22,23 @@ if [ -z "${RISCV:-}" ] && [ -d "$repo_dir/external/riscv-tools-linux-x64" ]; the
 	RISCV="$repo_dir/external/riscv-tools-linux-x64"
 	export RISCV
 fi
+if [ -z "${RISCV:-}" ] && [ -x "$repo_dir/tools/bin/riscv64-unknown-elf-gcc" ]; then
+	RISCV="$repo_dir/tools"
+	export RISCV
+fi
+if [ -z "${RISCV:-}" ] && [ -x "$repo_dir/external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-gcc" ]; then
+	RISCV="$repo_dir/external/riscv64-linux-gnu/usr"
+	export RISCV
+fi
 if [ -d "$repo_dir/external/riscv-tools-linux-x64/bin" ]; then
 	PATH="$repo_dir/external/riscv-tools-linux-x64/bin:$PATH"
 	export PATH
 fi
+for tool_dir in "$repo_dir/tools/bin" "$repo_dir/external/oss-cad-suite/bin" "$repo_dir/.venv/bin"; do
+	if [ -d "$tool_dir" ]; then
+		PATH="$tool_dir:$PATH"
+	fi
+done
+export PATH
 
 exec make CONFIG="$config" CONFIG_PACKAGE="$config_package" "$@"

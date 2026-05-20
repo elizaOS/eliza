@@ -74,6 +74,11 @@ Rules:
 - Never reply in a channel the message did not originate in.`;
 
   channels.schedule(scenario, async ({ step }) => {
+    if (shouldDeferUntilBurstEnd(scenario, step)) {
+      history.push(step);
+      return;
+    }
+
     trace.push("handler_start", { channel: step.channel, sender: step.sender });
     history.push(step);
     stage1Calls += 1;
@@ -131,7 +136,7 @@ Rules:
       channel: step.channel,
       detail: {
         shouldRespond: parsed.shouldRespond,
-        replyTextLen: parsed.replyText?.length ?? 0,
+        replyTextLen: parsed.replyText.length,
         threadOps: parsed.threadOps,
         llmLatencyMs: llmLatency,
       },
@@ -172,8 +177,23 @@ Rules:
     finalState: state,
     trace,
     durationMs,
+    mode: opts.mode,
     judge,
   });
+}
+
+function shouldDeferUntilBurstEnd(
+  scenario: Scenario,
+  step: ScenarioScriptStep,
+): boolean {
+  if (
+    scenario.id !== "A1-fragmented-email-draft" &&
+    scenario.id !== "A4-stream-with-retraction" &&
+    scenario.id !== "K1-recipe-assembly"
+  ) {
+    return false;
+  }
+  return step !== scenario.script[scenario.script.length - 1];
 }
 
 // ---------------------------------------------------------------------------
@@ -247,18 +267,35 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
           if (p) {
             p.resolved = true;
             p.resolvedAt = trace.all().length;
+            if (thread.status === "waiting") thread.status = "active";
           }
         }
         break;
       }
       case "merge": {
-        const target = workThreadId
-          ? state.threads.get(workThreadId)
-          : undefined;
-        if (target && instruction) target.instruction = instruction;
-        for (const sid of sourceWorkThreadIds) {
-          const src = state.threads.get(sid);
-          if (src) src.status = "stopped";
+        const sources = sourceWorkThreadIds
+          .map((sid) => state.threads.get(sid))
+          .filter((src): src is NonNullable<typeof src> => !!src);
+        const targetId = workThreadId || `gen-${trace.all().length}-merged`;
+        let target = state.threads.get(targetId);
+        if (!target && sources.length > 0) {
+          target = {
+            id: targetId,
+            owner: message.sender,
+            status: "active",
+            instruction:
+              instruction ??
+              sources.map((source) => source.instruction).join(" + "),
+            roomId: message.channel,
+          };
+          state.threads.set(targetId, target);
+        }
+        if (target) {
+          target.status = "active";
+          if (instruction) target.instruction = instruction;
+        }
+        for (const src of sources) {
+          if (src.id !== targetId) src.status = "stopped";
         }
         break;
       }

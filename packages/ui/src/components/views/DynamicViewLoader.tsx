@@ -58,10 +58,15 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/capacitor-system": () => import("@elizaos/capacitor-system"),
   "@elizaos/shared": () => import("@elizaos/shared"),
   "@elizaos/ui": () => import("@elizaos/ui"),
+  "@elizaos/plugin-browser": () => import("@elizaos/plugin-browser"),
+  "@elizaos/ui/api": () => import("../../api/index.ts"),
   "@elizaos/ui/platform": () => import("../../platform/index.ts"),
   "@elizaos/ui/platform/ios-runtime": () =>
     import("../../platform/ios-runtime.ts"),
+  "@elizaos/ui/state": () => import("../../state/index.ts"),
   "@elizaos/ui/state/useApp": () => import("../../state/useApp.ts"),
+  "@elizaos/ui/components/views/TerminalPluginView": () =>
+    import("./TerminalPluginView.tsx"),
   "@elizaos/ui/components/ui/button": () => import("../ui/button.tsx"),
   "@elizaos/ui/components/ui/input": () => import("../ui/input.tsx"),
   "@elizaos/ui/components/ui/spinner": () => import("../ui/spinner.tsx"),

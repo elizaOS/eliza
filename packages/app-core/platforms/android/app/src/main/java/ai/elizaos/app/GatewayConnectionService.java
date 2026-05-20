@@ -14,7 +14,7 @@ import android.os.IBinder;
 
 import androidx.core.app.NotificationCompat;
 
-import app.eliza.R;
+import ai.elizaos.app.R;
 
 /**
  * Foreground service that keeps the Android process alive so the Capacitor

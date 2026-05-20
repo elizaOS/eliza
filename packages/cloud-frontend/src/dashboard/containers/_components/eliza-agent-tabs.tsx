@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
+import { useT } from "@/providers/I18nProvider";
 import { ElizaPoliciesSection } from "./eliza-policies-section";
 import { ElizaTransactionsSection } from "./eliza-transactions-section";
 import { ElizaWalletSection } from "./eliza-wallet-section";
@@ -14,7 +15,20 @@ interface ElizaAgentTabsProps {
 }
 
 export function ElizaAgentTabs({ agentId, children }: ElizaAgentTabsProps) {
+  const t = useT();
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
+  const labels: Record<Tab, string> = {
+    Overview: t("cloud.containers.agentTabs.overview", {
+      defaultValue: "Overview",
+    }),
+    Wallet: t("cloud.containers.agentTabs.wallet", { defaultValue: "Wallet" }),
+    Transactions: t("cloud.containers.agentTabs.transactions", {
+      defaultValue: "Transactions",
+    }),
+    Policies: t("cloud.containers.agentTabs.policies", {
+      defaultValue: "Policies",
+    }),
+  };
 
   return (
     <div className="space-y-6">
@@ -31,7 +45,7 @@ export function ElizaAgentTabs({ agentId, children }: ElizaAgentTabsProps) {
                 : "text-white/40 hover:text-white/70"
             }`}
           >
-            {tab}
+            {labels[tab]}
             {activeTab === tab && (
               <span className="absolute bottom-0 left-0 right-0 h-px bg-[#FF5800]" />
             )}

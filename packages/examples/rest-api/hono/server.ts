@@ -116,7 +116,7 @@ async function getRuntime(): Promise<IAgentRuntime | null> {
 // Hono App
 // ============================================================================
 
-const app = new Hono();
+export const app = new Hono();
 
 // CORS middleware
 app.use("*", cors());
@@ -236,18 +236,20 @@ app.post("/chat", async (c) => {
 // ============================================================================
 
 // Pre-initialize runtime
-getRuntime().then((rt) => {
-  if (rt) {
-    console.log(`\n🌐 elizaOS REST API (Hono)`);
-    console.log(`   http://localhost:${PORT}\n`);
-    console.log(`📚 Endpoints:`);
-    console.log(`   GET  /       - Agent info`);
-    console.log(`   GET  /health - Health check`);
-    console.log(
-      `   POST /chat   - Chat with agent (uses runtime.messageService.handleMessage)\n`,
-    );
-  }
-});
+if (import.meta.main) {
+  getRuntime().then((rt) => {
+    if (rt) {
+      console.log(`\n🌐 elizaOS REST API (Hono)`);
+      console.log(`   http://localhost:${PORT}\n`);
+      console.log(`📚 Endpoints:`);
+      console.log(`   GET  /       - Agent info`);
+      console.log(`   GET  /health - Health check`);
+      console.log(
+        `   POST /chat   - Chat with agent (uses runtime.messageService.handleMessage)\n`,
+      );
+    }
+  });
+}
 
 export default {
   port: PORT,

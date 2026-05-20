@@ -23,6 +23,7 @@ export * from "./cloud-routing";
 export * from "./connectors";
 export * from "./connectors/account-manager";
 export * from "./connectors/connector-config";
+export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
 export * from "./database";
 export * from "./database/inMemoryAdapter";

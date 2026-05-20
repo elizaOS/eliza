@@ -134,6 +134,20 @@ export const hyperliquidPlugin: Plugin = {
     },
     {
       id: "hyperliquid",
+      label: "Hyperliquid XR",
+      description:
+        "Hyperliquid perpetual markets — positions, trading status, and market data",
+      icon: "TrendingUp",
+      path: "/hyperliquid",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "HyperliquidAppView",
+      tags: ["trading", "perps", "hyperliquid", "crypto"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "hyperliquid",
       label: "Hyperliquid TUI",
       description:
         "Terminal Hyperliquid markets, positions, orders, and status",

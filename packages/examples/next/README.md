@@ -5,7 +5,7 @@ A full-stack Next.js chat application using elizaOS AgentRuntime with PGLite and
 ## Quick Start
 
 ```bash
-cd examples/next
+cd packages/examples/next
 bun install
 
 # Set OpenAI key and run
@@ -14,9 +14,19 @@ OPENAI_API_KEY="your-openai-key" bun run dev
 
 Open http://localhost:3000
 
+## Validation
+
+```bash
+bun run test
+bun run typecheck
+bun run build
+```
+
+The default build script is an explicit skip for the known native-binding bundling limitation; use `bun run build:next` when you need opt-in Next.js bundle verification. The local smoke test checks client initialization and streaming chat chunk handling.
+
 ## How It Works
 
-The API route (`app/api/chat/route.ts`) mirrors `examples/chat/chat.ts`:
+The API route (`app/api/chat/route.ts`) mirrors `packages/examples/chat/chat.ts`:
 
 ```typescript
 const character: Character = {

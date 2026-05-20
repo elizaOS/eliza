@@ -111,7 +111,7 @@ export type ModelCategory =
   | "reasoning"
   | "drafter";
 
-export type LocalRuntimeBackend = "node-llama-cpp" | "llama-server";
+export type LocalRuntimeBackend = "capacitor-llama" | "llama-server";
 
 export type OpenVinoDeviceKind = "CPU" | "GPU" | "NPU";
 
@@ -249,7 +249,7 @@ export interface LocalRuntimeOptimizations {
   nativeDflashEvents?: boolean;
   /**
    * Specialised kernels this model requires from the llama-server fork.
-   * The dispatcher uses this to pick `llama-server` over `node-llama-cpp`
+   * The dispatcher uses this to pick `llama-server` over `capacitor-llama`
    * regardless of `preferredBackend`, since the in-process binding cannot
    * provide these kernels.
    */
@@ -521,8 +521,13 @@ export interface HardwareProbe {
   appleSilicon: boolean;
   /** Recommended default bucket based on available memory. */
   recommendedBucket: ModelBucket;
-  /** Source of the probe; "node-llama-cpp" when GPU values come from the binding. */
-  source: "node-llama-cpp" | "os-fallback";
+  /**
+   * Source of the probe. `"capacitor-llama"` when GPU values come from a loaded
+   * Capacitor-llama context (mobile binding or desktop bun:ffi). `"os-fallback"`
+   * means the probe was synthesized from OS-level CPU/RAM only because no
+   * llama.cpp context was available to query for GPU/VRAM state.
+   */
+  source: "capacitor-llama" | "os-fallback";
   /** OpenVINO CPU/GPU/NPU availability hints for Intel hosts. */
   openvino?: OpenVinoHardwareProbe;
   /** Mobile-only details used for minspec, storage, and native DFlash gating. */

@@ -275,6 +275,6 @@ WhatsApp has undocumented rate limits. If the agent sends messages too rapidly, 
 ## Related
 
 - [WhatsApp setup guide](/guides/whatsapp)
-- [WhatsApp plugin reference](/plugin-registry/platform/whatsapp)
+- [WhatsApp plugin reference](/connectors/whatsapp)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

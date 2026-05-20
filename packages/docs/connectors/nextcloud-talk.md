@@ -12,7 +12,7 @@ The Nextcloud Talk connector is an elizaOS plugin that bridges your agent to Nex
 |-------|-------|
 | Package | `@elizaos/plugin-nextcloud-talk` |
 | Config key | `connectors.nextcloud-talk` |
-| Install | `eliza plugins install @elizaos/plugin-nextcloud-talk` |
+| Install | `bun add @elizaos/plugin-nextcloud-talk` |
 
 ## Setup
 
@@ -56,7 +56,7 @@ export NEXTCLOUD_BOT_SECRET=YOUR_BOT_SECRET
 Install the plugin from the registry:
 
 ```bash
-eliza plugins install nextcloud-talk
+bun add nextcloud-talk
 ```
 
 Configure in `~/.eliza/eliza.json`:
@@ -79,7 +79,7 @@ Configure in `~/.eliza/eliza.json`:
 
 1. Ensure your Nextcloud server has Talk enabled.
 2. Create a bot or obtain credentials for the Nextcloud instance.
-3. Install the plugin: `eliza plugins install nextcloud-talk`.
+3. Install the plugin: `bun add nextcloud-talk`.
 4. Set the `NEXTCLOUD_URL` and `NEXTCLOUD_BOT_SECRET` environment variables or configure them inline.
 5. Start your agent.
 
@@ -92,6 +92,6 @@ Configure in `~/.eliza/eliza.json`:
 
 ## Related
 
-- [Nextcloud Talk Plugin Reference](/plugin-registry/platform/nextcloud-talk)
+- [Nextcloud Talk Plugin Reference](/connectors/nextcloud-talk)
 - [Connectors overview](/guides/connectors#nextcloud-talk)
 - [Configuration reference](/configuration)

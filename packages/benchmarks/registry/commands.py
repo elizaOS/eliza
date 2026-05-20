@@ -23,7 +23,6 @@ try:
         _score_from_configbench_json,
         _score_from_contextbench_json,
         _score_from_eliza_format_json,
-        _score_from_gaia_json,
         _score_from_gauntlet_json,
         _score_from_gsm8k_json,
         _score_from_hermes_env_json,
@@ -76,7 +75,6 @@ except ImportError:
         _score_from_configbench_json,
         _score_from_contextbench_json,
         _score_from_eliza_format_json,
-        _score_from_gaia_json,
         _score_from_gauntlet_json,
         _score_from_gsm8k_json,
         _score_from_hermes_env_json,
@@ -224,13 +222,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _realm_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.realm.cli", "--output", str(output_dir)]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+        provider_name = (model.provider or "").strip().lower()
         data_path = extra.get("data_path")
         if isinstance(data_path, str) and data_path.strip():
             args.extend(["--data-path", data_path.strip()])
         categories = extra.get("categories")
         if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
             args.extend(["--categories", *cast(list[str], categories)])
-        elif extra.get("max_tasks") == 1:
+        elif extra.get("use_sample_tasks") is True or extra.get("mock") is True or provider_name == "mock":
             args.append("--use-sample-tasks")
         execution_model = extra.get("execution_model")
         if isinstance(execution_model, str) and execution_model.strip():
@@ -251,7 +250,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             # picked by the in-process elizaOS Python runtime (default) or by the
             # TS bridge (when --provider eliza is set).
             args.extend(["--model", model.model])
-        provider_name = (model.provider or "").strip().lower()
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
@@ -503,104 +501,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _terminalbench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="terminal-bench-*.json")
-
-    def _gaia_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        args = [
-            python,
-            "-m",
-            "elizaos_gaia.cli",
-            "--output",
-            str(output_dir),
-        ]
-        provider_name = (model.provider or "").strip().lower()
-        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"}:
-            args.extend(["--harness", agent])
-        # Route LLM-backed providers through the eliza TS bridge.
-        bridge_providers = {
-            "cerebras",
-            "openai",
-            "groq",
-            "openrouter",
-            "vllm",
-            "eliza",
-            "mock",
-        }
-        if agent == "eliza" or provider_name in bridge_providers:
-            args.extend(["--provider", "eliza"])
-        elif model.provider:
-            args.extend(["--provider", model.provider])
-        if model.model:
-            args.extend(["--model", model.model])
-        if model.temperature is not None:
-            args.extend(["--temperature", str(model.temperature)])
-        dataset = extra.get("dataset")
-        if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
-            args.extend(["--dataset", dataset])
-        else:
-            args.extend(["--dataset", "gaia"])
-        dataset_path = extra.get("dataset_path")
-        if isinstance(dataset_path, str) and dataset_path.strip():
-            args.extend(["--dataset-path", dataset_path])
-        max_q = extra.get("max_questions")
-        if isinstance(max_q, int) and max_q > 0:
-            args.extend(["--max-questions", str(max_q)])
-        else:
-            args.extend(["--max-questions", "3"])
-        quick = extra.get("quick_test")
-        if quick is True:
-            args.append("--quick-test")
-        return args
-
-    def _gaia_result(output_dir: Path) -> Path:
-        # Prefer latest file if present; otherwise grab any latest json under model subdir.
-        try:
-            return find_latest_file(output_dir, glob_pattern="**/gaia-results-latest.json")
-        except FileNotFoundError:
-            return find_latest_file(output_dir, glob_pattern="**/gaia-results_*.json")
-
-    def _gaia_orchestrated_cmd(
-        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
-    ) -> list[str]:
-        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        args = [
-            python,
-            "-m",
-            "elizaos_gaia.orchestrated",
-            "--output",
-            str(output_dir),
-        ]
-        if model.model:
-            args.extend(["--model", model.model])
-        dataset = extra.get("dataset")
-        if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
-            args.extend(["--dataset", dataset])
-        else:
-            args.extend(["--dataset", "gaia"])
-        max_q = extra.get("max_questions")
-        if isinstance(max_q, int) and max_q > 0:
-            args.extend(["--max-questions", str(max_q)])
-        providers = extra.get("providers")
-        legacy_defaults = ["claude-code", "swe-agent", "codex"]
-        if (
-            agent in {"eliza", "hermes", "openclaw"}
-            and isinstance(providers, list)
-            and [str(x) for x in providers] == legacy_defaults
-        ):
-            args.extend(["--providers", agent])
-        elif isinstance(providers, list) and all(isinstance(x, str) for x in providers):
-            args.extend(["--providers", *cast(list[str], providers)])
-        elif agent in {"eliza", "hermes", "openclaw"}:
-            args.extend(["--providers", agent])
-        required_capabilities = extra.get("required_capabilities")
-        if isinstance(required_capabilities, list) and all(isinstance(x, str) for x in required_capabilities):
-            args.extend(["--required-capabilities", *cast(list[str], required_capabilities)])
-        if extra.get("strict_capabilities") is True:
-            args.append("--strict-capabilities")
-        return args
-
-    def _gaia_orchestrated_result(output_dir: Path) -> Path:
-        return output_dir / "gaia-orchestrated-latest.json"
 
     def _tau_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [
@@ -996,11 +896,19 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir / "vision-language-results.json"),
         ]
+        agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        if agent in {"eliza", "hermes", "openclaw"}:
+            args.extend(["--harness", agent])
+        provider_name = str(extra.get("model_provider") or model.provider or "").strip().lower()
+        if provider_name:
+            args.extend(["--model-provider", provider_name])
+        model_name = str(extra.get("model") or model.model or "").strip()
+        if model_name:
+            args.extend(["--model", model_name])
         if extra.get("smoke") is True:
             args.append("--smoke")
         if extra.get("stub") is True or (model.provider or "").strip().lower() == "mock":
             args.append("--stub")
-        _ = model
         return args
 
     def _vision_language_result(output_dir: Path) -> Path:
@@ -1969,6 +1877,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_tokens = extra.get("max_tokens")
         if isinstance(max_tokens, int) and max_tokens > 0:
             args.extend(["--max-tokens", str(max_tokens)])
+        temperature = extra.get("temperature")
+        if (
+            isinstance(temperature, (int, float))
+            and not isinstance(temperature, bool)
+            and temperature >= 0
+        ):
+            args.extend(["--temperature", str(float(temperature))])
         judge_max_tokens = extra.get("judge_max_tokens")
         if isinstance(judge_max_tokens, int) and judge_max_tokens > 0:
             args.extend(["--judge-max-tokens", str(judge_max_tokens)])
@@ -2361,40 +2276,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_terminalbench_cmd,
             locate_result=_terminalbench_result,
             extract_score=_score_from_terminalbench_json,
-        ),
-        BenchmarkDefinition(
-            id="gaia",
-            display_name="GAIA",
-            description="GAIA real-world tasks benchmark",
-            cwd_rel="benchmarks/gaia",
-            requirements=BenchmarkRequirements(
-                env_vars=(),
-                paths=(),
-                notes=(
-                    "Real GAIA/provider runs require dataset and provider key setup. "
-                    "Sample/mock runs are smoke-only and not publishable real scores."
-                ),
-            ),
-            build_command=_gaia_cmd,
-            locate_result=_gaia_result,
-            extract_score=_score_from_gaia_json,
-        ),
-        BenchmarkDefinition(
-            id="gaia_orchestrated",
-            display_name="GAIA (Orchestrated)",
-            description="GAIA sample-backed orchestrated benchmark track",
-            cwd_rel="benchmarks/gaia",
-            requirements=BenchmarkRequirements(
-                env_vars=(),
-                paths=(),
-                notes=(
-                    "Uses the GAIA runner with orchestrator profile defaults. Real rows "
-                    "use provider-backed execution; sample/mock paths are smoke-only."
-                ),
-            ),
-            build_command=_gaia_orchestrated_cmd,
-            locate_result=_gaia_orchestrated_result,
-            extract_score=_score_from_gaia_json,
         ),
         BenchmarkDefinition(
             id="tau_bench",

@@ -61,7 +61,7 @@ bun run start
 
 ### X API v2 auth — `@elizaos/plugin-x`
 
-- `TWITTER_AUTH_MODE` — `env` (default), `oauth`, or `broker`.
+- `TWITTER_AUTH_MODE` — `broker` (default), `oauth`, or `env`.
 
 OAuth 1.0a user context (`TWITTER_AUTH_MODE=env`):
 
@@ -78,7 +78,8 @@ OAuth 2.0 PKCE (`TWITTER_AUTH_MODE=oauth`):
 
 Eliza Cloud broker (`TWITTER_AUTH_MODE=broker`):
 
-- `TWITTER_BROKER_URL`
+- `TWITTER_BROKER_TOKEN` or `ELIZAOS_CLOUD_API_KEY`
+- `TWITTER_BROKER_URL` (optional service URL override)
 
 ### Agent behavior toggles
 
@@ -94,3 +95,13 @@ Eliza Cloud broker (`TWITTER_AUTH_MODE=broker`):
 interactions, timeline, and discovery. Incoming mentions are routed into the
 runtime via `runtime.messageService.handleMessage(...)` so you get the standard
 state-composition → model → action pipeline.
+
+## Validate
+
+```bash
+bun run test
+bun run typecheck
+```
+
+The test suite validates local credential-mode checks without contacting xAI or
+X.

@@ -18,7 +18,7 @@ export interface ElizaOsImage {
   label: string;
   version: string;
   channel: "stable" | "beta" | "nightly";
-  architecture: "x86_64" | "arm64";
+  architecture: "x86_64" | "arm64" | "riscv64";
   buildId: string;
   publishedAt: string;
   url: string;
@@ -55,9 +55,15 @@ export interface WriteRequest {
   imageId: string;
   dryRun: boolean;
   acknowledgeDataLoss: boolean;
+  expectedDrive?: {
+    devicePath: string;
+    sizeBytes: number;
+    name?: string;
+  };
 }
 
 export interface WritePlan {
+  planId?: string;
   request: WriteRequest;
   drive: RemovableDrive;
   image: ElizaOsImage;

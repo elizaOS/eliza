@@ -11,6 +11,18 @@ source_artifacts:
   checker_command: make soc-optimization
   test_command: make soc-optimization-test
   process_effects_contract: docs/spec-db/process-14a-effects.yaml
+  rail_plan_contract: docs/pd/rail-plan-2028.yaml
+rail_plan_hash:
+  rail_plan_path: docs/pd/rail-plan-2028.yaml
+  rail_plan_sha256: 5941b79f61fee2304e14d197393cf049c02938badd063d9bdec94d3fcb5c8848
+  enforcement: >
+    This sha256 must match the current sha256 of docs/pd/rail-plan-2028.yaml
+    AND the sha256 declared in docs/evidence/power/rail-plan-evidence.yaml.
+    If the rail plan changes, this field must be updated in the same commit
+    and the modeled power/perf claims in this work order must be re-derived.
+    Drift implies the operating-point claim has not been re-validated against
+    the new rail plan. Enforced by scripts/check_rail_plan.py
+    --binding-target docs/architecture-optimization/soc-optimized-operating-point.yaml.
 selected_modeled_point:
   cpu_cores: 2
   cpu_base_frequency_hz: 3200000000
@@ -18,8 +30,55 @@ selected_modeled_point:
   cpu_base_power_w: 1.4
   npu_base_tops: 44.0
   npu_base_power_w: 1.2
+  # memory_sustained_gbps is the modelled aggregate bandwidth used by
+  # the optimizer.  This number is the AI SKU envelope plus headroom;
+  # the per-SKU phone-class targets are tracked under
+  # memory_sustained_per_sku below and in
+  # docs/evidence/memory/uma-dram-evidence-gate.yaml.
   memory_sustained_gbps: 240.0
   ambient_c: 25.0
+memory_sustained_per_sku:
+  baseline:
+    standard: LPDDR5X-10667
+    bus_width_bits: 64
+    peak_bandwidth_gbps: 85.3
+    sustained_target_gbps: 70
+    capacity_gib_skus: [12, 16]
+    rationale: >
+      LPDDR5X-10667 over a 4 x 16-bit (64-bit) bus caps at 85.3 GB/s
+      peak.  Sustaining 70 GB/s under display+camera+NPU contention is
+      the realistic baseline-SKU target and matches Snapdragon 8 Elite
+      Gen 5 (~84.8 GB/s peak) and Dimensity 9500 (~85.3 GB/s peak).
+  ai:
+    standard: LPDDR6-14400
+    bus_width_bits: 96
+    peak_bandwidth_gbps: 172.8
+    sustained_target_gbps: 140
+    capacity_gib_skus: [24]
+    rationale: >
+      LPDDR6-14400 over a 4 x 24-bit (96-bit logical) bus reaches
+      172.8 GB/s peak.  Sustaining 140 GB/s is achievable with the
+      stretch SKU.  The 240 GB/s modelled point is reserved for the
+      optimizer's headroom guardband and should not be used directly
+      as a sustained gate.
+sku_split_decision:
+  decision: SKU_SPLIT_REQUIRED
+  reconciles:
+    - docs/evidence/memory/uma-dram-evidence-gate.yaml::phone_2028_target_profile
+    - docs/architecture-optimization/sota-2028/memory-subsystem.md (section C.1)
+  reason: >
+    The aspirational 240 GB/s figure in the optimizer's selected point
+    is higher than any 64-bit LPDDR5X-10667 SKU can deliver.  The gate's
+    180 GB/s peak / 120 GB/s sustained requirement maps to the LPDDR6 AI
+    SKU only.  Splitting the SKUs is the only way to reconcile the
+    headroom-driven optimizer point with the realistic baseline SKU
+    bandwidth without silently lowering either the bandwidth claim or
+    the optimizer numbers.
+  next:
+    - The phone_2028_target_profile is downgraded for the baseline SKU
+      to 85.3 GB/s peak / 70 GB/s sustained and retained as 180+ GB/s
+      peak / 120+ GB/s sustained for the AI SKU.  Both SKUs share the
+      same RTL; only the LPDDR PHY data rate and bus width differ.
 optimized_summary:
   no_modeled_throttle: true
   max_die_temp_c: 78.10407520000001

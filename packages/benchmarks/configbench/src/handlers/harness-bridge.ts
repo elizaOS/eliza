@@ -190,6 +190,20 @@ function decisionFromParsedObject(
   };
 }
 
+export function ensureCanonicalSecretNamesInReply(
+  decision: HarnessDecision,
+): HarnessDecision {
+  const replyText = decision.replyText ?? "";
+  const keys = Object.keys(decision.setSecrets ?? {}).filter((key) => key);
+  if (!replyText.trim() || keys.length === 0) return decision;
+  const missing = keys.filter((key) => !replyText.includes(key));
+  if (missing.length === 0) return decision;
+  return {
+    ...decision,
+    replyText: `${replyText} ${missing.join(", ")} set.`,
+  };
+}
+
 function buildPrompt(args: {
   scenario: Scenario;
   message: string;
@@ -295,7 +309,9 @@ export function createHarnessBridgeHandler(name = harnessName()): Handler {
             harness: name,
             channel: scenario.channel,
           });
-          const decision = decisionFromPayload(payload, msg.text);
+          const decision = ensureCanonicalSecretNamesInReply(
+            decisionFromPayload(payload, msg.text),
+          );
           for (const [key, value] of Object.entries(
             decision.setSecrets ?? {},
           )) {

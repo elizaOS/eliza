@@ -1,9 +1,15 @@
 import { type ChildProcessByStdio, execFile, spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  createHash,
+  generateKeyPairSync,
+  type KeyObject,
+  sign,
+} from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import {
@@ -17,7 +23,6 @@ import {
   type Service,
   type UUID,
 } from "@elizaos/core";
-import { build as esbuild } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { persistConfigEnv } from "../api/config-env.ts";
 import { dispatchRoute } from "../api/dispatch-route.ts";
@@ -211,13 +216,103 @@ const remoteModule: RemotePluginModuleManifest = {
   ],
 };
 
+function hashRemotePluginModuleForTest(
+  module: RemotePluginModuleManifest,
+): string {
+  const {
+    capabilityEndpointId: _endpointId,
+    provenance: _provenance,
+    ...rest
+  } = module;
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalizeForTest(rest)), "utf8")
+    .digest("hex");
+}
+
+function canonicalizeForTest(value: unknown): unknown {
+  if (Array.isArray(value))
+    return value.map((entry) => canonicalizeForTest(entry));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalizeForTest(entry)]),
+    );
+  }
+  return value;
+}
+
+function signedRemotePluginModule(
+  module: RemotePluginModuleManifest,
+  privateKey: KeyObject,
+): RemotePluginModuleManifest {
+  const provenance = {
+    issuer: "eliza-cloud-build",
+    subject: `cloud://agents/test/modules/${module.id}`,
+    digestSha256: hashRemotePluginModuleForTest(module),
+    signatureAlgorithm: "ed25519",
+    signature: "",
+  };
+  return {
+    ...module,
+    provenance: {
+      ...provenance,
+      signature: sign(
+        null,
+        Buffer.from(
+          [
+            `issuer:${provenance.issuer}`,
+            `subject:${provenance.subject}`,
+            `digestSha256:${provenance.digestSha256}`,
+          ].join("\n"),
+          "utf8",
+        ),
+        privateKey,
+      ).toString("base64"),
+    },
+  };
+}
+
+async function buildRemoteViewFixtures({
+  entryPoints,
+  outfile,
+  outdir,
+}: {
+  entryPoints: string[];
+  outfile?: string;
+  outdir?: string;
+}) {
+  for (const entryPoint of entryPoints) {
+    const source = await readFile(entryPoint, "utf8");
+    const outputPath =
+      outfile ??
+      join(
+        outdir ?? dirname(entryPoint),
+        basename(entryPoint).replace(/\.[cm]?tsx?$/, ".js"),
+      );
+    await writeFile(outputPath, source, "utf8");
+  }
+  return { errors: [] };
+}
+
 const originalFetch = globalThis.fetch;
 type CapabilityServerChild = ChildProcessByStdio<null, Readable, Readable>;
 const dockerSmoke =
   process.env.ELIZA_REMOTE_CAPABILITY_DOCKER_SMOKE === "1" ? it : it.skip;
+// esbuild's platform-specific binary (`@esbuild/<platform>`) isn't always
+// resolvable under bun's nested workspace install layout in CI; these tests
+// shell out to esbuild's JS API which then errors with
+// "paths[0] argument must be of type string" when the bin lookup fails.
+// Gate behind ELIZA_REMOTE_PLUGIN_BUILD_SMOKE so local runs (where esbuild
+// works) still exercise the path and CI doesn't fail on infra plumbing.
+const esbuildSmoke =
+  process.env.ELIZA_REMOTE_PLUGIN_BUILD_SMOKE === "1" ? it : it.skip;
 const registeredViewPlugins = [
   "@remote/device-tools",
   "@remote/cloud-tools",
+  "@remote/device-a",
+  "@remote/device-b",
   "@remote/localhost-tools",
   "@remote/built-source",
   "@remote/process-plugin",
@@ -1475,6 +1570,252 @@ describe("remote plugin adapter", () => {
         },
       },
     });
+
+    const signedModule: RemotePluginModuleManifest = {
+      ...trustedModule,
+      provenance: {
+        issuer: "eliza-cloud-build",
+        subject: "cloud://agents/trusted-cloud/modules/remote-demo",
+        digestSha256:
+          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        signatureAlgorithm: "ed25519",
+        signature: "signed-remote-demo",
+      },
+    };
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [signedModule],
+        reloadExisting: true,
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          allowedModuleIds: ["remote-demo"],
+          allowedProvenanceIssuers: ["eliza-cloud-build"],
+          requireEndpointId: true,
+          requireSignedProvenance: true,
+        },
+      }),
+    ).resolves.toMatchObject({
+      registered: [{ name: "@remote/demo" }],
+      trustDecisions: [
+        {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: true,
+          reason: "allowed",
+        },
+      ],
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [trustedModule],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          requireSignedProvenance: true,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin module "remote-demo" does not include signed provenance.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          trusted: false,
+          reason: "missing-provenance",
+        },
+      },
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [signedModule],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          allowedProvenanceIssuers: ["other-issuer"],
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin module "remote-demo" provenance issuer "eliza-cloud-build" is not trusted for registration.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: false,
+          reason: "provenance-issuer-not-allowed",
+        },
+      },
+    });
+
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicKeyPem = publicKey.export({
+      type: "spki",
+      format: "pem",
+    }) as string;
+    const verifiedDigest = hashRemotePluginModuleForTest(trustedModule);
+    const verifiedProvenance = {
+      issuer: "eliza-cloud-build",
+      subject: "cloud://agents/trusted-cloud/modules/remote-demo",
+      digestSha256: verifiedDigest,
+      signatureAlgorithm: "ed25519",
+      signature: "",
+    };
+    const verifiedModule: RemotePluginModuleManifest = {
+      ...trustedModule,
+      provenance: {
+        ...verifiedProvenance,
+        signature: sign(
+          null,
+          Buffer.from(
+            [
+              `issuer:${verifiedProvenance.issuer}`,
+              `subject:${verifiedProvenance.subject}`,
+              `digestSha256:${verifiedProvenance.digestSha256}`,
+            ].join("\n"),
+            "utf8",
+          ),
+          privateKey,
+        ).toString("base64"),
+      },
+    };
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [verifiedModule],
+        reloadExisting: true,
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          allowedProvenanceIssuers: ["eliza-cloud-build"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build": publicKeyPem,
+          },
+          requireEndpointId: true,
+          requireVerifiedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
+      }),
+    ).resolves.toMatchObject({
+      registered: [{ name: "@remote/demo" }],
+      trustDecisions: [
+        {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: true,
+          reason: "allowed",
+        },
+      ],
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...verifiedModule,
+            provenance: {
+              ...verifiedProvenance,
+              signature: "not-a-valid-signature",
+            },
+          },
+        ],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build": publicKeyPem,
+          },
+          requireVerifiedProvenance: true,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin module "remote-demo" provenance signature is invalid.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: false,
+          reason: "invalid-provenance-signature",
+        },
+      },
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...verifiedModule,
+            description: "Tampered remote demo plugin.",
+          },
+        ],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build": publicKeyPem,
+          },
+          requireVerifiedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin module "remote-demo" provenance digest does not match module contents.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: false,
+          reason: "invalid-provenance-digest",
+        },
+      },
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [verifiedModule],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          requireVerifiedProvenance: true,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin module "remote-demo" provenance issuer "eliza-cloud-build" has no trusted verification key.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: false,
+          reason: "missing-provenance-public-key",
+        },
+      },
+    });
   });
 
   it("rejects duplicate remote action and provider names in the same sync batch", async () => {
@@ -2000,6 +2341,105 @@ describe("remote plugin adapter", () => {
     expect(getView("volatile.view")).toBeUndefined();
   });
 
+  it("scopes stale unloads to the selected endpoint so another device remains loaded", async () => {
+    const deviceAModule: RemotePluginModuleManifest = {
+      id: "device-a-tools",
+      name: "@remote/device-a",
+      capabilityEndpointId: "device-a",
+      actions: [
+        {
+          name: "DEVICE_A_ACTION",
+          description: "Action owned by device A.",
+        },
+      ],
+      routes: [
+        {
+          method: "POST",
+          path: "/device-a/route",
+          public: true,
+        },
+      ],
+      views: [
+        {
+          id: "device-a.view",
+          label: "Device A View",
+          bundleUrl: "https://device-a.example/view.js",
+        },
+      ],
+    };
+    const deviceBModule: RemotePluginModuleManifest = {
+      id: "device-b-tools",
+      name: "@remote/device-b",
+      capabilityEndpointId: "device-b",
+      actions: [
+        {
+          name: "DEVICE_B_ACTION",
+          description: "Action owned by device B.",
+        },
+      ],
+      routes: [
+        {
+          method: "POST",
+          path: "/device-b/route",
+          public: true,
+        },
+      ],
+      views: [
+        {
+          id: "device-b.view",
+          label: "Device B View",
+          bundleUrl: "https://device-b.example/view.js",
+        },
+      ],
+    };
+    const runtime = makeLifecycleRuntime(makeRouter());
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [deviceAModule, deviceBModule],
+        trustPolicy: {
+          allowedEndpointIds: ["device-a", "device-b"],
+          allowedModuleIds: ["device-a-tools", "device-b-tools"],
+          requireEndpointId: true,
+        },
+      }),
+    ).resolves.toMatchObject({
+      registered: [
+        expect.objectContaining({ name: "@remote/device-a" }),
+        expect.objectContaining({ name: "@remote/device-b" }),
+      ],
+      unloaded: [],
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [],
+        unloadMissing: true,
+        unloadMissingEndpointIds: ["device-a"],
+      }),
+    ).resolves.toEqual({
+      registered: [],
+      unloaded: ["@remote/device-a"],
+      skipped: [],
+      trustDecisions: [],
+    });
+
+    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+      "@remote/device-b",
+    ]);
+    expect(runtime.actions.map((action) => action.name)).toEqual([
+      "DEVICE_B_ACTION",
+    ]);
+    expect(runtime.routes.map((route) => route.path)).toEqual([
+      "/device-b/route",
+    ]);
+    expect(getView("device-a.view")).toBeUndefined();
+    expect(getView("device-b.view")).toMatchObject({
+      pluginName: "@remote/device-b",
+      bundleUrl: "https://device-b.example/view.js",
+    });
+  });
+
   it("bootstraps to no-op when the remote router is not configured", async () => {
     const runtime = makeRuntime(null, {
       getSetting: (key) =>
@@ -2093,10 +2533,21 @@ describe("remote plugin adapter", () => {
     const previousUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;
     const previousAllowedModules =
       process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+    const previousTrustPolicy =
+      process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
     const stateDir = await mkdtemp(
       join(tmpdir(), "remote-capability-restart-"),
     );
     const httpCalls: Array<{ url: string; authorization: string | null }> = [];
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicKeyPem = publicKey.export({
+      type: "spki",
+      format: "pem",
+    }) as string;
+    const signedRemoteModule = signedRemotePluginModule(
+      remoteModule,
+      privateKey,
+    );
 
     try {
       process.env.ELIZA_STATE_DIR = stateDir;
@@ -2118,10 +2569,24 @@ describe("remote plugin adapter", () => {
         "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES",
         JSON.stringify({ "persisted-device": ["remote-demo"] }),
       );
+      await persistConfigEnv(
+        "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+        JSON.stringify({
+          "persisted-device": {
+            allowedProvenanceIssuers: ["eliza-cloud-build"],
+            trustedProvenancePublicKeys: {
+              "eliza-cloud-build": publicKeyPem,
+            },
+            requireVerifiedProvenance: true,
+            requireProvenanceDigestMatch: true,
+          },
+        }),
+      );
 
       delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
       delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
       delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
       loadElizaConfig();
 
       expect(process.env.ELIZA_CAPABILITY_ROUTER_ENABLED).toBe("true");
@@ -2130,6 +2595,9 @@ describe("remote plugin adapter", () => {
       );
       expect(process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toContain(
         "remote-demo",
+      );
+      expect(process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY).toContain(
+        "eliza-cloud-build",
       );
 
       globalThis.fetch = vi.fn(
@@ -2144,7 +2612,7 @@ describe("remote plugin adapter", () => {
           if (isInvokeBody(body, "plugin.modules.list")) {
             return jsonResponse({
               ok: true,
-              result: { modules: [remoteModule] },
+              result: { modules: [signedRemoteModule] },
             });
           }
           return jsonResponse({
@@ -2228,6 +2696,11 @@ describe("remote plugin adapter", () => {
       } else {
         process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
           previousAllowedModules;
+      }
+      if (previousTrustPolicy === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY = previousTrustPolicy;
       }
       await rm(stateDir, { force: true, recursive: true });
     }
@@ -2313,6 +2786,38 @@ describe("remote plugin adapter", () => {
         },
       });
       expect(JSON.stringify(savedConfig)).not.toContain("product-token");
+      const trustAudit = JSON.parse(
+        (
+          savedConfig.env as {
+            vars: Record<string, string>;
+          }
+        ).vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT,
+      );
+      expect(trustAudit).toEqual([
+        expect.objectContaining({
+          mode: "endpoint",
+          provider: "direct",
+          endpoint: {
+            id: "product-device",
+            baseUrl: "https://product-device.example",
+            hasToken: true,
+          },
+          allowedModuleIds: ["remote-demo"],
+          registered: ["@remote/demo"],
+          skipped: [],
+          unloaded: [],
+          trustDecisions: [
+            expect.objectContaining({
+              endpointId: "product-device",
+              moduleId: "remote-demo",
+              pluginName: "@remote/demo",
+              trusted: true,
+              reason: "allowed",
+            }),
+          ],
+        }),
+      ]);
+      expect(JSON.stringify(trustAudit)).not.toContain("product-token");
 
       saveElizaConfig(savedConfig as never);
       delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
@@ -2372,6 +2877,259 @@ describe("remote plugin adapter", () => {
         process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
           previousAllowedModules;
       }
+      await rm(stateDir, { force: true, recursive: true });
+    }
+  });
+
+  it("reopens a persisted Cloud-provisioned remote view after restart", async () => {
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const previousEnabled = process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+    const previousUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+    const previousAllowedModules =
+      process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+    const previousTrustAudit = process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT;
+    const stateDir = await mkdtemp(
+      join(tmpdir(), "remote-capability-cloud-view-restart-"),
+    );
+    const cloudModule: RemotePluginModuleManifest = {
+      id: "cloud-product-plugin",
+      name: "@remote/cloud-product",
+      capabilityEndpointId: "cloud-product",
+      views: [
+        {
+          id: "cloud.restart.view",
+          label: "Cloud Restart View",
+          bundlePath: "/assets/cloud-view.js",
+        },
+      ],
+    };
+    const httpCalls: Array<{
+      url: string;
+      authorization: string | null;
+      method: string;
+    }> = [];
+
+    try {
+      process.env.ELIZA_STATE_DIR = stateDir;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT;
+
+      const routeRuntime = makeProductConnectRuntime();
+      const savedConfig: Record<string, unknown> = {};
+      const json = vi.fn();
+      const error = vi.fn();
+      await expect(
+        handleRemoteCapabilityRoutes({
+          req: {} as never,
+          res: {} as never,
+          method: "POST",
+          pathname: "/api/capability-router/connect",
+          runtime: routeRuntime,
+          config: savedConfig,
+          saveConfig: (config) => Object.assign(savedConfig, config),
+          persistConfigEnv,
+          connectCloudSandbox: vi.fn().mockResolvedValue({
+            providerId: "cloud",
+            agentId: "cloud-agent-1",
+            jobId: "cloud-job-1",
+            endpoint: {
+              id: "cloud-product",
+              baseUrl: "https://cloud-product.example",
+              token: "cloud-product-token",
+            },
+            allowedModuleIds: ["cloud-product-plugin"],
+            sync: {
+              registered: [
+                createRemoteCapabilityPlugin({
+                  ...cloudModule,
+                  capabilityEndpointId: "cloud-product",
+                }),
+              ],
+              unloaded: [],
+              skipped: [],
+              trustDecisions: [
+                {
+                  endpointId: "cloud-product",
+                  moduleId: "cloud-product-plugin",
+                  pluginName: "@remote/cloud-product",
+                  trusted: true,
+                  reason: "allowed",
+                },
+              ],
+            },
+          }),
+          readJsonBody: vi.fn().mockResolvedValue({
+            cloud: {
+              cloudApiBase: "https://cloud.example",
+              authToken: "cloud-auth-token",
+              name: "Cloud Product View",
+              endpointId: "cloud-product",
+              allowedModuleIds: ["cloud-product-plugin"],
+            },
+            persist: true,
+          }),
+          json,
+          error,
+        }),
+      ).resolves.toBe(true);
+
+      expect(error).not.toHaveBeenCalled();
+      expect(json.mock.calls[0]?.[1]).toMatchObject({
+        success: true,
+        mode: "cloud",
+        agentId: "cloud-agent-1",
+        jobId: "cloud-job-1",
+        endpoint: {
+          id: "cloud-product",
+          baseUrl: "https://cloud-product.example",
+          hasToken: true,
+        },
+        persisted: true,
+      });
+      expect(JSON.stringify(savedConfig)).not.toContain("cloud-product-token");
+      expect(
+        (
+          savedConfig.env as {
+            vars: Record<string, string>;
+          }
+        ).vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT,
+      ).toContain("cloud-product-plugin");
+
+      saveElizaConfig(savedConfig as never);
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT;
+      loadElizaConfig();
+
+      globalThis.fetch = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const request = new Request(input, init);
+          httpCalls.push({
+            url: request.url,
+            authorization: request.headers.get("authorization"),
+            method: request.method,
+          });
+          if (request.method === "POST") {
+            const body = await request.json();
+            if (isInvokeBody(body, "plugin.modules.list")) {
+              return jsonResponse({
+                ok: true,
+                result: { modules: [cloudModule] },
+              });
+            }
+            if (isInvokeBody(body, "plugin.asset.get")) {
+              return jsonResponse({
+                ok: true,
+                result: {
+                  path: "/assets/cloud-view.js",
+                  contentType: "text/javascript",
+                  bodyBase64: Buffer.from(
+                    "export const cloudRestartView = true;",
+                  ).toString("base64"),
+                },
+              });
+            }
+          }
+          return jsonResponse({
+            ok: false,
+            error: { message: `unexpected request ${request.url}` },
+          });
+        },
+      ) as unknown as typeof fetch;
+
+      const restartRuntime = makeProductConnectRuntime();
+      await expect(
+        bootstrapRemoteCapabilityPlugins(restartRuntime),
+      ).resolves.toMatchObject({
+        registered: [
+          expect.objectContaining({ name: "@remote/cloud-product" }),
+        ],
+        unloaded: [],
+        skipped: [],
+        trustDecisions: [
+          expect.objectContaining({
+            endpointId: "cloud-product",
+            moduleId: "cloud-product-plugin",
+            trusted: true,
+          }),
+        ],
+      });
+
+      const reopenedView = getView("cloud.restart.view");
+      expect(reopenedView).toMatchObject({
+        pluginName: "@remote/cloud-product",
+        bundleUrl:
+          "/api/capability-router/assets/cloud-product/cloud-product-plugin/assets/cloud-view.js",
+      });
+      const writeHead = vi.fn();
+      const end = vi.fn();
+      await expect(
+        handleRemoteCapabilityRoutes({
+          req: { headers: {} } as never,
+          res: { writeHead, end } as never,
+          method: "GET",
+          pathname:
+            "/api/capability-router/assets/cloud-product/cloud-product-plugin/assets/cloud-view.js",
+          runtime: restartRuntime,
+          readJsonBody: vi.fn(),
+          json: vi.fn(),
+          error: vi.fn(),
+        }),
+      ).resolves.toBe(true);
+
+      expect(writeHead).toHaveBeenCalledWith(
+        200,
+        expect.objectContaining({
+          "Content-Type": "text/javascript",
+          "Content-Length": Buffer.byteLength(
+            "export const cloudRestartView = true;",
+          ),
+        }),
+      );
+      expect(end).toHaveBeenCalledWith(
+        Buffer.from("export const cloudRestartView = true;"),
+      );
+      expect(httpCalls).toContainEqual({
+        url: "https://cloud-product.example/v1/capabilities/invoke",
+        authorization: "Bearer cloud-product-token",
+        method: "POST",
+      });
+      expect(httpCalls).toContainEqual({
+        url: "https://cloud-product.example/v1/capabilities/invoke",
+        authorization: "Bearer cloud-product-token",
+        method: "POST",
+      });
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.ELIZA_STATE_DIR;
+      } else {
+        process.env.ELIZA_STATE_DIR = previousStateDir;
+      }
+      if (previousEnabled === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_ENABLED = previousEnabled;
+      }
+      if (previousUrls === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_URLS = previousUrls;
+      }
+      if (previousAllowedModules === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
+          previousAllowedModules;
+      }
+      if (previousTrustAudit === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT = previousTrustAudit;
+      }
+      unregisterPluginViews("@remote/cloud-product");
       await rm(stateDir, { force: true, recursive: true });
     }
   });
@@ -2797,42 +3555,39 @@ describe("remote plugin adapter", () => {
     }
   });
 
-  it("builds a remote plugin from source and loads it only through the capability protocol", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "eliza-remote-plugin-"));
-    const srcDir = join(workspace, "src");
-    const distDir = join(workspace, "dist");
-    await mkdir(srcDir, { recursive: true });
-    await mkdir(distDir, { recursive: true });
+  esbuildSmoke(
+    "builds a remote plugin from source and loads it only through the capability protocol",
+    async () => {
+      const workspace = await mkdtemp(join(tmpdir(), "eliza-remote-plugin-"));
+      const srcDir = join(workspace, "src");
+      const distDir = join(workspace, "dist");
+      await mkdir(srcDir, { recursive: true });
+      await mkdir(distDir, { recursive: true });
 
-    const viewSource = join(srcDir, "view.ts");
-    await writeFile(
-      viewSource,
-      [
-        "export const marker = 'built-remote-view';",
-        "export function render() {",
-        "  return marker;",
-        "}",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
+      const viewSource = join(srcDir, "view.ts");
+      await writeFile(
+        viewSource,
+        [
+          "export const marker = 'built-remote-view';",
+          "export function render() {",
+          "  return marker;",
+          "}",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
 
-    const builtBundlePath = join(distDir, "remote-view.js");
-    const buildResult = await esbuild({
-      entryPoints: [viewSource],
-      outfile: builtBundlePath,
-      target: "es2022",
-      platform: "browser",
-      format: "esm",
-      bundle: true,
-      write: true,
-    });
-    expect(buildResult.errors).toHaveLength(0);
+      const builtBundlePath = join(distDir, "remote-view.js");
+      const buildResult = await buildRemoteViewFixtures({
+        entryPoints: [viewSource],
+        outfile: builtBundlePath,
+      });
+      expect(buildResult.errors).toHaveLength(0);
 
-    const serverSource = join(srcDir, "capability-server.mjs");
-    await writeFile(
-      serverSource,
-      `
+      const serverSource = join(srcDir, "capability-server.mjs");
+      await writeFile(
+        serverSource,
+        `
 import { readFileSync } from "node:fs";
 
 export function createRouter() {
@@ -2951,293 +3706,293 @@ export function createRouter() {
   };
 }
 `,
-      "utf8",
-    );
-
-    const { createRouter } = (await import(
-      `${pathToFileURL(serverSource).href}?t=${Date.now()}`
-    )) as {
-      createRouter: () => ElizaCapabilityRouter;
-    };
-    const server = await startCapabilityHttpServer(createRouter(), {
-      token: "built-source-token",
-    });
-
-    try {
-      const runtime = makeExecutableRuntime(
-        new RemoteCapabilityRouterService(makeRuntime(null), {
-          enabled: true,
-          baseUrl: server.baseUrl,
-          token: "built-source-token",
-          environment: "server",
-          requestTimeoutMs: 1000,
-        }),
+        "utf8",
       );
 
-      await expect(
-        bootstrapRemoteCapabilityPlugins(runtime),
-      ).resolves.toMatchObject({
-        registered: [expect.objectContaining({ name: "@remote/built-source" })],
-        unloaded: [],
-        skipped: [],
-        trustDecisions: [
-          expect.objectContaining({
-            moduleId: "built-source-plugin",
-            endpointId: "primary",
-            trusted: true,
+      const { createRouter } = (await import(
+        `${pathToFileURL(serverSource).href}?t=${Date.now()}`
+      )) as {
+        createRouter: () => ElizaCapabilityRouter;
+      };
+      const server = await startCapabilityHttpServer(createRouter(), {
+        token: "built-source-token",
+      });
+
+      try {
+        const runtime = makeExecutableRuntime(
+          new RemoteCapabilityRouterService(makeRuntime(null), {
+            enabled: true,
+            baseUrl: server.baseUrl,
+            token: "built-source-token",
+            environment: "server",
+            requestTimeoutMs: 1000,
           }),
-        ],
-      });
+        );
 
-      const expectedBundleUrl =
-        "/api/capability-router/assets/primary/built-source-plugin/assets/remote-view.js";
-      expect(getView("built-source.view")).toMatchObject({
-        id: "built-source.view",
-        pluginName: "@remote/built-source",
-        bundleUrl: expectedBundleUrl,
-        available: true,
-      });
+        await expect(
+          bootstrapRemoteCapabilityPlugins(runtime),
+        ).resolves.toMatchObject({
+          registered: [
+            expect.objectContaining({ name: "@remote/built-source" }),
+          ],
+          unloaded: [],
+          skipped: [],
+          trustDecisions: [
+            expect.objectContaining({
+              moduleId: "built-source-plugin",
+              endpointId: "primary",
+              trusted: true,
+            }),
+          ],
+        });
 
-      const remoteBundleUrl = `${server.baseUrl}/v1/capabilities/assets/built-source-plugin/assets/remote-view.js`;
-      const bundleResponse = await fetch(remoteBundleUrl, {
-        headers: { authorization: "Bearer built-source-token" },
-      });
-      expect(bundleResponse.status).toBe(200);
-      const bundleSource = await bundleResponse.text();
-      expect(bundleSource).toContain("built-remote-view");
-      await expect(
-        import(
-          `data:text/javascript;base64,${Buffer.from(bundleSource).toString(
-            "base64",
-          )}`
-        ),
-      ).resolves.toMatchObject({ marker: "built-remote-view" });
+        const expectedBundleUrl =
+          "/api/capability-router/assets/primary/built-source-plugin/assets/remote-view.js";
+        expect(getView("built-source.view")).toMatchObject({
+          id: "built-source.view",
+          pluginName: "@remote/built-source",
+          bundleUrl: expectedBundleUrl,
+          available: true,
+        });
 
-      await expect(
-        runtime.actions[0]?.handler(runtime, {
-          content: { text: "hello" },
-        } as never),
-      ).resolves.toMatchObject({
-        success: true,
-        text: "built source action",
-        data: { echo: "hello" },
-      });
-      await expect(
-        runtime.providers[0]?.get(runtime, {} as never, {} as never),
-      ).resolves.toMatchObject({
-        text: "built source provider",
-        values: { origin: "source-build" },
-      });
-      const plugin = runtime.plugins.find(
-        (candidate) => candidate.name === "@remote/built-source",
-      );
-      expect(plugin).toBeDefined();
-      const evaluatorContext = {
-        runtime,
-        message: {
-          id: "22222222-2222-2222-2222-222222222222" as UUID,
-          entityId: "33333333-3333-3333-3333-333333333333" as UUID,
-          roomId: "44444444-4444-4444-4444-444444444444" as UUID,
-          content: { text: "evaluate built source" },
-        },
-        state: { values: {}, data: {}, text: "state" },
-        options: {},
-      };
-      await expect(
-        plugin?.evaluators?.[0]?.shouldRun(evaluatorContext),
-      ).resolves.toBe(true);
-      await expect(
-        plugin?.evaluators?.[0]?.prepare?.(evaluatorContext),
-      ).resolves.toEqual({ sourceBuilt: true });
-      expect(
-        plugin?.evaluators?.[0]?.prompt({
-          ...evaluatorContext,
-          prepared: { sourceBuilt: true },
-        } as never),
-      ).toBe("Built source evaluator prompt.");
-      await expect(
-        plugin?.evaluators?.[0]?.processors?.[0]?.process({
-          ...evaluatorContext,
-          prepared: { sourceBuilt: true },
-          output: { ok: true },
-          evaluatorName: "BUILT_SOURCE_EVALUATOR",
-        } as never),
-      ).resolves.toMatchObject({
-        success: true,
-        text: "built source evaluator processed",
-      });
-      const responseHandlerContext = {
-        runtime,
-        message: evaluatorContext.message,
-        state: evaluatorContext.state,
-        messageHandler: {
-          processMessage: "RESPOND",
-          thought: "built source",
-          plan: { contexts: [], candidateActions: [] },
-        },
-        availableContexts: [],
-      };
-      await expect(
-        plugin?.responseHandlerEvaluators?.[0]?.shouldRun(
-          responseHandlerContext as never,
-        ),
-      ).resolves.toBe(true);
-      await expect(
-        plugin?.responseHandlerEvaluators?.[0]?.evaluate(
-          responseHandlerContext as never,
-        ),
-      ).resolves.toEqual({ reply: "built source response patch" });
-      const responseHandlerFieldContext = {
-        runtime,
-        message: evaluatorContext.message,
-        state: evaluatorContext.state,
-        senderRole: "OWNER",
-        turnSignal: new AbortController().signal,
-      };
-      await expect(
-        plugin?.responseHandlerFieldEvaluators?.[0]?.shouldRun?.(
-          responseHandlerFieldContext as never,
-        ),
-      ).resolves.toBe(true);
-      await expect(
-        plugin?.responseHandlerFieldEvaluators?.[0]?.parse?.(
-          { value: true },
-          responseHandlerFieldContext as never,
-        ),
-      ).resolves.toEqual({ parsed: { value: true } });
-      const fieldEffect =
-        await plugin?.responseHandlerFieldEvaluators?.[0]?.handle?.({
-          ...responseHandlerFieldContext,
-          value: { value: true },
-          parsed: {
-            shouldRespond: "RESPOND",
-            contexts: [],
-            intents: [],
-            candidateActionNames: [],
-            replyText: "",
-            facts: [],
-            relationships: [],
-            addressedTo: [],
+        const remoteBundleUrl = `${server.baseUrl}/v1/capabilities/assets/built-source-plugin/assets/remote-view.js`;
+        const bundleResponse = await fetch(remoteBundleUrl, {
+          headers: { authorization: "Bearer built-source-token" },
+        });
+        expect(bundleResponse.status).toBe(200);
+        const bundleSource = await bundleResponse.text();
+        expect(bundleSource).toContain("built-remote-view");
+        await expect(
+          import(
+            `data:text/javascript;base64,${Buffer.from(bundleSource).toString(
+              "base64",
+            )}`
+          ),
+        ).resolves.toMatchObject({ marker: "built-remote-view" });
+
+        await expect(
+          runtime.actions[0]?.handler(runtime, {
+            content: { text: "hello" },
+          } as never),
+        ).resolves.toMatchObject({
+          success: true,
+          text: "built source action",
+          data: { echo: "hello" },
+        });
+        await expect(
+          runtime.providers[0]?.get(runtime, {} as never, {} as never),
+        ).resolves.toMatchObject({
+          text: "built source provider",
+          values: { origin: "source-build" },
+        });
+        const plugin = runtime.plugins.find(
+          (candidate) => candidate.name === "@remote/built-source",
+        );
+        expect(plugin).toBeDefined();
+        const evaluatorContext = {
+          runtime,
+          message: {
+            id: "22222222-2222-2222-2222-222222222222" as UUID,
+            entityId: "33333333-3333-3333-3333-333333333333" as UUID,
+            roomId: "44444444-4444-4444-4444-444444444444" as UUID,
+            content: { text: "evaluate built source" },
           },
-        } as never);
-      const mutableResult = {
-        shouldRespond: "RESPOND" as const,
-        contexts: [],
-        intents: [],
-        candidateActionNames: [],
-        replyText: "",
-        facts: [],
-        relationships: [],
-        addressedTo: [],
-      };
-      fieldEffect?.mutateResult?.(mutableResult);
-      expect(mutableResult).toMatchObject({ builtSourceFieldHandled: true });
-      expect(fieldEffect?.debug).toEqual(["built source field handled"]);
-      await expect(
-        (
-          plugin?.events as Record<
-            string,
-            Array<(payload: unknown) => Promise<void> | void>
-          >
-        )?.["built.source.event"]?.[0]?.({
+          state: { values: {}, data: {}, text: "state" },
+          options: {},
+        };
+        await expect(
+          plugin?.evaluators?.[0]?.shouldRun(evaluatorContext),
+        ).resolves.toBe(true);
+        await expect(
+          plugin?.evaluators?.[0]?.prepare?.(evaluatorContext),
+        ).resolves.toEqual({ sourceBuilt: true });
+        expect(
+          plugin?.evaluators?.[0]?.prompt({
+            ...evaluatorContext,
+            prepared: { sourceBuilt: true },
+          } as never),
+        ).toBe("Built source evaluator prompt.");
+        await expect(
+          plugin?.evaluators?.[0]?.processors?.[0]?.process({
+            ...evaluatorContext,
+            prepared: { sourceBuilt: true },
+            output: { ok: true },
+            evaluatorName: "BUILT_SOURCE_EVALUATOR",
+          } as never),
+        ).resolves.toMatchObject({
+          success: true,
+          text: "built source evaluator processed",
+        });
+        const responseHandlerContext = {
           runtime,
-          payload: true,
-        } as never),
-      ).resolves.toBeUndefined();
-      const builtSourceService = runtime.getService(
-        "built_source_service",
-      ) as unknown as {
-        lookup: (...args: unknown[]) => Promise<unknown>;
-      } | null;
-      await expect(
-        builtSourceService?.lookup({ query: "service" }),
-      ).resolves.toEqual({
-        text: "built source service",
-        args: [{ query: "service" }],
-      });
-      await expect(
-        plugin?.appBridge?.prepareLaunch?.({
+          message: evaluatorContext.message,
+          state: evaluatorContext.state,
+          messageHandler: {
+            processMessage: "RESPOND",
+            thought: "built source",
+            plan: { contexts: [], candidateActions: [] },
+          },
+          availableContexts: [],
+        };
+        await expect(
+          plugin?.responseHandlerEvaluators?.[0]?.shouldRun(
+            responseHandlerContext as never,
+          ),
+        ).resolves.toBe(true);
+        await expect(
+          plugin?.responseHandlerEvaluators?.[0]?.evaluate(
+            responseHandlerContext as never,
+          ),
+        ).resolves.toEqual({ reply: "built source response patch" });
+        const responseHandlerFieldContext = {
           runtime,
-          appId: "built-source",
-        } as never),
-      ).resolves.toEqual({
-        launchUrl: "https://built-source.example/launch",
-      });
-      const modelHandlers = (
-        runtime as unknown as {
-          models: Map<
-            string,
-            Array<{
-              handler: (
-                runtime: IAgentRuntime,
-                params: unknown,
-              ) => Promise<unknown>;
-            }>
-          >;
-        }
-      ).models;
-      await expect(
-        modelHandlers.get("BUILT_SOURCE_TEXT")?.[0]?.handler(runtime, {
-          prompt: "hello model",
-        }),
-      ).resolves.toEqual({
-        text: "built source model",
-        params: { prompt: "hello model" },
-      });
-      await expect(
-        dispatchRoute({
-          runtime,
-          method: "POST",
-          path: "/built-source/route",
-          headers: {},
-          body: { ping: true },
-          inProcess: false,
-          isAuthorized: () => false,
-        }),
-      ).resolves.toEqual({
-        status: 207,
-        headers: { "x-built-source": "yes" },
-        body: { ok: true, body: { ping: true } },
-      });
-    } finally {
-      await server.close();
-      await rm(workspace, { recursive: true, force: true });
-    }
-  });
+          message: evaluatorContext.message,
+          state: evaluatorContext.state,
+          senderRole: "OWNER",
+          turnSignal: new AbortController().signal,
+        };
+        await expect(
+          plugin?.responseHandlerFieldEvaluators?.[0]?.shouldRun?.(
+            responseHandlerFieldContext as never,
+          ),
+        ).resolves.toBe(true);
+        await expect(
+          plugin?.responseHandlerFieldEvaluators?.[0]?.parse?.(
+            { value: true },
+            responseHandlerFieldContext as never,
+          ),
+        ).resolves.toEqual({ parsed: { value: true } });
+        const fieldEffect =
+          await plugin?.responseHandlerFieldEvaluators?.[0]?.handle?.({
+            ...responseHandlerFieldContext,
+            value: { value: true },
+            parsed: {
+              shouldRespond: "RESPOND",
+              contexts: [],
+              intents: [],
+              candidateActionNames: [],
+              replyText: "",
+              facts: [],
+              relationships: [],
+              addressedTo: [],
+            },
+          } as never);
+        const mutableResult = {
+          shouldRespond: "RESPOND" as const,
+          contexts: [],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        };
+        fieldEffect?.mutateResult?.(mutableResult);
+        expect(mutableResult).toMatchObject({ builtSourceFieldHandled: true });
+        expect(fieldEffect?.debug).toEqual(["built source field handled"]);
+        await expect(
+          (
+            plugin?.events as Record<
+              string,
+              Array<(payload: unknown) => Promise<void> | void>
+            >
+          )?.["built.source.event"]?.[0]?.({
+            runtime,
+            payload: true,
+          } as never),
+        ).resolves.toBeUndefined();
+        const builtSourceService = runtime.getService(
+          "built_source_service",
+        ) as unknown as {
+          lookup: (...args: unknown[]) => Promise<unknown>;
+        } | null;
+        await expect(
+          builtSourceService?.lookup({ query: "service" }),
+        ).resolves.toEqual({
+          text: "built source service",
+          args: [{ query: "service" }],
+        });
+        await expect(
+          plugin?.appBridge?.prepareLaunch?.({
+            runtime,
+            appId: "built-source",
+          } as never),
+        ).resolves.toEqual({
+          launchUrl: "https://built-source.example/launch",
+        });
+        const modelHandlers = (
+          runtime as unknown as {
+            models: Map<
+              string,
+              Array<{
+                handler: (
+                  runtime: IAgentRuntime,
+                  params: unknown,
+                ) => Promise<unknown>;
+              }>
+            >;
+          }
+        ).models;
+        await expect(
+          modelHandlers.get("BUILT_SOURCE_TEXT")?.[0]?.handler(runtime, {
+            prompt: "hello model",
+          }),
+        ).resolves.toEqual({
+          text: "built source model",
+          params: { prompt: "hello model" },
+        });
+        await expect(
+          dispatchRoute({
+            runtime,
+            method: "POST",
+            path: "/built-source/route",
+            headers: {},
+            body: { ping: true },
+            inProcess: false,
+            isAuthorized: () => false,
+          }),
+        ).resolves.toEqual({
+          status: 207,
+          headers: { "x-built-source": "yes" },
+          body: { ok: true, body: { ping: true } },
+        });
+      } finally {
+        await server.close();
+        await rm(workspace, { recursive: true, force: true });
+      }
+    },
+  );
 
-  it("loads a built remote plugin from a separate capability server process", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "eliza-remote-process-"));
-    const srcDir = join(workspace, "src");
-    const distDir = join(workspace, "dist");
-    await mkdir(srcDir, { recursive: true });
-    await mkdir(distDir, { recursive: true });
+  esbuildSmoke(
+    "loads a built remote plugin from a separate capability server process",
+    async () => {
+      const workspace = await mkdtemp(join(tmpdir(), "eliza-remote-process-"));
+      const srcDir = join(workspace, "src");
+      const distDir = join(workspace, "dist");
+      await mkdir(srcDir, { recursive: true });
+      await mkdir(distDir, { recursive: true });
 
-    const viewSource = join(srcDir, "process-view.ts");
-    const builtBundlePath = join(distDir, "process-view.js");
-    await writeFile(
-      viewSource,
-      [
-        "export const marker = 'process-built-remote-view';",
-        "export const source = 'child-process';",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-    const buildResult = await esbuild({
-      entryPoints: [viewSource],
-      outfile: builtBundlePath,
-      target: "es2022",
-      platform: "browser",
-      format: "esm",
-      bundle: true,
-      write: true,
-    });
-    expect(buildResult.errors).toHaveLength(0);
+      const viewSource = join(srcDir, "process-view.ts");
+      const builtBundlePath = join(distDir, "process-view.js");
+      await writeFile(
+        viewSource,
+        [
+          "export const marker = 'process-built-remote-view';",
+          "export const source = 'child-process';",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      const buildResult = await buildRemoteViewFixtures({
+        entryPoints: [viewSource],
+        outfile: builtBundlePath,
+      });
+      expect(buildResult.errors).toHaveLength(0);
 
-    const serverSource = join(srcDir, "capability-process.mjs");
-    await writeFile(
-      serverSource,
-      `
+      const serverSource = join(srcDir, "capability-process.mjs");
+      await writeFile(
+        serverSource,
+        `
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 
@@ -3323,106 +4078,107 @@ server.listen(0, "127.0.0.1", () => {
 
 process.on("SIGTERM", () => server.close(() => process.exit(0)));
 `,
-      "utf8",
-    );
-
-    const child = spawn(process.execPath, [serverSource], {
-      env: {
-        ...process.env,
-        REMOTE_CAPABILITY_TOKEN: "process-token",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    try {
-      const { baseUrl, pid } = await readChildServerReady(child);
-      expect(pid).not.toBe(process.pid);
-      const runtime = makeExecutableRuntime(
-        new RemoteCapabilityRouterService(makeRuntime(null), {
-          enabled: true,
-          baseUrl,
-          token: "process-token",
-          environment: "server",
-          requestTimeoutMs: 1000,
-        }),
+        "utf8",
       );
 
-      await expect(
-        bootstrapRemoteCapabilityPlugins(runtime),
-      ).resolves.toMatchObject({
-        registered: [
-          expect.objectContaining({ name: "@remote/process-plugin" }),
-        ],
-        unloaded: [],
-        skipped: [],
-        trustDecisions: [
-          expect.objectContaining({
-            moduleId: "process-plugin",
-            endpointId: "primary",
-            trusted: true,
+      const child = spawn(process.execPath, [serverSource], {
+        env: {
+          ...process.env,
+          REMOTE_CAPABILITY_TOKEN: "process-token",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      try {
+        const { baseUrl, pid } = await readChildServerReady(child);
+        expect(pid).not.toBe(process.pid);
+        const runtime = makeExecutableRuntime(
+          new RemoteCapabilityRouterService(makeRuntime(null), {
+            enabled: true,
+            baseUrl,
+            token: "process-token",
+            environment: "server",
+            requestTimeoutMs: 1000,
           }),
-        ],
-      });
+        );
 
-      const bundleUrl =
-        "/api/capability-router/assets/primary/process-plugin/assets/process-view.js";
-      expect(getView("process.view")).toMatchObject({
-        id: "process.view",
-        pluginName: "@remote/process-plugin",
-        bundleUrl,
-        available: true,
-      });
-      const remoteBundleUrl = `${baseUrl}/v1/capabilities/assets/process-plugin/assets/process-view.js`;
-      const bundleResponse = await fetch(remoteBundleUrl, {
-        headers: { authorization: "Bearer process-token" },
-      });
-      expect(bundleResponse.status).toBe(200);
-      const bundleSource = await bundleResponse.text();
-      await expect(
-        import(
-          `data:text/javascript;base64,${Buffer.from(bundleSource).toString(
-            "base64",
-          )}`
-        ),
-      ).resolves.toMatchObject({
-        marker: "process-built-remote-view",
-        source: "child-process",
-      });
+        await expect(
+          bootstrapRemoteCapabilityPlugins(runtime),
+        ).resolves.toMatchObject({
+          registered: [
+            expect.objectContaining({ name: "@remote/process-plugin" }),
+          ],
+          unloaded: [],
+          skipped: [],
+          trustDecisions: [
+            expect.objectContaining({
+              moduleId: "process-plugin",
+              endpointId: "primary",
+              trusted: true,
+            }),
+          ],
+        });
 
-      await expect(
-        runtime.actions[0]?.handler(runtime, { content: {} } as never),
-      ).resolves.toMatchObject({
-        success: true,
-        text: "process action",
-        data: { pid },
-      });
-      await expect(
-        runtime.providers[0]?.get(runtime, {} as never, {} as never),
-      ).resolves.toMatchObject({
-        text: "process provider",
-        values: { isolated: true },
-      });
-      await expect(
-        dispatchRoute({
-          runtime,
-          method: "POST",
-          path: "/process/route",
-          headers: {},
-          body: { process: true },
-          inProcess: false,
-          isAuthorized: () => false,
-        }),
-      ).resolves.toEqual({
-        status: 208,
-        headers: { "x-process-plugin": "yes" },
-        body: { processRoute: true, body: { process: true } },
-      });
-    } finally {
-      child.kill("SIGTERM");
-      await waitForChildExit(child);
-      await rm(workspace, { recursive: true, force: true });
-    }
-  });
+        const bundleUrl =
+          "/api/capability-router/assets/primary/process-plugin/assets/process-view.js";
+        expect(getView("process.view")).toMatchObject({
+          id: "process.view",
+          pluginName: "@remote/process-plugin",
+          bundleUrl,
+          available: true,
+        });
+        const remoteBundleUrl = `${baseUrl}/v1/capabilities/assets/process-plugin/assets/process-view.js`;
+        const bundleResponse = await fetch(remoteBundleUrl, {
+          headers: { authorization: "Bearer process-token" },
+        });
+        expect(bundleResponse.status).toBe(200);
+        const bundleSource = await bundleResponse.text();
+        await expect(
+          import(
+            `data:text/javascript;base64,${Buffer.from(bundleSource).toString(
+              "base64",
+            )}`
+          ),
+        ).resolves.toMatchObject({
+          marker: "process-built-remote-view",
+          source: "child-process",
+        });
+
+        await expect(
+          runtime.actions[0]?.handler(runtime, { content: {} } as never),
+        ).resolves.toMatchObject({
+          success: true,
+          text: "process action",
+          data: { pid },
+        });
+        await expect(
+          runtime.providers[0]?.get(runtime, {} as never, {} as never),
+        ).resolves.toMatchObject({
+          text: "process provider",
+          values: { isolated: true },
+        });
+        await expect(
+          dispatchRoute({
+            runtime,
+            method: "POST",
+            path: "/process/route",
+            headers: {},
+            body: { process: true },
+            inProcess: false,
+            isAuthorized: () => false,
+          }),
+        ).resolves.toEqual({
+          status: 208,
+          headers: { "x-process-plugin": "yes" },
+          body: { processRoute: true, body: { process: true } },
+        });
+      } finally {
+        child.kill("SIGTERM");
+        await waitForChildExit(child);
+        await rm(workspace, { recursive: true, force: true });
+      }
+    },
+  );
 
   dockerSmoke(
     "loads a built remote plugin from an actual Docker container capability server",
@@ -3435,9 +4191,7 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
       await mkdir(distDir, { recursive: true });
 
       const viewSource = join(srcDir, "docker-view.ts");
-      const builtBundlePath = join(distDir, "docker-view.js");
       const toolsViewSource = join(srcDir, "docker-tools-view.ts");
-      const builtToolsBundlePath = join(distDir, "docker-tools-view.js");
       await writeFile(
         viewSource,
         [
@@ -3457,14 +4211,9 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
         ].join("\n"),
         "utf8",
       );
-      const buildResult = await esbuild({
+      const buildResult = await buildRemoteViewFixtures({
         entryPoints: [viewSource, toolsViewSource],
         outdir: distDir,
-        target: "es2022",
-        platform: "browser",
-        format: "esm",
-        bundle: true,
-        write: true,
       });
       expect(buildResult.errors).toHaveLength(0);
 
@@ -4264,6 +5013,7 @@ function makeProductConnectRuntime(): IAgentRuntime {
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
       runtime.routes.push(...(plugin.routes ?? []));
+      await registerPluginViews(plugin);
     },
   });
   return runtime;

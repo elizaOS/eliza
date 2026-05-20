@@ -20,6 +20,12 @@
  *   arm64-v8a/ld-musl-aarch64.so.1
  *   arm64-v8a/libstdc++.so.6.0.33
  *   arm64-v8a/libgcc_s.so.1
+ *   riscv64/bun                     (cuttlefish riscv64; opt-in via
+ *                                    MILADY_BUN_RISCV64_URL since upstream Bun
+ *                                    has no riscv64-linux-musl release)
+ *   riscv64/ld-musl-riscv64.so.1
+ *   riscv64/libstdc++.so.6.0.33
+ *   riscv64/libgcc_s.so.1
  *
  * Downloads are cached under `~/.cache/eliza-android-agent/<bun-version>/`
  * and the staging step is idempotent — already-staged files with matching
@@ -33,6 +39,7 @@
  * `agent-bundle.js` is produced by `bun run --cwd packages/agent build:mobile`.
  */
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -51,10 +58,11 @@ const ALPINE_BRANCH = "v3.21";
 
 /**
  * Default cache dir for compile-shim.mjs's outputs. Mirrors the default
- * in `scripts/elizaos/compile-shim.mjs`. We resolve from `os.homedir()`
- * directly instead of importing `compile-shim.mjs` to avoid pulling the
- * zig probe + shell-out machinery into the staging step (this module
- * runs unconditionally on every gradle build, not just AOSP).
+ * in `packages/app-core/scripts/aosp/compile-shim.mjs`. We resolve from
+ * `os.homedir()` directly instead of importing `compile-shim.mjs` to
+ * avoid pulling the zig probe + shell-out machinery into the staging
+ * step (this module runs unconditionally on every gradle build, not
+ * just AOSP).
  */
 const SECCOMP_SHIM_CACHE_DIR = path.join(
   os.homedir(),
@@ -76,6 +84,19 @@ const ABI_TARGETS = [
     alpineArch: "aarch64",
     ldName: "ld-musl-aarch64.so.1",
   },
+  {
+    // Upstream Bun has no riscv64-linux-musl release as of this writing,
+    // so this ABI only succeeds when `MILADY_BUN_RISCV64_URL` is set
+    // (pointing at a self-built canary zip produced by
+    // `packages/app-core/scripts/bun-riscv64/build.sh`). Without that
+    // env var, ensureBunBinary() throws with explicit guidance; the
+    // staging step still wires the rest of the matrix so libllama /
+    // shim cross-compiles can land artifacts incrementally.
+    androidAbi: "riscv64",
+    bunArch: "riscv64",
+    alpineArch: "riscv64",
+    ldName: "ld-musl-riscv64.so.1",
+  },
 ];
 
 const NATIVE_LLAMA_ASSET_ENV_KEYS = [
@@ -93,6 +114,7 @@ const APK_PACKAGES = [
 function jniLoaderName(ldName) {
   if (ldName.includes("aarch64")) return "libeliza_ld_musl_aarch64.so";
   if (ldName.includes("x86_64")) return "libeliza_ld_musl_x86_64.so";
+  if (ldName.includes("riscv64")) return "libeliza_ld_musl_riscv64.so";
   return `libeliza_${ldName.replace(/[^a-zA-Z0-9]+/g, "_")}.so`;
 }
 
@@ -203,6 +225,33 @@ async function downloadFile(url, targetPath) {
   fs.writeFileSync(targetPath, buf);
 }
 
+function normalizeSha256(value, envName) {
+  const sha256 = value?.trim().toLowerCase();
+  if (!sha256) return null;
+  if (!/^[a-f0-9]{64}$/.test(sha256)) {
+    throw new Error(
+      `${envName} must be a lowercase or uppercase 64-character SHA-256 hex digest.`,
+    );
+  }
+  return sha256;
+}
+
+function riscv64BunSha256() {
+  return normalizeSha256(
+    process.env.MILADY_BUN_RISCV64_SHA256 ??
+      process.env.ELIZA_BUN_RISCV64_SHA256,
+    process.env.MILADY_BUN_RISCV64_SHA256
+      ? "MILADY_BUN_RISCV64_SHA256"
+      : "ELIZA_BUN_RISCV64_SHA256",
+  );
+}
+
+function sha256File(filePath) {
+  const hash = crypto.createHash("sha256");
+  hash.update(fs.readFileSync(filePath));
+  return hash.digest("hex");
+}
+
 function normalizeBunChannel(value) {
   const channel = String(value ?? DEFAULT_BUN_CHANNEL)
     .trim()
@@ -243,12 +292,24 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
   const cacheKey = bunCacheKey(bunChannel);
   const archCache = path.join(cacheDir, `bun-${bunArch}-${cacheKey}`);
   const bunPath = path.join(archCache, "bun");
+  const sourceSha256Path = path.join(archCache, ".source.sha256");
+  const expectedRiscv64Sha256 =
+    bunArch === "riscv64" ? riscv64BunSha256() : null;
   // Canary cache invalidates after 24h so we pull bug-fix snapshots
   // automatically without forcing every CI run to re-download.
   const isFresh = (() => {
     if (!fs.existsSync(bunPath)) return false;
     const st = fs.statSync(bunPath);
     if (st.size <= 1_000_000) return false;
+    if (bunArch === "riscv64") {
+      if (!expectedRiscv64Sha256) return false;
+      if (!fs.existsSync(sourceSha256Path)) return false;
+      const cachedSha256 = fs
+        .readFileSync(sourceSha256Path, "utf8")
+        .trim()
+        .toLowerCase();
+      if (cachedSha256 !== expectedRiscv64Sha256) return false;
+    }
     if (bunChannel !== "canary") return true;
     const ageMs = Date.now() - st.mtimeMs;
     return ageMs < 24 * 60 * 60 * 1000;
@@ -256,13 +317,47 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
   if (isFresh) return bunPath;
   fs.mkdirSync(archCache, { recursive: true });
   const zipPath = path.join(archCache, "bun.zip");
-  const url =
-    bunChannel === "canary"
-      ? `https://github.com/oven-sh/bun/releases/download/canary/bun-linux-${bunArch}-musl.zip`
-      : `https://github.com/oven-sh/bun/releases/download/${channelTag}/bun-linux-${bunArch}-musl.zip`;
+  // riscv64 has no upstream Bun release. Allow operators to point at a
+  // self-built canary artifact via `MILADY_BUN_RISCV64_URL`; otherwise
+  // refuse to download from a guessed URL and surface a clear pointer at
+  // the cross-build pipeline. We never invent a default URL.
+  let url;
+  if (bunArch === "riscv64") {
+    const riscvUrl = process.env.MILADY_BUN_RISCV64_URL?.trim();
+    if (!riscvUrl) {
+      throw new Error(
+        "Bun riscv64 artifact not available: upstream Bun has no riscv64-linux-musl release. " +
+          "Set MILADY_BUN_RISCV64_URL to a self-built canary zip URL " +
+          "(produced by packages/app-core/scripts/bun-riscv64/build.sh), " +
+          "or skip the riscv64 ABI for this build.",
+      );
+    }
+    if (!expectedRiscv64Sha256) {
+      throw new Error(
+        "Bun riscv64 artifact hash is required: set MILADY_BUN_RISCV64_SHA256 " +
+          "(or ELIZA_BUN_RISCV64_SHA256) to the SHA-256 of bun-linux-riscv64-musl.zip.",
+      );
+    }
+    url = riscvUrl;
+  } else {
+    url =
+      bunChannel === "canary"
+        ? `https://github.com/oven-sh/bun/releases/download/canary/bun-linux-${bunArch}-musl.zip`
+        : `https://github.com/oven-sh/bun/releases/download/${channelTag}/bun-linux-${bunArch}-musl.zip`;
+  }
   const channelLabel = bunChannelLabel(bunChannel);
   log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
   await downloadFile(url, zipPath);
+  if (expectedRiscv64Sha256) {
+    const actualSha256 = sha256File(zipPath);
+    if (actualSha256 !== expectedRiscv64Sha256) {
+      fs.rmSync(zipPath, { force: true });
+      throw new Error(
+        `bun-linux-riscv64-musl.zip SHA-256 mismatch: expected ` +
+          `${expectedRiscv64Sha256}, got ${actualSha256}`,
+      );
+    }
+  }
   await run("unzip", ["-q", "-o", zipPath, "-d", archCache]);
   const extractedDir = path.join(archCache, `bun-linux-${bunArch}-musl`);
   const extractedBun = path.join(extractedDir, "bun");
@@ -274,6 +369,9 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
   fs.rmSync(extractedDir, { recursive: true, force: true });
   fs.rmSync(zipPath, { force: true });
   fs.chmodSync(bunPath, 0o755);
+  if (expectedRiscv64Sha256) {
+    fs.writeFileSync(sourceSha256Path, `${expectedRiscv64Sha256}\n`, "utf8");
+  }
   return bunPath;
 }
 
@@ -368,13 +466,46 @@ function copyIfDifferent(source, target) {
 }
 
 function resolveNativeLlamaAssetDir(androidAbi) {
-  if (androidAbi !== "arm64-v8a") return null;
+  // Look up an env-var-supplied prebuilt native llama asset dir for this
+  // ABI. Each env var may be either:
+  //   - a single absolute dir (legacy arm64-only contract — the prebuilt
+  //     lives directly inside; only honoured when androidAbi is arm64-v8a),
+  //   - a per-ABI suffixed variant `<KEY>_<ABI>` where ABI is the upper-
+  //     snake-cased androidAbi (e.g. ELIZA_AOSP_LLAMA_ASSET_DIR_ARM64_V8A,
+  //     _X86_64, _RISCV64),
+  //   - or a base dir that contains per-ABI subdirectories named after the
+  //     androidAbi (e.g. `<dir>/arm64-v8a/`, `<dir>/x86_64/`, `<dir>/riscv64/`).
+  // The first env key that resolves to a real dir for this ABI wins. We
+  // never fall back across ABIs (an arm64 prebuilt is not valid for x86_64
+  // or riscv64).
+  const abiSuffix = androidAbi.replace(/-/g, "_").toUpperCase();
   for (const key of NATIVE_LLAMA_ASSET_ENV_KEYS) {
+    // 1. Per-ABI env var wins outright.
+    const perAbiRaw = process.env[`${key}_${abiSuffix}`]?.trim();
+    if (perAbiRaw) {
+      const resolved = path.resolve(perAbiRaw);
+      if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+        return { dir: resolved, key: `${key}_${abiSuffix}` };
+      }
+    }
     const raw = process.env[key]?.trim();
     if (!raw) continue;
-    const resolved = path.resolve(raw);
-    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
-      return { dir: resolved, key };
+    const baseResolved = path.resolve(raw);
+    if (!fs.existsSync(baseResolved)) continue;
+    if (!fs.statSync(baseResolved).isDirectory()) continue;
+    // 2. Base dir containing per-ABI subdirs.
+    const perAbiSubdir = path.join(baseResolved, androidAbi);
+    if (
+      fs.existsSync(perAbiSubdir) &&
+      fs.statSync(perAbiSubdir).isDirectory()
+    ) {
+      return { dir: perAbiSubdir, key: `${key}/${androidAbi}` };
+    }
+    // 3. Legacy: the env var points directly at the prebuilt dir; honour
+    //    it only for arm64-v8a since that's the only ABI the legacy
+    //    contract ever shipped a prebuilt for.
+    if (androidAbi === "arm64-v8a") {
+      return { dir: baseResolved, key };
     }
   }
   return null;
@@ -470,8 +601,8 @@ export function stageSeccompShimForAbi({
   if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
     log?.(
       `No compiled SIGSYS shim for ${androidAbi}; leaving the Alpine ` +
-        `loader at ${ldName} (run \`node scripts/elizaos/compile-shim.mjs\` for ` +
-        `the AOSP path).`,
+        `loader at ${ldName} (run \`node packages/app-core/scripts/aosp/compile-shim.mjs\` ` +
+        `for the AOSP path).`,
     );
     return 0;
   }
@@ -582,6 +713,28 @@ export async function stageAndroidAgentRuntime({
 
   for (const target of ABI_TARGETS) {
     const { androidAbi, bunArch, alpineArch, ldName } = target;
+    // Soft-skip the riscv64 lane when no MILADY_BUN_RISCV64_URL is set and
+    // MILADY_BUN_RISCV64_REQUIRED is not requested. Upstream Bun has no
+    // riscv64-linux-musl release, so by default riscv64 is opt-in (set
+    // MILADY_BUN_RISCV64_URL to a self-built canary zip from
+    // packages/app-core/scripts/bun-riscv64/build.sh). The libllama /
+    // shim cross-compiles still land their per-ABI artifacts independently
+    // — operators iterating on the native side don't have to build Bun
+    // first. Set MILADY_BUN_RISCV64_REQUIRED=1 to convert the soft-skip
+    // into a hard error (the AOSP cuttlefish smoke gates use this).
+    if (bunArch === "riscv64") {
+      const riscvUrl = process.env.MILADY_BUN_RISCV64_URL?.trim();
+      const required = process.env.MILADY_BUN_RISCV64_REQUIRED === "1";
+      if (!riscvUrl && !required) {
+        tlog(
+          `Skipping ABI ${androidAbi}: MILADY_BUN_RISCV64_URL unset (upstream Bun has ` +
+            `no riscv64-linux-musl release). Build with packages/app-core/scripts/` +
+            `bun-riscv64/build.sh and re-run, or set MILADY_BUN_RISCV64_REQUIRED=1 to ` +
+            `make this a hard error.`,
+        );
+        continue;
+      }
+    }
     const abiAssetsDir = path.join(assetsAgentDir, androidAbi);
     const abiJniDir = path.join(jniLibsDir, androidAbi);
     fs.mkdirSync(abiAssetsDir, { recursive: true });
@@ -794,8 +947,6 @@ export async function stageAndroidAgentRuntime({
     "pglite.data",
     "vector.tar.gz",
     "fuzzystrmatch.tar.gz",
-    "ort-wasm-simd-threaded.mjs",
-    "ort-wasm-simd-threaded.wasm",
     "plugins-manifest.json",
   ];
   for (const name of pgliteAssets) {

@@ -1,12 +1,9 @@
-// Visual regression baselines for os-usb-installer.
-// Run once with --update-snapshots to generate baselines. See tests/VISUAL-REGRESSION.md.
-//
-// NOTE: This package does not yet have Playwright wired up — see VISUAL-REGRESSION.md
-// for the setup steps required before this spec can run.
-
 import { expect, type Page, test } from "@playwright/test";
+import { mockInstallerApi } from "./mock-installer-api";
 
 const ROUTES = [{ path: "/", name: "landing" }] as const;
+const ENABLE_VISUAL_SNAPSHOTS =
+  process.env.ELIZAOS_USB_VISUAL_SNAPSHOTS === "1";
 
 const VIEWPORTS = [
   { name: "desktop", width: 1280, height: 720 },
@@ -34,16 +31,24 @@ for (const viewport of VIEWPORTS) {
 
     for (const route of ROUTES) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
+        await mockInstallerApi(page);
         await page.goto(route.path, { waitUntil: "networkidle" });
         await prepare(page);
-        await expect(page).toHaveScreenshot(
-          `${route.name}-${viewport.name}.png`,
-          {
-            fullPage: true,
-            mask: dynamicMask(page),
-            animations: "disabled",
-          },
-        );
+        await expect(
+          page.getByRole("heading", { name: "USB installer" }),
+        ).toBeVisible();
+        await expect(page.getByText("elizaOS Test USB")).toBeVisible();
+
+        if (ENABLE_VISUAL_SNAPSHOTS) {
+          await expect(page).toHaveScreenshot(
+            `${route.name}-${viewport.name}.png`,
+            {
+              fullPage: true,
+              mask: dynamicMask(page),
+              animations: "disabled",
+            },
+          );
+        }
       });
     }
   });

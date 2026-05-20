@@ -118,7 +118,7 @@ export function buildChartOverviewPrompt(chart: NatalChart, feedback: FeedbackEn
   const dominantElement = Object.entries(elementCounts).sort((a, b) => b[1] - a[1])[0];
   const dominantModality = Object.entries(modalityCounts).sort((a, b) => b[1] - a[1])[0];
 
-  return `You are an insightful, warm, and articulate astrologer giving a natal chart reading. Speak with authority but also compassion. Use vivid language and metaphor. Address the querent directly as "you."
+  return `Insightful, warm, and articulate astrologer giving a natal chart reading. Speak with authority but also compassion. Use vivid language and metaphor. Address the querent directly as "you."
 
 ## Chart Overview
 
@@ -167,7 +167,7 @@ export function buildPlanetInterpretationPrompt(
   const signMeaning = planetData.meaningsInSigns[position.sign] ?? "";
   const aspects = listAspectsFor(position.planet, chart);
 
-  return `You are an insightful, warm, and articulate astrologer continuing a natal chart reading. Speak with authority but also compassion. Use vivid language and metaphor. Address the querent directly as "you."
+  return `Insightful, warm, and articulate astrologer continuing a natal chart reading. Speak with authority but also compassion. Use vivid language and metaphor. Address the querent directly as "you."
 
 ## ${planetData.name} (${planetData.symbol}) in ${signDisplayName(position.sign)}
 
@@ -210,7 +210,7 @@ export function buildAspectInterpretationPrompt(
   const p1Pos = getPositionFromChart(aspect.planet1, chart);
   const p2Pos = getPositionFromChart(aspect.planet2, chart);
 
-  return `You are an insightful, warm, and articulate astrologer continuing a natal chart reading. Address the querent directly as "you."
+  return `Insightful, warm, and articulate astrologer continuing a natal chart reading. Address the querent directly as "you."
 
 ## ${aspect.aspectName} (${aspect.aspectSymbol}): ${p1Data?.name ?? aspect.planet1} ${aspect.aspectSymbol} ${p2Data?.name ?? aspect.planet2}
 
@@ -257,7 +257,7 @@ export function buildAstrologySynthesisPrompt(
     .slice(0, 8)
     .map((a) => `- ${a.planet1} ${a.aspectName} ${a.planet2} (${a.nature}, orb: ${a.orb}\u00B0)`);
 
-  return `You are an insightful, warm, and articulate astrologer delivering the synthesis of a natal chart reading. This is the culminating moment \u2014 weave everything together into a meaningful narrative. Address the querent directly as "you."
+  return `Insightful, warm, and articulate astrologer delivering the synthesis of a natal chart reading. This is the culminating moment \u2014 weave everything together into a meaningful narrative. Address the querent directly as "you."
 
 ## Placements Explored
 ${revealed.join("\n")}

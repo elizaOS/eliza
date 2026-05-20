@@ -92,6 +92,20 @@ export const modelTesterPlugin: Plugin = {
     },
     {
       id: "model-tester",
+      label: "Model Tester XR",
+      description:
+        "End-to-end probes for Eliza-1 text, voice, audio, and vision models",
+      icon: "TestTube2",
+      path: "/model-tester",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "ModelTesterAppView",
+      tags: ["developer", "models", "testing"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "model-tester",
       label: "Model Tester TUI",
       description:
         "Terminal probes for Eliza-1 text, voice, audio, and vision models",

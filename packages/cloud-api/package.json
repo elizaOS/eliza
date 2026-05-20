@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-api",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.1-beta.0",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
@@ -10,7 +10,7 @@
     "dev:full": "node ../scripts/cloud/admin/dev/cloud-api-dev.mjs --with-control-plane",
     "agent:build": "node ../scripts/cloud/admin/dev/build-cloud-agent-image.mjs",
     "build": "tsc --noEmit",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --env production",
     "codegen": "node src/_generate-router.mjs",
     "typecheck": "tsc --noEmit",
     "test": "bun test __tests__",

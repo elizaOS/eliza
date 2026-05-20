@@ -326,7 +326,7 @@ async function generateEnhancedPoolAnalysis(
 ): Promise<string> {
   try {
     // Create a focused prompt for the LLM
-    const analysisPrompt = `You are a professional DeFi analyst specializing in Kamino Finance liquidity pools. Generate a concise, insightful analysis for the pool with address ${poolData.address}.
+    const analysisPrompt = `Generate a concise pool analysis for Kamino Finance pool at address ${poolData.address}.
 
 POOL DATA:
 ${formatPoolDataForPrompt(poolData)}

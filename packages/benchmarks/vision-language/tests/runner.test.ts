@@ -26,6 +26,38 @@ describe("runOneBenchmark", () => {
     expect(report.error_count).toBe(0);
   });
 
+  it("aggregates runtime token telemetry into the report", async () => {
+    const report = await runOneBenchmark({
+      tier: "stub",
+      benchmark: "textvqa",
+      samples: 2,
+      smoke: true,
+      runtime: {
+        id: "usage-runtime",
+        async ask() {
+          return "unknown";
+        },
+        usage() {
+          return {
+            input_tokens: 100,
+            output_tokens: 20,
+            cached_tokens: 25,
+            cache_creation_tokens: 5,
+            llm_call_count: 2,
+          };
+        },
+      },
+    });
+
+    expect(report.input_tokens).toBe(100);
+    expect(report.output_tokens).toBe(20);
+    expect(report.total_tokens).toBe(120);
+    expect(report.cached_tokens).toBe(25);
+    expect(report.cache_creation_tokens).toBe(5);
+    expect(report.cached_token_percent).toBe(25);
+    expect(report.llm_call_count).toBe(2);
+  });
+
   it("runs the screenspot smoke fixture and returns a non-zero score for centred clicks", async () => {
     const runtime = createStubRuntime("test");
     const report = await runOneBenchmark({
@@ -88,6 +120,34 @@ describe("resolveRuntime", () => {
       forceStub: true,
     });
     expect(runtime.id).toBe("missing-real-tier-stub");
+  });
+
+  it("requires an explicit multimodal model for Hermes/OpenClaw runtimes", async () => {
+    await expect(
+      resolveRuntime({
+        tier: "eliza-1-9b",
+        forceStub: false,
+        harness: "hermes",
+      }),
+    ).rejects.toThrow(/requires --model or VISION_LANGUAGE_MODEL/);
+  });
+
+  it("uses the same explicit-model guard for ElizaOS/OpenCode vision runtimes", async () => {
+    await expect(
+      resolveRuntime({
+        tier: "eliza-1-9b",
+        forceStub: false,
+        harness: "opencode",
+      }),
+    ).rejects.toThrow(/requires --model or VISION_LANGUAGE_MODEL/);
+
+    await expect(
+      resolveRuntime({
+        tier: "eliza-1-9b",
+        forceStub: false,
+        harness: "elizaos",
+      }),
+    ).rejects.toThrow(/requires --model or VISION_LANGUAGE_MODEL/);
   });
 });
 

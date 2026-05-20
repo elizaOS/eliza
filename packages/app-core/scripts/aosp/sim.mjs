@@ -52,7 +52,27 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
 const DEFAULT_AOSP_ROOT = path.join(os.homedir(), "aosp");
+// Cuttlefish out/target/product/<deviceDir> name. The default is the
+// x86_64 vsoc product; riscv64 / arm64 callers should pass --device-dir
+// or rely on aosp.cuttlefishDeviceDir in app.config.ts. Upstream-known
+// values today: vsoc_x86_64_only, vsoc_arm64_only, vsoc_riscv64_only
+// (the riscv64 target ships from Android 15+ as cf_riscv64_phone /
+// vsoc_riscv64_only — see chip/docs/android/cuttlefish-riscv64-bringup.md).
 const DEFAULT_DEVICE_DIR = "vsoc_x86_64_only";
+// Cuttlefish boot time. x86_64 + arm64 KVM hosts hit homescreen in
+// ~2-3 min; riscv64 cvd reports 5-10 min on the same host because the
+// AOSP riscv64 image relies on QEMU TCG translation (no hardware KVM
+// for riscv64 on x86_64 hosts) plus the Android riscv64 ART JIT is
+// still warming up its tier-up policy. The 10-min default is the
+// upper bound chip-team measured on the Nebius H200 builder.
+const DEFAULT_BOOT_TIMEOUT_X86_ARM_MS = 300_000;
+const DEFAULT_BOOT_TIMEOUT_RISCV64_MS = 600_000;
+function defaultBootTimeoutForDeviceDir(deviceDir) {
+  if (typeof deviceDir === "string" && deviceDir.includes("riscv64")) {
+    return DEFAULT_BOOT_TIMEOUT_RISCV64_MS;
+  }
+  return DEFAULT_BOOT_TIMEOUT_X86_ARM_MS;
+}
 
 function parseArgs(argv) {
   const args = {
@@ -63,7 +83,8 @@ function parseArgs(argv) {
     noLaunch: false,
     stopAfter: false,
     waitForBuild: false,
-    bootTimeoutMs: 300_000,
+    // Sentinel — resolved against deviceDir below once we know the arch.
+    bootTimeoutMs: null,
     appConfigPath: null,
   };
   const readFlagValue = (flag, index) => {
@@ -130,6 +151,9 @@ function parseArgs(argv) {
     if (!args.deviceDir) {
       args.deviceDir = variant?.cuttlefishDeviceDir ?? DEFAULT_DEVICE_DIR;
     }
+  }
+  if (args.bootTimeoutMs == null) {
+    args.bootTimeoutMs = defaultBootTimeoutForDeviceDir(args.deviceDir);
   }
   return args;
 }

@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 const host = process.env.PLAYWRIGHT_HOST || "127.0.0.1";
 const port = process.env.PLAYWRIGHT_PORT || "4173";
 const baseUrl = process.env.PLAYWRIGHT_BASE_URL || `http://${host}:${port}`;
+const liveUrl = process.env.CLOUD_E2E_LIVE_URL?.trim();
 const args = process.argv.slice(2);
 const env = {
   ...process.env,
@@ -37,6 +38,25 @@ async function waitForServer(child) {
 function stop(child) {
   if (!child || child.exitCode !== null) return;
   child.kill("SIGTERM");
+}
+
+if (liveUrl) {
+  const result = await new Promise((resolve, reject) => {
+    const child = spawn("playwright", ["test", ...args], {
+      stdio: "inherit",
+      env,
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (signal) {
+        resolve(1);
+        return;
+      }
+      resolve(code ?? 1);
+    });
+  });
+  process.exitCode = result;
+  process.exit();
 }
 
 const server = spawn(

@@ -13,12 +13,12 @@
  */
 
 import type {
-  CarrotListEntry,
-  CarrotPermissionGrant,
-  CarrotStoreSnapshot,
-  InstalledCarrotSnapshot,
+  InstalledRemotePluginSnapshot,
   JsonValue,
-} from "@elizaos/electrobun-carrots";
+  RemotePluginListEntry,
+  RemotePluginPermissionGrant,
+  RemotePluginStoreSnapshot,
+} from "@elizaos/plugin-remote-manifest";
 import type { RPCSchema } from "electrobun/bun";
 import type {
   DynamicViewCloseParams,
@@ -794,50 +794,54 @@ export interface CorePluginsSnapshot {
   optional: CorePluginEntry[];
 }
 
-export type CarrotWorkerState = "stopped" | "starting" | "running" | "error";
+export type RemotePluginWorkerState =
+  | "stopped"
+  | "starting"
+  | "running"
+  | "error";
 
-export interface CarrotWorkerStatus {
+export interface RemotePluginWorkerStatus {
   id: string;
-  state: CarrotWorkerState;
+  state: RemotePluginWorkerState;
   startedAt: number | null;
   stoppedAt: number | null;
   error: string | null;
 }
 
-export interface CarrotInstallFromDirectoryRequest {
+export interface RemotePluginInstallFromDirectoryRequest {
   sourceDir: string;
   devMode?: boolean;
-  permissionsGranted?: CarrotPermissionGrant;
+  permissionsGranted?: RemotePluginPermissionGrant;
   currentHash?: string | null;
 }
 
-export interface CarrotUninstallResult {
+export interface RemotePluginUninstallResult {
   removed: boolean;
-  carrot: CarrotListEntry | null;
+  remotePlugin: RemotePluginListEntry | null;
 }
 
-export interface CarrotLogsSnapshot {
+export interface RemotePluginLogsSnapshot {
   id: string;
   path: string;
   text: string;
   truncated: boolean;
 }
 
-export interface CarrotInvokeWorkerRequest {
+export interface RemotePluginInvokeWorkerRequest {
   id: string;
   method: string;
   params?: JsonValue;
   windowId?: string;
 }
 
-export interface CarrotTailWorkerEventsRequest {
+export interface RemotePluginTailWorkerEventsRequest {
   id: string;
   afterSequence?: number;
   limit?: number;
 }
 
-export interface CarrotWorkerEventRecord {
-  carrotId: string;
+export interface RemotePluginWorkerEventRecord {
+  remotePluginId: string;
   satelliteId: string;
   sequence: number;
   name: string;
@@ -845,9 +849,9 @@ export interface CarrotWorkerEventRecord {
   timestamp: string;
 }
 
-export interface CarrotWorkerEventsTailSnapshot {
+export interface RemotePluginWorkerEventsTailSnapshot {
   id: string;
-  events: CarrotWorkerEventRecord[];
+  events: RemotePluginWorkerEventRecord[];
   nextSequence: number;
 }
 
@@ -1120,57 +1124,57 @@ export type ElizaDesktopRPCSchema = {
         params: undefined;
         response: CorePluginsSnapshot;
       };
-      carrotGetStoreRoot: {
+      remotePluginGetStoreRoot: {
         params: undefined;
         response: { storeRoot: string };
       };
-      carrotList: {
+      remotePluginList: {
         params: undefined;
-        response: { carrots: CarrotListEntry[] };
+        response: { remotePlugins: RemotePluginListEntry[] };
       };
-      carrotGetStoreSnapshot: {
+      remotePluginGetStoreSnapshot: {
         params: undefined;
-        response: CarrotStoreSnapshot;
+        response: RemotePluginStoreSnapshot;
       };
-      carrotGet: {
+      remotePluginGet: {
         params: { id: string };
-        response: InstalledCarrotSnapshot | null;
+        response: InstalledRemotePluginSnapshot | null;
       };
-      carrotInstallFromDirectory: {
-        params: CarrotInstallFromDirectoryRequest;
-        response: InstalledCarrotSnapshot;
+      remotePluginInstallFromDirectory: {
+        params: RemotePluginInstallFromDirectoryRequest;
+        response: InstalledRemotePluginSnapshot;
       };
-      carrotUninstall: {
+      remotePluginUninstall: {
         params: { id: string };
-        response: CarrotUninstallResult;
+        response: RemotePluginUninstallResult;
       };
-      carrotStartWorker: {
+      remotePluginStartWorker: {
         params: { id: string };
-        response: CarrotWorkerStatus;
+        response: RemotePluginWorkerStatus;
       };
-      carrotStopWorker: {
+      remotePluginStopWorker: {
         params: { id: string };
-        response: CarrotWorkerStatus;
+        response: RemotePluginWorkerStatus;
       };
-      carrotGetWorkerStatus: {
+      remotePluginGetWorkerStatus: {
         params: { id: string };
-        response: CarrotWorkerStatus | null;
+        response: RemotePluginWorkerStatus | null;
       };
-      carrotListWorkerStatuses: {
+      remotePluginListWorkerStatuses: {
         params: undefined;
-        response: { workers: CarrotWorkerStatus[] };
+        response: { workers: RemotePluginWorkerStatus[] };
       };
-      carrotGetLogs: {
+      remotePluginGetLogs: {
         params: { id: string; maxBytes?: number };
-        response: CarrotLogsSnapshot;
+        response: RemotePluginLogsSnapshot;
       };
-      carrotInvokeWorker: {
-        params: CarrotInvokeWorkerRequest;
+      remotePluginInvokeWorker: {
+        params: RemotePluginInvokeWorkerRequest;
         response: JsonValue | null;
       };
-      carrotTailWorkerEvents: {
-        params: CarrotTailWorkerEventsRequest;
-        response: CarrotWorkerEventsTailSnapshot;
+      remotePluginTailWorkerEvents: {
+        params: RemotePluginTailWorkerEventsRequest;
+        response: RemotePluginWorkerEventsTailSnapshot;
       };
       dynamicViewRegister: {
         params: DynamicViewRegisterParams;
@@ -2285,8 +2289,8 @@ export type ElizaDesktopRPCSchema = {
       desktopManagedWindowsChanged: {
         windows: DesktopManagedWindowSnapshot[];
       };
-      carrotStoreChanged: { snapshot: CarrotStoreSnapshot };
-      carrotWorkerChanged: { status: CarrotWorkerStatus };
+      remotePluginStoreChanged: { snapshot: RemotePluginStoreSnapshot };
+      remotePluginWorkerChanged: { status: RemotePluginWorkerStatus };
 
       // Canvas: Window events
       canvasWindowEvent: {
@@ -2502,20 +2506,20 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:openAppWindow": "desktopOpenAppWindow",
   "desktop:setManagedWindowAlwaysOnTop": "desktopSetManagedWindowAlwaysOnTop",
 
-  // Carrots
-  "carrot:getStoreRoot": "carrotGetStoreRoot",
-  "carrot:list": "carrotList",
-  "carrot:getStoreSnapshot": "carrotGetStoreSnapshot",
-  "carrot:get": "carrotGet",
-  "carrot:installFromDirectory": "carrotInstallFromDirectory",
-  "carrot:uninstall": "carrotUninstall",
-  "carrot:startWorker": "carrotStartWorker",
-  "carrot:stopWorker": "carrotStopWorker",
-  "carrot:getWorkerStatus": "carrotGetWorkerStatus",
-  "carrot:listWorkerStatuses": "carrotListWorkerStatuses",
-  "carrot:getLogs": "carrotGetLogs",
-  "carrot:invokeWorker": "carrotInvokeWorker",
-  "carrot:tailWorkerEvents": "carrotTailWorkerEvents",
+  // Remote Plugins
+  "remote-plugin:getStoreRoot": "remotePluginGetStoreRoot",
+  "remote-plugin:list": "remotePluginList",
+  "remote-plugin:getStoreSnapshot": "remotePluginGetStoreSnapshot",
+  "remote-plugin:get": "remotePluginGet",
+  "remote-plugin:installFromDirectory": "remotePluginInstallFromDirectory",
+  "remote-plugin:uninstall": "remotePluginUninstall",
+  "remote-plugin:startWorker": "remotePluginStartWorker",
+  "remote-plugin:stopWorker": "remotePluginStopWorker",
+  "remote-plugin:getWorkerStatus": "remotePluginGetWorkerStatus",
+  "remote-plugin:listWorkerStatuses": "remotePluginListWorkerStatuses",
+  "remote-plugin:getLogs": "remotePluginGetLogs",
+  "remote-plugin:invokeWorker": "remotePluginInvokeWorker",
+  "remote-plugin:tailWorkerEvents": "remotePluginTailWorkerEvents",
   "dynamic-view:register": "dynamicViewRegister",
   "dynamic-view:unregister": "dynamicViewUnregister",
   "dynamic-view:list": "dynamicViewList",
@@ -2743,8 +2747,8 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
   "desktop:windowClose": "desktopWindowClose",
   "desktop:shutdownStarted": "desktopShutdownStarted",
   "desktop:managedWindowsChanged": "desktopManagedWindowsChanged",
-  "carrot:storeChanged": "carrotStoreChanged",
-  "carrot:workerChanged": "carrotWorkerChanged",
+  "remote-plugin:storeChanged": "remotePluginStoreChanged",
+  "remote-plugin:workerChanged": "remotePluginWorkerChanged",
   "canvas:windowEvent": "canvasWindowEvent",
   "talkmode:audioChunkPush": "talkmodeAudioChunkPush",
   "talkmode:stateChanged": "talkmodeStateChanged",

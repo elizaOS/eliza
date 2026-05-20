@@ -22,7 +22,7 @@ describe("startup shell assets", () => {
     }
   });
 
-  it("keeps the bootstrap shell on the plain yellow startup surface", () => {
+  it("keeps the bootstrap shell on the elizaOS white and blue startup surface", () => {
     const source = readFileSync(
       resolve(repoRoot, "packages/ui/src/components/shell/StartupShell.tsx"),
       "utf8",
@@ -31,8 +31,27 @@ describe("startup shell assets", () => {
     const bootstrapShell = source.slice(
       source.indexOf("function BootstrapGateShell"),
     );
-    expect(bootstrapShell).toContain("bg-[#ffe600]");
+    expect(bootstrapShell).toContain("bg-[#F7F9FF]");
+    expect(bootstrapShell).toContain("text-[#0B35F1]");
+    expect(bootstrapShell).not.toContain("bg-[#ffe600]");
     expect(bootstrapShell).not.toContain("radial-gradient");
     expect(bootstrapShell).not.toContain("blur-[");
+  });
+
+  it("keeps the startup failure shell on the elizaOS white and blue surface", () => {
+    const source = readFileSync(
+      resolve(
+        repoRoot,
+        "packages/ui/src/components/shell/StartupFailureView.tsx",
+      ),
+      "utf8",
+    );
+
+    expect(source).toContain("bg-[#F7F9FF]");
+    expect(source).toContain("text-[#0B35F1]");
+    expect(source).not.toContain("bg-danger");
+    expect(source).not.toContain("text-danger");
+    expect(source).not.toContain('variant="danger"');
+    expect(source).not.toContain("radial-gradient");
   });
 });

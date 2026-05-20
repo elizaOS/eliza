@@ -233,8 +233,10 @@ describe("WeakRef collectability after unregister", () => {
     const plugin = makePlugin("weakref-plugin", 1);
     await register(plugin);
 
-    const viewId = plugin.views?.[0]?.id;
-    if (!viewId) throw new Error("Expected test plugin view id.");
+    const viewId = plugin.views?.[0].id;
+    if (!viewId) {
+      throw new Error("Expected test plugin to register a view");
+    }
     const entry = getView(viewId);
     expect(entry).toBeDefined();
 

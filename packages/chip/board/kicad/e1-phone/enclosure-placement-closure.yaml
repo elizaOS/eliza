@@ -1,0 +1,243 @@
+schema: eliza.e1_phone_enclosure_placement_closure.v1
+status: enclosure_placement_cross_checked_not_release_ready
+date: '2026-05-20'
+claim_boundary: Concept PCB-to-enclosure placement closure only. This uses generated EVT0 CAD, STEP envelope
+  parts, display fit, KiCad outline handoff, and parameterized clearance checks. It is not final enclosure
+  readiness, routed-board STEP, supplier B-rep validation, tolerance-stack signoff, drop/insertion-load
+  test, RF-in-enclosure validation, or water/dust ingress evidence.
+source_artifacts:
+  - docs/board/e1-phone-mainboard-metrics.yaml
+  - docs/board/e1-phone-enclosure-interface.yaml
+  - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/mechanical-overlay.yaml
+  - mechanical/e1-phone/review/fit-check-report.json
+  - mechanical/e1-phone/review/assembly-clearance.json
+  - mechanical/e1-phone/review/kicad-mechanical-handoff.json
+  - mechanical/e1-phone/review/solid-cad-handoff.json
+  - mechanical/e1-phone/review/manufacturing-readiness.json
+  - mechanical/e1-phone/out/assembly-manifest.json
+envelope_cross_check:
+  metrics_device_envelope_mm:
+    width: 78.0
+    height: 153.6
+    max_thickness: 9.6
+  enclosure_device_envelope_mm:
+    width: 78.0
+    height: 153.6
+    max_thickness: 9.6
+  cad_device_envelope_mm:
+    width: 78.0
+    height: 153.6
+    max_thickness: 9.6
+  display_primary_fits_current_envelope: true
+  display_clearance_mm:
+    width_clearance_mm: 0.9
+    height_clearance_mm: 1.83
+pcb_to_cad_handoff:
+  pcb_source: board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  kicad_outline_check:
+    pass: true
+    kicad_edge_cuts_mm:
+      - 64.0
+      - 132.0
+    cad_pcb_outline_mm:
+      - 64.0
+      - 132.0
+    source: board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  constraint_count: 8
+  constraint_ids:
+    - battery_window
+    - board_outline
+    - display_fpc_zone
+    - mechanical_overlay
+    - redcap_module_zone
+    - side_key_stack
+    - speaker_mic_ports
+    - usb_c_mechanical_capture
+  next_kicad_edits:
+    - Replace concept rectangles with real footprints for USB4105, display FPC, camera FPCs, side tactile
+      switches, speaker spring pads, MEMS microphones, and RG255C/alternate modem.
+    - Promote mechanical-overlay.yaml keepouts into real KiCad keepout/courtyard objects once footprints
+      replace concept rectangles.
+    - Generate a board STEP with component 3D models and feed it back into mechanical/e1-phone instead
+      of the current concept PCB mesh.
+    - Add courtyard/height metadata for all edge-facing connectors so enclosure collision checks can consume
+      them automatically.
+mechanical_overlay_sync:
+  keepout_count: 11
+  keepout_ids:
+    - battery_window
+    - usb_c_shell_capture
+    - display_fpc_bend_keepout
+    - side_key_actuator_keepout
+    - rear_camera_z_keepout
+    - front_camera_earpiece_keepout
+    - haptic_lra_keepout
+    - sim_tray_keepout
+    - top_antenna_keepout
+    - bottom_antenna_keepout
+    - wifi_bt_side_antenna_keepout
+  projected_tokens:
+    - MECH_KEEP_DISPLAY_FPC
+    - MECH_KEEP_HAPTIC_LRA
+    - MECH_KEEP_SIM_TRAY
+    - MECH_KEEP_RF_TOP
+    - MECH_KEEP_RF_BOTTOM
+step_artifacts:
+  e1-phone-solid-assembly.step:
+    path: mechanical/e1-phone/out/e1-phone-solid-assembly.step
+    present: true
+    bytes: 1564193
+  main_pcb.step:
+    path: mechanical/e1-phone/out/main_pcb.step
+    present: true
+    bytes: 32739
+  display_lcm.step:
+    path: mechanical/e1-phone/out/display_lcm.step
+    present: true
+    bytes: 15663
+  screen_cover_glass.step:
+    path: mechanical/e1-phone/out/screen_cover_glass.step
+    present: true
+    bytes: 32178
+  battery_pouch.step:
+    path: mechanical/e1-phone/out/battery_pouch.step
+    present: true
+    bytes: 15539
+  usb_c_receptacle.step:
+    path: mechanical/e1-phone/out/usb_c_receptacle.step
+    present: true
+    bytes: 15643
+  usb_c_external_aperture.step:
+    path: mechanical/e1-phone/out/usb_c_external_aperture.step
+    present: true
+    bytes: 15627
+  power_button_cap.step:
+    path: mechanical/e1-phone/out/power_button_cap.step
+    present: true
+    bytes: 15546
+  volume_button_cap.step:
+    path: mechanical/e1-phone/out/volume_button_cap.step
+    present: true
+    bytes: 15581
+  rear_camera_module.step:
+    path: mechanical/e1-phone/out/rear_camera_module.step
+    present: true
+    bytes: 15496
+  front_camera_module.step:
+    path: mechanical/e1-phone/out/front_camera_module.step
+    present: true
+    bytes: 15600
+  bottom_speaker_module.step:
+    path: mechanical/e1-phone/out/bottom_speaker_module.step
+    present: true
+    bytes: 15533
+  bottom_speaker_acoustic_chamber.step:
+    path: mechanical/e1-phone/out/bottom_speaker_acoustic_chamber.step
+    present: true
+    bytes: 15533
+  bottom_mic.step:
+    path: mechanical/e1-phone/out/bottom_mic.step
+    present: true
+    bytes: 15663
+  top_mic.step:
+    path: mechanical/e1-phone/out/top_mic.step
+    present: true
+    bytes: 15611
+  earpiece_receiver.step:
+    path: mechanical/e1-phone/out/earpiece_receiver.step
+    present: true
+    bytes: 15511
+  haptic_lra.step:
+    path: mechanical/e1-phone/out/haptic_lra.step
+    present: true
+    bytes: 15555
+  split_interconnect_top_connector.step:
+    path: mechanical/e1-phone/out/split_interconnect_top_connector.step
+    present: true
+    bytes: 15507
+  split_interconnect_bottom_connector.step:
+    path: mechanical/e1-phone/out/split_interconnect_bottom_connector.step
+    present: true
+    bytes: 15533
+  split_interconnect_side_flex.step:
+    path: mechanical/e1-phone/out/split_interconnect_side_flex.step
+    present: true
+    bytes: 15580
+  split_interconnect_top_flex_tail.step:
+    path: mechanical/e1-phone/out/split_interconnect_top_flex_tail.step
+    present: true
+    bytes: 15546
+  split_interconnect_bottom_flex_tail.step:
+    path: mechanical/e1-phone/out/split_interconnect_bottom_flex_tail.step
+    present: true
+    bytes: 15572
+  cellular_top_antenna_keepout.step:
+    path: mechanical/e1-phone/out/cellular_top_antenna_keepout.step
+    present: true
+    bytes: 15516
+  cellular_bottom_antenna_keepout.step:
+    path: mechanical/e1-phone/out/cellular_bottom_antenna_keepout.step
+    present: true
+    bytes: 15542
+  wifi_bt_side_antenna_keepout.step:
+    path: mechanical/e1-phone/out/wifi_bt_side_antenna_keepout.step
+    present: true
+    bytes: 15482
+missing_step_artifacts: []
+assembly_manifest_part_count: 73
+solid_cad_handoff:
+  status: generated
+  tool_available: true
+  assembly_step: mechanical/e1-phone/out/e1-phone-solid-assembly.step
+  assembly_step_bytes: 1564193
+  part_count: 73
+  linked_fit_status: pass
+  remaining_blockers:
+    - Solids are parametric envelopes, not final supplier STEP models.
+    - PCB is still the concept KiCad outline, not a routed board STEP with component models.
+    - Production surfaces still need toolmaker-approved draft, shutoffs, split lines, and texture.
+fit_and_clearance:
+  fit_status: pass
+  failed_fit_checks: []
+  assembly_clearance_status: pass
+  checked_clearance_cases: 14
+  failed_clearance_cases: []
+manufacturing_readiness_context:
+  overall_status: cad_package_pass
+  manufacturing_release_ready: false
+  why_not_release_ready:
+    - KiCad phone board remains concept/floorplan-level, not routed and fabricated.
+    - Supplier mechanical drawings and samples for display, cameras, USB-C, buttons, battery, and speakers
+      are not locked.
+    - No mold-flow, thermal, acoustic, RF, drop, ingress, or tolerance-stack validation with physical
+      samples.
+    - No GD&T-controlled release drawing package or toolmaker DFM signoff.
+  all_cad_checks_pass: true
+  visual_review_pass: true
+placement_interfaces_closed_for_concept:
+  - 5.5 inch display CTP outline against 78.0 x 153.6 mm envelope
+  - 64.0 x 132.0 mm KiCad Edge.Cuts against CAD main_pcb envelope
+  - bottom-center USB-C aperture and receptacle envelope
+  - side power and volume cap/actuator keepout
+  - battery pouch window and PCB island clearance
+  - front and rear camera module envelopes
+  - speaker, microphones, earpiece, haptic, SIM/service, and antenna keepouts
+release_blockers:
+  - routed KiCad board STEP with final component 3D models
+  - supplier display, camera, USB-C, button, battery, speaker, and radio STEP/B-rep models
+  - formal 9.6 mm tolerance stack with gasket compression and battery swelling
+  - full CAD boolean interference check using supplier geometry
+  - USB-C insertion/removal load test into enclosure saddle
+  - side-button load-path and cycle test
+  - drop, torsion, thermal expansion, water/dust ingress, and acoustic leak review
+  - RF antenna/SAR validation in final enclosure plastics and metal stack
+forbidden_claims:
+  - enclosure_ready
+  - mechanical_release_ready
+  - routed_board_step_ready
+  - tolerance_stack_closed
+  - drop_tested
+  - waterproof_ready
+  - rf_in_enclosure_ready
+  - fabrication_ready

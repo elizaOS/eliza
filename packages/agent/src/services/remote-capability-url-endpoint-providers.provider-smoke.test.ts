@@ -1,5 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,
@@ -13,6 +11,13 @@ import {
   type RemoteCapabilityEndpointProvider,
 } from "./remote-capability-endpoint-provider.ts";
 import {
+  summarizeRemoteCapabilityEndpointUrlFingerprint,
+  summarizeRemoteCapabilityLiveCi,
+  summarizeRemoteCapabilityLiveRuntime,
+  summarizeRemoteCapabilityLiveSync,
+  writeRemoteCapabilityLiveReport,
+} from "./remote-capability-live-report.ts";
+import {
   desktopCompanionCapabilityEndpointProvider,
   e2bCapabilityEndpointProvider,
   homeMachineCapabilityEndpointProvider,
@@ -25,6 +30,7 @@ type ProviderLiveTarget = {
   provider: RemoteCapabilityEndpointProvider<UrlRemoteCapabilityEndpointProviderOptions>;
   envPrefix: string;
   defaultEndpointId: string;
+  endpointRuntime: string;
 };
 
 const providerTargets: ProviderLiveTarget[] = [
@@ -33,24 +39,28 @@ const providerTargets: ProviderLiveTarget[] = [
     provider: e2bCapabilityEndpointProvider,
     envPrefix: "E2B",
     defaultEndpointId: "e2b-live-capability",
+    endpointRuntime: "e2b-sandbox",
   },
   {
     label: "home-machine",
     provider: homeMachineCapabilityEndpointProvider,
     envPrefix: "HOME_MACHINE",
     defaultEndpointId: "home-machine-live-capability",
+    endpointRuntime: "home-machine",
   },
   {
     label: "mobile-companion",
     provider: mobileCompanionCapabilityEndpointProvider,
     envPrefix: "MOBILE_COMPANION",
     defaultEndpointId: "mobile-companion-live-capability",
+    endpointRuntime: "mobile-companion",
   },
   {
     label: "desktop-companion",
     provider: desktopCompanionCapabilityEndpointProvider,
     envPrefix: "DESKTOP_COMPANION",
     defaultEndpointId: "desktop-companion-live-capability",
+    endpointRuntime: "desktop-companion",
   },
 ];
 
@@ -128,155 +138,32 @@ describe("URL-backed remote capability endpoint providers live smoke", () => {
             responseHandlerFieldEvaluator: expect.any(String),
           },
         });
-        await writeLiveReport(target.label, {
+        await writeRemoteCapabilityLiveReport(target.label, {
           schemaVersion: 1,
           kind: "provider",
           provider: target.label,
+          providerId: result.providerId,
+          providerEvidence: {
+            provider: target.label,
+            endpointRuntime: target.endpointRuntime,
+            agentRuntime: "github-actions",
+            connection: "url-backed-provider",
+          },
+          endpointUrlSha256: summarizeRemoteCapabilityEndpointUrlFingerprint(
+            options.baseUrl,
+          ),
           endpointId: options.endpointId,
           observedAt: new Date().toISOString(),
           conformance,
-          sync: summarizeSync(result.sync),
-          runtime: summarizeRuntime(runtime),
-          ci: summarizeCi(),
+          sync: summarizeRemoteCapabilityLiveSync(result.sync),
+          runtime: summarizeRemoteCapabilityLiveRuntime(runtime),
+          ci: summarizeRemoteCapabilityLiveCi(),
         });
       },
       120_000,
     );
   }
 });
-
-async function writeLiveReport(
-  name: string,
-  report: Record<string, unknown>,
-): Promise<void> {
-  const outputDir = process.env.ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR?.trim();
-  if (!outputDir) return;
-  await mkdir(outputDir, { recursive: true });
-  await writeFile(
-    join(outputDir, `${name}.json`),
-    `${JSON.stringify(report, null, 2)}\n`,
-    "utf8",
-  );
-}
-
-function summarizeCi(): Record<string, string> | undefined {
-  const runId = process.env.GITHUB_RUN_ID?.trim();
-  if (!runId) return undefined;
-  return {
-    runId,
-    runAttempt: process.env.GITHUB_RUN_ATTEMPT?.trim() ?? "",
-    workflow: process.env.GITHUB_WORKFLOW?.trim() ?? "",
-    eventName: process.env.GITHUB_EVENT_NAME?.trim() ?? "",
-    repository: process.env.GITHUB_REPOSITORY?.trim() ?? "",
-    sha: process.env.GITHUB_SHA?.trim() ?? "",
-    ref: process.env.GITHUB_REF?.trim() ?? "",
-  };
-}
-
-function summarizeSync(sync: {
-  registered: Plugin[];
-  unloaded: string[];
-  skipped: string[];
-  trustDecisions: Array<Record<string, unknown>>;
-}): Record<string, unknown> {
-  return {
-    registered: sync.registered.map((plugin) => plugin.name),
-    registeredModules: sync.registered.map((plugin) => ({
-      pluginName: plugin.name,
-      moduleId: plugin.config?.remoteCapabilityModuleId,
-      endpointId: plugin.config?.remoteCapabilityEndpointId,
-      actionCount: plugin.actions?.length ?? 0,
-      providerCount: plugin.providers?.length ?? 0,
-      evaluatorCount: plugin.evaluators?.length ?? 0,
-      responseHandlerEvaluatorCount:
-        plugin.responseHandlerEvaluators?.length ?? 0,
-      responseHandlerFieldEvaluatorCount:
-        plugin.responseHandlerFieldEvaluators?.length ?? 0,
-      routeCount: plugin.routes?.length ?? 0,
-      modelCount: Object.keys(plugin.models ?? {}).length,
-      serviceCount: plugin.services?.length ?? 0,
-      appBridgeCount: plugin.appBridge ? 1 : 0,
-      lifecycleCount:
-        (plugin.init ? 1 : 0) +
-        (plugin.dispose ? 1 : 0) +
-        (plugin.applyConfig ? 1 : 0),
-      widgetCount: plugin.widgets?.length ?? 0,
-      componentTypeCount: plugin.componentTypes?.length ?? 0,
-      viewCount: plugin.views?.length ?? 0,
-    })),
-    unloaded: sync.unloaded,
-    skipped: sync.skipped,
-    trustDecisions: sync.trustDecisions,
-  };
-}
-
-function summarizeRuntime(
-  runtime: IAgentRuntime & {
-    actions: NonNullable<Plugin["actions"]>;
-    providers: NonNullable<Plugin["providers"]>;
-    evaluators: NonNullable<Plugin["evaluators"]>;
-    routes: NonNullable<Plugin["routes"]>;
-  },
-): Record<string, unknown> {
-  return {
-    pluginCount: runtime.plugins?.length ?? 0,
-    actionCount: runtime.actions.length,
-    providerCount: runtime.providers.length,
-    evaluatorCount: runtime.evaluators.length,
-    responseHandlerEvaluatorCount:
-      runtime.plugins?.reduce(
-        (count, plugin) =>
-          count + (plugin.responseHandlerEvaluators?.length ?? 0),
-        0,
-      ) ?? 0,
-    responseHandlerFieldEvaluatorCount:
-      runtime.plugins?.reduce(
-        (count, plugin) =>
-          count + (plugin.responseHandlerFieldEvaluators?.length ?? 0),
-        0,
-      ) ?? 0,
-    routeCount: runtime.routes.length,
-    modelCount:
-      runtime.plugins?.reduce(
-        (count, plugin) => count + Object.keys(plugin.models ?? {}).length,
-        0,
-      ) ?? 0,
-    serviceCount:
-      runtime.plugins?.reduce(
-        (count, plugin) => count + (plugin.services?.length ?? 0),
-        0,
-      ) ?? 0,
-    appBridgeCount:
-      runtime.plugins?.reduce(
-        (count, plugin) => count + (plugin.appBridge ? 1 : 0),
-        0,
-      ) ?? 0,
-    lifecycleCount:
-      runtime.plugins?.reduce(
-        (count, plugin) =>
-          count +
-          (plugin.init ? 1 : 0) +
-          (plugin.dispose ? 1 : 0) +
-          (plugin.applyConfig ? 1 : 0),
-        0,
-      ) ?? 0,
-    widgetCount:
-      runtime.plugins?.reduce(
-        (count, plugin) => count + (plugin.widgets?.length ?? 0),
-        0,
-      ) ?? 0,
-    componentTypeCount:
-      runtime.plugins?.reduce(
-        (count, plugin) => count + (plugin.componentTypes?.length ?? 0),
-        0,
-      ) ?? 0,
-    viewCount:
-      runtime.plugins?.reduce(
-        (count, plugin) => count + (plugin.views?.length ?? 0),
-        0,
-      ) ?? 0,
-  };
-}
 
 function readProviderOptions(
   target: ProviderLiveTarget,

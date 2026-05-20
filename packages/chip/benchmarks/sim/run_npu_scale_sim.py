@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from benchmarks.sim.scalesim_v3_driver import (  # noqa: E402
+    SCALESIM_V3_AVAILABLE,
+    SCALESIM_V3_UNAVAILABLE_REASON,
+    run_scalesim_v3_workload,
+)
 from compiler.runtime.e1_npu_scale_model import (  # noqa: E402
     MIN_REAL_V1,
     OPEN_2028_FIRST,
@@ -30,6 +36,7 @@ CONFIGS = {
 }
 MODEL = ROOT / "benchmarks/models/mobile_smoke.tflite"
 PROCESS_EFFECTS = ROOT / "docs/spec-db/process-14a-effects.yaml"
+DESCRIPTOR_BYTES = 16
 
 
 @dataclass(frozen=True)
@@ -114,6 +121,34 @@ def build_workload(config: NpuScaleConfig):
     ]
 
 
+def ceil_div(numerator: int, denominator: int) -> int:
+    if denominator <= 0:
+        raise ValueError("denominator must be positive")
+    return (numerator + denominator - 1) // denominator
+
+
+def descriptor_counter_entry(config: NpuScaleConfig, estimate) -> dict:
+    transfer_bytes = estimate.bytes_read + estimate.bytes_written
+    scratchpad_bytes = max(1, config.scratchpad_kib * 1024)
+    descriptors_required = ceil_div(transfer_bytes, scratchpad_bytes)
+    return {
+        "schema": "eliza.npu_scale_descriptor_counter_model.v1",
+        "claim_boundary": "modeled_queue_pressure_only_not_rtl_dma_or_silicon_counter_evidence",
+        "descriptor_bytes": DESCRIPTOR_BYTES,
+        "descriptor_queue_depth": config.dma_queue_depth,
+        "descriptor_payload_bytes": scratchpad_bytes,
+        "descriptors_required": descriptors_required,
+        "descriptor_queue_passes": ceil_div(descriptors_required, config.dma_queue_depth),
+        "descriptor_ring_bytes": descriptors_required * DESCRIPTOR_BYTES,
+        "dma_read_beats": ceil_div(estimate.bytes_read, config.dma_bytes_per_cycle),
+        "dma_write_beats": ceil_div(estimate.bytes_written, config.dma_bytes_per_cycle),
+        "dma_total_beats": ceil_div(transfer_bytes, config.dma_bytes_per_cycle),
+        "dma_bytes_per_cycle": config.dma_bytes_per_cycle,
+        "modeled_read_bytes": estimate.bytes_read,
+        "modeled_written_bytes": estimate.bytes_written,
+    }
+
+
 def metric_entry(config: NpuScaleConfig, estimate) -> dict:
     memory_wait_cycles = max(0, estimate.memory_cycles - estimate.compute_cycles)
     stall_cycles = max(0, estimate.cycles - estimate.compute_cycles)
@@ -126,6 +161,9 @@ def metric_entry(config: NpuScaleConfig, estimate) -> dict:
         "macs": estimate.macs,
         "bytes_read": estimate.bytes_read,
         "bytes_written": estimate.bytes_written,
+        "external_bytes_read": estimate.external_bytes_read,
+        "external_bytes_written": estimate.external_bytes_written,
+        "local_sram_bytes": estimate.local_sram_bytes,
         "compute_cycles": estimate.compute_cycles,
         "memory_cycles": estimate.memory_cycles,
         "memory_wait_cycles": memory_wait_cycles,
@@ -134,6 +172,13 @@ def metric_entry(config: NpuScaleConfig, estimate) -> dict:
         "modeled_frequency_hz": config.clock_hz,
         "throughput_ops_s": (estimate.macs * 2) / elapsed_s,
         "observed_tops": estimate.observed_tops(config.clock_hz),
+        "energy_nj": estimate.energy_nj(config),
+        "average_power_w": estimate.average_power_w(config),
+        "tops_per_watt": estimate.tops_per_watt(config),
+        "arithmetic_intensity_macs_per_external_byte": (
+            estimate.arithmetic_intensity_macs_per_external_byte()
+        ),
+        "descriptor_counters": descriptor_counter_entry(config, estimate),
     }
 
 
@@ -150,6 +195,17 @@ def process_corner_entry(config: NpuScaleConfig, corner: ProcessCorner, estimate
         ) // effective_dma_bytes_per_cycle
         cycles = max(compute_cycles, memory_cycles)
         elapsed_s = cycles / effective_clock_hz
+        dynamic_pj = (
+            estimate.macs * config.energy_pj_per_int8_mac * corner.dynamic_power_scale
+            + estimate.local_sram_bytes * config.local_sram_pj_per_byte * corner.dynamic_power_scale
+            + (estimate.external_bytes_read + estimate.external_bytes_written)
+            * config.external_memory_pj_per_byte
+            * corner.interconnect_rc_derate
+        )
+        static_nj = config.static_power_w * corner.leakage_power_scale * elapsed_s * 1e9
+        energy_nj = dynamic_pj / 1000.0 + static_nj
+        average_power_w = energy_nj / 1e9 / elapsed_s
+        observed_tops = estimate.macs * 2 / elapsed_s / 1e12
         kernel_entries.append(
             {
                 "kernel": estimate.kernel,
@@ -158,8 +214,11 @@ def process_corner_entry(config: NpuScaleConfig, corner: ProcessCorner, estimate
                 "memory_cycles": memory_cycles,
                 "memory_wait_cycles": max(0, memory_cycles - compute_cycles),
                 "modeled_frequency_hz": effective_clock_hz,
-                "observed_tops": estimate.macs * 2 / elapsed_s / 1e12,
+                "observed_tops": observed_tops,
                 "utilization_percent": 100.0 * compute_cycles / cycles,
+                "energy_nj": energy_nj,
+                "average_power_w": average_power_w,
+                "tops_per_watt": observed_tops / average_power_w,
             }
         )
     min_observed_tops = min(kernel["observed_tops"] for kernel in kernel_entries)
@@ -178,16 +237,84 @@ def process_corner_entry(config: NpuScaleConfig, corner: ProcessCorner, estimate
         "min_observed_tops": min_observed_tops,
         "max_observed_tops": max(kernel["observed_tops"] for kernel in kernel_entries),
         "min_utilization_percent": min(kernel["utilization_percent"] for kernel in kernel_entries),
+        "min_tops_per_watt": min(kernel["tops_per_watt"] for kernel in kernel_entries),
+        "max_average_power_w": max(kernel["average_power_w"] for kernel in kernel_entries),
         "kernels": kernel_entries,
         "claim_boundary": corner.claim_boundary,
         "release_use": "prohibited_until_pdk_extracted_timing_power_thermal_signoff",
     }
 
 
+def run_timeloop_energy(config_name: str) -> dict | None:
+    """Invoke ``run_npu_timeloop.py`` and merge its energy column.
+
+    Returns ``None`` when the Timeloop tools are missing (blocked) so the
+    caller can record the gap explicitly. Never fabricates energy numbers.
+    """
+    script = Path(__file__).resolve().parent / "run_npu_timeloop.py"
+    if not script.is_file():
+        return None
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script), "--config", config_name],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=900,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0 and not completed.stdout:
+        return None
+    try:
+        return json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def _scalesim_v3_elizanpu_gemm_shapes() -> list:
+    """Return upstream-compatible shapes for the elizanpu.gemm_s8 datapath.
+
+    elizanpu.gemm_s8 supports M=N=3, K<=7. We sample three points across that
+    envelope so the v3 sidecar exercises the full supported K range rather
+    than a single shape.
+    """
+    from benchmarks.sim.scalesim_v3_driver import GemmShape  # noqa: PLC0415
+
+    return [
+        GemmShape(name="elizanpu_gemm_s8_3x3x3", m=3, n=3, k=3),
+        GemmShape(name="elizanpu_gemm_s8_3x3x5", m=3, n=3, k=5),
+        GemmShape(name="elizanpu_gemm_s8_3x3x7", m=3, n=3, k=7),
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run deterministic NPU architecture scale model")
     parser.add_argument("--config", choices=sorted(CONFIGS), default=OPEN_2028_FIRST.name)
     parser.add_argument("--out", type=Path)
+    parser.add_argument(
+        "--engine",
+        choices=("v1", "v3"),
+        default="v3",
+        help=(
+            "Which scale model to drive. 'v1' = hand-rolled architecture "
+            "scale model in compiler/runtime/e1_npu_scale_model.py (canonical "
+            "for eliza.npu_scale_sim.v1). 'v3' additionally drives upstream "
+            "scale-sim-v2 v3.0.0 over elizanpu.gemm_s8 and attaches the "
+            "result as a sidecar block (eliza.npu_scale_sim.scalesim_v3.v1) "
+            "without changing the v1 schema body. Falls back to v1-only when "
+            "the upstream package is not importable."
+        ),
+    )
+    parser.add_argument(
+        "--with-timeloop-energy",
+        action="store_true",
+        help=(
+            "Invoke benchmarks/sim/run_npu_timeloop.py to attach modeled "
+            "joules-per-inference. Fails closed if the tools are missing."
+        ),
+    )
     args = parser.parse_args()
 
     config = CONFIGS[args.config]
@@ -197,6 +324,7 @@ def main() -> int:
         process_corner_entry(config, corner, estimates) for corner in PROCESS_CORNERS
     ]
     worst_corner = min(process_corners, key=lambda corner: corner["min_observed_tops"])
+    descriptor_counters = [kernel["descriptor_counters"] for kernel in kernels]
     report = {
         "schema": "eliza.npu_scale_sim.v1",
         "status": "pass",
@@ -219,6 +347,10 @@ def main() -> int:
             "supports_bf16": config.supports_bf16,
             "supports_fp16": config.supports_fp16,
             "supports_fp8": config.supports_fp8,
+            "energy_pj_per_int8_mac": config.energy_pj_per_int8_mac,
+            "local_sram_pj_per_byte": config.local_sram_pj_per_byte,
+            "external_memory_pj_per_byte": config.external_memory_pj_per_byte,
+            "static_power_w": config.static_power_w,
             "precision_matrix": config.precision_matrix(),
             "descriptor_queue": {
                 "depth": config.dma_queue_depth,
@@ -239,14 +371,72 @@ def main() -> int:
             "total_macs": sum(kernel["macs"] for kernel in kernels),
             "total_bytes_read": sum(kernel["bytes_read"] for kernel in kernels),
             "total_bytes_written": sum(kernel["bytes_written"] for kernel in kernels),
+            "total_descriptors_required": sum(
+                counter["descriptors_required"] for counter in descriptor_counters
+            ),
+            "max_descriptor_queue_passes": max(
+                counter["descriptor_queue_passes"] for counter in descriptor_counters
+            ),
+            "total_dma_read_beats": sum(
+                counter["dma_read_beats"] for counter in descriptor_counters
+            ),
+            "total_dma_write_beats": sum(
+                counter["dma_write_beats"] for counter in descriptor_counters
+            ),
+            "total_dma_beats": sum(counter["dma_total_beats"] for counter in descriptor_counters),
             "min_observed_tops": min(kernel["observed_tops"] for kernel in kernels),
             "max_observed_tops": max(kernel["observed_tops"] for kernel in kernels),
             "min_utilization_percent": min(kernel["utilization_percent"] for kernel in kernels),
+            "min_tops_per_watt": min(kernel["tops_per_watt"] for kernel in kernels),
+            "max_average_power_w": max(kernel["average_power_w"] for kernel in kernels),
             "worst_process_corner": worst_corner["name"],
             "worst_process_corner_min_observed_tops": worst_corner["min_observed_tops"],
             "process_corner_claim_boundary": "modeled_derates_only_not_14a_pdk_or_signoff_evidence",
         },
     }
+    if args.engine == "v3":
+        if SCALESIM_V3_AVAILABLE:
+            from benchmarks.sim.scalesim_v3_driver import result_to_evidence_block  # noqa: PLC0415
+
+            v3_result = run_scalesim_v3_workload(
+                _scalesim_v3_elizanpu_gemm_shapes(),
+                array_h=3,
+                array_w=3,
+                run_name=f"elizanpu_gemm_s8_{config.name}",
+            )
+            report["scalesim_v3"] = result_to_evidence_block(v3_result)
+        else:
+            report["scalesim_v3"] = {
+                "schema": "eliza.npu_scale_sim.scalesim_v3.v1",
+                "status": "blocked",
+                "claim_boundary": (
+                    "Sidecar feed only; v1 hand-rolled model remains the source of "
+                    "truth for the eliza.npu_scale_sim.v1 schema."
+                ),
+                "reason": SCALESIM_V3_UNAVAILABLE_REASON or "scalesim package not importable",
+            }
+
+    if args.with_timeloop_energy:
+        energy_report = run_timeloop_energy(config.name)
+        if energy_report is None:
+            report["timeloop_energy"] = {
+                "status": "blocked",
+                "reason": (
+                    "benchmarks/sim/run_npu_timeloop.py did not produce a "
+                    "parseable JSON report (typically because timeloop / "
+                    "accelergy binaries are missing)."
+                ),
+            }
+        else:
+            report["timeloop_energy"] = energy_report
+            energy = None
+            if isinstance(energy_report, dict):
+                summary_block = energy_report.get("summary")
+                if isinstance(summary_block, dict):
+                    energy = summary_block.get("energy_joules_per_inference")
+            if energy is not None and isinstance(report["summary"], dict):
+                report["summary"]["energy_joules_per_inference"] = energy
+
     text = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.out:
         output = args.out if args.out.is_absolute() else ROOT / args.out

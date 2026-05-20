@@ -22,14 +22,13 @@ describe("remote capability router", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it("resolves canonical env names before legacy satellite aliases", () => {
+  it("resolves canonical env names", () => {
     const config = resolveRemoteCapabilityRouterConfig(
       makeRuntime({
         ELIZA_CAPABILITY_ROUTER_URL: "https://capability.example/",
         ELIZA_CAPABILITY_ROUTER_TOKEN: "cap-token",
         ELIZA_CAPABILITY_ROUTER_ENVIRONMENT: "mobile",
         ELIZA_CAPABILITY_ROUTER_TIMEOUT_MS: "1234",
-        ELIZA_SATELLITE_RUNNER_URL: "https://legacy.example",
       }),
     );
 
@@ -955,6 +954,36 @@ describe("remote capability router", () => {
       code: "CAPABILITY_DECODE_FAILED",
       capability: "plugin",
       method: "plugin.modules.list",
+    });
+  });
+
+  it("rejects ambiguous remote plugin module ids before routing", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({
+        ok: true,
+        result: {
+          modules: [
+            {
+              id: "bad:plugin",
+              name: "@remote/bad",
+            },
+          ],
+        },
+      }),
+    ) as unknown as typeof fetch;
+    const service = new RemoteCapabilityRouterService(makeRuntime(), {
+      enabled: true,
+      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
+      environment: "server",
+      requestTimeoutMs: 1000,
+    });
+
+    await expect(service.plugin.listModules()).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        "Remote endpoint device returned a plugin module with invalid id.",
     });
   });
 

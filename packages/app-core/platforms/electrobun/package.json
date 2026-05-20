@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/electrobun",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.1-beta.0",
   "type": "module",
   "files": [
     "assets",
@@ -27,7 +27,7 @@
   "dependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
-    "@elizaos/electrobun-carrots": "workspace:*",
+    "@elizaos/plugin-remote-manifest": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/shared": "workspace:*",

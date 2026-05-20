@@ -109,6 +109,7 @@
     "@elizaos/plugin-polymarket-app": "workspace:*",
     "@elizaos/plugin-scape": "workspace:*",
     "@elizaos/plugin-shopify-ui": "workspace:*",
+    "@elizaos/plugin-hearwear": "workspace:*",
     "@elizaos/plugin-steward-app": "workspace:*",
     "@elizaos/plugin-task-coordinator": "workspace:*",
     "@elizaos/plugin-training": "workspace:*",

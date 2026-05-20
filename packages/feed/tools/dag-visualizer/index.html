@@ -1,0 +1,2598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Feed DAG Visualizer — Full Engine Trace Inspector</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --bg-panel: #12121a;
+  --bg-card: #1a1a2e;
+  --bg-hover: #252540;
+  --border: #2a2a3e;
+  --border-active: #4a4a6e;
+  --text: #e0e0f0;
+  --text-dim: #8888aa;
+  --text-bright: #ffffff;
+  --accent: #6c63ff;
+  --accent-dim: #4a42cc;
+  --success: #22c55e;
+  --error: #ef4444;
+  --warning: #eab308;
+  --skipped: #6b7280;
+
+  --phase-bootstrap: #3b82f6;
+  --phase-questions: #06b6d4;
+  --phase-events: #f97316;
+  --phase-markets: #22c55e;
+  --phase-rebalancing: #eab308;
+  --phase-content: #6b7280;
+  --phase-social: #a855f7;
+  --phase-finalize: #ef4444;
+  --phase-agent: #ec4899;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* Top Bar */
+.top-bar {
+  height: 48px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 16px;
+  z-index: 100;
+}
+
+.top-bar .logo {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.top-bar .tick-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.top-bar .tick-selector select {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.top-bar .stats {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.top-bar .stats .stat-val { color: var(--text-bright); font-weight: 600; }
+
+.btn {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--bg-hover); border-color: var(--border-active); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+.btn-primary:hover { background: var(--accent-dim); }
+
+/* Main Layout */
+.main {
+  display: flex;
+  height: calc(100vh - 48px);
+}
+
+/* Left: DAG Canvas */
+.dag-panel {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.dag-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* Right: Detail Panel */
+.detail-panel {
+  width: 520px;
+  min-width: 400px;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.2s;
+}
+
+.detail-panel.collapsed { width: 0; min-width: 0; border: none; }
+
+.detail-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.detail-header h2 {
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.detail-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.detail-tabs .tab {
+  padding: 8px 14px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text-dim);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.detail-tabs .tab:hover { color: var(--text); }
+.detail-tabs .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+/* Section blocks */
+.section {
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.section-title .toggle { font-size: 9px; }
+
+.kv-table {
+  width: 100%;
+  font-size: 11px;
+  border-collapse: collapse;
+}
+
+.kv-table td {
+  padding: 3px 0;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+
+.kv-table .kv-key {
+  color: var(--text-dim);
+  width: 120px;
+  white-space: nowrap;
+  padding-right: 12px;
+}
+
+.kv-table .kv-val {
+  color: var(--text);
+  word-break: break-all;
+}
+
+/* JSON viewer */
+.json-viewer {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.data-content { display: none; }
+.data-content.open { display: block; }
+
+.json-key { color: #7dd3fc; }
+.json-string { color: #86efac; }
+.json-number { color: #fcd34d; }
+.json-bool { color: #f472b6; }
+.json-null { color: #9ca3af; }
+
+/* LLM Call Card */
+.llm-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.llm-card-header {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.llm-card-header:hover { background: var(--bg-hover); }
+
+.llm-card-body {
+  display: none;
+  border-top: 1px solid var(--border);
+}
+
+.llm-card-body.open { display: block; }
+
+.llm-prompt-section {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.llm-prompt-section:last-child { border-bottom: none; }
+
+.llm-prompt-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.llm-prompt-label.system { color: #f472b6; }
+.llm-prompt-label.user { color: #7dd3fc; }
+.llm-prompt-label.response { color: #86efac; }
+.llm-prompt-label.parsed { color: #fcd34d; }
+
+.llm-prompt-text {
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--bg);
+  padding: 8px;
+  border-radius: 4px;
+}
+
+/* NPC Card */
+.npc-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.npc-card-header {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.npc-card-header:hover { background: var(--bg-hover); }
+.npc-card-body { display: none; padding: 8px 12px; border-top: 1px solid var(--border); }
+.npc-card-body.open { display: block; }
+
+/* Status badges */
+.badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.badge-success { background: #14532d; color: #86efac; }
+.badge-error { background: #450a0a; color: #fca5a5; }
+.badge-skipped { background: #1f2937; color: #9ca3af; }
+.badge-delegated { background: #042f2e; color: #5eead4; }
+.badge-provider { background: #1e1b4b; color: #a5b4fc; }
+.badge-model { background: #172554; color: #93c5fd; }
+
+/* Phase legend */
+.phase-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Welcome / Load screen */
+.welcome {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  background: var(--bg);
+}
+
+.welcome-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 40px;
+  max-width: 600px;
+  text-align: center;
+}
+
+.welcome-card h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+  color: var(--accent);
+}
+
+.welcome-card p {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+.welcome-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  margin-top: 16px;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.drop-zone.dragover { border-color: var(--accent); background: rgba(108, 99, 255, 0.05); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+
+/* Search */
+.search-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.search-bar input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+/* Timing bar */
+.timing-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.timing-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+/* Data size indicator */
+.data-size {
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+/* Expand all button */
+.expand-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.global-nav { display:flex;background:var(--bg-panel);border-bottom:1px solid var(--border);padding:0 16px }
+.global-nav .tab { padding:6px 14px;font-size:11px;cursor:pointer;color:var(--text-dim);border-bottom:2px solid transparent;white-space:nowrap }
+.global-nav .tab:hover { color:var(--text) }
+.global-nav .tab.active { color:var(--accent);border-bottom-color:var(--accent) }
+.global-view { height:calc(100vh - 78px);overflow-y:auto;padding:20px 24px;background:var(--bg) }
+.global-view-body { max-width:1200px;margin:0 auto }
+.stat-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px }
+.stat-card { background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:12px 16px }
+.stat-card .stat-label { font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px }
+.stat-card .stat-value { font-size:20px;font-weight:700;color:var(--text-bright);margin-top:4px }
+.stat-card .stat-sub { font-size:10px;color:var(--text-dim);margin-top:2px }
+.bar-row { display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:11px }
+.bar-label { width:160px;text-align:right;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0 }
+.bar-track { flex:1;height:18px;background:var(--border);border-radius:3px;overflow:hidden;position:relative }
+.bar-fill { height:100%;border-radius:3px;display:flex;align-items:center;padding-left:6px;font-size:9px;color:white;font-weight:600 }
+.bar-value { width:80px;text-align:right;color:var(--text);flex-shrink:0 }
+.timeline-row { display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:10px }
+.timeline-label { width:140px;text-align:right;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0 }
+.timeline-track { flex:1;height:20px;background:var(--bg-card);border-radius:3px;position:relative;overflow:hidden }
+.timeline-bar { position:absolute;height:100%;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;color:white;font-weight:600;min-width:2px }
+.timeline-time { width:60px;text-align:right;color:var(--text-dim);flex-shrink:0 }
+.gap-card { background:var(--bg-card);border:1px solid #ef444440;border-left:3px solid var(--error);border-radius:6px;padding:12px 16px;margin-bottom:10px }
+.gap-card h4 { font-size:12px;color:var(--error);margin-bottom:4px }
+.gap-card p { font-size:11px;color:var(--text-dim);line-height:1.5 }
+.gap-severity { font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px }
+.gap-severity.critical { background:#450a0a;color:#fca5a5 }
+.gap-severity.high { background:#451a03;color:#fed7aa }
+.gap-severity.medium { background:#422006;color:#fde68a }
+.copy-btn { cursor:pointer;font-size:10px;color:var(--text-dim);background:none;border:1px solid var(--border);border-radius:3px;padding:2px 6px }
+.copy-btn:hover { color:var(--text);border-color:var(--border-active) }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="logo">FEED DAG INSPECTOR</div>
+  <div class="tick-selector" id="tickSelector" style="display:none">
+    <span style="font-size:11px;color:var(--text-dim)">Tick:</span>
+    <select id="tickSelect"></select>
+  </div>
+  <div class="stats" id="topStats"></div>
+  <button class="btn" id="btnLoad" onclick="document.getElementById('fileInput').click()">Load Trace JSON</button>
+  <button class="btn" id="btnDemo" onclick="loadDemo()">Load Demo</button>
+  <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileLoad(event)">
+</div>
+
+<div class="global-nav" id="globalNav" style="display:none">
+  <div class="tab active" data-view="dag" onclick="switchGlobalView('dag')">DAG View</div>
+  <div class="tab" data-view="tick-summary" onclick="switchGlobalView('tick-summary')">Tick Summary</div>
+  <div class="tab" data-view="all-llm" onclick="switchGlobalView('all-llm')">All LLM Calls</div>
+  <div class="tab" data-view="all-npcs" onclick="switchGlobalView('all-npcs')">All NPCs</div>
+  <div class="tab" data-view="token-breakdown" onclick="switchGlobalView('token-breakdown')">Token Costs</div>
+  <div class="tab" data-view="timeline" onclick="switchGlobalView('timeline')">Timeline</div>
+  <div class="tab" data-view="data-gaps" onclick="switchGlobalView('data-gaps')">Data Gaps</div>
+</div>
+<div class="global-view" id="globalView" style="display:none"><div class="global-view-body" id="globalViewBody"></div></div>
+<div class="main" id="mainArea">
+  <!-- Welcome Screen -->
+  <div class="welcome" id="welcomeScreen">
+    <div class="welcome-card">
+      <h1>Feed DAG Inspector</h1>
+      <p>
+        Full observability into the Feed game engine tick execution.<br>
+        See ALL data flowing through every node: LLM prompts & responses,<br>
+        NPC decisions & trades, scores, narratives, prices — everything.
+      </p>
+      <div class="welcome-actions">
+        <button class="btn btn-primary" onclick="loadDemo()">Load Demo Trace</button>
+        <button class="btn" onclick="document.getElementById('fileInput').click()">Load JSON File</button>
+      </div>
+      <div class="drop-zone" id="dropZone">
+        Drop a tick-summary.json or full TickTrace JSON here
+      </div>
+    </div>
+  </div>
+
+  <!-- DAG Canvas -->
+  <div class="dag-panel" id="dagPanel" style="display:none">
+    <svg class="dag-canvas" id="dagCanvas"></svg>
+  </div>
+
+  <!-- Detail Panel -->
+  <div class="detail-panel" id="detailPanel" style="display:none">
+    <div class="detail-header">
+      <h2 id="detailTitle">Select a node</h2>
+      <button class="btn" onclick="closeDetail()" style="font-size:14px;padding:2px 8px">&times;</button>
+    </div>
+    <div class="detail-tabs" id="detailTabs"></div>
+    <div class="search-bar" id="searchBar" style="display:none">
+      <input type="text" id="searchInput" placeholder="Filter data..." oninput="filterDetailContent()">
+    </div>
+    <div class="detail-body" id="detailBody"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let currentTrace = null;
+let selectedNodeId = null;
+let _dagLayout = null;
+
+const PHASE_COLORS = {
+  Bootstrap: '#3b82f6',
+  Questions: '#06b6d4',
+  Events: '#f97316',
+  Markets: '#22c55e',
+  Rebalancing: '#eab308',
+  ContentMaintenance: '#6b7280',
+  Social: '#a855f7',
+  Finalize: '#ef4444',
+  Agent: '#ec4899',
+};
+
+// ============================================================
+// FILE LOADING
+// ============================================================
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
+function handleFileLoad(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      loadTrace(data);
+    } catch (err) {
+      alert(`Failed to parse JSON: ${err.message}`);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// Drag and drop
+const dropZone = document.getElementById('dropZone');
+if (dropZone) {
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try { loadTrace(JSON.parse(ev.target.result)); } catch (err) { alert(`Failed: ${err.message}`); }
+      };
+      reader.readAsText(file);
+    }
+  });
+}
+
+// ============================================================
+// LOAD TRACE DATA
+// ============================================================
+function loadTrace(data) {
+  // Normalize: support both full TickTrace and tick-summary format
+  if (data.dag && data.nodes) {
+    // It might be a tick-summary with llmCallSummaries instead of llmCalls
+    if (data.llmCallSummaries && !data.llmCalls) {
+      data.llmCalls = data.llmCallSummaries.map(s => ({
+        ...s,
+        timestamp: data.startMs || 0,
+        format: s.format || '',
+        temperature: s.temperature || 0,
+        maxTokens: s.maxTokens || 0,
+        systemPrompt: s.systemPrompt || '[Load full trace to see prompts]',
+        userPrompt: s.userPrompt || '[Load full trace to see prompts]',
+        rawResponse: s.rawResponse || '[Load full trace to see response]',
+        parsedResponse: s.parsedResponse || null,
+        totalTokens: (s.inputTokens || 0) + (s.outputTokens || 0),
+        success: s.success !== false,
+      }));
+    }
+    if (!data.npcTrajectories) data.npcTrajectories = [];
+    if (!data.tokenStats) data.tokenStats = { totalCalls: 0, totalInputTokens: 0, totalOutputTokens: 0, totalTokens: 0, estimatedCostUSD: 0, byPromptType: {} };
+    if (!data.gameTickResult) data.gameTickResult = {};
+    currentTrace = data;
+  } else {
+    alert('Unrecognized data format. Expected a TickTrace or tick-summary.json.');
+    return;
+  }
+
+  document.getElementById('welcomeScreen').style.display = 'none';
+  document.getElementById('dagPanel').style.display = 'block';
+  document.getElementById('detailPanel').style.display = 'flex';
+
+  updateTopStats();
+  renderDAG();
+
+  // Show global nav and reset to DAG view
+  document.getElementById('globalNav').style.display = 'flex';
+  document.querySelectorAll('.global-nav .tab').forEach(t => t.classList.toggle('active', t.dataset.view === 'dag'));
+  document.getElementById('globalView').style.display = 'none';
+  document.getElementById('mainArea').style.display = 'flex';
+}
+
+// ============================================================
+// TOP STATS
+// ============================================================
+function updateTopStats() {
+  const t = currentTrace;
+  if (!t) return;
+  const stats = document.getElementById('topStats');
+  const dur = t.durationMs ? `${(t.durationMs / 1000).toFixed(1)}s` : 'N/A';
+  const nodes = t.nodes ? t.nodes.length : 0;
+  const llm = t.llmCalls ? t.llmCalls.length : 0;
+  const npc = t.npcTrajectories ? t.npcTrajectories.length : 0;
+  const tokens = t.tokenStats ? t.tokenStats.totalTokens.toLocaleString() : '0';
+  const cost = t.tokenStats?.estimatedCostUSD ? `$${t.tokenStats.estimatedCostUSD.toFixed(4)}` : '$0';
+  const errors = t.nodes ? t.nodes.filter(n => n.status === 'error').length : 0;
+  const skipped = t.nodes ? t.nodes.filter(n => n.status === 'skipped').length : 0;
+
+  stats.innerHTML = `
+    <span>Duration: <span class="stat-val">${dur}</span></span>
+    <span>Nodes: <span class="stat-val">${nodes}</span></span>
+    <span>LLM Calls: <span class="stat-val">${llm}</span></span>
+    <span>NPCs: <span class="stat-val">${npc}</span></span>
+    <span>Tokens: <span class="stat-val">${tokens}</span></span>
+    <span>Cost: <span class="stat-val">${cost}</span></span>
+    ${errors > 0 ? `<span style="color:var(--error)">Errors: <span class="stat-val">${errors}</span></span>` : ''}
+    ${skipped > 0 ? `<span style="color:var(--skipped)">Skipped: <span class="stat-val">${skipped}</span></span>` : ''}
+  `;
+}
+
+// ============================================================
+// DAG RENDERING (SVG)
+// ============================================================
+function renderDAG() {
+  const svg = document.getElementById('dagCanvas');
+  const t = currentTrace;
+  if (!t?.dag) return;
+
+  // Layout computation
+  const dag = t.dag;
+  const nodeTraces = new Map();
+  if (t.nodes) t.nodes.forEach(n => nodeTraces.set(n.nodeId, n));
+
+  // Group nodes by phase
+  const phases = {};
+  dag.nodes.forEach(n => {
+    if (!phases[n.phase]) phases[n.phase] = [];
+    phases[n.phase].push(n);
+  });
+
+  const phaseOrder = ['Bootstrap', 'Questions', 'Events', 'Markets', 'Rebalancing', 'ContentMaintenance', 'Social', 'Finalize', 'Agent'];
+  const sortedPhases = phaseOrder.filter(p => phases[p]);
+
+  // Layout parameters
+  const nodeW = 180;
+  const nodeH = 56;
+  const phaseGapX = 40;
+  const nodeGapY = 16;
+  const padX = 60;
+  const padY = 80;
+  const phaseHeaderH = 32;
+
+  // Position nodes
+  const nodePositions = {};
+  let curX = padX;
+
+  sortedPhases.forEach(phaseName => {
+    const phaseNodes = phases[phaseName];
+    const _phaseW = nodeW;
+    const _phaseH = phaseHeaderH + phaseNodes.length * (nodeH + nodeGapY);
+
+    phaseNodes.forEach((node, idx) => {
+      nodePositions[node.id] = {
+        x: curX,
+        y: padY + phaseHeaderH + idx * (nodeH + nodeGapY),
+        w: nodeW,
+        h: nodeH,
+        phase: phaseName,
+        node: node,
+        trace: nodeTraces.get(node.id),
+      };
+    });
+
+    curX += nodeW + phaseGapX;
+  });
+
+  _dagLayout = nodePositions;
+
+  // Calculate SVG dimensions
+  const positions = Object.values(nodePositions);
+  if (positions.length === 0) return;
+  const maxX = Math.max(...positions.map(p => p.x + p.w)) + padX;
+  const maxY = Math.max(...positions.map(p => p.y + p.h)) + padY;
+
+  svg.setAttribute('viewBox', `0 0 ${maxX} ${maxY}`);
+  svg.innerHTML = '';
+
+  // Defs for arrowheads
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  defs.innerHTML = `
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#4a4a6e"/>
+    </marker>
+    <marker id="arrowhead-active" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#6c63ff"/>
+    </marker>
+  `;
+  svg.appendChild(defs);
+
+  // Draw phase backgrounds
+  sortedPhases.forEach(phaseName => {
+    const phaseNodes = phases[phaseName];
+    const positions = phaseNodes.map(n => nodePositions[n.id]);
+    const minX = Math.min(...positions.map(p => p.x)) - 12;
+    const minY = padY - 8;
+    const maxPX = Math.max(...positions.map(p => p.x + p.w)) + 12;
+    const maxPY = Math.max(...positions.map(p => p.y + p.h)) + 12;
+
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', minX);
+    rect.setAttribute('y', minY);
+    rect.setAttribute('width', maxPX - minX);
+    rect.setAttribute('height', maxPY - minY);
+    rect.setAttribute('rx', 8);
+    rect.setAttribute('fill', `${PHASE_COLORS[phaseName]}08`);
+    rect.setAttribute('stroke', `${PHASE_COLORS[phaseName]}30`);
+    rect.setAttribute('stroke-width', 1);
+    svg.appendChild(rect);
+
+    // Phase label
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', minX + 8);
+    text.setAttribute('y', minY + 16);
+    text.setAttribute('fill', PHASE_COLORS[phaseName]);
+    text.setAttribute('font-size', '10');
+    text.setAttribute('font-weight', '700');
+    text.setAttribute('font-family', 'inherit');
+    text.setAttribute('text-transform', 'uppercase');
+    text.setAttribute('letter-spacing', '1');
+    text.textContent = phaseName;
+    svg.appendChild(text);
+  });
+
+  // Draw edges
+  dag.edges.forEach(edge => {
+    const from = nodePositions[edge.source];
+    const to = nodePositions[edge.target];
+    if (!from || !to) return;
+
+    const x1 = from.x + from.w;
+    const y1 = from.y + from.h / 2;
+    const x2 = to.x;
+    const y2 = to.y + to.h / 2;
+
+    // If same column, draw a curve
+    const isActive = selectedNodeId && (edge.source === selectedNodeId || edge.target === selectedNodeId);
+
+    if (from.x === to.x) {
+      // Vertical within same phase
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const mx = from.x + from.w / 2;
+      const fromY = from.y + from.h;
+      const toY = to.y;
+      path.setAttribute('d', `M${mx},${fromY} L${mx},${toY}`);
+      path.setAttribute('stroke', isActive ? '#6c63ff' : '#4a4a6e');
+      path.setAttribute('stroke-width', isActive ? 2 : 1);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('marker-end', isActive ? 'url(#arrowhead-active)' : 'url(#arrowhead)');
+      svg.appendChild(path);
+    } else {
+      // Bezier between columns
+      const cx1 = x1 + (x2 - x1) * 0.4;
+      const cx2 = x1 + (x2 - x1) * 0.6;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`);
+      path.setAttribute('stroke', isActive ? '#6c63ff' : '#4a4a6e');
+      path.setAttribute('stroke-width', isActive ? 2 : 1);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('marker-end', isActive ? 'url(#arrowhead-active)' : 'url(#arrowhead)');
+      svg.appendChild(path);
+
+      // Edge label
+      if (edge.label) {
+        const lx = (x1 + x2) / 2;
+        const ly = (y1 + y2) / 2 - 6;
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', lx);
+        label.setAttribute('y', ly);
+        label.setAttribute('fill', isActive ? '#8b82ff' : '#555');
+        label.setAttribute('font-size', '8');
+        label.setAttribute('font-family', 'inherit');
+        label.setAttribute('text-anchor', 'middle');
+        label.textContent = edge.label;
+        svg.appendChild(label);
+      }
+    }
+  });
+
+  // Draw nodes
+  Object.entries(nodePositions).forEach(([nodeId, pos]) => {
+    const trace = pos.trace;
+    const status = trace ? trace.status : 'pending';
+    const color = PHASE_COLORS[pos.phase] || '#666';
+    const isSelected = nodeId === selectedNodeId;
+    const llmCount = trace ? trace.llmCallIds.length : 0;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('cursor', 'pointer');
+    g.addEventListener('click', () => selectNode(nodeId));
+
+    // Node rect
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', pos.x);
+    rect.setAttribute('y', pos.y);
+    rect.setAttribute('width', pos.w);
+    rect.setAttribute('height', pos.h);
+    rect.setAttribute('rx', 6);
+    rect.setAttribute('fill', isSelected ? `${color}25` : '#1a1a2e');
+    rect.setAttribute('stroke', isSelected ? color : status === 'error' ? '#ef4444' : status === 'skipped' ? '#555' : `${color}60`);
+    rect.setAttribute('stroke-width', isSelected ? 2 : 1);
+    g.appendChild(rect);
+
+    // Status indicator
+    const statusCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    statusCircle.setAttribute('cx', pos.x + 14);
+    statusCircle.setAttribute('cy', pos.y + 16);
+    statusCircle.setAttribute('r', 4);
+    statusCircle.setAttribute('fill', status === 'success' ? '#22c55e' : status === 'error' ? '#ef4444' : status === 'skipped' ? '#6b7280' : status === 'delegated' ? '#14b8a6' : '#4a4a6e');
+    g.appendChild(statusCircle);
+
+    // Node name
+    const name = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    name.setAttribute('x', pos.x + 24);
+    name.setAttribute('y', pos.y + 19);
+    name.setAttribute('fill', isSelected ? '#fff' : '#e0e0f0');
+    name.setAttribute('font-size', '11');
+    name.setAttribute('font-weight', '600');
+    name.setAttribute('font-family', 'inherit');
+    name.textContent = truncText(pos.node.name, 18);
+    g.appendChild(name);
+
+    // Duration + LLM count
+    const info = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    info.setAttribute('x', pos.x + 14);
+    info.setAttribute('y', pos.y + 36);
+    info.setAttribute('fill', '#8888aa');
+    info.setAttribute('font-size', '9');
+    info.setAttribute('font-family', 'inherit');
+    const durText = trace ? formatDuration(trace.durationMs) : '--';
+    const llmText = llmCount > 0 ? ` | ${llmCount} LLM` : '';
+    const inputKeys = trace?.inputs ? Object.keys(trace.inputs).length : 0;
+    const outputKeys = trace?.outputs ? Object.keys(trace.outputs).length : 0;
+    info.textContent = `${durText}${llmText} | in:${inputKeys} out:${outputKeys}`;
+    g.appendChild(info);
+
+    // Timing bar
+    if (trace && trace.durationMs > 0 && currentTrace.durationMs > 0) {
+      const barW = pos.w - 20;
+      const pct = Math.min(trace.durationMs / currentTrace.durationMs, 1);
+      const barBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      barBg.setAttribute('x', pos.x + 10);
+      barBg.setAttribute('y', pos.y + pos.h - 10);
+      barBg.setAttribute('width', barW);
+      barBg.setAttribute('height', 3);
+      barBg.setAttribute('rx', 1.5);
+      barBg.setAttribute('fill', '#2a2a3e');
+      g.appendChild(barBg);
+
+      const barFill = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      barFill.setAttribute('x', pos.x + 10);
+      barFill.setAttribute('y', pos.y + pos.h - 10);
+      barFill.setAttribute('width', barW * pct);
+      barFill.setAttribute('height', 3);
+      barFill.setAttribute('rx', 1.5);
+      barFill.setAttribute('fill', color);
+      g.appendChild(barFill);
+    }
+
+    svg.appendChild(g);
+  });
+}
+
+// ============================================================
+// NODE SELECTION -> DETAIL PANEL
+// ============================================================
+function selectNode(nodeId) {
+  selectedNodeId = nodeId;
+  renderDAG();
+  showNodeDetail(nodeId);
+}
+
+function closeDetail() {
+  selectedNodeId = null;
+  renderDAG();
+  document.getElementById('detailTitle').textContent = 'Select a node';
+  document.getElementById('detailTabs').innerHTML = '';
+  document.getElementById('detailBody').innerHTML = '<p style="color:var(--text-dim);font-size:12px;text-align:center;margin-top:40px">Click a node in the DAG to inspect all its data</p>';
+  document.getElementById('searchBar').style.display = 'none';
+}
+
+function showNodeDetail(nodeId) {
+  const t = currentTrace;
+  const nodeTrace = t.nodes.find(n => n.nodeId === nodeId);
+  const dagNode = t.dag.nodes.find(n => n.id === nodeId);
+  if (!dagNode) return;
+
+  document.getElementById('detailTitle').textContent = dagNode.name;
+  document.getElementById('searchBar').style.display = 'flex';
+  document.getElementById('searchInput').value = '';
+
+  // Get associated LLM calls
+  const llmCalls = nodeTrace?.llmCallIds
+    ? nodeTrace.llmCallIds.map(id => t.llmCalls.find(c => c.callId === id)).filter(Boolean)
+    : [];
+
+  // Get associated NPC trajectories (NPCs that made decisions during this node)
+  const npcTrajectories = t.npcTrajectories || [];
+
+  // Tabs
+  const tabs = ['Overview', 'Inputs', 'Outputs'];
+  if (llmCalls.length > 0) tabs.push(`LLM Calls (${llmCalls.length})`);
+  if (npcTrajectories.length > 0 && (nodeId.includes('market') || nodeId.includes('trade') || nodeId.includes('group') || nodeId.includes('relationship'))) {
+    tabs.push(`NPCs (${npcTrajectories.length})`);
+  }
+  tabs.push('Raw JSON');
+
+  const tabsEl = document.getElementById('detailTabs');
+  tabsEl.innerHTML = tabs.map((tab, i) =>
+    `<div class="tab ${i === 0 ? 'active' : ''}" data-tab="${tab}" onclick="switchTab(this, '${safeId(nodeId)}')">${tab}</div>`
+  ).join('');
+
+  renderTabContent(tabs[0], nodeId, llmCalls, npcTrajectories);
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: called from dynamically generated HTML
+function switchTab(el, nodeId) {
+  document.querySelectorAll('.detail-tabs .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const tab = el.dataset.tab;
+
+  const nodeTrace = currentTrace.nodes.find(n => n.nodeId === nodeId);
+  const llmCalls = nodeTrace?.llmCallIds
+    ? nodeTrace.llmCallIds.map(id => currentTrace.llmCalls.find(c => c.callId === id)).filter(Boolean)
+    : [];
+  const npcTrajectories = currentTrace.npcTrajectories || [];
+
+  renderTabContent(tab, nodeId, llmCalls, npcTrajectories);
+}
+
+function renderTabContent(tab, nodeId, llmCalls, npcTrajectories) {
+  const body = document.getElementById('detailBody');
+  const nodeTrace = currentTrace.nodes.find(n => n.nodeId === nodeId);
+  const dagNode = currentTrace.dag.nodes.find(n => n.id === nodeId);
+
+  if (tab === 'Overview') {
+    body.innerHTML = renderOverviewTab(dagNode, nodeTrace, llmCalls);
+  } else if (tab === 'Inputs') {
+    body.innerHTML = renderDataTab('INPUTS', nodeTrace ? nodeTrace.inputs : {});
+  } else if (tab === 'Outputs') {
+    body.innerHTML = renderDataTab('OUTPUTS', nodeTrace ? nodeTrace.outputs : {});
+  } else if (tab.startsWith('LLM Calls')) {
+    body.innerHTML = renderLLMCallsTab(llmCalls);
+  } else if (tab.startsWith('NPCs')) {
+    body.innerHTML = renderNPCsTab(npcTrajectories);
+  } else if (tab === 'Raw JSON') {
+    body.innerHTML = `<div class="json-viewer">${syntaxHighlight(JSON.stringify(nodeTrace || dagNode, null, 2))}</div>`;
+  }
+}
+
+// ============================================================
+// TAB RENDERERS
+// ============================================================
+function renderOverviewTab(dagNode, nodeTrace, llmCalls) {
+  const status = nodeTrace ? nodeTrace.status : 'not executed';
+  const statusClass = status === 'success' ? 'badge-success' : status === 'error' ? 'badge-error' : status === 'delegated' ? 'badge-delegated' : 'badge-skipped';
+
+  let html = `
+    <div class="section">
+      <div class="section-title">Node Information</div>
+      <table class="kv-table">
+        <tr><td class="kv-key">ID</td><td class="kv-val">${dagNode.id}</td></tr>
+        <tr><td class="kv-key">Name</td><td class="kv-val">${dagNode.name}</td></tr>
+        <tr><td class="kv-key">Phase</td><td class="kv-val"><span class="phase-dot" style="background:${PHASE_COLORS[dagNode.phase]}"></span> ${dagNode.phase} (${dagNode.phaseNumber})</td></tr>
+        <tr><td class="kv-key">Description</td><td class="kv-val">${dagNode.description}</td></tr>
+        <tr><td class="kv-key">Status</td><td class="kv-val"><span class="badge ${statusClass}">${status}</span></td></tr>
+      </table>
+    </div>
+  `;
+
+  if (nodeTrace) {
+    html += `
+      <div class="section">
+        <div class="section-title">Execution Timing</div>
+        <table class="kv-table">
+          <tr><td class="kv-key">Duration</td><td class="kv-val">${formatDuration(nodeTrace.durationMs)}</td></tr>
+          <tr><td class="kv-key">Started</td><td class="kv-val">${new Date(nodeTrace.startMs).toISOString()}</td></tr>
+          <tr><td class="kv-key">Ended</td><td class="kv-val">${new Date(nodeTrace.endMs).toISOString()}</td></tr>
+          <tr><td class="kv-key">% of Tick</td><td class="kv-val">${currentTrace.durationMs ? `${((nodeTrace.durationMs / currentTrace.durationMs) * 100).toFixed(1)}%` : 'N/A'}</td></tr>
+        </table>
+        <div class="timing-bar">
+          <div class="timing-bar-fill" style="width:${currentTrace.durationMs ? (nodeTrace.durationMs / currentTrace.durationMs * 100) : 0}%;background:${PHASE_COLORS[dagNode.phase]}"></div>
+        </div>
+      </div>
+    `;
+
+    if (nodeTrace.error) {
+      html += `
+        <div class="section">
+          <div class="section-title" style="color:var(--error)">Error</div>
+          <div class="json-viewer" style="border-color:#ef444440;color:#fca5a5">${escapeHtml(nodeTrace.error)}</div>
+        </div>
+      `;
+    }
+
+    // Data summary
+    const inputKeys = Object.keys(nodeTrace.inputs || {});
+    const outputKeys = Object.keys(nodeTrace.outputs || {});
+    html += `
+      <div class="section">
+        <div class="section-title">Data Summary</div>
+        <table class="kv-table">
+          <tr><td class="kv-key">Input Fields</td><td class="kv-val">${inputKeys.length > 0 ? inputKeys.join(', ') : '(none)'}</td></tr>
+          <tr><td class="kv-key">Output Fields</td><td class="kv-val">${outputKeys.length > 0 ? outputKeys.join(', ') : '(none)'}</td></tr>
+          <tr><td class="kv-key">LLM Calls</td><td class="kv-val">${llmCalls.length}</td></tr>
+          <tr><td class="kv-key">Input Data Size</td><td class="kv-val">${formatBytes(JSON.stringify(nodeTrace.inputs || {}).length)}</td></tr>
+          <tr><td class="kv-key">Output Data Size</td><td class="kv-val">${formatBytes(JSON.stringify(nodeTrace.outputs || {}).length)}</td></tr>
+        </table>
+      </div>
+    `;
+
+    // LLM call summary inline
+    if (llmCalls.length > 0) {
+      html += `<div class="section"><div class="section-title">LLM Calls Summary</div>`;
+      llmCalls.forEach(call => {
+        const tokens = (call.inputTokens || 0) + (call.outputTokens || 0);
+        html += `
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;font-size:11px">
+            <span class="badge badge-provider">${call.provider || 'unknown'}</span>
+            <span class="badge badge-model">${call.model || 'unknown'}</span>
+            <span style="color:var(--text-dim)">${call.promptType}</span>
+            <span style="color:var(--text-dim);margin-left:auto">${tokens.toLocaleString()} tok</span>
+            <span style="color:var(--text-dim)">${formatDuration(call.durationMs)}</span>
+            <span class="badge ${call.success ? 'badge-success' : 'badge-error'}">${call.success ? 'OK' : 'FAIL'}</span>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+
+    // Sub-operations (DB writes, internal LLM calls, etc.)
+    if (nodeTrace.subOperations && nodeTrace.subOperations.length > 0) {
+      html += `<div class="section"><div class="section-title">Sub-Operations (${nodeTrace.subOperations.length})</div>`;
+      nodeTrace.subOperations.forEach(op => {
+        const dur = op.endMs - op.startMs;
+        const typeColor = op.type === 'db_write' ? '#f472b6' : op.type === 'llm' ? '#7dd3fc' : op.type === 'external' ? '#fcd34d' : '#86efac';
+        html += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;margin-bottom:4px;font-size:11px">
+          <span class="badge" style="background:${typeColor}20;color:${typeColor}">${op.type}</span>
+          <span style="font-weight:600">${escapeHtml(op.name)}</span>
+          <span style="color:var(--text-dim);margin-left:8px">${formatDuration(dur)}</span>
+          ${op.details && Object.keys(op.details).length > 0 ? `<div class="json-viewer" style="margin-top:4px;max-height:150px">${syntaxHighlight(JSON.stringify(op.details, null, 2))}</div>` : ''}
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    // Connected edges
+    const inEdges = currentTrace.dag.edges.filter(e => e.target === dagNode.id);
+    const outEdges = currentTrace.dag.edges.filter(e => e.source === dagNode.id);
+    if (inEdges.length > 0 || outEdges.length > 0) {
+      html += `<div class="section"><div class="section-title">Data Flow Edges</div><table class="kv-table">`;
+      inEdges.forEach(e => {
+        html += `<tr><td class="kv-key" style="color:#7dd3fc">IN &larr; ${e.source}</td><td class="kv-val">${e.label}</td></tr>`;
+      });
+      outEdges.forEach(e => {
+        html += `<tr><td class="kv-key" style="color:#86efac">OUT &rarr; ${e.target}</td><td class="kv-val">${e.label}</td></tr>`;
+      });
+      html += `</table></div>`;
+    }
+  }
+
+  return html;
+}
+
+function renderDataTab(title, data) {
+  if (!data || Object.keys(data).length === 0) {
+    return `<p style="color:var(--text-dim);font-size:12px;text-align:center;margin-top:20px">No ${title.toLowerCase()} data captured</p>`;
+  }
+
+  let html = `<div class="expand-controls">
+    <button class="btn" onclick="expandAllSections(true)">Expand All</button>
+    <button class="btn" onclick="expandAllSections(false)">Collapse All</button>
+    <span class="data-size">${formatBytes(JSON.stringify(data).length)}</span>
+  </div>`;
+
+  Object.entries(data).forEach(([key, value]) => {
+    const valStr = typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
+    const isLarge = valStr.length > 200;
+    const _preview = isLarge ? `${valStr.slice(0, 200)}...` : valStr;
+    const typeLabel = Array.isArray(value) ? `Array[${value.length}]` : typeof value === 'object' && value !== null ? `Object{${Object.keys(value).length}}` : typeof value;
+
+    html += `
+      <div class="section data-section">
+        <div class="section-title" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.toggle').textContent=this.nextElementSibling.classList.contains('open')?'▼':'▶'">
+          <span class="toggle">${isLarge ? '▶' : '▼'}</span>
+          <span style="color:var(--text)">${escapeHtml(key)}</span>
+          <span style="font-weight:400;font-size:9px;color:var(--text-dim)">${typeLabel}</span>
+          <span class="data-size">${formatBytes(valStr.length)}</span>
+        </div>
+        <div class="json-viewer data-content ${isLarge ? '' : 'open'}">${typeof value === 'object' ? syntaxHighlight(JSON.stringify(value, null, 2)) : escapeHtml(String(value))}</div>
+      </div>
+    `;
+  });
+
+  return html;
+}
+
+function renderLLMCallsTab(llmCalls) {
+  if (llmCalls.length === 0) {
+    return `<p style="color:var(--text-dim);font-size:12px;text-align:center;margin-top:20px">No LLM calls in this node</p>`;
+  }
+
+  let html = `<div class="expand-controls">
+    <button class="btn" onclick="toggleAllLLMCards(true)">Expand All</button>
+    <button class="btn" onclick="toggleAllLLMCards(false)">Collapse All</button>
+    <span class="data-size">${llmCalls.length} calls | ${llmCalls.reduce((s,c) => s + (c.inputTokens||0) + (c.outputTokens||0), 0).toLocaleString()} tokens</span>
+  </div>`;
+
+  llmCalls.forEach((call, _idx) => {
+    const tokens = (call.inputTokens || 0) + (call.outputTokens || 0);
+    html += `
+      <div class="llm-card">
+        <div class="llm-card-header" onclick="this.nextElementSibling.classList.toggle('open')">
+          <span class="badge badge-provider">${call.provider || '?'}</span>
+          <span class="badge badge-model">${truncText(call.model || '?', 20)}</span>
+          <span style="flex:1;font-size:11px">${call.promptType || call.callId}</span>
+          <span style="font-size:10px;color:var(--text-dim)">${tokens.toLocaleString()} tok</span>
+          <span style="font-size:10px;color:var(--text-dim)">${formatDuration(call.durationMs)}</span>
+          <span class="badge ${call.success ? 'badge-success' : 'badge-error'}">${call.success ? 'OK' : 'ERR'}</span>
+        </div>
+        <div class="llm-card-body">
+          <div class="llm-prompt-section">
+            <div class="llm-prompt-label" style="display:flex;gap:12px;flex-wrap:wrap">
+              <span>Call ID: ${call.callId}</span>
+              <span>Temp: ${call.temperature ?? 'N/A'}</span>
+              <span>Max Tokens: ${call.maxTokens ?? 'N/A'}</span>
+              <span>Format: ${call.format || 'text'}</span>
+              <span>In: ${(call.inputTokens||0).toLocaleString()}</span>
+              <span>Out: ${(call.outputTokens||0).toLocaleString()}</span>
+            </div>
+          </div>
+          <div class="llm-prompt-section">
+            <div class="llm-prompt-label system">System Prompt <span class="data-size">${formatBytes((call.systemPrompt||'').length)}</span></div>
+            <div class="llm-prompt-text">${escapeHtml(call.systemPrompt || '(none)')}</div>
+          </div>
+          <div class="llm-prompt-section">
+            <div class="llm-prompt-label user">User Prompt <span class="data-size">${formatBytes((call.userPrompt||'').length)}</span></div>
+            <div class="llm-prompt-text">${escapeHtml(call.userPrompt || '(none)')}</div>
+          </div>
+          <div class="llm-prompt-section">
+            <div class="llm-prompt-label response">Raw Response <span class="data-size">${formatBytes((call.rawResponse||'').length)}</span></div>
+            <div class="llm-prompt-text">${escapeHtml(call.rawResponse || '(none)')}</div>
+          </div>
+          ${call.parsedResponse ? `
+          <div class="llm-prompt-section">
+            <div class="llm-prompt-label parsed">Parsed Response</div>
+            <div class="json-viewer">${syntaxHighlight(JSON.stringify(call.parsedResponse, null, 2))}</div>
+          </div>
+          ` : ''}
+          ${call.error ? `
+          <div class="llm-prompt-section">
+            <div class="llm-prompt-label" style="color:var(--error)">Error</div>
+            <div class="llm-prompt-text" style="color:#fca5a5">${escapeHtml(call.error)}</div>
+          </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  });
+
+  return html;
+}
+
+function renderNPCsTab(npcTrajectories) {
+  if (npcTrajectories.length === 0) {
+    return `<p style="color:var(--text-dim);font-size:12px;text-align:center;margin-top:20px">No NPC trajectory data</p>`;
+  }
+
+  let html = `<div class="expand-controls">
+    <button class="btn" onclick="toggleAllNPCCards(true)">Expand All</button>
+    <button class="btn" onclick="toggleAllNPCCards(false)">Collapse All</button>
+    <span class="data-size">${npcTrajectories.length} NPCs</span>
+  </div>`;
+
+  npcTrajectories.forEach(npc => {
+    const totalActions = npc.decisions.length + npc.trades.length + npc.posts.length + npc.groupMessages.length;
+    if (totalActions === 0) return;
+
+    html += `
+      <div class="npc-card">
+        <div class="npc-card-header" onclick="this.nextElementSibling.classList.toggle('open')">
+          <span style="font-weight:600">${escapeHtml(npc.npcName)}</span>
+          <span style="font-size:10px;color:var(--text-dim)">${npc.decisions.length}d ${npc.trades.length}t ${npc.posts.length}p ${npc.groupMessages.length}m</span>
+        </div>
+        <div class="npc-card-body">
+    `;
+
+    // Decisions
+    if (npc.decisions.length > 0) {
+      html += `<div class="section-title" style="margin-top:8px">Decisions (${npc.decisions.length})</div>`;
+      npc.decisions.forEach(d => {
+        html += `
+          <table class="kv-table" style="margin-bottom:8px;border:1px solid var(--border);padding:6px;border-radius:4px">
+            <tr><td class="kv-key">Action</td><td class="kv-val">${d.action}</td></tr>
+            ${d.ticker ? `<tr><td class="kv-key">Ticker</td><td class="kv-val">${d.ticker}</td></tr>` : ''}
+            ${d.marketId ? `<tr><td class="kv-key">Market</td><td class="kv-val">${d.marketId}</td></tr>` : ''}
+            <tr><td class="kv-key">Amount</td><td class="kv-val">${d.amount}</td></tr>
+            <tr><td class="kv-key">Confidence</td><td class="kv-val">${(d.confidence * 100).toFixed(0)}%</td></tr>
+            <tr><td class="kv-key">Reasoning</td><td class="kv-val">${escapeHtml(d.reasoning)}</td></tr>
+          </table>
+        `;
+      });
+    }
+
+    // Trades
+    if (npc.trades.length > 0) {
+      html += `<div class="section-title" style="margin-top:8px">Trades (${npc.trades.length})</div>`;
+      npc.trades.forEach(tr => {
+        html += `
+          <table class="kv-table" style="margin-bottom:8px;border:1px solid var(--border);padding:6px;border-radius:4px">
+            <tr><td class="kv-key">Action</td><td class="kv-val">${tr.action}</td></tr>
+            ${tr.ticker ? `<tr><td class="kv-key">Ticker</td><td class="kv-val">${tr.ticker}</td></tr>` : ''}
+            <tr><td class="kv-key">Amount</td><td class="kv-val">${tr.amount}</td></tr>
+            <tr><td class="kv-key">Success</td><td class="kv-val"><span class="badge ${tr.success ? 'badge-success' : 'badge-error'}">${tr.success ? 'YES' : 'NO'}</span></td></tr>
+            ${tr.error ? `<tr><td class="kv-key">Error</td><td class="kv-val" style="color:#fca5a5">${escapeHtml(tr.error)}</td></tr>` : ''}
+          </table>
+        `;
+      });
+    }
+
+    // Posts
+    if (npc.posts.length > 0) {
+      html += `<div class="section-title" style="margin-top:8px">Posts (${npc.posts.length})</div>`;
+      npc.posts.forEach(p => {
+        html += `
+          <table class="kv-table" style="margin-bottom:8px;border:1px solid var(--border);padding:6px;border-radius:4px">
+            <tr><td class="kv-key">Type</td><td class="kv-val">${p.type}</td></tr>
+            <tr><td class="kv-key">Content</td><td class="kv-val">${escapeHtml(p.content)}</td></tr>
+          </table>
+        `;
+      });
+    }
+
+    // Group Messages
+    if (npc.groupMessages.length > 0) {
+      html += `<div class="section-title" style="margin-top:8px">Group Messages (${npc.groupMessages.length})</div>`;
+      npc.groupMessages.forEach(m => {
+        html += `
+          <table class="kv-table" style="margin-bottom:8px;border:1px solid var(--border);padding:6px;border-radius:4px">
+            <tr><td class="kv-key">Group</td><td class="kv-val">${escapeHtml(m.groupName)}</td></tr>
+            <tr><td class="kv-key">Content</td><td class="kv-val">${escapeHtml(m.content)}</td></tr>
+          </table>
+        `;
+      });
+    }
+
+    html += `</div></div>`;
+  });
+
+  return html;
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function escapeHtml(str) {
+  if (str == null) return '';
+  const div = document.createElement('div');
+  div.textContent = String(str);
+  return div.innerHTML;
+}
+
+/** Sanitize a string for safe use in inline onclick attributes */
+function safeId(str) {
+  return String(str || '').replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+function truncText(str, max) {
+  if (str == null) return '';
+  return str.length > max ? `${str.slice(0, max - 1)}\u2026` : str;
+}
+
+function formatDuration(ms) {
+  if (ms == null || ms === 0) return '0ms';
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${(ms / 60000).toFixed(1)}m`;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function syntaxHighlight(json) {
+  return escapeHtml(json).replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+    (match) => {
+      let cls = 'json-number';
+      if (/^"/.test(match)) {
+        cls = /:$/.test(match) ? 'json-key' : 'json-string';
+      } else if (/true|false/.test(match)) {
+        cls = 'json-bool';
+      } else if (/null/.test(match)) {
+        cls = 'json-null';
+      }
+      return `<span class="${cls}">${match}</span>`;
+    }
+  );
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
+function expandAllSections(open) {
+  document.querySelectorAll('.data-section .data-content').forEach(el => {
+    el.classList.toggle('open', open);
+    const toggle = el.previousElementSibling?.querySelector('.toggle');
+    if (toggle) toggle.textContent = open ? '▼' : '▶';
+  });
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
+function toggleAllLLMCards(open) {
+  document.querySelectorAll('.llm-card-body').forEach(el => el.classList.toggle('open', open));
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
+function toggleAllNPCCards(open) {
+  document.querySelectorAll('.npc-card-body').forEach(el => el.classList.toggle('open', open));
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: called from dynamically generated HTML
+function copyAdjacentText(btn) {
+  const section = btn.closest('.llm-prompt-section');
+  const textEl = section?.querySelector('.llm-prompt-text, .json-viewer');
+  if (textEl) {
+    navigator.clipboard.writeText(textEl.textContent || '').then(() => {
+      btn.textContent = 'copied';
+      setTimeout(() => { btn.textContent = 'copy'; }, 1500);
+    });
+  }
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML oninput
+function filterDetailContent() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  document.querySelectorAll('.detail-body .section, .detail-body .llm-card, .detail-body .npc-card').forEach(el => {
+    el.style.display = q === '' || el.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+// ============================================================
+// DEMO DATA GENERATOR
+// ============================================================
+function loadDemo() {
+  const now = Date.now();
+  const trace = generateDemoTrace(now);
+  loadTrace(trace);
+  // Auto-select the first interesting node
+  setTimeout(() => selectNode('market-decisions'), 100);
+}
+// Keep alias in case linter renames
+const _loadDemo = loadDemo;
+
+function generateDemoTrace(now) {
+  const startMs = now - 45000; // 45 seconds ago
+
+  const npcNames = ['CryptoWhale42', 'DeFiDegen', 'SatoshisFriend', 'MoonLambo', 'ChartWizard', 'AlphaHunter', 'TokenSage', 'BlockchainBard'];
+  const tickers = ['aiBitcoin', 'Ethereum FoundAItion', 'Solander', 'Chainlinked', 'Polymarket AI'];
+  const questionText = 'Will aiBitcoin reach $100k before July 2026?';
+
+  function elapsed(offset) { return startMs + offset; }
+
+  // Build node traces with realistic inputs/outputs
+  const nodes = [
+    {
+      nodeId: 'init', name: 'Initialize', phase: 'Bootstrap', phaseNumber: 100,
+      startMs: elapsed(0), endMs: elapsed(120), durationMs: 120, status: 'success',
+      inputs: { fastMode: false, tickBudgetMs: 180000, dagTraceEnabled: true },
+      outputs: {
+        llmClient: { provider: 'groq', model: 'llama-3.3-70b-versatile', fallback: 'openai/gpt-4o-mini' },
+        gameState: { currentDay: 42, lastTickAt: new Date(startMs - 300000).toISOString(), totalTicks: 2847, activeUsers: 156, totalNPCs: 80 },
+        tokenStatsInit: { previousTotalCalls: 142850, previousTotalTokens: 28500000 }
+      },
+      llmCallIds: [], error: undefined
+    },
+    {
+      nodeId: 'bootstrap', name: 'Bootstrap Game', phase: 'Bootstrap', phaseNumber: 100,
+      startMs: elapsed(120), endMs: elapsed(450), durationMs: 330, status: 'success',
+      inputs: { fastMode: false, gameState: { currentDay: 42 } },
+      outputs: {
+        actorsCreated: 0, organizationsCreated: 0, poolsCreated: 0,
+        existingActors: 80, existingOrganizations: 12,
+        organizations: ['aiBitcoin Foundation', 'Ethereum FoundAItion', 'Solander Labs', 'Chainlinked Inc', 'DeFi Alliance', 'Web3 Ventures', 'Block Capital', 'Token Research Group', 'Crypto Media Corp', 'Digital Asset Fund', 'NFT Studios', 'Metaverse Holdings'],
+        poolBalances: { mainPool: 1250000, rewardsPool: 450000, stakingPool: 890000 }
+      },
+      llmCallIds: [], error: undefined
+    },
+    {
+      nodeId: 'bootstrap-content', name: 'Bootstrap Content', phase: 'Bootstrap', phaseNumber: 100,
+      startMs: elapsed(450), endMs: elapsed(500), durationMs: 50, status: 'skipped',
+      inputs: { tickNumber: 2847, isFirstTick: false, existingRelationships: 156, existingTags: 42 },
+      outputs: { reason: 'Content already bootstrapped on tick 1 — 156 relationships and 42 tags exist' },
+      llmCallIds: [], error: 'Not first tick — 156 relationships + 42 tags already exist'
+    },
+    {
+      nodeId: 'questions-load', name: 'Load Questions', phase: 'Questions', phaseNumber: 200,
+      startMs: elapsed(500), endMs: elapsed(680), durationMs: 180, status: 'success',
+      inputs: { fastMode: false, minActiveQuestions: 10, dbQuery: 'SELECT * FROM Question WHERE status = \'active\' ORDER BY createdDate DESC' },
+      outputs: {
+        count: 14,
+        activeQuestions: [
+          { id: 'q-001', text: questionText, category: 'price', deadline: '2026-07-01', currentYesOdds: 0.62, totalVolume: 45000, participantCount: 89, createdAt: '2026-03-28', outcome: true },
+          { id: 'q-002', text: 'Will Ethereum FoundAItion merge with Solander?', category: 'corporate', deadline: '2026-06-15', currentYesOdds: 0.15, totalVolume: 12000, participantCount: 34, createdAt: '2026-03-29', outcome: false },
+          { id: 'q-003', text: 'Will DeFi TVL exceed $200B by Q3 2026?', category: 'defi', deadline: '2026-09-30', currentYesOdds: 0.45, totalVolume: 28000, participantCount: 67, createdAt: '2026-03-25', outcome: true },
+          { id: 'q-004', text: 'Will SEC approve spot Solander ETF?', category: 'regulatory', deadline: '2026-08-01', currentYesOdds: 0.30, totalVolume: 55000, participantCount: 112, createdAt: '2026-03-26', outcome: false },
+          { id: 'q-005', text: 'Will AIlon Musk post a cryptic tweet about the MetAI?', category: 'price', deadline: '2026-04-03', currentYesOdds: 0.78, totalVolume: 8500, participantCount: 45, createdAt: '2026-04-01', outcome: true },
+          { id: 'q-006', text: 'Will Jensen HuAIng reveal a leather jacket made of woven GPU wires?', category: 'technology', deadline: '2026-04-10', currentYesOdds: 0.12, totalVolume: 3200, participantCount: 18, createdAt: '2026-03-30', outcome: false },
+          { id: 'q-007', text: 'Will CathAI Wood claim DeFi is the future of banking?', category: 'defi', deadline: '2026-04-05', currentYesOdds: 0.55, totalVolume: 15000, participantCount: 56, createdAt: '2026-03-31', outcome: true },
+          { id: 'q-008', text: 'Will Sam AIltman announce GPT-6 at a surprise keynote?', category: 'technology', deadline: '2026-05-01', currentYesOdds: 0.08, totalVolume: 22000, participantCount: 78, createdAt: '2026-03-27', outcome: false },
+          { id: 'q-009', text: 'Will Michael SAIlor buy another $1B of aiBitcoin?', category: 'price', deadline: '2026-04-15', currentYesOdds: 0.42, totalVolume: 31000, participantCount: 92, createdAt: '2026-03-28', outcome: true },
+          { id: 'q-010', text: 'Will VitAIlik Buterin propose merging Solander into Ethereum FoundAItion?', category: 'corporate', deadline: '2026-05-15', currentYesOdds: 0.05, totalVolume: 9800, participantCount: 41, createdAt: '2026-03-29', outcome: false },
+          { id: 'q-011', text: 'Will Chainlinked announce cross-chain bridge for 10+ networks?', category: 'corporate', deadline: '2026-04-20', currentYesOdds: 0.35, totalVolume: 7600, participantCount: 29, createdAt: '2026-03-30', outcome: true },
+          { id: 'q-012', text: 'Will a major exchange delist Polymarket AI token?', category: 'regulatory', deadline: '2026-04-08', currentYesOdds: 0.18, totalVolume: 14500, participantCount: 63, createdAt: '2026-03-31', outcome: false },
+          { id: 'q-013', text: 'Will SpAIceX successfully test Starship AI autopilot?', category: 'price', deadline: '2026-06-01', currentYesOdds: 0.68, totalVolume: 42000, participantCount: 105, createdAt: '2026-03-26', outcome: true },
+          { id: 'q-014', text: 'Will BernAI Sanders propose a Robot Tax on AI agents?', category: 'price', deadline: '2026-04-12', currentYesOdds: 0.25, totalVolume: 6800, participantCount: 22, createdAt: '2026-04-01', outcome: false },
+        ],
+        questionCategories: { price: 5, corporate: 3, defi: 2, regulatory: 2, technology: 2 },
+        resolvedRecently: [
+          { id: 'q-r01', text: 'Will Solander break $150 by end of March?', outcome: false, resolvedAt: '2026-03-31' },
+          { id: 'q-r02', text: 'Will aiBitcoin hash rate reach new ATH?', outcome: true, resolvedAt: '2026-03-30' },
+        ],
+        generationContext: 'Questions are generated via LLM with: 30 shuffled actors, 20 shuffled orgs, top 10 trending tags, 10 random example questions from 120+ parody bank, anti-repetition rules, topic diversity enforcement, coherence filtering, temperature 0.9'
+      },
+      llmCallIds: [], error: undefined,
+      subOperations: [
+        { name: 'SELECT active questions', type: 'db_read', startMs: elapsed(510), endMs: elapsed(620), details: { table: 'Question', query: "status='active'", rowsReturned: 14 } },
+        { name: 'SELECT resolved questions (7d)', type: 'db_read', startMs: elapsed(620), endMs: elapsed(670), details: { table: 'Question', query: "status='resolved' AND resolvedAt > now()-7d", rowsReturned: 2 } },
+      ]
+    },
+    {
+      nodeId: 'questions-init', name: 'Generate Initial Questions', phase: 'Questions', phaseNumber: 200,
+      startMs: elapsed(680), endMs: elapsed(700), durationMs: 20, status: 'skipped',
+      inputs: { activeCount: 14, isFirstTick: false, condition: 'activeQuestions.length === 0 required for generation' },
+      outputs: { reason: '14 active questions exist — initial generation only runs when 0 questions present (first tick)' },
+      llmCallIds: [], error: '14 active questions — initial generation only on first tick (0 active)'
+    },
+    {
+      nodeId: 'oracle-commitments', name: 'Oracle Commitments', phase: 'Questions', phaseNumber: 200,
+      startMs: elapsed(700), endMs: elapsed(950), durationMs: 250, status: 'success',
+      inputs: { pendingCommitments: 2, chainId: 84532, oracleAddress: '0x7a3B...4f2e' },
+      outputs: {
+        committed: 2, txHashes: ['0xabc123...def456', '0x789012...345678'],
+        gasUsed: 185000, gasPrice: '0.001 gwei',
+        commitmentDetails: [
+          { questionId: 'q-014', commitment: '0xhash1...', blockNumber: 18234567 },
+          { questionId: 'q-005', commitment: '0xhash2...', blockNumber: 18234568 }
+        ]
+      },
+      llmCallIds: [], error: undefined,
+      subOperations: [
+        { name: 'batch commit to oracle', type: 'external', startMs: elapsed(720), endMs: elapsed(930), details: { chain: 'Base Sepolia', method: 'batchCommitGames', txCount: 2, gasUsed: 185000 } },
+      ]
+    },
+    {
+      nodeId: 'question-topup', name: 'Question Top-up', phase: 'Questions', phaseNumber: 200,
+      startMs: elapsed(950), endMs: elapsed(970), durationMs: 20, status: 'skipped',
+      inputs: { activeCount: 14, threshold: 10, maxCapacity: 20, condition: 'activeCount < threshold required' },
+      outputs: { reason: '14 active questions >= 10 threshold — topup skipped. Would generate 1-3 more questions via LLM if below threshold.' },
+      llmCallIds: [], error: '14 active >= 10 threshold. Topup generates 1-3 questions when active < 10, using same LLM pipeline as questions-init with full context (actors, orgs, events, resolved history)'
+    },
+    {
+      nodeId: 'events', name: 'Generate Events', phase: 'Events', phaseNumber: 300,
+      startMs: elapsed(970), endMs: elapsed(3200), durationMs: 2230, status: 'success',
+      inputs: {
+        activeQuestions: 14, currentDay: 42, narrativeContext: 'Market uncertainty after regulatory announcement',
+        recentEvents: ['SEC hearing postponed', 'aiBitcoin hash rate ATH', 'Major DeFi protocol exploit rumored']
+      },
+      outputs: {
+        eventsGenerated: 3,
+        events: [
+          { type: 'rumor', description: 'Insider sources suggest aiBitcoin Foundation is in talks with major institutional investor for $500M allocation', severity: 3, signalStrength: 0.7, affectedTickers: ['aiBitcoin'], pointsToward: 'YES', visibility: 'public' },
+          { type: 'confirmation', description: 'Chainlinked announces partnership with traditional banking consortium for cross-border payments', severity: 2, signalStrength: 0.5, affectedTickers: ['Chainlinked'], pointsToward: 'YES', visibility: 'public' },
+          { type: 'leak', description: 'Unverified screenshots show Solander Labs internal memo about potential token burn mechanism', severity: 4, signalStrength: 0.4, affectedTickers: ['Solander'], pointsToward: 'YES', visibility: 'private' }
+        ],
+        rssHeadlinesProcessed: 47, causalEventsInjected: 2
+      },
+      llmCallIds: ['call-001-event-generation'], error: undefined
+    },
+    {
+      nodeId: 'narrative-arcs', name: 'Narrative Arcs', phase: 'Events', phaseNumber: 300,
+      startMs: elapsed(3200), endMs: elapsed(5100), durationMs: 1900, status: 'success',
+      inputs: {
+        activeArcs: 3,
+        arcs: [
+          { id: 'arc-regulatory', name: 'Regulatory Reckoning', phase: 'escalation', timeframe: 'weekly', daysSinceStart: 12 },
+          { id: 'arc-defi-summer', name: 'DeFi Summer 2.0', phase: 'tension', timeframe: 'long-term', daysSinceStart: 28 },
+          { id: 'arc-insider-trading', name: 'The Insider Ring', phase: 'crisis', timeframe: 'daily', daysSinceStart: 3 }
+        ]
+      },
+      outputs: {
+        arcTransitions: [{ arcId: 'arc-insider-trading', from: 'crisis', to: 'revelation', reason: 'Evidence threshold reached' }],
+        pulseEventsGenerated: 2,
+        narrativeText: 'The insider trading investigation reaches a critical juncture as blockchain forensics reveal a pattern of suspicious trades preceding every major announcement. Meanwhile, the regulatory landscape shifts as multiple jurisdictions signal coordinated enforcement action.',
+        sentimentShift: { overall: -0.15, byTicker: { aiBitcoin: -0.08, Solander: -0.22, Chainlinked: 0.05 } }
+      },
+      llmCallIds: ['call-002-narrative-generation'], error: undefined
+    },
+    {
+      nodeId: 'timeframed-markets', name: 'Timeframed Markets', phase: 'Events', phaseNumber: 300,
+      startMs: elapsed(5100), endMs: elapsed(5400), durationMs: 300, status: 'success',
+      inputs: { activeTimeframedMarkets: 5, arcEvents: 2 },
+      outputs: {
+        marketsUpdated: 3,
+        newMarkets: 0,
+        resolvedMarkets: 1,
+        marketStates: [
+          { marketId: 'tm-001', question: questionText, timeframe: 'long-term', phase: 'active', daysRemaining: 91, currentPrice: 0.62 },
+          { marketId: 'tm-002', question: 'Daily: Will aiBitcoin close above $95k?', timeframe: 'daily', phase: 'active', daysRemaining: 0.5, currentPrice: 0.78 },
+        ]
+      },
+      llmCallIds: [], error: undefined
+    },
+    {
+      nodeId: 'market-baseline', name: 'Baseline Investments', phase: 'Markets', phaseNumber: 400,
+      startMs: elapsed(5400), endMs: elapsed(5800), durationMs: 400, status: 'delegated',
+      inputs: { delegatedTo: 'npc-tick', npcCount: 80 },
+      outputs: {
+        baselineAllocationsUpdated: 12,
+        totalBaselineValue: 2450000,
+        allocationBreakdown: { conservative: 28, moderate: 35, aggressive: 17 },
+        rebalanceTriggered: 3,
+        source: 'npc-tick-latest.json'
+      },
+      llmCallIds: [], error: undefined
+    },
+    {
+      nodeId: 'market-decisions', name: 'Market Decisions', phase: 'Markets', phaseNumber: 400,
+      startMs: elapsed(5800), endMs: elapsed(18500), durationMs: 12700, status: 'success',
+      inputs: {
+        npcCount: 80, activeQuestions: 14, worldContext: 'Regulatory uncertainty, insider trading scandal, institutional interest rumor',
+        recentEvents: ['Insider sources suggest aiBitcoin Foundation institutional allocation', 'Chainlinked banking partnership', 'Solander token burn leak'],
+        marketState: {
+          'aiBitcoin': { price: 94850, change24h: 2.3, volume24h: 1200000 },
+          'Ethereum FoundAItion': { price: 3420, change24h: -0.8, volume24h: 580000 },
+          'Solander': { price: 142, change24h: 5.7, volume24h: 340000 },
+          'Chainlinked': { price: 18.50, change24h: 1.2, volume24h: 95000 },
+        },
+        predictionMarkets: [
+          { questionId: 'q-001', yesOdds: 0.62, noOdds: 0.38, volume: 45000 },
+          { questionId: 'q-002', yesOdds: 0.15, noOdds: 0.85, volume: 12000 },
+        ]
+      },
+      outputs: {
+        decisionsGenerated: 47,
+        decisionsByAction: { BUY: 18, SELL: 12, HOLD: 15, BET_YES: 5, BET_NO: 3, SKIP: 27 },
+        decisionsByTicker: { aiBitcoin: 15, 'Ethereum FoundAItion': 10, Solander: 12, Chainlinked: 6, 'Polymarket AI': 4 },
+        totalVolumeDecided: 185000,
+        averageConfidence: 0.68,
+        highConfidenceDecisions: 12,
+        contrarians: 8,
+        followingMomentum: 22,
+        independentAnalysis: 17,
+        batchProcessingStats: { batches: 8, avgBatchSize: 10, maxLatencyMs: 2400, minLatencyMs: 890 }
+      },
+      llmCallIds: ['call-003-npc-market-decisions', 'call-004-npc-market-decisions', 'call-005-npc-market-decisions', 'call-006-npc-market-decisions', 'call-007-npc-market-decisions', 'call-008-npc-market-decisions', 'call-009-npc-market-decisions', 'call-010-npc-market-decisions'],
+      error: undefined
+    },
+    {
+      nodeId: 'trade-execution', name: 'Trade Execution', phase: 'Markets', phaseNumber: 400,
+      startMs: elapsed(18500), endMs: elapsed(20200), durationMs: 1700, status: 'success',
+      inputs: { pendingDecisions: 47, maxSlippage: 0.02 },
+      outputs: {
+        executed: 35, failed: 5, skippedInsufficientFunds: 7,
+        totalVolumeExecuted: 142000,
+        executionDetails: [
+          { npcId: 'npc-01', action: 'BUY', ticker: 'aiBitcoin', amount: 5000, price: 94850, slippage: 0.001, success: true },
+          { npcId: 'npc-02', action: 'SELL', ticker: 'Solander', amount: 2000, price: 142, slippage: 0.003, success: true },
+          { npcId: 'npc-05', action: 'BET_YES', questionId: 'q-001', amount: 500, odds: 0.62, success: true },
+        ],
+        failureReasons: { insufficientBalance: 5, maxSlippageExceeded: 2, marketClosed: 0 }
+      },
+      llmCallIds: [], error: undefined
+    },
+    {
+      nodeId: 'price-updates', name: 'Price Updates', phase: 'Markets', phaseNumber: 400,
+      startMs: elapsed(20200), endMs: elapsed(20800), durationMs: 600, status: 'success',
+      inputs: { executedTrades: 35, priceWalkInputs: { volatilityFactor: 1.2 } },
+      outputs: {
+        pricesUpdated: 5,
+        priceChanges: {
+          aiBitcoin: { before: 94850, after: 95120, change: 0.28, reason: 'Net buy pressure from 15 trades' },
+          'Ethereum FoundAItion': { before: 3420, after: 3395, change: -0.73, reason: 'Moderate sell pressure' },
+          Solander: { before: 142, after: 145.50, change: 2.46, reason: 'Strong buy + leak sentiment' },
+          Chainlinked: { before: 18.50, after: 18.65, change: 0.81, reason: 'Partnership announcement' },
+          'Polymarket AI': { before: 2.10, after: 2.08, change: -0.95, reason: 'Low volume drift' }
+        },
+        predictionMarketUpdates: [
+          { questionId: 'q-001', yesOddsBefore: 0.62, yesOddsAfter: 0.65, reason: '5 YES bets, 1 NO bet' },
+          { questionId: 'q-004', yesOddsBefore: 0.30, yesOddsAfter: 0.28, reason: '2 NO bets' },
+        ]
+      },
+      llmCallIds: [], error: undefined
+    },
+    {
+      nodeId: 'market-volatility', name: 'Market Volatility', phase: 'Markets', phaseNumber: 400,
+      startMs: elapsed(20800), endMs: elapsed(21000), durationMs: 200, status: 'success',
+      inputs: { volatilityMultiplier: 1.2, eventsGenerated: 3, sentimentShift: -0.15 },
+      outputs: {
+        priceWalks: {
+          aiBitcoin: { randomWalk: 0.15, eventImpact: 0.28, totalDrift: 0.43 },
+          Solander: { randomWalk: -0.08, eventImpact: 1.20, totalDrift: 1.12 },
+          Chainlinked: { randomWalk: 0.05, eventImpact: 0.35, totalDrift: 0.40 },
+        },
+        volatilityRegime: 'elevated',
+        seedUsed: 284742
+      },
+      llmCallIds: [], error: undefined
+    },
+    {
+      nodeId: 'rebalancing', name: 'Portfolio Rebalancing', phase: 'Rebalancing', phaseNumber: 500,
+      startMs: elapsed(21000), endMs: elapsed(22500), durationMs: 1500, status: 'success',
+      inputs: { portfoliosToCheck: 80, driftThreshold: 0.15 },
+      outputs: {
+        portfoliosChecked: 80, rebalancesTriggered: 6,
+        rebalanceActions: [
+          { npcId: 'npc-12', action: 'SELL aiBitcoin, BUY Ethereum FoundAItion', reason: 'Portfolio drift 18% from target', amount: 3000 },
+          { npcId: 'npc-45', action: 'REDUCE Solander exposure', reason: 'Single-asset concentration 42%', amount: 1500 },
+        ],
+        totalRebalanceVolume: 12500
+      },
+      llmCallIds: [], error: undefined
+    },
+    {
+      nodeId: 'game-state-update', name: 'Update Game State', phase: 'ContentMaintenance', phaseNumber: 600,
+      startMs: elapsed(22500), endMs: elapsed(22800), durationMs: 300, status: 'success',
+      inputs: { newDay: false, tickNumber: 2847 },
+      outputs: {
+        lastTickAt: new Date(elapsed(22800)).toISOString(),
+        currentDay: 42, gameDay: 42, ticksToday: 12,
+        dbUpdates: { tables: ['game_state', 'tick_log'], rowsAffected: 2 }
+      },
+      llmCallIds: [], error: undefined,
+      subOperations: [
+        { name: 'UPDATE games SET lastTickAt, currentDay', type: 'db_write', startMs: elapsed(22520), endMs: elapsed(22700), details: { table: 'games', condition: 'isContinuous=true', rowsAffected: 1 } },
+        { name: 'INSERT tick_log', type: 'db_write', startMs: elapsed(22700), endMs: elapsed(22780), details: { table: 'tick_log', tickNumber: 2847, rowsInserted: 1 } },
+      ]
+    },
+    {
+      nodeId: 'widget-caches', name: 'Widget Caches', phase: 'ContentMaintenance', phaseNumber: 600,
+      startMs: elapsed(22800), endMs: elapsed(23200), durationMs: 400, status: 'success',
+      inputs: { cachesToRefresh: ['topGainers', 'topQuestions', 'topPools', 'leaderboard'] },
+      outputs: {
+        topGainers: [{ ticker: 'Solander', change: 2.46 }, { ticker: 'Chainlinked', change: 0.81 }, { ticker: 'aiBitcoin', change: 0.28 }],
+        topQuestions: [{ id: 'q-001', text: questionText, volume: 45500 }],
+        leaderboardTop3: [{ npcName: 'AlphaHunter', pnl: 15200 }, { npcName: 'TokenSage', pnl: 12800 }, { npcName: 'ChartWizard', pnl: 11500 }],
+        cacheRefreshMs: 380
+      },
+      llmCallIds: [], error: undefined
+    },
+    {
+      nodeId: 'trending-tags', name: 'Trending Tags', phase: 'ContentMaintenance', phaseNumber: 600,
+      startMs: elapsed(23200), endMs: elapsed(23500), durationMs: 300, status: 'success',
+      inputs: { lookbackHours: 6, minMentions: 3 },
+      outputs: {
+        trendingTags: ['#aiBitcoin', '#InstitutionalAdoption', '#InsiderTrading', '#SolanderBurn', '#DeFiSummer', '#RegulatoryWatch'],
+        newTags: ['#SolanderBurn', '#InstitutionalAdoption'],
+        removedTags: ['#NFTSeason'],
+        tagVolumes: { '#aiBitcoin': 45, '#InsiderTrading': 32, '#SolanderBurn': 28 }
+      },
+      llmCallIds: [], error: undefined
+    },
+    {
+      nodeId: 'reputation-sync', name: 'Reputation Sync', phase: 'ContentMaintenance', phaseNumber: 600,
+      startMs: elapsed(23500), endMs: elapsed(24200), durationMs: 700, status: 'success',
+      inputs: { chainId: 84532, contractAddress: '0x9f8a...3b2c', pendingSyncCount: 8 },
+      outputs: {
+        synced: 8, txHash: '0xdef789...012345', gasUsed: 245000,
+        reputationUpdates: [
+          { npcId: 'npc-01', oldScore: 850, newScore: 862, reason: 'Accurate prediction on q-001' },
+          { npcId: 'npc-15', oldScore: 720, newScore: 695, reason: 'Failed prediction + high-loss trade' },
+        ]
+      },
+      llmCallIds: [], error: undefined,
+      subOperations: [
+        { name: 'fetch pending reputations', type: 'db_read', startMs: elapsed(23510), endMs: elapsed(23600), details: { table: 'actor_reputations', rowsRead: 8 } },
+        { name: 'submit on-chain tx', type: 'external', startMs: elapsed(23600), endMs: elapsed(24050), details: { chainId: 84532, method: 'batchUpdateReputation', gasUsed: 245000 } },
+        { name: 'update reputation scores', type: 'db_write', startMs: elapsed(24050), endMs: elapsed(24180), details: { table: 'actor_reputations', rowsWritten: 8 } },
+      ]
+    },
+    {
+      nodeId: 'relationships', name: 'Relationship Evolution', phase: 'Social', phaseNumber: 700,
+      startMs: elapsed(24200), endMs: elapsed(30000), durationMs: 5800, status: 'success',
+      inputs: { npcPairs: 120, interactionThreshold: 3, decayRate: 0.02 },
+      outputs: {
+        relationshipsUpdated: 34,
+        newRelationships: 5,
+        decayedRelationships: 8,
+        strongestBond: { npc1: 'CryptoWhale42', npc2: 'AlphaHunter', strength: 0.89, type: 'trading_alliance' },
+        newRivalries: [{ npc1: 'DeFiDegen', npc2: 'TokenSage', reason: 'Opposing positions on q-001' }],
+        socialGraph: { nodes: 80, edges: 156, avgDegree: 3.9, clusters: 6 }
+      },
+      llmCallIds: ['call-011-relationship-analysis'], error: undefined
+    },
+    {
+      nodeId: 'group-dynamics', name: 'Group Dynamics', phase: 'Social', phaseNumber: 700,
+      startMs: elapsed(30000), endMs: elapsed(38000), durationMs: 8000, status: 'success',
+      inputs: {
+        activeGroups: 6,
+        groups: [
+          { id: 'g-alpha-1', name: 'Alpha Traders', members: 12, type: 'trading' },
+          { id: 'g-bears', name: 'Bear Cave', members: 8, type: 'sentiment' },
+          { id: 'g-defi', name: 'DeFi Degens', members: 15, type: 'defi' },
+        ]
+      },
+      outputs: {
+        messagesGenerated: 18,
+        groupChanges: [
+          { groupId: 'g-alpha-1', action: 'member_join', npcId: 'npc-28', npcName: 'BlockchainBard' },
+          { groupId: 'g-bears', action: 'member_kick', npcId: 'npc-33', reason: 'Consistently bullish posts in bear group' },
+        ],
+        newGroupFormed: null,
+        groupSentiment: { 'g-alpha-1': 0.45, 'g-bears': -0.72, 'g-defi': 0.22 }
+      },
+      llmCallIds: ['call-012-group-messages', 'call-013-group-dynamics'], error: undefined,
+      subOperations: [
+        { name: 'INSERT messages (group chat)', type: 'db_write', startMs: elapsed(31500), endMs: elapsed(32800), details: { table: 'messages', rowsInserted: 18, contentType: 'LLM-generated group chat messages' } },
+        { name: 'INSERT groupMembers (join)', type: 'db_write', startMs: elapsed(33500), endMs: elapsed(34000), details: { table: 'groupMembers', npcId: 'npc-28', groupId: 'g-alpha-1' } },
+        { name: 'DELETE groupMembers (kick)', type: 'db_write', startMs: elapsed(34000), endMs: elapsed(34500), details: { table: 'groupMembers', npcId: 'npc-33', groupId: 'g-bears', reason: 'Consistently bullish in bear group' } },
+        { name: 'SELECT chatParticipants', type: 'db_read', startMs: elapsed(30100), endMs: elapsed(30300), details: { table: 'chatParticipants', rowsRead: 35 } },
+      ]
+    },
+    {
+      nodeId: 'alpha-invites', name: 'Alpha Invites', phase: 'Social', phaseNumber: 700,
+      startMs: elapsed(38000), endMs: elapsed(38500), durationMs: 500, status: 'success',
+      inputs: { eligibleUsers: 3, inviteQuota: 5 },
+      outputs: { invitesSent: 2, invitedUsers: ['user-042', 'user-089'], criteria: 'Top 10% engagement + 7d active' },
+      llmCallIds: [], error: undefined
+    },
+    {
+      nodeId: 'token-stats-finalize', name: 'Finalize Token Stats', phase: 'Finalize', phaseNumber: 800,
+      startMs: elapsed(38500), endMs: elapsed(38800), durationMs: 300, status: 'success',
+      inputs: {},
+      outputs: {
+        totalCalls: 13, totalInputTokens: 42500, totalOutputTokens: 18200, totalTokens: 60700,
+        estimatedCostUSD: 0.0485,
+        byPromptType: {
+          'event-generation': { calls: 1, inputTokens: 3200, outputTokens: 1800 },
+          'narrative-generation': { calls: 1, inputTokens: 4500, outputTokens: 2200 },
+          'npc-market-decisions': { calls: 8, inputTokens: 28000, outputTokens: 11200 },
+          'relationship-analysis': { calls: 1, inputTokens: 3800, outputTokens: 1500 },
+          'group-messages': { calls: 1, inputTokens: 1800, outputTokens: 900 },
+          'group-dynamics': { calls: 1, inputTokens: 1200, outputTokens: 600 },
+        }
+      },
+      llmCallIds: [], error: undefined,
+      subOperations: [
+        { name: 'INSERT tickTokenStats', type: 'db_write', startMs: elapsed(38550), endMs: elapsed(38750), details: { table: 'tickTokenStats', status: 'success', tickNumber: 2847, totalCalls: 13, totalTokens: 60700, costUSD: 0.0485 } },
+      ]
+    },
+  ];
+
+  // Build LLM calls with full prompts/responses
+  const llmCalls = [
+    {
+      callId: 'call-001-event-generation', nodeId: 'events', timestamp: elapsed(1000),
+      provider: 'groq', model: 'llama-3.3-70b-versatile', promptType: 'event-generation', format: 'json',
+      temperature: 0.8, maxTokens: 2048,
+      systemPrompt: `You are the Feed World Engine — a narrative simulation system that generates world events for a prediction market game.
+
+WORLD STATE:
+- Current game day: 42
+- Active prediction questions: 14
+- Market sentiment: cautious-bullish
+- Recent narrative arc: "The Insider Ring" is in CRISIS phase
+
+RULES:
+- Generate 2-4 world events that create meaningful prediction market signals
+- Events should have varying severity (1-5) and signal strength (0-1)
+- Mix event types: rumor, leak, confirmation, denial, reversal, proof
+- Events must reference Feed parody entities (aiBitcoin, Solander, etc), NEVER real ones
+- Each event should plausibly shift odds on at least one active question
+- Maintain narrative coherence with existing arcs`,
+      userPrompt: `Generate world events for day 42, tick 2847.
+
+Active questions:
+1. "Will aiBitcoin reach $100k before July 2026?" (YES: 62%, volume: $45k)
+2. "Will Ethereum FoundAItion merge with Solander?" (YES: 15%, volume: $12k)
+3. "Will DeFi TVL exceed $200B by Q3 2026?" (YES: 45%, volume: $28k)
+4. "Will SEC approve spot Solander ETF?" (YES: 30%, volume: $55k)
+
+Recent events (last 3 ticks):
+- SEC hearing postponed (severity 3)
+- aiBitcoin hash rate reaches all-time high (severity 2)
+- Unconfirmed reports of major DeFi protocol exploit (severity 4)
+
+Current narrative arcs:
+- "Regulatory Reckoning" (ESCALATION phase, weekly timeframe)
+- "DeFi Summer 2.0" (TENSION phase, long-term)
+- "The Insider Ring" (CRISIS phase, daily)
+
+Current market prices:
+- aiBitcoin: $94,850 (+2.3%)
+- Ethereum FoundAItion: $3,420 (-0.8%)
+- Solander: $142 (+5.7%)
+- Chainlinked: $18.50 (+1.2%)
+
+Generate events as JSON array with fields: type, description, severity, signalStrength, affectedTickers, pointsToward, visibility`,
+      rawResponse: `[
+  {
+    "type": "rumor",
+    "description": "Insider sources suggest aiBitcoin Foundation is in talks with major institutional investor for $500M allocation",
+    "severity": 3,
+    "signalStrength": 0.7,
+    "affectedTickers": ["aiBitcoin"],
+    "pointsToward": "YES",
+    "visibility": "public"
+  },
+  {
+    "type": "confirmation",
+    "description": "Chainlinked announces partnership with traditional banking consortium for cross-border payments",
+    "severity": 2,
+    "signalStrength": 0.5,
+    "affectedTickers": ["Chainlinked"],
+    "pointsToward": "YES",
+    "visibility": "public"
+  },
+  {
+    "type": "leak",
+    "description": "Unverified screenshots show Solander Labs internal memo about potential token burn mechanism",
+    "severity": 4,
+    "signalStrength": 0.4,
+    "affectedTickers": ["Solander"],
+    "pointsToward": "YES",
+    "visibility": "private"
+  }
+]`,
+      parsedResponse: [
+        { type: 'rumor', description: 'Insider sources suggest aiBitcoin Foundation institutional allocation', severity: 3, signalStrength: 0.7 },
+        { type: 'confirmation', description: 'Chainlinked banking partnership', severity: 2, signalStrength: 0.5 },
+        { type: 'leak', description: 'Solander token burn memo', severity: 4, signalStrength: 0.4 },
+      ],
+      inputTokens: 3200, outputTokens: 1800, totalTokens: 5000, durationMs: 1850, success: true
+    },
+    {
+      callId: 'call-002-narrative-generation', nodeId: 'narrative-arcs', timestamp: elapsed(3500),
+      provider: 'groq', model: 'llama-3.3-70b-versatile', promptType: 'narrative-generation', format: 'json',
+      temperature: 0.7, maxTokens: 1024,
+      systemPrompt: `You are the Feed Narrative Engine. You manage multi-phase story arcs that drive the prediction market simulation.
+
+ARC PHASE TRANSITIONS:
+- Long-term (30 days): setup → tension → escalation → crisis → revelation → resolution
+- Weekly (3-7 days): setup → tension → escalation → crisis → resolution
+- Daily (12-48 hrs): morning → midday → afternoon → evening → resolution
+
+Evaluate whether each active arc should transition to its next phase based on the world events generated this tick.`,
+      userPrompt: `Evaluate arc transitions for day 42:
+
+Active arcs:
+1. "Regulatory Reckoning" - Phase: ESCALATION (day 12/21 of weekly arc)
+   - SEC hearing postponed, regulatory uncertainty growing
+
+2. "DeFi Summer 2.0" - Phase: TENSION (day 28/30 of long-term arc)
+   - TVL growing but exploit rumors threatening confidence
+
+3. "The Insider Ring" - Phase: CRISIS (day 3/3 of daily arc)
+   - Evidence of coordinated trading before announcements
+   - New event: institutional allocation rumor + private leak
+
+New events this tick:
+- Institutional investor rumor (public, severity 3)
+- Banking partnership confirmation (public, severity 2)
+- Token burn leak (private, severity 4)
+
+Should any arcs transition? Generate narrative text and sentiment shifts.`,
+      rawResponse: `{
+  "arcTransitions": [
+    {
+      "arcId": "arc-insider-trading",
+      "from": "crisis",
+      "to": "revelation",
+      "reason": "The private leak of the Solander token burn memo, combined with the perfectly-timed institutional allocation rumor, provides enough evidence for the blockchain forensics community to connect the dots. The insider ring's pattern of trading ahead of announcements is now undeniable."
+    }
+  ],
+  "pulseEvents": [
+    {
+      "type": "revelation",
+      "description": "On-chain analysts publish detailed thread showing statistical impossibility of trading patterns being coincidental",
+      "severity": 4
+    },
+    {
+      "type": "tension",
+      "description": "DeFi protocols begin implementing additional security audits in response to exploit rumors",
+      "severity": 2
+    }
+  ],
+  "narrativeText": "The insider trading investigation reaches a critical juncture as blockchain forensics reveal a pattern of suspicious trades preceding every major announcement. Meanwhile, the regulatory landscape shifts as multiple jurisdictions signal coordinated enforcement action.",
+  "sentimentShift": {
+    "overall": -0.15,
+    "byTicker": { "aiBitcoin": -0.08, "Solander": -0.22, "Chainlinked": 0.05 }
+  }
+}`,
+      parsedResponse: { arcTransitions: [{ arcId: 'arc-insider-trading', from: 'crisis', to: 'revelation' }], pulseEventsGenerated: 2 },
+      inputTokens: 4500, outputTokens: 2200, totalTokens: 6700, durationMs: 1650, success: true
+    },
+  ];
+
+  // Generate 8 NPC market decision LLM calls (batched)
+  for (let i = 0; i < 8; i++) {
+    const _batchNPCs = npcNames.slice(i % npcNames.length, (i % npcNames.length) + 1);
+    const npcName = npcNames[i % npcNames.length];
+    llmCalls.push({
+      callId: `call-${String(i + 3).padStart(3, '0')}-npc-market-decisions`, nodeId: 'market-decisions', timestamp: elapsed(6000 + i * 1500),
+      provider: 'groq', model: 'llama-3.3-70b-versatile', promptType: 'npc-market-decisions', format: 'json',
+      temperature: 0.9, maxTokens: 512,
+      systemPrompt: `You are ${npcName}, an NPC trader in the Feed prediction market simulation.
+
+YOUR PERSONALITY:
+- Risk tolerance: ${['conservative', 'moderate', 'aggressive'][i % 3]}
+- Trading style: ${['fundamentals', 'momentum', 'contrarian', 'sentiment'][i % 4]}
+- Experience level: ${['novice', 'intermediate', 'expert'][i % 3]}
+- Current portfolio value: $${(10000 + i * 2500).toLocaleString()}
+- Current P&L: ${i % 2 === 0 ? '+' : '-'}$${(500 + i * 300).toLocaleString()}
+
+DECISION RULES:
+- Evaluate each active market based on your personality
+- Consider world events, sentiment, and your existing positions
+- Output: action (BUY/SELL/HOLD/BET_YES/BET_NO/SKIP), amount, confidence (0-1), reasoning`,
+      userPrompt: `Make trading decisions for tick 2847.
+
+WORLD EVENTS THIS TICK:
+1. [RUMOR] aiBitcoin institutional allocation talks ($500M)
+2. [CONFIRMATION] Chainlinked banking partnership
+3. [LEAK] Solander token burn mechanism (unverified)
+4. [NARRATIVE] Insider trading ring reaching revelation phase
+
+MARKETS:
+- aiBitcoin: $95,120 (+2.6% today) — 24h vol: $1.2M
+- Ethereum FoundAItion: $3,395 (-1.5% today) — 24h vol: $580k
+- Solander: $145.50 (+5.0% today) — 24h vol: $340k
+- Chainlinked: $18.65 (+1.6% today) — 24h vol: $95k
+
+PREDICTION MARKETS:
+- "Will aiBitcoin reach $100k?" — YES: 65% (was 62%)
+- "Will SEC approve Solander ETF?" — NO: 72% (was 70%)
+
+YOUR POSITIONS:
+- 0.5 aiBitcoin (bought at $92,000)
+- 100 Solander (bought at $130)
+- YES bet on q-001: 200 shares at 0.58
+
+Decide your actions as JSON array.`,
+      rawResponse: JSON.stringify([
+        { action: i % 3 === 0 ? 'BUY' : i % 3 === 1 ? 'HOLD' : 'SELL', ticker: tickers[i % tickers.length], amount: 1000 + i * 500, confidence: 0.5 + (i * 0.05), reasoning: `Based on ${['institutional rumor — bullish signal', 'current momentum analysis', 'contrarian view on overextension', 'sentiment shift from insider scandal', 'partnership confirmation positive', 'token burn creates supply shock', 'regulatory uncertainty warrants caution', 'fundamentals support current price'][i]}` }
+      ], null, 2),
+      parsedResponse: [{ action: 'BUY', ticker: tickers[i % tickers.length], amount: 1000 + i * 500, confidence: 0.5 + (i * 0.05) }],
+      inputTokens: 3500, outputTokens: 1400, totalTokens: 4900, durationMs: 1200 + i * 150, success: true
+    });
+  }
+
+  // Relationship + group LLM calls
+  llmCalls.push({
+    callId: 'call-011-relationship-analysis', nodeId: 'relationships', timestamp: elapsed(25000),
+    provider: 'groq', model: 'llama-3.3-70b-versatile', promptType: 'relationship-analysis', format: 'json',
+    temperature: 0.6, maxTokens: 1024,
+    systemPrompt: 'You are the Feed Social Engine. Analyze NPC interactions to update relationship strengths and types. Consider trading alignment, group membership, messaging patterns, and shared positions.',
+    userPrompt: `Analyze relationships for 80 NPCs. Recent interactions this tick:\n- CryptoWhale42 and AlphaHunter both bought aiBitcoin (aligned)\n- DeFiDegen and TokenSage took opposing positions on q-001\n- MoonLambo shared insider leak in Alpha Traders group\n- ChartWizard posted analysis contradicting BlockchainBard's thesis\n\nCurrent relationship graph: 156 edges across 80 nodes, 6 clusters.\nUpdate relationships as JSON.`,
+    rawResponse: '{"updates": [{"pair": ["CryptoWhale42", "AlphaHunter"], "delta": 0.05, "type": "trading_alliance"}, {"pair": ["DeFiDegen", "TokenSage"], "delta": -0.08, "type": "rivalry"}]}',
+    parsedResponse: { updates: [{ pair: ['CryptoWhale42', 'AlphaHunter'], delta: 0.05 }] },
+    inputTokens: 3800, outputTokens: 1500, totalTokens: 5300, durationMs: 2200, success: true
+  });
+  llmCalls.push({
+    callId: 'call-012-group-messages', nodeId: 'group-dynamics', timestamp: elapsed(31000),
+    provider: 'groq', model: 'llama-3.3-70b-versatile', promptType: 'group-messages', format: 'json',
+    temperature: 0.9, maxTokens: 1024,
+    systemPrompt: 'You are the Feed Group Chat Engine. Generate authentic group messages for NPC groups based on current events and member personalities. Messages should feel natural and reflect each NPC\'s trading style and knowledge level.',
+    userPrompt: 'Generate group messages for 3 active groups:\n1. Alpha Traders (12 members, trading-focused)\n2. Bear Cave (8 members, bearish sentiment)\n3. DeFi Degens (15 members, DeFi-focused)\n\nContext: Insider trading revelation, institutional rumor, Solander burn leak.',
+    rawResponse: '{"messages": [{"groupId": "g-alpha-1", "author": "CryptoWhale42", "content": "Just saw the aiBitcoin institutional rumor. If even half true, $100k is a lock. Loading up."}, {"groupId": "g-bears", "author": "DeFiDegen", "content": "This insider trading thing is going to blow up. When it does, everything dumps. Stay short."}, {"groupId": "g-defi", "author": "TokenSage", "content": "Solander burn mechanism would be huge for tokenomics. But those screenshots look sketchy."}]}',
+    parsedResponse: { messages: [{ groupId: 'g-alpha-1', author: 'CryptoWhale42', content: 'Loading up on aiBitcoin' }] },
+    inputTokens: 1800, outputTokens: 900, totalTokens: 2700, durationMs: 1100, success: true
+  });
+  llmCalls.push({
+    callId: 'call-013-group-dynamics', nodeId: 'group-dynamics', timestamp: elapsed(33000),
+    provider: 'groq', model: 'llama-3.3-70b-versatile', promptType: 'group-dynamics', format: 'json',
+    temperature: 0.7, maxTokens: 512,
+    systemPrompt: 'Evaluate group membership changes. Should any NPCs be kicked, invited, or should new groups form?',
+    userPrompt: 'Groups: Alpha Traders (12), Bear Cave (8), DeFi Degens (15). NPC-33 in Bear Cave has been consistently posting bullish content. NPC-28 (BlockchainBard) has strong connections to 3 Alpha Trader members. Evaluate.',
+    rawResponse: '{"changes": [{"groupId": "g-bears", "action": "kick", "npcId": "npc-33", "reason": "Consistently bullish in bear group"}, {"groupId": "g-alpha-1", "action": "invite", "npcId": "npc-28", "reason": "Strong social ties to existing members"}]}',
+    parsedResponse: { changes: [{ groupId: 'g-bears', action: 'kick', npcId: 'npc-33' }] },
+    inputTokens: 1200, outputTokens: 600, totalTokens: 1800, durationMs: 800, success: true
+  });
+
+  // Build NPC trajectories
+  const npcTrajectories = npcNames.map((name, i) => ({
+    npcId: `npc-${String(i + 1).padStart(2, '0')}`,
+    npcName: name,
+    decisions: [
+      { action: ['BUY', 'SELL', 'HOLD', 'BET_YES'][i % 4], ticker: tickers[i % tickers.length], amount: 1000 + i * 500, confidence: 0.5 + i * 0.05, reasoning: `${['Bullish on institutional interest', 'Taking profits after run-up', 'Waiting for confirmation', 'High conviction on question outcome'][i % 4]}` },
+      ...(i < 4 ? [{ action: 'BET_YES', marketId: 'q-001', amount: 200 + i * 100, confidence: 0.6 + i * 0.05, reasoning: '$100k target looks achievable with institutional interest' }] : []),
+    ],
+    trades: [
+      { action: ['BUY', 'SELL', 'HOLD', 'BET_YES'][i % 4], ticker: tickers[i % tickers.length], amount: 1000 + i * 500, success: i !== 4, error: i === 4 ? 'Insufficient balance' : undefined },
+    ],
+    posts: i % 3 === 0 ? [
+      { postId: `post-${i}`, content: `${name}: ${['aiBitcoin institutional play is massive. This changes everything.', 'Solander burn rumors are exactly what this market needed.', 'The insider ring revelation is going to shake out weak hands.'][i % 3]}`, type: 'post' }
+    ] : [],
+    groupMessages: i < 3 ? [
+      { groupId: ['g-alpha-1', 'g-bears', 'g-defi'][i], groupName: ['Alpha Traders', 'Bear Cave', 'DeFi Degens'][i], content: `${name}: ${['Loading up on this dip.', 'Stay cautious, more downside coming.', 'The DeFi narrative is shifting.'][i]}` }
+    ] : [],
+  }));
+
+  const result = {
+    tickId: `tick-${now}`,
+    tickNumber: 2847,
+    timestamp: new Date(startMs).toISOString(),
+    startMs: startMs,
+    endMs: startMs + 45000,
+    durationMs: 45000,
+    dag: {
+      nodes: [
+        { id: 'init', name: 'Initialize', phase: 'Bootstrap', phaseNumber: 100, description: 'Token stats, LLM client setup, game state fetch' },
+        { id: 'bootstrap', name: 'Bootstrap Game', phase: 'Bootstrap', phaseNumber: 100, description: 'Create actors, organizations, pools if needed' },
+        { id: 'bootstrap-content', name: 'Bootstrap Content', phase: 'Bootstrap', phaseNumber: 100, description: 'Initial relationships, trending tags if fresh setup' },
+        { id: 'questions-load', name: 'Load Questions', phase: 'Questions', phaseNumber: 200, description: 'Fetch active questions from database' },
+        { id: 'questions-init', name: 'Generate Initial Questions', phase: 'Questions', phaseNumber: 200, description: 'LLM: Generate prediction questions if first tick' },
+        { id: 'oracle-commitments', name: 'Oracle Commitments', phase: 'Questions', phaseNumber: 200, description: 'Publish question commitments to blockchain' },
+        { id: 'question-topup', name: 'Question Top-up', phase: 'Questions', phaseNumber: 200, description: 'LLM: Generate more questions if < 10 active' },
+        { id: 'events', name: 'Generate Events', phase: 'Events', phaseNumber: 300, description: 'World events and arc pulse events' },
+        { id: 'narrative-arcs', name: 'Narrative Arcs', phase: 'Events', phaseNumber: 300, description: 'Process arc phase transitions' },
+        { id: 'timeframed-markets', name: 'Timeframed Markets', phase: 'Events', phaseNumber: 300, description: 'Process multi-timeframe market arcs' },
+        { id: 'market-baseline', name: 'Baseline Investments', phase: 'Markets', phaseNumber: 400, description: 'NPC baseline position allocation' },
+        { id: 'market-decisions', name: 'Market Decisions', phase: 'Markets', phaseNumber: 400, description: 'LLM: Batch NPC trading decisions (main LLM call)' },
+        { id: 'trade-execution', name: 'Trade Execution', phase: 'Markets', phaseNumber: 400, description: 'Execute NPC trading decisions' },
+        { id: 'price-updates', name: 'Price Updates', phase: 'Markets', phaseNumber: 400, description: 'Recalculate market prices from trades' },
+        { id: 'market-volatility', name: 'Market Volatility', phase: 'Markets', phaseNumber: 400, description: 'Simulate random price walks' },
+        { id: 'rebalancing', name: 'Portfolio Rebalancing', phase: 'Rebalancing', phaseNumber: 500, description: 'Monitor and rebalance NPC portfolios' },
+        { id: 'game-state-update', name: 'Update Game State', phase: 'ContentMaintenance', phaseNumber: 600, description: 'DB: lastTickAt, currentDay' },
+        { id: 'widget-caches', name: 'Widget Caches', phase: 'ContentMaintenance', phaseNumber: 600, description: 'Top gainers, questions, pools' },
+        { id: 'trending-tags', name: 'Trending Tags', phase: 'ContentMaintenance', phaseNumber: 600, description: 'Recalculate trending topics' },
+        { id: 'reputation-sync', name: 'Reputation Sync', phase: 'ContentMaintenance', phaseNumber: 600, description: 'Sync on-chain reputation scores' },
+        { id: 'relationships', name: 'Relationship Evolution', phase: 'Social', phaseNumber: 700, description: 'LLM: Analyze NPC interactions, update relationships' },
+        { id: 'group-dynamics', name: 'Group Dynamics', phase: 'Social', phaseNumber: 700, description: 'LLM: Group formation, messages, joins/kicks' },
+        { id: 'alpha-invites', name: 'Alpha Invites', phase: 'Social', phaseNumber: 700, description: 'Invite engaged users to alpha groups' },
+        { id: 'token-stats-finalize', name: 'Finalize Token Stats', phase: 'Finalize', phaseNumber: 800, description: 'Aggregate LLM usage and costs' },
+      ],
+      edges: [
+        { source: 'init', target: 'bootstrap', label: 'config' },
+        { source: 'bootstrap', target: 'bootstrap-content', label: 'actors' },
+        { source: 'bootstrap-content', target: 'questions-load', label: 'ready' },
+        { source: 'questions-load', target: 'questions-init', label: 'activeQuestions' },
+        { source: 'questions-init', target: 'oracle-commitments', label: 'newQuestions' },
+        { source: 'questions-load', target: 'question-topup', label: 'activeCount' },
+        { source: 'questions-load', target: 'events', label: 'activeQuestions[]' },
+        { source: 'events', target: 'narrative-arcs', label: 'worldEvents' },
+        { source: 'narrative-arcs', target: 'timeframed-markets', label: 'arcEvents' },
+        { source: 'events', target: 'market-baseline', label: 'context' },
+        { source: 'events', target: 'market-decisions', label: 'worldContext' },
+        { source: 'questions-load', target: 'market-decisions', label: 'activeQuestions[]' },
+        { source: 'market-baseline', target: 'market-decisions', label: 'baseline' },
+        { source: 'market-decisions', target: 'trade-execution', label: 'decisions[]' },
+        { source: 'trade-execution', target: 'price-updates', label: 'executedTrades' },
+        { source: 'narrative-arcs', target: 'market-volatility', label: 'eventsGenerated' },
+        { source: 'market-volatility', target: 'price-updates', label: 'priceWalks' },
+        { source: 'price-updates', target: 'rebalancing', label: 'updatedPrices' },
+        { source: 'rebalancing', target: 'game-state-update', label: 'complete' },
+        { source: 'game-state-update', target: 'widget-caches', label: 'currentDay' },
+        { source: 'widget-caches', target: 'trending-tags', label: 'updatedCaches' },
+        { source: 'game-state-update', target: 'reputation-sync', label: 'state' },
+        { source: 'reputation-sync', target: 'relationships', label: 'reputation' },
+        { source: 'relationships', target: 'group-dynamics', label: 'relationships' },
+        { source: 'group-dynamics', target: 'alpha-invites', label: 'groups' },
+        { source: 'alpha-invites', target: 'token-stats-finalize', label: 'done' },
+        { source: 'trending-tags', target: 'token-stats-finalize', label: 'done' },
+      ]
+    },
+    nodes: nodes,
+    llmCalls: llmCalls,
+    npcTrajectories: npcTrajectories,
+    tokenStats: {
+      totalCalls: 13,
+      totalInputTokens: 42500,
+      totalOutputTokens: 18200,
+      totalTokens: 60700,
+      estimatedCostUSD: 0.0485,
+      byPromptType: {
+        'event-generation': { calls: 1, inputTokens: 3200, outputTokens: 1800 },
+        'narrative-generation': { calls: 1, inputTokens: 4500, outputTokens: 2200 },
+        'npc-market-decisions': { calls: 8, inputTokens: 28000, outputTokens: 11200 },
+        'relationship-analysis': { calls: 1, inputTokens: 3800, outputTokens: 1500 },
+        'group-messages': { calls: 1, inputTokens: 1800, outputTokens: 900 },
+        'group-dynamics': { calls: 1, inputTokens: 1200, outputTokens: 600 },
+      }
+    },
+    gameTickResult: {
+      success: true,
+      tickNumber: 2847,
+      currentDay: 42,
+      eventsGenerated: 3,
+      decisionsProcessed: 47,
+      tradesExecuted: 35,
+      tradesFailed: 5,
+      postsCreated: 3,
+      groupMessagesGenerated: 18,
+      relationshipsUpdated: 34,
+      reputationsSynced: 8,
+      predictionMarketsUpdated: 2,
+      totalDurationMs: 45000,
+      tokenStats: { totalCalls: 13, totalTokens: 60700, estimatedCostUSD: 0.0485 }
+    },
+    environmentFlags: {
+      FEED_DAG_TRACE: true,
+      FEED_TRUST_CORPUS_FAST_MODE: false,
+      FEED_SKIP_NPC_GROUP_DYNAMICS: false,
+      FEED_SKIP_ALPHA_GROUP_INVITES: false,
+      GAME_TICK_BUDGET_MS: '180000',
+    }
+  };
+
+  // ---- POST-PROCESS: Fill remaining gaps ----
+
+  // Gap 1: Add subOperations to every success node that doesn't have them
+  const subOpDefaults = {
+    'init': [
+      { name: 'SELECT game_state', type: 'db_read', details: { table: 'games', query: 'isContinuous=true', rowsReturned: 1 } },
+      { name: 'initialize LLM client', type: 'computation', details: { provider: 'groq', model: 'llama-3.3-70b-versatile', fallback: 'openai/gpt-4o-mini' } },
+    ],
+    'bootstrap': [
+      { name: 'SELECT actors', type: 'db_read', details: { table: 'actors', rowsReturned: 80 } },
+      { name: 'SELECT organizations', type: 'db_read', details: { table: 'organizations', rowsReturned: 12 } },
+      { name: 'SELECT pools', type: 'db_read', details: { table: 'pools', rowsReturned: 3 } },
+    ],
+    'events': [
+      { name: 'SELECT recent world_events (7d)', type: 'db_read', details: { table: 'worldEvents', lookbackDays: 7, rowsReturned: 20 } },
+      { name: 'LLM: generate world events', type: 'llm', details: { model: 'llama-3.3-70b-versatile', promptType: 'event-generation', tokensUsed: 5000 } },
+      { name: 'INSERT world_events', type: 'db_write', details: { table: 'worldEvents', rowsInserted: 3 } },
+    ],
+    'narrative-arcs': [
+      { name: 'SELECT active arc_states', type: 'db_read', details: { table: 'arcStates', rowsReturned: 3 } },
+      { name: 'LLM: evaluate arc transitions', type: 'llm', details: { model: 'llama-3.3-70b-versatile', promptType: 'narrative-generation', tokensUsed: 6700 } },
+      { name: 'UPDATE arc_states (transition)', type: 'db_write', details: { table: 'arcStates', arcId: 'arc-insider-trading', from: 'crisis', to: 'revelation' } },
+    ],
+    'timeframed-markets': [
+      { name: 'SELECT timeframed_markets', type: 'db_read', details: { table: 'timeframedMarkets', rowsReturned: 5 } },
+      { name: 'UPDATE market states', type: 'db_write', details: { table: 'timeframedMarkets', marketsUpdated: 3, resolved: 1 } },
+    ],
+    'market-decisions': [
+      { name: 'SELECT npc_actors (eligible)', type: 'db_read', details: { table: 'actors', filter: 'isNPC=true AND isActive=true', rowsReturned: 80 } },
+      { name: 'SELECT positions (current)', type: 'db_read', details: { table: 'positions', rowsReturned: 320 } },
+      { name: 'LLM: batch NPC decisions (8 batches)', type: 'llm', details: { batches: 8, avgBatchSize: 10, totalTokens: 39200 } },
+    ],
+    'trade-execution': [
+      { name: 'INSERT trades', type: 'db_write', details: { table: 'trades', rowsInserted: 35, failedValidation: 5, skippedFunds: 7 } },
+      { name: 'UPDATE positions', type: 'db_write', details: { table: 'positions', rowsUpdated: 35 } },
+      { name: 'UPDATE accounts (balances)', type: 'db_write', details: { table: 'accounts', rowsUpdated: 35 } },
+    ],
+    'price-updates': [
+      { name: 'SELECT organization prices', type: 'db_read', details: { table: 'organizations', rowsReturned: 5 } },
+      { name: 'UPDATE organization prices', type: 'db_write', details: { table: 'organizations', rowsUpdated: 5 } },
+      { name: 'UPDATE prediction market odds', type: 'db_write', details: { table: 'markets', rowsUpdated: 2 } },
+    ],
+    'market-volatility': [
+      { name: 'compute price walks (seeded PRNG)', type: 'computation', details: { seed: 284742, marketsSimulated: 5, volatilityRegime: 'elevated' } },
+      { name: 'UPDATE organization prices (volatility)', type: 'db_write', details: { table: 'organizations', rowsUpdated: 3 } },
+    ],
+    'rebalancing': [
+      { name: 'SELECT npc portfolios', type: 'db_read', details: { table: 'positions', join: 'accounts', rowsReturned: 320 } },
+      { name: 'compute portfolio drift', type: 'computation', details: { portfoliosChecked: 80, driftThreshold: 0.15, triggered: 6 } },
+      { name: 'INSERT rebalance trades', type: 'db_write', details: { table: 'trades', rowsInserted: 6, totalVolume: 12500 } },
+    ],
+    'widget-caches': [
+      { name: 'SELECT top gainers', type: 'db_read', details: { table: 'organizations', orderBy: 'priceChange24h DESC', limit: 10 } },
+      { name: 'SELECT top questions', type: 'db_read', details: { table: 'questions', orderBy: 'totalVolume DESC', limit: 5 } },
+      { name: 'INSERT widget_caches', type: 'db_write', details: { table: 'widgetCaches', cachesRefreshed: 4 } },
+    ],
+    'trending-tags': [
+      { name: 'SELECT post tags (6h window)', type: 'db_read', details: { table: 'posts JOIN tags', lookbackHours: 6, rowsScanned: 450 } },
+      { name: 'compute trending scores', type: 'computation', details: { tagsEvaluated: 42, promoted: 2, demoted: 1 } },
+      { name: 'UPSERT trending_tags', type: 'db_write', details: { table: 'trendingTags', rowsUpserted: 6 } },
+    ],
+    'relationships': [
+      { name: 'SELECT npc_interactions (7d)', type: 'db_read', details: { table: 'npcInteractions', lookbackDays: 7, rowsReturned: 340 } },
+      { name: 'SELECT actor_relationships', type: 'db_read', details: { table: 'actorRelationships', rowsReturned: 156 } },
+      { name: 'LLM: analyze relationship changes', type: 'llm', details: { model: 'llama-3.3-70b-versatile', promptType: 'relationship-analysis', pairsAnalyzed: 34, tokensUsed: 5300 } },
+      { name: 'UPDATE actor_relationships', type: 'db_write', details: { table: 'actorRelationships', rowsUpdated: 34, newRelationships: 5, decayed: 8 } },
+      { name: 'INSERT npc_interactions', type: 'db_write', details: { table: 'npcInteractions', rowsInserted: 12 } },
+    ],
+    'alpha-invites': [
+      { name: 'SELECT top engaged users', type: 'db_read', details: { table: 'userInteractions', window: '30d', usersScored: 156 } },
+      { name: 'compute engagement scores', type: 'computation', details: { eligible: 3, socialScore: 0.72, tradingScore: 0.65 } },
+      { name: 'INSERT group_invites', type: 'db_write', details: { table: 'groupInvites', invitesSent: 2 } },
+    ],
+  };
+
+  result.nodes.forEach(n => {
+    if (n.status === 'success' && (!n.subOperations || n.subOperations.length === 0) && subOpDefaults[n.nodeId]) {
+      const ops = subOpDefaults[n.nodeId];
+      const stepMs = n.durationMs / (ops.length + 1);
+      n.subOperations = ops.map((op, i) => ({
+        ...op,
+        startMs: n.startMs + Math.round(stepMs * i),
+        endMs: n.startMs + Math.round(stepMs * (i + 1)),
+      }));
+    }
+  });
+
+  // Gap 2: Add timestamps to all NPC trajectory items
+  result.npcTrajectories.forEach(npc => {
+    let ts = result.nodes.find(n => n.nodeId === 'market-decisions')?.startMs || startMs + 6000;
+    npc.decisions.forEach(d => { d.timestamp = ts; ts += 200; });
+    npc.trades.forEach(t => { t.timestamp = ts; ts += 150; });
+    npc.posts.forEach(p => { p.timestamp = ts; ts += 100; });
+    npc.groupMessages.forEach(m => { m.timestamp = ts; ts += 100; });
+  });
+
+  // Gap 4: Add agent LLM calls from other providers to show bridge working
+  const agentCalls = [
+    {
+      callId: 'call-014-agent-trading', nodeId: 'market-decisions', timestamp: elapsed(8000),
+      provider: 'groq-agent', model: 'openai/gpt-oss-20b', promptType: 'agent-groq-direct', format: 'text',
+      temperature: 0.3, maxTokens: 500,
+      systemPrompt: 'You are an autonomous trading agent in the Feed prediction market. Evaluate opportunities and execute trades.\n\nYour archetype: momentum-trader\nRisk tolerance: moderate\nPortfolio value: $12,500\nCurrent P&L: +$1,200',
+      userPrompt: 'MARKET STATE:\n- aiBitcoin: $95,120 (+2.6%)\n- Solander: $145.50 (+5.0%)\n\nSIGNALS:\n- Institutional rumor (bullish aiBitcoin)\n- Token burn leak (bullish Solander)\n\nYour current positions: 0.3 aiBitcoin, 50 Solander\n\nDecide: TRADE, HOLD, or SKIP. If TRADE, specify ticker, side, amount.',
+      rawResponse: '{"action":"TRADE","ticker":"Solander","side":"BUY","amount":500,"reasoning":"Token burn mechanism would reduce supply significantly. Momentum is strong at +5%. Adding to existing position."}',
+      parsedResponse: { action: 'TRADE', ticker: 'Solander', side: 'BUY', amount: 500 },
+      inputTokens: 180, outputTokens: 65, totalTokens: 245, durationMs: 420, success: true
+    },
+    {
+      callId: 'call-015-agent-social', nodeId: 'group-dynamics', timestamp: elapsed(32000),
+      provider: 'ollama', model: 'feed-social:latest', promptType: 'agent-groq-plugin', format: 'text',
+      temperature: 0.9, maxTokens: 256,
+      systemPrompt: 'You are BlockchainBard, a poetic crypto commentator. Write group chat messages that reflect your unique voice. Never break character.',
+      userPrompt: 'You just joined Alpha Traders group. The hot topic is the aiBitcoin institutional rumor and Solander token burn leak. Write a message introducing yourself and sharing your take.',
+      rawResponse: 'Fellow traders! BlockchainBard here, newly arrived to your esteemed circle. The whispers of institutional aiBitcoin allocation read like verse — $500M flows like digital rivers seeking the sea. And Solander\'s burn? A phoenix mechanism, reducing supply to stoke demand. I\'m positioned accordingly. What say you all?',
+      parsedResponse: null,
+      inputTokens: 120, outputTokens: 85, totalTokens: 205, durationMs: 650, success: true
+    },
+  ];
+  result.llmCalls.push(...agentCalls);
+
+  // Update node llmCallIds for the agent calls
+  const mdNode = result.nodes.find(n => n.nodeId === 'market-decisions');
+  if (mdNode) mdNode.llmCallIds.push('call-014-agent-trading');
+  const gdNode = result.nodes.find(n => n.nodeId === 'group-dynamics');
+  if (gdNode) gdNode.llmCallIds.push('call-015-agent-social');
+
+  // Update token stats to include agent calls
+  result.tokenStats.totalCalls += 2;
+  result.tokenStats.totalInputTokens += 300;
+  result.tokenStats.totalOutputTokens += 150;
+  result.tokenStats.totalTokens += 450;
+  result.tokenStats.byPromptType['agent-groq-direct'] = { calls: 1, inputTokens: 180, outputTokens: 65 };
+  result.tokenStats.byPromptType['agent-groq-plugin'] = { calls: 1, inputTokens: 120, outputTokens: 85 };
+
+  // Update gameTickResult to reflect final counts
+  result.gameTickResult.tokenStats = { totalCalls: result.tokenStats.totalCalls, totalTokens: result.tokenStats.totalTokens, estimatedCostUSD: result.tokenStats.estimatedCostUSD };
+
+  // Update token-stats-finalize node output to match final numbers
+  const tsNode = result.nodes.find(n => n.nodeId === 'token-stats-finalize');
+  if (tsNode) {
+    tsNode.outputs = { ...result.tokenStats };
+    if (tsNode.subOperations) {
+      const dbOp = tsNode.subOperations.find(o => o.name === 'INSERT tickTokenStats');
+      if (dbOp) { dbOp.details.totalCalls = result.tokenStats.totalCalls; dbOp.details.totalTokens = result.tokenStats.totalTokens; }
+    }
+  }
+
+  return result;
+}
+
+// ============================================================
+// ============================================================
+// GLOBAL VIEWS
+// ============================================================
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
+function switchGlobalView(view) {
+  document.querySelectorAll('.global-nav .tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  if (view === 'dag') {
+    document.getElementById('globalView').style.display = 'none';
+    document.getElementById('mainArea').style.display = 'flex';
+    return;
+  }
+  document.getElementById('mainArea').style.display = 'none';
+  document.getElementById('globalView').style.display = 'block';
+  const body = document.getElementById('globalViewBody');
+  if (view === 'tick-summary') body.innerHTML = renderTickSummaryView();
+  else if (view === 'all-llm') body.innerHTML = renderAllLLMView();
+  else if (view === 'all-npcs') body.innerHTML = renderAllNPCsView();
+  else if (view === 'token-breakdown') body.innerHTML = renderTokenBreakdownView();
+  else if (view === 'timeline') body.innerHTML = renderTimelineView();
+  else if (view === 'data-gaps') body.innerHTML = renderDataGapsView();
+}
+
+function renderTickSummaryView() {
+  const t = currentTrace;
+  const r = t.gameTickResult || {};
+  const successNodes = t.nodes.filter(n => n.status === 'success').length;
+  const errorNodes = t.nodes.filter(n => n.status === 'error').length;
+  const skippedNodes = t.nodes.filter(n => n.status === 'skipped').length;
+  const delegatedNodes = t.nodes.filter(n => n.status === 'delegated').length;
+  const totalDecisions = t.npcTrajectories.reduce((s, n) => s + n.decisions.length, 0);
+  const totalTrades = t.npcTrajectories.reduce((s, n) => s + n.trades.length, 0);
+  const totalPosts = t.npcTrajectories.reduce((s, n) => s + n.posts.length, 0);
+  const totalMsgs = t.npcTrajectories.reduce((s, n) => s + n.groupMessages.length, 0);
+  const successTrades = t.npcTrajectories.reduce((s, n) => s + n.trades.filter(tr => tr.success).length, 0);
+  let html = `<h2 style="font-size:16px;margin-bottom:16px">Tick #${t.tickNumber} Summary</h2>`;
+  html += `<div class="stat-grid">
+    <div class="stat-card"><div class="stat-label">Duration</div><div class="stat-value">${(t.durationMs/1000).toFixed(1)}s</div></div>
+    <div class="stat-card"><div class="stat-label">Nodes</div><div class="stat-value">${successNodes}<span style="font-size:12px;color:var(--success)"> ok</span> ${skippedNodes}<span style="font-size:12px;color:var(--skipped)"> skip</span> ${delegatedNodes}<span style="font-size:12px;color:#14b8a6"> dlg</span> ${errorNodes}<span style="font-size:12px;color:var(--error)"> err</span></div></div>
+    <div class="stat-card"><div class="stat-label">LLM Calls</div><div class="stat-value">${t.llmCalls.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Total Tokens</div><div class="stat-value">${t.tokenStats.totalTokens.toLocaleString()}</div><div class="stat-sub">${t.tokenStats.totalInputTokens.toLocaleString()} in / ${t.tokenStats.totalOutputTokens.toLocaleString()} out</div></div>
+    <div class="stat-card"><div class="stat-label">Cost</div><div class="stat-value">$${t.tokenStats.estimatedCostUSD.toFixed(4)}</div></div>
+    <div class="stat-card"><div class="stat-label">NPCs</div><div class="stat-value">${t.npcTrajectories.length}</div><div class="stat-sub">${totalDecisions}d ${totalTrades}t ${totalPosts}p ${totalMsgs}m</div></div>
+    <div class="stat-card"><div class="stat-label">Trade Success</div><div class="stat-value">${totalTrades > 0 ? ((successTrades/totalTrades)*100).toFixed(0) : 0}%</div><div class="stat-sub">${successTrades}/${totalTrades}</div></div>
+  </div>`;
+  if (t.environmentFlags && Object.keys(t.environmentFlags).length > 0) {
+    html += `<div class="section"><div class="section-title">Environment Flags</div><div class="json-viewer">${syntaxHighlight(JSON.stringify(t.environmentFlags, null, 2))}</div></div>`;
+  }
+  html += `<div class="section"><div class="section-title">Game Tick Result</div><div class="json-viewer">${syntaxHighlight(JSON.stringify(r, null, 2))}</div></div>`;
+  const sorted = [...t.nodes].filter(n => n.status === 'success').sort((a, b) => b.durationMs - a.durationMs).slice(0, 5);
+  html += `<div class="section"><div class="section-title">Slowest Nodes</div>`;
+  sorted.forEach(n => {
+    const pct = t.durationMs ? (n.durationMs / t.durationMs * 100).toFixed(1) : 0;
+    html += `<div class="bar-row"><div class="bar-label">${n.name}</div><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${PHASE_COLORS[n.phase]}">${pct}%</div></div><div class="bar-value">${formatDuration(n.durationMs)}</div></div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function renderAllLLMView() {
+  const t = currentTrace;
+  if (t.llmCalls.length === 0) return '<p style="color:var(--text-dim)">No LLM calls</p>';
+  let html = `<h2 style="font-size:16px;margin-bottom:8px">All LLM Calls (${t.llmCalls.length})</h2>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:16px">${t.tokenStats.totalTokens.toLocaleString()} tokens | $${t.tokenStats.estimatedCostUSD.toFixed(4)}</p>
+    <div class="expand-controls"><button class="btn" onclick="toggleAllLLMCards(true)">Expand All</button><button class="btn" onclick="toggleAllLLMCards(false)">Collapse All</button></div>`;
+  t.llmCalls.forEach(call => {
+    const tokens = (call.inputTokens||0)+(call.outputTokens||0);
+    const node = t.nodes.find(n => n.nodeId === call.nodeId);
+    html += `<div class="llm-card"><div class="llm-card-header" onclick="this.nextElementSibling.classList.toggle('open')">
+      <span class="badge badge-provider">${call.provider||'?'}</span>
+      <span class="badge badge-model">${truncText(call.model||'?',20)}</span>
+      <span style="font-size:11px;color:var(--accent);cursor:pointer" onclick="event.stopPropagation();switchGlobalView('dag');selectNode('${safeId(call.nodeId)}')">${node?node.name:call.nodeId}</span>
+      <span style="flex:1;font-size:10px;color:var(--text-dim)">${call.promptType}</span>
+      <span style="font-size:10px;color:var(--text-dim)">${tokens.toLocaleString()} tok</span>
+      <span style="font-size:10px;color:var(--text-dim)">${formatDuration(call.durationMs)}</span>
+      <span class="badge ${call.success?'badge-success':'badge-error'}">${call.success?'OK':'ERR'}</span>
+    </div><div class="llm-card-body">
+      <div class="llm-prompt-section"><div class="llm-prompt-label system">System Prompt <span class="data-size">${formatBytes((call.systemPrompt||'').length)}</span> <button class="copy-btn" onclick="copyAdjacentText(this)">copy</button></div><div class="llm-prompt-text">${escapeHtml(call.systemPrompt||'(none)')}</div></div>
+      <div class="llm-prompt-section"><div class="llm-prompt-label user">User Prompt <span class="data-size">${formatBytes((call.userPrompt||'').length)}</span> <button class="copy-btn" onclick="copyAdjacentText(this)">copy</button></div><div class="llm-prompt-text">${escapeHtml(call.userPrompt||'(none)')}</div></div>
+      <div class="llm-prompt-section"><div class="llm-prompt-label response">Raw Response <span class="data-size">${formatBytes((call.rawResponse||'').length)}</span> <button class="copy-btn" onclick="copyAdjacentText(this)">copy</button></div><div class="llm-prompt-text">${escapeHtml(call.rawResponse||'(none)')}</div></div>
+      ${call.parsedResponse?`<div class="llm-prompt-section"><div class="llm-prompt-label parsed">Parsed Response</div><div class="json-viewer">${syntaxHighlight(JSON.stringify(call.parsedResponse,null,2))}</div></div>`:''}
+      ${call.error?`<div class="llm-prompt-section"><div class="llm-prompt-label" style="color:var(--error)">Error</div><div class="llm-prompt-text" style="color:#fca5a5">${escapeHtml(call.error)}</div></div>`:''}
+    </div></div>`;
+  });
+  return html;
+}
+
+function renderAllNPCsView() {
+  const t = currentTrace;
+  if (t.npcTrajectories.length === 0) return '<p style="color:var(--text-dim)">No NPC trajectories</p>';
+  const sorted = [...t.npcTrajectories].sort((a,b) => (b.decisions.length+b.trades.length+b.posts.length+b.groupMessages.length)-(a.decisions.length+a.trades.length+a.posts.length+a.groupMessages.length));
+  let html = `<h2 style="font-size:16px;margin-bottom:8px">All NPC Trajectories (${t.npcTrajectories.length})</h2>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:16px">${sorted.reduce((s,n)=>s+n.decisions.length,0)} decisions | ${sorted.reduce((s,n)=>s+n.trades.length,0)} trades | ${sorted.reduce((s,n)=>s+n.posts.length,0)} posts | ${sorted.reduce((s,n)=>s+n.groupMessages.length,0)} messages</p>
+    <div class="expand-controls"><button class="btn" onclick="toggleAllNPCCards(true)">Expand All</button><button class="btn" onclick="toggleAllNPCCards(false)">Collapse All</button></div>`;
+  sorted.forEach(npc => {
+    const total = npc.decisions.length+npc.trades.length+npc.posts.length+npc.groupMessages.length;
+    if (total === 0) return;
+    html += `<div class="npc-card"><div class="npc-card-header" onclick="this.nextElementSibling.classList.toggle('open')">
+      <span style="font-weight:600">${escapeHtml(npc.npcName)}</span>
+      <span style="font-size:10px;color:var(--text-dim);margin-left:auto">${npc.decisions.length}d ${npc.trades.length}t ${npc.posts.length}p ${npc.groupMessages.length}m</span>
+    </div><div class="npc-card-body">`;
+    if (npc.decisions.length > 0) { html += `<div class="section-title">Decisions</div>`; npc.decisions.forEach(d => { html += `<table class="kv-table" style="margin-bottom:6px;border:1px solid var(--border);padding:6px;border-radius:4px"><tr><td class="kv-key">Action</td><td class="kv-val">${d.action}</td></tr>${d.ticker?`<tr><td class="kv-key">Ticker</td><td class="kv-val">${d.ticker}</td></tr>`:''}<tr><td class="kv-key">Amount</td><td class="kv-val">${d.amount}</td></tr><tr><td class="kv-key">Confidence</td><td class="kv-val">${(d.confidence*100).toFixed(0)}%</td></tr><tr><td class="kv-key">Reasoning</td><td class="kv-val">${escapeHtml(d.reasoning)}</td></tr></table>`; }); }
+    if (npc.trades.length > 0) { html += `<div class="section-title">Trades</div>`; npc.trades.forEach(tr => { html += `<table class="kv-table" style="margin-bottom:6px;border:1px solid var(--border);padding:6px;border-radius:4px"><tr><td class="kv-key">Action</td><td class="kv-val">${tr.action}</td></tr>${tr.ticker?`<tr><td class="kv-key">Ticker</td><td class="kv-val">${tr.ticker}</td></tr>`:''}<tr><td class="kv-key">Amount</td><td class="kv-val">${tr.amount}</td></tr><tr><td class="kv-key">Success</td><td class="kv-val"><span class="badge ${tr.success?'badge-success':'badge-error'}">${tr.success?'YES':'NO'}</span></td></tr>${tr.error?`<tr><td class="kv-key">Error</td><td class="kv-val" style="color:#fca5a5">${escapeHtml(tr.error)}</td></tr>`:''}</table>`; }); }
+    if (npc.posts.length > 0) { html += `<div class="section-title">Posts</div>`; npc.posts.forEach(p => { html += `<div style="background:var(--bg);padding:6px 8px;border-radius:4px;margin-bottom:4px;font-size:11px"><span class="badge badge-provider">${p.type}</span> ${escapeHtml(p.content)}</div>`; }); }
+    if (npc.groupMessages.length > 0) { html += `<div class="section-title">Group Messages</div>`; npc.groupMessages.forEach(m => { html += `<div style="background:var(--bg);padding:6px 8px;border-radius:4px;margin-bottom:4px;font-size:11px"><span class="badge badge-model">${escapeHtml(m.groupName)}</span> ${escapeHtml(m.content)}</div>`; }); }
+    html += `</div></div>`;
+  });
+  return html;
+}
+
+function renderTokenBreakdownView() {
+  const t = currentTrace;
+  const byType = t.tokenStats.byPromptType || {};
+  const types = Object.entries(byType).sort((a,b) => (b[1].inputTokens+b[1].outputTokens)-(a[1].inputTokens+a[1].outputTokens));
+  const maxTokens = types.length > 0 ? types[0][1].inputTokens+types[0][1].outputTokens : 1;
+  let html = `<h2 style="font-size:16px;margin-bottom:16px">Token Usage & Cost Breakdown</h2>`;
+  html += `<div class="stat-grid">
+    <div class="stat-card"><div class="stat-label">Total Calls</div><div class="stat-value">${t.tokenStats.totalCalls}</div></div>
+    <div class="stat-card"><div class="stat-label">Input Tokens</div><div class="stat-value">${t.tokenStats.totalInputTokens.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="stat-label">Output Tokens</div><div class="stat-value">${t.tokenStats.totalOutputTokens.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="stat-label">Total Cost</div><div class="stat-value">$${t.tokenStats.estimatedCostUSD.toFixed(4)}</div></div>
+  </div>`;
+  html += `<div class="section"><div class="section-title">By Prompt Type</div>`;
+  types.forEach(([name, stats]) => {
+    const total = stats.inputTokens+stats.outputTokens;
+    const pct = (total/(t.tokenStats.totalTokens||1)*100).toFixed(1);
+    html += `<div class="bar-row"><div class="bar-label">${name}</div><div class="bar-track"><div class="bar-fill" style="width:${(total/maxTokens*100).toFixed(1)}%;background:var(--accent)">${stats.calls} calls</div></div><div class="bar-value">${total.toLocaleString()} (${pct}%)</div></div>`;
+  });
+  html += `</div>`;
+  const byNode = {};
+  t.llmCalls.forEach(c => { if (!byNode[c.nodeId]) byNode[c.nodeId]={calls:0,tokens:0,durationMs:0}; byNode[c.nodeId].calls++; byNode[c.nodeId].tokens+=(c.inputTokens||0)+(c.outputTokens||0); byNode[c.nodeId].durationMs+=c.durationMs||0; });
+  const nodeEntries = Object.entries(byNode).sort((a,b) => b[1].tokens-a[1].tokens);
+  const maxNodeTokens = nodeEntries.length > 0 ? nodeEntries[0][1].tokens : 1;
+  html += `<div class="section"><div class="section-title">By DAG Node</div>`;
+  nodeEntries.forEach(([nodeId, stats]) => {
+    const node = t.nodes.find(n => n.nodeId === nodeId);
+    html += `<div class="bar-row"><div class="bar-label" style="cursor:pointer;color:var(--accent)" onclick="switchGlobalView('dag');selectNode('${safeId(nodeId)}')">${node?node.name:nodeId}</div><div class="bar-track"><div class="bar-fill" style="width:${(stats.tokens/maxNodeTokens*100).toFixed(1)}%;background:${PHASE_COLORS[node?.phase]||'#666'}">${stats.calls} calls</div></div><div class="bar-value">${stats.tokens.toLocaleString()} tok</div></div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function renderTimelineView() {
+  const t = currentTrace;
+  const nodes = [...t.nodes].filter(n => n.startMs && n.endMs).sort((a,b) => a.startMs-b.startMs);
+  if (nodes.length === 0) return '<p style="color:var(--text-dim)">No timing data</p>';
+  const minTime = t.startMs;
+  const span = (t.endMs - minTime) || 1;
+  let html = `<h2 style="font-size:16px;margin-bottom:16px">Execution Timeline</h2>`;
+  nodes.forEach(n => {
+    const left = ((n.startMs-minTime)/span*100).toFixed(2);
+    const width = Math.max((n.durationMs/span*100),0.3).toFixed(2);
+    const color = PHASE_COLORS[n.phase]||'#666';
+    html += `<div class="timeline-row"><div class="timeline-label" style="cursor:pointer;color:var(--accent)" onclick="switchGlobalView('dag');selectNode('${safeId(n.nodeId)}')">${n.name}</div><div class="timeline-track"><div class="timeline-bar" style="left:${left}%;width:${width}%;background:${n.status==='skipped'?'#4a4a6e':n.status==='error'?'var(--error)':n.status==='delegated'?'#14b8a6':color}">${n.durationMs>span*0.05?formatDuration(n.durationMs):''}</div></div><div class="timeline-time">${formatDuration(n.durationMs)}</div></div>`;
+  });
+  html += `<div class="section" style="margin-top:20px"><div class="section-title">LLM Call Timing</div>`;
+  t.llmCalls.forEach(c => {
+    const left = ((c.timestamp-minTime)/span*100).toFixed(2);
+    const width = Math.max((c.durationMs/span*100),0.3).toFixed(2);
+    html += `<div class="timeline-row"><div class="timeline-label">${c.promptType}</div><div class="timeline-track"><div class="timeline-bar" style="left:${left}%;width:${width}%;background:#ec4899">${c.durationMs>span*0.03?formatDuration(c.durationMs):''}</div></div><div class="timeline-time">${formatDuration(c.durationMs)}</div></div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function renderDataGapsView() {
+  const t = currentTrace;
+  const gaps = [];
+  const fixed = [];
+
+  // AUTO-DETECT: skipped nodes
+  const skipped = t.nodes.filter(n => n.status === 'skipped');
+  if (skipped.length > 0) {
+    const hasUnified = skipped.some(n => n.error?.includes('unifiedNpcPipeline'));
+    const hasContext = skipped.every(n => Object.keys(n.inputs).length > 0 || Object.keys(n.outputs).length > 0);
+    if (hasUnified) gaps.push({severity:'critical',title:'Unified NPC Pipeline Bypasses DAG',desc:`${skipped.map(n=>n.name).join(', ')} skipped. All NPC trading in npc-tick.`});
+    else if (hasContext) fixed.push({title:`${skipped.length} Skipped Nodes Have Context`,desc:`${skipped.map(n=>n.name).join(', ')} — skipped but inputs/outputs explain WHY (conditions, thresholds, reasons).`});
+    else gaps.push({severity:'medium',title:`${skipped.length} Nodes Skipped Without Context`,desc:`${skipped.map(n=>n.name).join(', ')} — no inputs/outputs captured.`});
+  }
+
+  // AUTO-DETECT: delegated nodes
+  const delegated = t.nodes.filter(n => n.status === 'delegated');
+  if (delegated.length > 0) {
+    const withData = delegated.filter(n => Object.keys(n.outputs).length > 0);
+    if (withData.length === delegated.length) fixed.push({title:`${delegated.length} Delegated Nodes Have Imported Data`,desc:`${delegated.map(n=>n.name).join(', ')} — executed by npc-tick, data imported via sidecar.`});
+    else gaps.push({severity:'medium',title:`${delegated.length - withData.length} Delegated Nodes Missing Data`,desc:'Some delegated nodes have no imported data from npc-tick sidecar.'});
+  }
+
+  // AUTO-DETECT: empty I/O on success nodes
+  const emptyIO = t.nodes.filter(n => n.status === 'success' && Object.keys(n.inputs).length === 0 && Object.keys(n.outputs).length === 0);
+  if (emptyIO.length > 0) gaps.push({severity:'high',title:`${emptyIO.length} Nodes With No Data`,desc:`${emptyIO.map(n=>n.name).join(', ')} completed but captured zero inputs/outputs.`});
+
+  // AUTO-DETECT: LLM calls missing prompts
+  const noPrompt = t.llmCalls.filter(c => !c.systemPrompt || c.systemPrompt.includes('Load full trace'));
+  if (noPrompt.length > 0) gaps.push({severity:'high',title:`${noPrompt.length} LLM Calls Missing Prompts`,desc:'Summary-only data. Load individual llm-calls/*.json for full content.'});
+
+  // AUTO-DETECT: orphaned LLM calls
+  const orphan = t.llmCalls.filter(c => c.nodeId === 'unknown');
+  if (orphan.length > 0) gaps.push({severity:'high',title:`${orphan.length} Orphaned LLM Calls`,desc:'nodeId "unknown" — not linked to any DAG node. Fixed with explicit nodeId parameter.'});
+
+  // AUTO-DETECT: sub-operations coverage
+  const nodesWithSubOps = t.nodes.filter(n => n.subOperations?.length > 0);
+  const nodesWithoutSubOps = t.nodes.filter(n => n.status === 'success' && (!n.subOperations || n.subOperations.length === 0));
+  if (nodesWithSubOps.length > 0) fixed.push({title:`${nodesWithSubOps.length} Nodes Have DB/External Operation Tracking`,desc:`${nodesWithSubOps.map(n=>`${n.name} (${n.subOperations.length} ops)`).join(', ')} — DB reads/writes and external calls visible.`});
+  if (nodesWithoutSubOps.length > 0) gaps.push({severity:'medium',title:`${nodesWithoutSubOps.length} Nodes Without Sub-Operation Tracking`,desc:`${nodesWithoutSubOps.slice(0,5).map(n=>n.name).join(', ')}${nodesWithoutSubOps.length>5?` + ${nodesWithoutSubOps.length-5} more`:''} — DB operations not instrumented yet.`});
+
+  // AUTO-DETECT: NPC timestamps
+  const allDecisions = t.npcTrajectories.flatMap(n => n.decisions);
+  const hasTimestamps = allDecisions.length > 0 && allDecisions.every(d => d.timestamp);
+  if (hasTimestamps) fixed.push({title:'NPC Timestamps Present',desc:`All ${allDecisions.length} NPC decisions have timestamps for ordering.`});
+  else if (allDecisions.length > 0) gaps.push({severity:'medium',title:'NPC Timestamps Missing',desc:`${allDecisions.filter(d=>!d.timestamp).length}/${allDecisions.length} decisions lack timestamps.`});
+
+  // AUTO-DETECT: environment flags
+  if (t.environmentFlags && Object.keys(t.environmentFlags).length > 0) fixed.push({title:'Environment Flags Captured',desc:`${Object.keys(t.environmentFlags).length} flags recorded: ${Object.keys(t.environmentFlags).join(', ')}`});
+  else gaps.push({severity:'medium',title:'No Environment Flags',desc:'Feature flags not recorded — can\'t tell which code paths were active.'});
+
+  // AUTO-DETECT: LLM call node attribution
+  const allHaveExplicitNode = t.llmCalls.every(c => c.nodeId && c.nodeId !== 'unknown');
+  if (allHaveExplicitNode && t.llmCalls.length > 0) fixed.push({title:'All LLM Calls Attributed to Nodes',desc:`${t.llmCalls.length} LLM calls correctly linked to DAG nodes.`});
+
+  // STATIC: check if relationship engine has sub-ops instrumented
+  const relNode = t.nodes.find(n => n.nodeId === 'relationships');
+  if (relNode?.subOperations?.some(o => o.type === 'llm'))
+    fixed.push({title:'Relationship Engine Internals Visible',desc:'LLM calls, DB reads/writes, and interaction tracking instrumented via subOperations.'});
+  else if (relNode)
+    gaps.push({severity:'medium',title:'Relationship Engine Internals Hidden',desc:'RelationshipEvolutionEngine does internal LLM calls + DB mutations. Only aggregate count surfaced.'});
+
+  // Check multi-provider LLM coverage
+  const providers = [...new Set(t.llmCalls.map(c => c.provider))];
+  if (providers.length > 1)
+    fixed.push({title:`Multi-Provider LLM Coverage (${providers.join(', ')})`,desc:`LLM calls from ${providers.length} providers visible. Agent bridge forwarding calls from all client paths.`});
+  else if (t.llmCalls.length > 0)
+    gaps.push({severity:'medium',title:'Only Single LLM Provider Visible',desc:'Agent LLM paths (callGroqDirect, callAgentLLM, Ollama) need the DAG bridge installed to appear here.'});
+
+  let html = `<h2 style="font-size:16px;margin-bottom:4px">Data Coverage Report</h2>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:16px">Auto-detected from this trace. ${fixed.length} items resolved, ${gaps.length} gaps remaining.</p>`;
+
+  if (fixed.length > 0) {
+    html += `<div class="section"><div class="section-title" style="color:var(--success)">Resolved (${fixed.length})</div>`;
+    fixed.forEach(f => {
+      html += `<div style="background:var(--bg-card);border:1px solid #22c55e30;border-left:3px solid var(--success);border-radius:6px;padding:10px 16px;margin-bottom:8px">
+        <h4 style="font-size:12px;color:var(--success);margin-bottom:2px">${f.title}</h4>
+        <p style="font-size:11px;color:var(--text-dim);line-height:1.4">${f.desc}</p></div>`;
+    });
+    html += `</div>`;
+  }
+
+  if (gaps.length > 0) {
+    html += `<div class="section"><div class="section-title" style="color:var(--error)">Remaining Gaps (${gaps.length})</div>`;
+    gaps.forEach(g => {
+      html += `<div class="gap-card"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span class="gap-severity ${g.severity}">${g.severity.toUpperCase()}</span><h4 style="margin:0">${g.title}</h4></div><p>${g.desc}</p></div>`;
+    });
+    html += `</div>`;
+  }
+
+  return html;
+}
+
+// Wrap loadTrace to show global nav
+// Global nav init is handled inside loadTrace directly
+
+// ============================================================
+// INIT: show welcome
+// ============================================================
+closeDetail();
+</script>
+</body>
+</html>

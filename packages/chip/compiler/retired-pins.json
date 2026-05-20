@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "eliza.chip.retired_external_pins.v1",
+  "as_of": "2026-05-20",
+  "scope": "Formerly-vendored external/ checkouts that have been retired. Each entry records the original pin, the reason for retirement, the active replacement, and the disposition of the archived tree.",
+  "retired": [
+    {
+      "name": "DREAMPlace-CT",
+      "retired_on": "2026-05-20",
+      "original_pin": {
+        "remote": "https://github.com/esonghori/DREAMPlace-CT.git",
+        "sha": "2835324",
+        "short": "2835324",
+        "date": "2023-04-14",
+        "summary": "Update place_io.py",
+        "purpose_when_pinned": "DREAMPlace variant patched for Google circuit_training (cell-timing / RL placement integration)."
+      },
+      "retirement_reason": {
+        "upstream_status": "DELETED_OR_MOVED",
+        "verified_at": "2026-05-20",
+        "verification_method": "gh api repos/esonghori/DREAMPlace-CT returned 404",
+        "successor_search_result": "No active successor fork found. esonghori/DREAMPlace is stale (2023-02). zhuhanqing/DREAMPlace branch support_circuit_training is stale (2022-10). GitHub code search for 'DREAMPlace-CT' returns 0 hits.",
+        "consumer_audit": "No code path in packages/chip imports or executes against external/DREAMPlace-CT/. Repo-wide grep found two references only: a clone URL in scripts/alphachip/build_dreamplace_from_source.sh (rerouted to limbo018), and a passing comment in scripts/alphachip/pb_to_bookshelf.py (updated)."
+      },
+      "active_replacement": {
+        "name": "DREAMPlace",
+        "path": "external/DREAMPlace/",
+        "remote": "https://github.com/limbo018/DREAMPlace",
+        "sha": "37214b40fe3837cc7d392c7d6092ccd6ff04a02c",
+        "short": "37214b40",
+        "date": "2026-04-25",
+        "ref": "master",
+        "rationale": "limbo018/DREAMPlace is the canonical active upstream and has absorbed the circuit_training integration paths (PR #93 lineage and successors). At-tip pin already maintained under external/DREAMPlace/pin-manifest.json."
+      },
+      "disposition": {
+        "action": "archived",
+        "archive_path": "external/.archive/DREAMPlace-CT/",
+        "pin_manifest_removed": true,
+        "readme": "external/.archive/DREAMPlace-CT/RETIRED.md"
+      },
+      "rerouted_callers": [
+        {
+          "file": "scripts/alphachip/build_dreamplace_from_source.sh",
+          "change": "Replaced clone of esonghori/DREAMPlace#circuit_training with limbo018/DREAMPlace master."
+        },
+        {
+          "file": "scripts/alphachip/pb_to_bookshelf.py",
+          "change": "Updated explanatory comment to reference the limbo018 CT bridge instead of the retired esonghori fork."
+        }
+      ]
+    }
+  ]
+}

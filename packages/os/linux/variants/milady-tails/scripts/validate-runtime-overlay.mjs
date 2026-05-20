@@ -410,6 +410,43 @@ function validateBranding() {
   }
 }
 
+function validateRuntimeEntry() {
+  const entryPath = path.join(stage, "Resources/app/eliza-dist/entry.js");
+  const appCoreEntryPath = path.join(
+    stage,
+    "Resources/app/eliza-dist/node_modules/@elizaos/app-core/dist/entry.js",
+  );
+  assertFile(entryPath, "agent runtime entry");
+  assertFile(appCoreEntryPath, "bundled app-core runtime entry");
+  const entry = readText(entryPath);
+  if (entry.includes("../packages/") || entry.includes("src/entry.ts")) {
+    fail(
+      `${entryPath}: live runtime entry must not point back to source checkout paths`,
+    );
+  }
+  if (!entry.includes("./node_modules/@elizaos/app-core/dist/entry.js")) {
+    fail(`${entryPath}: live runtime entry must import bundled app-core dist`);
+  }
+}
+
+function validateAgentApiLazyWalletImport() {
+  const filePath = path.join(
+    stage,
+    "Resources/app/eliza-dist/node_modules/@elizaos/agent/src/api/index.ts",
+  );
+  assertFile(filePath, "agent API barrel");
+  const text = readText(filePath);
+  if (!text.includes("export const handleWalletRoutes")) {
+    fail(`${filePath}: agent API barrel must expose lazy handleWalletRoutes`);
+  }
+  if (!text.includes('await import("@elizaos/plugin-wallet")')) {
+    fail(`${filePath}: wallet routes must be loaded lazily`);
+  }
+  if (text.includes("  handleWalletRoutes,\n  type WalletAddressesSnapshot")) {
+    fail(`${filePath}: static plugin-wallet re-export must not return`);
+  }
+}
+
 function validateSymlinks() {
   for (const [relativePath, target] of [
     ["node_modules", "Resources/app/eliza-dist/node_modules"],
@@ -478,6 +515,8 @@ if (manifest) {
   validateRepositoryResolution(manifest);
   validatePorts(manifest);
   validateBranding();
+  validateRuntimeEntry();
+  validateAgentApiLazyWalletImport();
   validateSymlinks();
   validateRequiredRuntimePackages();
 }

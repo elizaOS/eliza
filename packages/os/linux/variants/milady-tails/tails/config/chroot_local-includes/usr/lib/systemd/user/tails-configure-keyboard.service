@@ -1,6 +1,6 @@
 [Unit]
-Description=Configure the keyboard layout according to settings chosen in Tails Greeter
-Documentation=https://tails.net/contribute/design/
+Description=Configure the keyboard layout according to settings chosen in elizaOS Welcome
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 
 [Service]
 Type=oneshot

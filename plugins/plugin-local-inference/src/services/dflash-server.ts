@@ -1449,6 +1449,33 @@ function isEliza1TierCatalogId(id: string): boolean {
 	return ELIZA_1_PLACEHOLDER_IDS.has(id);
 }
 
+async function synthesizeInstalledTarget(
+	plan: BackendPlan,
+	catalog: CatalogModel,
+): Promise<InstalledModel | null> {
+	const bundleRoot = plan.overrides?.bundleRoot;
+	if (!bundleRoot) return null;
+	try {
+		const modelStat = await fs.promises.stat(plan.modelPath);
+		if (!modelStat.isFile()) return null;
+		return {
+			id: catalog.id,
+			displayName: catalog.displayName,
+			path: plan.modelPath,
+			sizeBytes: modelStat.size,
+			bundleRoot,
+			manifestPath: plan.overrides?.manifestPath,
+			hfRepo: catalog.hfRepo,
+			installedAt: new Date(modelStat.mtimeMs).toISOString(),
+			lastUsedAt: null,
+			source: "eliza-download",
+			runtimeRole: "chat",
+		};
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Resolve the KV-cache spill plan for a llama-server launch.
  *
@@ -3222,7 +3249,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 
 		if (!dflash) {
 			throw new Error(
-				`[dflash] llama-server backend currently requires a catalog 'runtime.dflash' block. Model '${plan.modelId ?? plan.modelPath}' has none — declare DFlash or route this model through node-llama-cpp.`,
+				`[dflash] llama-server backend currently requires a catalog 'runtime.dflash' block. Model '${plan.modelId ?? plan.modelPath}' has none — declare DFlash or route this model through capacitor-llama.`,
 			);
 		}
 
@@ -3234,7 +3261,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		const installed = await listInstalledModels();
 		const target =
 			installed.find((m) => m.path === plan.modelPath) ??
-			installed.find((m) => m.id === plan.modelId);
+			installed.find((m) => m.id === plan.modelId) ??
+			(await synthesizeInstalledTarget(plan, catalog));
 		if (!target) {
 			throw new Error(
 				`[dflash] No installed model matched plan path/id (${plan.modelPath}; ${plan.modelId ?? "no id"}).`,
@@ -3899,17 +3927,16 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	 * filename. Callers should fire this on a long-cache TTL boundary, on
 	 * `closeConversation`, and at process shutdown.
 	 *
-	 * Returns true when a save was issued, false when there was no slot to
-	 * save or the best-effort save failed (e.g. slot pinning disabled,
-	 * server not running, shutdown race).
+	 * Best-effort save; failures are swallowed because callers run this on
+	 * close/shutdown paths where cache persistence must not fail the request.
 	 */
 	async persistConversationKv(
 		conversationId: string,
 		slotId: number,
-	): Promise<boolean> {
+	): Promise<void> {
 		const baseUrl = this.baseUrl;
 		const conversationDir = this.conversationKvDir;
-		if (!baseUrl || !conversationDir || slotId < 0) return false;
+		if (!baseUrl || !conversationDir || slotId < 0) return;
 		const targetPath = path.join(
 			conversationDir,
 			slotCacheFileName(conversationId, "long"),
@@ -3917,10 +3944,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		try {
 			await this.requestSlotSave(baseUrl, slotId, targetPath);
 			this.persistedConversations.add(conversationId);
-			return true;
-		} catch {
-			return false;
-		}
+		} catch {}
 	}
 
 	/**

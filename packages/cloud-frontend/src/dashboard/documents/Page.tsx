@@ -1,11 +1,13 @@
 import { DashboardLoadingState } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import type { ElizaCharacter } from "@/lib/types";
+import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useMyAgents } from "../../lib/data/agents";
 import { DocumentsPageClient } from "./_components/documents-page-client";
 
 export default function DocumentsPage() {
+  const t = useT();
   const { ready, authenticated } = useRequireAuth();
   const agentsQuery = useMyAgents();
 
@@ -13,10 +15,15 @@ export default function DocumentsPage() {
   // resolves; otherwise the homepage <title> bleeds through.
   const head = (
     <Helmet>
-      <title>Knowledge</title>
+      <title>
+        {t("cloud.documents.metaTitle", { defaultValue: "Knowledge" })}
+      </title>
       <meta
         name="description"
-        content="Upload and manage documents for your agents to enhance AI responses with custom knowledge."
+        content={t("cloud.documents.metaDescription", {
+          defaultValue:
+            "Upload and manage documents for your agents to enhance AI responses with custom knowledge.",
+        })}
       />
     </Helmet>
   );
@@ -25,7 +32,11 @@ export default function DocumentsPage() {
     return (
       <>
         {head}
-        <DashboardLoadingState label="Loading Knowledge" />
+        <DashboardLoadingState
+          label={t("cloud.documents.loading", {
+            defaultValue: "Loading Knowledge",
+          })}
+        />
       </>
     );
 
@@ -43,7 +54,11 @@ export default function DocumentsPage() {
     <>
       {head}
       {agentsQuery.isLoading ? (
-        <DashboardLoadingState label="Loading Knowledge" />
+        <DashboardLoadingState
+          label={t("cloud.documents.loading", {
+            defaultValue: "Loading Knowledge",
+          })}
+        />
       ) : (
         <DocumentsPageClient initialCharacters={characters} />
       )}

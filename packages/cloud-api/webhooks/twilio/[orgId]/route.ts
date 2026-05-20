@@ -270,6 +270,9 @@ async function handleIncomingMessage(
       body: routed.replyText.trim(),
       provider: "twilio",
       organizationId: orgId,
+      agentId: routed.agentId,
+      agentOrganizationId: routed.organizationId,
+      agentUserId: routed.userId,
     });
 
     const responseTime = Date.now() - startTime;

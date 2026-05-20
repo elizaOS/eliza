@@ -47,8 +47,9 @@ measurement, Android userspace evidence, and silicon/board evidence.
 The selected path is a generated Chipyard Rocket RV64GC subsystem. The selection
 is pinned in `generators/chipyard/eliza-rocket-manifest.json`:
 
-- Chipyard `1.13.0`, commit
-  `69eba860a352343e4ac6b6df0f3638a79a86ec78`,
+- Chipyard `main-2026-05-20`, commit
+  `48f904aefbb3903dce6efa7901982642853ae6a7`
+  (previous pin: `1.13.0` / `69eba860a352343e4ac6b6df0f3638a79a86ec78`),
 - single Rocket RV64GC hart for first AP integration,
 - project config name `ElizaRocketConfig`,
 - production wrapper name `eliza_rocket_ap`,

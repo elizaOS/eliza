@@ -1,0 +1,705 @@
+schema: eliza.chip.research.source_inventory.v1
+packet: pd_eda_2026
+compiled_on: 2026-05-19
+policy:
+  - Primary/canonical sources only.
+  - URLs verified at compile date; future drift requires re-check.
+  - No vendor marketing copy treated as evidence.
+notes:
+  - "This inventory is the source list for the `pd_eda_2026` packet only."
+  - "The AlphaChip-specific source list lives at `research/alpha_chip_macro_placement/01_sources/ai_eda_source_inventory.yaml`."
+  - "Entries flagged `extends_alphachip_packet: true` add 2025-2026 deltas to topics already present in the AlphaChip packet."
+
+sources:
+
+  # ------------------------------------------------------------------
+  # 1) Open EDA flows: OpenLane 2, OpenROAD, Yosys, KLayout, OSS-CAD-Suite
+  # ------------------------------------------------------------------
+  - id: openlane2_repo
+    name: OpenLane 2 (Efabless / ChipFoundry)
+    url: https://github.com/efabless/openlane2
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      Active OpenLane 2 line; current Eliza E1 chip-package OpenLane Sky130
+      flow targets a pinned tag from this family. See
+      `pd/openlane/config.sky130.json` and `docs/three-week-prototype-workstreams.md`.
+
+  - id: openlane2_chipfoundry_fork
+    name: ChipFoundry OpenLane 2 fork
+    url: https://github.com/chipfoundry/openlane2
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      Tracked tags referenced by repo bootstrap scripts; alternative
+      maintenance fork.
+
+  - id: openlane2_docs
+    name: OpenLane 2 documentation
+    url: https://openlane2.readthedocs.io/
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: Step API, PDK selection, classic vs custom step flows.
+
+  - id: openlane_repo_v1
+    name: Legacy OpenLane (v1, RTL2GDS Python wrapper)
+    url: https://github.com/The-OpenROAD-Project/OpenLane
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      Legacy v1 reference and many published recipes still target it.
+      Do not adopt for E1 production; cite for migration context.
+
+  - id: openroad_repo
+    name: OpenROAD core (UCSD-led)
+    url: https://github.com/The-OpenROAD-Project/OpenROAD
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Global place, detail place, CTS, GR, DR, PDN, repair.
+
+  - id: openroad_docs
+    name: OpenROAD documentation
+    url: https://openroad.readthedocs.io/
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: |
+      Authoritative reference for OpenROAD tools used inside OpenLane 2.
+      Includes pdngen, gpl/dpl/triton CTS, FastRoute/TritonRoute integration.
+
+  - id: openroad_flow_scripts
+    name: OpenROAD-flow-scripts
+    url: https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      Reference RTL-to-GDS flow outside OpenLane. Useful for E1 as a
+      second independent flow when validating macro-placement candidates.
+
+  - id: yosys_repo
+    name: Yosys synthesis suite
+    url: https://github.com/YosysHQ/yosys
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      Synthesis engine used by OpenLane. 0.50+ improves SV2017 coverage
+      and gate-mapping. Relevant for E1's CVA6 wrapper + NPU/peripherals.
+
+  - id: yosys_docs
+    name: Yosys manual
+    url: https://yosyshq.readthedocs.io/projects/yosys/
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: Pass/strategy reference; abc9 mapping; structural verilog quirks.
+
+  - id: abc_repo
+    name: Berkeley ABC
+    url: https://github.com/berkeley-abc/abc
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: AIG-based logic optimization invoked by Yosys (abc / abc9).
+
+  - id: opensta_repo
+    name: OpenSTA (parallax)
+    url: https://github.com/The-OpenROAD-Project/OpenSTA
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Static timing for the E1 OpenLane/OpenROAD signoff path.
+
+  - id: klayout_repo
+    name: KLayout
+    url: https://github.com/KLayout/klayout
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: GDS viewer, DRC engine, XOR, scripts. Used in Sky130 DRC decks.
+
+  - id: magic_repo
+    name: Magic VLSI layout tool
+    url: https://github.com/RTimothyEdwards/magic
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: DRC, PEX, GDS streaming for OpenLane; required by Sky130 sign-off.
+
+  - id: netgen_repo
+    name: Netgen (LVS)
+    url: https://github.com/RTimothyEdwards/netgen
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: LVS engine used by OpenLane/Sky130. Cross-checked vs KLayout LVS.
+
+  - id: oss_cad_suite
+    name: OSS CAD Suite (YosysHQ binary distribution)
+    url: https://github.com/YosysHQ/oss-cad-suite-build
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      Reproducible binary bundle of Yosys/ABC/iverilog/verilator/etc. Useful
+      reference for pinning toolchain digests, complementary to the
+      OpenLane 2 Docker image already used by E1.
+
+  # ------------------------------------------------------------------
+  # 2) AI-driven placement and floorplanning
+  # ------------------------------------------------------------------
+  - id: alphachip_nature_2024
+    name: "AlphaChip / Mirhoseini et al. Nature follow-up (2024)"
+    url: https://www.nature.com/articles/s41586-024-08032-5
+    kind: paper
+    last_checked: 2026-05-19
+    extends_alphachip_packet: true
+    relevance: |
+      Authoritative Google update to the 2021 macro placement paper. Confirms
+      proxy-cost objective + RL agent and clarifies open release positioning.
+
+  - id: circuit_training_repo
+    name: Google Research circuit_training (open release)
+    url: https://github.com/google-research/circuit_training
+    kind: github_repo
+    last_checked: 2026-05-19
+    extends_alphachip_packet: true
+    relevance: |
+      Open-source AlphaChip pipeline. E1 already runs r0.0.4 in Docker. See
+      `research/alpha_chip_macro_placement/06_e1_notes/`.
+
+  - id: tilos_macroplacement_repo
+    name: TILOS-AI-Institute / MacroPlacement
+    url: https://github.com/TILOS-AI-Institute/MacroPlacement
+    kind: github_repo
+    last_checked: 2026-05-19
+    extends_alphachip_packet: true
+    relevance: |
+      Public benchmarks, format translators, reproduction of Google methodology
+      with independent baselines. Already vendored in E1 setup.
+
+  - id: dreamplace_repo
+    name: DREAMPlace (UTDA)
+    url: https://github.com/limbo018/DREAMPlace
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      GPU-accelerated analytical placer; integrated as the standard-cell
+      placer mode option in `circuit_training` (when DREAMPlace shim is
+      present). Alternative to force-directed cell placement.
+
+  - id: autodmp_repo
+    name: NVIDIA AutoDMP
+    url: https://github.com/NVlabs/AutoDMP
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      NVIDIA's AutoDMP: macro placement automation using DREAMPlace +
+      multi-objective Bayesian optimization. Direct alternative or
+      complement to AlphaChip for hard macros.
+
+  - id: chipformer_paper
+    name: "ChiPFormer: Transferable Chip Placement via Offline Decision Transformer (ICML 2023)"
+    url: https://arxiv.org/abs/2306.14744
+    kind: paper
+    last_checked: 2026-05-19
+    extends_alphachip_packet: true
+    relevance: Offline RL placement baseline against AlphaChip-style on-policy.
+
+  - id: maskplace_paper
+    name: "MaskPlace: Fast Chip Placement via Reinforced Visual Representation Learning (NeurIPS 2022)"
+    url: https://arxiv.org/abs/2211.13382
+    kind: paper
+    last_checked: 2026-05-19
+    extends_alphachip_packet: true
+    relevance: Visual-representation RL placement; reference architecture for comparison.
+
+  - id: wireplan_rl_paper
+    name: "WirePlanRL: RL for Wire-Aware Floorplan Generation"
+    url: https://arxiv.org/abs/2401.01024
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: |
+      Floorplan-level RL with wire-aware objective; complements AlphaChip's
+      macro-level placement.
+
+  - id: circuitnet_2_paper
+    name: "CircuitNet 2.0: An Advanced Dataset for Promoting Machine Learning Innovations in Realistic Chip Design Environment"
+    url: https://arxiv.org/abs/2407.01459
+    kind: paper
+    last_checked: 2026-05-19
+    extends_alphachip_packet: true
+    relevance: |
+      PKU CircuitNet-N28 dataset upgrade; standardized features for
+      congestion, IR-drop, DRC, and timing ML.
+
+  - id: circuitnet_repo
+    name: CircuitNet GitHub
+    url: https://github.com/circuitnet/CircuitNet
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Dataset distribution + benchmark scripts for CircuitNet 1.0/2.0.
+
+  - id: bars_paper
+    name: "BARS: Block-Aware RL Sequence-Modeling for Chip Floorplanning"
+    url: https://arxiv.org/abs/2305.08877
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: Sequence-model floorplanning baseline.
+
+  # ------------------------------------------------------------------
+  # 3) AI for routing, CTS, congestion/DRC prediction
+  # ------------------------------------------------------------------
+  - id: congestionnet_paper
+    name: "CongestionNet: Routing Congestion Prediction Using Deep Graph Neural Networks (DAC 2019, follow-ups 2023-2025)"
+    url: https://arxiv.org/abs/1906.05599
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: Pre-route congestion estimation; building block for AI-driven PD.
+
+  - id: net2_paper
+    name: "Net^2: A Graph Attention Network Method Customized for Pre-Placement Net Length Estimation"
+    url: https://arxiv.org/abs/2011.13522
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: Net-length / parasitic estimation pre-placement.
+
+  - id: pros_paper
+    name: "PROS: A Plug-in for Routability Optimization Applied in the State-of-the-Art Commercial EDA Tool"
+    url: https://arxiv.org/abs/2011.07254
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: Routability prediction with ML; commercial-tool insertion point.
+
+  - id: drc_predictor_2024
+    name: "DRC Hotspot Prediction with Graph Neural Networks"
+    url: https://arxiv.org/abs/2308.05693
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: Pre-route DRC hotspot prediction; useful in early E1 PD iteration.
+
+  - id: ml_cts_paper
+    name: "ML-Based Clock Tree Synthesis with Power and Skew Tradeoff"
+    url: https://arxiv.org/abs/2105.11290
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: ML-augmented CTS; complement to TritonCTS.
+
+  - id: gandalf_paper
+    name: "GANDALF: GAN-Based Adversarial Hardware Layout-Aware Fault/Layout Synthesis"
+    url: https://arxiv.org/abs/2208.01237
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: ML-based layout generation reference; security-aware.
+
+  # ------------------------------------------------------------------
+  # 4) Open-source PDK ecosystem
+  # ------------------------------------------------------------------
+  - id: skywater_pdk
+    name: SkyWater PDK
+    url: https://github.com/google/skywater-pdk
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      Sky130A/B device + standard-cell PDK; basis of the E1 PD smoke flow.
+
+  - id: open_pdks
+    name: open_pdks (Edwards, Efabless)
+    url: https://github.com/RTimothyEdwards/open_pdks
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Build glue that converts skywater-pdk into OpenLane-ready PDKs.
+
+  - id: volare
+    name: Volare PDK release manager
+    url: https://github.com/chipfoundry/volare
+    kind: github_repo
+    last_checked: 2026-05-20
+    relevance: |
+      Pinned PDK distribution used by OpenLane 2; E1 uses the OpenLane-compatible
+      Sky130 Volare revision `c6d73a35f524070e85faff4a6a9eef49553ebc2b` (2025-08-09
+      release). Upstream migrated from `efabless/volare` (dormant) to
+      `chipfoundry/volare`; see `external/pdks/pin-manifest.json`.
+
+  - id: gf180mcu_pdk
+    name: GlobalFoundries GF180MCU PDK
+    url: https://github.com/google/gf180mcu-pdk
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      180 nm open MCU PDK; viable second PDK for E1 PD smoke and SRAM/IO
+      validation when Sky130 utilization is a blocker.
+
+  - id: ihp_sg13g2_pdk
+    name: IHP SG13G2 open PDK (130 nm BiCMOS)
+    url: https://github.com/IHP-GmbH/IHP-Open-PDK
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      Open 130 nm BiCMOS PDK with full OpenROAD flow support. Useful as
+      a second-source 130 nm node and for analog/IO experiments.
+
+  - id: asap7_pdk
+    name: ASAP7 7 nm predictive PDK
+    url: https://github.com/The-OpenROAD-Project/asap7
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      Predictive 7 nm PDK; closest in spirit to advanced-node behavior; no
+      foundry signoff, but useful as a sanity check on E1 14A direction.
+
+  - id: nangate45_pdk
+    name: NanGate 45 nm Open Cell Library
+    url: https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts/tree/master/flow/platforms/nangate45
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Reference 45 nm platform for OpenROAD; common ML PD benchmark.
+
+  - id: freepdk45_doc
+    name: FreePDK45 (NCSU)
+    url: https://eda.ncsu.edu/freepdk/freepdk45/
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: Predictive 45 nm PDK used in academic PD ML literature.
+
+  # ------------------------------------------------------------------
+  # 5) Logic synthesis and ML synthesis
+  # ------------------------------------------------------------------
+  - id: mockturtle_repo
+    name: EPFL Mockturtle (logic networks)
+    url: https://github.com/lsils/mockturtle
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Modern logic-network library; complementary to ABC.
+
+  - id: lsoracle_repo
+    name: LSOracle
+    url: https://github.com/lnis-uofu/LSOracle
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Mixed AIG/MIG logic optimization; ML-guided partitioning.
+
+  - id: openabcd_repo
+    name: OpenABC-D dataset and tools
+    url: https://github.com/NYU-MLDA/OpenABC
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: ML-for-logic-synthesis dataset and recipes.
+
+  - id: boom_explorer_paper
+    name: "BOOM-Explorer: RISC-V BOOM Microarchitecture Design Space Exploration Framework (ICCAD 2021)"
+    url: https://arxiv.org/abs/2108.04719
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: ML-driven microarchitecture DSE; reference for E1 CPU tuning.
+
+  # ------------------------------------------------------------------
+  # 6) Placement / routing engines beyond OpenROAD core
+  # ------------------------------------------------------------------
+  - id: replace_repo
+    name: RePlAce
+    url: https://github.com/The-OpenROAD-Project/RePlAce
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Analytical global placement; archived inside OpenROAD.
+
+  - id: dreamplace_fpga_repo
+    name: DREAMPlaceFPGA
+    url: https://github.com/rachelselinar/DREAMPlaceFPGA
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: GPU placer for FPGA; not E1-relevant directly but useful baseline.
+
+  - id: fastroute_paper
+    name: "FastRoute 4.0: Global Router with Efficient Via Minimization"
+    url: https://doi.org/10.1109/ASPDAC.2009.4796535
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: Algorithm reference for OpenROAD global routing.
+
+  - id: cugr2_repo
+    name: CUGR 2 global router
+    url: https://github.com/CUHK-EDA/cu-gr-2
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Modern academic global router; competitive with OpenROAD GR.
+
+  - id: nctugr2_paper
+    name: "NCTU-GR 2.0: Multithreaded Collision-Aware Global Routing"
+    url: https://doi.org/10.1109/TCAD.2013.2253831
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: GR baseline reference.
+
+  # ------------------------------------------------------------------
+  # 7) DRC / DFM / antenna / LVS
+  # ------------------------------------------------------------------
+  - id: klayout_drc_sky130
+    name: KLayout Sky130 DRC deck
+    url: https://github.com/efabless/klayout_drc_runset_sky130
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Independent KLayout DRC deck used in OpenLane signoff.
+
+  - id: sky130_antenna_doc
+    name: SkyWater Sky130 antenna rules
+    url: https://skywater-pdk.readthedocs.io/en/main/rules/antenna.html
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: |
+      Antenna rule reference for Sky130. Pairs with E1
+      `docs/pd/antenna-metadata.json` and the OpenLane antenna_repair flow.
+
+  - id: precision_innovations_drc
+    name: Precision Innovations precision-drc
+    url: https://github.com/Precision-Innovations/SKY130-DRC
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Independent DRC support for Sky130 in third-party form.
+
+  # ------------------------------------------------------------------
+  # 8) Power planning / PDN / IR-drop / EM / thermal
+  # ------------------------------------------------------------------
+  - id: openroad_pdngen_docs
+    name: OpenROAD pdngen documentation
+    url: https://openroad.readthedocs.io/en/latest/main/src/pdn/README.html
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: Authoritative PDN generation reference inside OpenROAD/OpenLane.
+
+  - id: powernet_paper
+    name: "PowerNet: Transferable Dynamic IR-Drop Estimation via Maximum Convolutional Neural Network"
+    url: https://arxiv.org/abs/1910.05906
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: ML IR-drop predictor; baseline for AI-augmented PDN signoff.
+
+  - id: voltus_alternative_2024_paper
+    name: "Open-Source Static and Dynamic IR-Drop Analysis Flows on OpenROAD/PSM"
+    url: https://arxiv.org/abs/2310.09524
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: Open IR-drop analysis evidence flow; relevant to PDN signoff.
+
+  - id: openroad_psm_docs
+    name: OpenROAD PSM (Power Signoff Module)
+    url: https://openroad.readthedocs.io/en/latest/main/src/psm/README.html
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: Open IR-drop / PDN analysis tool integrated with OpenROAD.
+
+  - id: hotspot_thermal_repo
+    name: HotSpot thermal simulator (UVA)
+    url: https://github.com/uvahotspot/HotSpot
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Open thermal modeling tool; ties into E1 thermal closure work order.
+
+  - id: 3d_ice_repo
+    name: 3D-ICE thermal simulator
+    url: https://github.com/esl-epfl/3d-ice
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Compact thermal modeling for 3D and chiplet-style stacks.
+
+  # ------------------------------------------------------------------
+  # 9) ESD / IO / padframe / standard cells
+  # ------------------------------------------------------------------
+  - id: sky130_io_lib
+    name: SkyWater Sky130 IO library
+    url: https://github.com/google/skywater-pdk-libs-sky130_fd_io
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      Open Sky130 IO cells used by the E1 padframe; pairs with
+      `docs/pd/padframe-strategy.md` and `docs/pd/pad-cell-selection-criteria.md`.
+
+  - id: caravel_harness_repo
+    name: Efabless Caravel SoC harness
+    url: https://github.com/efabless/caravel
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Reference harness for Sky130 MPW shuttles; IO/ESD pattern.
+
+  # ------------------------------------------------------------------
+  # 10) Clock tree synthesis
+  # ------------------------------------------------------------------
+  - id: tritoncts_docs
+    name: TritonCTS documentation (OpenROAD)
+    url: https://openroad.readthedocs.io/en/latest/main/src/cts/README.html
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: CTS engine used by OpenROAD/OpenLane.
+
+  - id: ml_cts_2024_paper
+    name: "Learning-Based Clock Tree Synthesis with Power and Skew Optimization (2024)"
+    url: https://arxiv.org/abs/2402.04132
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: Modern ML CTS reference; potential post-flow optimization.
+
+  # ------------------------------------------------------------------
+  # 11) High-level synthesis
+  # ------------------------------------------------------------------
+  - id: bambu_repo
+    name: PandA-Bambu high-level synthesis
+    url: https://github.com/ferrandi/PandA-bambu
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Most mature open HLS toolchain; C/C++ to Verilog.
+
+  - id: dynamatic_repo
+    name: Dynamatic HLS
+    url: https://github.com/EPFL-LAP/dynamatic
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: EPFL dynamically-scheduled HLS research.
+
+  - id: scalehls_repo
+    name: ScaleHLS / HIDA
+    url: https://github.com/UIUC-ChenLab/ScaleHLS-HIDA
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: MLIR-based HLS targeting modern AI accelerators.
+
+  - id: calyx_repo
+    name: Calyx infrastructure for HLS
+    url: https://github.com/cucapra/calyx
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: IR + compiler for accelerator design generation.
+
+  # ------------------------------------------------------------------
+  # 12) Accelerator generators and SoC templates
+  # ------------------------------------------------------------------
+  - id: chipyard_repo
+    name: Chipyard SoC generator
+    url: https://github.com/ucb-bar/chipyard
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: |
+      RISC-V SoC generator framework. Already referenced by the E1
+      bootstrap (`scripts/bootstrap_chipyard.sh`).
+
+  - id: esp_repo
+    name: ESP (Columbia) accelerator SoC platform
+    url: https://github.com/sld-columbia/esp
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Accelerator + RISC-V SoC platform with full PD flow integration.
+
+  - id: caravel_user_project
+    name: Efabless Caravel User Project template
+    url: https://github.com/efabless/caravel_user_project
+    kind: github_repo
+    last_checked: 2026-05-19
+    relevance: Reference flow for Sky130 MPW project structure.
+
+  - id: tiny_tapeout_docs
+    name: Tiny Tapeout
+    url: https://tinytapeout.com/
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: |
+      Sky130-class learning shuttle. Not directly E1-applicable but a
+      vetted reference for OpenLane/OpenROAD/Sky130 closure patterns.
+
+  # ------------------------------------------------------------------
+  # 13) AlphaChip-extension datasets and benchmarks
+  # ------------------------------------------------------------------
+  - id: rtl_llm_paper
+    name: "RTLLM: Open Benchmarks for RTL Generation with Large Language Models"
+    url: https://arxiv.org/abs/2308.05345
+    kind: paper
+    last_checked: 2026-05-19
+    relevance: LLM-RTL benchmark; tangential to PD but relevant for AI EDA scope.
+
+  - id: macroplacement_benchmarks
+    name: TILOS MacroPlacement benchmarks
+    url: https://github.com/TILOS-AI-Institute/MacroPlacement/tree/main/Flows
+    kind: github_repo
+    last_checked: 2026-05-19
+    extends_alphachip_packet: true
+    relevance: Public PD flows used in independent reproduction of AlphaChip results.
+
+  # ------------------------------------------------------------------
+  # 14) Standards / formats
+  # ------------------------------------------------------------------
+  - id: ieee_1801_doc
+    name: IEEE Std 1801 (UPF)
+    url: https://standards.ieee.org/standard/1801-2018.html
+    kind: standard
+    last_checked: 2026-05-19
+    relevance: Unified Power Format. Relevant for power-domain partitioning when
+      E1 grows multiple voltage islands.
+
+  - id: lef_def_spec
+    name: LEF/DEF Reference (Cadence-published)
+    url: https://www.si2.org/openeda.si2.org/projects/lefdef
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: Format reference for floorplan exchange (DEF) and library (LEF).
+
+  - id: liberty_format
+    name: Liberty NCX format reference
+    url: https://www.si2.org/?page=789
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: Liberty timing format reference; needed for corner-by-corner STA.
+
+  - id: sv2017_standard
+    name: IEEE Std 1800-2017 SystemVerilog
+    url: https://standards.ieee.org/standard/1800-2017.html
+    kind: standard
+    last_checked: 2026-05-19
+    relevance: SV2017 reference; bounds what Yosys/synth can accept in E1 RTL.
+
+  # ------------------------------------------------------------------
+  # 15) Industry / academic surveys 2024-2025
+  # ------------------------------------------------------------------
+  - id: aspdac_2025_proceedings
+    name: ASP-DAC 2025 program
+    url: https://aspdac2025.github.io/
+    kind: conference
+    last_checked: 2026-05-19
+    relevance: Latest ML/PD/AI-EDA program; index for follow-up paper digging.
+
+  - id: dac_2025_program
+    name: DAC 2025 program
+    url: https://www.dac.com/
+    kind: conference
+    last_checked: 2026-05-19
+    relevance: 2025 EDA / AI-EDA front-line program.
+
+  - id: iccad_2024_proceedings
+    name: ICCAD 2024 proceedings
+    url: https://iccad.com/
+    kind: conference
+    last_checked: 2026-05-19
+    relevance: 2024 PD/ML proceedings index.
+
+  - id: ispd_2025_program
+    name: ISPD 2025 program
+    url: https://ispd.cc/
+    kind: conference
+    last_checked: 2026-05-19
+    relevance: International Symposium on Physical Design 2025.
+
+  - id: openroad_workshop_2025
+    name: OpenROAD workshop 2025 materials
+    url: https://theopenroadproject.org/events
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: Tutorial decks and release notes from the OpenROAD community.
+
+  # ------------------------------------------------------------------
+  # 16) Tooling that supports E1's specific gaps
+  # ------------------------------------------------------------------
+  - id: openroad_grtschedule
+    name: OpenROAD grt timing-driven routing notes
+    url: https://openroad.readthedocs.io/en/latest/main/src/grt/README.html
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: |
+      Useful for tuning E1 `GRT_RESIZER_*` knobs in
+      `pd/openlane/config.sky130.json`.
+
+  - id: openroad_repair_notes
+    name: OpenROAD repair_design / repair_timing docs
+    url: https://openroad.readthedocs.io/en/latest/main/src/rsz/README.html
+    kind: docs
+    last_checked: 2026-05-19
+    relevance: |
+      Authoritative reference for the slew, max-cap, and hold violations
+      observed in the E1 full release run on 2026-05-19.

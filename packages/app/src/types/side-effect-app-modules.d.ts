@@ -14,3 +14,4 @@ declare module "@elizaos/plugin-device-settings/register";
 declare module "@elizaos/plugin-messages/register";
 declare module "@elizaos/plugin-phone/register";
 declare module "@elizaos/plugin-wifi/register";
+declare module "@elizaos/plugin-hearwear/register";

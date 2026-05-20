@@ -63,7 +63,7 @@ function pickLargestInstalledModel(
  * any agent slot.
  *
  * Why: external blobs may use newer architectures or quant formats
- * the bundled `node-llama-cpp` binding does not yet support. Auto-loading
+ * the bundled `capacitor-llama` binding does not yet support. Auto-loading
  * an external blob the user never selected silently breaks PROACTIVE_AGENT
  * and other background tasks at boot. The user opted into the external
  * tool, not into Eliza loading those weights through llama.cpp.

@@ -119,7 +119,7 @@ async function getRuntime(): Promise<IAgentRuntime | null> {
 // Express App
 // ============================================================================
 
-const app = express();
+export const app = express();
 app.use(express.json());
 
 // CORS middleware
@@ -257,18 +257,20 @@ app.post(
 // ============================================================================
 
 // Pre-initialize runtime then start server
-getRuntime().then((rt) => {
-  app.listen(PORT, () => {
-    console.log(`\n🌐 elizaOS REST API (Express.js)`);
-    console.log(`   http://localhost:${PORT}\n`);
-    console.log(`📚 Endpoints:`);
-    console.log(`   GET  /       - Agent info`);
-    console.log(`   GET  /health - Health check`);
-    console.log(
-      `   POST /chat   - Chat with agent (uses runtime.messageService.handleMessage)\n`,
-    );
-    if (!rt) {
-      console.log(`⚠️  Runtime initialization issue: ${initError}\n`);
-    }
+if (import.meta.main) {
+  getRuntime().then((rt) => {
+    app.listen(PORT, () => {
+      console.log(`\n🌐 elizaOS REST API (Express.js)`);
+      console.log(`   http://localhost:${PORT}\n`);
+      console.log(`📚 Endpoints:`);
+      console.log(`   GET  /       - Agent info`);
+      console.log(`   GET  /health - Health check`);
+      console.log(
+        `   POST /chat   - Chat with agent (uses runtime.messageService.handleMessage)\n`,
+      );
+      if (!rt) {
+        console.log(`⚠️  Runtime initialization issue: ${initError}\n`);
+      }
+    });
   });
-});
+}

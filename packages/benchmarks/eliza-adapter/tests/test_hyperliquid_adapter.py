@@ -109,6 +109,104 @@ def test_extract_json_plan_normalizes_openclaw_batch_actions() -> None:
     }
 
 
+def test_extract_json_plan_normalizes_camel_case_bridge_actions() -> None:
+    raw_plan = """
+    {
+      "steps": [
+        {
+          "action": "setLeverage",
+          "coin": "ETH",
+          "leverage": 5
+        },
+        {
+          "action": "placeOrder",
+          "coin": "BTC",
+          "side": "Sell",
+          "size": 0.003,
+          "price": 34000,
+          "reduceOnly": false,
+          "timeInForce": "IOC"
+        },
+        {
+          "action": "cancelAll"
+        }
+      ]
+    }
+    """
+
+    assert _extract_json_plan(raw_plan) == {
+        "steps": [
+            {"set_leverage": {"coin": "ETH", "leverage": 5, "cross": False}},
+            {
+                "perp_orders": {
+                    "orders": [
+                        {
+                            "coin": "BTC",
+                            "side": "sell",
+                            "tif": "IOC",
+                            "sz": 0.003,
+                            "reduceOnly": False,
+                            "px": 34000.0,
+                        }
+                    ]
+                }
+            },
+            {"cancel_all": {}},
+        ]
+    }
+
+
+def test_extract_json_plan_rejects_non_executable_steps() -> None:
+    raw_plan = '{"steps": ["simple", "ETH"]}'
+
+    try:
+        _extract_json_plan(raw_plan)
+    except ValueError as exc:
+        assert "executable action step" in str(exc)
+    else:
+        raise AssertionError("non-executable steps should be rejected")
+
+
+def test_extract_json_plan_normalizes_openclaw_hyperliquid_synonyms() -> None:
+    raw_plan = """
+    {
+      "steps": [
+        {"action": "set_demo_mode", "demo": true},
+        {
+          "action": "place_perp_order",
+          "symbol": "ETH-PERP",
+          "side": "BUY",
+          "size": 0.01,
+          "order_type": "MARKET"
+        },
+        {"action": "cancel_order", "symbol": "ETH-PERP", "order_id": "example"},
+        {"action": "adjust_leverage", "symbol": "ETH-PERP", "leverage": 3}
+      ]
+    }
+    """
+
+    assert _extract_json_plan(raw_plan) == {
+        "steps": [
+            {
+                "perp_orders": {
+                    "orders": [
+                        {
+                            "coin": "ETH",
+                            "side": "buy",
+                            "tif": "GTC",
+                            "sz": 0.01,
+                            "reduceOnly": False,
+                            "px": "mid+0%",
+                        }
+                    ]
+                }
+            },
+            {"cancel_last": {"coin": "ETH"}},
+            {"set_leverage": {"coin": "ETH", "leverage": 3, "cross": False}},
+        ]
+    }
+
+
 def test_hyperliquid_bridge_malformed_plans_fail_cleanly_after_bounded_retries(
     monkeypatch,
     tmp_path,

@@ -26,13 +26,52 @@ const REQUIRED_REMOTE_MODULE_COUNT_FIELDS = [
   "responseHandlerFieldEvaluatorCount",
   "routeCount",
   "modelCount",
+  "eventCount",
   "serviceCount",
+  "appCount",
   "appBridgeCount",
   "lifecycleCount",
   "widgetCount",
   "componentTypeCount",
   "viewCount",
 ] as const;
+
+const REQUIRED_SURFACE_RPC_METHODS: Record<RequiredSurface, string[]> = {
+  action: ["plugin.action.invoke"],
+  provider: ["plugin.provider.get"],
+  route: ["plugin.route.call"],
+  viewAsset: ["plugin.asset.get"],
+  model: ["plugin.model.invoke"],
+  lifecycle: ["plugin.lifecycle.call"],
+  event: ["plugin.event.handle"],
+  service: ["plugin.service.call"],
+  appBridge: ["plugin.appBridge.call"],
+  evaluator: [
+    "plugin.evaluator.shouldRun",
+    "plugin.evaluator.prepare",
+    "plugin.evaluator.prompt",
+    "plugin.evaluator.process",
+  ],
+  responseHandlerEvaluator: [
+    "plugin.responseHandlerEvaluator.shouldRun",
+    "plugin.responseHandlerEvaluator.evaluate",
+  ],
+  responseHandlerFieldEvaluator: [
+    "plugin.responseHandlerFieldEvaluator.shouldRun",
+    "plugin.responseHandlerFieldEvaluator.parse",
+    "plugin.responseHandlerFieldEvaluator.handle",
+  ],
+};
+
+const EMPTY_SHA256 =
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+const CANONICAL_PROVIDER_ENDPOINT_RUNTIMES = new Map([
+  ["e2b", "e2b-sandbox"],
+  ["home-machine", "home-machine"],
+  ["mobile-companion", "mobile-companion"],
+  ["desktop-companion", "desktop-companion"],
+]);
 
 type RequiredSurface = (typeof REQUIRED_SURFACES)[number];
 type RequiredRemoteModuleCountField =
@@ -48,6 +87,7 @@ type ValidatedReport = {
   kind: "cloud" | "provider";
   endpointId: string;
   provider?: string;
+  endpointUrlSha256?: string;
 };
 
 type ReportKind = ValidatedReport["kind"];
@@ -55,6 +95,8 @@ type ReportKind = ValidatedReport["kind"];
 type RemoteModuleCountTotals = Record<RequiredRemoteModuleCountField, number>;
 type RemoteSyncEvidence = {
   registeredPluginCount: number;
+  registeredModuleKeys: Set<string>;
+  registeredModuleCountsByKey: Map<string, RemoteModuleCountTotals>;
   registeredRemoteModuleCounts: RemoteModuleCountTotals;
 };
 
@@ -382,12 +424,25 @@ function validateReportFile(
     validateCiEvidence(report.ci, options.matchGithubEnv);
   }
   if (kind === "cloud") {
+    rejectReportFields(report, ["provider", "providerId", "endpointUrlSha256"]);
     requireString(report.agentId, "agentId");
     requireHttpBaseUrl(report.cloudApiBase, "cloudApiBase");
   }
   const provider =
     kind === "provider"
       ? requireProviderName(report.provider, "provider")
+      : undefined;
+  if (kind === "provider") {
+    rejectReportFields(report, ["agentId", "cloudApiBase"]);
+    const providerId = requireProviderName(report.providerId, "providerId");
+    if (providerId !== provider) {
+      throw new Error("providerId must match provider.");
+    }
+    validateProviderEvidence(report.providerEvidence, provider);
+  }
+  const endpointUrlSha256 =
+    kind === "provider"
+      ? requireSha256(report.endpointUrlSha256, "endpointUrlSha256")
       : undefined;
   if (options.requireFileIdentity) {
     validateReportFileIdentity(file, kind, provider);
@@ -419,7 +474,10 @@ function validateReportFile(
   }
   const observedModuleIds = new Set<string>();
   for (const [index, moduleId] of moduleIds.entries()) {
-    const id = requireString(moduleId, `conformance.moduleIds[${index}]`);
+    const id = requireRemotePluginModuleId(
+      moduleId,
+      `conformance.moduleIds[${index}]`,
+    );
     if (observedModuleIds.has(id)) {
       throw new Error("conformance.moduleIds must not contain duplicates.");
     }
@@ -460,6 +518,7 @@ function validateReportFile(
     );
   }
   const summarizedModuleExerciseTargets = new Set<string>();
+  const moduleExerciseKeys = new Set<string>();
   for (const [index, value] of requireArray(
     conformance.moduleExercises,
     "conformance.moduleExercises",
@@ -472,7 +531,7 @@ function validateReportFile(
       exercise.surface,
       `conformance.moduleExercises[${index}].surface`,
     );
-    const moduleId = requireString(
+    const moduleId = requireRemotePluginModuleId(
       exercise.moduleId,
       `conformance.moduleExercises[${index}].moduleId`,
     );
@@ -490,6 +549,13 @@ function validateReportFile(
         `conformance.moduleExercises[${index}].target must start with moduleId.`,
       );
     }
+    const exerciseKey = `${surface}\0${moduleId}\0${target}`;
+    if (moduleExerciseKeys.has(exerciseKey)) {
+      throw new Error(
+        "conformance.moduleExercises must not contain duplicates.",
+      );
+    }
+    moduleExerciseKeys.add(exerciseKey);
     exercisedModuleIds.add(moduleId);
     if (target === exercisedTargetsBySurface.get(surface)) {
       summarizedModuleExerciseTargets.add(`${surface}\0${target}`);
@@ -502,9 +568,15 @@ function validateReportFile(
       );
     }
   }
+  validateRpcCalls(
+    conformance.rpcCalls,
+    moduleExerciseKeys,
+    exercisedTargetsBySurface,
+    observedModuleIds,
+  );
 
-  requireObject(conformance.actionResult, "conformance.actionResult");
-  requireObject(conformance.providerResult, "conformance.providerResult");
+  validateActionResult(conformance.actionResult);
+  validateProviderResult(conformance.providerResult);
   const routeResult = requireObject(
     conformance.routeResult,
     "conformance.routeResult",
@@ -516,6 +588,11 @@ function validateReportFile(
   if (status < 200 || status > 299) {
     throw new Error(
       "conformance.routeResult.status must be a 2xx HTTP status.",
+    );
+  }
+  if (!isMeaningfulJsonEvidence(routeResult.body)) {
+    throw new Error(
+      "conformance.routeResult.body must be a non-empty JSON value.",
     );
   }
   const assetResult = requireObject(
@@ -536,6 +613,34 @@ function validateReportFile(
   if (!/(?:java|ecma)script/i.test(assetContentType)) {
     throw new Error("conformance.assetResult.contentType must be JavaScript.");
   }
+  const manifestContentType = optionalString(
+    assetResult.manifestContentType,
+    "conformance.assetResult.manifestContentType",
+  );
+  if (
+    manifestContentType !== undefined &&
+    manifestContentType !== assetContentType
+  ) {
+    throw new Error(
+      "conformance.assetResult.manifestContentType must match conformance.assetResult.contentType.",
+    );
+  }
+  const manifestIntegrity = optionalString(
+    assetResult.manifestIntegrity,
+    "conformance.assetResult.manifestIntegrity",
+  );
+  const assetIntegrity = optionalString(
+    assetResult.integrity,
+    "conformance.assetResult.integrity",
+  );
+  if (
+    manifestIntegrity !== undefined &&
+    manifestIntegrity !== assetIntegrity
+  ) {
+    throw new Error(
+      "conformance.assetResult.manifestIntegrity must match conformance.assetResult.integrity.",
+    );
+  }
   const byteLength = requireNumber(
     assetResult.byteLength,
     "conformance.assetResult.byteLength",
@@ -554,11 +659,19 @@ function validateReportFile(
     /^[0-9a-f]{64}$/i,
     "conformance.assetResult.sha256",
   );
-  requireObject(conformance.modelResult, "conformance.modelResult");
-  requireObject(conformance.lifecycleResult, "conformance.lifecycleResult");
-  requireObject(conformance.eventResult, "conformance.eventResult");
-  requireObject(conformance.serviceResult, "conformance.serviceResult");
-  requireObject(conformance.appBridgeResult, "conformance.appBridgeResult");
+  if (assetSha256.toLowerCase() === EMPTY_SHA256) {
+    throw new Error(
+      "conformance.assetResult.sha256 must not be the empty SHA-256 digest.",
+    );
+  }
+  if (assetIntegrity !== undefined) {
+    validateAssetIntegritySha256(assetIntegrity, assetSha256.toLowerCase());
+  }
+  validateModelResult(conformance.modelResult);
+  validateLifecycleResult(conformance.lifecycleResult);
+  validateEventResult(conformance.eventResult);
+  validateServiceResult(conformance.serviceResult);
+  validateAppBridgeResult(conformance.appBridgeResult);
   validateEvaluatorResult(conformance.evaluatorResult);
   validateResponseHandlerEvaluatorResult(
     conformance.responseHandlerEvaluatorResult,
@@ -578,7 +691,93 @@ function validateReportFile(
     kind,
     endpointId,
     ...(provider === undefined ? {} : { provider }),
+    ...(endpointUrlSha256 === undefined ? {} : { endpointUrlSha256 }),
   };
+}
+
+function rejectReportFields(
+  report: Record<string, unknown>,
+  fields: string[],
+): void {
+  const field = fields.find((candidate) => Object.hasOwn(report, candidate));
+  if (field) {
+    throw new Error(`${field} must not be present for ${report.kind} reports.`);
+  }
+}
+
+function validateRpcCalls(
+  value: unknown,
+  moduleExerciseKeys: Set<string>,
+  exercisedTargetsBySurface: Map<RequiredSurface, string>,
+  observedModuleIds: Set<string>,
+): void {
+  const rpcCalls = requireArray(value, "conformance.rpcCalls");
+  const rpcCallKeys = new Set<string>();
+  for (const [index, value] of rpcCalls.entries()) {
+    const call = requireObject(value, `conformance.rpcCalls[${index}]`);
+    const surface = requireRequiredSurface(
+      call.surface,
+      `conformance.rpcCalls[${index}].surface`,
+    );
+    const method = requireString(
+      call.method,
+      `conformance.rpcCalls[${index}].method`,
+    );
+    if (!REQUIRED_SURFACE_RPC_METHODS[surface].includes(method)) {
+      throw new Error(
+        `conformance.rpcCalls[${index}].method must be valid for its surface.`,
+      );
+    }
+    const moduleId = requireRemotePluginModuleId(
+      call.moduleId,
+      `conformance.rpcCalls[${index}].moduleId`,
+    );
+    const target = requireString(
+      call.target,
+      `conformance.rpcCalls[${index}].target`,
+    );
+    const targetModuleId = validateExercisedTargetModule(
+      surface,
+      target,
+      observedModuleIds,
+    );
+    if (targetModuleId !== moduleId) {
+      throw new Error(
+        `conformance.rpcCalls[${index}].target must start with moduleId.`,
+      );
+    }
+    const rpcCallKey = `${method}\0${surface}\0${moduleId}\0${target}`;
+    if (rpcCallKeys.has(rpcCallKey)) {
+      throw new Error("conformance.rpcCalls must not contain duplicates.");
+    }
+    rpcCallKeys.add(rpcCallKey);
+    if (!moduleExerciseKeys.has(`${surface}\0${moduleId}\0${target}`)) {
+      throw new Error(
+        "conformance.rpcCalls entries must be present in conformance.moduleExercises.",
+      );
+    }
+  }
+  for (const moduleExerciseKey of moduleExerciseKeys) {
+    const [surface] = moduleExerciseKey.split("\0") as [RequiredSurface];
+    for (const method of REQUIRED_SURFACE_RPC_METHODS[surface]) {
+      if (!rpcCallKeys.has(`${method}\0${moduleExerciseKey}`)) {
+        throw new Error(
+          "conformance.rpcCalls must include every required method for each conformance.moduleExercises entry.",
+        );
+      }
+    }
+  }
+  for (const [surface, target] of exercisedTargetsBySurface.entries()) {
+    const separatorIndex = target.indexOf(":");
+    const moduleId = target.slice(0, separatorIndex);
+    for (const method of REQUIRED_SURFACE_RPC_METHODS[surface]) {
+      if (!rpcCallKeys.has(`${method}\0${surface}\0${moduleId}\0${target}`)) {
+        throw new Error(
+          `conformance.rpcCalls must include conformance.exercised.${surface}.`,
+        );
+      }
+    }
+  }
 }
 
 function validateReportFileIdentity(
@@ -628,6 +827,47 @@ function validateCiEvidence(value: unknown, matchGithubEnv: boolean): void {
   assertMatchesEnv(ref, "GITHUB_REF", "ci.ref");
 }
 
+function validateProviderEvidence(value: unknown, provider: string): void {
+  const evidence = requireObject(value, "providerEvidence");
+  const evidenceProvider = requireProviderName(
+    evidence.provider,
+    "providerEvidence.provider",
+  );
+  if (evidenceProvider !== provider) {
+    throw new Error("providerEvidence.provider must match provider.");
+  }
+  const endpointRuntime = requireString(
+    evidence.endpointRuntime,
+    "providerEvidence.endpointRuntime",
+  );
+  const expectedEndpointRuntime =
+    CANONICAL_PROVIDER_ENDPOINT_RUNTIMES.get(provider);
+  if (
+    expectedEndpointRuntime !== undefined &&
+    endpointRuntime !== expectedEndpointRuntime
+  ) {
+    throw new Error(
+      `providerEvidence.endpointRuntime must be "${expectedEndpointRuntime}" for provider "${provider}".`,
+    );
+  }
+  const agentRuntime = requireString(
+    evidence.agentRuntime,
+    "providerEvidence.agentRuntime",
+  );
+  if (agentRuntime !== "github-actions") {
+    throw new Error('providerEvidence.agentRuntime must be "github-actions".');
+  }
+  const connection = requireString(
+    evidence.connection,
+    "providerEvidence.connection",
+  );
+  if (connection !== "url-backed-provider") {
+    throw new Error(
+      'providerEvidence.connection must be "url-backed-provider".',
+    );
+  }
+}
+
 function requirePattern(value: string, pattern: RegExp, field: string): void {
   if (!pattern.test(value)) {
     throw new Error(`${field} has invalid format.`);
@@ -664,6 +904,7 @@ function validateReportSet(
     });
   }
   const endpointOwners = new Map<string, string>();
+  const endpointUrlFingerprintOwners = new Map<string, string>();
   const providerOwners = new Map<string, string>();
   const allowedProviderSet =
     allowedProviders.length === 0 ? null : new Set(allowedProviders);
@@ -708,6 +949,19 @@ function validateReportSet(
       });
     } else {
       providerOwners.set(provider, report.file);
+    }
+    const endpointUrlSha256 = report.endpointUrlSha256;
+    if (endpointUrlSha256) {
+      const fingerprintOwner =
+        endpointUrlFingerprintOwners.get(endpointUrlSha256);
+      if (fingerprintOwner) {
+        failures.push({
+          file: report.file,
+          message: `endpointUrlSha256 duplicates ${fingerprintOwner}.`,
+        });
+      } else {
+        endpointUrlFingerprintOwners.set(endpointUrlSha256, report.file);
+      }
     }
   }
   for (const provider of requiredProviders) {
@@ -782,6 +1036,10 @@ function validateSyncEvidence(
     );
   }
   const registeredModuleKeys = new Set<string>();
+  const registeredModuleCountsByKey = new Map<
+    string,
+    RemoteModuleCountTotals
+  >();
   const registeredRemoteModuleCounts = Object.fromEntries(
     REQUIRED_REMOTE_MODULE_COUNT_FIELDS.map((field) => [field, 0]),
   ) as RemoteModuleCountTotals;
@@ -797,7 +1055,7 @@ function validateSyncEvidence(
         "sync.registeredModules pluginName must be present in sync.registered.",
       );
     }
-    const moduleId = requireString(
+    const moduleId = requireRemotePluginModuleId(
       item.moduleId,
       `sync.registeredModules[${index}].moduleId`,
     );
@@ -815,17 +1073,19 @@ function validateSyncEvidence(
         "sync.registeredModules endpointId must match report endpointId.",
       );
     }
+    let moduleSurfaceCount = 0;
     for (const field of REQUIRED_REMOTE_MODULE_COUNT_FIELDS) {
       const count = requireNonNegativeInteger(
         item[field],
         `sync.registeredModules[${index}].${field}`,
       );
-      if (count <= 0) {
-        throw new Error(
-          `sync.registeredModules[${index}].${field} must be greater than zero.`,
-        );
-      }
+      moduleSurfaceCount += count;
       registeredRemoteModuleCounts[field] += count;
+    }
+    if (moduleSurfaceCount <= 0) {
+      throw new Error(
+        `sync.registeredModules[${index}] must materialize at least one remote plugin surface.`,
+      );
     }
     registeredModuleIds.add(moduleId);
     const registeredModuleKey = `${moduleEndpointId}\0${moduleId}\0${pluginName}`;
@@ -833,6 +1093,22 @@ function validateSyncEvidence(
       throw new Error("sync.registeredModules must not contain duplicates.");
     }
     registeredModuleKeys.add(registeredModuleKey);
+    registeredModuleCountsByKey.set(
+      registeredModuleKey,
+      Object.fromEntries(
+        REQUIRED_REMOTE_MODULE_COUNT_FIELDS.map((field) => [
+          field,
+          item[field] as number,
+        ]),
+      ) as RemoteModuleCountTotals,
+    );
+  }
+  for (const [field, count] of Object.entries(registeredRemoteModuleCounts)) {
+    if (count <= 0) {
+      throw new Error(
+        `sync.registeredModules aggregate ${field} must be greater than zero.`,
+      );
+    }
   }
   for (const moduleId of observedModuleIds) {
     if (!registeredModuleIds.has(moduleId)) {
@@ -857,7 +1133,7 @@ function validateSyncEvidence(
         "sync.unloaded must not include plugins that are also registered.",
     },
   );
-  validatePluginNameList(sync.skipped, "sync.skipped", {
+  const skippedPluginNames = validatePluginNameList(sync.skipped, "sync.skipped", {
     disallow: registeredPluginNames,
     disallowMessage:
       "sync.skipped must not include plugins that are also registered.",
@@ -871,10 +1147,22 @@ function validateSyncEvidence(
   );
   const trustedModuleIds = new Set<string>();
   const trustedModuleKeys = new Set<string>();
+  const rejectedPluginNames = new Set<string>();
   for (const [index, decision] of trustDecisions.entries()) {
     const item = requireObject(decision, `sync.trustDecisions[${index}]`);
+    if (item.endpointId !== undefined && item.endpointId !== endpointId) {
+      continue;
+    }
+    if (item.trusted === false) {
+      const pluginName = requireString(
+        item.pluginName,
+        `sync.trustDecisions[${index}].pluginName`,
+      );
+      rejectedPluginNames.add(pluginName);
+      continue;
+    }
     if (item.trusted === true && item.endpointId === endpointId) {
-      const moduleId = requireString(
+      const moduleId = requireRemotePluginModuleId(
         item.moduleId,
         `sync.trustDecisions[${index}].moduleId`,
       );
@@ -900,6 +1188,13 @@ function validateSyncEvidence(
       }
     }
   }
+  for (const pluginName of skippedPluginNames) {
+    if (!rejectedPluginNames.has(pluginName)) {
+      throw new Error(
+        "sync.skipped entries must have a rejected sync.trustDecisions entry.",
+      );
+    }
+  }
   if (trustedModuleIds.size === 0) {
     throw new Error(
       "sync.trustDecisions must include at least one trusted module for endpointId.",
@@ -921,6 +1216,8 @@ function validateSyncEvidence(
   }
   return {
     registeredPluginCount: registered.length,
+    registeredModuleKeys,
+    registeredModuleCountsByKey,
     registeredRemoteModuleCounts,
   };
 }
@@ -930,7 +1227,17 @@ function validateRuntimeEvidence(
   syncEvidence: RemoteSyncEvidence,
 ): void {
   const runtime = requireObject(value, "runtime");
-  const { registeredPluginCount, registeredRemoteModuleCounts } = syncEvidence;
+  const {
+    registeredPluginCount,
+    registeredModuleKeys,
+    registeredModuleCountsByKey,
+    registeredRemoteModuleCounts,
+  } = syncEvidence;
+  validateRuntimeRemotePlugins(
+    runtime.remotePlugins,
+    registeredModuleKeys,
+    registeredModuleCountsByKey,
+  );
   requirePositiveCountAtLeast(
     runtime.pluginCount,
     "runtime.pluginCount",
@@ -972,9 +1279,19 @@ function validateRuntimeEvidence(
     registeredRemoteModuleCounts.modelCount,
   );
   requirePositiveCountAtLeast(
+    runtime.eventCount,
+    "runtime.eventCount",
+    registeredRemoteModuleCounts.eventCount,
+  );
+  requirePositiveCountAtLeast(
     runtime.serviceCount,
     "runtime.serviceCount",
     registeredRemoteModuleCounts.serviceCount,
+  );
+  requirePositiveCountAtLeast(
+    runtime.appCount,
+    "runtime.appCount",
+    registeredRemoteModuleCounts.appCount,
   );
   requirePositiveCountAtLeast(
     runtime.appBridgeCount,
@@ -1001,6 +1318,65 @@ function validateRuntimeEvidence(
     "runtime.viewCount",
     registeredRemoteModuleCounts.viewCount,
   );
+}
+
+function validateRuntimeRemotePlugins(
+  value: unknown,
+  registeredModuleKeys: Set<string>,
+  registeredModuleCountsByKey: Map<string, RemoteModuleCountTotals>,
+): void {
+  const remotePlugins = requireArray(value, "runtime.remotePlugins");
+  const runtimeModuleKeys = new Set<string>();
+  for (const [index, value] of remotePlugins.entries()) {
+    const item = requireObject(value, `runtime.remotePlugins[${index}]`);
+    const endpointId = requireString(
+      item.endpointId,
+      `runtime.remotePlugins[${index}].endpointId`,
+    );
+    const moduleId = requireRemotePluginModuleId(
+      item.moduleId,
+      `runtime.remotePlugins[${index}].moduleId`,
+    );
+    const pluginName = requireString(
+      item.pluginName,
+      `runtime.remotePlugins[${index}].pluginName`,
+    );
+    const runtimeModuleKey = `${endpointId}\0${moduleId}\0${pluginName}`;
+    if (runtimeModuleKeys.has(runtimeModuleKey)) {
+      throw new Error("runtime.remotePlugins must not contain duplicates.");
+    }
+    const registeredCounts = registeredModuleCountsByKey.get(runtimeModuleKey);
+    if (!registeredCounts) {
+      runtimeModuleKeys.add(runtimeModuleKey);
+      continue;
+    }
+    for (const field of REQUIRED_REMOTE_MODULE_COUNT_FIELDS) {
+      const runtimeCount = requireNonNegativeInteger(
+        item[field],
+        `runtime.remotePlugins[${index}].${field}`,
+      );
+      if (runtimeCount !== registeredCounts[field]) {
+        throw new Error(
+          `runtime.remotePlugins[${index}].${field} must match sync.registeredModules.`,
+        );
+      }
+    }
+    runtimeModuleKeys.add(runtimeModuleKey);
+  }
+  for (const registeredModuleKey of registeredModuleKeys) {
+    if (!runtimeModuleKeys.has(registeredModuleKey)) {
+      throw new Error(
+        "runtime.remotePlugins must include every sync.registeredModules entry.",
+      );
+    }
+  }
+  for (const runtimeModuleKey of runtimeModuleKeys) {
+    if (!registeredModuleKeys.has(runtimeModuleKey)) {
+      throw new Error(
+        "runtime.remotePlugins must not include entries absent from sync.registeredModules.",
+      );
+    }
+  }
 }
 
 function validatePluginNameList(
@@ -1067,6 +1443,88 @@ function assertNoSensitiveFields(value: unknown, path: string): void {
   }
 }
 
+function validateAssetIntegritySha256(
+  integrity: string,
+  assetSha256: string,
+): void {
+  const sha256Tokens = integrity
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.startsWith("sha256-"));
+  if (sha256Tokens.length === 0) {
+    throw new Error(
+      "conformance.assetResult.integrity must include a sha256 digest.",
+    );
+  }
+  const expectedDigest = Buffer.from(assetSha256, "hex").toString("base64");
+  if (!sha256Tokens.includes(`sha256-${expectedDigest}`)) {
+    throw new Error(
+      "conformance.assetResult.integrity must match conformance.assetResult.sha256.",
+    );
+  }
+}
+
+function isMeaningfulJsonEvidence(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
+}
+
+function validateModelResult(value: unknown): void {
+  const result = requireObject(value, "conformance.modelResult");
+  if (!Object.hasOwn(result, "result")) {
+    throw new Error("conformance.modelResult.result is required.");
+  }
+}
+
+function validateActionResult(value: unknown): void {
+  const result = requireObject(value, "conformance.actionResult");
+  requireAtLeastOneOwnProperty(
+    result,
+    ["text", "actions", "values", "data"],
+    "conformance.actionResult",
+  );
+}
+
+function validateProviderResult(value: unknown): void {
+  const result = requireObject(value, "conformance.providerResult");
+  requireAtLeastOneOwnProperty(
+    result,
+    ["text", "values", "data"],
+    "conformance.providerResult",
+  );
+}
+
+function validateLifecycleResult(value: unknown): void {
+  const result = requireObject(value, "conformance.lifecycleResult");
+  if (result.ok !== true) {
+    throw new Error("conformance.lifecycleResult.ok must be true.");
+  }
+}
+
+function validateEventResult(value: unknown): void {
+  const result = requireObject(value, "conformance.eventResult");
+  if (result.handled !== true) {
+    throw new Error("conformance.eventResult.handled must be true.");
+  }
+}
+
+function validateServiceResult(value: unknown): void {
+  const result = requireObject(value, "conformance.serviceResult");
+  if (!Object.hasOwn(result, "result")) {
+    throw new Error("conformance.serviceResult.result is required.");
+  }
+}
+
+function validateAppBridgeResult(value: unknown): void {
+  const result = requireObject(value, "conformance.appBridgeResult");
+  if (!Object.hasOwn(result, "result")) {
+    throw new Error("conformance.appBridgeResult.result is required.");
+  }
+}
+
 function validateEvaluatorResult(value: unknown): void {
   const result = requireObject(value, "conformance.evaluatorResult");
   const shouldRun = requireObject(
@@ -1084,7 +1542,13 @@ function validateEvaluatorResult(value: unknown): void {
     "conformance.evaluatorResult.prompt",
   );
   requireString(prompt.prompt, "conformance.evaluatorResult.prompt.prompt");
-  requireObject(result.process, "conformance.evaluatorResult.process");
+  const process = requireObject(
+    result.process,
+    "conformance.evaluatorResult.process",
+  );
+  if (!Object.hasOwn(process, "result")) {
+    throw new Error("conformance.evaluatorResult.process.result is required.");
+  }
 }
 
 function validateResponseHandlerEvaluatorResult(value: unknown): void {
@@ -1101,10 +1565,15 @@ function validateResponseHandlerEvaluatorResult(value: unknown): void {
       "conformance.responseHandlerEvaluatorResult.shouldRun.shouldRun must be boolean.",
     );
   }
-  requireObject(
+  const evaluate = requireObject(
     result.evaluate,
     "conformance.responseHandlerEvaluatorResult.evaluate",
   );
+  if (!Object.hasOwn(evaluate, "patch")) {
+    throw new Error(
+      "conformance.responseHandlerEvaluatorResult.evaluate.patch is required.",
+    );
+  }
 }
 
 function validateResponseHandlerFieldEvaluatorResult(value: unknown): void {
@@ -1121,14 +1590,34 @@ function validateResponseHandlerFieldEvaluatorResult(value: unknown): void {
       "conformance.responseHandlerFieldEvaluatorResult.shouldRun.shouldRun must be boolean.",
     );
   }
-  requireObject(
+  const parse = requireObject(
     result.parse,
     "conformance.responseHandlerFieldEvaluatorResult.parse",
   );
-  requireObject(
+  requireAtLeastOneOwnProperty(
+    parse,
+    ["value", "softFail"],
+    "conformance.responseHandlerFieldEvaluatorResult.parse",
+  );
+  const handle = requireObject(
     result.handle,
     "conformance.responseHandlerFieldEvaluatorResult.handle",
   );
+  if (!Object.hasOwn(handle, "effect")) {
+    throw new Error(
+      "conformance.responseHandlerFieldEvaluatorResult.handle.effect is required.",
+    );
+  }
+}
+
+function requireAtLeastOneOwnProperty(
+  value: Record<string, unknown>,
+  keys: string[],
+  field: string,
+): void {
+  if (!keys.some((key) => Object.hasOwn(value, key))) {
+    throw new Error(`${field} must include at least one result field.`);
+  }
 }
 
 function parseJson(source: string, file: string): Record<string, unknown> {
@@ -1163,11 +1652,26 @@ function requireString(value: unknown, field: string): string {
   return value;
 }
 
+function optionalString(value: unknown, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  return requireString(value, field);
+}
+
 function requireEndpointId(value: unknown, field: string): string {
   const text = requireString(value, field);
   if (!/^[A-Za-z0-9._:-]+$/.test(text)) {
     throw new Error(
       `${field} must contain only letters, numbers, dots, underscores, colons, or hyphens.`,
+    );
+  }
+  return text;
+}
+
+function requireRemotePluginModuleId(value: unknown, field: string): string {
+  const text = requireString(value, field);
+  if (!/^[A-Za-z0-9._-]+$/.test(text)) {
+    throw new Error(
+      `${field} must use letters, numbers, dots, underscores, or hyphens.`,
     );
   }
   return text;
@@ -1181,6 +1685,12 @@ function requireProviderName(value: unknown, field: string): string {
     );
   }
   return text;
+}
+
+function requireSha256(value: unknown, field: string): string {
+  const text = requireString(value, field);
+  requirePattern(text, /^[0-9a-f]{64}$/i, field);
+  return text.toLowerCase();
 }
 
 function requireHttpBaseUrl(value: unknown, field: string): string {

@@ -2,7 +2,7 @@
 set -eu
 
 repo_dir="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
-image="${CHIPYARD_DOCKER_IMAGE:-eliza/chipyard-eliza-minimal-amd64:1.13.0}"
+image="${CHIPYARD_DOCKER_IMAGE:-eliza/chipyard-eliza-minimal-amd64:main-2026-05-20}"
 platform="${CHIPYARD_DOCKER_PLATFORM:-linux/amd64}"
 out_dir="$repo_dir/build/chipyard/eliza_rocket"
 log="$out_dir/verilator-linux-smoke.log"

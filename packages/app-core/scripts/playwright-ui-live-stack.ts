@@ -16,7 +16,7 @@ import { selectLiveProvider } from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 const APP_DIR = resolveMainAppDir(REPO_ROOT, "app");
 const APP_DIST_DIR = path.join(APP_DIR, "dist");
 const COMPANION_PUBLIC_DIR = path.join(
@@ -43,6 +43,37 @@ type StartedStack = {
   uiBase: string;
   uiServer: Server;
 };
+
+function resolveBunCommand(): string {
+  const bunFromEnv = process.env.BUN?.trim();
+  if (bunFromEnv && existsSync(bunFromEnv)) {
+    return bunFromEnv;
+  }
+
+  const bunInstallRoot = process.env.BUN_INSTALL?.trim();
+  if (bunInstallRoot) {
+    const bunFromInstall = path.join(
+      bunInstallRoot,
+      "bin",
+      process.platform === "win32" ? "bun.exe" : "bun",
+    );
+    if (existsSync(bunFromInstall)) {
+      return bunFromInstall;
+    }
+  }
+
+  const homeBun = path.join(
+    os.homedir(),
+    ".bun",
+    "bin",
+    process.platform === "win32" ? "bun.exe" : "bun",
+  );
+  if (existsSync(homeBun)) {
+    return homeBun;
+  }
+
+  return process.platform === "win32" ? "bun.exe" : "bun";
+}
 
 function contentTypeFor(filePath: string): string {
   switch (path.extname(filePath).toLowerCase()) {
@@ -437,7 +468,7 @@ async function ensureUiDistReady(): Promise<void> {
   }
 
   const logs: string[] = [];
-  const child = spawn("bun", ["run", "build:web"], {
+  const child = spawn(resolveBunCommand(), ["run", "build:web"], {
     cwd: APP_DIR,
     env: {
       ...process.env,
@@ -489,7 +520,7 @@ async function submitOnboarding(apiBase: string): Promise<void> {
     body: JSON.stringify({
       name: "Playwright Smoke",
       bio: ["A real runtime used by the UI smoke suite."],
-      systemPrompt: "You are a concise assistant for Playwright smoke tests.",
+      systemPrompt: "Concise assistant for Playwright smoke tests.",
       language: "en",
       presetId: "default",
       avatarIndex: 0,
@@ -578,8 +609,8 @@ async function startRealStack(): Promise<StartedStack> {
   const apiChild = spawn(
     "node",
     [
-      path.join(REPO_ROOT, "eliza/packages/app-core/scripts/run-node-tsx.mjs"),
-      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/eliza.ts"),
+      path.join(REPO_ROOT, "packages/app-core/scripts/run-node-tsx.mjs"),
+      path.join(REPO_ROOT, "packages/app-core/src/runtime/eliza.ts"),
     ],
     {
       cwd: REPO_ROOT,

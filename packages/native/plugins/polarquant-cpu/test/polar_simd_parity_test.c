@@ -129,24 +129,34 @@ static int dot_parity(int use_qjl) {
      * uses double-precision accumulation in both implementations, so
      * the two answers should agree to within fp32 rounding of the
      * difference between the SIMD and scalar Hadamard orderings.
+     *
+     * RVV's vfredusum is unordered (tree reduction) vs scalar's strict
+     * left-to-right, so it can drift up to ~ULP further than AVX2/NEON.
+     * We honour that with a per-path budget: 1e-5 rel for x86/arm,
+     * 5e-5 rel / 1e-4 abs for RVV (matching the Wave 3 contract).
      */
     float ref_dot  = 0.0f;
     float simd_dot = 0.0f;
     ggml_vec_dot_q4_polar_q8_0_ref(N_TOTAL, &ref_dot,  wblocks, ablocks, use_qjl);
     ggml_vec_dot_q4_polar_q8_0    (N_TOTAL, &simd_dot, wblocks, ablocks, use_qjl);
 
-    const double abs_err = fabs((double)ref_dot - (double)simd_dot);
-    const double rel_err = abs_err / fabs((double)ref_dot);
-    const double rel_budget = 1e-5;
+    const char * active   = polarquant_active_simd();
+    const int    is_rvv   = (active[0] == 'r' && active[1] == 'v' && active[2] == 'v');
+    const double abs_err  = fabs((double)ref_dot - (double)simd_dot);
+    const double rel_err  = abs_err / fabs((double)ref_dot);
+    const double rel_budget = is_rvv ? 5e-5 : 1e-5;
+    const double abs_budget = is_rvv ? 1e-4 : 1e-5;
 
-    printf("[simd-parity dot] use_qjl=%d simd=%s  ref=%.6f simd=%.6f  rel_err=%.3e  budget=%.0e\n",
-           use_qjl, polarquant_active_simd(), (double)ref_dot, (double)simd_dot,
-           rel_err, rel_budget);
+    printf("[simd-parity dot] use_qjl=%d simd=%s  ref=%.6f simd=%.6f  rel_err=%.3e  abs_err=%.3e  budget=(rel %.0e, abs %.0e)\n",
+           use_qjl, active, (double)ref_dot, (double)simd_dot,
+           rel_err, abs_err, rel_budget, abs_budget);
 
-    if (rel_err > rel_budget) {
+    /* Accept either budget: small dot magnitudes inflate rel_err
+     * spuriously, while large ones make abs_err inflate. */
+    if (rel_err > rel_budget && abs_err > abs_budget) {
         fprintf(stderr,
-                "FAIL: dot SIMD parity rel_err %.3e exceeds %.0e\n",
-                rel_err, rel_budget);
+                "FAIL: dot SIMD parity rel=%.3e abs=%.3e exceeds (%.0e, %.0e)\n",
+                rel_err, abs_err, rel_budget, abs_budget);
         return 1;
     }
     return 0;
