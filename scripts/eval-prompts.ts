@@ -327,6 +327,7 @@ const STRUCT_JUDGE_TASKS = new Set([
 const FIELD_MATCH_TASKS: Record<string, string> = {
   update_role: "new_role",
   choose_option: "selected_id",
+  add_contact: "contactName",
 };
 
 function buildScorer(task: string, _adapter: LlmAdapter, useJudge: boolean) {
@@ -607,39 +608,53 @@ async function runGepa(
   return { optimizedPrompt: best.prompt, score: best.score, baseline: baseline.score, lineage };
 }
 
-// ── Baseline prompts ──────────────────────────────────────────────────────────
+// ── Baseline prompts (v3 — all P0/P1 violations fixed, production-quality) ────
 
 const BASELINE_PROMPTS: Record<string, string> = {
   should_respond: `Decide whether to respond to this message.
 
-Output YES if you should respond, or NO if you should not.
+Respond (YES):
+- The message directly addresses or mentions you
+- The message asks a question or makes a request you can address
+- The message is a general call for help with no specific addressee
 
-Consider:
-- Is the message directed at you or relevant to you?
-- Is the message a question or request that needs a response?
-- Is the message in a group chat where your response adds value?
+Do not respond (NO):
+- The message is addressed to someone else
+- The message is purely gratitude, agreement, or acknowledgment with no request
+- The message is only an emoji, punctuation, or ambient reaction
+- No response is expected or needed
 
-Output format: Just "YES" or "NO" on a single line.`,
+Output ONLY the word YES or NO — no spaces, line breaks, or other characters.`,
 
-  action_planner: `Select the next action to take based on the conversation context.
+  action_planner: `Select the next action based on the conversation context.
 
-Available actions and when to use them:
-- REPLY: Send a text response (greetings, factual answers, conversational responses)
-- SEARCH: Look up information on the internet (current events, product info, unknown facts)
+Actions:
+- REPLY: Send a text response (greetings, factual answers, questions, requests for information)
+- SEARCH: Look up information online (current events, product details, unknown facts)
 - SCHEDULE: Create a calendar event (meetings, appointments, time blocks)
-- REMIND: Set a reminder (future tasks, time-based alerts, medication reminders)
-- NOTES: Save a note or piece of information (ideas, lists, things to remember)
-- NONE: No action needed — use when message is: emoji-only (👍, 🎉), single punctuation (. or ...), ambient acknowledgment with no request, or pure reaction content that needs no response
+- REMIND: Set a reminder (future tasks, time-based alerts, medication)
+- NOTES: Save information (ideas, lists, things to remember)
+- NONE: No response needed
 
-NONE examples: "👍", "...", ".", "👌", "ok cool" (with no follow-up ask), reactions to prior messages
+Use NONE when the message is: emoji-only, single punctuation, pure reaction with no question or request, or acknowledgment that needs no answer.
+Examples of NONE: "👍", "...", ".", "lol", "ok cool" (no follow-up ask), "👌", "🎉"
+Default to REPLY when uncertain.
 
-Return ONLY a JSON object in this exact format:
-{"toolCalls": [{"name": "ACTION_NAME", "args": {}}]}
+Return ONLY this JSON (no extra whitespace):
+{"toolCalls":[{"name":"ACTION_NAME","args":{}}]}
 
 No explanation. JSON only.`,
 
-  // Intentionally verbose baseline — demonstrates GEPA can recover from bad prompting
-  response: `When responding to user messages, always be warm and comprehensive. Begin every response by acknowledging the question, such as "Sure! I'd be happy to help with that!" or "Great question!". Then provide a thorough, multi-paragraph explanation with full background context and relevant considerations. Include appropriate caveats and qualifications where applicable. Conclude by inviting follow-up questions, e.g. "I hope this helps! Let me know if you have any other questions!"`,
+  // Production baseline — answer first, no preamble, accurate facts
+  response: `Answer the user's message directly. Lead with the answer — no acknowledgment, preamble, or closing filler.
+
+Rules:
+- Simple facts: one word or one sentence (capital of Australia = Canberra, 7×8 = 56)
+- Math: compute and state the result first
+- Conversational: natural, brief reply matched to the tone
+- Complex questions: a few sentences maximum; go longer only if detail is genuinely needed
+- Zero padding: never start with "Sure!", "Great question!", "Absolutely!" or end with "I hope this helps!" / "Let me know if..."
+- If genuinely uncertain, say so in one phrase — do not hedge on things you know`,
 
   media_description: `Describe the media file (image, audio, or video).
 
@@ -651,47 +666,45 @@ Include:
 
 Be objective and factual. Do not make assumptions beyond what is clearly present.`,
 
-  // Real runtime prompt from elizaOS — shouldRespondTemplate (simplified for eval)
-  should_respond_runtime: `task: Decide whether the agent should respond, ignore, or stop.
+  // Real runtime prompt from elizaOS — shouldRespondTemplate (improved with ordered rules)
+  should_respond_runtime: `Decide whether the agent should respond to the latest message.
 
-rules:
-- direct mention of agent name -> RESPOND
-- talking to someone else -> IGNORE unless agent is also directly addressed
-- prior participation alone is not enough; newest message must clearly expect agent
-- request to stop or be quiet directed at agent -> STOP
-- in groups, if latest message is addressed to someone else, IGNORE
-- when unsure, default IGNORE
+Rules (apply in order):
+1. Request to stop or be quiet directed at the agent → NO
+2. Direct mention of agent name or handle → YES
+3. Generic request for help with no specific addressee ("Can anyone help me…", "Anyone know…") → YES
+4. Message clearly addressed to someone else → NO
+5. Message clearly expects a response from the agent based on context → YES
+6. When uncertain → NO
 
 Output ONLY one of: YES (respond) or NO (ignore/stop)`,
 
-  // FACT_EXTRACTION_TEMPLATE baseline (real elizaOS template, Handlebars vars inlined as context in user turn)
-  fact_extraction: `# Task: Classify and extract facts from this message
+  // FACT_EXTRACTION_TEMPLATE baseline — clean schema, no ellipsis, no structured_fields
+  fact_extraction: `Classify and extract facts from this message. Manage two fact stores:
 
-You maintain two fact stores. Decide what to insert, strengthen, decay, or contradict. Return JSON ops only.
+durable — stable claims that matter in a year
+  Categories: identity, health, relationship, life_event, business_role, preference, goal
 
-Stores:
-- durable: stable identity-level claims that matter in a year.
-  Categories: identity, health, relationship, life_event, business_role, preference, goal.
-- current: time-bound state about now or near term.
-  Categories: feeling, physical_state, working_on, going_through, schedule_context.
+current — time-bound state about now or near future
+  Categories: feeling, physical_state, working_on, going_through, schedule_context
 
 Rules:
-- If a claim feels stale or surprising to retrieve in a year, use current.
-- Empty output is right for small talk or claim-free questions.
-- Before add_durable/add_current, scan known facts. If meaning exists, emit strengthen with that factId.
-- Paraphrases count as duplicates. Match meaning, not surface form.
+- Use current if a claim would be stale or surprising to retrieve in a year
+- Before adding, check if an equivalent fact already exists — if so, emit strengthen instead
+- Paraphrases count as duplicates (match meaning, not surface form)
+- Return {"ops":[]} for small talk, questions, or claim-free messages
 
-Ops:
-- add_durable: claim, category, structured_fields, keywords
-- add_current: claim, category, structured_fields, keywords
-- strengthen: factId, optional reason
-- decay: factId, optional reason
-- contradict: factId, reason, optional proposedText
+Ops schema — each op is a flat JSON object:
+{"op":"add_durable","claim":"string","category":"string","keywords":["string"]}
+{"op":"add_current","claim":"string","category":"string","keywords":["string"]}
+{"op":"strengthen","factId":"string","reason":"string"}
+{"op":"decay","factId":"string","reason":"string"}
+{"op":"contradict","factId":"string","reason":"string","proposedText":"string"}
 
-For add_durable/add_current, include keywords: 3-8 lowercase retrieval terms.
+keywords: 3–8 lowercase retrieval terms per add op.
 
-Return {"ops":[]} when nothing to extract.
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+Output: {"ops":[...]}
+JSON only. No prose, fences, markdown, or thinking.`,
 
   // INITIAL_SUMMARIZATION_TEMPLATE baseline
   conversation_summary: `# Task: Summarize Conversation
@@ -740,13 +753,13 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
   // REPLY_TEMPLATE baseline — generates agent dialog
   reply: `Generate the next message in the conversation.
 
-Write a natural, helpful reply to the user's message. Be direct and conversational.
+Write a natural, helpful reply to the user's message. Be direct and conversational, using only short phrasing.
 
 JSON:
-thought: Your brief reasoning
-text: Your message to the user
+thought: A brief label (≤3 words) summarizing your reasoning
+text: A concise reply (1–2 sentences, no filler phrases or extra politeness)
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+Return exactly one JSON object with only these two fields. No prose, fences, or additional markup.`,
 
   // OBSERVATION_EXTRACTION_TEMPLATE baseline
   observation_extraction: `Extract durable observations about the user from recent conversation exchanges.
@@ -862,62 +875,53 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
   // CUSTOM_ACTION_GENERATE_TEMPLATE baseline
   custom_action_generate: `Generate a custom action definition from the user's description.
 
-Return a JSON object with:
-- name: UPPER_SNAKE_CASE action name
-- description: what the action does
-- handlerType: "http" | "shell" | "code"
-- handler: object with type-specific fields
-- parameters: array of {name, description, required}
+Return a JSON object with exactly these fields:
+- name: UPPER_SNAKE_CASE action name (e.g. HTTP_GET, SLACK_WEBHOOK)
+- description: concise description of what the action does
+- handlerType: "http", "shell", or "code"
+- handler: object — MUST include "type" field equal to handlerType, plus type-specific fields:
+  - http handler needs: type, url, method (GET/POST/PUT/DELETE), headers (object)
+  - shell handler needs: type, command (bash string)
+  - code handler needs: type, script (JS/TS string)
+- parameters: array of objects, each with: name, description, required (boolean)
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 
   // SHOULD_FOLLOW_ROOM_TEMPLATE baseline
   should_follow_room: `Decide whether the agent should follow this room.
 
-Return true only when the user clearly asks the agent to follow this room.
-Return false when the request is ambiguous or unrelated.
+Return {"decision":true} only when the user clearly asks the agent to follow, join, subscribe to, or track this room.
+Return {"decision":false} when the request is ambiguous, unrelated, or not a follow request.
 Default to false when uncertain.
 
-JSON:
-decision: true|false
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+JSON only. Return exactly: {"decision":true} or {"decision":false}. No prose, fences, or markdown.`,
 
   // SHOULD_MUTE_ROOM_TEMPLATE baseline
   should_mute_room: `Decide whether the agent should mute this room.
 
-Return true only when the user clearly asks the agent to mute this room.
-Return false when the request is ambiguous or unrelated.
+Return {"decision":true} only when the user clearly asks the agent to mute, silence, or stop notifications for this room.
+Return {"decision":false} when the request is ambiguous, unrelated, or not a mute request.
 Default to false when uncertain.
 
-JSON:
-decision: true|false
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+JSON only. Return exactly: {"decision":true} or {"decision":false}. No prose, fences, or markdown.`,
 
   // SHOULD_UNFOLLOW_ROOM_TEMPLATE baseline
   should_unfollow_room: `Decide whether the agent should unfollow this room.
 
-Return true only when the user clearly asks the agent to unfollow or leave this room.
-Return false when the request is ambiguous or unrelated.
+Return {"decision":true} only when the user clearly asks the agent to unfollow, leave, stop tracking, or exit this room.
+Return {"decision":false} when the request is ambiguous, unrelated, or not an unfollow request.
 Default to false when uncertain.
 
-JSON:
-decision: true|false
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+JSON only. Return exactly: {"decision":true} or {"decision":false}. No prose, fences, or markdown.`,
 
   // SHOULD_UNMUTE_ROOM_TEMPLATE baseline
   should_unmute_room: `Decide whether the agent should unmute this room.
 
-Return true only when the user clearly asks the agent to unmute this room.
-Return false when the request is ambiguous or unrelated.
+Return {"decision":true} only when the user clearly asks the agent to unmute, listen again, respond again, or resume in this room.
+Return {"decision":false} when the request is ambiguous, unrelated, or not an unmute request.
 Default to false when uncertain.
 
-JSON:
-decision: true|false
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+JSON only. Return exactly: {"decision":true} or {"decision":false}. No prose, fences, or markdown.`,
 
   // ADD_CONTACT_TEMPLATE baseline
   add_contact: `Extract contact information to add to relationships from the user's message.
@@ -925,25 +929,27 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 Identify the contact name, categories, notes, timezone, and language when clearly present.
 Include a short reason for saving this contact.
 
-JSON:
-contactName: Name of the contact
-entityId: null or UUID if known
-categories: comma-separated (vip, colleague, friend, etc.)
-notes: relevant notes if present
-reason: why to save this contact
+Return a JSON object with these fields:
+- contactName: the person's name
+- entityId: null (always null unless a UUID is explicitly provided)
+- categories: primary category string — one of: vip, colleague, friend, family, personal, acquaintance
+- notes: relevant notes if clearly present, else omit
+- reason: why to save this contact
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 
   // SEARCH_CONTACTS_TEMPLATE baseline
   search_contacts: `Extract contact search criteria from the user's message.
 
-Identify the search intent and any filters mentioned.
+Determine whether the user wants to count or list contacts, and extract any filter criteria.
 
-JSON:
-categories: comma-separated filter list (if any)
-tags: comma-separated tag filter (if any)
-searchTerm: name or free-text lookup (if any)
-intent: count|list
+Return a JSON object:
+{"categories":["category1","category2"],"tags":["tag1"],"searchTerm":"name or null","intent":"count"|"list"}
+
+categories: array of matching category labels (e.g. "vip", "colleague", "friend"). Empty array if none specified.
+tags: array of tag filters. Empty array if none.
+searchTerm: exact name or free-text lookup string, or null.
+intent: "count" if asking how many, "list" if asking who/show/find.
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 
