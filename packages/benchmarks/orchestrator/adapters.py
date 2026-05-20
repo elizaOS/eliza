@@ -499,12 +499,13 @@ def _is_vision_language_multimodal_model(*, provider: str, model: str) -> bool:
     model_key = model.strip().lower()
     if not model_key:
         return False
-    if provider_key == "cerebras":
-        return False
     multimodal_markers = (
         "gpt-4o",
         "gpt-4.1",
         "o4-mini",
+        "kimi",
+        "gemma-4",
+        "gemma4",
         "qwen-vl",
         "qwen2-vl",
         "qwen2.5-vl",
