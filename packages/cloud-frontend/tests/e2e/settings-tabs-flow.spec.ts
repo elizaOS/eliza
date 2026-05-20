@@ -349,7 +349,7 @@ test("settings tabs: desktop navigation renders each tab surface", async ({
   await main.getByRole("button", { name: "APIs" }).click();
   await expect(main.getByRole("heading", { name: "API keys" })).toBeVisible();
   await expect(
-    main.getByRole("heading", { name: "Settings tab key" }),
+    main.getByRole("heading", { name: "Settings tab key" }).first(),
   ).toBeVisible();
 
   await main.getByRole("button", { name: "Analytics" }).click();
