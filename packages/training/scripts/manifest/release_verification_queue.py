@@ -128,42 +128,56 @@ def _eval_suite_command(eval_python: str, bundle: str, tier: str, *extra: str) -
     return " ".join(args)
 
 
+def _process_guard_command(eval_python: str) -> str:
+    return f"{eval_python} packages/training/scripts/manifest/release_process_guard.py"
+
+
+def _guarded(eval_python: str, command: str) -> str:
+    return f"{_process_guard_command(eval_python)} && {command}"
+
+
 def _backend_command(bundle_root: str, verify_dir: str, tier: str, backend: str, eval_python: str) -> str:
     bundle = _bundle_dir(bundle_root, tier)
     if backend == "cpu":
-        return (
+        return _guarded(
+            eval_python,
             f"make -C {verify_dir} reference-test && "
-            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cpu', '--threads', '8')}"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cpu', '--threads', '8')}",
         )
     if backend == "metal":
-        return (
+        return _guarded(
+            eval_python,
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal && "
             f"make -C {verify_dir} metal-verify dispatch-smoke && "
-            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'metal')}"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'metal')}",
         )
     if backend == "vulkan":
-        return (
+        return _guarded(
+            eval_python,
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-vulkan && "
             f"make -C {verify_dir} vulkan_verify vulkan-dispatch-smoke && "
-            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'vulkan')}"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'vulkan')}",
         )
     if backend == "cuda":
-        return (
+        return _guarded(
+            eval_python,
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda && "
             f"{verify_dir}/cuda_runner.sh && "
-            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cuda')}"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cuda')}",
         )
     if backend == "rocm":
-        return (
+        return _guarded(
+            eval_python,
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-rocm && "
             f"make -C {verify_dir} rocm_verify rocm-dispatch-smoke && "
-            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'rocm')}"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'rocm')}",
         )
     raise ValueError(f"unsupported backend {backend!r}")
 
 
-def _imagegen_command(accelerator: str) -> str:
-    return (
+def _imagegen_command(accelerator: str, eval_python: str) -> str:
+    return _guarded(
+        eval_python,
         f"ELIZA_IMAGEGEN_ACCELERATOR={accelerator} "
         "node plugins/plugin-local-inference/scripts/probe-sd-cpp.mjs --json "
         f"| python3 -c \"import json,sys; p=json.load(sys.stdin); "
@@ -174,7 +188,7 @@ def _imagegen_command(accelerator: str) -> str:
         "plugins/plugin-local-inference/__tests__/imagegen-publishing.test.ts "
         "plugins/plugin-local-inference/__tests__/imagegen-sd-cpp-probe.test.ts && "
         f"publish evidence/imagegen/{accelerator}.json and refresh "
-        "evidence/imagegen/sd-cpp-runtime.json only after real image smoke reports pass"
+        "evidence/imagegen/sd-cpp-runtime.json only after real image smoke reports pass",
     )
 
 
@@ -182,7 +196,8 @@ def _mtp_command(bundle_root: str, tier: str, eval_python: str) -> str:
     bundle = _bundle_dir(bundle_root, tier)
     validation_tier = "27b" if tier == "27b-256k" else tier
     target_gguf = Path(bundle) / text_artifact_name(tier, "256k")
-    return (
+    return _guarded(
+        eval_python,
         f"{eval_python} packages/training/scripts/dflash/validate_drafter.py "
         f"--tier {validation_tier} "
         f"--target-gguf {target_gguf} "
@@ -203,12 +218,13 @@ def _mtp_command(bundle_root: str, tier: str, eval_python: str) -> str:
         f"publish bundles/{tier}/dflash/target-meta.json, "
         f"bundles/{tier}/dflash/validation-real.json, "
         f"bundles/{tier}/dflash/runtime-smoke-native.json, and "
-        f"bundles/{tier}/evals/dflash-accept.json only after native runtime acceptanceRate and speedup meet the release gates"
+        f"bundles/{tier}/evals/dflash-accept.json only after native runtime acceptanceRate and speedup meet the release gates",
     )
 
 
 def _finetune_command(eval_python: str) -> str:
-    return (
+    return _guarded(
+        eval_python,
         "hf download elizaos/eliza-1-training --type dataset --include 'sft/0_8b/*' "
         "--local-dir /tmp/eliza-1-training && "
         "cd packages/training && "
@@ -224,7 +240,7 @@ def _finetune_command(eval_python: str) -> str:
         "--out-dir /tmp/eliza-1-finetune-native-tool-call && "
         "publish bundles/0_8b/finetuned-v2/eliza-1-0_8b-sft.gguf plus "
         "evidence/training/fine-tune-comparison.json only after baseline-vs-finetuned "
-        "eliza_bench, native_tool_call, and structured_response reports pass"
+        "eliza_bench, native_tool_call, and structured_response reports pass",
     )
 
 
@@ -410,7 +426,7 @@ def build_queue(
                     category="imagegenEvidence",
                     priority=priority,
                     requires_hardware=requires_hardware,
-                    command=_imagegen_command(accelerator),
+                    command=_imagegen_command(accelerator, eval_python),
                     evidence=(
                         "evidence/imagegen/sd-cpp-runtime.json",
                         f"evidence/imagegen/{accelerator}.json",
