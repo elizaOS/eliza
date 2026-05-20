@@ -1,0 +1,80 @@
+{
+  "task_id": "walk_forward",
+  "passed": true,
+  "confidence": 0.65,
+  "critique": "Mock VLM eval for task `unknown`. 1 frame(s) inspected. Each criterion (delta_x_m_min, window_s, max_lateral_drift_m) checked. Replace MockBackend with AnthropicBackend by setting ANTHROPIC_API_KEY to get a real critique.",
+  "suggestions": [
+    "set ANTHROPIC_API_KEY to enable real VLM grading",
+    "increase episode duration so the agent reaches steady state"
+  ],
+  "criteria": [
+    {
+      "name": "delta_x_m_min",
+      "target": "per spec",
+      "observation": "appears consistent with target for delta_x_m_min",
+      "satisfied": true,
+      "confidence": 0.7
+    },
+    {
+      "name": "window_s",
+      "target": "per spec",
+      "observation": "appears consistent with target for window_s",
+      "satisfied": true,
+      "confidence": 0.7
+    },
+    {
+      "name": "max_lateral_drift_m",
+      "target": "per spec",
+      "observation": "appears consistent with target for max_lateral_drift_m",
+      "satisfied": true,
+      "confidence": 0.7
+    },
+    {
+      "name": "no_fall",
+      "target": "per spec",
+      "observation": "appears consistent with target for no_fall",
+      "satisfied": true,
+      "confidence": 0.7
+    }
+  ],
+  "model": "mock",
+  "raw_response": {
+    "passed": true,
+    "confidence": 0.65,
+    "critique": "Mock VLM eval for task `unknown`. 1 frame(s) inspected. Each criterion (delta_x_m_min, window_s, max_lateral_drift_m) checked. Replace MockBackend with AnthropicBackend by setting ANTHROPIC_API_KEY to get a real critique.",
+    "suggestions": [
+      "set ANTHROPIC_API_KEY to enable real VLM grading",
+      "increase episode duration so the agent reaches steady state"
+    ],
+    "criteria": [
+      {
+        "name": "delta_x_m_min",
+        "target": "per spec",
+        "observation": "appears consistent with target for delta_x_m_min",
+        "satisfied": true,
+        "confidence": 0.7
+      },
+      {
+        "name": "window_s",
+        "target": "per spec",
+        "observation": "appears consistent with target for window_s",
+        "satisfied": true,
+        "confidence": 0.7
+      },
+      {
+        "name": "max_lateral_drift_m",
+        "target": "per spec",
+        "observation": "appears consistent with target for max_lateral_drift_m",
+        "satisfied": true,
+        "confidence": 0.7
+      },
+      {
+        "name": "no_fall",
+        "target": "per spec",
+        "observation": "appears consistent with target for no_fall",
+        "satisfied": true,
+        "confidence": 0.7
+      }
+    ]
+  }
+}
