@@ -6,7 +6,7 @@ import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { calculateDailyContainerCost } from "../constants/pricing";
 import { logger } from "../utils/logger";
-import { elizaSandboxService } from "./eliza-sandbox";
+import { provisioningJobService } from "./provisioning-jobs";
 
 export type BillableResourceType = "container" | "agent_sandbox";
 export type BillableInterval = "day" | "hour";
@@ -348,6 +348,7 @@ class ActiveBillingService {
         const infrastructureAction = await cancelAgentInfrastructure(
           agent.id,
           organizationId,
+          agent.user_id,
           mode,
         );
         const unitPrice =
@@ -483,30 +484,38 @@ async function cancelContainerInfrastructure(
 async function cancelAgentInfrastructure(
   agentId: string,
   organizationId: string,
+  userId: string,
   mode: "stop" | "delete",
 ): Promise<InfrastructureCancellationAction> {
   try {
-    const result =
-      mode === "delete"
-        ? await elizaSandboxService.deleteAgent(agentId, organizationId)
-        : await elizaSandboxService.shutdown(agentId, organizationId);
-
-    if (!result.success) {
-      return {
-        attempted: true,
-        status: "failed",
-        message: result.error ?? "Agent lifecycle operation failed.",
-        error: result.error,
-      };
+    // Both the delete and stop paths SSH into the assigned core. They
+    // can't run inline here (this service is consumed from Cloudflare
+    // Workers, which have no SSH). Enqueue the appropriate job; the
+    // orchestrator daemon executes it. Status values are kept on the
+    // "outcome will be" semantics so the billing flow can finalize
+    // the subscription without waiting on the daemon.
+    if (mode === "delete") {
+      await provisioningJobService.enqueueAgentDeleteOnce({
+        agentId,
+        organizationId,
+        userId,
+      });
+    } else {
+      await provisioningJobService.enqueueAgentSuspendOnce({
+        agentId,
+        organizationId,
+        userId,
+      });
     }
+    void provisioningJobService.triggerImmediate().catch(() => {});
 
     return {
       attempted: true,
       status: mode === "delete" ? "deleted" : "stopped",
       message:
         mode === "delete"
-          ? "Managed agent runtime, database, and control-plane row were deleted."
-          : "Managed agent runtime was shut down with a pre-shutdown snapshot when available.",
+          ? "Managed agent deletion queued; the orchestrator will tear down runtime, database, and control-plane row."
+          : "Managed agent stop queued; the orchestrator will shut down the container with a pre-shutdown snapshot when available.",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
