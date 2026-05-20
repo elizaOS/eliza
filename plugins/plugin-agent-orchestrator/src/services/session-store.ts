@@ -1,4 +1,12 @@
-import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -13,6 +21,8 @@ import {
 export type SessionStoreBackend = "runtime-db" | "file" | "memory";
 
 type Logger = NonNullable<SessionStoreRuntime["logger"]>;
+const FILE_LOCK_ACQUIRE_TIMEOUT_MS = 30_000;
+const FILE_LOCK_STALE_MS = 30_000;
 
 type SqlDatabaseAdapter = {
   query?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
@@ -439,17 +449,19 @@ export class FileSessionStore extends InMemorySessionStore {
 
   private async withLock<T>(operation: () => Promise<T>): Promise<T> {
     await mkdir(dirname(this.lockFile), { recursive: true });
-    const deadline = Date.now() + 5_000;
+    const deadline = Date.now() + FILE_LOCK_ACQUIRE_TIMEOUT_MS;
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     while (!handle) {
       try {
         handle = await open(this.lockFile, "wx");
+        await handle.writeFile(`${process.pid}\n${Date.now()}\n`, "utf8");
       } catch (error) {
         const code =
           isRecord(error) && typeof error.code === "string"
             ? error.code
             : undefined;
         if (code !== "EEXIST" || Date.now() > deadline) throw error;
+        await this.removeStaleLock();
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
     }
@@ -458,6 +470,24 @@ export class FileSessionStore extends InMemorySessionStore {
     } finally {
       await handle.close();
       await rm(this.lockFile, { force: true });
+    }
+  }
+
+  private async removeStaleLock(): Promise<void> {
+    try {
+      const info = await stat(this.lockFile);
+      if (Date.now() - info.mtimeMs < FILE_LOCK_STALE_MS) return;
+      await rm(this.lockFile, { force: true });
+      this.logger?.warn?.(
+        "acpx SessionStore removed a stale lock file",
+        this.lockFile,
+      );
+    } catch (error) {
+      const code =
+        isRecord(error) && typeof error.code === "string"
+          ? error.code
+          : undefined;
+      if (code !== "ENOENT") throw error;
     }
   }
 }

@@ -173,7 +173,8 @@ export async function globHandler(
   }
 
   const requestedPath = readStringParam(options, "path");
-  const targetPath = requestedPath ?? session.getCwd(conversationId);
+  const targetPath =
+    requestedPath ?? (await session.getExistingCwd(conversationId)).cwd;
 
   const validation = await sandbox.validatePath(conversationId, targetPath);
   if (validation.ok === false) {

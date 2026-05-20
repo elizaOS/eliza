@@ -311,9 +311,17 @@ export class SubAgentRouter extends Service {
       this.log("info", "router bound to AcpService");
       return;
     }
-    // Give up after ~10s of polling and log what we got.
+    // Service startup is lazy and can happen outside this plugin's ordered
+    // eager-start path, so do not go idle forever when ACP is late. Poll
+    // quickly for the first ~10s, then keep a low-frequency retry alive.
     if (attempt >= 50) {
-      this.log("debug", "AcpService unavailable; router idle");
+      if (attempt === 50 || attempt % 30 === 0) {
+        this.log("debug", "AcpService unavailable; router still waiting");
+      }
+      this.bindRetryTimer = setTimeout(
+        () => this.tryBindSources(attempt + 1),
+        1000,
+      );
       return;
     }
     this.bindRetryTimer = setTimeout(
@@ -621,9 +629,10 @@ export class SubAgentRouter extends Service {
       const threadedResponse = originReplyTarget
         ? {
             ...response,
+            source: "sub_agent_complete",
             inReplyTo: originReplyTarget,
           }
-        : response;
+        : { ...response, source: "sub_agent_complete" };
       const delivered = await sendToTarget(
         {
           source,
