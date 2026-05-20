@@ -123,6 +123,16 @@ contract.
   [2028 integrated report](../../docs/architecture-optimization/2028-sota-integrated-report.md).
 - **C runtime + Python parity test pass.** `test_descriptor_parity.py` runs
   290 parameterized cases against the Python oracle.
+- **Tiny-model descriptor-stream parity (micro_model_rtl_simulator_only).**
+  ``compiler/runtime/test_e1_npu_tiny_mlp_e2e.py`` drives one 3x3x3 INT8
+  GEMM and a two-layer MLP (host-side bias_add + ReLU between layers)
+  through ``lower_matmul_smoke`` and the stream-to-scratchpad descriptor
+  path on the Python behavioral simulator. ``verify/cocotb/npu/test_iree_tiny_mlp_e2e.py``
+  runs the same descriptors against the e1_npu RTL via verilator and
+  verifies byte-exact match against ``golden_gemm_s8``. Descriptor
+  count: 1 per GEMM. CPU fallback: 0% (activation composite runs
+  host-side as ``host_broadcasts_bias`` / ``host_saturates_int8``, not
+  as a CPU partition).
 
 ## Evidence gate
 

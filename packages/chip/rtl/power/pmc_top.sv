@@ -77,15 +77,33 @@ module pmc_top
     logic [PMC_MBOX_DW-1:0] reg_rx_data_q;
 
     // OpenSBI RPMI shared-memory region. The mailbox aperture's upper half
-    // (offsets 0x800..0xFFF) maps directly into `aon_sram_q` at the same
-    // byte offset so the host-side MMIO (OpenSBI's `fdt_mailbox_rpmi_shmem`
-    // driver) and the Ibex data port observe one consistent copy of the
-    // four RPMI queues + a2p-doorbell defined by
-    // `fw/pmc/include/rpmi_shmem_layout.h`.  Decoded with
-    // `mbox_addr_i[11] == 1'b1` (range 0x800..0xFFF).
-    localparam logic [PMC_MBOX_AW-1:0] PMC_REG_SHMEM_BASE = 12'h800;
-    logic shmem_sel;
-    assign shmem_sel = (mbox_addr_i[PMC_MBOX_AW-1] == 1'b1);
+    // (offsets 0x800..0xFFF) maps to a dedicated 2 KiB dual-port SRAM that
+    // both the host-side MMIO (OpenSBI's `fdt_mailbox_rpmi_shmem` driver)
+    // and the Ibex data port can access.  Layout (4 queues + a2p-doorbell)
+    // is fixed in `fw/pmc/include/rpmi_shmem_layout.h` and described to
+    // OpenSBI by `dts/eliza-rocket-pmc.dtsi`.
+    //
+    // The MMIO port decodes via `mbox_addr_i[11] == 1'b1`; the Ibex data
+    // port reaches the same words because the SoC fabric routes any
+    // 0x1005_0800..0x1005_0FFF access into this region through the same
+    // pmc_top mailbox interface (in the +define+PMC_INSTANTIATE_IBEX build,
+    // the Ibex data port also flows through here via a direct connect; see
+    // the `gen_ibex_shmem_port` block below).
+    localparam logic [PMC_MBOX_AW-1:0] PMC_REG_SHMEM_BASE  = 12'h800;
+    localparam int unsigned            PMC_SHMEM_WORDS     = 512;     // 2 KiB
+    localparam int unsigned            PMC_SHMEM_AW        = $clog2(PMC_SHMEM_WORDS);
+    logic [PMC_MBOX_DW-1:0] shmem_q [PMC_SHMEM_WORDS];
+
+    logic                    shmem_sel;
+    logic [PMC_SHMEM_AW-1:0] shmem_word_idx;
+    assign shmem_sel      = mbox_valid_i && (mbox_addr_i[PMC_MBOX_AW-1] == 1'b1);
+    assign shmem_word_idx = mbox_addr_i[PMC_SHMEM_AW+2-1:2];
+
+    initial begin : pmc_shmem_init
+        for (int unsigned w = 0; w < PMC_SHMEM_WORDS; w++) begin
+            shmem_q[w] = 32'h0;
+        end
+    end
 
     // Aggregate droop telemetry. `droop_total_q` is the present-cycle sum
     // across all rails (combinational behavior across sample periods).
@@ -173,51 +191,59 @@ module pmc_top
             droop_sticky_w1c_mask_aon <= '0;
             if (mbox_valid_i) begin
                 if (mbox_write_i) begin
-                    case (mbox_addr_i)
-                        PMC_REG_CTRL:         reg_ctrl_q    <= mbox_wdata_i;
-                        PMC_REG_DROOP_STICKY: droop_sticky_w1c_mask_aon <= mbox_wdata_i;
-                        PMC_REG_MBOX_TX_HEAD: reg_tx_head_q <= mbox_wdata_i;
-                        PMC_REG_MBOX_TX_DATA: begin
-                            // Host posts a 32b word into TX; Ibex (or the
-                            // loopback path below) consumes it and produces an
-                            // RX_DATA word. Until the Ibex is bound, TX_DATA
-                            // loops back into RX_DATA on the same cycle so a
-                            // cocotb harness can verify the mailbox surface.
-                            reg_tx_data_q <= mbox_wdata_i;
-                            reg_rx_data_q <= mbox_wdata_i;
-                            reg_rx_head_q <= reg_tx_head_q;
-                        end
-                        PMC_REG_MBOX_RX_HEAD: reg_rx_head_q <= mbox_wdata_i;
-                        default: begin
-                            for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
-                                if (mbox_addr_i == (PMC_REG_DVFS_BASE +
-                                                    PMC_MBOX_AW'(i * 4))) begin
-                                    reg_dvfs_q[i] <= mbox_wdata_i;
+                    if (shmem_sel) begin
+                        shmem_q[shmem_word_idx] <= mbox_wdata_i;
+                    end else begin
+                        case (mbox_addr_i)
+                            PMC_REG_CTRL:         reg_ctrl_q    <= mbox_wdata_i;
+                            PMC_REG_DROOP_STICKY: droop_sticky_w1c_mask_aon <= mbox_wdata_i;
+                            PMC_REG_MBOX_TX_HEAD: reg_tx_head_q <= mbox_wdata_i;
+                            PMC_REG_MBOX_TX_DATA: begin
+                                // Host posts a 32b word into TX; Ibex (or the
+                                // loopback path below) consumes it and produces an
+                                // RX_DATA word. Until the Ibex is bound, TX_DATA
+                                // loops back into RX_DATA on the same cycle so a
+                                // cocotb harness can verify the mailbox surface.
+                                reg_tx_data_q <= mbox_wdata_i;
+                                reg_rx_data_q <= mbox_wdata_i;
+                                reg_rx_head_q <= reg_tx_head_q;
+                            end
+                            PMC_REG_MBOX_RX_HEAD: reg_rx_head_q <= mbox_wdata_i;
+                            default: begin
+                                for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
+                                    if (mbox_addr_i == (PMC_REG_DVFS_BASE +
+                                                        PMC_MBOX_AW'(i * 4))) begin
+                                        reg_dvfs_q[i] <= mbox_wdata_i;
+                                    end
                                 end
                             end
-                        end
-                    endcase
+                        endcase
+                    end
                 end else begin
-                    case (mbox_addr_i)
-                        PMC_REG_STATUS:       rdata_q <= reg_status_q;
-                        PMC_REG_CTRL:         rdata_q <= reg_ctrl_q;
-                        PMC_REG_DROOP_COUNT:  rdata_q <= droop_total_q;
-                        PMC_REG_AVFS_STATUS:  rdata_q <= {28'h0, avfs_fault_i};
-                        PMC_REG_DROOP_STICKY: rdata_q <= droop_sticky_q;
-                        PMC_REG_MBOX_TX_HEAD: rdata_q <= reg_tx_head_q;
-                        PMC_REG_MBOX_TX_DATA: rdata_q <= reg_tx_data_q;
-                        PMC_REG_MBOX_RX_HEAD: rdata_q <= reg_rx_head_q;
-                        PMC_REG_MBOX_RX_DATA: rdata_q <= reg_rx_data_q;
-                        default: begin
-                            rdata_q <= '0;
-                            for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
-                                if (mbox_addr_i == (PMC_REG_DVFS_BASE +
-                                                    PMC_MBOX_AW'(i * 4))) begin
-                                    rdata_q <= reg_dvfs_q[i];
+                    if (shmem_sel) begin
+                        rdata_q <= shmem_q[shmem_word_idx];
+                    end else begin
+                        case (mbox_addr_i)
+                            PMC_REG_STATUS:       rdata_q <= reg_status_q;
+                            PMC_REG_CTRL:         rdata_q <= reg_ctrl_q;
+                            PMC_REG_DROOP_COUNT:  rdata_q <= droop_total_q;
+                            PMC_REG_AVFS_STATUS:  rdata_q <= {28'h0, avfs_fault_i};
+                            PMC_REG_DROOP_STICKY: rdata_q <= droop_sticky_q;
+                            PMC_REG_MBOX_TX_HEAD: rdata_q <= reg_tx_head_q;
+                            PMC_REG_MBOX_TX_DATA: rdata_q <= reg_tx_data_q;
+                            PMC_REG_MBOX_RX_HEAD: rdata_q <= reg_rx_head_q;
+                            PMC_REG_MBOX_RX_DATA: rdata_q <= reg_rx_data_q;
+                            default: begin
+                                rdata_q <= '0;
+                                for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
+                                    if (mbox_addr_i == (PMC_REG_DVFS_BASE +
+                                                        PMC_MBOX_AW'(i * 4))) begin
+                                        rdata_q <= reg_dvfs_q[i];
+                                    end
                                 end
                             end
-                        end
-                    endcase
+                        endcase
+                    end
                 end
             end
         end
