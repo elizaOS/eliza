@@ -1,0 +1,53 @@
+From: Milady chip team <chip-team@elizaos.invalid>
+Subject: [PATCH] cva6: bht.sv work around V3Delayed whole-array NBA limitation
+
+Same root cause as btb-v3delayed-workaround.patch: the simulator's
+C++ lowering pass cannot handle a whole-array non-blocking assignment
+to a 2D unpacked struct array
+
+    bht_q[NR_ROWS-1:0][CVA6Cfg.INSTR_PER_FETCH-1:0]
+
+and aborts with
+
+    Internal Error: ../V3Delayed.cpp:958: Unexpected LHS form
+
+at core/frontend/bht.sv:122 -- `bht_q <= bht_d;`.
+
+This patch replaces the whole-array NBA with an explicit per-element
+nested for-loop.  The two forms are semantically equivalent but the
+per-element form exercises the supported per-element NBA lowering path.
+
+Tracked alongside the btb workaround in
+external/cva6/pin-manifest.json::verilator_full_conversion_blocker.
+The patch is applied by scripts/apply_cva6_patches.sh before each
+simulator run.
+---
+ core/frontend/bht.sv | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/core/frontend/bht.sv b/core/frontend/bht.sv
+index e95c536..a1f8a85 100644
+--- a/core/frontend/bht.sv
++++ b/core/frontend/bht.sv
+@@ -119,7 +119,18 @@ module bht #(
+             end
+           end
+         end else begin
+-          bht_q <= bht_d;
++          // Local workaround for an internal-error in the C++ lowering
++          // pass on whole-array NBA to a 2D unpacked struct array
++          // (see V3Delayed.cpp:958 Unexpected LHS form).  The
++          // per-element nested loop below is semantically equivalent
++          // and exercises the supported per-element NBA path.  See
++          // patches/cva6/bht-v3delayed-workaround.patch in the
++          // consuming repo.
++          for (int i = 0; i < NR_ROWS; i++) begin
++            for (int j = 0; j < CVA6Cfg.INSTR_PER_FETCH; j++) begin
++              bht_q[i][j] <= bht_d[i][j];
++            end
++          end
+         end
+       end
+     end
+--
+2.43.0

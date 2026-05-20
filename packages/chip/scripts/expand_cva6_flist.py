@@ -10,7 +10,8 @@ and writes:
   --incdir-out : one `+incdir+ABS_PATH` line per include directory
 
 This is invoked by `verify/cocotb/integration/Makefile.cva6` to assemble
-the CVA6 v5.3.0 source list for verilator without committing the
+the CVA6 source list (pinned to upstream master HEAD via
+external/cva6/pin-manifest.json) for verilator without committing the
 expanded list into the repo (it changes with each CVA6 bump).
 """
 

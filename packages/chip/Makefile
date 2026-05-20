@@ -14,16 +14,99 @@ BUILD := build
 .PHONY: chipyard-external-generation-plan chipyard-generated-path-check chipyard-generated-path-repair chipyard-import-preflight chipyard-linux-payload-check chipyard-payload-path-check chipyard-generated-ap-boot chipyard-verilator-linux-smoke-test chipyard-verilator-preflight chipyard-verilator-stale-path-repair cpu-ap-capture-plan-shell cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-dts-audit linux-boot-artifacts-check cpu-ap-boot-readiness-check minimum-linux-target-check minimum-linux-target-strict mvp-npu-ml-evidence-check minimum-linux-npu-target-check minimum-linux-npu-target-strict hello-npu-linux-smoke-check
 .PHONY: tapeout-readiness tapeout-readiness-strict tapeout-readiness-test manufacturing-tapeout-scope-check manufacturing-tapeout-scope-test chip-os-bring-up-status
 .PHONY: sota-parity-audit sota-parity-audit-strict sota-parity-audit-test
+.PHONY: software-bsp-external-preflight software-bsp-evidence-check
+.PHONY: e1-phone-display-fit
+.PHONY: e1-phone-interface-closure
+.PHONY: e1-phone-power-thermal
+.PHONY: e1-phone-rf-connectivity
+.PHONY: e1-phone-pinout-footprint-freeze
+.PHONY: e1-phone-audio-acoustic
+.PHONY: e1-phone-routed-release-plan
+.PHONY: e1-phone-manufacturing-artifacts-check
 
-.PHONY: venv tools lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-check benchmark-efficiency-scope-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-scope-check power-thermal-scope-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test npu-scope-check npu-scope-test e1-npu-nnapi-proof-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-scope-check cpu-ap-scope-test cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-iommu-qos-sim-check memory-iommu-qos-sim-test memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check npu-context-queue-sim-check npu-context-queue-sim-test scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check phone-soc-claim-check phone-media-pipeline-scope-check phone-media-pipeline-scope-test security-lifecycle-scope-check security-lifecycle-scope-test radio-sensor-pmic-scope-check radio-sensor-pmic-scope-test product-feature-gates-check product-check product-check-status-test product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check buildroot-qemu-virt-smoke buildroot-qemu-virt-smoke-test linux-bsp-check linux-scaffold-check linux-import-check aosp-bsp-check aosp-scaffold-check aosp-import-check aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-scope-check software-bsp-scope-test software-bsp-external-preflight software-bsp-evidence-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release clean
+.PHONY: setup venv tools kicad-setup kicad-tools-check e1-phone-schematic-scaffold e1-phone-layout-metrics e1-phone-manufacturing-closure e1-phone-board-package-check kicad-phone-render kicad-phone-preview-check phone-cad phone-cad-test lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-check benchmark-efficiency-scope-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-scope-check power-thermal-scope-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test npu-scope-check npu-scope-test e1-npu-nnapi-proof-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-scope-check cpu-ap-scope-test cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-iommu-qos-sim-check memory-iommu-qos-sim-test memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-axi4-width-converter cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check npu-context-queue-sim-check npu-context-queue-sim-test scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check phone-soc-claim-check phone-media-pipeline-scope-check phone-media-pipeline-scope-test security-lifecycle-scope-check security-lifecycle-scope-test radio-sensor-pmic-scope-check radio-sensor-pmic-scope-test product-feature-gates-check product-check product-check-status-test product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check buildroot-qemu-virt-smoke buildroot-qemu-virt-smoke-test aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-scope-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release clean
+
+setup: kicad-setup venv tools kicad-tools-check
+	@echo "packages/chip setup complete"
 
 venv:
-	@$(PYTHON) -m venv $(VENV)
+	@if [ ! -x "$(VENV_PYTHON)" ]; then \
+		$(PYTHON) -m venv $(VENV) || { rm -rf $(VENV); $(PYTHON) -m virtualenv $(VENV); }; \
+	fi
 	@$(VENV_PYTHON) -m pip install --upgrade pip
 	@$(VENV_PYTHON) -m pip install -r requirements.txt
 
 tools:
 	@scripts/check_tools.sh
+
+kicad-setup:
+	@scripts/setup_kicad_tools.sh
+
+kicad-tools-check:
+	@$(PYTHON) scripts/check_kicad_toolchain.py
+
+e1-phone-schematic-scaffold:
+	@$(PYTHON) scripts/generate_e1_phone_schematic.py
+
+e1-phone-layout-metrics:
+	@$(PYTHON) scripts/generate_e1_phone_layout_metrics.py
+
+e1-phone-pcb-footprint-scaffold:
+	@$(PYTHON) scripts/generate_e1_phone_pcb_footprint_scaffold.py
+
+e1-phone-display-fit:
+	@$(PYTHON) scripts/generate_e1_phone_display_fit.py
+
+e1-phone-interface-closure:
+	@$(PYTHON) scripts/generate_e1_phone_interface_closure.py
+
+e1-phone-enclosure-placement:
+	@$(PYTHON) scripts/generate_e1_phone_enclosure_placement_closure.py
+
+e1-phone-power-thermal:
+	@$(PYTHON) scripts/generate_e1_phone_power_thermal.py
+
+e1-phone-pinout-footprint-freeze:
+	@$(PYTHON) scripts/generate_e1_phone_pinout_footprint_freeze.py
+
+e1-phone-audio-acoustic:
+	@$(PYTHON) scripts/generate_e1_phone_audio_acoustic_closure.py
+
+e1-phone-rf-connectivity:
+	@$(PYTHON) scripts/generate_e1_phone_rf_connectivity.py
+
+e1-phone-supplier-sourcing-audit:
+	@$(PYTHON) scripts/generate_e1_phone_supplier_sourcing_audit.py
+
+e1-phone-manufacturing-closure:
+	@$(PYTHON) scripts/generate_e1_phone_manufacturing_closure.py
+
+e1-phone-routed-release-plan:
+	@$(PYTHON) scripts/generate_e1_phone_routed_release_plan.py
+
+e1-phone-manufacturing-artifacts-check:
+	@$(PYTHON) scripts/check_manufacturing_artifacts.py --manifest board/kicad/e1-phone/artifact-manifest.yaml
+
+e1-phone-board-package-check:
+	@$(PYTHON) scripts/check_e1_phone_board_package.py
+
+kicad-phone-render: kicad-tools-check
+	@scripts/kicad_run.sh kicad-cli pcb export svg --output board/kicad/e1-phone/preview/kicad-cli-mainboard.svg --layers F.Cu,B.Cu,F.SilkS,F.Fab,Dwgs.User,Edge.Cuts --page-size-mode 2 --exclude-drawing-sheet --black-and-white board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+	@scripts/kicad_run.sh rsvg-convert --background-color white -o board/kicad/e1-phone/preview/kicad-cli-mainboard.png board/kicad/e1-phone/preview/kicad-cli-mainboard.svg
+	@mkdir -p board/kicad/e1-phone/preview/schematic
+	@scripts/kicad_run.sh kicad-cli sch export svg --output board/kicad/e1-phone/preview/schematic --black-and-white --exclude-drawing-sheet board/kicad/e1-phone/schematic/e1-phone.kicad_sch
+	@perl -pi -e 's/[ \t]+$$//' board/kicad/e1-phone/preview/kicad-cli-mainboard.svg board/kicad/e1-phone/preview/schematic/e1-phone.svg
+	@scripts/kicad_run.sh rsvg-convert --background-color white -o board/kicad/e1-phone/preview/schematic/e1-phone.png board/kicad/e1-phone/preview/schematic/e1-phone.svg
+	@$(PYTHON) board/kicad/e1-phone/preview/verify-preview-assets.py
+
+kicad-phone-preview-check:
+	@$(PYTHON) board/kicad/e1-phone/preview/verify-preview-assets.py
+
+phone-cad:
+	@$(BENCH_PYTHON) scripts/generate_e1_phone_cad.py
+
+phone-cad-test:
+	@$(BENCH_PYTHON) -m pytest -q scripts/test_generate_e1_phone_cad.py
 
 lint:
 	@$(PYTHON) scripts/run_lint.py
@@ -458,6 +541,11 @@ cocotb-dram-ctrl:
 	  COCOTB_TOPLEVEL=e1_dram_ctrl_tb COCOTB_DIR=verify/cocotb/axi4 \
 	  scripts/run_cocotb.sh
 
+cocotb-axi4-width-converter:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_width_converter \
+	  COCOTB_TOPLEVEL=e1_axi4_width_converter_tb COCOTB_DIR=verify/cocotb/axi4 \
+	  scripts/run_cocotb.sh
+
 cocotb-iommu:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_riscv_iommu \
 	  COCOTB_TOPLEVEL=e1_iommu_tb COCOTB_DIR=verify/cocotb/iommu \
@@ -482,37 +570,34 @@ soc-integration-check: cocotb-soc-boot-smoke cocotb-cross-domain
 
 # ---------------------------------------------------------------------------
 # Standalone CVA6 wrapper integration (rtl/cpu/e1_cva6_wrapper.sv +
-# rtl/top/adapters/e1_cva6_to_e1axi4.sv) — links the full CVA6 v5.3.0
-# source tree from external/cva6/cva6/ via core/Flist.cva6.  Kept separate
+# rtl/top/adapters/e1_cva6_to_e1axi4.sv) — links the full CVA6 source
+# tree from external/cva6/cva6/ via core/Flist.cva6 (pinned to upstream
+# master HEAD via external/cva6/pin-manifest.json).  Kept separate
 # from the lite-mode integration suite so the existing 18 cocotb tests
 # stay independent of the CVA6 pin.
 # ---------------------------------------------------------------------------
 cocotb-cva6-cpu-bootrom:
+	@scripts/apply_cva6_patches.sh
 	@PYTHON=$(COCOTB_PYTHON) \
+	  CVA6_VERILATOR_FULL_OK=1 \
 	  COCOTB_MODULE=test_cva6_executes_bootrom_program \
 	  COCOTB_TOPLEVEL=e1_cva6_unit_tb \
 	  COCOTB_DIR=verify/cocotb/integration \
 	  COCOTB_MAKEFILE=Makefile.cva6 \
-	  scripts/run_cocotb.sh \
-	  || { \
-	    printf 'STATUS: BLOCKED cocotb-cva6-cpu-bootrom — see verilator_full_conversion_blocker (external/cva6/pin-manifest.json)\n'; \
-	    exit 0; \
-	  }
+	  scripts/run_cocotb.sh
 
 cocotb-cva6-cpu-dram:
+	@scripts/apply_cva6_patches.sh
 	@PYTHON=$(COCOTB_PYTHON) \
+	  CVA6_VERILATOR_FULL_OK=1 \
 	  COCOTB_MODULE=test_cva6_dram_read_write \
 	  COCOTB_TOPLEVEL=e1_cva6_unit_tb \
 	  COCOTB_DIR=verify/cocotb/integration \
 	  COCOTB_MAKEFILE=Makefile.cva6 \
-	  scripts/run_cocotb.sh \
-	  || { \
-	    printf 'STATUS: BLOCKED cocotb-cva6-cpu-dram — see verilator_full_conversion_blocker (external/cva6/pin-manifest.json)\n'; \
-	    exit 0; \
-	  }
+	  scripts/run_cocotb.sh
 
 cocotb-cva6-cpu: cocotb-cva6-cpu-bootrom cocotb-cva6-cpu-dram
-	@echo "cocotb-cva6-cpu complete (subject to verilator_full_conversion_blocker)"
+	@echo "cocotb-cva6-cpu complete (local btb V3Delayed patch applied via scripts/apply_cva6_patches.sh)"
 
 stream-bench:
 	@$(MAKE) -C benchmarks/memory/stream run \
@@ -593,13 +678,13 @@ scale-feasibility-gate:
 verification-maturity-matrix-check:
 	@$(PYTHON) scripts/check_verification_maturity_matrix.py
 
-product-check: pinout-check fpga-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check pd-signoff-manifest-check manufacturing-artifacts-check real-world-gates-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check product-feature-gates-check
+product-check: pinout-check fpga-check wifi-interface-check padframe-check board-package-evidence-check e1-phone-board-package-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check pd-signoff-manifest-check manufacturing-artifacts-check real-world-gates-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check product-feature-gates-check
 	@$(PYTHON) scripts/product_check.py
 
 product-check-status-test:
 	@$(PYTHON) scripts/test_product_check_status.py
 
-product-release-check: pinout-check fpga-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check pd-signoff-manifest-check manufacturing-artifacts-check real-world-gates-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check product-feature-gates-check
+product-release-check: pinout-check fpga-check wifi-interface-check padframe-check board-package-evidence-check e1-phone-board-package-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check pd-signoff-manifest-check manufacturing-artifacts-check real-world-gates-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check product-feature-gates-check
 	@$(PYTHON) scripts/product_check.py --release
 
 product-evidence-commands:
@@ -669,6 +754,9 @@ cocotb-power: cocotb-droop cocotb-avfs cocotb-pmc
 
 fw-pmc-build:
 	@$(MAKE) -C fw/pmc all
+	@$(MAKE) -C fw/pmc test
+	@$(MAKE) -C fw/pmc elf
+	@$(MAKE) -C fw/pmc sim-elf
 
 
 fpga-check:
@@ -814,6 +902,9 @@ cocotb:
 
 cocotb-npu:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_e1_npu COCOTB_TOPLEVEL=e1_npu scripts/run_cocotb.sh
+
+cocotb-npu-tiny-mlp-e2e:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/npu COCOTB_MODULE=test_iree_tiny_mlp_e2e COCOTB_TOPLEVEL=e1_npu scripts/run_cocotb.sh
 
 cocotb-contract:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_cpu_mem_intc_contract COCOTB_TOPLEVEL=e1_linux_soc_contract scripts/run_cocotb.sh
