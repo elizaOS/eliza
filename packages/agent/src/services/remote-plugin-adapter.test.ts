@@ -214,15 +214,19 @@ const remoteModule: RemotePluginModuleManifest = {
 function hashRemotePluginModuleForTest(
   module: RemotePluginModuleManifest,
 ): string {
-  const { capabilityEndpointId: _endpointId, provenance: _provenance, ...rest } =
-    module;
+  const {
+    capabilityEndpointId: _endpointId,
+    provenance: _provenance,
+    ...rest
+  } = module;
   return createHash("sha256")
     .update(JSON.stringify(canonicalizeForTest(rest)), "utf8")
     .digest("hex");
 }
 
 function canonicalizeForTest(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map((entry) => canonicalizeForTest(entry));
+  if (Array.isArray(value))
+    return value.map((entry) => canonicalizeForTest(entry));
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
@@ -2971,7 +2975,9 @@ describe("remote plugin adapter", () => {
       await expect(
         bootstrapRemoteCapabilityPlugins(restartRuntime),
       ).resolves.toMatchObject({
-        registered: [expect.objectContaining({ name: "@remote/cloud-product" })],
+        registered: [
+          expect.objectContaining({ name: "@remote/cloud-product" }),
+        ],
         unloaded: [],
         skipped: [],
         trustDecisions: [
@@ -3480,37 +3486,39 @@ describe("remote plugin adapter", () => {
     }
   });
 
-  esbuildSmoke("builds a remote plugin from source and loads it only through the capability protocol", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "eliza-remote-plugin-"));
-    const srcDir = join(workspace, "src");
-    const distDir = join(workspace, "dist");
-    await mkdir(srcDir, { recursive: true });
-    await mkdir(distDir, { recursive: true });
+  esbuildSmoke(
+    "builds a remote plugin from source and loads it only through the capability protocol",
+    async () => {
+      const workspace = await mkdtemp(join(tmpdir(), "eliza-remote-plugin-"));
+      const srcDir = join(workspace, "src");
+      const distDir = join(workspace, "dist");
+      await mkdir(srcDir, { recursive: true });
+      await mkdir(distDir, { recursive: true });
 
-    const viewSource = join(srcDir, "view.ts");
-    await writeFile(
-      viewSource,
-      [
-        "export const marker = 'built-remote-view';",
-        "export function render() {",
-        "  return marker;",
-        "}",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
+      const viewSource = join(srcDir, "view.ts");
+      await writeFile(
+        viewSource,
+        [
+          "export const marker = 'built-remote-view';",
+          "export function render() {",
+          "  return marker;",
+          "}",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
 
-    const builtBundlePath = join(distDir, "remote-view.js");
-    const buildResult = await buildRemoteViewFixtures({
-      entryPoints: [viewSource],
-      outfile: builtBundlePath,
-    });
-    expect(buildResult.errors).toHaveLength(0);
+      const builtBundlePath = join(distDir, "remote-view.js");
+      const buildResult = await buildRemoteViewFixtures({
+        entryPoints: [viewSource],
+        outfile: builtBundlePath,
+      });
+      expect(buildResult.errors).toHaveLength(0);
 
-    const serverSource = join(srcDir, "capability-server.mjs");
-    await writeFile(
-      serverSource,
-      `
+      const serverSource = join(srcDir, "capability-server.mjs");
+      await writeFile(
+        serverSource,
+        `
 import { readFileSync } from "node:fs";
 
 export function createRouter() {
@@ -3629,288 +3637,293 @@ export function createRouter() {
   };
 }
 `,
-      "utf8",
-    );
-
-    const { createRouter } = (await import(
-      `${pathToFileURL(serverSource).href}?t=${Date.now()}`
-    )) as {
-      createRouter: () => ElizaCapabilityRouter;
-    };
-    const server = await startCapabilityHttpServer(createRouter(), {
-      token: "built-source-token",
-    });
-
-    try {
-      const runtime = makeExecutableRuntime(
-        new RemoteCapabilityRouterService(makeRuntime(null), {
-          enabled: true,
-          baseUrl: server.baseUrl,
-          token: "built-source-token",
-          environment: "server",
-          requestTimeoutMs: 1000,
-        }),
+        "utf8",
       );
 
-      await expect(
-        bootstrapRemoteCapabilityPlugins(runtime),
-      ).resolves.toMatchObject({
-        registered: [expect.objectContaining({ name: "@remote/built-source" })],
-        unloaded: [],
-        skipped: [],
-        trustDecisions: [
-          expect.objectContaining({
-            moduleId: "built-source-plugin",
-            endpointId: "primary",
-            trusted: true,
+      const { createRouter } = (await import(
+        `${pathToFileURL(serverSource).href}?t=${Date.now()}`
+      )) as {
+        createRouter: () => ElizaCapabilityRouter;
+      };
+      const server = await startCapabilityHttpServer(createRouter(), {
+        token: "built-source-token",
+      });
+
+      try {
+        const runtime = makeExecutableRuntime(
+          new RemoteCapabilityRouterService(makeRuntime(null), {
+            enabled: true,
+            baseUrl: server.baseUrl,
+            token: "built-source-token",
+            environment: "server",
+            requestTimeoutMs: 1000,
           }),
-        ],
-      });
+        );
 
-      const expectedBundleUrl =
-        "/api/capability-router/assets/primary/built-source-plugin/assets/remote-view.js";
-      expect(getView("built-source.view")).toMatchObject({
-        id: "built-source.view",
-        pluginName: "@remote/built-source",
-        bundleUrl: expectedBundleUrl,
-        available: true,
-      });
+        await expect(
+          bootstrapRemoteCapabilityPlugins(runtime),
+        ).resolves.toMatchObject({
+          registered: [
+            expect.objectContaining({ name: "@remote/built-source" }),
+          ],
+          unloaded: [],
+          skipped: [],
+          trustDecisions: [
+            expect.objectContaining({
+              moduleId: "built-source-plugin",
+              endpointId: "primary",
+              trusted: true,
+            }),
+          ],
+        });
 
-      const remoteBundleUrl = `${server.baseUrl}/v1/capabilities/assets/built-source-plugin/assets/remote-view.js`;
-      const bundleResponse = await fetch(remoteBundleUrl, {
-        headers: { authorization: "Bearer built-source-token" },
-      });
-      expect(bundleResponse.status).toBe(200);
-      const bundleSource = await bundleResponse.text();
-      expect(bundleSource).toContain("built-remote-view");
-      await expect(
-        import(
-          `data:text/javascript;base64,${Buffer.from(bundleSource).toString(
-            "base64",
-          )}`
-        ),
-      ).resolves.toMatchObject({ marker: "built-remote-view" });
+        const expectedBundleUrl =
+          "/api/capability-router/assets/primary/built-source-plugin/assets/remote-view.js";
+        expect(getView("built-source.view")).toMatchObject({
+          id: "built-source.view",
+          pluginName: "@remote/built-source",
+          bundleUrl: expectedBundleUrl,
+          available: true,
+        });
 
-      await expect(
-        runtime.actions[0]?.handler(runtime, {
-          content: { text: "hello" },
-        } as never),
-      ).resolves.toMatchObject({
-        success: true,
-        text: "built source action",
-        data: { echo: "hello" },
-      });
-      await expect(
-        runtime.providers[0]?.get(runtime, {} as never, {} as never),
-      ).resolves.toMatchObject({
-        text: "built source provider",
-        values: { origin: "source-build" },
-      });
-      const plugin = runtime.plugins.find(
-        (candidate) => candidate.name === "@remote/built-source",
-      );
-      expect(plugin).toBeDefined();
-      const evaluatorContext = {
-        runtime,
-        message: {
-          id: "22222222-2222-2222-2222-222222222222" as UUID,
-          entityId: "33333333-3333-3333-3333-333333333333" as UUID,
-          roomId: "44444444-4444-4444-4444-444444444444" as UUID,
-          content: { text: "evaluate built source" },
-        },
-        state: { values: {}, data: {}, text: "state" },
-        options: {},
-      };
-      await expect(
-        plugin?.evaluators?.[0]?.shouldRun(evaluatorContext),
-      ).resolves.toBe(true);
-      await expect(
-        plugin?.evaluators?.[0]?.prepare?.(evaluatorContext),
-      ).resolves.toEqual({ sourceBuilt: true });
-      expect(
-        plugin?.evaluators?.[0]?.prompt({
-          ...evaluatorContext,
-          prepared: { sourceBuilt: true },
-        } as never),
-      ).toBe("Built source evaluator prompt.");
-      await expect(
-        plugin?.evaluators?.[0]?.processors?.[0]?.process({
-          ...evaluatorContext,
-          prepared: { sourceBuilt: true },
-          output: { ok: true },
-          evaluatorName: "BUILT_SOURCE_EVALUATOR",
-        } as never),
-      ).resolves.toMatchObject({
-        success: true,
-        text: "built source evaluator processed",
-      });
-      const responseHandlerContext = {
-        runtime,
-        message: evaluatorContext.message,
-        state: evaluatorContext.state,
-        messageHandler: {
-          processMessage: "RESPOND",
-          thought: "built source",
-          plan: { contexts: [], candidateActions: [] },
-        },
-        availableContexts: [],
-      };
-      await expect(
-        plugin?.responseHandlerEvaluators?.[0]?.shouldRun(
-          responseHandlerContext as never,
-        ),
-      ).resolves.toBe(true);
-      await expect(
-        plugin?.responseHandlerEvaluators?.[0]?.evaluate(
-          responseHandlerContext as never,
-        ),
-      ).resolves.toEqual({ reply: "built source response patch" });
-      const responseHandlerFieldContext = {
-        runtime,
-        message: evaluatorContext.message,
-        state: evaluatorContext.state,
-        senderRole: "OWNER",
-        turnSignal: new AbortController().signal,
-      };
-      await expect(
-        plugin?.responseHandlerFieldEvaluators?.[0]?.shouldRun?.(
-          responseHandlerFieldContext as never,
-        ),
-      ).resolves.toBe(true);
-      await expect(
-        plugin?.responseHandlerFieldEvaluators?.[0]?.parse?.(
-          { value: true },
-          responseHandlerFieldContext as never,
-        ),
-      ).resolves.toEqual({ parsed: { value: true } });
-      const fieldEffect =
-        await plugin?.responseHandlerFieldEvaluators?.[0]?.handle?.({
-          ...responseHandlerFieldContext,
-          value: { value: true },
-          parsed: {
-            shouldRespond: "RESPOND",
-            contexts: [],
-            intents: [],
-            candidateActionNames: [],
-            replyText: "",
-            facts: [],
-            relationships: [],
-            addressedTo: [],
+        const remoteBundleUrl = `${server.baseUrl}/v1/capabilities/assets/built-source-plugin/assets/remote-view.js`;
+        const bundleResponse = await fetch(remoteBundleUrl, {
+          headers: { authorization: "Bearer built-source-token" },
+        });
+        expect(bundleResponse.status).toBe(200);
+        const bundleSource = await bundleResponse.text();
+        expect(bundleSource).toContain("built-remote-view");
+        await expect(
+          import(
+            `data:text/javascript;base64,${Buffer.from(bundleSource).toString(
+              "base64",
+            )}`
+          ),
+        ).resolves.toMatchObject({ marker: "built-remote-view" });
+
+        await expect(
+          runtime.actions[0]?.handler(runtime, {
+            content: { text: "hello" },
+          } as never),
+        ).resolves.toMatchObject({
+          success: true,
+          text: "built source action",
+          data: { echo: "hello" },
+        });
+        await expect(
+          runtime.providers[0]?.get(runtime, {} as never, {} as never),
+        ).resolves.toMatchObject({
+          text: "built source provider",
+          values: { origin: "source-build" },
+        });
+        const plugin = runtime.plugins.find(
+          (candidate) => candidate.name === "@remote/built-source",
+        );
+        expect(plugin).toBeDefined();
+        const evaluatorContext = {
+          runtime,
+          message: {
+            id: "22222222-2222-2222-2222-222222222222" as UUID,
+            entityId: "33333333-3333-3333-3333-333333333333" as UUID,
+            roomId: "44444444-4444-4444-4444-444444444444" as UUID,
+            content: { text: "evaluate built source" },
           },
-        } as never);
-      const mutableResult = {
-        shouldRespond: "RESPOND" as const,
-        contexts: [],
-        intents: [],
-        candidateActionNames: [],
-        replyText: "",
-        facts: [],
-        relationships: [],
-        addressedTo: [],
-      };
-      fieldEffect?.mutateResult?.(mutableResult);
-      expect(mutableResult).toMatchObject({ builtSourceFieldHandled: true });
-      expect(fieldEffect?.debug).toEqual(["built source field handled"]);
-      await expect(
-        (
-          plugin?.events as Record<
-            string,
-            Array<(payload: unknown) => Promise<void> | void>
-          >
-        )?.["built.source.event"]?.[0]?.({
+          state: { values: {}, data: {}, text: "state" },
+          options: {},
+        };
+        await expect(
+          plugin?.evaluators?.[0]?.shouldRun(evaluatorContext),
+        ).resolves.toBe(true);
+        await expect(
+          plugin?.evaluators?.[0]?.prepare?.(evaluatorContext),
+        ).resolves.toEqual({ sourceBuilt: true });
+        expect(
+          plugin?.evaluators?.[0]?.prompt({
+            ...evaluatorContext,
+            prepared: { sourceBuilt: true },
+          } as never),
+        ).toBe("Built source evaluator prompt.");
+        await expect(
+          plugin?.evaluators?.[0]?.processors?.[0]?.process({
+            ...evaluatorContext,
+            prepared: { sourceBuilt: true },
+            output: { ok: true },
+            evaluatorName: "BUILT_SOURCE_EVALUATOR",
+          } as never),
+        ).resolves.toMatchObject({
+          success: true,
+          text: "built source evaluator processed",
+        });
+        const responseHandlerContext = {
           runtime,
-          payload: true,
-        } as never),
-      ).resolves.toBeUndefined();
-      const builtSourceService = runtime.getService(
-        "built_source_service",
-      ) as unknown as {
-        lookup: (...args: unknown[]) => Promise<unknown>;
-      } | null;
-      await expect(
-        builtSourceService?.lookup({ query: "service" }),
-      ).resolves.toEqual({
-        text: "built source service",
-        args: [{ query: "service" }],
-      });
-      await expect(
-        plugin?.appBridge?.prepareLaunch?.({
+          message: evaluatorContext.message,
+          state: evaluatorContext.state,
+          messageHandler: {
+            processMessage: "RESPOND",
+            thought: "built source",
+            plan: { contexts: [], candidateActions: [] },
+          },
+          availableContexts: [],
+        };
+        await expect(
+          plugin?.responseHandlerEvaluators?.[0]?.shouldRun(
+            responseHandlerContext as never,
+          ),
+        ).resolves.toBe(true);
+        await expect(
+          plugin?.responseHandlerEvaluators?.[0]?.evaluate(
+            responseHandlerContext as never,
+          ),
+        ).resolves.toEqual({ reply: "built source response patch" });
+        const responseHandlerFieldContext = {
           runtime,
-          appId: "built-source",
-        } as never),
-      ).resolves.toEqual({
-        launchUrl: "https://built-source.example/launch",
-      });
-      const modelHandlers = (
-        runtime as unknown as {
-          models: Map<
-            string,
-            Array<{
-              handler: (
-                runtime: IAgentRuntime,
-                params: unknown,
-              ) => Promise<unknown>;
-            }>
-          >;
-        }
-      ).models;
-      await expect(
-        modelHandlers.get("BUILT_SOURCE_TEXT")?.[0]?.handler(runtime, {
-          prompt: "hello model",
-        }),
-      ).resolves.toEqual({
-        text: "built source model",
-        params: { prompt: "hello model" },
-      });
-      await expect(
-        dispatchRoute({
-          runtime,
-          method: "POST",
-          path: "/built-source/route",
-          headers: {},
-          body: { ping: true },
-          inProcess: false,
-          isAuthorized: () => false,
-        }),
-      ).resolves.toEqual({
-        status: 207,
-        headers: { "x-built-source": "yes" },
-        body: { ok: true, body: { ping: true } },
-      });
-    } finally {
-      await server.close();
-      await rm(workspace, { recursive: true, force: true });
-    }
-  });
+          message: evaluatorContext.message,
+          state: evaluatorContext.state,
+          senderRole: "OWNER",
+          turnSignal: new AbortController().signal,
+        };
+        await expect(
+          plugin?.responseHandlerFieldEvaluators?.[0]?.shouldRun?.(
+            responseHandlerFieldContext as never,
+          ),
+        ).resolves.toBe(true);
+        await expect(
+          plugin?.responseHandlerFieldEvaluators?.[0]?.parse?.(
+            { value: true },
+            responseHandlerFieldContext as never,
+          ),
+        ).resolves.toEqual({ parsed: { value: true } });
+        const fieldEffect =
+          await plugin?.responseHandlerFieldEvaluators?.[0]?.handle?.({
+            ...responseHandlerFieldContext,
+            value: { value: true },
+            parsed: {
+              shouldRespond: "RESPOND",
+              contexts: [],
+              intents: [],
+              candidateActionNames: [],
+              replyText: "",
+              facts: [],
+              relationships: [],
+              addressedTo: [],
+            },
+          } as never);
+        const mutableResult = {
+          shouldRespond: "RESPOND" as const,
+          contexts: [],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        };
+        fieldEffect?.mutateResult?.(mutableResult);
+        expect(mutableResult).toMatchObject({ builtSourceFieldHandled: true });
+        expect(fieldEffect?.debug).toEqual(["built source field handled"]);
+        await expect(
+          (
+            plugin?.events as Record<
+              string,
+              Array<(payload: unknown) => Promise<void> | void>
+            >
+          )?.["built.source.event"]?.[0]?.({
+            runtime,
+            payload: true,
+          } as never),
+        ).resolves.toBeUndefined();
+        const builtSourceService = runtime.getService(
+          "built_source_service",
+        ) as unknown as {
+          lookup: (...args: unknown[]) => Promise<unknown>;
+        } | null;
+        await expect(
+          builtSourceService?.lookup({ query: "service" }),
+        ).resolves.toEqual({
+          text: "built source service",
+          args: [{ query: "service" }],
+        });
+        await expect(
+          plugin?.appBridge?.prepareLaunch?.({
+            runtime,
+            appId: "built-source",
+          } as never),
+        ).resolves.toEqual({
+          launchUrl: "https://built-source.example/launch",
+        });
+        const modelHandlers = (
+          runtime as unknown as {
+            models: Map<
+              string,
+              Array<{
+                handler: (
+                  runtime: IAgentRuntime,
+                  params: unknown,
+                ) => Promise<unknown>;
+              }>
+            >;
+          }
+        ).models;
+        await expect(
+          modelHandlers.get("BUILT_SOURCE_TEXT")?.[0]?.handler(runtime, {
+            prompt: "hello model",
+          }),
+        ).resolves.toEqual({
+          text: "built source model",
+          params: { prompt: "hello model" },
+        });
+        await expect(
+          dispatchRoute({
+            runtime,
+            method: "POST",
+            path: "/built-source/route",
+            headers: {},
+            body: { ping: true },
+            inProcess: false,
+            isAuthorized: () => false,
+          }),
+        ).resolves.toEqual({
+          status: 207,
+          headers: { "x-built-source": "yes" },
+          body: { ok: true, body: { ping: true } },
+        });
+      } finally {
+        await server.close();
+        await rm(workspace, { recursive: true, force: true });
+      }
+    },
+  );
 
-  esbuildSmoke("loads a built remote plugin from a separate capability server process", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "eliza-remote-process-"));
-    const srcDir = join(workspace, "src");
-    const distDir = join(workspace, "dist");
-    await mkdir(srcDir, { recursive: true });
-    await mkdir(distDir, { recursive: true });
+  esbuildSmoke(
+    "loads a built remote plugin from a separate capability server process",
+    async () => {
+      const workspace = await mkdtemp(join(tmpdir(), "eliza-remote-process-"));
+      const srcDir = join(workspace, "src");
+      const distDir = join(workspace, "dist");
+      await mkdir(srcDir, { recursive: true });
+      await mkdir(distDir, { recursive: true });
 
-    const viewSource = join(srcDir, "process-view.ts");
-    const builtBundlePath = join(distDir, "process-view.js");
-    await writeFile(
-      viewSource,
-      [
-        "export const marker = 'process-built-remote-view';",
-        "export const source = 'child-process';",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-    const buildResult = await buildRemoteViewFixtures({
-      entryPoints: [viewSource],
-      outfile: builtBundlePath,
-    });
-    expect(buildResult.errors).toHaveLength(0);
+      const viewSource = join(srcDir, "process-view.ts");
+      const builtBundlePath = join(distDir, "process-view.js");
+      await writeFile(
+        viewSource,
+        [
+          "export const marker = 'process-built-remote-view';",
+          "export const source = 'child-process';",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      const buildResult = await buildRemoteViewFixtures({
+        entryPoints: [viewSource],
+        outfile: builtBundlePath,
+      });
+      expect(buildResult.errors).toHaveLength(0);
 
-    const serverSource = join(srcDir, "capability-process.mjs");
-    await writeFile(
-      serverSource,
-      `
+      const serverSource = join(srcDir, "capability-process.mjs");
+      await writeFile(
+        serverSource,
+        `
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 
@@ -3996,106 +4009,107 @@ server.listen(0, "127.0.0.1", () => {
 
 process.on("SIGTERM", () => server.close(() => process.exit(0)));
 `,
-      "utf8",
-    );
-
-    const child = spawn(process.execPath, [serverSource], {
-      env: {
-        ...process.env,
-        REMOTE_CAPABILITY_TOKEN: "process-token",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    try {
-      const { baseUrl, pid } = await readChildServerReady(child);
-      expect(pid).not.toBe(process.pid);
-      const runtime = makeExecutableRuntime(
-        new RemoteCapabilityRouterService(makeRuntime(null), {
-          enabled: true,
-          baseUrl,
-          token: "process-token",
-          environment: "server",
-          requestTimeoutMs: 1000,
-        }),
+        "utf8",
       );
 
-      await expect(
-        bootstrapRemoteCapabilityPlugins(runtime),
-      ).resolves.toMatchObject({
-        registered: [
-          expect.objectContaining({ name: "@remote/process-plugin" }),
-        ],
-        unloaded: [],
-        skipped: [],
-        trustDecisions: [
-          expect.objectContaining({
-            moduleId: "process-plugin",
-            endpointId: "primary",
-            trusted: true,
+      const child = spawn(process.execPath, [serverSource], {
+        env: {
+          ...process.env,
+          REMOTE_CAPABILITY_TOKEN: "process-token",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      try {
+        const { baseUrl, pid } = await readChildServerReady(child);
+        expect(pid).not.toBe(process.pid);
+        const runtime = makeExecutableRuntime(
+          new RemoteCapabilityRouterService(makeRuntime(null), {
+            enabled: true,
+            baseUrl,
+            token: "process-token",
+            environment: "server",
+            requestTimeoutMs: 1000,
           }),
-        ],
-      });
+        );
 
-      const bundleUrl =
-        "/api/capability-router/assets/primary/process-plugin/assets/process-view.js";
-      expect(getView("process.view")).toMatchObject({
-        id: "process.view",
-        pluginName: "@remote/process-plugin",
-        bundleUrl,
-        available: true,
-      });
-      const remoteBundleUrl = `${baseUrl}/v1/capabilities/assets/process-plugin/assets/process-view.js`;
-      const bundleResponse = await fetch(remoteBundleUrl, {
-        headers: { authorization: "Bearer process-token" },
-      });
-      expect(bundleResponse.status).toBe(200);
-      const bundleSource = await bundleResponse.text();
-      await expect(
-        import(
-          `data:text/javascript;base64,${Buffer.from(bundleSource).toString(
-            "base64",
-          )}`
-        ),
-      ).resolves.toMatchObject({
-        marker: "process-built-remote-view",
-        source: "child-process",
-      });
+        await expect(
+          bootstrapRemoteCapabilityPlugins(runtime),
+        ).resolves.toMatchObject({
+          registered: [
+            expect.objectContaining({ name: "@remote/process-plugin" }),
+          ],
+          unloaded: [],
+          skipped: [],
+          trustDecisions: [
+            expect.objectContaining({
+              moduleId: "process-plugin",
+              endpointId: "primary",
+              trusted: true,
+            }),
+          ],
+        });
 
-      await expect(
-        runtime.actions[0]?.handler(runtime, { content: {} } as never),
-      ).resolves.toMatchObject({
-        success: true,
-        text: "process action",
-        data: { pid },
-      });
-      await expect(
-        runtime.providers[0]?.get(runtime, {} as never, {} as never),
-      ).resolves.toMatchObject({
-        text: "process provider",
-        values: { isolated: true },
-      });
-      await expect(
-        dispatchRoute({
-          runtime,
-          method: "POST",
-          path: "/process/route",
-          headers: {},
-          body: { process: true },
-          inProcess: false,
-          isAuthorized: () => false,
-        }),
-      ).resolves.toEqual({
-        status: 208,
-        headers: { "x-process-plugin": "yes" },
-        body: { processRoute: true, body: { process: true } },
-      });
-    } finally {
-      child.kill("SIGTERM");
-      await waitForChildExit(child);
-      await rm(workspace, { recursive: true, force: true });
-    }
-  });
+        const bundleUrl =
+          "/api/capability-router/assets/primary/process-plugin/assets/process-view.js";
+        expect(getView("process.view")).toMatchObject({
+          id: "process.view",
+          pluginName: "@remote/process-plugin",
+          bundleUrl,
+          available: true,
+        });
+        const remoteBundleUrl = `${baseUrl}/v1/capabilities/assets/process-plugin/assets/process-view.js`;
+        const bundleResponse = await fetch(remoteBundleUrl, {
+          headers: { authorization: "Bearer process-token" },
+        });
+        expect(bundleResponse.status).toBe(200);
+        const bundleSource = await bundleResponse.text();
+        await expect(
+          import(
+            `data:text/javascript;base64,${Buffer.from(bundleSource).toString(
+              "base64",
+            )}`
+          ),
+        ).resolves.toMatchObject({
+          marker: "process-built-remote-view",
+          source: "child-process",
+        });
+
+        await expect(
+          runtime.actions[0]?.handler(runtime, { content: {} } as never),
+        ).resolves.toMatchObject({
+          success: true,
+          text: "process action",
+          data: { pid },
+        });
+        await expect(
+          runtime.providers[0]?.get(runtime, {} as never, {} as never),
+        ).resolves.toMatchObject({
+          text: "process provider",
+          values: { isolated: true },
+        });
+        await expect(
+          dispatchRoute({
+            runtime,
+            method: "POST",
+            path: "/process/route",
+            headers: {},
+            body: { process: true },
+            inProcess: false,
+            isAuthorized: () => false,
+          }),
+        ).resolves.toEqual({
+          status: 208,
+          headers: { "x-process-plugin": "yes" },
+          body: { processRoute: true, body: { process: true } },
+        });
+      } finally {
+        child.kill("SIGTERM");
+        await waitForChildExit(child);
+        await rm(workspace, { recursive: true, force: true });
+      }
+    },
+  );
 
   dockerSmoke(
     "loads a built remote plugin from an actual Docker container capability server",

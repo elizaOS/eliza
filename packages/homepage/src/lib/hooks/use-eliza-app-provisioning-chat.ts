@@ -149,7 +149,12 @@ export function useElizaAppProvisioningChat(
         return;
       }
     })();
-  }, [active, applyOnboardingResponse, onboardingSessionId, usesSharedOnboarding]);
+  }, [
+    active,
+    applyOnboardingResponse,
+    onboardingSessionId,
+    usesSharedOnboarding,
+  ]);
 
   useEffect(() => {
     if (!active || isReady) return;
@@ -201,7 +206,8 @@ export function useElizaAppProvisioningChat(
           const provisioning = res.data.provisioning;
           const newStatus = provisioning?.status ?? containerStatus;
           setContainerStatus(newStatus);
-          if (provisioning?.agentId && !agentId) setAgentId(provisioning.agentId);
+          if (provisioning?.agentId && !agentId)
+            setAgentId(provisioning.agentId);
           if (provisioning?.bridgeUrl) {
             setBridgeUrl(provisioning.bridgeUrl);
           }

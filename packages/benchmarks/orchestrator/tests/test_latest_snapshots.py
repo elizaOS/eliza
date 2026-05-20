@@ -286,6 +286,70 @@ def test_rebuild_latest_prunes_preserved_snapshot_excluded_by_current_compatibil
     }
 
 
+def test_rebuild_latest_prunes_mislabeled_hermes_native_env_snapshots(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_eliza",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+
+    preserved = tmp_path / "latest" / "hermes_tblite__eliza.json"
+    preserved.parent.mkdir(parents=True, exist_ok=True)
+    preserved.write_text(
+        json.dumps(
+            {
+                "benchmark_id": "hermes_tblite",
+                "benchmark_directory": "hermes-adapter",
+                "agent": "eliza",
+                "status": "succeeded",
+                "score": 0.0,
+                "run_id": "run_mislabeled_tblite_eliza",
+                "run_group_id": "rg_old",
+                "signature": "sig-tblite-eliza-old",
+                "comparison_signature": "cmp-tblite-eliza-old",
+                "updated_at": "2026-05-11T00:00:00+00:00",
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {
+            "bfcl": _adapter("bfcl"),
+            "hermes_tblite": _adapter("hermes_tblite", agent_compatibility=("hermes",)),
+        },
+    )
+
+    assert not preserved.exists()
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert "hermes_tblite::eliza" not in index["latest"]
+    assert index["matrix_contract"]["benchmarks"]["hermes_tblite"]["cells"]["eliza"] == {
+        "required": False,
+        "state": "unsupported",
+        "status": "unsupported",
+        "score": None,
+        "run_id": None,
+        "reason": "harness 'eliza' not in adapter compatibility (hermes)",
+    }
+
+
 def test_rebuild_latest_recomputes_warnings_for_preserved_snapshots(
     tmp_path: Path,
 ) -> None:

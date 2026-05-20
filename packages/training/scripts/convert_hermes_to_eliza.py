@@ -234,7 +234,11 @@ def main() -> None:
     all_drop_reasons: dict[str, int] = {}
 
     for slug, dataset_id in datasets_to_run.items():
-        records, drops = convert_dataset(dataset_id, slug, args.max_records, args.hf_token)
+        try:
+            records, drops = convert_dataset(dataset_id, slug, args.max_records, args.hf_token)
+        except Exception as exc:
+            log.warning("Skipping %s (%s): %s", slug, dataset_id, exc)
+            continue
         n_dropped = sum(drops.values())
         all_total += len(records) + n_dropped
         all_converted += len(records)

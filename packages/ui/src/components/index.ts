@@ -209,6 +209,7 @@ export * from "./connectors/ConnectorAccountPurposeSelector";
 export * from "./connectors/ConnectorAccountSetupScope";
 export * from "./connectors/ConnectorSetupPanel";
 export * from "./connectors/DiscordLocalConnectorPanel";
+export * from "./connectors/OwnerAgentConnectorSetupPanel";
 export * from "./connectors/SignalQrOverlay";
 export * from "./connectors/WhatsAppQrOverlay";
 export * from "./conversations/ConversationsSidebar";
