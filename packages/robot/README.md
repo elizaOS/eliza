@@ -36,17 +36,10 @@ data/                (gitignored) datasets, captures, calibration
 
 ## Commands
 
-Most user-facing CLIs are populated in later waves:
-
 ```bash
-bun run robot:fake   # local fake remote backend (coming in Wave 7)
-bun run robot:demo   # voice + sim demo (coming in Wave 7)
-bun run test:robot   # full robot test lane (coming in Wave 8)
-```
-
-Today, only the scaffold is in place:
-
-```bash
+bun run robot:bridge:mock     # bridge against the mock backend
+bun run robot:bridge:mujoco   # bridge against the MuJoCo simulator
+bun run robot:demo            # voice + sim demo (examples/robot-mujoco-demo)
 bun run --cwd packages/robot build        # tsdown — TS surface
 bun run --cwd packages/robot typecheck    # tsc --noEmit
 bun run --cwd packages/robot test         # vitest + pytest shim

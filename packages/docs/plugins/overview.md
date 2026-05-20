@@ -129,4 +129,4 @@ See [Plugin Eject](/plugins/plugin-eject) for the full eject/sync/reinject workf
 - [Plugin Architecture](/plugins/architecture) — Deep dive into the plugin system
 - [Create a Plugin](/plugins/create-a-plugin) — Step-by-step tutorial
 - [Plugin Development](/plugins/development) — Development guide and API
-- [Plugin Registry](/plugins/registry) — Browse available plugins
+- [Plugin Registry](/tracks/plugin/publish) — Browse available plugins
