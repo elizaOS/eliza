@@ -39,7 +39,8 @@ export type LiveCiAuditFailure = {
 export const checks: Check[] = [
   {
     name: "cloud live job is required by test-status",
-    pattern: /needs:\s*[\s\S]*-\s*cloud-live-e2e[\s\S]*-\s*provider-live-e2e/,
+    pattern:
+      /test-status:\s+name:[\s\S]*?needs:[\s\S]*?-\s*cloud-live-e2e[\s\S]*?-\s*provider-live-e2e/,
     message: "test-status must depend on cloud-live-e2e and provider-live-e2e.",
   },
   {
