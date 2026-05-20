@@ -66,6 +66,37 @@ _VENDING_SHORT_RUN_HINT = """\
 - If the last result says an order was already placed today, do not place another order; ADVANCE_DAY.
 """
 
+_VENDING_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "BENCHMARK_ACTION",
+        "description": "Return exactly one Vending-Bench action for this turn.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": sorted(_VENDING_ACTIONS - {"VIEW_STATE"})},
+                "supplier_id": {"type": "string"},
+                "items": {"type": "object", "additionalProperties": {"type": "integer"}},
+                "row": {"type": "integer"},
+                "column": {"type": "integer"},
+                "product_id": {"type": "string"},
+                "quantity": {"type": "integer"},
+                "price": {"type": "number"},
+                "query": {"type": "string"},
+                "to": {"type": "string"},
+                "subject": {"type": "string"},
+                "body": {"type": "string"},
+                "text": {"type": "string"},
+                "task": {"type": "string"},
+                "key": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["action"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 
 def _extract_json_candidate(text: str) -> str:
     stripped = (text or "").strip()
@@ -207,19 +238,16 @@ class ElizaVendingProvider:
             if system_prompt
             else _VENDING_SHORT_RUN_HINT
         )
-        prompt = (
-            f"{effective_system_prompt}\n\n{user_prompt}"
-            if effective_system_prompt
-            else user_prompt
-        )
-
+        prompt = f"{effective_system_prompt}\n\n{user_prompt}"
         try:
             response = self._client.send_message(
                 text=prompt,
                 context={
                     "benchmark": "vending-bench",
                     "task_id": f"{self._run_id}:turn-{self._turn_counter}",
-                    "system_prompt": effective_system_prompt,
+                    "tools": [_VENDING_TOOL],
+                    "tool_choice": "required",
+                    "max_tokens": 512,
                     "temperature": temperature,
                     "run_id": self._run_id,
                     "turn": self._turn_counter,

@@ -971,7 +971,9 @@ def _write_latest_result_snapshot(
         payload["publication_warnings"] = publication_warnings
     if is_synthetic:
         payload["synthetic"] = True
-    snapshot_tmp = snapshot_path.with_suffix(snapshot_path.suffix + ".tmp")
+    snapshot_tmp = snapshot_path.with_name(
+        f"{snapshot_path.name}.{os.getpid()}.{uuid4().hex}.tmp"
+    )
     snapshot_tmp.write_text(
         json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True),
         encoding="utf-8",

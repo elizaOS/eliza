@@ -1,17 +1,32 @@
 // @vitest-environment jsdom
 
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fireEvent, screen } from "@testing-library/dom";
 import type ReactTypes from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const pluginRequire = createRequire(
-  `${process.cwd()}/plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx`,
+function findAncestor(start: string, relativePath: string) {
+  let current = start;
+  while (true) {
+    const candidate = join(current, relativePath);
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(current);
+    if (parent === current) {
+      throw new Error(`Unable to locate ${relativePath}`);
+    }
+    current = parent;
+  }
+}
+
+const clawvilleSurfacePath = findAncestor(
+  process.cwd(),
+  "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
 );
+const pluginRequire = createRequire(clawvilleSurfacePath);
 const React = pluginRequire("react") as typeof ReactTypes;
-const bunModulesDir = join(process.cwd(), "node_modules", ".bun");
+const bunModulesDir = findAncestor(process.cwd(), "node_modules/.bun");
 const reactDomPackageDir = readdirSync(bunModulesDir).find((entry) =>
   entry.startsWith(`react-dom@${React.version}+`),
 );
