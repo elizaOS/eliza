@@ -34,10 +34,10 @@ jobs:
             exit 0
           fi
 
-          # Bun 1.3.14 can report frozen-lockfile drift even when a
-          # non-frozen install rewrites an identical bun.lock. Preserve the
-          # lockfile gate by allowing the install only when bun.lock is
-          # byte-for-byte unchanged.
+          # Bun 1.3.14 can report frozen-lockfile drift with workspace optional
+          # peers even when a non-frozen install rewrites an identical bun.lock.
+          # Preserve the lockfile gate by allowing the install only when
+          # bun.lock is byte-for-byte unchanged.
           bun install --no-frozen-lockfile
           git diff --exit-code -- bun.lock
 
