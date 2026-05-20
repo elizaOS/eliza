@@ -8,8 +8,8 @@ Last updated: 2026-05-19
 - Worktree used for the latest proof: `/home/nubs/Git/iqlabs/elizaos-usb-prod-e2e`
 - Branch: `nubs/elizaos-live-prod-hardening-20260519`
 - PR: https://github.com/elizaOS/eliza/pull/7803
-- Verified local head: this hardening commit
-- Latest merged `origin/develop`: `d32b6a4461`
+- Verified local head: current merge head
+- Latest merged `origin/develop`: `c73f1768b68ea72b5df83efeeaadea49f812555f`
 - Latest local CI-fix validation: 2026-05-19 23:55 UTC
 
 ## What This Package Is
@@ -104,6 +104,20 @@ behind the backend contract and future signed/elevated helpers.
     current backends do not perform;
   - OS release CI and the Linux release-packaging path now run Playwright E2E
     and the opt-in `scsi_debug` virtual block-device proof.
+- Post-merge validation on 2026-05-20 after merging
+  `origin/develop@c73f1768b6`:
+  - `bun run verify:cloud` passed;
+  - `bun run test:cloud` passed: 266 tests across 28 files;
+  - `bun run --cwd packages/os/usb-installer test` passed: 9 files, 80 tests,
+    with the opt-in virtual block-device test skipped by default;
+  - `bun run --cwd packages/os/usb-installer typecheck` passed;
+  - `bun run --cwd packages/os/usb-installer lint` passed;
+  - `bun run --cwd packages/os/usb-installer build` passed;
+  - `bun run --cwd packages/os/usb-installer test:e2e` passed: 6 Playwright
+    tests;
+  - `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
+    with `scsi_debug` cleanup verified;
+  - `git diff --check` passed.
 - Disk cleanup on 2026-05-19:
   - removed ignored/generated stale ISO artifacts and root `dist/`;
   - removed inactive `/tmp/eliza-pr7803` temp checkout after confirming no
