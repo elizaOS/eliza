@@ -36,18 +36,20 @@ REQUIRED_GENERATED_ARTIFACTS = (
     OUT_DIR / "generated-src/chipyard.harness.TestHarness.ElizaRocketConfig.dts",
     OUT_DIR / "ElizaRocketConfig.manifest.json",
 )
-REQUIRED_LOG_MARKERS = ("OpenSBI", "Linux version")
+REQUIRED_LOG_MARKERS = ("OpenSBI/SBI handoff", "Linux version")
 OPENSBI_MARKERS = ("OpenSBI", "SBI specification", "Domain0 Next Address", "Boot HART ID")
 OPENSBI_ACCEPTANCE_MARKERS = ("SBI specification", "Domain0 Next Address", "Boot HART ID")
 LINUX_MARKERS = (
     "Linux version",
     "Kernel command line:",
+    "Forcing kernel command line to:",
     "Freeing unused kernel",
     "Run /init as init process",
     "initramfs",
 )
 LINUX_ACCEPTANCE_MARKERS = (
     "Kernel command line:",
+    "Forcing kernel command line to:",
     "Freeing unused kernel",
     "Run /init as init process",
     "initramfs",
@@ -368,7 +370,11 @@ def has_marker_group(text: str, required: tuple[str, ...], any_of: tuple[str, ..
 
 
 def has_accepted_opensbi_markers(text: str) -> bool:
-    return has_marker_group(text, ("OpenSBI",), OPENSBI_ACCEPTANCE_MARKERS)
+    return has_marker_group(text, ("OpenSBI",), OPENSBI_ACCEPTANCE_MARKERS) or has_marker_group(
+        text,
+        ("SBI specification",),
+        ("SBI implementation ID=0x1", "SBI TIME extension detected", "SBI SRST extension detected"),
+    )
 
 
 def has_accepted_linux_markers(text: str) -> bool:
@@ -784,6 +790,16 @@ def classify_smoke_progress(
     if "OpenSBI" in log_text and (
         "Assertion failed in TestDriver" in log_text or "Verilog $stop" in log_text
     ):
+        if sim_timeout:
+            return {
+                "stage": "opensbi_banner_then_max_cycles",
+                "next_step": (
+                    "rerun the generated AP smoke with a larger "
+                    "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES budget and enough wall time "
+                    "to reach OpenSBI handoff and Linux boot markers, or debug why "
+                    "OpenSBI console output is too slow to reach Domain0 handoff"
+                ),
+            }
         return {
             "stage": "opensbi_banner_then_testdriver_assert",
             "next_step": (
@@ -883,7 +899,7 @@ def classify_smoke_progress(
         and log_metadata.get("exit_code")
         and log_metadata.get("exit_code") != "0"
         and not instruction_trace.get("exists")
-        and not any(marker in log_text for marker in REQUIRED_LOG_MARKERS)
+        and not (has_accepted_opensbi_markers(log_text) or "Linux version" in log_text)
     ):
         return {
             "stage": "fast_timeout_no_trace",
@@ -1096,7 +1112,9 @@ def main() -> int:
                 reason += f" after timeout_after_seconds={timeout_after}"
             blockers.append(reason)
         last_progress = log_metadata.get("last_progress_marker")
-        if last_progress and not any(marker in log_text for marker in REQUIRED_LOG_MARKERS):
+        if last_progress and not (
+            has_accepted_opensbi_markers(log_text) or "Linux version" in log_text
+        ):
             blockers.append(f"last simulator progress before missing boot markers: {last_progress}")
         trace_is_fresh = bool(instruction_trace.get("fresh_for_log"))
         if instruction_trace.get("exists") and not trace_is_fresh:
@@ -1108,7 +1126,7 @@ def main() -> int:
         if (
             trace_is_fresh
             and instruction_trace.get("bootrom_to_payload_handoff")
-            and not any(marker in log_text for marker in REQUIRED_LOG_MARKERS)
+            and not (has_accepted_opensbi_markers(log_text) or "Linux version" in log_text)
         ):
             blockers.append(
                 "instruction trace proves CPU forward progress through boot ROM "
@@ -1118,14 +1136,23 @@ def main() -> int:
                 f"retired={instruction_trace.get('retired_instruction_count')} "
                 f"trace={instruction_trace.get('path')}"
             )
-        for marker in REQUIRED_LOG_MARKERS:
-            if marker not in log_text:
-                blockers.append(f"{rel(LOG)} lacks required marker: {marker}")
+        if not has_accepted_opensbi_markers(log_text):
+            blockers.append(f"{rel(LOG)} lacks required marker: OpenSBI/SBI handoff")
         if "OpenSBI" in log_text and not has_accepted_opensbi_markers(log_text):
             blockers.append(
                 f"{rel(LOG)} has an OpenSBI banner but lacks accepted OpenSBI handoff markers: "
                 + ", ".join(OPENSBI_ACCEPTANCE_MARKERS)
             )
+        if (
+            "SBI specification" in log_text
+            and "OpenSBI" not in log_text
+            and not has_accepted_opensbi_markers(log_text)
+        ):
+            blockers.append(
+                f"{rel(LOG)} has Linux-observed SBI markers but lacks accepted implementation markers"
+            )
+        if "Linux version" not in log_text:
+            blockers.append(f"{rel(LOG)} lacks required marker: Linux version")
         if "Linux version" in log_text and not has_accepted_linux_markers(log_text):
             blockers.append(
                 f"{rel(LOG)} has a Linux banner but lacks accepted Linux boot markers: "

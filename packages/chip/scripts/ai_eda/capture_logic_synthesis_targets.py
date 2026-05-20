@@ -125,6 +125,7 @@ def main() -> int:
         "source_ids": [
             "yosys",
             "abc",
+            "self-evolved-abc",
             "mockturtle",
             "aigverse",
             "openabc-d",
@@ -174,6 +175,17 @@ def main() -> int:
                 ],
             },
             {
+                "id": "agentic-abc-tool-evolution-watch",
+                "status": "CAPTURED_NOT_EVOLVED",
+                "target": "future self-evolved ABC or agentic EDA-tool code changes must stay outside release until evolved source, compile logs, correctness logs, QoR replay, equivalence, and integration evidence are reviewed",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make synth",
+                    "make formal",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "tech-mapping-qor-label-watch",
                 "status": "CAPTURED_NOT_LABELED",
                 "target": "future technology-mapping labels must include RTL, script, Liberty, SDC, generated netlist, synthesis log, STA, and OpenLane context",
@@ -211,7 +223,7 @@ def main() -> int:
             "no accepted E1 synthesis optimization corpus with pinned RTL, scripts, Liberty, SDC, netlist, log, STA, and OpenLane artifact hashes",
             "current make synth is blocked until the local synthesis source list includes every referenced module and generated macro wrapper intentionally",
             "no local equivalence policy for accepting alternative ABC/Yosys recipes or gate-level transformations",
-            "no license-reviewed external synthesis optimizer, dataset, model, or RL environment with pinned revisions and replay manifests",
+            "no license-reviewed external synthesis optimizer, evolved ABC codebase, dataset, model, or RL environment with pinned revisions and replay manifests",
             "no release gate allowing AI-generated synthesis scripts, technology mappings, netlists, constraints, or QoR claims to bypass RTL, formal, cocotb, synthesis, OpenLane, STA, power, and review gates",
         ],
     }

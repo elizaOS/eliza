@@ -155,6 +155,7 @@ class GateInventoryTests(unittest.TestCase):
             "bsp",
             "verify",
             "benchmarks",
+            "os_rv64",
         }
         allowed_tiers = {"spec", "rtl", "pd", "silicon"}
         for spec in agg.GATES:
@@ -174,6 +175,7 @@ class GateInventoryTests(unittest.TestCase):
             "bsp",
             "verify",
             "benchmarks",
+            "os_rv64",
         }
         present = {spec.subsystem for spec in agg.GATES}
         missing = required - present
@@ -186,6 +188,20 @@ class GateInventoryTests(unittest.TestCase):
             specs["chipyard-generated-linux-contract-check"].args,
             ("--require-boot-evidence",),
         )
+
+    def test_os_rv64_subsystem_present(self) -> None:
+        """The unified bring-up dashboard requires at least one os_rv64 gate.
+
+        The chip aggregator spans the chip and OS RV64 variant so that a
+        single ``make chip-os-bring-up-status`` view covers both halves of
+        the promotion contract. If this assertion fails the unified
+        dashboard has silently lost its OS side.
+        """
+        os_gates = [spec for spec in agg.GATES if spec.subsystem == "os_rv64"]
+        self.assertTrue(os_gates, "no os_rv64 gates registered in GATES")
+        names = {spec.name for spec in os_gates}
+        self.assertIn("os-rv64-release-check", names)
+        self.assertIn("os-rv64-qemu-virt-boot-test", names)
 
 
 class MainExitCodeTests(unittest.TestCase):
@@ -314,6 +330,65 @@ class ReportFileTests(unittest.TestCase):
         parsed = json.loads(text)
         self.assertEqual(parsed["schema"], "eliza.tapeout_readiness.v1")
         self.assertEqual(parsed["gates"][0]["name"], "x")
+
+
+class AbsolutePathGateTests(unittest.TestCase):
+    """The aggregator must accept absolute-path GateSpec entries so it can
+    reach across packages (e.g. the OS RV64 variant's release-check).
+    """
+
+    def test_absolute_path_gate_runs_and_reports_pass(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "fake_gate.py"
+            script.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print('STATUS: PASS synthetic absolute-path gate')\n"
+                "sys.exit(0)\n"
+            )
+            spec = agg.GateSpec(
+                name="synthetic-abs-pass",
+                script=str(script),
+                subsystem="os_rv64",
+                tier="spec",
+            )
+            result = agg.run_gate(spec)
+        self.assertEqual(result.status, "PASS")
+        self.assertEqual(result.name, "synthetic-abs-pass")
+        self.assertIn("STATUS: PASS", result.evidence)
+
+    def test_absolute_path_gate_classifies_blocked_marker(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "fake_blocked.py"
+            script.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print('STATUS: BLOCKED waiting on external dep')\n"
+                "sys.exit(0)\n"
+            )
+            spec = agg.GateSpec(
+                name="synthetic-abs-blocked",
+                script=str(script),
+                subsystem="os_rv64",
+                tier="spec",
+            )
+            result = agg.run_gate(spec)
+        self.assertEqual(result.status, "BLOCKED")
+
+    def test_absolute_path_gate_missing_script_is_fail(self) -> None:
+        spec = agg.GateSpec(
+            name="synthetic-abs-missing",
+            script="/definitely/not/here/missing_gate.py",
+            subsystem="os_rv64",
+            tier="spec",
+        )
+        result = agg.run_gate(spec)
+        self.assertEqual(result.status, "FAIL")
+        self.assertIn("script missing", result.evidence)
 
 
 if __name__ == "__main__":

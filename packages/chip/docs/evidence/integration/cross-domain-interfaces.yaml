@@ -47,36 +47,44 @@ edges:
     tested_by:
       - cluster_lite_tieoff_drives_axi_to_quiet
       - test_cva6_executes_from_bootrom
-    status: TIED_OFF
+      - test_cva6_starts_fetching
+      - test_cva6_executes_four_instructions
+      - test_cva6_dram_store
+      - test_cva6_dram_load
+    status: WIRED_OBSERVABILITY_ONLY
     blocked_reason: |
-      Cluster is in lite tie-off mode.  Per-core wrappers
-      (E1_HAVE_ASCALON / E1_HAVE_KUNMINGHU / E1_HAVE_BOOM /
-      E1_HAVE_CVA6) are not linked.
+      The CVA6 wrapper (`rtl/cpu/e1_cva6_wrapper.sv`) has been
+      re-targeted to the OpenHW Group CVA6 v5.3.0 API
+      (`external/cva6/cva6` pinned at commit 2ef1c1b).  The wrapper
+      instantiates `cva6 #(.CVA6Cfg(build_config_pkg::build_config(
+      cva6_config_pkg::cva6_cfg)))` and bridges its `noc_req_t` /
+      `noc_resp_t` structs to flat AXI4 master signals via the new
+      `rtl/top/adapters/e1_cva6_to_e1axi4.sv` adapter.  Both files
+      elaborate cleanly under verilator-strict with the full v5.3.0
+      source tree linked (185 modules, 275 MB of CVA6 sources via
+      `external/cva6/cva6/core/Flist.cva6`).  Two cocotb tests under
+      the dedicated `e1_cva6_unit_tb` harness exercise the wrapper
+      against an in-TB ROM + DRAM model:
+      `make cocotb-cva6-cpu-bootrom` and `make cocotb-cva6-cpu-dram`.
 
-      The CVA6 path (`rtl/cpu/e1_cva6_wrapper.sv`) is BLOCKED by a
-      wrapper-API drift: the wrapper targets the legacy
-      `ariane_pkg::ArianeDefaultConfig` / module `ariane` /
-      `ariane_axi::req_t` API, none of which exist in the current
-      standalone CVA6 checkout (`external/cva6/cva6`, head cfb85e7)
-      or in any tagged release from v4.0.0 onward.  Current CVA6
-      exposes module `cva6` with `config_pkg::cva6_cfg_t` (built
-      from `cva6_config_pkg::cva6_cfg` via
-      `build_config_pkg::build_config`) and configurable NoC structs.
+      At the SoC integration top (`rtl/top/e1_soc_integrated.sv`)
+      the wrapper is instantiated as `u_cva6_slot0` under
+      `+define+E1_CLUSTER_SLOT0_CVA6` but its AXI4 master is still
+      tied off because the per-core cluster slot expects 128-bit
+      data (`AXI_DATA_W=128`, matching L1D cache line width) while
+      CVA6 natively issues 64-bit data.  The remaining gap is a
+      64↔128 AXI4 data-width converter.  Until that adapter lands
+      slot 0 stays observability-only: the wrapper elaborates and
+      can be driven by cocotb at the unit-TB level, but slot-0
+      fabric traffic does not flow.
 
-      Recovery is gated on:
-        1. pinning `external/cva6/cva6` to v5.3.0 (commit 2ef1c1b);
-        2. initialising the cvfpu + hpdcache + nested cvfpu submodules
-           (~200+ files of CVA6 + dependencies);
-        3. rewriting the `ifdef E1_HAVE_CVA6 block in
-           `rtl/cpu/e1_cva6_wrapper.sv` to instantiate
-             cva6 #(.CVA6Cfg(build_config_pkg::build_config(
-                                cva6_config_pkg::cva6_cfg)))
-           and bridging the NoC structs to the cluster's flat AXI4
-           master via a new `rtl/top/adapters/e1_cva6_to_e1axi4.sv`.
-
-      The drift is enforced by `scripts/check_cva6_pin.py`
-      (`wrapper_api_drift` block in `external/cva6/pin-manifest.json`)
-      so the gate fails closed until the wrapper compiles.
+      Next-step blocker: implement
+      `rtl/top/adapters/e1_axi4_width_converter.sv` (64↔128 with
+      strobe expansion / merging) and wire it between
+      `u_cva6_slot0.axi_*` and `cluster_axi_*[0]` so the cluster
+      slot exits tie-off.  The drift gate
+      (`scripts/check_cva6_pin.py`) still enforces the wrapper +
+      pin chain.
 
   - name: chi_to_axi4_bridge
     description: TL-C → CHI → AXI4 cache south-side bridge

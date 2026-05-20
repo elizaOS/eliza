@@ -118,6 +118,8 @@ def main() -> int:
             "hardware-verilogeval-v2-hf",
             "llm4verilog-dataset",
             "qimeng-codev-r1",
+            "qimeng-crux",
+            "qimeng-salv",
             "evolve-verilog",
             "safetune-rtl-poisoning",
             "trojanloc",

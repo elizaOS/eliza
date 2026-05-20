@@ -125,6 +125,8 @@ def main() -> int:
             "prompting-for-power",
             "poet-rtl-ppa",
             "rtl-ppa-sog",
+            "symrtlo",
+            "powergear-hls-power",
             "openroad-two-phase-clock",
         ],
         "policy": {
@@ -211,6 +213,26 @@ def main() -> int:
                     "python3 scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation",
                 ],
             },
+            {
+                "id": "power-aware-rtl-rewrite-watch",
+                "status": "CAPTURED_NOT_REWRITTEN",
+                "target": "future SymRTLO-style RTL rewrites with power/PPA objectives require isolated generated artifacts, equivalence, synthesis, timing, activity provenance, power reports, and review",
+                "acceptance_gates": [
+                    "make rtl-check",
+                    "make formal",
+                    "make synth",
+                ],
+            },
+            {
+                "id": "hls-power-estimator-intake-watch",
+                "status": "CAPTURED_NOT_MODELED",
+                "target": "future PowerGear-style HLS power estimates require exact benchmark assets, feature provenance, HLS/RTL synthesis replay, held-out E1 error analysis, and before/after power evidence",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_hls_accelerator_targets.py --run-id validation",
+                    "make power-thermal-evidence-check",
+                    "make synth",
+                ],
+            },
         ],
         "blocked_by": [
             "no E1 power-state table, always-on partition, supply-set map, or IEEE 1801 UPF source",
@@ -220,6 +242,7 @@ def main() -> int:
             "no scan/DFT, CDC/RDC, reset, and timing policy for generated gated clocks or power domains",
             "no workload-aligned voltage, frequency, power, and thermal traces for DVFS or idle-state validation",
             "no before/after low-power PPA corpus with equivalence and signoff evidence for E1",
+            "no calibrated HLS/RTL power-label corpus or held-out E1 error analysis for early-stage power estimators",
         ],
     }
     out_dir = (args.out_root / args.run_id).resolve()

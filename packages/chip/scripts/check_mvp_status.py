@@ -530,6 +530,7 @@ def minimum_target_status() -> Status:
 
 
 def product_status() -> Status:
+    report_path = ROOT / "build/reports/product_release_status.json"
     result = subprocess.run(
         [sys.executable, "scripts/product_check.py"],
         cwd=ROOT,
@@ -538,6 +539,43 @@ def product_status() -> Status:
         stderr=subprocess.STDOUT,
         check=False,
     )
+    report: dict[str, object] = {}
+    if report_path.exists():
+        try:
+            loaded_report = json.loads(report_path.read_text(encoding="utf-8"))
+            if isinstance(loaded_report, dict):
+                report = loaded_report
+        except json.JSONDecodeError:
+            report = {}
+
+    if report.get("schema") == "eliza.product_release_status.v1":
+        status = report.get("status")
+        blockers = report.get("release_blockers")
+        next_step = str(
+            report.get(
+                "next_step",
+                "close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication",
+            )
+        )
+        if status == "blocked":
+            blocker_count = len(blockers) if isinstance(blockers, list) else 0
+            evidence = f"{rel(report_path)} records {blocker_count} product release blockers"
+            return Status(
+                "product-package",
+                BLOCK,
+                evidence,
+                next_step,
+                "release_blocker",
+            )
+        if status == "pass" and result.returncode == 0:
+            return Status(
+                "product-package",
+                PASS,
+                f"{rel(report_path)} records product release pass",
+                "none",
+                "generated_artifact",
+            )
+
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     evidence = " ".join(lines)[:220] if lines else "command produced no output"
     if (
@@ -548,7 +586,7 @@ def product_status() -> Status:
             "product-package",
             BLOCK,
             evidence,
-            "close package/FPGA/KiCad/PD release blockers or keep product claim below fabrication",
+            "close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication",
             "release_blocker",
         )
     if result.returncode == 0:

@@ -136,12 +136,17 @@ def main() -> int:
         "source_ids": [
             "openram",
             "dffram",
+            "openxram",
+            "openrram",
             "cacti",
             "destiny-memory-model",
             "nvsim",
             "neurosim",
+            "openacm-cim",
+            "openacmv2-cim",
             "sram-compiler-openroad",
             "sram-yield-estimation",
+            "openyield-sram",
         ],
         "policy": {
             "downloads_pdk_or_macros": False,
@@ -175,7 +180,7 @@ def main() -> int:
             {
                 "id": "open-sram-compiler-readiness-watch",
                 "status": "CAPTURED_NOT_GENERATED",
-                "target": "future OpenRAM, DFFRAM, or OpenROAD SRAM compiler use must pin compiler revisions, PDK revisions, configs, macro names, ports, timing corners, and generated artifact hashes",
+                "target": "future OpenRAM, DFFRAM, OpenXRAM, OpenRRAM, or OpenROAD SRAM/memory compiler use must pin compiler revisions, PDK/device revisions, configs, macro names, ports, timing corners, and generated artifact hashes",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "make pdk-portability-check",
@@ -208,7 +213,7 @@ def main() -> int:
             {
                 "id": "sram-yield-vmin-repair-watch",
                 "status": "CAPTURED_NOT_CLAIMED",
-                "target": "future AI-assisted SRAM yield, Vmin, redundancy, ECC, BIST, or repair suggestions must remain advisory until backed by foundry/process models and deterministic E1 tests",
+                "target": "future AI-assisted SRAM yield, Vmin, redundancy, ECC, BIST, repair, or OpenYield-style benchmark suggestions must remain advisory until backed by foundry/process models and deterministic E1 tests",
                 "acceptance_gates": [
                     "make power-thermal-evidence-check",
                     "make memory-interconnect-contract-check",
@@ -216,12 +221,25 @@ def main() -> int:
                     "make docs-check",
                 ],
             },
+            {
+                "id": "sram-cim-compiler-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future OpenACM/OpenACMv2-style SRAM compute-in-memory compiler or co-optimization use requires architecture, accuracy, process, generated-collateral, PVT/variation, and workload replay gates before any E1 NPU or memory change",
+                "acceptance_gates": [
+                    "make npu-runtime-contract-check",
+                    "make memory-interconnect-contract-check",
+                    "make pdk-portability-check",
+                    "make pd-signoff-manifest-check",
+                ],
+            },
         ],
         "blocked_by": [
             "no approved external memory compiler revision, PDK setup, or generated SRAM macro manifest for E1 release use",
             "no local DRC, LVS, extraction, Liberty, LEF, GDS, antenna, STA, and OpenLane run evidence for generated or swapped SRAM macros",
             "no technology-calibrated CACTI, DESTINY, NVSim, NeuroSim, or AI estimator correlation against E1 macro layouts and corners",
+            "no approved OpenXRAM/OpenRRAM/OpenACM revision, PDK/device model, generated collateral quarantine, workload accuracy replay, or signoff mapping",
             "no foundry-approved SRAM yield, Vmin, redundancy, BIST, repair, or aging model",
+            "no OpenYield process/model compatibility review, train/test split, Monte Carlo replay, or local macro-test evidence",
             "no release policy allowing AI-selected memory macros or library corners to bypass PDK, memory, RTL, synthesis, PD, and review gates",
         ],
     }

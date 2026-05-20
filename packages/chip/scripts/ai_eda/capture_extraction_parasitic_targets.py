@@ -169,6 +169,9 @@ def main() -> int:
             "openlane-timing-corners",
             "magic-extraction",
             "capbench",
+            "deeprwcap",
+            "nas-cap",
+            "ml-capacitance-itf-exploration",
         ],
         "policy": {
             "changes_layout": False,
@@ -229,12 +232,23 @@ def main() -> int:
             {
                 "id": "ml-capacitance-extraction-watch",
                 "status": "CAPTURED_NOT_TRAINED",
-                "target": "future CapBench-style ML capacitance extraction may remain advisory only until local E1 extracted labels and held-out error reports exist",
+                "target": "future CapBench, DeepRWCap, or NAS-Cap-style ML capacitance extraction may remain advisory only until local E1 extracted labels and held-out error reports exist",
                 "acceptance_gates": [
                     "make docs-check",
                     "make no-hardware-action-check",
                     "make pd-signoff-manifest-check",
                     "make power-thermal-evidence-check",
+                ],
+            },
+            {
+                "id": "process-parameter-capacitance-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future ML capacitance models for ITF/process-parameter exploration require authorized process stacks and cannot edit extraction rules or process assumptions",
+                "acceptance_gates": [
+                    "make docs-check",
+                    "make pd-signoff-manifest-check",
+                    "make commercial-eda-gap-check",
+                    "make no-hardware-action-check",
                 ],
             },
             {
@@ -252,7 +266,8 @@ def main() -> int:
         "blocked_by": [
             "no held-out E1 parasitic extraction or coupling-capacitance label corpus",
             "no approved write-capable SPEF, SDF, SPICE, extraction-rule, or SI-waiver command schema",
-            "no license-reviewed external capacitance-extraction dataset import or model checkpoint",
+            "no license-reviewed external capacitance-extraction dataset import, CapBench cache, neural-guided solver, NAS model, or checkpoint",
+            "no authorized process-stack or ITF/ICT variation workflow for ML capacitance exploration",
             "current report is advisory and cannot waive extraction, STA, SI, route, power, or signoff failures",
         ],
     }

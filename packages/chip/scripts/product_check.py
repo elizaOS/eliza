@@ -10,7 +10,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--release", action="store_true", help="fail on fabrication/tapeout release blockers"
 )
-parser.add_argument("--json", action="store_true", help="print machine-readable product status")
+parser.add_argument(
+    "--json",
+    action="store_true",
+    help="also print the final machine-readable product status report",
+)
 args = parser.parse_args()
 
 REPORT = Path("build/reports/product_release_status.json")
@@ -24,6 +28,7 @@ def write_report(report: dict) -> None:
 def emit_json(report: dict) -> None:
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
+
 
 required = [
     "package/e1-demo-pinout.yaml",
@@ -165,7 +170,9 @@ for release_check in [
     )
     if result.returncode != 0:
         release_blockers.append(f"{release_check} --release failed")
-        release_check_outputs.append((release_check, result.returncode, result.stdout, result.stderr))
+        release_check_outputs.append(
+            (release_check, result.returncode, result.stdout, result.stderr)
+        )
 
 if release_blockers:
     report = {

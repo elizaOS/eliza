@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -9,6 +10,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "docs/manufacturing/product-feature-evidence-manifest.yaml"
 GAPS = ROOT / "docs/manufacturing/real-world-verification-gaps.yaml"
+SECURITY_SCOPE_REPORT = ROOT / "build/reports/security_lifecycle_scope.json"
+SECURITY_SCOPE_CHECK = ROOT / "scripts/check_security_lifecycle_scope.py"
 
 REQUIRED_DOMAINS = {
     "modem_radio",
@@ -327,6 +330,31 @@ def check_manifest(data: dict, gap_ids: set[str], failures: list[str]) -> None:
         )
 
 
+def check_security_scope_gate(failures: list[str]) -> None:
+    result = subprocess.run(
+        [sys.executable, str(SECURITY_SCOPE_CHECK)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if result.returncode != 0:
+        failures.append("security lifecycle scope check failed:\n" + result.stdout)
+        return
+    if not SECURITY_SCOPE_REPORT.is_file():
+        failures.append("security lifecycle scope report was not generated")
+        return
+    text = SECURITY_SCOPE_REPORT.read_text(encoding="utf-8")
+    for term in (
+        "security_lifecycle_scope_release_blocked",
+        "placeholder_non_secret",
+        "not secure boot",
+    ):
+        if term not in text:
+            failures.append(f"security lifecycle scope report missing term: {term}")
+
+
 def main() -> int:
     failures: list[str] = []
     data = load_yaml(MANIFEST, failures)
@@ -339,6 +367,7 @@ def main() -> int:
     }
     if data:
         check_manifest(data, gap_ids, failures)
+    check_security_scope_gate(failures)
 
     if failures:
         print("Product feature evidence gate check failed:")

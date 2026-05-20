@@ -682,6 +682,150 @@ module e1_soc_integrated
     /* verilator lint_on UNUSEDSIGNAL */
 
     // ----------------------------------------------------------------------
+    // Optional cluster slot 0 CVA6 little-core instance.
+    //
+    // When `+define+E1_CLUSTER_SLOT0_CVA6` is set the e1_cpu_subsystem
+    // wrapper (which wraps the OpenHW Group CVA6 v5.3.0 core under
+    // `+define+E1_HAVE_CVA6`) is instantiated here as a structural
+    // declaration.  The wrapper's AXI4 master is currently NOT routed
+    // into the cluster's slot-0 AXI ports because CVA6 issues 64-bit
+    // data while the cluster's per-core port is 128-bit
+    // (AXI_DATA_W=128, matching the L1D cache line port).
+    //
+    // The remaining gap is a 64↔128 AXI4 data-width converter; once that
+    // adapter lands the slot-0 cluster signals (`cluster_axi_*[0]`) can
+    // be driven from `u_cva6_slot0`'s AXI master and the integration
+    // becomes truly WIRED rather than WIRED_OBSERVABILITY_ONLY.
+    //
+    // Until the data-width converter lands, the wrapper's master ties off
+    // to a safe-idle AXI4 sink so
+    // the structural instantiation elaborates cleanly under Verilator.
+    // The wrapper's `dbg_pc_o` / `dbg_valid_o` are exposed via the
+    // top-level testbench harness to give cocotb a structural anchor.
+    // ----------------------------------------------------------------------
+`ifdef E1_CLUSTER_SLOT0_CVA6
+    localparam int unsigned CVA6_AXI_ID_W   = 4;
+    localparam int unsigned CVA6_AXI_ADDR_W = 64;
+    localparam int unsigned CVA6_AXI_DATA_W = 64;
+    localparam int unsigned CVA6_AXI_USER_W = 1;
+
+    logic [CVA6_AXI_ID_W-1:0]         cva6_ar_id;
+    logic [CVA6_AXI_ADDR_W-1:0]       cva6_ar_addr;
+    logic [7:0]                       cva6_ar_len;
+    logic [2:0]                       cva6_ar_size;
+    logic [1:0]                       cva6_ar_burst;
+    logic                             cva6_ar_lock;
+    logic [3:0]                       cva6_ar_cache;
+    logic [2:0]                       cva6_ar_prot;
+    logic [3:0]                       cva6_ar_qos;
+    logic [3:0]                       cva6_ar_region;
+    logic [CVA6_AXI_USER_W-1:0]       cva6_ar_user;
+    logic                             cva6_ar_valid;
+    logic                             cva6_r_ready;
+    logic [CVA6_AXI_ID_W-1:0]         cva6_aw_id;
+    logic [CVA6_AXI_ADDR_W-1:0]       cva6_aw_addr;
+    logic [7:0]                       cva6_aw_len;
+    logic [2:0]                       cva6_aw_size;
+    logic [1:0]                       cva6_aw_burst;
+    logic                             cva6_aw_lock;
+    logic [3:0]                       cva6_aw_cache;
+    logic [2:0]                       cva6_aw_prot;
+    logic [3:0]                       cva6_aw_qos;
+    logic [3:0]                       cva6_aw_region;
+    logic [5:0]                       cva6_aw_atop;
+    logic [CVA6_AXI_USER_W-1:0]       cva6_aw_user;
+    logic                             cva6_aw_valid;
+    logic [CVA6_AXI_DATA_W-1:0]       cva6_w_data;
+    logic [(CVA6_AXI_DATA_W/8)-1:0]   cva6_w_strb;
+    logic                             cva6_w_last;
+    logic [CVA6_AXI_USER_W-1:0]       cva6_w_user;
+    logic                             cva6_w_valid;
+    logic                             cva6_b_ready;
+
+    // Idle sink — until the width converter lands the bus appears to the
+    // CVA6 wrapper as a perpetually un-ready slave so the structural
+    // instantiation can elaborate without driving real fabric traffic.
+    e1_cpu_subsystem #(
+        .BOOT_ADDR  (64'h0000_0000_8000_0000),
+        .AXI_ID_W   (CVA6_AXI_ID_W),
+        .AXI_ADDR_W (CVA6_AXI_ADDR_W),
+        .AXI_DATA_W (CVA6_AXI_DATA_W),
+        .AXI_USER_W (CVA6_AXI_USER_W)
+    ) u_cva6_slot0 (
+        .clk_i         (clk),
+        .rst_ni        (rst_n),
+        .irq_i         (2'b00),
+        .ipi_i         (1'b0),
+        .time_irq_i    (1'b0),
+        .debug_req_i   (1'b0),
+        .axi_ar_id     (cva6_ar_id),
+        .axi_ar_addr   (cva6_ar_addr),
+        .axi_ar_len    (cva6_ar_len),
+        .axi_ar_size   (cva6_ar_size),
+        .axi_ar_burst  (cva6_ar_burst),
+        .axi_ar_lock   (cva6_ar_lock),
+        .axi_ar_cache  (cva6_ar_cache),
+        .axi_ar_prot   (cva6_ar_prot),
+        .axi_ar_qos    (cva6_ar_qos),
+        .axi_ar_region (cva6_ar_region),
+        .axi_ar_user   (cva6_ar_user),
+        .axi_ar_valid  (cva6_ar_valid),
+        .axi_ar_ready  (1'b0),
+        .axi_r_id      ('0),
+        .axi_r_data    ('0),
+        .axi_r_resp    (2'b00),
+        .axi_r_last    (1'b0),
+        .axi_r_user    ('0),
+        .axi_r_valid   (1'b0),
+        .axi_r_ready   (cva6_r_ready),
+        .axi_aw_id     (cva6_aw_id),
+        .axi_aw_addr   (cva6_aw_addr),
+        .axi_aw_len    (cva6_aw_len),
+        .axi_aw_size   (cva6_aw_size),
+        .axi_aw_burst  (cva6_aw_burst),
+        .axi_aw_lock   (cva6_aw_lock),
+        .axi_aw_cache  (cva6_aw_cache),
+        .axi_aw_prot   (cva6_aw_prot),
+        .axi_aw_qos    (cva6_aw_qos),
+        .axi_aw_region (cva6_aw_region),
+        .axi_aw_atop   (cva6_aw_atop),
+        .axi_aw_user   (cva6_aw_user),
+        .axi_aw_valid  (cva6_aw_valid),
+        .axi_aw_ready  (1'b0),
+        .axi_w_data    (cva6_w_data),
+        .axi_w_strb    (cva6_w_strb),
+        .axi_w_last    (cva6_w_last),
+        .axi_w_user    (cva6_w_user),
+        .axi_w_valid   (cva6_w_valid),
+        .axi_w_ready   (1'b0),
+        .axi_b_id      ('0),
+        .axi_b_resp    (2'b00),
+        .axi_b_user    ('0),
+        .axi_b_valid   (1'b0),
+        .axi_b_ready   (cva6_b_ready),
+        .hart_id_i     (64'h0),
+        .dbg_pc_o      (),
+        .dbg_valid_o   ()
+    );
+
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic unused_cva6_slot0_outs;
+    assign unused_cva6_slot0_outs = ^{
+        cva6_ar_id, cva6_ar_addr, cva6_ar_len, cva6_ar_size,
+        cva6_ar_burst, cva6_ar_lock, cva6_ar_cache, cva6_ar_prot,
+        cva6_ar_qos, cva6_ar_region, cva6_ar_user, cva6_ar_valid,
+        cva6_r_ready,
+        cva6_aw_id, cva6_aw_addr, cva6_aw_len, cva6_aw_size,
+        cva6_aw_burst, cva6_aw_lock, cva6_aw_cache, cva6_aw_prot,
+        cva6_aw_qos, cva6_aw_region, cva6_aw_atop, cva6_aw_user,
+        cva6_aw_valid,
+        cva6_w_data, cva6_w_strb, cva6_w_last, cva6_w_user, cva6_w_valid,
+        cva6_b_ready
+    };
+    /* verilator lint_on UNUSEDSIGNAL */
+`endif // E1_CLUSTER_SLOT0_CVA6
+
+    // ----------------------------------------------------------------------
     // TL-C → CHI → AXI4 cache south-side bridge.  Demonstrates that the
     // cache domain's coherence wires translate into AXI4 bursts the fabric
     // accepts.  Functionally tested as a structural connection; full MESI

@@ -26,6 +26,7 @@ BOARD_KERNEL_SEPARATED_DTBO := false
 BOARD_VENDOR_SEPOLICY_DIRS += device/eliza/eliza_ai_soc/sepolicy
 DEVICE_MANIFEST_FILE += device/eliza/eliza_ai_soc/manifest.xml
 DEVICE_MANIFEST_FILE += device/eliza/eliza_ai_soc/eliza_e1.xml
+DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE += device/eliza/eliza_ai_soc/device_framework_matrix.xml
 TARGET_COPY_OUT_VENDOR := vendor
 BOARD_USES_VENDORIMAGE := true
 BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := ext4

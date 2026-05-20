@@ -31,6 +31,7 @@ CONFIGS = {
 }
 MODEL = ROOT / "benchmarks/models/mobile_smoke.tflite"
 PROCESS_EFFECTS = ROOT / "docs/spec-db/process-14a-effects.yaml"
+DESCRIPTOR_BYTES = 16
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,34 @@ def build_workload(config: NpuScaleConfig):
     ]
 
 
+def ceil_div(numerator: int, denominator: int) -> int:
+    if denominator <= 0:
+        raise ValueError("denominator must be positive")
+    return (numerator + denominator - 1) // denominator
+
+
+def descriptor_counter_entry(config: NpuScaleConfig, estimate) -> dict:
+    transfer_bytes = estimate.bytes_read + estimate.bytes_written
+    scratchpad_bytes = max(1, config.scratchpad_kib * 1024)
+    descriptors_required = ceil_div(transfer_bytes, scratchpad_bytes)
+    return {
+        "schema": "eliza.npu_scale_descriptor_counter_model.v1",
+        "claim_boundary": "modeled_queue_pressure_only_not_rtl_dma_or_silicon_counter_evidence",
+        "descriptor_bytes": DESCRIPTOR_BYTES,
+        "descriptor_queue_depth": config.dma_queue_depth,
+        "descriptor_payload_bytes": scratchpad_bytes,
+        "descriptors_required": descriptors_required,
+        "descriptor_queue_passes": ceil_div(descriptors_required, config.dma_queue_depth),
+        "descriptor_ring_bytes": descriptors_required * DESCRIPTOR_BYTES,
+        "dma_read_beats": ceil_div(estimate.bytes_read, config.dma_bytes_per_cycle),
+        "dma_write_beats": ceil_div(estimate.bytes_written, config.dma_bytes_per_cycle),
+        "dma_total_beats": ceil_div(transfer_bytes, config.dma_bytes_per_cycle),
+        "dma_bytes_per_cycle": config.dma_bytes_per_cycle,
+        "modeled_read_bytes": estimate.bytes_read,
+        "modeled_written_bytes": estimate.bytes_written,
+    }
+
+
 def metric_entry(config: NpuScaleConfig, estimate) -> dict:
     memory_wait_cycles = max(0, estimate.memory_cycles - estimate.compute_cycles)
     stall_cycles = max(0, estimate.cycles - estimate.compute_cycles)
@@ -144,6 +173,7 @@ def metric_entry(config: NpuScaleConfig, estimate) -> dict:
         "arithmetic_intensity_macs_per_external_byte": (
             estimate.arithmetic_intensity_macs_per_external_byte()
         ),
+        "descriptor_counters": descriptor_counter_entry(config, estimate),
     }
 
 
@@ -259,6 +289,7 @@ def main() -> int:
         process_corner_entry(config, corner, estimates) for corner in PROCESS_CORNERS
     ]
     worst_corner = min(process_corners, key=lambda corner: corner["min_observed_tops"])
+    descriptor_counters = [kernel["descriptor_counters"] for kernel in kernels]
     report = {
         "schema": "eliza.npu_scale_sim.v1",
         "status": "pass",
@@ -305,6 +336,19 @@ def main() -> int:
             "total_macs": sum(kernel["macs"] for kernel in kernels),
             "total_bytes_read": sum(kernel["bytes_read"] for kernel in kernels),
             "total_bytes_written": sum(kernel["bytes_written"] for kernel in kernels),
+            "total_descriptors_required": sum(
+                counter["descriptors_required"] for counter in descriptor_counters
+            ),
+            "max_descriptor_queue_passes": max(
+                counter["descriptor_queue_passes"] for counter in descriptor_counters
+            ),
+            "total_dma_read_beats": sum(
+                counter["dma_read_beats"] for counter in descriptor_counters
+            ),
+            "total_dma_write_beats": sum(
+                counter["dma_write_beats"] for counter in descriptor_counters
+            ),
+            "total_dma_beats": sum(counter["dma_total_beats"] for counter in descriptor_counters),
             "min_observed_tops": min(kernel["observed_tops"] for kernel in kernels),
             "max_observed_tops": max(kernel["observed_tops"] for kernel in kernels),
             "min_utilization_percent": min(kernel["utilization_percent"] for kernel in kernels),

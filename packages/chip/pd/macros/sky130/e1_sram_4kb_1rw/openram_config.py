@@ -24,8 +24,15 @@ supply_voltages = [1.8]
 temperatures = [25, 85, -40]
 
 route_supplies = "ring"
-check_lvsdrc = True
-inline_lvsdrc = True
+# Inline LVS/DRC is disabled because Volare's sky130A magic techfile
+# requires Magic 8.3.411 (Ambiguous layer name, Unrecognized layer name,
+# Malformed device keyword errors below that). OpenRAM's bundled conda
+# installer pins magic=8.3.363 which fails to load the techfile and aborts
+# the bitcell_array LVS step. The generated LEF/GDS/Liberty/SPICE
+# artifacts are verified externally with a newer Magic (the OpenLane2
+# container ships 8.3.489) via scripts/check_openram_macro_drc.py.
+check_lvsdrc = False
+inline_lvsdrc = False
 
 # Generate a square macro that AlphaChip and DREAMPlace can place flexibly.
 words_per_row = 64

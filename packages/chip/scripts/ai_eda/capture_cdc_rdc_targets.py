@@ -106,6 +106,9 @@ def main() -> int:
             "formal-cdc-msi",
             "questa-cdc-rdc-assist",
             "opencdc",
+            "cdc-rdc-draft-0p5",
+            "arch-ai-native-hdl",
+            "sparkle-lean-hdl",
             "mcp4eda",
         ],
         "policy": {
@@ -150,10 +153,21 @@ def main() -> int:
             {
                 "id": "cdc-rdc-intent-standard-watch",
                 "status": "CAPTURED_NOT_AUTHORED",
-                "target": "future vendor-neutral CDC/RDC intent manifest aligned to Accellera abstraction",
+                "target": "future vendor-neutral CDC/RDC intent manifest aligned to Accellera abstraction and reviewed public drafts",
                 "acceptance_gates": [
                     "make docs-check",
                     "make pd-contract-check",
+                ],
+            },
+            {
+                "id": "typed-clock-reset-intent-watch",
+                "status": "CAPTURED_NOT_TRANSLATED",
+                "target": "future Arch-style or Sparkle-style typed clock/reset intent experiments must remain quarantined until parser/compiler revisions, translated artifacts, equivalence, formal, cocotb, and CDC/RDC report comparisons are reviewed",
+                "acceptance_gates": [
+                    "make rtl-check",
+                    "make formal",
+                    "make cocotb-contract",
+                    "make no-hardware-action-check",
                 ],
             },
             {
@@ -170,6 +184,8 @@ def main() -> int:
         "blocked_by": [
             "no local CDC/RDC structural analysis report",
             "no explicit E1 clock-domain and reset-domain intent manifest",
+            "no approved typed clock/reset intent schema or equivalence flow for AI-native HDL experiments",
+            "no approved Sparkle/Lean HDL subset mapping, translated-artifact quarantine, proof log policy, or RTL/cocotb equivalence replay",
             "no approved waiver or constraint-generation workflow",
             "no local CDC/RDC labeled finding corpus for ML-assisted triage",
             "no deterministic before/after regression gate for CDC/RDC fixes",

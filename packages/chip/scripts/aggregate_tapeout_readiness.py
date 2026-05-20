@@ -51,19 +51,29 @@ Subsystem = Literal[
     "bsp",
     "verify",
     "benchmarks",
+    "os_rv64",
 ]
 Tier = Literal["spec", "rtl", "pd", "silicon"]
 
 
 @dataclass(frozen=True)
 class GateSpec:
-    """Static description of one gate the aggregator re-runs."""
+    """Static description of one gate the aggregator re-runs.
+
+    ``script`` may be either a chip-relative path (resolved against ``ROOT``)
+    or an absolute path to a sibling-package script. Absolute-path entries
+    let the aggregator span the chip and OS variants without duplicating
+    logic. When ``module`` is set, the gate is invoked as
+    ``python -m unittest <module>`` from the directory of ``script``'s
+    parent's parent (i.e. the package root that owns the test module).
+    """
 
     name: str
     script: str
     subsystem: Subsystem
     tier: Tier
     args: tuple[str, ...] = ()
+    module: str | None = None
 
 
 # Curated set of fail-closed gates that already exist in scripts/check_*.py
@@ -249,6 +259,12 @@ GATES: tuple[GateSpec, ...] = (
         subsystem="pd",
         tier="pd",
     ),
+    GateSpec(
+        name="manufacturing-tapeout-scope-check",
+        script="scripts/check_manufacturing_tapeout_scope.py",
+        subsystem="pd",
+        tier="pd",
+    ),
     # ---- Platform / board / package ----------------------------------------
     GateSpec(
         name="platform-contract-check",
@@ -375,6 +391,31 @@ GATES: tuple[GateSpec, ...] = (
         subsystem="benchmarks",
         tier="spec",
     ),
+    # ---- OS RV64 (elizaOS Debian RISC-V 64 variant) ------------------------
+    # These two gates live in packages/os/linux/variants/elizaos-debian-riscv64
+    # and are invoked via absolute path so the chip aggregator can present a
+    # unified chip + OS bring-up view without duplicating their logic. The
+    # OS-side scripts are stable; the aggregator only re-runs them and
+    # classifies their PASS/FAIL/BLOCKED output with the same policy.
+    GateSpec(
+        name="os-rv64-release-check",
+        script=(
+            "/home/shaw/milady/eliza/packages/os/linux/variants/"
+            "elizaos-debian-riscv64/scripts/check_release_manifest.py"
+        ),
+        subsystem="os_rv64",
+        tier="spec",
+    ),
+    GateSpec(
+        name="os-rv64-qemu-virt-boot-test",
+        script=(
+            "/home/shaw/milady/eliza/packages/os/linux/variants/"
+            "elizaos-debian-riscv64/scripts/test_qemu_virt_smoke.py"
+        ),
+        subsystem="os_rv64",
+        tier="spec",
+        module="scripts.test_qemu_virt_smoke",
+    ),
 )
 
 
@@ -438,7 +479,17 @@ def _first_evidence_line(name: str, combined_output: str, returncode: int) -> st
 
 
 def run_gate(spec: GateSpec) -> GateResult:
-    script_path = ROOT / spec.script
+    raw = Path(spec.script)
+    if raw.is_absolute():
+        script_path = raw
+        # Absolute-path gates run from the script's own directory so that any
+        # path-relative defaults inside the foreign script resolve correctly.
+        # For ``module`` gates we run from the package root (script's parent's
+        # parent) so ``python -m unittest <pkg.module>`` can import properly.
+        cwd = script_path.parent.parent if spec.module else script_path.parent
+    else:
+        script_path = ROOT / spec.script
+        cwd = ROOT
     if not script_path.is_file():
         return GateResult(
             name=spec.name,
@@ -447,10 +498,13 @@ def run_gate(spec: GateSpec) -> GateResult:
             subsystem=spec.subsystem,
             tier=spec.tier,
         )
-    cmd = [sys.executable, str(script_path), *spec.args]
+    if spec.module:
+        cmd = [sys.executable, "-m", "unittest", spec.module, *spec.args]
+    else:
+        cmd = [sys.executable, str(script_path), *spec.args]
     completed = subprocess.run(
         cmd,
-        cwd=ROOT,
+        cwd=cwd,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

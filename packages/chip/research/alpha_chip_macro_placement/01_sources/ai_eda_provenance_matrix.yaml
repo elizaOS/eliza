@@ -40,6 +40,18 @@ entries:
     license_status: review_required
     release_use: blocked_pending_code_model_dataset_license_contamination_and_local_eval_review
     allowed_current_use: metadata_reference_only
+  - source_id: qimeng-crux
+    asset_type: constrained_verilog_generation_code_model
+    asset_url: https://github.com/Taskii-Lei/QiMeng-CRUX-V
+    license_status: review_required
+    release_use: blocked_pending_code_model_card_license_revision_contamination_and_local_eval_review
+    allowed_current_use: metadata_reference_only
+  - source_id: qimeng-salv
+    asset_type: signal_aware_verilog_generation_code_model
+    asset_url: https://github.com/QiMeng-IPRC/QiMeng-SALV
+    license_status: review_required
+    release_use: blocked_pending_code_model_card_license_reward_contamination_and_local_eval_review
+    allowed_current_use: metadata_reference_only
   - source_id: evolve-verilog
     asset_type: evolutionary_verilog_generation_benchmark_and_method
     asset_url: https://github.com/weiber2002/ICRTL
@@ -94,6 +106,24 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_assets_license_contamination_and_local_task_review
     allowed_current_use: citation_reference_only
+  - source_id: hwe-bench
+    asset_type: repository_hardware_bug_repair_agent_benchmark
+    asset_url: https://arxiv.org/abs/2604.14709
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_license_task_hash_container_and_local_replay_review
+    allowed_current_use: benchmark_method_reference_only
+  - source_id: audopeda-openroad
+    asset_type: openroad_coding_agent_qor_improvement_method
+    asset_url: https://arxiv.org/abs/2601.06268
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_tool_patch_replay_and_e1_qor_signoff_review
+    allowed_current_use: method_reference_only
+  - source_id: openroad-mcp
+    asset_type: open_source_openroad_mcp_server
+    asset_url: https://github.com/luarss/openroad-mcp
+    license_status: review_required
+    release_use: blocked_pending_version_license_sandbox_allowlist_and_replay_review
+    allowed_current_use: code_review_reference_only
   - source_id: rtllm
     asset_type: rtl_generation_benchmark
     asset_url: https://github.com/hkust-zhiyao/RTLLM
@@ -106,6 +136,18 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_assets_license_traceability_and_local_gate_review
     allowed_current_use: method_reference_only
+  - source_id: spec2rtl-agent
+    asset_type: multi_agent_complex_spec_to_hls_rtl_generation_method
+    asset_url: https://arxiv.org/abs/2506.13905
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_prompt_quarantine_hls_backend_replay_and_review
+    allowed_current_use: citation_reference_only
+  - source_id: rtlocating-evortl
+    asset_type: intent_aware_rtl_localization_benchmark_method
+    asset_url: https://arxiv.org/abs/2603.00434
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_license_overlap_block_index_dependency_graph_and_review
+    allowed_current_use: citation_reference_only
   - source_id: llm-fsm
     asset_type: fsm_rtl_generation_benchmark
     asset_url: https://arxiv.org/abs/2602.07032
@@ -118,6 +160,12 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_assets_license_vacuity_and_formal_review
     allowed_current_use: method_reference_only
+  - source_id: vert-sva-dataset
+    asset_type: systemverilog_assertion_dataset
+    asset_url: https://github.com/AnandMenon12/VERT
+    license_status: review_required
+    release_use: blocked_pending_dataset_revision_license_overlap_vacuity_and_formal_review
+    allowed_current_use: citation_reference_only
   - source_id: coverassert
     asset_type: nl_to_assertion_or_coverage_method
     asset_url: https://arxiv.org/abs/2502.16373
@@ -310,6 +358,12 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_model_and_equivalence_review
     allowed_current_use: method_reference_only
+  - source_id: hyperheurist
+    asset_type: llm_rtl_ppa_search_method
+    asset_url: https://arxiv.org/abs/2604.15642
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_prompts_candidates_simulation_equivalence_ppa_and_review
+    allowed_current_use: method_reference_only
   - source_id: rtlrewriter-bench
     asset_type: rtl_rewrite_benchmark
     asset_url: https://github.com/yaoxufeng/RTLRewriter-Bench
@@ -345,6 +399,12 @@ entries:
     asset_url: https://arxiv.org/abs/2503.21971
     license_status: paper_assets_review_required
     release_use: blocked_pending_model_dataset_and_local_error_review
+    allowed_current_use: method_reference_only
+  - source_id: self-evolved-abc
+    asset_type: agentic_logic_synthesis_tool_evolution_method
+    asset_url: https://arxiv.org/abs/2604.15082
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_evolved_code_assets_benchmark_replay_equivalence_qor_and_review
     allowed_current_use: method_reference_only
   - source_id: circuitnet
     asset_type: pd_dataset_code_weights
@@ -418,11 +478,65 @@ entries:
     license_status: review_required
     release_use: blocked_pending_review
     allowed_current_use: method_reference_only
+  - source_id: gem-rtl-simulator
+    asset_type: gpu_accelerated_rtl_simulator
+    asset_url: https://github.com/NVlabs/GEM
+    license_status: Apache_2_reported_review_required
+    release_use: blocked_pending_revision_license_cuda_subset_trace_correlation_and_review
+    allowed_current_use: backend_watchlist_only
+  - source_id: rtlflow
+    asset_type: gpu_batch_rtl_simulation_flow
+    asset_url: https://github.com/dian-lun-lin/RTLflow
+    license_status: review_required
+    release_use: blocked_pending_revision_license_cuda_verilator_waveform_and_replay_review
+    allowed_current_use: method_reference_only
+  - source_id: firesim
+    asset_type: fpga_accelerated_full_system_simulation_platform
+    asset_url: https://github.com/firesim/firesim
+    license_status: review_required
+    release_use: blocked_pending_toolchain_fpga_target_generated_collateral_and_replay_review
+    allowed_current_use: backend_watchlist_only
+  - source_id: verion-eda
+    asset_type: commercial_gpu_rtl_simulation_platform
+    asset_url: https://verion-eda.com/
+    license_status: commercial_terms_review_required
+    release_use: blocked_pending_commercial_terms_data_handling_version_trace_and_replay_review
+    allowed_current_use: commercial_watchlist_only
+  - source_id: copra-cocotb
+    asset_type: cocotb_dut_stub_generation_tool
+    asset_url: https://github.com/cocotb/copra
+    license_status: BSD_3_reported_review_required
+    release_use: blocked_pending_revision_cocotb_version_stub_stability_and_ci_review
+    allowed_current_use: verification_ergonomics_reference_only
   - source_id: llm4dv
     asset_type: verification_framework
     asset_url: https://github.com/ZixiBenZhang/ml4dv
     license_status: review_required
     release_use: blocked_pending_review
+    allowed_current_use: method_reference_only
+  - source_id: autobench
+    asset_type: llm_hdl_testbench_generation_framework
+    asset_url: https://github.com/AutoBench/AutoBench
+    license_status: review_required
+    release_use: blocked_pending_revision_license_prompt_simulation_coverage_and_review
+    allowed_current_use: method_reference_only
+  - source_id: project-ava
+    asset_type: cocotb_self_correcting_verification_agent
+    asset_url: https://projectava.dev/
+    license_status: project_terms_review_required
+    release_use: blocked_pending_repository_license_prompt_simulation_mutation_and_review
+    allowed_current_use: method_reference_only
+  - source_id: haven-uvm
+    asset_type: llm_uvm_testbench_synthesis_method_and_dataset
+    asset_url: https://huggingface.co/datasets/mcc311/haven-hdl-benchmark
+    license_status: review_required
+    release_use: blocked_pending_dataset_license_simulator_coverage_cocotb_correlation_and_review
+    allowed_current_use: benchmark_reference_only
+  - source_id: verilogcoder
+    asset_type: autonomous_verilog_agent_waveform_tracing_code
+    asset_url: https://github.com/NVlabs/VerilogCoder
+    license_status: review_required
+    release_use: blocked_pending_revision_license_waveform_parser_prompt_equivalence_and_review
     allowed_current_use: method_reference_only
   - source_id: assertllm
     asset_type: assertion_generation_framework
@@ -533,6 +647,30 @@ entries:
     license_status: review_required
     release_use: blocked_pending_version_license_and_dataset_review
     allowed_current_use: citation_reference_only
+  - source_id: powernet-ir-drop
+    asset_type: transferable_dynamic_ir_drop_prediction_method
+    asset_url: https://arxiv.org/abs/2004.04026
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_dynamic_label_feature_transfer_and_signoff_review
+    allowed_current_use: method_reference_only
+  - source_id: mavirec-ir-drop
+    asset_type: vectorless_dynamic_ir_drop_prediction_method
+    asset_url: https://arxiv.org/abs/2212.09129
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_vectorless_assumption_dynamic_label_and_signoff_review
+    allowed_current_use: method_reference_only
+  - source_id: pdnnet-dynamic-ir-drop
+    asset_type: pdn_aware_dynamic_ir_drop_prediction_method
+    asset_url: https://arxiv.org/abs/2403.18570
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_pdn_graph_dynamic_label_and_signoff_review
+    allowed_current_use: method_reference_only
+  - source_id: dust-irdrop
+    asset_type: dynamic_ir_drop_prediction_code
+    asset_url: https://github.com/cuhk-eda/DuST-IRdrop
+    license_status: review_required
+    release_use: blocked_pending_code_data_license_dependency_label_and_replay_review
+    allowed_current_use: code_watchlist_only
   - source_id: openpdn
     asset_type: ml_pdn_synthesis_tool
     asset_url: https://github.com/The-OpenROAD-Project/OpeNPDN
@@ -605,6 +743,18 @@ entries:
     license_status: review_required
     release_use: blocked_pending_review
     allowed_current_use: method_reference_only
+  - source_id: veriloglavd
+    asset_type: llm_aided_verilog_cwe_rule_generation_method
+    asset_url: https://arxiv.org/abs/2508.13092
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_assets_rule_hashes_cwe_mapping_and_security_review
+    allowed_current_use: citation_reference_only
+  - source_id: hardsecbench
+    asset_type: secure_hardware_firmware_generation_benchmark
+    asset_url: https://arxiv.org/abs/2601.13864
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_data_release_license_overlap_and_dual_gate_review
+    allowed_current_use: citation_reference_only
   - source_id: pearl-trojan-llm
     asset_type: llm_security_method
     asset_url: https://www.techradar.com/pro/ai-can-detect-malicious-chip-vulnerabilities-with-a-97-success-rate-but-i-fear-that-is-simply-not-enough
@@ -641,11 +791,23 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_dual_use_security_and_asset_review
     allowed_current_use: method_reference_only
+  - source_id: netlam
+    asset_type: llm_stealthy_hardware_trojan_generation_framework
+    asset_url: https://github.com/shubhishukla10/NETLAM
+    license_status: review_required
+    release_use: blocked_pending_dual_use_code_license_sandbox_and_no_source_import_review
+    allowed_current_use: citation_reference_only
   - source_id: ghost-benchmarks
     asset_type: generated_trojan_benchmark_dataset
     asset_url: https://github.com/NMSU-PEARL/GHOST_benchmarks
     license_status: review_required
     release_use: blocked_pending_dataset_license_and_isolation_review
+    allowed_current_use: citation_reference_only
+  - source_id: hardware-vulnerability-dataset
+    asset_type: rtl_hardware_vulnerability_prompt_dataset
+    asset_url: https://github.com/shamstarekargho/Hardware-Vulnerability-Dataset
+    license_status: review_required
+    release_use: blocked_pending_dataset_revision_license_taxonomy_overlap_and_prompt_privacy_review
     allowed_current_use: citation_reference_only
   - source_id: ai-hardware-security-verification-survey
     asset_type: hardware_security_verification_survey
@@ -713,6 +875,24 @@ entries:
     license_status: project_assets_review_required
     release_use: blocked_pending_public_code_license_and_parser_review
     allowed_current_use: watchlist_only
+  - source_id: cdc-rdc-draft-0p5
+    asset_type: cdc_rdc_public_review_standard
+    asset_url: https://www.accellera.org/news/press-releases/accellera-releases-cdc-rdc-public-review-draft
+    license_status: standard_terms_review_required
+    release_use: blocked_pending_final_standard_terms_tool_mapping_and_local_report_review
+    allowed_current_use: standards_watchlist_only
+  - source_id: arch-ai-native-hdl
+    asset_type: ai_native_typed_hardware_language_method
+    asset_url: https://arxiv.org/abs/2604.05983
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_implementation_equivalence_cdc_mapping_and_review
+    allowed_current_use: method_reference_only
+  - source_id: sparkle-lean-hdl
+    asset_type: formal_hardware_language_and_multiclock_simulator_code
+    asset_url: https://github.com/Verilean/sparkle
+    license_status: review_required
+    release_use: blocked_pending_revision_license_subset_mapping_proof_and_replay_review
+    allowed_current_use: code_watchlist_only
   - source_id: mcp4eda
     asset_type: agentic_eda_mcp_flow
     asset_url: https://github.com/NellyW8/MCP4EDA
@@ -803,6 +983,24 @@ entries:
     license_status: review_required
     release_use: blocked_pending_review
     allowed_current_use: citation_reference_only
+  - source_id: hlstrans
+    asset_type: c_to_hls_transformation_dataset
+    asset_url: https://huggingface.co/datasets/qingyun777yes/HLStrans
+    license_status: review_required
+    release_use: blocked_pending_dataset_snapshot_license_overlap_hls_tool_and_replay_review
+    allowed_current_use: metadata_reference_only
+  - source_id: sage-hls
+    asset_type: ast_guided_hls_generation_dataset_method
+    asset_url: https://huggingface.co/datasets/mashnoor/hls-ast-sagehls
+    license_status: review_required
+    release_use: blocked_pending_dataset_model_license_overlap_hls_backend_and_replay_review
+    allowed_current_use: metadata_reference_only
+  - source_id: bench4hls
+    asset_type: end_to_end_llm_hls_benchmark_framework
+    asset_url: https://github.com/zfsadik/Bench4HLS
+    license_status: review_required
+    release_use: blocked_pending_code_task_license_tool_prompt_overlap_and_replay_review
+    allowed_current_use: benchmark_reference_only
   - source_id: llm-dse
     asset_type: llm_hls_directive_agent_code
     asset_url: https://github.com/Nozidoali/LLM-DSE
@@ -821,6 +1019,24 @@ entries:
     license_status: review_required
     release_use: blocked_pending_code_model_dataset_prompt_hls_backend_and_replay_review
     allowed_current_use: citation_and_model_inventory_reference_only
+  - source_id: forgehls
+    asset_type: hls_dataset_qor_prediction_and_pragma_benchmark
+    asset_url: https://github.com/zedong-peng/ForgeHLS
+    license_status: review_required
+    release_use: blocked_pending_dataset_snapshot_license_split_overlap_tool_and_qor_replay_review
+    allowed_current_use: metadata_reference_only
+  - source_id: diffhls
+    asset_type: differential_hls_qor_prediction_method
+    asset_url: https://arxiv.org/abs/2604.09240
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_model_dataset_feature_calibration_and_qor_replay_review
+    allowed_current_use: method_reference_only
+  - source_id: hls-seek
+    asset_type: qor_aware_hls_code_generation_rl_method
+    asset_url: https://arxiv.org/abs/2605.13536
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_model_reward_proxy_synthesis_replay_and_review
+    allowed_current_use: method_reference_only
   - source_id: timelyhls
     asset_type: llm_timing_aware_hls_optimization_method
     asset_url: https://github.com/zfsadik/Bench4HLS
@@ -845,6 +1061,24 @@ entries:
     license_status: review_required
     release_use: blocked_pending_review
     allowed_current_use: citation_reference_only
+  - source_id: scalehls
+    asset_type: mlir_hls_compiler_infrastructure
+    asset_url: https://github.com/hanchenye/scalehls
+    license_status: review_required
+    release_use: blocked_pending_toolchain_license_backend_generated_artifact_and_replay_review
+    allowed_current_use: infrastructure_watchlist_only
+  - source_id: autodse-hls
+    asset_type: ml_hls_design_space_exploration_framework
+    asset_url: https://github.com/UCLA-VAST/AutoDSE
+    license_status: review_required
+    release_use: blocked_pending_code_license_hls_backend_search_manifest_and_qor_replay_review
+    allowed_current_use: baseline_reference_only
+  - source_id: ai4dse-hls
+    asset_type: llm_and_multi_heuristic_hls_dse_method
+    asset_url: https://arxiv.org/abs/2411.10065
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_prompt_model_backend_search_and_replay_review
+    allowed_current_use: method_reference_only
   - source_id: timingpredict
     asset_type: timing_prediction_code
     asset_url: https://github.com/PKU-IDEA/TimingPredict
@@ -965,6 +1199,30 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_agent_prompt_memory_spice_and_review_harness
     allowed_current_use: methodology_reference_only
+  - source_id: autosizer-ams
+    asset_type: llm_agent_analog_mixed_signal_sizing_method
+    asset_url: https://arxiv.org/abs/2602.02849
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_prompt_search_spice_pvt_and_review_harness
+    allowed_current_use: methodology_reference_only
+  - source_id: easysize
+    asset_type: llm_guided_heuristic_analog_sizing_method
+    asset_url: https://arxiv.org/abs/2508.05113
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_process_mapping_spice_replay_and_review
+    allowed_current_use: methodology_reference_only
+  - source_id: self-calibrating-analog-equations
+    asset_type: llm_analog_design_equation_generation_method
+    asset_url: https://arxiv.org/abs/2604.07387
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_equation_calibration_spice_pvt_and_review
+    allowed_current_use: methodology_reference_only
+  - source_id: eesizer
+    asset_type: code_bearing_llm_ngspice_analog_sizing_agent
+    asset_url: https://github.com/eelab-dev/LLM-transistor-sizing
+    license_status: review_required
+    release_use: blocked_pending_code_license_ngspice_decks_pvt_and_review
+    allowed_current_use: code_reference_only
   - source_id: analogmaster
     asset_type: llm_end_to_end_analog_image_to_layout
     asset_url: https://arxiv.org/abs/2604.20916
@@ -1007,6 +1265,12 @@ entries:
     license_status: review_required
     release_use: blocked_pending_dataset_license_snapshot_and_non_overlap_review
     allowed_current_use: dataset_governance_reference_only
+  - source_id: analog-layout-vlm-dataset
+    asset_type: analog_layout_visual_language_dataset
+    asset_url: https://huggingface.co/datasets/anonymousUser2/Analog_Dataset_VLM
+    license_status: review_required
+    release_use: blocked_pending_dataset_code_snapshot_license_synthetic_boundary_and_review
+    allowed_current_use: dataset_governance_reference_only
   - source_id: llm4sechw-debug
     asset_type: hardware_debug_llm_framework
     asset_url: https://arxiv.org/abs/2401.16448
@@ -1042,6 +1306,36 @@ entries:
     asset_url: https://arxiv.org/abs/2512.07877
     license_status: paper_assets_review_required
     release_use: blocked_pending_assets_dataset_generation_booksim_replay_and_architecture_review
+    allowed_current_use: citation_reference_only
+  - source_id: noctopus-noc
+    asset_type: gnn_human_in_loop_noc_topology_method
+    asset_url: https://link.springer.com/article/10.1007/s00521-026-12049-4
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_dataset_generation_simulator_replay_and_architecture_review
+    allowed_current_use: citation_reference_only
+  - source_id: floonoc
+    asset_type: configurable_noc_generator_and_rtl_ip
+    asset_url: https://github.com/pulp-platform/FlooNoC
+    license_status: review_required
+    release_use: blocked_pending_revision_license_generated_rtl_quarantine_and_e1_fabric_review
+    allowed_current_use: citation_reference_only
+  - source_id: micsim
+    asset_type: compute_in_memory_simulator
+    asset_url: https://github.com/MICSim-official/MICSim_V1.0
+    license_status: review_required
+    release_use: blocked_pending_revision_license_workload_array_calibration_and_power_review
+    allowed_current_use: citation_reference_only
+  - source_id: autonoc-fpga
+    asset_type: automated_noc_generation_paper_assets
+    asset_url: https://doi.org/10.1109/ACCESS.2026.3650973
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_assets_fpga_to_asic_assumption_split_and_fabric_review
+    allowed_current_use: citation_reference_only
+  - source_id: photonic-aware-drl-routing
+    asset_type: photonic_noc_drl_routing_method
+    asset_url: https://doi.org/10.3390/ai7020065
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_photonic_device_package_thermal_models_and_route_safety_review
     allowed_current_use: citation_reference_only
   - source_id: booksim2
     asset_type: noc_simulator
@@ -1085,6 +1379,18 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_dataset_and_schematic_review
     allowed_current_use: citation_reference_only
+  - source_id: omnisch
+    asset_type: multimodal_pcb_schematic_benchmark
+    asset_url: https://arxiv.org/abs/2604.00270
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_dataset_license_overlap_and_kicad_followup_review
+    allowed_current_use: citation_reference_only
+  - source_id: circuitron-pcb-agent
+    asset_type: agentic_kicad_schematic_pcb_generation_code
+    asset_url: https://github.com/Shaurya-Sethi/circuitron
+    license_status: review_required
+    release_use: blocked_pending_code_dependency_prompt_output_kicad_and_fab_review
+    allowed_current_use: citation_reference_only
   - source_id: pcb-bench
     asset_type: llm_pcb_reasoning_benchmark
     asset_url: https://github.com/digailab/PCB-Bench
@@ -1109,6 +1415,12 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_dataset_and_reference_board_review
     allowed_current_use: citation_reference_only
+  - source_id: mars-place-pcb
+    asset_type: pcb_placement_routing_optimization_method
+    asset_url: https://www.sciencedirect.com/science/article/pii/S016792602600026X
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_assets_board_constraints_si_pi_and_fab_review
+    allowed_current_use: citation_reference_only
   - source_id: pcb-pr-app
     asset_type: pcb_placement_routing_tool
     asset_url: https://github.com/The-OpenROAD-Project/PCB-PR-App
@@ -1120,6 +1432,18 @@ entries:
     asset_url: https://github.com/freerouting/freerouting
     license_status: review_required
     release_use: blocked_pending_version_license_and_board_rule_review
+    allowed_current_use: citation_reference_only
+  - source_id: dreamerv3-fr-pcb
+    asset_type: world_model_rl_pcb_autorouting_method
+    asset_url: https://www.sciencedirect.com/science/article/abs/pii/S0957417426003374
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_policy_seed_freerouting_board_rule_and_si_pi_review
+    allowed_current_use: citation_reference_only
+  - source_id: pcb-3d-lineexplore
+    asset_type: multilayer_pcb_geometric_routing_method
+    asset_url: https://www.nature.com/articles/s41598-026-36925-0
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_board_constraints_route_outputs_and_fab_review
     allowed_current_use: citation_reference_only
   - source_id: dreamplacefpga
     asset_type: fpga_placement_tool
@@ -1192,6 +1516,12 @@ entries:
     asset_url: https://arxiv.org/abs/2502.16203
     license_status: paper_assets_review_required
     release_use: blocked_pending_feature_extractor_dataset_and_label_review
+    allowed_current_use: citation_reference_only
+  - source_id: powergear-hls-power
+    asset_type: hls_power_estimation_method
+    asset_url: https://arxiv.org/abs/2505.24198
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_feature_extractor_hls_replay_and_error_review
     allowed_current_use: citation_reference_only
   - source_id: openroad-two-phase-clock
     asset_type: clocking_conversion_flow
@@ -1299,7 +1629,25 @@ entries:
     asset_type: ml_capacitance_extraction_benchmark
     asset_url: https://github.com/THU-numbda/CapBench
     license_status: review_required
-    release_use: blocked_pending_review
+    release_use: blocked_pending_dataset_code_license_nonoverlap_and_local_label_review
+    allowed_current_use: citation_and_code_review_reference_only
+  - source_id: deeprwcap
+    asset_type: neural_guided_capacitance_solver
+    asset_url: https://arxiv.org/abs/2511.06831
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_model_process_stack_and_local_label_review
+    allowed_current_use: method_reference_only
+  - source_id: nas-cap
+    asset_type: neural_architecture_search_capacitance_model
+    asset_url: https://arxiv.org/abs/2408.13195
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_model_dataset_and_local_label_review
+    allowed_current_use: method_reference_only
+  - source_id: ml-capacitance-itf-exploration
+    asset_type: ml_process_parameter_capacitance_extraction
+    asset_url: https://gtcad.gatech.edu/www/papers/Tsai-ICCAD25.pdf
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_authorized_process_stack_and_signoff_review
     allowed_current_use: citation_reference_only
   - source_id: openram
     asset_type: open_source_sram_compiler
@@ -1313,6 +1661,18 @@ entries:
     license_status: review_required
     release_use: blocked_pending_generator_macro_and_openlane_review
     allowed_current_use: citation_reference_only
+  - source_id: openxram
+    asset_type: open_source_multi_memory_compiler
+    asset_url: https://github.com/RIOSMPW/OpenXRAM
+    license_status: review_required
+    release_use: blocked_pending_revision_pdk_generated_collateral_and_signoff_review
+    allowed_current_use: compiler_watchlist_only
+  - source_id: openrram
+    asset_type: open_source_rram_compiler
+    asset_url: https://github.com/akashlevy/OpenRRAM
+    license_status: BSD-3-Clause_reported_review_required
+    release_use: blocked_pending_device_model_pdk_generated_collateral_and_reliability_review
+    allowed_current_use: emerging_memory_reference_only
   - source_id: cacti
     asset_type: cache_memory_estimator
     asset_url: https://github.com/HewlettPackard/cacti
@@ -1337,6 +1697,18 @@ entries:
     license_status: review_required
     release_use: blocked_pending_workload_process_and_model_review
     allowed_current_use: citation_reference_only
+  - source_id: openacm-cim
+    asset_type: sram_approximate_cim_compiler_code
+    asset_url: https://github.com/ShenShan123/OpenACM
+    license_status: review_required
+    release_use: blocked_pending_architecture_accuracy_pdk_generated_collateral_and_signoff_review
+    allowed_current_use: cim_compiler_watchlist_only
+  - source_id: openacmv2-cim
+    asset_type: accuracy_constrained_cim_cooptimization_framework
+    asset_url: https://github.com/ShenShan123/OpenACM
+    license_status: review_required
+    release_use: blocked_pending_model_data_surrogate_error_pvt_and_replay_review
+    allowed_current_use: cim_method_reference_only
   - source_id: sram-compiler-openroad
     asset_type: open_pd_memory_macro_flow_reference
     asset_url: https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts
@@ -1349,6 +1721,12 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_specific_source_process_model_and_test_review
     allowed_current_use: watchlist_only
+  - source_id: openyield-sram
+    asset_type: open_source_sram_yield_benchmark_suite
+    asset_url: https://github.com/ShenShan123/OpenYield
+    license_status: review_required
+    release_use: blocked_pending_revision_license_process_model_split_and_replay_review
+    allowed_current_use: yield_benchmark_watchlist_only
   - source_id: tap-2p5d
     asset_type: chiplet_package_planning_code
     asset_url: https://github.com/bu-icsg/TAP-2.5D
@@ -1523,6 +1901,30 @@ entries:
     license_status: review_required
     release_use: blocked_pending_version_capture_profile_probe_raw_trace_and_review
     allowed_current_use: optional_tool_reference_only
+  - source_id: riscv-isacov
+    asset_type: riscv_isa_functional_coverage_library
+    asset_url: https://github.com/riscv-verification/riscvISACOV
+    license_status: Apache-2.0_reported_review_required
+    release_use: blocked_pending_revision_profile_rvvi_adapter_coverage_and_review
+    allowed_current_use: coverage_watchlist_only
+  - source_id: lyra-riscv-fuzz
+    asset_type: generative_riscv_processor_fuzzing_method
+    asset_url: https://arxiv.org/abs/2512.13686
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_model_generator_fpga_reference_and_coverage_review
+    allowed_current_use: method_reference_only
+  - source_id: feriver-riscv
+    asset_type: fpga_assisted_riscv_rtl_verification_method
+    asset_url: https://arxiv.org/abs/2504.05284
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_implementation_fpga_iss_checkpoint_and_replay_review
+    allowed_current_use: method_reference_only
+  - source_id: spacely-asic-validation
+    asset_type: open_source_post_silicon_validation_framework
+    asset_url: https://github.com/SpacelyProject/spacely-docs
+    license_status: review_required
+    release_use: blocked_pending_revision_lab_config_instrument_hardware_action_and_review
+    allowed_current_use: lab_flow_watchlist_only
   - source_id: llm-eda-log-analysis
     asset_type: eda_log_analysis_research_method
     asset_url: https://www2.eecs.berkeley.edu/Pubs/TechRpts/2025/EECS-2025-48.html
@@ -1540,4 +1942,22 @@ entries:
     asset_url: https://arxiv.org/abs/2605.04704
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_release_simulator_protocol_ir_coverage_and_review
+    allowed_current_use: citation_reference_only
+  - source_id: veridebug
+    asset_type: verilog_debug_code_model_dataset
+    asset_url: https://github.com/CatIIIIIIII/VeriDebug
+    license_status: review_required
+    release_use: blocked_pending_code_model_dataset_license_overlap_and_replay_review
+    allowed_current_use: citation_reference_only
+  - source_id: stellar-sva
+    asset_type: structure_guided_sva_retrieval_generation_method
+    asset_url: https://arxiv.org/abs/2601.19903
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_retrieval_corpus_ast_fingerprint_and_formal_review
+    allowed_current_use: citation_reference_only
+  - source_id: proofloop-sva
+    asset_type: solver_in_loop_sva_generation_method
+    asset_url: https://arxiv.org/abs/2604.23100
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_tool_license_query_logs_proof_replay_and_vacuity_review
     allowed_current_use: citation_reference_only

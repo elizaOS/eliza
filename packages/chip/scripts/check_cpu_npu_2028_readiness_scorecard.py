@@ -8,12 +8,14 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from chip_utils import load_json_object, load_yaml_object, require
+from chip_utils import load_json_object, load_yaml_object, require, require_number
 
 ROOT = Path(__file__).resolve().parents[1]
 SCORECARD = ROOT / "docs/architecture-optimization/cpu-npu-2028-readiness-scorecard.yaml"
 OPTIMIZER_REPORT = ROOT / "benchmarks/results/soc-optimized-operating-point.json"
 MODELED_EVAL = ROOT / "benchmarks/results/cpu-npu-2028-modeled-eval.json"
+NPU_CONTEXT_QUEUE_SIM = ROOT / "benchmarks/results/npu-context-queue-sim.json"
+MEMORY_IOMMU_QOS_SIM = ROOT / "benchmarks/results/memory-iommu-qos-sim.json"
 BURST_SUSTAINED_POLICY = ROOT / "benchmarks/results/cpu-npu-2028-burst-sustained-policy.json"
 BURST_THERMAL_TRANSIENT = ROOT / "benchmarks/results/cpu-npu-2028-burst-thermal-transient.json"
 AOSP_GOVERNOR_TRACE = ROOT / "benchmarks/results/cpu-npu-2028-aosp-governor-trace.json"
@@ -23,6 +25,8 @@ TAPEOUT_AUDIT = ROOT / "benchmarks/results/cpu-npu-2028-tapeout-readiness-audit.
 OPTIMIZER_CHECK = ROOT / "scripts/check_soc_optimization.py"
 WORK_ORDER_CHECK = ROOT / "scripts/check_soc_optimized_work_order.py"
 MODELED_EVAL_CHECK = ROOT / "scripts/check_cpu_npu_modeled_benchmark_eval.py"
+NPU_CONTEXT_QUEUE_SIM_CHECK = ROOT / "scripts/check_npu_context_queue_sim.py"
+MEMORY_IOMMU_QOS_SIM_CHECK = ROOT / "scripts/check_memory_iommu_qos_sim.py"
 BURST_SUSTAINED_POLICY_CHECK = ROOT / "scripts/check_cpu_npu_burst_sustained_policy.py"
 BURST_THERMAL_TRANSIENT_CHECK = ROOT / "scripts/check_cpu_npu_burst_thermal_transient.py"
 AOSP_GOVERNOR_TRACE_CHECK = ROOT / "scripts/check_cpu_npu_aosp_governor_trace.py"
@@ -282,6 +286,7 @@ def check_modeled_eval(scorecard: dict[str, Any], errors: list[str]) -> None:
     for row_id in (
         "npu_sota_dense_peak_target_pass",
         "npu_sota_sparse_int4_target_pass",
+        "npu_sota_descriptor_queue_model_pass",
         "memory_model_target_pass",
         "robust_power_thermal_model_pass",
     ):
@@ -293,6 +298,150 @@ def check_modeled_eval(scorecard: dict[str, Any], errors: list[str]) -> None:
     require(
         by_id.get("npu_sota_sustained_model_gap", {}).get("status") == "blocked",
         "sustained SOTA NPU check must remain blocked until measured evidence exists",
+        errors,
+    )
+
+
+def check_npu_context_queue_sim(scorecard: dict[str, Any], errors: list[str]) -> None:
+    source_artifacts = scorecard.get("source_artifacts")
+    if not isinstance(source_artifacts, dict):
+        errors.append("source_artifacts must be a mapping")
+        return
+    require(
+        source_artifacts.get("npu_context_queue_sim")
+        == "benchmarks/results/npu-context-queue-sim.json",
+        "scorecard must point at NPU context queue simulator report",
+        errors,
+    )
+    require(
+        source_artifacts.get("npu_context_queue_sim_command") == "make npu-context-queue-sim-check",
+        "scorecard must list NPU context queue simulator command",
+        errors,
+    )
+    if not NPU_CONTEXT_QUEUE_SIM.exists():
+        run_required_check([sys.executable, str(NPU_CONTEXT_QUEUE_SIM_CHECK)], errors)
+    if not NPU_CONTEXT_QUEUE_SIM.exists():
+        errors.append("NPU context queue simulator report missing")
+        return
+    try:
+        data = load_json_object(NPU_CONTEXT_QUEUE_SIM)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(str(exc))
+        return
+    require(
+        data.get("schema") == "eliza.npu_context_queue_sim.v1",
+        "NPU context queue simulator schema mismatch",
+        errors,
+    )
+    require(data.get("status") == "pass", "NPU context queue simulator must pass", errors)
+    require(
+        "not RTL scheduler" in str(data.get("claim_boundary", "")),
+        "NPU context queue simulator must block RTL scheduler claims",
+        errors,
+    )
+    config = data.get("config")
+    summary = data.get("summary")
+    if not isinstance(config, dict) or not isinstance(summary, dict):
+        errors.append("NPU context queue simulator missing config or summary")
+        return
+    require(
+        require_number(config.get("concurrent_contexts"), "NPU context count") == 8,
+        "NPU context queue simulator must model 8 contexts",
+        errors,
+    )
+    require(
+        require_number(config.get("descriptor_queue_depth"), "NPU context queue depth") >= 1024,
+        "NPU context queue simulator queue depth below target",
+        errors,
+    )
+    require(
+        summary.get("all_contexts_completed") is True,
+        "NPU context queue simulator must complete all contexts",
+        errors,
+    )
+    require(
+        require_number(summary.get("jain_fairness_index"), "NPU context queue fairness") >= 0.99,
+        "NPU context queue simulator fairness index below target",
+        errors,
+    )
+    require(
+        require_number(summary.get("max_service_gap_cycles"), "NPU context queue service gap")
+        <= 32,
+        "NPU context queue simulator service gap exceeds target",
+        errors,
+    )
+
+
+def check_memory_iommu_qos_sim(scorecard: dict[str, Any], errors: list[str]) -> None:
+    source_artifacts = scorecard.get("source_artifacts")
+    if not isinstance(source_artifacts, dict):
+        errors.append("source_artifacts must be a mapping")
+        return
+    require(
+        source_artifacts.get("memory_iommu_qos_sim")
+        == "benchmarks/results/memory-iommu-qos-sim.json",
+        "scorecard must point at memory IOMMU/QoS simulator report",
+        errors,
+    )
+    require(
+        source_artifacts.get("memory_iommu_qos_sim_command") == "make memory-iommu-qos-sim-check",
+        "scorecard must list memory IOMMU/QoS simulator command",
+        errors,
+    )
+    if not MEMORY_IOMMU_QOS_SIM.exists():
+        run_required_check([sys.executable, str(MEMORY_IOMMU_QOS_SIM_CHECK)], errors)
+    if not MEMORY_IOMMU_QOS_SIM.exists():
+        errors.append("memory IOMMU/QoS simulator report missing")
+        return
+    try:
+        data = load_json_object(MEMORY_IOMMU_QOS_SIM)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(str(exc))
+        return
+    require(
+        data.get("schema") == "eliza.memory_iommu_qos_sim.v1",
+        "memory IOMMU/QoS simulator schema mismatch",
+        errors,
+    )
+    require(data.get("status") == "pass", "memory IOMMU/QoS simulator must pass", errors)
+    require(
+        "not RTL IOMMU" in str(data.get("claim_boundary", "")),
+        "memory IOMMU/QoS simulator must block RTL IOMMU claims",
+        errors,
+    )
+    config = data.get("config")
+    summary = data.get("summary")
+    if not isinstance(config, dict) or not isinstance(summary, dict):
+        errors.append("memory IOMMU/QoS simulator missing config or summary")
+        return
+    require(
+        config.get("deny_by_default") is True,
+        "memory IOMMU/QoS simulator must model deny-by-default IOMMU",
+        errors,
+    )
+    require(
+        require_number(config.get("stream_count"), "memory stream count") >= 9,
+        "memory IOMMU/QoS simulator stream count below target",
+        errors,
+    )
+    require(
+        summary.get("unauthorized_accesses_blocked") is True,
+        "memory IOMMU/QoS simulator must block unauthorized accesses",
+        errors,
+    )
+    require(
+        require_number(summary.get("fault_probe_count"), "memory IOMMU faults") >= 4,
+        "memory IOMMU/QoS simulator fault probe coverage too small",
+        errors,
+    )
+    require(
+        require_number(summary.get("display_underflow_count"), "display underflows") == 0,
+        "memory IOMMU/QoS simulator must avoid modeled display underflow",
+        errors,
+    )
+    require(
+        require_number(summary.get("isochronous_max_service_gap_cycles"), "isochronous gap") <= 32,
+        "memory IOMMU/QoS simulator isochronous gap exceeds target",
         errors,
     )
 
@@ -733,6 +882,8 @@ def check_scorecard(scorecard: dict[str, Any], optimizer: dict[str, Any]) -> lis
     check_domains(scorecard, errors)
     check_benchmarks(scorecard, errors)
     check_modeled_eval(scorecard, errors)
+    check_npu_context_queue_sim(scorecard, errors)
+    check_memory_iommu_qos_sim(scorecard, errors)
     check_burst_sustained_policy(scorecard, errors)
     check_burst_thermal_transient(scorecard, errors)
     check_aosp_governor_trace(scorecard, errors)

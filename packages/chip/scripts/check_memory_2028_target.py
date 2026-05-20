@@ -37,6 +37,7 @@ REQUIRED_TOP_LEVEL = (
 )
 
 EXPECTED_SCHEMA = "eliza.memory_2028_target.v1"
+MODELED_IOMMU_QOS_EVIDENCE = "benchmarks/results/memory-iommu-qos-sim.json"
 
 
 def fail(messages: list[str]) -> None:
@@ -106,6 +107,21 @@ def main() -> None:
     phase_gates = spec.get("phase_gates") or {}
     if not isinstance(phase_gates, dict) or not phase_gates:
         errors.append("phase_gates must be a non-empty mapping")
+    else:
+        for gate_id in ("P0_3_iommu", "P1_4_qos"):
+            gate = phase_gates.get(gate_id)
+            if not isinstance(gate, dict):
+                errors.append(f"phase_gates must include {gate_id}")
+                continue
+            simulator_evidence = gate.get("simulator_evidence")
+            if (
+                not isinstance(simulator_evidence, list)
+                or MODELED_IOMMU_QOS_EVIDENCE not in simulator_evidence
+            ):
+                errors.append(
+                    f"{gate_id} must include modeled IOMMU/QoS simulator evidence "
+                    f"{MODELED_IOMMU_QOS_EVIDENCE}"
+                )
 
     if errors:
         fail(errors)

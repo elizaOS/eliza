@@ -582,6 +582,20 @@ def main() -> int:
             runtime_text,
             RUNTIME,
         ),
+        ("stage_and_submit", runtime_text, RUNTIME),
+        ("stage_descriptor_image_and_submit", runtime_text, RUNTIME),
+        ("_validate_descriptor_image_submission_window", runtime_text, RUNTIME),
+        ("descriptor image addresses do not match submission window", runtime_text, RUNTIME),
+        ("descriptor base must be an aligned uint32", runtime_text, RUNTIME),
+        ("stage_and_submit requires a descriptor memory writer", runtime_text, RUNTIME),
+        ("stage_and_submit_prepared_descriptor_batch", runtime_text, RUNTIME),
+        ("stage_and_submit_prepared_descriptor_execution_batches", runtime_text, RUNTIME),
+        ("eliza.e1_npu_prepared_descriptor_batch_submit_result.v1", runtime_text, RUNTIME),
+        (
+            "eliza.e1_npu_prepared_descriptor_execution_batches_submit_result.v1",
+            runtime_text,
+            RUNTIME,
+        ),
         ("NpuStreamDescriptor", runtime_text, RUNTIME),
         (
             "test_command_buffer_descriptor_image_is_word_addressed_and_contiguous",
@@ -589,7 +603,27 @@ def main() -> int:
             COMMAND_BUFFER_TEST,
         ),
         (
+            "test_command_buffer_descriptor_image_rejects_address_overflow",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
             "test_command_buffer_stage_writes_descriptor_image_once",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
+            "test_stage_descriptor_image_and_submit_rejects_missing_window_word_before_writes",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
+            "test_stage_descriptor_image_and_submit_rejects_extra_window_word_before_writes",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
+            "test_submit_descriptors_rejects_negative_base_before_mmio_writes",
             command_buffer_test_text,
             COMMAND_BUFFER_TEST,
         ),
@@ -696,6 +730,16 @@ def main() -> int:
             COMMAND_BUFFER_TEST,
         ),
         (
+            "test_submit_prepared_descriptor_execution_batches_reuses_outer_validation",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
+            "test_submit_prepared_descriptor_execution_batches_rejects_stride_mismatch_before_writes",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
             "test_stage_prepared_descriptor_execution_batches_validates_bases_before_writes",
             command_buffer_test_text,
             COMMAND_BUFFER_TEST,
@@ -776,12 +820,22 @@ def main() -> int:
             COMMAND_BUFFER_TEST,
         ),
         (
+            "test_prepared_batch_stage_and_submit_uses_runtime_descriptor_api",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
             "test_prepared_execution_batch_host_runtime_sequence_stages_and_submits_in_sim",
             command_buffer_test_text,
             COMMAND_BUFFER_TEST,
         ),
         (
             "test_prepared_descriptor_execution_batches_stage_and_submit_in_sim",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
+            "test_prepared_descriptor_execution_batches_use_runtime_descriptor_api",
             command_buffer_test_text,
             COMMAND_BUFFER_TEST,
         ),
@@ -807,6 +861,16 @@ def main() -> int:
         ("_scratch_write_u8", runtime_sim_text, RUNTIME_SIM_TEST),
         ("_execute_gemm_from_scratch", runtime_sim_text, RUNTIME_SIM_TEST),
         ("write_mem32", runtime_sim_text, RUNTIME_SIM_TEST),
+        (
+            "test_runtime_stage_and_submit_writes_descriptor_image_and_runs_gemm_writeback",
+            runtime_sim_text,
+            RUNTIME_SIM_TEST,
+        ),
+        (
+            "test_runtime_stage_and_submit_requires_memory_writer",
+            runtime_sim_text,
+            RUNTIME_SIM_TEST,
+        ),
         ("DESC_STATUS_WRITEBACK_UNSUPPORTED", runtime_sim_text, RUNTIME_SIM_TEST),
         (
             "test_runtime_submit_dispatches_multi_entry_buffer_with_one_completion_wait",

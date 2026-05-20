@@ -108,6 +108,11 @@ def main() -> int:
             "archgym",
             "ai-noc-dse",
             "ai-driven-noc-dse-2512",
+            "noctopus-noc",
+            "floonoc",
+            "micsim",
+            "autonoc-fpga",
+            "photonic-aware-drl-routing",
             "booksim2",
             "ramulator2",
             "dramsim3",
@@ -152,11 +157,39 @@ def main() -> int:
             {
                 "id": "noc-inverse-ml-dse-watch",
                 "status": "CAPTURED_NOT_TRAINED",
-                "target": "future BookSim-generated NoC datasets, inverse MLP/CVAE/diffusion models, or target-latency/throughput parameter predictors require topology constraints, traffic traces, replayed simulator logs, and architecture review",
+                "target": "future BookSim-generated NoC datasets, inverse MLP/CVAE/diffusion/GNN models, human-in-loop topology predictors, or target-latency/throughput parameter predictors require topology constraints, traffic traces, replayed simulator logs, and architecture review",
                 "acceptance_gates": [
                     "make memory-interconnect-contract-check",
                     "make memory-uma-claim-gate",
                     "make benchmark-sim-metrics",
+                ],
+            },
+            {
+                "id": "noc-generator-backend-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future FlooNoC or AutoNoC style generated fabric requires pinned revision, license review, config hashes, generated RTL quarantine, memory-map/coherency/QoS contract, replay, formal/cocotb, synthesis, and PD review",
+                "acceptance_gates": [
+                    "make memory-interconnect-contract-check",
+                    "make memory-uma-claim-gate",
+                    "make smoke",
+                ],
+            },
+            {
+                "id": "cim-memory-simulator-watch",
+                "status": "CAPTURED_NOT_MODELED",
+                "target": "future MICSim or CIM memory-accelerator studies require pinned simulator revision, workload/model hashes, array/cell/ADC/DAC assumptions, calibration evidence, simulator logs, power/thermal review, and architecture signoff",
+                "acceptance_gates": [
+                    "make npu-runtime-contract-check",
+                    "make thermal-signoff-check",
+                ],
+            },
+            {
+                "id": "photonic-noc-routing-watch",
+                "status": "CAPTURED_NOT_TRAINED",
+                "target": "future photonic-aware DRL NoC routing requires photonic device/package/thermal models, optical-link availability assumptions, simulator replay, deadlock/fairness/QoS checks, and architecture review",
+                "acceptance_gates": [
+                    "make memory-interconnect-contract-check",
+                    "make thermal-signoff-check",
                 ],
             },
             {
@@ -183,6 +216,9 @@ def main() -> int:
             "no cache hierarchy, coherent fabric, IOMMU/SMMU, LPDDR PHY, or QoS implementation",
             "no executable BookSim/Ramulator/gem5 backend selected or pinned",
             "no approved NoC inverse-ML dataset generation manifest, topology constraints, traffic trace corpus, or BookSim replay evidence",
+            "no license-reviewed FlooNoC/AutoNoC generator revision, config hash, generated RTL quarantine, or E1 fabric replay",
+            "no MICSim/CIM workload, array, quantization, calibration, power, or thermal evidence",
+            "no photonic NoC device, package, thermal, optical-link availability, or route-safety model",
             "no real target bandwidth, latency, Android shared-buffer, or contention evidence",
         ],
     }

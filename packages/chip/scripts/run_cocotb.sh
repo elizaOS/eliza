@@ -99,14 +99,19 @@ trap 'rmdir "$COCOTB_RESULTS_LOCK" "$COCOTB_LOCK" 2>/dev/null || true' EXIT INT 
 
 rm -rf "$COCOTB_BUILD" "$COCOTB_DIR/results.xml" "$COCOTB_RESULT_FILE" "$COCOTB_RAW_RESULT"
 
+MAKE_FILE_ARG=""
+if [ -n "${COCOTB_MAKEFILE:-}" ]; then
+    MAKE_FILE_ARG="-f ${COCOTB_MAKEFILE}"
+fi
+
 if command -v verilator >/dev/null 2>&1; then
-    $(command -v make) -C "$COCOTB_DIR" SIM=verilator \
+    $(command -v make) -C "$COCOTB_DIR" $MAKE_FILE_ARG SIM=verilator \
         MODULE="$COCOTB_MOD" \
         TOPLEVEL="$COCOTB_TOP" \
         PYTHON="$PYTHON_BIN" \
         SIM_BUILD="$COCOTB_BUILD"
 elif command -v iverilog >/dev/null 2>&1; then
-    $(command -v make) -C "$COCOTB_DIR" SIM=icarus \
+    $(command -v make) -C "$COCOTB_DIR" $MAKE_FILE_ARG SIM=icarus \
         MODULE="$COCOTB_MOD" \
         TOPLEVEL="$COCOTB_TOP" \
         PYTHON="$PYTHON_BIN" \

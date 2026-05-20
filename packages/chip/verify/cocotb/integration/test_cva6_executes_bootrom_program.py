@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, Timer
+from cocotb.triggers import RisingEdge
 
 # RV64I encodings for the 4-instruction program.
 #   addi x1, x0, 1   -> 0x00100093

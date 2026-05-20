@@ -45,6 +45,13 @@ MODELS = (
         "release_use": "blocked",
     },
     {
+        "id": "circuitmind-tcbench",
+        "source_id": "circuitmind-tcbench",
+        "license_status": "review_required",
+        "backend_status": "not_configured",
+        "release_use": "blocked",
+    },
+    {
         "id": "rtlseek",
         "source_id": "rtlseek",
         "license_status": "review_required",
@@ -54,6 +61,20 @@ MODELS = (
     {
         "id": "qimeng-codev-r1",
         "source_id": "qimeng-codev-r1",
+        "license_status": "review_required",
+        "backend_status": "not_configured",
+        "release_use": "blocked",
+    },
+    {
+        "id": "qimeng-crux",
+        "source_id": "qimeng-crux",
+        "license_status": "review_required",
+        "backend_status": "not_configured",
+        "release_use": "blocked",
+    },
+    {
+        "id": "qimeng-salv",
+        "source_id": "qimeng-salv",
         "license_status": "review_required",
         "backend_status": "not_configured",
         "release_use": "blocked",

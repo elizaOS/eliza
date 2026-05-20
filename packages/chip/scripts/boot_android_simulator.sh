@@ -395,26 +395,8 @@ fi
 run_helper_stage lunch "$evidence_dir/eliza_ai_soc_lunch.log" || true
 run_helper_stage vendorimage "$evidence_dir/eliza_ai_soc_vendorimage.log" || true
 run_helper_stage checkvintf "$evidence_dir/eliza_ai_soc_checkvintf.log" || true
-
-capture_aosp_shell \
-	eliza_ai_soc_sepolicy_build \
-	"$evidence_dir/eliza_ai_soc_sepolicy_build.log" \
-	"m vendor_sepolicy.cil selinux_policy" \
-		'source build/envsetup.sh &&
-		lunch "$AOSP_PRODUCT" >/dev/null &&
-		m vendor_sepolicy.cil selinux_policy &&
-		grep -R -n "e1_npu_device\|hal_e1_npu_default" device/eliza out/target/product/eliza_ai_soc/vendor/etc/selinux out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates 2>/dev/null' \
-	build || true
-
-capture_aosp_shell \
-	eliza_ai_soc_selinux_neverallow \
-	"$evidence_dir/eliza_ai_soc_selinux_neverallow.log" \
-	"m sepolicy_neverallows" \
-		'source build/envsetup.sh &&
-		lunch "$AOSP_PRODUCT" >/dev/null &&
-		m sepolicy_neverallows &&
-		grep -R -n "e1_npu" device/eliza out/target/product/eliza_ai_soc/vendor/etc/selinux out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates 2>/dev/null' \
-	build || true
+run_helper_stage sepolicy-build "$evidence_dir/eliza_ai_soc_sepolicy_build.log" || true
+run_helper_stage selinux-neverallow "$evidence_dir/eliza_ai_soc_selinux_neverallow.log" || true
 
 if [ "$require_full_evidence" -eq 0 ]; then
 	python3 "$repo_root/scripts/check_software_bsp.py" aosp

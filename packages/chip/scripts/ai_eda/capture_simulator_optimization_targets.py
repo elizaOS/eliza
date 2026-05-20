@@ -86,6 +86,13 @@ def main() -> int:
             "timeloop-accelergy",
             "dosa",
             "diffaxe",
+            "gem-rtl-simulator",
+            "rtlflow",
+            "firesim",
+            "verion-eda",
+            "copra-cocotb",
+            "autobench",
+            "project-ava",
             "rtlmul",
         ],
         "input_artifacts": artifacts,
@@ -99,6 +106,8 @@ def main() -> int:
             "no calibrated latency or energy labels",
             "no real accelerator benchmark_model transcript",
             "no executed DSE backend",
+            "no pinned GPU/FPGA RTL simulator backend, supported-SystemVerilog subset, waveform correlation, or speedup replay",
+            "no approved generated cocotb stub, generated testbench, mutation-test, or simulator failure-taxonomy workflow",
         ],
     }
     out_dir.mkdir(parents=True, exist_ok=True)

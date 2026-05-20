@@ -115,9 +115,16 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
             "pro-v",
+            "autobench",
+            "project-ava",
+            "haven-uvm",
+            "verilogcoder",
             "saarthi-formal-verification",
             "sangam-sva",
+            "stellar-sva",
+            "proofloop-sva",
             "fvdebug",
+            "veridebug",
             "siliconmind-v1",
             "uvmarvel",
         ],
@@ -169,7 +176,7 @@ def main() -> int:
             {
                 "id": "verification-testbench-oracle-watch",
                 "status": "CAPTURED_NOT_GENERATED",
-                "target": "future PRO-V-style testbench or oracle candidates must stay in build artifacts until deterministic cocotb regressions pass",
+                "target": "future PRO-V, AutoBench, Project Ava, or VerilogCoder-style testbench/oracle candidates must stay in build artifacts until deterministic cocotb regressions and reviewer disposition pass",
                 "acceptance_gates": [
                     "python3 scripts/ai_eda/run_cocotb_stimulus_search.py --dry-run --run-id validation",
                     "make cocotb-npu",
@@ -179,7 +186,7 @@ def main() -> int:
             {
                 "id": "uvm-testbench-automation-watch",
                 "status": "CAPTURED_NOT_GENERATED",
-                "target": "future UVM/UVMarvel-style subsystem testbenches require a protocol IR, commercial-simulator availability, coverage logs, and cocotb/formal cross-checks before promotion",
+                "target": "future UVM/HAVEN/UVMarvel-style subsystem testbenches require a protocol IR, commercial-simulator availability, coverage logs, and cocotb/formal cross-checks before promotion",
                 "acceptance_gates": [
                     "make cocotb-contract",
                     "make formal",
@@ -189,7 +196,7 @@ def main() -> int:
             {
                 "id": "assertion-self-refine-watch",
                 "status": "CAPTURED_NOT_BOUND",
-                "target": "future SANGAM-style SVA search must produce reviewed assertion candidates, not direct RTL bindings",
+                "target": "future SANGAM, STELLAR, or ProofLoop-style SVA search must produce reviewed assertion candidates with retrieval/proof logs, not direct RTL bindings",
                 "acceptance_gates": [
                     "make formal",
                     "python3 scripts/ai_eda/capture_cdc_rdc_targets.py --run-id validation",
@@ -197,9 +204,20 @@ def main() -> int:
                 ],
             },
             {
+                "id": "verilog-debug-model-watch",
+                "status": "CAPTURED_NOT_CLASSIFIED",
+                "target": "future VeriDebug-style buggy-line localization, bug-type classification, or patch suggestions must remain advisory until code/model/dataset revisions, overlap scan, prompt logs, and deterministic replay gates pass",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation",
+                    "make rtl-check",
+                    "make formal",
+                    "make synth",
+                ],
+            },
+            {
                 "id": "patch-quarantine-equivalence-watch",
                 "status": "CAPTURED_NOT_PATCHED",
-                "target": "future FVDebug or SiliconMind debug fixes must remain quarantined until review, simulation, formal, synthesis, and equivalence gates pass",
+                "target": "future FVDebug, VeriDebug, or SiliconMind debug fixes must remain quarantined until review, simulation, formal, synthesis, and equivalence gates pass",
                 "acceptance_gates": [
                     "make formal",
                     "make synth",
@@ -211,8 +229,11 @@ def main() -> int:
             "no approved AI-generated verification-plan promotion workflow",
             "no archived failing formal counterexample corpus for E1",
             "no waveform/trace-to-causal-graph parser pinned for local formal failures",
-            "no license-reviewed PRO-V, Saarthi, SANGAM, FVDebug, or SiliconMind integration path",
+            "no license-reviewed PRO-V, AutoBench, Project Ava, HAVEN, VerilogCoder, Saarthi, SANGAM, STELLAR, ProofLoop, FVDebug, VeriDebug, or SiliconMind integration path",
             "no UVM-capable simulator/license, protocol IR, or coverage-to-cocotb correlation workflow for E1 subsystem verification",
+            "no approved mutation-test, cocotb-repair, AST-waveform tracing, or simulator failure-taxonomy workflow for generated verification collateral",
+            "no approved assertion retrieval corpus, AST fingerprint, solver-query log, or proof replay workflow",
+            "no license-reviewed Verilog debug model/dataset revision, benchmark overlap scan, or local replay harness",
             "no reviewer disposition schema for AI-suggested root causes or patches",
             "no deterministic source-promotion gate for AI-generated testbenches, assertions, or RTL fixes",
         ],

@@ -166,7 +166,7 @@ case "$mode" in
 			env AOSP_PRODUCT="$aosp_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_MAKE_ARGS="$aosp_make_args" "$aosp_shell" -lc '
 				source build/envsetup.sh &&
 				lunch "$AOSP_PRODUCT" >/dev/null &&
-				m ${AOSP_MAKE_ARGS:-} checkvintf >/dev/null &&
+				m ${AOSP_MAKE_ARGS:-} checkvintf framework_compatibility_matrix.device.xml >/dev/null &&
 				product_out="out/target/product/$AOSP_TARGET_PRODUCT" &&
 				manifest=$(find "$product_out/vendor/etc/vintf" \( -name eliza_e1.xml -o -name manifest.xml \) -print -quit 2>/dev/null) &&
 				echo "TARGET_PRODUCT=$AOSP_TARGET_PRODUCT" &&
@@ -179,7 +179,11 @@ case "$mode" in
 				echo "--- checkvintf --check-compat ---" &&
 				"$checkvintf_bin" --check-compat \
 					--dirmap /system:"$product_out/system" \
-					--dirmap /vendor:"$product_out/vendor" &&
+					--dirmap /vendor:"$product_out/vendor" \
+					--dirmap /odm:"$product_out/odm" \
+					--dirmap /product:"$product_out/product" \
+					--dirmap /system_ext:"$product_out/system_ext" \
+					--dirmap /apex:"$product_out/apex" &&
 				echo "VINTF_COMPAT=ok"
 			'
 		;;

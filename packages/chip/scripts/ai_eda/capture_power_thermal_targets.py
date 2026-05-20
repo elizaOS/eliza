@@ -116,6 +116,10 @@ def main() -> int:
             "waca-unet-ir-drop",
             "ir-drop-predictor",
             "eda-irdrop-prediction",
+            "powernet-ir-drop",
+            "mavirec-ir-drop",
+            "pdnnet-dynamic-ir-drop",
+            "dust-irdrop",
             "openpdn",
             "aieda",
             "rtlmul",
@@ -155,10 +159,20 @@ def main() -> int:
             {
                 "id": "ir-drop-pdn-predictor-watch",
                 "status": "CAPTURED_NOT_PREDICTED",
-                "target": "future static/dynamic IR-drop and PDN template predictor after local OpenROAD/PDNSim labels exist",
+                "target": "future static/dynamic IR-drop and PDN template predictor after local OpenROAD/PDNSim labels, dynamic activity provenance, and PDN graph extraction exist",
                 "acceptance_gates": [
                     "make pd-signoff-manifest-check",
                     "make physical-closure-work-order-check",
+                ],
+            },
+            {
+                "id": "dynamic-ir-drop-model-intake-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future PowerNet, MAVIREC, PDNNet, or DuST-IRdrop style dynamic droop models require pinned assets, vector/activity provenance, PDN graph features where applicable, held-out E1 labels, temporal error analysis, and signoff replay",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make pd-signoff-manifest-check",
+                    "make power-thermal-evidence-check",
                 ],
             },
             {
@@ -204,9 +218,11 @@ def main() -> int:
             "no calibrated E1 rail power trace, thermal trace, frequency trace, or workload transcript",
             "no package, board, airflow, heatsink, or phone skin thermal model calibrated to E1",
             "no local OpenROAD/PDNSim IR-drop label corpus across repeated runs",
+            "no dynamic IR-drop label corpus with vector/activity provenance, PDN graph extraction, held-out E1 splits, or temporal error analysis",
             "no activity-aligned power map or vector-based post-route power evidence",
             "no approved TCAD/DTCO deck, device model, simulator, calibration corpus, or process authority for E1 device-level power and thermal assumptions",
             "no approved ArchPower dataset intake, AutoPower code revision, E1 CPU/AP feature mapping, or held-out local calibration labels",
+            "no approved PowerNet/MAVIREC/PDNNet/DuST-IRdrop asset intake, license review, dependency manifest, generated prediction quarantine, or signoff replay",
             "no approved flow for AI-generated PDN, power map, thermal map, or signoff waiver",
         ],
     }

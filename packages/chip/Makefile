@@ -457,7 +457,7 @@ cocotb-iommu:
 	  COCOTB_TOPLEVEL=e1_iommu_tb COCOTB_DIR=verify/cocotb/iommu \
 	  scripts/run_cocotb.sh
 
-.PHONY: cocotb-soc-boot-smoke cocotb-cross-domain soc-integration-check
+.PHONY: cocotb-soc-boot-smoke cocotb-cross-domain soc-integration-check cocotb-cva6-cpu cocotb-cva6-cpu-bootrom cocotb-cva6-cpu-dram
 
 cocotb-soc-boot-smoke:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_soc_boot_smoke \
@@ -473,6 +473,32 @@ cocotb-cross-domain:
 
 soc-integration-check: cocotb-soc-boot-smoke cocotb-cross-domain
 	@$(PYTHON) scripts/check_soc_integration.py
+
+# ---------------------------------------------------------------------------
+# Standalone CVA6 wrapper integration (rtl/cpu/e1_cva6_wrapper.sv +
+# rtl/top/adapters/e1_cva6_to_e1axi4.sv) — links the full CVA6 v5.3.0
+# source tree from external/cva6/cva6/ via core/Flist.cva6.  Kept separate
+# from the lite-mode integration suite so the existing 18 cocotb tests
+# stay independent of the CVA6 pin.
+# ---------------------------------------------------------------------------
+cocotb-cva6-cpu-bootrom:
+	@PYTHON=$(COCOTB_PYTHON) \
+	  COCOTB_MODULE=test_cva6_executes_bootrom_program \
+	  COCOTB_TOPLEVEL=e1_cva6_unit_tb \
+	  COCOTB_DIR=verify/cocotb/integration \
+	  COCOTB_MAKEFILE=Makefile.cva6 \
+	  scripts/run_cocotb.sh
+
+cocotb-cva6-cpu-dram:
+	@PYTHON=$(COCOTB_PYTHON) \
+	  COCOTB_MODULE=test_cva6_dram_read_write \
+	  COCOTB_TOPLEVEL=e1_cva6_unit_tb \
+	  COCOTB_DIR=verify/cocotb/integration \
+	  COCOTB_MAKEFILE=Makefile.cva6 \
+	  scripts/run_cocotb.sh
+
+cocotb-cva6-cpu: cocotb-cva6-cpu-bootrom cocotb-cva6-cpu-dram
+	@echo "cocotb-cva6-cpu complete"
 
 stream-bench:
 	@$(MAKE) -C benchmarks/memory/stream run \

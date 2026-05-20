@@ -130,6 +130,9 @@ def main() -> int:
             "cadence-chipstack-ai-super-agent",
             "siemens-fuse-eda-ai-agent",
             "phoenix-bench",
+            "hwe-bench",
+            "audopeda-openroad",
+            "openroad-mcp",
         ],
         "policy": {
             "executes_agent": False,
@@ -188,7 +191,7 @@ def main() -> int:
             {
                 "id": "openroad-agent-dry-run-watch",
                 "status": "CAPTURED_NOT_EXECUTED",
-                "target": "future OpenROAD/OpenLane agentic flows must emit dry-run manifests and pass preflight before any generated Tcl or config can run",
+                "target": "future OpenROAD/OpenLane agentic flows, including OpenROAD MCP sessions, must emit dry-run manifests and pass preflight before any generated Tcl or config can run",
                 "acceptance_gates": [
                     "make openlane-run-preflight-check",
                     "make physical-closure-work-order-check",
@@ -197,9 +200,31 @@ def main() -> int:
                 ],
             },
             {
+                "id": "openroad-mcp-sandbox-watch",
+                "status": "CAPTURED_NOT_STARTED",
+                "target": "future OpenROAD MCP use requires pinned server revisions, sandbox/authentication policy, command allowlists, archived tool-call logs, artifact quarantine, and rollback",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/preflight_ai_eda_backends.py --run-id validation",
+                    "make commercial-eda-gate",
+                    "make openlane-run-preflight-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "openroad-coding-agent-qor-watch",
+                "status": "CAPTURED_NOT_PATCHED",
+                "target": "future AuDoPEDA-style OpenROAD coding-agent patches must stay quarantined until build/test logs and E1 before/after QoR and signoff replay exist",
+                "acceptance_gates": [
+                    "make openlane-run-preflight-check",
+                    "make pd-signoff-manifest-check",
+                    "python3 scripts/check_pd_closure.py",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "hardware-agent-benchmark-localization-watch",
                 "status": "CAPTURED_NOT_BENCHMARKED",
-                "target": "future Phoenix-bench-style repository agents must be evaluated on quarantined local tasks with hierarchy-aware localization, deterministic tests, and review before patches are accepted",
+                "target": "future Phoenix-bench or HWE-Bench-style repository agents must be evaluated on quarantined local tasks with hierarchy-aware localization, deterministic tests, and review before patches are accepted",
                 "acceptance_gates": [
                     "python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation",
                     "python3 scripts/ai_eda/evaluate_rtl_model.py --run-id validation --dry-run",
@@ -215,6 +240,8 @@ def main() -> int:
             "no commercial Synopsys, Cadence, Siemens, Ansys, or foundry tool license and data-handling review for AI copilot output",
             "no local replay harness that can reproduce AI-generated EDA actions from archived inputs, commands, logs, and output hashes",
             "no accepted MCP server version, authentication model, sandbox policy, or artifact quarantine path for E1",
+            "no license-reviewed OpenROAD MCP server revision with an explicit command allowlist and rollback plan",
+            "no approved coding-agent workflow for OpenROAD/OpenLane tool patches with E1 before/after replay",
             "no evidence that hardware-agent benchmark success transfers to E1 multi-file RTL, PD, verification, or software integration tasks",
         ],
     }

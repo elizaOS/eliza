@@ -62,6 +62,18 @@ def build_policy() -> dict[str, Any]:
     npu_sota_worst = require_number(
         metrics.get("npu_sota_worst_process_corner_min_observed_tops"), "SOTA NPU worst"
     )
+    npu_sota_queue_depth = require_number(
+        metrics.get("npu_sota_dma_queue_depth"), "SOTA NPU queue depth"
+    )
+    npu_sota_descriptors = require_number(
+        metrics.get("npu_sota_total_descriptors_required"), "SOTA NPU descriptors"
+    )
+    npu_sota_queue_passes = require_number(
+        metrics.get("npu_sota_max_descriptor_queue_passes"), "SOTA NPU queue passes"
+    )
+    npu_sota_dma_beats = require_number(
+        metrics.get("npu_sota_total_dma_beats"), "SOTA NPU DMA beats"
+    )
     burst_npu_power_cap_w = require_number(
         targets.get("burst_npu_power_w_max"), "burst NPU power cap"
     )
@@ -76,6 +88,9 @@ def build_policy() -> dict[str, Any]:
     )
     sparse_target = require_number(
         targets.get("sparse_int4_peak_tops_min"), "sparse INT4 peak target"
+    )
+    queue_depth_target = require_number(
+        targets.get("command_queue_depth_min"), "command queue depth target"
     )
 
     estimated_burst_package_cap_w = cpu_sota_power_w + burst_npu_power_cap_w + 1.4
@@ -102,9 +117,13 @@ def build_policy() -> dict[str, Any]:
             if npu_sota_peak >= dense_peak_target
             and npu_sota_sparse >= sparse_target
             and npu_sota_worst >= sustained_target
+            and npu_sota_queue_depth >= queue_depth_target
+            and npu_sota_queue_passes == 1.0
+            and npu_sota_descriptors > 0.0
+            and npu_sota_dma_beats > 0.0
             and cpu_sota_ipc >= 2.35
             else "fail",
-            "Burst mode admits the SOTA CPU/NPU modeled peak profiles only as architecture headroom.",
+            "Burst mode admits the SOTA CPU/NPU modeled peak profiles and descriptor/DMA queue-pressure budget only as architecture headroom.",
         ),
         check_row(
             "burst_power_duration_release_blocked",
@@ -131,6 +150,10 @@ def build_policy() -> dict[str, Any]:
             "npu_base_power_w": require_number(opt_config.get("npu_base_power_w"), "npu power"),
             "npu_modeled_min_tops": sustained_tops,
             "npu_power_cap_w": sustained_npu_power_cap_w,
+            "npu_descriptor_queue_depth": npu_sota_queue_depth,
+            "npu_total_descriptors_required": npu_sota_descriptors,
+            "npu_max_descriptor_queue_passes": npu_sota_queue_passes,
+            "npu_total_dma_beats": npu_sota_dma_beats,
             "memory_sustained_gbps": sustained_memory_gbps,
             "robust_max_total_power_w": sustained_power_w,
             "robust_max_die_temp_c": sustained_temp_c,
@@ -143,6 +166,10 @@ def build_policy() -> dict[str, Any]:
             "npu_sota_dense_int8_peak_tops": npu_sota_peak,
             "npu_sota_sparse_int4_projected_tops": npu_sota_sparse,
             "npu_sota_worst_process_corner_min_tops": npu_sota_worst,
+            "npu_descriptor_queue_depth": npu_sota_queue_depth,
+            "npu_total_descriptors_required": npu_sota_descriptors,
+            "npu_max_descriptor_queue_passes": npu_sota_queue_passes,
+            "npu_total_dma_beats": npu_sota_dma_beats,
             "npu_burst_power_cap_w": burst_npu_power_cap_w,
             "estimated_package_power_cap_w": estimated_burst_package_cap_w,
             "governor_state": "burst_headroom_modeled_release_blocked",
@@ -186,6 +213,10 @@ def validate_policy(data: dict[str, Any]) -> list[str]:
         errors.append("sustained robust power must stay <= 5 W")
     if require_number(sustained.get("robust_max_die_temp_c"), "sustained temp") > 95.0:
         errors.append("sustained robust die temperature must stay <= 95 C")
+    if require_number(sustained.get("npu_max_descriptor_queue_passes"), "queue passes") != 1.0:
+        errors.append("sustained NPU descriptor queue must fit in one modeled queue pass")
+    if require_number(sustained.get("npu_total_dma_beats"), "DMA beats") <= 0.0:
+        errors.append("sustained NPU DMA beats must be positive")
     if not isinstance(burst.get("duration_s"), str) or not burst["duration_s"].startswith(
         "blocked_"
     ):

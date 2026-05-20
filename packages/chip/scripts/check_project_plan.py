@@ -26,6 +26,8 @@ REQUIRED = [
     "docs/project/board-package-pd-fpga-critical-gap-audit.md",
     "docs/project/workstream-gap-review.md",
     "docs/project/prototype-status-dashboard.md",
+    "scripts/check_sota_parity_audit.py",
+    "scripts/test_sota_parity_audit.py",
     "docs/android/bsp-critical-gap-audit-2026-05-17.md",
     "docs/architecture-optimization/README.md",
     "docs/architecture-optimization/compute-silicon.md",

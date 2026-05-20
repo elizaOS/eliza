@@ -103,6 +103,10 @@ def main() -> int:
             "masala-chai",
             "limca",
             "analogagent",
+            "autosizer-ams",
+            "easysize",
+            "self-calibrating-analog-equations",
+            "eesizer",
             "analogmaster",
             "vlm-cad",
             "circuitlm",
@@ -110,6 +114,7 @@ def main() -> int:
             "analogcoder-pro",
             "analogcoder",
             "ams-net",
+            "analog-layout-vlm-dataset",
         ],
         "policy": {
             "generates_spice_netlist": False,
@@ -157,11 +162,21 @@ def main() -> int:
             {
                 "id": "analog-agent-spice-loop-watch",
                 "status": "CAPTURED_NOT_RUN",
-                "target": "future analog LLM/agent sizing or topology loops must stay quarantined until exact prompts, model versions, memory, SPICE decks, simulator logs, PVT sweeps, and analog review exist",
+                "target": "future analog LLM/agent sizing or topology loops must stay quarantined until exact prompts, model versions, memory/search traces, SPICE decks, simulator logs, PVT sweeps, generated dimension quarantine, and analog review exist",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "make padframe-check",
                     "make board-package-evidence-check",
+                ],
+            },
+            {
+                "id": "analog-design-equation-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future self-calibrating LLM-generated design equations or Python sizing functions must cite constraint traceability, calibration data, SPICE replay, PVT sweeps, sensitivity reports, and reviewer disposition",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make padframe-check",
+                    "make no-hardware-action-check",
                 ],
             },
             {
@@ -171,6 +186,15 @@ def main() -> int:
                 "acceptance_gates": [
                     "make padframe-check",
                     "make package-cross-probe-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "analog-layout-vlm-dataset-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future analog layout VLM datasets must pin snapshots, license terms, synthetic data boundaries, train/test splits, local label mapping, and review before any download or model evaluation",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation",
                     "make no-hardware-action-check",
                 ],
             },
@@ -189,6 +213,9 @@ def main() -> int:
             "no IBIS, S-parameter, package parasitic, or rail impedance model",
             "no quarantined analog LLM/agent harness with pinned prompts, model versions, memory snapshots, SPICE decks, simulator logs, PVT sweeps, and reviewer disposition",
             "no license-reviewed analog schematic/netlist dataset selected with exact snapshot, non-overlap review, and parser baselines",
+            "no license-reviewed analog layout VLM dataset snapshot, synthetic-data boundary review, local label mapping, or download policy",
+            "no approved LLM/ngspice sizing harness with prompt logs, objective definitions, generated dimension quarantine, PVT/corner sweeps, and extracted-layout replay",
+            "no approved design-equation generation workflow with equation traceability, calibration data, sensitivity reports, and reviewer disposition",
             "no approved flow for AI-generated SPICE, analog layout, or foundry IP",
         ],
     }

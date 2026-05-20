@@ -160,6 +160,24 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
     if "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES" not in testdriver_assert["next_step"]:
         raise AssertionError(f"expected timeout-cycle guidance, got {testdriver_assert}")
 
+    opensbi_timeout = smoke.classify_smoke_progress(
+        "OpenSBI v1.2\n"
+        "Domain0 Name              : root\n"
+        "*** FAILED ***                       (timeout) after 100000001 simulation cycles\n"
+        "[100000001000] %Fatal: TestDriver.v:147: Assertion failed in TestDriver\n",
+        payload_trace,
+        {
+            "raw_transcript_closed": True,
+            "fatal_errors": ["[100000001000] %Fatal: TestDriver.v:147: Assertion failed"],
+            "sim_failures": [
+                "*** FAILED ***                       (timeout) after 100000001 simulation cycles",
+                "[100000001000] %Fatal: TestDriver.v:147: Assertion failed in TestDriver",
+            ],
+        },
+    )
+    if opensbi_timeout["stage"] != "opensbi_banner_then_max_cycles":
+        raise AssertionError(f"expected OpenSBI max-cycle stage, got {opensbi_timeout}")
+
 
 def main() -> int:
     tests = (

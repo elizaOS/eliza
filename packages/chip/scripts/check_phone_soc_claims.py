@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -13,6 +14,8 @@ UMA = ROOT / "docs/project/uma-coherency-validation-strategy.yaml"
 AI_OPTIONS = ROOT / "docs/project/ai-accelerator-options.yaml"
 HANDOFFS = ROOT / "docs/project/spec-rtl-sw-pd-handoff-work-order.yaml"
 GATE_DOC = ROOT / "docs/project/phone-soc-architecture-gates.md"
+MEDIA_SCOPE_REPORT = ROOT / "build/reports/phone_media_pipeline_scope.json"
+MEDIA_SCOPE_CHECK = ROOT / "scripts/check_phone_media_pipeline_scope.py"
 
 REQUIRED_BLOCKS = {
     "application_cpu_cluster",
@@ -253,6 +256,27 @@ def check_existing_fail_closed_controls(errors: list[str]) -> None:
             errors.append(f"real-world gap manifest missing WiFi/product claim guard: {term}")
 
 
+def check_media_scope_gate(errors: list[str]) -> None:
+    result = subprocess.run(
+        [sys.executable, str(MEDIA_SCOPE_CHECK)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if result.returncode != 0:
+        errors.append("phone media pipeline scope check failed:\n" + result.stdout)
+        return
+    if not MEDIA_SCOPE_REPORT.is_file():
+        errors.append("phone media pipeline scope report was not generated")
+        return
+    text = MEDIA_SCOPE_REPORT.read_text(encoding="utf-8")
+    for term in ("media_pipeline_scope_release_blocked", "not GPU", "camera_isp_stack"):
+        if term not in text:
+            errors.append(f"phone media pipeline scope report missing term: {term}")
+
+
 def main() -> int:
     errors: list[str] = []
     min_blocks = load_yaml(MIN_BLOCKS, errors)
@@ -270,6 +294,7 @@ def main() -> int:
         check_handoffs(handoffs, errors)
     check_gate_doc(errors)
     check_existing_fail_closed_controls(errors)
+    check_media_scope_gate(errors)
 
     if errors:
         print("Phone SoC claim check failed:")

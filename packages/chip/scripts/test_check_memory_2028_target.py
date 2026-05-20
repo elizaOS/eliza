@@ -60,7 +60,10 @@ def minimal_valid_spec() -> dict[str, Any]:
             "rfm_enabled": True,
             "on_die_ecc": True,
         },
-        "phase_gates": {"P0": ["fabric"], "P1": ["slc", "tile_sram"]},
+        "phase_gates": {
+            "P0_3_iommu": {"simulator_evidence": ["benchmarks/results/memory-iommu-qos-sim.json"]},
+            "P1_4_qos": {"simulator_evidence": ["benchmarks/results/memory-iommu-qos-sim.json"]},
+        },
         "forbidden_claims_until_complete": [
             "180 GB/s external memory bandwidth",
             "64 MiB local SRAM",
@@ -221,6 +224,14 @@ class TestMemoryCheck(unittest.TestCase):
             code, _out, err = run_validator()
         self.assertNotEqual(code, 0)
         self.assertIn("phase_gates", err)
+
+    def test_missing_iommu_qos_simulator_evidence_fails(self) -> None:
+        spec = copy.deepcopy(minimal_valid_spec())
+        spec["phase_gates"]["P0_3_iommu"]["simulator_evidence"] = []
+        with patched_validator(spec):
+            code, _out, err = run_validator()
+        self.assertNotEqual(code, 0)
+        self.assertIn("memory-iommu-qos-sim.json", err)
 
 
 if __name__ == "__main__":

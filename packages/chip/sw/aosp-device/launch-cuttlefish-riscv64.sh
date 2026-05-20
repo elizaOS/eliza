@@ -123,8 +123,11 @@ if [ -n "$aosp" ]; then
 	if [ ! -f "$aosp/build/envsetup.sh" ]; then
 		fail "--aosp=$aosp is not an AOSP checkout (missing build/envsetup.sh)"
 	fi
+	# envsetup.sh references $TOP which may be unset; temporarily relax nounset.
+	set +u
 	# shellcheck disable=SC1091
 	. "$aosp/build/envsetup.sh"
+	set -u
 fi
 
 log "preflight: host checks"
@@ -151,7 +154,7 @@ if ! command -v qemu-system-riscv64 >/dev/null 2>&1; then
 	fail "qemu-system-riscv64 not on PATH; install QEMU >= 9.2 (Cuttlefish riscv64 uses TCG, not KVM)"
 fi
 qemu_version_line=$(qemu-system-riscv64 --version | head -n1)
-qemu_version=$(printf '%s\n' "$qemu_version_line" | sed -n 's/^QEMU emulator version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')
+qemu_version=$(printf '%s\n' "$qemu_version_line" | sed -n 's/^.*QEMU emulator version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')
 if [ -z "$qemu_version" ]; then
 	fail "could not parse qemu-system-riscv64 version from: $qemu_version_line"
 fi
@@ -171,12 +174,15 @@ if [ "$clean" -eq 1 ]; then
 fi
 
 if [ -z "$launcher" ]; then
-	if command -v launch_cvd >/dev/null 2>&1; then
-		launcher=launch_cvd
-	elif command -v cvd >/dev/null 2>&1; then
+	# Prefer the system cvd binary (supports cvd create) over the launch_cvd
+	# shim wrapper. The wrapper delegates to cvd start which requires a
+	# pre-existing device group, whereas cvd create creates and starts one.
+	if command -v cvd >/dev/null 2>&1; then
 		launcher=cvd
+	elif command -v launch_cvd >/dev/null 2>&1; then
+		launcher=launch_cvd
 	else
-		fail "neither launch_cvd nor cvd is on PATH; pass --aosp=/path/to/aosp or source build/envsetup.sh first"
+		fail "neither cvd nor launch_cvd is on PATH; pass --aosp=/path/to/aosp or source build/envsetup.sh first"
 	fi
 fi
 

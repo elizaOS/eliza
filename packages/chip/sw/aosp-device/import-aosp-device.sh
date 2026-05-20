@@ -57,6 +57,7 @@ $device_src/init.eliza.rc
 $device_src/fstab.eliza
 $device_src/manifest.xml
 $device_src/eliza_e1.xml
+$device_src/device_framework_matrix.xml
 $device_src/kernel/eliza_ai_soc.fragment
 $device_src/dts/eliza-e1-android.dts
 $device_src/sepolicy/file_contexts
@@ -89,7 +90,7 @@ fi
 
 if [ "$check_only" -eq 1 ]; then
 	if [ -d "$device_dst" ]; then
-		for rel in AndroidProducts.mk eliza_ai_soc.mk BoardConfig.mk device.mk init.eliza.rc fstab.eliza manifest.xml eliza_e1.xml kernel/eliza_ai_soc.fragment dts/eliza-e1-android.dts sepolicy/file_contexts sepolicy/e1_npu.te hal/e1_npu/Android.bp hal/hwcomposer/Android.bp; do
+		for rel in AndroidProducts.mk eliza_ai_soc.mk BoardConfig.mk device.mk init.eliza.rc fstab.eliza manifest.xml eliza_e1.xml device_framework_matrix.xml kernel/eliza_ai_soc.fragment dts/eliza-e1-android.dts sepolicy/file_contexts sepolicy/e1_npu.te hal/e1_npu/Android.bp hal/hwcomposer/Android.bp; do
 			if [ ! -f "$device_dst/$rel" ]; then
 				echo "FAIL: imported AOSP tree missing device/eliza/eliza_ai_soc/$rel" >&2
 				missing=1
