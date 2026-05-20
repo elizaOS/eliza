@@ -489,7 +489,6 @@ const elizagotchiAction: ElizaAction = {
   descriptionCompressed:
     "Elizagotchi tick|status|reset|export|import|name|feed|play|clean|sleep|medicine|light",
   contexts: [...ELIZAGOTCHI_CONTEXTS],
-  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
   roleGate: { minRole: "USER" },
   similes: ELIZAGOTCHI_SIMILES,
   validate: async (_runtime: IAgentRuntime, message, state) => {
