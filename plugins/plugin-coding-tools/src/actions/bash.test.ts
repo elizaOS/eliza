@@ -11,6 +11,7 @@ import {
   resolveCryptoSpotPriceCommand,
   resolveDiskInspectionCommand,
   resolveLocalStatusCommand,
+  resolveSourceInspectionCommand,
   shellAction,
 } from "./bash.js";
 
@@ -503,6 +504,22 @@ describe("shellAction", () => {
       kind: "memory",
       rewritten: true,
     });
+  });
+
+  it("bounds broad local source searches to the current workspace", () => {
+    const result = resolveSourceInspectionCommand({
+      messageText:
+        "does the vendored opencode source include Cerebras endpoint detection? concise",
+      command: 'grep -R "Cerebras" /home/example -n 2>/dev/null | head -n 20',
+    });
+
+    expect(result.rewritten).toBe(true);
+    expect(result.command).toContain("rg -n");
+    expect(result.command).toContain("'Cerebras'");
+    expect(result.command).toContain(".");
+    expect(result.command).not.toContain("grep -R");
+    expect(result.command).not.toContain("/home/example");
+    expect(result.command).not.toContain("head -n");
   });
 
   it("adds user-facing text for neutral crypto spot-price JSON", async () => {

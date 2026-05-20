@@ -66,6 +66,11 @@ interface LocalStatusCommandResolution {
   rewritten: boolean;
 }
 
+interface SourceInspectionCommandResolution {
+  command: string;
+  rewritten: boolean;
+}
+
 type ShellHistoryEntryLike = {
   command?: unknown;
 };
@@ -100,6 +105,15 @@ const BOUNDED_DISK_INSPECTION_COMMAND =
   'df -h / /home; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/.local/share/Trash"; do [ -e "$p" ] && du -sh "$p" 2>/dev/null; done | sort -hr | head -n 10';
 const LOCAL_HEALTH_COMMAND = `PORT="\${ELIZA_API_PORT:-\${ELIZA_PORT:-\${API_PORT:-\${SERVER_PORT:-2138}}}}"; curl -fsS "http://127.0.0.1:\${PORT}/api/health"`;
 const LOCAL_MEMORY_COMMAND = "free -m";
+const SOURCE_SEARCH_EXCLUDES = [
+  "!**/.git/**",
+  "!**/node_modules/**",
+  "!**/dist/**",
+  "!**/.turbo/**",
+  "!**/.cache/**",
+  "!**/coverage/**",
+  "!**/.next/**",
+] as const;
 
 function normalizeShellSubaction(
   value: string | undefined,
@@ -307,6 +321,68 @@ export function resolveLocalStatusCommand(args: {
     };
   }
   return { command: args.command, rewritten: false };
+}
+
+function asksForLocalSourceInspection(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return (
+    /\b(?:does|do|is|are|can|could|check|verify|inspect|show)\b[\s\S]{0,160}\b(?:local|vendored|workspace|worktree|repo|repository|submodules?|source|code)\b[\s\S]{0,160}\b(?:include|contain|have|support|implement|detect|use)\b/.test(
+      normalized,
+    ) &&
+    /\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b/.test(
+      normalized,
+    )
+  );
+}
+
+function broadRecursiveGrepPattern(command: string): string | undefined {
+  const normalized = command.replace(/\s+/g, " ");
+  if (!/\bgrep\b[^;&|]*-(?:[^\s-]*r|[^\s-]*R)\b/i.test(normalized)) {
+    return undefined;
+  }
+  if (
+    !/(?:^|\s)(?:\/|\/home(?:\/[^\s;&|]+)?)(?:\s|$|[;&|])/u.test(normalized)
+  ) {
+    return undefined;
+  }
+  const quoted = command.match(/\bgrep\b[\s\S]*?(?:"([^"]+)"|'([^']+)')/u);
+  const pattern = quoted?.[1] ?? quoted?.[2];
+  return pattern?.trim() || undefined;
+}
+
+function boundedSourceSearchCommand(pattern: string): string {
+  const quotedPattern = shellSingleQuote(pattern);
+  const rgGlobs = SOURCE_SEARCH_EXCLUDES.map(
+    (glob) => `--glob ${shellSingleQuote(glob)}`,
+  ).join(" ");
+  const findPrunes = SOURCE_SEARCH_EXCLUDES.map((glob) =>
+    glob.replace(/^!\*\*\//u, "./").replace(/\/\*\*$/u, ""),
+  )
+    .map((dir) => `-path ${shellSingleQuote(dir)}`)
+    .join(" -o ");
+  return [
+    "if command -v rg >/dev/null 2>&1; then",
+    `rg -n --hidden ${rgGlobs} ${quotedPattern} . || true;`,
+    "else",
+    `find . \\( ${findPrunes} \\) -prune -o -type f -exec grep -n -I -m 20 -- ${quotedPattern} {} + 2>/dev/null || true;`,
+    "fi",
+  ].join(" ");
+}
+
+export function resolveSourceInspectionCommand(args: {
+  command: string;
+  messageText: string;
+}): SourceInspectionCommandResolution {
+  if (!asksForLocalSourceInspection(args.messageText)) {
+    return { command: args.command, rewritten: false };
+  }
+  const pattern = broadRecursiveGrepPattern(args.command);
+  if (!pattern) return { command: args.command, rewritten: false };
+  return {
+    command: boundedSourceSearchCommand(pattern),
+    rewritten: true,
+  };
 }
 
 function shouldIgnoreUngroundedRuntimeCwd(args: {
@@ -855,6 +931,16 @@ export const shellAction: Action = {
       command = localStatusCommand.command;
       coreLogger.warn(
         `${CODING_TOOLS_LOG_PREFIX} SHELL replaced local status probe with canonical command`,
+      );
+    }
+    const sourceInspectionCommand = resolveSourceInspectionCommand({
+      command,
+      messageText: messageText(message),
+    });
+    if (sourceInspectionCommand.rewritten) {
+      command = sourceInspectionCommand.command;
+      coreLogger.warn(
+        `${CODING_TOOLS_LOG_PREFIX} SHELL replaced broad source search with bounded workspace search`,
       );
     }
     const diskCommand = resolveDiskInspectionCommand({
