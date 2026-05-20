@@ -66,8 +66,7 @@ describe("registerPhoneGatewayDevice", () => {
         phone_account_label: "Eliza Cloud Gateway",
         friendly_name: "Eliza Cloud Gateway",
         send_method: "bluebubbles-local-bridge",
-        cloud_webhook_url:
-          "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
+        cloud_webhook_url: "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
         metadata: '{"eventType":"new-message"}',
         is_active: true,
       }),

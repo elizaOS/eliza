@@ -111,9 +111,7 @@ describe("runOnboardingChat", () => {
       trustedPlatformIdentity: true,
     });
 
-    expect(result.reply).toBe(
-      "Open <https://elizacloud.ai/dashboard/containers>.",
-    );
+    expect(result.reply).toBe("Open <https://elizacloud.ai/dashboard/containers>.");
   });
 
   test("copies the onboarding transcript into memory once the provisioned agent is running", async () => {

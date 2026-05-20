@@ -226,10 +226,7 @@ function fallbackReply(args: {
 }
 
 function sanitizeReplyText(reply: string): string {
-  return reply
-    .replaceAll("httpshttps://", "https://")
-    .replaceAll("httphttp://", "http://")
-    .trim();
+  return reply.replaceAll("httpshttps://", "https://").replaceAll("httphttp://", "http://").trim();
 }
 
 async function generateOnboardingReply(args: {
@@ -412,12 +409,13 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
   };
 
   if (!requiresLogin && session.userId && session.organizationId) {
-    provisioning = userMessage && preferredNameCaptured
-      ? await ensureElizaAppProvisioning({
-          userId: session.userId,
-          organizationId: session.organizationId,
-        })
-      : await getElizaAppProvisioningStatus(session.organizationId);
+    provisioning =
+      userMessage && preferredNameCaptured
+        ? await ensureElizaAppProvisioning({
+            userId: session.userId,
+            organizationId: session.organizationId,
+          })
+        : await getElizaAppProvisioningStatus(session.organizationId);
     session.agentId = provisioning.agentId ?? session.agentId;
   }
 

@@ -11,7 +11,7 @@ import {
   Wifi,
   XCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import {
   encodeBrightness,
   encodeClearScreen,
@@ -556,7 +556,9 @@ export function SmartglassesView() {
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {Object.entries(tests).map(([id, ok]) => (
-                <CheckRow key={id} ok={ok} label={labelForTest(id)} />
+                <div key={id}>
+                  <CheckRow ok={ok === true} label={labelForTest(id)} />
+                </div>
               ))}
             </div>
           </Panel>
@@ -704,7 +706,7 @@ export function SmartglassesView() {
   );
 }
 
-function Panel({ children }: { children: React.ReactNode }) {
+function Panel({ children }: { children: ReactNode }) {
   return (
     <div className="rounded-lg border border-border/60 bg-card p-4">
       {children}
@@ -717,7 +719,7 @@ function ActionButton({
   disabled,
   onClick,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   disabled?: boolean;
   onClick: () => void | Promise<void>;
 }) {

@@ -518,8 +518,7 @@ export class CloudBootstrapMessageService implements IMessageService {
     // reject the request ("Each message must have content..."). Set a fallback.
     const originalSystemPrompt = runtime.character.system;
     if (!runtime.character.system) {
-      runtime.character.system =
-        "Select and execute actions to fulfill user requests.";
+      runtime.character.system = "Select and execute actions to fulfill user requests.";
     }
 
     const maxIterations =

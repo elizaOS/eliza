@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 
@@ -47,7 +47,9 @@ function validateRemoteCapabilityLiveReportName(
     );
   }
   if (report.kind === "cloud" && name !== "cloud") {
-    throw new Error('Remote capability cloud live report name must be "cloud".');
+    throw new Error(
+      'Remote capability cloud live report name must be "cloud".',
+    );
   }
   if (report.kind === "cloud") {
     rejectRemoteCapabilityLiveReportFields(report, [

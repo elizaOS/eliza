@@ -271,6 +271,7 @@ export const pluginEntrySchema = z.object({
   ...commonFields,
   kind: z.literal("plugin"),
   subtype: pluginSubtype,
+  launch: appLaunchSchema.optional(),
 });
 
 export const connectorEntrySchema = z.object({

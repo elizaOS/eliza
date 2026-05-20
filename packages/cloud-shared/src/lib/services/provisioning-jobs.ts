@@ -362,7 +362,7 @@ interface LifecycleSandboxRow {
   updated_at: Date | null;
 }
 
-interface LifecycleJobOptions<TData extends Record<string, unknown>> {
+interface LifecycleJobOptions<TData extends object> {
   /** Wire value for `jobs.type` (one of JOB_TYPES.*). */
   jobType: ProvisioningJobType;
   /** Typed job data to persist into `jobs.data` JSONB. */
@@ -408,7 +408,7 @@ export class ProvisioningJobService {
    * the log breadcrumb fields. Adding a new lifecycle job type is a
    * ~10-line addition instead of ~80.
    */
-  private async enqueueLifecycleJob<TData extends Record<string, unknown>>(
+  private async enqueueLifecycleJob<TData extends object>(
     opts: LifecycleJobOptions<TData>,
   ): Promise<{ job: Job; created: boolean }> {
     if (opts.webhookUrl) {

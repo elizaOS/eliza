@@ -1,8 +1,6 @@
-import {
-  type G1ConnectionReadyMode,
-  SmartglassesService,
-  WebBluetoothG1Transport,
-} from "../../../plugins/plugin-smartglasses/src/index.js";
+import type { G1ConnectionReadyMode } from "../../../plugins/plugin-smartglasses/src/protocol.js";
+import { SmartglassesService } from "../../../plugins/plugin-smartglasses/src/services/smartglasses-service.js";
+import { WebBluetoothG1Transport } from "../../../plugins/plugin-smartglasses/src/transport/web-bluetooth.js";
 import {
   createHardwareEvidenceReport,
   markHardwareMicrophoneCommand,
@@ -44,13 +42,20 @@ const textArea = document.getElementById("text") as HTMLTextAreaElement;
 
 const service = new SmartglassesService();
 let transport: WebBluetoothG1Transport | null = null;
-const initMode: G1ConnectionReadyMode = new URLSearchParams(
-  window.location.search,
-).get("initMode") === "official"
-  ? "official"
-  : "lens-specific";
+const initMode: G1ConnectionReadyMode =
+  new URLSearchParams(window.location.search).get("initMode") === "official"
+    ? "official"
+    : "lens-specific";
 const report = createHardwareEvidenceReport({ initMode });
 let initialized = false;
+
+function setHardwareReport(): void {
+  (
+    window as unknown as {
+      smartglassesHardwareReport?: typeof report;
+    }
+  ).smartglassesHardwareReport = report;
+}
 
 function log(message: string, data?: unknown): void {
   const suffix = data === undefined ? "" : ` ${JSON.stringify(data)}`;
@@ -60,7 +65,7 @@ function log(message: string, data?: unknown): void {
 
 function updateReport(): void {
   updateHardwareEvidenceStatus(report, service.getStatus());
-  window.smartglassesHardwareReport = report;
+  setHardwareReport();
   log("evidence", {
     ok: report.ok,
     checks: report.checks,
@@ -71,7 +76,7 @@ function updateReport(): void {
 function reportJson(): string {
   updateHardwareEvidenceStatus(report, service.getStatus());
   report.finishedAt = new Date().toISOString();
-  window.smartglassesHardwareReport = report;
+  setHardwareReport();
   return `${JSON.stringify(report, null, 2)}\n`;
 }
 
@@ -86,9 +91,8 @@ function instrumentTransport(nextTransport: WebBluetoothG1Transport): void {
     recordHardwareWrite(report, "both", data);
     await originalWriteBoth(data);
   };
-  const originalOpenMicrophone = nextTransport.openMicrophone.bind(
-    nextTransport,
-  );
+  const originalOpenMicrophone =
+    nextTransport.openMicrophone.bind(nextTransport);
   nextTransport.openMicrophone = async (enabled) => {
     markHardwareMicrophoneCommand(report, enabled);
     await originalOpenMicrophone(enabled);
@@ -256,7 +260,10 @@ function withTimeout<T>(
   message: string,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    const timeout = window.setTimeout(
+      () => reject(new Error(message)),
+      timeoutMs,
+    );
     promise.then(
       (value) => {
         window.clearTimeout(timeout);
@@ -268,10 +275,4 @@ function withTimeout<T>(
       },
     );
   });
-}
-
-declare global {
-  interface Window {
-    smartglassesHardwareReport?: typeof report;
-  }
 }

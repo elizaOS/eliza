@@ -3,8 +3,8 @@ import type {
   G1Event,
   GlassSide,
   SmartglassesAudioEncoding,
-  SmartglassesStatus,
-} from "../../../plugins/plugin-smartglasses/src/index.js";
+} from "../../../plugins/plugin-smartglasses/src/protocol.js";
+import type { SmartglassesStatus } from "../../../plugins/plugin-smartglasses/src/services/smartglasses-service.js";
 
 export type HardwareWriteSide = GlassSide | "both";
 
@@ -161,9 +161,8 @@ export function markHardwareMicrophoneCommand(
   report: HardwareEvidenceReport,
   enabled: boolean,
 ): void {
-  report.checks[
-    enabled ? "microphoneEnabled" : "microphoneDisabledByCommand"
-  ] = true;
+  report.checks[enabled ? "microphoneEnabled" : "microphoneDisabledByCommand"] =
+    true;
 }
 
 export function missingHardwareEvidence(
@@ -207,7 +206,5 @@ export function hardwareCommandName(data: Uint8Array): string {
 }
 
 function bytesToHex(data: Uint8Array): string {
-  return [...data]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return [...data].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
