@@ -6322,7 +6322,7 @@ function looksLikeLocalShellRequest(text: string): boolean {
 	}
 
 	const mentionsCommand =
-		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|submodules?|disk (?:space|usage)|storage usage)\b/iu.test(
+		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|submodules?|disk (?:space|usage)|storage usage|health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time)\b/iu.test(
 			normalized,
 		);
 	const asksToInspect =
@@ -6331,18 +6331,36 @@ function looksLikeLocalShellRequest(text: string): boolean {
 		);
 	const mentionsLocalSurface =
 		/(?:^|\s)(?:\/home\/|~\/|\.\/|\.\.\/)/u.test(normalized) ||
-		/\b(?:this vps|local(?:ly)?|workspace|worktree|repo|repository|branch|head|submodules?|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|logs?|service|systemd)\b/iu.test(
+		/\b(?:this vps|local(?:ly)?|server|workspace|worktree|repo|repository|branch|head|vendored|submodules?|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time|logs?|service|systemd)\b/iu.test(
 			normalized,
 		);
 	const asksRepoStateQuestion =
 		/\b(?:is|are|what|which|where)\b[^.?!\n]{0,80}\b(?:submodules?|commit|branch|head|checked\s+out|worktree|repo|repository)\b/iu.test(
 			normalized,
 		) &&
-		/\b(?:local(?:ly)?|running|vendored|checked\s+out)\b/iu.test(normalized);
+		/\b(?:local(?:ly)?|running|workspace|worktree|repo|repository|vendored|submodules?|checked\s+out)\b/iu.test(
+			normalized,
+		);
+	const asksLocalStatusQuestion =
+		/\b(?:check|inspect|show|summarize|what|how\s+much|is|are)\b[\s\S]{0,160}\b(?:health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time)\b/iu.test(
+			normalized,
+		) &&
+		/\b(?:local|server|bot|runtime|right now|current|ready)\b/iu.test(
+			normalized,
+		);
+	const asksLocalSourceInspection =
+		/\b(?:does|do|is|are|can|could|check|verify|inspect|show)\b[\s\S]{0,160}\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b[\s\S]{0,160}\b(?:include|contain|have|support|implement|detect|use)\b/iu.test(
+			normalized,
+		) &&
+		/\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b/iu.test(
+			normalized,
+		);
 
 	return (
 		(mentionsCommand && asksToInspect && mentionsLocalSurface) ||
-		asksRepoStateQuestion
+		asksRepoStateQuestion ||
+		asksLocalStatusQuestion ||
+		asksLocalSourceInspection
 	);
 }
 
