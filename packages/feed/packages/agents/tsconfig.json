@@ -1,0 +1,37 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["bun-types"],
+    "baseUrl": ".",
+    "paths": {
+      "@babylon/shared": ["../shared/src/index.ts"],
+      "@babylon/shared/*": ["../shared/src/*"],
+      "@babylon/db": ["../db/src/index.ts"],
+      "@babylon/db/*": ["../db/src/*"],
+      "@babylon/engine": ["../engine/src/index.ts"],
+      "@babylon/engine/*": ["../engine/src/*"],
+      "@babylon/core": ["../core/markets/index.ts"],
+      "@babylon/core/*": ["../core/*"],
+      "@babylon/api": ["../api/src/index.ts"],
+      "@babylon/api/*": ["../api/src/*"],
+      "@babylon/a2a": ["../a2a/src/index.ts"],
+      "@babylon/a2a/*": ["../a2a/src/*"],
+      "@babylon/training": ["../training/src/index.ts"],
+      "@babylon/training/*": ["../training/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"],
+  "references": [
+    { "path": "../shared" },
+    { "path": "../db" },
+    { "path": "../engine" },
+    { "path": "../core" },
+    { "path": "../api" },
+    { "path": "../a2a" },
+    { "path": "../training" }
+  ]
+}

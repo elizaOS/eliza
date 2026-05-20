@@ -1,0 +1,31 @@
+{
+  "packageId": "market.babylon.app",
+  "host": "babylon.market",
+  "name": "Babylon",
+  "launcherName": "Babylon",
+  "display": "standalone",
+  "themeColor": "#0066FF",
+  "navigationColor": "#0a0a0a",
+  "navigationColorDark": "#0a0a0a",
+  "navigationDividerColor": "#0a0a0a",
+  "navigationDividerColorDark": "#0a0a0a",
+  "backgroundColor": "#0a0a0a",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://babylon.market/icons/icon-512.png",
+  "maskableIconUrl": "https://babylon.market/icons/icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./signing-key.keystore",
+    "alias": "babylon"
+  },
+  "appVersionCode": 1,
+  "appVersionName": "1.0.0",
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://babylon.market/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "enableSiteSettingsShortcut": false,
+  "isChromeOSOnly": false,
+  "orientation": "portrait"
+}

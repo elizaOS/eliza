@@ -1,0 +1,34 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+const serverUrl = process.env.CAPACITOR_SERVER_URL;
+
+const config: CapacitorConfig = {
+  appId: 'market.babylon.app',
+  appName: 'Babylon',
+  webDir: 'out',
+  server: {
+    ...(serverUrl ? { url: serverUrl, cleartext: true } : {}),
+    androidScheme: 'https',
+  },
+  plugins: {
+    SplashScreen: {
+      launchAutoHide: true,
+      launchShowDuration: 2000,
+      backgroundColor: '#0a0a0a',
+      showSpinner: false,
+      androidScaleType: 'CENTER_CROP',
+      splashFullScreen: true,
+      splashImmersive: true,
+    },
+    Keyboard: {
+      resize: 'body',
+      style: 'dark',
+    },
+    StatusBar: {
+      style: 'DARK',
+      backgroundColor: '#0a0a0a',
+    },
+  },
+};
+
+export default config;

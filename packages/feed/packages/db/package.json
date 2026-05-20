@@ -1,0 +1,49 @@
+{
+  "name": "@babylon/db",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Babylon Database Layer - Drizzle ORM",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": {
+      "types": "./src/schema/index.ts",
+      "import": "./src/schema/index.ts",
+      "require": "./src/schema/index.ts"
+    },
+    "./types": {
+      "types": "./src/types.ts",
+      "import": "./src/types.ts",
+      "require": "./src/types.ts"
+    }
+  },
+  "scripts": {
+    "lint": "biome lint .",
+    "typecheck": "tsc -b .",
+    "db:generate": "drizzle-kit generate --config=drizzle.config.cjs",
+    "db:migrate": "drizzle-kit migrate --config=drizzle.config.cjs",
+    "db:push": "drizzle-kit push --config=drizzle.config.cjs",
+    "db:pull": "drizzle-kit pull --config=drizzle.config.cjs",
+    "db:studio": "drizzle-kit studio --config=drizzle.config.cjs",
+    "db:check": "drizzle-kit check --config=drizzle.config.cjs",
+    "db:sync-migrations": "tsx scripts/sync-migrations.ts"
+  },
+  "dependencies": {
+    "@babylon/shared": "workspace:*",
+    "drizzle-orm": "^0.44.7",
+    "postgres": "^3.4.7"
+  },
+  "peerDependencies": {
+    "drizzle-orm": "^0.44.7",
+    "postgres": "^3.4.7"
+  },
+  "devDependencies": {
+    "@elizaos/plugin-sql": "2.0.0-alpha.17",
+    "@types/node": "^24.10.0",
+    "drizzle-kit": "^0.31.8",
+    "tsx": "^4.19.4",
+    "typescript": "^5.9.3"
+  }
+}

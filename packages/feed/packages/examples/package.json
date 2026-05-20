@@ -1,0 +1,25 @@
+{
+  "name": "@babylon/examples",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Babylon A2A example agents, training harness, and local development server",
+  "scripts": {
+    "start": "./scripts/start-all.sh",
+    "stop": "./scripts/stop-all.sh",
+    "demo": "./scripts/demo-all-actions.sh",
+    "agent:ts": "./scripts/run-typescript-agent.sh",
+    "agent:py": "cd babylon-langgraph-agent && uv run python local_agent.py",
+    "server": "cd local-a2a-server && bun run dev",
+    "test:ts": "cd babylon-typescript-agent && bun test tests/local-e2e.test.ts",
+    "test:py": "cd babylon-langgraph-agent && uv run pytest tests/test_local_agent.py -v",
+    "harness": "cd harness && bun run src/cli.ts",
+    "harness:train": "cd harness && bun run src/cli.ts train",
+    "harness:test": "cd harness && bun test"
+  },
+  "workspaces": [
+    "local-a2a-server",
+    "babylon-typescript-agent",
+    "babylon-langgraph-agent",
+    "harness"
+  ]
+}

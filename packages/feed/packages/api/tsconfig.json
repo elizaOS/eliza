@@ -1,0 +1,30 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "baseUrl": ".",
+    "types": ["bun-types"],
+    "paths": {
+      "@babylon/core": ["../core/markets/index.ts"],
+      "@babylon/core/*": ["../core/*"],
+      "@babylon/shared": ["../shared/src/index.ts"],
+      "@babylon/shared/*": ["../shared/src/*"],
+      "@babylon/db": ["../db/src/index.ts"],
+      "@babylon/db/*": ["../db/src/*"],
+      "@babylon/engine": ["../engine/src/index.ts"],
+      "@babylon/engine/*": ["../engine/src/*"],
+      "@babylon/agents": ["../agents/dist/index.d.ts"],
+      "@babylon/agents/*": ["../agents/dist/*"]
+    }
+  },
+  "include": ["src/**/*", "src/**/*.d.ts"],
+  "exclude": ["node_modules", "dist", "**/__tests__/**"],
+  "references": [
+    { "path": "../core" },
+    { "path": "../shared" },
+    { "path": "../db" },
+    { "path": "../engine" }
+  ]
+}

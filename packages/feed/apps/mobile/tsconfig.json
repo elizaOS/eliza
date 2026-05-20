@@ -1,0 +1,66 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "types": ["bun-types"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@babylon/db": ["../../packages/db/src/index.ts"],
+      "@babylon/db/*": ["../../packages/db/src/*"],
+      "@babylon/api": ["../../packages/api/src/index.ts"],
+      "@babylon/api/*": ["../../packages/api/src/*"],
+      "@babylon/agents": ["../../packages/agents/src/index.ts"],
+      "@babylon/agents/*": ["../../packages/agents/src/*"],
+      "@babylon/a2a": ["../../packages/a2a/src/index.ts"],
+      "@babylon/a2a/*": ["../../packages/a2a/src/*"],
+      "@babylon/mcp": ["../../packages/mcp/src/index.ts"],
+      "@babylon/mcp/*": ["../../packages/mcp/src/*"],
+      "@babylon/engine": ["../../packages/engine/src/index.ts"],
+      "@babylon/engine/*": ["../../packages/engine/src/*"],
+      "@babylon/core": ["../../packages/core/markets/index.ts"],
+      "@babylon/core/markets/*": ["../../packages/core/markets/*"],
+      "@babylon/shared": ["../../packages/shared/src/index.ts"],
+      "@babylon/shared/*": ["../../packages/shared/src/*"],
+      "@babylon/pack-default": ["../../packages/pack-default/src/index.ts"],
+      "@babylon/pack-default/*": ["../../packages/pack-default/src/*"],
+      "@/*": ["../web/src/*"],
+      "@web/*": ["../web/src/*"],
+      "@/mobile/*": ["./src/*"]
+    },
+    "baseUrl": "."
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../web/src/**/*.ts",
+    "../web/src/**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "out/types/**/*.ts",
+    "out/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "out",
+    "ios",
+    "android",
+    "../web/src/app/sw.ts",
+    "../web/public/sw.js"
+  ]
+}

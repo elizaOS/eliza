@@ -1,0 +1,113 @@
+name: Daily HuggingFace Dataset Upload
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      force:
+        description: 'Force upload even if no new data'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: daily-dataset-upload-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  upload-datasets:
+    if: ${{ vars.ENABLE_DAILY_DATASET_UPLOAD == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # GitHub Actions has plenty of time
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Verify required secrets
+        id: preflight
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+        run: |
+          missing=()
+          [ -z "${DATABASE_URL}" ] && missing+=("DATABASE_URL")
+          [ -z "${HUGGING_FACE_TOKEN}" ] && missing+=("HUGGING_FACE_TOKEN")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "missing=${missing[*]}" >> "$GITHUB_OUTPUT"
+            echo "Skipping dataset upload. Missing required secrets: ${missing[*]}"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      
+      - name: Setup Python (for huggingface-cli)
+        if: steps.preflight.outputs.skip != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Python dependencies
+        if: steps.preflight.outputs.skip != 'true'
+        run: |
+          pip install huggingface_hub
+          huggingface-cli --version
+      
+      - name: Install dependencies
+        if: steps.preflight.outputs.skip != 'true'
+        run: bun install
+      
+      - name: Setup database connection
+        if: steps.preflight.outputs.skip != 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "Database configured"
+          # Drizzle ORM doesn't require a generate step
+      
+      - name: Collect and prepare game data
+        if: steps.preflight.outputs.skip != 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "📊 Collecting all game data..."
+          npx tsx scripts/collect-game-data-for-hf.ts
+      
+      - name: Upload to HuggingFace
+        if: steps.preflight.outputs.skip != 'true'
+        env:
+          HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          HF_DATASET_NAME: BabylonSocial/babylon-game-data
+        run: |
+          echo "📤 Uploading to HuggingFace..."
+          npx tsx scripts/upload-to-huggingface.ts
+      
+      - name: Verify upload
+        if: steps.preflight.outputs.skip != 'true'
+        run: |
+          echo "✅ Verifying upload..."
+          npx tsx scripts/verify-hf-upload.ts
+      
+      - name: Upload summary
+        if: always() && steps.preflight.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upload-summary
+          path: exports/huggingface/latest/summary.json
+          retention-days: 30
+
+      - name: Skip notice
+        if: steps.preflight.outputs.skip == 'true'
+        run: |
+          echo "Skipped daily dataset upload due to missing configuration: ${{ steps.preflight.outputs.missing }}"

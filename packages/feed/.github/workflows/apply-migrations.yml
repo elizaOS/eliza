@@ -1,0 +1,57 @@
+name: Apply database migrations
+
+on:
+  push:
+    branches:
+      - staging
+      - production
+
+concurrency:
+  group: apply-migrations-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      STAGING_DIRECT_DATABASE_URL: ${{ secrets.STAGING_DIRECT_DATABASE_URL }}
+      PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+      PROD_DIRECT_DATABASE_URL: ${{ secrets.PROD_DIRECT_DATABASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Apply migrations (staging)
+        if: github.ref == 'refs/heads/staging' && env.STAGING_DATABASE_URL != '' && env.STAGING_DIRECT_DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ env.STAGING_DATABASE_URL }}
+          DIRECT_DATABASE_URL: ${{ env.STAGING_DIRECT_DATABASE_URL }}
+        working-directory: packages/db
+        run: bunx --bun drizzle-kit push --force --config=drizzle.config.ts
+
+      - name: Apply migrations (production)
+        if: github.ref == 'refs/heads/production' && env.PROD_DATABASE_URL != '' && env.PROD_DIRECT_DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ env.PROD_DATABASE_URL }}
+          DIRECT_DATABASE_URL: ${{ env.PROD_DIRECT_DATABASE_URL }}
+        working-directory: packages/db
+        run: bunx --bun drizzle-kit push --force --config=drizzle.config.ts
+
+      - name: Skip notice (staging)
+        if: github.ref == 'refs/heads/staging' && (env.STAGING_DATABASE_URL == '' || env.STAGING_DIRECT_DATABASE_URL == '')
+        run: echo "Skipping staging migrations because STAGING_DATABASE_URL or STAGING_DIRECT_DATABASE_URL is not set."
+
+      - name: Skip notice (production)
+        if: github.ref == 'refs/heads/production' && (env.PROD_DATABASE_URL == '' || env.PROD_DIRECT_DATABASE_URL == '')
+        run: echo "Skipping production migrations because PROD_DATABASE_URL or PROD_DIRECT_DATABASE_URL is not set."

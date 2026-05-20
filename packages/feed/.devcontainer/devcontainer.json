@@ -1,0 +1,50 @@
+{
+  "name": "Babylon Dev",
+  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.yml"],
+  "service": "workspace",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [3000, 3077, 8545, 4000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Next.js (web)"
+    },
+    "3077": {
+      "label": "Next.js (mobile)"
+    },
+    "8545": {
+      "label": "Hardhat node"
+    },
+    "4000": {
+      "label": "A2A / agents"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "biomejs.biome",
+        "bradlc.vscode-tailwindcss",
+        "ms-vscode.vscode-typescript-next",
+        "ms-python.python",
+        "NomicFoundation.hardhat-solidity",
+        "tamasfe.even-better-toml"
+      ],
+      "settings": {
+        "editor.defaultFormatter": "biomejs.biome",
+        "editor.formatOnSave": true,
+        "[typescript]": {
+          "editor.defaultFormatter": "biomejs.biome"
+        },
+        "[typescriptreact]": {
+          "editor.defaultFormatter": "biomejs.biome"
+        },
+        "[javascript]": {
+          "editor.defaultFormatter": "biomejs.biome"
+        },
+        "[json]": {
+          "editor.defaultFormatter": "biomejs.biome"
+        }
+      }
+    }
+  }
+}

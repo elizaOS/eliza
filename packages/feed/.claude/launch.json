@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "babylon-web",
+      "runtimeExecutable": "/Users/shawwalters/.bun/bin/bun",
+      "runtimeArgs": ["run", "dev:web"],
+      "port": 3000,
+      "autoPort": false
+    }
+  ]
+}
