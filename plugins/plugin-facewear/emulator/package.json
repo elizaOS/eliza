@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "build:watch": "vite build --watch"
+    "build:watch": "vite build --watch",
+    "cli": "bun run src/cli.ts",
+    "emulator:cli": "bun run src/cli.ts"
   },
   "dependencies": {
     "iwer": "^2.2.1",

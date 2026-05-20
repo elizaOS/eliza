@@ -4,12 +4,11 @@
   "description": "Meta Quest 3 Bubblewrap TWA for Eliza Facewear",
   "private": true,
   "scripts": {
-    "build": "bubblewrap build",
-    "install-device": "bubblewrap install",
-    "update": "bubblewrap update",
-    "validate": "bubblewrap validate"
+    "build": "npx @bubblewrap/cli build",
+    "init": "npx @bubblewrap/cli init --manifest bubblewrap.json",
+    "validate": "npx @bubblewrap/cli validate"
   },
   "devDependencies": {
-    "@bubblewrap/cli": "^1.22.0"
+    "@bubblewrap/cli": "^1.21.0"
   }
 }

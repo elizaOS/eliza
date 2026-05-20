@@ -67,6 +67,6 @@ test.describe("XR view CRUD — all 24 views", () => {
     const ids = [...ALL_VIEW_IDS];
     const unique = new Set(ids);
     expect(unique.size).toBe(ids.length);
-    expect(ids.length).toBe(24);
+    expect(ids.length).toBe(25);
   });
 });

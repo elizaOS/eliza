@@ -3,6 +3,9 @@ import Foundation
 /// Persisted connection configuration stored in UserDefaults.
 /// Provides the agent WebSocket URL and device name used across sessions.
 final class ConnectionConfig: ObservableObject {
+    /// Fallback WebSocket URL for local development.
+    static let defaultAgentWsUrl = "ws://localhost:31338"
+
     private enum Key {
         static let agentUrl = "eliza_facewear_agent_url"
         static let deviceName = "eliza_facewear_device_name"

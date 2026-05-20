@@ -46,49 +46,6 @@ function readAppXr(relPath: string): string {
   return readFileSync(resolve(appXrRoot, relPath), "utf8");
 }
 
-// Parses `views: [...]` from a plugin source file
-function extractViewObjects(source: string): string[] {
-  const viewsStart = source.indexOf("views:");
-  if (viewsStart === -1) return [];
-  const arrayStart = source.indexOf("[", viewsStart);
-  if (arrayStart === -1) return [];
-  let depth = 0;
-  let arrayEnd = -1;
-  for (let i = arrayStart; i < source.length; i++) {
-    if (source[i] === "[") depth++;
-    if (source[i] === "]") depth--;
-    if (depth === 0) {
-      arrayEnd = i;
-      break;
-    }
-  }
-  if (arrayEnd === -1) return [];
-  const body = source.slice(arrayStart + 1, arrayEnd);
-  const objects: string[] = [];
-  let start = -1;
-  depth = 0;
-  for (let i = 0; i < body.length; i++) {
-    if (body[i] === "{") {
-      if (depth === 0) start = i;
-      depth++;
-    }
-    if (body[i] === "}") {
-      depth--;
-      if (depth === 0 && start !== -1) {
-        objects.push(body.slice(start, i + 1));
-        start = -1;
-      }
-    }
-  }
-  return objects.filter(
-    (o) => o.includes("id:") && o.includes("componentExport:"),
-  );
-}
-
-function stringField(source: string, field: string): string | null {
-  return source.match(new RegExp(`${field}:\\s*"([^"]+)"`))?.[1] ?? null;
-}
-
 // All 24 registered XR view IDs
 const ALL_XR_VIEW_IDS = [
   "wallet",
@@ -118,11 +75,16 @@ const ALL_XR_VIEW_IDS = [
   "facewear",
 ] as const;
 
+async function callViewHostRoute(input: unknown) {
+  const handler = viewHostRoute.routeHandler;
+  if (!handler) throw new Error("viewHostRoute has no routeHandler");
+  return handler(input as never);
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe("XR feature parity audit", () => {
   // 1. View registration parity — facewear has gui, tui, and xr views ──────────
-
   it("axis 1 — plugin-facewear declares gui, tui, and xr views for the 'facewear' id", () => {
     const source = readFile("plugins/plugin-facewear/src/index.ts");
     expect(source, "gui view").toContain('viewType: "gui"');
@@ -131,15 +93,21 @@ describe("XR feature parity audit", () => {
     expect(source, "facewear view id").toContain('id: "facewear"');
   });
 
+  it("axis 1 — plugin-facewear re-exports SmartglassesView for backward compatibility", () => {
+    const source = readFile("plugins/plugin-facewear/src/index.ts");
+    expect(source, "SmartglassesService export").toContain("SmartglassesService");
+    expect(source, "XRSessionService export").toContain("XRSessionService");
+  });
+
   // 2. Route infrastructure ───────────────────────────────────────────────────
 
   it("axis 2 — the viewHostRoute returns valid HTML for every registered xr view id", async () => {
     const failures: string[] = [];
     for (const id of ALL_XR_VIEW_IDS) {
-      const result = await viewHostRoute.routeHandler!({
+      const result = await callViewHostRoute({
         params: { id },
         runtime: { port: 31337 },
-      } as never);
+      });
       if (result.status !== 200) {
         failures.push(`${id}: status ${result.status}`);
         continue;
@@ -223,10 +191,10 @@ describe("XR feature parity audit", () => {
       "training",
     ];
     for (const id of sampleIds) {
-      const result = await viewHostRoute.routeHandler!({
+      const result = await callViewHostRoute({
         params: { id },
         runtime: { port: 31337 },
-      } as never);
+      });
       const html = result.body as string;
       expect(html, `${id}: fillFocusedInput for INPUT`).toContain(
         "HTMLInputElement",
@@ -249,7 +217,9 @@ describe("XR feature parity audit", () => {
 
   it("axis 6 — Quest 3 Bubblewrap APK configuration is present and complete", () => {
     expect(
-      fileExists("plugins/plugin-facewear/native/android/quest/bubblewrap.json"),
+      fileExists(
+        "plugins/plugin-facewear/native/android/quest/bubblewrap.json",
+      ),
     ).toBe(true);
     const config = JSON.parse(
       readFile("plugins/plugin-facewear/native/android/quest/bubblewrap.json"),
@@ -263,7 +233,9 @@ describe("XR feature parity audit", () => {
 
   it("axis 6 — XReal Android project has complete Gradle project structure", () => {
     expect(
-      fileExists("plugins/plugin-facewear/native/android/xreal/build.gradle.kts"),
+      fileExists(
+        "plugins/plugin-facewear/native/android/xreal/build.gradle.kts",
+      ),
     ).toBe(true);
     expect(
       fileExists(

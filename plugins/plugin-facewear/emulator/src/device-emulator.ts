@@ -17,6 +17,7 @@ const DEVICE_TYPE_MAP: Record<FacewearDeviceType, string> = {
 };
 
 export class DeviceEmulator {
+  connected = false;
   private ws: WebSocket | null = null;
   private sessionId: string | null = null;
   private messageHandlers: Array<(msg: unknown) => void> = [];
@@ -43,6 +44,7 @@ export class DeviceEmulator {
           const msg = JSON.parse(text) as { type: string; sessionId?: string };
           if (msg.type === "ready" && msg.sessionId) {
             this.sessionId = msg.sessionId;
+            this.connected = true;
             resolve();
           }
           for (const handler of this.messageHandlers) {
@@ -54,6 +56,9 @@ export class DeviceEmulator {
       });
 
       this.ws.on("error", reject);
+      this.ws.on("close", () => {
+        this.connected = false;
+      });
       setTimeout(() => reject(new Error("Connection timeout")), 5000);
     });
   }
@@ -85,6 +90,7 @@ export class DeviceEmulator {
     try { this.ws?.terminate(); } catch { /* ignore */ }
     this.ws = null;
     this.sessionId = null;
+    this.connected = false;
   }
 
   onMessage(handler: (msg: unknown) => void): void {

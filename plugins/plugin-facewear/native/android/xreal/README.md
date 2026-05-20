@@ -16,6 +16,19 @@ using the binary frame protocol from `plugin-facewear/src/protocol.ts`.
 | XREAL SDK | 3.0.0 | See below |
 | ADB | any | bundled with Android SDK |
 
+## Build
+```
+cd native/android/xreal
+chmod +x gradlew
+./gradlew assembleDebug
+```
+APK at: `app/build/outputs/apk/debug/app-debug.apk`
+
+## Hardware Connection
+1. Enable Developer Mode on XReal glasses
+2. Connect glasses via USB-C
+3. Install APK: `adb install app/build/outputs/apk/debug/app-debug.apk`
+
 ## Installing XREAL SDK 3.0.0
 
 1. Register at [developer.xreal.com](https://developer.xreal.com/) (free account)
@@ -48,17 +61,6 @@ rgb.startCapture()
 
 For spatial anchor and IMU data, call `NRKernalClient.getInstance()` and register
 an `NRTrackingListener` — forward pose data in the `XRFrameHeader.pose` field.
-
-## Building
-
-```bash
-# From this directory:
-./gradlew assembleDebug
-
-# Output: app/build/outputs/apk/debug/app-debug.apk
-```
-
-Or open in Android Studio → Build → Make Project.
 
 ## Installing on Device
 

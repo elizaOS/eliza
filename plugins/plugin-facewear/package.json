@@ -32,6 +32,7 @@
     "build:views": "vite build --config vite.config.views.ts",
     "emulator:build": "cd emulator && bun install --force && bun run build",
     "emulator:watch": "cd emulator && bun run build:watch",
+    "emulator:cli": "bun run --cwd emulator src/cli.ts",
     "verify:app": "bunx vitest --root ../.. run packages/app-core/src/registry/facewear-registry.test.ts packages/app/src/plugin-registrations.test.ts"
   },
   "dependencies": {

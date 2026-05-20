@@ -1,22 +1,26 @@
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { facewearConnectAction } from "./actions/facewear-connect.ts";
-import { facewearDebugAction } from "./actions/facewear-debug.ts";
-import { facewearControlAction } from "./actions/facewear-control.ts";
-import { facewearStatusAction } from "./actions/facewear-status.ts";
 import { displayFacewearTextAction } from "./actions/display-text.ts";
+import { facewearConnectAction } from "./actions/facewear-connect.ts";
+import { facewearControlAction } from "./actions/facewear-control.ts";
+import { facewearDebugAction } from "./actions/facewear-debug.ts";
+import { facewearStatusAction } from "./actions/facewear-status.ts";
 import { facewearMicrophoneAction } from "./actions/microphone.ts";
 import {
-  facewearOpenViewAction,
   facewearCloseViewAction,
-  facewearSwitchViewAction,
   facewearListViewsAction,
+  facewearOpenViewAction,
   facewearResizeViewAction,
+  facewearSwitchViewAction,
 } from "./actions/view-actions.ts";
 import { facewearQueryVisionAction } from "./actions/vision-query.ts";
 import { facewearContextProvider } from "./providers/facewear-context.ts";
 import { smartglassesStatusProvider } from "./providers/smartglasses-status.ts";
 import { connectRoute } from "./routes/connect.ts";
-import { facewearDevicesRoute, facewearDeviceRoute, facewearStatusRoute } from "./routes/device-config.ts";
+import {
+  facewearDeviceRoute,
+  facewearDevicesRoute,
+  facewearStatusRoute,
+} from "./routes/device-config.ts";
 import { simulatorRoute } from "./routes/simulator-route.ts";
 import { statusRoute } from "./routes/status.ts";
 import { viewHostRoute } from "./routes/view-host.ts";
@@ -63,7 +67,8 @@ export const facewearPlugin: Plugin = {
       viewType: "gui",
       path: "/apps/facewear",
       label: "Facewear",
-      description: "Manage all connected XR devices and smartglasses — Meta Quest, XReal, Even Realities, Apple Vision Pro.",
+      description:
+        "Manage all connected XR devices and smartglasses — Meta Quest, XReal, Even Realities, Apple Vision Pro.",
       icon: "Glasses",
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearView",
@@ -71,10 +76,22 @@ export const facewearPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
       capabilities: [
-        { id: "connect-device", description: "Connect to any supported facewear device." },
-        { id: "manage-views", description: "Open and manage XR view panels on headsets." },
-        { id: "device-diagnostics", description: "Run hardware diagnostics on connected devices." },
-        { id: "emulator", description: "Launch the device emulator for any supported platform." },
+        {
+          id: "connect-device",
+          description: "Connect to any supported facewear device.",
+        },
+        {
+          id: "manage-views",
+          description: "Open and manage XR view panels on headsets.",
+        },
+        {
+          id: "device-diagnostics",
+          description: "Run hardware diagnostics on connected devices.",
+        },
+        {
+          id: "emulator",
+          description: "Launch the device emulator for any supported platform.",
+        },
       ],
     },
     {
@@ -111,8 +128,7 @@ export const facewearPlugin: Plugin = {
         label: "Smartglasses",
         icon: "Glasses",
         path: "/apps/smartglasses",
-        componentExport:
-          "@elizaos/plugin-facewear/register#SmartglassesView",
+        componentExport: "@elizaos/plugin-facewear/register#SmartglassesView",
       },
     ],
   },
@@ -127,22 +143,41 @@ export const facewearPlugin: Plugin = {
 export default facewearPlugin;
 export const smartglassesPlugin = facewearPlugin;
 
+export { displayFacewearTextAction as displaySmartglassesTextAction } from "./actions/display-text.ts";
 // Re-exports for backward compatibility
 export { facewearControlAction as smartglassesControlAction } from "./actions/facewear-control.ts";
-export { displayFacewearTextAction as displaySmartglassesTextAction } from "./actions/display-text.ts";
-export { facewearMicrophoneAction as smartglassesMicrophoneAction } from "./actions/microphone.ts";
 export { facewearStatusAction as smartglassesStatusAction } from "./actions/facewear-status.ts";
+export { facewearMicrophoneAction as smartglassesMicrophoneAction } from "./actions/microphone.ts";
+export type {
+  FacewearDeviceProfile,
+  FacewearDeviceType,
+} from "./devices/registry.ts";
+export {
+  DEVICE_REGISTRY,
+  getAllDeviceProfiles,
+  getDeviceProfile,
+} from "./devices/registry.ts";
 export * from "./protocol/smartglasses.ts";
 export type * from "./protocol/xr.ts";
 export { smartglassesStatusProvider } from "./providers/smartglasses-status.ts";
 export { AudioPipeline } from "./services/audio-pipeline.ts";
-export { VisionPipeline } from "./services/vision-pipeline.ts";
 export {
-  XR_SERVICE_TYPE,
-  XR_WS_PORT_DEFAULT,
-  XRSessionService,
-} from "./services/xr-session-service.ts";
+  FACEWEAR_SERVICE_TYPE,
+  FacewearService,
+} from "./services/facewear-service.ts";
+export type {
+  SmartglassesAudioDecoder,
+  SmartglassesDisplayMode,
+  SmartglassesRsvpOptions,
+  SmartglassesStatus,
+  SmartglassesWriteTarget,
+} from "./services/smartglasses-service.ts";
 export {
+  FACEWEAR_AUTO_INIT_SETTING,
+  FACEWEAR_INIT_MODE_SETTING,
+  FACEWEAR_SCAN_TIMEOUT_SETTING,
+  FACEWEAR_SMARTGLASSES_TRANSPORT_SETTING,
+  getSmartglassesService,
   SMARTGLASSES_AUDIO_EVENT,
   SMARTGLASSES_AUTO_INIT_SETTING,
   SMARTGLASSES_EVENT,
@@ -151,25 +186,16 @@ export {
   SMARTGLASSES_SERVICE_NAME,
   SMARTGLASSES_TRANSCRIPT_EVENT,
   SMARTGLASSES_TRANSPORT_SETTING,
-  FACEWEAR_AUTO_INIT_SETTING,
-  FACEWEAR_INIT_MODE_SETTING,
-  FACEWEAR_SCAN_TIMEOUT_SETTING,
-  FACEWEAR_SMARTGLASSES_TRANSPORT_SETTING,
   SmartglassesService,
-  getSmartglassesService,
   setSmartglassesAudioDecoderForRuntime,
   setSmartglassesTransportForRuntime,
 } from "./services/smartglasses-service.ts";
-export type {
-  SmartglassesAudioDecoder,
-  SmartglassesDisplayMode,
-  SmartglassesRsvpOptions,
-  SmartglassesStatus,
-  SmartglassesWriteTarget,
-} from "./services/smartglasses-service.ts";
-export { FACEWEAR_SERVICE_TYPE, FacewearService } from "./services/facewear-service.ts";
-export { DEVICE_REGISTRY, getDeviceProfile, getAllDeviceProfiles } from "./devices/registry.ts";
-export type { FacewearDeviceType, FacewearDeviceProfile } from "./devices/registry.ts";
+export { VisionPipeline } from "./services/vision-pipeline.ts";
+export {
+  XR_SERVICE_TYPE,
+  XR_WS_PORT_DEFAULT,
+  XRSessionService,
+} from "./services/xr-session-service.ts";
 export {
   EvenBridgeTransport,
   getGlobalEvenBridgeTransport,
