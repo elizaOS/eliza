@@ -400,14 +400,16 @@
       "label": "Main PCB seated against boss 1/4 datum + EMI shield cans",
       "insertion_axis": "+Z",
       "tool": "S2 PCB datum nest, Wera 7440 torque driver",
-      "pass": true,
+      "pass": false,
       "parts": [
         {
           "part": "main_pcb",
           "insertion_axis": "+Z",
-          "path_clear": true,
-          "min_clearance_during_insertion_mm": 1.0,
-          "blocking_parts": []
+          "path_clear": false,
+          "min_clearance_during_insertion_mm": -2.785,
+          "blocking_parts": [
+            "orange_usb_reinforcement_saddle"
+          ]
         },
         {
           "part": "soc_shield_can",
@@ -958,7 +960,9 @@
       }
     ]
   },
-  "trapped_parts": [],
-  "device_assemblable": true,
-  "runtime_s": 14.57
+  "trapped_parts": [
+    "main_pcb"
+  ],
+  "device_assemblable": false,
+  "runtime_s": 17.94
 }

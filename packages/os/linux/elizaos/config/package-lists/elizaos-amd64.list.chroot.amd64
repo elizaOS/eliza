@@ -1,5 +1,4 @@
-# amd64 kernel, bootloader, and CPU microcode. The shared GNOME desktop +
-# plymouth + kiosk browser live in elizaos-common.list.chroot.
+# amd64 kernel, bootloader, CPU microcode, and graphical desktop.
 linux-image-amd64
 grub-efi-amd64-bin
 grub-efi-amd64-signed
@@ -7,3 +6,25 @@ grub-pc-bin
 shim-signed
 intel-microcode
 amd64-microcode
+
+# Desktop session (GNOME, minimal seed).
+xorg
+gdm3
+gnome-session
+gnome-shell
+gnome-terminal
+gnome-control-center
+nautilus
+network-manager
+network-manager-gnome
+pulseaudio
+pipewire
+pipewire-pulse
+
+# WebKitGTK kiosk browser for the agent home surface.
+epiphany-browser
+
+# Boot splash.
+plymouth
+plymouth-themes
+plymouth-label

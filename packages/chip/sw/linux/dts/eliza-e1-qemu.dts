@@ -1,23 +1,23 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * SPDX-License-Identifier: GPL-2.0-or-later
- *
  * Eliza e1 SoC device tree for Renode / Verilator stages.
+ *
+ * The SoC node graph (CPU, DRAM, CLINT, PLIC, UART, DMA, NPU, display) comes
+ * from the generated platform base sw/platform/generated/e1-platform.dtsi,
+ * itself produced from sw/platform/e1_platform_contract.json. Only the
+ * Renode/Verilator variant identity, boot args, and serial alias live here.
  *
  * NOTE on QEMU virt:
  *   When booting under `qemu-system-riscv64 -machine virt`, QEMU generates its
  *   own DTB. We pass `-bios default` (OpenSBI) and `-kernel Image` with NO
  *   `-dtb` override; the kernel uses QEMU's generated DTB. This file is
  *   therefore unused under QEMU virt and is provided for the Renode and
- *   Verilator follow-up stages to consume.
- *
- * Renode / Verilator wiring (OUR memory map):
- *   - UART (16550-compatible) @ 0x10001000
- *   - CLINT                   @ 0x02000000
- *   - PLIC                    @ 0x0c000000
- *   - DRAM                    @ 0x80000000  256 MiB
+ *   Verilator follow-up stages to consume, which model OUR memory map (UART
+ *   at the e1-chip-variant base 0x10001000, not the QEMU-virt 0x10000000).
  *
  * Convert to DTB:
- *   dtc -I dts -O dtb -o eliza-e1-qemu.dtb eliza-e1-qemu.dts
+ *   dtc -I dts -O dtb -i sw/platform/generated \
+ *       -o eliza-e1-qemu.dtb sw/linux/dts/eliza-e1-qemu.dts
  *
  * Then pass `-dtb build/dts/eliza-e1-qemu.dtb` to QEMU (Renode loads
  * it via .resc; Verilator's bootrom places it at 0x82000000).
@@ -25,9 +25,9 @@
 
 /dts-v1/;
 
+/include/ "../../platform/generated/e1-platform.dtsi"
+
 / {
-	#address-cells = <2>;
-	#size-cells = <2>;
 	compatible = "eliza,e1-soc", "riscv-virtio";
 	model = "Eliza e1 SoC (Renode/Verilator)";
 
@@ -38,64 +38,5 @@
 
 	aliases {
 		serial0 = &uart0;
-	};
-
-	cpus {
-		#address-cells = <1>;
-		#size-cells = <0>;
-		timebase-frequency = <10000000>;
-
-		cpu@0 {
-			device_type = "cpu";
-			reg = <0>;
-			compatible = "eliza,e1-core", "riscv";
-			riscv,isa = "rv64imafdc";
-			mmu-type = "riscv,sv39";
-			status = "okay";
-
-			intc0: interrupt-controller {
-				#interrupt-cells = <1>;
-				interrupt-controller;
-				compatible = "riscv,cpu-intc";
-			};
-		};
-	};
-
-	memory@80000000 {
-		device_type = "memory";
-		reg = <0x0 0x80000000 0x0 0x10000000>; /* 256 MiB */
-	};
-
-	soc {
-		#address-cells = <2>;
-		#size-cells = <2>;
-		compatible = "simple-bus";
-		ranges;
-
-		clint@2000000 {
-			compatible = "riscv,clint0";
-			reg = <0x0 0x02000000 0x0 0x10000>;
-			interrupts-extended = <&intc0 3 &intc0 7>;
-		};
-
-		plic: plic@c000000 {
-			compatible = "sifive,plic-1.0.0", "riscv,plic0";
-			reg = <0x0 0x0c000000 0x0 0x400000>;
-			interrupt-controller;
-			#interrupt-cells = <1>;
-			#address-cells = <0>;
-			riscv,ndev = <32>;
-			interrupts-extended = <&intc0 11 &intc0 9>;
-		};
-
-		uart0: serial@10001000 {
-			compatible = "ns16550a";
-			reg = <0x0 0x10001000 0x0 0x100>;
-			clock-frequency = <10000000>;
-			interrupts = <10>;
-			interrupt-parent = <&plic>;
-			reg-shift = <0>;
-			reg-io-width = <1>;
-		};
 	};
 };

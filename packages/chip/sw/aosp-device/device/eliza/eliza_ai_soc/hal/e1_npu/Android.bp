@@ -12,14 +12,15 @@ package {
 }
 
 hidl_package_root {
-    name: "vendor.eliza",
+    name: "vendor.eliza.e1_npu",
 }
 
 hidl_interface {
     name: "vendor.eliza.e1_npu@1.0",
-    root: "vendor.eliza",
+    root: "vendor.eliza.e1_npu",
     srcs: [
-        "IE1Npu.hal",
+        "1.0/types.hal",
+        "1.0/IE1Npu.hal",
     ],
     interfaces: [
         "android.hidl.base@1.0",

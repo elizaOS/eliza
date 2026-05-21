@@ -2766,6 +2766,7 @@ def test_evt0_phone_cad_make_target_runs_strict_boolean_checker() -> None:
     assert "rear_camera_back_shell_hole_check" in checker
     assert "rear_flash_back_shell_hole_check" in checker
     assert "handset_cover_glass_slot_check" in checker
+    assert "screen_cover_glass_collision_check" in checker
     assert "side_frame_external_cutout_check" in checker
     assert '"rear_camera_cover_glass"' in checker
     assert '"rear_camera_lens_window"' in checker
@@ -2774,6 +2775,8 @@ def test_evt0_phone_cad_make_target_runs_strict_boolean_checker() -> None:
     assert '"rear_flash_led_window"' in checker
     assert '"handset_acoustic_slot"' in checker
     assert '"handset_acoustic_mesh"' in checker
+    assert '"front_camera_under_glass"' in checker
+    assert '"front_camera_black_mask_window"' in checker
     assert '"usb_c_external_aperture"' in checker
     assert "bottom_speaker_grille_slot_" in checker
     assert "range(1, 6)" in checker

@@ -1,0 +1,4 @@
+grub-efi-riscv64-bin
+grub-common
+mtools
+dosfstools

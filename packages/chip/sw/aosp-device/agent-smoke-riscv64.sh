@@ -4,12 +4,15 @@
 # End-to-end Eliza agent-service smoke on a live riscv64 Cuttlefish VM.
 # Chains install -> start -> per-modality probes:
 #
+#   * Readiness: /api/health HTTP 200 (AGENT_HEALTH_HTTP) is the watchdog
+#     liveness gate the Android app and ElizaAgentService share.
 #   * Llama: tokens emitted >= 32 within a 600s budget.
 #   * Kokoro TTS: pulled WAV is a valid RIFF/WAVE PCM file with samples > 0.
 #   * Whisper STT: token-overlap vs golden transcript >= 0.80.
 #   * Wakeword-cpp: event fires on the wakeword-stimulus fixture.
 #   * Silero VAD: agent returns one or more speech segments.
-#   * Final /api/agent/self-status: required plugins still status:"ready".
+#   * Final: /api/health still 200 and required plugins still status:"ready"
+#     (AGENT_STATUS_FINAL_PLUGINS_READY) from the deeper status endpoint.
 #
 # All assertions are emitted as `KEY=value` markers on stdout and archived
 # under packages/chip/docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log

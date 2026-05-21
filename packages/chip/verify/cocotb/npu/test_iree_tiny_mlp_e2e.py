@@ -31,7 +31,7 @@ from pathlib import Path
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, Timer
+from cocotb.triggers import RisingEdge
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 COCOTB_DIR = Path(__file__).resolve().parents[1]
@@ -41,6 +41,7 @@ for path in (REPO_ROOT, COCOTB_DIR, RUNTIME_DIR, EXECUTORCH_DIR):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from common import read_reg, reset, write_reg  # noqa: E402
 from e1_npu_lowering import (  # noqa: E402
     SUPPORTED_BIAS_ADD_SCHEMA,
     SUPPORTED_SCHEMA,

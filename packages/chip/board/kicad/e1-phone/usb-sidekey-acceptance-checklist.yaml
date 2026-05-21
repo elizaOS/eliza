@@ -8,6 +8,7 @@ source_artifacts:
   - board/kicad/e1-phone/usb-sidekey-integration.yaml
   - board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml
   - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
+  - board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
   - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
   - package/usb-c/e1-phone-usb-c-port.yaml
   - package/human-interface/side-buttons.yaml
@@ -104,6 +105,7 @@ cross_checks:
   usb_c_matches_active_matrix: true
   side_key_connector_matches_active_matrix: true
   usb_and_sidekey_rfq_drafts_exist: true
+  usb_sidekey_mechanical_decision_remains_fail_closed: true
   all_acceptance_items_blocked: true
 release_blockers:
   - USB-C and side-button supplier drawings, pinouts, land patterns, and STEP files missing

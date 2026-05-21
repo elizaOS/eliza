@@ -1,6 +1,6 @@
 {
   "claim_boundary": "Rough CAD mass estimate using nominal densities; not measured mass.",
-  "total_estimated_mass_g": 183.73,
+  "total_estimated_mass_g": 183.29,
   "mass_by_role_g": {
     "EMI shield": 7.01,
     "I/O": 1.77,
@@ -18,7 +18,7 @@
     "camera seal": 0.04,
     "connector": 0.21,
     "haptics": 0.22,
-    "molded enclosure": 24.41,
+    "molded enclosure": 23.96,
     "screen": 57.57,
     "screen retention": 0.2,
     "service": 0.0,
@@ -36,9 +36,9 @@
     {
       "name": "orange_side_frame",
       "role": "molded enclosure",
-      "volume_mm3": 6036.78,
+      "volume_mm3": 5653.086,
       "density_g_per_cm3": 1.15,
-      "mass_g": 6.942,
+      "mass_g": 6.501,
       "excluded_placeholder": false
     },
     {
@@ -300,7 +300,7 @@
     {
       "name": "front_camera_under_glass",
       "role": "camera",
-      "volume_mm3": 3.169,
+      "volume_mm3": 0.724,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
       "excluded_placeholder": true
@@ -356,9 +356,9 @@
     {
       "name": "front_camera_black_mask_window",
       "role": "camera seal",
-      "volume_mm3": 3.0,
+      "volume_mm3": 2.0,
       "density_g_per_cm3": 2.5,
-      "mass_g": 0.007,
+      "mass_g": 0.005,
       "excluded_placeholder": false
     },
     {

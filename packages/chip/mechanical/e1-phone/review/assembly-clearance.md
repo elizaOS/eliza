@@ -19,3 +19,8 @@ Status: targeted CAD clearance checks.
 - PASS: `haptic_to_sim_tray_keepout` actual 9.001 mm, required 0.5 mm
 - PASS: `rear_camera_to_battery` actual 16.3 mm, required 2.0 mm
 - PASS: `front_camera_to_earpiece` actual 9.75 mm, required 1.0 mm
+
+## Full-Assembly Boolean Check
+
+Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`. Date: 2026-05-20. Reviewer: `automated_boolean_check`.
+Overall: PASS. Scopes: 11/11 pass. Unintentional clash pairs: 0.

@@ -2,13 +2,13 @@
 
 - Evidence class: `cad_estimate_for_evt_planning, not_measured_hardware`
 - Source: `chip/mechanical/e1-phone/cad/e1_phone_params.yaml`
-- Revision: evt0-mechanical-cad-swell-camera-seal
+- Revision: evt0-mechanical-cad-bonded-display-thinned
 
 ## Mechanical
-- Dimensions: 78.0 x 153.6 x 12.7 mm (fully flush flat back, no camera bump, no protruding lens ring)
-- Envelope volume: 152.15 cm^3
+- Dimensions: 78.0 x 153.6 x 11.8 mm (fully flush flat back, no camera bump, no protruding lens ring)
+- Envelope volume: 141.37 cm^3
 - Corner radius: 7.5 mm
-- Mass: 172.85 g reconciled (164.45 g CAD geometry across 118 parts + 8.4 g assembly-stage reserve); ship target 168 +/-10 g / 158-178 g window (PASS, unchanged). The device is intentionally 12.7 mm (was 11.8 mm) to open a 0.6 mm battery swell void plus healthier rear-camera burial under the flush back; the added side-wall plastic and Wave-2 hardening (10 screw bosses, 4 corner ribs, glass cushions, RF tuner, flash LED) add ~2 g of geometry. Aspirational concept target 185 g retained for reference.
+- Mass: 192.13 g reconciled (183.73 g CAD geometry + 8.4 g assembly-stage items); ship target 168 +/-10 g (FAIL). 185 g is the original aspirational concept target; 168 +/-10 g is the EVT0 ship target (158-178 g window). Flush-back rev (11.8 mm, 5727 mAh battery) reconciled CAD mass 192.13 g is FAIL against the ship-target window (over by 14.13 g). The CAD mass is a nominal-density geometry estimate, not measured hardware; the overage must be closed at EVT by measured component mass and/or mass-reduction before the ship target can be claimed. Aspirational concept target 185 g retained for reference.
 - Color / material: hard safety orange / PC+ABS injection molded
 
 ## Display
@@ -22,13 +22,12 @@
 - RAM: 2 GB LPDDR4 (on-module)
 - Storage: 32 GB eMMC 5.1 (on-module; 64/128 GB option)
 - OS: AOSP / Android 14
-- Cost-down note: a bare-SoC path (bare Unisoc T606 / RK3566 + discrete LPDDR4/eMMC/PMIC, PATH B) is ~$4.55-7.10/unit cheaper but requires the SoC vendor NDA for the BGA ball-map.
+- Cost-down note: A bare-SoC path (bare Unisoc T606 / RK3566 + discrete LPDDR4/eMMC/PMIC, PATH B) is ~$4.55-7.10/unit cheaper but requires the SoC vendor NDA for the BGA ball-map.
 
 ## Cellular
 - Modem: Quectel RG255C 5G RedCap LGA
 - Bands (typical): n1, n3, n5, n8, n28, n40, n41, n77, n78
-- Antenna aperture tuner: Qorvo QPC1252Q (pSemi PE613050 alt), MIPI RFFE v2.1
-- Note: 5G RedCap (NR-Light); LTE fallback per module datasheet. Low band (700-960 MHz) is covered via the modem-programmed aperture/band-switch tuner (retunes the electrically-small low-band element per active ~20 MHz carrier), resolving the Chu-limit instantaneous-bandwidth shortfall (analytical RF pre-scan PASS_WITH_TUNER, worst-state total efficiency ~-3.1 dB; not chamber-measured).
+- Note: 5G RedCap (NR-Light); LTE fallback per module datasheet
 
 ## Wireless
 - Module: Murata Type 2EA

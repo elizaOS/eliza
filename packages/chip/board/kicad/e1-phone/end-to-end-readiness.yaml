@@ -7,6 +7,7 @@ claim_boundary: Objective-level readiness matrix for the E1 phone PCB. This maps
 source_artifacts:
   - board/kicad/e1-phone/artifact-manifest.yaml
   - board/kicad/e1-phone/display-camera-oem-integration.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
   - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
   - board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml
   - board/kicad/e1-phone/usb-sidekey-integration.yaml
@@ -82,8 +83,8 @@ current_board_state:
 objective_requirements:
   popular_screen_size_fit:
     requirement: Optimize device and board size around a popular/easy 5.5 inch 1080x1920 MIPI CTP display.
-    evidence_artifact: board/kicad/e1-phone/display-camera-oem-integration.yaml
-    current_status: blocked_requires_display_camera_supplier_pack_routed_mipi_and_capture_evidence
+    evidence_artifact: board/kicad/e1-phone/display-envelope-downselect.yaml
+    current_status: blocked_display_envelope_downselect_requires_signed_display_stack_connector_and_routed_clearance
     objective_satisfied: false
     release_required: true
     blockers: &id001

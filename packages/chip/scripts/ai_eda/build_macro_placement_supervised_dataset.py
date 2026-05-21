@@ -25,6 +25,7 @@ DEFAULT_RECORD_DIRS = (
     ROOT / "build/ai_eda/tilos_macroplacement/validation/records",
     ROOT / "build/ai_eda/chipbench_d/validation/records",
     ROOT / "build/ai_eda/e1_softmacro_cases/validation/records",
+    ROOT / "build/ai_eda/e1_macro_array_cases/validation/records",
 )
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/macro_placement_supervised_dataset"
 CLAIM_BOUNDARY = "macro_placement_supervised_dataset_only_no_training_inference_ppa_or_release_claim"

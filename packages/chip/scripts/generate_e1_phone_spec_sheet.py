@@ -47,6 +47,10 @@ def build_spec_sheet(params: dict) -> dict:
     ship_target_g = float(dev["ship_target_mass_g"])
     ship_tol_g = 10.0
     concept_target_g = float(dev["target_mass_g"])
+    ship_low_g = ship_target_g - ship_tol_g
+    ship_high_g = ship_target_g + ship_tol_g
+    ship_target_pass = ship_low_g <= reconciled_g <= ship_high_g
+    ship_target_verdict = "PASS" if ship_target_pass else "FAIL"
 
     bat = params["battery"]
     rear_cam = params["components"]["rear_camera"]
@@ -77,14 +81,27 @@ def build_spec_sheet(params: dict) -> dict:
             "mass_missing_items_subtotal_g": ASSEMBLY_STAGE_MASS_G,
             "mass_ship_target_g": ship_target_g,
             "mass_ship_target_tolerance_g": ship_tol_g,
+            "mass_ship_target_window_g": [ship_low_g, ship_high_g],
+            "mass_ship_target_verdict": ship_target_verdict,
             "mass_target_g": concept_target_g,
             "mass_target_note": (
                 f"{concept_target_g:.0f} g is the original aspirational concept "
                 f"target; {ship_target_g:.0f} +/-{ship_tol_g:.0f} g is the EVT0 "
-                f"ship target. Flush-back rev ({env[2]} mm, "
-                f"{bat['capacity_mah']} mAh battery) reconciled mass "
-                f"{reconciled_g:.2f} g still passes the {ship_target_g:.0f} "
-                f"+/-{ship_tol_g:.0f} g ship target; ship target unchanged."
+                f"ship target ({ship_low_g:.0f}-{ship_high_g:.0f} g window). "
+                f"Flush-back rev ({env[2]} mm, {bat['capacity_mah']} mAh battery) "
+                f"reconciled CAD mass {reconciled_g:.2f} g is "
+                f"{ship_target_verdict} against the ship-target window"
+                + (
+                    "."
+                    if ship_target_pass
+                    else (
+                        f" (over by {reconciled_g - ship_high_g:.2f} g). The CAD "
+                        "mass is a nominal-density geometry estimate, not measured "
+                        "hardware; the overage must be closed at EVT by measured "
+                        "component mass and/or mass-reduction before the ship "
+                        "target can be claimed."
+                    )
+                )
             ),
             "color": dev["plastic_color"],
             "material": "PC+ABS injection molded",
@@ -99,11 +116,21 @@ def build_spec_sheet(params: dict) -> dict:
             "active_area_mm": params["display"]["active_area_mm"],
         },
         "compute": {
-            "soc_class": "Unisoc T606",
-            "ram_gb": 4,
-            "ram_type": "LPDDR4X",
-            "storage_gb": 64,
+            "soc_class": "Rockchip RK3566 (quad Cortex-A55, Mali-G52, 1 TOPS NPU)",
+            "module": (
+                "Firefly Core-3566JD4-class System-on-Module (PATH A, default) "
+                "bundling SoC + LPDDR4 + eMMC + PMIC behind a public 260-pin "
+                "SODIMM pinout"
+            ),
+            "ram_gb": 2,
+            "ram_type": "LPDDR4",
+            "storage_gb": 32,
             "storage_type": "eMMC 5.1",
+            "cost_down_note": (
+                "A bare-SoC path (bare Unisoc T606 / RK3566 + discrete "
+                "LPDDR4/eMMC/PMIC, PATH B) is ~$4.55-7.10/unit cheaper but "
+                "requires the SoC vendor NDA for the BGA ball-map."
+            ),
         },
         "cellular": {
             "modem": "Quectel RG255C 5G RedCap LGA",
@@ -197,7 +224,8 @@ def md_spec_sheet(s: dict) -> str:
         f"({m['mass_cad_geometry_subtotal_g']:.2f} g CAD geometry + "
         f"{m['mass_missing_items_subtotal_g']:.1f} g assembly-stage items); "
         f"ship target {m['mass_ship_target_g']:.0f} "
-        f"+/-{m['mass_ship_target_tolerance_g']:.0f} g (PASS, unchanged). "
+        f"+/-{m['mass_ship_target_tolerance_g']:.0f} g "
+        f"({m['mass_ship_target_verdict']}). {m['mass_target_note']} "
         f"Aspirational concept target {m['mass_target_g']:.0f} g retained for "
         "reference.",
         f"- Color / material: {m['color']} / {m['material']}",
@@ -209,9 +237,12 @@ def md_spec_sheet(s: dict) -> str:
         "",
         "## Compute",
         f"- SoC class: {s['compute']['soc_class']}",
-        f"- RAM: {s['compute']['ram_gb']} GB {s['compute']['ram_type']}",
-        f"- Storage: {s['compute']['storage_gb']} GB {s['compute']['storage_type']}",
+        f"- Module: {s['compute']['module']}",
+        f"- RAM: {s['compute']['ram_gb']} GB {s['compute']['ram_type']} (on-module)",
+        f"- Storage: {s['compute']['storage_gb']} GB "
+        f"{s['compute']['storage_type']} (on-module; 64/128 GB option)",
         f"- OS: {s['device']['os']}",
+        f"- Cost-down note: {s['compute']['cost_down_note']}",
         "",
         "## Cellular",
         f"- Modem: {s['cellular']['modem']}",

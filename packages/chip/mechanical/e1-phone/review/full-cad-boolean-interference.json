@@ -63,8 +63,8 @@
             "orange_side_frame"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 0.0,
-          "interference_volume_mm3": 174.02,
+          "min_gap_mm": 0.05,
+          "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
         {
@@ -1012,7 +1012,7 @@
       ],
       "parts_missing": [],
       "travel": null,
-      "min_gap_mm": 3.16,
+      "min_gap_mm": 2.48,
       "interference_volume_mm3": 0.0,
       "interference_count": 0,
       "risk": "under-glass camera and handset acoustic path must clear each other and the cover glass",
@@ -1025,7 +1025,7 @@
             "front_camera_under_glass"
           ],
           "engine": "aabb_prefilter",
-          "min_gap_mm": 3.175,
+          "min_gap_mm": 2.48,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -1035,7 +1035,7 @@
             "front_camera_black_mask_window"
           ],
           "engine": "aabb_prefilter",
-          "min_gap_mm": 3.16,
+          "min_gap_mm": 2.48,
           "interference_volume_mm3": 0.0,
           "intentional_contact": false
         },
@@ -1086,7 +1086,7 @@
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
           "min_gap_mm": 0.0,
-          "interference_volume_mm3": 1.2028,
+          "interference_volume_mm3": 0.9164,
           "intentional_contact": true
         },
         {
@@ -1791,8 +1791,8 @@
             "orange_side_frame"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 0.0,
-          "interference_volume_mm3": 174.02,
+          "min_gap_mm": 0.05,
+          "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
         {
@@ -3399,7 +3399,7 @@
             "front_camera_under_glass"
           ],
           "engine": "aabb_prefilter",
-          "min_gap_mm": 3.175,
+          "min_gap_mm": 2.48,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -3409,7 +3409,7 @@
             "front_camera_black_mask_window"
           ],
           "engine": "aabb_prefilter",
-          "min_gap_mm": 3.16,
+          "min_gap_mm": 2.48,
           "interference_volume_mm3": 0.0,
           "intentional_contact": false
         },
@@ -3460,7 +3460,7 @@
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
           "min_gap_mm": 0.0,
-          "interference_volume_mm3": 1.2028,
+          "interference_volume_mm3": 0.9164,
           "intentional_contact": true
         },
         {
@@ -3499,8 +3499,8 @@
             "screen_cover_glass"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 0.0,
-          "interference_volume_mm3": 1.4319,
+          "min_gap_mm": 0.04,
+          "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
         {
@@ -3539,8 +3539,8 @@
             "screen_cover_glass"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 0.0,
-          "interference_volume_mm3": 3.0,
+          "min_gap_mm": 0.04,
+          "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
         {
@@ -3605,7 +3605,7 @@
         }
       ],
       "travel": null,
-      "min_gap_mm": 3.16,
+      "min_gap_mm": 2.48,
       "interference_volume_mm3": 0.0,
       "interference_count": 0,
       "risk": "under-glass camera and handset acoustic path must clear each other and the cover glass",
@@ -5216,6 +5216,95 @@
     ],
     "risk": "handset acoustic slot must be a real cover-glass opening, not a visual marker colliding with glass"
   },
+  "screen_cover_glass_collision_check": {
+    "id": "screen_cover_glass_visible_collision",
+    "status": "pass",
+    "missing_parts": [],
+    "pairs": [
+      {
+        "parts": [
+          "screen_cover_glass",
+          "orange_side_frame"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.05,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "display_lcm"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.18,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "screen_adhesive_top"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.06,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "front_camera_module"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 2.6,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "front_camera_under_glass"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.04,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "front_camera_black_mask_window"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.04,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "earpiece_receiver"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 2.95,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "handset_acoustic_slot"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.15,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "handset_acoustic_mesh"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.05,
+        "status": "pass"
+      }
+    ],
+    "risk": "screen-adjacent parts must sit outside cover-glass volume; visual markers may not be hidden by broad allowlists"
+  },
   "side_frame_external_cutout_check": {
     "id": "side_frame_external_cutout_collision",
     "status": "pass",
@@ -5367,5 +5456,5 @@
     ]
   },
   "overall_status": "pass",
-  "wall_seconds": 13.91
+  "wall_seconds": 12.4
 }

@@ -84,12 +84,17 @@ class _Room:
     def __init__(self) -> None:
         self.local_participant = _Participant()
         self.connected = False
+        self.callbacks = {}
 
     async def connect(self, url: str, token: str) -> None:
         self.connected = bool(url and token)
 
-    def on(self, _event: str):
-        return lambda fn: fn
+    def on(self, event: str):
+        def register(fn):
+            self.callbacks[event] = fn
+            return fn
+
+        return register
 
 
 class LiveKitAsimovTransportTests(unittest.TestCase):
@@ -176,6 +181,24 @@ class LiveKitAsimovTransportTests(unittest.TestCase):
         self.assertEqual(frame.sequence, 7)
         self.assertEqual(len(frame.joint_positions), ASIMOV1_FULL_ACTION_DIM)
         self.assertEqual(len(frame.joint_velocities), ASIMOV1_FULL_ACTION_DIM)
+
+    def test_waits_for_livekit_data_packet_telemetry_without_command(self) -> None:
+        async def run() -> None:
+            room = _Room()
+            transport = LiveKitAsimovTransport(
+                url="wss://example.invalid",
+                token="token",
+                room=room,
+                edge_pb2=_FakeEdgePb2,
+            )
+            await transport.connect()
+            self.assertIn("data_received", room.callbacks)
+            room.callbacks["data_received"](SimpleNamespace(topic="telemetry", data=b"telemetry"))
+            frame = await transport.wait_for_telemetry(timeout_s=0.1)
+            self.assertEqual(frame.sequence, 7)
+            self.assertEqual(room.local_participant.published, [])
+
+        asyncio.run(run())
 
 
 if __name__ == "__main__":

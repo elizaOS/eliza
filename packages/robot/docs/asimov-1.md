@@ -197,6 +197,17 @@ Strict real-mode validation requires the LiveKit SDK, the Menlo edge protobuf
 package, `ASIMOV_LIVEKIT_URL`, `ASIMOV_LIVEKIT_TOKEN`, and physical robot
 access.
 
+On a hardware host, run the telemetry-only probe before any motion command:
+
+```bash
+ASIMOV_LIVEKIT_URL=wss://... ASIMOV_LIVEKIT_TOKEN=... \
+python3 packages/robot/scripts/validate_asimov1_real_telemetry_probe.py \
+  --timeout 15
+```
+
+The probe connects to the LiveKit room and waits for one `EdgeTelemetry` frame.
+It publishes zero `CloudCommand` messages.
+
 ## End-To-End Gate
 
 Run the full integration gate:

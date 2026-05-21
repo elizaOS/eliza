@@ -916,7 +916,7 @@
     },
     "mass_budget": {
       "pass": true,
-      "estimated_mass_g": 183.73,
+      "estimated_mass_g": 183.29,
       "target_mass_g": 185,
       "note": "Rough CAD estimate; placeholder void markers excluded."
     }

@@ -19,32 +19,21 @@ emits the calibration manifest so we can stage the lowering work.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from dataclasses import dataclass
+
+from ._base import QuantizationManifest
 
 E4M3_MAX = 448.0
 E4M3_MIN_POS_SUBNORMAL = 1.0 / 512.0
 
 
 @dataclass(frozen=True)
-class Fp8E4m3Manifest:
+class Fp8E4m3Manifest(QuantizationManifest):
     schema: str
     weight_scales: dict[str, float]
     activation_scales: dict[str, float]
     saturation_max: float
-
-    def to_json(self) -> str:
-        return json.dumps(
-            {
-                "schema": self.schema,
-                "weight_scales": self.weight_scales,
-                "activation_scales": self.activation_scales,
-                "saturation_max": self.saturation_max,
-            },
-            indent=2,
-            sort_keys=True,
-        )
 
 
 class Fp8E4m3Calibrator:

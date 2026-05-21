@@ -8,6 +8,7 @@ source_artifacts:
   - board/kicad/e1-phone/display-camera-oem-integration.yaml
   - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
   - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
   - board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml
   - package/display/v0-dsi-720x1280.yaml
   - package/camera/oem-mipi-csi-modules.yaml

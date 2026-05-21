@@ -58,6 +58,7 @@ class LiveKitAsimovTransport:
         self.edge_pb2: Any = edge_pb2
         self._seq = itertools.count(1)
         self._latest_telemetry: AsimovTelemetryFrame | None = None
+        self._telemetry_event = asyncio.Event()
 
     async def connect(self) -> None:
         if not self.url:
@@ -77,9 +78,8 @@ class LiveKitAsimovTransport:
                 raise ModuleNotFoundError("asimov-real requires Menlo edge protobufs at edge.generated.edge_cloud_pb2") from exc
             self.edge_pb2 = edge_cloud_pb2
         if hasattr(self.room, "on"):
-            callback_registrar = self.room.on("data_track_published")
-            if callable(callback_registrar):
-                callback_registrar(self._on_data_track_published)
+            self._register_room_event("data_received", self._on_data_received)
+            self._register_room_event("data_track_published", self._on_data_track_published)
         if hasattr(self.room, "connect") and not getattr(self.room, "connected", False):
             await self.room.connect(self.url, self.token)
         self.connected = True
@@ -166,6 +166,15 @@ class LiveKitAsimovTransport:
             joint_velocities={name: 0.0 for name in ASIMOV1_FIRMWARE_JOINT_ORDER},
         )
 
+    async def wait_for_telemetry(self, *, timeout_s: float = 10.0) -> AsimovTelemetryFrame:
+        """Wait for a real telemetry frame without sending a command."""
+        if self._latest_telemetry is not None:
+            return self._latest_telemetry
+        await asyncio.wait_for(self._telemetry_event.wait(), timeout=float(timeout_s))
+        if self._latest_telemetry is None:
+            raise TimeoutError("ASIMOV telemetry event fired but no frame was cached")
+        return self._latest_telemetry
+
     def handle_telemetry_payload(self, payload: bytes) -> AsimovTelemetryFrame:
         pb = self._require_pb2()
         telemetry = pb.EdgeTelemetry.FromString(payload)
@@ -185,6 +194,7 @@ class LiveKitAsimovTransport:
             fw_age_ms=int(getattr(telemetry, "fw_age_ms", 0)),
         )
         self._latest_telemetry = frame
+        self._telemetry_event.set()
         return frame
 
     async def _publish_command(self, command: Any) -> None:
@@ -207,6 +217,26 @@ class LiveKitAsimovTransport:
             return
         with suppress(RuntimeError):
             asyncio.create_task(self._read_telemetry_track(track))
+
+    def _on_data_received(self, data_packet: Any, *_args: Any) -> None:
+        topic = str(getattr(data_packet, "topic", ""))
+        if topic and topic != "telemetry":
+            return
+        payload = getattr(data_packet, "data", None)
+        if payload is None:
+            payload = getattr(data_packet, "payload", data_packet)
+        if isinstance(payload, str):
+            payload = payload.encode("utf-8")
+        self.handle_telemetry_payload(bytes(payload))
+
+    def _register_room_event(self, event: str, callback: Any) -> None:
+        registrar = self.room.on(event)
+        if callable(registrar):
+            result = registrar(callback)
+            if result is None or result is callback:
+                return
+        with suppress(TypeError):
+            self.room.on(event, callback)
 
     async def _read_telemetry_track(self, track: Any) -> None:
         stream = track.subscribe()

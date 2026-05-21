@@ -5,13 +5,13 @@
   "validated_count": 123,
   "assembly": {
     "step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-    "bytes": 2744688,
+    "bytes": 2744715,
     "imported": true,
     "pass": true,
     "bbox_span_mm": [
       81.1,
       154.24,
-      12.23
+      12.21
     ]
   },
   "cases": [
@@ -31,12 +31,12 @@
     {
       "name": "orange_side_frame",
       "step": "mechanical/e1-phone/out/orange_side_frame.step",
-      "bytes": 233158,
+      "bytes": 233211,
       "imported": true,
       "bbox_span_mm": [
         78.0,
         153.6,
-        11.8
+        11.05
       ],
       "max_span_error_mm": 0.0,
       "pass": true
@@ -499,12 +499,12 @@
     {
       "name": "front_camera_under_glass",
       "step": "mechanical/e1-phone/out/front_camera_under_glass.step",
-      "bytes": 32250,
+      "bytes": 32216,
       "imported": true,
       "bbox_span_mm": [
         3.4,
         3.4,
-        0.35
+        0.08
       ],
       "max_span_error_mm": 0.0,
       "pass": true
@@ -590,12 +590,12 @@
     {
       "name": "front_camera_black_mask_window",
       "step": "mechanical/e1-phone/out/front_camera_black_mask_window.step",
-      "bytes": 15555,
+      "bytes": 15563,
       "imported": true,
       "bbox_span_mm": [
         5.0,
         5.0,
-        0.12
+        0.08
       ],
       "max_span_error_mm": 0.0,
       "pass": true

@@ -25,7 +25,10 @@ DEFAULT_RECORD_DIRS = (
     ROOT / "build/ai_eda/tilos_macroplacement/validation/records",
     ROOT / "build/ai_eda/chipbench_d/validation/records",
     ROOT / "build/ai_eda/e1_softmacro_cases/validation/records",
+    ROOT / "build/ai_eda/e1_macro_array_cases/validation/records",
 )
+DEFAULT_PPA_REPORT = ROOT / "build/ai_eda/e1_macro_array_ppa/validation/post_route_ppa.json"
+MACRO_ARRAY_CASE_ID = "e1-macro-array-weight-buffer-placement-case"
 CLAIM_BOUNDARY = "macro_placement_replay_plan_only_no_openroad_execution_or_release_claim"
 
 
@@ -177,6 +180,98 @@ def replay_status(candidate: dict[str, Any], case: dict[str, Any], geometry: dic
     return "READY_FOR_DETERMINISTIC_REPLAY", []
 
 
+def load_ppa_report(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        report = load_json(path)
+    except Exception:
+        return None
+    if report.get("status") != "COLLECTED_POST_ROUTE_PPA":
+        return None
+    return report
+
+
+def candidate_positions(candidate: dict[str, Any]) -> dict[str, tuple[float, float]]:
+    positions: dict[str, tuple[float, float]] = {}
+    for change in candidate.get("proposed_changes", []):
+        if not isinstance(change, dict) or change.get("action") != "move":
+            continue
+        target = str(change.get("target", "")).removeprefix("placement.")
+        value = change.get("value", {})
+        if target and isinstance(value, dict):
+            positions[target] = (float(value.get("x_um", 0.0)), float(value.get("y_um", 0.0)))
+    return positions
+
+
+def variant_positions(cfg_path: Path) -> dict[str, tuple[float, float]]:
+    positions: dict[str, tuple[float, float]] = {}
+    for raw in cfg_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) == 4:
+            positions[parts[0]] = (float(parts[1]), float(parts[2]))
+    return positions
+
+
+# Maps the measured post-route variants to their checked-in MACRO_PLACEMENT_CFG.
+PPA_VARIANT_CFGS = {
+    "baseline_4x2": ROOT / "pd/openlane/macro_array_baseline.cfg",
+    "compact_4x2": ROOT / "pd/openlane/macro_array_cand_compact.cfg",
+    "stack_2x4": ROOT / "pd/openlane/macro_array_cand_stack2x4.cfg",
+}
+
+
+def score_against_real_ppa(candidate: dict[str, Any], ppa_report: dict[str, Any]) -> dict[str, Any] | None:
+    """Score a macro-array candidate against the nearest real measured placement.
+
+    The candidate is matched to whichever of the three measured post-route
+    variants its macro coordinates are closest to (mean per-macro displacement),
+    and that variant's real post-route PPA is attached. An exact coordinate match
+    means the candidate IS that measured placement; otherwise the match is the
+    nearest measured neighbour and the report flags it as approximate.
+    """
+
+    candidate_pos = candidate_positions(candidate)
+    if not candidate_pos:
+        return None
+    ppa_by_variant = ppa_report.get("ppa_by_variant", {})
+    nearest_variant: str | None = None
+    nearest_distance = float("inf")
+    for variant, cfg_path in PPA_VARIANT_CFGS.items():
+        if variant not in ppa_by_variant or not cfg_path.is_file():
+            continue
+        ref = variant_positions(cfg_path)
+        shared = [inst for inst in candidate_pos if inst in ref]
+        if not shared:
+            continue
+        total = 0.0
+        for inst in shared:
+            cx, cy = candidate_pos[inst]
+            rx, ry = ref[inst]
+            total += ((cx - rx) ** 2 + (cy - ry) ** 2) ** 0.5
+        mean_displacement = total / len(shared)
+        if mean_displacement < nearest_distance:
+            nearest_distance = mean_displacement
+            nearest_variant = variant
+    if nearest_variant is None:
+        return None
+    return {
+        "proxy": "nearest_measured_post_route_variant_real_ppa",
+        "matched_variant": nearest_variant,
+        "exact_match": nearest_distance == 0.0,
+        "mean_macro_displacement_um": round(nearest_distance, 6),
+        "post_route_ppa": ppa_by_variant[nearest_variant],
+        "post_route_rank": next(
+            (item["rank"] for item in ppa_report.get("ranking", []) if item.get("variant") == nearest_variant),
+            None,
+        ),
+        "ppa_report": rel(DEFAULT_PPA_REPORT),
+    }
+
+
 def write_macro_cfg(path: Path, candidate: dict[str, Any]) -> int:
     lines = [
         "# OpenLane-style macro placement override generated from an AI-EDA candidate.",
@@ -261,6 +356,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--candidate", action="append", type=Path, default=[])
     parser.add_argument("--record-dir", action="append", type=Path, default=[])
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
+    parser.add_argument("--ppa-report", type=Path, default=DEFAULT_PPA_REPORT)
     return parser.parse_args()
 
 
@@ -275,6 +371,8 @@ def main() -> int:
     tool_actions_dir = out_dir / "tool_actions"
     bundles_dir.mkdir(parents=True, exist_ok=True)
     tool_actions_dir.mkdir(parents=True, exist_ok=True)
+
+    ppa_report = load_ppa_report(args.ppa_report)
 
     errors: list[str] = []
     plans: list[dict[str, Any]] = []
@@ -333,6 +431,10 @@ def main() -> int:
                 ),
             },
         }
+        if case.get("id") == MACRO_ARRAY_CASE_ID and ppa_report is not None:
+            real_ppa = score_against_real_ppa(candidate, ppa_report)
+            if real_ppa is not None:
+                plan["real_post_route_ppa_score"] = real_ppa
         tool_action_path = tool_actions_dir / f"{slug(candidate_id)}.tool-action.json"
         write_tool_action_manifest(tool_action_path, candidate_path, case_path, bundle_dir, plan)
         plan["tool_action_manifest"] = rel(tool_action_path)

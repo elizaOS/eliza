@@ -1,18 +1,26 @@
 {
-  "schemaVersion": 1,
+  "id": "elizaos-linux-@@ARCH@@",
   "kind": "raw-image",
-  "name": "elizaos-linux",
-  "platform": "linux",
-  "architecture": "@ARCH@",
-  "profile": "@PROFILE@",
-  "artifact": "@ARTIFACT@",
-  "buildTimestamp": "@BUILD_TS@",
-  "sha256": "@SHA256@",
-  "sizeBytes": @SIZE@,
+  "target": {
+    "platform": "linux",
+    "architecture": "@@ARCH@@"
+  },
+  "filename": "@@FILENAME@@",
+  "downloadUrl": null,
+  "status": "planned",
+  "sizeBytes": @@SIZE_BYTES@@,
+  "sha256": "@@SHA256@@",
+  "notes": "elizaOS Live (profile=@@PROFILE@@, built=@@BUILD_TIMESTAMP@@); promotion blocked until qemu-virt, GRUB EFI RISC-V, and elizaOS agent boot evidence are collected.",
   "validation": {
-    "qemuBoot": { "status": "missing", "evidence": null },
-    "agentHealth": { "status": "missing", "evidence": null },
-    "appLauncherAutostart": { "status": "missing", "evidence": null },
-    "chatOverlayAutostart": { "status": "missing", "evidence": null }
+    "requiredEvidence": [
+      "qemu-virt-boot",
+      "grub-efi-riscv64-boot",
+      "elizaos-agent-live"
+    ],
+    "evidence": [
+      { "id": "qemu-virt-boot", "status": "missing", "path": null },
+      { "id": "grub-efi-riscv64-boot", "status": "missing", "path": null },
+      { "id": "elizaos-agent-live", "status": "missing", "path": null }
+    ]
   }
 }

@@ -4,12 +4,12 @@ Evidence class: `cad_assemblability_check_for_evt_planning` | Revision: `evt0-me
 
 Engine: OCP.BRepExtrema_DistShapeShape + BRepAlgoAPI_Common (swept insertion). Each part is swept from a 8.0 mm back-off along its insertion axis through 8 steps into final pose; B-rep min-gap / intersection vs already-placed parts at every step. Intentional final-seat mating contacts are excluded.
 
-## Verdict: DEVICE IS ASSEMBLABLE
+## Verdict: DEVICE NOT PROVEN ASSEMBLABLE
 
 - Parts in manifest: 123
 - Parts loaded (B-rep): 123
 - Parts placed across 19 assembly steps: 94
-- Trapped parts (no collision-free path): 0 
+- Trapped parts (no collision-free path): 1 ['main_pcb']
 - Fastener access (6 bosses + 8 snaps): PASS
 - FPC routing (no pinch): PASS
 
@@ -22,7 +22,7 @@ Engine: OCP.BRepExtrema_DistShapeShape + BRepAlgoAPI_Common (swept insertion). E
 | 3 | Rear torch LED seated on back inner wall (buried) | +Z | fine-pitch vacuum pick | 1.000 | PASS |
 | 4 | Rear camera module dropped into pocket (buried under flat back) | +Z | vacuum pick, rear_camera_alignment_pin | 0.890 | PASS |
 | 5 | Battery pouch placed between locating ribs, FPC routed | +Z | S3 battery jig, pneumatic 8 N press | 1.000 | PASS |
-| 6 | Main PCB seated against boss 1/4 datum + EMI shield cans | +Z | S2 PCB datum nest, Wera 7440 torque driver | 1.000 | PASS |
+| 6 | Main PCB seated against boss 1/4 datum + EMI shield cans | +Z | S2 PCB datum nest, Wera 7440 torque driver | -2.785 | FAIL |
 | 7 | USB-C receptacle seated into reinforcement saddle | +Z | USB-C placement nest | 1.000 | PASS |
 | 8 | USB-C perimeter gaskets applied around receptacle | +Z | gasket pick + seat | 0.955 | PASS |
 | 9 | Haptic LRA + bottom speaker + acoustic meshes placed | +Z | component pick + PSA | 0.500 | PASS |
@@ -36,6 +36,12 @@ Engine: OCP.BRepExtrema_DistShapeShape + BRepAlgoAPI_Common (swept insertion). E
 | 17 | Side-frame closure: snap onto perimeter + drive 6 screws | +Z | S5 snap platen 25 N (8 snaps), Wera 7440 (6 screws) | 1.000 | PASS |
 | 18 | Power button cap + gasket inserted through side frame (-X) | -X | side-key insertion tool | 0.585 | PASS |
 | 19 | Volume button cap + gasket inserted through side frame (+X) | +X | side-key insertion tool | 1.000 | PASS |
+
+## Trapped / Blocked Parts
+
+| Step | Part | Axis | Min clearance (mm) | Blocking parts |
+|---|---|---|---|---|
+| 6 | main_pcb | +Z | -2.785 | orange_usb_reinforcement_saddle |
 
 ## Fastener Access
 
@@ -67,4 +73,4 @@ Driver / snap-platen approach column (toward -Z, from the up-facing back) checke
 | split top flex tail | split_interconnect_top_flex_tail | split_interconnect_top_connector | yes | 0.0 | - |
 | split bottom flex tail | split_interconnect_bottom_flex_tail | split_interconnect_bottom_connector | yes | 0.0 | - |
 
-All parts have a collision-free insertion path in the stated back-shell-up order; all fasteners are tool-accessible and all modeled FPC bend keepouts are unpinched. No trapped parts. The redesigned flush-back e1-phone is assemblable as sequenced.
+Assembly is NOT proven: see trapped/blocked parts above. Re-order the offending part earlier (before its blocker is placed), or relieve the blocking feature, then re-run this checker.

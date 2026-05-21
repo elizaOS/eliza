@@ -50,7 +50,13 @@ def classify(name: str) -> tuple[np.ndarray, int]:
     n = name.lower()
     # Front-surface apertures lift straight off the glass face (+Z) so they do not
     # drag sideways into the molded side frame as the stack separates.
-    if n.startswith("handset_acoustic") or "front_camera_under_glass" in n:
+    if (
+        n.startswith("handset_acoustic")
+        or "front_camera_under_glass" in n
+        or "front_camera_black_mask" in n
+    ):
+        # Front-glass-plane apertures/masks lift straight off the glass (+Z); a
+        # +Y drag would sweep them through the +Z-lifted molded side frame.
         return np.array([0.0, 0.0, 1.0]), 2
     # The rear speaker acoustic cavity sits deepest behind the bottom PCB island,
     # so it ejects straight back (-Z) ahead of the board rather than -Y, where it
@@ -70,8 +76,15 @@ def classify(name: str) -> tuple[np.ndarray, int]:
         return np.array([-1.0, 0.0, 0.0]), 2 if "cap" in n else 3 if "labyrinth" in n else 1
     if "side_key" in n or "split_interconnect_side" in n or "wifi_bt_side" in n:
         return np.array([1.0, 0.0, 0.0]), 1
-    # Front of screen (+Z toward viewer): cover glass, adhesives, display, fpc
-    if n.startswith("screen_cover") or n.startswith("screen_adhesive"):
+    # Front of screen (+Z toward viewer): cover glass, adhesives, perimeter
+    # cushion, display, fpc. The PORON glass-perimeter cushions sit under the
+    # cover-glass edge and ride the cover-glass stack out the front; a default
+    # -Z would plunge them back through the +Y/-Y earpiece/speaker groups.
+    if (
+        n.startswith("screen_cover")
+        or n.startswith("screen_adhesive")
+        or n.startswith("glass_perimeter_cushion")
+    ):
         return np.array([0.0, 0.0, 1.0]), 3
     if n.startswith("display") or n.startswith("rear_camera_cover") or n.startswith("rear_camera_lens"):
         # display is front-stack; rear_camera_cover is actually on back but glass faces back; keep on +Z group for the cover stack? Use -Z for rear cam.
@@ -95,10 +108,16 @@ def classify(name: str) -> tuple[np.ndarray, int]:
         return np.array([0.0, 0.0, -1.0]), 2
     if "rear_camera" in n:
         return np.array([0.0, 0.0, -1.0]), 4
+    # Board-top small parts (interconnect flex tails/connectors, RFFE aperture
+    # tuner) sit on the PCB top face; lift them +Z off the board so they clear
+    # the PCB (which ejects -Z) instead of sharing its ring and staying nested.
     if "antenna" in n or "interconnect" in n:
-        return np.array([0.0, 0.0, -1.0]), 1
+        return np.array([0.0, 0.0, 1.0]), 1
+    # Molded retention bosses/ribs/snaps belong to the enclosure and nest deep
+    # around the battery perimeter. They eject -Z at ring 4 — past the battery
+    # (ring 2) so they separate from it, ahead of the back shell (ring 5).
     if "snap_hook" in n or "screw_boss" in n or "rib" in n or "reinforcement" in n:
-        return np.array([0.0, 0.0, -1.0]), 2
+        return np.array([0.0, 0.0, -1.0]), 4
     if "service_label" in n:
         return np.array([0.0, 0.0, -1.0]), 3
     # The SIM tray services from the +X side wall, so it ejects sideways rather

@@ -33,7 +33,7 @@
       [
         39.0,
         76.8,
-        5.9
+        5.15
       ]
     ]
   },
@@ -648,19 +648,19 @@
   {
     "name": "front_camera_under_glass",
     "role": "camera",
-    "material": "under-glass aperture",
+    "material": "under-glass aperture marker below cover glass",
     "obj": "mechanical/e1-phone/out/front_camera_under_glass.obj",
     "stl": "mechanical/e1-phone/out/front_camera_under_glass.stl",
     "bounds_mm": [
       [
         -20.7,
-        67.625,
-        4.25
+        66.1,
+        5.08
       ],
       [
         -17.3,
-        67.975,
-        7.65
+        69.5,
+        5.16
       ]
     ]
   },
@@ -788,12 +788,12 @@
       [
         -21.5,
         65.3,
-        5.76
+        5.08
       ],
       [
         -16.5,
         70.3,
-        5.88
+        5.16
       ]
     ]
   },

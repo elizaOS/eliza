@@ -462,6 +462,27 @@ def display_module_center_z(params: dict[str, Any]) -> float:
     return module_top_z - module_t / 2.0
 
 
+def cover_glass_z_bounds(params: dict[str, Any]) -> tuple[float, float]:
+    depth = float(params["device"]["envelope_mm"][2])
+    glass_t = float(params["display"]["cover_glass_mm"][2])
+    glass_center_z = depth / 2.0 - 0.35
+    return glass_center_z - glass_t / 2.0, glass_center_z + glass_t / 2.0
+
+
+def side_frame_body_size_center(params: dict[str, Any]) -> tuple[list[float], list[float]]:
+    width, height, depth = params["device"]["envelope_mm"]
+    cover_inner_z, _cover_outer_z = cover_glass_z_bounds(params)
+    z_min = -float(depth) / 2.0
+    z_max = cover_inner_z - 0.05
+    return [float(width), float(height), z_max - z_min], [0.0, 0.0, (z_min + z_max) / 2.0]
+
+
+def front_camera_under_glass_center(params: dict[str, Any]) -> list[float]:
+    height = float(params["device"]["envelope_mm"][1])
+    cover_inner_z, _cover_outer_z = cover_glass_z_bounds(params)
+    return [-19.0, height / 2.0 - 9.0, cover_inner_z - 0.08]
+
+
 def battery_center_z(params: dict[str, Any]) -> float:
     """Battery Z center derived from the back inner wall + required swell void.
 
@@ -589,7 +610,7 @@ def camera_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
     rear_lens = float(comp["rear_camera"]["lens_diameter_mm"])
     front_x = -19.0
     front_y = height / 2 - 9.0
-    front_z = depth / 2 - 0.08
+    front_z = front_camera_under_glass_center(params)[2]
     front_lens = float(comp["front_camera"]["lens_diameter_mm"])
     return [
         {
@@ -642,7 +663,7 @@ def camera_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
         },
         {
             "name": "front_camera_black_mask_window",
-            "size": [front_lens + 1.6, front_lens + 1.6, 0.12],
+            "size": [front_lens + 1.6, front_lens + 1.6, 0.08],
             "center": [front_x, front_y, front_z],
             "color": DARK,
             "role": "camera seal",
@@ -1211,6 +1232,7 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
     rear_flash_aperture_w, rear_flash_aperture_h = rear_flash_shell_aperture_mm(params)
     rear_flash_bezel_z = -depth / 2.0 + 0.12 / 2.0
     rear_flash_bezel_border_mm = 0.45
+    side_frame_size, side_frame_center = side_frame_body_size_center(params)
 
     parts: list[Part] = [
         rounded_box(
@@ -1224,8 +1246,8 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
         ),
         rounded_frame(
             "orange_side_frame",
-            [width, height, depth],
-            [0.0, 0.0, 0.0],
+            side_frame_size,
+            side_frame_center,
             wall,
             corner_radius,
             ORANGE,
@@ -1521,14 +1543,14 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 "camera",
                 "front MIPI camera",
             ),
-            cyl(
+            cyl_z(
                 "front_camera_under_glass",
                 comp["front_camera"]["lens_diameter_mm"] / 2,
-                0.35,
-                [-19.0, height / 2 - 9.0, depth / 2 + 0.05],
+                0.08,
+                front_camera_under_glass_center(params),
                 CAMERA,
                 "camera",
-                "under-glass aperture",
+                "under-glass aperture marker below cover glass",
             ),
             *[
                 box(
@@ -1832,10 +1854,15 @@ def write_solid_cad_handoff_artifacts(
             [rear_flash_x, rear_flash_y, -depth / 2 + 0.6],
         )
     )
-    side_outer = cq_box([width, height, depth], [0, 0, 0], radius)
+    side_frame_size, side_frame_center = side_frame_body_size_center(params)
+    side_outer = cq_box(side_frame_size, side_frame_center, radius)
     side_inner = cq_box(
-        [width - 2 * dev["wall_thickness_mm"], height - 2 * dev["wall_thickness_mm"], depth + 1.0],
-        [0, 0, 0],
+        [
+            width - 2 * dev["wall_thickness_mm"],
+            height - 2 * dev["wall_thickness_mm"],
+            side_frame_size[2] + 1.0,
+        ],
+        side_frame_center,
         max(radius - dev["wall_thickness_mm"], 0.5),
     )
     side_frame_uncut = side_outer.cut(side_inner)
@@ -2225,9 +2252,9 @@ def write_solid_cad_handoff_artifacts(
                     [
                         comp["front_camera"]["lens_diameter_mm"],
                         comp["front_camera"]["lens_diameter_mm"],
-                        0.35,
+                        0.08,
                     ],
-                    [-19.0, height / 2 - 9.0, depth / 2 + 0.05],
+                    front_camera_under_glass_center(params),
                     radius=0.35,
                 ),
                 "color": black,

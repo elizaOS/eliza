@@ -221,7 +221,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run qemu_virt_boot.sh and validate the evidence JSON.",
     )
-    parser.add_argument("--iso", type=Path, required=True, help="path to live ISO")
+    parser.add_argument(
+        "--iso",
+        type=Path,
+        default=None,
+        help="path to live ISO; if omitted, the newest riscv64 ISO under out/ is used",
+    )
     parser.add_argument("--memory", type=int, default=4096, help="QEMU memory in MB")
     parser.add_argument("--cpus", type=int, default=4, help="QEMU CPU count")
     parser.add_argument("--timeout", type=int, default=600, help="boot timeout (s)")
@@ -246,8 +251,36 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _resolve_iso(explicit: Path | None) -> Path | None:
+    """Pick the ISO to boot: an explicit ``--iso``, else the newest riscv64 ISO
+    built under ``out/``. Returns ``None`` when nothing has been built yet so the
+    caller can report a fail-closed BLOCKED state instead of crashing."""
+    if explicit is not None:
+        return explicit
+    out_dir = VARIANT_DIR / "out"
+    if not out_dir.is_dir():
+        return None
+    candidates = sorted(
+        out_dir.glob("*riscv64*.iso"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+
+    iso = _resolve_iso(args.iso)
+    if iso is None:
+        print(
+            "STATUS: BLOCKED os_rv64.qemu_virt_smoke - no riscv64 elizaOS live ISO "
+            "built under packages/os/linux/elizaos/out/; build it with "
+            "`cd packages/os/linux/elizaos && ./build.sh ARCH=riscv64` (or the "
+            "Makefile build target) then re-run with --iso <path>."
+        )
+        return 2
+    args.iso = iso
 
     if not args.iso.is_file():
         print(f"qemu_virt_smoke: ERROR: ISO not found: {args.iso}", file=sys.stderr)

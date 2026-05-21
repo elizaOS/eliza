@@ -14,7 +14,6 @@ import type {
   WifiState,
 } from "../types";
 import { SystemProviderContext } from "./context";
-import { MockSystemProvider } from "./MockSystemProvider";
 
 export interface AndroidSystemProviderProps {
   children: ReactNode;
@@ -111,7 +110,14 @@ export function AndroidSystemProvider({
 }: AndroidSystemProviderProps) {
   const transport = getBridgeTransport();
   if (!transport) {
-    return <MockSystemProvider>{children}</MockSystemProvider>;
+    // Fail closed: a production launcher image must be backed by the live
+    // native SystemBridge transport (window.__elizaAndroidBridge). There is
+    // no mock/fake-state fallback path — an absent bridge is a wiring failure
+    // that must surface, not be masked with plausible system state.
+    throw new Error(
+      "AndroidSystemProvider: native system bridge transport (__elizaAndroidBridge) is not bound; " +
+        "the SystemBridge privileged system app must register it before the launcher UI mounts.",
+    );
   }
   const client = createAndroidBridgeClient(transport);
   return (

@@ -22,10 +22,8 @@ compiler/iree-eliza-npu/
                                           dot8_s4, dot16_s2,
                                           dot4_fp8_e4m3,
                                           sparse_sdot4_s4_2_4, vrelu
-      ElizaNpuPasses.td                   passes: convert-linalg-to-elizanpu,
-                                          elizanpu-assign-scratch,
-                                          elizanpu-legalize-ring,
-                                          elizanpu-emit-descriptor-table
+      ElizaNpuPasses.td                   passes: elizanpu-assign-scratch,
+                                          elizanpu-legalize-ring
       ElizaNpuPasses.h                    pass C++ declarations
   lib/
     IR/                                   dialect runtime
@@ -34,10 +32,8 @@ compiler/iree-eliza-npu/
                                           oracle's runtime checks at compile
                                           time)
     Transforms/                           lowering pass implementations
-      ConvertLinalgToElizaNpu.cpp
       AssignScratch.cpp
       LegalizeDescriptorRing.cpp
-      EmitDescriptorTable.cpp
   runtime/
     eliza_npu_runtime.h                   C ABI for the runtime (mirrors the
                                           Python oracle's `submit_descriptors`
@@ -80,24 +76,23 @@ The pin file is [`compiler/iree-eliza-npu/iree-pin.json`](iree-pin.json).
 
 ## Lowering contract
 
-A StableHLO / linalg module enters the backend at module scope and is
-lowered through the following pipeline:
+An elizanpu-dialect module (descriptor SSA tokens: `acquire_ring`,
+`tile_dma`, `gemm_s8`, `submit_descriptor`) is legalized through the
+following passes before the HAL command-buffer emitter consumes it:
 
-1. **`convert-linalg-to-elizanpu`** decomposes `linalg.matmul`,
-   `linalg.conv_2d_nhwc_hwio`, attention QK/AV/softmax, layer-norm,
-   gelu/swiglu, RMSNorm, RoPE. Hardware-supported tiles become
-   `elizanpu.gemm_s8` (and packed-dot variants). Hardware-unsupported ops
-   (softmax, layer-norm, full FP16 matmul) are left for CPU fallback via
-   IREE's host emitter.
-2. **`elizanpu-assign-scratch`** linearly allocates the 64-byte scratchpad
-   across `tile_dma` / `gemm_s8` lifetimes per dispatch region. Fails if a
-   region requires more than 64 bytes live.
-3. **`elizanpu-legalize-ring`** splits regions that would exceed the
-   8-entry descriptor ring and inserts `acquire_ring` ops. Fails if any
-   basic block submits more than 8 in-flight descriptors.
-4. **`elizanpu-emit-descriptor-table`** serializes submissions into a
-   table consumed by IREE's HAL command buffer emitter. The emitter
-   produces direct calls into `eliza_npu_submit_descriptors`.
+1. **`elizanpu-assign-scratch`** walks the dispatch region and checks that
+   every `tile_dma` / `gemm_s8` keeps its `scratch_offset` / `byte_count`
+   within the 64-byte scratchpad budget enforced by the op verifiers.
+2. **`elizanpu-legalize-ring`** rejects any region that submits more than
+   8 in-flight descriptors, enforcing the 8-entry descriptor ring.
+
+Descriptor serialization is performed directly by the HAL command-buffer
+encode path (`hal/elizanpu/command_buffer.c`), which produces calls into
+`eliza_npu_submit_descriptors`. The `linalg.matmul -> elizanpu.gemm_s8`
+front-end lowering and a standalone descriptor-table emit pass are not
+implemented: the hardware C-writeback DMA path they depend on is not in
+the RTL yet, so authoring those tokens directly (as the roundtrip and
+descriptor-parity tests do) is the only correct path today.
 
 ## Hardware-bound verifiers
 
@@ -118,9 +113,13 @@ contract.
 - **Dialect TableGen + C++ skeleton committed.** Build requires LLVM/MLIR
   inside the canonical Linux container; standalone host builds are blocked
   on the LLVM SHA pin.
-- **Lowering passes are skeletons.** Real tiling for `linalg.matmul` ->
-  3x3x7 INT8 GEMM tiles is planned for P1 (Q1-Q2 2027) per the
+- **Front-end tiling lowering is not implemented.** The `linalg.matmul` ->
+  3x3x7 INT8 GEMM tiling front-end is blocked on the hardware C-writeback
+  DMA path and is planned for P1 (Q1-Q2 2027) per the
   [2028 integrated report](../../docs/architecture-optimization/2028-sota-integrated-report.md).
+  The shipped passes (`elizanpu-assign-scratch`, `elizanpu-legalize-ring`)
+  enforce the 64-byte scratch budget and 8-entry ring on hand-authored
+  dialect IR.
 - **C runtime + Python parity test pass.** `test_descriptor_parity.py` runs
   290 parameterized cases against the Python oracle.
 - **Tiny-model descriptor-stream parity (micro_model_rtl_simulator_only).**

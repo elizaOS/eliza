@@ -122,6 +122,7 @@ export function parseArgs(argv) {
     json: false,
     skipLogcat: false,
     appConfigPath: null,
+    expectedAbi: null,
   };
 
   const readFlagValue = (flag, index) => {

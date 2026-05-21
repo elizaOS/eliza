@@ -15,7 +15,7 @@ Unintentional clash pairs: 0.
 | `routed_pcb_components_to_orange_enclosure` | 6/6 | 2.2 | 0.0 | PASS |
 | `usb_c_port_saddle_aperture_and_gaskets` | 9/9 | 0.0 | 0.0 | PASS |
 | `side_buttons_switches_gaskets_labyrinth` | 9/9 | 77.1 | 0.0 | PASS |
-| `front_camera_earpiece_under_glass_stack` | 7/7 | 3.16 | 0.0 | PASS |
+| `front_camera_earpiece_under_glass_stack` | 7/7 | 2.48 | 0.0 | PASS |
 | `rear_camera_window_baffle_adhesive_stack` | 8/8 | 0.5 | 0.0 | PASS |
 | `rear_flash_torch_window_back_wall` | 6/6 | 0.5 | 0.0 | PASS |
 | `battery_pouch_pcb_flex_haptic` | 4/4 | 0.01 | 0.0 | PASS |
@@ -44,6 +44,19 @@ Status: PASS. Aperture clears flash window XY: True.
 ## Handset Cover-Glass Slot
 
 Status: PASS.
+- `screen_cover_glass` vs `handset_acoustic_slot`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
+- `screen_cover_glass` vs `handset_acoustic_mesh`: intersection 0.0 mm3, min gap 0.05 mm (PASS)
+
+## Screen Cover-Glass Collision Check
+
+Status: PASS.
+- `screen_cover_glass` vs `orange_side_frame`: intersection 0.0 mm3, min gap 0.05 mm (PASS)
+- `screen_cover_glass` vs `display_lcm`: intersection 0.0 mm3, min gap 0.18 mm (PASS)
+- `screen_cover_glass` vs `screen_adhesive_top`: intersection 0.0 mm3, min gap 0.06 mm (PASS)
+- `screen_cover_glass` vs `front_camera_module`: intersection 0.0 mm3, min gap 2.6 mm (PASS)
+- `screen_cover_glass` vs `front_camera_under_glass`: intersection 0.0 mm3, min gap 0.04 mm (PASS)
+- `screen_cover_glass` vs `front_camera_black_mask_window`: intersection 0.0 mm3, min gap 0.04 mm (PASS)
+- `screen_cover_glass` vs `earpiece_receiver`: intersection 0.0 mm3, min gap 2.95 mm (PASS)
 - `screen_cover_glass` vs `handset_acoustic_slot`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
 - `screen_cover_glass` vs `handset_acoustic_mesh`: intersection 0.0 mm3, min gap 0.05 mm (PASS)
 

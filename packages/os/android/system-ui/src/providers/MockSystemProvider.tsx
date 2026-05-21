@@ -21,35 +21,24 @@ export interface MockSystemProviderProps {
   tickMs?: number;
 }
 
-const DEFAULT_WIFI: WifiState = {
-  connected: true,
-  ssid: "eliza-home",
-  signalDbm: -58,
-};
+// Defaults are intentionally empty / disconnected. MockSystemProvider is a
+// test and storybook harness only; it must never ship plausible production-like
+// Wi-Fi / cell / battery state that could be mistaken for live readiness
+// evidence. Consumers that want populated state pass it explicitly via props.
+const EMPTY_WIFI: WifiState = { connected: false };
 
-const DEFAULT_AUDIO: AudioState = {
-  level: 0.55,
-  muted: false,
-  outputDevice: "Phone speaker",
-};
+const EMPTY_AUDIO: AudioState = { level: 0, muted: true };
 
-const DEFAULT_BATTERY: BatteryState = {
-  percent: 78,
-  charging: true,
-};
+const EMPTY_BATTERY: BatteryState = { percent: 0, charging: false };
 
-const DEFAULT_CELL: CellState = {
-  strengthBars: 4,
-  carrier: "T-Mobile",
-  airplaneMode: false,
-};
+const EMPTY_CELL: CellState = { strengthBars: 0, airplaneMode: false };
 
 export function MockSystemProvider({
   children,
-  initialWifi = DEFAULT_WIFI,
-  initialAudio = DEFAULT_AUDIO,
-  initialBattery = DEFAULT_BATTERY,
-  initialCell = DEFAULT_CELL,
+  initialWifi = EMPTY_WIFI,
+  initialAudio = EMPTY_AUDIO,
+  initialBattery = EMPTY_BATTERY,
+  initialCell = EMPTY_CELL,
   locale = "en-US",
   timeZone = "UTC",
   tickMs = 1000,

@@ -51,6 +51,7 @@ current_artifacts:
     - board/kicad/e1-phone/radio-module-envelope-orderability-gate.yaml
     - board/kicad/e1-phone/cellular-top-island-repack-feasibility.yaml
     - board/kicad/e1-phone/cellular-space-saving-downselect.yaml
+    - board/kicad/e1-phone/display-envelope-downselect.yaml
     - board/kicad/e1-phone/camera-module-fit-downselect.yaml
     - board/kicad/e1-phone/radio-module-integration.yaml
     - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
@@ -81,6 +82,7 @@ current_artifacts:
     - board/kicad/e1-phone/schematic-netclass-execution-package.yaml
     - board/kicad/e1-phone/schematic-capture-readiness-binding.yaml
     - board/kicad/e1-phone/usb-sidekey-integration.yaml
+    - board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
     - board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml
     - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
     - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
@@ -138,6 +140,22 @@ current_artifacts:
     - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
     - board/kicad/e1-phone/preview/kicad-cli-mainboard.svg
     - board/kicad/e1-phone/preview/kicad-cli-mainboard.png
+  supplier_pinout_evidence:
+    - board/kicad/e1-phone/supplier-pinouts/pinout-evidence-manifest.yaml
+    - board/kicad/e1-phone/supplier-pinouts/README.md
+    - board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/gct-usb4105-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/quectel-rg255c-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/panasonic-evq-p7-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/ov13855-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/gc5035-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/chenghao-ch550fh01a-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml
+  manufacturing_config:
+    - board/kicad/e1-phone/kibot.yaml
   preview_artifacts:
     - board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.svg
     - board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.html

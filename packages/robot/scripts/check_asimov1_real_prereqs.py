@@ -103,6 +103,7 @@ def check_asimov1_real_prereqs(*, require_credentials: bool = False, require_mod
         "notes": [
             "This preflight does not connect to hardware or command motion.",
             "Use --require-credentials and --require-modules on a hardware host.",
+            "Before motion, run validate_asimov1_real_telemetry_probe.py to verify telemetry-only LiveKit access.",
         ],
     }
 

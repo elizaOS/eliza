@@ -21,7 +21,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05634
+      "nonwhite_pixel_ratio": 0.05589
     },
     {
       "view": "full_back_iso.png",
@@ -36,7 +36,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05957
+      "nonwhite_pixel_ratio": 0.05905
     },
     {
       "view": "rear_feature_detail.png",
@@ -66,7 +66,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.03312
+      "nonwhite_pixel_ratio": 0.03282
     },
     {
       "view": "full_bottom_port.png",
@@ -96,7 +96,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.11022
+      "nonwhite_pixel_ratio": 0.11012
     },
     {
       "view": "exploded_iso.png",
@@ -111,7 +111,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.07851
+      "nonwhite_pixel_ratio": 0.07825
     },
     {
       "view": "component_stack.png",
@@ -126,7 +126,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.08471
+      "nonwhite_pixel_ratio": 0.08478
     },
     {
       "view": "component-review-audio.png",
@@ -171,7 +171,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.0563
+      "nonwhite_pixel_ratio": 0.05625
     },
     {
       "view": "mold_tooling.png",
@@ -186,7 +186,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.04206
+      "nonwhite_pixel_ratio": 0.04154
     }
   ],
   "part_review_case": {

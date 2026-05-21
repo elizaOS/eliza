@@ -4,7 +4,7 @@
   "tool": "cadquery",
   "tool_available": true,
   "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-  "assembly_step_bytes": 2744688,
+  "assembly_step_bytes": 2744715,
   "part_count": 123,
   "parts": [
     {
@@ -36,7 +36,7 @@
       "role": "molded enclosure",
       "material": "PC+ABS orange B-rep ring",
       "step": "mechanical/e1-phone/out/orange_side_frame.step",
-      "bytes": 233158,
+      "bytes": 233211,
       "bbox_mm": {
         "min": [
           -39.0,
@@ -46,12 +46,12 @@
         "max": [
           39.0,
           76.8,
-          5.9
+          5.15
         ],
         "span": [
           78.0,
           153.6,
-          11.8
+          11.05
         ]
       }
     },
@@ -900,22 +900,22 @@
       "role": "camera",
       "material": "front under-glass optical aperture envelope",
       "step": "mechanical/e1-phone/out/front_camera_under_glass.step",
-      "bytes": 32250,
+      "bytes": 32216,
       "bbox_mm": {
         "min": [
           -20.7,
           66.1,
-          5.775
+          5.08
         ],
         "max": [
           -17.3,
           69.5,
-          6.125
+          5.16
         ],
         "span": [
           3.4,
           3.4,
-          0.35
+          0.08
         ]
       }
     },
@@ -1068,22 +1068,22 @@
       "role": "camera seal",
       "material": "black printed mask datum around front under-glass camera",
       "step": "mechanical/e1-phone/out/front_camera_black_mask_window.step",
-      "bytes": 15555,
+      "bytes": 15563,
       "bbox_mm": {
         "min": [
           -21.5,
           65.3,
-          5.76
+          5.08
         ],
         "max": [
           -16.5,
           70.3,
-          5.88
+          5.16
         ],
         "span": [
           5.0,
           5.0,
-          0.12
+          0.08
         ]
       }
     },
@@ -3198,8 +3198,8 @@
         ]
       }
     ],
-    "uncut_side_frame_volume_mm3": 6061.869,
-    "cut_side_frame_volume_mm3": 5902.939,
+    "uncut_side_frame_volume_mm3": 5676.581,
+    "cut_side_frame_volume_mm3": 5517.651,
     "removed_volume_mm3": 158.93,
     "note": "Orange side-frame STEP is boolean-cut for USB-C, bottom speaker grille, bottom/top microphone ports, and side-key cap openings instead of relying only on separate black aperture markers."
   },

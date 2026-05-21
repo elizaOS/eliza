@@ -22,3 +22,10 @@ prebuilt_etc {
     sub_dir: "permissions",
     filename_from_src: true,
 }
+
+prebuilt_etc {
+    name: "privapp-permissions-ai.elizaos.system.bridge.xml",
+    src: "privapp-permissions-ai.elizaos.system.bridge.xml",
+    sub_dir: "permissions",
+    filename_from_src: true,
+}

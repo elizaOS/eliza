@@ -36,7 +36,7 @@ concept_step_context:
   assembly_step_bbox_span_mm:
     - 81.1
     - 154.24
-    - 12.23
+    - 12.21
   concept_step_artifact_count: 25
   missing_concept_step_artifacts: []
   concept_is_release_evidence: false

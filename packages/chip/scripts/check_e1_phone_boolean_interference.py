@@ -677,6 +677,53 @@ def evaluate_handset_cover_glass_slot(parts: Dict[str, Part]) -> Dict:
     }
 
 
+def evaluate_screen_cover_glass_collisions(parts: Dict[str, Part]) -> Dict:
+    """Strict proof that visible/front-stack solids do not occupy cover glass volume."""
+    targets = [
+        "orange_side_frame",
+        "display_lcm",
+        "screen_adhesive_top",
+        "front_camera_module",
+        "front_camera_under_glass",
+        "front_camera_black_mask_window",
+        "earpiece_receiver",
+        "handset_acoustic_slot",
+        "handset_acoustic_mesh",
+    ]
+    required = ["screen_cover_glass", *targets]
+    missing = [name for name in required if name not in parts]
+    if missing:
+        return {
+            "id": "screen_cover_glass_visible_collision",
+            "status": "fail",
+            "missing_parts": missing,
+            "pairs": [],
+            "risk": "screen-adjacent parts must sit outside cover-glass volume; visual markers may not be hidden by broad allowlists",
+        }
+
+    glass = parts["screen_cover_glass"]
+    pairs: List[Dict] = []
+    for target in targets:
+        target_part = parts[target]
+        inter = brep_intersection_volume(glass.shape, target_part.shape)
+        dist = 0.0 if inter > 1e-6 else brep_min_distance(glass.shape, target_part.shape)
+        pairs.append(
+            {
+                "parts": ["screen_cover_glass", target],
+                "interference_volume_mm3": round(inter, 6),
+                "min_gap_mm": round(dist, 6) if dist == dist else None,
+                "status": "pass" if inter <= 1e-6 else "fail",
+            }
+        )
+    return {
+        "id": "screen_cover_glass_visible_collision",
+        "status": "pass" if all(p["status"] == "pass" for p in pairs) else "fail",
+        "missing_parts": [],
+        "pairs": pairs,
+        "risk": "screen-adjacent parts must sit outside cover-glass volume; visual markers may not be hidden by broad allowlists",
+    }
+
+
 def evaluate_side_frame_external_cutouts(parts: Dict[str, Part]) -> Dict:
     """Strict proof that side-edge apertures are real side-frame cutouts."""
     aperture_targets = [
@@ -838,6 +885,7 @@ def main() -> int:
     rear_camera_hole = evaluate_rear_camera_back_shell_hole(parts)
     rear_flash_hole = evaluate_rear_flash_back_shell_hole(parts)
     handset_glass_slot = evaluate_handset_cover_glass_slot(parts)
+    screen_glass_collision = evaluate_screen_cover_glass_collisions(parts)
     side_frame_cutouts = evaluate_side_frame_external_cutouts(parts)
     print(f"[flush_back] max_protrusion={flush_back['max_protrusion_mm']}mm "
           f"status={flush_back['status']}", file=sys.stderr)
@@ -883,6 +931,7 @@ def main() -> int:
                     and rear_camera_hole["status"] == "pass"
                     and rear_flash_hole["status"] == "pass"
                     and handset_glass_slot["status"] == "pass"
+                    and screen_glass_collision["status"] == "pass"
                     and side_frame_cutouts["status"] == "pass"
                     and all(b.get("buried") for b in burial))
 
@@ -915,6 +964,7 @@ def main() -> int:
         "rear_camera_back_shell_hole_check": rear_camera_hole,
         "rear_flash_back_shell_hole_check": rear_flash_hole,
         "handset_cover_glass_slot_check": handset_glass_slot,
+        "screen_cover_glass_collision_check": screen_glass_collision,
         "side_frame_external_cutout_check": side_frame_cutouts,
         "burial_check": {
             "back_inner_wall_z_mm": round(back_inner_z, 4),
@@ -1000,6 +1050,18 @@ def main() -> int:
         f"Status: {handset_glass_slot['status'].upper()}.",
     ]
     for pair in handset_glass_slot.get("pairs", []):
+        md_lines.append(
+            f"- `{pair['parts'][0]}` vs `{pair['parts'][1]}`: "
+            f"intersection {pair['interference_volume_mm3']} mm3, "
+            f"min gap {pair['min_gap_mm']} mm ({pair['status'].upper()})"
+        )
+    md_lines += [
+        "",
+        "## Screen Cover-Glass Collision Check",
+        "",
+        f"Status: {screen_glass_collision['status'].upper()}.",
+    ]
+    for pair in screen_glass_collision.get("pairs", []):
         md_lines.append(
             f"- `{pair['parts'][0]}` vs `{pair['parts'][1]}`: "
             f"intersection {pair['interference_volume_mm3']} mm3, "

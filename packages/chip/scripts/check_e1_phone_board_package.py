@@ -1573,6 +1573,148 @@ def check_display_camera_source_revalidation() -> None:
     )
 
 
+def check_display_envelope_downselect() -> None:
+    downselect = load_yaml(ROOT / "board/kicad/e1-phone/display-envelope-downselect.yaml")
+    display_fit = load_yaml(ROOT / "board/kicad/e1-phone/display-fit.yaml")
+    display_package = load_yaml(ROOT / "package/display/v0-dsi-720x1280.yaml")
+    source_revalidation = load_yaml(
+        ROOT / "board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml"
+    )
+    integration = load_yaml(ROOT / "board/kicad/e1-phone/display-camera-oem-integration.yaml")
+    layout = load_yaml(ROOT / "board/kicad/e1-phone/layout-optimization-execution.yaml")
+    manifest = load_yaml(MANIFEST)
+
+    if downselect["schema"] != "eliza.e1_phone_display_envelope_downselect.v1":
+        raise SystemExit("display envelope downselect schema diverges")
+    if (
+        downselect["status"]
+        != "blocked_display_envelope_downselect_requires_signed_display_stack_connector_and_routed_clearance"
+    ):
+        raise SystemExit(f"unexpected display envelope downselect status: {downselect['status']}")
+    rel = "board/kicad/e1-phone/display-envelope-downselect.yaml"
+    if rel not in manifest["current_artifacts"]["planning"]:
+        raise SystemExit("manifest missing display envelope downselect")
+    for artifact in [integration, layout]:
+        if rel not in artifact["source_artifacts"]:
+            raise SystemExit("display envelope downselect is not cited by downstream layout/display gate")
+    for source in downselect["source_artifacts"]:
+        require_path(ROOT / source)
+
+    upstream = downselect["upstream_status"]
+    expected_upstream = {
+        "display_fit": display_fit["status"],
+        "display_package": display_package["status"],
+        "display_camera_source_revalidation": source_revalidation["status"],
+        "display_camera_oem_integration": integration["status"],
+        "layout_optimization_execution": layout["status"],
+    }
+    if upstream != expected_upstream:
+        raise SystemExit("display envelope downselect upstream status stale")
+
+    primary = downselect["selected_screen_decision"]
+    package_primary = display_package["panel_candidates"][0]
+    fit_primary = display_fit["selected_primary_display"]
+    if primary["part"] != package_primary["part"] or primary["part"] != fit_primary["part"]:
+        raise SystemExit("display envelope primary part diverges from package or display-fit")
+    if primary["vendor"] != package_primary["vendor"]:
+        raise SystemExit("display envelope primary vendor diverges from package")
+    if primary["resolution"] != package_primary["resolution"]:
+        raise SystemExit("display envelope primary resolution diverges from package")
+    if primary["interface"] != package_primary["interface"]:
+        raise SystemExit("display envelope primary interface diverges from package")
+    if primary["board_use"] != "primary_display_and_device_envelope_anchor":
+        raise SystemExit("display envelope primary board use changed")
+
+    mechanical = downselect["mechanical_fit_decision"]
+    if mechanical["current_device_envelope_mm"] != display_fit["current_device_envelope_mm"]:
+        raise SystemExit("display envelope current device envelope diverges from display-fit")
+    if mechanical["current_device_envelope_mm"] != manifest["design_target"]["device_envelope_mm"]:
+        raise SystemExit("display envelope current device envelope diverges from manifest")
+    if mechanical["primary_module_outline_mm"] != fit_primary["outline_mm"]:
+        raise SystemExit("display envelope primary outline diverges from display-fit")
+    if mechanical["primary_module_outline_mm"] != package_primary["module_outline_mm"]:
+        raise SystemExit("display envelope primary outline diverges from display package")
+    if mechanical["primary_active_area_mm"] != fit_primary["active_area_mm"]:
+        raise SystemExit("display envelope active area diverges from display-fit")
+    if mechanical["minimum_envelope_for_primary_with_margin_mm"] != display_fit[
+        "minimum_envelope_for_primary_with_margin_mm"
+    ]:
+        raise SystemExit("display envelope minimum envelope diverges from display-fit")
+    if mechanical["clearance_in_current_envelope_mm"] != display_fit[
+        "primary_clearance_in_current_envelope_mm"
+    ]:
+        raise SystemExit("display envelope clearance diverges from display-fit")
+    if mechanical["primary_fits_current_envelope"] != display_fit["primary_fits_current_envelope"]:
+        raise SystemExit("display envelope fit flag diverges from display-fit")
+    if mechanical["board_fit_behind_primary_display"] != display_fit[
+        "board_fit_behind_primary_display"
+    ]:
+        raise SystemExit("display envelope board-behind-display fit diverges from display-fit")
+
+    min_envelope = mechanical["minimum_envelope_for_primary_with_margin_mm"]
+    outline = mechanical["primary_module_outline_mm"]
+    expected_min_width = round(outline["width"] + 2 * min_envelope["side_margin_each_mm"], 2)
+    expected_min_height = round(
+        outline["height"] + 2 * min_envelope["top_bottom_margin_each_mm"], 2
+    )
+    if min_envelope["width"] != expected_min_width or min_envelope["height"] != expected_min_height:
+        raise SystemExit("display envelope minimum dimensions are not derived from margins")
+    clearance = mechanical["clearance_in_current_envelope_mm"]
+    if clearance["width_clearance_mm"] < 0.8 or clearance["height_clearance_mm"] < 1.8:
+        raise SystemExit("display envelope clearance regressed below planning threshold")
+
+    alternates = downselect["alternate_policy"]
+    forfuture = alternates["forfuture_fet_e549_hco1_amoled_class"]
+    package_forfuture = display_package["panel_candidates"][2]
+    if forfuture["known_outline_mm"] != package_forfuture["outline_mm"]:
+        raise SystemExit("display envelope Forfuture outline diverges from display package")
+    if not forfuture["fits_current_envelope"]:
+        raise SystemExit("display envelope Forfuture known outline should fit current envelope")
+    if "not_promoted" not in forfuture["board_decision"]:
+        raise SystemExit("display envelope Forfuture alternate unexpectedly promoted")
+    for alternate_id in [
+        "meta_display_055wu01_class",
+        "alibaba_ili7807d_5p5_1200nit_class",
+        "lower_resolution_open_driver_alternates",
+    ]:
+        if "not_promoted" not in alternates[alternate_id]["board_decision"]:
+            raise SystemExit(f"display envelope alternate unexpectedly promoted: {alternate_id}")
+
+    gate = downselect["release_gate"]
+    if len(gate["allowed_planning_claims"]) < 3 or len(gate["blocked_until"]) < 5:
+        raise SystemExit("display envelope release gate is too weak")
+    for key, value in downselect["cross_checks"].items():
+        if value is not True:
+            raise SystemExit(f"display envelope downselect cross-check failed: {key}")
+    for blocker in [
+        "Signed display/touch 2D drawing, cover-lens stack, FPC exit datum, pinout, connector, STEP, and samples are missing.",
+        "MIPI DSI route, length/skew, impedance, return-path, and DRC/SI evidence is missing.",
+        "Display power sequence, touch probe, brightness, inrush, and bring-up logs are missing.",
+        "Routed-board STEP does not yet prove display FPC bend, connector height, camera/top-speaker clearance, or enclosure tolerance.",
+    ]:
+        if blocker not in downselect["release_blockers"]:
+            raise SystemExit(f"display envelope downselect missing blocker: {blocker}")
+    for claim in [
+        "display_size_final",
+        "display_supplier_approved",
+        "display_connector_ready",
+        "display_pinout_frozen",
+        "cover_glass_stack_ready",
+        "mipi_dsi_routed",
+        "display_bringup_ready",
+        "enclosure_ready",
+        "fabrication_ready",
+        "end_to_end_phone_ready",
+    ]:
+        if claim not in downselect["forbidden_claims"]:
+            raise SystemExit(f"display envelope downselect missing forbidden claim {claim}")
+    print(
+        "display envelope downselect ok: "
+        f"{primary['part']} anchors {mechanical['current_device_envelope_mm']['width']}x"
+        f"{mechanical['current_device_envelope_mm']['height']}mm, alternates fail-closed"
+    )
+
+
 def check_display_camera_connector_pinout_execution() -> None:
     execution = load_yaml(
         ROOT / "board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml"
@@ -1939,6 +2081,7 @@ def check_display_camera_acceptance() -> None:
         "board/kicad/e1-phone/display-camera-oem-integration.yaml",
         "board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml",
         "board/kicad/e1-phone/display-fit.yaml",
+        "board/kicad/e1-phone/display-envelope-downselect.yaml",
         "board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml",
         "package/display/v0-dsi-720x1280.yaml",
         "package/camera/oem-mipi-csi-modules.yaml",
@@ -2040,6 +2183,134 @@ def check_display_camera_acceptance() -> None:
     )
 
 
+def check_usb_sidekey_mechanical_decision() -> None:
+    decision = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml")
+    manifest = load_yaml(MANIFEST)
+    usb_binding = load_yaml(ROOT / "package/usb-c/e1-phone-usb-c-port.yaml")
+    side_buttons = load_yaml(ROOT / "package/human-interface/side-buttons.yaml")
+    source_revalidation = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml")
+    placement = load_yaml(ROOT / "board/kicad/e1-phone/placement-interface-matrix.yaml")
+    enclosure = load_yaml(ROOT / "board/kicad/e1-phone/enclosure-placement-closure.yaml")
+    height = load_yaml(ROOT / "board/kicad/e1-phone/component-height-step-integration.yaml")
+    supplier_responses = load_yaml(
+        ROOT / "board/kicad/e1-phone/supplier-rfq-response-normalization.yaml"
+    )
+
+    if decision["schema"] != "eliza.e1_phone_usb_sidekey_mechanical_decision.v1":
+        raise SystemExit("USB/side-key mechanical decision schema diverges")
+    if (
+        decision["status"]
+        != "blocked_usb_sidekey_mechanical_decision_requires_supplier_drawings_routed_step_and_measurements"
+    ):
+        raise SystemExit(f"unexpected USB/side-key mechanical decision status: {decision['status']}")
+    rel = "board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml"
+    if rel not in manifest["current_artifacts"]["planning"]:
+        raise SystemExit("manifest missing USB/side-key mechanical decision")
+    for source in decision["source_artifacts"]:
+        require_path(ROOT / source)
+
+    expected_upstream = {
+        "usb_c_package": usb_binding["status"],
+        "side_buttons_package": side_buttons["status"],
+        "usb_sidekey_source_revalidation": source_revalidation["status"],
+        "placement_interface_matrix": placement["status"],
+        "enclosure_placement": enclosure["status"],
+        "component_height_step_integration": height["status"],
+        "supplier_rfq_response_normalization": supplier_responses["status"],
+    }
+    if decision["upstream_status"] != expected_upstream:
+        raise SystemExit("USB/side-key mechanical decision upstream status stale")
+
+    placements = {item["refdes_group"]: item for item in placement["placements"]}
+    usb_policy = decision["usb_mechanical_policy"]
+    if usb_policy["active_region_refdes"] != "J_USB_C":
+        raise SystemExit("USB/side-key mechanical decision USB refdes changed")
+    if usb_policy["active_region_mm"] != placements["J_USB_C"]["region_mm"]:
+        raise SystemExit("USB/side-key mechanical decision USB region stale")
+    usb_region = usb_policy["active_region_mm"]
+    if usb_region["y"] + usb_region["height"] != manifest["design_target"]["board_bbox_mm"]["height"]:
+        raise SystemExit("USB/side-key mechanical decision USB region must terminate at bottom edge")
+    if usb_policy["selected_evt0_connector"]["family"] != usb_binding["connector_strategy"]["evt0_low_risk"]["family"]:
+        raise SystemExit("USB/side-key mechanical decision EVT0 connector family stale")
+    if (
+        usb_policy["selected_evt0_connector"]["active_contacts"]
+        != usb_binding["connector_strategy"]["evt0_low_risk"]["active_contacts"]
+    ):
+        raise SystemExit("USB/side-key mechanical decision EVT0 active contact count stale")
+    if (
+        usb_policy["conditional_production_alternate"]["family"]
+        != usb_binding["connector_strategy"]["production_superspeed"]["family"]
+    ):
+        raise SystemExit("USB/side-key mechanical decision production alternate stale")
+    if len(usb_policy["conditional_production_alternate"]["promote_only_if"]) < 3:
+        raise SystemExit("USB/side-key mechanical decision USB alternate promotion gate too weak")
+    if len(usb_policy["required_mechanical_capture"]) < 4:
+        raise SystemExit("USB/side-key mechanical decision USB capture list too weak")
+
+    side_policy = decision["side_key_mechanical_policy"]
+    if side_policy["active_connector_refdes"] != "SW_POWER_VOL":
+        raise SystemExit("USB/side-key mechanical decision side-key refdes changed")
+    if side_policy["active_connector_region_mm"] != placements["SW_POWER_VOL"]["region_mm"]:
+        raise SystemExit("USB/side-key mechanical decision side-key connector region stale")
+    if side_policy["actuator_spine_region_mm"] != side_buttons["mechanical_target"]["board_region_mm"]:
+        raise SystemExit("USB/side-key mechanical decision side-key actuator region stale")
+    if side_policy["selected_primary_switch"]["family"] != side_buttons["primary_switch_family"]["family"]:
+        raise SystemExit("USB/side-key mechanical decision primary switch family stale")
+    if side_policy["selected_primary_switch"]["dimensions_mm"] != side_buttons["primary_switch_family"]["dimensions_mm"]:
+        raise SystemExit("USB/side-key mechanical decision primary switch dimensions stale")
+    if side_policy["conditional_alternate_switch"]["family"] != side_buttons["alternate_switch_family"]["family"]:
+        raise SystemExit("USB/side-key mechanical decision alternate switch family stale")
+    if len(side_policy["conditional_alternate_switch"]["promote_only_if"]) < 3:
+        raise SystemExit("USB/side-key mechanical decision side-key alternate promotion gate too weak")
+    if len(side_policy["required_mechanical_capture"]) < 4:
+        raise SystemExit("USB/side-key mechanical decision side-key capture list too weak")
+
+    dependency = decision["release_dependency"]
+    if (
+        dependency["supplier_response_packs_received"]
+        != supplier_responses["normalization_outputs"]["present_response_pack_count"]
+    ):
+        raise SystemExit("USB/side-key mechanical decision supplier response count stale")
+    for key in [
+        "supplier_response_required_before_footprint_release",
+        "routed_board_step_required_before_enclosure_release",
+    ]:
+        if dependency[key] is not True:
+            raise SystemExit(f"USB/side-key mechanical decision must require {key}")
+    if len(dependency["acceptance_measurements_required"]) < 5:
+        raise SystemExit("USB/side-key mechanical decision acceptance measurement list too weak")
+    for key, value in decision["cross_checks"].items():
+        if value is not True:
+            raise SystemExit(f"USB/side-key mechanical decision cross-check failed: {key}")
+    for blocker in [
+        "USB-C exact signed drawing, land pattern, STEP, shell stake dimensions, insertion-force data, and lifecycle evidence are missing",
+        "waterproof or superspeed USB-C alternate cannot be promoted without exact MPN, gasket/cutout datum, USB3/DP routing, and SI evidence",
+        "side-key exact MPN, force-travel curve, land pattern, STEP, lifecycle evidence, and sample lot are missing",
+        "side-key flex or enclosure load-path drawing with plunger, rib, elastomer, or stiffener datum is missing",
+    ]:
+        if blocker not in decision["release_blockers"]:
+            raise SystemExit(f"USB/side-key mechanical decision missing blocker: {blocker}")
+    for claim in [
+        "usb_c_mechanical_ready",
+        "usb_c_waterproof_ready",
+        "usb_c_superspeed_ready",
+        "side_key_mechanical_ready",
+        "side_buttons_ready",
+        "power_key_wake_ready",
+        "recovery_key_combo_ready",
+        "enclosure_ready",
+        "fabrication_ready",
+        "end_to_end_phone_ready",
+    ]:
+        if claim not in decision["forbidden_claims"]:
+            raise SystemExit(f"USB/side-key mechanical decision missing forbidden claim {claim}")
+    print(
+        "USB/side-key mechanical decision ok: "
+        f"usb={usb_policy['selected_evt0_connector']['family']} "
+        f"side={side_policy['selected_primary_switch']['family']} fail-closed"
+    )
+
+
 def check_usb_sidekey_integration() -> None:
     integration = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-integration.yaml")
     manifest = load_yaml(MANIFEST)
@@ -2052,6 +2323,7 @@ def check_usb_sidekey_integration() -> None:
         ROOT / "board/kicad/e1-phone/external-interface-design-review.yaml"
     )
     source_revalidation = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml")
+    mechanical_decision = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml")
     sequence = load_yaml(ROOT / "board/kicad/e1-phone/power-sequence-bringup-closure.yaml")
     power = load_yaml(ROOT / "board/kicad/e1-phone/power-thermal-budget.yaml")
     netlist = load_yaml(ROOT / "board/kicad/e1-phone/block-netlist.yaml")
@@ -2077,6 +2349,7 @@ def check_usb_sidekey_integration() -> None:
         "board/kicad/e1-phone/placement-interface-matrix.yaml",
         "board/kicad/e1-phone/external-interface-design-review.yaml",
         "board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml",
+        "board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml",
         "board/kicad/e1-phone/power-sequence-bringup-closure.yaml",
         "board/kicad/e1-phone/power-thermal-budget.yaml",
         "board/kicad/e1-phone/block-netlist.yaml",
@@ -2114,6 +2387,11 @@ def check_usb_sidekey_integration() -> None:
         raise SystemExit("USB-C region must terminate at bottom board edge")
     if usb_context["selected_evt0_connector"] != usb_binding["connector_strategy"]["evt0_low_risk"]:
         raise SystemExit("USB/side-key integration EVT0 connector binding stale")
+    if (
+        usb_context["selected_evt0_connector"]["family"]
+        != mechanical_decision["usb_mechanical_policy"]["selected_evt0_connector"]["family"]
+    ):
+        raise SystemExit("USB/side-key integration mechanical USB decision stale")
     if usb_context["production_alternate"] != usb_binding["connector_strategy"]["production_superspeed"]:
         raise SystemExit("USB/side-key integration production USB-C alternate stale")
     if usb_context["required_blocks"] != usb_binding["electrical_topology"]["required_blocks"]:
@@ -2184,6 +2462,11 @@ def check_usb_sidekey_integration() -> None:
         raise SystemExit("USB/side-key integration side-key external review region stale")
     if side_context["primary_switch_family"] != side_buttons["primary_switch_family"]:
         raise SystemExit("USB/side-key integration primary side-switch binding stale")
+    if (
+        side_context["primary_switch_family"]["family"]
+        != mechanical_decision["side_key_mechanical_policy"]["selected_primary_switch"]["family"]
+    ):
+        raise SystemExit("USB/side-key integration mechanical side-key decision stale")
     if side_context["alternate_switch_family"] != side_buttons["alternate_switch_family"]:
         raise SystemExit("USB/side-key integration alternate side-switch binding stale")
     flex_budget = side_buttons["layout_closure_requirements"]["side_key_flex_pin_budget"]
@@ -2476,6 +2759,7 @@ def check_usb_sidekey_acceptance() -> None:
     acceptance = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml")
     integration = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-integration.yaml")
     revalidation = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml")
+    mechanical_decision = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml")
     placement = load_yaml(ROOT / "board/kicad/e1-phone/placement-interface-matrix.yaml")
     usb_binding = load_yaml(ROOT / "package/usb-c/e1-phone-usb-c-port.yaml")
     side_buttons = load_yaml(ROOT / "package/human-interface/side-buttons.yaml")
@@ -2491,6 +2775,7 @@ def check_usb_sidekey_acceptance() -> None:
         "board/kicad/e1-phone/usb-sidekey-integration.yaml",
         "board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml",
         "board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml",
+        "board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml",
         "board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml",
         "package/usb-c/e1-phone-usb-c-port.yaml",
         "package/human-interface/side-buttons.yaml",
@@ -2534,6 +2819,18 @@ def check_usb_sidekey_acceptance() -> None:
         raise SystemExit("USB/side-key acceptance charger stale")
     if usb_context["selected_evt0_connector"]["family"] != usb_binding["connector_strategy"]["evt0_low_risk"]["family"]:
         raise SystemExit("USB/side-key acceptance EVT0 connector family stale")
+    if mechanical_decision["status"] != "blocked_usb_sidekey_mechanical_decision_requires_supplier_drawings_routed_step_and_measurements":
+        raise SystemExit("USB/side-key acceptance mechanical decision unexpectedly open")
+    if (
+        summary["usb_c_region_mm"]
+        != mechanical_decision["usb_mechanical_policy"]["active_region_mm"]
+    ):
+        raise SystemExit("USB/side-key acceptance mechanical USB region stale")
+    if (
+        summary["side_key_connector_region_mm"]
+        != mechanical_decision["side_key_mechanical_policy"]["active_connector_region_mm"]
+    ):
+        raise SystemExit("USB/side-key acceptance mechanical side-key region stale")
 
     if revalidation["schema"] != "eliza.e1_phone_usb_sidekey_source_revalidation.v1":
         raise SystemExit("USB/side-key source revalidation schema diverges")
@@ -8236,6 +8533,16 @@ def check_manufacturing_closure() -> None:
         raise SystemExit(f"testpoint pads are not assigned to required nets: {scaffold}")
     if not state["kibot_outputs_are_skeleton_commented"]:
         raise SystemExit("manufacturing closure expects kibot outputs to remain a skeleton")
+    if "board/kicad/e1-phone/kibot.yaml" not in closure["source_artifacts"]:
+        raise SystemExit("manufacturing closure must cite the kibot config as a source artifact")
+    kibot_path = ROOT / "board/kicad/e1-phone/kibot.yaml"
+    require_path(kibot_path)
+    kibot = load_yaml(kibot_path)
+    if set(kibot) != {"kibot"} or kibot["kibot"].get("version") != 1:
+        raise SystemExit(
+            "kibot config is no longer a commented skeleton; update manufacturing closure "
+            "evidence instead of leaving the fail-closed gate unchanged"
+        )
     outputs = closure["production_outputs"]
     required_outputs = {
         "gerber_x2",
@@ -11212,6 +11519,7 @@ def check_layout_optimization_execution() -> None:
     cellular_top_island = load_yaml(
         ROOT / "board/kicad/e1-phone/cellular-top-island-repack-feasibility.yaml"
     )
+    display_downselect = load_yaml(ROOT / "board/kicad/e1-phone/display-envelope-downselect.yaml")
     camera_downselect = load_yaml(
         ROOT / "board/kicad/e1-phone/camera-module-fit-downselect.yaml"
     )
@@ -11236,6 +11544,7 @@ def check_layout_optimization_execution() -> None:
         "board/kicad/e1-phone/component-envelope-fit-audit.yaml",
         "board/kicad/e1-phone/radio-module-envelope-orderability-gate.yaml",
         "board/kicad/e1-phone/cellular-top-island-repack-feasibility.yaml",
+        "board/kicad/e1-phone/display-envelope-downselect.yaml",
         "board/kicad/e1-phone/camera-module-fit-downselect.yaml",
         "board/kicad/e1-phone/placement-repack-candidate.yaml",
         "board/kicad/e1-phone/route-feasibility-density.yaml",
@@ -11257,6 +11566,7 @@ def check_layout_optimization_execution() -> None:
         "component_envelope_fit_audit": envelopes["status"],
         "radio_module_envelope_orderability_gate": radio_envelope["status"],
         "cellular_top_island_repack_feasibility": cellular_top_island["status"],
+        "display_envelope_downselect": display_downselect["status"],
         "camera_module_fit_downselect": camera_downselect["status"],
         "placement_repack_candidate": repack["status"],
         "route_feasibility_density": feasibility["status"],
@@ -11282,6 +11592,16 @@ def check_layout_optimization_execution() -> None:
         != display_fit["primary_clearance_in_current_envelope_mm"]
     ):
         raise SystemExit("layout optimization display clearance diverges")
+    if (
+        geometry["display_outline_mm"]
+        != display_downselect["mechanical_fit_decision"]["primary_module_outline_mm"]
+    ):
+        raise SystemExit("layout optimization display outline diverges from display downselect")
+    if (
+        geometry["display_clearance_mm"]
+        != display_downselect["mechanical_fit_decision"]["clearance_in_current_envelope_mm"]
+    ):
+        raise SystemExit("layout optimization display clearance diverges from display downselect")
 
     pressure = execution["layout_pressure_closure"]
     if (
@@ -11445,6 +11765,7 @@ def check_end_to_end_readiness() -> None:
 
     required_sources = [
         "board/kicad/e1-phone/artifact-manifest.yaml",
+        "board/kicad/e1-phone/display-envelope-downselect.yaml",
         "board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml",
         "board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml",
         "board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml",
@@ -11509,6 +11830,7 @@ def check_end_to_end_readiness() -> None:
             raise SystemExit(f"end-to-end objective status stale: {objective}")
 
     expected_evidence = {
+        "popular_screen_size_fit": "board/kicad/e1-phone/display-envelope-downselect.yaml",
         "screen_camera_oem_sourcing": "board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml",
         "usb_c_power_volume_hardware": "board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml",
         "off_the_shelf_wireless_modules": "board/kicad/e1-phone/module-rf-pinout-execution.yaml",
@@ -11555,6 +11877,143 @@ def check_end_to_end_readiness() -> None:
     )
 
 
+def check_supplier_pinout_evidence() -> None:
+    pinout_dir = ROOT / "board/kicad/e1-phone/supplier-pinouts"
+    manifest = load_yaml(pinout_dir / "pinout-evidence-manifest.yaml")
+    if manifest["schema"] != "eliza.e1_phone_supplier_pinout_manifest.v1":
+        raise SystemExit(f"unexpected supplier pinout manifest schema: {manifest['schema']}")
+    for source in manifest["source_artifacts"]:
+        require_path(ROOT / source)
+    captured = manifest["captured_pinouts"]
+    if not captured:
+        raise SystemExit("supplier pinout manifest captured nothing")
+    allowed_evidence_classes = set(manifest["cross_checks"]["captured_files_evidence_class"])
+    if not allowed_evidence_classes <= {"public_supplier_datasheet", "public_som_connector_pinout"}:
+        raise SystemExit(
+            "supplier pinout manifest declares a non-public evidence class: "
+            f"{sorted(allowed_evidence_classes)}"
+        )
+    seen_files = set()
+    for entry in captured:
+        rel = pinout_dir / entry["file"]
+        require_path(rel)
+        seen_files.add(entry["file"])
+        pinout = load_yaml(rel)
+        if pinout["schema"] not in {
+            "eliza.e1_phone_supplier_pinout.v1",
+            "eliza.e1_phone_supplier_pinout_som.v1",
+        }:
+            raise SystemExit(f"unexpected pinout schema in {entry['file']}: {pinout['schema']}")
+        if pinout["evidence_class"] not in allowed_evidence_classes:
+            raise SystemExit(
+                f"supplier pinout {entry['file']} is not public-datasheet evidence: "
+                f"{pinout['evidence_class']}"
+            )
+        if "evidence_class" in entry and entry["evidence_class"] != pinout["evidence_class"]:
+            raise SystemExit(f"supplier pinout manifest evidence class diverges: {entry['file']}")
+        source_doc = pinout.get("source_doc")
+        if isinstance(source_doc, str):
+            urls = [source_doc]
+        elif isinstance(source_doc, list):
+            urls = [item["url"] if isinstance(item, dict) else item for item in source_doc]
+        else:
+            urls = []
+        if not any(str(url).startswith("http") for url in urls):
+            raise SystemExit(f"supplier pinout {entry['file']} lacks a public source_doc URL")
+
+    on_disk = {p.name for p in pinout_dir.glob("*-pinout.yaml")}
+    if on_disk != seen_files:
+        raise SystemExit(
+            "supplier pinout directory and manifest diverge: "
+            f"on_disk_only={sorted(on_disk - seen_files)} manifest_only={sorted(seen_files - on_disk)}"
+        )
+
+    cross_checks = manifest["cross_checks"]
+    if cross_checks["total_captured"] != len(captured):
+        raise SystemExit("supplier pinout manifest total_captured stale")
+    if cross_checks["every_captured_file_present_on_disk"] is not True:
+        raise SystemExit("supplier pinout manifest must keep every captured file present on disk")
+    if cross_checks["every_captured_file_cites_public_url"] is not True:
+        raise SystemExit("supplier pinout manifest must keep every captured file public-source-cited")
+    if cross_checks["pinout_footprint_freeze_yaml_untouched"] is not True:
+        raise SystemExit("supplier pinout capture must not promote the pinout-footprint-freeze gate")
+
+    for claim in [
+        "production_release_evidence_ready",
+        "pinout_reviews_complete",
+        "symbols_ready",
+        "footprints_ready",
+    ]:
+        if claim not in manifest["forbidden_claims"]:
+            raise SystemExit(f"supplier pinout manifest missing forbidden claim: {claim}")
+    if not manifest["release_blockers_unchanged"]:
+        raise SystemExit("supplier pinout manifest must preserve production-release blockers")
+    print(
+        f"supplier pinout evidence ok: {len(captured)} public-datasheet pinouts captured, "
+        "production-release gate unchanged"
+    )
+
+
+# Files under board/kicad/e1-phone/ that are intentionally owned by a gate or
+# test other than this structural check. Each entry names the owning flow so the
+# orphan report below stays a deliberate allow-list, not a silent escape hatch.
+NON_BOARD_PACKAGE_OWNED_FILES = {
+    # Non-release routing demonstration set: generated by
+    # scripts/generate_e1_phone_routed_mainboard_demo.py and validated by
+    # scripts/test_generate_e1_phone_cad.py.
+    "board/kicad/e1-phone/pcb-implementation-audit-demo.yaml": "generate_e1_phone_routed_mainboard_demo.py",
+    "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-bom.csv": "generate_e1_phone_routed_mainboard_demo.py",
+    "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-pos.csv": "generate_e1_phone_routed_mainboard_demo.py",
+}
+
+
+def check_no_orphaned_board_files() -> None:
+    board_dir = ROOT / "board/kicad/e1-phone"
+    manifest = load_yaml(MANIFEST)
+
+    consumed: set[str] = set()
+    for paths in manifest["current_artifacts"].values():
+        consumed.update(paths)
+
+    source = Path(__file__).read_text()
+    consumed.update(re.findall(r"board/kicad/e1-phone/[^\"'\s)]+", source))
+    consumed.update(NON_BOARD_PACKAGE_OWNED_FILES)
+
+    # The RFQ transmittal drafts are addressed by computed paths, not string
+    # literals, but the gate already loads each one via check_supplier_rfq_transmittal_drafts.
+    # Treat the authoritative draft index as the consumption record.
+    drafts = load_yaml(ROOT / "board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml")
+    consumed.update(drafts["generated_draft_files"])
+
+    pinout_manifest = load_yaml(
+        ROOT / "board/kicad/e1-phone/supplier-pinouts/pinout-evidence-manifest.yaml"
+    )
+    consumed.add("board/kicad/e1-phone/supplier-pinouts/pinout-evidence-manifest.yaml")
+    for entry in pinout_manifest["captured_pinouts"]:
+        consumed.add(f"board/kicad/e1-phone/supplier-pinouts/{entry['file']}")
+
+    orphans = []
+    for path in sorted(board_dir.rglob("*")):
+        if not path.is_file() or path.suffix not in {".yaml", ".yml", ".csv"}:
+            continue
+        rel = str(path.relative_to(ROOT))
+        if rel == str(MANIFEST.relative_to(ROOT)):
+            continue
+        if rel not in consumed:
+            orphans.append(rel)
+
+    if orphans:
+        raise SystemExit(
+            "BLOCKED: board package has orphaned evidence files consumed by no gate or test: "
+            + ", ".join(orphans)
+            + " (register each in board/kicad/e1-phone/artifact-manifest.yaml, add a check, "
+            "or list it in NON_BOARD_PACKAGE_OWNED_FILES with its owning flow)"
+        )
+    print(
+        "orphan report ok: every board YAML/CSV is consumed by a gate, test, or named owner"
+    )
+
+
 def check_release_gates_fail_closed(manifest: dict) -> None:
     gates = manifest["release_gates"]
     for name, gate in gates.items():
@@ -11581,9 +12040,11 @@ def main() -> int:
     check_supplier_rfq_response_normalization()
     check_supplier_rfq_transmittal_drafts()
     check_display_camera_source_revalidation()
+    check_display_envelope_downselect()
     check_display_camera_connector_pinout_execution()
     check_display_camera_schematic_net_binding()
     check_display_camera_acceptance()
+    check_usb_sidekey_mechanical_decision()
     check_usb_sidekey_integration()
     check_usb_sidekey_schematic_net_binding()
     check_usb_sidekey_acceptance()
@@ -11643,7 +12104,9 @@ def main() -> int:
     check_board_optimization_scorecard()
     check_layout_optimization_execution()
     check_end_to_end_readiness()
+    check_supplier_pinout_evidence()
     check_release_gates_fail_closed(manifest)
+    check_no_orphaned_board_files()
     print("E1 phone board package structurally consistent; not fabrication ready")
     return 0
 

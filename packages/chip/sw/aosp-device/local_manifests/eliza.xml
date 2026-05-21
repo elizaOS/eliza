@@ -120,6 +120,14 @@
               dest="vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml" />
     <linkfile src="packages/os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml"
               dest="vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml" />
+    <linkfile src="packages/os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.system.bridge.xml"
+              dest="vendor/eliza/permissions/privapp-permissions-ai.elizaos.system.bridge.xml" />
+    <linkfile src="packages/os/android/system-ui/native/Android.bp"
+              dest="vendor/eliza/system-ui/native/Android.bp" />
+    <linkfile src="packages/os/android/system-ui/native/src/main/AndroidManifest.xml"
+              dest="vendor/eliza/system-ui/native/src/main/AndroidManifest.xml" />
+    <linkfile src="packages/os/android/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridge.kt"
+              dest="vendor/eliza/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridge.kt" />
     <linkfile src="packages/os/android/vendor/eliza/init/init.eliza.rc"
               dest="vendor/eliza/init/init.eliza.rc" />
     <linkfile src="packages/os/android/vendor/eliza/manifests/aosp-assistant-full-control.json"

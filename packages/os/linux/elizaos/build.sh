@@ -405,12 +405,12 @@ if [ ! -f "${TEMPLATE}" ]; then
 else
     SHA256="$(awk '{print $1}' "${OUT}/${ARTIFACT_BASENAME}.iso.sha256")"
     sed \
-        -e "s|@ARCH@|${ARCH}|g" \
-        -e "s|@PROFILE@|${PROFILE}|g" \
-        -e "s|@ARTIFACT@|${ARTIFACT_BASENAME}.iso|g" \
-        -e "s|@BUILD_TS@|${BUILD_TS}|g" \
-        -e "s|@SHA256@|${SHA256}|g" \
-        -e "s|@SIZE@|${ISO_BYTES}|g" \
+        -e "s|@@ARCH@@|${ARCH}|g" \
+        -e "s|@@PROFILE@@|${PROFILE}|g" \
+        -e "s|@@FILENAME@@|${ARTIFACT_BASENAME}.iso|g" \
+        -e "s|@@BUILD_TIMESTAMP@@|${BUILD_TS}|g" \
+        -e "s|@@SHA256@@|${SHA256}|g" \
+        -e "s|@@SIZE_BYTES@@|${ISO_BYTES}|g" \
         "${TEMPLATE}" > "${OUT}/${ARTIFACT_BASENAME}.manifest.json"
     python3 -c "import json,sys; json.load(open('${OUT}/${ARTIFACT_BASENAME}.manifest.json'))"
     echo "    manifest: ${OUT}/${ARTIFACT_BASENAME}.manifest.json"

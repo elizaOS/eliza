@@ -15,30 +15,18 @@ either calibrator.
 
 from __future__ import annotations
 
-import json
-import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from ._base import MIN_SCALE, QuantizationManifest
+
 
 @dataclass(frozen=True)
-class GptqInt4Manifest:
+class GptqInt4Manifest(QuantizationManifest):
     schema: str
     group_size: int
     weight_scales: dict[str, list[float]]
     weight_zero_points: dict[str, list[int]]
-
-    def to_json(self) -> str:
-        return json.dumps(
-            {
-                "schema": self.schema,
-                "group_size": self.group_size,
-                "weight_scales": self.weight_scales,
-                "weight_zero_points": self.weight_zero_points,
-            },
-            indent=2,
-            sort_keys=True,
-        )
 
 
 class GptqInt4Calibrator:
@@ -65,7 +53,7 @@ class GptqInt4Calibrator:
         if any(z < -8 or z > 7 for z in group_zero_points):
             raise ValueError(f"GPTQ {name}: zero point outside signed 4-bit range")
         self._weight_scales[name] = [
-            (v / 7.0) if v > 0 else math.ldexp(1.0, -24) for v in group_max_abs
+            (v / 7.0) if v > 0 else MIN_SCALE for v in group_max_abs
         ]
         self._weight_zero_points[name] = list(group_zero_points)
 
