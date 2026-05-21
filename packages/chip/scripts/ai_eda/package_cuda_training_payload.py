@@ -12,7 +12,7 @@ import argparse
 import json
 import subprocess
 import tarfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +69,7 @@ BASE_INCLUDE = (
     "scripts/ai_eda/convert_openroad_eda_corpus.py",
     "scripts/ai_eda/convert_circuitnet3_to_internal_records.py",
     "scripts/ai_eda/convert_chipbench_d_to_internal_records.py",
+    "scripts/ai_eda/convert_openabc_d_to_internal_records.py",
     "scripts/ai_eda/convert_tilos_macroplacement.py",
     "scripts/ai_eda/build_macro_placement_supervised_dataset.py",
     "scripts/ai_eda/train_macro_placement_supervised_model.py",
@@ -182,7 +183,7 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
     dirty = git_output(["status", "--short", "--", "packages/chip"])
     plan = {
         "schema": "eliza.ai_eda.cuda_training_payload.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "git": {
@@ -211,9 +212,9 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
         ],
         "required_remote_commands": [
             "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id <cuda-host>",
-            "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile setup-check --run-id <cuda-host> --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d",
-            "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile local-smoke --run-id <cuda-host> --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d",
-            "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id <cuda-host> --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --include-torch",
+            "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile setup-check --run-id <cuda-host> --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d",
+            "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile local-smoke --run-id <cuda-host> --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d",
+            "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id <cuda-host> --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --include-torch",
             "python3 scripts/ai_eda/preflight_cuda_training_stack.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/check_external_asset_manifests.py",
             "python3 scripts/ai_eda/check_external_intake_manifests.py --run-id <cuda-host>",
@@ -224,6 +225,8 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
             "python3 scripts/ai_eda/fetch_external_asset.py --asset circuitnet3 --verify-only --run-id <cuda-host>",
             "python3 scripts/ai_eda/fetch_external_asset.py --asset chipbench-d --execute --run-id <cuda-host>",
             "python3 scripts/ai_eda/fetch_external_asset.py --asset chipbench-d --verify-only --run-id <cuda-host>",
+            "python3 scripts/ai_eda/fetch_external_asset.py --asset openabc-d --execute --run-id <cuda-host>",
+            "python3 scripts/ai_eda/fetch_external_asset.py --asset openabc-d --verify-only --run-id <cuda-host>",
             "python3 scripts/ai_eda/convert_openroad_eda_corpus.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/convert_tilos_macroplacement.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/convert_circuitnet3_to_internal_records.py --run-id <cuda-host> --sample-limit 32",
@@ -232,6 +235,8 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
             "python3 scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/chipbench_d/<cuda-host>/records",
             "python3 scripts/ai_eda/train_circuitnet3_timing_power_baseline.py --run-id <cuda-host> --record-dir build/ai_eda/circuitnet3/<cuda-host>/records",
             "python3 scripts/ai_eda/check_circuitnet3_surrogate.py --report build/ai_eda/circuitnet3_surrogate/<cuda-host>/training_run.json",
+            "python3 scripts/ai_eda/convert_openabc_d_to_internal_records.py --run-id <cuda-host> --sample-limit 64",
+            "python3 scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/openabc_d/<cuda-host>/records",
             "python3 scripts/ai_eda/materialize_e1_softmacro_cases.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/build_macro_placement_supervised_dataset.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/check_macro_placement_supervised_dataset.py --report build/ai_eda/macro_placement_supervised_dataset/<cuda-host>/macro_placement_supervised_dataset_report.json",
@@ -276,6 +281,8 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
             "build/ai_eda/circuitnet3_surrogate/<run-id>/training_run.json",
             "build/ai_eda/circuitnet3_surrogate/<run-id>/metrics.json",
             "build/ai_eda/circuitnet3_surrogate/<run-id>/circuitnet3_surrogate_model.json",
+            "build/ai_eda/openabc_d/<run-id>/conversion_report.json",
+            "build/ai_eda/openabc_d/<run-id>/records/*.json",
             "build/ai_eda/macro_placement_supervised_dataset/<run-id>/macro_placement_supervised_dataset_report.json",
             "build/ai_eda/macro_placement_supervised_dataset/<run-id>/{train,val,test}.jsonl",
             "build/ai_eda/macro_placement_supervised_model/<run-id>/supervised_training_run.json",
@@ -321,7 +328,7 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--asset", action="append", default=[])
     return parser.parse_args()
@@ -342,7 +349,7 @@ def main() -> int:
         archive.add(plan_path, arcname="cuda_training_run_plan.json")
     report = {
         "schema": "eliza.ai_eda.cuda_training_payload_report.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "asset_count": len(selected),

@@ -54,9 +54,10 @@ make ai-eda-cuda-payload
 
 Use `make ai-eda-bootstrap-metadata` on a fresh machine first. It downloads
 nothing. Use `make ai-eda-bootstrap-setup-check` after reviewed payloads such as
-TILOS MacroPlacement, OpenROAD EDA Corpus, and CircuitNet 3.0 have been fetched
-or restored; it rebuilds normalized corpora and E1 cases without long
-training/synthesis steps. Use `make ai-eda-bootstrap-local-smoke` for the
+TILOS MacroPlacement, OpenROAD EDA Corpus, CircuitNet 3.0, ChiPBench-D, and
+OpenABC-D have been fetched or restored; it rebuilds normalized corpora,
+bounded surrogate baselines, and E1 cases without CUDA training. Use
+`make ai-eda-bootstrap-local-smoke` for the
 broader local evidence stack. On a CUDA host, run the generated payload flow
 with:
 

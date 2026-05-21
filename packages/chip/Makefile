@@ -1374,7 +1374,7 @@ ai-eda-bootstrap-metadata:
 	@$(PYTHON) scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id validation
 
 ai-eda-bootstrap-setup-check:
-	@$(PYTHON) scripts/ai_eda/bootstrap_ai_eda_stack.py --profile setup-check --run-id validation --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d
+	@$(PYTHON) scripts/ai_eda/bootstrap_ai_eda_stack.py --profile setup-check --run-id validation --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d
 
 ai-eda-bootstrap-local-smoke:
 	@$(PYTHON) scripts/ai_eda/bootstrap_ai_eda_stack.py --profile local-smoke --run-id validation

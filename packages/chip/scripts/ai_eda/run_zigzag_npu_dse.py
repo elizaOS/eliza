@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -37,7 +37,7 @@ def summary(data: dict) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--current", type=Path, default=DEFAULT_CURRENT)
     parser.add_argument("--target", type=Path, default=DEFAULT_TARGET)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
@@ -49,7 +49,7 @@ def main() -> int:
     report = {
         "schema": "eliza.ai_eda.zigzag_dse_report.v1",
         "run_id": args.run_id,
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "mode": "dry-run",
         "status": "DRY_RUN",
         "claim_boundary": CLAIM_BOUNDARY,

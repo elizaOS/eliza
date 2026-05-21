@@ -14,7 +14,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +38,7 @@ LOCAL_SMOKE_TARGETS = (
     "ai-eda-circuitnet3-convert",
     "ai-eda-chipbench-d-convert",
     "ai-eda-circuitnet3-surrogate",
+    "ai-eda-openabc-d-convert",
     "ai-eda-e1-softmacro-cases",
     "ai-eda-external-fixture-convert",
     "ai-eda-e1-openlane-convert",
@@ -61,6 +62,7 @@ SETUP_CHECK_TARGETS = (
     "ai-eda-circuitnet3-convert",
     "ai-eda-chipbench-d-convert",
     "ai-eda-circuitnet3-surrogate",
+    "ai-eda-openabc-d-convert",
     "ai-eda-e1-softmacro-cases",
     "ai-eda-external-fixture-convert",
     "ai-eda-e1-openlane-convert",
@@ -82,7 +84,7 @@ HANDOFF_TARGETS = (
 
 
 def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
-    started = datetime.now(UTC).replace(microsecond=0).isoformat()
+    started = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     try:
         result = subprocess.run(
             command,
@@ -95,7 +97,7 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
         return {
             "command": command,
             "started_at_utc": started,
-            "finished_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+            "finished_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             "returncode": result.returncode,
             "stdout_tail": result.stdout[-8000:],
             "stderr_tail": result.stderr[-8000:],
@@ -104,7 +106,7 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
         return {
             "command": command,
             "started_at_utc": started,
-            "finished_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+            "finished_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             "returncode": 124,
             "stdout_tail": (exc.stdout or "")[-8000:] if isinstance(exc.stdout, str) else "",
             "stderr_tail": (exc.stderr or "")[-8000:] if isinstance(exc.stderr, str) else "",
@@ -216,7 +218,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.bootstrap_report.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "profile": args.profile,
         "claim_boundary": CLAIM_BOUNDARY,

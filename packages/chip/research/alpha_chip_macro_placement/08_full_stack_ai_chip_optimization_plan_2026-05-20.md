@@ -345,11 +345,12 @@ The first reproducibility spine is now checked in:
 Current local validation on the 128 GiB M4 host:
 
 - `make docs-check`: PASS.
-- `make ai-eda-external-intake-check`: PASS for 7 metadata manifests:
+- `make ai-eda-external-intake-check`: PASS for 12 metadata manifests:
   `google-circuit-training`, `tilos-macroplacement`,
-  `openroad-eda-corpus`, plus pending metadata-only manifests for
-  `chipbench-d`, `circuitnet3`, `intel-floorset`, and
-  `macro-place-challenge-2026`.
+  `openroad-eda-corpus`, `chipbench-d`, `circuitnet3`, `aieda-idata`,
+  `chipdiffusion`, `openabc-d`, `timeloop-accelergy`,
+  `openroad-flow-scripts`, plus pending metadata-only manifests for
+  `intel-floorset` and `macro-place-challenge-2026`.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset openroad-eda-corpus
   --dry-run --run-id intake-validation`: PASS and points the future download to
   `external/datasets/openroad-eda-corpus/payload`.
@@ -365,20 +366,34 @@ Current local validation on the 128 GiB M4 host:
   release. This is training/pretraining data only, not E1 signoff evidence.
 - `make ai-eda-circuitnet3-convert`: PASS when the reviewed local
   CircuitNet3 payload archive is present. The bounded validation sample
-  converts 3 public CircuitNet3 final cases into 9 internal
+  converts 16 public CircuitNet3 final cases into 48 internal
   `eda.design_bundle.v1`, `eda.graph_sample.v1`, and `eda.flow_run.v1`
   records, with labels explicitly quarantined as pretraining-only and not E1
   signoff.
 - `make ai-eda-circuitnet3-surrogate`: PASS. The current dependency-free
-  baseline trains over those 3 converted CircuitNet3 flow-run records with
-  train/validation/test split counts of 1/1/1. It writes
+  baseline trains over those 16 converted CircuitNet3 flow-run records with a
+  deterministic sorted-case split of 12 train, 2 validation, and 2 test cases.
+  It writes
   `build/ai_eda/circuitnet3_surrogate/validation/training_run.json`,
   `metrics.json`, and `circuitnet3_surrogate_model.json`, then validates split
   counts, model targets, finite metrics, and the pretraining-only claim
-  boundary. Current held-out one-sample MAE values are validation
-  `min_slack=0.044`, `total_power=2.99838384`; test `min_slack=0.291`,
-  `total_power=2.27140204`. These are smoke metrics only, not an E1 timing or
-  power claim.
+  boundary. Current validation MAE values include `min_slack=0.9475` and
+  `total_power=8.52562112`; current test MAE values include
+  `min_slack=1.752` and `total_power=88.45308526`. These are smoke metrics
+  only, not an E1 timing or power claim.
+- `make ai-eda-chipbench-d-convert`: PASS. The bounded local sample converts 3
+  restored ChiPBench-D payload cases into 9 internal placement/design/flow
+  records from 20 available cases.
+- `make ai-eda-openabc-d-convert`: PASS. The bounded local sample converts 8
+  restored OpenABC-D BENCH logic networks into 24 internal
+  `eda.design_bundle.v1`, `eda.graph_sample.v1`, and `eda.flow_run.v1`
+  records for synthesis-policy pretraining. The records remain public
+  benchmark training data only and require leakage review plus E1 equivalence
+  replay before they can influence a chip change.
+- Verify-only payload checks now PASS for restored `chipbench-d`,
+  `circuitnet3`, `aieda-idata`, `chipdiffusion`, `openabc-d`, and
+  `timeloop-accelergy`. `openroad-flow-scripts` is intentionally BLOCKED
+  because the current local clone is incomplete and has no readable `HEAD`.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset intel-floorset
   --dry-run --run-id validation`: PASS and emits a dry-run report.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset
@@ -659,8 +674,8 @@ Implemented schema foundation:
 - `scripts/ai_eda/convert_circuitnet3_to_internal_records.py` converts a
   bounded sample directly from
   `external/datasets/circuitnet3/payload/circuitNetv3.zip` without extracting
-  the full archive. Current local validation converts 3 real CircuitNet 3.0
-  final cases into 9 internal records: `eda.design_bundle.v1`,
+  the full archive. Current local validation converts 16 real CircuitNet 3.0
+  final cases into 48 internal records: `eda.design_bundle.v1`,
   `eda.graph_sample.v1`, and `eda.flow_run.v1` per case. The converter records
   2,004 available final cases, 57,975 zip entries, per-instance timing-arc
   features, power summaries, and explicit blockers that labels are public
@@ -672,8 +687,15 @@ Implemented schema foundation:
   intentionally dependency-free and mean-based so it can run on the Mac and on a
   fresh CUDA host before graph neural predictors are installed. It validates
   JSONL split counts, finite target predictions, and per-split MAE fields; the
-  next real step is scaling conversion beyond the 3-case local smoke and using
+  next real step is scaling conversion beyond the 16-case local smoke and using
   source-level split metadata before training neural timing/power predictors.
+- `scripts/ai_eda/convert_chipbench_d_to_internal_records.py` converts bounded
+  real ChiPBench-D payload cases into internal placement/design/flow records
+  for macro-placement pretraining.
+- `scripts/ai_eda/convert_openabc_d_to_internal_records.py` converts bounded
+  OpenABC-D BENCH logic networks into graph and flow records for
+  synthesis-policy pretraining, with explicit blockers for leakage review,
+  sequence-label extraction, E1 replay, and equivalence checking.
 - `scripts/ai_eda/convert_e1_openlane_to_internal_records.py` converts the
   checked-in E1 SKY130 OpenLane config into real local `eda.design_bundle.v1`,
   `eda.placement_case.v1`, and blocked `eda.flow_run.v1` records. The current
@@ -795,8 +817,9 @@ Implemented schema foundation:
   `make ai-eda-logic-synthesis-baseline` generates the first E1 Yosys/ABC
   recipe corpus and local baseline report. On this Mac, DMA passes four Yosys
   recipes, NPU passes two generic Yosys recipes, both NPU ABC mapping recipes
-  time out under the interactive 20 second limit, and OpenABC-D remains blocked
-  until external assets are fetched and reviewed. Current validation records 6
+  time out under the interactive 20 second limit, and OpenABC-D remains
+  quarantined as public benchmark pretraining data until recipe labels, leakage
+  review, E1 replay, and equivalence checks exist. Current validation records 6
   passed recipes, 4 blocked recipes, and 0 failed recipes.
   `scripts/ai_eda/check_logic_synthesis_policy_baseline.py` validates the
   recipe corpus and baseline report: source-modification and equivalence
@@ -1489,7 +1512,8 @@ not as:
 - [x] Validate expanded macro-placement candidate directory and replay-blocker
   plan.
 - [x] Generate and convert E1 4x4/8x8 softmacro placement cases.
-- [ ] Convert real ChiPBench-D metadata and one sample case after license/storage review.
+- [x] Convert real ChiPBench-D metadata and a bounded sample after
+  license/storage review.
 - [x] Convert one real CircuitNet 3.0 graph sample after local payload fetch
   and schema review.
 - [ ] Convert one real iDATA graph/flow sample after license/storage review.

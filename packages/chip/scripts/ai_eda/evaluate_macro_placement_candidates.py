@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -195,7 +195,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.macro_placement_candidate_eval.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "candidate_dirs": [rel(path) for path in candidate_dirs],

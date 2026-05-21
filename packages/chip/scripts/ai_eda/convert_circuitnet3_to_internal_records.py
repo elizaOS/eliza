@@ -9,7 +9,7 @@ import math
 import re
 import zipfile
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -231,7 +231,7 @@ def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_
     paths = [write_json(out_dir, record) for record in (design_bundle, graph_sample, flow_run)]
     return [
         {"case": case_name, "schema": record["schema"], "json": rel(path), "instance_count": len(nodes), "timing_arc_count": len(edges)}
-        for record, path in zip((design_bundle, graph_sample, flow_run), paths, strict=True)
+        for record, path in zip((design_bundle, graph_sample, flow_run), paths)
     ]
 
 
@@ -239,7 +239,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, default=DEFAULT_ZIP)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=3)
     return parser.parse_args()
 
@@ -261,7 +261,7 @@ def main() -> int:
             converted.extend(convert_case(zip_file, prefix, out_dir, args.archive))
         report = {
             "schema": "eliza.ai_eda.circuitnet3_conversion_report.v1",
-            "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+            "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             "run_id": args.run_id,
             "claim_boundary": CLAIM_BOUNDARY,
             "release_use_allowed": False,
