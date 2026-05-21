@@ -1,0 +1,16 @@
+{
+  "schema": "eliza.secure_boot_negative_transcript.v1",
+  "case": "revoked_key_id",
+  "description": "Genuine root signature but key_id (3) is set in revoked bitmap.",
+  "mitigation": "M1",
+  "expect_accept": false,
+  "expect_halt_code": 7,
+  "expect_halt_name": "KEY_ID_REVOKED",
+  "observed_accept": false,
+  "observed_halt_code": 7,
+  "observed_halt_name": "KEY_ID_REVOKED",
+  "halt_record_hex": "48414c5401000700000000000700000003000000000000000000000000000000",
+  "halt_record_len": 32,
+  "result": "PASS",
+  "as_of": "2026-05-21T14:03:44.451020+00:00"
+}
