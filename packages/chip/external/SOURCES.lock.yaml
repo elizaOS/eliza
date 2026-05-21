@@ -21,9 +21,9 @@ entries:
     license_status: review_required
     revision:
       type: commit
-      value: PIN_AFTER_FETCH
-    expected_size: unknown_until_fetch
-    checksum_status: blocked_until_fetch
+      value: c417a3a13f40867b649c719c03daaf1b39a909bc
+    expected_size: fetched_payload_metadata_recorded
+    checksum_status: verify_only_records_file_manifest
     allowed_use: deterministic-replay-candidate
     e1_lane:
       - macro_placement_policy

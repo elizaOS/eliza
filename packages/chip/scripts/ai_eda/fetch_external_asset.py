@@ -2,7 +2,7 @@
 """Dry-run and verify external AI-EDA asset intake.
 
 The default mode is dry-run. `--execute` is intentionally conservative and only
-checks out git repositories or calls `huggingface-cli download` when the relevant
+checks out git repositories or calls `hf download` when the relevant
 tool exists and the user has already accepted the asset's license/provenance
 outside this script. Downloaded payloads remain under ignored `external/` paths.
 """
@@ -69,7 +69,7 @@ def run_command(command: list[str], cwd: Path | None = None) -> dict[str, Any]:
         check=False,
         capture_output=True,
         text=True,
-        timeout=3600,
+        timeout=24 * 3600,
     )
     return {
         "command": command,
@@ -180,23 +180,40 @@ def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
                 result["status"] = "BLOCKED_REVISION_MISMATCH"
                 result["expected_revision"] = expected
                 result["actual_revision"] = rev.get("stdout_tail", "").strip()
+        if result.get("returncode") == 0 and command_exists("git-lfs"):
+            lfs = run_command(["git", "lfs", "pull"], cwd=dest)
+            result["git_lfs_pull"] = lfs
         return result
     if mode == "huggingface":
-        if not command_exists("huggingface-cli"):
-            return {"status": "BLOCKED_MISSING_TOOL", "tool": "huggingface-cli"}
+        if not command_exists("hf"):
+            return {"status": "BLOCKED_MISSING_TOOL", "tool": "hf"}
         # Convert https://huggingface.co/datasets/org/name to org/name.
         dataset_id = source_url.rstrip("/").split("/datasets/", 1)[-1]
         return run_command(
             [
-                "huggingface-cli",
+                "hf",
                 "download",
                 dataset_id,
-                "--repo-type",
+                "--type",
                 "dataset",
                 "--local-dir",
                 str(dest),
             ]
         )
+    if mode == "model":
+        if source_url.startswith("https://storage.googleapis.com/"):
+            dest.mkdir(parents=True, exist_ok=True)
+            return run_command(["curl", "-fL", "-o", str(dest / Path(source_url).name), source_url])
+        if "huggingface.co/" in source_url:
+            if not command_exists("hf"):
+                return {"status": "BLOCKED_MISSING_TOOL", "tool": "hf"}
+            model_id = source_url.rstrip("/").split("huggingface.co/", 1)[-1]
+            return run_command(["hf", "download", model_id, "--local-dir", str(dest)])
+        return {
+            "status": "BLOCKED_UNSUPPORTED_MODEL_SOURCE",
+            "source_url": source_url,
+            "reason": "model assets require a direct file URL or Hugging Face model id",
+        }
     return {"status": "BLOCKED_UNSUPPORTED_FETCH_MODE", "mode": mode}
 
 

@@ -1,0 +1,23 @@
+schema: eliza.ai_eda.external_intake_manifest.v1
+id: google-circuit-training
+lock_entry_id: google-circuit-training
+kind: repo
+source_url: https://github.com/google-research/circuit_training
+payload_path: external/repos/google-circuit-training/payload
+revision:
+  type: commit
+  value: c417a3a13f40867b649c719c03daaf1b39a909bc
+license:
+  status: review_required
+  files:
+    - external/repos/google-circuit-training/payload/LICENSE
+allowed_use: deterministic-replay-candidate
+claim_boundary: external_intake_manifest_only_no_training_inference_or_release_claim
+review:
+  provenance_review: pending
+  license_review: pending
+  deterministic_replay_required: true
+  release_use_allowed: false
+notes:
+  - Public Circuit Training / AlphaChip source checkout is retained as ignored payload.
+  - The public TPU checkpoint remains separately blocked by the AlphaChip checkpoint blocker.

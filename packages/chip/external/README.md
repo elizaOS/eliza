@@ -22,3 +22,15 @@ Ignored:
 
 Every AI-generated optimization remains advisory until replayed through the
 deterministic E1 gates named in the research plan.
+
+Fresh-machine setup:
+
+```sh
+make ai-eda-bootstrap-metadata
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --execute-fetch
+make ai-eda-bootstrap-local-smoke
+```
+
+Only explicit `--asset` values are fetched. Metadata manifests are tracked;
+payload contents stay ignored under `external/repos/*/payload`,
+`external/datasets/*/payload`, or `external/models/*/payload`.

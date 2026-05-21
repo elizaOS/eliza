@@ -265,7 +265,7 @@ def main() -> int:
     candidates_dir = out_dir / "candidates"
     out_dir.mkdir(parents=True, exist_ok=True)
     candidates_dir.mkdir(parents=True, exist_ok=True)
-    for stale_candidate in candidates_dir.glob(f"macro-placement-torch-regressor-*-{args.run_id}.json"):
+    for stale_candidate in candidates_dir.glob("macro-placement-torch-regressor-*.json"):
         stale_candidate.unlink(missing_ok=True)
 
     emitted = []

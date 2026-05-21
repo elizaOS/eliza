@@ -182,7 +182,10 @@ def main() -> int:
         model.train()
         optimizer.zero_grad(set_to_none=True)
         output = model(features)
-        loss = xy_loss(output[:, :2], xy) + 0.1 * orientation_loss(output[:, 2:], orientation_ids)
+        loss = xy_loss(output[:, :2].contiguous(), xy) + 0.1 * orientation_loss(
+            output[:, 2:].contiguous(),
+            orientation_ids,
+        )
         loss.backward()
         optimizer.step()
         if epoch == 0 or epoch == args.epochs - 1 or (epoch + 1) % 10 == 0:

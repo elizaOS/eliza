@@ -317,6 +317,11 @@ The first reproducibility spine is now checked in:
   metadata manifest exists at `external/{datasets,repos,models}/<asset>/`,
   fetched payloads go under the ignored `payload/` subdirectory so committed
   metadata cannot block a future fetch.
+- `scripts/ai_eda/bootstrap_ai_eda_stack.py` is the fresh-machine orchestration
+  entrypoint. The `metadata` profile validates manifests and dry-runs fetches,
+  `local-smoke` adds converter/training/replay-plan checks, and
+  `training-handoff` adds CUDA/MPS Torch inference/training plus payload
+  packaging. Explicit `--asset ... --execute-fetch` is required for downloads.
 - `scripts/ai_eda/preflight_cuda_training_stack.py` records Mac/CUDA/MPS
   readiness into `build/ai_eda/cuda_training_preflight/<run-id>/`.
 - `scripts/ai_eda/package_cuda_training_payload.py` emits a metadata-only
@@ -377,12 +382,15 @@ Current local validation on the 128 GiB M4 host:
   normalized `eda.text_instruction_sample.v1` records with deterministic split
   counts: 1,691 train, 206 validation, and 219 test.
 - `python3 scripts/ai_eda/preflight_cuda_training_stack.py --run-id validation`:
-  PASS_WITH_BLOCKERS_RECORDED. The host has 128 GiB RAM and no CUDA; missing
-  PyTorch, training/CUDA tools, and OpenROAD are recorded in the JSON report.
+  PASS_WITH_BLOCKERS_RECORDED under the conda Python environment. The host has
+  128 GiB RAM, PyTorch 2.8.0 with MPS available, and no CUDA; missing CUDA
+  tools, OpenROAD, TensorFlow, DGL, and PyG are recorded in the JSON report.
 - `python3 scripts/ai_eda/package_cuda_training_payload.py --run-id validation`:
   PASS and emits a tarball containing manifests, scripts, and a run plan only.
 - `make ai-eda-internal-schemas-check`: PASS for five record schemas and five
   example fixtures.
+- `make ai-eda-bootstrap-metadata`: PASS and emits
+  `build/ai_eda/bootstrap/validation/bootstrap_report.json`.
 
 ### P0: Create a reproducible external asset registry
 
@@ -580,6 +588,11 @@ Implemented schema foundation:
   slots, rejects pre-replay geometry-invalid outputs, and emits quarantined
   `eda.e1_candidate.v1` manifests under
   `build/ai_eda/macro_placement_torch_inference/<run-id>/candidates/`.
+- `scripts/ai_eda/check_macro_placement_torch_inference.py` validates the
+  CUDA-host inference report without importing PyTorch: model-file presence,
+  checkpoint claim-boundary, device recording (`cpu`, `cuda`, or `mps`),
+  candidate and blocked-case counts, candidate inventory paths, zero pre-replay
+  geometry errors, and continued `replayed_blocked` quarantine status.
 - `scripts/ai_eda/train_macro_placement_policy.py` runs the first deterministic
   macro-placement baseline over normalized placement cases. It emits
   quarantined candidate manifests for cases with movable macros and records
@@ -659,9 +672,11 @@ Implemented schema foundation:
   emitted training report, metrics, model file, and dataset split counts with
   the dependency-free torch-regressor checker.
   `make ai-eda-macro-placement-torch-infer` runs the trained PyTorch model over
-  normalized placement cases and validates the emitted quarantined candidate
-  manifests. This target is expected to run on a CUDA/MPS/CPU host with PyTorch
-  installed; the current Mac validation host records `torch` as missing.
+  normalized placement cases, validates the inference report, and validates the
+  emitted quarantined candidate manifests. Current local M4 validation with
+  `PYTHON=/opt/miniconda3/bin/python3` runs on MPS, trains on 1,979 samples,
+  validates on 200, tests on 240, and emits 15 quarantined inference
+  candidates with 5 blocked placement cases.
   `make ai-eda-macro-placement-supervised-replay-plan` then creates replay
   bundles and dry-run tool-action manifests for those supervised candidates,
   preserving the same OpenLane/OpenROAD blocker accounting used by the
@@ -702,6 +717,11 @@ Implemented schema foundation:
   covers all 72 ranked candidates, with 0 ready for execution and 72 blocked
   until external benchmark review, real E1 softmacro LEF/DEF/OpenLane
   integration, and fixture-only barriers are resolved.
+  `make ai-eda-macro-placement-full-candidate-eval` and
+  `make ai-eda-macro-placement-full-replay-plan` add the Torch-inference
+  candidate directory to that queue when PyTorch is available. Current MPS
+  validation ranks 87 candidates across 19 placement cases and replay-plans all
+  87 fail-closed candidates, with 0 ready for execution.
   Current blocker counts in
   `build/ai_eda/macro_placement_replay/validation/replay_plan.json`: 48
   external benchmark candidates require local MacroPlacement/OpenROAD tool
@@ -720,9 +740,18 @@ Implemented schema foundation:
   and schema validation locally.
   `make ai-eda-logic-synthesis-baseline` generates the first E1 Yosys/ABC
   recipe corpus and local baseline report. On this Mac, DMA passes four Yosys
-  recipes, NPU passes two generic Yosys recipes, NPU generic ABC mapping times
-  out under the interactive 20 second limit, and OpenABC-D remains blocked until
-  external assets are fetched and reviewed.
+  recipes, NPU passes two generic Yosys recipes plus the fast generic ABC
+  recipe, NPU standard generic ABC mapping times out under the interactive 20
+  second limit, and OpenABC-D remains blocked until external assets are fetched
+  and reviewed. Current validation records 7 passed recipes, 3 blocked recipes,
+  and 0 failed recipes.
+  `scripts/ai_eda/check_logic_synthesis_policy_baseline.py` validates the
+  recipe corpus and baseline report: source-modification and equivalence
+  policies, target RTL existence, recipe/blocker shape, Yosys artifact paths,
+  positive cell/wire metrics for passing recipes, timeout evidence, blocked
+  OpenABC-D accounting, and summary counts. The CUDA payload now carries the
+  recipe generator, Yosys baseline runner, and this validator so synthesis
+  policy experiments have the same reproducibility gate as placement lanes.
   `make ai-eda-openlane-flow-labels` proves OpenLane metrics parsing into
   `eda.flow_run.v1` locally using fixture metrics.
   `make ai-eda-pd-surrogate-smoke` proves normalized flow labels can feed
@@ -1259,6 +1288,17 @@ fail closed until the checker can classify PASS/BLOCKED/FAIL.
 ### Week 5+: Scale-out and remote compute
 
 - Package H200/GPU training payloads with exact manifests.
+- On a fresh machine, run `make ai-eda-bootstrap-metadata` first. This performs
+  no downloads and proves that the repo-owned source/intake/schema metadata is
+  coherent.
+- To pull reviewed small assets, run
+  `python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id
+  fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus
+  --execute-fetch`; payloads land only in ignored `payload/` directories.
+- Run `make ai-eda-bootstrap-local-smoke` after payload restore/fetch to rebuild
+  normalized corpora, local E1 softmacro cases, dependency-free placement
+  training, candidate ranking, replay plans, logic-synthesis baselines, and
+  cocotb/tool-action dry-run evidence.
 - Run `scripts/ai_eda/preflight_cuda_training_stack.py --run-id <host>` on the
   CUDA machine before any training run; do not start large training until
   `nvidia-smi`, CUDA-compatible `torch`, `huggingface-cli`, dataset manifests,
@@ -1330,6 +1370,8 @@ not as:
 - [x] Convert OpenROAD EDA Corpus into normalized text-instruction train/val/test JSONL.
 - [x] Add Mac/CUDA training-stack preflight report.
 - [x] Add metadata-only CUDA training payload packager.
+- [x] Add fresh-machine AI-EDA bootstrap profiles for metadata validation,
+  local smoke setup, explicit reviewed-asset fetch, and CUDA training handoff.
 - [x] Add tiny conversion fixtures.
 - [x] Add common internal AI-EDA schemas.
 - [x] Add dependency-free local fixture training/inference smoke.
@@ -1357,6 +1399,8 @@ not as:
 - [x] Add PyTorch-regressor inference candidate generator for CUDA-host model
   outputs, including deterministic legalization and pre-replay geometry
   quarantine.
+- [x] Add dependency-free PyTorch-regressor inference artifact validator for
+  CUDA-host inference reports and quarantined candidate inventories.
 - [x] Add fail-closed replay plans for supervised macro-placement candidates.
 - [x] Add target-aware legal-grid comparison metrics for converted TILOS
   Ariane133 and generated E1 softmacro cases.
@@ -1366,6 +1410,8 @@ not as:
   candidates.
 - [x] Add combined deterministic plus supervised macro-placement replay-plan
   target with fail-closed bundle and tool-action validation.
+- [x] Add full deterministic plus supervised plus Torch-inference
+  macro-placement candidate ranking and replay-plan targets for CUDA/MPS hosts.
 - [x] Add combined macro-placement candidate ranking across deterministic
   baseline and supervised-model candidate directories.
 - [x] Add macro-placement replay-plan bundles for quarantined candidates without
@@ -1391,6 +1437,7 @@ not as:
 - [x] Add candidate manifest schema and checker.
 - [x] Add logic-synthesis recipe corpus generator.
 - [x] Add OpenABC-D/ABC/Yosys policy baseline.
+- [x] Add logic-synthesis recipe/baseline validator and CUDA payload handoff.
 - [x] Add PD surrogate training/eval smoke.
 - [x] Extend cocotb stimulus search beyond NPU descriptor queue.
 - [x] Define typed EDA tool-action schema before any write-capable agent.
