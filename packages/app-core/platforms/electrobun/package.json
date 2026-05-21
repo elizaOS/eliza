@@ -6,7 +6,7 @@
     "assets",
     "entitlements",
     "scripts",
-    "satellites",
+    "remotes",
     "src",
     "electrobun.config.ts",
     "README.md",

@@ -112,7 +112,7 @@ jobs:
 
       - name: Setup Python
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -154,7 +154,7 @@ jobs:
 
       - name: Upload large-tier artifacts
         if: steps.gate.outputs.skip != 'true' && always() && steps.run.outputs.run-dir != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lifeops-multi-tier-large-${{ github.run_id }}
           path: |
@@ -204,7 +204,7 @@ jobs:
 
       - name: Setup Python
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -246,7 +246,7 @@ jobs:
 
       - name: Upload frontier-tier artifacts
         if: steps.gate.outputs.skip != 'true' && always() && steps.run.outputs.run-dir != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lifeops-multi-tier-frontier-${{ github.run_id }}
           path: |
@@ -282,7 +282,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -300,7 +300,7 @@ jobs:
 
       - name: Restore dflash llama-cpp fork cache
         id: dflash-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/eliza-dflash/eliza-llama-cpp/build/bin/llama-server
           key: dflash-llama-cpp-${{ runner.os }}-v1
@@ -340,7 +340,7 @@ jobs:
 
       - name: Upload small-tier artifacts
         if: always() && steps.run.outputs.run-dir != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lifeops-multi-tier-small-${{ github.run_id }}
           path: |
@@ -361,7 +361,7 @@ jobs:
       - name: Download large-tier artifact
         if: needs.smoke-large.result == 'success'
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: lifeops-multi-tier-large-${{ github.run_id }}
           path: artifacts/large
@@ -369,7 +369,7 @@ jobs:
       - name: Download frontier-tier artifact
         if: needs.smoke-frontier.result == 'success'
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: lifeops-multi-tier-frontier-${{ github.run_id }}
           path: artifacts/frontier

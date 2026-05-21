@@ -1,0 +1,2 @@
+jsonschema>=4,<5
+hypothesis>=6,<7

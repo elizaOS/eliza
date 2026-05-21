@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SandboxService, SessionCwdService } from "../services/index.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
 import {
+  localResourceUserFacingText,
   resolveCryptoSpotPriceCommand,
   resolveDiskInspectionCommand,
   resolveLocalStatusCommand,
@@ -555,6 +556,19 @@ describe("shellAction", () => {
     expect(result.command).not.toContain("/home/*");
   });
 
+  it("keeps disk and memory probes together for mixed resource checks", () => {
+    const result = resolveDiskInspectionCommand({
+      messageText:
+        "check disk space and free RAM on this server, summarize the biggest cleanup candidate and memory availability",
+      command: "free -m",
+    });
+
+    expect(result.rewritten).toBe(true);
+    expect(result.command).toContain("df -h / /home");
+    expect(result.command).toContain("cleanup candidates");
+    expect(result.command).toContain("free -m");
+  });
+
   it("keeps targeted disk commands unchanged", () => {
     const command = "df -h / /home; du -sh /tmp 2>/dev/null";
     const result = resolveDiskInspectionCommand({
@@ -591,6 +605,17 @@ describe("shellAction", () => {
     });
   });
 
+  it("does not let RAM canonicalization erase disk probes", () => {
+    const command = "df -h / /home && free -h";
+    const result = resolveLocalStatusCommand({
+      messageText:
+        "check disk space and free RAM on this server, summarize both",
+      command,
+    });
+
+    expect(result).toEqual({ command, kind: "memory", rewritten: false });
+  });
+
   it("bounds broad local source searches to the current workspace", () => {
     const result = resolveSourceInspectionCommand({
       messageText:
@@ -602,9 +627,78 @@ describe("shellAction", () => {
     expect(result.command).toContain("git grep -n --recurse-submodules");
     expect(result.command).toContain("rg -n");
     expect(result.command).toContain("'Cerebras'");
-    expect(result.command).toContain(".");
+    expect(result.command).toContain(
+      "plugins/plugin-agent-orchestrator/vendor/opencode",
+    );
     expect(result.command).not.toContain("grep -R");
     expect(result.command).not.toContain("/home/example");
+    expect(result.command).not.toContain("head -n");
+  });
+
+  it("bounds broad local source directory walks to the requested source root", () => {
+    const result = resolveSourceInspectionCommand({
+      messageText:
+        "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+      command: "find /home/example -type d -name '*opencode*' 2>/dev/null",
+    });
+
+    expect(result.rewritten).toBe(true);
+    expect(result.command).toContain('find "$SEARCH_ROOT" -maxdepth 5');
+    expect(result.command).toContain("sed -n '1,120p'");
+    expect(result.command).toContain(
+      "plugins/plugin-agent-orchestrator/vendor/opencode",
+    );
+    expect(result.command).not.toContain("/home/example");
+  });
+
+  it("bounds recursive source directory walks from the current directory", () => {
+    const result = resolveSourceInspectionCommand({
+      messageText:
+        "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+      command: "ls -R . | head -n 50",
+    });
+
+    expect(result.rewritten).toBe(true);
+    expect(result.command).toContain('find "$SEARCH_ROOT" -maxdepth 5');
+    expect(result.command).toContain("sed -n '1,120p'");
+    expect(result.command).toContain(
+      "plugins/plugin-agent-orchestrator/vendor/opencode",
+    );
+    expect(result.command).not.toContain("ls -R");
+    expect(result.command).not.toContain("head -n");
+  });
+
+  it("bounds recursive source directory walks from absolute home paths", () => {
+    const result = resolveSourceInspectionCommand({
+      messageText:
+        "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+      command: "ls -R /home/example | grep -i opencode -n",
+    });
+
+    expect(result.rewritten).toBe(true);
+    expect(result.command).toContain('find "$SEARCH_ROOT" -maxdepth 5');
+    expect(result.command).toContain(
+      "plugins/plugin-agent-orchestrator/vendor/opencode",
+    );
+    expect(result.command).not.toContain("ls -R");
+    expect(result.command).not.toContain("/home/example");
+  });
+
+  it("bounds relative recursive source grep pipelines", () => {
+    const result = resolveSourceInspectionCommand({
+      messageText:
+        "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+      command:
+        'grep -R "cerebrasReasoning" -n plugins/plugin-agent-orchestrator/vendor/opencode | head -n 20',
+    });
+
+    expect(result.rewritten).toBe(true);
+    expect(result.command).toContain("git grep -n --recurse-submodules");
+    expect(result.command).toContain("'cerebrasReasoning'");
+    expect(result.command).toContain(
+      "plugins/plugin-agent-orchestrator/vendor/opencode",
+    );
+    expect(result.command).not.toContain("grep -R");
     expect(result.command).not.toContain("head -n");
   });
 
@@ -727,6 +821,68 @@ describe("shellAction", () => {
     expect(result.userFacingText).toMatch(
       /^Free RAM: \d+ MB \(\d+ MB available\) of \d+ MB total\.$/,
     );
+  });
+
+  it("adds user-facing text for mixed disk and RAM output", async () => {
+    if (process.platform !== "linux") return;
+    const previousHome = process.env.HOME;
+    const tmpHome = path.resolve(
+      process.cwd(),
+      `.tmp-shell-home-${Date.now()}`,
+    );
+    await fs.mkdir(path.join(tmpHome, ".cache"), { recursive: true });
+    await fs.writeFile(path.join(tmpHome, ".cache", "probe.txt"), "cache");
+    process.env.HOME = tmpHome;
+    try {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-575757575757",
+          "check disk space and free RAM on this server, summarize the biggest cleanup candidate and memory availability",
+        ),
+        undefined,
+        { command: "free -m" },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("df -h / /home");
+      expect(result.text).toContain("free -m");
+      expect(result.userFacingText).toContain("Root disk:");
+      expect(result.userFacingText).toContain("Biggest cleanup candidate:");
+      expect(result.userFacingText).toMatch(/Free RAM: \d+ MB/);
+    } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      await fs.rm(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("does not treat later output section markers as cleanup candidates", () => {
+    const stdout = [
+      "Filesystem      Size  Used Avail Use% Mounted on",
+      "/dev/root        95G   48G   47G  51% /",
+      "",
+      "--- cleanup candidates ---",
+      "--- memory ---",
+      "               total        used        free      shared  buff/cache   available",
+      "Mem:           32000        8000        2000         100       22000       24000",
+    ].join("\n");
+
+    const result = localResourceUserFacingText({
+      message: makeMessage(
+        "11111111-aaaa-bbbb-cccc-585858585858",
+        "check disk space and free RAM on this server, summarize the biggest cleanup candidate and memory availability",
+      ),
+      stdout,
+    });
+
+    expect(result).toContain("Root disk: 51% used, 47G available.");
+    expect(result).toContain(
+      "Free RAM: 2000 MB (24000 MB available) of 32000 MB total.",
+    );
+    expect(result).not.toContain("Biggest cleanup candidate:");
+    expect(result).not.toContain("memory ---");
   });
 
   it("returns command_failed when the command exits non-zero", async () => {

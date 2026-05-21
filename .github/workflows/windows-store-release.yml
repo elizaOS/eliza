@@ -133,7 +133,7 @@ jobs:
           gh release upload $tag $env:MSIX_PATH --clobber
 
       - name: Upload MSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-msix-${{ inputs.version }}
           path: Eliza-${{ inputs.version }}.msix
@@ -151,7 +151,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 30
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: windows-msix-${{ inputs.version }}
 

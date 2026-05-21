@@ -15,6 +15,7 @@ chown root:root \
     /usr/local/lib/elizaos \
     /usr/local/bin/milady \
     /usr/local/lib/elizaos/capability-runner \
+    /usr/local/lib/elizaos/create-persistent-storage-session \
     /usr/local/lib/elizaos/elizaos-webkit-shell \
     /usr/local/lib/elizaos/milady-keeper \
     /usr/local/lib/elizaos/persistence-maintenance \
@@ -31,6 +32,7 @@ chmod 0755 \
     /usr/local/lib/elizaos \
     /usr/local/bin/milady \
     /usr/local/lib/elizaos/capability-runner \
+    /usr/local/lib/elizaos/create-persistent-storage-session \
     /usr/local/lib/elizaos/elizaos-webkit-shell \
     /usr/local/lib/elizaos/milady-keeper \
     /usr/local/lib/elizaos/persistence-maintenance \
@@ -68,6 +70,10 @@ chmod 0644 \
 if [ -e /etc/generate-sudoers.d/elizaos-capability-runner.toml ]; then
     chown root:root /etc/generate-sudoers.d/elizaos-capability-runner.toml
     chmod 0644 /etc/generate-sudoers.d/elizaos-capability-runner.toml
+fi
+if [ -e /etc/generate-sudoers.d/elizaos-persistence-maintenance.toml ]; then
+    chown root:root /etc/generate-sudoers.d/elizaos-persistence-maintenance.toml
+    chmod 0644 /etc/generate-sudoers.d/elizaos-persistence-maintenance.toml
 fi
 
 for python_pkg in \

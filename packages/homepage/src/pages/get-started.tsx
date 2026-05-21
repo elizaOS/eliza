@@ -65,6 +65,7 @@ function SolanaIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
 import { useElizaAppProvisioningChat } from "@/lib/hooks/use-eliza-app-provisioning-chat";
 
 type TelegramLoginApi = {

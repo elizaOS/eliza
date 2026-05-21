@@ -16,6 +16,8 @@ from gi.repository import UDisks, GLib, Gio  # NOQA: E402
 
 
 logger = logging.getLogger(__name__)
+TAILS_ROOT = Path(__file__).resolve().parents[2]
+CHROOT_DIR = TAILS_ROOT / "chroot"
 
 SYSTEM_PARTITION_FLAGS = (
     1 << 0  # system partition
@@ -51,7 +53,9 @@ IMAGE_ADDITIONAL_SIZE = 10
 # that will be available to Tails Installer in the running Tails. Using
 # the same syslinux version here and in Tails Installer is important to
 # prevent issues when upgrading a Tails device via Tails Installer.
-CHROOT_SYSLINUX_COM32MODULES_DIR = "chroot/usr/lib/syslinux/modules/bios"
+CHROOT_SYSLINUX_COM32MODULES_DIR = (
+    CHROOT_DIR / "usr/lib/syslinux/modules/bios"
+)
 
 
 class ImageCreationError(Exception):
@@ -265,7 +269,7 @@ class ImageCreator:
                 # Fill all 11 chars of the volume label to avoid any uninitialized
                 # memory from sneaking in
                 "-n",
-                "TAILS" + 6 * " ",
+                FILESYSTEM_LABEL.ljust(11),
                 self.partition.props.block.props.device,
             ]
         )
@@ -340,34 +344,44 @@ class ImageCreator:
     @contextmanager
     def mount_proc_and_image(self):
         logger.info("Mounting proc and image")
-        execute(["mount", "--types", "proc", "/proc", "chroot/proc"])
-        execute(["mkdir", "-p", "chroot%s" % os.path.dirname(self.image)])
-        execute(["touch", "chroot%s" % self.image])
-        execute(["mount", "--bind", self.image, "chroot%s" % self.image])
+        chroot_proc = CHROOT_DIR / "proc"
+        chroot_image = CHROOT_DIR / "tmp" / Path(self.image).name
+        chroot_image_arg = "/" + str(chroot_image.relative_to(CHROOT_DIR))
+        mounted = []
         try:
-            yield
+            execute(["mkdir", "-p", str(chroot_proc)])
+            execute(["mount", "--types", "proc", "/proc", str(chroot_proc)])
+            mounted.append(chroot_proc)
+            execute(["mkdir", "-p", str(chroot_image.parent)])
+            execute(["touch", str(chroot_image)])
+            execute(["mount", "--bind", self.image, str(chroot_image)])
+            mounted.append(chroot_image)
+            yield chroot_image_arg
         finally:
             logger.info("Unmounting proc and image")
-            execute(["umount", "chroot/proc"])
-            execute(["umount", "chroot%s" % self.image])
+            # Unmount in reverse order of setup so the chroot-visible image is
+            # gone before we tear down the procfs mount used by syslinux. Track
+            # successful mounts so setup failures do not leak chroot state.
+            for mountpoint in reversed(mounted):
+                unmount(mountpoint)
 
     def install_syslinux(self):
         logger.info("Installing bootloader")
         # We install syslinux directly on the image. Installing it on the loop
         # device would cause this issue:
         # https://bugs.chromium.org/p/chromium/issues/detail?id=508713#c8
-        with self.mount_proc_and_image():
+        with self.mount_proc_and_image() as chroot_image:
             execute(
                 [
                     "chroot",
-                    "chroot",
+                    str(CHROOT_DIR),
                     "/usr/bin/syslinux",
                     "--offset",
                     str(self.partition.props.partition.props.offset),
                     "--directory",
                     "/syslinux/",
                     "--install",
-                    self.image,
+                    chroot_image,
                 ]
             )
         # Detect a class of syslinux installation failure in which syslinux
@@ -423,6 +437,19 @@ def execute(cmd: list):
     subprocess.check_call(cmd)
 
 
+def unmount(path: Path):
+    for _ in range(5):
+        try:
+            execute(["umount", str(path)])
+            return
+        except subprocess.CalledProcessError:
+            time.sleep(0.2)
+
+    # A lazy fallback is better than leaving a chroot mount behind if syslinux
+    # returned before procfs users fully settled.
+    execute(["umount", "--lazy", str(path)])
+
+
 @contextmanager
 def set_env(name: str, value: str):
     old_value = os.getenv(name)
@@ -431,7 +458,7 @@ def set_env(name: str, value: str):
         yield
     finally:
         if old_value is not None:
-            os.putenv(name, value)
+            os.putenv(name, old_value)
         else:
             os.unsetenv(name)
 

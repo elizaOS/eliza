@@ -10,7 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -151,7 +151,7 @@ def backend_status(backend: dict[str, Any]) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     return parser.parse_args()
 
@@ -166,7 +166,7 @@ def main() -> int:
     report = {
         "schema": "eliza.ai_eda.backend_preflight.v1",
         "run_id": args.run_id,
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "mode": "local-preflight",
         "status": "PASS_WITH_BLOCKERS_RECORDED",
         "claim_boundary": CLAIM_BOUNDARY,

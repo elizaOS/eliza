@@ -397,7 +397,7 @@ function HomeAccessDetails({
           <div className="mt-1 text-[11px] text-muted">
             After the tunnel is running, use{" "}
             <span className="font-mono text-txt">{sshTunnel.localUrl}</span> as
-            the home Satellite URL.
+            the home Remote URL.
           </div>
         </div>
       ) : null}

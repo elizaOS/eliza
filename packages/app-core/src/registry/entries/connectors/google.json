@@ -1,0 +1,82 @@
+{
+  "id": "google",
+  "name": "Google",
+  "description": "Google connector for Gmail, Calendar, Drive, and Meet through one OAuth grant. Uses Eliza Cloud OAuth by default; falls back to local OAuth2 with developer credentials when GOOGLE_CLIENT_ID/SECRET are set on the agent.",
+  "npmName": "@elizaos/plugin-google",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "connector",
+    "productivity",
+    "google",
+    "gmail",
+    "calendar",
+    "drive",
+    "meet"
+  ],
+  "config": {
+    "GOOGLE_CLIENT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "OAuth Client ID",
+      "help": "Google OAuth2 client ID for local-OAuth fallback. Not needed when using Eliza Cloud OAuth.",
+      "advanced": true
+    },
+    "GOOGLE_CLIENT_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "OAuth Client Secret",
+      "help": "Google OAuth2 client secret for local-OAuth fallback. Not needed when using Eliza Cloud OAuth.",
+      "advanced": true
+    },
+    "GOOGLE_REDIRECT_URI": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Redirect URI",
+      "help": "OAuth2 redirect URI for local-OAuth fallback. A loopback URL is recommended for local auth.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Mail",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-google#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-google",
+    "setupGuideUrl": "https://github.com/elizaos-plugins/plugin-google#readme"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "email",
+  "auth": {
+    "kind": "oauth",
+    "credentialKeys": [
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "GOOGLE_REDIRECT_URI"
+    ]
+  },
+  "accounts": {
+    "owner": {
+      "supported": true,
+      "authKind": "oauth-cloud",
+      "credentialKeys": [],
+      "notes": "The user's own Google account, connected via Eliza Cloud OAuth so the agent can read and act on the user's Gmail, Calendar, Drive, and Meet on the user's behalf."
+    },
+    "agent": {
+      "supported": true,
+      "authKind": "oauth-cloud",
+      "credentialKeys": [],
+      "notes": "A separate Google account that represents the agent's own identity. Same OAuth flow, different Google account at the OAuth screen."
+    }
+  }
+}

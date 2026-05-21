@@ -1,0 +1,23 @@
+schema: eliza.ai_eda.external_intake_manifest.v1
+asset_id: chipbench-d
+kind: dataset
+source_url: https://huggingface.co/datasets/MIRA-Lab/ChiPBench-D
+upstream_revision:
+  type: hf_revision
+  value: PIN_AFTER_FETCH
+license:
+  status: bsd-3-clause_public_card_review_required
+  evidence:
+    - https://huggingface.co/datasets/MIRA-Lab/ChiPBench-D/blob/main/README.md
+  reviewed_at: 2026-05-20
+intake:
+  review_status: pending
+  allowed_use: training-only
+  release_use_allowed: false
+  deterministic_replay_required: true
+  next_action: fetch_to_ignored_payload_then_hash_for_macroplace_and_openroad_case_subtrees
+local_payload:
+  downloaded: true
+  payload_path: external/datasets/chipbench-d/payload
+  checksum_status: verify_only_records_file_manifest
+claim_boundary: external_intake_metadata_only_no_payload_no_training_no_release_claim

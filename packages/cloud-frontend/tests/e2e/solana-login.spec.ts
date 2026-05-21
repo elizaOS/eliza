@@ -168,14 +168,19 @@ test.describe("Login with Solana (UI)", () => {
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
-    page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
+    page.on("pageerror", (err) =>
+      consoleErrors.push(`pageerror: ${err.message}`),
+    );
 
     await page.goto("/login");
     await page.waitForLoadState("domcontentloaded");
 
     // Verify the mock is in place.
-    const mockInstalled = await page.evaluate(
-      () => Boolean((window as unknown as { __MOCK_SOLANA_WALLET__?: unknown }).__MOCK_SOLANA_WALLET__),
+    const mockInstalled = await page.evaluate(() =>
+      Boolean(
+        (window as unknown as { __MOCK_SOLANA_WALLET__?: unknown })
+          .__MOCK_SOLANA_WALLET__,
+      ),
     );
     expect(mockInstalled, "mock Solana wallet injected").toBe(true);
 
@@ -209,9 +214,10 @@ test.describe("Login with Solana (UI)", () => {
     const fatal = consoleErrors.filter(
       (m) => !m.includes("404") && !m.includes("net::"),
     );
-    expect(fatal, `unexpected console errors: ${fatal.join("\n")}`).toHaveLength(
-      0,
-    );
+    expect(
+      fatal,
+      `unexpected console errors: ${fatal.join("\n")}`,
+    ).toHaveLength(0);
   });
 
   test("Solana button is keyboard-reachable", async ({ page }) => {

@@ -43,7 +43,9 @@ export function useExplorerApiKey() {
       if (!response.ok || !data.apiKey) {
         setExplorerKey(null);
         setAuthToken("");
-        setError(data.error || `Failed to fetch API key (HTTP ${response.status})`);
+        setError(
+          data.error || `Failed to fetch API key (HTTP ${response.status})`,
+        );
         return;
       }
 

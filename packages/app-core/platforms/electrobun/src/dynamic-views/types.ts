@@ -14,14 +14,14 @@ export type DynamicViewPlacement =
 export type DynamicViewSource =
   | "agent"
   | "plugin"
-  | "satellite"
+  | "remote"
   | "system"
   | "developer";
 
 export type DynamicViewMetadata = Record<string, JsonValue>;
 
 export interface DynamicViewEventSubscription {
-  satelliteId: string;
+  remoteId: string;
   events?: string[];
 }
 
@@ -33,7 +33,7 @@ export interface DynamicViewManifest {
   entrypoint: string;
   placement: DynamicViewPlacement;
   permissions?: string[];
-  requiredSatellites?: string[];
+  requiredRemotes?: string[];
   eventSubscriptions?: DynamicViewEventSubscription[];
   invokeTargets?: string[];
   metadata?: DynamicViewMetadata;
@@ -99,7 +99,7 @@ export const DYNAMIC_VIEW_PLACEMENTS: readonly DynamicViewPlacement[] = [
 export const DYNAMIC_VIEW_SOURCES: readonly DynamicViewSource[] = [
   "agent",
   "plugin",
-  "satellite",
+  "remote",
   "system",
   "developer",
 ] as const;

@@ -3230,20 +3230,33 @@ export function messageHandlerFromFieldResult(
 					);
 				})
 			: candidateActions.length > 0;
-	const inferredDirectCandidateActions =
-		!hasValidProvidedCandidate &&
-		inferredAckCandidateActions.length === 0 &&
+	const directCurrentCandidateActions =
 		currentMessageText.trim().length > 0
 			? inferDirectCurrentRequestCandidateActions(
 					runtimeContext?.actions ?? [],
 					currentMessageText,
 				)
 			: [];
-	const effectiveCandidateActions = uniqueActionNames([
-		...candidateActions,
-		...inferredAckCandidateActions,
-		...inferredDirectCandidateActions,
-	]);
+	const preferDirectCurrentCandidateActions =
+		shouldPreferDirectCurrentCandidateActions({
+			candidateActions,
+			currentMessageText,
+			directCandidateActions: directCurrentCandidateActions,
+		});
+	const inferredDirectCandidateActions =
+		!preferDirectCurrentCandidateActions &&
+		!hasValidProvidedCandidate &&
+		inferredAckCandidateActions.length === 0 &&
+		directCurrentCandidateActions.length > 0
+			? directCurrentCandidateActions
+			: [];
+	const effectiveCandidateActions = preferDirectCurrentCandidateActions
+		? directCurrentCandidateActions
+		: uniqueActionNames([
+				...candidateActions,
+				...inferredAckCandidateActions,
+				...inferredDirectCandidateActions,
+			]);
 	// When the caller passes the runtime's `actions`, narrow the candidate set
 	// to those that are (a) registered actions OR (b) canonical control names
 	// (REPLY / IGNORE / STOP). All-bogus candidate lists collapse to length 0,
@@ -3453,6 +3466,42 @@ const WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS = new Set(
 		"WEB_SEARCH",
 	].map(normalizeActionIdentifier),
 );
+
+const SHELL_DIRECT_ACTIONS = new Set(
+	[
+		"SHELL",
+		"RUN_IN_TERMINAL",
+		"RUN_COMMAND",
+		"EXECUTE_COMMAND",
+		"TERMINAL",
+		"RUN_SHELL",
+		"EXEC",
+	].map(normalizeActionIdentifier),
+);
+
+function shouldPreferDirectCurrentCandidateActions(args: {
+	candidateActions: readonly string[];
+	currentMessageText: string;
+	directCandidateActions: readonly string[];
+}): boolean {
+	if (args.candidateActions.length === 0) return false;
+	if (!looksLikeLocalShellRequest(args.currentMessageText)) return false;
+	if (looksLikeCodingWorkRequest(args.currentMessageText)) return false;
+	if (
+		!args.directCandidateActions.some((name) =>
+			SHELL_DIRECT_ACTIONS.has(normalizeActionIdentifier(name)),
+		)
+	) {
+		return false;
+	}
+	return args.candidateActions.every((name) => {
+		const normalized = normalizeActionIdentifier(name);
+		return (
+			WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS.has(normalized) ||
+			canonicalPlannerControlActionName(normalized) !== null
+		);
+	});
+}
 
 function hasOnlyWeakDirectReplyPlanningSignals(args: {
 	candidateActions: readonly string[];

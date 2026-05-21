@@ -2,7 +2,7 @@
 """Dry-run and verify external AI-EDA asset intake.
 
 The default mode is dry-run. `--execute` is intentionally conservative and only
-checks out git repositories or calls `huggingface-cli download` when the relevant
+checks out git repositories or calls `hf download` when the relevant
 tool exists and the user has already accepted the asset's license/provenance
 outside this script. Downloaded payloads remain under ignored `external/` paths.
 """
@@ -10,10 +10,11 @@ outside this script. Downloaded payloads remain under ignored `external/` paths.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 LOCKFILE = ROOT / "external/SOURCES.lock.yaml"
 DEFAULT_REPORT_ROOT = ROOT / "build/ai_eda/external_assets"
 CLAIM_BOUNDARY = "external_asset_fetch_report_only_no_training_inference_or_release_claim"
+MAX_HASHED_FILES = 20000
 
 
 def load_lockfile(path: Path) -> dict[str, Any]:
@@ -49,6 +51,10 @@ def repo_dir(asset: dict[str, Any]) -> Path:
     return ROOT / "external/repos" / asset["id"]
 
 
+def payload_dir(asset: dict[str, Any]) -> Path:
+    return repo_dir(asset) / "payload"
+
+
 def command_exists(command: str) -> bool:
     return shutil.which(command) is not None
 
@@ -60,7 +66,7 @@ def run_command(command: list[str], cwd: Path | None = None) -> dict[str, Any]:
         check=False,
         capture_output=True,
         text=True,
-        timeout=3600,
+        timeout=24 * 3600,
     )
     return {
         "command": command,
@@ -70,17 +76,88 @@ def run_command(command: list[str], cwd: Path | None = None) -> dict[str, Any]:
     }
 
 
-def verify_existing(path: Path) -> dict[str, Any]:
+def rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def payload_file_manifest(path: Path) -> dict[str, Any]:
+    files: list[dict[str, Any]] = []
+    total_bytes = 0
+    skipped = 0
+    for child in sorted(path.rglob("*")):
+        if child.is_dir():
+            continue
+        if ".git" in child.parts:
+            continue
+        if child.is_symlink():
+            skipped += 1
+            continue
+        if len(files) >= MAX_HASHED_FILES:
+            skipped += 1
+            continue
+        size = child.stat().st_size
+        total_bytes += size
+        files.append(
+            {
+                "path": rel(child),
+                "bytes": size,
+                "sha256": sha256_file(child),
+            }
+        )
+    return {
+        "file_count": len(files),
+        "skipped_after_limit": skipped,
+        "total_hashed_bytes": total_bytes,
+        "max_hashed_files": MAX_HASHED_FILES,
+        "files": files,
+    }
+
+
+def expected_revision(asset: dict[str, Any]) -> str | None:
+    revision = asset.get("revision")
+    if not isinstance(revision, dict):
+        return None
+    value = revision.get("value")
+    if not isinstance(value, str) or value in {"PIN_AFTER_FETCH", "BLOCKED_HTTP_403_REAUDIT_REQUIRED"}:
+        return None
+    if revision.get("type") not in {"commit", "tag", "hf_revision"}:
+        return None
+    return value
+
+
+def verify_existing(path: Path, asset: dict[str, Any]) -> dict[str, Any]:
     if not path.exists():
         return {"status": "BLOCKED_MISSING_LOCAL_ASSET", "path": str(path)}
     if (path / ".git").exists() and command_exists("git"):
         rev = run_command(["git", "rev-parse", "HEAD"], cwd=path)
+        actual_revision = rev["stdout_tail"].strip()
+        expected = expected_revision(asset)
+        status = "PRESENT_GIT_REPO" if rev["returncode"] == 0 else "BLOCKED_UNREADABLE_GIT_REPO"
+        if expected and actual_revision != expected:
+            status = "BLOCKED_REVISION_MISMATCH"
         return {
-            "status": "PRESENT_GIT_REPO" if rev["returncode"] == 0 else "PRESENT_GIT_REPO_UNREADABLE",
+            "status": status,
             "path": str(path),
-            "revision": rev["stdout_tail"].strip(),
+            "revision": actual_revision,
+            "expected_revision": expected,
+            "file_manifest": payload_file_manifest(path),
         }
-    return {"status": "PRESENT_UNPINNED_PAYLOAD", "path": str(path)}
+    return {
+        "status": "PRESENT_UNPINNED_PAYLOAD",
+        "path": str(path),
+        "file_manifest": payload_file_manifest(path),
+    }
 
 
 def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
@@ -92,23 +169,51 @@ def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
     if mode == "git":
         if not command_exists("git"):
             return {"status": "BLOCKED_MISSING_TOOL", "tool": "git"}
-        return run_command(["git", "clone", "--depth", "1", source_url, str(dest)])
+        clone_command = ["git", "clone", "--depth", "1", source_url, str(dest)]
+        result = run_command(clone_command)
+        expected = expected_revision(asset)
+        if result.get("returncode") == 0 and expected:
+            checkout = run_command(["git", "checkout", "--detach", expected], cwd=dest)
+            result["checkout"] = checkout
+            rev = run_command(["git", "rev-parse", "HEAD"], cwd=dest)
+            if rev.get("stdout_tail", "").strip() != expected:
+                result["status"] = "BLOCKED_REVISION_MISMATCH"
+                result["expected_revision"] = expected
+                result["actual_revision"] = rev.get("stdout_tail", "").strip()
+        if result.get("returncode") == 0 and command_exists("git-lfs"):
+            lfs = run_command(["git", "lfs", "pull"], cwd=dest)
+            result["git_lfs_pull"] = lfs
+        return result
     if mode == "huggingface":
-        if not command_exists("huggingface-cli"):
-            return {"status": "BLOCKED_MISSING_TOOL", "tool": "huggingface-cli"}
+        if not command_exists("hf"):
+            return {"status": "BLOCKED_MISSING_TOOL", "tool": "hf"}
         # Convert https://huggingface.co/datasets/org/name to org/name.
         dataset_id = source_url.rstrip("/").split("/datasets/", 1)[-1]
         return run_command(
             [
-                "huggingface-cli",
+                "hf",
                 "download",
                 dataset_id,
-                "--repo-type",
+                "--type",
                 "dataset",
                 "--local-dir",
                 str(dest),
             ]
         )
+    if mode == "model":
+        if source_url.startswith("https://storage.googleapis.com/"):
+            dest.mkdir(parents=True, exist_ok=True)
+            return run_command(["curl", "-fL", "-o", str(dest / Path(source_url).name), source_url])
+        if "huggingface.co/" in source_url:
+            if not command_exists("hf"):
+                return {"status": "BLOCKED_MISSING_TOOL", "tool": "hf"}
+            model_id = source_url.rstrip("/").split("huggingface.co/", 1)[-1]
+            return run_command(["hf", "download", model_id, "--local-dir", str(dest)])
+        return {
+            "status": "BLOCKED_UNSUPPORTED_MODEL_SOURCE",
+            "source_url": source_url,
+            "reason": "model assets require a direct file URL or Hugging Face model id",
+        }
     return {"status": "BLOCKED_UNSUPPORTED_FETCH_MODE", "mode": mode}
 
 
@@ -118,7 +223,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--lockfile", type=Path, default=LOCKFILE)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--verify-only", action="store_true")
@@ -141,11 +246,11 @@ def main() -> int:
     for asset in assets:
         if not isinstance(asset, dict):
             continue
-        dest = repo_dir(asset)
+        dest = payload_dir(asset)
         action: dict[str, Any]
         if args.verify_only:
             mode = "verify-only"
-            action = verify_existing(dest)
+            action = verify_existing(dest, asset)
         elif args.execute:
             mode = "execute"
             action = execute_fetch(asset, dest)
@@ -177,7 +282,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.external_asset_fetch_report.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "mode": mode,
         "claim_boundary": CLAIM_BOUNDARY,

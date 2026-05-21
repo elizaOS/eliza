@@ -55,7 +55,7 @@ jobs:
         run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
 
       - name: Cache upstream Debian image
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: packages/os/linux/vm/disk-base/.cache
           key: elizaos-vm-upstream-${{ hashFiles('packages/os/linux/vm/disk-base/mmdebstrap.recipe') }}
@@ -140,7 +140,7 @@ jobs:
           echo "date=$DATE" >> "$GITHUB_OUTPUT"
 
       - name: Upload VM artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: elizaos-vm-image
           path: |
@@ -153,7 +153,7 @@ jobs:
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'workflow_call' && inputs.publish == true)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             elizaos-vm-*.ova

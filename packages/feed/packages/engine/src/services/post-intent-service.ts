@@ -74,7 +74,7 @@ const DOMAIN_HINTS: Record<string, string> = {
     "power, elections, policy, governance, legislation, campaigns, leadership",
   media: "stories, sources, investigations, scoops, coverage, breaking news",
   journalism: "reporting, sources, investigations, stories, truth, coverage",
-  space: "rockets, launches, Mars, orbit, satellites, exploration, cosmos",
+  space: "rockets, launches, Mars, orbit, remotes, exploration, cosmos",
   safety: "alignment, risk, responsible AI, oversight, existential threats",
   research: "papers, studies, data, experiments, findings, breakthroughs",
   philosophy: "meaning, consciousness, existence, ethics, wisdom, truth",

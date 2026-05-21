@@ -1,5 +1,5 @@
 schema: eliza.ai_eda_source_inventory.v1
-updated: 2026-05-19
+updated: 2026-05-20
 scope: >
   Checked registry for AI/EDA sources that can improve E1 design,
   verification, physical-design, software/simulator, or evidence workflows.
@@ -2993,6 +2993,129 @@ entries:
     risk:
       - Competition proxy metrics and public/private splits can create
         overfitting or contamination risks for E1 evaluation.
+  - id: veoplace-vlm-macro-placement
+    name: VeoPlace / See it to Place it
+    kind: vlm_guided_macro_placement_method
+    stage:
+      - macro_placement
+      - evolutionary_search
+      - vision_language_model
+      - physical_design
+    priority: P1
+    source_url: https://arxiv.org/abs/2603.28733
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: uses_external_vlm_no_e1_model
+    e1_fit: >
+      Relevant latest method because it constrains a base placer with VLM
+      spatial proposals and reports improvements over learning-based and
+      DREAMPlace baselines on open benchmarks. For E1 this is a candidate
+      search policy, not a source of design truth.
+    integration_action: >
+      Track as a P1 experiment after E1 placement cases can be rasterized into
+      deterministic floorplan images with file hashes. Any VLM prompt, image,
+      proposal, and evolutionary seed must be archived before replay.
+    evidence_gate: >
+      Use requires image/input hashes, prompt/model/version logs, subregion
+      proposal hashes, legalized candidate DEF, OpenLane/OpenROAD replay,
+      STA/routing/DRC/antenna/power evidence, non-overlap review, and human PD
+      reviewer disposition.
+    risk:
+      - VLM spatial reasoning can optimize visible geometry while missing pin,
+        clock, PDN, timing, package, and technology constraints.
+      - Hosted VLM use may leak E1 floorplans unless data-handling terms are
+        reviewed and local/private inference is approved.
+  - id: hmplace-hierarchical-mask-rl
+    name: HMPlace Hierarchical Mask-Guided Macro Placement
+    kind: rl_macro_placement_method
+    stage:
+      - macro_placement
+      - reinforcement_learning
+      - action_masking
+      - physical_design
+    priority: P2
+    source_url: https://www.sciencedirect.com/science/article/pii/S1879239126001797
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_public_model
+    e1_fit: >
+      Useful as a recent RL placement architecture idea for constraining the
+      large macro-placement action space, especially for SRAM-heavy E1 NPU and
+      cache macro cases.
+    integration_action: >
+      Keep as method context until a public implementation or local rework is
+      justified by MacroPlacement and E1 softmacro results.
+    evidence_gate: >
+      Any local reimplementation needs exact objective definitions, seeds,
+      benchmark splits, legalizer outputs, OpenROAD replay, and E1 held-out
+      comparison against SA, Hier-RTLMP, CT, ChipDiffusion, and random/legalized
+      baselines.
+    risk:
+      - Action masks can encode benchmark-specific assumptions and still
+        produce placements that fail detailed route, PDN, or timing.
+  - id: rsplace-rotation-sensing-tree-expansion
+    name: RSPlace Rotation Sensing Macro Placement
+    kind: macro_placement_search_method
+    stage:
+      - macro_placement
+      - rotation_search
+      - tree_expansion
+      - physical_design
+    priority: P2
+    source_url: https://ojs.aaai.org/index.php/AAAI/article/view/39559
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_public_model
+    e1_fit: >
+      Relevant because E1 SRAM, IO, and NPU macros will have orientation and
+      pin-access constraints that ordinary coordinate-only placement can ignore.
+    integration_action: >
+      Track as an orientation-aware baseline idea for the future macro candidate
+      generator; do not use without E1 LEF/DEF/pin-access replay.
+    evidence_gate: >
+      Any orientation-aware candidate needs macro orientation hashes,
+      pin-access legality checks, routing/STA/DRC/antenna evidence, and PD
+      review before source use.
+    risk:
+      - Rotation-aware proxy gains can be invalid if library LEF symmetry,
+        power-pin, clock, or keepout rules differ from benchmark assumptions.
+  - id: dynamic-tree-search-rl-macro-placement
+    name: Dynamic Tree Search Guided RL Macro Placement
+    kind: rl_mcts_macro_placement_method
+    stage:
+      - macro_placement
+      - reinforcement_learning
+      - monte_carlo_tree_search
+      - physical_design
+    priority: P2
+    source_url: https://doi.org/10.1016/j.mejo.2026.107100
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_public_model
+    e1_fit: >
+      Useful recent reference for mixing RL policy guidance with tree search to
+      avoid premature convergence in macro placement.
+    integration_action: >
+      Keep as method-only context until E1 has enough macro cases to justify a
+      search-cost budget beyond SA/coordinate descent/CT/ChipDiffusion.
+    evidence_gate: >
+      Any tree-search run must record seed, expansion policy, cost-function
+      version, candidate hashes, runtime, and downstream OpenROAD replay.
+    risk:
+      - Search can overfit proxy costs and consume large compute without
+        improving routed timing, power, or manufacturability.
   - id: openroad-fastroute
     name: OpenROAD FastRoute
     kind: global_routing_tool

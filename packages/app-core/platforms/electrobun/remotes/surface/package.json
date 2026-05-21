@@ -1,0 +1,12 @@
+{
+  "name": "@elizalaunch/surface-remote",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/bun/worker.ts src/dev/phase4-smoke.ts --outdir dist --target bun && bun build src/web/index.ts --outdir dist/web --target browser",
+    "smoke": "bun run src/dev/phase4-smoke.ts",
+    "smoke:phase4": "bun run src/dev/phase4-smoke.ts",
+    "typecheck": "tsc --ignoreConfig --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM,DOM.Iterable --types bun-types --allowImportingTsExtensions src/protocol/event-types.ts src/protocol/runtime-client.ts src/web/state.ts src/web/render.ts src/web/app.ts src/web/index.ts src/bun/worker.ts src/dev/phase4-smoke.ts"
+  }
+}

@@ -1,6 +1,6 @@
 # Database Boot Policy
 
-Database startup is Electrobun launch infrastructure. It is not a Satellite and
+Database startup is Electrobun launch infrastructure. It is not a Remote and
 it is not onboarding.
 
 ## Resolution Order

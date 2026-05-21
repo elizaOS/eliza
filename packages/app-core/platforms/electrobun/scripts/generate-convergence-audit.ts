@@ -30,7 +30,7 @@ type KeepAs =
   | "plugin"
   | "app-plugin"
   | "connector"
-  | "satellite"
+  | "remote"
   | "dynamic-view-template"
   | "trace-source"
   | "voice-pipeline-participant"
@@ -38,7 +38,7 @@ type KeepAs =
   | "delete-candidate"
   | "needs-review";
 
-type RelatedSatellite =
+type RelatedRemote =
   | "eliza.runtime"
   | "eliza.fs"
   | "eliza.pty"
@@ -74,12 +74,12 @@ type ConvergenceAuditEntry = {
   category: Category;
   currentPurpose: string;
   keepAs: KeepAs;
-  shouldBecomeSatellite: boolean;
+  shouldBecomeRemote: boolean;
   shouldRegisterDynamicViews: boolean;
   shouldEmitTraceEvents: boolean;
   shouldUseRuntimeBroker: boolean;
   shouldStayOutOfElectrobun: boolean;
-  relatedSatellites?: RelatedSatellite[];
+  relatedRemotes?: RelatedRemote[];
   relatedLayers?: RelatedLayer[];
   recommendedNextAction: RecommendedNextAction;
   risk: Risk;
@@ -112,8 +112,8 @@ type AuditDocument = {
     byCategory: Record<Category, number>;
     byRecommendedNextAction: Record<RecommendedNextAction, number>;
     hardNoMigration: string[];
-    currentSatellites: string[];
-    futureSatelliteCandidates: string[];
+    currentRemotes: string[];
+    futureRemoteCandidates: string[];
     traceFirstCandidates: string[];
     dynamicViewCandidates: string[];
     voiceLocalModelCandidates: string[];
@@ -349,7 +349,7 @@ const TRACE_FIRST_NAMES = new Set([
   "plugin-workflow",
 ]);
 
-const SATELLITE_IDS = new Map([
+const REMOTE_IDS = new Map([
   ["runtime", "eliza.runtime"],
   ["fs", "eliza.fs"],
   ["pty", "eliza.pty"],
@@ -358,7 +358,7 @@ const SATELLITE_IDS = new Map([
   ["surface", "eliza.surface"],
 ]);
 
-const SATELLITE_RELATED = new Map<string, RelatedSatellite[]>([
+const REMOTE_RELATED = new Map<string, RelatedRemote[]>([
   ["runtime", ["eliza.runtime"]],
   ["fs", ["eliza.fs"]],
   ["pty", ["eliza.pty"]],
@@ -439,7 +439,7 @@ function packagePurpose(
   return packageJson?.description?.trim() || fallback;
 }
 
-function nativeRelatedSatellite(id: string): RelatedSatellite[] | undefined {
+function nativeRelatedRemote(id: string): RelatedRemote[] | undefined {
   if (id.includes("filesystem")) return ["eliza.fs"];
   if (id.includes("shell") || id.includes("terminal")) return ["eliza.pty"];
   if (id.includes("coding-tools") || id.includes("codex")) {
@@ -565,10 +565,10 @@ function pluginNotes(id: string, category: Category): string {
     return "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers.";
   }
   if (category === "native-semantic-plugin") {
-    return "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed.";
+    return "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed.";
   }
   if (category === "provider-plugin") {
-    return "Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite.";
+    return "Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote.";
   }
   if (category === "data-memory-plugin") {
     return "Keep as a data or memory plugin. Do not duplicate storage semantics in Electrobun.";
@@ -586,7 +586,7 @@ async function pluginEntry(directory: string): Promise<ConvergenceAuditEntry> {
     CONNECTOR_NAMES.has(id) ||
     classification.category === "native-semantic-plugin";
   const shouldUseRuntimeBroker = RUNTIME_BROKER_NAMES.has(id);
-  const relatedSatellites = nativeRelatedSatellite(id);
+  const relatedRemotes = nativeRelatedRemote(id);
   const relatedLayers: RelatedLayer[] = [];
   if (shouldRegisterDynamicViews) relatedLayers.push("dynamic-views");
   if (shouldEmitTraceEvents) relatedLayers.push("trace");
@@ -598,7 +598,7 @@ async function pluginEntry(directory: string): Promise<ConvergenceAuditEntry> {
     category: classification.category,
     currentPurpose: packagePurpose(packageJson, `Plugin package ${id}.`),
     keepAs: classification.keepAs,
-    shouldBecomeSatellite: false,
+    shouldBecomeRemote: false,
     shouldRegisterDynamicViews,
     shouldEmitTraceEvents,
     shouldUseRuntimeBroker,
@@ -606,7 +606,7 @@ async function pluginEntry(directory: string): Promise<ConvergenceAuditEntry> {
       classification.category === "connector-plugin" ||
       classification.category === "provider-plugin" ||
       classification.category === "app-plugin",
-    relatedSatellites,
+    relatedRemotes,
     relatedLayers: relatedLayers.length > 0 ? relatedLayers : undefined,
     recommendedNextAction: shouldRegisterDynamicViews
       ? "add-dynamic-view-manifest"
@@ -639,9 +639,9 @@ async function packageEntry(params: {
   shouldEmitTraceEvents?: boolean;
   shouldUseRuntimeBroker?: boolean;
   shouldStayOutOfElectrobun?: boolean;
-  relatedSatellites?: RelatedSatellite[];
+  relatedRemotes?: RelatedRemote[];
   relatedLayers?: RelatedLayer[];
-  shouldBecomeSatellite?: boolean;
+  shouldBecomeRemote?: boolean;
   ownerDecisionNeeded?: boolean;
 }): Promise<ConvergenceAuditEntry> {
   const packageJson = await readPackageJson(params.path);
@@ -651,12 +651,12 @@ async function packageEntry(params: {
     category: params.category,
     currentPurpose: packagePurpose(packageJson, params.currentPurpose),
     keepAs: params.keepAs,
-    shouldBecomeSatellite: params.shouldBecomeSatellite ?? false,
+    shouldBecomeRemote: params.shouldBecomeRemote ?? false,
     shouldRegisterDynamicViews: params.shouldRegisterDynamicViews ?? false,
     shouldEmitTraceEvents: params.shouldEmitTraceEvents ?? false,
     shouldUseRuntimeBroker: params.shouldUseRuntimeBroker ?? false,
     shouldStayOutOfElectrobun: params.shouldStayOutOfElectrobun ?? false,
-    relatedSatellites: params.relatedSatellites,
+    relatedRemotes: params.relatedRemotes,
     relatedLayers: params.relatedLayers,
     recommendedNextAction: params.action,
     risk: params.risk ?? "low",
@@ -665,14 +665,14 @@ async function packageEntry(params: {
   };
 }
 
-async function satelliteEntries(): Promise<ConvergenceAuditEntry[]> {
+async function remoteEntries(): Promise<ConvergenceAuditEntry[]> {
   const directories = await directDirectories(
-    "packages/app-core/platforms/electrobun/satellites",
+    "packages/app-core/platforms/electrobun/remotes",
   );
   return Promise.all(
     directories.map(async (directory) => {
       const basename = path.basename(directory);
-      const id = SATELLITE_IDS.get(basename) ?? `eliza.${basename}`;
+      const id = REMOTE_IDS.get(basename) ?? `eliza.${basename}`;
       const packageJson = await readPackageJson(directory);
       return {
         id,
@@ -680,15 +680,15 @@ async function satelliteEntries(): Promise<ConvergenceAuditEntry[]> {
         category: basename === "surface" ? "dev-tooling" : "desktop-capability",
         currentPurpose: packagePurpose(
           packageJson,
-          `${id} first-party Electrobun Satellite.`,
+          `${id} first-party Electrobun Remote.`,
         ),
-        keepAs: "satellite",
-        shouldBecomeSatellite: false,
+        keepAs: "remote",
+        shouldBecomeRemote: false,
         shouldRegisterDynamicViews: basename === "surface",
         shouldEmitTraceEvents: basename !== "surface",
         shouldUseRuntimeBroker: basename !== "surface",
         shouldStayOutOfElectrobun: false,
-        relatedSatellites: SATELLITE_RELATED.get(basename),
+        relatedRemotes: REMOTE_RELATED.get(basename),
         relatedLayers:
           basename === "surface"
             ? ["dynamic-views", "trace"]
@@ -827,7 +827,7 @@ async function buildEntries(): Promise<ConvergenceAuditEntry[]> {
       category: "desktop-shell",
       keepAs: "core",
       action: "leave-alone",
-      currentPurpose: "Electrobun module/Satellite package substrate.",
+      currentPurpose: "Electrobun module/Remote package substrate.",
       notes:
         "Keep as module runtime substrate. Do not turn into a second plugin system.",
       relatedLayers: ["electrobun-shell"],
@@ -844,7 +844,7 @@ async function buildEntries(): Promise<ConvergenceAuditEntry[]> {
         "Source of truth for Eliza-1 and voice metadata. Do not duplicate in Electrobun.",
       shouldEmitTraceEvents: true,
       shouldStayOutOfElectrobun: true,
-      relatedSatellites: ["eliza.local-model"],
+      relatedRemotes: ["eliza.local-model"],
       relatedLayers: ["local-inference", "voice"],
       risk: "medium",
     }),
@@ -889,15 +889,15 @@ async function buildEntries(): Promise<ConvergenceAuditEntry[]> {
     }),
     packageEntry({
       id: "future.eliza.computer",
-      path: "packages/app-core/platforms/electrobun/satellites/computer",
+      path: "packages/app-core/platforms/electrobun/remotes/computer",
       category: "desktop-capability",
       keepAs: "needs-review",
       action: "needs-owner-decision",
       currentPurpose:
-        "Potential future broker for screen/browser/camera/computer context if existing host APIs need a Satellite boundary.",
+        "Potential future broker for screen/browser/camera/computer context if existing host APIs need a Remote boundary.",
       notes:
-        "Only future Satellite candidate. Do not create until a concrete host capability boundary is required.",
-      shouldBecomeSatellite: true,
+        "Only future Remote candidate. Do not create until a concrete host capability boundary is required.",
+      shouldBecomeRemote: true,
       shouldEmitTraceEvents: true,
       shouldUseRuntimeBroker: true,
       relatedLayers: ["electrobun-shell", "trace", "dynamic-views"],
@@ -914,7 +914,7 @@ async function buildEntries(): Promise<ConvergenceAuditEntry[]> {
   const pluginEntries = await Promise.all(pluginDirectories.map(pluginEntry));
   return [
     ...manualEntries,
-    ...(await satelliteEntries()),
+    ...(await remoteEntries()),
     ...pluginEntries,
   ].sort((left, right) => left.id.localeCompare(right.id));
 }
@@ -953,14 +953,14 @@ function buildSummaries(
       "app plugins",
       "core runtime plugins",
     ],
-    currentSatellites: list(entries, (entry) => entry.keepAs === "satellite"),
-    futureSatelliteCandidates: list(
+    currentRemotes: list(entries, (entry) => entry.keepAs === "remote"),
+    futureRemoteCandidates: list(
       entries,
-      (entry) => entry.shouldBecomeSatellite,
+      (entry) => entry.shouldBecomeRemote,
     ),
     traceFirstCandidates: list(
       entries,
-      (entry) => entry.shouldEmitTraceEvents && entry.keepAs !== "satellite",
+      (entry) => entry.shouldEmitTraceEvents && entry.keepAs !== "remote",
     ),
     dynamicViewCandidates: list(
       entries,
@@ -1054,7 +1054,7 @@ ${markdownList(document.dirtyStatus.length > 0 ? document.dirtyStatus : ["clean"
 
 ## Executive Summary
 
-This audit stops the infrastructure-building spiral. Plugins stay plugins, app plugins stay app/product bundles, connectors stay connector plugins, Electrobun remains the desktop shell, AgentManager remains the runtime owner, and Satellites remain limited to desktop/system capability providers.
+This audit stops the infrastructure-building spiral. Plugins stay plugins, app plugins stay app/product bundles, connectors stay connector plugins, Electrobun remains the desktop shell, AgentManager remains the runtime owner, and Remotes remain limited to desktop/system capability providers.
 
 The current local branch may still contain multiple phases, but it should not be pushed blindly as a broad mega-PR unless maintainers explicitly want that review shape. The stack recommendation below keeps the work reviewable without changing the architectural boundary decisions.
 
@@ -1078,17 +1078,17 @@ ${summaryTable(s.byRecommendedNextAction)}
 
 ${markdownList(s.hardNoMigration)}
 
-## Current Satellites
+## Current Remotes
 
-${markdownList(s.currentSatellites)}
+${markdownList(s.currentRemotes)}
 
 eliza.surface remains dev/admin only and is not a production UI replacement.
 
-## Future Satellite Candidates
+## Future Remote Candidates
 
-${markdownList(s.futureSatelliteCandidates)}
+${markdownList(s.futureRemoteCandidates)}
 
-This list is intentionally short. Do not turn connector, provider, or app plugins into Satellites.
+This list is intentionally short. Do not turn connector, provider, or app plugins into Remotes.
 
 ## Trace-First Candidates
 
@@ -1120,7 +1120,7 @@ ${markdownList(s.ownerDecisionItems)}
 - Use \`docs/trace-first-annotations.md\` as the first review-boundary map for top trace-first packages.
 - Add dynamic-view manifests only for contextual inspection surfaces, not fixed dashboards.
 - Keep connector/provider package metadata unchanged unless maintainers already have a metadata convention.
-- Keep Satellite manifests focused on capability boundaries and trusted/full-permission status.
+- Keep Remote manifests focused on capability boundaries and trusted/full-permission status.
 - Do not add source comments unless a hidden constraint or security boundary would otherwise be unclear.
 
 ## PR Stack Recommendation
@@ -1128,7 +1128,7 @@ ${markdownList(s.ownerDecisionItems)}
 Do not blindly push every local phase into the platform convergence PR unless maintainers explicitly ask for a mega-PR. Recommended stack:
 
 1. Platform convergence PR
-   - first-party Satellites
+   - first-party Remotes
    - AgentManager-backed eliza.runtime
    - worker invoke/event bridge
    - dynamic view registry/session infrastructure

@@ -65,21 +65,21 @@ jobs:
         run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
 
       - name: Restore model cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/usbeliza-build/models
           key: elizaos-model-cache-${{ hashFiles('packages/os/linux/variants/milady-tails/Justfile') }}
           restore-keys: elizaos-model-cache-
 
       - name: Restore CLI cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/usbeliza-build/cli
           key: elizaos-cli-cache-${{ hashFiles('packages/os/linux/variants/milady-tails/Justfile') }}
           restore-keys: elizaos-cli-cache-
 
       - name: Restore live-build chroot/debs cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             packages/os/linux/variants/milady-tails/tails/cache
@@ -93,7 +93,7 @@ jobs:
           targets: x86_64-unknown-linux-gnu
 
       - name: Cache Rust build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -201,7 +201,7 @@ jobs:
           echo "::notice::QEMU/KVM unavailable on this runner; skipping ISO boot smoke test (not silently passed — the gate above is the contract)."
 
       - name: Upload ISO artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: elizaos-linux-iso-${{ env.CHANNEL }}
           path: |
@@ -211,7 +211,7 @@ jobs:
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'workflow_call' && inputs.publish == true)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             ${{ steps.iso.outputs.path }}

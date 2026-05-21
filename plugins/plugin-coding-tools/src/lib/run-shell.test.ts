@@ -36,12 +36,12 @@ function runtimeWithRouter(router: ElizaCapabilityRouter): IAgentRuntime {
   } as IAgentRuntime;
 }
 
-function satelliteRouter(): {
+function remoteRouter(): {
   router: ElizaCapabilityRouter;
   runCommand: ReturnType<typeof vi.fn>;
 } {
   const runCommand = vi.fn(async () => ({
-    output: "satellite coded\n",
+    output: "remote coded\n",
     exitCode: 0,
     timedOut: false,
   }));
@@ -78,11 +78,11 @@ function satelliteRouter(): {
 }
 
 describe("plugin-coding-tools runShell mobile routing", () => {
-  it("routes iOS coding commands through a Satellite capability router", async () => {
+  it("routes iOS coding commands through a Remote capability router", async () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_BUILD_VARIANT = "store";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
-    const { router, runCommand } = satelliteRouter();
+    const { router, runCommand } = remoteRouter();
 
     const result = await runShell(runtimeWithRouter(router), {
       command: "codex exec 'touch changed.txt'",
@@ -93,7 +93,7 @@ describe("plugin-coding-tools runShell mobile routing", () => {
     expect(result).toEqual({
       exitCode: 0,
       signal: null,
-      stdout: "satellite coded\n",
+      stdout: "remote coded\n",
       stderr: "",
       durationMs: expect.any(Number),
       sandbox: "capability-router",
@@ -106,7 +106,7 @@ describe("plugin-coding-tools runShell mobile routing", () => {
     });
   });
 
-  it("rejects iOS coding commands when no Satellite capability router is available", async () => {
+  it("rejects iOS coding commands when no Remote capability router is available", async () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
 

@@ -560,6 +560,23 @@ function pickAndroidApkAsset(release) {
   );
 }
 
+function pickAssetByNamePattern(release, pattern) {
+  const assets = Array.isArray(release?.assets) ? release.assets : [];
+  return assets.find((a) => pattern.test(a.name)) ?? null;
+}
+
+const STATIC_ARTIFACT_ASSET_PATTERNS = {
+  "elizaos-usb-installer-macos": /^elizaos-usb-installer-macos.*\.tar\.gz$/i,
+  "elizaos-usb-installer-linux": /^elizaos-usb-installer-linux.*\.tar\.gz$/i,
+  "elizaos-usb-installer-windows": /^elizaos-usb-installer-windows.*\.(zip|exe)$/i,
+  "elizaos-setup-macos": /^elizaos-setup-macos.*\.tar\.gz$/i,
+  "elizaos-setup-linux": /^elizaos-setup-linux.*\.tar\.gz$/i,
+  "elizaos-setup-windows": /^elizaos-setup-windows.*\.(zip|exe)$/i,
+  "elizaos-debian-package": /^elizaos.*\.deb$/i,
+  "elizaos-linux-live-beta": /^elizaos.*-linux.*\.(iso|raw\.img\.zst)$/i,
+  "elizaos-vm-ova": /^elizaos.*\.(ova|qcow2\.zst)$/i,
+};
+
 async function buildOsArtifacts(release) {
   let manifest = null;
   try {
@@ -590,6 +607,17 @@ async function buildOsArtifacts(release) {
       apkEntry.downloadUrl = apkAsset.browser_download_url;
       apkEntry.sizeBytes = apkAsset.size ?? null;
     }
+  }
+
+  // Populate USB installer / AOSP Flasher / Debian / ISO / OVA entries from
+  // matching release assets when present.
+  for (const [id, pattern] of Object.entries(STATIC_ARTIFACT_ASSET_PATTERNS)) {
+    const asset = pickAssetByNamePattern(release, pattern);
+    if (!asset) continue;
+    const entry = staticArtifacts.find((a) => a.id === id);
+    if (!entry) continue;
+    entry.downloadUrl = asset.browser_download_url;
+    entry.sizeBytes = asset.size ?? null;
   }
 
   // Remove any static artifact whose ID is already supplied by the manifest.

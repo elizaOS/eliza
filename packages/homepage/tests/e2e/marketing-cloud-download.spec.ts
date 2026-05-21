@@ -1,17 +1,14 @@
-import { expect, type Locator, test } from "playwright/test";
+import {
+  type APIRequestContext,
+  expect,
+  type Locator,
+  test,
+} from "playwright/test";
 import { releaseData } from "../../src/generated/release-data";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-
-const primaryDownloadIds = [
-  "macos-arm64",
-  "macos-x64",
-  "windows-x64",
-  "linux-x64",
-  "android-apk",
-] as const;
 
 async function expectCloudPath(locator: Locator) {
   const href = await locator.getAttribute("href");
@@ -32,14 +29,18 @@ async function _expectExternalOrLocal(
   expect([productionHost, "localhost", "127.0.0.1"]).toContain(host);
 }
 
-async function expectReachableHead(label: string, href: string) {
-  const response = await fetch(href, {
+async function expectReachableHead(
+  request: APIRequestContext,
+  label: string,
+  href: string,
+) {
+  const response = await request.fetch(href, {
     method: "HEAD",
-    redirect: "manual",
-    signal: AbortSignal.timeout(20_000),
+    maxRedirects: 5,
+    timeout: 20_000,
   });
   expect(
-    response.status,
+    response.status(),
     `${label} should resolve without a broken external target: ${href}`,
   ).toBeLessThan(400);
 }
@@ -106,10 +107,10 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   const effectiveDownloads = effectiveRelease.downloads;
 
   await expect(
-    page
-      .locator(".app-download-grid")
-      .getByText(new RegExp(`From ${escapeRegExp(effectiveRelease.tagName)}`)),
-  ).toHaveCount(primaryDownloadIds.length);
+    page.getByText(
+      new RegExp(`From ${escapeRegExp(effectiveRelease.tagName)}`),
+    ),
+  ).toHaveCount(effectiveDownloads.length);
 
   if (effectiveDownloads.length === 0) {
     await expect(page.getByText("Opens release page")).toHaveCount(5);
@@ -123,6 +124,9 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     );
   }
 
+  // The primary app-download-grid must not contain disabled cards. The
+  // separate osArtifact grid may contain pending entries (rendered with
+  // aria-disabled="true") for distributions still in build.
   await expect(
     page.locator('.app-download-grid [aria-disabled="true"]'),
   ).toHaveCount(0);
@@ -149,6 +153,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
 
 test("homepage live marketing links resolve for cloud, os, release, and downloads", async ({
   page,
+  request,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(
@@ -191,24 +196,24 @@ test("homepage live marketing links resolve for cloud, os, release, and download
       : (releaseData.canaryRelease ?? releaseData.release);
   const downloadTargets =
     effectiveRelease.downloads.length > 0
-      ? effectiveRelease.downloads
-          .filter((download) =>
-            primaryDownloadIds.includes(
-              download.id as (typeof primaryDownloadIds)[number],
-            ),
-          )
-          .map((download) => download.url)
+      ? effectiveRelease.downloads.map((download) => download.url)
       : ["https://github.com/elizaOS/eliza/releases"];
-  const osArtifactTargets = releaseData.osArtifacts
+  // osArtifacts with a downloadUrl render as anchor tags too, so include them.
+  const osArtifactUrls = releaseData.osArtifacts
     .map((artifact) => artifact.downloadUrl)
-    .filter((href): href is string => Boolean(href));
-  const expectedNonCloudTargets = [
-    "https://elizaos.ai/",
-    releaseData.release.url,
-    releaseData.release.checksum?.url,
-    ...downloadTargets,
-    ...osArtifactTargets,
-  ].filter((href): href is string => Boolean(href));
+    .filter((url): url is string => Boolean(url));
+
+  const expectedNonCloudTargets = Array.from(
+    new Set(
+      [
+        "https://elizaos.ai/",
+        releaseData.release.url,
+        releaseData.release.checksum?.url,
+        ...downloadTargets,
+        ...osArtifactUrls,
+      ].filter((href): href is string => Boolean(href)),
+    ),
+  );
 
   const nonCloudHrefs = [...uniqueHrefs.keys()].filter(
     (href) => !new URL(href).hostname.endsWith("elizacloud.ai"),
@@ -216,6 +221,6 @@ test("homepage live marketing links resolve for cloud, os, release, and download
   expect(nonCloudHrefs.sort()).toEqual(expectedNonCloudTargets.sort());
 
   for (const [href, label] of uniqueHrefs) {
-    await expectReachableHead(label, href);
+    await expectReachableHead(request, label, href);
   }
 });

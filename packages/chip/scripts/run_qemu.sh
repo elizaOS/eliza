@@ -120,17 +120,38 @@ find_toolchain() {
         fi
     done
 
-    for cc in /opt/homebrew/opt/llvm/bin/clang clang; do
+    clang_candidates=${RISCV_CLANG_CANDIDATES:-"/opt/homebrew/opt/llvm/bin/clang clang"}
+    for cc in $clang_candidates; do
         if command -v "$cc" >/dev/null 2>&1; then
-            if "$cc" --target=riscv64-unknown-elf -fuse-ld=lld -x assembler -c /dev/null -o /tmp/eliza-riscv-toolchain-test.o >/dev/null 2>&1; then
-                rm -f /tmp/eliza-riscv-toolchain-test.o
+            if clang_can_link_riscv_elf "$cc"; then
                 printf '%s\n' "$cc"
                 return 0
             fi
-            rm -f /tmp/eliza-riscv-toolchain-test.o
         fi
     done
 
+    return 1
+}
+
+clang_can_link_riscv_elf() {
+    cc=$1
+    test_base="${TMPDIR:-/tmp}/eliza-riscv-toolchain-test.$$"
+    test_src="${test_base}.S"
+    test_elf="${test_base}.elf"
+    cat >"$test_src" <<'EOF'
+.section .text
+.globl _start
+_start:
+    j _start
+EOF
+    if "$cc" --target=riscv64-unknown-elf -fuse-ld=lld \
+        -nostdlib -nostartfiles -ffreestanding \
+        -march=rv64imac -mabi=lp64 \
+        -x assembler "$test_src" -o "$test_elf" >/dev/null 2>&1; then
+        rm -f "$test_src" "$test_elf"
+        return 0
+    fi
+    rm -f "$test_src" "$test_elf"
     return 1
 }
 

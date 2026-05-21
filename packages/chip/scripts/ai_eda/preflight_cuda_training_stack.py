@@ -14,7 +14,7 @@ import platform
 import shutil
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +96,11 @@ def module_status(module: str) -> dict[str, Any]:
             item["cuda_device_count"] = int(torch.cuda.device_count())
             if torch.cuda.is_available():
                 item["cuda_device_name"] = torch.cuda.get_device_name(0)
+            item["mps_available"] = bool(
+                hasattr(torch.backends, "mps")
+                and torch.backends.mps.is_available()
+                and torch.backends.mps.is_built()
+            )
         except Exception as exc:  # pragma: no cover - diagnostic path
             item["status"] = "PRESENT_BUT_IMPORT_FAILED"
             item["error"] = str(exc)
@@ -128,7 +133,7 @@ def memory_bytes() -> int | None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     return parser.parse_args()
 
@@ -146,7 +151,7 @@ def main() -> int:
     mem = memory_bytes()
     report = {
         "schema": "eliza.ai_eda.cuda_training_preflight.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "status": "PASS_WITH_BLOCKERS_RECORDED",

@@ -1,6 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { delimiter } from "node:path";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 const defaultAuditedRoots = [
   ".github",
@@ -57,7 +56,7 @@ for (const root of auditedRoots) {
       if (!satellitePattern.test(line)) continue;
       if (allowlist.some((pattern) => pattern.test(line))) continue;
       failures.push(
-        `${file}:${lineIndex + 1}: use capability-router/remote-capability vocabulary; satellite is only allowed for historical naming analysis or legacy env aliases.`,
+        `${file}:${lineIndex + 1}: use capability-router/remote-capability vocabulary; satellite is only allowed for historical naming analysis.`,
       );
     }
   }

@@ -108,12 +108,17 @@ def validate_candidate(path: Path) -> list[str]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate", action="append", type=Path, default=[])
+    parser.add_argument("--candidate-dir", action="append", type=Path, default=[])
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    candidates = args.candidate or list(DEFAULT_CANDIDATES)
+    candidates = list(args.candidate)
+    for directory in args.candidate_dir:
+        candidates.extend(sorted(directory.glob("*.json")) + sorted(directory.glob("*.yaml")))
+    if not candidates:
+        candidates = list(DEFAULT_CANDIDATES)
     errors: list[str] = []
     for path in candidates:
         errors.extend(validate_candidate(path))

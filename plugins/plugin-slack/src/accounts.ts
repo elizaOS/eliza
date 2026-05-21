@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type { ConnectorAccountRole, IAgentRuntime } from "@elizaos/core";
 
 /**
  * Default account identifier used when no specific account is configured
@@ -81,6 +81,14 @@ export interface SlackAccountConfig {
   name?: string;
   /** If false, do not start this Slack account */
   enabled?: boolean;
+  /**
+   * Account role. AGENT (the default) means outbound API calls are made
+   * with the bot token (xoxb-) and represent the agent identity. OWNER
+   * means outbound calls that have user-token coverage (chat:write user
+   * scope) are made with the xoxp- user token so the agent acts as the
+   * user who installed the integration.
+   */
+  role?: ConnectorAccountRole;
   /** Slack bot token (xoxb-...) */
   botToken?: string;
   /** Slack app-level token (xapp-...) */
@@ -138,6 +146,12 @@ export interface ResolvedSlackAccount {
   accountId: string;
   enabled: boolean;
   name?: string;
+  /**
+   * Role this account represents in OWNER+AGENT terms. Drives outbound
+   * API client selection in the runtime: AGENT → bot token, OWNER →
+   * user token for calls covered by the granted user scopes.
+   */
+  role: ConnectorAccountRole;
   botToken?: string;
   appToken?: string;
   signingSecret?: string;
@@ -188,6 +202,20 @@ export function resolveSlackAppToken(raw?: string | null): string | undefined {
  */
 export function resolveSlackUserToken(raw?: string | null): string | undefined {
   return normalizeSlackToken(raw, "xoxp-");
+}
+
+/**
+ * Normalises an inbound role string into a `ConnectorAccountRole`.
+ * Unknown values fall back to AGENT — the default for legacy single
+ * bot-token deployments where the agent IS the bot.
+ */
+export function normalizeSlackAccountRole(raw: unknown): ConnectorAccountRole {
+  if (typeof raw !== "string") return "AGENT";
+  const upper = raw.trim().toUpperCase();
+  if (upper === "OWNER" || upper === "AGENT" || upper === "TEAM") {
+    return upper;
+  }
+  return "AGENT";
 }
 
 /**
@@ -359,10 +387,20 @@ export function resolveSlackAccount(
   const configUserToken = resolveSlackUserToken(merged.userToken);
   const userToken = configUserToken ?? envUserToken;
 
+  // Resolve role. Precedence: per-account config role > env override
+  // (default account only) > "AGENT". AGENT is the legacy default — the
+  // agent acts as the bot identity. OWNER routes user-scope-covered
+  // outbound calls through the xoxp- user token.
+  const envRole = allowEnv
+    ? (runtime.getSetting("SLACK_ACCOUNT_ROLE") as string | undefined)
+    : undefined;
+  const role = normalizeSlackAccountRole(merged.role ?? envRole);
+
   return {
     accountId: normalizedAccountId,
     enabled,
     name: merged.name?.trim() || undefined,
+    role,
     botToken,
     appToken,
     signingSecret,

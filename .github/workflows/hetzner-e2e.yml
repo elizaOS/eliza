@@ -144,7 +144,7 @@ jobs:
 
       - name: Upload state artifact
         if: always() && steps.secret_config.outputs.configured == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hetzner-e2e-state
           path: /tmp/hetzner-e2e-state.json
@@ -188,7 +188,7 @@ jobs:
 
       - name: Download state artifact
         if: steps.secret_config.outputs.configured == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: hetzner-e2e-state
           path: /tmp/hetzner-e2e-state

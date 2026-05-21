@@ -105,6 +105,21 @@ def check_evidence(path: Path) -> dict[str, Any]:
             "blocked_marker": rel(blocked),
             "reason": text.splitlines()[0] if text else "",
         }
+    status_report = path.with_suffix(".json")
+    report = load_json(status_report)
+    if report.get("status") == "blocked":
+        blockers = report.get("blockers")
+        reason = ""
+        if isinstance(blockers, list) and blockers:
+            reason = str(blockers[0])
+        elif isinstance(report.get("progress"), dict):
+            reason = str(report["progress"].get("next_step", ""))
+        return {
+            "status": "blocked",
+            "path": rel(path),
+            "blocked_report": rel(status_report),
+            "reason": reason or "companion status report is blocked",
+        }
     return {"status": "missing", "path": rel(path), "blocked_marker": rel(blocked)}
 
 

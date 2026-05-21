@@ -8,7 +8,7 @@ import hashlib
 import importlib.util
 import json
 import shutil
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -120,7 +120,7 @@ def module_entry(name: str) -> dict[str, str]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     return parser.parse_args()
 
@@ -130,7 +130,7 @@ def main() -> int:
     report = {
         "schema": "eliza.ai_eda.memory_macro_library_targets.v1",
         "run_id": args.run_id,
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "mode": "dry-run",
         "status": "TARGET_CAPTURE_ONLY_NO_MEMORY_MACRO_LIBRARY_EXECUTION",
         "claim_boundary": CLAIM_BOUNDARY,

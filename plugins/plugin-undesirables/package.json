@@ -1,0 +1,124 @@
+{
+  "name": "plugin-undesirables",
+  "version": "2.4.4",
+  "description": "ElizaOS plugin — Personality-as-Code for AI agents. Live TCG market data from 370K+ products, passive market intelligence evaluator, 24 skills, 9 actions, and zero-config demo soul. NFT holders get unique Big Five psychology profiles. Oracle API integration for card grading, Monte Carlo simulations, and arbitrage scanning.",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "images",
+    "assets",
+    "plugin.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "clean": "rm -rf dist",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "elizaos",
+    "elizaos-plugin",
+    "elizaos-plugins",
+    "eliza",
+    "ai-agents",
+    "ai-personality",
+    "agent-personality",
+    "autonomous-agents",
+    "personality",
+    "soul",
+    "nft",
+    "ethereum",
+    "market-data",
+    "live-pricing",
+    "trading-cards",
+    "tcg",
+    "pokemon",
+    "oracle-api",
+    "x402",
+    "monte-carlo",
+    "ai-grading",
+    "mcp",
+    "base",
+    "usdc",
+    "content-creation",
+    "business-automation",
+    "market-intelligence"
+  ],
+  "author": "The Undesirables LLC (sailorpepe)",
+  "license": "BUSL-1.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sailorpepe/plugin-undesirables"
+  },
+  "homepage": "https://the-undesirables.com",
+  "bugs": {
+    "url": "https://github.com/sailorpepe/plugin-undesirables/issues"
+  },
+  "funding": {
+    "type": "individual",
+    "url": "https://the-undesirables.com"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "UNDESIRABLES_WORKSPACE": {
+        "type": "string",
+        "description": "Path to an Undesirables soul workspace directory. Optional — a demo soul loads automatically if not set.",
+        "required": false,
+        "sensitive": false
+      },
+      "OLLAMA_BASE_URL": {
+        "type": "string",
+        "description": "Ollama endpoint URL for local LLM inference (default: http://localhost:11434)",
+        "required": false,
+        "default": "http://localhost:11434",
+        "sensitive": false
+      }
+    }
+  },
+  "elizaos": {
+    "plugin": {
+      "capabilities": [
+        "personality",
+        "market-data",
+        "market-intelligence",
+        "oracle",
+        "market-analysis",
+        "business-automation",
+        "content-creation",
+        "risk-assessment",
+        "trading"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@elizaos/core": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@elizaos/core": "2.0.0-alpha.77",
+    "@types/js-yaml": "^4.0.9",
+    "js-yaml": "^4.1.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.4.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

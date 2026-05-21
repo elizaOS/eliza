@@ -142,10 +142,10 @@ function createSessionPayload(
       title: manifest.title,
       source: manifest.source,
       placement: manifest.placement,
-      requiredSatellites: manifest.requiredSatellites ?? [],
+      requiredRemotes: manifest.requiredRemotes ?? [],
       eventSubscriptions: (manifest.eventSubscriptions ?? []).map(
         (subscription) => ({
-          satelliteId: subscription.satelliteId,
+          remoteId: subscription.remoteId,
           events: subscription.events ?? [],
         }),
       ),
@@ -198,7 +198,7 @@ export class DynamicViewSessionManager {
     }
     const placement = params.placement ?? manifest.placement;
     this.assertPlacementSupported(placement);
-    this.assertRequiredSatellitesAvailable(manifest);
+    this.assertRequiredRemotesAvailable(manifest);
     const url = resolveEntrypoint(manifest.entrypoint, this.entrypointBaseDir);
     const timestamp = nowIso(this.now);
     const session: DynamicViewSession = {
@@ -305,23 +305,21 @@ export class DynamicViewSessionManager {
     }
   }
 
-  private assertRequiredSatellitesAvailable(
-    manifest: DynamicViewManifest,
-  ): void {
-    const requiredSatellites = manifest.requiredSatellites ?? [];
-    if (requiredSatellites.length === 0) return;
+  private assertRequiredRemotesAvailable(manifest: DynamicViewManifest): void {
+    const requiredRemotes = manifest.requiredRemotes ?? [];
+    if (requiredRemotes.length === 0) return;
     if (!this.workerStatusProvider) {
       throw new DynamicViewError(
-        "DYNAMIC_VIEW_REQUIRED_SATELLITE_UNAVAILABLE",
-        "Dynamic view requires Satellite status checks, but no provider is configured.",
+        "DYNAMIC_VIEW_REQUIRED_REMOTE_UNAVAILABLE",
+        "Dynamic view requires Remote status checks, but no provider is configured.",
       );
     }
-    for (const satelliteId of requiredSatellites) {
-      const status = this.workerStatusProvider.getWorkerStatus(satelliteId);
+    for (const remoteId of requiredRemotes) {
+      const status = this.workerStatusProvider.getWorkerStatus(remoteId);
       if (status?.state !== "running") {
         throw new DynamicViewError(
-          "DYNAMIC_VIEW_REQUIRED_SATELLITE_UNAVAILABLE",
-          `Required Satellite is not running: ${satelliteId}`,
+          "DYNAMIC_VIEW_REQUIRED_REMOTE_UNAVAILABLE",
+          `Required Remote is not running: ${remoteId}`,
         );
       }
     }

@@ -674,7 +674,7 @@ Concrete findings from the inspected PR files:
   not sufficient for dynamic plugins because it has no `plugin.modules.list`,
   no remote action/provider/evaluator/service/app manifest, no route registry,
   and no frontend asset contract.
-- `packages/cloud-services/coding-satellite/src/index.ts` is appropriately
+- `packages/cloud-services/coding-remote-runner/src/index.ts` (historically `coding-satellite`) is appropriately
   workspace-scoped for filesystem and process execution, including bearer auth
   and path guards, but it exposes only low-level runner capabilities. A coding
   container built from this shape still needs a capability-router plugin server

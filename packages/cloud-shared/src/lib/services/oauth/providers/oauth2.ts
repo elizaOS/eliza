@@ -87,6 +87,41 @@ interface ExtractedUserInfo {
   raw: Record<string, unknown>;
 }
 
+/**
+ * Pick the right token for the userInfo / tokenInfo lookup.
+ *
+ * For providers with a user/bot token split (Slack via `authed_user`)
+ * the OWNER flow must use the user-context token so identity lookup
+ * returns the authorizing user, not the bot. AGENT and other flows
+ * keep the bot/app token.
+ *
+ * Other providers (no `userScopes` declared) always use the standard
+ * `access_token` — the OWNER vs AGENT distinction doesn't change which
+ * token represents the identity.
+ */
+function pickUserInfoToken(
+  provider: OAuthProviderConfig,
+  tokens: TokenResponse,
+  connectionRole: OAuthStandardConnectionRole,
+): string {
+  if (connectionRole !== "OWNER" || !provider.userScopes || provider.userScopes.length === 0) {
+    return tokens.access_token;
+  }
+  const authedUser = tokens.authed_user;
+  if (authedUser && typeof authedUser === "object" && !Array.isArray(authedUser)) {
+    const userToken = (authedUser as Record<string, unknown>).access_token;
+    if (typeof userToken === "string" && userToken.length > 0) {
+      return userToken;
+    }
+  }
+  // Fall back to the bot token if the provider didn't return a user
+  // token (e.g. the user denied user-scope permissions on the consent
+  // screen). The caller will still hit the dedup guard, but that's the
+  // correct behavior: an OWNER connection without user-token grants
+  // isn't meaningfully distinct from an AGENT connection.
+  return tokens.access_token;
+}
+
 function getStoredConnectionRole(sourceContext: unknown): OAuthStandardConnectionRole {
   if (!sourceContext || typeof sourceContext !== "object") {
     return "OWNER";
@@ -98,15 +133,14 @@ function getStoredConnectionRole(sourceContext: unknown): OAuthStandardConnectio
 function connectionSourceContext(
   connectionRole: OAuthStandardConnectionRole,
 ): PlatformCredentialSourceContext {
-  const sourceContext: PlatformCredentialSourceContext = {
-    connectionRole,
-  };
-  if (connectionRole === "OWNER") {
-    sourceContext.agentGoogleSide = "owner";
-  } else if (connectionRole === "AGENT") {
-    sourceContext.agentGoogleSide = "agent";
-  }
-  return sourceContext;
+  // We intentionally no longer write `agentGoogleSide`. `connectionRole`
+  // is the canonical field; existing rows that only have the legacy
+  // field are still readable via the fallbacks in `getStoredConnectionRole`
+  // (above, line 95), `oauth-service.ts` (`agentGoogleSide` fallback),
+  // and `connection-adapters/generic-adapter.ts`. The upsert
+  // setWhere clause below also COALESCEs both fields so a re-link
+  // matches the original row.
+  return { connectionRole };
 }
 
 function oauthSecretName(
@@ -204,6 +238,24 @@ export async function initiateOAuth2(
     authUrl.searchParams.set("scope", scopes.join(" "));
   }
 
+  // Slack-style user/bot scope split: providers that distinguish user-level
+  // scopes from bot/app scopes (currently only Slack via the `user_scope`
+  // query parameter) declare them in `provider.userScopes`. Without this,
+  // the user token returned in `authed_user.access_token` has no granted
+  // user-level permissions and can't act on the user's behalf.
+  //
+  // Only add user_scope for non-AGENT flows. The AGENT flow installs the
+  // app's bot into the workspace; surfacing personal user-level permission
+  // requests on the workspace admin's authorization screen would (a) be
+  // surprising UX for "install a bot" and (b) cause both flows' user-info
+  // lookup to resolve to the same Slack user_id (the authorizer), which
+  // the `storeConnection` dedup guard rejects with
+  // `OAUTH_ACCOUNT_ALREADY_LINKED_TO_DIFFERENT_ROLE` on the second click.
+  const normalizedRole = normalizeOAuthConnectionRole(params.connectionRole);
+  if (provider.userScopes && provider.userScopes.length > 0 && normalizedRole !== "AGENT") {
+    authUrl.searchParams.set("user_scope", provider.userScopes.join(" "));
+  }
+
   authUrl.searchParams.set("state", state);
 
   // Add PKCE parameters
@@ -262,12 +314,21 @@ export async function handleOAuth2Callback(
   // Exchange code for tokens
   const tokens = await exchangeCodeForTokens(provider, code, codeVerifier);
 
+  // For providers with a user/bot token split (Slack), the OWNER flow
+  // must resolve the *authorizing user's* identity via the user token
+  // — not the bot token. Otherwise `users.identity` (or equivalent)
+  // returns the same identity for both AGENT and OWNER flows (the
+  // workspace admin who clicked Authorize on both buttons), and the
+  // `storeConnection` dedup guard rejects the second connection with
+  // `OAUTH_ACCOUNT_ALREADY_LINKED_TO_DIFFERENT_ROLE`.
+  const userInfoToken = pickUserInfoToken(provider, tokens, connectionRole);
+
   // Fetch user info: userInfo endpoint, token metadata endpoint, or from token response
   let userInfo: ExtractedUserInfo;
   if (provider.endpoints?.userInfo) {
-    userInfo = await fetchUserInfo(provider, tokens.access_token);
+    userInfo = await fetchUserInfo(provider, userInfoToken);
   } else if (provider.endpoints?.tokenInfo) {
-    userInfo = await fetchTokenInfo(provider, tokens.access_token);
+    userInfo = await fetchTokenInfo(provider, userInfoToken);
   } else {
     userInfo = extractUserInfoFromTokens(provider, tokens);
   }

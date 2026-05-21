@@ -100,5 +100,20 @@
   "auth": {
     "kind": "oauth",
     "credentialKeys": ["DISCORD_API_TOKEN"]
+  },
+  "accounts": {
+    "agent": {
+      "supported": true,
+      "authKind": "api-key",
+      "credentialKeys": ["DISCORD_API_TOKEN"],
+      "notes": "The agent's own Discord bot identity. Paste a bot token from the Discord Developer Portal; posts, mentions, replies, slash commands, and voice all run through the bot user."
+    },
+    "owner": {
+      "supported": true,
+      "authKind": "local-app",
+      "credentialKeys": [],
+      "osSupport": ["darwin", "win32"],
+      "notes": "The user's own Discord identity, driven via Discord Desktop's Chrome DevTools Protocol port. Eliza relaunches the local Discord client with --remote-debugging-port and reads/writes through the user's logged-in session — useful for DMs the agent's bot has no access to. macOS uses osascript/open -a; Windows uses taskkill/Discord.exe from %LOCALAPPDATA%\\Discord\\app-*. Linux is not supported yet."
+    }
   }
 }

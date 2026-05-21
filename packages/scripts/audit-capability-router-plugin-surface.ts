@@ -4,10 +4,11 @@ import ts from "typescript";
 const pluginFile = "packages/core/src/types/plugin.ts";
 const capabilityFile = "packages/core/src/capabilities/index.ts";
 const conformanceFile =
-	"packages/agent/src/services/remote-capability-endpoint-conformance.ts";
-const fixtureServerFile = "packages/scripts/capability-router-fixture-server.ts";
+  "packages/agent/src/services/remote-capability-endpoint-conformance.ts";
+const fixtureServerFile =
+  "packages/scripts/capability-router-fixture-server.ts";
 const liveReportValidatorFile =
-	"packages/scripts/validate-capability-router-live-reports.ts";
+  "packages/scripts/validate-capability-router-live-reports.ts";
 
 const remoteSupported = new Map<string, string>([
   ["name", "name"],
@@ -43,6 +44,8 @@ const localOnly = new Set([
   "dependencies",
   "testDependencies",
   "autoEnable",
+  "mode",
+  "remote",
 ]);
 
 const remoteManifestKeys = new Set(
@@ -83,73 +86,73 @@ if (!remoteManifestKeys.has("lifecycle")) {
 }
 
 const pluginRpcMethods = readStringUnionMembers(
-	capabilityFile,
-	"RuntimeBrokerCapabilityMethod",
+  capabilityFile,
+  "RuntimeBrokerCapabilityMethod",
 ).filter((method) => method.startsWith("plugin."));
 const conformanceRequiredMethods = pluginRpcMethods.filter(
-	(method) => method !== "plugin.modules.list",
+  (method) => method !== "plugin.modules.list",
 );
 const conformanceSource = readFileSync(conformanceFile, "utf8");
 const fixtureServerSource = readFileSync(fixtureServerFile, "utf8");
 const conformanceSurfaces = readStringUnionMembers(
-	conformanceFile,
-	"RemoteCapabilityEndpointConformanceSurface",
+  conformanceFile,
+  "RemoteCapabilityEndpointConformanceSurface",
 );
 const liveReportValidatorSurfaces = readStringArrayLiteral(
-	liveReportValidatorFile,
-	"REQUIRED_SURFACES",
+  liveReportValidatorFile,
+  "REQUIRED_SURFACES",
 );
 const liveReportValidatorRpcMethodRecord = readStringArrayRecord(
-	liveReportValidatorFile,
-	"REQUIRED_SURFACE_RPC_METHODS",
+  liveReportValidatorFile,
+  "REQUIRED_SURFACE_RPC_METHODS",
 );
 const liveReportValidatorRpcMethods = new Set(
-	Object.values(liveReportValidatorRpcMethodRecord).flat(),
+  Object.values(liveReportValidatorRpcMethodRecord).flat(),
 );
 
 compareSets(
-	failures,
-	"Remote capability endpoint conformance surfaces",
-	conformanceSurfaces,
-	"live report required surfaces",
-	liveReportValidatorSurfaces,
+  failures,
+  "Remote capability endpoint conformance surfaces",
+  conformanceSurfaces,
+  "live report required surfaces",
+  liveReportValidatorSurfaces,
 );
 
 compareSets(
-	failures,
-	"Live report required surfaces",
-	liveReportValidatorSurfaces,
-	"live report RPC method matrix keys",
-	Object.keys(liveReportValidatorRpcMethodRecord),
+  failures,
+  "Live report required surfaces",
+  liveReportValidatorSurfaces,
+  "live report RPC method matrix keys",
+  Object.keys(liveReportValidatorRpcMethodRecord),
 );
 
 for (const method of pluginRpcMethods) {
-	if (!fixtureServerSource.includes(`case "${method}"`)) {
-		failures.push(
-			`RuntimeBrokerCapabilityMethod.${method} is not implemented by capability-router-fixture-server.`,
-		);
-	}
+  if (!fixtureServerSource.includes(`case "${method}"`)) {
+    failures.push(
+      `RuntimeBrokerCapabilityMethod.${method} is not implemented by capability-router-fixture-server.`,
+    );
+  }
 }
 
 for (const method of conformanceRequiredMethods) {
-	if (!conformanceSource.includes(`"${method}"`)) {
-		failures.push(
-			`RuntimeBrokerCapabilityMethod.${method} is not exercised by remote capability endpoint conformance.`,
-		);
-	}
-	if (!liveReportValidatorRpcMethods.has(method)) {
-		failures.push(
-			`RuntimeBrokerCapabilityMethod.${method} is not required by live report validation.`,
-		);
-	}
+  if (!conformanceSource.includes(`"${method}"`)) {
+    failures.push(
+      `RuntimeBrokerCapabilityMethod.${method} is not exercised by remote capability endpoint conformance.`,
+    );
+  }
+  if (!liveReportValidatorRpcMethods.has(method)) {
+    failures.push(
+      `RuntimeBrokerCapabilityMethod.${method} is not required by live report validation.`,
+    );
+  }
 }
 
 for (const method of liveReportValidatorRpcMethods) {
-	if (!conformanceRequiredMethods.includes(method)) {
-		failures.push(
-			`Live report validation requires ${method}, but it is not a canonical non-list plugin RPC method.`,
-		);
-	}
+  if (!conformanceRequiredMethods.includes(method)) {
+    failures.push(
+      `Live report validation requires ${method}, but it is not a canonical non-list plugin RPC method.`,
+    );
+  }
 }
 
 if (failures.length > 0) {
@@ -159,18 +162,18 @@ if (failures.length > 0) {
 }
 
 console.log(
-	JSON.stringify(
-		{
-			ok: true,
-			pluginFields: pluginKeys.length,
-			remoteSupported: remoteSupported.size,
-			localOnly: localOnly.size,
-			pluginRpcMethods: pluginRpcMethods.length,
-			conformanceRequiredMethods: conformanceRequiredMethods.length,
-		},
-		null,
-		2,
-	),
+  JSON.stringify(
+    {
+      ok: true,
+      pluginFields: pluginKeys.length,
+      remoteSupported: remoteSupported.size,
+      localOnly: localOnly.size,
+      pluginRpcMethods: pluginRpcMethods.length,
+      conformanceRequiredMethods: conformanceRequiredMethods.length,
+    },
+    null,
+    2,
+  ),
 );
 
 function readInterfaceMembers(
@@ -201,132 +204,148 @@ function readTypeMembers(fileName: string, typeName: string): string[] {
 }
 
 function readStringUnionMembers(fileName: string, typeName: string): string[] {
-	const source = readSourceFile(fileName);
-	for (const node of source.statements) {
-		if (
-			ts.isTypeAliasDeclaration(node) &&
-			node.name.text === typeName &&
-			ts.isUnionTypeNode(node.type)
-		) {
-			return node.type.types.flatMap((member) => {
-				if (
-					ts.isLiteralTypeNode(member) &&
-					ts.isStringLiteral(member.literal)
-				) {
-					return [member.literal.text];
-				}
-				return [];
-			});
-		}
-	}
-	throw new Error(`Could not find string union ${typeName} in ${fileName}.`);
+  const source = readSourceFile(fileName);
+  for (const node of source.statements) {
+    if (
+      ts.isTypeAliasDeclaration(node) &&
+      node.name.text === typeName &&
+      ts.isUnionTypeNode(node.type)
+    ) {
+      return node.type.types.flatMap((member) => {
+        if (
+          ts.isLiteralTypeNode(member) &&
+          ts.isStringLiteral(member.literal)
+        ) {
+          return [member.literal.text];
+        }
+        return [];
+      });
+    }
+  }
+  throw new Error(`Could not find string union ${typeName} in ${fileName}.`);
 }
 
-function readStringArrayLiteral(fileName: string, variableName: string): string[] {
-	const source = readSourceFile(fileName);
-	for (const node of source.statements) {
-		if (!ts.isVariableStatement(node)) continue;
-		for (const declaration of node.declarationList.declarations) {
-			if (
-				ts.isIdentifier(declaration.name) &&
-				declaration.name.text === variableName &&
-				declaration.initializer
-			) {
-				const initializer = unwrapExpression(declaration.initializer);
-				if (!ts.isArrayLiteralExpression(initializer)) {
-					throw new Error(`${variableName} must be a string array.`);
-				}
-				return initializer.elements.map((element) => {
-					if (!ts.isStringLiteral(element)) {
-						throw new Error(`${variableName} must contain only string literals.`);
-					}
-					return element.text;
-				});
-			}
-		}
-	}
-	throw new Error(`Could not find string array ${variableName} in ${fileName}.`);
+function readStringArrayLiteral(
+  fileName: string,
+  variableName: string,
+): string[] {
+  const source = readSourceFile(fileName);
+  for (const node of source.statements) {
+    if (!ts.isVariableStatement(node)) continue;
+    for (const declaration of node.declarationList.declarations) {
+      if (
+        ts.isIdentifier(declaration.name) &&
+        declaration.name.text === variableName &&
+        declaration.initializer
+      ) {
+        const initializer = unwrapExpression(declaration.initializer);
+        if (!ts.isArrayLiteralExpression(initializer)) {
+          throw new Error(`${variableName} must be a string array.`);
+        }
+        return initializer.elements.map((element) => {
+          if (!ts.isStringLiteral(element)) {
+            throw new Error(
+              `${variableName} must contain only string literals.`,
+            );
+          }
+          return element.text;
+        });
+      }
+    }
+  }
+  throw new Error(
+    `Could not find string array ${variableName} in ${fileName}.`,
+  );
 }
 
 function readStringArrayRecord(
-	fileName: string,
-	variableName: string,
+  fileName: string,
+  variableName: string,
 ): Record<string, string[]> {
-	const source = readSourceFile(fileName);
-	for (const node of source.statements) {
-		if (!ts.isVariableStatement(node)) continue;
-		for (const declaration of node.declarationList.declarations) {
-			if (
-				ts.isIdentifier(declaration.name) &&
-				declaration.name.text === variableName &&
-				declaration.initializer &&
-				ts.isObjectLiteralExpression(declaration.initializer)
-			) {
-				return Object.fromEntries(
-					declaration.initializer.properties.map((property) => {
-						if (
-							!ts.isPropertyAssignment(property) ||
-							!property.name ||
-							!ts.isArrayLiteralExpression(property.initializer)
-						) {
-							throw new Error(
-								`${variableName} must be an object of string array properties.`,
-							);
-						}
-						const propertyName = propertyNameText(property.name);
-						const values = property.initializer.elements.map((element) => {
-							if (!ts.isStringLiteral(element)) {
-								throw new Error(
-									`${variableName}.${propertyName} must contain only string literals.`,
-								);
-							}
-							return element.text;
-						});
-						return [propertyName, values] as const;
-					}),
-				);
-			}
-		}
-	}
-	throw new Error(`Could not find string array record ${variableName} in ${fileName}.`);
+  const source = readSourceFile(fileName);
+  for (const node of source.statements) {
+    if (!ts.isVariableStatement(node)) continue;
+    for (const declaration of node.declarationList.declarations) {
+      if (
+        ts.isIdentifier(declaration.name) &&
+        declaration.name.text === variableName &&
+        declaration.initializer &&
+        ts.isObjectLiteralExpression(declaration.initializer)
+      ) {
+        return Object.fromEntries(
+          declaration.initializer.properties.map((property) => {
+            if (
+              !ts.isPropertyAssignment(property) ||
+              !property.name ||
+              !ts.isArrayLiteralExpression(property.initializer)
+            ) {
+              throw new Error(
+                `${variableName} must be an object of string array properties.`,
+              );
+            }
+            const propertyName = propertyNameText(property.name);
+            const values = property.initializer.elements.map((element) => {
+              if (!ts.isStringLiteral(element)) {
+                throw new Error(
+                  `${variableName}.${propertyName} must contain only string literals.`,
+                );
+              }
+              return element.text;
+            });
+            return [propertyName, values] as const;
+          }),
+        );
+      }
+    }
+  }
+  throw new Error(
+    `Could not find string array record ${variableName} in ${fileName}.`,
+  );
 }
 
 function compareSets(
-	failures: string[],
-	leftLabel: string,
-	left: readonly string[],
-	rightLabel: string,
-	right: readonly string[],
+  failures: string[],
+  leftLabel: string,
+  left: readonly string[],
+  rightLabel: string,
+  right: readonly string[],
 ): void {
-	const rightSet = new Set(right);
-	for (const item of left) {
-		if (!rightSet.has(item)) {
-			failures.push(`${leftLabel} include ${item}, missing from ${rightLabel}.`);
-		}
-	}
-	const leftSet = new Set(left);
-	for (const item of right) {
-		if (!leftSet.has(item)) {
-			failures.push(`${rightLabel} include ${item}, missing from ${leftLabel}.`);
-		}
-	}
+  const rightSet = new Set(right);
+  for (const item of left) {
+    if (!rightSet.has(item)) {
+      failures.push(
+        `${leftLabel} include ${item}, missing from ${rightLabel}.`,
+      );
+    }
+  }
+  const leftSet = new Set(left);
+  for (const item of right) {
+    if (!leftSet.has(item)) {
+      failures.push(
+        `${rightLabel} include ${item}, missing from ${leftLabel}.`,
+      );
+    }
+  }
 }
 
 function propertyNameText(name: ts.PropertyName): string {
-	if (ts.isIdentifier(name) || ts.isStringLiteral(name)) {
-		return name.text;
-	}
-	if (ts.isNumericLiteral(name)) {
-		return name.text;
-	}
-	throw new Error("Unsupported computed property name.");
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) {
+    return name.text;
+  }
+  if (ts.isNumericLiteral(name)) {
+    return name.text;
+  }
+  throw new Error("Unsupported computed property name.");
 }
 
 function unwrapExpression(expression: ts.Expression): ts.Expression {
-	if (ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) {
-		return unwrapExpression(expression.expression);
-	}
-	return expression;
+  if (
+    ts.isAsExpression(expression) ||
+    ts.isTypeAssertionExpression(expression)
+  ) {
+    return unwrapExpression(expression.expression);
+  }
+  return expression;
 }
 
 function memberNames(members: ts.NodeArray<ts.TypeElement>): string[] {

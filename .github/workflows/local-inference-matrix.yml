@@ -212,7 +212,7 @@ jobs:
           hf --help >/dev/null
 
       - name: Cache buun-llama-cpp checkout + build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/eliza-dflash/buun-llama-cpp
@@ -221,7 +221,7 @@ jobs:
             dflash-${{ matrix.target }}-
 
       - name: Cache local-inference state (binaries + models)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.ELIZA_STATE_DIR }}/local-inference
           key: local-inference-${{ matrix.target }}-${{ env.SMOKE_MODEL_FILE }}-${{ hashFiles('packages/app-core/scripts/build-llama-cpp-dflash.mjs') }}
@@ -291,7 +291,7 @@ jobs:
 
       - name: Upload ablation artifact
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: local-inference-ablation-${{ matrix.target }}
           path: artifacts/local-inference-ablation/*.json

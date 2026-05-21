@@ -38,6 +38,40 @@ and checks the required package tools.
 
 `make smoke` runs the locally available low-cost checks. Some checks report `BLOCKED` when an external EDA, simulator, BSP, Android, or hardware dependency is absent; those blockers are expected on a minimal laptop setup and are captured as evidence rather than hidden.
 
+## AI-EDA Setup
+
+The AI chip-optimization stack has a separate bootstrap entrypoint. It records
+host readiness, validates source/dataset manifests, keeps external payloads
+under ignored `external/**/payload` paths, and emits machine-readable reports
+under `build/ai_eda/`.
+
+```sh
+make ai-eda-bootstrap-metadata
+make ai-eda-bootstrap-setup-check
+make ai-eda-bootstrap-local-smoke
+make ai-eda-cuda-payload
+```
+
+Use `make ai-eda-bootstrap-metadata` on a fresh machine first. It downloads
+nothing. Use `make ai-eda-bootstrap-setup-check` after reviewed payloads such as
+TILOS MacroPlacement, OpenROAD EDA Corpus, CircuitNet 3.0, ChiPBench-D, and
+OpenABC-D have been fetched or restored; it rebuilds normalized corpora,
+bounded surrogate baselines, and E1 cases without CUDA training. Use
+`make ai-eda-bootstrap-local-smoke` for the
+broader local evidence stack. On a CUDA host, run the generated payload flow
+with:
+
+```sh
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id cuda-host --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --include-torch
+```
+
+To intentionally pull reviewed assets into ignored local payload directories,
+use explicit asset IDs:
+
+```sh
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --execute-fetch
+```
+
 ## Docker Setup
 
 Docker is the most reproducible starting point for a new machine:

@@ -1,0 +1,25 @@
+schema: eliza.ai_eda.external_intake_manifest.v1
+asset_id: google-circuit-training
+kind: repo
+source_url: https://github.com/google-research/circuit_training
+upstream_revision:
+  type: commit
+  value: c417a3a13f40867b649c719c03daaf1b39a909bc
+license:
+  status: apache-2.0_public_license_pending_full_dependency_review
+  evidence:
+    - https://github.com/google-research/circuit_training/blob/main/LICENSE
+    - external/repos/google-circuit-training/payload/LICENSE
+    - external/repos/google-circuit-training/payload/README.md
+  reviewed_at: 2026-05-20
+intake:
+  review_status: pending
+  allowed_use: deterministic-replay-candidate
+  release_use_allowed: false
+  deterministic_replay_required: true
+  next_action: review_public_circuit_training_formats_and_keep_checkpoint_binary_blocked_until_lawful_access
+local_payload:
+  downloaded: true
+  payload_path: external/repos/google-circuit-training/payload
+  checksum_status: verify_only_records_file_manifest
+claim_boundary: external_intake_metadata_only_no_payload_no_training_no_release_claim

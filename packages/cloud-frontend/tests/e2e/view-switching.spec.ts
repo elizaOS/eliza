@@ -18,7 +18,7 @@
  * + `VITE_PLAYWRIGHT_TEST_AUTH=true` bypass the aesthetic-audit spec uses.
  */
 
-import { expect, type BrowserContext, type Page, test } from "@playwright/test";
+import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 
 test.skip(
   Boolean(process.env.CLOUD_E2E_LIVE_URL),
@@ -50,9 +50,7 @@ async function setTestAuthCookie(context: BrowserContext) {
 function viewToggleButtons(page: Page) {
   // Anchor on the lucide icons — each is rendered as an <svg> with the
   // `lucide-layout-grid` / `lucide-list` class lucide-react adds.
-  const gridButton = page
-    .locator("button:has(svg.lucide-layout-grid)")
-    .first();
+  const gridButton = page.locator("button:has(svg.lucide-layout-grid)").first();
   const listButton = page.locator("button:has(svg.lucide-list)").first();
   return { gridButton, listButton };
 }
@@ -64,7 +62,9 @@ test.describe("view-switching: my-agents grid/list toggle", () => {
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
-    page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
+    page.on("pageerror", (err) =>
+      consoleErrors.push(`pageerror: ${err.message}`),
+    );
     (page as unknown as { __consoleErrors: string[] }).__consoleErrors =
       consoleErrors;
   });
@@ -96,23 +96,32 @@ test.describe("view-switching: my-agents grid/list toggle", () => {
 
     // Switch to list — its background should now be the "active" color.
     await listButton.click();
-    await expect.poll(async () =>
-      listButton.evaluate((el) => getComputedStyle(el).backgroundColor),
-    ).toBe(gridBgInitial);
+    await expect
+      .poll(async () =>
+        listButton.evaluate((el) => getComputedStyle(el).backgroundColor),
+      )
+      .toBe(gridBgInitial);
 
     // Switch back to grid.
     await gridButton.click();
-    await expect.poll(async () =>
-      gridButton.evaluate((el) => getComputedStyle(el).backgroundColor),
-    ).toBe(gridBgInitial);
+    await expect
+      .poll(async () =>
+        gridButton.evaluate((el) => getComputedStyle(el).backgroundColor),
+      )
+      .toBe(gridBgInitial);
 
-    const errors = (page as unknown as { __consoleErrors: string[] }).__consoleErrors.filter(
-      (m) => !m.includes("404") && !m.includes("net::"),
-    );
-    expect(errors, `unexpected console errors: ${errors.join("\n")}`).toHaveLength(0);
+    const errors = (
+      page as unknown as { __consoleErrors: string[] }
+    ).__consoleErrors.filter((m) => !m.includes("404") && !m.includes("net::"));
+    expect(
+      errors,
+      `unexpected console errors: ${errors.join("\n")}`,
+    ).toHaveLength(0);
   });
 
-  test("toggling switches the underlying grid layout class", async ({ page }) => {
+  test("toggling switches the underlying grid layout class", async ({
+    page,
+  }) => {
     await page.goto(MY_AGENTS_ROUTE, { waitUntil: "domcontentloaded" });
     const { gridButton, listButton } = viewToggleButtons(page);
     await expect(gridButton).toBeVisible({ timeout: 15_000 });
@@ -132,14 +141,14 @@ test.describe("view-switching: my-agents grid/list toggle", () => {
     );
 
     await listButton.click();
-    await expect.poll(async () =>
-      gridContainer.first().getAttribute("class"),
-    ).toMatch(/grid-cols-1/);
+    await expect
+      .poll(async () => gridContainer.first().getAttribute("class"))
+      .toMatch(/grid-cols-1/);
 
     await gridButton.click();
-    await expect.poll(async () =>
-      gridContainer.first().getAttribute("class"),
-    ).toMatch(/sm:grid-cols-2|md:grid-cols|lg:grid-cols/);
+    await expect
+      .poll(async () => gridContainer.first().getAttribute("class"))
+      .toMatch(/sm:grid-cols-2|md:grid-cols|lg:grid-cols/);
   });
 
   test("view mode does NOT persist across reload (uses local useState)", async ({
@@ -162,8 +171,10 @@ test.describe("view-switching: my-agents grid/list toggle", () => {
 
     // After reload the default ("grid") should be active again — i.e. the
     // grid button's background matches the original active background.
-    await expect.poll(async () =>
-      gridAfter.evaluate((el) => getComputedStyle(el).backgroundColor),
-    ).toBe(initialGridBg);
+    await expect
+      .poll(async () =>
+        gridAfter.evaluate((el) => getComputedStyle(el).backgroundColor),
+      )
+      .toBe(initialGridBg);
   });
 });

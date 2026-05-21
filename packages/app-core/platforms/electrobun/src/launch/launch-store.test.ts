@@ -39,7 +39,7 @@ function snapshot(phase: LaunchSnapshot["phase"]): LaunchSnapshot {
       requiredGate: null,
       error: null,
     },
-    satellites: {
+    remotes: {
       seeded: true,
       requiredStarted: true,
       errors: [],

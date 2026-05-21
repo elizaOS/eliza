@@ -60,7 +60,7 @@ describe("runStartingRuntime", () => {
         complete: true,
         requiredGate: null,
       },
-      satellites: {
+      remotes: {
         seeded: true,
         requiredStarted: true,
         errors: [],

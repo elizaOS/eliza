@@ -1,6 +1,6 @@
 # Startup And Onboarding Cleanup
 
-Startup and onboarding remain Electrobun core boot infrastructure. They are not Satellite candidates because the host, renderer, AgentManager, boot RPC, auth gate, onboarding gate, and first-party Satellite seeding all depend on the shell being alive first.
+Startup and onboarding remain Electrobun core boot infrastructure. They are not Remote candidates because the host, renderer, AgentManager, boot RPC, auth gate, onboarding gate, and first-party Remote seeding all depend on the shell being alive first.
 
 ## Current Paths
 
@@ -8,7 +8,7 @@ Startup and onboarding remain Electrobun core boot infrastructure. They are not 
 - `packages/app-core/platforms/electrobun/src/boot-progress.ts` composes typed `bootProgress` from AgentManager status and `/api/health`.
 - `packages/app-core/platforms/electrobun/src/config-and-auth-rpc.ts` composes typed auth gate snapshots.
 - `packages/app-core/platforms/electrobun/src/onboarding-rpc.ts` composes typed onboarding status and options snapshots.
-- `packages/app-core/platforms/electrobun/src/first-party-satellites.ts` seeds first-party Satellites after the main Electrobun window is alive.
+- `packages/app-core/platforms/electrobun/src/first-party-remotes.ts` seeds first-party Remotes after the main Electrobun window is alive.
 - `packages/ui/src/components/shell/StartupShell.tsx` remains the startup front door.
 - `packages/ui/src/components/shell/RuntimeGate.tsx` remains the minimal Cloud, Local, or Remote runtime chooser.
 - `packages/agent/src/api/onboarding-routes.ts` remains the config-heavy onboarding API owner.

@@ -21,7 +21,10 @@ import {
   type World,
 } from "@elizaos/core";
 import { App, LogLevel } from "@slack/bolt";
-import type { WebAPICallResult } from "@slack/web-api";
+import {
+  WebClient as SlackWebClient,
+  type WebAPICallResult,
+} from "@slack/web-api";
 
 type WebClient = App["client"];
 type AccountScopedTargetInfo = TargetInfo & { accountId?: string };
@@ -317,6 +320,14 @@ type SlackAccountRuntime = {
   account: ResolvedSlackAccount;
   app: App;
   client: WebClient;
+  /**
+   * Optional xoxp- user-token client. Present only when the account
+   * has a `userToken` configured. OWNER-role accounts route outbound
+   * calls covered by the granted user scopes (currently `chat:write`)
+   * through this client so the agent acts as the user; AGENT-role
+   * accounts ignore it and keep using the bot client.
+   */
+  userClient: WebClient | null;
   botUserId: string | null;
   teamId: string | null;
   settings: SlackSettings;
@@ -717,11 +728,20 @@ export class SlackService extends Service implements ISlackService {
           : {}),
       });
 
+      // User-token client (xoxp-) is outbound-only; no socket-mode
+      // session is needed. Only constructed when a user token is
+      // configured. Routing decisions in getOutboundClient() consult
+      // account.role to decide which client receives each call.
+      const userClient = account.userToken
+        ? (new SlackWebClient(account.userToken) as unknown as WebClient)
+        : null;
+
       const state: SlackAccountRuntime = {
         accountId,
         account,
         app,
         client: app.client,
+        userClient,
         botUserId: null,
         teamId: null,
         settings: this.loadSettings(account),
@@ -895,6 +915,25 @@ export class SlackService extends Service implements ISlackService {
       return this.client;
     }
     return null;
+  }
+
+  /**
+   * Returns the client that outbound user-action calls (currently
+   * chat.postMessage) should use for the given account. OWNER-role
+   * accounts with a configured xoxp- user token route through it so
+   * the agent posts as the user; everything else stays on the bot
+   * client. Falls back to `getClientForAccount` when no per-account
+   * state has been initialised yet.
+   */
+  private getOutboundClient(accountId?: string | null): WebClient | null {
+    const state = this.getAccountState(accountId);
+    if (!state) {
+      return this.getClientForAccount(accountId);
+    }
+    if (state.account.role === "OWNER" && state.userClient) {
+      return state.userClient;
+    }
+    return state.client;
   }
 
   private getSettingsForAccount(accountId?: string | null): SlackSettings {
@@ -2855,7 +2894,7 @@ export class SlackService extends Service implements ISlackService {
     options?: SlackMessageSendOptions,
     accountId?: string | null,
   ): Promise<{ ts: string; channelId: string }> {
-    const client = this.getClientForAccount(accountId);
+    const client = this.getOutboundClient(accountId);
     if (!client) {
       throw new Error("Slack client not initialized");
     }

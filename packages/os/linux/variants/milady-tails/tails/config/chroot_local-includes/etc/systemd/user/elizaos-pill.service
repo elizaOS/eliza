@@ -1,6 +1,7 @@
 [Unit]
 Description=elizaOS voice pill overlay
 ConditionUser=1000
+ConditionPathExists=!/run/elizaos/persistence-maintenance
 After=elizaos-renderer.service graphical-session.target tails-dump-user-env.service
 Wants=elizaos-renderer.service tails-dump-user-env.service
 RefuseManualStop=yes

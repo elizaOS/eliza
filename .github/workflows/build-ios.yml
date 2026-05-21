@@ -45,7 +45,7 @@ jobs:
           xcodebuild -version
 
       - name: Cache CocoaPods
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.APP_DIR }}/ios/App/Pods
           key: pods-${{ runner.os }}-${{ hashFiles('packages/app-core/platforms/ios/App/Podfile', 'packages/app/capacitor.config.ts', 'packages/app/package.json') }}
@@ -189,7 +189,7 @@ jobs:
           mv $RUNNER_TEMP/export/App.ipa $RUNNER_TEMP/export/Eliza-${{ steps.version.outputs.version }}.ipa
 
       - name: Upload archive artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eliza-ios-${{ env.IOS_CERTIFICATE_BASE64 != '' && 'release' || 'unsigned' }}
           path: |

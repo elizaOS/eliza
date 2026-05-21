@@ -130,7 +130,7 @@
     "swagger-jsdoc": "^6.2.8",
     "tailwindcss": "^4.1.17",
     "typescript": "^5.9.3",
-    "webpack": "5.105.4"
+    "webpack": "5.107.0"
   },
   "overrides": {
     "dotenv": "^16.4.5"

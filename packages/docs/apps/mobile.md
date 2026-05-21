@@ -55,14 +55,14 @@ Focused proof gates for this boundary:
 ```bash
 bun run --cwd packages/app-core test src/platform/ios-runtime-backends.test.ts --reporter verbose
 bun run --cwd plugins/plugin-coding-tools test src/lib/run-shell.test.ts src/lib/terminal-capabilities.test.ts --reporter verbose
-bun run --cwd packages/agent test src/services/e2b-capability-router.test.ts src/services/e2b-capability-router.coding-satellite.test.ts --reporter verbose
-bun run --cwd packages/cloud-services/coding-satellite test
+bun run --cwd packages/agent test src/services/e2b-capability-router.test.ts src/services/e2b-capability-router.coding-remote-runner.test.ts --reporter verbose
+bun run --cwd packages/cloud-services/coding-remote-runner test
 ```
 
 Those tests prove the iOS local runtime policy is TypeScript-owned and
 bridge-only, prove coding tools reject in-app iOS shell execution without a
 capability router, and prove coding commands can execute through the real
-Coding Satellite HTTP runner using the `/workspace` sandbox contract.
+Coding Remote HTTP runner using the `/workspace` sandbox contract.
 
 Background runner JSContexts do not own the foreground native runtime bridge, so
 local iOS wakes are recorded as explicit

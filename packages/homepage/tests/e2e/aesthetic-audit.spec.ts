@@ -113,21 +113,27 @@ async function seedAuthed(page: Page) {
 
 async function settle(page: Page) {
   await page.evaluate(() => document.fonts.ready);
-  // Wait for at least one heading or substantive text content to render so
-  // the screenshot captures the page, not the empty loading background.
+  // Wait for substantive content. Leaderboard renders its primary UI
+  // behind [aria-label="Eliza"]; other routes have h1/h2/buttons earlier.
   await page
-    .waitForSelector("h1, h2, button, [data-marquee]", { timeout: 10_000 })
+    .waitForSelector('h1, h2, button, [data-marquee], [aria-label="Eliza"]', {
+      timeout: 10_000,
+    })
     .catch(() => {});
   await page
     .waitForLoadState("networkidle", { timeout: 10_000 })
     .catch(() => {});
-  await page.waitForTimeout(400);
+  // Leaderboard's hero animation can take an extra beat after networkidle
+  // before the interactive figure is positioned. A brief extra settle here
+  // catches that without slowing the rest of the suite measurably.
+  await page.waitForTimeout(600);
 }
 
 function dynamicMask(page: Page) {
+  // Mask only genuinely-non-deterministic UI. `<video>` is intentionally
+  // *not* masked — its poster image is the brand visual on the marketing
+  // hero and Playwright's animations:"disabled" already pauses playback.
   return [
-    page.locator("video"),
-    page.locator('[data-testid="cloud-video"]'),
     page.locator(".animate-pulse"),
     page.locator(".animate-spin"),
     page.locator("[data-marquee]"),
@@ -267,16 +273,6 @@ for (const viewport of VIEWPORTS) {
           function parse(rgb: string): [number, number, number] | null {
             const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
             return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
-          }
-          function close(
-            a: [number, number, number],
-            b: [number, number, number],
-          ) {
-            return (
-              Math.abs(a[0] - b[0]) < 8 &&
-              Math.abs(a[1] - b[1]) < 8 &&
-              Math.abs(a[2] - b[2]) < 8
-            );
           }
           // Sample the brand-orange + brand-blue from CSS vars on body.
           const cs = getComputedStyle(document.body);

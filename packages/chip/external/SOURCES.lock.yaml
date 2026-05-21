@@ -21,9 +21,9 @@ entries:
     license_status: review_required
     revision:
       type: commit
-      value: PIN_AFTER_FETCH
-    expected_size: unknown_until_fetch
-    checksum_status: blocked_until_fetch
+      value: c417a3a13f40867b649c719c03daaf1b39a909bc
+    expected_size: fetched_payload_metadata_recorded
+    checksum_status: verify_only_records_file_manifest
     allowed_use: deterministic-replay-candidate
     e1_lane:
       - macro_placement_policy
@@ -46,10 +46,10 @@ entries:
     kind: repo
     priority: P0
     source_url: https://github.com/TILOS-AI-Institute/MacroPlacement
-    license_status: review_required
+    license_status: bsd-3-clause_public_license
     revision:
       type: commit
-      value: PIN_AFTER_FETCH
+      value: 20eddb6b35232e86e6008b9deec8da77633a2f07
     expected_size: unknown_until_fetch
     checksum_status: blocked_until_fetch
     allowed_use: training-only
@@ -62,8 +62,8 @@ entries:
       dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset tilos-macroplacement --dry-run
       verify_command: scripts/ai_eda/fetch_external_asset.py --asset tilos-macroplacement --verify-only
     validation:
-      license_review: pending
-      provenance_review: pending
+      license_review: metadata_reviewed_2026-05-20
+      provenance_review: pinned_head_metadata_reviewed_2026-05-20
       hash_verification: pending
       deterministic_replay_required: true
       release_use_allowed: false
@@ -77,7 +77,7 @@ entries:
       type: hf_revision
       value: PIN_AFTER_FETCH
     expected_size: approximately_2_68_gb_public_card
-    checksum_status: blocked_until_fetch
+    checksum_status: verify_only_records_file_manifest
     allowed_use: training-only
     e1_lane:
       - macro_placement_policy
@@ -103,7 +103,7 @@ entries:
       type: hf_revision
       value: PIN_AFTER_FETCH
     expected_size: unknown_until_fetch
-    checksum_status: blocked_until_fetch
+    checksum_status: verify_only_records_file_manifest
     allowed_use: training-only
     e1_lane:
       - pd_surrogate_models
@@ -124,10 +124,10 @@ entries:
     kind: dataset
     priority: P0
     source_url: https://github.com/OpenROAD-Assistant/EDA-Corpus
-    license_status: cc-by-4.0_public_readme
+    license_status: cc-by-4.0_public_readme_and_license
     revision:
       type: commit
-      value: PIN_AFTER_FETCH
+      value: 473daeb20677758b612e1a9e30246231c02d133c
     expected_size: small_public_csv_xlsx_repo
     checksum_status: blocked_until_fetch
     allowed_use: training-only
@@ -140,8 +140,8 @@ entries:
       dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset openroad-eda-corpus --dry-run
       verify_command: scripts/ai_eda/fetch_external_asset.py --asset openroad-eda-corpus --verify-only
     validation:
-      license_review: pending
-      provenance_review: pending
+      license_review: metadata_reviewed_2026-05-20
+      provenance_review: pinned_head_metadata_reviewed_2026-05-20
       hash_verification: pending
       deterministic_replay_required: true
       release_use_allowed: false
@@ -155,7 +155,7 @@ entries:
       type: hf_revision
       value: PIN_AFTER_FETCH
     expected_size: approximately_600_gb_reported_by_public_paper
-    checksum_status: blocked_until_fetch
+    checksum_status: verify_only_records_file_manifest
     allowed_use: training-only
     e1_lane:
       - pd_surrogate_models
@@ -179,9 +179,9 @@ entries:
     license_status: review_required
     revision:
       type: commit
-      value: PIN_AFTER_FETCH
-    expected_size: unknown_until_fetch
-    checksum_status: blocked_until_fetch
+      value: c6fb7e3b1f7ef94f5087239cfdcc84df6840e170
+    expected_size: fetched_payload_metadata_recorded
+    checksum_status: verify_only_records_file_manifest
     allowed_use: advisory-inference-only
     e1_lane:
       - macro_placement_policy
@@ -204,9 +204,9 @@ entries:
     license_status: review_required
     revision:
       type: commit
-      value: PIN_AFTER_FETCH
-    expected_size: unknown_until_fetch
-    checksum_status: blocked_until_fetch
+      value: ecd7dde67740556eaf842ccab4dc941c348ad8f6
+    expected_size: fetched_payload_metadata_recorded
+    checksum_status: verify_only_records_file_manifest
     allowed_use: training-only
     e1_lane:
       - logic_synthesis_policy
@@ -255,9 +255,9 @@ entries:
     license_status: review_required
     revision:
       type: commit
-      value: PIN_AFTER_FETCH
-    expected_size: unknown_until_fetch
-    checksum_status: blocked_until_fetch
+      value: 32370826fdf1aa3c8deb0c93e6b2a2fc7cf053aa
+    expected_size: fetched_payload_metadata_recorded
+    checksum_status: verify_only_records_file_manifest
     allowed_use: advisory-inference-only
     e1_lane:
       - npu_dse
@@ -605,6 +605,36 @@ entries:
       hash_verification: pending
       deterministic_replay_required: true
       release_use_allowed: false
+  - id: macro-place-challenge-2026
+    name: Partcl/HRT Macro Placement Challenge 2026
+    kind: repo
+    priority: P1
+    source_url: https://github.com/partcleda/macro-place-challenge-2026
+    license_status: apache-2.0_public_repo_terms_review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - macro_placement_policy
+      - placement_evaluation
+      - benchmark_hygiene
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset macro-place-challenge-2026 --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset macro-place-challenge-2026 --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset macro-place-challenge-2026 --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+    notes:
+      - Public challenge page reports a May 21, 2026 submission deadline and one-hour runtime limit.
+      - Use only after benchmark split, non-overlap, and challenge-term review; never as E1 signoff evidence.
   - id: mlcad-2023-fpga-macro
     name: MLCAD 2023 FPGA Macro Placement Contest
     kind: dataset
@@ -635,7 +665,7 @@ entries:
     name: AlphaChip TPU Checkpoint 20240815
     kind: model
     priority: P1
-    source_url: https://storage.googleapis.com/rl-infra-public/circuit-training/checkpoints/tpu_checkpoint_20240815.tar.gz
+    source_url: https://storage.googleapis.com/rl-infra-public/circuit-training/tpu_checkpoint_20240815.tar.gz
     license_status: unavailable_for_review
     revision:
       type: artifact

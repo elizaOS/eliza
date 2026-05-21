@@ -1,6 +1,6 @@
 # Top Trace-First Annotations
 
-This document is the review boundary for the first trace-hook pass. It annotates the highest-value trace-first packages without migrating plugins, adding Satellites, adding static UI, or changing runtime ownership.
+This document is the review boundary for the first trace-hook pass. It annotates the highest-value trace-first packages without migrating plugins, adding Remotes, adding static UI, or changing runtime ownership.
 
 These packages stay in their current architecture roles. Trace should make their behavior visible before any dynamic-view or voice-facing product work expands.
 
@@ -8,9 +8,9 @@ These packages stay in their current architecture roles. Trace should make their
 
 - User-visible or agent-visible work crosses a network, model, subprocess, browser, desktop, or workflow boundary.
 - The package already owns a semantic runtime/plugin surface.
-- Trace events can be added without changing the package into a Satellite.
+- Trace events can be added without changing the package into a Remote.
 - Dynamic views, if any, are contextual inspection views, not dashboards.
-- Host/system access still routes through the runtime broker or an existing Satellite where that boundary already exists.
+- Host/system access still routes through the runtime broker or an existing Remote where that boundary already exists.
 
 ## Annotated Targets
 
@@ -18,10 +18,10 @@ These packages stay in their current architecture roles. Trace should make their
 | --- | --- | --- | --- | --- | --- |
 | `plugin-discord` | connector plugin | message ingress, slash command, reply, voice join/leave, rate limit, permission failure, send failure | none in the first pass | none | Keep Discord transport logic in the connector. Trace should explain message flow and failures. |
 | `plugin-github` | connector plugin | issue/PR read, notification ingest, API call start/end/error, rate limit, mutation result | PR/issue context view only when an agent opens one | use `eliza.git` only for local repository operations | Keep GitHub API ownership in the connector. Local repo work is a separate capability boundary. |
-| `plugin-browser` | native semantic plugin | browser session create, navigation, page context ingest, companion sync, connector auth state, bridge failure | task/browser context view | broker only host browser/window operations that need desktop access | Do not make browser a Satellite. The plugin remains the semantic surface. |
+| `plugin-browser` | native semantic plugin | browser session create, navigation, page context ingest, companion sync, connector auth state, bridge failure | task/browser context view | broker only host browser/window operations that need desktop access | Do not make browser a Remote. The plugin remains the semantic surface. |
 | `plugin-computeruse` | native semantic plugin | screenshot, OCR, approval request/decision, click/key/window action, denial, failure | scene/approval/task inspection view | future `eliza.computer` only if host implementation needs a capability provider | Do not fold all desktop automation into Electrobun. Trace first, then decide if a narrow host capability is justified. |
 | `plugin-documents` | app plugin | ingest, parse, index, search, recall, citation, export, failure | document recall/citation inspection view | none | Keep as an app/plugin bundle. Dynamic views should inspect document context, not replace the app surface. |
-| `plugin-local-inference` | model plugin | catalog read, model status, model load/unload, generation request, ASR/TTS route, download/probe failure | none in the first pass | coordinate desktop/runtime operations through `eliza.local-model` where needed | Keep local inference source of truth in the plugin/shared catalog. The Satellite wraps host coordination. |
+| `plugin-local-inference` | model plugin | catalog read, model status, model load/unload, generation request, ASR/TTS route, download/probe failure | none in the first pass | coordinate desktop/runtime operations through `eliza.local-model` where needed | Keep local inference source of truth in the plugin/shared catalog. The Remote wraps host coordination. |
 | `plugin-native-talkmode` | voice plugin | VAD, ASR partial/final, runtime handoff, model first token, TTS first audio, playback, interrupt, error | reuse trace dynamic view | none | Keep talk mode as a voice participant. `eliza.voice` observes and coordinates; it does not replace the plugin. |
 | `plugin-native-screencapture` | native semantic plugin | capture request, permission result, capture complete, recording start/stop, file artifact, failure | capture result inspection view | future `eliza.computer` only if a host capability boundary is needed | Keep the plugin as the agent-facing capture action surface. |
 | `plugin-workflow` | app plugin | workflow draft, validation, repair, activation, node start/end/error, execution result | workflow run/node graph inspection view | none | Trace node lifecycle before adding any workflow view behavior. |
@@ -44,7 +44,7 @@ Do not add package metadata fields until maintainers agree on a repo convention.
 
 ## Non-Goals
 
-- Do not convert these packages to Satellites.
+- Do not convert these packages to Remotes.
 - Do not add static Surface panels.
 - Do not replace `packages/app`.
 - Do not create a Swift host/controller path.

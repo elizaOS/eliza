@@ -35,7 +35,7 @@ function emptySnapshot(now: () => Date): LaunchSnapshot {
       complete: null,
       requiredGate: null,
     },
-    satellites: {
+    remotes: {
       seeded: false,
       requiredStarted: false,
       errors: [],

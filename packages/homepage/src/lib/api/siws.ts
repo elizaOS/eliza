@@ -49,7 +49,7 @@ export interface SiwsVerifyResponse {
 
 interface PhantomWallet {
   publicKey?: { toString(): string };
-  connect: () => Promise<{ publicKey: { toString(): string } } | void>;
+  connect: () => Promise<{ publicKey: { toString(): string } } | undefined>;
   signMessage: (
     message: Uint8Array,
     encoding?: "utf8",

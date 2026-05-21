@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@fal-ai/client": "^1.7.0",
-    "@marsidev/react-turnstile": "^0.4.1",
+    "@marsidev/react-turnstile": "^1.5.2",
     "@privy-io/react-auth": "^1.90.0",
     "@tanstack/react-virtual": "^3.13.24",
     "ai": "^6.0.174",

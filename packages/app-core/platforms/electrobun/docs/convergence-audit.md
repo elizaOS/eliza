@@ -12,7 +12,7 @@ Dirty status at generation:
 
 ## Executive Summary
 
-This audit stops the infrastructure-building spiral. Plugins stay plugins, app plugins stay app/product bundles, connectors stay connector plugins, Electrobun remains the desktop shell, AgentManager remains the runtime owner, and Satellites remain limited to desktop/system capability providers.
+This audit stops the infrastructure-building spiral. Plugins stay plugins, app plugins stay app/product bundles, connectors stay connector plugins, Electrobun remains the desktop shell, AgentManager remains the runtime owner, and Remotes remain limited to desktop/system capability providers.
 
 The current local branch may still contain multiple phases, but it should not be pushed blindly as a broad mega-PR unless maintainers explicitly want that review shape. The stack recommendation below keeps the work reviewable without changing the architectural boundary decisions.
 
@@ -62,7 +62,7 @@ No Swift host/controller path is part of this architecture. The only retained bo
 - app plugins
 - core runtime plugins
 
-## Current Satellites
+## Current Remotes
 
 - eliza.fs
 - eliza.git
@@ -73,11 +73,11 @@ No Swift host/controller path is part of this architecture. The only retained bo
 
 eliza.surface remains dev/admin only and is not a production UI replacement.
 
-## Future Satellite Candidates
+## Future Remote Candidates
 
 - future.eliza.computer
 
-This list is intentionally short. Do not turn connector, provider, or app plugins into Satellites.
+This list is intentionally short. Do not turn connector, provider, or app plugins into Remotes.
 
 ## Trace-First Candidates
 
@@ -255,7 +255,7 @@ plugins/plugin-xmtp | Plugin-shaped directory without package.json. Needs owner 
 - Use `docs/trace-first-annotations.md` as the first review-boundary map for top trace-first packages.
 - Add dynamic-view manifests only for contextual inspection surfaces, not fixed dashboards.
 - Keep connector/provider package metadata unchanged unless maintainers already have a metadata convention.
-- Keep Satellite manifests focused on capability boundaries and trusted/full-permission status.
+- Keep Remote manifests focused on capability boundaries and trusted/full-permission status.
 - Do not add source comments unless a hidden constraint or security boundary would otherwise be unclear.
 
 ## PR Stack Recommendation
@@ -263,7 +263,7 @@ plugins/plugin-xmtp | Plugin-shaped directory without package.json. Needs owner 
 Do not blindly push every local phase into the platform convergence PR unless maintainers explicitly ask for a mega-PR. Recommended stack:
 
 1. Platform convergence PR
-   - first-party Satellites
+   - first-party Remotes
    - AgentManager-backed eliza.runtime
    - worker invoke/event bridge
    - dynamic view registry/session infrastructure
@@ -302,13 +302,13 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | ID | Category | Keep As | Next Action | Dynamic View | Trace | Broker | Risk | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | app-model-tester | app-plugin | app-plugin | add-dynamic-view-manifest | yes | no | no | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
-| eliza.fs | desktop-capability | satellite | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
-| eliza.git | desktop-capability | satellite | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
-| eliza.local-model | desktop-capability | satellite | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
-| eliza.pty | desktop-capability | satellite | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
-| eliza.runtime | desktop-capability | satellite | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
-| eliza.surface | dev-tooling | satellite | leave-alone | yes | no | no | medium | Dev/admin only. Do not turn into production UI. |
-| future.eliza.computer | desktop-capability | needs-review | needs-owner-decision | no | yes | yes | medium | Only future Satellite candidate. Do not create until a concrete host capability boundary is required. |
+| eliza.fs | desktop-capability | remote | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
+| eliza.git | desktop-capability | remote | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
+| eliza.local-model | desktop-capability | remote | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
+| eliza.pty | desktop-capability | remote | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
+| eliza.runtime | desktop-capability | remote | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
+| eliza.surface | dev-tooling | remote | leave-alone | yes | no | no | medium | Dev/admin only. Do not turn into production UI. |
+| future.eliza.computer | desktop-capability | needs-review | needs-owner-decision | no | yes | yes | medium | Only future Remote candidate. Do not create until a concrete host capability boundary is required. |
 | packages/agent | core-runtime | core | leave-alone | no | no | no | low | AgentManager/Electrobun may own lifecycle, but agent runtime code stays in runtime packages. |
 | packages/app | production-ui | core | leave-alone | no | no | no | low | Hard no-migration item. Do not replace with eliza.surface or fixed dynamic-view panels. |
 | packages/app-core | core-runtime | core | leave-alone | no | no | no | low | Hard no-migration item. Electrobun platform code can add host docs, not absorb app-core ownership. |
@@ -323,8 +323,8 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-action-bench | dev-tooling | plugin | leave-alone | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-agent-orchestrator | dev-tooling | plugin | add-dynamic-view-manifest | yes | yes | no | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
 | plugin-agent-skills | dev-tooling | plugin | add-dynamic-view-manifest | yes | yes | no | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
-| plugin-anthropic | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite. |
-| plugin-anthropic-proxy | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite. |
+| plugin-anthropic | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
+| plugin-anthropic-proxy | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | plugin-aosp-local-inference | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |
 | plugin-app-control | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-app-manager | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
@@ -335,18 +335,18 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-bluesky | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-browser | native-semantic-plugin | plugin | add-dynamic-view-manifest | yes | yes | yes | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
 | plugin-calendly | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
-| plugin-capacitor-bridge | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
+| plugin-capacitor-bridge | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-clawville | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-cli | dev-tooling | plugin | leave-alone | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
-| plugin-codex-cli | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
+| plugin-codex-cli | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-coding-tools | native-semantic-plugin | plugin | add-dynamic-view-manifest | yes | yes | yes | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
 | plugin-commands | dev-tooling | plugin | leave-alone | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-companion | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-computeruse | native-semantic-plugin | plugin | add-dynamic-view-manifest | yes | yes | yes | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
-| plugin-contacts | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
+| plugin-contacts | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-defense-of-the-agents | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
-| plugin-device-filesystem | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-device-settings | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
+| plugin-device-filesystem | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-device-settings | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-discord | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-discord-local | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-documents | app-plugin | app-plugin | add-dynamic-view-manifest | yes | yes | no | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
@@ -361,9 +361,9 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-github | connector-plugin | connector | add-dynamic-view-manifest | yes | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-google | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-google-chat | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
-| plugin-google-genai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite. |
+| plugin-google-genai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | plugin-google-meet-cute | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
-| plugin-groq | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite. |
+| plugin-groq | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | plugin-health | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-hyperliquid-app | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-hyperscape | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
@@ -384,38 +384,38 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-mlx | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |
 | plugin-music | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-mysticism | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
-| plugin-native-activity-tracker | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-agent | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-appblocker | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-bun-runtime | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-calendar | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-camera | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
+| plugin-native-activity-tracker | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-agent | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-appblocker | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-bun-runtime | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-calendar | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-camera | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-native-canvas | native-semantic-plugin | plugin | add-dynamic-view-manifest | yes | yes | yes | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
-| plugin-native-contacts | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-desktop | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-eliza-tasks | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-gateway | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
+| plugin-native-contacts | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-desktop | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-eliza-tasks | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-gateway | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-native-llama | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |
-| plugin-native-location | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-macosalarm | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-messages | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-mobile-agent-bridge | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-mobile-signals | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-network-policy | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-phone | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
+| plugin-native-location | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-macosalarm | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-messages | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-mobile-agent-bridge | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-mobile-signals | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-network-policy | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-phone | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-native-screencapture | native-semantic-plugin | plugin | add-dynamic-view-manifest | yes | yes | yes | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
-| plugin-native-shared-types | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-swabble | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-system | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
+| plugin-native-shared-types | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-swabble | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-system | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-native-talkmode | voice-plugin | voice-pipeline-participant | connect-to-voice-pipeline | no | yes | no | medium | Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace. |
-| plugin-native-websiteblocker | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-native-wifi | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
+| plugin-native-websiteblocker | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-wifi | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-ngrok | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-nostr | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-ollama | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |
 | plugin-omnivoice | voice-plugin | voice-pipeline-participant | connect-to-voice-pipeline | no | no | no | medium | Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace. |
-| plugin-openai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite. |
-| plugin-openrouter | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite. |
+| plugin-openai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
+| plugin-openrouter | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | plugin-pdf | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-phone | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-polymarket-app | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
@@ -423,8 +423,8 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-rlm | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |
 | plugin-roblox | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-scape | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
-| plugin-screenshare | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
-| plugin-shell | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
+| plugin-screenshare | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-shell | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-shopify | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-shopify-ui | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-signal | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
@@ -451,11 +451,11 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-web-search | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-wechat | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-whatsapp | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
-| plugin-wifi | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Satellite when needed. |
+| plugin-wifi | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-workflow | app-plugin | app-plugin | add-dynamic-view-manifest | yes | yes | no | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
 | plugin-x | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-x402 | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
-| plugin-xai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite. |
+| plugin-xai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | plugin-xmtp | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
-| plugin-zai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Satellite. |
+| plugin-zai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | repo-root | core-runtime | core | leave-alone | no | no | no | low | Keep as workspace root. Do not use Electrobun convergence to change global repo ownership. |

@@ -372,6 +372,57 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
 	});
 
+	it("lets direct local source inspection override a weak task-agent candidate", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText:
+					"Spawning a sub-agent to search the vendored opencode source for the requested feature.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: REAL_ACTIONS,
+				messageText:
+					"does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
+	});
+
+	it("keeps explicit coding-agent delegation on the task-agent path", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText: "Spawning a sub-agent.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: REAL_ACTIONS,
+				messageText:
+					"spawn an opencode sub-agent to inspect the local vendored opencode source",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
+	});
+
 	it("routes ack-only local health endpoint checks to shell", () => {
 		const handler = messageHandlerFromFieldResult(
 			{

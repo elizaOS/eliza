@@ -128,7 +128,7 @@ function createOrchestrator(options?: {
             effectiveTarget: "/tmp/pglite",
           }),
     readDiagnosticLogTail: () => "tail",
-    listSatelliteStatuses: () => [
+    listRemoteStatuses: () => [
       {
         id: "eliza.runtime",
         state: "running",

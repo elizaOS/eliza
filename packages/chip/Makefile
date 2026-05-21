@@ -1,6 +1,7 @@
 SHELL := /bin/sh
 
 PYTHON ?= python3
+AI_EDA_RUN_ID ?= validation
 VENV := .venv
 VENV_PYTHON := $(VENV)/bin/python
 BENCH_PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),$(PYTHON))
@@ -1357,39 +1358,141 @@ software-bsp-test:
 evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
-.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-assets-dry-run ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
+.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-external-assets-dry-run ai-eda-bootstrap-metadata ai-eda-bootstrap-setup-check ai-eda-bootstrap-local-smoke ai-eda-bootstrap-training-handoff ai-eda-alphachip-checkpoint-blocker-check ai-eda-alphachip-checkpoint-blocker-network-check ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert ai-eda-circuitnet3-convert ai-eda-chipbench-d-convert ai-eda-circuitnet3-surrogate ai-eda-openabc-d-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train ai-eda-macro-placement-supervised-dataset ai-eda-macro-placement-supervised-train ai-eda-macro-placement-torch-train ai-eda-macro-placement-torch-infer ai-eda-macro-placement-supervised-replay-plan ai-eda-macro-placement-baseline ai-eda-macro-placement-candidate-eval ai-eda-macro-placement-combined-candidate-eval ai-eda-macro-placement-full-candidate-eval ai-eda-macro-placement-replay-plan ai-eda-macro-placement-combined-replay-plan ai-eda-macro-placement-full-replay-plan ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
 ai-eda-source-inventory-check:
 	@$(PYTHON) scripts/check_ai_eda_source_inventory.py
 
 ai-eda-external-assets-check:
 	@$(PYTHON) scripts/ai_eda/check_external_asset_manifests.py
 
+ai-eda-external-intake-check: ai-eda-external-assets-check
+	@$(PYTHON) scripts/ai_eda/check_external_intake_manifests.py --run-id $(AI_EDA_RUN_ID)
+
 ai-eda-external-assets-dry-run:
-	@$(PYTHON) scripts/ai_eda/fetch_external_asset.py --all --dry-run --run-id validation
+	@$(PYTHON) scripts/ai_eda/fetch_external_asset.py --all --dry-run --run-id $(AI_EDA_RUN_ID)
+
+ai-eda-bootstrap-metadata:
+	@$(PYTHON) scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id $(AI_EDA_RUN_ID)
+
+ai-eda-bootstrap-setup-check:
+	@$(PYTHON) scripts/ai_eda/bootstrap_ai_eda_stack.py --profile setup-check --run-id $(AI_EDA_RUN_ID) --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d
+
+ai-eda-bootstrap-local-smoke:
+	@$(PYTHON) scripts/ai_eda/bootstrap_ai_eda_stack.py --profile local-smoke --run-id $(AI_EDA_RUN_ID)
+
+ai-eda-bootstrap-training-handoff:
+	@$(PYTHON) scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id $(AI_EDA_RUN_ID)
+
+ai-eda-alphachip-checkpoint-blocker-check:
+	@$(PYTHON) scripts/ai_eda/check_alphachip_checkpoint_blocker.py --run-id $(AI_EDA_RUN_ID)
+
+ai-eda-alphachip-checkpoint-blocker-network-check:
+	@$(PYTHON) scripts/ai_eda/check_alphachip_checkpoint_blocker.py --run-id $(AI_EDA_RUN_ID) --network
 
 ai-eda-internal-schemas-check:
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py
 
 ai-eda-internal-fixtures: ai-eda-internal-schemas-check
-	@$(PYTHON) scripts/ai_eda/materialize_internal_dataset_fixtures.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/materialize_internal_dataset_fixtures.py --run-id $(AI_EDA_RUN_ID)
+
+ai-eda-openroad-eda-corpus-convert: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/convert_openroad_eda_corpus.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/openroad_eda_corpus/$(AI_EDA_RUN_ID)/records
+
+ai-eda-tilos-macroplacement-convert: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/convert_tilos_macroplacement.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/tilos_macroplacement/$(AI_EDA_RUN_ID)/records
+
+ai-eda-circuitnet3-convert: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/convert_circuitnet3_to_internal_records.py --run-id $(AI_EDA_RUN_ID) --sample-limit 16
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/circuitnet3/$(AI_EDA_RUN_ID)/records
+
+ai-eda-chipbench-d-convert: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/convert_chipbench_d_to_internal_records.py --run-id $(AI_EDA_RUN_ID) --sample-limit 4
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/chipbench_d/$(AI_EDA_RUN_ID)/records
+	@$(PYTHON) scripts/ai_eda/check_chipbench_d_conversion.py --report build/ai_eda/chipbench_d/$(AI_EDA_RUN_ID)/conversion_report.json
+
+ai-eda-circuitnet3-surrogate: ai-eda-circuitnet3-convert
+	@$(PYTHON) scripts/ai_eda/train_circuitnet3_timing_power_baseline.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_circuitnet3_surrogate.py --report build/ai_eda/circuitnet3_surrogate/$(AI_EDA_RUN_ID)/training_run.json
+
+ai-eda-openabc-d-convert: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/convert_openabc_d_to_internal_records.py --run-id $(AI_EDA_RUN_ID) --sample-limit 2
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/openabc_d/$(AI_EDA_RUN_ID)/records
+	@$(PYTHON) scripts/ai_eda/check_openabc_d_conversion.py --report build/ai_eda/openabc_d/$(AI_EDA_RUN_ID)/conversion_report.json
+
+ai-eda-e1-softmacro-cases: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/materialize_e1_softmacro_cases.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/e1_softmacro_cases/$(AI_EDA_RUN_ID)/records
 
 ai-eda-external-fixture-convert: ai-eda-internal-schemas-check
-	@$(PYTHON) scripts/ai_eda/convert_external_fixture_corpora.py --run-id validation
-	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/converted_external_fixtures/validation/records
+	@$(PYTHON) scripts/ai_eda/convert_external_fixture_corpora.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/converted_external_fixtures/$(AI_EDA_RUN_ID)/records
 
 ai-eda-e1-openlane-convert: ai-eda-internal-schemas-check
-	@$(PYTHON) scripts/ai_eda/convert_e1_openlane_to_internal_records.py --run-id validation
-	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/e1_openlane_conversion/validation/records
+	@$(PYTHON) scripts/ai_eda/convert_e1_openlane_to_internal_records.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/e1_openlane_conversion/$(AI_EDA_RUN_ID)/records
 
 ai-eda-openlane-flow-labels: ai-eda-e1-openlane-convert
-	@$(PYTHON) scripts/ai_eda/parse_openlane_metrics_to_flow_run.py --run-id validation
-	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/openlane_flow_labels/validation/records
+	@$(PYTHON) scripts/ai_eda/parse_openlane_metrics_to_flow_run.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/openlane_flow_labels/$(AI_EDA_RUN_ID)/records
 
 ai-eda-pd-surrogate-smoke: ai-eda-openlane-flow-labels
-	@$(PYTHON) scripts/ai_eda/train_pd_surrogate_smoke.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/train_pd_surrogate_smoke.py --run-id $(AI_EDA_RUN_ID)
 
 ai-eda-fixture-placement-train: ai-eda-internal-fixtures
-	@$(PYTHON) scripts/ai_eda/train_fixture_placement_smoke.py --run-id validation --device cpu
+	@$(PYTHON) scripts/ai_eda/train_fixture_placement_smoke.py --run-id $(AI_EDA_RUN_ID) --device cpu
+
+ai-eda-macro-placement-supervised-dataset: ai-eda-internal-fixtures ai-eda-tilos-macroplacement-convert ai-eda-chipbench-d-convert ai-eda-e1-softmacro-cases
+	@$(PYTHON) scripts/ai_eda/build_macro_placement_supervised_dataset.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_supervised_dataset.py --report build/ai_eda/macro_placement_supervised_dataset/$(AI_EDA_RUN_ID)/macro_placement_supervised_dataset_report.json
+
+ai-eda-macro-placement-supervised-train: ai-eda-macro-placement-supervised-dataset
+	@$(PYTHON) scripts/ai_eda/train_macro_placement_supervised_model.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_supervised_model.py --report build/ai_eda/macro_placement_supervised_model/$(AI_EDA_RUN_ID)/supervised_training_run.json
+	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py --candidate-dir build/ai_eda/macro_placement_supervised_model/$(AI_EDA_RUN_ID)/candidates
+
+ai-eda-macro-placement-torch-train: ai-eda-macro-placement-supervised-dataset
+	@$(PYTHON) scripts/ai_eda/train_macro_placement_torch_regressor.py --run-id $(AI_EDA_RUN_ID) --device auto --epochs 25
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_torch_regressor.py --report build/ai_eda/macro_placement_torch_regressor/$(AI_EDA_RUN_ID)/torch_training_run.json
+
+ai-eda-macro-placement-torch-infer: ai-eda-macro-placement-torch-train
+	@$(PYTHON) scripts/ai_eda/infer_macro_placement_torch_regressor.py --run-id $(AI_EDA_RUN_ID) --device auto
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_torch_inference.py --report build/ai_eda/macro_placement_torch_inference/$(AI_EDA_RUN_ID)/torch_inference_run.json
+	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py --candidate-dir build/ai_eda/macro_placement_torch_inference/$(AI_EDA_RUN_ID)/candidates
+
+ai-eda-macro-placement-supervised-replay-plan: ai-eda-macro-placement-supervised-train
+	@$(PYTHON) scripts/ai_eda/plan_macro_placement_replay.py --run-id $(AI_EDA_RUN_ID) --candidate-dir build/ai_eda/macro_placement_supervised_model/$(AI_EDA_RUN_ID)/candidates --out-root build/ai_eda/macro_placement_supervised_replay
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_replay_plan.py --report build/ai_eda/macro_placement_supervised_replay/$(AI_EDA_RUN_ID)/replay_plan.json
+	@$(PYTHON) scripts/ai_eda/check_tool_action_manifests.py --manifests-dir build/ai_eda/macro_placement_supervised_replay/$(AI_EDA_RUN_ID)/tool_actions
+
+ai-eda-macro-placement-baseline: ai-eda-internal-fixtures ai-eda-e1-openlane-convert ai-eda-tilos-macroplacement-convert ai-eda-e1-softmacro-cases
+	@$(PYTHON) scripts/ai_eda/train_macro_placement_policy.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py --candidate-dir build/ai_eda/macro_placement_policy/$(AI_EDA_RUN_ID)/candidates
+
+ai-eda-macro-placement-candidate-eval: ai-eda-macro-placement-baseline
+	@$(PYTHON) scripts/ai_eda/evaluate_macro_placement_candidates.py --run-id $(AI_EDA_RUN_ID)
+
+ai-eda-macro-placement-combined-candidate-eval: ai-eda-macro-placement-baseline ai-eda-macro-placement-supervised-train
+	@$(PYTHON) scripts/ai_eda/evaluate_macro_placement_candidates.py --run-id $(AI_EDA_RUN_ID) --candidate-dir build/ai_eda/macro_placement_policy/$(AI_EDA_RUN_ID)/candidates --candidate-dir build/ai_eda/macro_placement_supervised_model/$(AI_EDA_RUN_ID)/candidates --out-root build/ai_eda/macro_placement_combined_candidate_eval
+
+ai-eda-macro-placement-full-candidate-eval: ai-eda-macro-placement-combined-candidate-eval ai-eda-macro-placement-torch-infer
+	@$(PYTHON) scripts/ai_eda/evaluate_macro_placement_candidates.py --run-id $(AI_EDA_RUN_ID) --candidate-dir build/ai_eda/macro_placement_policy/$(AI_EDA_RUN_ID)/candidates --candidate-dir build/ai_eda/macro_placement_supervised_model/$(AI_EDA_RUN_ID)/candidates --candidate-dir build/ai_eda/macro_placement_torch_inference/$(AI_EDA_RUN_ID)/candidates --out-root build/ai_eda/macro_placement_full_candidate_eval
+
+ai-eda-macro-placement-replay-plan: ai-eda-macro-placement-candidate-eval
+	@$(PYTHON) scripts/ai_eda/plan_macro_placement_replay.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_replay_plan.py --report build/ai_eda/macro_placement_replay/$(AI_EDA_RUN_ID)/replay_plan.json
+	@$(PYTHON) scripts/ai_eda/check_tool_action_manifests.py --manifests-dir build/ai_eda/macro_placement_replay/$(AI_EDA_RUN_ID)/tool_actions
+
+ai-eda-macro-placement-combined-replay-plan: ai-eda-macro-placement-combined-candidate-eval
+	@$(PYTHON) scripts/ai_eda/plan_macro_placement_replay.py --run-id $(AI_EDA_RUN_ID) --candidate-dir build/ai_eda/macro_placement_policy/$(AI_EDA_RUN_ID)/candidates --candidate-dir build/ai_eda/macro_placement_supervised_model/$(AI_EDA_RUN_ID)/candidates --out-root build/ai_eda/macro_placement_combined_replay
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_replay_plan.py --report build/ai_eda/macro_placement_combined_replay/$(AI_EDA_RUN_ID)/replay_plan.json
+	@$(PYTHON) scripts/ai_eda/check_tool_action_manifests.py --manifests-dir build/ai_eda/macro_placement_combined_replay/$(AI_EDA_RUN_ID)/tool_actions
+
+ai-eda-macro-placement-full-replay-plan: ai-eda-macro-placement-full-candidate-eval
+	@$(PYTHON) scripts/ai_eda/plan_macro_placement_replay.py --run-id $(AI_EDA_RUN_ID) --candidate-dir build/ai_eda/macro_placement_policy/$(AI_EDA_RUN_ID)/candidates --candidate-dir build/ai_eda/macro_placement_supervised_model/$(AI_EDA_RUN_ID)/candidates --candidate-dir build/ai_eda/macro_placement_torch_inference/$(AI_EDA_RUN_ID)/candidates --out-root build/ai_eda/macro_placement_full_replay
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_replay_plan.py --report build/ai_eda/macro_placement_full_replay/$(AI_EDA_RUN_ID)/replay_plan.json
+	@$(PYTHON) scripts/ai_eda/check_tool_action_manifests.py --manifests-dir build/ai_eda/macro_placement_full_replay/$(AI_EDA_RUN_ID)/tool_actions
 
 ai-eda-candidate-manifests-check: ai-eda-fixture-placement-train
 	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py
@@ -1398,21 +1501,23 @@ ai-eda-tool-actions-check: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/check_tool_action_schemas.py
 
 ai-eda-cocotb-stimulus-dry-run:
-	@$(PYTHON) scripts/ai_eda/run_cocotb_stimulus_search.py --dry-run --run-id validation
+	@$(PYTHON) scripts/ai_eda/run_cocotb_stimulus_search.py --dry-run --run-id $(AI_EDA_RUN_ID)
 
 ai-eda-logic-synthesis-recipes:
-	@$(PYTHON) scripts/ai_eda/generate_logic_synthesis_recipe_corpus.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/generate_logic_synthesis_recipe_corpus.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_logic_synthesis_policy_baseline.py --corpus build/ai_eda/logic_synthesis_recipes/$(AI_EDA_RUN_ID)/recipe_corpus.json --corpus-only
 
 ai-eda-logic-synthesis-baseline: ai-eda-logic-synthesis-recipes
-	@$(PYTHON) scripts/ai_eda/run_logic_synthesis_policy_baseline.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/run_logic_synthesis_policy_baseline.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_logic_synthesis_policy_baseline.py --corpus build/ai_eda/logic_synthesis_recipes/$(AI_EDA_RUN_ID)/recipe_corpus.json --report build/ai_eda/logic_synthesis_baselines/$(AI_EDA_RUN_ID)/baseline_report.json
 
 ai-eda-cuda-preflight:
-	@$(PYTHON) scripts/ai_eda/preflight_cuda_training_stack.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/preflight_cuda_training_stack.py --run-id $(AI_EDA_RUN_ID)
 
 ai-eda-cuda-payload:
-	@$(PYTHON) scripts/ai_eda/package_cuda_training_payload.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/package_cuda_training_payload.py --run-id $(AI_EDA_RUN_ID)
 
-docs-check: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
+docs-check: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-alphachip-checkpoint-blocker-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
 	@$(PYTHON) scripts/docs_check.py
 
 tool-versions:
