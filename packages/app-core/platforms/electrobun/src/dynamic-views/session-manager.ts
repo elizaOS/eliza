@@ -305,9 +305,7 @@ export class DynamicViewSessionManager {
     }
   }
 
-  private assertRequiredRemotesAvailable(
-    manifest: DynamicViewManifest,
-  ): void {
+  private assertRequiredRemotesAvailable(manifest: DynamicViewManifest): void {
     const requiredRemotes = manifest.requiredRemotes ?? [];
     if (requiredRemotes.length === 0) return;
     if (!this.workerStatusProvider) {

@@ -124,9 +124,7 @@ describe("first-party Remotes", () => {
       const results = seedFirstPartyRemotes({ manager, includeDev: false });
       const runtime = results.find((result) => result.id === "eliza.runtime");
 
-      expect(isFirstPartyRemoteDisabled("eliza.runtime", manager)).toBe(
-        true,
-      );
+      expect(isFirstPartyRemoteDisabled("eliza.runtime", manager)).toBe(true);
       expect(runtime).toMatchObject({
         id: "eliza.runtime",
         disabled: true,

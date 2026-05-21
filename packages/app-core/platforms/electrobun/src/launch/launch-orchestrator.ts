@@ -153,9 +153,7 @@ function databaseBlocksLaunch(database: DatabaseSnapshot): boolean {
   );
 }
 
-function remoteSnapshot(
-  statuses: RemoteStatus[],
-): LaunchSnapshot["remotes"] {
+function remoteSnapshot(statuses: RemoteStatus[]): LaunchSnapshot["remotes"] {
   const required = statuses.filter((status) => status.required);
   return {
     seeded: statuses.length > 0,
