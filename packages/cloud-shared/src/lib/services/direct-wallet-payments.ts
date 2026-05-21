@@ -729,7 +729,23 @@ export class DirectWalletPaymentsService {
     const promoApplies = promoRequested;
     const bonusCredits = promoApplies ? 5 : 0;
     const creditsToAdd = amount.plus(bonusCredits);
-    const expectedTokenUnits = unitsForUsd(amount, selectedToken.decimals);
+
+    // Native BNB pricing: dollars are not tokens, so we quote the live
+    // BNB/USD price from Chainlink and lock it into the expected wei amount.
+    // Stables (USDT/USDC/$U) are 1:1 with USD by definition, so
+    // amount_usd × 10^decimals is correct without an oracle.
+    let priceQuote: { priceUsd: Decimal; updatedAt: number; feedAddress: Hex } | null = null;
+    let expectedTokenUnits: bigint;
+    if (params.network === "bsc" && selectedToken.kind === "native") {
+      priceQuote = await bnbUsdQuote(env);
+      const bnbAmount = amount.div(priceQuote.priceUsd);
+      expectedTokenUnits = BigInt(
+        bnbAmount.mul(new Decimal(10).pow(selectedToken.decimals)).toFixed(0),
+      );
+    } else {
+      expectedTokenUnits = unitsForUsd(amount, selectedToken.decimals);
+    }
+
     const now = new Date();
 
     const payment = await dbWrite.transaction(async (tx) => {
@@ -788,6 +804,15 @@ export class DirectWalletPaymentsService {
             paid_amount_usd: amount.toFixed(2),
             bonus_credits: bonusCredits,
             promo_code: promoApplies ? "bsc" : null,
+            price_quote: priceQuote
+              ? {
+                  pair: "BNB/USD",
+                  source: "chainlink",
+                  feed_address: priceQuote.feedAddress,
+                  price_usd: priceQuote.priceUsd.toString(),
+                  updated_at: priceQuote.updatedAt,
+                }
+              : null,
           },
         })
         .returning();
