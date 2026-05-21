@@ -111,6 +111,10 @@ async function ready(): Promise<void> {
 	await Promise.resolve();
 }
 
+function wait(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 describe("PromptBatcher recurring loop and cache behavior", () => {
 	test("recurring autonomy-affinity sections run on repeated drain tasks and keep context stateful", async () => {
 		const { runtime, tasks } = makeRuntime();
@@ -138,6 +142,7 @@ describe("PromptBatcher recurring loop and cache behavior", () => {
 		});
 
 		await batcher.drainAffinityGroup("autonomy");
+		await wait(30);
 		await batcher.drainAffinityGroup("autonomy");
 
 		expect(dispatcher.calls).toHaveLength(2);
@@ -146,6 +151,35 @@ describe("PromptBatcher recurring loop and cache behavior", () => {
 			"generated:autonomy:Agent Name: Batcher Test\n\nloop=2",
 		]);
 		expect(delivered.every((item) => item.meta.cacheHit === false)).toBe(true);
+	});
+
+	test("recurring sections are throttled by minCycleMs even when drains fire early", async () => {
+		const { runtime } = makeRuntime();
+		const dispatcher = makeDispatcher();
+		const batcher = new PromptBatcher(runtime, dispatcher as never, SETTINGS);
+		await ready();
+
+		const delivered: Array<BatcherResult> = [];
+		let loop = 0;
+		batcher.think("autonomy", {
+			minCycleMs: 60_000,
+			contextBuilder: () => `loop=${++loop}`,
+			preamble: "Think autonomously.",
+			schema: [{ field: "value", type: "string", required: true }],
+			onResult: (fields, meta) => {
+				delivered.push({ fields, meta });
+			},
+		});
+		await ready();
+
+		await batcher.drainAffinityGroup("autonomy");
+		await batcher.drainAffinityGroup("autonomy");
+
+		expect(dispatcher.calls).toHaveLength(1);
+		expect(delivered).toHaveLength(1);
+		expect(delivered[0]?.fields.value).toBe(
+			"generated:autonomy:Agent Name: Batcher Test\n\nloop=1",
+		);
 	});
 
 	test("once sections reuse fresh cache without another model dispatch", async () => {
