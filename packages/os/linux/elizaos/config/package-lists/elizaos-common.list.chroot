@@ -10,6 +10,9 @@ systemd-sysv
 # elizaOS runtime dependencies.
 ca-certificates
 curl
+# Local agent runs privileged system-management tasks via passwordless
+# sudo (see /etc/sudoers.d/010-elizaos-agent); visudo validates it at build.
+sudo
 git
 python3
 sqlite3

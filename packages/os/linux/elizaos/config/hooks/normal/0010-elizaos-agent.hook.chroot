@@ -113,6 +113,14 @@ if ! getent passwd elizaos >/dev/null 2>&1; then
 fi
 chown -R elizaos:elizaos /var/lib/elizaos /var/log/elizaos "${INSTALL}"
 
+# Passwordless sudo for the local agent (intentional on this assistant OS).
+# sudoers requires mode 0440 and root ownership; a malformed file locks out
+# sudo entirely, so validate with visudo before trusting the build.
+SUDOERS=/etc/sudoers.d/010-elizaos-agent
+chown root:root "${SUDOERS}"
+chmod 0440 "${SUDOERS}"
+visudo -cf "${SUDOERS}"
+
 # Enable services. First-boot is system-level; app launcher + chat
 # overlay are user units enabled by /etc/skel/.config/systemd/user
 # (created by hook 0030).
