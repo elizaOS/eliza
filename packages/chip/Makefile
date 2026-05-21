@@ -1407,8 +1407,9 @@ ai-eda-circuitnet3-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/circuitnet3/validation/records
 
 ai-eda-chipbench-d-convert: ai-eda-internal-schemas-check
-	@$(PYTHON) scripts/ai_eda/convert_chipbench_d_to_internal_records.py --run-id validation --sample-limit 3
+	@$(PYTHON) scripts/ai_eda/convert_chipbench_d_to_internal_records.py --run-id validation --sample-limit 8
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/chipbench_d/validation/records
+	@$(PYTHON) scripts/ai_eda/check_chipbench_d_conversion.py --report build/ai_eda/chipbench_d/validation/conversion_report.json
 
 ai-eda-circuitnet3-surrogate: ai-eda-circuitnet3-convert
 	@$(PYTHON) scripts/ai_eda/train_circuitnet3_timing_power_baseline.py --run-id validation

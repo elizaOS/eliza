@@ -381,9 +381,11 @@ Current local validation on the 128 GiB M4 host:
   `total_power=8.52562112`; current test MAE values include
   `min_slack=1.752` and `total_power=88.45308526`. These are smoke metrics
   only, not an E1 timing or power claim.
-- `make ai-eda-chipbench-d-convert`: PASS. The bounded local sample converts 3
-  restored ChiPBench-D payload cases into 9 internal placement/design/flow
-  records from 20 available cases.
+- `make ai-eda-chipbench-d-convert`: PASS. The bounded local sample converts 8
+  restored ChiPBench-D payload cases into 24 internal placement/design/flow
+  records from 20 available cases, then validates exact report-to-record
+  inventory, file hashes, floorplans, macro sizes, target placements, and the
+  training-only/no-E1-signoff claim boundary.
 - `make ai-eda-openabc-d-convert`: PASS. The bounded local sample converts 8
   restored OpenABC-D BENCH logic networks into 24 internal
   `eda.design_bundle.v1`, `eda.graph_sample.v1`, and `eda.flow_run.v1`
@@ -691,7 +693,10 @@ Implemented schema foundation:
   source-level split metadata before training neural timing/power predictors.
 - `scripts/ai_eda/convert_chipbench_d_to_internal_records.py` converts bounded
   real ChiPBench-D payload cases into internal placement/design/flow records
-  for macro-placement pretraining.
+  for macro-placement pretraining. `scripts/ai_eda/check_chipbench_d_conversion.py`
+  validates that the conversion report exactly matches the generated record
+  directory and that placement cases retain DEF/LEF-derived macro targets under
+  the no-E1-signoff claim boundary.
 - `scripts/ai_eda/convert_openabc_d_to_internal_records.py` converts bounded
   OpenABC-D BENCH logic networks into graph and flow records for
   synthesis-policy pretraining, with explicit blockers for leakage review,

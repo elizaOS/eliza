@@ -321,6 +321,8 @@ def main() -> int:
         selected = available[: args.sample_limit]
     out_dir = args.out_root / args.run_id / "records"
     out_dir.mkdir(parents=True, exist_ok=True)
+    for stale_record in out_dir.glob("chipbench-d-*.json"):
+        stale_record.unlink()
     converted: list[dict[str, Any]] = []
     for case_dir in selected:
         converted.extend(convert_case(case_dir, out_dir, args.payload))
