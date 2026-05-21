@@ -303,6 +303,15 @@ export interface StewardNonceExchangeRequest {
 export interface StewardNonceExchangeResponse extends StewardSessionResponse {
   expiresIn?: number;
   expiresAt?: number;
+  /**
+   * Steward JWT. Mirrored from the upstream Steward exchange so the SPA can
+   * write it to localStorage (required by `@stwd/react`'s `useAuth()` to
+   * report `isAuthenticated=true`). HttpOnly cookies are still the canonical
+   * session — this is the JS-readable copy that keeps the wallet and OAuth
+   * paths symmetric.
+   */
+  token?: string;
+  refreshToken?: string;
 }
 
 export interface ExchangeStewardCodeOpts extends SyncOpts {

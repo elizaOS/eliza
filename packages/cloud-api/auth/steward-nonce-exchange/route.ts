@@ -380,12 +380,24 @@ app.post("/", async (c) => {
   });
 
   logExchange("ok");
+  // Returning `token` (and `refreshToken`) here so the SPA can mirror it into
+  // localStorage. The HttpOnly cookies above are the canonical session; the
+  // localStorage copy is what @stwd/react's `useAuth()` and the SPA's
+  // `readStewardSessionFromStorage()` actually read on `/dashboard` route
+  // mount to decide `isAuthenticated`. Without this, OAuth users land back
+  // on `/login` after a successful exchange (wallet/SIWE keeps working only
+  // because the Steward SDK writes its own localStorage copy). The original
+  // "tokens never enter JS" design intent is aspirational — until the SPA
+  // auth check trusts the steward-authed marker cookie alone, the JWT has
+  // to be reachable from JS.
   return c.json({
     ok: true,
     userId: cloudUser.id,
     stewardUserId: claims.userId,
     expiresAt: exchange.data.expiresAt,
     expiresIn: exchange.data.expiresIn,
+    token,
+    refreshToken,
   });
 });
 
