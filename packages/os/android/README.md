@@ -23,27 +23,66 @@ packages/os/android/
 ```
 
 The default brand shipped here is **eliza** (`vendor/eliza/`). The brand
-config lives at `scripts/distro-android/brand.eliza.json`.
+configs live at `packages/scripts/distro-android/brand.eliza*.json` — one per
+arch (`brand.eliza.json` = x86_64, `brand.eliza-arm64.json`,
+`brand.eliza-riscv64.json`), all pointing at this package's
+`vendor/eliza/` overlay and the matching `eliza_cf_<arch>_phone` product.
 
-## Build flow (eliza brand on a Linux x86_64 host with KVM)
+## Emulator + build entry point
+
+`Makefile` here is the front door for the AOSP fork, parallel to
+`packages/os/linux/elizaos/Makefile` for the Debian fork. `ARCH` selects
+the brand config + Cuttlefish device dir; the eliza overlay (launcher,
+splash, permissions) is arch-agnostic and shared across all three:
 
 ```bash
-bun install
-bun run build:android:system        # stages vendor/eliza/apps/Eliza/Eliza.apk
-node scripts/distro-android/validate.mjs
-
-repo init --partial-clone -b android-latest-release \
-  -u https://android.googlesource.com/platform/manifest
-repo sync -c -j8
-
-node scripts/distro-android/build-aosp.mjs \
-  --aosp-root /path/to/aosp \
-  --launch --boot-validate
+make build ARCH=x86_64            # build + launch + boot-validate a Cuttlefish image
+make build ARCH=arm64
+make build ARCH=riscv64
+make sim   ARCH=riscv64           # bring up + validate an already-built image
+make bootanimation                # render + pack the elizaOS boot splash (needs ImageMagick)
 ```
 
-That command syncs `vendor/eliza`, validates the product layer against the
-AOSP source, runs `lunch eliza_cf_x86_64_phone-trunk_staging-userdebug && m`,
-launches Cuttlefish, and then runs the boot validator.
+Each target drives the brand-aware orchestrator in
+`packages/scripts/distro-android/` (`build-aosp.mjs`, `sim.mjs`,
+`build-bootanimation.mjs`), which is the stack CI uses
+(`.github/workflows/elizaos-cuttlefish.yml`). Real builds need a Linux
+x86_64 host with KVM and a synced AOSP checkout (`AOSP_ROOT`, default
+`$HOME/aosp`); riscv64 Cuttlefish runs under QEMU TCG (no KVM) and boots
+slower — `sim.mjs` sizes its boot timeout for that automatically.
+
+`make build` syncs `vendor/eliza`, validates the product layer against the
+AOSP source, runs `lunch eliza_cf_<arch>_phone-trunk_staging-userdebug && m`,
+launches Cuttlefish, and then runs the boot validator. The underlying
+command is `node packages/scripts/distro-android/build-aosp.mjs
+--brand-config <arch-config> --aosp-root <root> --launch --boot-validate`.
+
+> Note on orchestration: a second, divergent AOSP build/emulator stack
+> exists at `packages/app-core/scripts/aosp/` (wired into app-core's vitest
+> + agent-payload staging). It currently ships only the x86_64 `milady`
+> variant, so the eliza arm64/riscv64 images come from the
+> `distro-android` stack that this Makefile drives. The two stacks share an
+> identical-purpose core of ~11 files that have drifted; collapsing them to
+> one canonical core is tracked as follow-up cleanup.
+
+## Boot experience: splash + launcher
+
+Every eliza image boots straight into the elizaOS launcher with the
+elizaOS boot splash:
+
+- **Launcher** — `eliza_common.mk` strips the stock launchers and the Eliza
+  APK `overrides: ["Launcher3", "Launcher3QuickStep", "Trebuchet", …]`, so
+  Eliza (`ai.elizaos.app`) is the only HOME app. The overlay sets
+  `config_defaultHome` (alongside dialer/sms/assistant/browser) and
+  `ro.elizaos.home`, and SetupWizard is disabled — no Google "Welcome" flow.
+- **Splash** — `scripts/generate-eliza-bootanimation.sh` renders the white
+  elizaOS logo on the elizaOS blue field into `vendor/eliza/bootanimation/`
+  from the canonical brand SVG (the same way the Linux fork renders its
+  branding), and `build-bootanimation.mjs` packs it into
+  `bootanimation.zip`. The rendered frames + zip are gitignored; run
+  `make bootanimation` (on a host with ImageMagick) before `make build` to
+  bake the splash in. If the zip is absent, `eliza_common.mk` guards the
+  copy and the image falls through to the stock AOSP animation.
 
 ## AOSP assistant/full-control contract
 
@@ -85,16 +124,16 @@ system-control plugins.
 ## Whitelabel — building a downstream brand
 
 Provide a brand config and a corresponding vendor tree, then drive every
-script in `scripts/distro-android/` with `--brand-config <path>`:
+script in `packages/scripts/distro-android/` with `--brand-config <path>`:
 
 ```bash
-node scripts/distro-android/build-aosp.mjs \
+node packages/scripts/distro-android/build-aosp.mjs \
   --brand-config /path/to/your-brand.json \
   --source-vendor /path/to/your-vendor-tree \
   --aosp-root /path/to/aosp \
   --launch --boot-validate
 ```
 
-See `scripts/distro-android/README.md` for the brand config schema and the
+See `packages/scripts/distro-android/README.md` for the brand config schema and the
 GitHub Actions workflow `.github/workflows/elizaos-cuttlefish.yml` for a
 reusable workflow that downstream brands can call.
