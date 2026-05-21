@@ -11,6 +11,7 @@ source_artifacts:
   - board/kicad/e1-phone/preliminary-bom.yaml
   - board/kicad/e1-phone/supplier-sourcing-audit.yaml
   - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+  - board/kicad/e1-phone/cellular-space-saving-downselect.yaml
   - board/kicad/e1-phone/production-readiness.yaml
 
 procurement_policy:
@@ -54,10 +55,10 @@ line_items:
     required_supplier_artifacts: [exact_fpc_pinout, lens_z_height, lane_order, power_sequence, driver_plan]
   - function: cellular
     selected_primary: Quectel_RG255C_LGA_or_RM255C_M2_5G_RedCap
-    alternates: [Quectel_RM520N_GL_M2_lab_fallback]
+    alternates: [Quectel_EG915Q_EG915U_LTE_Cat1bis_space_saving_branch, Quectel_EG916Q_GL_LTE_Cat1bis_global_branch, Fibocom_MC665_LTE_Cat1bis_second_vendor_branch, Quectel_RM520N_GL_M2_lab_fallback]
     risk_class: certification_and_rf_high
-    procurement_status: blocked_region_sku_and_certification_scope_required
-    required_supplier_artifacts: [region_sku_band_matrix, hardware_design_guide, lga_or_m2_footprint, peak_current_profile, sim_esim_reference, certification_scope_statement]
+    procurement_status: blocked_region_sku_certification_scope_and_space_saving_module_decision_required
+    required_supplier_artifacts: [region_sku_band_matrix, hardware_design_guide, lga_or_m2_footprint, peak_current_profile, sim_esim_reference, certification_scope_statement, smaller_module_orderable_mpn_and_lifecycle, smaller_module_reference_layout_step_and_firmware_pack]
   - function: wifi_bluetooth
     selected_primary: Murata_LBEE5XV2EA_802_Type_2EA_WiFi6E_BT5p3
     alternates: [Murata_Type_1DX_SDIO_UART_fallback]
@@ -89,8 +90,8 @@ line_items:
     procurement_status: blocked_charge_policy_and_thermal_review_required
     required_supplier_artifacts: [datasheet, reference_schematic, thermal_layout_guidelines, jeita_policy, battery_ntc_compatibility]
   - function: battery_pack
-    selected_primary: LiPol_LP576487_3p85V_5830mAh_22p45Wh_PCM_NTC_JST_SHR_03V_class
-    alternates: [LiPol_LP446487_4500mAh_baseline_outline_family, Made_in_China_custom_5830mAh_LiPo_family, Alibaba_custom_3p85V_5830mAh_pack_quote_pool]
+    selected_primary: LiPol_LP566487_3p85V_5727mAh_22p05Wh_PCM_NTC_JST_SHR_03V_class
+    alternates: [LiPol_LP446487_4500mAh_baseline_outline_family, Made_in_China_custom_5727mAh_LiPo_family, Alibaba_custom_3p85V_5727mAh_pack_quote_pool]
     risk_class: safety_logistics_high
     procurement_status: blocked_pack_sample_quote_safety_docs_and_cavity_fit_required
     required_supplier_artifacts: [dimensioned_pack_drawing, connector_pinout, ntc_curve, pcm_limits, max_charge_discharge_current, UN38_3_summary, MSDS, battery_cavity_fit_decision]

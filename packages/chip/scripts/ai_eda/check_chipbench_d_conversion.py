@@ -68,13 +68,22 @@ def validate_placement_record(record: dict[str, Any], path: Path) -> tuple[list[
         errors.append(f"{record_id}: floorplan must be a mapping")
         return errors, 0
     die_area = floorplan.get("die_area_um")
-    if not isinstance(die_area, list) or len(die_area) != 4 or die_area[2] <= die_area[0] or die_area[3] <= die_area[1]:
+    if (
+        not isinstance(die_area, list)
+        or len(die_area) != 4
+        or die_area[2] <= die_area[0]
+        or die_area[3] <= die_area[1]
+    ):
         errors.append(f"{record_id}: invalid die_area_um")
     rows = floorplan.get("rows")
     if not isinstance(rows, dict) or not positive_number(rows.get("count")):
         errors.append(f"{record_id}: rows.count must be positive")
-    errors.extend(validate_file_record(floorplan.get("pre_place_def"), f"{record_id}: pre_place_def"))
-    errors.extend(validate_file_record(floorplan.get("macro_placed_def"), f"{record_id}: macro_placed_def"))
+    errors.extend(
+        validate_file_record(floorplan.get("pre_place_def"), f"{record_id}: pre_place_def")
+    )
+    errors.extend(
+        validate_file_record(floorplan.get("macro_placed_def"), f"{record_id}: macro_placed_def")
+    )
 
     movable = record.get("movable_objects")
     if not isinstance(movable, list) or not movable:
@@ -114,7 +123,10 @@ def validate_flow_record(record: dict[str, Any], path: Path) -> list[str]:
     metrics = record.get("metrics")
     if not isinstance(metrics, dict):
         return [f"{record_id}: metrics must be a mapping"]
-    if metrics.get("label_status") != "public_chipbench_d_macro_targets_training_only_not_e1_signoff":
+    if (
+        metrics.get("label_status")
+        != "public_chipbench_d_macro_targets_training_only_not_e1_signoff"
+    ):
         errors.append(f"{record_id}: invalid label_status")
     if not positive_number(metrics.get("macro_target_count")):
         errors.append(f"{record_id}: macro_target_count must be positive")

@@ -1,0 +1,170 @@
+schema: eliza.requirement.v1
+domain: SPEC
+owner_scope: spec_targets
+description: >
+  Target-spec requirements seeded from docs/spec-db/*-2028-target and contract
+  documents. Each requirement is a stable node in the traceability graph. Its
+  links must resolve to real files; the spec-traceability gate fails closed when
+  a declared RTL path, test, evidence file, or manufacturing artifact is missing.
+  These IDs are referenced by other domains via `requirement_ids: []`.
+requirements:
+  - id: REQ-SPEC-0001
+    title: CPU 2028 target selects mainline RV64GC Android-capable AP profile
+    owner: cpu
+    source_doc: docs/spec-db/cpu-2028-target.yaml
+    source_doc_sha: 69413e0ade01ebd32d8cf82015ff4cc0776233d78bdce7a19c3ee1b3980449f9
+    status: target_spec
+    claim_boundary: target_spec_no_silicon_or_boot_claim
+    links:
+      rtl:
+        - rtl/cpu/e1_cpu_subsystem_stub.sv
+        - rtl/cpu/e1_cva6_wrapper.sv
+      tests:
+        - verify/cocotb/test_tiny_cpu_execution.py
+      pd_evidence:
+        - docs/evidence/cpu/cpu-ap-evidence-manifest.json
+      mfg_artifacts: []
+    gates:
+      - cpu-2028-target-check
+      - core-selection-check
+      - rva23-compliance
+
+  - id: REQ-SPEC-0002
+    title: Memory 2028 target defines UMA capacity and LPDDR bandwidth envelope
+    owner: memory
+    source_doc: docs/spec-db/memory-2028-target.yaml
+    source_doc_sha: d9c519942cd23977b841ed293c300ec24267d40907d244bc719effbe74c00038
+    status: target_spec
+    claim_boundary: target_spec_no_silicon_bandwidth_claim
+    links:
+      rtl:
+        - rtl/memory/e1_axi_lite_dram.sv
+        - rtl/interconnect/e1_linux_soc_contract.sv
+      tests:
+        - verify/cocotb/test_cpu_mem_intc_contract.py
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - memory-2028-target-check
+      - memory-uma-claim-gate
+      - memory-interconnect-contract-check
+
+  - id: REQ-SPEC-0003
+    title: NPU 2028 target sets accelerator throughput and op-set envelope
+    owner: npu
+    source_doc: docs/spec-db/npu-2028-target.yaml
+    source_doc_sha: cd379e2914d4ca089270d1a82ae9e6e69fdb850d4656d42ffa395f8e6e78077c
+    status: target_spec
+    claim_boundary: target_spec_no_throughput_or_model_execution_claim
+    links:
+      rtl:
+        - rtl/npu/e1_npu.sv
+      tests:
+        - verify/cocotb/test_e1_npu.py
+        - verify/verilator/test_npu_gemm.cpp
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - npu-2028-target-check
+      - scale-feasibility-gate
+
+  - id: REQ-SPEC-0004
+    title: NPU runtime contract pins descriptor ABI and MMIO map
+    owner: npu
+    source_doc: docs/spec-db/e1-npu-runtime-contract.json
+    source_doc_sha: fd9498b1db53dba0797c7d6ee8c4eb3ae0e9f2dd9fd1c4c7515a55fe70fa01ee
+    status: contract
+    claim_boundary: runtime_contract_no_production_accelerator_claim
+    links:
+      rtl:
+        - rtl/npu/e1_npu.sv
+      tests:
+        - verify/cocotb/test_e1_npu.py
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - npu-runtime-contract-check
+
+  - id: REQ-SPEC-0005
+    title: Security 2028 target defines secure-boot and isolation contract
+    owner: security
+    source_doc: docs/spec-db/security-2028-target.yaml
+    source_doc_sha: 194a5df322312871cdfb1d2c0d637afb3283279ca016971f25eb40bab9e338b7
+    status: target_spec
+    claim_boundary: target_spec_no_silicon_attestation_claim
+    links:
+      rtl: []
+      tests: []
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - security-2028-target-check
+
+  - id: REQ-SPEC-0006
+    title: Process 14A effects spec bounds advanced-node assumptions
+    owner: process
+    source_doc: docs/spec-db/process-14a-effects.yaml
+    source_doc_sha: e9f5c76112e5f9e72aaf75480a0e2bdce3321d9807665715a74b60b307187ab5
+    status: target_spec
+    claim_boundary: nda_advanced_node_blocked_no_pdk_access_claim
+    links:
+      rtl: []
+      tests: []
+      pd_evidence:
+        - docs/evidence/process/ppa-projection.yaml
+      mfg_artifacts: []
+    gates:
+      - process-14a-effects-check
+      - pdk-portability-check
+
+  - id: REQ-SPEC-0007
+    title: Clock/reset-domain intent captures top-level CDC/RDC assumptions
+    owner: cpu
+    source_doc: docs/spec-db/e1-clock-reset-domain-intent.yaml
+    source_doc_sha: e0139bd7ac4955260e7bc2560112f266a5ad767f190b8facf3580e7b316b1afd
+    status: draft_capture_only
+    claim_boundary: intent_manifest_only_not_cdc_rdc_signoff
+    links:
+      rtl:
+        - rtl/top/e1_chip_top.sv
+        - rtl/clock/e1_reset_sync.sv
+      tests: []
+      pd_evidence: []
+      mfg_artifacts: []
+    gates: []
+
+  - id: REQ-SPEC-0008
+    title: AXI4 interconnect MMIO map defines software-visible device windows
+    owner: memory
+    source_doc: docs/spec-db/axi4-interconnect-mmio.yaml
+    source_doc_sha: 7885eb8ac857ec30ec99ee40e4f8c04fe052cd32f60acc54579c021b7e7da835
+    status: contract
+    claim_boundary: contract_windows_only_no_full_soc_routing_claim
+    links:
+      rtl:
+        - rtl/interconnect/e1_axi_lite_interconnect.sv
+        - rtl/interconnect/e1_linux_soc_contract.sv
+        - rtl/top/e1_soc_top.sv
+      tests:
+        - verify/cocotb/test_mmio_decode_error.py
+        - verify/cocotb/test_cpu_mem_intc_contract.py
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - memory-interconnect-contract-check
+
+  - id: REQ-SPEC-0009
+    title: Platform contract pins SoC software-visible platform surface
+    owner: platform
+    source_doc: sw/platform/e1_platform_contract.json
+    source_doc_sha: a6cf225fe9208f58c9c5eadd30684f95c079e4de603669c8a54375a533e71c71
+    status: contract
+    claim_boundary: platform_contract_no_boot_or_product_claim
+    links:
+      rtl:
+        - rtl/top/e1_soc_top.sv
+      tests: []
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - platform-contract-check

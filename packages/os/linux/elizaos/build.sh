@@ -36,21 +36,303 @@ MIN_ISO_BYTES="${ELIZAOS_MIN_ISO_BYTES:-209715200}"
 
 mkdir -p "${OUT}"
 
+if ! command -v lb >/dev/null 2>&1; then
+    echo "ERROR: live-build (lb) not found on PATH. Run inside the builder container." >&2
+    exit 1
+fi
+
+ensure_foreign_binfmt() {
+    case "${ARCH}" in
+        amd64)
+            return 0
+            ;;
+        arm64)
+            BINFMT_NAME=qemu-aarch64
+            ;;
+        riscv64)
+            BINFMT_NAME=qemu-riscv64
+            ;;
+        *)
+            echo "ERROR: unsupported ELIZAOS_ARCH=${ARCH}" >&2
+            exit 64
+            ;;
+    esac
+
+    if [ "$(dpkg --print-architecture 2>/dev/null || true)" = "${ARCH}" ]; then
+        return 0
+    fi
+
+    echo "    ensuring ${BINFMT_NAME} binfmt_misc registration..."
+
+    if [ ! -d /proc/sys/fs/binfmt_misc ]; then
+        echo "ERROR: /proc/sys/fs/binfmt_misc missing; foreign ${ARCH} bootstrap cannot run." >&2
+        exit 65
+    fi
+
+    if [ ! -e /proc/sys/fs/binfmt_misc/register ]; then
+        mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
+    fi
+
+    if [ ! -e /proc/sys/fs/binfmt_misc/register ]; then
+        echo "ERROR: binfmt_misc is not mounted; run the builder container with --privileged." >&2
+        exit 65
+    fi
+
+    if [ -e "/proc/sys/fs/binfmt_misc/${BINFMT_NAME}" ]; then
+        if grep -q '^enabled' "/proc/sys/fs/binfmt_misc/${BINFMT_NAME}"; then
+            return 0
+        fi
+        echo 1 >"/proc/sys/fs/binfmt_misc/${BINFMT_NAME}" 2>/dev/null || true
+        if grep -q '^enabled' "/proc/sys/fs/binfmt_misc/${BINFMT_NAME}"; then
+            return 0
+        fi
+        echo -1 >"/proc/sys/fs/binfmt_misc/${BINFMT_NAME}" 2>/dev/null || true
+    fi
+
+    BINFMT_CONF="/usr/lib/binfmt.d/${BINFMT_NAME}.conf"
+    if [ ! -r "${BINFMT_CONF}" ]; then
+        BINFMT_CONF="/usr/share/qemu/binfmt.d/${BINFMT_NAME}.conf"
+    fi
+
+    if [ ! -r "${BINFMT_CONF}" ]; then
+        echo "ERROR: no ${BINFMT_NAME} binfmt config found in the builder image." >&2
+        exit 65
+    fi
+
+    BINFMT_LINE="$(sed -n '1p' "${BINFMT_CONF}")"
+    if [ -z "${BINFMT_LINE}" ]; then
+        echo "ERROR: ${BINFMT_CONF} is empty." >&2
+        exit 65
+    fi
+
+    printf '%s\n' "${BINFMT_LINE}" >/proc/sys/fs/binfmt_misc/register
+
+    if [ ! -e "/proc/sys/fs/binfmt_misc/${BINFMT_NAME}" ] ||
+        ! grep -q '^enabled' "/proc/sys/fs/binfmt_misc/${BINFMT_NAME}"; then
+        echo "ERROR: failed to register ${BINFMT_NAME} with binfmt_misc." >&2
+        exit 65
+    fi
+}
+
+patch_live_build_riscv64_grub_efi() {
+    if [ "${ARCH}" != "riscv64" ]; then
+        return 0
+    fi
+
+    GRUB_EFI_SCRIPT="/usr/lib/live/build/binary_grub-efi"
+    if [ ! -w "${GRUB_EFI_SCRIPT}" ]; then
+        echo "ERROR: cannot patch ${GRUB_EFI_SCRIPT}; builder image is not writable." >&2
+        exit 66
+    fi
+    if grep -q 'grub-efi-riscv64-bin' "${GRUB_EFI_SCRIPT}"; then
+        return 0
+    fi
+
+    echo "    patching live-build grub-efi support for riscv64..."
+    python3 - "${GRUB_EFI_SCRIPT}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+
+replacements = [
+    (
+        '\tarmhf)\n'
+        '\t\tCheck_package chroot /usr/lib/grub/arm-efi/configfile.mod grub-efi-arm-bin\n'
+        '\t\t;;\n',
+        '\tarmhf)\n'
+        '\t\tCheck_package chroot /usr/lib/grub/arm-efi/configfile.mod grub-efi-arm-bin\n'
+        '\t\t;;\n'
+        '\triscv64)\n'
+        '\t\tCheck_package chroot /usr/lib/grub/riscv64-efi/configfile.mod grub-efi-riscv64-bin\n'
+        '\t\t;;\n',
+    ),
+    (
+        '\tarmhf)\n'
+        '\t\t_SB_EFI_PLATFORM="arm"\n'
+        '\t\t_SB_EFI_NAME="arm"\n'
+        '\t\t_SB_EFI_DEB="arm"\n'
+        '\t\t;;\n',
+        '\tarmhf)\n'
+        '\t\t_SB_EFI_PLATFORM="arm"\n'
+        '\t\t_SB_EFI_NAME="arm"\n'
+        '\t\t_SB_EFI_DEB="arm"\n'
+        '\t\t;;\n'
+        '\triscv64)\n'
+        '\t\t_SB_EFI_PLATFORM="riscv64"\n'
+        '\t\t_SB_EFI_NAME="riscv64"\n'
+        '\t\t_SB_EFI_DEB="riscv64"\n'
+        '\t\t;;\n',
+    ),
+    (
+        'binary/boot/grub/arm64-efi binary/boot/grub/arm-efi',
+        'binary/boot/grub/arm64-efi binary/boot/grub/riscv64-efi binary/boot/grub/arm-efi',
+    ),
+    (
+        '\tarmhf)\n'
+        '\t\tgen_efi_boot_img "arm-efi" "arm" "debian-live/arm"\n'
+        '\t\tPATH="\\${PRE_EFI_IMAGE_PATH}"\n'
+        '\t\t;;\n',
+        '\tarmhf)\n'
+        '\t\tgen_efi_boot_img "arm-efi" "arm" "debian-live/arm"\n'
+        '\t\tPATH="\\${PRE_EFI_IMAGE_PATH}"\n'
+        '\t\t;;\n'
+        '\triscv64)\n'
+        '\t\tgen_efi_boot_img "riscv64-efi" "riscv64" "debian-live/riscv64"\n'
+        '\t\tPATH="\\${PRE_EFI_IMAGE_PATH}"\n'
+        '\t\t;;\n',
+    ),
+    (
+        'rm -rf chroot/grub-efi-temp-arm-efi\n',
+        'rm -rf chroot/grub-efi-temp-arm-efi\n'
+        'rm -rf chroot/grub-efi-temp-riscv64-efi\n',
+    ),
+]
+
+for old, new in replacements:
+    if old not in text:
+        raise SystemExit(f"live-build riscv64 grub-efi patch anchor missing: {old!r}")
+    text = text.replace(old, new, 1)
+
+path.write_text(text)
+PY
+
+    if ! grep -q 'gen_efi_boot_img "riscv64-efi" "riscv64"' "${GRUB_EFI_SCRIPT}"; then
+        echo "ERROR: failed to patch live-build riscv64 grub-efi support." >&2
+        exit 66
+    fi
+}
+
+patch_debootstrap_curl_downloader() {
+    FUNCTIONS="/usr/share/debootstrap/functions"
+    if [ ! -w "${FUNCTIONS}" ]; then
+        echo "ERROR: cannot patch ${FUNCTIONS}; builder image is not writable." >&2
+        exit 67
+    fi
+    if grep -q 'elizaOS curl downloader patch' "${FUNCTIONS}"; then
+        return 0
+    fi
+
+    echo "    patching debootstrap downloader to use curl retries..."
+    python3 - "${FUNCTIONS}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = '''\telif [ "${from#http://}" != "$from" ] || [ "${from#https://}" != "$from" ] || [ "${from#ftp://}" != "$from" ]; then
+\t\t# http/https/ftp mirror
+\t\tif wgetprogress ${CHECKCERTIF:+"$CHECKCERTIF"} ${CERTIFICATE:+"$CERTIFICATE"} ${PRIVATEKEY:+"$PRIVATEKEY"} -O "$dest" "$from"; then
+\t\t\treturn 0
+\t\telse
+\t\t\trm -f "$dest"
+\t\t\treturn 1
+\t\tfi
+'''
+new = '''\telif [ "${from#http://}" != "$from" ] || [ "${from#https://}" != "$from" ] || [ "${from#ftp://}" != "$from" ]; then
+\t\t# elizaOS curl downloader patch: wget intermittently returned corrupt
+\t\t# partial .deb payloads in this builder environment.
+\t\tif command -v curl >/dev/null 2>&1 && curl --silent --show-error --fail --location --retry 12 --retry-all-errors --connect-timeout 20 --max-time 300 --speed-limit 1024 --speed-time 45 --output "$dest" "$from"; then
+\t\t\treturn 0
+\t\telif wgetprogress ${CHECKCERTIF:+"$CHECKCERTIF"} ${CERTIFICATE:+"$CERTIFICATE"} ${PRIVATEKEY:+"$PRIVATEKEY"} -O "$dest" "$from"; then
+\t\t\treturn 0
+\t\telse
+\t\t\trm -f "$dest"
+\t\t\treturn 1
+\t\tfi
+'''
+if old not in text:
+    raise SystemExit("debootstrap downloader patch anchor missing")
+path.write_text(text.replace(old, new, 1))
+PY
+}
+
+patch_debootstrap_foreign_dpkg_io() {
+    if [ "${ARCH}" = "amd64" ]; then
+        return 0
+    fi
+
+    SCRIPT="/usr/share/debootstrap/scripts/debian-common"
+    FUNCTIONS="/usr/share/debootstrap/functions"
+    if [ ! -w "${SCRIPT}" ] || [ ! -w "${FUNCTIONS}" ]; then
+        echo "ERROR: cannot patch debootstrap scripts; builder image is not writable." >&2
+        exit 68
+    fi
+    if grep -q 'elizaOS foreign dpkg unsafe-io patch' "${SCRIPT}"; then
+        return 0
+    fi
+
+    echo "    patching foreign debootstrap dpkg unpack I/O..."
+    python3 - "${SCRIPT}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace(
+    "dpkg --status-fd 8 --force-depends --unpack $(debfor $required)",
+    "dpkg --status-fd 8 --force-depends --force-unsafe-io --unpack $(debfor $required)",
+    1,
+)
+text = text.replace(
+    "dpkg --status-fd 8 --force-overwrite --force-confold --skip-same-version --unpack $(debfor $base)",
+    "dpkg --status-fd 8 --force-overwrite --force-confold --force-unsafe-io --skip-same-version --unpack $(debfor $base)",
+    1,
+)
+text = text.replace(
+    "in_target dpkg --force-overwrite --force-confold --skip-same-version --install $(debfor $predep)",
+    "in_target dpkg --force-overwrite --force-confold --force-unsafe-io --skip-same-version --install $(debfor $predep)",
+    1,
+)
+if "--force-depends --force-unsafe-io --unpack" not in text:
+    raise SystemExit("debootstrap required dpkg unsafe-io patch anchor missing")
+if "--force-confold --force-unsafe-io --skip-same-version --unpack" not in text:
+    raise SystemExit("debootstrap base dpkg unsafe-io patch anchor missing")
+if "--force-confold --force-unsafe-io --skip-same-version --install" not in text:
+    raise SystemExit("debootstrap predep dpkg unsafe-io patch anchor missing")
+text += "\n# elizaOS foreign dpkg unsafe-io patch\n"
+path.write_text(text)
+PY
+    python3 - "${FUNCTIONS}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = "if [ $ARCH_ALL_SUPPORTED -eq 1 ]; then"
+new = 'if [ "${ARCH_ALL_SUPPORTED:-0}" -eq 1 ]; then'
+if old not in text:
+    raise SystemExit("debootstrap ARCH_ALL_SUPPORTED patch anchor missing")
+path.write_text(text.replace(old, new))
+PY
+}
+
+# Clear stale live-build working state from any prior/interrupted run so each
+# build starts from a clean tree (cache/ is kept for download speed). Runs as
+# root here, so it can remove the root-owned chroot from earlier runs.
+rm -rf "${HERE}/.build" "${HERE}/binary" "${HERE}/chroot" \
+    "${HERE}/config/binary" "${HERE}/config/bootstrap" "${HERE}/config/chroot" \
+    "${HERE}/config/common" "${HERE}/config/source" \
+    "${HERE}"/chroot.* "${HERE}"/binary.* "${HERE}"/live-image-* 2>/dev/null || true
+rm -f "${HERE}/.lock"
+
 echo "=== elizaOS Linux build ==="
 echo "    arch:        ${ARCH}"
 echo "    profile:     ${PROFILE}"
 echo "    output dir:  ${OUT}"
 echo "    build ts:    ${BUILD_TS}"
 
+ensure_foreign_binfmt
+patch_debootstrap_curl_downloader
+patch_debootstrap_foreign_dpkg_io
+patch_live_build_riscv64_grub_efi
+
 # ── Step 1: lb config ────────────────────────────────────────────────
 echo
 echo "--- step 1/5: lb config ---"
-if ! command -v lb >/dev/null 2>&1; then
-    echo "ERROR: live-build (lb) not found on PATH. Run inside the builder container." >&2
-    exit 1
-fi
-
 ELIZAOS_ARCH="${ARCH}" "${HERE}/auto/config"
+rm -f "${HERE}/.lock"
 
 # Compose the secure hardening overlay on top of the default config.
 if [ "${PROFILE}" = "secure" ]; then
@@ -78,9 +360,19 @@ lb build
 # ── Step 3: verify ───────────────────────────────────────────────────
 echo
 echo "--- step 3/5: verify ---"
-SRC_ISO="${HERE}/binary.hybrid.iso"
-if [ ! -f "${SRC_ISO}" ]; then
-    echo "ERROR: expected ${SRC_ISO} not found." >&2
+# live-build names the image live-image-<arch>.hybrid.iso; older trees used
+# binary.hybrid.iso. Accept whichever the toolchain produced.
+SRC_ISO=""
+for candidate in \
+    "${HERE}/live-image-${ARCH}.hybrid.iso" \
+    "${HERE}/binary.hybrid.iso"; do
+    if [ -f "${candidate}" ]; then SRC_ISO="${candidate}"; break; fi
+done
+if [ -z "${SRC_ISO}" ]; then
+    SRC_ISO="$(find "${HERE}" -maxdepth 1 -name '*.hybrid.iso' -print -quit 2>/dev/null || true)"
+fi
+if [ -z "${SRC_ISO}" ] || [ ! -f "${SRC_ISO}" ]; then
+    echo "ERROR: no .hybrid.iso produced by lb build in ${HERE}." >&2
     exit 2
 fi
 
@@ -113,12 +405,12 @@ if [ ! -f "${TEMPLATE}" ]; then
 else
     SHA256="$(awk '{print $1}' "${OUT}/${ARTIFACT_BASENAME}.iso.sha256")"
     sed \
-        -e "s|@ARCH@|${ARCH}|g" \
-        -e "s|@PROFILE@|${PROFILE}|g" \
-        -e "s|@ARTIFACT@|${ARTIFACT_BASENAME}.iso|g" \
-        -e "s|@BUILD_TS@|${BUILD_TS}|g" \
-        -e "s|@SHA256@|${SHA256}|g" \
-        -e "s|@SIZE@|${ISO_BYTES}|g" \
+        -e "s|@@ARCH@@|${ARCH}|g" \
+        -e "s|@@PROFILE@@|${PROFILE}|g" \
+        -e "s|@@FILENAME@@|${ARTIFACT_BASENAME}.iso|g" \
+        -e "s|@@BUILD_TIMESTAMP@@|${BUILD_TS}|g" \
+        -e "s|@@SHA256@@|${SHA256}|g" \
+        -e "s|@@SIZE_BYTES@@|${ISO_BYTES}|g" \
         "${TEMPLATE}" > "${OUT}/${ARTIFACT_BASENAME}.manifest.json"
     python3 -c "import json,sys; json.load(open('${OUT}/${ARTIFACT_BASENAME}.manifest.json'))"
     echo "    manifest: ${OUT}/${ARTIFACT_BASENAME}.manifest.json"

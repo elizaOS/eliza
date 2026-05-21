@@ -10,7 +10,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/macro_place_challenge_2026/validation/conversion_report.json"
-CLAIM_BOUNDARY = "macro_place_challenge_2026_conversion_training_only_no_e1_signoff_or_release_claim"
+CLAIM_BOUNDARY = (
+    "macro_place_challenge_2026_conversion_training_only_no_e1_signoff_or_release_claim"
+)
 LABEL_STATUS = "public_macro_place_challenge_2026_proxy_and_baseline_training_only_not_e1_signoff"
 REQUIRED_SCHEMAS = {"eda.design_bundle.v1", "eda.graph_sample.v1", "eda.flow_run.v1"}
 
@@ -78,7 +80,10 @@ def validate_design_record(record: dict[str, Any], path: Path) -> list[str]:
         for index, item in enumerate(metadata):
             errors.extend(validate_file_record(item, f"{record_id}: metadata[{index}]"))
     technology = record.get("technology")
-    if not isinstance(technology, dict) or technology.get("flow") != "Partcl/HRT Macro Placement Challenge 2026":
+    if (
+        not isinstance(technology, dict)
+        or technology.get("flow") != "Partcl/HRT Macro Placement Challenge 2026"
+    ):
         errors.append(f"{record_id}: technology.flow mismatch")
     return errors
 
@@ -126,7 +131,13 @@ def validate_flow_record(record: dict[str, Any], path: Path) -> list[str]:
     metrics = record.get("metrics")
     if not isinstance(metrics, dict):
         return errors + [f"{record_id}: metrics must be a mapping"]
-    for field in ("num_macros", "num_nets", "canvas_width_um", "canvas_height_um", "initial_proxy_cost"):
+    for field in (
+        "num_macros",
+        "num_nets",
+        "canvas_width_um",
+        "canvas_height_um",
+        "initial_proxy_cost",
+    ):
         if not positive_number(metrics.get(field)):
             errors.append(f"{record_id}: metrics.{field} must be positive")
     if metrics.get("label_status") != LABEL_STATUS:
@@ -140,7 +151,11 @@ def validate_flow_record(record: dict[str, Any], path: Path) -> list[str]:
 
 def case_from_path(path: Path) -> str:
     name = path.name.removeprefix("macro-place-challenge-2026-")
-    for suffix in ("-design-bundle.json", "-benchmark-summary-graph.json", "-baseline-flow-run.json"):
+    for suffix in (
+        "-design-bundle.json",
+        "-benchmark-summary-graph.json",
+        "-baseline-flow-run.json",
+    ):
         if name.endswith(suffix):
             return name.removesuffix(suffix)
     return path.stem
@@ -156,7 +171,12 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
     if not isinstance(policy, dict):
         errors.append("policy must be a mapping")
     else:
-        for field in ("contains_tensor_payload", "contains_hidden_benchmarks", "release_use_allowed", "e1_signoff_evidence"):
+        for field in (
+            "contains_tensor_payload",
+            "contains_hidden_benchmarks",
+            "release_use_allowed",
+            "e1_signoff_evidence",
+        ):
             if policy.get(field) is not False:
                 errors.append(f"policy.{field} must be false")
         if policy.get("deterministic_replay_required_for_ppa_claims") is not True:
@@ -184,7 +204,9 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
             record_paths.append(repo_path(path_value))
         else:
             errors.append("converted record missing json path")
-    actual_records = sorted((report_path.parent / "records").glob("macro-place-challenge-2026-*.json"))
+    actual_records = sorted(
+        (report_path.parent / "records").glob("macro-place-challenge-2026-*.json")
+    )
     if sorted(record_paths) != actual_records:
         errors.append("report converted paths must exactly match records directory")
     cases: dict[str, set[str]] = {}
@@ -219,7 +241,9 @@ def main() -> int:
     args = parse_args()
     report_path = repo_path(str(args.report))
     if not report_path.is_file():
-        print(f"STATUS: FAIL ai_eda.macro_place_challenge_2026_conversion missing_report {report_path}")
+        print(
+            f"STATUS: FAIL ai_eda.macro_place_challenge_2026_conversion missing_report {report_path}"
+        )
         return 1
     try:
         report = load_json(report_path)

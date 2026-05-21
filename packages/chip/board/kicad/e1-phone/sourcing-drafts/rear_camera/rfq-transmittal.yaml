@@ -18,6 +18,12 @@ draft:
     - front_camera_primary_sincere_first_gc5035
     - rear_camera_alternate_alibaba_ov13855_mipi
     - front_camera_alternate_made_in_china_gc5035_mipi
+  source_revalidation_trace:
+    rfq_matrix_key: rear_camera
+    primary_revalidated_source_id: rear_camera_primary_sincere_first_ov13855
+    rfq_ready_from_public_page: true
+    production_release_ready: false
+    route_release_dependency: J_CAM0 symbol_footprint_CSI_route_and_lens_window_remain_blocked_until_supplier_pack_received
   recipient_candidates:
     - supplier: Guangzhou Sincere Information Technology / Sincere First
       candidate: SF-XR3855A-A0

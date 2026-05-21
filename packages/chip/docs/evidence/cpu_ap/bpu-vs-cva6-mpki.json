@@ -1,0 +1,713 @@
+{
+  "aggregate": {
+    "all": {
+      "cva6_geomean_mpki": 18.63896,
+      "e1_geomean_mpki": 3.554963,
+      "geomean_improvement_ratio_cva6_over_e1": 5.2431,
+      "pooled_cva6_mpki": 6.015943,
+      "pooled_e1_mpki": 1.58128,
+      "pooled_improvement_ratio_cva6_over_e1": 3.8045,
+      "pooled_instruction_count": 79294630,
+      "trace_count": 20
+    },
+    "external_only": {
+      "cva6_geomean_mpki": 11.97697,
+      "e1_geomean_mpki": 2.384726,
+      "geomean_improvement_ratio_cva6_over_e1": 5.0224,
+      "pooled_cva6_mpki": 5.978965,
+      "pooled_e1_mpki": 1.562028,
+      "pooled_improvement_ratio_cva6_over_e1": 3.8277,
+      "pooled_instruction_count": 79227755,
+      "trace_count": 9
+    },
+    "synthetic_only": {
+      "cva6_geomean_mpki": 27.751658,
+      "e1_geomean_mpki": 4.928388,
+      "geomean_improvement_ratio_cva6_over_e1": 5.631,
+      "pooled_cva6_mpki": 49.824299,
+      "pooled_e1_mpki": 24.388785,
+      "pooled_improvement_ratio_cva6_over_e1": 2.0429,
+      "pooled_instruction_count": 66875,
+      "trace_count": 11
+    }
+  },
+  "claim_level": "L2_ARCH_SIM",
+  "claim_policy": {
+    "android_claim": false,
+    "both_predictors_same_level": true,
+    "is_behavioural_model": true,
+    "reason": "Both predictors are behavioural models scored on identical traces. Synthetic generators are planning-only; CBP-5 traces back a CBP train-set comparison only. This file does not back SPEC2017, AOSP, or JS-engine MPKI claims.",
+    "spec2017_claim": false,
+    "v8_claim": false
+  },
+  "corroborating_rtl_evidence": {
+    "e1_cbp5_rtl": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
+    "e1_synthetic_rtl": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+    "note": "E1 RTL MPKI exists at L1_RTL_FULL_SOC via cocotb on bpu_top.sv. No CVA6 RTL is run here, so the headline comparison is held at the behavioural-model level (L2_ARCH_SIM) for both predictors; the E1 RTL evidence corroborates the E1 model side only."
+  },
+  "description": "Head-to-head MPKI of the Eliza E1 BPU (TAGE-SC-L + ITTAGE + FTB + RAS + SC + loop) against a CVA6/Ariane-class BHT+BTB+RAS baseline, both behavioural models replayed over the identical branch traces.",
+  "generated_at_utc": "2026-05-21T19:24:23.308623+00:00",
+  "harness": "benchmarks/cpu/branch/compare_mpki.py",
+  "per_trace": {
+    "agent_decode": {
+      "branches": 6622719,
+      "cva6_counters": {
+        "call": 2650,
+        "cond": 6615499,
+        "cond_misp": 73109,
+        "ind": 1924,
+        "ind_misp": 2455,
+        "misp": 75596,
+        "pred": 6622719,
+        "ret": 2646,
+        "ret_misp": 32
+      },
+      "cva6_misp": 75596,
+      "cva6_mpki": 1.964783,
+      "e1_counters": {
+        "call": 2650,
+        "cond": 6615499,
+        "cond_misp": 13287,
+        "ind": 1924,
+        "ind_misp": 118,
+        "misp": 13405,
+        "pred": 6622719,
+        "ret": 2646,
+        "sc_override": 1015
+      },
+      "e1_misp": 13405,
+      "e1_mpki": 0.348404,
+      "improvement_ratio_cva6_over_e1": 5.6394,
+      "instruction_count": 38475498,
+      "mpki_reduction": 1.616379,
+      "trace_class": "qemu_rv64_workload"
+    },
+    "agent_loop": {
+      "branches": 3839663,
+      "cva6_counters": {
+        "call": 2046,
+        "cond": 3833773,
+        "cond_misp": 73690,
+        "ind": 1803,
+        "ind_misp": 1879,
+        "misp": 75624,
+        "pred": 3839663,
+        "ret": 2041,
+        "ret_misp": 55
+      },
+      "cva6_misp": 75624,
+      "cva6_mpki": 3.047177,
+      "e1_counters": {
+        "call": 2046,
+        "cond": 3833773,
+        "cond_misp": 6277,
+        "ind": 1803,
+        "ind_misp": 166,
+        "misp": 6443,
+        "pred": 3839663,
+        "ret": 2041,
+        "sc_override": 1283
+      },
+      "e1_misp": 6443,
+      "e1_mpki": 0.259613,
+      "improvement_ratio_cva6_over_e1": 11.7374,
+      "instruction_count": 24817722,
+      "mpki_reduction": 2.787564,
+      "trace_class": "qemu_rv64_workload"
+    },
+    "alternating": {
+      "branches": 1000,
+      "cva6_counters": {
+        "cond": 1000,
+        "cond_misp": 500,
+        "misp": 500,
+        "pred": 1000
+      },
+      "cva6_misp": 500,
+      "cva6_mpki": 100.0,
+      "e1_counters": {
+        "cond": 1000,
+        "cond_misp": 5,
+        "misp": 5,
+        "pred": 1000
+      },
+      "e1_misp": 5,
+      "e1_mpki": 1.0,
+      "improvement_ratio_cva6_over_e1": 100.0,
+      "instruction_count": 5000,
+      "mpki_reduction": 99.0,
+      "trace_class": "synthetic_planning_only"
+    },
+    "always_not_taken": {
+      "branches": 1000,
+      "cva6_counters": {
+        "cond": 1000,
+        "misp": 0,
+        "pred": 1000
+      },
+      "cva6_misp": 0,
+      "cva6_mpki": 0.0,
+      "e1_counters": {
+        "cond": 1000,
+        "cond_misp": 1,
+        "misp": 1,
+        "pred": 1000
+      },
+      "e1_misp": 1,
+      "e1_mpki": 0.2,
+      "improvement_ratio_cva6_over_e1": 1.0,
+      "instruction_count": 5000,
+      "mpki_reduction": 0.0,
+      "trace_class": "synthetic_planning_only"
+    },
+    "always_taken": {
+      "branches": 1000,
+      "cva6_counters": {
+        "cond": 1000,
+        "cond_misp": 1,
+        "misp": 1,
+        "pred": 1000
+      },
+      "cva6_misp": 1,
+      "cva6_mpki": 0.2,
+      "e1_counters": {
+        "cond": 1000,
+        "cond_misp": 1,
+        "misp": 1,
+        "pred": 1000
+      },
+      "e1_misp": 1,
+      "e1_mpki": 0.2,
+      "improvement_ratio_cva6_over_e1": 1.0,
+      "instruction_count": 5000,
+      "mpki_reduction": 0.0,
+      "trace_class": "synthetic_planning_only"
+    },
+    "audio_frames": {
+      "branches": 432230,
+      "cva6_counters": {
+        "call": 1988,
+        "cond": 426512,
+        "cond_misp": 28048,
+        "ind": 1747,
+        "ind_misp": 1880,
+        "misp": 29982,
+        "pred": 432230,
+        "ret": 1983,
+        "ret_misp": 54
+      },
+      "cva6_misp": 29982,
+      "cva6_mpki": 10.370996,
+      "e1_counters": {
+        "call": 1988,
+        "cond": 426512,
+        "cond_misp": 50072,
+        "ind": 1747,
+        "ind_misp": 162,
+        "misp": 50234,
+        "pred": 432230,
+        "ret": 1983,
+        "sc_override": 15238
+      },
+      "e1_misp": 50234,
+      "e1_mpki": 17.376313,
+      "improvement_ratio_cva6_over_e1": 0.5968,
+      "instruction_count": 2890947,
+      "mpki_reduction": -7.005317,
+      "trace_class": "qemu_rv64_workload"
+    },
+    "deep_recursion": {
+      "branches": 512,
+      "cva6_counters": {
+        "call": 256,
+        "ind_misp": 255,
+        "misp": 495,
+        "pred": 512,
+        "ret": 256,
+        "ret_misp": 240
+      },
+      "cva6_misp": 495,
+      "cva6_mpki": 193.359375,
+      "e1_counters": {
+        "call": 256,
+        "ind_misp": 32,
+        "misp": 32,
+        "pred": 512,
+        "ret": 256
+      },
+      "e1_misp": 32,
+      "e1_mpki": 12.5,
+      "improvement_ratio_cva6_over_e1": 15.4688,
+      "instruction_count": 2560,
+      "mpki_reduction": 180.859375,
+      "trace_class": "synthetic_planning_only"
+    },
+    "file_tlv": {
+      "branches": 471277,
+      "cva6_counters": {
+        "call": 1990,
+        "cond": 465554,
+        "cond_misp": 52551,
+        "ind": 1748,
+        "ind_misp": 1884,
+        "misp": 54490,
+        "pred": 471277,
+        "ret": 1985,
+        "ret_misp": 55
+      },
+      "cva6_misp": 54490,
+      "cva6_mpki": 17.355858,
+      "e1_counters": {
+        "call": 1990,
+        "cond": 465554,
+        "cond_misp": 12389,
+        "ind": 1748,
+        "ind_misp": 164,
+        "misp": 12553,
+        "pred": 471277,
+        "ret": 1985,
+        "sc_override": 8015
+      },
+      "e1_misp": 12553,
+      "e1_mpki": 3.998313,
+      "improvement_ratio_cva6_over_e1": 4.3408,
+      "instruction_count": 3139574,
+      "mpki_reduction": 13.357545,
+      "trace_class": "qemu_rv64_workload"
+    },
+    "gpu_command_processor": {
+      "branches": 1835,
+      "cva6_counters": {
+        "cond": 960,
+        "cond_misp": 85,
+        "ind": 875,
+        "ind_misp": 875,
+        "misp": 960,
+        "pred": 1835
+      },
+      "cva6_misp": 960,
+      "cva6_mpki": 104.632153,
+      "e1_counters": {
+        "cond": 960,
+        "cond_misp": 93,
+        "ind": 875,
+        "ind_misp": 681,
+        "misp": 774,
+        "pred": 1835,
+        "sc_override": 21
+      },
+      "e1_misp": 774,
+      "e1_mpki": 84.359673,
+      "improvement_ratio_cva6_over_e1": 1.2403,
+      "instruction_count": 9175,
+      "mpki_reduction": 20.27248,
+      "trace_class": "synthetic_planning_only"
+    },
+    "gpu_tile_kernel": {
+      "branches": 3168,
+      "cva6_counters": {
+        "cond": 3168,
+        "cond_misp": 103,
+        "misp": 103,
+        "pred": 3168
+      },
+      "cva6_misp": 103,
+      "cva6_mpki": 6.502525,
+      "e1_counters": {
+        "cond": 3168,
+        "cond_misp": 15,
+        "misp": 15,
+        "pred": 3168,
+        "sc_override": 13
+      },
+      "e1_misp": 15,
+      "e1_mpki": 0.94697,
+      "improvement_ratio_cva6_over_e1": 6.8667,
+      "instruction_count": 15840,
+      "mpki_reduction": 5.555556,
+      "trace_class": "synthetic_planning_only"
+    },
+    "gpu_warp_divergence": {
+      "branches": 1024,
+      "cva6_counters": {
+        "cond": 1024,
+        "cond_misp": 434,
+        "misp": 434,
+        "pred": 1024
+      },
+      "cva6_misp": 434,
+      "cva6_mpki": 84.765625,
+      "e1_counters": {
+        "cond": 1024,
+        "cond_misp": 121,
+        "misp": 121,
+        "pred": 1024,
+        "sc_override": 71
+      },
+      "e1_misp": 121,
+      "e1_mpki": 23.632812,
+      "improvement_ratio_cva6_over_e1": 3.5868,
+      "instruction_count": 5120,
+      "mpki_reduction": 61.132812,
+      "trace_class": "synthetic_planning_only"
+    },
+    "http_parser": {
+      "branches": 774042,
+      "cva6_counters": {
+        "call": 3389,
+        "cond": 765522,
+        "cond_misp": 45479,
+        "ind": 1747,
+        "ind_misp": 3226,
+        "misp": 48759,
+        "pred": 774042,
+        "ret": 3384,
+        "ret_misp": 54
+      },
+      "cva6_misp": 48759,
+      "cva6_mpki": 18.760309,
+      "e1_counters": {
+        "call": 3389,
+        "cond": 765522,
+        "cond_misp": 17448,
+        "ind": 1747,
+        "ind_misp": 545,
+        "misp": 17993,
+        "pred": 774042,
+        "ret": 3384,
+        "sc_override": 660
+      },
+      "e1_misp": 17993,
+      "e1_mpki": 6.922911,
+      "improvement_ratio_cva6_over_e1": 2.7099,
+      "instruction_count": 2599051,
+      "mpki_reduction": 11.837398,
+      "trace_class": "qemu_rv64_workload"
+    },
+    "jit_dispatch_warmup": {
+      "branches": 1596,
+      "cva6_counters": {
+        "ind": 1596,
+        "ind_misp": 70,
+        "misp": 70,
+        "pred": 1596
+      },
+      "cva6_misp": 70,
+      "cva6_mpki": 8.77193,
+      "e1_counters": {
+        "ind": 1596,
+        "ind_misp": 125,
+        "misp": 125,
+        "pred": 1596
+      },
+      "e1_misp": 125,
+      "e1_mpki": 15.66416,
+      "improvement_ratio_cva6_over_e1": 0.56,
+      "instruction_count": 7980,
+      "mpki_reduction": -6.892231,
+      "trace_class": "synthetic_planning_only"
+    },
+    "loop_with_known_trip": {
+      "branches": 1024,
+      "cva6_counters": {
+        "cond": 1024,
+        "cond_misp": 65,
+        "misp": 65,
+        "pred": 1024
+      },
+      "cva6_misp": 65,
+      "cva6_mpki": 12.695312,
+      "e1_counters": {
+        "cond": 1024,
+        "cond_misp": 5,
+        "misp": 5,
+        "pred": 1024,
+        "sc_override": 2
+      },
+      "e1_misp": 5,
+      "e1_mpki": 0.976562,
+      "improvement_ratio_cva6_over_e1": 13.0,
+      "instruction_count": 5120,
+      "mpki_reduction": 11.71875,
+      "trace_class": "synthetic_planning_only"
+    },
+    "mixed_workload": {
+      "branches": 704,
+      "cva6_counters": {
+        "call": 64,
+        "cond": 512,
+        "cond_misp": 65,
+        "ind": 64,
+        "ind_misp": 127,
+        "misp": 192,
+        "pred": 704,
+        "ret": 64
+      },
+      "cva6_misp": 192,
+      "cva6_mpki": 54.545455,
+      "e1_counters": {
+        "call": 64,
+        "cond": 512,
+        "cond_misp": 2,
+        "ind": 64,
+        "ind_misp": 50,
+        "misp": 52,
+        "pred": 704,
+        "ret": 64
+      },
+      "e1_misp": 52,
+      "e1_mpki": 14.772727,
+      "improvement_ratio_cva6_over_e1": 3.6923,
+      "instruction_count": 3520,
+      "mpki_reduction": 39.772727,
+      "trace_class": "synthetic_planning_only"
+    },
+    "sample_fp_trace": {
+      "branches": 148723,
+      "cva6_counters": {
+        "call": 10589,
+        "cond": 127544,
+        "cond_misp": 11944,
+        "ind": 1,
+        "ind_misp": 2,
+        "misp": 11947,
+        "pred": 148723,
+        "ret": 10589,
+        "ret_misp": 1
+      },
+      "cva6_misp": 11947,
+      "cva6_mpki": 11.974049,
+      "e1_counters": {
+        "call": 10589,
+        "cond": 127544,
+        "cond_misp": 2965,
+        "ind": 1,
+        "ind_misp": 4,
+        "misp": 2970,
+        "pred": 148723,
+        "ret": 10589,
+        "ret_misp": 1,
+        "sc_override": 1262
+      },
+      "e1_misp": 2970,
+      "e1_mpki": 2.976724,
+      "improvement_ratio_cva6_over_e1": 4.0226,
+      "instruction_count": 997741,
+      "mpki_reduction": 8.997325,
+      "trace_class": "cbp5_train_traces_only"
+    },
+    "sample_int_trace": {
+      "branches": 181877,
+      "cva6_counters": {
+        "call": 12900,
+        "cond": 149840,
+        "cond_misp": 47016,
+        "ind": 6235,
+        "ind_misp": 16540,
+        "misp": 64948,
+        "pred": 181877,
+        "ret": 12902,
+        "ret_misp": 1392
+      },
+      "cva6_misp": 64948,
+      "cva6_mpki": 65.123769,
+      "e1_counters": {
+        "call": 12900,
+        "cond": 149840,
+        "cond_misp": 1867,
+        "ind": 6235,
+        "ind_misp": 179,
+        "misp": 2050,
+        "pred": 181877,
+        "ret": 12902,
+        "ret_misp": 4,
+        "sc_override": 28
+      },
+      "e1_misp": 2050,
+      "e1_mpki": 2.055548,
+      "improvement_ratio_cva6_over_e1": 31.682,
+      "instruction_count": 997301,
+      "mpki_reduction": 63.068221,
+      "trace_class": "cbp5_train_traces_only"
+    },
+    "text_log": {
+      "branches": 461102,
+      "cva6_counters": {
+        "call": 4690,
+        "cond": 449979,
+        "cond_misp": 84045,
+        "ind": 1748,
+        "ind_misp": 1884,
+        "misp": 85984,
+        "pred": 461102,
+        "ret": 4685,
+        "ret_misp": 55
+      },
+      "cva6_misp": 85984,
+      "cva6_mpki": 32.220278,
+      "e1_counters": {
+        "call": 4690,
+        "cond": 449979,
+        "cond_misp": 12880,
+        "ind": 1748,
+        "ind_misp": 165,
+        "misp": 13045,
+        "pred": 461102,
+        "ret": 4685,
+        "sc_override": 9097
+      },
+      "e1_misp": 13045,
+      "e1_mpki": 4.888276,
+      "improvement_ratio_cva6_over_e1": 6.5913,
+      "instruction_count": 2668630,
+      "mpki_reduction": 27.332002,
+      "trace_class": "qemu_rv64_workload"
+    },
+    "v8_indirect_dispatch": {
+      "branches": 512,
+      "cva6_counters": {
+        "ind": 512,
+        "ind_misp": 512,
+        "misp": 512,
+        "pred": 512
+      },
+      "cva6_misp": 512,
+      "cva6_mpki": 200.0,
+      "e1_counters": {
+        "ind": 512,
+        "ind_misp": 500,
+        "misp": 500,
+        "pred": 512
+      },
+      "e1_misp": 500,
+      "e1_mpki": 195.3125,
+      "improvement_ratio_cva6_over_e1": 1.024,
+      "instruction_count": 2560,
+      "mpki_reduction": 4.6875,
+      "trace_class": "synthetic_planning_only"
+    },
+    "video_blocks": {
+      "branches": 275928,
+      "cva6_counters": {
+        "call": 1988,
+        "cond": 270210,
+        "cond_misp": 24435,
+        "ind": 1747,
+        "ind_misp": 1881,
+        "misp": 26370,
+        "pred": 275928,
+        "ret": 1983,
+        "ret_misp": 54
+      },
+      "cva6_misp": 26370,
+      "cva6_mpki": 9.983754,
+      "e1_counters": {
+        "call": 1988,
+        "cond": 270210,
+        "cond_misp": 4901,
+        "ind": 1747,
+        "ind_misp": 162,
+        "misp": 5063,
+        "pred": 275928,
+        "ret": 1983,
+        "sc_override": 3874
+      },
+      "e1_misp": 5063,
+      "e1_mpki": 1.916866,
+      "improvement_ratio_cva6_over_e1": 5.2084,
+      "instruction_count": 2641291,
+      "mpki_reduction": 8.066889,
+      "trace_class": "qemu_rv64_workload"
+    }
+  },
+  "predictors": {
+    "cva6_baseline": {
+      "config": {
+        "BHT_CTR_W": 2,
+        "BHT_ENTRIES": 128,
+        "BHT_INDEX": "pc_only_no_history",
+        "BTB_ENTRIES": 32,
+        "BTB_USED_FOR": "register_indirect_jumps_only",
+        "RAS_DEPTH": 2,
+        "citations": [
+          "external/cva6/cva6/core/include/cv64a6_imafdc_sv39_config_pkg.sv:62-64",
+          "external/cva6/cva6/core/frontend/bht.sv:24-103",
+          "external/cva6/cva6/core/frontend/btb.sv:28-203",
+          "external/cva6/cva6/core/frontend/ras.sv:17-78",
+          "external/cva6/cva6/core/frontend/frontend.sv:236-297"
+        ],
+        "config_pkg": "cv64a6_imafdc_sv39_config_pkg.sv",
+        "has_ittage": false,
+        "has_loop_predictor": false,
+        "has_statistical_corrector": false,
+        "has_tage": false,
+        "predictor": "cva6_ariane_bht_btb_ras",
+        "source": "external/cva6/cva6/core",
+        "static_fallback": "backward_taken_when_bht_entry_invalid"
+      },
+      "model": "benchmarks/cpu/branch/baseline_predictors.py:Cva6BaselinePredictor"
+    },
+    "e1": {
+      "geometry": {
+        "BIM_CTR_W": 2,
+        "BIM_ENTRIES": 16384,
+        "FETCH_BLOCK_BYTES": 32,
+        "FTB_ENTRIES": 4096,
+        "FTB_WAYS": 4,
+        "ITTAGE_CTR_W": 3,
+        "ITTAGE_ENTRIES": [
+          512,
+          512,
+          1024,
+          1024,
+          1024
+        ],
+        "ITTAGE_HIST_LEN": [
+          4,
+          8,
+          13,
+          16,
+          32
+        ],
+        "ITTAGE_TABLES": 5,
+        "ITTAGE_TAG_W": 9,
+        "LOOP_CONF_W": 3,
+        "LOOP_CTR_W": 14,
+        "LOOP_ENTRIES": 64,
+        "RAS_ARCH_ENTRIES": 32,
+        "RAS_SPEC_ENTRIES": 64,
+        "SC_ADAPTIVE": true,
+        "SC_CTR_W": 6,
+        "SC_ENTRIES_TABLE": 512,
+        "SC_HIST_LEN": [
+          0,
+          4,
+          10,
+          16
+        ],
+        "SC_TABLES": 4,
+        "SC_THRESH_INIT": 6,
+        "TAGE_ALLOC_DECREMENT": true,
+        "TAGE_CTR_W": 3,
+        "TAGE_ENTRIES_TABLE": 8192,
+        "TAGE_HIST_LEN": [
+          8,
+          16,
+          44,
+          90,
+          195
+        ],
+        "TAGE_TABLES": 5,
+        "TAGE_TAG_W": 8,
+        "TAGE_UBIT_RESET_PERIOD": 100000,
+        "TAGE_USEFUL_W": 2,
+        "UFTB_ENTRIES": 512,
+        "UFTB_WAYS": 4
+      },
+      "model": "benchmarks/cpu/branch/bpu_model.py:BPUSimulator",
+      "predictor": "eliza_e1_tage_sc_l_ittage"
+    }
+  },
+  "provenance": "simulator",
+  "schema": "eliza.bpu_vs_cva6_mpki.v1"
+}

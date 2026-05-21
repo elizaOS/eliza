@@ -430,6 +430,10 @@ case "$mode" in
 			env AOSP_PRODUCT="$aosp_product" \
 				AOSP_TARGET_PRODUCT="$aosp_target_product" \
 				AOSP_ADB_SERIAL="$aosp_adb_serial" \
+				AOSP_AGENT_PACKAGE="$aosp_agent_package" \
+				AOSP_AGENT_SERVICE="$aosp_agent_service" \
+				AOSP_AGENT_HOST_PORT="$aosp_agent_host_port" \
+				AOSP_AGENT_DEVICE_PORT="$aosp_agent_device_port" \
 				AOSP_CUTTLEFISH_BOOT_CPUS="$aosp_cuttlefish_boot_cpus" \
 				AOSP_CUTTLEFISH_BOOT_MEMORY_MB="$aosp_cuttlefish_boot_memory_mb" \
 				AOSP_CUTTLEFISH_BOOT_GPU_MODE="$aosp_cuttlefish_boot_gpu_mode" \
@@ -454,7 +458,7 @@ case "$mode" in
 						"--boot-timeout-seconds=$AOSP_CUTTLEFISH_BOOT_TIMEOUT_SECONDS" \
 						"--aosp=$AOSP_DIR" &&
 					gate_tmp=$(mktemp) &&
-					gate_args="--out=$gate_tmp" &&
+					gate_args="--out=$gate_tmp --agent-package=$AOSP_AGENT_PACKAGE --agent-service=$AOSP_AGENT_SERVICE --agent-host-port=$AOSP_AGENT_HOST_PORT --agent-device-port=$AOSP_AGENT_DEVICE_PORT" &&
 					if [ -n "${AOSP_ADB_SERIAL:-}" ]; then
 						gate_args="$gate_args --adb-serial=$AOSP_ADB_SERIAL"
 					fi &&

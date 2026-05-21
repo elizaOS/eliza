@@ -19,6 +19,15 @@ export type TeeEvidencePolicy = {
   maxAgeMs?: number;
   nowMs?: number;
   requiredClaims?: Partial<Record<keyof TeeClaims, boolean>>;
+  /**
+   * When true the policy rejects evidence that self-identifies as a
+   * developer-mode, simulated, or otherwise non-production attestation
+   * (mock hardware vendor, `simulated`/`debug` quote markers, mock kinds).
+   * The production profile sets this so a caller cannot accept DevMode
+   * evidence by forgetting a claim. Defends against dstack #608 (DevMode
+   * allow-all) on the agent side.
+   */
+  rejectSimulatedEvidence?: boolean;
 };
 
 export type TeeEvidencePolicyDecision = {
@@ -29,6 +38,7 @@ export type TeeEvidencePolicyDecision = {
     | "allowed"
     | "missing-evidence"
     | "invalid-evidence"
+    | "simulated-evidence-rejected"
     | "kind-not-allowed"
     | "provider-not-allowed"
     | "measurement-mismatch"
@@ -68,6 +78,18 @@ export function evaluateTeeEvidencePolicy(
       reason: "invalid-evidence",
       detail: error instanceof Error ? error.message : String(error),
     };
+  }
+
+  if (policy.rejectSimulatedEvidence) {
+    const simulated = detectSimulatedEvidence(evidence);
+    if (simulated !== undefined) {
+      return {
+        trusted: false,
+        reason: "simulated-evidence-rejected",
+        detail: simulated,
+        evidence,
+      };
+    }
   }
 
   if (
@@ -172,6 +194,74 @@ export function evaluateTeeEvidencePolicy(
   }
 
   return { trusted: true, reason: "allowed", evidence };
+}
+
+/**
+ * Detect evidence that self-identifies as a developer-mode, simulated, or
+ * mock attestation. Returns a human-readable detail string when the evidence
+ * must be rejected, or `undefined` when nothing simulated was found.
+ *
+ * This is an agent-side compensating control against dstack #608 (DevMode
+ * allow-all) and #609 (KMS attestation bypass): even when an upstream KMS or
+ * provider would accept a DevMode quote, the agent refuses it under the
+ * production profile. It does NOT replace real quote-signature verification
+ * (BLOCKED on TDX/CoVE hardware) — it only rejects self-declared non-prod
+ * markers. Absence of these markers is not proof of a genuine quote.
+ */
+function detectSimulatedEvidence(evidence: TeeEvidence): string | undefined {
+  const kind = evidence.kind.toLowerCase();
+  if (
+    kind === "none" ||
+    kind.includes("mock") ||
+    kind.includes("sim") ||
+    kind.includes("fake") ||
+    kind.includes("debug")
+  ) {
+    return `TEE kind "${evidence.kind}" indicates a non-production attestation.`;
+  }
+
+  const vendor = evidence.hardwareVendor?.toLowerCase();
+  if (
+    vendor !== undefined &&
+    (vendor.startsWith("mock") || vendor.includes("sim"))
+  ) {
+    return `TEE hardwareVendor "${evidence.hardwareVendor}" indicates a non-production attestation.`;
+  }
+
+  const provider = evidence.provider?.toLowerCase();
+  if (
+    provider !== undefined &&
+    (provider.includes("mock") ||
+      provider.includes("sim") ||
+      provider.includes("fake"))
+  ) {
+    return `TEE provider "${evidence.provider}" indicates a non-production attestation.`;
+  }
+
+  const quote = evidence.quote?.toLowerCase();
+  if (
+    quote !== undefined &&
+    (quote.includes("simulated") ||
+      quote.includes("mock") ||
+      quote.includes("fake") ||
+      quote.includes("debug") ||
+      quote.includes("devmode"))
+  ) {
+    return "TEE quote is marked simulated/debug/devmode.";
+  }
+
+  const verifier = evidence.freshness?.verifier?.toLowerCase();
+  if (
+    verifier !== undefined &&
+    (verifier.includes("mock") ||
+      verifier.includes("sim") ||
+      verifier.includes("local-smoke") ||
+      verifier.includes("local"))
+  ) {
+    return `TEE verifier "${evidence.freshness?.verifier}" indicates a non-production attestation.`;
+  }
+
+  return undefined;
 }
 
 function evaluateNonce(

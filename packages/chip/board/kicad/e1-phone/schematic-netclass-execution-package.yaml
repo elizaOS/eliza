@@ -12,6 +12,7 @@ source_artifacts:
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
   - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+  - board/kicad/e1-phone/schematic-capture-readiness-binding.yaml
 upstream_status:
   symbol_footprint_status: blocked_requires_real_kicad_symbols_supplier_footprints_and_erc
   supplier_to_kicad_status: blocked_supplier_evidence_not_ready_for_kicad_capture

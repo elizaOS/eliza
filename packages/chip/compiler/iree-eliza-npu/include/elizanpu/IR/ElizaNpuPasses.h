@@ -10,10 +10,8 @@ class FuncOp;
 } // namespace func
 namespace elizanpu {
 
-std::unique_ptr<::mlir::Pass> createConvertLinalgToElizaNpuPass();
 std::unique_ptr<::mlir::Pass> createAssignScratchPass();
 std::unique_ptr<::mlir::Pass> createLegalizeDescriptorRingPass();
-std::unique_ptr<::mlir::Pass> createEmitDescriptorTablePass();
 
 #define GEN_PASS_REGISTRATION
 #include "elizanpu/IR/ElizaNpuPasses.h.inc"

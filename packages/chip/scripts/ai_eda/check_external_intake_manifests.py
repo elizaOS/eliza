@@ -132,10 +132,16 @@ def validate_manifest(
         payload_path = local_payload.get("payload_path")
         if isinstance(payload_path, str) and not payload_path.endswith("/payload"):
             errors.append(f"{asset_id}: payload_path must end in /payload")
-        if local_payload.get("downloaded") is True and local_payload.get("checksum_status") == "blocked_until_fetch":
+        if (
+            local_payload.get("downloaded") is True
+            and local_payload.get("checksum_status") == "blocked_until_fetch"
+        ):
             errors.append(f"{asset_id}: downloaded payload must not have blocked checksum status")
 
-    if manifest.get("claim_boundary") != "external_intake_metadata_only_no_payload_no_training_no_release_claim":
+    if (
+        manifest.get("claim_boundary")
+        != "external_intake_metadata_only_no_payload_no_training_no_release_claim"
+    ):
         errors.append(f"{asset_id}: invalid claim_boundary")
 
     extra_files = [
@@ -144,7 +150,9 @@ def validate_manifest(
         if child.name != "manifest.yaml" and child.name != "payload"
     ]
     if extra_files:
-        errors.append(f"{asset_id}: tracked metadata directory contains unexpected files: {extra_files}")
+        errors.append(
+            f"{asset_id}: tracked metadata directory contains unexpected files: {extra_files}"
+        )
 
     return errors, {
         "asset_id": asset_id,
@@ -152,7 +160,9 @@ def validate_manifest(
         "kind": manifest.get("kind"),
         "review_status": intake.get("review_status") if isinstance(intake, dict) else None,
         "downloaded": local_payload.get("downloaded") if isinstance(local_payload, dict) else None,
-        "payload_path": local_payload.get("payload_path") if isinstance(local_payload, dict) else None,
+        "payload_path": local_payload.get("payload_path")
+        if isinstance(local_payload, dict)
+        else None,
         "release_use_allowed": False,
     }
 
@@ -202,10 +212,7 @@ def main() -> int:
         for error in errors:
             print(f"STATUS: FAIL ai_eda.external_intake {error}")
         return 1
-    print(
-        "STATUS: PASS ai_eda.external_intake "
-        f"manifests={len(manifests)} {rel(report_path)}"
-    )
+    print(f"STATUS: PASS ai_eda.external_intake manifests={len(manifests)} {rel(report_path)}")
     return 0
 
 

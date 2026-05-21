@@ -15,15 +15,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
 VARIANT_DIR = HERE.parent
 BASH_HARNESS = HERE / "qemu_virt_boot_riscv64.sh"
+DEFAULT_CHIP_REPORT = VARIANT_DIR.parents[2] / "chip/build/reports/qemu_virt_smoke.json"
 
 EVIDENCE_SCHEMA = "eliza.os.linux.qemu_virt_boot.v1"
 CLAIM_BOUNDARY = (
@@ -217,11 +220,52 @@ def run_harness(
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
 
 
+def write_report(
+    output: Path,
+    *,
+    status: str,
+    message: str,
+    evidence_path: Path,
+    iso: Path | None,
+    findings: list[dict[str, Any]] | None = None,
+    evidence: dict[str, Any] | None = None,
+) -> None:
+    report = {
+        "schema": "eliza.os_rv64_qemu_virt_smoke.v1",
+        "status": status,
+        "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "message": message,
+        "iso_path": str(iso) if iso is not None else "",
+        "evidence_path": str(evidence_path),
+        "required_markers": list(REQUIRED_MARKERS),
+        "findings": findings or [],
+        "evidence": evidence or {},
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def finding(code: str, message: str, next_step: str) -> dict[str, Any]:
+    return {
+        "code": code,
+        "severity": "blocker",
+        "message": message,
+        "evidence": "python3 packages/os/linux/elizaos/scripts/qemu_virt_smoke.py",
+        "next_step": next_step,
+    }
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run qemu_virt_boot.sh and validate the evidence JSON.",
     )
-    parser.add_argument("--iso", type=Path, required=True, help="path to live ISO")
+    parser.add_argument(
+        "--iso",
+        type=Path,
+        default=None,
+        help="path to live ISO; if omitted, the newest riscv64 ISO under out/ is used",
+    )
     parser.add_argument("--memory", type=int, default=4096, help="QEMU memory in MB")
     parser.add_argument("--cpus", type=int, default=4, help="QEMU CPU count")
     parser.add_argument("--timeout", type=int, default=600, help="boot timeout (s)")
@@ -243,14 +287,100 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="optional U-Boot ELF to load via -kernel",
     )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        default=DEFAULT_CHIP_REPORT,
+        help="structured report mirror for chip OS boot inventory",
+    )
     return parser.parse_args(argv)
+
+
+def _resolve_iso(explicit: Path | None) -> Path | None:
+    """Pick the ISO to boot: an explicit ``--iso``, else the newest riscv64 ISO
+    built under ``out/``. Returns ``None`` when nothing has been built yet so the
+    caller can report a fail-closed BLOCKED state instead of crashing."""
+    if explicit is not None:
+        return explicit
+    out_dir = VARIANT_DIR / "out"
+    if not out_dir.is_dir():
+        return None
+    candidates = sorted(
+        out_dir.glob("*riscv64*.iso"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
+    iso = _resolve_iso(args.iso)
+    if iso is None:
+        message = (
+            "STATUS: BLOCKED os_rv64.qemu_virt_smoke - no riscv64 elizaOS live ISO "
+            "built under packages/os/linux/elizaos/out/; build it with "
+            "`cd packages/os/linux/elizaos && ./build.sh ARCH=riscv64` (or the "
+            "Makefile build target) then re-run with --iso <path>."
+        )
+        write_report(
+            args.report,
+            status="blocked",
+            message=message,
+            evidence_path=args.evidence,
+            iso=None,
+            findings=[
+                finding(
+                    "os_rv64_qemu_virt_iso_missing",
+                    "no riscv64 elizaOS live ISO built under packages/os/linux/elizaos/out/",
+                    "Build the riscv64 live ISO or pass --iso with the exact artifact path.",
+                )
+            ],
+        )
+        print(message)
+        return 2
+    args.iso = iso
+
     if not args.iso.is_file():
-        print(f"qemu_virt_smoke: ERROR: ISO not found: {args.iso}", file=sys.stderr)
+        message = f"qemu_virt_smoke: ERROR: ISO not found: {args.iso}"
+        write_report(
+            args.report,
+            status="blocked",
+            message=message,
+            evidence_path=args.evidence,
+            iso=args.iso,
+            findings=[
+                finding(
+                    "os_rv64_qemu_virt_iso_path_missing",
+                    message,
+                    "Pass --iso with an existing riscv64 elizaOS live ISO.",
+                )
+            ],
+        )
+        print(message, file=sys.stderr)
+        return 2
+
+    if shutil.which("qemu-system-riscv64") is None:
+        message = (
+            "STATUS: BLOCKED os_rv64.qemu_virt_smoke - qemu-system-riscv64 not on PATH; "
+            "source packages/chip/tools/env.sh (native oss-cad-suite) then re-run."
+        )
+        write_report(
+            args.report,
+            status="blocked",
+            message=message,
+            evidence_path=args.evidence,
+            iso=args.iso,
+            findings=[
+                finding(
+                    "os_rv64_qemu_system_riscv64_missing",
+                    "qemu-system-riscv64 is not on PATH",
+                    "Source packages/chip/tools/env.sh or install a riscv64 QEMU system emulator.",
+                )
+            ],
+        )
+        print(message)
         return 2
 
     result = run_harness(
@@ -271,18 +401,58 @@ def main(argv: list[str] | None = None) -> int:
         doc = load_evidence(args.evidence)
         validate_evidence(doc)
     except (FileNotFoundError, EvidenceValidationError) as exc:
-        print(f"qemu_virt_smoke: ERROR: {exc}", file=sys.stderr)
+        message = f"qemu_virt_smoke: ERROR: {exc}"
+        write_report(
+            args.report,
+            status="blocked",
+            message=message,
+            evidence_path=args.evidence,
+            iso=args.iso,
+            findings=[
+                finding(
+                    "os_rv64_qemu_virt_evidence_invalid",
+                    message,
+                    "Regenerate valid qemu virt boot evidence from the harness.",
+                )
+            ],
+        )
+        print(message, file=sys.stderr)
         return 2
 
     if not doc["boot_completed"]:
-        print(
+        message = (
             "qemu_virt_smoke: FAIL: boot_completed=false; "
             f"markers_missing={doc['markers_missing']} "
-            f"forbidden_markers_present={doc['forbidden_markers_present']}",
-            file=sys.stderr,
+            f"forbidden_markers_present={doc['forbidden_markers_present']}"
         )
+        write_report(
+            args.report,
+            status="fail",
+            message=message,
+            evidence_path=args.evidence,
+            iso=args.iso,
+            findings=[
+                {
+                    "code": "os_rv64_qemu_virt_boot_incomplete",
+                    "severity": "fail",
+                    "message": message,
+                    "evidence": str(args.evidence),
+                    "next_step": "Debug the QEMU transcript until all required boot and Eliza readiness markers appear.",
+                }
+            ],
+            evidence=doc,
+        )
+        print(message, file=sys.stderr)
         return 1
 
+    write_report(
+        args.report,
+        status="pass",
+        message="qemu_virt_smoke: PASS",
+        evidence_path=args.evidence,
+        iso=args.iso,
+        evidence=doc,
+    )
     print(
         f"qemu_virt_smoke: PASS: evidence={args.evidence} "
         f"duration_s={doc['duration_s']}"

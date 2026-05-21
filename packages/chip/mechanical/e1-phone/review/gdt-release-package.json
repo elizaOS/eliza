@@ -241,7 +241,7 @@
       "feature": "nominal_z_stack_margin",
       "control": "minimum clearance to datum A",
       "datum_reference": "A",
-      "nominal": 2.62,
+      "nominal": 3.32,
       "plus_tolerance_mm": "",
       "minus_tolerance_mm": "",
       "minimum_mm": 1.0,

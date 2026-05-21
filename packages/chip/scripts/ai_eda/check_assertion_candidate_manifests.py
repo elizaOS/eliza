@@ -60,7 +60,9 @@ def require_non_empty_str(mapping: dict[str, Any], key: str, label: str, errors:
         errors.append(f"{label}.{key} must be a non-empty string")
 
 
-def validate_candidate(candidate: Any, path: Path, index: int, seen: set[str], errors: list[str]) -> None:
+def validate_candidate(
+    candidate: Any, path: Path, index: int, seen: set[str], errors: list[str]
+) -> None:
     label = f"{rel(path)} candidates[{index}]"
     if not isinstance(candidate, dict):
         errors.append(f"{label} must be a mapping")
@@ -108,8 +110,12 @@ def validate_candidate(candidate: Any, path: Path, index: int, seen: set[str], e
         if bind_status.get("bind_file") is not None:
             errors.append(f"{label}.bind_status.bind_file must stay null until reviewed")
         quarantine_path = bind_status.get("quarantine_path")
-        if not isinstance(quarantine_path, str) or not quarantine_path.startswith("build/ai_eda/assertion_candidates/"):
-            errors.append(f"{label}.bind_status.quarantine_path must stay under build/ai_eda/assertion_candidates/")
+        if not isinstance(quarantine_path, str) or not quarantine_path.startswith(
+            "build/ai_eda/assertion_candidates/"
+        ):
+            errors.append(
+                f"{label}.bind_status.quarantine_path must stay under build/ai_eda/assertion_candidates/"
+            )
     gates = candidate.get("promotion_gate")
     if isinstance(gates, list):
         for gate in ("make formal", "make cocotb-npu"):
@@ -164,14 +170,20 @@ def main() -> int:
     args = parse_args()
     manifests = sorted(args.manifest_dir.glob("*.yaml")) if args.manifest_dir.is_dir() else []
     if not manifests:
-        print(f"STATUS: FAIL ai_eda.assertion_candidate_manifests no_manifests {rel(args.manifest_dir)}")
+        print(
+            f"STATUS: FAIL ai_eda.assertion_candidate_manifests no_manifests {rel(args.manifest_dir)}"
+        )
         return 1
     errors: list[str] = []
     candidate_count = 0
     for path in manifests:
         try:
             manifest = load_yaml(path)
-            candidate_count += len(manifest.get("candidates", [])) if isinstance(manifest.get("candidates"), list) else 0
+            candidate_count += (
+                len(manifest.get("candidates", []))
+                if isinstance(manifest.get("candidates"), list)
+                else 0
+            )
             errors.extend(validate_manifest(path))
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{rel(path)} {exc}")

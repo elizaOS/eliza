@@ -16,8 +16,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/macro_placement_torch_regressor/validation/torch_training_run.json"
-TRAINING_CLAIM_BOUNDARY = "macro_placement_torch_regressor_training_only_no_inference_replay_or_release_claim"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/macro_placement_torch_regressor/validation/torch_training_run.json"
+)
+TRAINING_CLAIM_BOUNDARY = (
+    "macro_placement_torch_regressor_training_only_no_inference_replay_or_release_claim"
+)
 REQUIRED_SPLITS = ("train", "val", "test")
 
 
@@ -46,13 +50,21 @@ def jsonl_count(path: Path) -> int:
 
 
 def valid_metric(value: Any, upper: float = 2.0) -> bool:
-    return isinstance(value, (int, float)) and math.isfinite(float(value)) and 0.0 <= float(value) <= upper
+    return (
+        isinstance(value, (int, float))
+        and math.isfinite(float(value))
+        and 0.0 <= float(value) <= upper
+    )
 
 
-def validate_metrics(metrics: dict[str, Any], dataset_dir: Path, report: dict[str, Any]) -> list[str]:
+def validate_metrics(
+    metrics: dict[str, Any], dataset_dir: Path, report: dict[str, Any]
+) -> list[str]:
     errors: list[str] = []
     if metrics.get("schema") != "eliza.ai_eda.macro_placement_torch_regressor_metrics.v1":
-        errors.append("metrics schema must be eliza.ai_eda.macro_placement_torch_regressor_metrics.v1")
+        errors.append(
+            "metrics schema must be eliza.ai_eda.macro_placement_torch_regressor_metrics.v1"
+        )
     if metrics.get("claim_boundary") != TRAINING_CLAIM_BOUNDARY:
         errors.append("metrics claim_boundary is missing or incorrect")
     if metrics.get("release_use_allowed") is not False:
@@ -101,14 +113,18 @@ def validate_metrics(metrics: dict[str, Any], dataset_dir: Path, report: dict[st
                 errors.append("metrics.loss_history epochs must be strictly increasing")
             previous_epoch = int(epoch) if isinstance(epoch, int) else previous_epoch
             if not valid_metric(item.get("loss"), upper=1000.0):
-                errors.append("metrics.loss_history loss values must be finite non-negative numbers")
+                errors.append(
+                    "metrics.loss_history loss values must be finite non-negative numbers"
+                )
     return errors
 
 
 def validate_report(report: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if report.get("schema") != "eliza.ai_eda.macro_placement_torch_regressor_training_run.v1":
-        errors.append("report schema must be eliza.ai_eda.macro_placement_torch_regressor_training_run.v1")
+        errors.append(
+            "report schema must be eliza.ai_eda.macro_placement_torch_regressor_training_run.v1"
+        )
     if report.get("claim_boundary") != TRAINING_CLAIM_BOUNDARY:
         errors.append("report claim_boundary is missing or incorrect")
     if report.get("release_use_allowed") is not False:
@@ -121,7 +137,11 @@ def validate_report(report: dict[str, Any]) -> list[str]:
     dataset_dir = repo_path(str(report.get("dataset_dir", "")))
     model_path = repo_path(str(report.get("model", "")))
     metrics_path = repo_path(str(report.get("metrics", "")))
-    for label, path in (("dataset_dir", dataset_dir), ("model", model_path), ("metrics", metrics_path)):
+    for label, path in (
+        ("dataset_dir", dataset_dir),
+        ("model", model_path),
+        ("metrics", metrics_path),
+    ):
         if not path.exists():
             errors.append(f"missing {label}: {rel(path)}")
     if errors:

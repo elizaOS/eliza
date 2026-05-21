@@ -199,7 +199,17 @@ export default function StewardLoginSection() {
         ),
         tenantId: STEWARD_TENANT_ID,
       })
-        .then(() => {
+        .then((res) => {
+          // Mirror the JWT into localStorage so `@stwd/react`'s `useAuth()`
+          // and `readStewardSessionFromStorage()` see the session on the
+          // very next route mount. Without this, OAuth users land back on
+          // `/login` after a successful exchange (HttpOnly cookies alone
+          // aren't enough — the SPA auth check requires the localStorage
+          // copy until that's relaxed).
+          if (res?.token) {
+            writeStoredStewardToken(res.token);
+            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          }
           setRedirectTo(resolveLoginReturnTo(searchParams));
         })
         .catch((sessionError) => {
@@ -349,9 +359,19 @@ export default function StewardLoginSection() {
     // deep-linked page land on /dashboard instead of the page that redirected
     // them to /login. The authorize endpoint reads `tenant_id` (snake_case);
     // camelCase `tenantId` falls back to the user's personal tenant.
+    // Cloudflare Pages preview deploys live on `*.pages.dev`, whose hashed
+    // subdomain is never on the Steward tenant's redirect_uri allowlist.
+    // Route OAuth through staging.elizacloud.ai (which is whitelisted, matching
+    // the api-fetch-bridge precedent) so sign-in works from previews. The user
+    // lands on staging after auth — previews remain unauthenticated visual
+    // review surfaces, which is what they're for.
+    const host = window.location.hostname.toLowerCase();
+    const oauthOrigin = host.endsWith(".pages.dev")
+      ? "https://staging.elizacloud.ai"
+      : window.location.origin;
     window.location.href = buildStewardOAuthAuthorizeUrl(
       provider,
-      window.location.origin,
+      oauthOrigin,
       {
         redirectSearch: window.location.search,
         stewardApiUrl,

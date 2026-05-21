@@ -2993,6 +2993,75 @@ entries:
     risk:
       - Competition proxy metrics and public/private splits can create
         overfitting or contamination risks for E1 evaluation.
+  - id: floorset-iccad-2026
+    name: FloorSet / ICCAD 2026 Data-Driven SoC Floorplanning Challenge
+    kind: constrained_soc_floorplanning_dataset
+    stage:
+      - floorplanning
+      - placement_benchmark
+      - training_corpus
+      - physical_design
+    priority: P1
+    source_url: https://github.com/IntelLabs/FloorSet
+    code_url: https://github.com/IntelLabs/FloorSet
+    model_url: null
+    dataset_url: https://github.com/IntelLabs/FloorSet
+    license_status: review_required
+    code_status: available_to_review
+    model_status: benchmark_framework
+    e1_fit: >
+      Highly relevant 2026 floorplanning corpus because it exposes constrained
+      synthetic SoC floorplans and an ICCAD contest harness that could broaden
+      E1 floorplanning pretraining beyond macro-placement-only datasets.
+    integration_action: >
+      Track as a P1 dataset candidate. Do not auto-download or train on it
+      until repository revision, dataset artifacts, license, tensor schema,
+      and contamination policy are reviewed.
+    evidence_gate: >
+      Use requires exact repository and dataset revisions, license review,
+      file/hash manifest, tensor-to-internal-record converter, split manifest,
+      non-overlap review, generated floorplan quarantine, deterministic E1
+      OpenLane/OpenROAD replay, signoff checks, and PD reviewer disposition.
+    risk:
+      - Synthetic fixed-outline floorplans may teach useful constraints while
+        missing E1-specific macro LEF, power-grid, clock, IO, package, and
+        routability constraints.
+      - Contest scoring can reward benchmark objectives that do not correlate
+        with E1 routed PPA or signoff closure.
+  - id: r-zoo-rectilinear-floorplan
+    name: R-Zoo Rectilinear Floorplan Benchmark Dataset
+    kind: rectilinear_floorplanning_dataset
+    stage:
+      - floorplanning
+      - rectilinear_geometry
+      - training_corpus
+      - physical_design
+    priority: P2
+    source_url: https://github.com/iCAS-SJTU/Chip-Like-A-House
+    code_url: https://github.com/iCAS-SJTU/Chip-Like-A-House
+    model_url: null
+    dataset_url: https://github.com/iCAS-SJTU/Chip-Like-A-House
+    license_status: review_required
+    code_status: available_to_review
+    model_status: dataset_only
+    e1_fit: >
+      Relevant 2026 dataset for geometry-aware and rectilinear floorplanning,
+      especially future E1 macro-shape, whitespace, and non-rectangular
+      planning experiments.
+    integration_action: >
+      Track as metadata-only until the dataset paper, repository revision,
+      license, geometry format, legality checks, and E1 replay compatibility
+      are reviewed.
+    evidence_gate: >
+      Use requires paper/repository hashes, license review, rectilinear geometry
+      converter, legality checker logs, split manifest, generated floorplan
+      quarantine, deterministic E1 OpenLane/OpenROAD replay, routed timing,
+      DRC/LVS, antenna, power checks, and PD reviewer disposition.
+    risk:
+      - Rectilinear floorplan legality does not imply E1 macro placement,
+        routing, timing, power, or manufacturability quality.
+      - LLM-assisted dataset generation must be reviewed for reproducibility
+        and contamination before training use.
   - id: veoplace-vlm-macro-placement
     name: VeoPlace / See it to Place it
     kind: vlm_guided_macro_placement_method
@@ -18748,6 +18817,147 @@ entries:
     risk:
       - Public synthesis benchmarks can overfit recipes and may not represent
         E1 hierarchy, constraints, memories, or target libraries.
+  - id: eda-schema-v2-physical-design
+    name: EDA-Schema-V2 Physical Design Dataset and Benchmarks
+    kind: physical_design_multimodal_dataset
+    stage:
+      - logic_synthesis
+      - floorplanning
+      - placement
+      - clock_network_synthesis
+      - routing
+      - timing_power_area_prediction
+      - openroad_flow_dataset
+    priority: P1
+    source_url: https://arxiv.org/abs/2605.06952
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Strong candidate for data-hungry physical-design pretraining because the
+      paper reports OpenROAD-generated stage-resolved design instances across
+      open PDKs and benchmark circuits with timing, power, area, and routing
+      prediction tasks.
+    integration_action: >
+      Track as metadata-only until public dataset locations, license terms,
+      exact revisions, PDK/tool provenance, and schema compatibility are
+      reviewed. Add a converter only after the released schema and payload
+      layout are pinned.
+    evidence_gate: >
+      Any import requires paper and dataset hashes, public dataset URL,
+      revision pin, license review, PDK/OpenROAD version manifest, file
+      manifest, schema-to-internal-record converter, split manifest, benchmark
+      overlap and E1 contamination review, baseline metrics, and deterministic
+      OpenLane/OpenROAD replay compatibility checks.
+    risk:
+      - Dataset release locations and licenses may lag the paper or change
+        after arXiv publication.
+      - IWLS and OpenROAD-sweep labels may not transfer to E1 macro hierarchy,
+        memories, constraints, or target PDK choices without local replay.
+      - Stage-resolved generated data can leak benchmark families across splits
+        unless split manifests are design-family aware.
+  - id: forgeeda-multimodal-circuit-dataset
+    name: ForgeEDA Comprehensive Multimodal Circuit Dataset
+    kind: multimodal_eda_dataset
+    stage:
+      - rtl_generation
+      - verification
+      - synthesis
+      - physical_design
+      - dataset_governance
+    priority: P1
+    source_url: https://arxiv.org/abs/2505.02016
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Potentially useful broad pretraining source because it is presented as a
+      comprehensive open circuit dataset across categories for EDA model
+      training and generalization.
+    integration_action: >
+      Keep as metadata-only until public artifacts, license terms, exact
+      revisions, schema, and benchmark overlap are reviewed.
+    evidence_gate: >
+      Any import requires paper and dataset hashes, license review, exact file
+      manifest, internal schema mapping, E1 contamination review, split
+      manifest, baseline metrics, and replay/signoff compatibility evidence
+      for any physical-design labels.
+    risk:
+      - Broad multimodal datasets can mix incompatible abstraction levels,
+        licenses, and benchmark families.
+      - Transfer to E1 requires local task-specific labels and deterministic
+        validation, not only public-dataset scores.
+  - id: verireason-testbench-feedback-rtl
+    name: VeriReason Testbench-Feedback Verilog Generation
+    kind: rtl_generation_verification_model_dataset
+    stage:
+      - rtl_generation
+      - verification
+      - testbench_feedback
+      - model_finetuning
+    priority: P2
+    source_url: https://huggingface.co/papers/2505.11849
+    code_url: https://github.com/NellyW8/VeriReason
+    model_url: https://huggingface.co/collections/AI4EDA-CASE
+    dataset_url: https://huggingface.co/collections/AI4EDA-CASE
+    license_status: model_dataset_code_review_required
+    code_status: available_to_review
+    model_status: model_or_weights_review_required
+    e1_fit: >
+      Useful candidate for an RTL-code generation lane with testbench feedback,
+      especially for non-layout optimization and verification-assist tasks.
+    integration_action: >
+      Keep generated RTL quarantined until E1-specific lint, tests, formal,
+      equivalence, synthesis, and reviewer gates accept a diff.
+    evidence_gate: >
+      Use requires model, dataset, and code hashes, license/model-card review,
+      prompt and transcript hashes, generated diff hashes, lint/sim/formal
+      logs, equivalence, synthesis reports, and replay/signoff checks for
+      implementation-impacting RTL.
+    risk:
+      - HDL LLMs can pass narrow tests while violating protocol timing,
+        synthesis assumptions, reset behavior, or integration contracts.
+      - Model weights and datasets may carry use restrictions that differ from
+        source-code licenses.
+  - id: amiq-dvt-mcp-server
+    name: AMIQ DVT MCP Server for HDL Agent Grounding
+    kind: commercial_eda_agent_context_server
+    stage:
+      - rtl_generation
+      - verification
+      - code_intelligence
+      - agent_tooling
+    priority: P2
+    source_url: https://eda.amiq.com/press-releases/amiq-eda-gives-ai-agents-access-to-essential-design-and-verification-data
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: commercial_license_review_required
+    code_status: proprietary_tool_to_review
+    model_status: no_model
+    e1_fit: >
+      Potentially valuable for grounding HDL agents in compiled E1 hierarchy,
+      symbol, and semantic context if commercial access and reproducible batch
+      operation are approved.
+    integration_action: >
+      Treat as optional commercial tooling until license, security, offline
+      reproducibility, and exportable diagnostics are reviewed.
+    evidence_gate: >
+      Any use requires product/version hashes, license approval, compiled E1
+      database hashes, query/response transcript hashes, generated diff hashes,
+      lint/sim/formal/synthesis/equivalence logs, replay/signoff checks when
+      physical or implementation claims are affected, and reviewer disposition.
+    risk:
+      - Proprietary compiled project context can be hard to reproduce on CUDA
+        hosts or CI runners.
+      - Agent grounding improves context but does not prove generated HDL,
+        verification code, or design changes are correct.
   - id: drills
     name: DRiLLS
     kind: rl_logic_synthesis_optimizer
@@ -18854,3 +19064,76 @@ entries:
     risk:
       - Search objectives can improve benchmark QoR while degrading E1 timing,
         power, routability, or verification confidence.
+  - id: explace-domain-expert-rl
+    name: EXPlace Domain-Expert RL Macro Placement
+    kind: macro_placement_rl_method
+    stage:
+      - macro_placement
+      - reinforcement_learning
+      - floorplanning
+      - candidate_generation
+    priority: P1
+    source_url: https://openreview.net/forum?id=yqvNwfxRR6
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant latest AlphaChip-successor direction because it combines RL
+      macro placement with domain-expert action masks, workflow imitation,
+      fixed-macro handling, soft-macro clustering, and macro-ordering policy
+      choices that map to the existing E1 replay-queue and legalizer gates.
+    integration_action: >
+      Keep as metadata-only research intake until any public code/data are
+      released and reviewed. A local reimplementation must emit quarantined
+      candidates only, then rely on deterministic OpenLane/OpenROAD replay for
+      all E1 optimization claims.
+    evidence_gate: >
+      Any use requires paper and released-asset hashes, exact action-mask and
+      workflow-imitation definitions, training seeds, checkpoint hashes,
+      candidate DEF/config hashes, legalizer logs, deterministic E1
+      OpenLane/OpenROAD replay, routed timing, congestion, DRC/LVS, antenna,
+      power, baseline comparison, and PD review.
+    risk:
+      - Expert masks can encode benchmark assumptions that do not hold for E1
+        macros, SRAMs, IO, or process constraints.
+      - RL proxy rewards can overfit to HPWL or congestion estimates without
+        improving routed signoff metrics.
+  - id: ams-io-agent-layout
+    name: AMS-IO-Agent Analog/Mixed-Signal I/O Ring Layout Agent
+    kind: analog_mixed_signal_layout_agent
+    stage:
+      - analog_mixed_signal
+      - padframe
+      - io_ring
+      - layout_generation
+      - physical_verification
+    priority: P2
+    source_url: https://ojs.aaai.org/index.php/AAAI/article/view/37134
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant to the broader E1 optimization program as a current
+      analog/mixed-signal agent direction for I/O ring layout, constraints, and
+      rule-driven repair. It is not direct digital macro-placement evidence.
+    integration_action: >
+      Track as metadata-only until public artifacts, license terms, benchmark
+      rules, and PDK compatibility are reviewed. Any E1 padframe or I/O-ring
+      experiment must stay quarantined until analog, package, and PD reviewers
+      accept the constraints and signoff plan.
+    evidence_gate: >
+      Any use requires paper and released-asset hashes, benchmark/PDK rule
+      hashes, constraint manifests, generated layout hashes, DRC/LVS/antenna/ESD
+      reports, OpenLane/OpenROAD or analog signoff replay where applicable,
+      package and board-interface checks, security review, and PD/AMS review.
+    risk:
+      - AMS layout rules and foundry collateral may be proprietary or
+        incompatible with public benchmark assumptions.
+      - I/O-ring changes can break package, ESD, power integrity, or board
+        integration even when local DRC/LVS appears clean.

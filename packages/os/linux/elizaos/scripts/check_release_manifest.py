@@ -38,11 +38,21 @@ from typing import Literal
 
 try:
     import jsonschema
+    from jsonschema.exceptions import SchemaError as _SchemaError
 except ModuleNotFoundError:
     jsonschema = None
+    _SchemaError = ()
+
+# Error categories that mean "input present but structurally broken" and must
+# fail closed with a clean STATUS line rather than escape as a traceback.
+_MALFORMED_INPUT_ERRORS: tuple[type[BaseException], ...] = (
+    json.JSONDecodeError,
+    KeyError,
+    ValueError,
+) + ((_SchemaError,) if _SchemaError else ())
 
 VARIANT_DIR = Path(__file__).resolve().parents[1]
-REPO_ROOT = VARIANT_DIR.parents[4]
+REPO_ROOT = VARIANT_DIR.parents[3]
 RELEASE_SCHEMA = (
     REPO_ROOT / "packages/os/release/schema/elizaos-os-release-manifest.schema.json"
 )
@@ -72,7 +82,7 @@ REQUIRED_TRANSCRIPT_MARKERS: tuple[str, ...] = (
 REQUIRED_TRANSCRIPT_MARKER = REQUIRED_TRANSCRIPT_MARKERS[0]
 GRUB_TRANSCRIPT_MARKERS: tuple[str, ...] = (
     "GNU GRUB",
-    "Booting `elizaOS Live (RISC-V 64)'",
+    "Live system (riscv64)",
     "EFI stub: Booting Linux Kernel",
 )
 
@@ -95,7 +105,7 @@ TEMPLATE_STRING_PLACEHOLDERS: dict[str, str] = {
     "@@SHA256@@": "0" * 64,
     "@@BUILD_TIMESTAMP@@": "template",
     "@@ARCH@@": "riscv64",
-    "@@KERNEL_FLAVOUR@@": "riscv64",
+    "@@PROFILE@@": "template",
 }
 # Sentinel string values used by ``_is_template_payload`` to recognise an
 # un-promoted manifest (filled or templated). Cross-check these against
@@ -598,7 +608,22 @@ def main(argv: list[str] | None = None) -> int:
     try:
         status, results, manifest_path, _is_template = run_checks(args.variant_dir)
     except FileNotFoundError as exc:
-        print(f"release-manifest gate: FAIL: {exc}", file=sys.stderr)
+        # A missing manifest or schema is an unbuilt-release state, not a
+        # regression: the artifact has not been produced yet.
+        print("release-manifest gate: BLOCKED")
+        print(f"  [BLOCKED] {exc}")
+        print("STATUS: BLOCKED")
+        return 1 if args.strict else 0
+    except _MALFORMED_INPUT_ERRORS as exc:
+        # A present-but-malformed manifest or schema is a release blocker: the
+        # gate must fail closed with a clear evidence line, never crash with an
+        # uncaught traceback (which the readiness aggregator would record as a
+        # bare FAIL with no actionable evidence). ``jsonschema.SchemaError`` is
+        # included because an invalid schema fragment is raised, not collected,
+        # by ``Draft202012Validator``.
+        print("release-manifest gate: FAIL")
+        print(f"  [FAIL   ] manifest or schema is malformed: {exc}")
+        print("STATUS: FAIL")
         return 1
     _emit(results, status, manifest_path)
     if status == "FAIL":

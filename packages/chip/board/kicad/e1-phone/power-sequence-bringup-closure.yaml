@@ -13,6 +13,7 @@ source_artifacts:
   - board/kicad/e1-phone/block-netlist.yaml
   - board/kicad/e1-phone/routing-constraints.yaml
   - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/core-power-compute-schematic-net-binding.yaml
   - board/kicad/e1-phone/module-host-integration-closure.yaml
   - board/kicad/e1-phone/production-readiness.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml

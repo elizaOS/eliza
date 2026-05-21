@@ -11,12 +11,22 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CORPUS = ROOT / "build/ai_eda/logic_synthesis_recipes/validation/recipe_corpus.json"
 DEFAULT_REPORT = ROOT / "build/ai_eda/logic_synthesis_baselines/validation/baseline_report.json"
-CORPUS_CLAIM_BOUNDARY = "logic_synthesis_recipe_corpus_only_no_training_inference_ppa_or_release_claim"
-BASELINE_CLAIM_BOUNDARY = "logic_synthesis_baseline_only_no_ppa_equivalence_or_release_claim"
+CORPUS_CLAIM_BOUNDARY = (
+    "logic_synthesis_recipe_corpus_only_no_training_inference_ppa_or_release_claim"
+)
+BASELINE_CLAIM_BOUNDARY = (
+    "logic_synthesis_baseline_with_yosys_equiv_opt_proof_no_ppa_or_release_claim"
+)
 VALID_RESULT_STATUSES = {
     "PASS_YOSYS_RECIPE_SMOKE",
     "BLOCKED_EXTERNAL_ASSET_NOT_FETCHED",
     "BLOCKED_RECIPE_TIMEOUT",
+}
+VALID_EQUIVALENCE_STATUSES = {
+    "EQUIVALENCE_PROVEN",
+    "BLOCKED_EQUIVALENCE_NOT_PROVEN",
+    "BLOCKED_EQUIVALENCE_TIMEOUT",
+    "SKIPPED_NO_TRANSFORM_PASS",
 }
 
 
@@ -133,6 +143,35 @@ def validate_metrics(metrics: Any, result_id: str) -> list[str]:
     return errors
 
 
+def validate_equivalence(equivalence: Any, result_id: str) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(equivalence, dict):
+        return [f"{result_id}: equivalence must be a mapping"]
+    status = equivalence.get("status")
+    if status not in VALID_EQUIVALENCE_STATUSES:
+        errors.append(f"{result_id}: unsupported equivalence status {status}")
+        return errors
+    if status == "SKIPPED_NO_TRANSFORM_PASS":
+        return errors
+    transforms = equivalence.get("transform_passes")
+    if not isinstance(transforms, list) or not transforms:
+        errors.append(f"{result_id}: equivalence transform_passes must be non-empty")
+    for artifact_field in ("script", "log"):
+        artifact_path = repo_path(str(equivalence.get(artifact_field, "")))
+        if not artifact_path.exists():
+            errors.append(f"{result_id}: missing equivalence {artifact_field} {rel(artifact_path)}")
+    if status == "EQUIVALENCE_PROVEN":
+        log_path = repo_path(str(equivalence.get("log", "")))
+        if log_path.exists() and "Equivalence successfully proven!" not in log_path.read_text(
+            encoding="utf-8", errors="replace"
+        ):
+            errors.append(f"{result_id}: EQUIVALENCE_PROVEN log lacks the proof marker")
+    elif status == "BLOCKED_EQUIVALENCE_NOT_PROVEN":
+        if not isinstance(equivalence.get("reason"), str) or not equivalence["reason"]:
+            errors.append(f"{result_id}: blocked equivalence requires a reason")
+    return errors
+
+
 def validate_report(report: dict[str, Any], report_path: Path, corpus: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if report.get("schema") != "eliza.ai_eda.logic_synthesis_policy_baseline.v1":
@@ -176,10 +215,13 @@ def validate_report(report: dict[str, Any], report_path: Path, corpus: dict[str,
         errors.append("baseline results must be a list")
         return errors
     if len(results) != expected_count:
-        errors.append(f"baseline result count {len(results)} does not match expected {expected_count}")
+        errors.append(
+            f"baseline result count {len(results)} does not match expected {expected_count}"
+        )
 
     seen: set[str] = set()
     summary_counts = {"passed": 0, "blocked": 0, "failed": 0}
+    equiv_counts: dict[str, int] = {}
     for result in results:
         if not isinstance(result, dict):
             errors.append("baseline result entries must be objects")
@@ -211,6 +253,13 @@ def validate_report(report: dict[str, Any], report_path: Path, corpus: dict[str,
                 if not artifact_path.exists():
                     errors.append(f"{result_id}: missing {artifact_field} {rel(artifact_path)}")
             errors.extend(validate_metrics(result.get("metrics"), result_id))
+            if "equivalence" not in result:
+                errors.append(f"{result_id}: passing recipe must carry an equivalence result")
+            else:
+                errors.extend(validate_equivalence(result["equivalence"], result_id))
+                equiv_status = result["equivalence"].get("status")
+                if isinstance(equiv_status, str):
+                    equiv_counts[equiv_status] = equiv_counts.get(equiv_status, 0) + 1
         elif str(status).startswith("BLOCKED"):
             summary_counts["blocked"] += 1
             if status == "BLOCKED_EXTERNAL_ASSET_NOT_FETCHED":
@@ -223,7 +272,9 @@ def validate_report(report: dict[str, Any], report_path: Path, corpus: dict[str,
                 for artifact_field in ("script", "log"):
                     artifact_path = repo_path(str(result.get(artifact_field, "")))
                     if not artifact_path.exists():
-                        errors.append(f"{result_id}: missing timeout {artifact_field} {rel(artifact_path)}")
+                        errors.append(
+                            f"{result_id}: missing timeout {artifact_field} {rel(artifact_path)}"
+                        )
         else:
             summary_counts["failed"] += 1
     summary = report.get("summary")
@@ -233,6 +284,8 @@ def validate_report(report: dict[str, Any], report_path: Path, corpus: dict[str,
         for key, value in summary_counts.items():
             if summary.get(key) != value:
                 errors.append(f"baseline summary.{key} does not match results")
+    if report.get("equivalence_summary") != equiv_counts:
+        errors.append("baseline equivalence_summary does not match results")
     return errors
 
 

@@ -9,9 +9,13 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/cuda_run_plan_execution/validation/cuda_run_plan_execution.json"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/cuda_run_plan_execution/validation/cuda_run_plan_execution.json"
+)
 EXPECTED_SCHEMA = "eliza.ai_eda.cuda_run_plan_execution.v1"
-EXPECTED_CLAIM_BOUNDARY = "cuda_run_plan_execution_manifest_no_unreviewed_training_inference_or_eda_claim"
+EXPECTED_CLAIM_BOUNDARY = (
+    "cuda_run_plan_execution_manifest_no_unreviewed_training_inference_or_eda_claim"
+)
 REQUIRED_STAGES = {
     "asset_intake",
     "audit",
@@ -73,7 +77,13 @@ def validate(report: dict[str, Any]) -> list[str]:
             errors.append("execution_safety.execute_requires_stage_selection must be true")
         if not isinstance(safety.get("selected_stages"), list):
             errors.append("execution_safety.selected_stages must be a list")
-        for field in ("allow_downloads", "allow_training", "allow_inference", "allow_replay", "allow_alphachip"):
+        for field in (
+            "allow_downloads",
+            "allow_training",
+            "allow_inference",
+            "allow_replay",
+            "allow_alphachip",
+        ):
             if not isinstance(safety.get(field), bool):
                 errors.append(f"execution_safety.{field} must be boolean")
         if not isinstance(safety.get("orchestration_commands_skipped"), int):
@@ -118,7 +128,11 @@ def validate(report: dict[str, Any]) -> list[str]:
             orchestration_count += 1
             if item.get("status") != "SKIPPED_ORCHESTRATION_COMMAND":
                 errors.append(f"commands[{index}] orchestration command must be skipped")
-        if item.get("selected") is True and item.get("template") is not True and item.get("orchestration_command") is not True:
+        if (
+            item.get("selected") is True
+            and item.get("template") is not True
+            and item.get("orchestration_command") is not True
+        ):
             selected_count += 1
         if item.get("status") == "EXECUTED":
             executed_count += 1
@@ -136,7 +150,10 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("selected_command_count mismatch")
     if report.get("executed_command_count") != executed_count:
         errors.append("executed_command_count mismatch")
-    if isinstance(safety, dict) and safety.get("orchestration_commands_skipped") != orchestration_count:
+    if (
+        isinstance(safety, dict)
+        and safety.get("orchestration_commands_skipped") != orchestration_count
+    ):
         errors.append("execution_safety.orchestration_commands_skipped mismatch")
     if isinstance(safety, dict) and safety.get("blocked_command_count") != blocked_count:
         errors.append("execution_safety.blocked_command_count mismatch")

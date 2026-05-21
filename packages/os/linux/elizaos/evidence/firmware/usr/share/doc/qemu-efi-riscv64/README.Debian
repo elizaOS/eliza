@@ -1,0 +1,48 @@
+The RISCV_VIRT_CODE.fd file provides UEFI firmware for a QEMU guest that is
+intended to be read-only. The RISCV_VIRT_VARS.fd file provides UEFI variable
+template images which are intended to be read-write, and therefore each
+guest should be given its own copy.
+
+Below you can find an example how to invoke QEMU to boot from a disk
+image (disk.img).
+
+The variables data base is copied so that it can be written to.
+
+By default the EDK II virt machine provides ACPI tables and no device-tree.
+The parameter acpi=off is used to provide a device-tree instead.
+
+cp /usr/share/qemu-efi-riscv64/RISCV_VIRT_VARS.fd .
+qemu-system-riscv64 \
+  -M virt,acpi=off -m 4096 -smp 4 \
+  -serial mon:stdio \
+  -device virtio-gpu-pci \
+  -device qemu-xhci \
+  -device usb-kbd \
+  -device usb-mouse \
+  -drive \
+  if=pflash,format=raw,unit=0,file=/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd,readonly=on
+\
+  -drive if=pflash,format=raw,unit=1,file=RISCV_VIRT_VARS.fd \
+  -drive file=disk.img,format=raw,if=virtio \
+  -device virtio-net-device,netdev=net0 \
+  -device virtio-rng-pci \
+  -netdev user,id=net0
+
+If you only need a serial console, you could use:
+
+qemu-system-riscv64 \
+  -M virt,acpi=off -m 4096 -smp 4 \
+  -nographic \
+  -drive \
+  if=pflash,format=raw,unit=0,file=/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd,readonly=on
+\
+  -drive if=pflash,format=raw,unit=1,file=RISCV_VIRT_VARS.fd \
+  -drive file=disk.img,format=raw,if=virtio \
+  -device virtio-net-device,netdev=net0 \
+  -device virtio-rng-pci \
+  -netdev user,id=net0
+
+On the serial console press the ESC key twice to reach the EDK II menu
+during the count down.
+
+ -- dann frazier <dannf@debian.org>, Sun, 29 Oct 2023 19:11:14 -0600

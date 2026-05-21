@@ -11,6 +11,10 @@ if [ "$(uname -s)" = "Darwin" ] && [ -d "$repo_dir/external/oss-cad-suite/bin" ]
 fi
 
 rtl_sources="
+rtl/top/e1_soc_pkg.sv
+rtl/peripherals/e1_mmio_decode.sv
+rtl/peripherals/e1_clint.sv
+rtl/memory/e1_behavioral_dram.sv
 rtl/top/e1_chip_top.sv
 rtl/clock/e1_reset_sync.sv
 rtl/debug/e1_dbg_mmio_bridge.sv

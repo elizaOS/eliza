@@ -82,7 +82,10 @@ def validate_design_record(record: dict[str, Any], path: Path) -> list[str]:
     elif not positive_int(clocks[0].get("count")) or not clocks[0].get("design_ids"):
         errors.append(f"{record_id}: clock bucket must include count and design ids")
     technology = record.get("technology")
-    if not isinstance(technology, dict) or technology.get("flow") != "MLCAD 2023 FPGA Macro Placement Contest":
+    if (
+        not isinstance(technology, dict)
+        or technology.get("flow") != "MLCAD 2023 FPGA Macro Placement Contest"
+    ):
         errors.append(f"{record_id}: technology.flow mismatch")
     return errors
 
@@ -198,13 +201,19 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
     if record_count != int(bucket_count or 0) * len(REQUIRED_SCHEMAS):
         errors.append("converted_record_count must equal converted_clock_bucket_count * 3")
     if report.get("full_design_case_conversion_status") != "BLOCKED_MISSING_DESIGN_CASE_PAYLOAD":
-        errors.append("full_design_case_conversion_status must remain blocked until case payloads parse")
+        errors.append(
+            "full_design_case_conversion_status must remain blocked until case payloads parse"
+        )
     summaries = report.get("summaries")
     if not isinstance(summaries, dict):
         errors.append("summaries must be a mapping")
     else:
         dims = summaries.get("sitemap_dimensions")
-        if not isinstance(dims, dict) or not positive_int(dims.get("columns")) or not positive_int(dims.get("rows")):
+        if (
+            not isinstance(dims, dict)
+            or not positive_int(dims.get("columns"))
+            or not positive_int(dims.get("rows"))
+        ):
             errors.append("summaries.sitemap_dimensions must include positive columns and rows")
         for field in ("lib_cell_count", "cascade_instance_count"):
             if not positive_int(summaries.get(field)):
@@ -222,7 +231,9 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
         if item.get("schema") not in REQUIRED_SCHEMAS:
             errors.append(f"unsupported converted schema {item.get('schema')!r}")
         if not positive_int(item.get("clock_count")) or not positive_int(item.get("design_count")):
-            errors.append(f"{item.get('id', '<unknown>')}: clock_count/design_count must be positive")
+            errors.append(
+                f"{item.get('id', '<unknown>')}: clock_count/design_count must be positive"
+            )
         if item.get("status") != "CONVERTED_METADATA_ONLY_BLOCKED_MISSING_DESIGN_CASE_PAYLOAD":
             errors.append(f"{item.get('id', '<unknown>')}: status must remain blocked")
         path_value = item.get("json")

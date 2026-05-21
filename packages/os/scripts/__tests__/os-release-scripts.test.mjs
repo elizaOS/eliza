@@ -12,9 +12,18 @@ import {
   validateManifest,
   validateTeeMeasurements,
 } from "../os-release-lib.mjs";
+import {
+  buildBoundEvidence,
+  goldenMeasurementsOf,
+} from "../tee-evidence-bridge.mjs";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(new URL("../../../..", import.meta.url).pathname);
+const confidentialManifestPath = path.join(
+  repoRoot,
+  "packages/os/release/confidential-2026-05-21/manifest.json",
+);
+const digest = (char) => `sha256:${char.repeat(64)}`;
 
 test("beta manifest carries required beta dates, presale terms, and artifact classes", async () => {
   const manifest = await readJson(defaultManifestPath);
@@ -290,5 +299,214 @@ test("TEE measurement validator rejects missing required digests", () => {
   assert.equal(result.ok, false);
   assert.ok(
     result.errors.some((error) => error.includes("measurements.agent")),
+  );
+});
+
+test("confidential manifest with a valid TEE block validates", async () => {
+  const manifest = await readJson(confidentialManifestPath);
+  const result = validateManifest(manifest);
+  assert.equal(result.ok, true, result.errors.join("\n"));
+  assert.equal(manifest.tee.enabled, true);
+  for (const name of ["boot", "os", "agent", "policy"]) {
+    assert.match(manifest.tee.measurements[name], /^sha256:[a-f0-9]{64}$/);
+  }
+});
+
+test("manifest declaring TEE but missing a required digest fails closed", async () => {
+  const manifest = await readJson(confidentialManifestPath);
+  const broken = {
+    ...manifest,
+    tee: {
+      ...manifest.tee,
+      measurements: { ...manifest.tee.measurements, agent: undefined },
+    },
+  };
+  const result = validateManifest(broken);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("tee.measurements.agent")),
+    result.errors.join("\n"),
+  );
+});
+
+test("manifest declaring an inference measurement must assert npuProtected + ioProtected", async () => {
+  const manifest = await readJson(confidentialManifestPath);
+  const broken = {
+    ...manifest,
+    tee: {
+      ...manifest.tee,
+      requiredClaims: {
+        ...manifest.tee.requiredClaims,
+        npuProtected: false,
+        ioProtected: false,
+      },
+    },
+  };
+  const result = validateManifest(broken);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("npuProtected")),
+    result.errors.join("\n"),
+  );
+  assert.ok(
+    result.errors.some((error) => error.includes("ioProtected")),
+    result.errors.join("\n"),
+  );
+});
+
+test("TEE block rejects unknown / malformed measurement names", async () => {
+  const manifest = await readJson(confidentialManifestPath);
+  const unknownName = {
+    ...manifest,
+    tee: {
+      ...manifest.tee,
+      measurements: { ...manifest.tee.measurements, bogus: digest("a") },
+    },
+  };
+  const unknownResult = validateManifest(unknownName);
+  assert.equal(unknownResult.ok, false);
+  assert.ok(
+    unknownResult.errors.some((error) =>
+      error.includes("tee.measurements.bogus"),
+    ),
+  );
+
+  const malformed = {
+    ...manifest,
+    tee: {
+      ...manifest.tee,
+      measurements: { ...manifest.tee.measurements, monitor: "deadbeef" },
+    },
+  };
+  const malformedResult = validateManifest(malformed);
+  assert.equal(malformedResult.ok, false);
+  assert.ok(
+    malformedResult.errors.some((error) =>
+      error.includes("tee.measurements.monitor"),
+    ),
+  );
+});
+
+test("new measurement names round-trip through generate -> validate", async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "elizaos-tee-rt-"));
+  const names = [
+    "boot",
+    "os",
+    "agent",
+    "policy",
+    "device",
+    "container",
+    "compose",
+    "gpuFirmware",
+    "npuFirmware",
+    "modelWeights",
+    "monitor",
+  ];
+  const cliArgs = [
+    "packages/os/scripts/generate-tee-measurements.mjs",
+    "--output",
+    path.join(tmp, "out.json"),
+  ];
+  for (const name of names) {
+    const filePath = path.join(tmp, `${name}.bin`);
+    await writeFile(filePath, `fixture for ${name}\n`);
+    cliArgs.push(`--${name}`, filePath);
+  }
+
+  await execFileAsync(process.execPath, cliArgs, { cwd: repoRoot });
+  const generated = await readJson(path.join(tmp, "out.json"));
+  for (const name of names) {
+    assert.match(generated.measurements[name], /^sha256:[a-f0-9]{64}$/);
+  }
+  assert.equal(validateTeeMeasurements(generated).ok, true);
+});
+
+test("standalone measurements validator rejects an unknown measurement name", () => {
+  const result = validateTeeMeasurements({
+    schemaVersion: 1,
+    generatedBy: "test",
+    measurements: {
+      boot: digest("a"),
+      os: digest("b"),
+      agent: digest("c"),
+      policy: digest("d"),
+      mystery: digest("e"),
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("measurements.mystery")),
+  );
+});
+
+test("evidence bridge emits a normalized shape bound to golden measurements", async () => {
+  const manifest = await readJson(confidentialManifestPath);
+  const golden = goldenMeasurementsOf(manifest);
+  const evidence = await readJson(
+    path.join(repoRoot, "packages/os/release/schema/tee-evidence.mock.json"),
+  );
+
+  const bound = buildBoundEvidence(evidence, golden);
+  assert.equal(bound.kind, "dstack");
+  assert.equal(bound.provider, "dstack");
+  assert.equal(bound.measurements.os, golden.os);
+  assert.equal(bound.claims.npuProtected, true);
+  assert.equal(bound.claims.ioProtected, true);
+  assert.match(bound.reportData, /^sha256:[a-f0-9]{64}$/);
+  for (const name of ["boot", "os", "agent", "policy"]) {
+    assert.match(bound.measurements[name], /^sha256:[a-f0-9]{64}$/);
+  }
+});
+
+test("evidence bridge fails closed on a runtime-vs-golden mismatch", async () => {
+  const manifest = await readJson(confidentialManifestPath);
+  const golden = goldenMeasurementsOf(manifest);
+  const tampered = await readJson(
+    path.join(
+      repoRoot,
+      "packages/os/release/schema/tee-evidence.tampered.mock.json",
+    ),
+  );
+
+  assert.throws(
+    () => buildBoundEvidence(tampered, golden),
+    /measurement-mismatch/,
+  );
+});
+
+test("evidence bridge rejects an unknown runtime measurement name", () => {
+  const golden = {
+    boot: digest("b"),
+    os: digest("c"),
+    agent: digest("d"),
+    policy: digest("a"),
+  };
+  const evidence = {
+    kind: "dstack",
+    measurements: { ...golden, bogus: digest("e") },
+  };
+  assert.throws(
+    () => buildBoundEvidence(evidence, golden),
+    /unknown runtime measurement/,
+  );
+});
+
+test("evidence bridge CLI fails closed when real hardware quote is requested", async () => {
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [
+        "packages/os/scripts/tee-evidence-bridge.mjs",
+        "--quote-source",
+        "tappd",
+      ],
+      { cwd: repoRoot },
+    ),
+    (error) => {
+      assert.equal(error.code, 2);
+      assert.match(error.stderr, /BLOCKED/);
+      assert.match(error.stderr, /--quote-source tappd/);
+      return true;
+    },
   );
 });

@@ -9,8 +9,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/current_research_watchlist_records/validation/conversion_report.json"
-CLAIM_BOUNDARY = "current_research_watchlist_text_sample_only_no_import_training_inference_e1_or_release_claim"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/current_research_watchlist_records/validation/conversion_report.json"
+)
+CLAIM_BOUNDARY = (
+    "current_research_watchlist_text_sample_only_no_import_training_inference_e1_or_release_claim"
+)
 REQUIRED_TASK_TYPE = "ai_eda_current_research_watchlist_intake"
 REQUIRED_KIND = "structured_current_research_watchlist_intake"
 
@@ -79,20 +83,38 @@ def validate_record(path: Path) -> list[str]:
         else:
             if content.get("id") != record.get("asset_id"):
                 errors.append(f"{record_id}: response.content.id must match asset_id")
-            for field in ("name", "lane", "priority", "source_url", "public_code_status", "e1_action", "required_evidence"):
+            for field in (
+                "name",
+                "lane",
+                "priority",
+                "source_url",
+                "public_code_status",
+                "e1_action",
+                "required_evidence",
+            ):
                 if not isinstance(content.get(field), str) or not content[field]:
                     errors.append(f"{record_id}: response.content.{field} must be non-empty")
             evidence = str(content.get("required_evidence", "")).lower()
             if "hash" not in evidence or ("replay" not in evidence and "signoff" not in evidence):
-                errors.append(f"{record_id}: required_evidence must mention hashes and replay/signoff")
+                errors.append(
+                    f"{record_id}: required_evidence must mention hashes and replay/signoff"
+                )
             blocked_by = content.get("blocked_by")
             if not isinstance(blocked_by, list) or len(blocked_by) < 3:
                 errors.append(f"{record_id}: blocked_by must list intake blockers")
     provenance = record.get("provenance")
-    if not isinstance(provenance, dict) or provenance.get("generated_by") != "scripts/ai_eda/convert_current_research_watchlist_to_internal_records.py":
+    if (
+        not isinstance(provenance, dict)
+        or provenance.get("generated_by")
+        != "scripts/ai_eda/convert_current_research_watchlist_to_internal_records.py"
+    ):
         errors.append(f"{record_id}: provenance.generated_by mismatch")
     replay = record.get("replay")
-    if not isinstance(replay, dict) or "convert_current_research_watchlist_to_internal_records.py" not in str(replay.get("deterministic_command")):
+    if not isinstance(
+        replay, dict
+    ) or "convert_current_research_watchlist_to_internal_records.py" not in str(
+        replay.get("deterministic_command")
+    ):
         errors.append(f"{record_id}: replay command mismatch")
     errors.extend(validate_source(record, record_id))
     return errors
@@ -171,7 +193,9 @@ def main() -> int:
     args = parse_args()
     report_path = repo_path(str(args.report))
     if not report_path.is_file():
-        print(f"STATUS: FAIL ai_eda.current_research_watchlist_records missing_report {rel(report_path)}")
+        print(
+            f"STATUS: FAIL ai_eda.current_research_watchlist_records missing_report {rel(report_path)}"
+        )
         return 1
     try:
         report = load_json(report_path)

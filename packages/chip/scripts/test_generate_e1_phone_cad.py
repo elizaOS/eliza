@@ -28,6 +28,9 @@ def passing_visual_review() -> dict[str, dict[str, object]]:
             "full_top_down.png",
             "exploded_iso.png",
             "component_stack.png",
+            "component-review-audio.png",
+            "component-review-io-buttons.png",
+            "component-review-optical.png",
             "mold_tooling.png",
         ]
     }
@@ -42,6 +45,49 @@ def test_evt0_phone_cad_checks_pass() -> None:
     report = cad.run_checks(params, parts)
 
     assert report["status"] == "pass"
+    assert report["checks"]["battery_display_and_wall_clearance"]["pass"]
+    battery_clearance = report["checks"]["battery_display_and_wall_clearance"]
+    assert battery_clearance["battery_to_display_gap_mm"] >= 0.15
+    assert battery_clearance["battery_to_back_wall_gap_mm"] >= 0.6
+    foam_management = report["checks"]["battery_back_void_foam_management"]
+    assert foam_management["pass"]
+    assert foam_management["foam_pad_present"]
+    assert foam_management["foam_to_battery_free_gap_mm"] >= 0.25
+    assert (
+        foam_management["back_void_managed_capacity_mm"]
+        >= foam_management["back_void_required_worst_case_mm"]
+    )
+    assert report["checks"]["camera_burial_clearance"]["pass"]
+    assert report["checks"]["camera_burial_clearance"]["rear_camera_burial_clearance_mm"] >= 0.4
+    assert report["checks"]["rear_camera_back_shell_aperture"]["pass"]
+    rear_aperture = report["checks"]["rear_camera_back_shell_aperture"]
+    assert rear_aperture["aperture_present"]
+    assert rear_aperture["aperture_mm"][0] > rear_aperture["cover_glass_mm"][0]
+    assert len(rear_aperture["bezel_parts"]) == 4
+    assert report["checks"]["rear_flash_back_shell_aperture"]["pass"]
+    flash_aperture = report["checks"]["rear_flash_back_shell_aperture"]
+    assert flash_aperture["aperture_present"]
+    assert flash_aperture["aperture_mm"][0] > flash_aperture["window_mm"][0]
+    assert len(flash_aperture["bezel_parts"]) == 4
+    assert report["checks"]["usb_saddle_to_speaker_chamber_wall"]["pass"]
+    assert report["checks"]["usb_saddle_to_speaker_chamber_wall"]["actual_gap_mm"] >= 1.0
+    # Device depth thinned from 12.7 to 11.8 mm: the prior model placed only the
+    # 1.7 mm bare TFT cell and left a 2.8 mm false air band below the cover
+    # glass. The display is now modeled as the full 3.39 mm bonded LCD+CTP module
+    # (module_outline_mm) seated one OCA layer under the glass, closing that gap
+    # and removing the reclaimed depth while keeping flush back + swell + burial.
+    assert params["device"]["envelope_mm"][2] == 11.8
+    assert params["battery"]["envelope_mm"][2] == 5.6
+    assert params["battery"]["capacity_mah"] == 5727
+    optical = report["checks"]["camera_optical_seal_stack"]
+    assert optical["pass"]
+    assert optical["stray_light_septum_present"]
+    assert optical["flash_camera_center_spacing_mm"] >= 6.0
+    assert optical["flash_burial_clearance_mm"] >= 0.1
+    assert params["components"]["power_button"]["travel_mm"] == 0.2
+    assert params["components"]["volume_button"]["travel_mm"] == 0.2
+    assert params["components"]["power_button"]["lcsc_part"] == "C318884"
+    assert params["components"]["volume_button"]["standardized_mpn_primary"] == "XKB TS-1187A-B-A-B"
     assert report["checks"]["component_presence"]["pass"]
     assert report["checks"]["rounded_enclosure_geometry"]["pass"]
     assert report["checks"]["mesh_integrity"]["pass"]
@@ -74,10 +120,21 @@ def test_evt0_phone_cad_required_parts_are_named() -> None:
         "orange_side_frame",
         "screen_cover_glass",
         "main_pcb",
+        "battery_back_void_foam_pad",
         "usb_c_receptacle",
         "bottom_speaker_module",
         "earpiece_receiver",
         "rear_camera_module",
+        "rear_camera_shell_aperture",
+        "orange_rear_camera_bezel_top",
+        "orange_rear_camera_bezel_bottom",
+        "orange_rear_camera_bezel_left",
+        "orange_rear_camera_bezel_right",
+        "rear_flash_shell_aperture",
+        "orange_rear_flash_bezel_top",
+        "orange_rear_flash_bezel_bottom",
+        "orange_rear_flash_bezel_left",
+        "orange_rear_flash_bezel_right",
         "front_camera_module",
         "rear_camera_cover_adhesive_top",
         "rear_camera_cover_adhesive_bottom",
@@ -85,6 +142,7 @@ def test_evt0_phone_cad_required_parts_are_named() -> None:
         "rear_camera_cover_adhesive_right",
         "rear_camera_light_baffle_top",
         "rear_camera_light_baffle_bottom",
+        "rear_flash_camera_septum",
         "front_camera_black_mask_window",
         "power_button_cap",
         "volume_button_cap",
@@ -170,7 +228,7 @@ def test_evt0_phone_params_stay_under_compactness_limit() -> None:
 
     assert width <= 80.0
     assert height <= 157.0
-    assert depth <= 11.5
+    assert depth <= 12.8
     assert Path(cad.PARAMS).is_file()
 
 
@@ -344,9 +402,7 @@ def test_evt0_phone_supplier_response_review_fails_closed_until_vendor_returns(
     assert (tmp_path / "supplier-response-review.md").is_file()
 
 
-def test_evt0_phone_supplier_response_rejects_simulated_returns(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_supplier_response_rejects_simulated_returns(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     supplier = cad.supplier_matrix(params)
     monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
@@ -400,8 +456,7 @@ def test_evt0_phone_supplier_response_rejects_simulated_returns(
 
     assert review["status"] == "blocked_no_supplier_responses"
     assert (
-        review["template_evidence_class"]
-        == "simulated_supplier_response_for_planning_not_release"
+        review["template_evidence_class"] == "simulated_supplier_response_for_planning_not_release"
     )
     assert review["complete_response_count"] == 0
     assert "display_lcm_ctp" in review["missing_or_incomplete_items"]
@@ -511,16 +566,12 @@ def test_evt0_phone_supplier_evidence_acceptance_fails_closed_by_family(
 
     assert report["status"] == "blocked_no_supplier_evidence"
     assert report["source_status"]["supplier_rfq_status"] == "rfq_ready"
-    assert report["source_status"]["supplier_response_status"] == (
-        "blocked_no_supplier_responses"
-    )
+    assert report["source_status"]["supplier_response_status"] == ("blocked_no_supplier_responses")
     assert report["expected_family_count"] == 6
     assert report["complete_family_count"] == 0
     assert "display_touch_stack" in report["missing_or_incomplete_families"]
     assert "wireless_modules" in report["missing_or_incomplete_families"]
-    display = next(
-        family for family in report["families"] if family["id"] == "display_touch_stack"
-    )
+    display = next(family for family in report["families"] if family["id"] == "display_touch_stack")
     assert display["rfq_package_ready"] is True
     assert "step_model" in display["missing_required_evidence_keys"]
     assert display["items"][0]["response_case_present"] is True
@@ -699,9 +750,7 @@ def test_evt0_phone_assembly_build_traveler_requires_physical_records(
     assert not passing["missing_or_incomplete_steps"]
 
 
-def test_evt0_phone_process_control_plan_requires_factory_records(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_process_control_plan_requires_factory_records(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
@@ -769,6 +818,23 @@ def test_evt0_phone_step_validation_reimports_step_files(tmp_path, monkeypatch) 
     cad.REVIEW_DIR.mkdir()
 
     solid_cad = cad.write_solid_cad_handoff_artifacts(params, checks)
+    side_frame_cutouts = solid_cad["side_frame_external_cutouts"]
+    assert side_frame_cutouts["status"] == "pass"
+    assert side_frame_cutouts["cutout_count"] == 11
+    assert side_frame_cutouts["removed_volume_mm3"] > 0
+    assert {
+        "usb_c_side_frame_cutout",
+        "bottom_speaker_side_frame_cutout_1",
+        "bottom_microphone_side_frame_cutout_1",
+        "top_microphone_side_frame_cutout",
+        "power_button_side_frame_cutout",
+        "volume_button_side_frame_cutout",
+    }.issubset({cutout["name"] for cutout in side_frame_cutouts["cutouts"]})
+    cover_glass_cutouts = solid_cad["cover_glass_external_cutouts"]
+    assert cover_glass_cutouts["status"] == "pass"
+    assert cover_glass_cutouts["cutout_count"] == 1
+    assert cover_glass_cutouts["removed_volume_mm3"] > 0
+    assert cover_glass_cutouts["cutouts"][0]["source_aperture"] == "handset_acoustic_slot"
     validation = cad.write_step_validation_artifacts(solid_cad)
 
     assert validation["status"] == "pass"
@@ -827,6 +893,32 @@ def test_evt0_phone_engineering_validation_plan_tracks_evt_risks(tmp_path, monke
     assert any(item["test"] == "USB-C insertion/removal" for item in validation["dvt_plan"])
     assert (tmp_path / "engineering-validation.json").is_file()
     assert (tmp_path / "engineering-validation.md").is_file()
+
+
+def test_evt0_phone_battery_swell_management_models_back_void_foam(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    report = cad.write_battery_swell_management_artifacts(
+        params,
+        parts,
+        checks,
+        clearance,
+    )
+
+    assert report["status"] == "cad_battery_swell_management_ready"
+    assert report["foam_pad"]["part"] == "battery_back_void_foam_pad"
+    assert report["foam_pad"]["compression_allowance_mm"] >= 0.142
+    assert report["foam_pad"]["free_gap_to_pouch_mm"] >= 0.25
+    assert report["worst_case_arithmetic"]["margin_mm"] >= 0.0
+    assert report["checks"]["battery_back_void_foam_management"]["pass"]
+    assert (tmp_path / "battery-swell-management.json").is_file()
+    assert (tmp_path / "battery-swell-management.md").is_file()
 
 
 def test_evt0_phone_interface_validation_tracks_named_mechanical_interfaces(
@@ -969,8 +1061,7 @@ def test_evt0_phone_mechanical_integration_sim_covers_usb_screen_and_buttons(
     }.issubset(cases)
     assert cases["usb_c_insertion_load_planning"]["planning_pass"]
     assert (
-        cases["usb_c_insertion_load_planning"]["actual"]["predicted_peak_insertion_force_n"]
-        <= 35.0
+        cases["usb_c_insertion_load_planning"]["actual"]["predicted_peak_insertion_force_n"] <= 35.0
     )
     assert cases["screen_bond_clamp_and_fpc_planning"]["planning_pass"]
     assert cases["screen_bond_clamp_and_fpc_planning"]["actual"]["compression_mm"] == 0.045
@@ -980,9 +1071,7 @@ def test_evt0_phone_mechanical_integration_sim_covers_usb_screen_and_buttons(
     assert (tmp_path / "mechanical-integration-sim.md").is_file()
 
 
-def test_evt0_phone_display_results_reject_simulated_rows(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_display_results_reject_simulated_rows(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     checks = cad.run_checks(params, parts)
@@ -1014,17 +1103,13 @@ def test_evt0_phone_display_results_reject_simulated_rows(
     writer.writeheader()
     writer.writerows(rows)
     csv_path.write_text(
-        "# evidence_class: simulated_display_result_for_planning_not_release\n"
-        + output.getvalue()
+        "# evidence_class: simulated_display_result_for_planning_not_release\n" + output.getvalue()
     )
 
     review = cad.write_display_results_review_artifacts(display)
 
     assert review["status"] == "blocked_no_display_results"
-    assert (
-        review["template_evidence_class"]
-        == "simulated_display_result_for_planning_not_release"
-    )
+    assert review["template_evidence_class"] == "simulated_display_result_for_planning_not_release"
     assert "display_bond_peel_n_per_mm" in review["failed_measurements"]
     assert review["cases"][0]["evidence_class_allowed"] is False
 
@@ -1123,10 +1208,7 @@ def test_evt0_phone_acoustic_results_reject_simulated_rows(tmp_path, monkeypatch
     review = cad.write_acoustic_results_review_artifacts(acoustic)
 
     assert review["status"] == "blocked_no_acoustic_results"
-    assert (
-        review["template_evidence_class"]
-        == "simulated_acoustic_result_for_planning_not_release"
-    )
+    assert review["template_evidence_class"] == "simulated_acoustic_result_for_planning_not_release"
     assert review["complete_result_count"] == 0
     assert "bottom_speaker_spl_1khz_db" in review["failed_measurements"]
     assert review["cases"][0]["evidence_class_allowed"] is False
@@ -1154,6 +1236,8 @@ def test_evt0_phone_camera_validation_quantifies_optical_stack_and_lab_template(
     assert camera["status"] == "cad_camera_validation_ready"
     assert {
         "rear_camera_cover_window_margin",
+        "rear_camera_back_shell_aperture",
+        "rear_flash_back_shell_aperture",
         "rear_camera_z_stack",
         "front_under_glass_margin",
         "front_camera_earpiece_clearance",
@@ -1361,7 +1445,9 @@ def test_evt0_phone_environmental_results_reject_simulated_rows(tmp_path, monkey
             }
         )
     with (tmp_path / "environmental-results-template.csv").open("w", newline="") as csv_file:
-        csv_file.write("# evidence_class: simulated_environmental_result_for_planning_not_release\n")
+        csv_file.write(
+            "# evidence_class: simulated_environmental_result_for_planning_not_release\n"
+        )
         writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -1498,7 +1584,9 @@ def test_evt0_phone_evt_results_review_fails_closed_on_blank_template(
 
     assert review_report["status"] == "blocked_no_physical_results"
     assert review_report["expected_measurement_count"] >= 10
-    assert review_report["expected_sample_result_count"] > review_report["expected_measurement_count"]
+    assert (
+        review_report["expected_sample_result_count"] > review_report["expected_measurement_count"]
+    )
     assert review_report["required_evidence_class"] == "physical_evt_result"
     assert review_report["populated_result_count"] == 0
     assert "power_button_actuation_force" in review_report["sample_shortage_measurements"]
@@ -1557,7 +1645,9 @@ def test_evt0_phone_evt_results_reject_simulated_rows(tmp_path, monkeypatch) -> 
     review_report = cad.write_evt_results_review_artifacts(evt_inspection)
 
     assert review_report["status"] == "blocked_no_physical_results"
-    assert review_report["template_evidence_class"] == "simulated_evt_result_for_planning_not_release"
+    assert (
+        review_report["template_evidence_class"] == "simulated_evt_result_for_planning_not_release"
+    )
     assert review_report["populated_result_count"] == len(rows)
     assert "power_button_actuation_force" in review_report["failed_measurements"]
     assert review_report["cases"][0]["evidence_class_allowed"] is False
@@ -1658,9 +1748,11 @@ def test_evt0_phone_clearance_and_part_review_cover_assembly(tmp_path, monkeypat
     assert part_review["status"] == "pass"
     assert part_review["part_count"] == len(parts)
     assert part_review["contact_sheet_check"]["pass"]
+    assert part_review["exploded_contact_sheet_check"]["pass"]
     assert clearance["status"] == "pass"
     assert {
         "battery_to_pcb_islands",
+        "battery_back_void_foam_to_pouch",
         "split_interconnect_flex_to_battery_edge",
         "split_interconnect_flex_within_side_rail",
         "split_interconnect_connectors_on_pcb_islands",
@@ -1669,6 +1761,7 @@ def test_evt0_phone_clearance_and_part_review_cover_assembly(tmp_path, monkeypat
         "usb_to_bottom_speaker",
     }.issubset(case_ids)
     assert (tmp_path / "part-review-contact-sheet.png").is_file()
+    assert (tmp_path / "part-explode-contact-sheet.png").is_file()
     assert (tmp_path / "assembly-clearance.json").is_file()
 
 
@@ -1711,13 +1804,15 @@ def test_evt0_phone_visual_decision_report_tracks_render_reviews(tmp_path, monke
     assert "hard_orange_shell_visible" in report["visual_design_gates"]
     assert "black_glass_front_visible" in report["visual_design_gates"]
     assert report["visual_design_gates"]["expected_review_view_coverage"]["pass"]
+    assert report["visual_design_gates"]["component_family_detail_views"]["pass"]
     assert report["aesthetic_decisions"]
     assert report["technical_decisions"]
     assert report["visual_deltas"]["front_back_mean_rgb_sum_delta"] >= 8.0
     assert any("rear feature proportions" in item for item in report["manual_review_items"])
-    assert "production visual/CMF signoff requires zero open manual review items" in report[
-        "release_rule"
-    ]
+    assert (
+        "production visual/CMF signoff requires zero open manual review items"
+        in report["release_rule"]
+    )
     assert (tmp_path / "visual-decision-report.json").is_file()
     assert (tmp_path / "visual-decision-report.md").is_file()
 
@@ -1749,7 +1844,9 @@ def test_evt0_phone_render_verification_rejects_blank_or_sparse_images(
             10 + (idx * 11) % 150,
         )
         detailed_draw.rectangle((x, y, x + 54, y + 44), fill=color, outline="black")
-    detailed_draw.rounded_rectangle((160, 130, 1010, 890), radius=70, outline=(255, 82, 5), width=18)
+    detailed_draw.rounded_rectangle(
+        (160, 130, 1010, 890), radius=70, outline=(255, 82, 5), width=18
+    )
     detailed_image.save(detailed)
 
     review = cad.verify_render_artifacts([blank, sparse, detailed])
@@ -1779,10 +1876,13 @@ def test_evt0_phone_part_visual_coverage_maps_every_part_to_review_views(
     assert coverage["covered_part_count"] == len(parts)
     assert coverage["missing_or_incomplete_parts"] == []
     assert "part-review-contact-sheet.png" in coverage["required_review_artifacts"]
+    assert "part-explode-contact-sheet.png" in coverage["required_review_artifacts"]
     usb_case = next(case for case in coverage["cases"] if case["part"] == "usb_c_receptacle")
     assert "full_bottom_port.png" in usb_case["required_views"]
+    assert "part-explode-contact-sheet.png" in usb_case["required_views"]
     button_case = next(case for case in coverage["cases"] if case["part"] == "power_button_cap")
     assert "full_left_side.png" in button_case["required_views"]
+    assert button_case["exploded_contact_sheet_present"]
     assert (tmp_path / "part-visual-coverage.json").is_file()
     assert (tmp_path / "part-visual-coverage.md").is_file()
 
@@ -1795,6 +1895,41 @@ def test_evt0_phone_part_visual_coverage_maps_every_part_to_review_views(
 
     assert blocked["status"] == "blocked_part_visual_coverage_incomplete"
     assert "usb_c_receptacle" in blocked["missing_or_incomplete_parts"]
+
+
+def test_evt0_phone_component_selection_review_reconciles_current_params(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    report = cad.write_component_selection_review_artifacts(params, checks)
+
+    assert report["status"] == "cad_component_selection_review_ready"
+    assert report["device_envelope_mm"] == params["device"]["envelope_mm"]
+    assert report["component_count"] >= 12
+    assert report["missing_or_failed_components"] == []
+    cases = {case["id"]: case for case in report["cases"]}
+    assert cases["side_buttons_single_sku"]["selected_component"] == "XKB TS-1187A-B-A-B"
+    assert cases["usb_c_receptacle"]["pass"] is True
+    assert cases["rear_flash_and_stray_light_septum"]["pass"] is True
+    assert any(
+        check["id"] == "rear_flash_back_shell_aperture"
+        for check in cases["rear_flash_and_stray_light_septum"]["critical_checks"]
+    )
+    assert any(
+        check["id"] == "camera_optical_seal_stack"
+        for check in cases["rear_camera_and_flush_window"]["critical_checks"]
+    )
+    assert any(
+        check["id"] == "rear_camera_back_shell_aperture"
+        for check in cases["rear_camera_and_flush_window"]["critical_checks"]
+    )
+    assert "supplier drawings" in report["release_rule"]
+    assert (tmp_path / "component-selection-review.json").is_file()
+    assert (tmp_path / "component-selection-review.md").is_file()
 
 
 def test_evt0_phone_visual_review_coverage_acceptance_tracks_required_artifacts(
@@ -1828,25 +1963,22 @@ def test_evt0_phone_visual_review_coverage_acceptance_tracks_required_artifacts(
     assert acceptance["status"] == "visual_review_coverage_acceptance_pass"
     assert acceptance["automated_visual_coverage_ready"] is True
     assert acceptance["production_visual_signoff_ready"] is False
-    assert acceptance["expected_view_count"] == 9
-    assert acceptance["complete_view_count"] == 9
+    assert acceptance["expected_view_count"] == 12
+    assert acceptance["complete_view_count"] == 12
     assert acceptance["part_review_case"]["part_count"] == len(parts)
     assert acceptance["part_review_case"]["contact_sheet_pass"] is True
+    assert acceptance["part_review_case"]["exploded_contact_sheet_pass"] is True
     assert acceptance["part_visual_coverage_case"]["covered_part_count"] == len(parts)
     assert acceptance["part_visual_coverage_case"]["pass"] is True
     assert acceptance["visual_decision_case"]["decision_count"] >= 7
     assert acceptance["visual_decision_case"]["open_manual_review_count"] > 0
-    assert acceptance["expected_visual_gate_count"] == len(
-        visual_decision["visual_design_gates"]
-    )
+    assert acceptance["expected_visual_gate_count"] == len(visual_decision["visual_design_gates"])
     assert "Production visual/CMF signoff remains blocked" in acceptance["release_rule"]
     assert (tmp_path / "visual-review-coverage-acceptance.json").is_file()
     assert (tmp_path / "visual-review-coverage-acceptance.md").is_file()
 
 
-def test_evt0_phone_cmf_release_acceptance_requires_physical_results(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_cmf_release_acceptance_requires_physical_results(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     tooling = cad.tooling_parts(params)
@@ -1893,14 +2025,14 @@ def test_evt0_phone_cmf_release_acceptance_requires_physical_results(
     assert "Color plaque" in report["release_rule"]
     assert (tmp_path / "cmf-release-acceptance.json").is_file()
     assert (tmp_path / "cmf-release-acceptance.md").is_file()
-    template_rows = list(csv.DictReader(StringIO((tmp_path / "cmf-results-template.csv").read_text())))
+    template_rows = list(
+        csv.DictReader(StringIO((tmp_path / "cmf-results-template.csv").read_text()))
+    )
     assert template_rows
     assert "evidence_class" in template_rows[0]
 
 
-def test_evt0_phone_cmf_release_acceptance_enforces_numeric_limits(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_cmf_release_acceptance_enforces_numeric_limits(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     tooling = cad.tooling_parts(params)
@@ -2091,6 +2223,41 @@ def test_evt0_phone_mold_process_window_quantifies_tooling_risks(tmp_path, monke
     assert (tmp_path / "mold-process-window.md").is_file()
 
 
+def test_evt0_phone_tooling_action_register_links_dfm_to_toolmaker_returns(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    tooling = cad.tooling_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    mold_process = cad.write_mold_process_window_artifacts(
+        params,
+        parts,
+        tooling,
+        dfm,
+        tolerance_stack,
+    )
+    register = cad.write_tooling_action_register_artifacts(dfm, mold_process)
+    csv_text = (tmp_path / "tooling-action-register.csv").read_text()
+    action_ids = {item["id"] for item in register["actions"]}
+
+    assert register["status"] == "cad_tooling_action_register_ready"
+    assert register["physical_toolmaker_complete_count"] == 0
+    assert "snap_hook_release" in action_ids
+    assert "orange_cmf_texture_gate_review" in action_ids
+    assert "first_shot_metrology_loop" in action_ids
+    assert all(item["required_returned_evidence"] for item in register["actions"])
+    assert "marked_up_tool_design" in csv_text
+    assert "first_shot_cmm_report" in csv_text
+    assert (tmp_path / "tooling-action-register.json").is_file()
+    assert (tmp_path / "tooling-action-register.csv").is_file()
+    assert (tmp_path / "tooling-action-register.md").is_file()
+
+
 def test_evt0_phone_mold_flow_acceptance_fails_closed_without_physical_evidence(
     tmp_path, monkeypatch
 ) -> None:
@@ -2126,9 +2293,7 @@ def test_evt0_phone_mold_flow_acceptance_fails_closed_without_physical_evidence(
     assert (tmp_path / "mold-flow-acceptance.md").is_file()
 
 
-def test_evt0_phone_mold_flow_acceptance_rejects_simulated_rows(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_mold_flow_acceptance_rejects_simulated_rows(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     tooling = cad.tooling_parts(params)
@@ -2215,9 +2380,7 @@ def test_evt0_phone_toolmaker_signoff_package_fails_closed_without_returns(
     assert (tmp_path / "toolmaker-signoff-review.md").is_file()
 
 
-def test_evt0_phone_toolmaker_signoff_rejects_simulated_returns(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_toolmaker_signoff_rejects_simulated_returns(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     tooling = cad.tooling_parts(params)
@@ -2251,9 +2414,7 @@ def test_evt0_phone_toolmaker_signoff_rejects_simulated_returns(
                 "measured_or_predicted_value": "simulated",
             }
         )
-    with (tmp_path / "toolmaker-signoff-response-template.csv").open(
-        "w", newline=""
-    ) as csv_file:
+    with (tmp_path / "toolmaker-signoff-response-template.csv").open("w", newline="") as csv_file:
         csv_file.write("# evidence_class: simulated_toolmaker_signoff_for_planning_not_release\n")
         writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
         writer.writeheader()
@@ -2263,8 +2424,7 @@ def test_evt0_phone_toolmaker_signoff_rejects_simulated_returns(
 
     assert signoff["status"] == "blocked_no_toolmaker_signoff"
     assert (
-        signoff["template_evidence_class"]
-        == "simulated_toolmaker_signoff_for_planning_not_release"
+        signoff["template_evidence_class"] == "simulated_toolmaker_signoff_for_planning_not_release"
     )
     assert signoff["complete_response_count"] == 0
     assert "mold_flow_fill_pack_warp" in signoff["missing_or_incomplete_items"]
@@ -2413,9 +2573,7 @@ def test_evt0_phone_board_step_readiness_fails_closed_on_concept_pcb(tmp_path, m
     assert (tmp_path / "board-step-readiness.md").is_file()
 
 
-def test_evt0_phone_board_step_readiness_rejects_demo_routed_intake(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_board_step_readiness_rejects_demo_routed_intake(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
     kicad_reconciliation = {
@@ -2473,7 +2631,7 @@ def test_evt0_phone_routed_board_clearance_fails_closed_until_routed_step(
 ) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
-    checks = cad.run_checks(params, parts)
+    cad.run_checks(params, parts)
     monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
     monkeypatch.setattr(cad, "OUT_DIR", tmp_path)
     (tmp_path / "main_pcb.step").write_text("ISO-10303-21;" + ("x" * 1200))
@@ -2486,9 +2644,7 @@ def test_evt0_phone_routed_board_clearance_fails_closed_until_routed_step(
         "status": "generated",
         "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
     }
-    board_step = cad.write_board_step_readiness_artifacts(
-        params, kicad_reconciliation, solid_cad
-    )
+    board_step = cad.write_board_step_readiness_artifacts(params, kicad_reconciliation, solid_cad)
     clearance = cad.write_assembly_clearance_artifacts(params, parts)
 
     report = cad.write_routed_board_clearance_artifacts(board_step, clearance, solid_cad)
@@ -2514,7 +2670,7 @@ def test_evt0_phone_full_cad_boolean_interference_requires_physical_brep_inputs(
 ) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
-    checks = cad.run_checks(params, parts)
+    cad.run_checks(params, parts)
     monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
     monkeypatch.setattr(cad, "OUT_DIR", tmp_path)
     (tmp_path / "main_pcb.step").write_text("ISO-10303-21;" + ("x" * 1200))
@@ -2529,13 +2685,9 @@ def test_evt0_phone_full_cad_boolean_interference_requires_physical_brep_inputs(
     }
     step_validation = {"status": "pass", "validated_count": 62}
     supplier_response = {"status": "blocked_no_supplier_responses"}
-    board_step = cad.write_board_step_readiness_artifacts(
-        params, kicad_reconciliation, solid_cad
-    )
+    board_step = cad.write_board_step_readiness_artifacts(params, kicad_reconciliation, solid_cad)
     clearance = cad.write_assembly_clearance_artifacts(params, parts)
-    routed_clearance = cad.write_routed_board_clearance_artifacts(
-        board_step, clearance, solid_cad
-    )
+    routed_clearance = cad.write_routed_board_clearance_artifacts(board_step, clearance, solid_cad)
 
     report = cad.write_full_cad_boolean_interference_artifacts(
         parts,
@@ -2548,6 +2700,7 @@ def test_evt0_phone_full_cad_boolean_interference_requires_physical_brep_inputs(
     )
 
     assert report["status"] == "blocked_boolean_interference_incomplete"
+    assert report["overall_status"] == "blocked_boolean_interference_incomplete"
     assert report["expected_scope_count"] == 10
     assert report["cad_prerequisite_scope_count"] >= 7
     assert report["concept_aabb_pair_check_count"] >= 12
@@ -2562,16 +2715,49 @@ def test_evt0_phone_full_cad_boolean_interference_requires_physical_brep_inputs(
     )
     assert battery_scope["required_parts_present"] is True
     assert battery_scope["concept_aabb_scan_pass"] is True
-    assert all(check["component_pair_count"] >= 1 for check in battery_scope["concept_aabb_pair_checks"])
+    assert all(
+        check["component_pair_count"] >= 1 for check in battery_scope["concept_aabb_pair_checks"]
+    )
     assert report["required_evidence_class"] == (
         "physical_supplier_brep_boolean_interference_result"
     )
-    assert "evidence_class=physical_supplier_brep_boolean_interference_result" in report[
-        "release_rule"
-    ]
+    assert (
+        "evidence_class=physical_supplier_brep_boolean_interference_result"
+        in report["release_rule"]
+    )
     assert (tmp_path / "full-cad-boolean-interference-results-template.csv").is_file()
     assert (tmp_path / "full-cad-boolean-interference.json").is_file()
     assert (tmp_path / "full-cad-boolean-interference.md").is_file()
+
+
+def test_evt0_phone_cad_make_target_runs_strict_boolean_checker() -> None:
+    makefile = Path("Makefile").read_text()
+    phone_cad_target = makefile.split("\nphone-cad-test:", 1)[0].rsplit("\nphone-cad:", 1)[1]
+    assert "scripts/generate_e1_phone_cad.py" in phone_cad_target
+    assert "scripts/check_e1_phone_boolean_interference.py" in phone_cad_target
+
+    checker = Path("scripts/check_e1_phone_boolean_interference.py").read_text()
+    assert "rear_camera_back_shell_hole_check" in checker
+    assert "rear_camera_optical_sightline_check" in checker
+    assert "rear_flash_back_shell_hole_check" in checker
+    assert "handset_cover_glass_slot_check" in checker
+    assert "screen_cover_glass_collision_check" in checker
+    assert "side_frame_external_cutout_check" in checker
+    assert '"rear_camera_cover_glass"' in checker
+    assert '"rear_camera_lens_window"' in checker
+    assert '"rear_camera_module"' in checker
+    assert '"rear_camera_optical_sight_tunnel"' in checker
+    assert '"rear_flash_shell_aperture"' in checker
+    assert '"rear_flash_led_window"' in checker
+    assert '"handset_acoustic_slot"' in checker
+    assert '"handset_acoustic_mesh"' in checker
+    assert '"front_camera_under_glass"' in checker
+    assert '"front_camera_black_mask_window"' in checker
+    assert '"usb_c_external_aperture"' in checker
+    assert "bottom_speaker_grille_slot_" in checker
+    assert "range(1, 6)" in checker
+    assert '"bottom_microphone_port_1"' in checker
+    assert '"top_microphone_port"' in checker
 
 
 def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatch) -> None:
@@ -2597,6 +2783,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "orange_side_frame.step",
         "screen_cover_glass.step",
         "main_pcb.step",
+        "battery_back_void_foam_pad.step",
         "usb_c_receptacle.step",
         "usb_c_external_aperture.step",
         "usb_c_perimeter_gasket_top.step",
@@ -2617,6 +2804,16 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "top_microphone_port.step",
         "top_microphone_mesh.step",
         "rear_camera_module.step",
+        "rear_camera_shell_aperture.step",
+        "orange_rear_camera_bezel_top.step",
+        "orange_rear_camera_bezel_bottom.step",
+        "orange_rear_camera_bezel_left.step",
+        "orange_rear_camera_bezel_right.step",
+        "rear_flash_shell_aperture.step",
+        "orange_rear_flash_bezel_top.step",
+        "orange_rear_flash_bezel_bottom.step",
+        "orange_rear_flash_bezel_left.step",
+        "orange_rear_flash_bezel_right.step",
         "rear_camera_cover_glass.step",
         "rear_camera_cover_adhesive_top.step",
         "rear_camera_cover_adhesive_bottom.step",
@@ -2650,6 +2847,8 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "fit-check-report.json",
         "visual-review.json",
         "manufacturing_drawing.json",
+        "battery-swell-management.json",
+        "battery-swell-management.md",
         "mass-budget.json",
         "compactness-optimization.json",
         "compactness-optimization.md",
@@ -2703,6 +2902,9 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "injection-molding-dfm.md",
         "mold-process-window.json",
         "mold-process-window.md",
+        "tooling-action-register.json",
+        "tooling-action-register.csv",
+        "tooling-action-register.md",
         "toolmaker-signoff-package.json",
         "toolmaker-signoff-package.md",
         "toolmaker-signoff-response-template.csv",
@@ -2718,6 +2920,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "part-review.json",
         "part-review.md",
         "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
         "solid-cad-handoff.json",
         "solid-cad-handoff.md",
         "step-validation.json",
@@ -2725,9 +2928,13 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "full_front_iso.png",
         "full_back_iso.png",
         "rear_feature_detail.png",
+        "full_left_side.png",
         "full_bottom_port.png",
         "component_stack.png",
         "full_top_down.png",
+        "component-review-audio.png",
+        "component-review-io-buttons.png",
+        "component-review-optical.png",
         "mold_tooling.png",
     ]:
         (review / name).write_text("{}")
@@ -2750,6 +2957,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     }
     validation = cad.write_engineering_validation_artifacts(params, parts, checks, mass, supplier)
     clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    cad.write_battery_swell_management_artifacts(params, parts, checks, clearance)
     part_review = cad.write_part_review_artifacts(parts)
     dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
     tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
@@ -2823,6 +3031,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "complete_response_count": 0,
         "expected_response_count": len(supplier["items"]) + 1,
     }
+    component_selection = cad.write_component_selection_review_artifacts(params, checks)
     cad.write_readiness_artifacts(
         params,
         parts,
@@ -2871,6 +3080,11 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     assert readiness["subsystem_evidence_present"]["molded_orange_enclosure"]
     assert readiness["subsystem_evidence_present"]["compact_envelope_optimization"]
     assert readiness["required_outputs"]["compactness_optimization"]
+    assert readiness["subsystem_evidence_present"]["component_selection_review"]
+    assert readiness["required_outputs"]["component_selection_review"]
+    assert component_selection["status"] == "cad_component_selection_review_ready"
+    assert readiness["subsystem_evidence_present"]["battery_swell_management"]
+    assert readiness["required_outputs"]["battery_swell_management"]
     assert readiness["parameters"]["compactness_status"] == "cad_compactness_optimized"
     assert readiness["parameters"]["compactness_width_excess_mm"] <= 1.0
     assert readiness["parameters"]["compactness_height_excess_mm"] <= 1.5
@@ -2946,6 +3160,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     assert readiness["subsystem_evidence_present"]["tolerance_release_package"]
     assert readiness["subsystem_evidence_present"]["physical_evt_results"]
     assert readiness["required_outputs"]["mold_process_window"]
+    assert readiness["required_outputs"]["tooling_action_register"]
     assert readiness["parameters"]["mold_process_window_status"] == "cad_mold_process_window_ready"
     assert readiness["required_outputs"]["toolmaker_signoff_package"]
     assert readiness["parameters"]["toolmaker_signoff_status"] == "blocked_no_toolmaker_signoff"
@@ -2976,10 +3191,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     assert readiness["parameters"]["gdt_fai_results_status"] == "blocked_no_fai_results"
     assert readiness["parameters"]["gdt_fai_results_complete_count"] == 0
     assert readiness["parameters"]["visual_decision_status"] == "pass"
-    assert (
-        readiness["parameters"]["automated_visual_status"]
-        == "automated_visual_coverage_pass"
-    )
+    assert readiness["parameters"]["automated_visual_status"] == "automated_visual_coverage_pass"
     assert (
         readiness["parameters"]["manual_visual_signoff_status"]
         == "blocked_manual_visual_review_open"
@@ -3016,8 +3228,24 @@ def test_evt0_phone_fit_report_writes_flat_check_schema(tmp_path, monkeypatch) -
         == "mechanical/e1-phone/review/visual-review-coverage-acceptance.json"
     )
     assert (
+        report["artifacts"]["part_explode_contact_sheet"]
+        == "mechanical/e1-phone/review/part-explode-contact-sheet.png"
+    )
+    assert (
+        report["artifacts"]["component_selection_review_json"]
+        == "mechanical/e1-phone/review/component-selection-review.json"
+    )
+    assert (
         report["artifacts"]["physical_process_validation_acceptance_json"]
         == "mechanical/e1-phone/review/physical-process-validation-acceptance.json"
+    )
+    assert (
+        report["artifacts"]["tooling_action_register_json"]
+        == "mechanical/e1-phone/review/tooling-action-register.json"
+    )
+    assert (
+        report["artifacts"]["battery_swell_management_json"]
+        == "mechanical/e1-phone/review/battery-swell-management.json"
     )
     assert (
         report["artifacts"]["end_to_end_objective_acceptance_json"]
@@ -3026,5 +3254,7 @@ def test_evt0_phone_fit_report_writes_flat_check_schema(tmp_path, monkeypatch) -
     readme = (tmp_path / "README.md").read_text()
     assert "routed-board-step-intake-template.csv" in readme
     assert "visual-review-coverage-acceptance.json" in readme
+    assert "tooling-action-register.json" in readme
+    assert "battery-swell-management.json" in readme
     assert "physical-process-validation-acceptance.json" in readme
     assert "end-to-end-objective-acceptance.json" in readme

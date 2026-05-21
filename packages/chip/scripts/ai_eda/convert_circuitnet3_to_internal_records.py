@@ -9,7 +9,7 @@ import math
 import re
 import zipfile
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +63,82 @@ def parse_power_summary(text: str) -> float | None:
     return finite_float(match.group(1)) if match else None
 
 
+_INSTANCE_RE = re.compile(
+    r"^\s*([A-Z][A-Za-z0-9_]+)\s+([A-Za-z0-9_\\\[\]./$]+)\s*\((.*?)\)\s*;",
+    re.DOTALL | re.MULTILINE,
+)
+_PIN_CONN_RE = re.compile(r"\.([A-Za-z0-9_]+)\(\s*([^)]*?)\s*\)")
+
+
+def parse_netlist_connectivity(netlist_text: str) -> dict[str, dict[str, list[str]]]:
+    """Parse Innovus structural Verilog into per-instance pin->net connectivity.
+
+    Returns ``{instance_name: {"in": [nets], "out": [nets]}}`` derived from the
+    cell's output pin (``Y``/``Q``/``QN``/``ZN``...) versus input pins. Standard
+    cells in the CircuitNet 3.0 NanGate-style library drive ``Y``/``Q``/``QN``;
+    everything else on the instance is treated as an input net. This recovers the
+    real inter-cell net topology that ``feature.json`` alone does not encode.
+    """
+
+    output_pin_names = ("Y", "Q", "QN", "ZN", "Z", "CO")
+    connectivity: dict[str, dict[str, list[str]]] = {}
+    for match in _INSTANCE_RE.finditer(netlist_text):
+        cell_type, inst_name, body = match.group(1), match.group(2), match.group(3)
+        if cell_type in {"module", "input", "output", "inout", "wire", "reg", "assign"}:
+            continue
+        pins = _PIN_CONN_RE.findall(body)
+        if not pins:
+            continue
+        in_nets: list[str] = []
+        out_nets: list[str] = []
+        # A DFF has both Q (output) and S/CLK style inputs; classify per pin name.
+        has_out_pin = any(pin in output_pin_names for pin, _ in pins)
+        for pin, net in pins:
+            net = net.strip()
+            if not net:
+                continue
+            is_output = pin in output_pin_names if has_out_pin else pin == pins[-1][0]
+            (out_nets if is_output else in_nets).append(net)
+        connectivity[inst_name.lstrip("\\")] = {"in": in_nets, "out": out_nets}
+    return connectivity
+
+
+def net_connectivity_edges(
+    connectivity: dict[str, dict[str, list[str]]],
+    instance_ids: set[str],
+) -> tuple[list[dict[str, Any]], int]:
+    """Build directed driver->sink edges over shared nets between cell instances.
+
+    Only instances that also appear in ``feature.json`` (the GNN node set) are
+    linked, so the edge index stays aligned with the node feature matrix. Each
+    net's single structural driver fans out to every consuming instance.
+    """
+
+    drivers: dict[str, str] = {}
+    sinks: dict[str, list[str]] = {}
+    for inst, pins in connectivity.items():
+        if inst not in instance_ids:
+            continue
+        for net in pins["out"]:
+            drivers[net] = inst
+        for net in pins["in"]:
+            sinks.setdefault(net, []).append(inst)
+    edges: list[dict[str, Any]] = []
+    for net, driver in drivers.items():
+        for sink in sinks.get(net, ()):
+            if sink == driver:
+                continue
+            edges.append(
+                {
+                    "src": driver,
+                    "dst": sink,
+                    "edge_type": "net_fanout",
+                    "net": net,
+                }
+            )
+    return edges, len(edges)
+
+
 def final_case_prefixes(zip_file: zipfile.ZipFile) -> list[str]:
     prefixes = set()
     for name in zip_file.namelist():
@@ -72,7 +148,9 @@ def final_case_prefixes(zip_file: zipfile.ZipFile) -> list[str]:
     return sorted(prefixes)
 
 
-def feature_records(features: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+def feature_records(
+    features: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
     cell_histogram: Counter[str] = Counter()
@@ -158,7 +236,9 @@ def feature_records(features: dict[str, Any]) -> tuple[list[dict[str, Any]], lis
     return nodes, edges, labels
 
 
-def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_path: Path) -> list[dict[str, Any]]:
+def convert_case(
+    zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_path: Path
+) -> list[dict[str, Any]]:
     case_name = prefix.rsplit("/", 1)[-1]
     safe_case = re.sub(r"[^A-Za-z0-9_.-]+", "_", case_name)
     feature_path = f"{prefix}/feature.json"
@@ -168,6 +248,12 @@ def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_
     if not isinstance(features, dict):
         raise ValueError(f"{feature_path}: expected object")
     nodes, edges, labels = feature_records(features)
+    netlist_text = zip_file.read(netlist_path).decode("utf-8", errors="replace")
+    connectivity = parse_netlist_connectivity(netlist_text)
+    instance_ids = {node["id"] for node in nodes}
+    net_edges, net_edge_count = net_connectivity_edges(connectivity, instance_ids)
+    edges.extend(net_edges)
+    labels["net_fanout_edge_count"] = net_edge_count
     power_total = parse_power_summary(zip_file.read(power_path).decode("utf-8", errors="replace"))
     if power_total is not None:
         labels["total_power"] = power_total
@@ -176,11 +262,18 @@ def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_
         "schema": "eda.design_bundle.v1",
         "id": f"circuitnet3-{safe_case}-design-bundle",
         "claim_boundary": CLAIM_BOUNDARY,
-        "design": {"name": case_name, "revision": "circuitnet3_payload_zip", "top_module": case_name},
+        "design": {
+            "name": case_name,
+            "revision": "circuitnet3_payload_zip",
+            "top_module": case_name,
+        },
         "sources": {
             "rtl": [],
             "netlists": [f"{rel(archive_path)}::{netlist_path}"],
-            "manifests": [f"{rel(archive_path)}::{feature_path}", f"{rel(archive_path)}::{power_path}"],
+            "manifests": [
+                f"{rel(archive_path)}::{feature_path}",
+                f"{rel(archive_path)}::{power_path}",
+            ],
         },
         "constraints": {"clocks": [], "resets": []},
         "technology": {
@@ -201,12 +294,18 @@ def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_
         },
         "labels": {
             "label_status": "public_circuitnet3_training_pretraining_labels_not_e1_signoff",
-            "label_sources": [f"{rel(archive_path)}::{feature_path}", f"{rel(archive_path)}::{power_path}"],
+            "label_sources": [
+                f"{rel(archive_path)}::{feature_path}",
+                f"{rel(archive_path)}::{power_path}",
+            ],
             "values": labels,
         },
         "provenance": {
             "generated_by": "scripts/ai_eda/convert_circuitnet3_to_internal_records.py",
-            "source_records": [f"{rel(archive_path)}::{feature_path}", f"{rel(archive_path)}::{power_path}"],
+            "source_records": [
+                f"{rel(archive_path)}::{feature_path}",
+                f"{rel(archive_path)}::{power_path}",
+            ],
         },
     }
     flow_run = {
@@ -214,10 +313,24 @@ def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_
         "id": f"circuitnet3-{safe_case}-flow-run",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
-        "toolchain": {"tools": ["CircuitNet3.0 public dataset export"], "version_capture": "external/datasets/circuitnet3/manifest.yaml"},
+        "toolchain": {
+            "tools": ["CircuitNet3.0 public dataset export"],
+            "version_capture": "external/datasets/circuitnet3/manifest.yaml",
+        },
         "command": "python3 scripts/ai_eda/convert_circuitnet3_to_internal_records.py --run-id <run-id>",
-        "inputs": {"archive": rel(archive_path), "feature_json": feature_path, "final_netlist": netlist_path, "power_summary": power_path},
-        "outputs": {"reports": [], "artifacts": [f"{rel(archive_path)}::{feature_path}", f"{rel(archive_path)}::{power_path}"]},
+        "inputs": {
+            "archive": rel(archive_path),
+            "feature_json": feature_path,
+            "final_netlist": netlist_path,
+            "power_summary": power_path,
+        },
+        "outputs": {
+            "reports": [],
+            "artifacts": [
+                f"{rel(archive_path)}::{feature_path}",
+                f"{rel(archive_path)}::{power_path}",
+            ],
+        },
         "metrics": {"instance_count": len(nodes), "timing_arc_count": len(edges), **labels},
         "status": {
             "result": "CONVERTED_PUBLIC_DATASET_LABELS_NOT_REPLAYED",
@@ -230,8 +343,14 @@ def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_
     }
     paths = [write_json(out_dir, record) for record in (design_bundle, graph_sample, flow_run)]
     return [
-        {"case": case_name, "schema": record["schema"], "json": rel(path), "instance_count": len(nodes), "timing_arc_count": len(edges)}
-        for record, path in zip((design_bundle, graph_sample, flow_run), paths)
+        {
+            "case": case_name,
+            "schema": record["schema"],
+            "json": rel(path),
+            "instance_count": len(nodes),
+            "timing_arc_count": len(edges),
+        }
+        for record, path in zip((design_bundle, graph_sample, flow_run), paths, strict=True)
     ]
 
 
@@ -239,14 +358,19 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, default=DEFAULT_ZIP)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=3)
+    parser.add_argument(
+        "--all-records",
+        action="store_true",
+        help="Convert every available final case instead of the smoke sample limit.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if args.sample_limit <= 0:
+    if not args.all_records and args.sample_limit <= 0:
         raise SystemExit("--sample-limit must be positive")
     if not args.archive.exists():
         print(f"STATUS: BLOCKED ai_eda.circuitnet3 missing_archive {args.archive}")
@@ -258,12 +382,12 @@ def main() -> int:
     converted: list[dict[str, Any]] = []
     with zipfile.ZipFile(args.archive) as zip_file:
         prefixes = final_case_prefixes(zip_file)
-        selected = prefixes[: args.sample_limit]
+        selected = prefixes if args.all_records else prefixes[: args.sample_limit]
         for prefix in selected:
             converted.extend(convert_case(zip_file, prefix, out_dir, args.archive))
         report = {
             "schema": "eliza.ai_eda.circuitnet3_conversion_report.v1",
-            "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "run_id": args.run_id,
             "claim_boundary": CLAIM_BOUNDARY,
             "release_use_allowed": False,
@@ -272,6 +396,8 @@ def main() -> int:
             "zip_entry_count": len(zip_file.infolist()),
             "available_final_case_count": len(prefixes),
             "converted_case_count": len(selected),
+            "conversion_mode": "all_records" if args.all_records else "sample_limit",
+            "sample_limit": None if args.all_records else args.sample_limit,
             "converted_record_count": len(converted),
             "converted_records": converted,
             "next_required_gates": [

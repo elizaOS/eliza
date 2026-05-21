@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Regenerate the E1 phone retail spec sheet, refreshed mass budget, and
-tolerance stack from the params YAML, assembly manifest, and prior STEP-derived
-mass rollup. Deterministic; safe to re-run.
+"""Regenerate the E1 phone retail spec sheet from the params YAML and the
+CAD-generated mass budget. Deterministic; safe to re-run.
+
+This script owns ONLY ``review/e1-phone-spec-sheet.{json,md}``. The mass budget
+and tolerance stack are produced by ``generate_e1_phone_cad.py`` and are read
+here, never rewritten, so the spec sheet always reflects the current CAD
+geometry rather than a private, drifting copy.
 
 Evidence class: cad_estimate_for_evt_planning, not_measured_hardware.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,151 +20,105 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 MECH = ROOT / "mechanical" / "e1-phone"
 CAD_PARAMS = MECH / "cad" / "e1_phone_params.yaml"
-MANIFEST = MECH / "out" / "assembly-manifest.json"
 REVIEW = MECH / "review"
-PRIOR_MASS_BUDGET = REVIEW / "mass-budget.json"
+MASS_BUDGET = REVIEW / "mass-budget.json"
 
 EVIDENCE_CLASS = "cad_estimate_for_evt_planning, not_measured_hardware"
 
-# Refined densities (g/cm^3) per AGENTS brief.
-DENSITY = {
-    "pc_abs": 1.13,
-    "cover_glass": 2.50,
-    "lipo_pouch": 2.40,
-    "fr4_pcb": 1.90,
-    "si_ic": 2.33,
-    "ss_steel": 7.85,
-    "brass": 8.50,
-    "aluminum": 2.70,
-    "ndfeb": 7.50,
-    "copper": 8.96,
-    "fpc_polyimide": 2.40,
-    "adhesive_foam": 1.00,
-    "silicone_gasket": 1.20,
-    "tungsten": 19.30,
-}
-
-# Role -> refined density override (g/cm^3). None = use part's original.
-ROLE_DENSITY = {
-    "molded enclosure": DENSITY["pc_abs"],
-    "screen retention": DENSITY["adhesive_foam"],
-    "battery": DENSITY["lipo_pouch"],
-    "PCB": DENSITY["fr4_pcb"],
-    "EMI shield": DENSITY["ss_steel"],
-    "I/O": DENSITY["ss_steel"],
-    "I/O seal": DENSITY["silicone_gasket"],
-    "button": DENSITY["pc_abs"],
-    "button seal": DENSITY["silicone_gasket"],
-    "camera seal": DENSITY["adhesive_foam"],
-    "haptics": DENSITY["si_ic"],
-    "split-board interconnect": DENSITY["fpc_polyimide"],
-    "side-key interconnect": DENSITY["fpc_polyimide"],
-    "connector": DENSITY["si_ic"],
-}
-
-# Hidden / off-STEP masses (g) — not represented in out/*.step but required
-# for a defensible BOM rollup. Datasheet- or class-typical values.
-HIDDEN_MASSES = [
-    ("Quectel RG255C 5G RedCap modem LGA module", 5.2, "datasheet"),
-    ("Murata Type 2EA Wi-Fi 6E + BT 5.3 module", 0.4, "datasheet"),
-    ("nano-SIM tray + retention mechanism", 1.2, "class typical"),
-    ("4x M1.4x3 stainless screws", 0.8, "0.2 g each"),
-    ("4x brass heat-set inserts", 1.2, "0.3 g each"),
-    ("2x cellular antenna FPCs", 1.0, "0.5 g each"),
-    ("Wi-Fi/BT antenna FPC", 0.4, "class typical"),
-    ("GPS antenna patch", 0.3, "class typical"),
-    ("EMI cans extra (SoC/modem/PMIC fill)", 2.5, "beyond STEP shell"),
-    ("Speaker neodymium magnet", 0.8, "1115 class"),
-    ("LRA tungsten weight", 1.2, "0612 X-axis LRA"),
-    ("Camera VCM coil + magnet", 0.6, "OV13855 AF"),
-    ("Display backlight LED bar + diffuser", 3.0, "off-LCM STEP"),
-    ("PCB copper/soldermask + thru-hole IC mass beyond outline", 4.0, "8-layer fill"),
-    ("Battery PCM board + nickel tabs", 1.5, "pouch class"),
-    ("Adhesives + foam + gaskets system total", 2.0, "assembly seal stack"),
-]
-
-TARGET_MASS_G = 185.0
+# Items required for a defensible shipping mass but absent from the CAD STEP
+# geometry that the mass budget rolls up (modem/Wi-Fi LGA modules, antennas,
+# fasteners, conformal coating, labeling, cabling, packaging-adjacent stack).
+# Datasheet- or class-typical; held as a single reconciliation adder so the CAD
+# geometry subtotal stays the single source of truth for measured volumes.
+ASSEMBLY_STAGE_MASS_G = 8.4
 
 
-def refresh_mass_budget() -> dict:
-    prior = json.loads(PRIOR_MASS_BUDGET.read_text())
-    refreshed_parts = []
-    role_totals: dict[str, float] = {}
-    rollup = 0.0
-    for p in prior["parts"]:
-        role = p["role"]
-        vol_mm3 = float(p["volume_mm3"])
-        if p["excluded_placeholder"]:
-            rho = 0.0
-            mass_g = 0.0
-        else:
-            rho = ROLE_DENSITY.get(role, float(p["density_g_per_cm3"]))
-            # screen role: cover glass uses 2.50, LCM uses 1.20 (effective)
-            if role == "screen":
-                rho = DENSITY["cover_glass"] if "cover_glass" in p["name"] else 1.20
-            # audio: speakers/mics ~2.2 effective, meshes 1.20
-            if role == "audio":
-                rho = float(p["density_g_per_cm3"])
-            # camera (lens module bodies are mixed plastic/metal ~1.20-2.2)
-            if role == "camera":
-                rho = float(p["density_g_per_cm3"])
-            mass_g = vol_mm3 * rho / 1000.0
-        refreshed_parts.append({
-            "name": p["name"],
-            "role": role,
-            "volume_mm3": round(vol_mm3, 3),
-            "density_g_per_cm3": round(rho, 3),
-            "mass_g": round(mass_g, 4),
-            "excluded_placeholder": p["excluded_placeholder"],
-        })
-        role_totals[role] = role_totals.get(role, 0.0) + mass_g
-        rollup += mass_g
-
-    hidden = [
-        {"item": name, "mass_g": round(m, 3), "source": src}
-        for name, m, src in HIDDEN_MASSES
-    ]
-    hidden_total = sum(h["mass_g"] for h in hidden)
-    total = rollup + hidden_total
-    delta = total - TARGET_MASS_G
-
-    return {
-        "evidence_class": EVIDENCE_CLASS,
-        "claim_boundary": (
-            "Mass estimated from STEP volume x nominal density plus datasheet/"
-            "class-typical masses for items absent from the STEP set. Not "
-            "measured on hardware."
-        ),
-        "density_table_g_per_cm3": DENSITY,
-        "step_rollup_mass_g": round(rollup, 3),
-        "hidden_mass_total_g": round(hidden_total, 3),
-        "total_estimated_mass_g": round(total, 3),
-        "target_mass_g": TARGET_MASS_G,
-        "delta_to_target_g": round(delta, 3),
-        "mass_by_role_g": {k: round(v, 3) for k, v in sorted(role_totals.items())},
-        "hidden_masses": hidden,
-        "parts": refreshed_parts,
-    }
+def load_cad_geometry_mass_g() -> float:
+    budget = json.loads(MASS_BUDGET.read_text())
+    return float(budget["total_estimated_mass_g"])
 
 
-def build_spec_sheet(params: dict, mass_total_g: float) -> dict:
-    env = params["device"]["envelope_mm"]
+def build_spec_sheet(params: dict) -> dict:
+    dev = params["device"]
+    env = dev["envelope_mm"]
     envelope_vol_cm3 = env[0] * env[1] * env[2] / 1000.0
+
+    cad_geometry_g = load_cad_geometry_mass_g()
+    reconciled_g = cad_geometry_g + ASSEMBLY_STAGE_MASS_G
+    ship_target_g = float(dev["ship_target_mass_g"])
+    ship_tol_g = 10.0
+    concept_target_g = float(dev["target_mass_g"])
+    max_mass_g = float(dev["max_mass_g"])
+    ship_low_g = ship_target_g - ship_tol_g
+    ship_high_g = ship_target_g + ship_tol_g
+    within_ship_window = ship_low_g <= reconciled_g <= ship_high_g
+    ship_target_pass = reconciled_g <= max_mass_g
+    ship_target_verdict = "PASS" if ship_target_pass else "FAIL"
+
+    bat = params["battery"]
+    rear_cam = params["components"]["rear_camera"]
+    front_cam = params["components"]["front_camera"]
+    flash = params["components"]["rear_flash_led"]
+
     return {
         "evidence_class": EVIDENCE_CLASS,
         "source_params_yaml": str(CAD_PARAMS.relative_to(ROOT.parent)),
         "device": {
-            "name": params["device"]["name"],
-            "revision": params["device"]["revision"],
+            "name": dev["name"],
+            "revision": dev["revision"],
             "os": "AOSP / Android 14",
         },
         "mechanical": {
-            "dimensions_mm": {"width": env[0], "height": env[1], "thickness": env[2]},
+            "dimensions_mm": {
+                "width": env[0],
+                "height": env[1],
+                "thickness": env[2],
+            },
+            "back_face": (
+                "fully flush flat back, no camera bump, no protruding lens ring"
+            ),
             "envelope_volume_cm3": round(envelope_vol_cm3, 2),
-            "corner_radius_mm": params["device"]["corner_radius_mm"],
-            "mass_g": round(mass_total_g, 1),
-            "mass_target_g": TARGET_MASS_G,
-            "color": params["device"]["plastic_color"],
+            "corner_radius_mm": dev["corner_radius_mm"],
+            "mass_g": round(reconciled_g, 2),
+            "mass_cad_geometry_subtotal_g": round(cad_geometry_g, 2),
+            "mass_missing_items_subtotal_g": ASSEMBLY_STAGE_MASS_G,
+            "mass_ship_target_g": ship_target_g,
+            "mass_ship_target_tolerance_g": ship_tol_g,
+            "mass_ship_target_window_g": [ship_low_g, ship_high_g],
+            "mass_max_g": max_mass_g,
+            "mass_within_ship_target_window": within_ship_window,
+            "mass_ship_target_verdict": ship_target_verdict,
+            "mass_target_g": concept_target_g,
+            "mass_target_note": (
+                f"{concept_target_g:.0f} g aspirational concept target; "
+                f"{ship_target_g:.0f} +/-{ship_tol_g:.0f} g EVT0 ship-target window "
+                f"({ship_low_g:.0f}-{ship_high_g:.0f} g); {max_mass_g:.0f} g hard "
+                f"maximum weight. Flush-back rev ({env[2]} mm, "
+                f"{bat['capacity_mah']} mAh battery) reconciled CAD mass "
+                f"{reconciled_g:.2f} g is {ship_target_verdict} against the "
+                f"{max_mass_g:.0f} g maximum"
+                + (
+                    (
+                        " and within the ship-target window."
+                        if within_ship_window
+                        else (
+                            f"; it is above the ship-target window but under the "
+                            f"hard maximum with {max_mass_g - reconciled_g:.2f} g "
+                            "margin. The CAD mass is a nominal-density geometry "
+                            "estimate, not measured hardware."
+                        )
+                    )
+                    if ship_target_pass
+                    else (
+                        f" (over by {reconciled_g - max_mass_g:.2f} g). The CAD "
+                        "mass is a nominal-density geometry estimate, not measured "
+                        "hardware; the overage must be closed at EVT by measured "
+                        "component mass and/or mass-reduction before the maximum "
+                        "can be claimed."
+                    )
+                )
+            ),
+            "color": dev["plastic_color"],
             "material": "PC+ABS injection molded",
         },
         "display": {
@@ -172,11 +131,21 @@ def build_spec_sheet(params: dict, mass_total_g: float) -> dict:
             "active_area_mm": params["display"]["active_area_mm"],
         },
         "compute": {
-            "soc_class": "Unisoc T606",
-            "ram_gb": 4,
-            "ram_type": "LPDDR4X",
-            "storage_gb": 64,
+            "soc_class": "Rockchip RK3566 (quad Cortex-A55, Mali-G52, 1 TOPS NPU)",
+            "module": (
+                "Firefly Core-3566JD4-class System-on-Module (PATH A, default) "
+                "bundling SoC + LPDDR4 + eMMC + PMIC behind a public 260-pin "
+                "SODIMM pinout"
+            ),
+            "ram_gb": 2,
+            "ram_type": "LPDDR4",
+            "storage_gb": 32,
             "storage_type": "eMMC 5.1",
+            "cost_down_note": (
+                "A bare-SoC path (bare Unisoc T606 / RK3566 + discrete "
+                "LPDDR4/eMMC/PMIC, PATH B) is ~$4.55-7.10/unit cheaper but "
+                "requires the SoC vendor NDA for the BGA ball-map."
+            ),
         },
         "cellular": {
             "modem": "Quectel RG255C 5G RedCap LGA",
@@ -196,9 +165,11 @@ def build_spec_sheet(params: dict, mass_total_g: float) -> dict:
         },
         "battery": {
             "chemistry": "LiPo pouch",
-            "capacity_mAh": 4500,
-            "nominal_voltage_V": 3.85,
-            "energy_Wh": 17.33,
+            "candidate": bat["candidate"],
+            "envelope_mm": bat["envelope_mm"],
+            "capacity_mAh": bat["capacity_mah"],
+            "nominal_voltage_V": bat["nominal_voltage_v"],
+            "energy_Wh": bat["energy_wh"],
             "wireless_charging": False,
         },
         "audio": {
@@ -208,8 +179,21 @@ def build_spec_sheet(params: dict, mass_total_g: float) -> dict:
             "haptic": "0612 X-axis LRA",
         },
         "camera": {
-            "rear": "13 MP OmniVision OV13855 autofocus",
-            "front": "5 MP GalaxyCore GC5035 fixed-focus",
+            "rear": (
+                f"13 MP OmniVision OV13855 autofocus, "
+                f"{rear_cam['lens_count']} lens ({rear_cam['array']})"
+            ),
+            "rear_array": rear_cam["array"],
+            "rear_flash": (
+                "single rear torch/flash LED (Everlight/OSRAM-class "
+                f"~{flash['envelope_mm'][0]}x{flash['envelope_mm'][1]} mm) behind "
+                "a flush light-pipe window, AW36515-class flash driver"
+            ),
+            "front": (
+                f"5 MP GalaxyCore GC5035 fixed-focus, "
+                f"{front_cam['lens_count']} lens ({front_cam['array']})"
+            ),
+            "front_array": front_cam["array"],
         },
         "environmental": {
             "ip_rating_design_intent": "IP54 (dust-protected, splash-resistant)",
@@ -233,130 +217,12 @@ def build_spec_sheet(params: dict, mass_total_g: float) -> dict:
     }
 
 
-def build_tolerance_stack() -> dict:
-    """Worst-case + RSS tolerance stacks for 4 critical gaps."""
-    stacks = []
-
-    def stack(name, target_nom, target_tol, contributors):
-        wc = sum(abs(c["tol_mm"]) for c in contributors)
-        rss = (sum(c["tol_mm"] ** 2 for c in contributors)) ** 0.5
-        wc_pass = wc <= target_tol
-        rss_pass = rss <= target_tol
-        stacks.append({
-            "name": name,
-            "target_nominal_mm": target_nom,
-            "target_tolerance_mm": target_tol,
-            "contributors": contributors,
-            "worst_case_sum_mm": round(wc, 4),
-            "rss_mm": round(rss, 4),
-            "worst_case_pass": wc_pass,
-            "rss_pass": rss_pass,
-            "verdict": "PASS" if rss_pass else "FAIL",
-        })
-
-    # Common contributors
-    plastic_shrink = {"source": "PC+ABS molding shrink ±0.15%", "tol_mm": 0.05}
-    mold_tol = {"source": "steel mold cavity tolerance", "tol_mm": 0.05}
-    adhesive = {"source": "PSA adhesive cure thickness", "tol_mm": 0.03}
-    placement = {"source": "manual assembly placement", "tol_mm": 0.10}
-
-    stack(
-        "display_gap_to_bezel",
-        0.15,
-        0.10,
-        [
-            plastic_shrink,
-            mold_tol,
-            adhesive,
-            {"source": "LCM cover glass datasheet ±0.05", "tol_mm": 0.05},
-            placement,
-        ],
-    )
-    stack(
-        "power_button_cap_proud_above_bezel",
-        0.30,
-        0.05,
-        [
-            plastic_shrink,
-            mold_tol,
-            {"source": "tact switch travel datasheet ±0.05", "tol_mm": 0.05},
-            placement,
-        ],
-    )
-    stack(
-        "usb_c_aperture_vs_receptacle_clearance",
-        0.20,
-        0.05,
-        [
-            plastic_shrink,
-            mold_tol,
-            {"source": "GCT USB4105 datasheet shell ±0.10", "tol_mm": 0.10},
-            placement,
-        ],
-    )
-    stack(
-        "rear_camera_ring_vs_cover_glass",
-        0.10,
-        0.05,
-        [
-            plastic_shrink,
-            mold_tol,
-            adhesive,
-            {"source": "cover glass cut tolerance ±0.05", "tol_mm": 0.05},
-            placement,
-        ],
-    )
-
-    return {
-        "evidence_class": EVIDENCE_CLASS,
-        "method": (
-            "Worst-case sum (linear) and RSS (root-sum-square) of contributor "
-            "tolerances. Verdict uses RSS vs target tolerance."
-        ),
-        "stacks": stacks,
-    }
-
-
-def md_mass_budget(mb: dict) -> str:
-    lines = [
-        "# E1 phone — refreshed mass budget (CAD estimate)",
-        "",
-        f"- Evidence class: `{mb['evidence_class']}`",
-        f"- STEP rollup: **{mb['step_rollup_mass_g']:.2f} g**",
-        f"- Hidden/off-STEP masses: **{mb['hidden_mass_total_g']:.2f} g**",
-        f"- Total estimated mass: **{mb['total_estimated_mass_g']:.2f} g**",
-        f"- Target: {mb['target_mass_g']:.1f} g",
-        f"- Delta to target: **{mb['delta_to_target_g']:+.2f} g**",
-        "",
-        "## Mass by role",
-        "",
-        "| Role | Mass (g) |",
-        "|---|---|",
-    ]
-    for role, m in mb["mass_by_role_g"].items():
-        lines.append(f"| {role} | {m:.3f} |")
-    lines += ["", "## Hidden / off-STEP masses", "",
-              "| Item | Mass (g) | Source |", "|---|---|---|"]
-    for h in mb["hidden_masses"]:
-        lines.append(f"| {h['item']} | {h['mass_g']:.3f} | {h['source']} |")
-    if mb["delta_to_target_g"] < 0:
-        lines += ["",
-                  f"Delta is **{mb['delta_to_target_g']:+.2f} g** (under target). "
-                  "Likely missed mass: cover-glass ink layer + polarizer "
-                  "(~1-2 g), bond-line adhesive coverage beyond perimeter "
-                  "ribbon, conformal coating, and labeling. EVT mass "
-                  "measurement will close the gap."]
-    else:
-        lines += ["",
-                  f"Delta is **{mb['delta_to_target_g']:+.2f} g** (over target). "
-                  "Optimization candidates: thin back-shell ribs, reduce EMI "
-                  "can wall thickness from 0.20 mm to 0.15 mm, lighter LRA "
-                  "counterweight."]
-    return "\n".join(lines) + "\n"
-
-
 def md_spec_sheet(s: dict) -> str:
     d = s["mechanical"]["dimensions_mm"]
+    m = s["mechanical"]
+    cg = s["display"]["cover_glass_mm"]
+    aa = s["display"]["active_area_mm"]
+    bat = s["battery"]
     lines = [
         f"# {s['device']['name']} — retail spec sheet",
         "",
@@ -365,22 +231,33 @@ def md_spec_sheet(s: dict) -> str:
         f"- Revision: {s['device']['revision']}",
         "",
         "## Mechanical",
-        f"- Dimensions: {d['width']} x {d['height']} x {d['thickness']} mm",
-        f"- Envelope volume: {s['mechanical']['envelope_volume_cm3']:.2f} cm^3",
-        f"- Corner radius: {s['mechanical']['corner_radius_mm']} mm",
-        f"- Mass: {s['mechanical']['mass_g']:.1f} g (target {s['mechanical']['mass_target_g']:.0f} g)",
-        f"- Color / material: {s['mechanical']['color']} / {s['mechanical']['material']}",
+        f"- Dimensions: {d['width']} x {d['height']} x {d['thickness']} mm "
+        f"({m['back_face']})",
+        f"- Envelope volume: {m['envelope_volume_cm3']:.2f} cm^3",
+        f"- Corner radius: {m['corner_radius_mm']} mm",
+        f"- Mass: {m['mass_g']:.2f} g reconciled "
+        f"({m['mass_cad_geometry_subtotal_g']:.2f} g CAD geometry + "
+        f"{m['mass_missing_items_subtotal_g']:.1f} g assembly-stage items); "
+        f"ship target {m['mass_ship_target_g']:.0f} "
+        f"+/-{m['mass_ship_target_tolerance_g']:.0f} g "
+        f"({m['mass_ship_target_verdict']}). {m['mass_target_note']} "
+        f"Aspirational concept target {m['mass_target_g']:.0f} g retained for "
+        "reference.",
+        f"- Color / material: {m['color']} / {m['material']}",
         "",
         "## Display",
-        f"- 5.5\" IPS LCD, 1080x1920 FHD, MIPI DSI, capacitive multi-touch",
-        f"- Cover glass: {s['display']['cover_glass_mm']} mm",
-        f"- Active area: {s['display']['active_area_mm']} mm",
+        '- 5.5" IPS LCD, 1080x1920 FHD, MIPI DSI, capacitive multi-touch',
+        f"- Cover glass: {cg} mm",
+        f"- Active area: {aa} mm",
         "",
         "## Compute",
         f"- SoC class: {s['compute']['soc_class']}",
-        f"- RAM: {s['compute']['ram_gb']} GB {s['compute']['ram_type']}",
-        f"- Storage: {s['compute']['storage_gb']} GB {s['compute']['storage_type']}",
+        f"- Module: {s['compute']['module']}",
+        f"- RAM: {s['compute']['ram_gb']} GB {s['compute']['ram_type']} (on-module)",
+        f"- Storage: {s['compute']['storage_gb']} GB "
+        f"{s['compute']['storage_type']} (on-module; 64/128 GB option)",
         f"- OS: {s['device']['os']}",
+        f"- Cost-down note: {s['compute']['cost_down_note']}",
         "",
         "## Cellular",
         f"- Modem: {s['cellular']['modem']}",
@@ -397,9 +274,9 @@ def md_spec_sheet(s: dict) -> str:
         f"- Video out: {s['usb']['video_out']}",
         "",
         "## Battery & charging",
-        f"- {s['battery']['capacity_mAh']} mAh @ {s['battery']['nominal_voltage_V']} V "
-        f"= {s['battery']['energy_Wh']} Wh ({s['battery']['chemistry']})",
-        f"- Wireless charging: {s['battery']['wireless_charging']}",
+        f"- {bat['capacity_mAh']} mAh @ {bat['nominal_voltage_V']} V "
+        f"= {bat['energy_Wh']} Wh ({bat['chemistry']}, {bat['candidate']})",
+        f"- Wireless charging: {bat['wireless_charging']}",
         "",
         "## Audio",
         f"- Bottom speaker: {s['audio']['bottom_speaker']}",
@@ -409,6 +286,7 @@ def md_spec_sheet(s: dict) -> str:
         "",
         "## Camera",
         f"- Rear: {s['camera']['rear']}",
+        f"- Rear flash: {s['camera']['rear_flash']}",
         f"- Front: {s['camera']['front']}",
         "",
         "## Environmental",
@@ -424,53 +302,22 @@ def md_spec_sheet(s: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def md_tolerance_stack(t: dict) -> str:
-    lines = [
-        "# E1 phone — tolerance stack analysis",
-        "",
-        f"- Evidence class: `{t['evidence_class']}`",
-        f"- Method: {t['method']}",
-        "",
-    ]
-    for s in t["stacks"]:
-        lines += [
-            f"## {s['name']}",
-            f"- Target: {s['target_nominal_mm']} ± {s['target_tolerance_mm']} mm",
-            f"- Worst-case sum: {s['worst_case_sum_mm']} mm "
-            f"({'PASS' if s['worst_case_pass'] else 'FAIL'})",
-            f"- RSS: {s['rss_mm']} mm "
-            f"({'PASS' if s['rss_pass'] else 'FAIL'})",
-            f"- **Verdict: {s['verdict']}**",
-            "",
-            "| Contributor | ± Tol (mm) |",
-            "|---|---|",
-        ]
-        for c in s["contributors"]:
-            lines.append(f"| {c['source']} | {c['tol_mm']} |")
-        lines.append("")
-    return "\n".join(lines) + "\n"
-
-
 def main() -> None:
     params = yaml.safe_load(CAD_PARAMS.read_text())
 
-    mb = refresh_mass_budget()
-    (REVIEW / "mass-budget.json").write_text(json.dumps(mb, indent=2) + "\n")
-    (REVIEW / "mass-budget.md").write_text(md_mass_budget(mb))
-
-    spec = build_spec_sheet(params, mb["total_estimated_mass_g"])
+    spec = build_spec_sheet(params)
     (REVIEW / "e1-phone-spec-sheet.json").write_text(json.dumps(spec, indent=2) + "\n")
     (REVIEW / "e1-phone-spec-sheet.md").write_text(md_spec_sheet(spec))
 
-    tol = build_tolerance_stack()
-    (REVIEW / "tolerance-stack.json").write_text(json.dumps(tol, indent=2) + "\n")
-    (REVIEW / "tolerance-stack.md").write_text(md_tolerance_stack(tol))
-
-    print(f"Total mass: {mb['total_estimated_mass_g']:.2f} g "
-          f"(delta {mb['delta_to_target_g']:+.2f} g vs {TARGET_MASS_G} g)")
-    for s in tol["stacks"]:
-        print(f"  {s['name']}: WC={s['worst_case_sum_mm']} RSS={s['rss_mm']} "
-              f"-> {s['verdict']}")
+    d = spec["mechanical"]["dimensions_mm"]
+    bat = spec["battery"]
+    print(
+        f"Spec sheet: {d['width']} x {d['height']} x {d['thickness']} mm, "
+        f"{spec['mechanical']['mass_g']:.2f} g reconciled "
+        f"(CAD {spec['mechanical']['mass_cad_geometry_subtotal_g']:.2f} g + "
+        f"{spec['mechanical']['mass_missing_items_subtotal_g']:.1f} g), "
+        f"battery {bat['capacity_mAh']} mAh / {bat['energy_Wh']} Wh"
+    )
 
 
 if __name__ == "__main__":

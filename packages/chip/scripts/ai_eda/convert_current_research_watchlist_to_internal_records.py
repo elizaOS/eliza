@@ -18,7 +18,9 @@ DEFAULT_WATCHLIST = (
     / "research/alpha_chip_macro_placement/01_sources/ai_eda_current_research_watchlist_2026.yaml"
 )
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/current_research_watchlist_records"
-CLAIM_BOUNDARY = "current_research_watchlist_text_sample_only_no_import_training_inference_e1_or_release_claim"
+CLAIM_BOUNDARY = (
+    "current_research_watchlist_text_sample_only_no_import_training_inference_e1_or_release_claim"
+)
 
 
 def rel(path: Path) -> str:

@@ -100,7 +100,13 @@ def convert_macroplacement(out_dir: Path) -> list[dict[str, Any]]:
         },
     }
     path = write_json(out_dir, record)
-    return [{"source": "MacroPlacement/Bookshelf fixture", "schema": record["schema"], "json": str(path.relative_to(ROOT))}]
+    return [
+        {
+            "source": "MacroPlacement/Bookshelf fixture",
+            "schema": record["schema"],
+            "json": str(path.relative_to(ROOT)),
+        }
+    ]
 
 
 def convert_chipbench(out_dir: Path) -> list[dict[str, Any]]:
@@ -140,7 +146,9 @@ def convert_chipbench(out_dir: Path) -> list[dict[str, Any]]:
             "core_area_um": [50, 50, 950, 950],
             "rows": "def_fixture_rows",
         },
-        "movable_objects": [{"id": "npu_softmacro", "type": "macro", "width_um": 120, "height_um": 120}],
+        "movable_objects": [
+            {"id": "npu_softmacro", "type": "macro", "width_um": 120, "height_um": 120}
+        ],
         "fixed_objects": [],
         "objective": {
             "primary": "chipbench_d_macro_placed_def_fixture_conversion",
@@ -153,8 +161,16 @@ def convert_chipbench(out_dir: Path) -> list[dict[str, Any]]:
     }
     paths = [write_json(out_dir, design_bundle), write_json(out_dir, placement_case)]
     return [
-        {"source": "ChiPBench-D fixture", "schema": design_bundle["schema"], "json": str(paths[0].relative_to(ROOT))},
-        {"source": "ChiPBench-D fixture", "schema": placement_case["schema"], "json": str(paths[1].relative_to(ROOT))},
+        {
+            "source": "ChiPBench-D fixture",
+            "schema": design_bundle["schema"],
+            "json": str(paths[0].relative_to(ROOT)),
+        },
+        {
+            "source": "ChiPBench-D fixture",
+            "schema": placement_case["schema"],
+            "json": str(paths[1].relative_to(ROOT)),
+        },
     ]
 
 
@@ -181,7 +197,13 @@ def convert_circuitnet(out_dir: Path) -> list[dict[str, Any]]:
         },
     }
     out_path = write_json(out_dir, record)
-    return [{"source": "CircuitNet feature fixture", "schema": record["schema"], "json": str(out_path.relative_to(ROOT))}]
+    return [
+        {
+            "source": "CircuitNet feature fixture",
+            "schema": record["schema"],
+            "json": str(out_path.relative_to(ROOT)),
+        }
+    ]
 
 
 def parse_args() -> argparse.Namespace:

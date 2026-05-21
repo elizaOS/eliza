@@ -129,7 +129,10 @@ def expected_revision(asset: dict[str, Any]) -> str | None:
     if not isinstance(revision, dict):
         return None
     value = revision.get("value")
-    if not isinstance(value, str) or value in {"PIN_AFTER_FETCH", "BLOCKED_HTTP_403_REAUDIT_REQUIRED"}:
+    if not isinstance(value, str) or value in {
+        "PIN_AFTER_FETCH",
+        "BLOCKED_HTTP_403_REAUDIT_REQUIRED",
+    }:
         return None
     if revision.get("type") not in {"commit", "tag", "hf_revision"}:
         return None
@@ -153,6 +156,20 @@ def verify_existing(path: Path, asset: dict[str, Any]) -> dict[str, Any]:
         }
     if not path.exists():
         return {"status": "BLOCKED_MISSING_LOCAL_ASSET", "path": str(path)}
+    hf_revision_path = path / ".hf_revision"
+    if hf_revision_path.is_file():
+        actual_revision = hf_revision_path.read_text(encoding="utf-8").strip()
+        expected = expected_revision(asset)
+        status = "PRESENT_HUGGINGFACE_PAYLOAD"
+        if expected and actual_revision != expected:
+            status = "BLOCKED_REVISION_MISMATCH"
+        return {
+            "status": status,
+            "path": str(path),
+            "revision": actual_revision,
+            "expected_revision": expected,
+            "file_manifest": payload_file_manifest(path),
+        }
     if (path / ".git").exists() and command_exists("git"):
         rev = run_command(["git", "rev-parse", "HEAD"], cwd=path)
         actual_revision = rev["stdout_tail"].strip()
@@ -225,21 +242,33 @@ def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
             result["git_lfs_pull"] = lfs
         return result
     if mode == "huggingface":
-        if not command_exists("hf"):
-            return {"status": "BLOCKED_MISSING_TOOL", "tool": "hf"}
         # Convert https://huggingface.co/datasets/org/name to org/name.
         dataset_id = source_url.rstrip("/").split("/datasets/", 1)[-1]
-        return run_command(
-            [
-                "hf",
-                "download",
-                dataset_id,
-                "--type",
-                "dataset",
-                "--local-dir",
-                str(dest),
-            ]
-        )
+        revision = expected_revision(asset)
+        try:
+            from huggingface_hub import snapshot_download  # type: ignore
+        except Exception as exc:  # noqa: BLE001
+            return {"status": "BLOCKED_MISSING_TOOL", "tool": "huggingface_hub", "error": str(exc)}
+        try:
+            snapshot_download(
+                repo_id=dataset_id,
+                repo_type="dataset",
+                revision=revision,
+                local_dir=dest,
+                local_dir_use_symlinks=False,
+            )
+        except TypeError:
+            snapshot_download(
+                repo_id=dataset_id,
+                repo_type="dataset",
+                revision=revision,
+                local_dir=dest,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"status": "BLOCKED_HUGGINGFACE_DOWNLOAD_FAILED", "error": str(exc)}
+        if revision:
+            (dest / ".hf_revision").write_text(revision + "\n", encoding="utf-8")
+        return {"status": "PRESENT_HUGGINGFACE_PAYLOAD", "path": str(dest), "revision": revision}
     if mode == "model":
         if source_url.startswith("https://storage.googleapis.com/"):
             dest.mkdir(parents=True, exist_ok=True)
@@ -303,7 +332,11 @@ def main() -> int:
             }
         if action.get("status", "").startswith("BLOCKED"):
             overall_rc = max(overall_rc, 2)
-        if mode == "execute" and isinstance(action.get("returncode"), int) and action["returncode"] != 0:
+        if (
+            mode == "execute"
+            and isinstance(action.get("returncode"), int)
+            and action["returncode"] != 0
+        ):
             overall_rc = max(overall_rc, 1)
         reports.append(
             {
@@ -334,9 +367,7 @@ def main() -> int:
     report_path = out_dir / ("all.json" if args.all else f"{reports[0]['asset']['id']}.json")
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
 
-    blocked = sum(
-        1 for item in reports if item["action"].get("status", "").startswith("BLOCKED")
-    )
+    blocked = sum(1 for item in reports if item["action"].get("status", "").startswith("BLOCKED"))
     failed = sum(
         1
         for item in reports

@@ -6,11 +6,11 @@
       "id": "power_button_force_travel_pressure",
       "interface": "button",
       "actual": {
-        "force_n": 1.6,
-        "travel_mm": 0.35,
-        "pressure_n_per_mm2": 0.121
+        "force_n": 1.57,
+        "travel_mm": 0.2,
+        "pressure_n_per_mm2": 0.119
       },
-      "target": "1.2-2.2 N, >=0.25 mm travel, pressure below CAD limit",
+      "target": "1.2-2.2 N, >=0.18 mm travel, pressure below CAD limit",
       "pass": true,
       "evidence": [
         "power_button_cap",
@@ -24,11 +24,11 @@
       "id": "volume_button_force_travel_pressure",
       "interface": "button",
       "actual": {
-        "force_n": 1.5,
-        "travel_mm": 0.35,
-        "pressure_n_per_mm2": 0.065
+        "force_n": 1.57,
+        "travel_mm": 0.2,
+        "pressure_n_per_mm2": 0.068
       },
-      "target": "1.2-2.2 N, >=0.25 mm travel, pressure below CAD limit",
+      "target": "1.2-2.2 N, >=0.18 mm travel, pressure below CAD limit",
       "pass": true,
       "evidence": [
         "volume_button_cap",

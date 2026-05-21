@@ -80,7 +80,10 @@ package bpu_pkg;
     // Number of tagged tables in the TAGE stack. The base bimodal predictor
     // is held separately and indexed by PC only.
     localparam int unsigned TAGE_TABLES        = 5;
-    localparam int unsigned TAGE_ENTRIES_TABLE = 4096;
+    // Sweep R9 (`combo_algo_geo`) moved the tagged stack to 8K entries/table.
+    // The added capacity is the dominant stable win across the real RV64,
+    // CBP-5 sample, and GPU-shaped synthetic workload mix.
+    localparam int unsigned TAGE_ENTRIES_TABLE = 8192;
     localparam int unsigned TAGE_IDX_W         = $clog2(TAGE_ENTRIES_TABLE);
     localparam int unsigned TAGE_TAG_W         = 8;
     localparam int unsigned TAGE_CTR_W         = 3;     // 3-bit signed direction
@@ -99,10 +102,10 @@ package bpu_pkg;
     // generate-time elaboration so yosys (no constant-function support for
     // module port widths) can also parse the package.
     localparam int unsigned TAGE_HIST_LEN_0 = 8;
-    localparam int unsigned TAGE_HIST_LEN_1 = 13;
-    localparam int unsigned TAGE_HIST_LEN_2 = 32;
-    localparam int unsigned TAGE_HIST_LEN_3 = 64;
-    localparam int unsigned TAGE_HIST_LEN_4 = 119;
+    localparam int unsigned TAGE_HIST_LEN_1 = 16;
+    localparam int unsigned TAGE_HIST_LEN_2 = 44;
+    localparam int unsigned TAGE_HIST_LEN_3 = 90;
+    localparam int unsigned TAGE_HIST_LEN_4 = 195;
     function automatic int unsigned tage_hist_len(input int unsigned table_id);
         case (table_id)
             32'd0:   tage_hist_len = TAGE_HIST_LEN_0;
@@ -114,14 +117,15 @@ package bpu_pkg;
         endcase
     endfunction
 
-    // Useful-bit periodic reset interval (cycles). Matches Seznec CBP-5
-    // recommendation: alternate-half reset on every 256K predictions.
-    localparam int unsigned TAGE_USEFUL_RESET_PERIOD = 32'h0004_0000;
+    // Useful-bit periodic reset interval (cycles). The sweep favoured faster
+    // aging than the 256K seed because the mixed E1/GPU workload set changes
+    // phases more often than the CBP-only reference.
+    localparam int unsigned TAGE_USEFUL_RESET_PERIOD = 32'd100000;
 
     // Working width of the global history shift register. Sized to the
     // longest tagged-table history (table 4) so that all per-table histories
     // can be sliced from the same vector.
-    localparam int unsigned TAGE_HIST_LEN_MAX = 119;
+    localparam int unsigned TAGE_HIST_LEN_MAX = 195;
 
     // ------------------------------------------------------------------
     // Statistical Corrector (SC)
@@ -146,6 +150,9 @@ package bpu_pkg;
     // SC threshold counter for taking the corrector's verdict. Updated by
     // the SC update path when TAGE's confidence is low.
     localparam int unsigned SC_THRESH_INIT = 6;
+    localparam int unsigned SC_THRESH_MIN  = 4;
+    localparam int unsigned SC_THRESH_MAX  = 31;
+    localparam logic signed [5:0] SC_TC_LIMIT = 6'sd12;
 
     // ------------------------------------------------------------------
     // Loop predictor

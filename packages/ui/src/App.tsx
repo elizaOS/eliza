@@ -43,6 +43,7 @@ import { CustomActionEditor } from "./components/custom-actions/CustomActionEdit
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { ChatView } from "./components/pages/ChatView";
+import { HomeView } from "./components/pages/HomeView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
@@ -52,13 +53,17 @@ import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanne
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { Header } from "./components/shell/Header";
 import { HomePill } from "./components/shell/HomePill";
+import {
+  ShellControllerProvider,
+  useShellControllerContext,
+} from "./components/shell/ShellControllerContext";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
-import { useShellState } from "./components/shell/useShellState";
 import { Button } from "./components/ui/button";
 import { ErrorBoundary } from "./components/ui/error-boundary";
+import { VoiceWaveform } from "./components/voice/VoiceWaveform";
 import {
   AppWorkspaceChrome,
   type AppWorkspaceChromeProps,
@@ -329,6 +334,55 @@ function useIsPopout(): boolean {
   return popout;
 }
 
+/**
+ * Shell mode for the Linux OS overlay windows. The OS launches the same app
+ * bundle with `--shell-mode=chat-overlay` (a floating, transparent assistant
+ * pill window) or `--shell-mode=launcher` (full home view). The mode is read
+ * from the URL (`?shellMode=` / `?shell-mode=`) or the
+ * `ELIZAOS_SHELL_MODE` global the native shell may inject. Unset = full app.
+ */
+type ShellMode = "chat-overlay" | "launcher" | "full";
+
+function readShellMode(): ShellMode {
+  if (typeof window === "undefined") return "full";
+  const params = new URLSearchParams(
+    window.location.search || window.location.hash.split("?")[1] || "",
+  );
+  const raw =
+    params.get("shellMode") ??
+    params.get("shell-mode") ??
+    (window as unknown as { ELIZAOS_SHELL_MODE?: string }).ELIZAOS_SHELL_MODE ??
+    "";
+  if (raw === "chat-overlay") return "chat-overlay";
+  if (raw === "launcher") return "launcher";
+  return "full";
+}
+
+function useShellMode(): ShellMode {
+  const [mode] = useState(readShellMode);
+  return mode;
+}
+
+/**
+ * Floating, transparent assistant overlay surface for the OS chat-overlay
+ * window. Renders ONLY the waveform + pill + chat/voice overlay — no app
+ * chrome — over a transparent background.
+ */
+function ChatOverlayShell() {
+  const controller = useShellControllerContext();
+  return (
+    <div
+      data-testid="chat-overlay-shell"
+      className="fixed inset-0 flex items-end justify-center bg-transparent"
+    >
+      <div className="pointer-events-none mb-20 flex items-center justify-center">
+        <VoiceWaveform mode={controller?.waveformMode ?? "idle"} size={160} />
+      </div>
+      <ShellFoundationMount />
+    </div>
+  );
+}
+
 function TabScrollView({
   children,
   className = "",
@@ -572,6 +626,8 @@ function ViewRouter({
       );
     }
     switch (tab) {
+      case "home":
+        return <HomeView />;
       case "chat":
         return <ChatView />;
       case "phone":
@@ -746,47 +802,31 @@ function greetingForTimeOfDay(): string {
   return "Good evening! What would you like to do?";
 }
 
+/**
+ * Bottom-center pill + assistant overlay, wired to the real agent message
+ * flow via the shared shell controller (see ShellControllerProvider). The
+ * overlay's ChatSurface sends through `sendChatText` and renders live
+ * conversation messages; the mic button drives voice capture.
+ */
 function ShellFoundationMount() {
-  const app = useApp();
-  const { state, send } = useShellState();
-
-  // Drive BOOT_READY from Shaw's startup coordinator.
-  const ready = app.startupCoordinator.phase === "ready";
-  useEffect(() => {
-    if (ready) send({ type: "BOOT_READY" });
-  }, [ready, send]);
-
-  // v1: mocked agent. Echoes the user's text after 400ms. When the agent
-  // integration sub-project lands, replace this with a real `client` stream
-  // subscription that pushes RESPONSE_DELTA / RESPONSE_DONE / RESPONSE_ERROR.
-  const onSend = useCallback(
-    (text: string) => {
-      send({ type: "SEND", text });
-      window.setTimeout(() => {
-        send({ type: "RESPONSE_DELTA", delta: `Echo: ${text}` });
-        send({ type: "RESPONSE_DONE" });
-      }, 400);
-    },
-    [send],
-  );
-
-  const onOpen = useCallback(() => send({ type: "OPEN" }), [send]);
-  const onClose = useCallback(() => send({ type: "CLOSE" }), [send]);
-
-  // Match shellReducer's SEND guard exactly. The reducer only accepts SEND
-  // from `summoned` or `listening`; offering input while `responding` would
-  // silently drop the user's text.
-  const canSend = state.phase === "summoned" || state.phase === "listening";
+  const controller = useShellControllerContext();
+  if (!controller) return null;
 
   return (
     <>
-      <HomePill phase={state.phase} onOpen={onOpen} onClose={onClose} />
-      <AssistantOverlay phase={state.phase} onClose={onClose}>
+      <HomePill
+        phase={controller.phase}
+        onOpen={controller.open}
+        onClose={controller.close}
+      />
+      <AssistantOverlay phase={controller.phase} onClose={controller.close}>
         <ChatSurface
-          messages={state.messages}
-          onSend={onSend}
-          canSend={canSend}
+          messages={controller.messages}
+          onSend={controller.send}
+          canSend={controller.canSend}
           greeting={greetingForTimeOfDay()}
+          recording={controller.recording}
+          onToggleRecording={controller.toggleRecording}
         />
       </AssistantOverlay>
     </>
@@ -815,6 +855,7 @@ export function App() {
   const { companionShell: CompanionShell } = useBootConfig();
 
   const isPopout = useIsPopout();
+  const shellMode = useShellMode();
   // Auth gate — only active after the coordinator reaches "ready".
   // During onboarding / pairing / startup phases the StartupShell handles
   // its own gate (bootstrap step), so we skip the check.
@@ -1584,77 +1625,92 @@ export function App() {
     // rendering (avoids a flash of login screen on refresh when cookies are valid).
   }
 
+  // OS chat-overlay window — render JUST the floating assistant pill +
+  // waveform over a transparent background, no app chrome.
+  if (shellMode === "chat-overlay") {
+    return (
+      <BugReportProvider value={bugReport}>
+        <ShellControllerProvider>
+          <ChatOverlayShell />
+        </ShellControllerProvider>
+        <BugReportModal />
+      </BugReportProvider>
+    );
+  }
+
   // Coordinator is at "ready" — the app shell renders. No legacy onboarding
   // overlays — the coordinator handled all of that before reaching ready.
 
   return (
     <BugReportProvider value={bugReport}>
-      <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden">
-        <ConnectionFailedBanner />
-        <SystemWarningBanner />
-        {shellContent}
-      </div>
-      {/* Full-screen overlay app — renders whichever overlay app is active */}
-      {resolvedOverlayApp &&
-        (() => {
-          const exitToApps = () => {
-            setState("activeOverlayApp", null);
-            setTab("apps");
-          };
-          const theme = uiTheme === "dark" ? "dark" : "light";
-          const LazyOverlay = getOverlayAppLazyComponent(resolvedOverlayApp);
-          if (LazyOverlay) {
-            return (
-              <Suspense fallback={null}>
-                <LazyOverlay exitToApps={exitToApps} uiTheme={theme} t={t} />
-              </Suspense>
-            );
-          }
-          const Component = resolvedOverlayApp.Component;
-          if (!Component) return null;
-          return <Component exitToApps={exitToApps} uiTheme={theme} t={t} />;
-        })()}
+      <ShellControllerProvider>
+        <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden">
+          <ConnectionFailedBanner />
+          <SystemWarningBanner />
+          {shellContent}
+        </div>
+        {/* Full-screen overlay app — renders whichever overlay app is active */}
+        {resolvedOverlayApp &&
+          (() => {
+            const exitToApps = () => {
+              setState("activeOverlayApp", null);
+              setTab("apps");
+            };
+            const theme = uiTheme === "dark" ? "dark" : "light";
+            const LazyOverlay = getOverlayAppLazyComponent(resolvedOverlayApp);
+            if (LazyOverlay) {
+              return (
+                <Suspense fallback={null}>
+                  <LazyOverlay exitToApps={exitToApps} uiTheme={theme} t={t} />
+                </Suspense>
+              );
+            }
+            const Component = resolvedOverlayApp.Component;
+            if (!Component) return null;
+            return <Component exitToApps={exitToApps} uiTheme={theme} t={t} />;
+          })()}
 
-      {/* Persistent game overlay — stays visible across all tabs */}
-      {activeGameViewerUrl &&
-        gameOverlayEnabled &&
-        tab !== "apps" &&
-        tab !== "views" && <GameViewOverlay />}
-      <ShellOverlays actionNotice={actionNotice} />
-      {isCoordinatorReady && <ShellFoundationMount />}
-      <SaveCommandModal
-        open={contextMenu.saveCommandModalOpen}
-        text={contextMenu.saveCommandText}
-        onSave={contextMenu.confirmSaveCommand}
-        onClose={contextMenu.closeSaveCommandModal}
-      />
-      <SecretsManagerModalRoot />
-      <CustomActionEditor
-        open={customActionsEditorOpen}
-        action={editingAction}
-        onSave={handleEditorSave}
-        onClose={() => {
-          setCustomActionsEditorOpen(false);
-          setEditingAction(null);
-        }}
-      />
-      <ConnectionLostOverlay />
-      {desktopShuttingDown ? (
-        <div
-          className="fixed inset-0 z-[1000] flex items-center justify-center bg-bg/80 "
-          role="status"
-          aria-live="polite"
-        >
-          <div className="rounded border border-border/60 bg-card/95 px-6 py-5 text-center shadow-sm">
-            <div className="text-base font-semibold text-txt">
-              Shutting down…
-            </div>
-            <div className="mt-1 text-sm text-muted">
-              Closing services and saving state.
+        {/* Persistent game overlay — stays visible across all tabs */}
+        {activeGameViewerUrl &&
+          gameOverlayEnabled &&
+          tab !== "apps" &&
+          tab !== "views" && <GameViewOverlay />}
+        <ShellOverlays actionNotice={actionNotice} />
+        {isCoordinatorReady && <ShellFoundationMount />}
+        <SaveCommandModal
+          open={contextMenu.saveCommandModalOpen}
+          text={contextMenu.saveCommandText}
+          onSave={contextMenu.confirmSaveCommand}
+          onClose={contextMenu.closeSaveCommandModal}
+        />
+        <SecretsManagerModalRoot />
+        <CustomActionEditor
+          open={customActionsEditorOpen}
+          action={editingAction}
+          onSave={handleEditorSave}
+          onClose={() => {
+            setCustomActionsEditorOpen(false);
+            setEditingAction(null);
+          }}
+        />
+        <ConnectionLostOverlay />
+        {desktopShuttingDown ? (
+          <div
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-bg/80 "
+            role="status"
+            aria-live="polite"
+          >
+            <div className="rounded border border-border/60 bg-card/95 px-6 py-5 text-center shadow-sm">
+              <div className="text-base font-semibold text-txt">
+                Shutting down…
+              </div>
+              <div className="mt-1 text-sm text-muted">
+                Closing services and saving state.
+              </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </ShellControllerProvider>
     </BugReportProvider>
   );
 }

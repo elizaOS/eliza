@@ -17,6 +17,13 @@ draft:
     - display_primary_chenghao_ch550fh01a_ct
     - display_alternate_made_in_china_5p5_1080p_mipi_ctp
     - display_alternate_alibaba_youritech_5p5_1080p_40pin
+  source_revalidation_trace:
+    rfq_matrix_key: display_touch
+    primary_revalidated_source_id: display_primary_chenghao_ch550fh01a_ct
+    supplemental_revalidated_source_id: display_primary_chenghao_ch550fh01a_ct_public_pdf
+    rfq_ready_from_public_page: true
+    production_release_ready: false
+    route_release_dependency: J_DISPLAY_TOUCH symbol_footprint_and_MIPI_DSI_route_remain_blocked_until_supplier_pack_received
   recipient_candidates:
     - supplier: Shenzhen Chenghao Optoelectronic
       candidate: CH550FH01A-CT

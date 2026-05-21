@@ -9,6 +9,7 @@ from cocotb.triggers import RisingEdge, Timer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import read_reg, reset, word_read, word_write, write_reg  # noqa: E402
 from coverage_helpers import CoverPointSet, axi_resp_name  # noqa: E402
 
 AXI_RESP_BINS = ("OKAY", "SLVERR", "DECERR")
@@ -17,66 +18,6 @@ _DMA_COVER = CoverPointSet("dma")
 _DMA_COVER.declare("axi_resp", "bresp", AXI_RESP_BINS)
 _DMA_COVER.declare("axi_resp", "rresp", AXI_RESP_BINS)
 _DMA_COVER.declare("irq_vector", "dma_irq", DMA_IRQ_BINS)
-
-
-def word_read(mem, addr):
-    base = addr & ~0x3
-    value = 0
-    for byte in range(4):
-        value |= mem.get(base + byte, 0) << (8 * byte)
-    return value
-
-
-def word_write(mem, addr, data, strobe):
-    base = addr & ~0x3
-    for byte in range(4):
-        if strobe & (1 << byte):
-            mem[base + byte] = (data >> (8 * byte)) & 0xFF
-
-
-async def reset(dut):
-    dut.rst_n.value = 0
-    dut.valid.value = 0
-    dut.write.value = 0
-    dut.addr.value = 0
-    dut.wdata.value = 0
-    dut.m_axil_awready.value = 0
-    dut.m_axil_wready.value = 0
-    dut.m_axil_bvalid.value = 0
-    dut.m_axil_bresp.value = 0
-    dut.m_axil_arready.value = 0
-    dut.m_axil_rvalid.value = 0
-    dut.m_axil_rdata.value = 0
-    dut.m_axil_rresp.value = 0
-    await Timer(1, units="ns")
-    for _ in range(4):
-        await RisingEdge(dut.clk)
-    dut.rst_n.value = 1
-    await RisingEdge(dut.clk)
-    await Timer(1, units="ns")
-
-
-async def write_reg(dut, addr, data):
-    dut.addr.value = addr
-    dut.wdata.value = data
-    dut.write.value = 1
-    dut.valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.valid.value = 0
-    dut.write.value = 0
-    await Timer(1, units="ns")
-
-
-async def read_reg(dut, addr):
-    dut.addr.value = addr
-    dut.write.value = 0
-    dut.valid.value = 1
-    await Timer(1, units="ns")
-    value = int(dut.rdata.value)
-    await RisingEdge(dut.clk)
-    dut.valid.value = 0
-    await Timer(1, units="ns")
-    return value
 
 
 async def randomized_axil_memory(dut, mem, rng, error_addresses=frozenset()):

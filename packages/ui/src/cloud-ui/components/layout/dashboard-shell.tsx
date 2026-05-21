@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ScrollArea } from "../scroll-area";
 
 export interface DashboardShellLayoutProps {
   sidebar: ReactNode;
@@ -15,17 +14,15 @@ export function DashboardShellLayout({
   children,
 }: DashboardShellLayoutProps) {
   return (
-    <div className="theme-cloud dashboard-theme flex h-dvh min-h-dvh w-full overflow-hidden bg-black font-poppins text-white">
+    <div className="theme-cloud dashboard-theme flex min-h-dvh w-full bg-black font-poppins text-white">
       {sidebar}
 
-      <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2 md:gap-3 md:p-3 md:pl-0">
+      <div className="flex min-w-0 flex-1 flex-col">
         {header}
 
-        <ScrollArea className="min-w-0 flex-1 border border-white/14 bg-black">
-          <main id="main" className="min-w-0 p-3 md:p-6">
-            {children}
-          </main>
-        </ScrollArea>
+        <main id="main" className="min-w-0 flex-1 bg-black p-3 md:p-6">
+          {children}
+        </main>
       </div>
     </div>
   );

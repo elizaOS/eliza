@@ -122,6 +122,7 @@ export function parseArgs(argv) {
     json: false,
     skipLogcat: false,
     appConfigPath: null,
+    expectedAbi: null,
   };
 
   const readFlagValue = (flag, index) => {
@@ -150,9 +151,12 @@ export function parseArgs(argv) {
     } else if (arg === "--app-config") {
       args.appConfigPath = path.resolve(readFlagValue(arg, i));
       i += 1;
+    } else if (arg === "--expected-abi") {
+      args.expectedAbi = readFlagValue(arg, i);
+      i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node eliza/packages/app-core/scripts/aosp/boot-validate.mjs [--adb <ADB>] [--serial <SERIAL>] [--timeout-ms <MS>] [--json] [--skip-logcat] [--app-config <PATH>]",
+        "Usage: node eliza/packages/app-core/scripts/aosp/boot-validate.mjs [--adb <ADB>] [--serial <SERIAL>] [--timeout-ms <MS>] [--json] [--skip-logcat] [--app-config <PATH>] [--expected-abi <ABI>]",
       );
       process.exit(0);
     } else {
@@ -257,6 +261,35 @@ function assertMatches(value, pattern, label) {
   if (!pattern.test(value)) {
     throw new Error(`${label} did not match ${pattern}`);
   }
+}
+
+/**
+ * When `--expected-abi` is set, assert the device's CPU architecture
+ * matches. Mirrors the riscv64 cuttlefish-boot-gate's abi/abilist/uname
+ * triad so a wrong-arch image fails closed instead of passing the
+ * variant-level checks on the wrong CPU. Omitted by default, so the
+ * x86_64/arm64 callers are unaffected.
+ */
+function validateExpectedAbi(adb, serial, expectedAbi) {
+  const abi = shell(adb, serial, "getprop ro.product.cpu.abi").trim();
+  if (abi !== expectedAbi) {
+    throw new Error(
+      `ro.product.cpu.abi must be ${expectedAbi}; found ${abi || "<empty>"}`,
+    );
+  }
+  const abilist = shell(adb, serial, "getprop ro.product.cpu.abilist").trim();
+  if (!abilist.split(",").includes(expectedAbi)) {
+    throw new Error(
+      `ro.product.cpu.abilist must contain ${expectedAbi}; found ${abilist || "<empty>"}`,
+    );
+  }
+  const unameM = shell(adb, serial, "uname -m").trim();
+  if (unameM !== expectedAbi) {
+    throw new Error(
+      `uname -m must be ${expectedAbi}; found ${unameM || "<empty>"}`,
+    );
+  }
+  return { abi, abilist, unameM };
 }
 
 function validateProductProperty(adb, serial, variant) {
@@ -501,6 +534,9 @@ export async function validateBootedDevice(options) {
     adb,
     serial,
     product: validateProductProperty(adb, serial, variant),
+    ...(options.expectedAbi
+      ? { abi: validateExpectedAbi(adb, serial, options.expectedAbi) }
+      : {}),
     bootProperties: validateBootProperties(adb, serial, variant),
     packagePath: validatePackagePath(adb, serial, variant),
     homeResolution: validateHomeResolution(adb, serial, variant),

@@ -8,20 +8,26 @@ export interface ChatSurfaceProps {
   onSend: (text: string) => void;
   canSend: boolean;
   greeting?: string;
+  /** When defined, the mic button is interactive and reflects this state. */
+  recording?: boolean;
+  /** Toggle voice capture. Enables the mic button when provided. */
+  onToggleRecording?: () => void;
 }
 
 /**
  * Chat surface: scrollable bubble stack + input row.
  *
- * v1: text-only. The mic button is rendered as a disabled placeholder so the
- * layout matches the mockups; the listening/STT flow ships in the mic
- * follow-up sub-project.
+ * Text submits through `onSend`. When `onToggleRecording` is provided the mic
+ * button drives voice capture (push-to-talk style); `recording` paints the
+ * active state.
  */
 export function ChatSurface({
   messages,
   onSend,
   canSend,
   greeting,
+  recording = false,
+  onToggleRecording,
 }: ChatSurfaceProps): React.JSX.Element {
   const [draft, setDraft] = React.useState("");
   const trimmed = draft.trim();
@@ -97,9 +103,18 @@ export function ChatSurface({
         />
         <button
           type="button"
-          aria-label="Microphone (coming soon)"
-          disabled
-          className="grid h-10 w-10 place-items-center rounded-full bg-card/60 text-muted opacity-60"
+          aria-label={recording ? "Stop voice input" : "Start voice input"}
+          aria-pressed={recording}
+          disabled={!onToggleRecording}
+          onClick={onToggleRecording}
+          className={cn(
+            "grid h-10 w-10 place-items-center rounded-full",
+            onToggleRecording ? "cursor-pointer" : "opacity-60",
+            recording
+              ? "bg-warn/30 text-txt animate-pulse"
+              : "bg-card/60 text-muted",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+          )}
         >
           {/* Inline mic glyph — keep dependency-free */}
           <svg

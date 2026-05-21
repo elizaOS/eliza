@@ -718,19 +718,31 @@ FPC_ROUTES: list[FpcRoute] = [
         "display FPC",
         "display_fpc_bend_keepout",
         "display_fpc_connector",
-        frozenset({
-            "display_fpc_connector", "display_lcm", "main_pcb",
-            "rear_camera_module", "pmic_shield_can", "orange_side_frame",
-        }),
+        frozenset(
+            {
+                "display_fpc_connector",
+                "display_lcm",
+                "main_pcb",
+                "rear_camera_module",
+                "pmic_shield_can",
+                "orange_side_frame",
+            }
+        ),
     ),
     FpcRoute(
         "battery/PMIC interconnect (side service loop)",
         "split_interconnect_side_flex",
         "split_interconnect_top_connector",
-        frozenset({
-            "split_interconnect_top_connector", "split_interconnect_bottom_connector",
-            "main_pcb", "battery_pouch", "orange_side_frame", "haptic_lra",
-        }),
+        frozenset(
+            {
+                "split_interconnect_top_connector",
+                "split_interconnect_bottom_connector",
+                "main_pcb",
+                "battery_pouch",
+                "orange_side_frame",
+                "haptic_lra",
+            }
+        ),
     ),
     FpcRoute(
         "split top flex tail",

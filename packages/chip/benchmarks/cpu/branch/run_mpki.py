@@ -43,6 +43,7 @@ from benchmarks.cpu.branch.traces import (  # noqa: E402
     read_cbp5_with_count,
     read_jsonl,
 )
+from benchmarks.cpu.branch.workload_trace import read_workload_trace  # noqa: E402
 
 RESULTS_DIR = ROOT / "benchmarks/results"
 EVIDENCE_DIR = ROOT / "docs/evidence/cpu_ap"
@@ -180,6 +181,19 @@ def evaluate_external_model(traces: list[Path]) -> dict[str, dict]:
     """
     out: dict[str, dict] = {}
     for path in traces:
+        if path.name.endswith(".btrace.json"):
+            branches, inst_count = read_workload_trace(path)
+            sim = BPUSimulator()
+            sim.feed(branches)
+            mpki = sim.mpki(inst_count) if inst_count else 0.0
+            out[path.name[: -len(".btrace.json")]] = {
+                "trace_class": "qemu_rv64_workload",
+                "branches": len(branches),
+                "instruction_count": inst_count,
+                "mpki": round(mpki, 6),
+                "counters": sim.stats(),
+            }
+            continue
         ext = path.suffix.lower()
         if ext == ".gz":
             branches, stats = read_cbp5_with_count(path)
@@ -233,6 +247,7 @@ def _expand_trace_paths(inputs: Iterable[Path]) -> list[Path]:
         if p.is_dir():
             out.extend(sorted(p.glob("*.gz")))
             out.extend(sorted(p.glob("*.jsonl")))
+            out.extend(sorted(p.glob("*.btrace.json")))
         elif p.is_file():
             out.append(p)
         else:

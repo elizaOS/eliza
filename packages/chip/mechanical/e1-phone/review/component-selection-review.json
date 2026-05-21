@@ -1,0 +1,590 @@
+{
+  "claim_boundary": "Generated CAD/component selection reconciliation for off-the-shelf low-quantity phone parts. It confirms the selected candidates are represented in current CAD params and pass CAD packaging checks; it is not supplier drawing approval, live pricing, procurement lock, or physical sample validation.",
+  "status": "cad_component_selection_review_ready",
+  "device_envelope_mm": [
+    78.0,
+    153.6,
+    11.8
+  ],
+  "design_language": "hard orange phone-like slab with teenage-engineering/rabbit-r1 influence",
+  "plastic_color": "hard safety orange",
+  "component_count": 13,
+  "passing_component_count": 13,
+  "missing_or_failed_components": [],
+  "cases": [
+    {
+      "id": "display_touch_stack",
+      "family": "screen",
+      "selected_component": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
+      "second_source_or_alternate": null,
+      "envelope_mm": [
+        77.1,
+        151.77,
+        3.39
+      ],
+      "source_url": "https://www.chenghaolcd.com/doc/26717023/5-5-inch-ltps-tft-lcd-module-1080-1920-resolution-mipi-lcd-screen.pdf",
+      "critical_checks": [
+        {
+          "id": "screen_mount_margin",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "actual_mm": 0.45,
+            "required_mm": 0.3
+          }
+        },
+        {
+          "id": "screen_mount_and_connection",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "adhesive_width_mm": 1.0,
+            "adhesive_thickness_mm": 0.18,
+            "compression_target_pct": 25,
+            "fpc_bend_radius_mm": 1.0
+          }
+        }
+      ],
+      "notes": [
+        "Commodity 5.5 inch LCD+CTP is the dominant footprint driver.",
+        "Exact FPC pinout, touch controller, and init sequence remain supplier evidence blockers."
+      ],
+      "pass": true
+    },
+    {
+      "id": "battery_pouch",
+      "family": "battery",
+      "selected_component": "LiPol LP566487 class 3.85 V 5727 mAh 22.05 Wh thick pouch",
+      "second_source_or_alternate": null,
+      "envelope_mm": [
+        64.0,
+        87.0,
+        5.6
+      ],
+      "source_url": null,
+      "critical_checks": [
+        {
+          "id": "battery_display_and_wall_clearance",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "battery_front_z_mm": 1.45,
+            "battery_back_z_mm": -4.15,
+            "display_lcm_back_z_mm": 1.63,
+            "back_inner_wall_z_mm": -4.75,
+            "battery_to_display_gap_mm": 0.18,
+            "battery_to_back_wall_gap_mm": 0.6,
+            "required_front_static_gap_mm": 0.15,
+            "required_back_swell_gap_mm": 0.6,
+            "note": "Front face keeps the 0.15 mm static gap below the display; the larger back-face gap is a defined swell void toward the back shell so a LiPo pouch (~8-10 percent thickness swell) never presses the display."
+          }
+        },
+        {
+          "id": "mass_budget",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "estimated_mass_g": 183.28,
+            "target_mass_g": 185,
+            "note": "Rough CAD estimate; placeholder void markers excluded."
+          }
+        }
+      ],
+      "notes": [
+        "4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.6/4.4); cell thickness unchanged at 5.6 mm so capacity stays 5727 mAh; device depth carries swell void plus camera-burial clearance, not idle air",
+        "At the 11.8 mm device depth (back outer Z=-5.90, back inner wall Z=-4.75), battery back face Z=-4.15 keeps the 0.6 mm swell gap to the back inner wall; battery front face Z=+1.45 keeps a 0.18 mm static gap below the bonded display module back face (Z=+1.63). The bonded LCD+CTP module (3.39 mm) sits one adhesive_thickness_mm (0.18 mm OCA) below the cover-glass inner face, so the former 2.8 mm front air band is closed and the saved depth is removed from the device thickness rather than left as void.",
+        "Pouch swell, UN38.3 pack drawing, protection board, and sample thickness data remain blocked."
+      ],
+      "pass": true
+    },
+    {
+      "id": "usb_c_receptacle",
+      "family": "I/O",
+      "selected_component": "GCT USB4105 USB2 Type-C receptacle, reinforced shell",
+      "second_source_or_alternate": "https://www.digikey.com/en/products/detail/gct/USB4105-GF-A/11198510",
+      "envelope_mm": [
+        8.94,
+        7.8,
+        3.25
+      ],
+      "source_url": "https://gct.co/files/specs/usb4105-spec.pdf",
+      "critical_checks": [
+        {
+          "id": "usb_c_insertion_envelope",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "actual_mm": 8.0,
+            "required_mm": 7.8
+          }
+        },
+        {
+          "id": "usb_c_port_seal_stack",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "gasket_parts": [
+              "usb_c_perimeter_gasket_top",
+              "usb_c_perimeter_gasket_bottom",
+              "usb_c_perimeter_gasket_left",
+              "usb_c_perimeter_gasket_right"
+            ],
+            "managed_ingress_parts": [
+              "usb_c_molded_drip_break_lip",
+              "usb_c_internal_drain_shelf",
+              "orange_usb_reinforcement_saddle"
+            ],
+            "note": "Models a four-sided elastomer seat around the receptacle mouth plus molded drip-break/drain shelf for splash management."
+          }
+        }
+      ],
+      "notes": [
+        "CAD includes insertion keepout, reinforced saddle, perimeter gasket seats, drip lip, and drain shelf.",
+        "Physical insertion/cycle and connector drawing evidence remain blocked."
+      ],
+      "pass": true
+    },
+    {
+      "id": "side_buttons_single_sku",
+      "family": "button",
+      "selected_component": "XKB TS-1187A-B-A-B",
+      "second_source_or_alternate": "Panasonic EVQ-P7A01P",
+      "envelope_mm": [
+        2.0,
+        12.0,
+        1.1
+      ],
+      "source_url": "https://www.lcsc.com/product-detail/Tactile-Switches_XKB-Connection-TS-1187A-B-A-B_C318884.html",
+      "critical_checks": [
+        {
+          "id": "button_force_and_travel",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "power": {
+              "force_n": 1.57,
+              "travel_mm": 0.2
+            },
+            "volume": {
+              "force_n": 1.57,
+              "travel_mm": 0.2
+            }
+          }
+        },
+        {
+          "id": "button_pressure_support",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "power_pressure_n_per_mm2": 0.1189,
+            "volume_pressure_n_per_mm2": 0.068
+          }
+        },
+        {
+          "id": "button_ingress_seal_stack",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "power_seal_parts": [
+              "power_button_elastomer_gasket",
+              "power_button_labyrinth_upper_rail",
+              "power_button_labyrinth_lower_rail"
+            ],
+            "volume_seal_parts": [
+              "volume_button_elastomer_gasket",
+              "volume_button_labyrinth_upper_rail",
+              "volume_button_labyrinth_lower_rail"
+            ],
+            "note": "Models silicone compression gasket plus molded side-key labyrinth rails behind both external orange caps."
+          }
+        }
+      ],
+      "notes": [
+        "Same side-push tactile SKU is used for power and volume to reduce sourcing risk.",
+        "0.20 mm datasheet travel; cap proud 0.30 mm > 0.20 mm hard stop so tactile actuation occurs before bottom-out, no rest preload"
+      ],
+      "pass": true
+    },
+    {
+      "id": "rear_camera_and_flush_window",
+      "family": "camera",
+      "selected_component": "single OV13855/OV13850 class 13 MP simple-AF MIPI module, single lens, buried under flush back wall",
+      "second_source_or_alternate": null,
+      "envelope_mm": [
+        10.0,
+        10.0,
+        5.1
+      ],
+      "source_url": null,
+      "critical_checks": [
+        {
+          "id": "camera_speaker_behind_glass",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "front_camera": "behind cover glass at upper-left display border",
+            "earpiece": "behind cover-glass acoustic slot with gasketed receiver",
+            "earpiece_mesh_present": true,
+            "rear_camera": "behind a separate rear cover glass window in an explicit molded back-shell aperture"
+          }
+        },
+        {
+          "id": "rear_camera_back_shell_aperture",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "aperture_mm": [
+              10.6,
+              10.6
+            ],
+            "cover_glass_mm": [
+              9.2,
+              9.2
+            ],
+            "bezel_parts": [
+              "orange_rear_camera_bezel_top",
+              "orange_rear_camera_bezel_bottom",
+              "orange_rear_camera_bezel_left",
+              "orange_rear_camera_bezel_right"
+            ],
+            "aperture_present": true,
+            "note": "Back shell now carries an explicit through-aperture and four orange bevel lands around the flush camera cover window instead of relying on an internal black window hidden under an unbroken shell."
+          }
+        },
+        {
+          "id": "camera_optical_seal_stack",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "rear_cover_adhesive_count": 4,
+            "rear_light_baffle_count": 2,
+            "front_black_mask_present": true,
+            "stray_light_septum_present": true,
+            "flash_camera_center_spacing_mm": 8.1,
+            "flash_camera_center_spacing_required_mm": 6.0,
+            "flash_burial_clearance_mm": 0.2,
+            "flash_burial_clearance_required_mm": 0.1,
+            "note": "Models rear cover-window PSA/dust gasket, rear light baffle, opaque stray-light septum between coplanar flash and camera windows, and front under-glass black mask datum."
+          }
+        }
+      ],
+      "notes": [
+        "flush internal sapphire/glass insert set into the flat back wall, no proud ring",
+        "Flush-back rear camera now has an explicit molded orange shell aperture; final lock remains conditional on supplier z-height, optical center, and image-quality validation."
+      ],
+      "pass": true
+    },
+    {
+      "id": "front_camera_and_handset_under_glass",
+      "family": "camera/audio",
+      "selected_component": "single 5-8 MP fixed-focus MIPI module behind cover glass, single lens",
+      "second_source_or_alternate": null,
+      "envelope_mm": [
+        6.5,
+        6.5,
+        3.2
+      ],
+      "source_url": null,
+      "critical_checks": [
+        {
+          "id": "camera_speaker_behind_glass",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "front_camera": "behind cover glass at upper-left display border",
+            "earpiece": "behind cover-glass acoustic slot with gasketed receiver",
+            "earpiece_mesh_present": true,
+            "rear_camera": "behind a separate rear cover glass window in an explicit molded back-shell aperture"
+          }
+        },
+        {
+          "id": "screen_mount_and_connection",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "adhesive_width_mm": 1.0,
+            "adhesive_thickness_mm": 0.18,
+            "compression_target_pct": 25,
+            "fpc_bend_radius_mm": 1.0
+          }
+        }
+      ],
+      "notes": [
+        "Front camera and handset receiver are packaged behind the cover-glass border.",
+        "FOV, acoustic loss, and display black-mask alignment require supplier drawings and samples."
+      ],
+      "pass": true
+    },
+    {
+      "id": "rear_flash_and_stray_light_septum",
+      "family": "camera",
+      "selected_component": "OSRAM CEYW class 1.0x1.0x0.6 white flash LED",
+      "second_source_or_alternate": "Everlight 1.0x1.0 flash LED",
+      "envelope_mm": [
+        1.0,
+        1.0,
+        0.7
+      ],
+      "source_url": null,
+      "critical_checks": [
+        {
+          "id": "camera_optical_seal_stack",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "rear_cover_adhesive_count": 4,
+            "rear_light_baffle_count": 2,
+            "front_black_mask_present": true,
+            "stray_light_septum_present": true,
+            "flash_camera_center_spacing_mm": 8.1,
+            "flash_camera_center_spacing_required_mm": 6.0,
+            "flash_burial_clearance_mm": 0.2,
+            "flash_burial_clearance_required_mm": 0.1,
+            "note": "Models rear cover-window PSA/dust gasket, rear light baffle, opaque stray-light septum between coplanar flash and camera windows, and front under-glass black mask datum."
+          }
+        },
+        {
+          "id": "rear_flash_back_shell_aperture",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "aperture_mm": [
+              2.2,
+              2.2
+            ],
+            "window_mm": [
+              1.6,
+              1.6
+            ],
+            "bezel_parts": [
+              "orange_rear_flash_bezel_top",
+              "orange_rear_flash_bezel_bottom",
+              "orange_rear_flash_bezel_left",
+              "orange_rear_flash_bezel_right"
+            ],
+            "aperture_present": true,
+            "note": "Back shell now carries an explicit through-aperture and four orange bevel lands around the flush flash light-pipe window instead of treating the window/back-shell overlap as intentional contact."
+          }
+        }
+      ],
+      "notes": [
+        "1.0x1.0 mm seat now matches a 1.0x1.0 mm-class emitter (replaces Lumileds LXCL-PWF1 1.64x0.90 mm mismatch flagged by optical review)",
+        "Flush flash light-pipe now has its own molded orange shell aperture and bevel lands.",
+        "blocks stray flash light into the camera baffle because both windows are coplanar in one flat back wall with no bump-edge to break stray light"
+      ],
+      "pass": true
+    },
+    {
+      "id": "bottom_speaker",
+      "family": "audio",
+      "selected_component": "1115 micro speaker module with rear acoustic chamber",
+      "second_source_or_alternate": null,
+      "envelope_mm": [
+        15.0,
+        11.0,
+        3.5
+      ],
+      "source_url": null,
+      "critical_checks": [
+        {
+          "id": "camera_speaker_behind_glass",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "front_camera": "behind cover glass at upper-left display border",
+            "earpiece": "behind cover-glass acoustic slot with gasketed receiver",
+            "earpiece_mesh_present": true,
+            "rear_camera": "behind a separate rear cover glass window in an explicit molded back-shell aperture"
+          }
+        },
+        {
+          "id": "usb_c_insertion_envelope",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "actual_mm": 8.0,
+            "required_mm": 7.8
+          }
+        }
+      ],
+      "notes": [
+        "Bottom speaker shares the lower edge with USB-C and bottom microphones.",
+        "SPL, leakage, dust mesh, and chamber tuning remain lab blockers."
+      ],
+      "pass": true
+    },
+    {
+      "id": "handset_receiver",
+      "family": "audio",
+      "selected_component": "1206 earpiece receiver behind glass slot/gasket",
+      "second_source_or_alternate": null,
+      "envelope_mm": [
+        12.0,
+        6.0,
+        2.5
+      ],
+      "source_url": null,
+      "critical_checks": [
+        {
+          "id": "camera_speaker_behind_glass",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "front_camera": "behind cover glass at upper-left display border",
+            "earpiece": "behind cover-glass acoustic slot with gasketed receiver",
+            "earpiece_mesh_present": true,
+            "rear_camera": "behind a separate rear cover glass window in an explicit molded back-shell aperture"
+          }
+        },
+        {
+          "id": "screen_mount_and_connection",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "adhesive_width_mm": 1.0,
+            "adhesive_thickness_mm": 0.18,
+            "compression_target_pct": 25,
+            "fpc_bend_radius_mm": 1.0
+          }
+        }
+      ],
+      "notes": [
+        "Receiver sits behind glass/acoustic slot with mesh and gasket.",
+        "Acoustic path loss must be measured on EVT samples."
+      ],
+      "pass": true
+    },
+    {
+      "id": "microphones",
+      "family": "audio",
+      "selected_component": "bottom MEMS microphone with molded sound tunnel + noise-cancel MEMS microphone",
+      "second_source_or_alternate": null,
+      "envelope_mm": [
+        3.5,
+        2.65,
+        1.0
+      ],
+      "source_url": null,
+      "critical_checks": [
+        {
+          "id": "usb_c_port_seal_stack",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "gasket_parts": [
+              "usb_c_perimeter_gasket_top",
+              "usb_c_perimeter_gasket_bottom",
+              "usb_c_perimeter_gasket_left",
+              "usb_c_perimeter_gasket_right"
+            ],
+            "managed_ingress_parts": [
+              "usb_c_molded_drip_break_lip",
+              "usb_c_internal_drain_shelf",
+              "orange_usb_reinforcement_saddle"
+            ],
+            "note": "Models a four-sided elastomer seat around the receptacle mouth plus molded drip-break/drain shelf for splash management."
+          }
+        }
+      ],
+      "notes": [
+        "Bottom dual ports plus top noise-cancel port are modeled with mesh and tunnel features.",
+        "Ingress mesh airflow and acoustic SNR remain blocked on lab data."
+      ],
+      "pass": true
+    },
+    {
+      "id": "haptic_lra",
+      "family": "haptics",
+      "selected_component": "compact 0612 X-axis linear resonant actuator",
+      "second_source_or_alternate": null,
+      "envelope_mm": [
+        6.0,
+        12.0,
+        2.5
+      ],
+      "source_url": null,
+      "critical_checks": [
+        {
+          "id": "device_compactness",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "envelope_mm": [
+              78.0,
+              153.6,
+              11.8
+            ],
+            "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.8 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall, plus the product-owner-approved increase to 12.7 mm for a >=0.6 mm battery swell void and >=0.4 mm rear-camera burial clearance."
+          }
+        }
+      ],
+      "notes": [
+        "commodity Shenzhen compact LRA class; exact vendor drawing required"
+      ],
+      "pass": true
+    },
+    {
+      "id": "cellular_radio_module",
+      "family": "radio",
+      "selected_component": "Quectel RG255C RedCap LGA module",
+      "second_source_or_alternate": null,
+      "envelope_mm": [
+        29.0,
+        32.0,
+        2.4
+      ],
+      "source_url": "https://www.quectel.com/product/5g-redcap-rg255c-series/",
+      "critical_checks": [
+        {
+          "id": "device_compactness",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "envelope_mm": [
+              78.0,
+              153.6,
+              11.8
+            ],
+            "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.8 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall, plus the product-owner-approved increase to 12.7 mm for a >=0.6 mm battery swell void and >=0.4 mm rear-camera burial clearance."
+          }
+        }
+      ],
+      "notes": [
+        "RF module is included as package-level source selection; antenna tuning and chamber data remain blocked."
+      ],
+      "pass": true
+    },
+    {
+      "id": "wifi_bt_module",
+      "family": "radio",
+      "selected_component": "Murata Type 2EA Wi-Fi 6E + Bluetooth module",
+      "second_source_or_alternate": null,
+      "envelope_mm": [
+        34.0,
+        5.0,
+        2.0
+      ],
+      "source_url": "https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea",
+      "critical_checks": [
+        {
+          "id": "device_compactness",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "envelope_mm": [
+              78.0,
+              153.6,
+              11.8
+            ],
+            "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.8 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall, plus the product-owner-approved increase to 12.7 mm for a >=0.6 mm battery swell void and >=0.4 mm rear-camera burial clearance."
+          }
+        }
+      ],
+      "notes": [
+        "Wi-Fi/Bluetooth module is source-selected; exact shield can, module STEP, and antenna coexistence remain blocked."
+      ],
+      "pass": true
+    }
+  ],
+  "release_rule": "Every selected off-the-shelf component must have a current CAD envelope, pass its critical CAD packaging checks, and later be replaced by supplier drawings, STEP, samples, electrical bring-up, and physical validation before procurement or tooling release."
+}

@@ -31,7 +31,7 @@ public class ElizaSmsComposeActivity extends Activity {
             }
         }
 
-        Uri.Builder route = Uri.parse("ai.elizaos.app://messages/compose").buildUpon()
+        Uri.Builder route = Uri.parse("elizaos://messages/compose").buildUpon()
                 .appendQueryParameter("source", "android-sendto");
         if (!TextUtils.isEmpty(recipient)) {
             route.appendQueryParameter("recipient", recipient);

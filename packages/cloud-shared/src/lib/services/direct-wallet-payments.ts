@@ -123,6 +123,105 @@ const BSC_TOKEN_OPTIONS: DirectWalletTokenOption[] = [
  */
 const NATIVE_SLIPPAGE_BPS = 200;
 
+/**
+ * Dev-only fallback signing key. Clearly non-secret — production must set
+ * `CRYPTO_DIRECT_QUOTE_SIGNING_KEY` explicitly. The helper logs loudly if
+ * the fallback is used.
+ */
+const DEV_FALLBACK_QUOTE_SIGNING_KEY = "dev-only-quote-signing-key-do-not-use-in-production";
+
+function isProductionEnv(env: Bindings): boolean {
+  const node = String(env.NODE_ENV ?? "").toLowerCase();
+  return node === "production" || node === "prod";
+}
+
+function resolveQuoteSigningKey(env: Bindings): string {
+  const raw = env.CRYPTO_DIRECT_QUOTE_SIGNING_KEY;
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  if (isProductionEnv(env)) {
+    throw new Error(
+      "CRYPTO_DIRECT_QUOTE_SIGNING_KEY is not configured — refusing to sign quotes in production",
+    );
+  }
+  logger.warn(
+    "[DirectWalletPayments] CRYPTO_DIRECT_QUOTE_SIGNING_KEY missing — using DEV fallback. " +
+      "Set this env var for any non-dev environment.",
+  );
+  return DEV_FALLBACK_QUOTE_SIGNING_KEY;
+}
+
+export interface QuoteSignatureInput {
+  paymentId: string;
+  expectedTokenUnits: bigint | string;
+  receiveAddress: string;
+  chainId: number | null | undefined;
+  tokenAddress: string | null | undefined;
+  tokenMint: string | null | undefined;
+  expiresAt: Date | string;
+}
+
+function canonicalQuoteString(input: QuoteSignatureInput): string {
+  const expiresAtIso =
+    input.expiresAt instanceof Date
+      ? input.expiresAt.toISOString()
+      : new Date(input.expiresAt).toISOString();
+  const units =
+    typeof input.expectedTokenUnits === "bigint"
+      ? input.expectedTokenUnits.toString()
+      : input.expectedTokenUnits;
+  const chain = input.chainId ?? "na";
+  const token = input.tokenAddress ?? input.tokenMint ?? "native";
+  return `${input.paymentId}|${units}|${input.receiveAddress}|${chain}|${token}|${expiresAtIso}`;
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+  // btoa is available in Workers and Node 18+ globals
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function timingSafeEqualStrings(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * HMAC-SHA256 sign a canonical quote string. Works in Cloudflare Workers
+ * (Web Crypto) and Node — no Node `crypto` import.
+ */
+export async function signQuote(
+  env: Bindings,
+  input: QuoteSignatureInput,
+): Promise<{ signature: string; canonicalInput: string }> {
+  const canonicalInput = canonicalQuoteString(input);
+  const secret = resolveQuoteSigningKey(env);
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sigBuf = await crypto.subtle.sign("HMAC", key, encoder.encode(canonicalInput));
+  return {
+    signature: toBase64Url(new Uint8Array(sigBuf)),
+    canonicalInput,
+  };
+}
+
+export async function verifyQuoteSignature(
+  env: Bindings,
+  input: QuoteSignatureInput,
+  expectedSignature: string,
+): Promise<boolean> {
+  const { signature } = await signQuote(env, input);
+  return timingSafeEqualStrings(signature, expectedSignature);
+}
+
 const EXPLORER_BASE: Record<DirectWalletNetwork, string> = {
   base: "https://basescan.org/tx/",
   bsc: "https://bscscan.com/tx/",
@@ -139,15 +238,12 @@ function buildExplorerUrl(
 
 function resolveBscToken(symbol: string | undefined): DirectWalletTokenOption {
   if (!symbol) return BSC_TOKEN_OPTIONS[1]; // default USDT
-  const match = BSC_TOKEN_OPTIONS.find(
-    (t) => t.symbol.toUpperCase() === symbol.toUpperCase(),
-  );
+  const match = BSC_TOKEN_OPTIONS.find((t) => t.symbol.toUpperCase() === symbol.toUpperCase());
   if (!match) {
     throw new Error(`Unsupported BSC token: ${symbol}`);
   }
   return match;
 }
-
 
 function envString(env: Bindings, key: string): string | null {
   const value = env[key];
@@ -212,9 +308,7 @@ function directPaymentConfig(
     const usdtOverride = envString(env, "CRYPTO_DIRECT_BSC_TOKEN_ADDRESS");
     const tokens: DirectWalletTokenOption[] = usdtOverride
       ? BSC_TOKEN_OPTIONS.map((t) =>
-          t.symbol === "USDT"
-            ? { ...t, tokenAddress: getAddress(usdtOverride) }
-            : t,
+          t.symbol === "USDT" ? { ...t, tokenAddress: getAddress(usdtOverride) } : t,
         )
       : BSC_TOKEN_OPTIONS;
     const defaultToken = tokens.find((t) => t.symbol === "USDT") ?? tokens[0];
@@ -396,8 +490,7 @@ function directMetadata(payment: CryptoPayment): {
       typeof rawTokenAddress === "string" && rawTokenAddress.startsWith("0x")
         ? (rawTokenAddress as Hex)
         : null,
-    tokenMint:
-      typeof metadata.token_mint === "string" ? metadata.token_mint : null,
+    tokenMint: typeof metadata.token_mint === "string" ? metadata.token_mint : null,
     tokenDecimals: Number(metadata.token_decimals ?? 0),
     expectedTokenUnits: BigInt(String(metadata.expected_token_units ?? "0")),
     bonusCredits: Number(metadata.bonus_credits ?? 0),
@@ -481,28 +574,43 @@ async function verifyEvmNativePayment(params: {
   });
   if (receipt.status !== "success") throw new Error("Transaction failed");
 
+  // For native value transfers we do NOT compare tx.from to the payer EOA.
+  // Smart-contract wallets (Safe, Argent, Coinbase Smart Wallet) and ERC-4337
+  // setups have `tx.from = contract / bundler`, not the user's EOA. The
+  // recipient + value checks below are sufficient because a contract-relayed
+  // value transfer still has tx.to = receiveAddress and tx.value carries the
+  // BNB. (For tokens, the Transfer-event check enforces sender identity
+  // separately.)
   const tx = await client.getTransaction({ hash: params.txHash as Hex });
-  if (tx.from.toLowerCase() !== normalizeEvmAddress(params.payerAddress)) {
-    throw new Error("Transaction sender does not match account wallet");
-  }
-  if (
-    !tx.to ||
-    tx.to.toLowerCase() !== normalizeEvmAddress(params.cfg.receiveAddress)
-  ) {
+  if (!tx.to || tx.to.toLowerCase() !== normalizeEvmAddress(params.cfg.receiveAddress)) {
     throw new Error("Transaction recipient does not match the receive address");
   }
-  // Apply slippage tolerance for native-token payments where the locked
-  // quote may have drifted between createPayment and broadcast. A non-native
-  // (stable) verify passes slippageBps=0, so the floor is the exact expected
-  // amount and an over-payment is still accepted.
+  // Apply slippage tolerance to BOTH floor and ceiling for native-token
+  // payments. The locked quote may drift between createPayment and broadcast,
+  // so we accept tx.value in [expected*(1-bps), expected*(1+bps)]. The
+  // ceiling protects against accidental gross overpayments — e.g. a user
+  // typoing 10 BNB instead of 0.01 BNB. Credits are locked at create time
+  // (payment.credits_to_add), so an unbounded overpayment would silently
+  // lose the user money with no extra credit. Better to reject and force a
+  // fresh quote. For stables (slippageBps=0), tx.value must equal
+  // expectedUnits exactly.
   const slippageBps = BigInt(params.slippageBps ?? 0);
   const floor =
     slippageBps > 0n
       ? (params.expectedUnits * (10_000n - slippageBps)) / 10_000n
       : params.expectedUnits;
+  const ceiling =
+    slippageBps > 0n
+      ? (params.expectedUnits * (10_000n + slippageBps)) / 10_000n
+      : params.expectedUnits;
   if (tx.value < floor) {
     throw new Error(
       `Transaction amount ${tx.value} is below the expected floor ${floor} (expected ${params.expectedUnits}, slippage ${slippageBps} bps)`,
+    );
+  }
+  if (tx.value > ceiling) {
+    throw new Error(
+      `Transaction amount ${tx.value} is above the expected ceiling ${ceiling} (expected ${params.expectedUnits}, slippage ${slippageBps} bps). Refusing to credit a gross overpayment — please request a refund or create a new payment.`,
     );
   }
   return {
@@ -554,9 +662,7 @@ async function verifySolanaTokenPayment(params: {
       ata: receiverAta.toBase58(),
       mint,
     });
-    throw new Error(
-      "Receiving ATA owner does not match configured treasury wallet",
-    );
+    throw new Error("Receiving ATA owner does not match configured treasury wallet");
   }
 
   const before = new Map<string, bigint>();
@@ -705,9 +811,7 @@ export class DirectWalletPaymentsService {
     // Resolve which token on the network this purchase is using. Networks
     // with a single token (Base USDC, Solana USDC) ignore the param.
     const selectedToken: DirectWalletTokenOption =
-      params.network === "bsc"
-        ? resolveBscToken(params.tokenSymbol)
-        : cfg.tokens[0];
+      params.network === "bsc" ? resolveBscToken(params.tokenSymbol) : cfg.tokens[0];
 
     const amount = new Decimal(params.amountUsd);
     const validation = validatePaymentAmount(amount);
@@ -808,14 +912,38 @@ export class DirectWalletPaymentsService {
             // Slippage tolerance for the on-chain verify step. Only meaningful
             // when paying with a non-stable native token whose price moves
             // between quote and broadcast. Stables ignore this.
-            slippage_bps:
-              selectedToken.kind === "native" ? NATIVE_SLIPPAGE_BPS : 0,
+            slippage_bps: selectedToken.kind === "native" ? NATIVE_SLIPPAGE_BPS : 0,
           },
         })
         .returning();
       if (!created) throw new Error("Failed to create direct crypto payment");
       return created;
     });
+
+    const { signature: quoteSignature, canonicalInput: quoteCanonicalInput } = await signQuote(
+      env,
+      {
+        paymentId: payment.id,
+        expectedTokenUnits,
+        receiveAddress: cfg.receiveAddress ?? "",
+        chainId: cfg.chainId ?? null,
+        tokenAddress: selectedToken.tokenAddress ?? null,
+        tokenMint: selectedToken.tokenMint ?? null,
+        expiresAt: payment.expires_at,
+      },
+    );
+
+    // Persist the signature and canonical input for audit + later verification.
+    await dbWrite
+      .update(cryptoPayments)
+      .set({
+        metadata: sql`COALESCE(${cryptoPayments.metadata}, '{}'::jsonb) || ${JSON.stringify({
+          quote_signature: quoteSignature,
+          quote_canonical_input: quoteCanonicalInput,
+        })}::jsonb`,
+        updated_at: new Date(),
+      })
+      .where(eq(cryptoPayments.id, payment.id));
 
     return {
       payment,
@@ -834,6 +962,8 @@ export class DirectWalletPaymentsService {
         creditsToAdd: creditsToAdd.toFixed(2),
         bonusCredits,
         expiresAt: payment.expires_at.toISOString(),
+        quoteSignature,
+        quoteCanonicalInput,
       },
     };
   }
@@ -848,9 +978,7 @@ export class DirectWalletPaymentsService {
    * Idempotent: a second call with the same hash is a no-op. A different
    * hash on an already-attached payment errors.
    */
-  async attachTransaction(
-    params: { paymentId: string; txHash: string; userId: string },
-  ): Promise<{
+  async attachTransaction(params: { paymentId: string; txHash: string; userId: string }): Promise<{
     payment: CryptoPayment;
     alreadyAttached: boolean;
   }> {
@@ -873,9 +1001,7 @@ export class DirectWalletPaymentsService {
         return { payment, alreadyAttached: true };
       }
       if (payment.transaction_hash && payment.transaction_hash !== params.txHash) {
-        throw new Error(
-          "Payment already has a different transaction hash attached",
-        );
+        throw new Error("Payment already has a different transaction hash attached");
       }
       if (payment.status !== "pending") {
         throw new Error(`Cannot attach tx to payment in status ${payment.status}`);
@@ -910,9 +1036,7 @@ export class DirectWalletPaymentsService {
    * the UI needs to render a "waiting for confirmation" screen without
    * leaking unrelated metadata.
    */
-  async getPaymentStatusForUser(
-    params: { paymentId: string; userId: string },
-  ): Promise<{
+  async getPaymentStatusForUser(params: { paymentId: string; userId: string }): Promise<{
     paymentId: string;
     status: string;
     network: DirectWalletNetwork | null;
@@ -939,12 +1063,9 @@ export class DirectWalletPaymentsService {
     const metadata = metadataOf(payment);
     const rawNetwork = metadata.direct_network;
     const network: DirectWalletNetwork | null =
-      rawNetwork === "base" || rawNetwork === "bsc" || rawNetwork === "solana"
-        ? rawNetwork
-        : null;
+      rawNetwork === "base" || rawNetwork === "bsc" || rawNetwork === "solana" ? rawNetwork : null;
     const explorerUrl = buildExplorerUrl(network, payment.transaction_hash);
-    const errorValue =
-      typeof metadata.failure_reason === "string" ? metadata.failure_reason : null;
+    const errorValue = typeof metadata.failure_reason === "string" ? metadata.failure_reason : null;
 
     return {
       paymentId: payment.id,
@@ -1009,6 +1130,31 @@ export class DirectWalletPaymentsService {
       const direct = directMetadata(payment);
       const cfg = directPaymentConfig(env, direct.network);
       requireConfigured(cfg);
+
+      // Verify the HMAC-signed quote BEFORE the on-chain verify. This
+      // short-circuits a tampered client that swapped expectedTokenUnits or
+      // the receive address between createPayment and confirm, so we can
+      // reject before the user's wallet popup hits the chain.
+      const persistedSig = direct.metadata.quote_signature;
+      if (typeof persistedSig !== "string" || persistedSig.length === 0) {
+        throw new Error("Quote signature missing — payment may have been tampered with.");
+      }
+      const sigOk = await verifyQuoteSignature(
+        env,
+        {
+          paymentId: payment.id,
+          expectedTokenUnits: direct.expectedTokenUnits,
+          receiveAddress: String(direct.metadata.receive_address ?? ""),
+          chainId: cfg.chainId ?? null,
+          tokenAddress: direct.tokenAddress,
+          tokenMint: direct.tokenMint,
+          expiresAt: payment.expires_at,
+        },
+        persistedSig,
+      );
+      if (!sigOk) {
+        throw new Error("Quote signature mismatch — payment may have been tampered with.");
+      }
 
       const existingTx = await tx
         .select()
@@ -1194,6 +1340,13 @@ export class DirectWalletPaymentsService {
       )
       .limit(batchSize);
 
+    // Cap how many times the cron retries a transient verify failure on a
+    // single payment. A real tx propagates within minutes; ~1 hour of
+    // "not found" usually means a bad hash, wrong network, or a tx that
+    // was dropped from the mempool. Past that, mark `failed_chain` so the
+    // user sees the failure instead of an indefinite spinner.
+    const MAX_VERIFY_ATTEMPTS = 60;
+
     for (const payment of candidates) {
       stats.processed += 1;
       const hash = payment.transaction_hash;
@@ -1212,25 +1365,50 @@ export class DirectWalletPaymentsService {
         // Anything else (wrong recipient, low value, reverted) is terminal
         // — record it so the user sees a clear failure.
         const transient =
-          /not found|not yet|pending|TransactionReceiptNotFoundError|could not be found/i.test(
-            msg,
-          );
-        if (transient) {
+          /not found|not yet|pending|TransactionReceiptNotFoundError|could not be found/i.test(msg);
+
+        const attempts =
+          Number((metadataOf(payment) as Record<string, unknown>).verify_attempts ?? 0) + 1;
+
+        if (transient && attempts < MAX_VERIFY_ATTEMPTS) {
           stats.stillPending += 1;
+          await dbWrite
+            .update(cryptoPayments)
+            .set({
+              updated_at: new Date(),
+              metadata: sql`COALESCE(${cryptoPayments.metadata}, '{}'::jsonb) || ${JSON.stringify({
+                verify_attempts: attempts,
+                last_verify_error: msg,
+                last_verify_at: new Date().toISOString(),
+              })}::jsonb`,
+            })
+            .where(eq(cryptoPayments.id, payment.id))
+            .catch((e) => {
+              logger.warn("[DirectWalletPayments] failed to bump verify_attempts", {
+                paymentId: redact.paymentId(payment.id),
+                error: String(e),
+              });
+            });
           continue;
         }
+
+        if (transient && attempts >= MAX_VERIFY_ATTEMPTS) {
+          logger.warn(
+            "[DirectWalletPayments] giving up on broadcast payment after MAX_VERIFY_ATTEMPTS",
+            { paymentId: redact.paymentId(payment.id), attempts, lastError: msg },
+          );
+        }
+
         stats.failed += 1;
         await dbWrite
           .update(cryptoPayments)
           .set({
             status: "failed_chain",
             updated_at: new Date(),
-            metadata: sql`COALESCE(${cryptoPayments.metadata}, '{}'::jsonb) || ${JSON.stringify(
-              {
-                failure_reason: msg,
-                failed_at: new Date().toISOString(),
-              },
-            )}::jsonb`,
+            metadata: sql`COALESCE(${cryptoPayments.metadata}, '{}'::jsonb) || ${JSON.stringify({
+              failure_reason: msg,
+              failed_at: new Date().toISOString(),
+            })}::jsonb`,
           })
           .where(eq(cryptoPayments.id, payment.id));
         logger.warn("[DirectWalletPayments] Marked payment failed_chain", {

@@ -24,6 +24,7 @@ CHECKOUT = ROOT / "external/chipyard"
 SIM_DIR = CHECKOUT / "sims/verilator"
 OUT_DIR = ROOT / "build/chipyard/eliza_rocket"
 REPORT = OUT_DIR / "verilator-linux-smoke.json"
+REPORT_MIRROR = ROOT / "build/reports/chipyard_verilator_linux_smoke.json"
 LOG = OUT_DIR / "verilator-linux-smoke.log"
 LOCK_DIR = OUT_DIR / "verilator-linux-smoke.lock"
 CONFIG = "ElizaRocketConfig"
@@ -1036,9 +1037,11 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
             "It does not create or substitute boot evidence."
         ),
     }
-    tmp = REPORT.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp.replace(REPORT)
+    for output in (REPORT, REPORT_MIRROR):
+        output.parent.mkdir(parents=True, exist_ok=True)
+        tmp = output.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(output)
 
 
 def main() -> int:

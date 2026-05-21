@@ -9,8 +9,15 @@ source_artifacts:
   - board/kicad/e1-phone/board-optimization-scorecard.yaml
   - board/kicad/e1-phone/live-utilization-audit.yaml
   - board/kicad/e1-phone/component-envelope-fit-audit.yaml
+  - board/kicad/e1-phone/radio-module-envelope-orderability-gate.yaml
+  - board/kicad/e1-phone/cellular-top-island-repack-feasibility.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
   - board/kicad/e1-phone/placement-repack-candidate.yaml
   - board/kicad/e1-phone/route-feasibility-density.yaml
+  - board/kicad/e1-phone/trial-route-input-matrix.yaml
   - board/kicad/e1-phone/routing-acceptance-checklist.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
   - board/kicad/e1-phone/display-fit.yaml
@@ -21,6 +28,12 @@ upstream_status:
   board_optimization_scorecard: blocked_concept_optimized_but_not_routed_or_enclosure_ready
   live_utilization_audit: blocked_live_courtyard_utilization_not_routed_or_supplier_ready
   component_envelope_fit_audit: blocked_component_envelopes_require_supplier_drawings_or_region_updates_before_routing
+  radio_module_envelope_orderability_gate: blocked_cellular_region_too_small_and_supplier_design_packs_missing
+  cellular_top_island_repack_feasibility: blocked_selected_lga_overfills_current_top_island_without_repack_or_module_change
+  display_envelope_downselect: blocked_display_envelope_downselect_requires_signed_display_stack_connector_and_routed_clearance
+  camera_module_fit_downselect: blocked_camera_module_xy_z_downselect_requires_supplier_drawings_and_samples
+  radio_module_selection_wiring_decision: blocked_radio_module_selection_requires_supplier_design_packs_region_decision_routed_rf_and_firmware_evidence
+  usb_sidekey_selection_wiring_decision: blocked_usb_sidekey_selection_requires_supplier_drawings_real_schematic_route_measurements_and_enclosure_load_path
   placement_repack_candidate: active_matrix_matches_overlap_free_repack_candidate_not_routed
   route_feasibility_density: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
   routing_acceptance: blocked_routing_acceptance_requires_supplier_footprints_trial_route_drc_and_outputs
@@ -33,7 +46,7 @@ locked_concept_geometry:
   device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 11.2
+    max_thickness: 11.8
   board_bbox_mm:
     width: 64.0
     height: 132.0
@@ -63,8 +76,33 @@ layout_pressure_closure:
   live_courtyard_area_inside_physical_islands_pct: 68.21
   battery_window_intrusion_count: 0
   active_region_overlap_count: 0
-  known_envelope_blockers_count: 1
+  known_envelope_blockers_count: 2
   status: blocked_until_supplier_footprints_routed_utilization_escape_density_and_drc_exist
+hardware_decision_traceability:
+  display_size_anchor:
+    source: board/kicad/e1-phone/display-envelope-downselect.yaml
+    selected_part: CH550FH01A-CT
+    layout_dependency: preserve_78p0_x_153p6_mm_device_envelope_until_signed_display_stack_or_smaller_supplier_pack
+    status: blocked_display_stack_connector_step_and_bringup_missing
+  camera_module_fit:
+    source: board/kicad/e1-phone/camera-module-fit-downselect.yaml
+    rejected_public_alternate: front_alternate_alibaba_junde_imx219
+    layout_dependency: do_not_widen_or_release_camera_region_until_primary_camera_supplier_xy_z_drawings_arrive
+    status: blocked_camera_xy_z_supplier_drawings_samples_and_capture_evidence_missing
+  radio_module_selection:
+    source: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    primary_cellular_reference: Quectel_RG255C_or_RM255C_5G_RedCap
+    wifi_bluetooth_primary: Murata_LBEE5XV2EA_802_Type_2EA
+    layout_dependency: repack_top_rf_island_or_select_smaller_supplier_approved_cellular_module_before_evt1_route
+    status: blocked_cellular_region_module_branch_rf_layout_firmware_and_regulatory_evidence_missing
+  usb_sidekey_selection:
+    source: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+    usb_evt0_connector: GCT_USB4105
+    pd_controller: TPS65987DDH
+    charger: MAX77860
+    side_key_primary: Panasonic_EVQ_P7_EVQ_P3_EVQ_9P7
+    layout_dependency: preserve_bottom_center_usb2_pd_port_and_left_side_button_spine_until_supplier_drawings_routed_step_and_measurements_exist
+    status: blocked_usb_sidekey_supplier_drawings_route_measurements_and_enclosure_load_path_missing
 performance_constraint_closure:
   route_density:
     status: blocked_high_pressure_trial_route_required
@@ -86,12 +124,12 @@ performance_constraint_closure:
     blocker_to_release: supplier_footprints_escape_density_via_count_and_trial_route_missing
   power_efficiency:
     status: blocked_requires_schematic_pi_and_measurements
-    battery_energy_wh: 22.45
+    battery_energy_wh: 22.05
     pd_power_margin_w: 13.3
     charge_path_peak_efficiency_pct_min: 92
     buck_peak_efficiency_pct_min: 88
-    video_call_hours_at_target: 7.02
-    sustained_ai_hours_at_skin_limited_budget: 5.61
+    video_call_hours_at_target: 6.89
+    sustained_ai_hours_at_skin_limited_budget: 5.51
     blocker_to_release: rail_load_step_charge_cycle_and_regulator_efficiency_logs_missing
   thermal:
     status: blocked_requires_routed_board_and_thermal_soak
@@ -130,6 +168,30 @@ performance_constraint_closure:
       - DISP_AVDD_5V5
     blocker_to_release: probe_coordinates_limits_fixture_and_first_article_transcript_missing
 component_fit_policy:
+  cellular_primary_lga_module:
+    source: package/cellular/quectel-5g-redcap.yaml
+    known_envelope_mm:
+      width: 29.0
+      height: 32.0
+      thickness: 2.4
+    placement_refdes_group: U_CELL
+    placement_region_mm:
+      x: 3.0
+      y: 3.0
+      width: 14.0
+      height: 14.0
+    fit:
+      fits_width: false
+      fits_height: false
+      width_shortfall_mm: 15.0
+      height_shortfall_mm: 18.0
+      fits_xy: false
+      fits_rotated: false
+      rotated_width_shortfall_mm: 18.0
+      rotated_height_shortfall_mm: 15.0
+    status: blocked_selected_rg255c_lga_exceeds_current_cellular_region
+    required_action: repack the top RF island for an approximately 32 x 29 mm cellular
+      LGA zone or select a smaller orderable cellular module before EVT1 routing
   wifi_bluetooth_module:
     source: package/wifi/murata-type-2ea-wifi6e.yaml
     known_envelope_mm:
@@ -160,7 +222,7 @@ component_fit_policy:
     device_envelope_mm:
       width: 78.0
       height: 153.6
-      thickness: 11.2
+      thickness: 11.8
     fit:
       fits_width: true
       fits_height: true
@@ -175,7 +237,7 @@ component_fit_policy:
     known_envelope_mm:
       width: 64.0
       height: 87.0
-      thickness: 5.7
+      thickness: 5.6
     battery_window_mm:
       x: 0.0
       y: 29.5
@@ -228,6 +290,9 @@ component_fit_policy:
       width_shortfall_mm: 8.0
       height_shortfall_mm: 11.0
       fits_xy: false
+      fits_rotated: false
+      rotated_width_shortfall_mm: 7.0
+      rotated_height_shortfall_mm: 12.0
     status: blocked_alternate_exceeds_current_camera_connector_escape_region
     required_action: reject this alternate or widen the camera bump/display connector
       stack before locking the camera FPC and lens-window datum
@@ -314,6 +379,11 @@ placement_repack_policy:
     candidate_intrusion_count: 0
     candidate_intruding_regions: []
   region_semantics_changes_required:
+    - refdes_group: U_CELL
+      change: current 14 x 14 mm cellular region cannot represent the selected RG255C
+        LGA module body
+      reason: the selected public RG255C LGA envelope is 29 x 32 mm before RF keepout,
+        shield, matching, and conducted-access clearance
     - refdes_group: J_CAM0_CAM1
       change: treat active PCB region as camera FPC connector/escape area, not full
         module body
@@ -330,7 +400,11 @@ placement_repack_policy:
       reason: the known Wi-Fi/Bluetooth module needs the lower-left top-island area
         without overlapping cellular or buttons
   required_before_routed_release:
+    - repack U_CELL for the selected 29 x 32 mm RG255C LGA plus RF keepouts or choose
+      a smaller orderable cellular module before EVT1 routing
     - obtain primary front/rear camera XY and z-height drawings
+    - keep the 25 x 24 mm Alibaba/Junde IMX219 alternate rejected unless the top-right
+      camera/display/flex stack is widened and rerun through enclosure clearance
     - rerun RF antenna keepout and cellular/Wi-Fi coexistence placement with supplier
       reference layouts
     - rerun routed STEP/enclosure clearance once supplier 3D models are available
@@ -385,12 +459,15 @@ cross_checks:
   repack_candidate_overlap_free_and_matches_active_matrix: true
   battery_window_has_no_live_or_candidate_intrusions: true
   junde_camera_alternate_remains_rejected: true
+  camera_fit_downselect_remains_supplier_drawing_gated: true
   wifi_and_side_button_known_outlines_fit_regions: true
   release_outputs_all_blocked: true
 release_blockers:
   - supplier footprints, courtyards, component heights, and STEP models are missing
   - routed courtyard utilization, escape-density, via-count, and DRC reports are missing
   - screen/camera connector and primary camera XY/Z supplier drawings are missing
+  - camera fit downselect still rejects the 25 x 24 mm Alibaba/Junde alternate in the current 17 x 13 mm top-right
+    camera/FPC region
   - power efficiency, thermal soak, RF, coexistence, SAR, and factory measurements
     are missing
   - routed board STEP and enclosure clearance rerun are missing

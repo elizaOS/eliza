@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_MANIFEST = ROOT / "build/ai_eda/training_corpus_manifest/validation/training_corpus_manifest.json"
+DEFAULT_MANIFEST = (
+    ROOT / "build/ai_eda/training_corpus_manifest/validation/training_corpus_manifest.json"
+)
 CLAIM_BOUNDARY = "training_corpus_manifest_only_no_payload_weights_training_or_e1_claim"
 REQUIRED_DATASETS = {
     "internal_dataset_fixtures",
@@ -22,8 +24,11 @@ REQUIRED_DATASETS = {
     "edalearn",
     "macro_place_challenge_2026",
     "mlcad_2023_fpga_macro",
+    "r_zoo_rectilinear_floorplan",
+    "floorset_lite",
     "research_code_assets",
     "current_research_watchlist_records",
+    "verireason_rtl_coder",
     "openabc_d",
     "e1_softmacro_cases",
     "converted_external_fixtures",
@@ -158,15 +163,23 @@ def validate_dataset(dataset: dict[str, Any]) -> list[str]:
             continue
         errors.extend(validate_jsonl_file(dataset_id, item))
     logical_record_count = dataset.get("logical_record_count")
-    expected_logical_count = sum(item.get("line_count", 0) for item in jsonl_files if isinstance(item, dict)) or len(records or [])
+    expected_logical_count = sum(
+        item.get("line_count", 0) for item in jsonl_files if isinstance(item, dict)
+    ) or len(records or [])
     if logical_record_count != expected_logical_count:
         errors.append(f"{dataset_id}: logical_record_count mismatch")
     if dataset_id == "openroad_eda_corpus":
         if len(jsonl_files) != 3:
             errors.append("openroad_eda_corpus: expected train/val/test jsonl files")
         if report_data and logical_record_count != report_data.get("record_count"):
-            errors.append("openroad_eda_corpus: logical_record_count must match conversion report record_count")
-    schema_sum = sum(dataset.get("schema_counts", {}).values()) if isinstance(dataset.get("schema_counts"), dict) else -1
+            errors.append(
+                "openroad_eda_corpus: logical_record_count must match conversion report record_count"
+            )
+    schema_sum = (
+        sum(dataset.get("schema_counts", {}).values())
+        if isinstance(dataset.get("schema_counts"), dict)
+        else -1
+    )
     if schema_sum != dataset.get("record_count"):
         errors.append(f"{dataset_id}: schema_counts must sum to record_count")
     return errors

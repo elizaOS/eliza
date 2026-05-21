@@ -31,7 +31,7 @@ public class ElizaClockActivity extends Activity {
         launch.setAction(Intent.ACTION_VIEW);
 
         android.net.Uri.Builder route =
-                android.net.Uri.parse("ai.elizaos.app://clock").buildUpon()
+                android.net.Uri.parse("elizaos://clock").buildUpon()
                         .appendQueryParameter("source", "android-clock");
         if (action != null) {
             route.appendQueryParameter("action", action);

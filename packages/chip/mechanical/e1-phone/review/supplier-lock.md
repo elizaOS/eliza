@@ -22,10 +22,10 @@ Status: shortlist for CAD lock, not a purchase order.
 ## side_buttons
 
 - Role: `power_volume_buttons`
-- Candidate: Panasonic EVQ-P7/P3/9P7 side-push tactile switch
-- Source: https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247
+- Candidate: XKB TS-1187A-B-A-B side-push tactile switch, 3.5x2.9x1.7 mm
+- Source: https://www.lcsc.com/product-detail/Tactile-Switches_XKB-Connection-TS-1187A-B-A-B_C318884.html
 - Lock state: needs exact Panasonic part number and flex/direct-PCB decision
-- Mechanical lock: `{"cap_power_mm": [2.0, 12.0, 1.1], "cap_volume_mm": [2.0, 21.0, 1.1], "power_force_n": 1.6, "travel_mm": 0.35, "volume_force_n": 1.5}`
+- Mechanical lock: `{"cap_power_mm": [2.0, 12.0, 1.1], "cap_volume_mm": [2.0, 21.0, 1.1], "power_force_n": 1.57, "travel_mm": 0.2, "volume_force_n": 1.57}`
 
 ## cellular_redcap
 

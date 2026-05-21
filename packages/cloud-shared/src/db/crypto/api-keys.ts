@@ -10,7 +10,7 @@
  * after insert — the plaintext never persists outside the encrypted columns.
  */
 
-import { encryptField, decryptField, type EncryptedField, type FieldCoords } from "./field-crypto";
+import { decryptField, type EncryptedField, encryptField, type FieldCoords } from "./field-crypto";
 
 const COORDS = (rowId: string): FieldCoords => ({
   table: "api_keys",
@@ -33,9 +33,6 @@ export async function encryptApiKey(
 /**
  * Decrypt an API-key plaintext from the encrypted columns.
  */
-export async function decryptApiKey(
-  rowId: string,
-  field: EncryptedField,
-): Promise<string> {
+export async function decryptApiKey(rowId: string, field: EncryptedField): Promise<string> {
   return decryptField(field, COORDS(rowId));
 }

@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/macro_placement_replay_preflight/validation/replay_preflight_report.json"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/macro_placement_replay_preflight/validation/replay_preflight_report.json"
+)
 CLAIM_BOUNDARY = "macro_placement_replay_preflight_only_no_ppa_signoff_or_release_claim"
 ALLOWED_STATUS = {
     "READY_TO_EXECUTE",
@@ -85,7 +87,10 @@ def validate_report(report: dict[str, Any]) -> list[str]:
         errors.append(f"unsupported status {report.get('status')!r}")
     if not isinstance(report.get("candidate_id"), str) or not report["candidate_id"]:
         errors.append("candidate_id is required")
-    if not isinstance(report.get("source_replay_plan"), str) or not repo_path(report["source_replay_plan"]).exists():
+    if (
+        not isinstance(report.get("source_replay_plan"), str)
+        or not repo_path(report["source_replay_plan"]).exists()
+    ):
         errors.append("source_replay_plan must point at an existing replay plan")
     errors.extend(validate_artifacts(report))
     tools = report.get("tool_status")

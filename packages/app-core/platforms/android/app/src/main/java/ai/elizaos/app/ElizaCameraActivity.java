@@ -31,7 +31,7 @@ public class ElizaCameraActivity extends Activity {
                 ? source.getParcelableExtra(MediaStore.EXTRA_OUTPUT)
                 : null;
 
-        Uri.Builder route = Uri.parse("ai.elizaos.app://camera").buildUpon()
+        Uri.Builder route = Uri.parse("elizaos://camera").buildUpon()
                 .appendQueryParameter("source", "android-camera");
         if (action != null) {
             route.appendQueryParameter("action", action);

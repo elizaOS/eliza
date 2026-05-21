@@ -6,6 +6,7 @@
   "securityVersion": 1,
   "measurements": {
     "boot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "monitor": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
     "os": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "agent": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "policy": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",

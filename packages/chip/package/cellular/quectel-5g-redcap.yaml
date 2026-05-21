@@ -60,6 +60,63 @@ lab_fallback:
     replace, and use for early Linux/Android modem-manager bring-up.
   host_interfaces_required: [USB_3_or_PCIe, USB_2_diag, USIM]
 
+phone_layout_space_saving_alternates:
+  claim_boundary: >
+    Public-source size shortlist for smaller orderable cellular modules that may preserve the current display,
+    battery, and board envelope if the first phone accepts LTE Cat 1/Cat 1 bis service instead of 5G RedCap.
+    These are not approved substitutes until supplier packs, region SKUs, antenna review, carrier scope, and SAR
+    evidence are captured.
+  candidates:
+    - id: quectel_eg915q_na_or_eg915u_class
+      vendor: Quectel
+      family: EG915Q_or_EG915U
+      class: LTE_Cat_1_bis
+      form_factor: LGA
+      public_envelope_mm: {width: 23.6, height: 19.9, thickness: 2.4}
+      public_source: https://www.quectel.com/lte-iot-modules/
+      source_note: Quectel LTE IoT modules table lists EG915Q/EG915U-class 23.6 x 19.9 x 2.4 mm LGA Cat 1 bis modules
+      likely_phone_layout_use: space_saving_lte_fallback_if_5g_redcap_cannot_fit
+      fit_policy: requires_repacked_cellular_region_not_current_14x14_placeholder
+      tradeoff_vs_rg255c: loses_5g_redcap_and_high_downlink_uplink_rates_but_reduces_module_area
+    - id: quectel_eg916q_gl
+      vendor: Quectel
+      family: EG916Q-GL
+      class: LTE_Cat_1_bis
+      form_factor: LGA
+      public_envelope_mm: {width: 26.5, height: 22.5, thickness: 2.4}
+      public_source: https://www.quectel.com/product/lte-cat-1-bis-eg916q-gl/
+      source_note: Quectel product page lists 26.5 x 22.5 x 2.4 mm LGA, 10 Mbps downlink, 5 Mbps uplink, and Linux/Android driver resources
+      likely_phone_layout_use: global_lte_fallback_if_reduced_cellular_throughput_is_acceptable
+      fit_policy: requires_repacked_cellular_region_not_current_14x14_placeholder
+      tradeoff_vs_rg255c: global_cat1_bis_size_savings_but_not_5g_redcap
+    - id: fibocom_mc665
+      vendor: Fibocom
+      family: MC665
+      class: LTE_Cat_1_bis
+      form_factor: LCC_LGA
+      public_envelope_mm: {width: 20.2, height: 22.2, thickness: 2.4}
+      public_source: https://www.fibocom.com/en/SeriesProduct/info_itemid_133.html
+      source_note: Fibocom product page lists approximately 20.2 x 22.2 x 2.4 mm Cat 1 bis LCC+LGA module
+      likely_phone_layout_use: smallest_public_multisource_cross_check_candidate_pending_region_and_support_review
+      fit_policy: requires_repacked_cellular_region_not_current_14x14_placeholder
+      tradeoff_vs_rg255c: smaller_lte_cat1_bis_module_from_second_vendor_but_requires_new_host_rf_and_firmware_review
+    - id: simcom_a7680c_china_only_size_reference
+      vendor: SIMCom
+      family: A7680C
+      class: LTE_Cat_1
+      form_factor: LCC_LGA
+      public_envelope_mm: {width: 17.6, height: 15.7, thickness: 2.1}
+      public_source: https://www.simcom.com/news_view-159.html
+      source_note: SIMCom launch note lists 17.6 x 15.7 x 2.1 mm, but targets the Chinese market
+      likely_phone_layout_use: size_reference_or_china_sku_only_not_default_global_phone_module
+      fit_policy: requires_region_and_carrier_review_before_use
+      tradeoff_vs_rg255c: much_smaller_but_region_limited_and_not_5g_redcap
+  release_blockers:
+    - exact orderable MPN, lifecycle, and regional band matrix for each shortlisted alternate
+    - hardware design guide, pad map, reference layout, land pattern, paste mask, and STEP model
+    - modem firmware, Linux/Android driver package, test mode, carrier/PTCRB/GCF plan, and SAR scope
+    - antenna vendor review and conducted RF access for the final enclosure plastics
+
 host_interfaces:
   cellular_module:
     required:

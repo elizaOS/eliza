@@ -50,6 +50,34 @@ describe("TEE release manifest policy bridge", () => {
     });
   });
 
+  it("carries the confidential-channel monitor/modelWeights measurements and monitorMeasured claim", () => {
+    const policy = teePolicyFromReleaseManifest({
+      tee: {
+        enabled: true,
+        providers: ["cove", "eliza-vault"],
+        measurements: {
+          monitor: "sha256:111",
+          modelWeights: "sha256:222",
+          npuFirmware: "sha256:333",
+        },
+        requiredClaims: {
+          npuProtected: true,
+          monitorMeasured: true,
+        },
+      },
+    });
+
+    expect(policy.requiredMeasurements).toMatchObject({
+      monitor: "sha256:111",
+      modelWeights: "sha256:222",
+      npuFirmware: "sha256:333",
+    });
+    expect(policy.requiredClaims).toEqual({
+      npuProtected: true,
+      monitorMeasured: true,
+    });
+  });
+
   it("does not require TEE evidence when the release manifest has TEE disabled", () => {
     expect(
       teePolicyFromReleaseManifest({ tee: { enabled: false } }),

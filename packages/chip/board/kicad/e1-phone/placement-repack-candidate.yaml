@@ -8,6 +8,9 @@ source_artifacts:
   - board/kicad/e1-phone/placement-interface-matrix.yaml
   - board/kicad/e1-phone/layout-utilization.yaml
   - board/kicad/e1-phone/component-envelope-fit-audit.yaml
+  - board/kicad/e1-phone/radio-module-envelope-orderability-gate.yaml
+  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - package/cellular/quectel-5g-redcap.yaml
   - package/wifi/murata-type-2ea-wifi6e.yaml
   - package/camera/oem-mipi-csi-modules.yaml
   - package/human-interface/side-buttons.yaml
@@ -26,7 +29,7 @@ optimization_target:
   primary_goal: remove concept placement overlaps while fitting the known Wi-Fi/Bluetooth module outline
 current_matrix_context:
   current_overlap_count: 0
-  current_known_envelope_blockers_count: 1
+  current_known_envelope_blockers_count: 2
   current_overlaps: []
 candidate_regions_mm:
   U_CELL:
@@ -93,6 +96,21 @@ candidate_overlap_audit:
   overlap_count: 0
   overlaps: []
 known_envelope_fit:
+  cellular_primary_lga_fits_candidate_region: false
+  cellular_primary_lga_known_envelope_mm:
+    width: 29.0
+    height: 32.0
+    thickness: 2.4
+  cellular_primary_lga_candidate_region_mm:
+    x: 3.0
+    y: 3.0
+    width: 14.0
+    height: 14.0
+  cellular_primary_lga_shortfall_mm:
+    width: 15.0
+    height: 18.0
+  cellular_primary_lga_rotated_fits_candidate_region: false
+  cellular_primary_lga_policy: repack_top_rf_island_or_select_smaller_orderable_lga_before_evt1_route
   wifi_bluetooth_module_fits_candidate_region: true
   wifi_bluetooth_known_envelope_mm:
     width: 12.5
@@ -106,6 +124,7 @@ known_envelope_fit:
   side_button_single_switch_fits_candidate_region: true
   front_camera_junde_alternate_fits_candidate_region: false
   front_camera_junde_policy: reject_for_current_78x153p6_envelope_unless_camera_bump_or_display_connector_stack_changes
+  primary_camera_xy_z_policy: keep_sincere_first_phone_style_modules_supplier_drawing_gated_before_evt1_route
 battery_window_audit:
   battery_window_mm:
     x: 0.0
@@ -115,6 +134,10 @@ battery_window_audit:
   candidate_intrusion_count: 0
   candidate_intruding_regions: []
 region_semantics_changes_required:
+  - refdes_group: U_CELL
+    change: current 14 x 14 mm cellular region cannot represent the selected RG255C LGA module body
+    reason: the selected public RG255C LGA envelope is 29 x 32 mm before RF keepout, shield, matching, and
+      conducted-access clearance
   - refdes_group: J_CAM0_CAM1
     change: treat active PCB region as camera FPC connector/escape area, not full module body
     reason: the current shared top-right area cannot fit the 25 x 24 mm Junde alternate plus display connector and
@@ -130,17 +153,23 @@ region_semantics_changes_required:
 cross_checks:
   candidate_removes_all_region_overlaps: true
   candidate_reduces_overlap_count: true
+  candidate_cellular_region_rejected_for_selected_lga: true
   candidate_wifi_region_fits_known_module: true
   candidate_preserves_battery_window: true
   candidate_rejects_oversized_junde_camera_alternate: true
   active_matrix_matches_candidate: true
 required_before_routed_release:
+  - repack U_CELL for the selected 29 x 32 mm RG255C LGA plus RF keepouts or choose a smaller orderable cellular
+    module before EVT1 routing
   - obtain primary front/rear camera XY and z-height drawings
+  - keep 25 x 24 mm Junde/IMX219 camera alternate out of the current 17 x 13 mm camera/FPC region unless the
+    top-right camera/display/flex stack is widened
   - rerun RF antenna keepout and cellular/Wi-Fi coexistence placement with supplier reference layouts
   - rerun routed STEP/enclosure clearance once supplier 3D models are available
 forbidden_claims:
   - placement_release_ready
   - supplier_footprints_ready
+  - cellular_region_ready
   - camera_region_ready
   - wifi_bt_region_ready
   - routed_pcb_ready

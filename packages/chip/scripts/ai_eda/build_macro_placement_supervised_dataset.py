@@ -25,9 +25,12 @@ DEFAULT_RECORD_DIRS = (
     ROOT / "build/ai_eda/tilos_macroplacement/validation/records",
     ROOT / "build/ai_eda/chipbench_d/validation/records",
     ROOT / "build/ai_eda/e1_softmacro_cases/validation/records",
+    ROOT / "build/ai_eda/e1_macro_array_cases/validation/records",
 )
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/macro_placement_supervised_dataset"
-CLAIM_BOUNDARY = "macro_placement_supervised_dataset_only_no_training_inference_ppa_or_release_claim"
+CLAIM_BOUNDARY = (
+    "macro_placement_supervised_dataset_only_no_training_inference_ppa_or_release_claim"
+)
 
 
 def rel(path: Path) -> str:
@@ -82,7 +85,11 @@ def object_size(obj: dict[str, Any]) -> tuple[float, float, str]:
     width = obj.get("width_um")
     height = obj.get("height_um")
     if width is None or height is None:
-        return float(width if width is not None else 1.0), float(height if height is not None else 1.0), "fallback_missing_lef_size"
+        return (
+            float(width if width is not None else 1.0),
+            float(height if height is not None else 1.0),
+            "fallback_missing_lef_size",
+        )
     return float(width), float(height), "source_lef_size"
 
 
@@ -114,7 +121,7 @@ def sample_for_object(
     object_id = str(obj["id"])
     return {
         "schema": "eliza.ai_eda.macro_placement_supervised_sample.v1",
-        "id": hashlib.sha256(f"{case_id}:{object_id}".encode("utf-8")).hexdigest()[:24],
+        "id": hashlib.sha256(f"{case_id}:{object_id}".encode()).hexdigest()[:24],
         "source_record": rel(path),
         "case_id": case_id,
         "design_bundle_id": case["design_bundle_id"],

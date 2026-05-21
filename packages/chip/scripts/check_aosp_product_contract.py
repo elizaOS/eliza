@@ -44,6 +44,11 @@ ELIZA_FUSED_PRODUCT = "eliza_openagent_ai_soc_phone-trunk_staging-userdebug"
 CHIP_SCAFFOLD_PRODUCT = "eliza_ai_soc-trunk_staging-userdebug"
 UPSTREAM_CF_PRODUCT = "aosp_cf_riscv64_phone-trunk_staging-userdebug"
 OS_ELIZA_CF_PRODUCT = "eliza_cf_riscv64_phone-trunk_staging-userdebug"
+REQUIRED_OS_CF_PRODUCTS = {
+    "eliza_cf_arm64_phone-trunk_staging-userdebug",
+    "eliza_cf_x86_64_phone-trunk_staging-userdebug",
+    "eliza_cf_riscv64_phone-trunk_staging-userdebug",
+}
 REQUIRED_ELIZA_PACKAGES = {
     "Eliza",
     "default-permissions-ai.elizaos.app.xml",
@@ -264,6 +269,14 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
+        bool(REQUIRED_OS_CF_PRODUCTS - os_product_choices),
+        "os_cuttlefish_arch_products_missing",
+        "OS vendor product list does not declare all required arm64, x86_64, and riscv64 Cuttlefish products",
+        f"missing={sorted(REQUIRED_OS_CF_PRODUCTS - os_product_choices)} choices={sorted(os_product_choices)}",
+        "Declare first-class elizaOS Cuttlefish products for arm64, x86_64, and riscv64 before claiming multi-ABI AOSP fork support.",
+    )
+    add_if(
+        findings,
         not {
             "device/eliza/eliza_ai_soc/eliza_ai_soc.mk",
             "vendor/eliza/eliza_common.mk",
@@ -323,6 +336,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
             "chip_scaffold": CHIP_SCAFFOLD_PRODUCT,
             "upstream_reference_cuttlefish": UPSTREAM_CF_PRODUCT,
             "os_eliza_reference_cuttlefish": OS_ELIZA_CF_PRODUCT,
+            "required_os_cuttlefish_products": sorted(REQUIRED_OS_CF_PRODUCTS),
         },
     }
     return payload(findings, evidence)

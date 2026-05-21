@@ -41,6 +41,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LLVM_PIN = REPO_ROOT / "compiler/llvm-build/llvm-pin.json"
 IREE_PIN = REPO_ROOT / "compiler/iree-eliza-npu/iree-pin.json"
 AOSP_MANIFEST = REPO_ROOT / "compiler/aosp/manifest.xml"
+REPORT = REPO_ROOT / "build/reports/rva23_compliance.json"
+EVENTS: list[dict[str, str]] = []
 
 # RVA23U64 mandatory extensions per
 # https://riscv.org/blog/risc-v-announces-ratification-of-the-rva23-profile-standard/
@@ -70,10 +72,46 @@ RVA23U64_MANDATORY = (
 
 
 def emit(status: str, stage: str, detail: str = "") -> None:
+    EVENTS.append({"status": status, "stage": stage, "detail": detail})
     if detail:
         print(f"STATUS: {status} rva23.{stage} — {detail}")
     else:
         print(f"STATUS: {status} rva23.{stage}")
+
+
+def write_report() -> None:
+    findings = [
+        {
+            "code": f"rva23_{event['stage']}",
+            "severity": "blocker",
+            "message": f"RVA23 compliance stage is {event['status']}",
+            "evidence": event["detail"] or event["stage"],
+            "next_step": "Pin/build the required RISC-V toolchain and AOSP branch inputs, then rerun the RVA23 compliance gate.",
+        }
+        for event in EVENTS
+        if event["status"] in {"BLOCKED", "FAIL"}
+    ]
+    if any(event["status"] == "FAIL" for event in EVENTS):
+        status = "fail"
+    elif findings:
+        status = "blocked"
+    else:
+        status = "pass"
+    payload = {
+        "schema": "eliza.rva23_compliance.v1",
+        "status": status,
+        "claim_boundary": "toolchain_profile_contract_only_not_linux_or_aosp_boot_evidence",
+        "summary": {
+            "events": len(EVENTS),
+            "findings": len(findings),
+            "blocked": len([event for event in EVENTS if event["status"] == "BLOCKED"]),
+            "fail": len([event for event in EVENTS if event["status"] == "FAIL"]),
+        },
+        "events": EVENTS,
+        "findings": findings,
+    }
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def load_llvm_pin() -> dict:
@@ -202,6 +240,7 @@ def main() -> int:
     if args.toolchain:
         rc |= check_toolchain(args.toolchain)
     if rc:
+        write_report()
         return 1
     if args.strict:
         # Re-scan blockers from the captured output by re-reading the pin
@@ -213,7 +252,9 @@ def main() -> int:
             None,
         ):
             emit("BLOCKED", "strict_summary", "LLVM SHA placeholder")
+            write_report()
             return 2
+    write_report()
     return 0
 
 

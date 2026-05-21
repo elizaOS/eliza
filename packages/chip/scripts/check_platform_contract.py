@@ -166,11 +166,15 @@ def check_bootrom_against_rtl(contract: dict, errors: list[str]) -> None:
 
 
 def check_decode_against_rtl(contract: dict, errors: list[str]) -> None:
+    # The MMIO address decode shared by both SoC tops lives in the extracted
+    # rtl/peripherals/e1_mmio_decode.sv module; the unmapped read-data default
+    # still lives in the top's read mux.
+    decode = read_text(ROOT / "rtl/peripherals/e1_mmio_decode.sv")
     top = read_text(ROOT / "rtl/top/e1_soc_top.sv")
     decoded = {}
     for rtl_name, value in re.findall(
         r"assign\s+(\w+)_sel\s*=.*?mmio_addr\[31:12\]\s*==\s*20'h([0-9A-Fa-f_]+)",
-        top,
+        decode,
     ):
         if rtl_name in REGION_RTL_NAMES:
             decoded[REGION_RTL_NAMES[rtl_name]] = h(value) << 12
@@ -187,7 +191,9 @@ def check_decode_against_rtl(contract: dict, errors: list[str]) -> None:
             errors,
         )
 
-    require("mmio_addr[11:8] == 4'h0" in top, "RTL implemented-window decode changed", errors)
+    require(
+        "mmio_addr[11:8] == 4'h0" in decode, "RTL implemented-window decode changed", errors
+    )
     unmapped = f"{h(contract['e1_chip']['unmapped_read_value']):08X}"
     rtl_unmapped_values = {
         value.replace("_", "").upper() for value in re.findall(r"32'h([0-9A-Fa-f_]+)", top)

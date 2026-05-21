@@ -2,9 +2,11 @@
   "profile_id": "asimov-1",
   "source_xml": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/sim-model/xmls/asimov.xml",
   "generated_mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+  "generated_urdf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/asimov.urdf",
   "mesh_dir": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes",
   "source_xml_sha256": "fdb12df1dbead6fb4019a56297c0e917ae5f9e4686a848ca2686fd3c5725da42",
   "generated_mjcf_sha256": "bf4125c9f63ed3027b6c8513de9dda02e97cbee4f55ff8e0f06a4b92aefb7bb0",
+  "generated_urdf_sha256": "19e350ba0d429fcb257711ca108ec59d81c0926d22a0f900c95eac75bedf1ba0",
   "joint_order": [
     "left_hip_pitch_joint",
     "left_hip_roll_joint",

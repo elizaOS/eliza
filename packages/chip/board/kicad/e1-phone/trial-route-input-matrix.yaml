@@ -1,0 +1,213 @@
+schema: eliza.e1_phone_trial_route_input_matrix.v1
+status: blocked_trial_route_inputs_missing_supplier_packs_footprints_stackup_and_escape_reviews
+date: '2026-05-21'
+claim_boundary: >
+  Trial-route input matrix for preserving the 64 x 132 mm E1 phone board around
+  the 5.5 inch 1080 x 1920 MIPI display. This defines the supplier, footprint,
+  netclass, placement, stackup, and enclosure inputs required before a real KiCad
+  trial route can start. It is not routed copper, not DRC/ERC evidence, not a
+  supplier approval, not a field-solved stackup, and not enclosure-ready evidence.
+
+source_artifacts:
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  - board/kicad/e1-phone/supplier-sample-release-gate.yaml
+  - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
+  - board/kicad/e1-phone/placement-repack-candidate.yaml
+  - board/kicad/e1-phone/route-feasibility-density.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/evt1-stackup-impedance-coupon-plan.yaml
+  - board/kicad/e1-phone/schematic-netclass-execution-package.yaml
+  - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/pcb-implementation-audit.yaml
+
+upstream_status:
+  supplier_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
+  supplier_sample_release_gate: blocked_supplier_samples_response_packs_and_reviews_required_before_layout_release
+  footprint_3d_model_library_map: library_match_preparation_not_release_not_routed
+  placement_repack_candidate: active_matrix_matches_overlap_free_repack_candidate_not_routed
+  route_feasibility_density: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
+  stackup_coupon_plan: blocked_evt1_stackup_coupon_plan_requires_fabricator_field_solver_quote_and_trial_route
+  schematic_netclass_execution: blocked_requires_supplier_symbols_netclass_capture_erc_and_trial_route
+  routed_pcb_implementation: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
+  enclosure_fit_execution: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+  pcb_implementation_audit: blocked_live_kicad_pcb_scaffold_audited_not_routed
+
+locked_geometry:
+  board_bbox_mm: {width: 64.0, height: 132.0, area_mm2: 8448.0}
+  battery_window_mm: {x: 0.0, y: 29.5, width: 64.0, height: 87.0, area_mm2: 5568.0}
+  physical_pcb_island_area_mm2: 2816.0
+  display_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.8}
+  split_interconnect_min_contacts: 49
+
+current_kicad_route_state:
+  footprint_count: 87
+  segment_count: 0
+  zone_count: 0
+  filled_zone_count: 0
+  has_routed_copper: false
+  has_routed_step: false
+  current_board_file: board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+
+trial_route_domains:
+  - id: display_touch
+    supplier_functions: [display_touch]
+    placement_regions: [J_DISPLAY_TOUCH]
+    route_classes_required: [mipi_dphy_diff, i2c_control, display_bias_power]
+    response_pack_required: board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack.yaml
+    required_pre_route_inputs:
+      - signed display/touch FPC pinout and mating connector MPN
+      - display FPC connector land pattern, courtyard, and STEP
+      - DSI lane order, polarity, length target, and touch I2C/control pins
+      - display FPC bend, stiffener, cover-lens, and enclosure datum model
+    escape_review_required: display_fpc_escape_and_mipi_dsi_trial_route
+    status: blocked_missing_supplier_response_footprint_and_escape_review
+  - id: front_rear_cameras
+    supplier_functions: [rear_camera, front_camera]
+    placement_regions: [J_CAM0_CAM1]
+    route_classes_required: [mipi_dphy_diff, i2c_control, camera_power]
+    response_pack_required:
+      - board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack.yaml
+      - board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack.yaml
+    required_pre_route_inputs:
+      - rear and front camera FPC pinouts, lane order, MCLK, reset, PWDN, AF/VCM, and rails
+      - camera connector land patterns, courtyards, heights, and STEP models
+      - signed module XY, lens-axis, z-height, FPC-exit, and cover-glass datum drawings
+      - primary camera sample image and incoming dimensional inspection reports
+    escape_review_required: camera_fpc_escape_csi_route_and_lens_window_clearance
+    status: blocked_missing_supplier_response_footprint_and_escape_review
+  - id: usb_c_and_side_keys
+    supplier_functions: [usb_c_receptacle_evt0, side_buttons]
+    placement_regions: [J_USB_C, SW_POWER_VOL]
+    route_classes_required: [usb2_diff, cc_sbu_control, side_key_gpio, high_current_power]
+    response_pack_required:
+      - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack.yaml
+      - board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack.yaml
+    required_pre_route_inputs:
+      - USB-C exact connector variant, shell stake drawing, recommended footprint, and STEP
+      - CC/VBUS/USB2/ESD placement plan and connector insertion-load path
+      - side-key flex or switch drawing, force-travel curve, bend radius, connector MPN, and STEP
+      - side-key actuator-to-enclosure rib datum and tolerance stack
+    escape_review_required: usb2_side_flex_route_and_side_button_actuation_clearance
+    status: blocked_missing_supplier_response_footprint_and_escape_review
+  - id: cellular_wifi_bluetooth_rf
+    supplier_functions: [cellular, wifi_bluetooth]
+    placement_regions: [U_CELL, U_WIFI_BT]
+    route_classes_required: [usb2_diff, pcie_diff, sdio, uart_control, rf_single]
+    response_pack_required:
+      - board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml
+      - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml
+    required_pre_route_inputs:
+      - cellular region SKU, LGA pad map, hardware design guide, reference layout, and STEP
+      - Wi-Fi/Bluetooth pad map, reference layout, RF keepout, firmware/NVRAM/CLM scope, and STEP
+      - cellular main/diversity/GNSS plus Wi-Fi/BT antenna feed/matching/conducted-access placement
+      - modular grant, carrier, SAR, coexistence, and country-code constraints
+    escape_review_required: radio_module_escape_rf_keepout_and_antenna_feed_trial_route
+    status: blocked_missing_supplier_response_footprint_and_escape_review
+  - id: compute_memory_power
+    supplier_functions: [cellular, wifi_bluetooth, battery_pack]
+    placement_regions: [U_SOC_LPDDR_UFS, U_PMIC_CHARGER, J_BATTERY]
+    route_classes_required: [lpddr, ufs, pcie_diff, high_current_power, regulator_feedback]
+    response_pack_required:
+      - board/kicad/e1-phone/production/sourcing/battery_pack/rfq-response-pack.yaml
+    required_pre_route_inputs:
+      - SoC, memory, eMMC/UFS, PMIC, charger, and battery connector pin maps and land patterns
+      - PMIC/charger rail sequence, load-step profile, thermal-pad geometry, and copper requirements
+      - battery pack swelling, PCM/tail/connector/NTC/ID drawing and STEP
+      - HDI escape plan, via-in-pad/microvia policy, and fabricator stackup quote
+    escape_review_required: soc_memory_pmic_battery_escape_pdn_and_thermal_trial_route
+    status: blocked_missing_supplier_response_footprint_and_escape_review
+  - id: audio_haptics_acoustic
+    supplier_functions: [audio_speaker_microphone_flexes]
+    placement_regions: [U_AUDIO_SPK_MIC]
+    route_classes_required: [i2s_audio, pdm_microphone, haptic_power, speaker_power]
+    response_pack_required: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/rfq-response-pack.yaml
+    required_pre_route_inputs:
+      - speaker, receiver, microphone, haptic, gasket, mesh, and flex drawings
+      - connector MPNs, flex pinouts, acoustic port and gasket datums
+      - microphone port-to-enclosure alignment and water/dust material stack
+      - acoustic/haptic sample inspection and performance data
+    escape_review_required: bottom_audio_acoustic_flex_and_usb_spacing_trial_route
+    status: blocked_missing_supplier_response_footprint_and_escape_review
+  - id: top_bottom_interconnect
+    supplier_functions: [top_bottom_interconnect]
+    placement_regions: [J_TOP_BOTTOM_FLEX_TOP, J_TOP_BOTTOM_FLEX_BOTTOM]
+    route_classes_required: [usb2_diff, mipi_dphy_diff, high_current_power, side_key_gpio, audio_control]
+    response_pack_required: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-response-pack.yaml
+    required_pre_route_inputs:
+      - exact board-to-board or flex connector family, pinout, stack height, STEP, and assembly drawing
+      - 49-contact minimum allocation with USB2 flanked by ground/return pins
+      - controlled-impedance flex or board-to-board stackup and bend life
+      - top/bottom routed STEP clearance with final flex bend radius
+    escape_review_required: split_interconnect_pin_escape_impedance_and_bend_clearance
+    status: blocked_missing_supplier_response_footprint_and_escape_review
+  - id: factory_test_and_enclosure
+    supplier_functions: [display_touch, rear_camera, front_camera, cellular, wifi_bluetooth, usb_c_receptacle_evt0, side_buttons, battery_pack, audio_speaker_microphone_flexes, top_bottom_interconnect]
+    placement_regions: [J_DISPLAY_TOUCH, J_CAM0_CAM1, U_CELL, U_WIFI_BT, J_USB_C, SW_POWER_VOL, J_BATTERY, U_AUDIO_SPK_MIC, J_TOP_BOTTOM_FLEX_TOP, J_TOP_BOTTOM_FLEX_BOTTOM]
+    route_classes_required: [test_access, enclosure_clearance, manufacturing_outputs]
+    response_pack_required: all_supplier_response_packs
+    required_pre_route_inputs:
+      - factory probe coordinate budget and fixture access for rails, USB-C, radios, display, cameras, audio, buttons, and interconnect
+      - routed board STEP export with all accepted supplier component models
+      - enclosure clearance rerun for display, battery, USB-C aperture, side buttons, camera stack, antennas, and acoustic cavities
+      - first-article bring-up, functional, RF, SI/PI, power, thermal, and factory transcripts
+    escape_review_required: end_to_end_factory_and_enclosure_route_acceptance
+    status: blocked_missing_supplier_response_footprint_and_escape_review
+
+input_inventory:
+  trial_route_domain_count: 8
+  supplier_function_count: 10
+  planned_response_pack_count: 10
+  present_response_pack_count: 0
+  missing_response_pack_count: 10
+  routed_segment_count: 0
+  routed_zone_count: 0
+  every_response_pack_absent: true
+  trial_route_allowed: false
+
+required_trial_route_outputs:
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/zone-fill.json
+  - board/kicad/e1-phone/production/reports/length-skew.csv
+  - board/kicad/e1-phone/production/reports/via-count-and-escape-density.yaml
+  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  - board/kicad/e1-phone/production/reports/si-pi
+  - board/kicad/e1-phone/production/reports/rf
+  - mechanical/e1-phone/review/routed-board-clearance.json
+  - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+
+allowed_fail_closed_placeholder_outputs:
+  mechanical/e1-phone/review/routed-board-clearance.json:
+    required_status: blocked_waiting_for_routed_board_step
+    reason: existing intake file defines the routed-board clearance rerun gate but contains no physical routed-board result.
+
+cross_checks:
+  geometry_matches_route_feasibility: true
+  placement_regions_match_repack_candidate: true
+  supplier_functions_match_response_normalization: true
+  response_pack_absence_matches_supplier_response_gate: true
+  high_speed_route_classes_match_routing_constraints: true
+  split_interconnect_contact_budget_preserved: true
+  current_kicad_has_no_routed_segments_or_zones: true
+  trial_route_outputs_absent: true
+  enclosure_ready_claim_forbidden_until_routed_step_rerun: true
+
+release_blockers:
+  - supplier response packs, signed drawings, pinouts, land patterns, and STEP models are missing
+  - exact SoC, memory, PMIC, battery, camera, display, radio, USB-C, side-key, audio, and interconnect footprints are not captured
+  - compact 64 x 132 mm route has not been trial-routed, DRC checked, or measured
+  - field-solved stackup, impedance coupons, SI/PI/RF reports, factory limits, and routed STEP clearance are missing
+
+forbidden_claims:
+  - trial_route_ready
+  - route_feasible
+  - supplier_inputs_complete
+  - footprint_capture_ready
+  - routed_pcb_ready
+  - drc_clean
+  - si_pi_rf_closed
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

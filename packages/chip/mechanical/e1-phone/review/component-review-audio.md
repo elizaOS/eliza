@@ -1,7 +1,7 @@
 # E1 Phone — Audio Component Manufacturability Review
 
 Scope: EVT0 design review (revision `evt0-mechanical-cad-flush-back`, 78.0 x 153.6 x
-11.2 mm, flush flat back). Reviewer discipline: acoustics / audio hardware. This is an
+11.8 mm, flush flat back). Reviewer discipline: acoustics / audio hardware. This is an
 **EVT design-review verdict, not a production release**. All SPL / SNR / leak numbers
 remain lab-test blockers per `acoustic-validation.md`; this review covers part selection,
 purchasability, tolerances, spacing, neighbor interaction, occlusion, and the bottom-edge

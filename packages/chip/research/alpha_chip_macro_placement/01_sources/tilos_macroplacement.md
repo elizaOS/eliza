@@ -10,7 +10,8 @@ Project pages:
 License: BSD-3-Clause for repository code. Check embedded benchmark and PDK
 terms before redistribution.
 
-Local checkout: `external/MacroPlacement`.
+Local checkout: `external/repos/tilos-macroplacement/payload`
+(`CodeElements/` mirrors the upstream `CodeElements/` tree).
 
 ## Why it matters
 
@@ -34,20 +35,37 @@ placement:
 
 ## Local paths of interest
 
-- `external/MacroPlacement/CodeElements/FormatTranslators/src/`
+(All under `external/repos/tilos-macroplacement/payload/CodeElements/`.)
+
+- `FormatTranslators/src/`
   - `BookshelfToProtobuf.py`
   - `ProtobufToLEFDEF.py`
   - `FormatTranslators.py`
-- `external/MacroPlacement/CodeElements/Plc_client/`: reverse-engineered
-  open-source placement-cost implementation intended to match Google's
-  `plc_client` API.
-- `external/MacroPlacement/CodeElements/SimulatedAnnealingGWTW/test/`: public
-  CT-compatible `netlist.pb.txt` and `initial.plc` cases.
-- `external/MacroPlacement/CodeElements/EvalCT/`: evaluation helper for trained
-  Circuit Training policies.
+- `Plc_client/plc_client_os.py`: BSD-3-Clause reverse-engineered open-source
+  placement-cost implementation matching Google's `plc_client` API. Implements
+  `get_cost` (wirelength), `get_congestion_cost`, and `get_density_cost` with no
+  `plc_wrapper_main` dependency.
+- `Plc_client/test/ariane/`: CT-compatible `netlist.pb.txt` + `initial.plc`.
 
-The open `Plc_client` path matters because Google/Farama provide a usable
-`plc_wrapper_main` binary, but Google's DREAMPlace tarballs are currently not
-publicly retrievable from the documented bucket. TILOS gives us a second path
-for proxy-cost validation and converter development while the full CT Docker
-training environment is repaired.
+## Open proxy-cost path (verified 2026-05-21)
+
+`plc_client_os` is the fully-open replacement for the AlphaChip reward
+`wirelength + 0.5*congestion + 0.5*density`. `scripts/alphachip/open_proxy_cost.py`
+drives it natively on CPU (~13 s on Ariane) and, with `--compare-binary`, cross-
+checks against the genuine `plc_wrapper_main`. Measured fidelity on the Ariane
+`initial.plc`:
+
+| Term       | Real binary       | `plc_client_os`   | Delta             |
+| ---------- | ----------------- | ----------------- | ----------------- |
+| wirelength | 0.0501866077      | 0.0501866077      | -6e-12 (bit-match)|
+| congestion | 0.9411796212      | 0.9845656490      | +4.6%             |
+| density    | 0.7564011220      | 0.7500617686      | -0.84%            |
+| proxy      | 0.8989769793      | 0.9175003165      | +2.1%             |
+
+Wirelength is near bit-exact; density within ~1%; congestion (stochastic fast-
+router) within ~5%. The open client is a faithful but not bit-exact reward
+signal: usable for an open RL loop and for cross-validation, not for a
+last-digit reproduction claim against `plc_wrapper_main`.
+
+See `docs/toolchain/alphachip-checkpoint-blocker.md` for the closed-binary
+status and the lawful Farama mirror that supplies a runnable `plc_wrapper_main`.

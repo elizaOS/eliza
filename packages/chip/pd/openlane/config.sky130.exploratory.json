@@ -4,6 +4,7 @@
   "STD_CELL_LIBRARY": "sky130_fd_sc_hd",
   "STD_CELL_LIBRARY_OPT": "sky130_fd_sc_hd",
   "VERILOG_FILES": [
+    "dir::../../rtl/top/e1_soc_pkg.sv",
     "dir::../../rtl/top/e1_chip_top.sv",
     "dir::../../rtl/clock/e1_reset_sync.sv",
     "dir::../../rtl/debug/e1_dbg_mmio_bridge.sv",

@@ -14,9 +14,9 @@ Outputs (all under board/kicad/e1-phone/):
 
 Plus a copy of the demo STEP into mechanical/e1-phone/out/.
 """
+
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import sys
@@ -73,7 +73,9 @@ SHEET_HEADER = """(kicad_sch (version 20240618) (generator "eliza-phone-demo-gen
 SHEET_FOOTER = ")\n"
 
 
-def sheet_text_block(lines: list[str], x: float = 20.0, y_start: float = 32.0, dy: float = 5.0, size: float = 1.20) -> str:
+def sheet_text_block(
+    lines: list[str], x: float = 20.0, y_start: float = 32.0, dy: float = 5.0, size: float = 1.20
+) -> str:
     out = []
     y = y_start
     for line in lines:
@@ -81,7 +83,7 @@ def sheet_text_block(lines: list[str], x: float = 20.0, y_start: float = 32.0, d
         safe = line.replace("\\", "\\\\").replace('"', '\\"')
         out.append(
             f'  (text "{safe}" (at {x:.2f} {y:.2f} 0)\n'
-            f'    (effects (font (size {size:.2f} {size:.2f})) (justify left bottom))\n  )\n'
+            f"    (effects (font (size {size:.2f} {size:.2f})) (justify left bottom))\n  )\n"
         )
         y += dy
     return "".join(out)
@@ -267,22 +269,24 @@ def gen_schematics() -> list[Path]:
             "Evidence class: non_release_routing_demonstration.",
             "Release blocker: replace demo sheets with reviewed supplier pinouts before fabrication.",
         ],
-        y_start=30.0, dy=5.0, size=1.30,
+        y_start=30.0,
+        dy=5.0,
+        size=1.30,
     )
     for fname, label, sx, sy in sub_sheets:
         suuid = det_uuid(f"sheet:{fname}")
         root_body += (
-            f'  (sheet (at {sx:.2f} {sy:.2f}) (size 80 60) (fields_autoplaced)\n'
-            f'    (stroke (width 0.1524) (type solid))\n'
-            f'    (fill (color 0 0 0 0.0000))\n'
+            f"  (sheet (at {sx:.2f} {sy:.2f}) (size 80 60) (fields_autoplaced)\n"
+            f"    (stroke (width 0.1524) (type solid))\n"
+            f"    (fill (color 0 0 0 0.0000))\n"
             f'    (uuid "{suuid}")\n'
-            f'    (property "Sheetname" "{label}" (at {sx:.2f} {sy-1.0:.2f} 0)\n'
-            f'      (effects (font (size 1.2 1.2)) (justify left bottom))\n'
-            f'    )\n'
-            f'    (property "Sheetfile" "{fname}" (at {sx:.2f} {sy+61.0:.2f} 0)\n'
-            f'      (effects (font (size 1.0 1.0)) (justify left top))\n'
-            f'    )\n'
-            f'  )\n'
+            f'    (property "Sheetname" "{label}" (at {sx:.2f} {sy - 1.0:.2f} 0)\n'
+            f"      (effects (font (size 1.2 1.2)) (justify left bottom))\n"
+            f"    )\n"
+            f'    (property "Sheetfile" "{fname}" (at {sx:.2f} {sy + 61.0:.2f} 0)\n'
+            f"      (effects (font (size 1.0 1.0)) (justify left top))\n"
+            f"    )\n"
+            f"  )\n"
         )
     root_body += SHEET_FOOTER
     root.write_text(root_body)
@@ -304,19 +308,52 @@ def gen_schematics() -> list[Path]:
 # Net list. Order matters - index = KiCad net id. Net 0 is the no-connect net.
 NETS = [
     "GND",
-    "VBUS", "VBAT", "SYS", "+3V3", "+1V8", "+1V1", "+0V8", "AON_1V8",
-    "RF_VBAT", "CAM_AVDD_2V8", "CAM_DVDD_1V2",
-    "DISP_AVDD_5V5", "DISP_AVEE_N5V5", "VDD_AUDIO_3V3", "VDD_AMP_3V3",
-    "USB_DP", "USB_DN", "USB_CC1", "USB_CC2", "SHIELD_GND",
-    "DSI_CLK_P", "DSI_CLK_N", "DSI_D0_P", "DSI_D0_N",
-    "CAM0_CSI_CLK_P", "CAM0_CSI_CLK_N",
-    "CELL_RF_MAIN", "CELL_RF_DIV", "CELL_GNSS_RF",
+    "VBUS",
+    "VBAT",
+    "SYS",
+    "+3V3",
+    "+1V8",
+    "+1V1",
+    "+0V8",
+    "AON_1V8",
+    "RF_VBAT",
+    "CAM_AVDD_2V8",
+    "CAM_DVDD_1V2",
+    "DISP_AVDD_5V5",
+    "DISP_AVEE_N5V5",
+    "VDD_AUDIO_3V3",
+    "VDD_AMP_3V3",
+    "USB_DP",
+    "USB_DN",
+    "USB_CC1",
+    "USB_CC2",
+    "SHIELD_GND",
+    "DSI_CLK_P",
+    "DSI_CLK_N",
+    "DSI_D0_P",
+    "DSI_D0_N",
+    "CAM0_CSI_CLK_P",
+    "CAM0_CSI_CLK_N",
+    "CELL_RF_MAIN",
+    "CELL_RF_DIV",
+    "CELL_GNSS_RF",
     "WIFI_BT_RF",
-    "PWR_KEY_N", "VOL_UP_N", "VOL_DOWN_N",
-    "I2C0_SCL", "I2C0_SDA",
-    "BT_UART_TX", "BT_UART_RX",
-    "SDIO_CLK", "SDIO_CMD", "SDIO_D0", "SDIO_D1", "SDIO_D2", "SDIO_D3",
-    "CELL_RESET_N", "WIFI_EN", "BT_EN",
+    "PWR_KEY_N",
+    "VOL_UP_N",
+    "VOL_DOWN_N",
+    "I2C0_SCL",
+    "I2C0_SDA",
+    "BT_UART_TX",
+    "BT_UART_RX",
+    "SDIO_CLK",
+    "SDIO_CMD",
+    "SDIO_D0",
+    "SDIO_D1",
+    "SDIO_D2",
+    "SDIO_D3",
+    "CELL_RESET_N",
+    "WIFI_EN",
+    "BT_EN",
 ]
 
 
@@ -329,83 +366,223 @@ def net_index(name: str) -> int:
 # Coordinates from component-envelope-fit-audit.yaml + mechanical-overlay.yaml.
 PLACEMENTS = [
     # ref,            cx,    cy,    w,    h,  pins, nets-for-some-pads,                   desc
-    ("J_USB_C",       34.0, 129.0, 16.0, 6.0, 24,
-        ["VBUS","USB_DP","USB_DN","USB_CC1","USB_CC2","SHIELD_GND","GND","VBUS"],
-        "USB-C 24-pin receptacle (demo placeholder)"),
-    ("U_USB_PD",      14.0, 122.0,  4.0, 4.0, 24,
-        ["VBUS","USB_CC1","USB_CC2","+3V3","GND","I2C0_SCL","I2C0_SDA"],
-        "USB PD controller (TPS65987 demo)"),
-    ("U_CHARGER",     14.0, 110.0,  5.0, 5.0, 32,
-        ["VBUS","SYS","VBAT","GND","I2C0_SCL","I2C0_SDA"],
-        "Battery charger (MAX77860 demo)"),
-    ("J_BATTERY",     32.0, 117.0, 14.0, 4.0,  6,
-        ["VBAT","GND","VBAT","GND"],
-        "Battery flex connector (demo)"),
-    ("U_PMIC",        50.0, 122.0,  6.0, 6.0, 64,
-        ["SYS","VBAT","GND","+3V3","+1V8","+1V1","+0V8","AON_1V8","RF_VBAT"],
-        "PMIC (DA9063 demo)"),
-    ("U_SOC",         32.0,  60.0, 14.0,14.0,400,
-        ["+0V8","+1V1","+1V8","GND","USB_DP","USB_DN","DSI_CLK_P","DSI_CLK_N"],
-        "Application processor BGA (E1 SoC demo)"),
-    ("U_LPDDR_UFS",   32.0,  78.0, 11.0,10.0,200,
-        ["+1V1","+1V8","GND"],
-        "LPDDR + UFS combo stack (demo)"),
-    ("J_DISPLAY_TOUCH", 52.0, 38.5, 18.0, 5.0,40,
-        ["DISP_AVDD_5V5","DISP_AVEE_N5V5","+1V8","GND",
-         "DSI_CLK_P","DSI_CLK_N","DSI_D0_P","DSI_D0_N"],
-        "Display + Touch FPC (40-pin demo)"),
-    ("J_CAM0",        54.0,  20.0, 14.0, 4.0, 24,
-        ["CAM_AVDD_2V8","CAM_DVDD_1V2","+1V8","GND",
-         "CAM0_CSI_CLK_P","CAM0_CSI_CLK_N","I2C0_SCL","I2C0_SDA"],
-        "Rear camera FPC (24-pin demo)"),
-    ("J_CAM1",        13.0,  10.0, 12.0, 4.0, 22,
-        ["CAM_AVDD_2V8","CAM_DVDD_1V2","+1V8","GND"],
-        "Front camera FPC (22-pin demo)"),
-    ("U_CELL",        20.0,  95.0, 14.0,12.0, 80,
-        ["RF_VBAT","+1V8","AON_1V8","GND","CELL_RESET_N",
-         "CELL_RF_MAIN","CELL_RF_DIV","CELL_GNSS_RF"],
-        "Cellular 5G-RedCap module M.2/B2B (demo)"),
-    ("U_WIFI_BT",     10.0,  23.0, 12.5, 9.4, 60,
-        ["RF_VBAT","+1V8","GND","WIFI_EN","BT_EN","WIFI_BT_RF",
-         "BT_UART_TX","BT_UART_RX","SDIO_CLK","SDIO_CMD"],
-        "Wi-Fi 6E + BT module (Murata 2EA demo)"),
-    ("J_USIM",        60.0,  60.0,  6.0,12.0,  6,
-        ["+1V8","GND"],
-        "uSIM tray (demo)"),
-    ("U_CODEC",       28.0, 102.0,  4.0, 4.0, 32,
-        ["VDD_AUDIO_3V3","AON_1V8","GND","I2C0_SCL","I2C0_SDA"],
-        "Audio codec (ALC5688 demo)"),
-    ("U_SPK_AMP",     45.0, 110.0,  4.0, 4.0, 20,
-        ["VDD_AMP_3V3","GND"],
-        "Speaker amp (Class-D demo)"),
-    ("SW_POWER_VOL",  24.0,  27.5, 12.0, 3.0,  5,
-        ["PWR_KEY_N","VOL_UP_N","VOL_DOWN_N","AON_1V8","GND"],
-        "Power+volume side-key flex (demo)"),
-    ("U_HAPTIC",      57.0, 107.0,  6.0,12.0,  8,
-        ["VBAT","GND"],
-        "Haptic LRA driver (demo)"),
-    ("J_B2B_TOP",     32.0,  45.0, 30.0, 3.0, 80,
-        ["VBAT","SYS","AON_1V8","+1V8","RF_VBAT","GND"],
-        "Top island B2B 80-pin (Hirose BM28 demo)"),
-    ("J_B2B_BOT",     32.0, 115.0, 30.0, 3.0, 80,
-        ["VBAT","SYS","AON_1V8","+1V8","RF_VBAT","GND"],
-        "Bottom island B2B 80-pin (Hirose BM28 demo)"),
+    (
+        "J_USB_C",
+        34.0,
+        129.0,
+        16.0,
+        6.0,
+        24,
+        ["VBUS", "USB_DP", "USB_DN", "USB_CC1", "USB_CC2", "SHIELD_GND", "GND", "VBUS"],
+        "USB-C 24-pin receptacle (demo placeholder)",
+    ),
+    (
+        "U_USB_PD",
+        14.0,
+        122.0,
+        4.0,
+        4.0,
+        24,
+        ["VBUS", "USB_CC1", "USB_CC2", "+3V3", "GND", "I2C0_SCL", "I2C0_SDA"],
+        "USB PD controller (TPS65987 demo)",
+    ),
+    (
+        "U_CHARGER",
+        14.0,
+        110.0,
+        5.0,
+        5.0,
+        32,
+        ["VBUS", "SYS", "VBAT", "GND", "I2C0_SCL", "I2C0_SDA"],
+        "Battery charger (MAX77860 demo)",
+    ),
+    (
+        "J_BATTERY",
+        32.0,
+        117.0,
+        14.0,
+        4.0,
+        6,
+        ["VBAT", "GND", "VBAT", "GND"],
+        "Battery flex connector (demo)",
+    ),
+    (
+        "U_PMIC",
+        50.0,
+        122.0,
+        6.0,
+        6.0,
+        64,
+        ["SYS", "VBAT", "GND", "+3V3", "+1V8", "+1V1", "+0V8", "AON_1V8", "RF_VBAT"],
+        "PMIC (DA9063 demo)",
+    ),
+    (
+        "U_SOC",
+        32.0,
+        60.0,
+        14.0,
+        14.0,
+        400,
+        ["+0V8", "+1V1", "+1V8", "GND", "USB_DP", "USB_DN", "DSI_CLK_P", "DSI_CLK_N"],
+        "Application processor BGA (E1 SoC demo)",
+    ),
+    (
+        "U_LPDDR_UFS",
+        32.0,
+        78.0,
+        11.0,
+        10.0,
+        200,
+        ["+1V1", "+1V8", "GND"],
+        "LPDDR + UFS combo stack (demo)",
+    ),
+    (
+        "J_DISPLAY_TOUCH",
+        52.0,
+        38.5,
+        18.0,
+        5.0,
+        40,
+        [
+            "DISP_AVDD_5V5",
+            "DISP_AVEE_N5V5",
+            "+1V8",
+            "GND",
+            "DSI_CLK_P",
+            "DSI_CLK_N",
+            "DSI_D0_P",
+            "DSI_D0_N",
+        ],
+        "Display + Touch FPC (40-pin demo)",
+    ),
+    (
+        "J_CAM0",
+        54.0,
+        20.0,
+        14.0,
+        4.0,
+        24,
+        [
+            "CAM_AVDD_2V8",
+            "CAM_DVDD_1V2",
+            "+1V8",
+            "GND",
+            "CAM0_CSI_CLK_P",
+            "CAM0_CSI_CLK_N",
+            "I2C0_SCL",
+            "I2C0_SDA",
+        ],
+        "Rear camera FPC (24-pin demo)",
+    ),
+    (
+        "J_CAM1",
+        13.0,
+        10.0,
+        12.0,
+        4.0,
+        22,
+        ["CAM_AVDD_2V8", "CAM_DVDD_1V2", "+1V8", "GND"],
+        "Front camera FPC (22-pin demo)",
+    ),
+    (
+        "U_CELL",
+        20.0,
+        95.0,
+        14.0,
+        12.0,
+        80,
+        [
+            "RF_VBAT",
+            "+1V8",
+            "AON_1V8",
+            "GND",
+            "CELL_RESET_N",
+            "CELL_RF_MAIN",
+            "CELL_RF_DIV",
+            "CELL_GNSS_RF",
+        ],
+        "Cellular 5G-RedCap module M.2/B2B (demo)",
+    ),
+    (
+        "U_WIFI_BT",
+        10.0,
+        23.0,
+        12.5,
+        9.4,
+        60,
+        [
+            "RF_VBAT",
+            "+1V8",
+            "GND",
+            "WIFI_EN",
+            "BT_EN",
+            "WIFI_BT_RF",
+            "BT_UART_TX",
+            "BT_UART_RX",
+            "SDIO_CLK",
+            "SDIO_CMD",
+        ],
+        "Wi-Fi 6E + BT module (Murata 2EA demo)",
+    ),
+    ("J_USIM", 60.0, 60.0, 6.0, 12.0, 6, ["+1V8", "GND"], "uSIM tray (demo)"),
+    (
+        "U_CODEC",
+        28.0,
+        102.0,
+        4.0,
+        4.0,
+        32,
+        ["VDD_AUDIO_3V3", "AON_1V8", "GND", "I2C0_SCL", "I2C0_SDA"],
+        "Audio codec (ALC5688 demo)",
+    ),
+    ("U_SPK_AMP", 45.0, 110.0, 4.0, 4.0, 20, ["VDD_AMP_3V3", "GND"], "Speaker amp (Class-D demo)"),
+    (
+        "SW_POWER_VOL",
+        24.0,
+        27.5,
+        12.0,
+        3.0,
+        5,
+        ["PWR_KEY_N", "VOL_UP_N", "VOL_DOWN_N", "AON_1V8", "GND"],
+        "Power+volume side-key flex (demo)",
+    ),
+    ("U_HAPTIC", 57.0, 107.0, 6.0, 12.0, 8, ["VBAT", "GND"], "Haptic LRA driver (demo)"),
+    (
+        "J_B2B_TOP",
+        32.0,
+        45.0,
+        30.0,
+        3.0,
+        80,
+        ["VBAT", "SYS", "AON_1V8", "+1V8", "RF_VBAT", "GND"],
+        "Top island B2B 80-pin (Hirose BM28 demo)",
+    ),
+    (
+        "J_B2B_BOT",
+        32.0,
+        115.0,
+        30.0,
+        3.0,
+        80,
+        ["VBAT", "SYS", "AON_1V8", "+1V8", "RF_VBAT", "GND"],
+        "Bottom island B2B 80-pin (Hirose BM28 demo)",
+    ),
 ]
 
 # Fiducials, test points, mounting holes
 FIDUCIALS = [(3.0, 3.0), (61.0, 129.0)]
 MOUNTING_HOLES = [(3.0, 3.0), (61.0, 3.0), (3.0, 129.0), (61.0, 129.0)]
 TEST_POINTS = [
-    ("TP_VBUS",   42.0, 124.0, "VBUS"),
-    ("TP_SYS",    20.0, 110.0, "SYS"),
-    ("TP_VBAT",   42.0, 117.0, "VBAT"),
-    ("TP_3V3",    55.0, 122.0, "+3V3"),
-    ("TP_1V8",    45.0, 122.0, "+1V8"),
-    ("TP_1V1",    50.0, 117.0, "+1V1"),
-    ("TP_0V8",    55.0, 117.0, "+0V8"),
-    ("TP_AON",    45.0, 117.0, "AON_1V8"),
-    ("TP_SCL",    40.0, 110.0, "I2C0_SCL"),
-    ("TP_SDA",    40.0, 113.0, "I2C0_SDA"),
+    ("TP_VBUS", 42.0, 124.0, "VBUS"),
+    ("TP_SYS", 20.0, 110.0, "SYS"),
+    ("TP_VBAT", 42.0, 117.0, "VBAT"),
+    ("TP_3V3", 55.0, 122.0, "+3V3"),
+    ("TP_1V8", 45.0, 122.0, "+1V8"),
+    ("TP_1V1", 50.0, 117.0, "+1V1"),
+    ("TP_0V8", 55.0, 117.0, "+0V8"),
+    ("TP_AON", 45.0, 117.0, "AON_1V8"),
+    ("TP_SCL", 40.0, 110.0, "I2C0_SCL"),
+    ("TP_SDA", 40.0, 113.0, "I2C0_SDA"),
 ]
 
 # Hand-authored L-shaped traces. Each entry: (net, layer, width_mm, [(x,y),...]).
@@ -414,16 +591,16 @@ DEMO_TRACES = [
     ("USB_DP", "F.Cu", 0.10, [(31.71, 131.55), (31.71, 124.0), (16.0, 124.0)]),
     ("USB_DN", "F.Cu", 0.10, [(32.86, 131.55), (32.86, 123.7), (16.0, 123.7)]),
     # USB-C VBUS from connector to charger (power, fatter)
-    ("VBUS",   "F.Cu", 0.30, [(28.29, 131.55), (28.29, 120.0), (16.0, 120.0), (16.0, 112.5)]),
+    ("VBUS", "F.Cu", 0.30, [(28.29, 131.55), (28.29, 120.0), (16.0, 120.0), (16.0, 112.5)]),
     # SYS from charger to PMIC
-    ("SYS",    "F.Cu", 0.30, [(16.5, 110.0), (40.0, 110.0), (40.0, 122.0), (47.0, 122.0)]),
+    ("SYS", "F.Cu", 0.30, [(16.5, 110.0), (40.0, 110.0), (40.0, 122.0), (47.0, 122.0)]),
     # MIPI DSI clk pair from SOC to display FPC on In2.Sig
     ("DSI_CLK_P", "In2.Cu", 0.10, [(39.0, 60.0), (47.0, 60.0), (47.0, 38.0)]),
     ("DSI_CLK_N", "In2.Cu", 0.10, [(39.0, 60.5), (46.7, 60.5), (46.7, 38.0)]),
     # Cellular RF main feed - 50R microstrip to top antenna keepout edge
     ("CELL_RF_MAIN", "F.Cu", 0.20, [(20.0, 89.0), (20.0, 12.0), (3.0, 12.0)]),
     # Wi-Fi/BT RF feed to side-antenna pi-network area
-    ("WIFI_BT_RF",   "F.Cu", 0.20, [(16.25, 23.0), (41.0, 35.0)]),
+    ("WIFI_BT_RF", "F.Cu", 0.20, [(16.25, 23.0), (41.0, 35.0)]),
     # I2C0 SCL backbone
     ("I2C0_SCL", "In4.Cu", 0.15, [(40.0, 110.0), (40.0, 102.0), (28.0, 102.0)]),
     ("I2C0_SDA", "In4.Cu", 0.15, [(40.0, 113.0), (40.0, 104.0), (28.0, 104.0)]),
@@ -436,7 +613,7 @@ DEMO_TRACES = [
 ]
 
 
-PCB_HEADER = '''(kicad_pcb (version 20240108) (generator "eliza-phone-demo-routing")
+PCB_HEADER = """(kicad_pcb (version 20240108) (generator "eliza-phone-demo-routing")
   (general
     (thickness 0.8)
   )
@@ -480,9 +657,9 @@ PCB_HEADER = '''(kicad_pcb (version 20240108) (generator "eliza-phone-demo-routi
     (48 "B.Fab" user)
     (49 "F.Fab" user)
   )
-'''
+"""
 
-PCB_SETUP = '''  (setup
+PCB_SETUP = """  (setup
     (pad_to_mask_clearance 0)
     (allow_soldermask_bridges_in_footprints no)
     (stackup
@@ -522,27 +699,46 @@ PCB_SETUP = '''  (setup
     (uvia_drill 0.15)
     (add_net "")
   )
-'''
+"""
 
 
 def edge_cuts() -> str:
     # Outline 64x132 mm. Rounded corners with 0.5 mm radius approximated as gr_lines + gr_arcs.
     r = 0.5
     L = []
-    L.append(f'  (gr_line (start {r} 0) (end {64.0-r} 0) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))')
-    L.append(f'  (gr_arc (start {64.0-r} 0) (mid {64.0-r+r*0.293} {r-r*0.707}) (end 64.0 {r}) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))')
-    L.append(f'  (gr_line (start 64.0 {r}) (end 64.0 {132.0-r}) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))')
-    L.append(f'  (gr_arc (start 64.0 {132.0-r}) (mid {64.0-r+r*0.293} {132.0-r+r*0.707}) (end {64.0-r} 132.0) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))')
-    L.append(f'  (gr_line (start {64.0-r} 132.0) (end {r} 132.0) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))')
-    L.append(f'  (gr_arc (start {r} 132.0) (mid {r-r*0.293} {132.0-r+r*0.707}) (end 0 {132.0-r}) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))')
-    L.append(f'  (gr_line (start 0 {132.0-r}) (end 0 {r}) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))')
-    L.append(f'  (gr_arc (start 0 {r}) (mid {r-r*0.293} {r-r*0.707}) (end {r} 0) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))')
-    L.append('  (gr_text "E1-PHONE-MAINBOARD-DEMO  non_release_routing_demonstration" (at 32 1.8 0) (layer "F.SilkS") (effects (font (size 1.0 1.0) (thickness 0.15))))')
+    L.append(
+        f'  (gr_line (start {r} 0) (end {64.0 - r} 0) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))'
+    )
+    L.append(
+        f'  (gr_arc (start {64.0 - r} 0) (mid {64.0 - r + r * 0.293} {r - r * 0.707}) (end 64.0 {r}) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))'
+    )
+    L.append(
+        f'  (gr_line (start 64.0 {r}) (end 64.0 {132.0 - r}) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))'
+    )
+    L.append(
+        f'  (gr_arc (start 64.0 {132.0 - r}) (mid {64.0 - r + r * 0.293} {132.0 - r + r * 0.707}) (end {64.0 - r} 132.0) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))'
+    )
+    L.append(
+        f'  (gr_line (start {64.0 - r} 132.0) (end {r} 132.0) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))'
+    )
+    L.append(
+        f'  (gr_arc (start {r} 132.0) (mid {r - r * 0.293} {132.0 - r + r * 0.707}) (end 0 {132.0 - r}) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))'
+    )
+    L.append(
+        f'  (gr_line (start 0 {132.0 - r}) (end 0 {r}) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))'
+    )
+    L.append(
+        f'  (gr_arc (start 0 {r}) (mid {r - r * 0.293} {r - r * 0.707}) (end {r} 0) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))'
+    )
+    L.append(
+        '  (gr_text "E1-PHONE-MAINBOARD-DEMO  non_release_routing_demonstration" (at 32 1.8 0) (layer "F.SilkS") (effects (font (size 1.0 1.0) (thickness 0.15))))'
+    )
     return "\n".join(L) + "\n"
 
 
-def render_footprint(ref: str, cx: float, cy: float, w: float, h: float, pins: int,
-                     pin_nets: list[str], desc: str) -> str:
+def render_footprint(
+    ref: str, cx: float, cy: float, w: float, h: float, pins: int, pin_nets: list[str], desc: str
+) -> str:
     fp_uuid = det_uuid(f"fp:{ref}")
     half_w, half_h = w / 2.0, h / 2.0
     s = []
@@ -550,24 +746,28 @@ def render_footprint(ref: str, cx: float, cy: float, w: float, h: float, pins: i
     s.append(f'    (tstamp "{fp_uuid}")')
     s.append(f'    (at {cx:.3f} {cy:.3f})')
     s.append(f'    (descr "DEMO placeholder footprint - non_release_routing_demonstration - {desc}")')
-    s.append(f'    (tags "E1_PHONE_DEMO NON_RELEASE_ROUTING_DEMONSTRATION")')
-    s.append(f'    (attr smd exclude_from_pos_files exclude_from_bom)')
+    s.append('    (tags "E1_PHONE_DEMO NON_RELEASE_ROUTING_DEMONSTRATION")')
+    s.append('    (attr smd exclude_from_pos_files exclude_from_bom)')
     s.append(f'    (fp_text reference "{ref}" (at 0 {-half_h-1.2:.3f} 0) (layer "F.SilkS") (tstamp "{det_uuid(f"ref:{ref}")}")')
-    s.append(f'      (effects (font (size 0.8 0.8) (thickness 0.12)))')
-    s.append(f'    )')
+    s.append('      (effects (font (size 0.8 0.8) (thickness 0.12)))')
+    s.append('    )')
     s.append(f'    (fp_text value "DEMO" (at 0 {half_h+1.2:.3f} 0) (layer "F.Fab") (tstamp "{det_uuid(f"val:{ref}")}")')
-    s.append(f'      (effects (font (size 0.6 0.6) (thickness 0.1)))')
-    s.append(f'    )')
+    s.append('      (effects (font (size 0.6 0.6) (thickness 0.1)))')
+    s.append('    )')
     s.append(f'    (fp_rect (start {-half_w:.3f} {-half_h:.3f}) (end {half_w:.3f} {half_h:.3f}) (stroke (width 0.1) (type solid)) (fill none) (layer "F.Fab") (tstamp "{det_uuid(f"fab:{ref}")}"))')
     s.append(f'    (fp_rect (start {-half_w-0.25:.3f} {-half_h-0.25:.3f}) (end {half_w+0.25:.3f} {half_h+0.25:.3f}) (stroke (width 0.05) (type dash)) (fill none) (layer "F.CrtYd") (tstamp "{det_uuid(f"crt:{ref}")}"))')
     s.append(f'    (fp_text user "NON-RELEASE-DEMO" (at 0 0 0) (layer "F.SilkS") (tstamp "{det_uuid(f"banner:{ref}")}")')
-    s.append(f'      (effects (font (size 0.6 0.6) (thickness 0.1)))')
-    s.append(f'    )')
+    s.append('      (effects (font (size 0.6 0.6) (thickness 0.1)))')
+    s.append('    )')
     # Lay pads around the perimeter
     pad_size = 0.5
     if pins <= 4:
-        positions = [(-half_w*0.6, half_h*0.6), (half_w*0.6, half_h*0.6),
-                     (-half_w*0.6, -half_h*0.6), (half_w*0.6, -half_h*0.6)][:pins]
+        positions = [
+            (-half_w * 0.6, half_h * 0.6),
+            (half_w * 0.6, half_h * 0.6),
+            (-half_w * 0.6, -half_h * 0.6),
+            (half_w * 0.6, -half_h * 0.6),
+        ][:pins]
     else:
         # Distribute around perimeter on two long sides
         per_side = pins // 2
@@ -578,7 +778,7 @@ def render_footprint(ref: str, cx: float, cy: float, w: float, h: float, pins: i
         for i in range(pins - per_side):
             positions.append((-half_w + 0.5 + i * pitch_x, -half_h + 0.3))
     for i, (px, py) in enumerate(positions, start=1):
-        net_name = pin_nets[(i-1) % len(pin_nets)] if pin_nets else "GND"
+        net_name = pin_nets[(i - 1) % len(pin_nets)] if pin_nets else "GND"
         try:
             nidx = net_index(net_name)
         except ValueError:
@@ -589,7 +789,7 @@ def render_footprint(ref: str, cx: float, cy: float, w: float, h: float, pins: i
             f'(layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.2) '
             f'(net {nidx} "{net_name}") (tstamp "{det_uuid(f"pad:{ref}:{i}")}"))'
         )
-    s.append('  )')
+    s.append("  )")
     return "\n".join(s) + "\n"
 
 
@@ -599,18 +799,18 @@ def render_test_point(name: str, x: float, y: float, net: str) -> str:
     return (
         f'  (footprint "E1PhoneDemo:{name}" (layer "F.Cu")\n'
         f'    (tstamp "{fp_uuid}")\n'
-        f'    (at {x:.3f} {y:.3f})\n'
+        f"    (at {x:.3f} {y:.3f})\n"
         f'    (descr "DEMO test point - non_release_routing_demonstration")\n'
-        f'    (attr smd exclude_from_pos_files exclude_from_bom)\n'
+        f"    (attr smd exclude_from_pos_files exclude_from_bom)\n"
         f'    (fp_text reference "{name}" (at 0 -1.4 0) (layer "F.SilkS") (tstamp "{det_uuid(f"tpr:{name}")}")\n'
-        f'      (effects (font (size 0.55 0.55) (thickness 0.1)))\n'
-        f'    )\n'
+        f"      (effects (font (size 0.55 0.55) (thickness 0.1)))\n"
+        f"    )\n"
         f'    (fp_text value "{net}" (at 0 1.4 0) (layer "F.Fab") (tstamp "{det_uuid(f"tpv:{name}")}")\n'
-        f'      (effects (font (size 0.5 0.5) (thickness 0.08)))\n'
-        f'    )\n'
+        f"      (effects (font (size 0.5 0.5) (thickness 0.08)))\n"
+        f"    )\n"
         f'    (pad "1" smd circle (at 0 0) (size 1.0 1.0) (layers "F.Cu" "F.Paste" "F.Mask") '
         f'(net {nidx} "{net}") (tstamp "{det_uuid(f"tpp:{name}")}"))\n'
-        f'  )\n'
+        f"  )\n"
     )
 
 
@@ -619,11 +819,11 @@ def render_mounting_hole(idx: int, x: float, y: float) -> str:
     return (
         f'  (footprint "E1PhoneDemo:MH{idx}" (layer "F.Cu")\n'
         f'    (tstamp "{fp_uuid}")\n'
-        f'    (at {x:.3f} {y:.3f})\n'
+        f"    (at {x:.3f} {y:.3f})\n"
         f'    (descr "DEMO mounting hole - non_release_routing_demonstration")\n'
-        f'    (attr exclude_from_pos_files exclude_from_bom)\n'
+        f"    (attr exclude_from_pos_files exclude_from_bom)\n"
         f'    (pad "" np_thru_hole circle (at 0 0) (size 2.0 2.0) (drill 1.2) (layers "*.Cu" "*.Mask") (tstamp "{det_uuid(f"mhp:{idx}")}"))\n'
-        f'  )\n'
+        f"  )\n"
     )
 
 
@@ -632,19 +832,21 @@ def render_fiducial(idx: int, x: float, y: float) -> str:
     return (
         f'  (footprint "E1PhoneDemo:FID{idx}" (layer "F.Cu")\n'
         f'    (tstamp "{fp_uuid}")\n'
-        f'    (at {x:.3f} {y:.3f})\n'
+        f"    (at {x:.3f} {y:.3f})\n"
         f'    (descr "DEMO fiducial - non_release_routing_demonstration")\n'
-        f'    (attr smd exclude_from_pos_files exclude_from_bom)\n'
+        f"    (attr smd exclude_from_pos_files exclude_from_bom)\n"
         f'    (pad "1" smd circle (at 0 0) (size 1.0 1.0) (layers "F.Cu" "F.Mask") (tstamp "{det_uuid(f"fidp:{idx}")}"))\n'
-        f'  )\n'
+        f"  )\n"
     )
 
 
-def render_segment(net: str, layer: str, width: float, p0: tuple[float,float], p1: tuple[float,float], key: str) -> str:
+def render_segment(
+    net: str, layer: str, width: float, p0: tuple[float, float], p1: tuple[float, float], key: str
+) -> str:
     nidx = net_index(net)
     su = det_uuid(f"seg:{key}")
     return (
-        f'  (segment (start {p0[0]:.3f} {p0[1]:.3f}) (end {p1[0]:.3f} {p1[1]:.3f}) '
+        f"  (segment (start {p0[0]:.3f} {p0[1]:.3f}) (end {p1[0]:.3f} {p1[1]:.3f}) "
         f'(width {width:.3f}) (layer "{layer}") (net {nidx}) (tstamp "{su}"))\n'
     )
 
@@ -664,11 +866,13 @@ def gen_pcb() -> Path:
     parts.append(edge_cuts())
 
     # Mechanical overlay text
-    parts.append('  (gr_text "DEMO ROUTING - non_release_routing_demonstration - NOT FAB" '
-                 '(at 32 130.2 0) (layer "F.SilkS") (effects (font (size 0.9 0.9) (thickness 0.12))))\n')
+    parts.append(
+        '  (gr_text "DEMO ROUTING - non_release_routing_demonstration - NOT FAB" '
+        '(at 32 130.2 0) (layer "F.SilkS") (effects (font (size 0.9 0.9) (thickness 0.12))))\n'
+    )
 
     # Footprints
-    for (ref, cx, cy, w, h, pins, pin_nets, desc) in PLACEMENTS:
+    for ref, cx, cy, w, h, pins, pin_nets, desc in PLACEMENTS:
         parts.append(render_footprint(ref, cx, cy, w, h, pins, pin_nets, desc))
 
     for i, (x, y) in enumerate(MOUNTING_HOLES, start=1):
@@ -677,13 +881,15 @@ def gen_pcb() -> Path:
     for i, (x, y) in enumerate(FIDUCIALS, start=1):
         parts.append(render_fiducial(i, x, y))
 
-    for (name, x, y, net) in TEST_POINTS:
+    for name, x, y, net in TEST_POINTS:
         parts.append(render_test_point(name, x, y, net))
 
     # Hand-routed traces (as multiple straight segments per polyline)
     for ti, (net, layer, width, pts) in enumerate(DEMO_TRACES):
         for si in range(len(pts) - 1):
-            parts.append(render_segment(net, layer, width, pts[si], pts[si+1], f"{net}:{ti}:{si}"))
+            parts.append(
+                render_segment(net, layer, width, pts[si], pts[si + 1], f"{net}:{ti}:{si}")
+            )
 
     # Power-plane via stitching: place GND vias at a coarse grid skipping
     # battery_window keepout area.
@@ -724,59 +930,114 @@ def gen_fab(pcb_path: Path) -> dict:
     results: dict = {}
 
     # Gerbers (all signal + tech layers including inner planes)
-    layers = ",".join([
-        "F.Cu", "In1.Cu", "In2.Cu", "In3.Cu", "In4.Cu",
-        "In5.Cu", "In6.Cu", "In7.Cu", "In8.Cu", "B.Cu",
-        "F.Mask", "B.Mask", "F.Paste", "B.Paste",
-        "F.SilkS", "B.SilkS", "Edge.Cuts",
-    ])
-    code, out = run_cli([
-        str(KICAD_CLI), "pcb", "export", "gerbers",
-        "--output", str(FAB_DIR) + "/",
-        "--layers", layers,
-        "--no-protel-ext",
-        str(pcb_path),
-    ])
+    layers = ",".join(
+        [
+            "F.Cu",
+            "In1.Cu",
+            "In2.Cu",
+            "In3.Cu",
+            "In4.Cu",
+            "In5.Cu",
+            "In6.Cu",
+            "In7.Cu",
+            "In8.Cu",
+            "B.Cu",
+            "F.Mask",
+            "B.Mask",
+            "F.Paste",
+            "B.Paste",
+            "F.SilkS",
+            "B.SilkS",
+            "Edge.Cuts",
+        ]
+    )
+    code, out = run_cli(
+        [
+            str(KICAD_CLI),
+            "pcb",
+            "export",
+            "gerbers",
+            "--output",
+            str(FAB_DIR) + "/",
+            "--layers",
+            layers,
+            "--no-protel-ext",
+            str(pcb_path),
+        ]
+    )
     results["gerbers"] = {"rc": code, "tail": out.splitlines()[-3:]}
 
     # Drill
-    code, out = run_cli([
-        str(KICAD_CLI), "pcb", "export", "drill",
-        "--output", str(FAB_DIR) + "/",
-        "--format", "excellon",
-        "--excellon-separate-th",
-        str(pcb_path),
-    ])
+    code, out = run_cli(
+        [
+            str(KICAD_CLI),
+            "pcb",
+            "export",
+            "drill",
+            "--output",
+            str(FAB_DIR) + "/",
+            "--format",
+            "excellon",
+            "--excellon-separate-th",
+            str(pcb_path),
+        ]
+    )
     results["drill"] = {"rc": code, "tail": out.splitlines()[-3:]}
 
     # STEP
     step_out = FAB_DIR / "e1-phone-mainboard-demo.step"
-    code, out = run_cli([
-        str(KICAD_CLI), "pcb", "export", "step",
-        "--force", "--subst-models", "--no-unspecified", "--no-dnp",
-        "-o", str(step_out),
-        str(pcb_path),
-    ])
+    code, out = run_cli(
+        [
+            str(KICAD_CLI),
+            "pcb",
+            "export",
+            "step",
+            "--force",
+            "--subst-models",
+            "--no-unspecified",
+            "--no-dnp",
+            "-o",
+            str(step_out),
+            str(pcb_path),
+        ]
+    )
     results["step"] = {"rc": code, "tail": out.splitlines()[-3:], "path": str(step_out)}
 
     # Pos
     pos_out = FAB_DIR / "e1-phone-mainboard-demo-pos.csv"
-    code, out = run_cli([
-        str(KICAD_CLI), "pcb", "export", "pos",
-        "--output", str(pos_out),
-        "--format", "csv", "--units", "mm", "--side", "both",
-        str(pcb_path),
-    ])
+    code, out = run_cli(
+        [
+            str(KICAD_CLI),
+            "pcb",
+            "export",
+            "pos",
+            "--output",
+            str(pos_out),
+            "--format",
+            "csv",
+            "--units",
+            "mm",
+            "--side",
+            "both",
+            str(pcb_path),
+        ]
+    )
     results["pos"] = {"rc": code, "tail": out.splitlines()[-3:]}
 
     # BOM (from the demo root schematic)
     bom_out = FAB_DIR / "e1-phone-mainboard-demo-bom.csv"
     root_sch = SCH_DIR / "e1-phone-demo.kicad_sch"
-    code, out = run_cli([
-        str(KICAD_CLI), "sch", "export", "bom",
-        "--output", str(bom_out),
-        str(root_sch),
-    ])
+    code, out = run_cli(
+        [
+            str(KICAD_CLI),
+            "sch",
+            "export",
+            "bom",
+            "--output",
+            str(bom_out),
+            str(root_sch),
+        ]
+    )
     results["bom"] = {"rc": code, "tail": out.splitlines()[-3:]}
 
     # Mechanical out copy

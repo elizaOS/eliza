@@ -1,0 +1,167 @@
+schema: eliza.requirement.v1
+domain: RTL
+owner_scope: rtl_verification
+description: >
+  RTL closure requirements seeded from verify/rtl_gap_work_order.yaml. Each
+  requirement mirrors one critical gap: its affected_paths become RTL/test
+  links and its blocking_gate stays attached so change-impact and the
+  fail-closed gate can trace which silicon claims a stub still blocks. These
+  requirements are intentionally `open` until production RTL lands; the gate
+  only fails when a declared link path is missing, never because the gap is
+  still open.
+requirements:
+  - id: REQ-RTL-0001
+    title: CPU subsystem must integrate a production RV64 core, not the tiny contract stub
+    owner: cpu
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: e30517bee4fbd7090e8bacfe345ad3797ffa7ff45753bf626603590a14e3186d
+    status: open
+    claim_boundary: tiny_contract_model_blocks_linux_capable_soc_and_product_claims
+    work_order_id: cpu-real-core-integration
+    links:
+      rtl:
+        - rtl/cpu/e1_cpu_subsystem_stub.sv
+        - rtl/interconnect/e1_linux_soc_contract.sv
+      tests:
+        - verify/cocotb/test_tiny_cpu_execution.py
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - cpu-ap-completion-gate
+      - stub-audit
+
+  - id: REQ-RTL-0002
+    title: CPU privileged boot path (CLINT/PLIC/MMU/console) must close before OS bring-up claims
+    owner: cpu
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: e30517bee4fbd7090e8bacfe345ad3797ffa7ff45753bf626603590a14e3186d
+    status: open
+    claim_boundary: qemu_renode_semantics_are_not_e1_chip_boot_validation
+    work_order_id: cpu-privileged-boot-contract
+    links:
+      rtl:
+        - rtl/cpu/e1_cpu_subsystem_stub.sv
+        - rtl/bootrom/e1_bootrom.sv
+      tests: []
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - boot-security-chain-contract-check
+
+  - id: REQ-RTL-0003
+    title: Full SoC routing/ordering/arbitration must close beyond the contract windows
+    owner: memory
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: e30517bee4fbd7090e8bacfe345ad3797ffa7ff45753bf626603590a14e3186d
+    status: open
+    claim_boundary: contract_windows_only_full_soc_routing_blocked
+    work_order_id: interconnect-full-soc-routing
+    links:
+      rtl:
+        - rtl/top/e1_soc_top.sv
+        - rtl/interconnect/e1_axi_lite_interconnect.sv
+        - rtl/interconnect/e1_linux_soc_contract.sv
+      tests:
+        - verify/cocotb/test_cpu_mem_intc_contract.py
+        - verify/cocotb/test_mmio_decode_error.py
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - memory-interconnect-contract-check
+
+  - id: REQ-RTL-0004
+    title: DMA must be verified against a production memory hierarchy, not a 4 KiB SRAM aperture
+    owner: npu
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: e30517bee4fbd7090e8bacfe345ad3797ffa7ff45753bf626603590a14e3186d
+    status: open
+    claim_boundary: word_copy_engine_blocks_dma_throughput_and_coherency_claims
+    work_order_id: dma-real-memory-system
+    links:
+      rtl:
+        - rtl/dma/e1_dma.sv
+        - rtl/top/e1_soc_top.sv
+        - rtl/interconnect/e1_linux_soc_contract.sv
+      tests:
+        - verify/cocotb/test_cpu_mem_intc_contract.py
+        - verify/formal/e1_dma_formal.sv
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - stub-audit
+
+  - id: REQ-RTL-0005
+    title: NPU must replace bounded scratch GEMM with the selected production accelerator
+    owner: npu
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: e30517bee4fbd7090e8bacfe345ad3797ffa7ff45753bf626603590a14e3186d
+    status: open
+    claim_boundary: mmio_scratch_gemm_blocks_accelerator_and_model_execution_claims
+    work_order_id: npu-production-accelerator
+    links:
+      rtl:
+        - rtl/npu/e1_npu.sv
+      tests:
+        - verify/cocotb/test_e1_npu.py
+        - verify/verilator/test_npu_gemm.cpp
+        - verify/formal/e1_npu_formal.sv
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - npu-runtime-contract-check
+      - stub-audit
+
+  - id: REQ-RTL-0006
+    title: Display must replace SRAM-backed scanout with a production framebuffer client
+    owner: platform
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: e30517bee4fbd7090e8bacfe345ad3797ffa7ff45753bf626603590a14e3186d
+    status: open
+    claim_boundary: sram_scanout_blocks_panel_bringup_and_bandwidth_claims
+    work_order_id: display-real-framebuffer-path
+    links:
+      rtl:
+        - rtl/display/e1_display.sv
+        - rtl/top/e1_soc_top.sv
+      tests:
+        - verify/cocotb/test_e1_display.py
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - stub-audit
+
+  - id: REQ-RTL-0007
+    title: Boot ROM must replace identity contract words with executable reset/handoff code
+    owner: cpu
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: e30517bee4fbd7090e8bacfe345ad3797ffa7ff45753bf626603590a14e3186d
+    status: open
+    claim_boundary: identity_contract_rom_blocks_firmware_and_os_boot_gates
+    work_order_id: bootrom-firmware-handoff
+    links:
+      rtl:
+        - rtl/bootrom/e1_bootrom.sv
+      tests: []
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - boot-security-chain-contract-check
+
+  - id: REQ-RTL-0008
+    title: DRAM model must be replaced with a real controller boundary and capacity discovery
+    owner: memory
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: e30517bee4fbd7090e8bacfe345ad3797ffa7ff45753bf626603590a14e3186d
+    status: open
+    claim_boundary: sram_dram_aperture_blocks_bandwidth_and_capacity_claims
+    work_order_id: dram-controller-and-capacity
+    links:
+      rtl:
+        - rtl/memory/e1_axi_lite_dram.sv
+        - rtl/top/e1_soc_top.sv
+        - rtl/interconnect/e1_linux_soc_contract.sv
+      tests: []
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - memory-2028-target-check

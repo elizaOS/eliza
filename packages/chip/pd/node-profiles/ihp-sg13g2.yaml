@@ -1,0 +1,28 @@
+schema: eliza.pd_node_profile.v1
+node_id: ihp-sg13g2
+foundry: IHP
+status: open_fabricable
+fabricable: true
+bspdn: false
+bump_pitch_um: null
+metal_stack: "5 thin + TopMetal1 + TopMetal2"
+
+pdk_adapter:
+  openlane_config: pd/openlane/config.ihp-sg13g2.json
+  flow: openlane2
+  pdk_key: ihp-sg13g2
+  std_cell_library: sg13g2_stdcell
+  max_routing_layer: TopMetal2
+  corner_views:
+    library_manifest: pd/library-manifests/ihp-sg13g2.yaml
+    corner_manifest: pd/corner-manifests/ihp-sg13g2.yaml
+
+default_corner_manifest: pd/corner-manifests/ihp-sg13g2.yaml
+
+source_files:
+  access_gate: null
+  corner_manifest: pd/corner-manifests/ihp-sg13g2.yaml
+  library_manifest: pd/library-manifests/ihp-sg13g2.yaml
+  portability_index_id: ihp_sg13g2_release
+
+forbidden_claims_until_unblocked: []

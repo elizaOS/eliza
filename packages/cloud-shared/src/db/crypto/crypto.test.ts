@@ -52,15 +52,9 @@ describe("field-crypto", () => {
   test("AAD mismatch causes decrypt to fail", async () => {
     const coords = { table: "t1", rowId: ROW, column: "c1" };
     const enc = await encryptField(ORG, "secret", coords);
-    await expect(
-      decryptField(enc, { ...coords, rowId: ROW_B }),
-    ).rejects.toThrow();
-    await expect(
-      decryptField(enc, { ...coords, column: "c2" }),
-    ).rejects.toThrow();
-    await expect(
-      decryptField(enc, { ...coords, table: "other" }),
-    ).rejects.toThrow();
+    await expect(decryptField(enc, { ...coords, rowId: ROW_B })).rejects.toThrow();
+    await expect(decryptField(enc, { ...coords, column: "c2" })).rejects.toThrow();
+    await expect(decryptField(enc, { ...coords, table: "other" })).rejects.toThrow();
   });
 
   test("blindIndex is deterministic for the same input", async () => {

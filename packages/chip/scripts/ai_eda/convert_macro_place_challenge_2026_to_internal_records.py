@@ -15,7 +15,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 PAYLOAD = ROOT / "external/repos/macro-place-challenge-2026/payload"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/macro_place_challenge_2026"
-CLAIM_BOUNDARY = "macro_place_challenge_2026_conversion_training_only_no_e1_signoff_or_release_claim"
+CLAIM_BOUNDARY = (
+    "macro_place_challenge_2026_conversion_training_only_no_e1_signoff_or_release_claim"
+)
 LABEL_STATUS = "public_macro_place_challenge_2026_proxy_and_baseline_training_only_not_e1_signoff"
 
 
@@ -107,7 +109,11 @@ def convert_design(
     files = source_files(payload, design)
     source_records = [file_record(path) for path in files.values() if path.is_file()]
     design_id = f"macro-place-challenge-2026-{safe_id(design)}"
-    initial = metadata.get("initial_placement") if isinstance(metadata.get("initial_placement"), dict) else {}
+    initial = (
+        metadata.get("initial_placement")
+        if isinstance(metadata.get("initial_placement"), dict)
+        else {}
+    )
     num_macros = int(metadata.get("num_macros", 0))
     num_nets = int(metadata.get("num_nets", 0))
     canvas_width = float(metadata.get("canvas_width", 0.0))
@@ -128,7 +134,10 @@ def convert_design(
             "rtl": [],
             "manifests": ["external/repos/macro-place-challenge-2026/manifest.yaml"],
             "benchmark_tensors": [file_record(files["processed_tensor"])],
-            "metadata": [file_record(files["baseline_scores"]), file_record(files["ppa_baselines"])],
+            "metadata": [
+                file_record(files["baseline_scores"]),
+                file_record(files["ppa_baselines"]),
+            ],
             "docs": [file_record(files["readme"]), file_record(files["scoring"])],
         },
         "constraints": {"clocks": [], "resets": []},
@@ -148,7 +157,12 @@ def convert_design(
             "node_features": [
                 {"id": "macros", "node_type": "benchmark_count", "value": num_macros},
                 {"id": "nets", "node_type": "benchmark_count", "value": num_nets},
-                {"id": "canvas", "node_type": "floorplan_canvas", "width_um": canvas_width, "height_um": canvas_height},
+                {
+                    "id": "canvas",
+                    "node_type": "floorplan_canvas",
+                    "width_um": canvas_width,
+                    "height_um": canvas_height,
+                },
                 {"id": "initial_proxy", "node_type": "baseline_proxy_cost", "value": proxy_cost},
             ],
             "edge_features": [
@@ -185,7 +199,10 @@ def convert_design(
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
         "toolchain": {
-            "tools": ["Partcl/HRT Macro Placement Challenge 2026 metadata", "TILOS MacroPlacement proxy evaluator"],
+            "tools": [
+                "Partcl/HRT Macro Placement Challenge 2026 metadata",
+                "TILOS MacroPlacement proxy evaluator",
+            ],
             "version_capture": "external/repos/macro-place-challenge-2026/manifest.yaml",
         },
         "command": "python3 scripts/ai_eda/convert_macro_place_challenge_2026_to_internal_records.py --run-id <run-id>",
@@ -236,20 +253,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=4)
+    parser.add_argument(
+        "--all-records",
+        action="store_true",
+        help="Convert every benchmark listed in the public baseline metadata.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if args.sample_limit <= 0:
+    if not args.all_records and args.sample_limit <= 0:
         raise SystemExit("--sample-limit must be positive")
     baseline_path = args.payload / "benchmarks/metadata/baseline_scores.json"
     if not baseline_path.is_file():
-        print(f"STATUS: BLOCKED ai_eda.macro_place_challenge_2026_conversion missing_baseline_scores {baseline_path}")
+        print(
+            f"STATUS: BLOCKED ai_eda.macro_place_challenge_2026_conversion missing_baseline_scores {baseline_path}"
+        )
         return 2
     baselines = load_json(baseline_path)
     ppa_baselines = load_ppa_baselines(args.payload / "baselines/ng45_baselines.csv")
-    selected = sorted(baselines)[: args.sample_limit]
+    selected = sorted(baselines) if args.all_records else sorted(baselines)[: args.sample_limit]
     out_dir = args.out_root / args.run_id / "records"
     out_dir.mkdir(parents=True, exist_ok=True)
     for stale in out_dir.glob("macro-place-challenge-2026-*.json"):
@@ -268,6 +292,8 @@ def main() -> int:
         "payload": rel(args.payload),
         "available_benchmark_count": len(baselines),
         "converted_benchmark_count": len(selected),
+        "conversion_mode": "all_records" if args.all_records else "sample_limit",
+        "sample_limit": None if args.all_records else args.sample_limit,
         "converted_record_count": len(converted),
         "converted_records": converted,
         "policy": {

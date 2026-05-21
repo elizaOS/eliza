@@ -1,0 +1,76 @@
+schema: eliza.software_bsp_firmware_ai_policy.v1
+claim_boundary: software_bsp_firmware_policy_only_no_patch_boot_bsp_perf_or_vulnerability_claim
+status: DRAFT_CAPTURE_ONLY
+
+description: >-
+  Governs how a future automated agent may touch the E1 software stack (boot
+  ROM, OpenSBI, U-Boot, Linux BSP, drivers, device trees, firmware images) and
+  the QEMU / Renode / Verilator software-reference emulators. Capture-only: a
+  tool may stage candidate work under the quarantine root and gather provenance,
+  but every blocked action below requires human review and the documented
+  promotion gates before any boot, BSP-readiness, kernel-performance, or
+  vulnerability claim. Emulators are software references only and never stand in
+  for E1 RTL behaviour.
+
+blocked_actions:
+  - generate_patch
+  - change_bootloader
+  - change_bsp
+  - change_kernel_config
+  - change_linux_driver
+  - change_device_tree
+  - change_firmware
+  - build_external_rootfs
+  - import_external_bsp_tree
+  - download_firmware_dataset
+  - export_e1_design_to_hosted_model
+  - generate_test_binary
+  - run_qemu
+  - run_renode
+  - run_verilator
+  - run_firmware_emulator
+  - run_fuzzer
+  - claim_boot_success
+  - claim_bsp_readiness
+  - claim_kernel_performance
+  - claim_vulnerability
+  - claim_release_or_tapeout_readiness
+
+required_before_execution:
+  - exact_tool_revision
+  - command_log
+  - input_source_hashes
+  - output_hashes
+  - dependency_manifest
+  - isa_profile_manifest
+  - platform_contract_check
+  - device_tree_or_dtb_hashes
+  - firmware_image_provenance
+  - qemu_or_renode_transcript
+  - crash_or_mismatch_replay_log
+  - static_analysis_log
+  - license_review
+  - security_review_if_applicable
+  - human_bsp_reviewer
+  - reviewer_disposition
+  - generated_artifact_quarantine_path
+
+e1_context_inputs:
+  - sw/platform/e1_platform_contract.json
+  - docs/arch/memory-map.md
+  - docs/arch/linux-capable-cpu-contract.md
+  - sw/linux/dts/eliza-e1.dts
+
+artifact_quarantine_roots:
+  - build/ai_eda/software_bsp_firmware/
+
+promotion_gates:
+  - python3 scripts/check_software_bsp_firmware_ai_policy.py
+  - python3 scripts/ai_eda/capture_software_bsp_firmware_targets.py --run-id validation
+  - python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation
+  - make software-bsp-firmware-ai-policy-check
+  - make software-bsp-check
+  - make bootrom-check
+  - make qemu-check
+  - make renode-check
+  - make no-hardware-action-check

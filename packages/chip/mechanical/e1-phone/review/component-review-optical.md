@@ -1,7 +1,7 @@
 # E1 phone optical component review (EVT design review)
 
 Scope: rear camera, front camera, rear torch/flash LED, screen/display. Validated
-against the locked `evt0-mechanical-cad-flush-back` requirements: 11.2 mm thick,
+against the locked `evt0-mechanical-cad-flush-back` requirements: 11.8 mm thick,
 fully flush flat back (no bump, no proud ring), rear camera + torch buried behind
 flush internal windows, SINGLE lens each direction. This is an EVT-stage design
 review for sourcing/layout planning — NOT a production-release sign-off.

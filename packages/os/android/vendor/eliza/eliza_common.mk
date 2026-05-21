@@ -23,8 +23,10 @@ PRODUCT_MANUFACTURER := Eliza
 
 PRODUCT_PACKAGES += \
     Eliza \
+    ElizaSystemBridge \
     default-permissions-ai.elizaos.app.xml \
-    privapp-permissions-ai.elizaos.app.xml
+    privapp-permissions-ai.elizaos.app.xml \
+    privapp-permissions-ai.elizaos.system.bridge.xml
 
 # Strip every stock app whose role Eliza owns. Trebuchet is LineageOS's
 # launcher; absent from AOSP but harmless to list. SetupWizard ships with
@@ -55,8 +57,10 @@ PRODUCT_PACKAGE_OVERLAYS += \
 
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/priv-app/Eliza/% \
+    system/priv-app/ElizaSystemBridge/% \
     system/etc/default-permissions/default-permissions-ai.elizaos.app.xml \
     system/etc/permissions/privapp-permissions-ai.elizaos.app.xml \
+    system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml \
     product/etc/eliza/aosp-assistant-full-control.json \
     product/etc/init/init.eliza.rc \
     product/media/bootanimation.zip

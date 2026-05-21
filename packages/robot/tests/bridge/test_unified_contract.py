@@ -281,6 +281,9 @@ def test_protocol_command_set_is_canonical() -> None:
         "policy.stop",
         "policy.tick",
         "policy.status",
+        "asimov.mode",
+        "asimov.velocity",
+        "asimov.trajectory",
         "profile.describe",
         "camera.snapshot",
     }

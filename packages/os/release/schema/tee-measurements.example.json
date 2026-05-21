@@ -7,6 +7,10 @@
     "agent": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "policy": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
     "container": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-    "npuFirmware": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    "compose": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "monitor": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "gpuFirmware": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "npuFirmware": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "modelWeights": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
   }
 }

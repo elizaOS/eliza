@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/macro_placement_policy/validation/macro_placement_baseline_report.json"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/macro_placement_policy/validation/macro_placement_baseline_report.json"
+)
 CLAIM_BOUNDARY = "macro_placement_baseline_only_no_openroad_replay_or_release_claim"
 REQUIRED_POLICIES = {
     "center_legal_baseline",
@@ -70,7 +72,9 @@ def validate_score(score: Any, label: str) -> list[str]:
     if overlap_status in {None, "exact_pairwise"}:
         for field in ("overlap_area_um2", "worst_overlap_area_um2"):
             if not finite_number(score.get(field)):
-                errors.append(f"{label}: score.{field} must be numeric when exact overlap is checked")
+                errors.append(
+                    f"{label}: score.{field} must be numeric when exact overlap is checked"
+                )
     return errors
 
 
@@ -100,13 +104,23 @@ def validate_candidate(path: Path, expected_policy: str, expected_case_id: str) 
     if not isinstance(ladder, dict):
         errors.append(f"{candidate_id}: validation_ladder must be a mapping")
     else:
-        required = set(ladder.get("required_gates", [])) if isinstance(ladder.get("required_gates"), list) else set()
-        completed = set(ladder.get("completed_gates", [])) if isinstance(ladder.get("completed_gates"), list) else set()
+        required = (
+            set(ladder.get("required_gates", []))
+            if isinstance(ladder.get("required_gates"), list)
+            else set()
+        )
+        completed = (
+            set(ladder.get("completed_gates", []))
+            if isinstance(ladder.get("completed_gates"), list)
+            else set()
+        )
         for gate in ("deterministic_openroad_replay", "timing_check", "drc_check", "human_review"):
             if gate not in required:
                 errors.append(f"{candidate_id}: missing required gate {gate}")
         if completed != {"baseline_policy_generation"}:
-            errors.append(f"{candidate_id}: completed gates must only include baseline_policy_generation")
+            errors.append(
+                f"{candidate_id}: completed gates must only include baseline_policy_generation"
+            )
     decision = candidate.get("decision")
     if not isinstance(decision, dict) or decision.get("status") != "replayed_blocked":
         errors.append(f"{candidate_id}: decision must remain replayed_blocked")
@@ -194,7 +208,9 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
                 errors.append(f"{case_id}: comparison missing policies {missing}")
 
     next_gates = report.get("next_required_gates")
-    if not isinstance(next_gates, list) or not any("OpenLane/OpenROAD" in str(gate) for gate in next_gates):
+    if not isinstance(next_gates, list) or not any(
+        "OpenLane/OpenROAD" in str(gate) for gate in next_gates
+    ):
         errors.append("next_required_gates must include OpenLane/OpenROAD replay")
     return errors
 

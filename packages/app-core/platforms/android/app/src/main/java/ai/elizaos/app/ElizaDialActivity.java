@@ -39,7 +39,7 @@ public class ElizaDialActivity extends Activity {
 
         Intent launch = new Intent(this, MainActivity.class);
         launch.setAction(Intent.ACTION_VIEW);
-        Uri.Builder route = Uri.parse("ai.elizaos.app://phone").buildUpon()
+        Uri.Builder route = Uri.parse("elizaos://phone").buildUpon()
                 .appendQueryParameter("source", "android-dial");
         if (action != null) {
             route.appendQueryParameter("action", action);

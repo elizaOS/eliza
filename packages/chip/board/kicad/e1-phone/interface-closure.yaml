@@ -16,7 +16,7 @@ source_files:
 device_envelope_mm:
   width: 78.0
   height: 153.6
-  max_thickness: 11.2
+  max_thickness: 11.8
 board_bbox_mm:
   width: 64.0
   height: 132.0
@@ -388,14 +388,15 @@ interfaces:
       - enclosure_clamp_or_adhesive_under_battery_edge_required
     assembly_closure_requirements:
       - battery must insert without overstressing the mated top/bottom flex
-      - connector mated height and stiffener stack must clear the 11.2 mm flush-back enclosure
+      - connector mated height and stiffener stack must clear the 11.8 mm flush-back
+        enclosure
       - strain relief or clamp must be defined before drop/torsion testing
       - bottom island service order must be documented before first article assembly
     passes_planning_gate: true
 routing_classes_referenced:
-  differential_pair_count: 18
+  differential_pair_count: 24
   single_ended_bus_count: 11
-display_supplier_state: supplier_request_required
+display_supplier_state: public_pdf_cross_checked_not_signed_supplier_pack
 camera_supplier_state: sourcing_shortlist_no_bonded_pins_no_fabricated_board
 release_blockers:
   - exact supplier connector pinouts for USB-C footprint, display/touch FPC, rear

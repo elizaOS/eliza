@@ -7,8 +7,11 @@ Eliza agent through the gates D.5--D.13 from the AOSP simulator completion
 audit:
 
   * agent service alive (pidof <package> returns non-empty)
+  * /api/health HTTP 200 (AGENT_HEALTH_HTTP) -- the watchdog liveness contract
+    the Android app and ElizaAgentService share -- is the readiness gate
   * /api/agent/self-status HTTP 200 with `agentId` shape and per-plugin
-    `status:"ready"` on the local-inference plugin set
+    `status:"ready"` on the local-inference plugin set provides the deeper
+    capability detail (AGENT_STATUS_*/AGENT_PLUGINS_* markers)
   * llama smoke produces >= AOSP_AGENT_LLAMA_MIN_TOKENS tokens within the
     600s budget; the wall-clock seconds are emitted as LLAMA_WALL_S
   * Kokoro TTS produces a valid RIFF/WAVE WAV and emits TTS_SAMPLES
@@ -310,31 +313,47 @@ def main() -> int:
 
     base_url = f"http://127.0.0.1:{host_port}"
 
-    # Wait for /api/agent/self-status to return HTTP 200.
-    self_status_url = f"{base_url}/api/agent/self-status"
-    self_status_body_path = out_dir / "eliza-cuttlefish-agent-self-status.json"
+    # Watchdog readiness gate: the Android app and ElizaAgentService both treat
+    # /api/health as the local-agent liveness contract, so that endpoint is the
+    # readiness proof recorded for launcher/runtime evidence.
+    health_url = f"{base_url}/api/health"
+    health_code = 0
+
+    def health_ok() -> bool:
+        nonlocal health_code
+        health_code, _ = http_get(health_url, timeout=10)
+        return health_code == 200
+
+    if not wait_for(health_ok, timeout=port_wait):
+        print(f"AGENT_HEALTH_HTTP={health_code}")
+        raise SystemExit(f"error: /api/health returned HTTP {health_code} (waited {port_wait}s)")
+    print(f"AGENT_HEALTH_HTTP={health_code}")
+    print("AGENT_HEALTH_ENDPOINT=/api/health")
+
+    # Deep capability detail comes from the richer agent status endpoint, which
+    # exposes per-plugin readiness the watchdog does not.
+    status_url = f"{base_url}/api/agent/self-status"
+    status_body_path = out_dir / "eliza-cuttlefish-agent-status.json"
     last_code = 0
     last_body = b""
 
-    def self_status_ok() -> bool:
+    def status_ok() -> bool:
         nonlocal last_code, last_body
-        last_code, last_body = http_get(self_status_url, timeout=10)
+        last_code, last_body = http_get(status_url, timeout=10)
         return last_code == 200
 
-    if not wait_for(self_status_ok, timeout=port_wait):
-        print(f"SELF_STATUS_HTTP={last_code}")
-        raise SystemExit(
-            f"error: /api/agent/self-status returned HTTP {last_code} (waited {port_wait}s)"
-        )
-    self_status_body_path.write_bytes(last_body)
-    print(f"SELF_STATUS_HTTP={last_code}")
+    if not wait_for(status_ok, timeout=port_wait):
+        print(f"AGENT_STATUS_HTTP={last_code}")
+        raise SystemExit(f"error: agent status returned HTTP {last_code} (waited {port_wait}s)")
+    status_body_path.write_bytes(last_body)
+    print(f"AGENT_STATUS_HTTP={last_code}")
 
     self_status_payload = json.loads(last_body.decode("utf-8"))
     if not isinstance(self_status_payload, dict) or "agentId" not in self_status_payload:
         raise SystemExit(
             f"error: /api/agent/self-status body missing agentId: {self_status_payload!r}"
         )
-    print("SELF_STATUS_JSON_SHAPE=ok")
+    print("AGENT_STATUS_JSON_SHAPE=ok")
 
     plugins = self_status_payload.get("plugins")
     if not isinstance(plugins, list):
@@ -349,19 +368,19 @@ def main() -> int:
                 plugin_by_name[name] = entry
         elif isinstance(entry, str):
             plugin_by_name[entry] = {"name": entry, "status": "ready"}
-    print(f"SELF_STATUS_PLUGINS={','.join(sorted(plugin_by_name))}")
+    print(f"AGENT_PLUGINS={','.join(sorted(plugin_by_name))}")
     for required_plugin in required_plugins:
         entry = plugin_by_name.get(required_plugin)
         if entry is None:
             raise SystemExit(
-                f"error: required plugin {required_plugin!r} missing from /api/agent/self-status"
+                f"error: required plugin {required_plugin!r} missing from agent status"
             )
         status = entry.get("status") if isinstance(entry, dict) else None
         if status != "ready":
             raise SystemExit(
                 f"error: plugin {required_plugin!r} status is {status!r}, expected 'ready'"
             )
-    print(f"SELF_STATUS_REQUIRED_PLUGINS_READY={','.join(required_plugins)}")
+    print(f"AGENT_REQUIRED_PLUGINS_READY={','.join(required_plugins)}")
 
     # Llama smoke.
     llama_body_path = out_dir / "eliza-cuttlefish-agent-llama.json"
@@ -507,16 +526,20 @@ def main() -> int:
     # Self-status final check: every required plugin must still be ready after
     # the workload has run. This catches plugins that crashed during inference
     # but kept the foreground service alive.
-    final_status_path = out_dir / "eliza-cuttlefish-agent-self-status-final.json"
-    final_code, final_body = http_get(self_status_url, timeout=30)
+    final_status_path = out_dir / "eliza-cuttlefish-agent-status-final.json"
+    final_health_code, _ = http_get(health_url, timeout=30)
+    print(f"AGENT_HEALTH_FINAL_HTTP={final_health_code}")
+    if final_health_code != 200:
+        raise SystemExit(f"error: final /api/health returned HTTP {final_health_code}")
+    final_code, final_body = http_get(status_url, timeout=30)
     final_status_path.write_bytes(final_body)
-    print(f"SELF_STATUS_FINAL_HTTP={final_code}")
+    print(f"AGENT_STATUS_FINAL_HTTP={final_code}")
     if final_code != 200:
-        raise SystemExit(f"error: final /api/agent/self-status returned HTTP {final_code}")
+        raise SystemExit(f"error: final agent status returned HTTP {final_code}")
     final_payload = json.loads(final_body.decode("utf-8"))
     final_plugins_raw = final_payload.get("plugins")
     if not isinstance(final_plugins_raw, list):
-        raise SystemExit("error: final /api/agent/self-status missing plugins[]")
+        raise SystemExit("error: final agent status missing plugins[]")
     final_plugin_by_name: dict[str, dict] = {}
     for entry in final_plugins_raw:
         if isinstance(entry, dict):
@@ -536,7 +559,7 @@ def main() -> int:
             raise SystemExit(
                 f"error: final plugin {required_plugin!r} status is {status!r}, expected 'ready'"
             )
-    print(f"SELF_STATUS_FINAL_PLUGINS_READY={','.join(required_plugins)}")
+    print(f"AGENT_STATUS_FINAL_PLUGINS_READY={','.join(required_plugins)}")
 
     # Forensic sidecars.
     for shell_cmd, sidecar_name, marker in (

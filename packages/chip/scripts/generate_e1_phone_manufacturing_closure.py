@@ -64,6 +64,9 @@ def main() -> int:
     kibot_text = KIBOT.read_text()
 
     production_outputs = production_output_status()
+    zone_total_count = pcb_text.count("(zone ")
+    keepout_zone_count = pcb_text.count("(keepout ")
+    copper_zone_count = zone_total_count - keepout_zone_count
     footprint_count = pcb_text.count('(footprint "E1Phone:')
     testpoint_count = pcb_text.count('(footprint "E1Phone:TP_')
     fiducial_count = pcb_text.count('(footprint "E1Phone:FID_')
@@ -348,7 +351,8 @@ def main() -> int:
         "board_state_detected": {
             "has_kicad_footprints": "(footprint " in pcb_text,
             "has_tracks": "(segment " in pcb_text or "(arc " in pcb_text,
-            "has_filled_zones": "(zone " in pcb_text,
+            "has_filled_zones": copper_zone_count > 0,
+            "has_keepout_zones": keepout_zone_count > 0,
             "has_test_point_footprints": testpoint_count > 0,
             "has_fiducials": fiducial_count > 0,
             "has_mounting_holes": mounting_hole_count > 0,
@@ -386,6 +390,8 @@ def main() -> int:
             "split_interconnect_nets_assigned": split_interconnect_nets_assigned,
             "declared_net_count": len(declared_nets),
             "generated_net_class_count": generated_net_class_count,
+            "generated_keepout_zone_count": keepout_zone_count,
+            "copper_zone_count": copper_zone_count,
             "assigned_pad_net_count": assigned_pad_net_count,
             "testpoint_nets_assigned": testpoint_nets_assigned,
             "claim_boundary": (

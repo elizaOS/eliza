@@ -37,8 +37,9 @@ module dma_axil_props_top (
 
     e1_dma u_dma (.*);
 
-    bind e1_dma axi_lite_props #(.ADDR_W(32), .DATA_W(32), .MAX_STALL(64))
-        u_axil_props (
+    bind e1_dma axi_lite_protocol_props #(
+        .ADDR_W(32), .DATA_W(32), .MAX_OUTST(1), .MAX_STALL(64)
+    ) u_axil_props (
             .clk      (clk),
             .rst_n    (rst_n),
             .awvalid  (m_axil_awvalid),

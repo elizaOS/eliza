@@ -108,10 +108,15 @@ def main() -> int:
     board_bbox_area = (max_x - min_x) * (max_y - min_y)
     edge_area = sum(rect.area for rect in edge_rects)
 
+    fab_rects = [rect for rect in rects if rect.layer == "F.Fab"]
     dwgs_rects = [rect for rect in rects if rect.layer == "Dwgs.User"]
     battery = max(dwgs_rects, key=lambda rect: rect.area)
-    antenna_keepouts = [rect for rect in dwgs_rects if rect is not battery]
-    fab_rects = [rect for rect in rects if rect.layer == "F.Fab"]
+    antenna_keepouts = [
+        rect
+        for rect in dwgs_rects
+        if rect is not battery
+        and not any(overlap_area(rect, fab) >= rect.area * 0.98 for fab in fab_rects)
+    ]
 
     fab_by_class: dict[str, float] = {}
     for rect in fab_rects:

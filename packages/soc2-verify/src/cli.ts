@@ -21,7 +21,10 @@ function parseArgs(argv: string[]): Args {
     const a = argv[i]!;
     if (a === "--strict-fail") args.strictFail = true;
     else if (a === "--help" || a === "-h") args.help = true;
-    else if (a === "--out") args.out = argv[++i];
+    else if (a === "--out") {
+      const v = argv[++i];
+      if (v !== undefined) args.out = v;
+    }
     else if (a.startsWith("--out=")) args.out = a.slice("--out=".length);
     else if (a === "--include") args.include.push(argv[++i] ?? "");
     else if (a.startsWith("--include=")) args.include.push(a.slice("--include=".length));

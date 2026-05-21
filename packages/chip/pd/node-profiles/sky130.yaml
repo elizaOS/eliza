@@ -1,0 +1,28 @@
+schema: eliza.pd_node_profile.v1
+node_id: sky130
+foundry: SkyWater
+status: open_fabricable
+fabricable: true
+bspdn: false
+bump_pitch_um: null
+metal_stack: "5 (li1, met1..met5)"
+
+pdk_adapter:
+  openlane_config: pd/openlane/config.sky130.json
+  flow: openlane2
+  pdk_key: sky130A
+  std_cell_library: sky130_fd_sc_hd
+  max_routing_layer: met5
+  corner_views:
+    library_manifest: pd/library-manifests/sky130.yaml
+    corner_manifest: pd/corner-manifests/sky130.yaml
+
+default_corner_manifest: pd/corner-manifests/sky130.yaml
+
+source_files:
+  access_gate: null
+  corner_manifest: pd/corner-manifests/sky130.yaml
+  library_manifest: pd/library-manifests/sky130.yaml
+  portability_index_id: sky130A_release
+
+forbidden_claims_until_unblocked: []

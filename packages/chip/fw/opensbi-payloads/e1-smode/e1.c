@@ -1,14 +1,27 @@
 /*
  * Tier 1 S-mode payload "E1 from S-mode" via direct UART MMIO.
  *
- * We deliberately bypass SBI console calls and poke the 16550 at
- * 0x10000000 directly so the test does not depend on SBI extension
- * availability. OpenSBI maps PMP so S-mode can access the UART on virt.
+ * We deliberately bypass SBI console calls and poke the 16550 directly so
+ * the test does not depend on SBI extension availability. OpenSBI maps PMP
+ * so S-mode can access the UART.
+ *
+ * The canonical UART base is the e1-chip-variant address (0x10001000) from
+ * sw/platform/e1_platform_contract.json (e1_chip_cpu_variant.uart.base),
+ * which is the single source of truth for the RTL decode, kernel DTS,
+ * U-Boot, OpenSBI, and AOSP HAL. It is the build default below.
+ *
+ * The stock-QEMU-virt 16550 lives at 0x10000000 (the qemu_virt
+ * software_reference_only entry in the same contract). The bring-up harness
+ * that boots this payload on `-machine virt` overrides the base by building
+ * with -DUART0_BASE=0x10000000UL; it must not be hardcoded here, so the
+ * source carries one canonical address and the deviation is explicit.
  */
 
 #include <stdint.h>
 
-#define UART0_BASE 0x10000000UL
+#ifndef UART0_BASE
+#define UART0_BASE 0x10001000UL
+#endif
 #define UART_THR   0x0
 #define UART_LSR   0x5
 #define LSR_THRE   (1u << 5)

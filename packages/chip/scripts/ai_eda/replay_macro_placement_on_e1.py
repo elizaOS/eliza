@@ -215,7 +215,9 @@ def main() -> int:
         if not tools["openroad_available"]:
             blockers.append("OpenROAD executable is not available")
         if plan.get("status") != "READY_FOR_DETERMINISTIC_REPLAY":
-            blockers.append("selected replay-plan candidate is not marked READY_FOR_DETERMINISTIC_REPLAY")
+            blockers.append(
+                "selected replay-plan candidate is not marked READY_FOR_DETERMINISTIC_REPLAY"
+            )
 
         execution: dict[str, Any] = {
             "requested": bool(args.execute),
@@ -240,7 +242,9 @@ def main() -> int:
         elif args.execute:
             execution["reason"] = "blocked_before_execution"
 
-        status = "READY_TO_EXECUTE" if not blockers and not args.execute else "BLOCKED_REPLAY_EXECUTION"
+        status = (
+            "READY_TO_EXECUTE" if not blockers and not args.execute else "BLOCKED_REPLAY_EXECUTION"
+        )
         if args.execute and execution.get("attempted") and execution.get("returncode") == 0:
             status = "EXECUTED_OPENLANE_REPLAY_UNVERIFIED"
 
@@ -278,7 +282,9 @@ def main() -> int:
             "status": "FAIL_INVALID_REPLAY_PREFLIGHT",
             "blockers": [str(exc)],
         }
-        report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        report_path.write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         print(f"STATUS: FAIL ai_eda.macro_placement_replay_preflight {exc}")
         return 1
 

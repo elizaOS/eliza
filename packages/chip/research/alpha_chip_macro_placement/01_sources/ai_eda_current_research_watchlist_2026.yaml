@@ -42,6 +42,26 @@ entries:
       Exact objective, masks, seeds, split manifests, legalizer outputs,
       case hashes, deterministic OpenLane/OpenROAD replay, routed OpenROAD
       labels, signoff checks, and comparison against deterministic baselines.
+  - id: chipseek
+    name: ChipSeek-R1 Hierarchical Reward-Driven RTL Generation
+    year: 2025
+    lane: rtl_generation_and_ppa_feedback
+    priority: P2
+    source_url: https://arxiv.org/abs/2507.04736
+    public_code_status: available_to_review
+    e1_action: >
+      Track as a closed-loop RL/LLM RTL-generation method that uses EDA
+      feedback for functional and PPA rewards. Use only for quarantined E1
+      micro-block alternatives after specs, testbenches, lint, simulation,
+      formal, synthesis, equivalence, OpenLane replay, and reviewer gates are
+      wired; never accept generated RTL directly into E1.
+    required_evidence: >
+      Paper and repository revision hashes, license/model review, prompt and
+      reward-config hashes, generated RTL diff hashes, Verilog parser/lint
+      logs, unit and cocotb simulation, strict formal or equivalence evidence,
+      Yosys/ABC synthesis comparison, OpenLane/OpenROAD replay where physical
+      impact exists, PPA/signoff comparison against checked-in RTL, and human
+      design-review disposition.
   - id: dynamic-tree-search-rl-macro-placement
     name: Dynamic Tree Search Guided RL Macro Placement
     year: 2026
@@ -70,6 +90,43 @@ entries:
       Macro orientation hashes, LEF symmetry review, pin-access checks,
       deterministic OpenLane/OpenROAD replay, routed timing, DRC/LVS, antenna,
       power, signoff checks, and PD review.
+  - id: macro-place-challenge-2026
+    name: Partcl/HRT Macro Placement Challenge
+    year: 2026
+    lane: macro_placement_benchmark
+    priority: P1
+    source_url: https://github.com/partcleda/macro-place-challenge-2026
+    public_code_status: available_to_review
+    e1_action: >
+      Track as the current OpenROAD-oriented macro-placement challenge and
+      scoring harness for benchmark hygiene, replay-policy comparison, and
+      baseline selection. Do not submit, import hidden/public challenge tasks,
+      or tune E1 placements against it until terms, splits, and non-overlap are
+      reviewed.
+    required_evidence: >
+      Challenge terms, exact repository revision and submodule hashes, benchmark
+      manifests, public/hidden split policy, proxy-score logs, OpenROAD-flow
+      replay logs, generated placement hashes, E1 contamination review,
+      deterministic E1 OpenLane/OpenROAD replay, routed STA/DRC/LVS/antenna,
+      power signoff checks, and PD reviewer disposition.
+  - id: flowplace
+    name: FlowPlace Flow-Matching Chip Placement
+    year: 2026
+    lane: generative_placement
+    priority: P2
+    source_url: https://arxiv.org/abs/2604.23658
+    public_code_status: paper_only
+    e1_action: >
+      Track as a recent flow-matching placement method for future candidate
+      generation research after E1 has stable macro-placement labels, local
+      legalizer replay, and routed signoff comparisons. Treat paper results as
+      SOTA context only.
+    required_evidence: >
+      Paper hash, code and data revisions if released, model/config/seed
+      hashes, training-data provenance, generated placement hashes,
+      legalization logs, deterministic E1 OpenLane/OpenROAD replay, routed
+      timing, congestion, DRC/LVS, antenna, power, signoff checks, and PD
+      reviewer disposition.
   - id: c3po-concurrent-placement
     name: C3PO Concurrent Timing, Routability, and Wirelength Placement
     year: 2026
@@ -115,6 +172,108 @@ entries:
       Source revision, license review, feature schema hashes, label provenance,
       split manifests, local checker coverage, deterministic E1 replay, and
       signoff review before any feature-derived optimization claim.
+  - id: floorset-iccad-2026
+    name: FloorSet / ICCAD 2026 Data-Driven SoC Floorplanning Challenge
+    year: 2026
+    lane: floorplanning_dataset
+    priority: P1
+    source_url: https://github.com/IntelLabs/FloorSet
+    public_code_status: available_to_review
+    e1_action: >
+      Track as a large constrained floorplanning training corpus and contest
+      harness candidate. Only import after license review, exact revision pin,
+      tensor-schema conversion, and non-overlap checks against E1 evaluation
+      cases are complete.
+    required_evidence: >
+      Repository and dataset hashes, Hugging Face artifact revisions if used,
+      license review, tensor-to-internal-schema converter logs, split manifests,
+      contamination review, generated floorplan quarantine, deterministic E1
+      OpenLane/OpenROAD replay, signoff checks, and PD reviewer disposition.
+  - id: r-zoo-rectilinear-floorplan
+    name: R-Zoo Rectilinear Floorplan Benchmark Dataset
+    year: 2026
+    lane: floorplanning_dataset
+    priority: P2
+    source_url: https://github.com/iCAS-SJTU/Chip-Like-A-House
+    public_code_status: available_to_review
+    e1_action: >
+      Track as a geometry-aware rectilinear floorplanning corpus for future
+      E1 macro-shape and whitespace experiments, not as a direct E1 placement
+      label source until format, license, and replay compatibility are proven.
+    required_evidence: >
+      Paper and repository hashes, dataset license review, rectilinear geometry
+      schema conversion, legality checker logs, split manifests, non-overlap
+      review, generated floorplan quarantine, deterministic E1 OpenLane/OpenROAD
+      replay, DRC/LVS/STA/power signoff checks, and PD reviewer disposition.
+  - id: eda-schema-v2-physical-design
+    name: EDA-Schema-V2 Physical Design Dataset and Benchmarks
+    year: 2026
+    lane: physical_design_multimodal_dataset
+    priority: P1
+    source_url: https://arxiv.org/abs/2605.06952
+    public_code_status: paper_only
+    e1_action: >
+      Track as a newly released multimodal physical-design schema and OpenROAD
+      dataset candidate for timing, power, area, and routing surrogate
+      pretraining. Do not import until public dataset locations, license,
+      exact revision, and schema mapping are reviewed.
+    required_evidence: >
+      Paper hash, public dataset URL and revision, license review, file
+      manifest hashes, PDK/tool-version provenance, IWLS benchmark overlap and
+      E1 contamination review, schema-to-internal-record converter logs,
+      deterministic split manifests, baseline model metrics, OpenLane/OpenROAD
+      replay compatibility checks, and signoff reviewer disposition.
+  - id: forgeeda-multimodal-circuit-dataset
+    name: ForgeEDA Comprehensive Multimodal Circuit Dataset
+    year: 2025
+    lane: multimodal_eda_dataset
+    priority: P1
+    source_url: https://arxiv.org/abs/2505.02016
+    public_code_status: available_to_review
+    e1_action: >
+      Track as a broad public circuit dataset candidate for data-hungry EDA
+      pretraining across circuit categories. Do not import until release
+      locations, license, exact revision, category taxonomy, and overlap with
+      E1 validation cases are reviewed.
+    required_evidence: >
+      Paper, dataset, and repository hashes; license review; exact file
+      manifest; category/schema mapping to internal records; benchmark and E1
+      contamination review; deterministic split manifests; baseline model
+      metrics; OpenLane/OpenROAD replay compatibility checks where physical
+      labels exist; signoff reviewer disposition.
+  - id: verireason-testbench-feedback-rtl
+    name: VeriReason Testbench-Feedback Verilog Generation
+    year: 2025
+    lane: rtl_generation_and_verification_training
+    priority: P2
+    source_url: https://huggingface.co/papers/2505.11849
+    public_code_status: available_to_review
+    e1_action: >
+      Track as an RTL-coder training and evaluation lane with testbench feedback
+      rewards. Use only for quarantined candidate generation until E1-specific
+      tests, lint, synthesis, equivalence, and review gates are wired.
+    required_evidence: >
+      Paper, model, dataset, and repository hashes; license and model-card
+      review; prompt/testbench/proof transcript hashes; generated RTL diff
+      hashes; lint, simulation, formal, synthesis, and equivalence logs;
+      OpenLane/OpenROAD replay or signoff checks for any implementation-impacting
+      RTL; reviewer disposition.
+  - id: amiq-dvt-mcp-server
+    name: AMIQ DVT MCP Server for HDL Agent Grounding
+    year: 2026
+    lane: eda_agent_context_grounding
+    priority: P2
+    source_url: https://eda.amiq.com/press-releases/amiq-eda-gives-ai-agents-access-to-essential-design-and-verification-data
+    public_code_status: no_reference_implementation_selected
+    e1_action: >
+      Track as a commercial/batch project-context grounding option for HDL and
+      verification agents. Do not depend on it unless licenses, offline access,
+      reproducible compiled databases, and exportable diagnostics are approved.
+    required_evidence: >
+      Product/version and license hashes; E1 project database build hashes;
+      query/response transcript hashes; generated HDL or verification diff
+      hashes; lint, simulation, formal, synthesis, equivalence, replay/signoff
+      checks where relevant; security review and reviewer disposition.
   - id: dreamerv3-fr-pcb
     name: DreamerV3+FR PCB Autorouting
     year: 2026
@@ -129,3 +288,40 @@ entries:
       KiCad board hashes, freerouting version, design-rule manifest,
       routed-board diff hashes, deterministic board replay, DRC/ERC, SI/PI
       review, signoff checks, and manufacturing review.
+  - id: explace-domain-expert-rl
+    name: EXPlace Domain-Expert RL Macro Placement
+    year: 2026
+    lane: macro_placement
+    priority: P1
+    source_url: https://openreview.net/forum?id=yqvNwfxRR6
+    public_code_status: no_reference_implementation_selected
+    e1_action: >
+      Track as a high-priority AlphaChip-successor candidate because it
+      explicitly combines reinforcement learning with domain-expert action
+      masks, workflow imitation, fixed-macro planning, soft-macro clustering,
+      and macro ordering. Reimplement only after the E1 replay queue has stable
+      legalizer and OpenLane/OpenROAD signoff feedback.
+    required_evidence: >
+      Paper and any released code/data hashes, exact expert-mask definitions,
+      action-space manifest, training seeds, checkpoint hashes, generated
+      placement hashes, legalizer logs, deterministic E1 OpenLane/OpenROAD
+      replay, routed timing/congestion, DRC/LVS, antenna, power, baseline
+      comparison, and PD reviewer disposition.
+  - id: ams-io-agent-layout
+    name: AMS-IO-Agent Analog/Mixed-Signal I/O Ring Layout Agent
+    year: 2026
+    lane: analog_mixed_signal_layout_agent
+    priority: P2
+    source_url: https://ojs.aaai.org/index.php/AAAI/article/view/37134
+    public_code_status: no_reference_implementation_selected
+    e1_action: >
+      Track as an analog/mixed-signal layout-agent reference for future E1 pad,
+      I/O-ring, bump, and package-facing experiments. Do not apply to E1
+      source, padframe, or signoff collateral until local PDK rules,
+      constraints, and reviewer gates are explicit.
+    required_evidence: >
+      Paper and any released code/data hashes, benchmark and PDK rule hashes,
+      constraint manifests, generated layout hashes, DRC/LVS/antenna/ESD
+      reports, OpenLane/OpenROAD or analog signoff replay where applicable,
+      package and board-interface checks, security review, and PD/AMS reviewer
+      disposition.

@@ -42,6 +42,8 @@ repo_root=$(CDPATH=; cd -- "$(dirname -- "$0")/../.." && pwd)
 eliza_root=$(CDPATH=; cd -- "$repo_root/../.." && pwd)
 device_src="$repo_root/sw/aosp-device/device/eliza/eliza_ai_soc"
 device_dst="$aosp/device/eliza/eliza_ai_soc"
+cuttlefish_src="$repo_root/sw/aosp-device/device/eliza/cuttlefish_e1"
+cuttlefish_dst="$aosp/device/eliza/cuttlefish_e1"
 vendor_src="$eliza_root/packages/os/android/vendor/eliza"
 vendor_dst="$aosp/vendor/eliza"
 manifest_src="$repo_root/sw/aosp-device/manifests/eliza-ai-soc-local.xml"
@@ -68,9 +70,19 @@ $device_src/sepolicy/e1_npu.te
 $device_src/sepolicy/property_contexts
 $device_src/sepolicy/hwservice_contexts
 $device_src/hal/e1_npu/Android.bp
+$device_src/hal/e1_npu/1.0/Android.bp
+$device_src/hal/e1_npu/1.0/IE1Npu.hal
+$device_src/hal/e1_npu/1.0/types.hal
 $device_src/hal/hwcomposer/Android.bp
+$cuttlefish_src/eliza_e1_cuttlefish.mk
+$cuttlefish_src/manifest.fragment.xml
+$cuttlefish_src/sepolicy/file_contexts
+$cuttlefish_src/sepolicy/hal_e1_npu_default.te
 $vendor_src/AndroidProducts.mk
 $vendor_src/eliza_common.mk
+$vendor_src/products/eliza_cf_arm64_phone.mk
+$vendor_src/products/eliza_cf_x86_64_phone.mk
+$vendor_src/products/eliza_cf_riscv64_phone.mk
 $vendor_src/products/eliza_openagent_ai_soc_phone.mk
 $manifest_src
 "
@@ -95,13 +107,14 @@ fi
 if [ "$check_only" -eq 0 ] && [ "$dry_run" -eq 0 ]; then
 	mkdir -p "$aosp/device/eliza"
 	rsync -a --delete "$device_src/" "$device_dst/"
+	rsync -a --delete "$cuttlefish_src/" "$cuttlefish_dst/"
 	mkdir -p "$aosp/vendor"
 	rsync -a --delete "$vendor_src/" "$vendor_dst/"
 fi
 
 if [ "$check_only" -eq 1 ]; then
 	if [ -d "$device_dst" ]; then
-		for rel in AndroidProducts.mk eliza_ai_soc.mk BoardConfig.mk device.mk init.eliza.rc fstab.eliza manifest.xml eliza_e1.xml device_framework_matrix.xml kernel/eliza_ai_soc.fragment dts/eliza-e1-android.dts sepolicy/file_contexts sepolicy/e1_npu.te sepolicy/property_contexts sepolicy/hwservice_contexts hal/e1_npu/Android.bp hal/hwcomposer/Android.bp; do
+		for rel in AndroidProducts.mk eliza_ai_soc.mk BoardConfig.mk device.mk init.eliza.rc fstab.eliza manifest.xml eliza_e1.xml device_framework_matrix.xml kernel/eliza_ai_soc.fragment dts/eliza-e1-android.dts sepolicy/file_contexts sepolicy/e1_npu.te sepolicy/property_contexts sepolicy/hwservice_contexts hal/e1_npu/Android.bp hal/e1_npu/1.0/Android.bp hal/e1_npu/1.0/IE1Npu.hal hal/e1_npu/1.0/types.hal hal/hwcomposer/Android.bp; do
 			if [ ! -f "$device_dst/$rel" ]; then
 				echo "FAIL: imported AOSP tree missing device/eliza/eliza_ai_soc/$rel" >&2
 				missing=1
@@ -113,8 +126,21 @@ if [ "$check_only" -eq 1 ]; then
 	else
 		echo "STATUS: BLOCKED aosp.imported-tree - $device_dst is not present; run without --check to import"
 	fi
+	if [ -d "$cuttlefish_dst" ]; then
+		for rel in eliza_e1_cuttlefish.mk manifest.fragment.xml sepolicy/file_contexts sepolicy/hal_e1_npu_default.te; do
+			if [ ! -f "$cuttlefish_dst/$rel" ]; then
+				echo "FAIL: imported AOSP tree missing device/eliza/cuttlefish_e1/$rel" >&2
+				missing=1
+			fi
+		done
+		if [ "$missing" -ne 0 ]; then
+			exit 1
+		fi
+	else
+		echo "STATUS: BLOCKED aosp.imported-tree - $cuttlefish_dst is not present; run without --check to import"
+	fi
 	if [ -d "$vendor_dst" ]; then
-		for rel in AndroidProducts.mk eliza_common.mk products/eliza_openagent_ai_soc_phone.mk; do
+		for rel in AndroidProducts.mk eliza_common.mk products/eliza_cf_arm64_phone.mk products/eliza_cf_x86_64_phone.mk products/eliza_cf_riscv64_phone.mk products/eliza_openagent_ai_soc_phone.mk; do
 			if [ ! -f "$vendor_dst/$rel" ]; then
 				echo "FAIL: imported AOSP tree missing vendor/eliza/$rel" >&2
 				missing=1

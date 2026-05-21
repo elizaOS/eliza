@@ -1,0 +1,82 @@
+schema: eliza.ams_block_contract.v1
+block_id: serdes_phy
+block_class: SerDes
+status: BLOCKED_procurement_or_pdk_ip_required
+claim_boundary: >
+  Interface and procurement contract for the E1 high-speed SerDes / PIPE PHY
+  (PCIe/USB-class lanes to the Wi-Fi and cellular modules). Captures supply
+  rails, reference clock, the PIPE digital interface revision, calibration/lock
+  pins, target nodes, and BER/eye signoff corners. Makes no BER, eye-height, or
+  return-loss claim: those stay blocked on Sigrity/Spectre SerDes signoff with a
+  vendor model and the board coupon plan.
+
+supply_rails:
+  - rail: VDD_SERDES_ANA
+    nominal_v: 0.9
+    domain: analog_serdes
+    isolation: dedicated_analog_supply
+  - rail: VDD_SERDES_DIG
+    nominal_v: 0.75
+    domain: core_logic
+  - rail: VSS_SERDES
+    nominal_v: 0.0
+    domain: analog_ground
+
+ref_clock:
+  source: shared_pll_ref_or_dedicated_serdes_pll
+  nominal_frequency_hz: 100000000
+  spread_spectrum_supported: true
+  jitter_budget_status: BLOCKED_requires_vendor_jitter_and_ber_model
+
+control_pins:
+  - name: SERDES_RST_N
+    direction: input
+    role: reset
+  - name: SERDES_PIPE_CLK
+    direction: input
+    role: pipe_clock
+  - name: SERDES_RX_LOS
+    direction: output
+    role: loss_of_signal
+  - name: SERDES_RATE_SEL
+    direction: input
+    role: rate_select
+  - name: SERDES_CAL_DONE
+    direction: output
+    role: calibration_done
+  - name: SERDES_PLL_LOCK
+    direction: output
+    role: lock_status
+
+interface_revision:
+  kind: PIPE
+  revision: '5.1'
+
+diff_pair_classes:
+  - signal_group_ref: usb2_diff
+    coupon_plan_ref: board/kicad/e1-phone/evt1-stackup-impedance-coupon-plan.yaml#impedance_coupon_requests.usb2_90_ohm
+  - signal_group_ref: pcie_diff
+    coupon_plan_ref: board/kicad/e1-phone/evt1-stackup-impedance-coupon-plan.yaml#impedance_coupon_requests.pcie_85_ohm
+
+target_process_nodes: [tsmc-n2p, tsmc-a14, intel-14a, samsung-sf2p]
+
+signoff_required_corners:
+  pvt: [ss_0p81v_125c, tt_0p9v_25c, ff_0p99v_m40c]
+  link: [ber_1e_12_eye, return_loss_sdd11, insertion_loss_sdd21, crosstalk]
+  required_tool: spectre_serdes_or_sigrity_channel_signoff
+
+procurement:
+  posture: vendor_ip_or_foundry_pdk_serdes
+  candidate_classes:
+    - third_party_pcie_usb_phy_ip
+    - foundry_pdk_bundled_serdes
+  blockers:
+    - no_vendor_ber_or_channel_model
+    - no_ibis_ami_model
+    - no_board_coupon_field_solver_quote
+    - process_node_unsettled
+
+forbidden_claims:
+  - serdes_ber_closed
+  - serdes_eye_verified
+  - serdes_return_loss_signed_off

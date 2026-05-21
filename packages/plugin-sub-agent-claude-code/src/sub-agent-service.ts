@@ -318,12 +318,7 @@ export class ClaudeCodeSubAgentService {
 function defaultWorkspaceRoots(): readonly string[] {
   const roots: string[] = [];
   const env = process.env;
-  for (const key of [
-    "MILADY_WORKSPACE_DIR",
-    "ELIZA_WORKSPACE_DIR",
-    "MILADY_STATE_DIR",
-    "ELIZA_STATE_DIR",
-  ]) {
+  for (const key of ["ELIZA_WORKSPACE_DIR", "ELIZA_STATE_DIR"]) {
     const v = env[key];
     if (v) roots.push(resolve(v));
   }

@@ -1,0 +1,662 @@
+{
+  "as_of": "2026-05-21",
+  "claim_boundary": "traceability_closure_is_structural_completeness_not_silicon_or_signoff",
+  "requirements": [
+    {
+      "claim_boundary": "manifest_template_no_post_route_signoff_claim",
+      "closure_pct": 50.0,
+      "domain": "PD",
+      "gates_declared": 2,
+      "gates_resolved": 2,
+      "id": "REQ-PD-0001",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "owner": "pd",
+      "status": "pd_evidence_template",
+      "waived": false
+    },
+    {
+      "claim_boundary": "sta_template_no_timing_signoff_claim",
+      "closure_pct": 50.0,
+      "domain": "PD",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-PD-0002",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "owner": "pd",
+      "status": "pd_evidence_template",
+      "waived": false
+    },
+    {
+      "claim_boundary": "cts_template_no_clock_signoff_claim",
+      "closure_pct": 50.0,
+      "domain": "PD",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-PD-0003",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "owner": "pd",
+      "status": "pd_evidence_template",
+      "waived": false
+    },
+    {
+      "claim_boundary": "dft_template_no_atpg_coverage_signoff_claim",
+      "closure_pct": 50.0,
+      "domain": "PD",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-PD-0004",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "owner": "pd",
+      "status": "pd_evidence_template",
+      "waived": false
+    },
+    {
+      "claim_boundary": "placement_template_no_floorplan_signoff_claim",
+      "closure_pct": 50.0,
+      "domain": "PD",
+      "gates_declared": 2,
+      "gates_resolved": 2,
+      "id": "REQ-PD-0005",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "owner": "pd",
+      "status": "pd_evidence_template",
+      "waived": false
+    },
+    {
+      "claim_boundary": "area_budget_template_no_silicon_area_claim",
+      "closure_pct": 50.0,
+      "domain": "PD",
+      "gates_declared": 2,
+      "gates_resolved": 2,
+      "id": "REQ-PD-0006",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "owner": "process",
+      "status": "pd_evidence_template",
+      "waived": false
+    },
+    {
+      "claim_boundary": "blocked_on_vendor_eda_access_no_signoff_claim",
+      "closure_pct": 25.0,
+      "domain": "PD",
+      "gates_declared": 0,
+      "gates_resolved": 0,
+      "id": "REQ-PD-0007",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "owner": "pd",
+      "status": "blocked",
+      "waived": false
+    },
+    {
+      "claim_boundary": "tiny_contract_model_blocks_linux_capable_soc_and_product_claims",
+      "closure_pct": 75.0,
+      "domain": "RTL",
+      "gates_declared": 2,
+      "gates_resolved": 2,
+      "id": "REQ-RTL-0001",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 2,
+        "tests": 1
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 2,
+        "tests": 1
+      },
+      "owner": "cpu",
+      "status": "open",
+      "waived": false
+    },
+    {
+      "claim_boundary": "qemu_renode_semantics_are_not_e1_chip_boot_validation",
+      "closure_pct": 50.0,
+      "domain": "RTL",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-RTL-0002",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 2,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 2,
+        "tests": 0
+      },
+      "owner": "cpu",
+      "status": "open",
+      "waived": false
+    },
+    {
+      "claim_boundary": "contract_windows_only_full_soc_routing_blocked",
+      "closure_pct": 75.0,
+      "domain": "RTL",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-RTL-0003",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 3,
+        "tests": 2
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 3,
+        "tests": 2
+      },
+      "owner": "memory",
+      "status": "open",
+      "waived": false
+    },
+    {
+      "claim_boundary": "word_copy_engine_blocks_dma_throughput_and_coherency_claims",
+      "closure_pct": 75.0,
+      "domain": "RTL",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-RTL-0004",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 3,
+        "tests": 2
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 3,
+        "tests": 2
+      },
+      "owner": "npu",
+      "status": "open",
+      "waived": false
+    },
+    {
+      "claim_boundary": "mmio_scratch_gemm_blocks_accelerator_and_model_execution_claims",
+      "closure_pct": 75.0,
+      "domain": "RTL",
+      "gates_declared": 2,
+      "gates_resolved": 2,
+      "id": "REQ-RTL-0005",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 3
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 3
+      },
+      "owner": "npu",
+      "status": "open",
+      "waived": false
+    },
+    {
+      "claim_boundary": "sram_scanout_blocks_panel_bringup_and_bandwidth_claims",
+      "closure_pct": 75.0,
+      "domain": "RTL",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-RTL-0006",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 2,
+        "tests": 1
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 2,
+        "tests": 1
+      },
+      "owner": "platform",
+      "status": "open",
+      "waived": false
+    },
+    {
+      "claim_boundary": "identity_contract_rom_blocks_firmware_and_os_boot_gates",
+      "closure_pct": 50.0,
+      "domain": "RTL",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-RTL-0007",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 0
+      },
+      "owner": "cpu",
+      "status": "open",
+      "waived": false
+    },
+    {
+      "claim_boundary": "sram_dram_aperture_blocks_bandwidth_and_capacity_claims",
+      "closure_pct": 50.0,
+      "domain": "RTL",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-RTL-0008",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 3,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 3,
+        "tests": 0
+      },
+      "owner": "memory",
+      "status": "open",
+      "waived": false
+    },
+    {
+      "claim_boundary": "target_spec_no_silicon_or_boot_claim",
+      "closure_pct": 100.0,
+      "domain": "SPEC",
+      "gates_declared": 3,
+      "gates_resolved": 3,
+      "id": "REQ-SPEC-0001",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 2,
+        "tests": 1
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 2,
+        "tests": 1
+      },
+      "owner": "cpu",
+      "status": "target_spec",
+      "waived": false
+    },
+    {
+      "claim_boundary": "target_spec_no_silicon_bandwidth_claim",
+      "closure_pct": 75.0,
+      "domain": "SPEC",
+      "gates_declared": 3,
+      "gates_resolved": 3,
+      "id": "REQ-SPEC-0002",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 2,
+        "tests": 1
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 2,
+        "tests": 1
+      },
+      "owner": "memory",
+      "status": "target_spec",
+      "waived": false
+    },
+    {
+      "claim_boundary": "target_spec_no_throughput_or_model_execution_claim",
+      "closure_pct": 75.0,
+      "domain": "SPEC",
+      "gates_declared": 2,
+      "gates_resolved": 2,
+      "id": "REQ-SPEC-0003",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 2
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 2
+      },
+      "owner": "npu",
+      "status": "target_spec",
+      "waived": false
+    },
+    {
+      "claim_boundary": "runtime_contract_no_production_accelerator_claim",
+      "closure_pct": 75.0,
+      "domain": "SPEC",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-SPEC-0004",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 1
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 1
+      },
+      "owner": "npu",
+      "status": "contract",
+      "waived": false
+    },
+    {
+      "claim_boundary": "target_spec_no_silicon_attestation_claim",
+      "closure_pct": 25.0,
+      "domain": "SPEC",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-SPEC-0005",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 0,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 0,
+        "tests": 0
+      },
+      "owner": "security",
+      "status": "target_spec",
+      "waived": false
+    },
+    {
+      "claim_boundary": "nda_advanced_node_blocked_no_pdk_access_claim",
+      "closure_pct": 50.0,
+      "domain": "SPEC",
+      "gates_declared": 2,
+      "gates_resolved": 2,
+      "id": "REQ-SPEC-0006",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 1,
+        "rtl": 0,
+        "tests": 0
+      },
+      "owner": "process",
+      "status": "target_spec",
+      "waived": false
+    },
+    {
+      "claim_boundary": "intent_manifest_only_not_cdc_rdc_signoff",
+      "closure_pct": 25.0,
+      "domain": "SPEC",
+      "gates_declared": 0,
+      "gates_resolved": 0,
+      "id": "REQ-SPEC-0007",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 2,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 2,
+        "tests": 0
+      },
+      "owner": "cpu",
+      "status": "draft_capture_only",
+      "waived": false
+    },
+    {
+      "claim_boundary": "contract_windows_only_no_full_soc_routing_claim",
+      "closure_pct": 75.0,
+      "domain": "SPEC",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-SPEC-0008",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 3,
+        "tests": 2
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 3,
+        "tests": 2
+      },
+      "owner": "memory",
+      "status": "contract",
+      "waived": false
+    },
+    {
+      "claim_boundary": "platform_contract_no_boot_or_product_claim",
+      "closure_pct": 50.0,
+      "domain": "SPEC",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-SPEC-0009",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 0
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 0
+      },
+      "owner": "platform",
+      "status": "contract",
+      "waived": false
+    },
+    {
+      "claim_boundary": "shallow_structural_formal_only_no_protocol_proof_claim",
+      "closure_pct": 75.0,
+      "domain": "VERIF",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-VERIF-0001",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 3
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 3
+      },
+      "owner": "verify",
+      "status": "open",
+      "waived": false
+    },
+    {
+      "claim_boundary": "depth_12_status_proof_only_no_full_dma_correctness_claim",
+      "closure_pct": 75.0,
+      "domain": "VERIF",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-VERIF-0002",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 3
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 3
+      },
+      "owner": "verify",
+      "status": "open",
+      "waived": false
+    },
+    {
+      "claim_boundary": "directed_smoke_coverage_only_no_full_coverage_claim",
+      "closure_pct": 75.0,
+      "domain": "VERIF",
+      "gates_declared": 1,
+      "gates_resolved": 1,
+      "id": "REQ-VERIF-0003",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 2
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 1,
+        "tests": 2
+      },
+      "owner": "verify",
+      "status": "open",
+      "waived": false
+    },
+    {
+      "claim_boundary": "structural_fallback_is_not_property_proof_signoff",
+      "closure_pct": 50.0,
+      "domain": "VERIF",
+      "gates_declared": 2,
+      "gates_resolved": 2,
+      "id": "REQ-VERIF-0004",
+      "links_declared": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 0,
+        "tests": 1
+      },
+      "links_resolved": {
+        "mfg_artifacts": 0,
+        "pd_evidence": 0,
+        "rtl": 0,
+        "tests": 1
+      },
+      "owner": "verify",
+      "status": "open",
+      "waived": false
+    }
+  ],
+  "schema": "eliza.traceability_coverage.v1",
+  "summary": {
+    "closure_pct_by_domain": {
+      "PD": 46.43,
+      "RTL": 65.62,
+      "SPEC": 61.11,
+      "VERIF": 68.75
+    },
+    "overall_closure_pct": 59.82,
+    "requirements": 28,
+    "waived": 0
+  }
+}

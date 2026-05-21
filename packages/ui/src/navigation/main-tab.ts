@@ -26,13 +26,11 @@ export interface MainTabApp {
 /**
  * Fallback tab when no installed app declares `elizaos.app.mainTab=true`.
  *
- * Phase 1 of the extraction: while chat is still hardcoded into App.tsx
- * (`case "chat": return <ChatView />`) the fallback stays "chat" so the
- * shell renders identically to before for users with no main-tab app.
- * Phase 5 drops the chat case once `app-chat` claims the seam, at which
- * point this fallback becomes the HomePlaceholderView surface ("home").
+ * The shell lands on the "home" assistant view (clouds backdrop + voice
+ * waveform + bottom-center assistant pill) by default. Chat stays reachable
+ * as a non-default tab.
  */
-export const MAIN_TAB_FALLBACK = "chat" as const;
+export const MAIN_TAB_FALLBACK = "home" as const;
 
 /** Read the `mainTab` flag, ignoring non-boolean values defensively. */
 function declaresMainTab(app: RegistryAppInfo): boolean {

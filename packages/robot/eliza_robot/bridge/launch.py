@@ -10,7 +10,8 @@ Usage:
 
 Environment variable overrides:
     AINEX_BRIDGE_HOST, AINEX_ROSBRIDGE_PORT, AINEX_ENVELOPE_PORT,
-    AINEX_PUBLISH_HZ, AINEX_MAX_CMD_SEC, AINEX_DEADMAN_SEC
+    AINEX_PUBLISH_HZ, AINEX_MAX_CMD_SEC, AINEX_DEADMAN_SEC,
+    ASIMOV_LIVEKIT_URL, ASIMOV_LIVEKIT_TOKEN
 """
 
 from __future__ import annotations
@@ -65,6 +66,8 @@ def _apply_env_overrides(cfg: dict[str, object]) -> dict[str, object]:
         "AINEX_MAX_CMD_SEC": ("max_commands_per_sec", int),
         "AINEX_DEADMAN_SEC": ("deadman_timeout_sec", float),
         "AINEX_CAMERA_URL": ("camera_url", str),
+        "ASIMOV_LIVEKIT_URL": ("asimov_livekit_url", str),
+        "ASIMOV_LIVEKIT_TOKEN": ("asimov_livekit_token", str),
     }
     for env_var, (field, cast) in env_map.items():
         value = os.environ.get(env_var)

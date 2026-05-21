@@ -14,29 +14,18 @@ Manifest schema records the per-tensor 2:4 mask + per-group scale.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from ._base import QuantizationManifest
+
 
 @dataclass(frozen=True)
-class Sparse24Manifest:
+class Sparse24Manifest(QuantizationManifest):
     schema: str
     group_size: int
     masks: dict[str, list[int]]
     weight_scales: dict[str, list[float]]
-
-    def to_json(self) -> str:
-        return json.dumps(
-            {
-                "schema": self.schema,
-                "group_size": self.group_size,
-                "masks": self.masks,
-                "weight_scales": self.weight_scales,
-            },
-            indent=2,
-            sort_keys=True,
-        )
 
 
 def select_2_4_mask(group: Sequence[float]) -> int:

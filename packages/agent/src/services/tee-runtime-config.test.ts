@@ -1,4 +1,9 @@
+import { generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import {
+  canonicalizeRevocationBody,
+  type TeeRevocationManifest,
+} from "./tee-revocation.ts";
 import { resolveTeeRuntimePolicy } from "./tee-runtime-config.ts";
 
 describe("TEE runtime config", () => {
@@ -92,6 +97,51 @@ describe("TEE runtime config", () => {
         ],
       },
       revokedSecurityVersions: [1],
+    });
+  });
+
+  it("refuses an unsigned revocation manifest when a trusted authority pubkey is configured", async () => {
+    const { publicKey } = generateKeyPairSync("ed25519");
+    const pem = publicKey.export({ type: "spki", format: "pem" }).toString();
+    await expect(
+      resolveTeeRuntimePolicy({
+        env: {
+          ELIZA_TEE_REQUIRED: "true",
+          ELIZA_TEE_REVOCATION_PUBKEY: pem,
+          ELIZA_TEE_REVOCATIONS_JSON: JSON.stringify({
+            schemaVersion: 1,
+            revokedSecurityVersions: [1],
+          }),
+        },
+      }),
+    ).rejects.toThrow(/revocation manifest rejected: unsigned-manifest/);
+  });
+
+  it("merges a correctly signed revocation manifest under a configured authority", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const pem = publicKey.export({ type: "spki", format: "pem" }).toString();
+    const manifest: TeeRevocationManifest = {
+      schemaVersion: 1,
+      authority: "eliza-revocation-authority",
+      revokedSecurityVersions: [7],
+    };
+    const signature = sign(
+      null,
+      Buffer.from(canonicalizeRevocationBody(manifest), "utf8"),
+      privateKey,
+    ).toString("base64");
+    await expect(
+      resolveTeeRuntimePolicy({
+        env: {
+          ELIZA_TEE_REQUIRED: "true",
+          ELIZA_TEE_REVOCATION_PUBKEY: pem,
+          ELIZA_TEE_REVOCATION_AUTHORITY: "eliza-revocation-authority",
+          ELIZA_TEE_REVOCATIONS_JSON: JSON.stringify({ ...manifest, signature }),
+        },
+      }),
+    ).resolves.toMatchObject({
+      required: true,
+      revokedSecurityVersions: [7],
     });
   });
 });

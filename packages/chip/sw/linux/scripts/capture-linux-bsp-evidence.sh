@@ -27,8 +27,10 @@ require_imported_bsp() {
 	for path in \
 		"$linux/drivers/misc/eliza-e1/Kconfig" \
 		"$linux/drivers/misc/eliza-e1/Makefile" \
-		"$linux/drivers/misc/eliza-e1/e1-npu.c" \
-		"$linux/drivers/misc/eliza-e1/e1-dma.c" \
+		"$linux/drivers/misc/eliza-e1/eliza-e1-npu.c" \
+		"$linux/drivers/misc/eliza-e1/eliza-e1-dma.c" \
+		"$linux/drivers/misc/eliza-e1/eliza-e1-display.c" \
+		"$linux/drivers/misc/eliza-e1/eliza-e1-gpio.c" \
 		"$linux/drivers/misc/eliza-e1/e1_platform_contract.h" \
 		"$linux/arch/riscv/boot/dts/eliza/eliza-e1.dts"; do
 		if [ ! -f "$path" ]; then
@@ -122,7 +124,7 @@ case "$mode" in
 		record_command \
 			eliza_e1_kernel_build \
 			"$evidence_dir/eliza_e1_kernel_build.log" \
-			"test -f .config && $make_prefix -j$jobs Image dtbs modules && grep -R \"CONFIG_ELIZA_E1\" .config include/config 2>/dev/null && test -f arch/riscv/boot/Image"
+			"test -f .config && $make_prefix -j$jobs Image dtbs modules && grep -Eq \"^CONFIG_ELIZA_E1_BSP=\" .config && grep -Eq \"^CONFIG_ELIZA_E1_NPU=\" .config && grep -Eq \"^CONFIG_ELIZA_E1_DMA=\" .config && grep -Eq \"^CONFIG_ELIZA_E1_DISPLAY=\" .config && grep -Fq \"CONFIG_ELIZA_E1_GPIO\" drivers/misc/eliza-e1/Makefile && test -f arch/riscv/boot/Image"
 		;;
 	dtb-check)
 		require_imported_bsp

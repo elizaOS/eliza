@@ -1,7 +1,7 @@
 {
   "claim_boundary": "EVT0 acoustic/audio-hardware design review: off-the-shelf part selection, purchasability, tolerances, spacing, neighbor interaction, occlusion, and bottom-edge congestion. NOT a production release; SPL/SNR/leak/ingress remain lab-measurement blockers per acoustic-validation.json.",
   "revision": "evt0-mechanical-cad-flush-back",
-  "device_envelope_mm": [78.0, 153.6, 11.2],
+  "device_envelope_mm": [78.0, 153.6, 11.8],
   "review_class": "evt_design_review",
   "evidence_sources": [
     "cad/e1_phone_params.yaml",

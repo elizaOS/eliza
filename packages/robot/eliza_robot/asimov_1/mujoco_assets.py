@@ -14,10 +14,12 @@ from eliza_robot.asimov_1.constants import (
     ASIMOV1_FIRMWARE_JOINT_ORDER,
     ASIMOV1_GENERATED_MANIFEST,
     ASIMOV1_GENERATED_MJCF,
+    ASIMOV1_GENERATED_URDF,
     ASIMOV1_PROFILE_ASSET_ROOT,
     ASIMOV1_SOURCE_MESH_DIR,
     ASIMOV1_SOURCE_XML,
 )
+from eliza_robot.asimov_1.urdf_assets import generate_asimov1_urdf
 
 
 def _joint_ranges(root: ET.Element) -> dict[str, tuple[float, float]]:
@@ -58,6 +60,7 @@ def generate_asimov1_mjcf(
     *,
     source_xml: Path = ASIMOV1_SOURCE_XML,
     output_xml: Path = ASIMOV1_GENERATED_MJCF,
+    output_urdf: Path | None = None,
     manifest_path: Path = ASIMOV1_GENERATED_MANIFEST,
     mesh_dir: Path = ASIMOV1_SOURCE_MESH_DIR,
 ) -> Path:
@@ -76,14 +79,20 @@ def generate_asimov1_mjcf(
     model = mujoco.MjModel.from_xml_path(str(output_xml))
     if int(model.nu) != len(ASIMOV1_FIRMWARE_JOINT_ORDER):
         raise ValueError(f"expected {len(ASIMOV1_FIRMWARE_JOINT_ORDER)} actuators, got {model.nu}")
+    urdf_path = output_urdf or (
+        ASIMOV1_GENERATED_URDF if output_xml == ASIMOV1_GENERATED_MJCF else output_xml.parent.parent / "asimov.urdf"
+    )
+    generate_asimov1_urdf(source_xml=output_xml, output_urdf=urdf_path)
     inventory = validate_cad_tree()
     manifest = {
         "profile_id": "asimov-1",
         "source_xml": str(source_xml),
         "generated_mjcf": str(output_xml),
+        "generated_urdf": str(urdf_path),
         "mesh_dir": str(mesh_dir),
         "source_xml_sha256": sha256_file(source_xml),
         "generated_mjcf_sha256": sha256_file(output_xml),
+        "generated_urdf_sha256": sha256_file(urdf_path),
         "joint_order": list(ASIMOV1_FIRMWARE_JOINT_ORDER),
         "model": {"nq": int(model.nq), "nv": int(model.nv), "nu": int(model.nu)},
         "cad": inventory.__dict__,

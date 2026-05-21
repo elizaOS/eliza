@@ -17,10 +17,10 @@ by the elizanpu backend at `iree-compile --iree-input-quantization-manifest=...`
 
 from __future__ import annotations
 
-import json
-import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+
+from ._base import MIN_SCALE, QuantizationManifest
 
 
 @dataclass(frozen=True)
@@ -34,21 +34,10 @@ class TensorStats:
 
 
 @dataclass(frozen=True)
-class PtqInt8Manifest:
+class PtqInt8Manifest(QuantizationManifest):
     schema: str
     weights: dict[str, list[float]]
     activations: dict[str, float]
-
-    def to_json(self) -> str:
-        return json.dumps(
-            {
-                "schema": self.schema,
-                "weights": self.weights,
-                "activations": self.activations,
-            },
-            indent=2,
-            sort_keys=True,
-        )
 
 
 class PtqInt8Calibrator:
@@ -65,7 +54,7 @@ class PtqInt8Calibrator:
         if not channel_max_abs:
             raise ValueError(f"weight {name} has zero channels")
         self._weight_scales[name] = [
-            (v / 127.0) if v > 0 else math.ldexp(1.0, -24) for v in channel_max_abs
+            (v / 127.0) if v > 0 else MIN_SCALE for v in channel_max_abs
         ]
 
     def record_activation(self, name: str, values_abs: Sequence[float]) -> None:
@@ -83,7 +72,7 @@ class PtqInt8Calibrator:
 
     def build_manifest(self) -> PtqInt8Manifest:
         activations = {
-            name: max(self._quantile_99(values) / 127.0, math.ldexp(1.0, -24))
+            name: max(self._quantile_99(values) / 127.0, MIN_SCALE)
             for name, values in self._activation_max.items()
         }
         return PtqInt8Manifest(

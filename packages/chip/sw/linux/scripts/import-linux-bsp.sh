@@ -37,7 +37,7 @@ ensure_line() {
 
 printf 'Import commands:\n'
 printf '  mkdir -p %s/drivers/misc/eliza-e1 %s/arch/riscv/boot/dts/eliza %s/Documentation/devicetree/bindings/eliza %s/kernel/configs\n' "$linux" "$linux" "$linux" "$linux"
-printf '  rsync -a %s/drivers/e1/ %s/drivers/misc/eliza-e1/\n' "$bsp" "$linux"
+printf '  rsync -a %s/drivers/eliza/ %s/drivers/misc/eliza-e1/\n' "$bsp" "$linux"
 printf '  cp %s/dts/eliza-e1.dts %s/dts/Makefile %s/arch/riscv/boot/dts/eliza/\n' "$bsp" "$bsp" "$linux"
 printf '  cp %s/e1-platform.dtsi %s/arch/riscv/boot/dts/eliza/\n' "$generated" "$linux"
 printf '  cp %s/Documentation/devicetree/bindings/eliza/*.yaml %s/Documentation/devicetree/bindings/eliza/\n' "$bsp" "$linux"
@@ -61,7 +61,7 @@ if [ "$check_only" -eq 0 ]; then
 		"$linux/arch/riscv/boot/dts/eliza" \
 		"$linux/Documentation/devicetree/bindings/eliza" \
 		"$linux/kernel/configs"
-	rsync -a "$bsp/drivers/e1/" "$linux/drivers/misc/eliza-e1/"
+	rsync -a "$bsp/drivers/eliza/" "$linux/drivers/misc/eliza-e1/"
 	cp "$bsp/dts/eliza-e1.dts" "$bsp/dts/Makefile" "$linux/arch/riscv/boot/dts/eliza/"
 	cp "$generated/e1-platform.dtsi" "$linux/arch/riscv/boot/dts/eliza/"
 	cp "$bsp"/Documentation/devicetree/bindings/eliza/*.yaml \
@@ -77,11 +77,13 @@ fi
 if [ "$check_only" -eq 1 ]; then
 	missing=0
 	for path in \
-		"$bsp/drivers/e1/Kconfig" \
-		"$bsp/drivers/e1/Makefile" \
-		"$bsp/drivers/e1/e1-npu-uapi.h" \
-		"$bsp/drivers/e1/e1-npu.c" \
-		"$bsp/drivers/e1/e1-dma.c" \
+		"$bsp/drivers/eliza/Kconfig" \
+		"$bsp/drivers/eliza/Makefile" \
+		"$bsp/drivers/eliza/eliza-e1-npu-uapi.h" \
+		"$bsp/drivers/eliza/eliza-e1-npu.c" \
+		"$bsp/drivers/eliza/eliza-e1-dma.c" \
+		"$bsp/drivers/eliza/eliza-e1-display.c" \
+		"$bsp/drivers/eliza/eliza-e1-gpio.c" \
 		"$bsp/tests/e1-npu-smoke.c" \
 		"$bsp/dts/eliza-e1.dts" \
 		"$bsp/dts/Makefile" \

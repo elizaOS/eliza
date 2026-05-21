@@ -13,11 +13,14 @@ source_artifacts:
   - board/kicad/e1-phone/placement-interface-matrix.yaml
   - board/kicad/e1-phone/external-interface-design-review.yaml
   - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
+  - board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
   - board/kicad/e1-phone/power-sequence-bringup-closure.yaml
   - board/kicad/e1-phone/power-thermal-budget.yaml
   - board/kicad/e1-phone/block-netlist.yaml
   - board/kicad/e1-phone/routing-constraints.yaml
   - board/kicad/e1-phone/component-height-step-integration.yaml
+  - board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml
 usb_c_port_context:
   port_count: 1
   manifest_port_count: 1
@@ -356,6 +359,7 @@ cross_checks:
   side_key_connector_region_matches_review_and_active_matrix: true
   side_key_active_matrix_nets_match_review: true
   side_key_contact_budget_matches_binding_and_review: true
+  usb_sidekey_mechanical_decision_remains_fail_closed: true
   pd_and_charger_power_sequences_remain_blocked: true
   release_outputs_fail_closed: true
 release_blockers:

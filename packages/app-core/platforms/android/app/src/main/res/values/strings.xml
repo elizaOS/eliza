@@ -3,5 +3,5 @@
     <string name="app_name">Eliza</string>
     <string name="title_activity_main">Eliza</string>
     <string name="package_name">ai.elizaos.app</string>
-    <string name="custom_url_scheme">eliza</string>
+    <string name="custom_url_scheme">elizaos</string>
 </resources>

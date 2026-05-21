@@ -125,7 +125,7 @@ areas:
           - scripts/yosys_formal_top_structural.ys
           - scripts/run_formal.sh
         partial_closure_evidence:
-          - verify/properties/axi_lite.sv (parametric AXI-Lite property pack ready for bind to debug bridge, interconnect, DRAM, DMA master, and interrupt-controller paths)
+          - verify/properties/axi_lite_protocol.sv (parametric AXI-Lite property pack ready for bind to debug bridge, interconnect, DRAM, DMA master, and interrupt-controller paths)
           - verify/properties/README.md (bind usage and SymbiYosys harness instructions)
           - verify/properties/dma_axil_bind.sv + verify/properties/dma_axil.sby (first concrete bind targeting the DMA master)
         current_evidence: Top formal proves a few structural facts with shallow BMC or Yosys check fallback; it does not use an AXI-Lite property set.
@@ -166,7 +166,7 @@ areas:
           - verify/formal/e1_dma.sby
           - scripts/yosys_formal_dma.ys
         partial_closure_evidence:
-          - verify/properties/axi_lite.sv (reusable AXI-Lite property pack: VALID/payload stability, response legality, bounded liveness, outstanding-transaction balance)
+          - verify/properties/axi_lite_protocol.sv (reusable AXI-Lite property pack: VALID/payload stability, response legality, bounded liveness, outstanding-transaction balance)
           - verify/properties/dma_axil_bind.sv (bind harness wrapping e1_dma master ports)
           - verify/properties/dma_axil.sby (SymbiYosys bmc depth 32 + prove depth 16 tasks)
         current_evidence: Formal depth is 12 and checks basic status and signal relationships, but not full transfer completion, liveness, backpressure stability, or all response/error interleavings.
@@ -211,6 +211,40 @@ areas:
         blocking_gate: Passing cocotb/verilator must be interpreted as smoke and directed contract coverage.
         closure_evidence: Machine-readable coverage summary for all exposed opcodes, dimensions, status bits, IRQ paths, invalid configs, and software fallback cases.
         work_order: Add coverage accounting and require it in CI before expanding NPU pass claims.
+      - id: npu-formal-engine-coverage
+        status: open
+        category: proof_gap
+        severity: high
+        affected_paths:
+          - verify/formal/e1_npu_formal.sv
+          - verify/formal/e1_npu.sby
+          - rtl/npu/e1_npu.sv
+        current_evidence: >-
+          e1_npu_formal.sv constrains addr < 6'h08 and forbids the start bit
+          (assume !(valid && write && addr==6'h03 && wdata[0])), so the BMC at
+          depth 8 only proves the mirror-register subset. GEMM, descriptor
+          ring, vector, packed-dot, and writeback paths have zero formal
+          closure.
+        blocking_gate: >-
+          NPU formal pass must be read as mirror-register coverage only, not
+          engine-datapath closure.
+        closure_evidence: >-
+          Lift the addr<8 / assume(!start) ceiling and add the dossier §5.6.5
+          properties — descriptor tail==head <-> DESC_STATUS empty and
+          desc_timeout>=128 exit; GEMM m/n/k scratchpad bounds and INT4
+          nibble-mode address widening; vec_src_base+vec_len<=64 and
+          vec_dst_base+vec_len<=64; monotonicity of DESC_BYTES_READ/WRITTEN,
+          PERF_STALL_CYCLES, PERF_SCRATCH_BYTES absent a clear; bind
+          verify/properties/axi_lite_protocol.sv to the NPU master port;
+          thermal-throttle saturation at rtl/npu/e1_npu.sv:934. Each addition
+          must keep the proof converging (raise BMC depth / add k-induction as
+          needed) and pass the engine-agreement gate
+          (verify/check_formal_engine_agreement.py).
+        work_order: >-
+          Deferred follow-up to dossier §5.6.5. Lifting the start-bit assume
+          runs the GEMM/descriptor FSM and risks BMC blow-up at the current
+          depth-8 budget; land the properties incrementally with verified
+          convergence rather than as one change.
   display:
     current_posture: timing_generator_with_top_level_sram_framebuffer_fetch
     local_closures:

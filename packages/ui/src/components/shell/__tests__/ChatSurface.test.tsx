@@ -85,12 +85,30 @@ describe("ChatSurface", () => {
     ).toBe(true);
   });
 
-  it("renders a disabled mic placeholder for v1", () => {
+  it("renders a disabled mic placeholder when no voice handler is provided", () => {
     render(<ChatSurface messages={[]} onSend={() => {}} canSend={true} />);
     const mic = screen.getByRole("button", {
-      name: /microphone/i,
+      name: /voice input/i,
     }) as HTMLButtonElement;
     expect(mic.disabled).toBe(true);
+  });
+
+  it("enables the mic button and toggles voice capture when wired", () => {
+    const onToggleRecording = vi.fn();
+    render(
+      <ChatSurface
+        messages={[]}
+        onSend={() => {}}
+        canSend={true}
+        onToggleRecording={onToggleRecording}
+      />,
+    );
+    const mic = screen.getByRole("button", {
+      name: /start voice input/i,
+    }) as HTMLButtonElement;
+    expect(mic.disabled).toBe(false);
+    fireEvent.click(mic);
+    expect(onToggleRecording).toHaveBeenCalledTimes(1);
   });
 
   it("submits on Enter (without Shift)", () => {

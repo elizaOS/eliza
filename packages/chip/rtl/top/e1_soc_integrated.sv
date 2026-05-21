@@ -69,6 +69,7 @@
 //   evidence.
 
 module e1_soc_integrated
+    import e1_soc_pkg::*;
     import e1_axi4_pkg::*;
     import e1_ftq_to_l1i_pkg::*;
     import e1_lsu_to_l1d_pkg::*;
@@ -167,13 +168,22 @@ module e1_soc_integrated
 
     // ----------------------------------------------------------------------
     // Local parameters mirroring the production geometry (see docs/arch).
+    //
+    // AXI_ADDR_W / AXI_ID_W here are the *downstream-narrowed* SoC-fabric
+    // geometry, not the cluster master geometry: AXI_ADDR_W mirrors the
+    // nameplate SOC_PHYS_ADDR_W (40-bit post-translation PA) and AXI_ID_W is
+    // the narrowed fabric ID. AXI_DATA_W (128) matches the nameplate fabric
+    // width. NUM_CPU_CORES is sourced from the generated nameplate package
+    // (e1_topology_pkg::NUM_CORES = NUM_BIG + NUM_MID + NUM_LITTLE) instead of
+    // a hard literal so the cluster instance can never silently drift from
+    // docs/spec-db/chip-topology.yaml.
     // ----------------------------------------------------------------------
-    localparam int unsigned AXI_ADDR_W       = 40;
+    localparam int unsigned AXI_ADDR_W       = e1_topology_pkg::SOC_PHYS_ADDR_W;
     localparam int unsigned AXI_DATA_W       = 128;
     localparam int unsigned AXI_ID_W         = 4;
     localparam int unsigned AXI_USER_W       = 8;
     localparam int unsigned BURST_LEN_W      = 8;
-    localparam int unsigned NUM_CPU_CORES    = 8;
+    localparam int unsigned NUM_CPU_CORES    = e1_topology_pkg::NUM_CORES;
     // Fabric masters:
     //   0..0 : CHI->AXI4 bridge (CPU-side cache miss south boundary)
     //   1..1 : IOMMU translated master (NPU/DMA/display)
@@ -190,14 +200,13 @@ module e1_soc_integrated
     // 32-bit debug aperture.  This is exactly the same wiring as
     // `e1_soc_top`; the additional cross-domain interfaces are layered on
     // top.  Anything that the v0 smoke exercises continues to work.
+    //
+    // DRAM_WORDS / DRAM_INDEX_BITS, the bring-up CLINT, the common MMIO
+    // decode, and the behavioural scratch-DRAM are the same shared blocks
+    // e1_soc_top uses (e1_soc_pkg / e1_mmio_decode / e1_clint /
+    // e1_behavioral_dram); only the extra cross-domain selects below are
+    // local to this top.
     // ----------------------------------------------------------------------
-`ifdef E1_PD_SMALL_DRAM
-    localparam int unsigned DRAM_WORDS = 64;
-`else
-    localparam int unsigned DRAM_WORDS = 1024;
-`endif
-    localparam int unsigned DRAM_INDEX_BITS = $clog2(DRAM_WORDS);
-
     logic [31:0] bootrom_rdata;
     logic [31:0] dma_rdata;
     logic [31:0] npu_rdata;
@@ -287,84 +296,54 @@ module e1_soc_integrated
     logic word_aligned;
     logic implemented_window;
 
-    // Behavioural DRAM word backing the AXI-Lite DMA / NPU / display reads.
-    // This stays the v0 path; the new burst-capable AXI4 fabric sits
-    // alongside, terminating in `u_dram_model` and is exercised by the
+    // Behavioural scratch DRAM read-data for the CPU/debug MMIO window. The
+    // backing array now lives in the shared e1_behavioral_dram instance below;
+    // this stays the v0 path while the burst-capable AXI4 fabric sits
+    // alongside, terminating in `u_dram_model` and exercised by the
     // cross-domain test.
-    logic [31:0] dram_mem [0:DRAM_WORDS-1];
-    logic        clint_msip;
+    logic [31:0] mmio_dram_rdata;
     logic [63:0] clint_mtime;
     logic [63:0] clint_mtimecmp;
 
-    wire [DRAM_INDEX_BITS-1:0] mmio_dram_word = mmio_addr[2 +: DRAM_INDEX_BITS];
-    wire [DRAM_INDEX_BITS-1:0] dma_wr_word = dma_m_awaddr[2 +: DRAM_INDEX_BITS];
-    wire [DRAM_INDEX_BITS-1:0] npu_wr_word = npu_m_awaddr[2 +: DRAM_INDEX_BITS];
-    wire [DRAM_INDEX_BITS-1:0] dma_rd_word = dma_m_araddr[2 +: DRAM_INDEX_BITS];
-    wire [DRAM_INDEX_BITS-1:0] npu_rd_word = npu_m_araddr[2 +: DRAM_INDEX_BITS];
-    wire [DRAM_INDEX_BITS-1:0] display_rd_word = display_fb_read_addr[2 +: DRAM_INDEX_BITS];
-    wire        dma_wr_fire = dma_m_awvalid && dma_m_awready && dma_m_wvalid && dma_m_wready;
-    wire        npu_wr_fire = npu_m_awvalid && npu_m_awready && npu_m_wvalid && npu_m_wready;
-    wire        dma_rd_fire = dma_m_arvalid && dma_m_arready;
-    wire        npu_rd_fire = npu_m_arvalid && npu_m_arready;
-    wire        dma_wr_ok = (dma_m_awaddr[31:12] == 20'h8000_0) && (dma_m_awaddr[1:0] == 2'b00);
-    wire        npu_wr_ok = (npu_m_awaddr[31:12] == 20'h8000_0) && (npu_m_awaddr[1:0] == 2'b00);
-    wire        dma_rd_ok = (dma_m_araddr[31:12] == 20'h8000_0) && (dma_m_araddr[1:0] == 2'b00);
-    wire        npu_rd_ok = (npu_m_araddr[31:12] == 20'h8000_0) && (npu_m_araddr[1:0] == 2'b00);
-    wire        display_rd_ok = display_fb_read_valid &&
-                                (display_fb_read_addr[31:12] == 20'h8000_0) &&
-                                (display_fb_read_addr[1:0] == 2'b00);
+    // Common MMIO decode (rtl/peripherals/e1_mmio_decode.sv); the extra
+    // cross-domain selects below are local to the integrated top.
+    e1_mmio_decode u_mmio_decode (
+        .mmio_addr          (mmio_addr),
+        .word_aligned       (word_aligned),
+        .implemented_window (implemented_window),
+        .bootrom_sel        (bootrom_sel),
+        .periph_sel         (periph_sel),
+        .dma_sel            (dma_sel),
+        .npu_sel            (npu_sel),
+        .display_sel        (display_sel),
+        .wbuf_sel           (wbuf_sel),
+        .clint_sel          (clint_sel),
+        .dram_sel           (dram_sel)
+    );
 
-    assign word_aligned       = mmio_addr[1:0] == 2'b00;
-    assign implemented_window = mmio_addr[11:8] == 4'h0 && word_aligned;
-    assign bootrom_sel = implemented_window && mmio_addr[31:12] == 20'h0000_0;
-    assign periph_sel  = implemented_window && mmio_addr[31:12] == 20'h1000_0;
-    assign dma_sel     = implemented_window && mmio_addr[31:12] == 20'h1001_0;
-    assign npu_sel     = implemented_window && mmio_addr[31:12] == 20'h1002_0;
-    assign display_sel = implemented_window && mmio_addr[31:12] == 20'h1003_0;
-    assign wbuf_sel    = word_aligned && mmio_addr[31:12] == 20'h1004_0;
     // PMC mailbox window: 0x1005_0000 (4 KiB, AHB-Lite-equivalent).
     // Documented in docs/arch/soc-integration.md.
     assign pmc_sel     = word_aligned && mmio_addr[31:12] == 20'h1005_0;
     assign iommu_sel   = word_aligned && mmio_addr[31:12] == 20'h1006_0;
     assign iommu_dma_sel = implemented_window && mmio_addr[31:12] == 20'h1007_0;
     assign slc_sel     = implemented_window && mmio_addr[31:12] == 20'h1008_0;
-    assign clint_sel   = word_aligned && mmio_addr[31:16] == 16'h0200 &&
-                         mmio_addr[15:14] != 2'b11;
-    assign dram_sel    = word_aligned && mmio_addr[31:12] == 20'h8000_0;
 
-    assign msip_o = clint_msip;
     assign mtip_o = clint_mtime >= clint_mtimecmp;
 
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            clint_msip     <= 1'b0;
-            clint_mtime    <= 64'h0;
-            clint_mtimecmp <= 64'hFFFF_FFFF_FFFF_FFFF;
-        end else begin
-            clint_mtime <= clint_mtime + 64'h1;
-            if (mmio_valid && mmio_write && clint_sel) begin
-                unique case (mmio_addr[15:2])
-                    14'h0000: clint_msip            <= mmio_wdata[0];
-                    14'h1000: clint_mtimecmp[31:0]  <= mmio_wdata;
-                    14'h1001: clint_mtimecmp[63:32] <= mmio_wdata;
-                    14'h2FFE: clint_mtime[31:0]     <= mmio_wdata;
-                    14'h2FFF: clint_mtime[63:32]    <= mmio_wdata;
-                    default: begin end
-                endcase
-            end
-        end
-    end
-
-    always_comb begin
-        unique case (mmio_addr[15:2])
-            14'h0000: clint_rdata = {31'h0, clint_msip};
-            14'h1000: clint_rdata = clint_mtimecmp[31:0];
-            14'h1001: clint_rdata = clint_mtimecmp[63:32];
-            14'h2FFE: clint_rdata = clint_mtime[31:0];
-            14'h2FFF: clint_rdata = clint_mtime[63:32];
-            default:  clint_rdata = 32'h0;
-        endcase
-    end
+    // Shared bring-up CLINT (rtl/peripherals/e1_clint.sv).
+    e1_clint u_clint (
+        .clk            (clk),
+        .rst_n          (rst_n),
+        .mmio_valid     (mmio_valid),
+        .mmio_write     (mmio_write),
+        .mmio_word_addr (mmio_addr[15:2]),
+        .mmio_wdata     (mmio_wdata),
+        .sel_i          (clint_sel),
+        .clint_rdata    (clint_rdata),
+        .msip_o         (msip_o),
+        .mtime_o        (clint_mtime),
+        .mtimecmp_o     (clint_mtimecmp)
+    );
 
     /* verilator lint_off UNUSEDSIGNAL */
     logic unused_display_scanout;
@@ -379,86 +358,57 @@ module e1_soc_integrated
     };
     /* verilator lint_on UNUSEDSIGNAL */
 
-    assign dma_m_awready = !dma_m_bvalid && !npu_m_bvalid;
-    assign dma_m_wready  = !dma_m_bvalid && !npu_m_bvalid;
-    assign npu_m_awready = !npu_m_bvalid && !dma_m_awvalid && !dma_m_bvalid;
-    assign npu_m_wready  = !npu_m_bvalid && !dma_m_wvalid && !dma_m_bvalid;
-    assign dma_m_arready = !dma_m_rvalid && !npu_m_arvalid;
-    assign npu_m_arready = !npu_m_rvalid && !dma_m_arvalid && !dma_m_rvalid;
-    assign display_fb_read_ready = display_rd_ok;
-    assign display_fb_read_data  = display_rd_ok ? dram_mem[display_rd_word] : 32'hDEAD_BEEF;
-
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            dma_m_bvalid <= 1'b0;
-            dma_m_bresp  <= 2'b00;
-            npu_m_bvalid <= 1'b0;
-            npu_m_bresp  <= 2'b00;
-            dma_m_rvalid <= 1'b0;
-            dma_m_rdata  <= 32'h0;
-            dma_m_rresp  <= 2'b00;
-            npu_m_rvalid <= 1'b0;
-            npu_m_rdata  <= 32'h0;
-            npu_m_rresp  <= 2'b00;
-        end else begin
-            if (dma_m_bvalid && dma_m_bready) dma_m_bvalid <= 1'b0;
-            if (npu_m_bvalid && npu_m_bready) npu_m_bvalid <= 1'b0;
-            if (dma_m_rvalid && dma_m_rready) dma_m_rvalid <= 1'b0;
-            if (npu_m_rvalid && npu_m_rready) npu_m_rvalid <= 1'b0;
-
-            if (mmio_valid && mmio_write && dram_sel) begin
-                dram_mem[mmio_dram_word] <= mmio_wdata;
-            end
-
-            if (dma_wr_fire) begin
-                if (dma_wr_ok) begin
-                    if (dma_m_wstrb[0]) dram_mem[dma_wr_word][7:0]   <= dma_m_wdata[7:0];
-                    if (dma_m_wstrb[1]) dram_mem[dma_wr_word][15:8]  <= dma_m_wdata[15:8];
-                    if (dma_m_wstrb[2]) dram_mem[dma_wr_word][23:16] <= dma_m_wdata[23:16];
-                    if (dma_m_wstrb[3]) dram_mem[dma_wr_word][31:24] <= dma_m_wdata[31:24];
-                    dma_m_bresp <= 2'b00;
-                end else begin
-                    dma_m_bresp <= 2'b10;
-                end
-                dma_m_bvalid <= 1'b1;
-            end
-
-            if (npu_wr_fire) begin
-                if (npu_wr_ok) begin
-                    if (npu_m_wstrb[0]) dram_mem[npu_wr_word][7:0]   <= npu_m_wdata[7:0];
-                    if (npu_m_wstrb[1]) dram_mem[npu_wr_word][15:8]  <= npu_m_wdata[15:8];
-                    if (npu_m_wstrb[2]) dram_mem[npu_wr_word][23:16] <= npu_m_wdata[23:16];
-                    if (npu_m_wstrb[3]) dram_mem[npu_wr_word][31:24] <= npu_m_wdata[31:24];
-                    npu_m_bresp <= 2'b00;
-                end else begin
-                    npu_m_bresp <= 2'b10;
-                end
-                npu_m_bvalid <= 1'b1;
-            end
-
-            if (dma_rd_fire) begin
-                if (dma_rd_ok) begin
-                    dma_m_rdata <= dram_mem[dma_rd_word];
-                    dma_m_rresp <= 2'b00;
-                end else begin
-                    dma_m_rdata <= 32'hDEAD_BEEF;
-                    dma_m_rresp <= 2'b10;
-                end
-                dma_m_rvalid <= 1'b1;
-            end
-
-            if (npu_rd_fire) begin
-                if (npu_rd_ok) begin
-                    npu_m_rdata <= dram_mem[npu_rd_word];
-                    npu_m_rresp <= 2'b00;
-                end else begin
-                    npu_m_rdata <= 32'hDEAD_BEEF;
-                    npu_m_rresp <= 2'b10;
-                end
-                npu_m_rvalid <= 1'b1;
-            end
-        end
-    end
+    // Shared behavioural scratch-DRAM model (rtl/memory/e1_behavioral_dram.sv);
+    // identical instance to e1_soc_top's. Backs the DMA / NPU AXI-Lite masters,
+    // the display framebuffer read port, and the CPU/debug MMIO DRAM window.
+    e1_behavioral_dram u_behavioral_dram (
+        .clk                   (clk),
+        .rst_n                 (rst_n),
+        .mmio_valid            (mmio_valid),
+        .mmio_write            (mmio_write),
+        .mmio_addr             (mmio_addr),
+        .mmio_wdata            (mmio_wdata),
+        .dram_sel              (dram_sel),
+        .mmio_dram_rdata       (mmio_dram_rdata),
+        .dma_m_awvalid         (dma_m_awvalid),
+        .dma_m_awready         (dma_m_awready),
+        .dma_m_awaddr          (dma_m_awaddr),
+        .dma_m_wvalid          (dma_m_wvalid),
+        .dma_m_wready          (dma_m_wready),
+        .dma_m_wdata           (dma_m_wdata),
+        .dma_m_wstrb           (dma_m_wstrb),
+        .dma_m_bvalid          (dma_m_bvalid),
+        .dma_m_bready          (dma_m_bready),
+        .dma_m_bresp           (dma_m_bresp),
+        .dma_m_arvalid         (dma_m_arvalid),
+        .dma_m_arready         (dma_m_arready),
+        .dma_m_araddr          (dma_m_araddr),
+        .dma_m_rvalid          (dma_m_rvalid),
+        .dma_m_rready          (dma_m_rready),
+        .dma_m_rdata           (dma_m_rdata),
+        .dma_m_rresp           (dma_m_rresp),
+        .npu_m_awvalid         (npu_m_awvalid),
+        .npu_m_awready         (npu_m_awready),
+        .npu_m_awaddr          (npu_m_awaddr),
+        .npu_m_wvalid          (npu_m_wvalid),
+        .npu_m_wready          (npu_m_wready),
+        .npu_m_wdata           (npu_m_wdata),
+        .npu_m_wstrb           (npu_m_wstrb),
+        .npu_m_bvalid          (npu_m_bvalid),
+        .npu_m_bready          (npu_m_bready),
+        .npu_m_bresp           (npu_m_bresp),
+        .npu_m_arvalid         (npu_m_arvalid),
+        .npu_m_arready         (npu_m_arready),
+        .npu_m_araddr          (npu_m_araddr),
+        .npu_m_rvalid          (npu_m_rvalid),
+        .npu_m_rready          (npu_m_rready),
+        .npu_m_rdata           (npu_m_rdata),
+        .npu_m_rresp           (npu_m_rresp),
+        .display_fb_read_valid (display_fb_read_valid),
+        .display_fb_read_addr  (display_fb_read_addr),
+        .display_fb_read_data  (display_fb_read_data),
+        .display_fb_read_ready (display_fb_read_ready)
+    );
 
     // ----------------------------------------------------------------------
     // BPU + FTQ shim + Zihpm event-bus remap.
@@ -2804,7 +2754,7 @@ module e1_soc_integrated
             iommu_dma_sel:mmio_rdata = iommu_dma_rdata;
             slc_sel:      mmio_rdata = slc_aper_rdata;
             clint_sel:    mmio_rdata = clint_rdata;
-            dram_sel:     mmio_rdata = dram_mem[mmio_dram_word];
+            dram_sel:     mmio_rdata = mmio_dram_rdata;
             default:      mmio_rdata = 32'hDEAD_BEEF;
         endcase
     end

@@ -142,7 +142,10 @@ def validate_manifest(path: Path, manifest: dict[str, Any]) -> list[str]:
             errors.append(f"{record_id}: approval.required must be boolean")
         if not isinstance(approval_status, str) or not approval_status:
             errors.append(f"{record_id}: approval.status must be non-empty")
-        if manifest.get("mode") in {"execute_requested", "executed"} and approval_status != "approved":
+        if (
+            manifest.get("mode") in {"execute_requested", "executed"}
+            and approval_status != "approved"
+        ):
             errors.append(f"{record_id}: execute modes require approval.status=approved")
 
     execution = manifest.get("execution")

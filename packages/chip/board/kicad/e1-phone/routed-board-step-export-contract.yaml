@@ -1,0 +1,162 @@
+schema: eliza.e1_phone_routed_board_step_export_contract.v1
+status: blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
+date: '2026-05-21'
+claim_boundary: >
+  Contract for the exact routed KiCad STEP export the mechanical CAD package
+  needs before enclosure clearance can become release evidence. This is not a
+  routed board, not a supplier STEP pack, and not enclosure signoff.
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+  - board/kicad/e1-phone/component-height-step-integration.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/mechanical-overlay.yaml
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  - mechanical/e1-phone/review/kicad-mechanical-handoff.json
+  - mechanical/e1-phone/review/board-step-readiness.json
+  - mechanical/e1-phone/review/routed-board-clearance.json
+  - mechanical/e1-phone/review/full-cad-boolean-interference.json
+current_state:
+  routed_release_status: blocked_routed_release_requires_real_route_and_supplier_outputs
+  routed_pcb_execution_status: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
+  component_height_step_status: blocked_requires_supplier_step_models_routed_board_step_and_clearance_rerun
+  enclosure_fit_status: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+  board_step_readiness_status: blocked_concept_pcb_no_routed_step
+  routed_board_clearance_status: blocked_waiting_for_routed_board_step
+  full_cad_boolean_status: pass
+  concept_pcb_only: true
+  placeholder_footprints_present: true
+  production_step_present: false
+export_contract:
+  required_kicad_source: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  required_step_output: board/kicad/e1-phone/production/step/routed-board-with-components.step
+  required_component_model_directory: board/kicad/e1-phone/production/step/component-models
+  required_report_output: board/kicad/e1-phone/production/reports/routed-board-step-export-contract.yaml
+  export_command:
+    tool: kicad-cli
+    command: >
+      kicad-cli pcb export step --subst-models --include-tracks
+      --include-zones --output
+      board/kicad/e1-phone/production/step/routed-board-with-components.step
+      board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  coordinate_policy:
+    origin: KiCad board origin must match the CAD handoff origin used by kicad-mechanical-handoff.json.
+    x_axis: Board X across the 64.0 mm split-island width.
+    y_axis: Board Y along the 132.0 mm split-island height, USB-C at the bottom edge.
+    z_axis: Positive Z toward the display/cover glass.
+    required_transform_record: production report must record STEP import transform and confirm no manual offset.
+  board_geometry_required:
+    board_bbox_mm: {width: 64.0, height: 132.0}
+    top_island_mm: {width: 64.0, height: 34.0}
+    bottom_island_mm: {width: 64.0, height: 45.0}
+    battery_window_mm: {width: 64.0, height: 87.0}
+    production_tracks_required: true
+    filled_zones_required: true
+    placeholder_footprints_allowed: false
+  selected_hardware_3d_binding:
+    - function: display_touch
+      selected_hardware: CH550FH01A-CT
+      source_artifact: board/kicad/e1-phone/display-envelope-downselect.yaml
+      required_models: [display_lcm, display_fpc_connector]
+      required_before_step_export:
+        - signed display/touch STEP or B-rep model with cover-lens, FPC exit, stiffener, and connector datum
+        - exact display FPC connector MPN, land pattern, height, and mated STEP model
+        - routed board placement with display FPC bend keepout and no manual CAD offset
+      status: blocked_missing_supplier_step_connector_pinout_and_routed_board
+    - function: rear_front_cameras
+      selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+      source_artifact: board/kicad/e1-phone/camera-module-fit-downselect.yaml
+      required_models: [rear_camera_module, front_camera_module]
+      required_before_step_export:
+        - signed rear and front camera STEP or B-rep models with body, lens barrel, FPC tail, and stiffener
+        - exact camera FPC connector MPNs, land patterns, heights, and mated STEP models
+        - routed board optical-axis and lens-window datums for enclosure clearance rerun
+      status: blocked_missing_supplier_camera_xy_z_step_pinout_and_routed_board
+    - function: usb_c_side_buttons
+      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      source_artifact: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+      required_models: [usb_c_receptacle, side_key_switches_or_flex_subassembly]
+      required_before_step_export:
+        - signed USB-C connector STEP, shell stake datum, land pattern, insertion-force, and plug-overmold sweep
+        - signed side-key switch or flex subassembly STEP with actuator force/travel and enclosure load path
+        - routed board placement proving shell capture, button actuation clearance, and ESD/chassis path
+      status: blocked_missing_usb_sidekey_supplier_step_load_path_and_routed_board
+    - function: cellular
+      selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      required_models: [cellular_module, cellular_shield_or_keepout_volume]
+      required_before_step_export:
+        - selected regional cellular SKU, pad map, land pattern, reference layout, STEP, and antenna keepout
+        - top-island repack or smaller supplier-approved module branch closed before routed placement
+        - routed RF feed and shield-can clearance datums for enclosure and SAR pre-scan review
+      status: blocked_missing_cellular_region_sku_step_repack_and_routed_rf
+    - function: wifi_bluetooth
+      selected_hardware: Murata_LBEE5XV2EA-802
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      required_models: [wifi_bluetooth_module, wifi_bluetooth_shield_or_keepout_volume]
+      required_before_step_export:
+        - Murata Type 2EA land pattern, STEP, keepout, reference layout, and regulatory scope
+        - routed host interface, RF feed, matching access, and antenna keepout placement
+        - firmware identity and factory RF calibration evidence tied to the routed first article
+      status: blocked_missing_wifi_bt_step_reference_layout_firmware_and_routed_rf
+  required_3d_model_families:
+    - id: display_touch_stack
+      required_models: [display_lcm, display_fpc_connector]
+      supplier_step_required: true
+      clearance_case_ids: []
+    - id: bottom_io
+      required_models: [usb_c_receptacle, bottom_mic, top_mic]
+      supplier_step_required: true
+      clearance_case_ids: [usb_shell_to_external_aperture, bottom_mic_to_usb, usb_to_bottom_speaker]
+    - id: cameras
+      required_models: [rear_camera_module, front_camera_module]
+      supplier_step_required: true
+      clearance_case_ids: [rear_camera_to_battery, front_camera_to_earpiece]
+    - id: acoustic_haptics
+      required_models: [bottom_speaker_module, earpiece_receiver, haptic_lra]
+      supplier_step_required: true
+      clearance_case_ids: [haptic_to_battery, haptic_to_pcb_islands]
+    - id: split_interconnect
+      required_models: [split_interconnect_top_connector, split_interconnect_bottom_connector, split_interconnect_side_flex]
+      supplier_step_required: true
+      clearance_case_ids:
+        - split_interconnect_connectors_on_pcb_islands
+        - split_interconnect_flex_to_battery_edge
+        - split_interconnect_flex_within_side_rail
+    - id: shields_and_radios
+      required_models: [soc_shield_can, pmic_shield_can, radio_shield_can]
+      supplier_step_required: true
+      clearance_case_ids: [battery_to_pcb_islands]
+post_export_acceptance:
+  required_checks:
+    - id: step_file_present_and_importable
+      evidence: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - id: kicad_board_has_tracks_and_zones
+      evidence: board/kicad/e1-phone/production/reports/pcb-drc.html
+    - id: supplier_3d_models_bound
+      evidence: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - id: mechanical_handoff_transform_recorded
+      evidence: board/kicad/e1-phone/production/reports/routed-board-step-export-contract.yaml
+    - id: routed_board_clearance_rerun_passed
+      evidence: mechanical/e1-phone/review/routed-board-clearance.json
+    - id: full_cad_boolean_interference_passed
+      evidence: mechanical/e1-phone/review/full-cad-boolean-interference.json
+release_blockers:
+  - routed KiCad PCB source is missing
+  - production STEP export is missing
+  - supplier component STEP/B-rep models are missing
+  - placeholder footprints are still present in the concept board
+  - routed-board clearance rerun is blocked
+  - full CAD boolean interference using routed board and supplier geometry is blocked
+forbidden_claims:
+  - routed_board_step_ready
+  - supplier_3d_models_loaded
+  - routed_clearance_passed
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

@@ -12,13 +12,13 @@
     "device_envelope_mm": [
       78.0,
       153.6,
-      11.2
+      11.8
     ],
     "corner_radius_mm": 7.5,
     "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
     "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
     "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
-    "estimated_mass_g": 163.52,
+    "estimated_mass_g": 183.28,
     "target_mass_g": 185,
     "compactness_status": "cad_compactness_optimized",
     "compactness_width_excess_mm": 0.3,
@@ -33,7 +33,7 @@
     "board_step_has_tracks": false,
     "board_step_has_production_step": false,
     "board_step_has_concept_pcb_step": true,
-    "board_step_concept_split_islands_match_kicad": true,
+    "board_step_concept_split_islands_match_kicad": false,
     "engineering_validation_status": "cad_validation_inputs_ready",
     "interface_validation_status": "cad_interface_validation_pass",
     "interface_validation_case_count": 7,
@@ -79,15 +79,15 @@
     "production_visual_signoff_ready": false,
     "open_manual_visual_review_count": 5,
     "solid_cad_handoff_status": "generated",
-    "solid_cad_step_part_count": 94,
+    "solid_cad_step_part_count": 132,
     "step_validation_status": "pass",
-    "step_validation_count": 94,
+    "step_validation_count": 132,
     "supplier_rfq_status": "rfq_ready",
     "supplier_rfq_package_count": 5,
     "supplier_response_status": "blocked_no_supplier_responses",
     "supplier_response_complete_count": 0,
     "supplier_response_expected_count": 8,
-    "part_review_count": 94
+    "part_review_count": 132
   },
   "required_outputs": {
     "assembly_glb": true,
@@ -99,6 +99,7 @@
     "manufacturing_drawing": true,
     "mass_budget": true,
     "compactness_optimization": true,
+    "battery_swell_management": true,
     "supplier_lock": true,
     "kicad_mechanical_handoff": true,
     "kicad_placement_reconciliation": true,
@@ -120,6 +121,7 @@
     "assembly_clearance": true,
     "injection_molding_dfm": true,
     "mold_process_window": true,
+    "tooling_action_register": true,
     "toolmaker_signoff_package": true,
     "tolerance_stack": true,
     "gdt_release_package": true,
@@ -128,11 +130,14 @@
     "solid_cad_handoff": true,
     "supplier_rfq_package": true,
     "supplier_response_review": true,
-    "part_review": true
+    "part_review": true,
+    "component_selection_review": true
   },
   "subsystem_evidence_present": {
     "molded_orange_enclosure": true,
     "compact_envelope_optimization": true,
+    "battery_swell_management": true,
+    "component_selection_review": true,
     "screen_stack": true,
     "pcb_integration": true,
     "routed_board_step_import": true,
@@ -198,6 +203,39 @@
       "remaining_blockers": [
         "Envelope is optimized against current EVT0 supplier envelopes only.",
         "Need supplier STEP and routed PCB before proving no further local reduction is possible."
+      ]
+    },
+    {
+      "subsystem": "battery_swell_management",
+      "status": "cad_pass",
+      "evidence": [
+        "battery_pouch",
+        "battery_back_void_foam_pad",
+        "battery_display_and_wall_clearance",
+        "battery_back_void_foam_management",
+        "battery-swell-management.json",
+        "battery-swell-management.md"
+      ],
+      "remaining_blockers": [
+        "CAD now models a compressible back-void foam pad, but supplier battery swelling and foam compression-set data are still missing.",
+        "Need physical thermal aging, drop, and pouch-preload validation before battery release."
+      ]
+    },
+    {
+      "subsystem": "component_selection_review",
+      "status": "cad_pass",
+      "evidence": [
+        "component-selection-review.json",
+        "component-selection-review.md",
+        "screen_mount_and_connection",
+        "usb_c_insertion_envelope",
+        "button_force_and_travel",
+        "camera_optical_seal_stack",
+        "camera_speaker_behind_glass"
+      ],
+      "remaining_blockers": [
+        "Component review reconciles current CAD envelopes and selected off-the-shelf candidates only.",
+        "Need supplier drawings, STEP/B-rep models, samples, live procurement quotes, and lab validation before sourcing or tooling release."
       ]
     },
     {
@@ -570,6 +608,9 @@
         "injection-molding-dfm.md",
         "mold-process-window.json",
         "mold-process-window.md",
+        "tooling-action-register.json",
+        "tooling-action-register.csv",
+        "tooling-action-register.md",
         "toolmaker-signoff-package.json",
         "toolmaker-signoff-package.md",
         "toolmaker-signoff-response-template.csv",
@@ -604,10 +645,14 @@
         "visual-review.json",
         "part-review.json",
         "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
         "visual-decision-report.json",
         "visual-decision-report.md",
         "manufacturing_drawing.json",
         "full_top_down.png",
+        "component-review-audio.png",
+        "component-review-io-buttons.png",
+        "component-review-optical.png",
         "mold_tooling.png",
         "rear_feature_detail.png"
       ],
@@ -626,6 +671,9 @@
         "rear_feature_detail.png",
         "full_bottom_port.png",
         "component_stack.png",
+        "component-review-audio.png",
+        "component-review-io-buttons.png",
+        "component-review-optical.png",
         "mold_tooling.png"
       ],
       "remaining_blockers": [

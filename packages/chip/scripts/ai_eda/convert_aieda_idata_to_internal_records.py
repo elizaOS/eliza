@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_MAP_DIR = ROOT / "external/datasets/aieda-idata/payload/PPU/iEDA_route_process_data/PPU_a_place"
+DEFAULT_MAP_DIR = (
+    ROOT / "external/datasets/aieda-idata/payload/PPU/iEDA_route_process_data/PPU_a_place"
+)
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/aieda_idata"
 CLAIM_BOUNDARY = "aieda_idata_conversion_training_only_no_e1_signoff_or_release_claim"
 
@@ -57,7 +59,9 @@ def percentile(values: list[float], percentile_value: float) -> float:
 
 def parse_demand_map(path: Path) -> dict[str, Any]:
     rows: list[list[float]] = []
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
+    ):
         cells = [cell.strip() for cell in raw_line.split(",") if cell.strip()]
         if not cells:
             continue
@@ -127,7 +131,9 @@ def parse_demand_map(path: Path) -> dict[str, Any]:
                 }
             )
     if not edge_features and len(nonzero_cells) > 1:
-        for (row, col, demand), (next_row, next_col, other_demand) in zip(nonzero_cells, nonzero_cells[1:]):
+        for (row, col, demand), (next_row, next_col, other_demand) in zip(
+            nonzero_cells, nonzero_cells[1:]
+        ):
             edge_features.append(
                 {
                     "src": f"cell_r{row}_c{col}",
@@ -253,12 +259,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=3)
+    parser.add_argument(
+        "--all-records",
+        action="store_true",
+        help="Convert every discovered demand map instead of the smoke sample limit.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if args.sample_limit <= 0:
+    if not args.all_records and args.sample_limit <= 0:
         raise SystemExit("--sample-limit must be positive")
     if not args.map_dir.exists():
         print(f"STATUS: BLOCKED ai_eda.aieda_idata_conversion missing_map_dir {args.map_dir}")
@@ -267,7 +278,7 @@ def main() -> int:
     if not maps:
         print(f"STATUS: BLOCKED ai_eda.aieda_idata_conversion no_demand_maps {args.map_dir}")
         return 2
-    selected = maps[: args.sample_limit]
+    selected = maps if args.all_records else maps[: args.sample_limit]
 
     out_dir = args.out_root / args.run_id / "records"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -285,6 +296,8 @@ def main() -> int:
         "map_dir": rel(args.map_dir),
         "available_map_count": len(maps),
         "converted_map_count": len(selected),
+        "conversion_mode": "all_records" if args.all_records else "sample_limit",
+        "sample_limit": None if args.all_records else args.sample_limit,
         "converted_record_count": len(converted),
         "converted_records": converted,
         "release_use_allowed": False,

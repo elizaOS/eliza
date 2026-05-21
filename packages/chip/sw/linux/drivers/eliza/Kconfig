@@ -1,13 +1,13 @@
-menuconfig ELIZA_E1
+menuconfig ELIZA_E1_BSP
 	tristate "Eliza e1 SoC BSP drivers"
 	depends on OF
 	help
 	  Out-of-tree style BSP drivers for the Eliza e1 platform
 	  contract (sw/platform/e1_platform_contract.json). Drop this
-	  directory into an external Linux tree under drivers/misc/eliza/
+	  directory into an external Linux tree under drivers/misc/eliza-e1/
 	  and source this Kconfig from drivers/misc/Kconfig.
 
-if ELIZA_E1
+if ELIZA_E1_BSP
 
 config ELIZA_E1_NPU
 	tristate "Eliza e1 NPU character driver"
@@ -40,4 +40,4 @@ config ELIZA_E1_GPIO
 	  a 32-line gpio-mmio gpiochip. Bound to compatible
 	  "eliza,e1-gpio".
 
-endif # ELIZA_E1
+endif # ELIZA_E1_BSP

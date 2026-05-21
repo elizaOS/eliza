@@ -19,6 +19,7 @@ from eliza_robot.asimov_1.constants import (
     ASIMOV1_GENERATED_MJCF,
     ASIMOV1_LEG_ACTION_DIM,
     ASIMOV1_LEG_JOINT_ORDER,
+    ASIMOV1_LEG_OBSERVATION_DELAY_GROUPS,
     ASIMOV1_PHYSICS_HZ,
 )
 from eliza_robot.asimov_1.mujoco_assets import generate_asimov1_mjcf
@@ -75,6 +76,10 @@ def default_config(
                 termination=-2.0,
             ),
             tracking_sigma=0.25,
+        ),
+        observation_delay_steps=config_dict.create(
+            left_leg=1,
+            right_leg=2,
         ),
         text_conditioned=config_dict.create(
             active_tasks=tuple(active_tasks),
@@ -148,6 +153,10 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
         self._leg_actuator_ids = jp.asarray(leg_ids, dtype=jp.int32)
         self._leg_qpos_adrs = jp.asarray(joint_qpos, dtype=jp.int32)
         self._leg_dof_adrs = jp.asarray(joint_dof, dtype=jp.int32)
+        self._observation_delay_steps = jp.asarray(
+            self._observation_delay_steps_from_config(), dtype=jp.int32
+        )
+        self._history_len = int(np.max(np.asarray(self._observation_delay_steps))) + 1
 
         self._sensor_addr: dict[str, tuple[int, int]] = {}
         for sensor in ("imu_ang_vel", "imu_quat"):
@@ -211,6 +220,20 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
     def mjx_model(self):
         return self._mjx_model
 
+    @property
+    def observation_delay_steps(self) -> tuple[int, ...]:
+        return tuple(int(x) for x in np.asarray(self._observation_delay_steps))
+
+    def _observation_delay_steps_from_config(self) -> np.ndarray:
+        delays = np.zeros(ASIMOV1_LEG_ACTION_DIM, dtype=np.int32)
+        configured = self._config.observation_delay_steps
+        for group, indices in ASIMOV1_LEG_OBSERVATION_DELAY_GROUPS.items():
+            delay = int(getattr(configured, group, 0))
+            if delay < 0:
+                raise ValueError(f"ASIMOV observation delay for {group!r} must be >= 0")
+            delays[list(indices)] = delay
+        return delays
+
     def reset(self, rng):
         import jax
         import jax.numpy as jp
@@ -242,6 +265,7 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
             ctrl=self._home_targets,
         )
         data = mjx.forward(self.mjx_model, data)
+        qpos, qvel = self._joint_measurements(data, encoder_offset)
 
         info = {
             "rng": rng,
@@ -252,6 +276,8 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
             "encoder_offset": encoder_offset,
             "pd_gain_scale": pd_gain_scale,
             "motor_targets": self._home_targets,
+            "qpos_history": jp.tile(qpos, (self._history_len, 1)),
+            "qvel_history": jp.tile(qvel, (self._history_len, 1)),
             "step": jp.zeros((), dtype=jp.int32),
         }
         obs = jp.concatenate([self._get_proprio(data, info), text_embed])
@@ -270,6 +296,9 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
         motor_targets = self._home_targets.at[self._leg_actuator_ids].set(leg_targets)
         motor_targets = jp.clip(motor_targets, self._lowers, self._uppers)
         data = mjx_env.step(self.mjx_model, state.data, motor_targets, self.n_substeps)
+        qpos, qvel = self._joint_measurements(data, state.info["encoder_offset"])
+        qpos_history = jp.concatenate([qpos[None, :], state.info["qpos_history"][:-1]], axis=0)
+        qvel_history = jp.concatenate([qvel[None, :], state.info["qvel_history"][:-1]], axis=0)
 
         done = self._termination(data)
         rewards = self._rewards(data, state.info, action, done)
@@ -282,6 +311,8 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
         info["rng"], _ = jax.random.split(state.info["rng"])
         info["last_act"] = action
         info["motor_targets"] = motor_targets
+        info["qpos_history"] = qpos_history
+        info["qvel_history"] = qvel_history
         info["step"] = state.info["step"] + 1
         done = jp.where(info["step"] >= int(self._config.episode_length), 1.0, done)
         obs = jp.concatenate([self._get_proprio(data, info), info["text_embed"]])
@@ -297,6 +328,15 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
             info=info,
         )
 
+    def _joint_measurements(self, data, encoder_offset):
+        qpos = (
+            data.qpos[self._leg_qpos_adrs]
+            - self._home_targets[self._leg_actuator_ids]
+            + encoder_offset
+        )
+        qvel = data.qvel[self._leg_dof_adrs] * 0.05
+        return qpos, qvel
+
     def _get_proprio(self, data, info):
         import jax.numpy as jp
 
@@ -305,12 +345,8 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
         gyro = data.sensordata[gyro_adr : gyro_adr + gyro_dim]
         quat = data.sensordata[quat_adr : quat_adr + quat_dim]
         gravity = self._gravity_from_quat(quat)
-        qpos = (
-            data.qpos[self._leg_qpos_adrs]
-            - self._home_targets[self._leg_actuator_ids]
-            + info["encoder_offset"]
-        )
-        qvel = data.qvel[self._leg_dof_adrs] * 0.05
+        qpos = jp.take(info["qpos_history"], self._observation_delay_steps, axis=0).diagonal()
+        qvel = jp.take(info["qvel_history"], self._observation_delay_steps, axis=0).diagonal()
         return jp.concatenate([gyro, gravity, info["command"], qpos, qvel, info["last_act"]])
 
     @staticmethod

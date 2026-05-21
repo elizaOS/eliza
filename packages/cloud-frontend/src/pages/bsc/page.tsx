@@ -97,16 +97,12 @@ export default function BscPromoPage() {
 
           <section className="grid flex-1 gap-8 py-10 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center lg:py-16">
             <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-xs border border-black/14 bg-white/72 px-3 py-2 text-xs font-medium text-black backdrop-blur-sm">
-                <Gift className="size-4" />
-                BSC promotion
-              </div>
-              <h1 className="mt-6 text-5xl font-semibold leading-[0.95] text-black sm:text-6xl lg:text-7xl">
+              <h1 className="text-5xl font-semibold leading-[0.95] text-black sm:text-6xl lg:text-7xl">
                 Buy cloud credit on BSC
               </h1>
-              <p className="mt-5 max-w-xl text-base leading-7 text-black/72 sm:text-lg">
-                Buy $10 or more in Eliza Cloud credit with a verified BSC wallet
-                payment and receive $5 extra credit.
+              <p className="mt-5 inline-flex items-center gap-2 rounded-xs border border-black/14 bg-white/72 px-3 py-2 text-sm font-medium text-black backdrop-blur-sm">
+                <Gift className="size-4" />
+                $10+ in BSC = $5 bonus credit
               </p>
             </div>
 
@@ -123,11 +119,8 @@ export default function BscPromoPage() {
               <Card className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md">
                 <CardHeader className="p-5 pb-4">
                   <CardTitle className="text-lg text-black">
-                    Cloud credit
+                    Top up credit
                   </CardTitle>
-                  <p className="text-sm text-black/62">
-                    The $5 BSC bonus applies at $10 or more.
-                  </p>
                 </CardHeader>
                 <CardContent className="space-y-4 border-t border-black/10 p-5">
                   <label
@@ -152,6 +145,28 @@ export default function BscPromoPage() {
                       />
                     </div>
                   </label>
+                  {/* One-tap presets — every option meets the $10 promo
+                      threshold so picking any of them keeps the +$5 bonus. */}
+                  <div className="flex flex-wrap gap-2">
+                    {[10, 25, 50, 100].map((preset) => {
+                      const active = amountValue === preset;
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setAmount(String(preset))}
+                          aria-pressed={active}
+                          className={`min-w-[56px] rounded-xs border px-3 py-1.5 text-sm font-medium transition-colors ${
+                            active
+                              ? "border-black bg-black text-white"
+                              : "border-black/14 bg-white text-black/72 hover:bg-black/[0.04] hover:text-black"
+                          }`}
+                        >
+                          ${preset}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-xs border border-black/10 bg-black/[0.03] p-3">
                       <p className="text-xs text-black/58">You pay</p>
@@ -194,8 +209,7 @@ export default function BscPromoPage() {
                 <Card className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md">
                   <CardContent className="space-y-4 p-5">
                     <p className="text-sm leading-6 text-black/68">
-                      Sign in before paying so credit can be attached to your
-                      account.
+                      Sign in first so we know whose account to credit.
                     </p>
                     <Button asChild className="w-full rounded-xs">
                       <Link to="/login?returnTo=%2Fbsc">Sign in</Link>

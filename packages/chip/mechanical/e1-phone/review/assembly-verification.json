@@ -10,8 +10,8 @@
     "contact_tolerance_mm": 0.02,
     "seat_tolerance_mm": 0.05
   },
-  "total_parts_in_manifest": 94,
-  "parts_loaded": 94,
+  "total_parts_in_manifest": 123,
+  "parts_loaded": 123,
   "parts_placed_in_sequence": 94,
   "steps": [
     {
@@ -374,7 +374,7 @@
           "part": "rear_camera_module",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.74,
+          "min_clearance_during_insertion_mm": 0.89,
           "blocking_parts": []
         }
       ]
@@ -400,14 +400,16 @@
       "label": "Main PCB seated against boss 1/4 datum + EMI shield cans",
       "insertion_axis": "+Z",
       "tool": "S2 PCB datum nest, Wera 7440 torque driver",
-      "pass": true,
+      "pass": false,
       "parts": [
         {
           "part": "main_pcb",
           "insertion_axis": "+Z",
-          "path_clear": true,
-          "min_clearance_during_insertion_mm": 1.0,
-          "blocking_parts": []
+          "path_clear": false,
+          "min_clearance_during_insertion_mm": -2.785,
+          "blocking_parts": [
+            "orange_usb_reinforcement_saddle"
+          ]
         },
         {
           "part": "soc_shield_can",
@@ -466,21 +468,21 @@
           "part": "usb_c_perimeter_gasket_bottom",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.655,
+          "min_clearance_during_insertion_mm": 0.955,
           "blocking_parts": []
         },
         {
           "part": "usb_c_perimeter_gasket_left",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.8,
+          "min_clearance_during_insertion_mm": 1.0,
           "blocking_parts": []
         },
         {
           "part": "usb_c_perimeter_gasket_right",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.8,
+          "min_clearance_during_insertion_mm": 1.0,
           "blocking_parts": []
         }
       ]
@@ -621,7 +623,7 @@
           "part": "display_fpc_connector",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.625,
+          "min_clearance_during_insertion_mm": 0.925,
           "blocking_parts": []
         },
         {
@@ -838,7 +840,7 @@
           "part": "volume_button_elastomer_gasket",
           "insertion_axis": "+X",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.8029,
+          "min_clearance_during_insertion_mm": 1.0,
           "blocking_parts": []
         }
       ]
@@ -958,7 +960,9 @@
       }
     ]
   },
-  "trapped_parts": [],
-  "device_assemblable": true,
-  "runtime_s": 4.78
+  "trapped_parts": [
+    "main_pcb"
+  ],
+  "device_assemblable": false,
+  "runtime_s": 17.94
 }

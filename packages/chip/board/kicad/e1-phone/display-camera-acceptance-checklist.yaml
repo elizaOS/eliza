@@ -8,6 +8,7 @@ source_artifacts:
   - board/kicad/e1-phone/display-camera-oem-integration.yaml
   - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
   - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
   - board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml
   - package/display/v0-dsi-720x1280.yaml
   - package/camera/oem-mipi-csi-modules.yaml
@@ -21,7 +22,7 @@ interface_summary:
   device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 11.2
+    max_thickness: 11.8
   display_clearance_mm:
     width_clearance_mm: 0.9
     height_clearance_mm: 1.83
@@ -119,7 +120,7 @@ acceptance_items:
     required_evidence:
       - routed board STEP with final display connector and camera modules
       - display FPC bend, camera lens window, black mask, earpiece, and cover-glass clearance report
-      - tolerance stack proving the selected 5.5 inch display fits the 78.0 x 153.6 x 11.2 mm flush-back envelope
+      - tolerance stack proving the selected 5.5 inch display fits the 78.0 x 153.6 x 11.8 mm flush-back envelope
     blocker: Display/camera z-stack and enclosure clearances are still based on planning geometry.
 cross_checks:
   display_part_matches_integration_and_fit: true

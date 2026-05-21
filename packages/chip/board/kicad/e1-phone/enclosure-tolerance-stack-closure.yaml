@@ -1,7 +1,7 @@
 schema: eliza.e1_phone_enclosure_tolerance_stack_closure.v1
 status: blocked_requires_supplier_geometry_routed_step_and_physical_tolerance_evidence
 date: '2026-05-21'
-claim_boundary: Enclosure tolerance-stack closure contract for the selected 78.0 x 153.6 x 11.2 mm flush-back phone envelope.
+claim_boundary: Enclosure tolerance-stack closure contract for the selected 78.0 x 153.6 x 11.8 mm flush-back phone envelope.
   This cross-checks CAD envelope data, display fit, battery window, USB-C aperture, side buttons, camera z-height,
   speaker and antenna keepouts, and the existing parameterized clearance checks. It is not a final enclosure release,
   not supplier B-rep validation, not a routed-board STEP clearance run, not a GD&T/FAI result, and not drop/ingress/thermal
@@ -23,7 +23,7 @@ source_artifacts:
 selected_envelope_mm:
   width: 78.0
   height: 153.6
-  max_thickness: 11.2
+  max_thickness: 11.8
   display_anchor: Chenghao_CH550FH01A_CT_5p5_1080x1920_MIPI_CTP_class
   primary_display_clearance_mm:
     width_clearance_mm: 0.9

@@ -32,7 +32,7 @@
     "linux_kernel_build": {
       "blocked_marker": "docs/evidence/linux/eliza_e1_kernel_build.log.BLOCKED",
       "path": "docs/evidence/linux/eliza_e1_kernel_build.log",
-      "reason": "reason: external/linux exists and has imported the OpenPhone hello BSP, but host tools cannot run the kernel build and no PASS transcript has been captured.",
+      "reason": "reason: external/linux exists and has imported the Eliza e1 BSP, but host tools cannot run the kernel build and no PASS transcript has been captured.",
       "state": "blocked"
     },
     "linux_mmio_smoke": {

@@ -103,6 +103,8 @@ event firing, with no further translation logic in the integration top.
 | Workload | MPKI ceiling | Status |
 | --- | --- | --- |
 | TAGE-SC-L on CBP-5 synthetic trace | <= 4.5 | local cocotb harness in `benchmarks/cpu/branch/`. |
+| **E1 agent duty cycle (real RV64 trace)** | <= 1.0 | **MET**: 0.259 MPKI. Native `qemu-riscv64`+execlog trace of the llama.cpp agent loop (`benchmarks/cpu/branch/workloads/agent_loop.c`); see Workload trace pipeline below. |
+| **E1 decode-heavy path (real RV64 trace)** | <= 1.0 | **MET**: 0.349 MPKI. Hard-branch (tokenizer/sampler/stream) variant of the same workload. |
 | SPECint2017 intrate, geomean | <= 4.0 | `BLOCKED`: requires SPEC license + cycle-accurate gem5-XiangShan. |
 | Geekbench 6 navigation | <= 6 | `BLOCKED`: closed benchmark. |
 | Android UI (AOSP, ART/JIT) | <= 5 | `BLOCKED`: requires AsmDB/simpleperf trace ingestion. |
@@ -111,8 +113,69 @@ event firing, with no further translation logic in the integration top.
 | V8 JetStream2 indirect dispatch | <= 4% indirect misp | `BLOCKED`: requires JS-engine trace. |
 
 The local cocotb MPKI harness (`benchmarks/cpu/branch/run_mpki.py`) measures
-the BPU against synthetic and trace-replay workloads. Real-workload numbers
-remain BLOCKED until SPEC/AOSP/JS evidence is in place.
+the BPU against synthetic and trace-replay workloads. The closed third-party
+suites (SPEC/AOSP/JS) remain BLOCKED, but the E1's *own* duty cycle is no
+longer blocked — see the workload trace pipeline below.
+
+## Workload trace pipeline (native RV64)
+
+The E1 spends its time in a looping multimodal agent on `llama.cpp`:
+tokenize, run quantized GEMV, sample, parse a streamed response. That branch
+behaviour is captured directly, on the native Linux x64 host, with no PMU
+privileges and no Docker:
+
+1. `benchmarks/cpu/branch/workloads/agent_loop.c` reproduces the branch
+   behaviour of that loop — UTF-8/BPE tokenizer (string), int8 GEMV
+   (predictable loops), top-k sampler (loops), streamed-JSON state machine
+   (indirect dispatch). It is cross-compiled for `riscv64` so the trace is
+   ISA-faithful to the E1 target (FTB/ITTAGE/RAS targets match silicon).
+2. It runs under `qemu-riscv64` user mode with QEMU's `libexeclog` TCG plugin
+   (`external/qemu-build`), one line per retired instruction.
+3. `workload_trace.decode_execlog` reconstructs an exact branch-event stream
+   (the next executed PC is ground truth for direction and indirect target)
+   and writes a `.btrace.json` to the gitignored `external/workload-traces/`.
+
+Capture with `make bpu-workload-trace` (`MODE=1` for the decode-heavy variant).
+
+The headline result: **the E1 duty cycle is easy for branch prediction**
+(0.26 MPKI balanced, 0.35 MPKI decode-heavy). LLM inference is dominated by
+highly-regular loop control flow, so the predictor runs near its accuracy
+floor — consistent with the workload's "throughput between calls is not the
+bottleneck" character.
+
+## Geometry tuning sweep
+
+`benchmarks/cpu/branch/sweep.py` (`make bpu-sweep`) is the optimisation loop:
+it runs the behavioural TAGE-SC-L+ITTAGE model under candidate `bpu_pkg.sv`
+geometries over the trace set (the two real RV64 workloads plus the CBP-5
+references) and ranks them by workload-weighted MPKI, writing
+`docs/evidence/cpu_ap/bpu_sweep_results.json` and `…_leaderboard.md`. Each knob
+maps one-to-one to a `bpu_pkg.sv` parameter, so a winning config is a direct
+RTL proposal.
+
+Full-trace validation of the top configs (weighted MPKI, lower is better):
+
+| Config | Weighted MPKI | Δ vs baseline | bpu_pkg.sv change |
+| --- | --- | --- | --- |
+| `combo_a` | 0.9495 | -1.6% | TAGE 8192 entries + reach {8,16,44,90,195} + adaptive SC |
+| `tage_big_tables` | 0.9514 | -1.5% | `TAGE_ENTRIES_TABLE` 4096→8192 (2× SRAM) |
+| `tage_reach_long` | 0.9526 | -1.3% | `TAGE_HIST_LEN` reach 119→195 (near-free) |
+| `baseline` (shipped) | 0.9654 | — | — |
+
+**Decision: keep the baseline geometry.** The aggregate gains come entirely
+from the generic CBP-5 references; on the E1's *own* workload every config is
+within ~1% of baseline, and the longer-history configs slightly *regress* the
+duty cycle (loop control flow is short-range correlated). Per the directive to
+optimise for our workload, no swept config is a high-confidence win that
+justifies its area/timing cost. The shipped TAGE-SC-L+ITTAGE geometry is at the
+optimisation frontier for the E1; the sweep is retained as the mechanism to
+re-decide if the workload mix shifts toward more irregular code.
+
+The behavioural model now implements the statistical corrector (`sc.sv`) it
+previously omitted, so the planning model is a faithful TAGE-SC-L companion to
+the RTL. Adaptive-SC-threshold is available in the model as a tuning lever
+(`SC_ADAPTIVE`) and measured neutral on this trace set; the RTL keeps the
+static threshold.
 
 ## Cross-domain contracts
 
@@ -193,6 +256,9 @@ between `bpu_top.fetch_entry` and the cache domain.
 | MPKI eval (RTL, cocotb) | `make mpki-eval-rtl` | `docs/evidence/cpu_ap/mpki_results_synthetic.json` |
 | MPKI eval (model only) | `make mpki-eval-model` | `benchmarks/results/branch-prediction-mpki-model.json` |
 | MPKI vs CBP-5 table | — | `docs/evidence/cpu_ap/mpki_synthetic_vs_cbp5_reference.md` |
+| Behavioural model unit tests | `make bpu-model-test` | pytest (TAGE-SC-L+ITTAGE model) |
+| Real RV64 workload trace | `make bpu-workload-trace` | `external/workload-traces/<name>.btrace.json` |
+| Geometry tuning sweep | `make bpu-sweep` | `docs/evidence/cpu_ap/bpu_sweep_results.json`, `…_leaderboard.md` |
 
 ## Files
 
@@ -213,6 +279,17 @@ between `bpu_top.fetch_entry` and the cache domain.
 - `verify/formal/bpu/` — SymbiYosys formal harnesses.
 - `benchmarks/cpu/branch/` — MPKI harness and synthetic traces
   (8 synthetic generators).
+- `benchmarks/cpu/branch/bpu_model.py` — behavioural TAGE-SC-L+ITTAGE model
+  (includes the statistical corrector, faithful to `sc.sv`).
+- `benchmarks/cpu/branch/workloads/agent_loop.c` — RV64 llama.cpp agent-loop
+  branch-behaviour workload.
+- `benchmarks/cpu/branch/workload_trace.py` — QEMU execlog → exact branch
+  trace decoder and `.btrace.json` reader/writer.
+- `benchmarks/cpu/branch/capture_workload_trace.py` — cross-compile + qemu +
+  decode capture pipeline.
+- `benchmarks/cpu/branch/sweep.py` — geometry tuning sweep + leaderboard.
+- `docs/evidence/cpu_ap/bpu_sweep_results.json`, `bpu_sweep_leaderboard.md` —
+  sweep evidence.
 - `generators/xiangshan/eliza-kunminghu-manifest.json` — BPU IP-pin manifest.
 - `docs/generators/xiangshan/eliza-kunminghu-manifest.json` — historical
   manifest predating the IP-pin/whole-core split; both files are kept in

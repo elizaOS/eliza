@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
 # Eliza e1 BSP drivers. Import into an external Linux tree at
-# drivers/misc/eliza/ and add `obj-$(CONFIG_ELIZA_E1) += eliza/`
+# drivers/misc/eliza-e1/ and add `obj-$(CONFIG_ELIZA_E1_BSP) += eliza-e1/`
 # from drivers/misc/Makefile.
 
 obj-$(CONFIG_ELIZA_E1_NPU)     += eliza-e1-npu.o

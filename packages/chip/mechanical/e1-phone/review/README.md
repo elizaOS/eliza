@@ -12,6 +12,8 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/manufacturing_drawing.json`
 - `mechanical/e1-phone/review/manufacturing-readiness.json`
 - `mechanical/e1-phone/review/manufacturing-readiness.md`
+- `mechanical/e1-phone/review/battery-swell-management.json`
+- `mechanical/e1-phone/review/battery-swell-management.md`
 - `mechanical/e1-phone/review/mass-budget.json`
 - `mechanical/e1-phone/review/mass-budget.md`
 - `mechanical/e1-phone/review/compactness-optimization.json`
@@ -96,6 +98,9 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/injection-molding-dfm.md`
 - `mechanical/e1-phone/review/mold-process-window.json`
 - `mechanical/e1-phone/review/mold-process-window.md`
+- `mechanical/e1-phone/review/tooling-action-register.json`
+- `mechanical/e1-phone/review/tooling-action-register.csv`
+- `mechanical/e1-phone/review/tooling-action-register.md`
 - `mechanical/e1-phone/review/mold-flow-input-deck.json`
 - `mechanical/e1-phone/review/mold-flow-input-deck.md`
 - `mechanical/e1-phone/review/mold-flow-results-template.csv`
@@ -116,8 +121,11 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/part-review.json`
 - `mechanical/e1-phone/review/part-review.md`
 - `mechanical/e1-phone/review/part-review-contact-sheet.png`
+- `mechanical/e1-phone/review/part-explode-contact-sheet.png`
 - `mechanical/e1-phone/review/part-visual-coverage.json`
 - `mechanical/e1-phone/review/part-visual-coverage.md`
+- `mechanical/e1-phone/review/component-selection-review.json`
+- `mechanical/e1-phone/review/component-selection-review.md`
 - `mechanical/e1-phone/review/visual-decision-report.json`
 - `mechanical/e1-phone/review/visual-decision-report.md`
 - `mechanical/e1-phone/review/visual-review-coverage-acceptance.json`
@@ -140,12 +148,17 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/full_top_down.png`
 - `mechanical/e1-phone/review/exploded_iso.png`
 - `mechanical/e1-phone/review/component_stack.png`
+- `mechanical/e1-phone/review/component-review-audio.png`
+- `mechanical/e1-phone/review/component-review-io-buttons.png`
+- `mechanical/e1-phone/review/component-review-optical.png`
 - `mechanical/e1-phone/review/mold_tooling.png`
 - `mechanical/e1-phone/review/visual-review.json`
 - `mechanical/e1-phone/review/fit-check-report.json`
 
 ## Fit Checks
 
+- PASS: `battery_display_and_wall_clearance`
+- PASS: `battery_back_void_foam_management`
 - PASS: `component_presence`
 - PASS: `pcb_edge_clearance`
 - PASS: `screen_mount_margin`
@@ -159,7 +172,11 @@ Status: automated EVT0 concept generation, not tooling release.
 - PASS: `button_ingress_seal_stack`
 - PASS: `screen_mount_and_connection`
 - PASS: `camera_speaker_behind_glass`
+- PASS: `rear_camera_back_shell_aperture`
+- PASS: `rear_flash_back_shell_aperture`
 - PASS: `camera_optical_seal_stack`
+- PASS: `camera_burial_clearance`
+- PASS: `usb_saddle_to_speaker_chamber_wall`
 - PASS: `rf_antenna_keepouts`
 - PASS: `shielding_haptics_service`
 - PASS: `pcb_battery_non_overlap`
@@ -181,12 +198,12 @@ Status: automated EVT0 concept generation, not tooling release.
 - Sprue diameter: 4.0 mm.
 - Runner diameter: 2.2 mm.
 - Gate thickness: 0.85 mm.
-- Estimated CAD mass: 163.52 g.
+- Estimated CAD mass: 183.28 g.
 
 ## Design Decisions From This Pass
 
 - The envelope is held to 78.0 x 153.6 mm around the 77.1 x 151.77 mm commodity touch panel module to keep the orange side rails compact while preserving a narrow positive screen margin.
-- Front camera and earpiece are kept behind the cover glass. The single rear camera and single rear torch/flash LED are fully buried under the flat flush back wall behind flush internal windows (no camera bump, no proud lens ring); device depth was raised to accommodate burying the rear module.
+- Front camera and earpiece are kept behind the cover glass. The single rear camera and single rear torch/flash LED are fully buried under the flat flush back wall, and the orange back shell now has an explicit camera aperture with four molded bevel lands around the flush rear cover window (no camera bump, no proud lens ring).
 - Orange hard plastic is modeled as the entire molded shell and button material. The black glass remains a separate bonded part.
 - The enclosure now includes six screw bosses, eight snap hooks, battery ribs, a USB-C insertion saddle, display adhesive, display FPC connector keepout, and explicit cold-runner/submarine-gate placeholders for mold review.
 - The exterior shell and cover glass now use rounded-rectangle geometry tied to the 7.5 mm corner-radius parameter instead of square block placeholders.

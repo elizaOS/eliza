@@ -293,9 +293,12 @@ export {
   type ShellRouterContext,
   type ShellSandboxBackend,
 } from "./services/shell-execution-router.ts";
+export * from "./services/tee-boot-gate.ts";
+export * from "./services/tee-confidential-inference.ts";
 export * from "./services/tee-evidence.ts";
 export * from "./services/tee-key-release.ts";
 export * from "./services/tee-policy.ts";
+export * from "./services/tee-production-profile.ts";
 export * from "./services/tee-release-policy.ts";
 export * from "./services/tee-revocation.ts";
 export * from "./services/tee-runtime-config.ts";

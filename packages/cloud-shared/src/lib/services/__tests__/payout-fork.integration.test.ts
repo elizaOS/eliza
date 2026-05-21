@@ -22,17 +22,10 @@
  * HTTPS to the public Base/BSC RPCs.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import {
-  type Address,
-  createPublicClient,
-  createWalletClient,
-  custom,
-  http,
-  parseAbi,
-} from "viem";
+import { type ChildProcess, spawn } from "node:child_process";
+import { type Address, createPublicClient, createWalletClient, custom, http, parseAbi } from "viem";
 import { base, bsc, type Chain } from "viem/chains";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 const RUN = process.env.RUN_FORK_TESTS === "1";
 
@@ -136,8 +129,7 @@ async function findHolder(rpcUrl: string, chain: Chain): Promise<Address | null>
   const client = createPublicClient({ chain, transport: http(rpcUrl) });
   const latest = await client.getBlockNumber();
   // Many public RPCs cap eth_getLogs at 10k blocks. Walk back in 5k chunks.
-  const transferTopic =
-    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+  const transferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
   const chunk = 5000n;
   const maxChunks = 4n;
   let logs: Array<{ topics: string[] }> = [];
@@ -158,12 +150,11 @@ async function findHolder(rpcUrl: string, chain: Chain): Promise<Address | null>
       if (window.length > 0) break;
     } catch {
       // RPC may still rate-limit; try the next chunk.
-      continue;
     }
   }
   for (const log of logs) {
     if (log.topics.length < 3) continue;
-    const to = (`0x${log.topics[2].slice(26)}`) as Address;
+    const to = `0x${log.topics[2].slice(26)}` as Address;
     if (to === "0x0000000000000000000000000000000000000000") continue;
     // Confirm this address actually still holds tokens.
     const balance = await client.readContract({
@@ -213,15 +204,14 @@ describe.skipIf(!RUN)("payout transfer path against anvil forks", () => {
     test(`${fork.name}: full payout sequence — impersonate holder → transfer → waitForReceipt(confirmations=2)`, async () => {
       const holder = await findHolder(fork.rpcUrl, fork.chain);
       if (!holder) {
-        console.warn(`[${fork.name}] no ELIZA holder found in recent blocks; skipping transfer assertion`);
+        console.warn(
+          `[${fork.name}] no ELIZA holder found in recent blocks; skipping transfer assertion`,
+        );
         return;
       }
 
       // Fund the impersonated holder with native gas, then impersonate.
-      await rpc(fork.rpcUrl, "anvil_setBalance", [
-        holder,
-        `0x${(10n ** 18n).toString(16)}`,
-      ]);
+      await rpc(fork.rpcUrl, "anvil_setBalance", [holder, `0x${(10n ** 18n).toString(16)}`]);
       await rpc(fork.rpcUrl, "anvil_impersonateAccount", [holder]);
 
       const publicClient = createPublicClient({

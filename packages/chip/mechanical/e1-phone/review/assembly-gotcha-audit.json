@@ -1,0 +1,63 @@
+{
+  "evidence_class": "dfa_gotcha_audit_for_evt_planning_not_measured_hardware",
+  "revision": "evt0-mechanical-cad-flush-back",
+  "date": "2026-05-21",
+  "checker_rerun": {
+    "script": "scripts/check_e1_phone_assemblability.py",
+    "assemblable": true,
+    "steps": 19,
+    "trapped": 0,
+    "fastener_pass": true,
+    "fpc_pass": true,
+    "scope_gaps": [
+      "fastener_access checks only orange_screw_boss_1..6 but manifest has 1..10",
+      "28 manifest solids never placed in any of the 19 steps; discrete-part subset: battery_back_void_foam_pad, glass_perimeter_cushion_{top,bottom,left,right}, antenna_aperture_tuner, orange_screw_boss_{7,8,9,10}",
+      "line-flow doc stale: 9.6mm/185g header, 4500mAh/5.7mm battery, '6 screws', battery-FPC-to-PMIC mated at S3 before PCB present"
+    ]
+  },
+  "tally": { "total": 36, "blocker": 3, "major": 19, "minor": 14 },
+  "verdict": {
+    "geometrically_assemblable": true,
+    "assemblable_as_documented": false,
+    "blockers": ["G01", "G04", "G17"],
+    "statement": "Geometrically assemblable (0 trapped, 0 clashes); not assemblable as documented until the swell-void foam pad gets an assembly step (G01/G17) and all 10 screw bosses are installed + access-verified (G04). With those two sequence fixes plus the 19 major mitigations (most fixtures already exist), the e1-phone is assemblable."
+  },
+  "gotchas": [
+    {"id":"G01","category":"insertion_order","gotcha":"battery_back_void_foam_pad (z -4.75..-4.57) has no assembly step; would be trapped behind the bonded cell so the 0.6mm swell-void foam shelf is physically absent on the line","severity":"blocker","mitigation":"add a step bonding the foam pad to back inner wall before battery_pouch (S3); add to checker ASSEMBLY ahead of battery","status":"open"},
+    {"id":"G02","category":"insertion_order","gotcha":"display+cover-glass bonded (S15/16) before side-frame screws (S17); a PCB reject after S6 forces destroying the OCA bond to rework","severity":"major","mitigation":"catch electrical faults pre-bond via test access (G27); treat post-bond PCB rework as scrap","status":"open"},
+    {"id":"G03","category":"insertion_order","gotcha":"antenna_aperture_tuner reflowed on PCB but not in S2 AOI callout","severity":"minor","mitigation":"add tuner presence/orientation to S2 AOI","status":"open"},
+    {"id":"G04","category":"tool_access","gotcha":"orange_screw_boss_7..10 never driven or access-checked; checker enumerates only bosses 1..6 and line-flow drives only 6 screws, leaving the drop-hardened (SF 2.11) structure under-fastened","severity":"blocker","mitigation":"extend check_fastener_access to range(1,11); assign all 10 bosses to S2/S5 with a torque map; update line-flow to 10 screws","status":"open"},
+    {"id":"G05","category":"tool_access","gotcha":"bosses 5/6 (x +/-27, y18) sit ~5mm from the bonded LiPo cell at S5; a slipped driver can puncture the pouch","severity":"major","mitigation":"drive cell-adjacent bosses at S2 before battery placement, or shrouded torque-limited bit + battery guard plate on S5 fixture","status":"open"},
+    {"id":"G06","category":"tool_access","gotcha":"FPC locking-probe and driver share open-back approach at different islands; no reach conflict found","severity":"minor","mitigation":"retain locking-probe AOI confirmation","status":"accepted"},
+    {"id":"G07","category":"fpc_handling","gotcha":"line-flow S3 routes+connects battery FPC to PMIC, but main_pcb (PMIC) is not placed until S6; mating a non-existent connector is impossible and pre-folding risks a sub-R0.8 crease","severity":"major","mitigation":"defer battery/PMIC FPC mating to S4; at S3 only tack the service loop, do not fold to final","status":"open"},
+    {"id":"G08","category":"fpc_handling","gotcha":"display_fpc_bend_keepout clears 1.226mm at final pose only; transient bend radius during the S15 panel fold is unverified","severity":"major","mitigation":"S4-FIX-004 combs pre-form display FPC to >=R1.0 and hold during S15; in-process bend-radius gauge","status":"open"},
+    {"id":"G09","category":"fpc_handling","gotcha":"split_interconnect_side_flex service loop reports 0.0mm clearance to neighbors; any over-insertion/vibration pinches it between PCB and side frame","severity":"major","mitigation":"relieve side-frame inner wall >=0.3mm locally or hold loop in S4 comb until after S17; re-run checker","status":"open"},
+    {"id":"G10","category":"fpc_handling","gotcha":"top vs bottom split flex tails are similar and could be mated into the wrong connector at S4","severity":"minor","mitigation":"keyed connector widths/pin-counts or shrouds","status":"open"},
+    {"id":"G11","category":"connector_mating","gotcha":"B2B/ZIF connectors seat +Z with main_pcb as backing (exists), but mate at S4 while PCB is only 4-of-6 screwed (S2) so an unscrewed quadrant can flex and half-mate","severity":"major","mitigation":"drive all PCB-retaining bosses at S2 before S4; post-mate continuity + seat-height AOI","status":"open"},
+    {"id":"G12","category":"connector_mating","gotcha":"half-/mis-mate of split-interconnect tails is the dominant S4 failure (lowest manual FPY 97.8%)","severity":"major","mitigation":"locking-probe seat confirmation + per-connector continuity + seat-force monitoring","status":"open"},
+    {"id":"G13","category":"connector_mating","gotcha":"no mezzanine/SoM stack beyond split interconnect; SoC/PMIC/radio reflowed under shield cans","severity":"minor","mitigation":"none","status":"accepted"},
+    {"id":"G14","category":"adhesive","gotcha":"cover-glass/display bond needs screen_bond_clamp_frame + 90s cure; line-flow places the fixture at S1 but the sequence bonds at step 15/16, and 90s cure >> 38s takt","severity":"major","mitigation":"parallel cure carrier in the unmanned tunnel; reconcile station map so the bond/cure station matches step 15/16","status":"open"},
+    {"id":"G15","category":"adhesive","gotcha":"battery PSA-bonded at S3 with no pull-tab/rework access modeled; failed cell cannot be removed without prying near the FPC","severity":"major","mitigation":"add stretch-release pull-tab to battery PSA + tab-access slot in rib layout; document rework SOP","status":"open"},
+    {"id":"G16","category":"adhesive","gotcha":"rear camera cover glass + 4 PSA strips bond into flush back wall; roller access from +Z is clear","severity":"minor","mitigation":"none","status":"accepted"},
+    {"id":"G17","category":"battery","gotcha":"swell-void foam shelf unplaced (shares root with G01); 0.6mm void is empty air, cell can swell into back wall and the DROP-2 force-limiting (0.6x coupling) assumption is invalid","severity":"blocker","mitigation":"add foam-pad step ahead of battery (see G01)","status":"open"},
+    {"id":"G18","category":"battery","gotcha":"battery dropped +Z between ribs with FPC attached risks creasing the tail under the cell","severity":"major","mitigation":"place cell first, route FPC last into S4 comb; never drop cell onto its own folded tail","status":"open"},
+    {"id":"G19","category":"battery","gotcha":"pull-tab/FPC orientation not keyed in CAD (plain rectangular pouch)","severity":"minor","mitigation":"printed orientation fiducial + jig hard-stop on S3-FIX-003","status":"open"},
+    {"id":"G20","category":"alignment","gotcha":"rear/front camera alignment pins exist only as S6 test-station probes, not placement aids, yet cameras are placed at steps 4 and 14 with no datum pin","severity":"major","mitigation":"promote evt_fixture_*_camera_alignment_pin to the placement nests; register module corner to pin within +/-0.05mm","status":"open"},
+    {"id":"G21","category":"alignment","gotcha":"button caps side-inserted at S18/19 onto reflowed switches; 0.20mm travel, lateral misregistration misses the dome","severity":"major","mitigation":"labyrinth rails as slide datum + side-key insertion tool hard-stop + post-insert force/travel check (evt_fixture_button_force_probe)","status":"open"},
+    {"id":"G22","category":"acoustic_seal","gotcha":"meshes/gaskets at S9 (lowest insertion clearance 0.500mm) can be mis-seated or pinched at S17 closure; Wave-2 set an 8um compression-set CTQ","severity":"major","mitigation":"evt_fixture_bottom_acoustic_leak_mask + evt_fixture_earpiece_leak_mask leak-test at S6; PSA-locate meshes before S17","status":"open"},
+    {"id":"G23","category":"acoustic_seal","gotcha":"USB-C drip-lip + drain shelf + 4 perimeter gaskets; gasket mis-seat breaks IP54","severity":"minor","mitigation":"gasket pick+seat vision nest; evt_fixture_usb_c_insertion_gauge at S6","status":"open"},
+    {"id":"G24","category":"button_subassembly","gotcha":"cap+gasket can only enter at S18/19 after S17 close, side-loaded +/-X (power clearance 0.585mm); cap proud 0.30 > 0.20mm travel avoids rest pre-load","severity":"major","mitigation":"side-key insertion tool with elastomer retention; verify no gasket roll-over on insert","status":"open"},
+    {"id":"G25","category":"button_subassembly","gotcha":"volume modeled as a single cap, not a two-dome rocker; two-dome alignment N/A as modeled but under-specified if production uses a rocker","severity":"minor","mitigation":"confirm single-action or model the rocker pivot; flag to ME","status":"open"},
+    {"id":"G26","category":"esd","gotcha":"SoC/PMIC/radio/tuner/cameras/flash-LED exposed open-faced S2..S17; anti-static mat specified but no wrist-strap/ionizer callout at camera/LED drop steps","severity":"major","mitigation":"wrist-strap continuity interlock at S2/S4/S9/S14; ionizer over open-back conveyor; ground pallet path","status":"open"},
+    {"id":"G27","category":"test_access","gotcha":"functional test (S6) runs after S17 close and S15/16 bond; no internal pogo/JTAG access once closed, so a board fault requires destroying the bonded glass","severity":"major","mitigation":"add pre-close ICT/boundary-scan before S15 bond; expose flashing/JTAG pads reachable from open back","status":"open"},
+    {"id":"G28","category":"test_access","gotcha":"no explicit flash station; flashing assumed via USB-C at S6","severity":"minor","mitigation":"confirm bootloader flash over USB-C pre-bond else add open-back pogo flash before S15","status":"open"},
+    {"id":"G29","category":"rework","gotcha":"closure is snap+screw (reworkable) but cover glass OCA-bonded and battery PSA-bonded (destructive to open); S6 95.5% FPY feeds a rework loop that is effectively scrap post-bond","severity":"major","mitigation":"catch electrical faults pre-bond (G27); snap hooks rated >=5 cycles; battery stretch-release tab (G15)","status":"open"},
+    {"id":"G30","category":"rework","gotcha":"snap hooks pull-tested >=6N; repeated rework fatigues them","severity":"minor","mitigation":"scrap-after-N-opens rule in rework SOP","status":"open"},
+    {"id":"G31","category":"poka_yoke","gotcha":"near-square camera modules (10x10, 6.5x6.5) can be 90/180-deg mis-oriented without keying","severity":"major","mitigation":"asymmetric corner cut + keyed pocket; vacuum-pick orientation vision; alignment pin (G20)","status":"open"},
+    {"id":"G32","category":"poka_yoke","gotcha":"plain rectangular battery pouch can be FPC-exit flipped","severity":"major","mitigation":"rib asymmetry + tab-side hard stop (G19)","status":"open"},
+    {"id":"G33","category":"poka_yoke","gotcha":"top vs bottom split FPC tails interchangeable (see G10)","severity":"minor","mitigation":"keyed connector widths/pin-counts","status":"open"},
+    {"id":"G34","category":"poka_yoke","gotcha":"power vs volume caps differ in length (12 vs 21mm) and side; inherently keyed","severity":"minor","mitigation":"none; retain side-specific insertion tools","status":"accepted"},
+    {"id":"G35","category":"contamination","gotcha":"display bond and camera windows particle-sensitive; cameras placed at S4/S14 sit open accumulating dust before the glass closes","severity":"major","mitigation":"laminar-flow hood over S14->S16; ionized blow-off + tack-roll before display bond; particle-count CTQ; keep front optic covered until S15","status":"open"},
+    {"id":"G36","category":"contamination","gotcha":"snap-platen press / torque driving generate particulate; as sequenced S17 close follows S15/16 bond so optics are covered","severity":"minor","mitigation":"none","status":"accepted"}
+  ]
+}

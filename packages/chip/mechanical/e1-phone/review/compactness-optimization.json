@@ -4,12 +4,12 @@
   "current_envelope_mm": [
     78.0,
     153.6,
-    11.2
+    11.8
   ],
   "physical_span_with_external_features_mm": [
     81.1,
     153.6,
-    11.2
+    11.8
   ],
   "lower_bounds": {
     "display_touch_panel_mm": [
@@ -54,13 +54,13 @@
     {
       "id": "flush_back_molded_depth",
       "actual": {
-        "molded_envelope_depth_mm": 11.2,
-        "physical_span_with_external_features_mm": 11.2,
+        "molded_envelope_depth_mm": 11.8,
+        "physical_span_with_external_features_mm": 11.8,
         "rear_solid_protrusion_mm": 0.0,
         "front_solid_protrusion_mm": 0.0,
         "depth_outliers": []
       },
-      "target": "molded slab depth <=11.5 mm with a fully flush flat back: zero rear solid protrusion and no package outside the enclosure datum",
+      "target": "molded slab depth <=12.8 mm with a fully flush flat back: zero rear solid protrusion and no package outside the enclosure datum (depth raised to 12.7 mm by product-owner approval for the >=0.6 mm battery swell void and >=0.4 mm camera burial)",
       "pass": true
     },
     {
@@ -87,14 +87,14 @@
         "current_envelope_mm": [
           78.0,
           153.6,
-          11.2
+          11.8
         ]
       },
       "target": "selected display, not PCB or battery, remains the outer-envelope driver",
       "pass": true
     }
   ],
-  "decision": "Keep 78.0 x 153.6 x 11.2 mm molded orange body: width/height stay display-driven; depth was deliberately raised to fully bury the rear camera and torch under a flat flush back wall (no camera bump, no proud lens ring).",
+  "decision": "Keep 78.0 x 153.6 x 11.8 mm molded orange body: width/height stay display-driven; depth was deliberately raised to fully bury the rear camera and torch under a flat flush back wall (no camera bump, no proud lens ring).",
   "next_reduction_options": [
     "A shorter display/CTP supplier module is the only meaningful path to reduce outer height.",
     "Outer depth is set by the flush-back decision to bury the rear AF module; a thinner rear module or thinner battery would be the only path to reduce depth.",

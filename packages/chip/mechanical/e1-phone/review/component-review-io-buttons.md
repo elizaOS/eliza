@@ -1,6 +1,6 @@
 # E1 phone EVT review: I/O and button components
 
-Revision under review: `evt0-mechanical-cad-flush-back` (78.0 x 153.6 x **11.2** mm, flush flat
+Revision under review: `evt0-mechanical-cad-flush-back` (78.0 x 153.6 x **11.8** mm, flush flat
 back, 1.15 mm wall). Scope: power button, volume button, USB-C port. Specialist:
 mechanical / electromechanical EVT design review. Evidence: real supplier datasheets and
 LCSC pricing pulled live (sources at end). Quantity basis: **@100k**, LCSC unit price (the
@@ -150,7 +150,7 @@ keepout 12.5 x 10.5 x 5.0 mm, 20k cycles, aperture clearance 0.20 +/-0.10.
   route the mic tunnel away from the USB drain shelf so water cannot wick into the mic port.
 
 **Margins/tolerances (mm):** aperture radial 0.20 +/-0.10 (min 0.10 clear); shell-to-aperture
-`usb_shell_to_aperture_clearance_mm: 0.15` consistent; Z profile 3.25 mm body in 11.2 mm depth — fits
+`usb_shell_to_aperture_clearance_mm: 0.15` consistent; Z profile 3.25 mm body in 11.8 mm depth — fits
 with the bottom wall easily. **Occlusion/collision:** main risk is USB keepout vs speaker chamber and
 mic tunnel on the crowded bottom edge — verify in CAD. **Open issues:** (1) add lead-in chamfer;
 (2) add drip-lip + drain-shelf + weep channel for IP54; (3) verify USB keepout vs speaker chamber and
