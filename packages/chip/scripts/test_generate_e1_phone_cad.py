@@ -28,6 +28,9 @@ def passing_visual_review() -> dict[str, dict[str, object]]:
             "full_top_down.png",
             "exploded_iso.png",
             "component_stack.png",
+            "component-review-audio.png",
+            "component-review-io-buttons.png",
+            "component-review-optical.png",
             "mold_tooling.png",
         ]
     }
@@ -45,7 +48,14 @@ def test_evt0_phone_cad_checks_pass() -> None:
     assert report["checks"]["battery_display_and_wall_clearance"]["pass"]
     battery_clearance = report["checks"]["battery_display_and_wall_clearance"]
     assert battery_clearance["battery_to_display_gap_mm"] >= 0.15
-    assert battery_clearance["battery_to_back_wall_gap_mm"] >= 0.15
+    assert battery_clearance["battery_to_back_wall_gap_mm"] >= 0.6
+    assert report["checks"]["camera_burial_clearance"]["pass"]
+    assert report["checks"]["camera_burial_clearance"]["rear_camera_burial_clearance_mm"] >= 0.4
+    assert report["checks"]["usb_saddle_to_speaker_chamber_wall"]["pass"]
+    assert report["checks"]["usb_saddle_to_speaker_chamber_wall"]["actual_gap_mm"] >= 1.0
+    assert params["device"]["envelope_mm"][2] == 12.7
+    assert params["battery"]["envelope_mm"][2] == 5.6
+    assert params["battery"]["capacity_mah"] == 5727
     optical = report["checks"]["camera_optical_seal_stack"]
     assert optical["pass"]
     assert optical["stray_light_septum_present"]
@@ -184,7 +194,7 @@ def test_evt0_phone_params_stay_under_compactness_limit() -> None:
 
     assert width <= 80.0
     assert height <= 157.0
-    assert depth <= 11.8
+    assert depth <= 12.8
     assert Path(cad.PARAMS).is_file()
 
 
@@ -1727,6 +1737,7 @@ def test_evt0_phone_visual_decision_report_tracks_render_reviews(tmp_path, monke
     assert "hard_orange_shell_visible" in report["visual_design_gates"]
     assert "black_glass_front_visible" in report["visual_design_gates"]
     assert report["visual_design_gates"]["expected_review_view_coverage"]["pass"]
+    assert report["visual_design_gates"]["component_family_detail_views"]["pass"]
     assert report["aesthetic_decisions"]
     assert report["technical_decisions"]
     assert report["visual_deltas"]["front_back_mean_rgb_sum_delta"] >= 8.0
@@ -1874,8 +1885,8 @@ def test_evt0_phone_visual_review_coverage_acceptance_tracks_required_artifacts(
     assert acceptance["status"] == "visual_review_coverage_acceptance_pass"
     assert acceptance["automated_visual_coverage_ready"] is True
     assert acceptance["production_visual_signoff_ready"] is False
-    assert acceptance["expected_view_count"] == 9
-    assert acceptance["complete_view_count"] == 9
+    assert acceptance["expected_view_count"] == 12
+    assert acceptance["complete_view_count"] == 12
     assert acceptance["part_review_case"]["part_count"] == len(parts)
     assert acceptance["part_review_case"]["contact_sheet_pass"] is True
     assert acceptance["part_review_case"]["exploded_contact_sheet_pass"] is True
@@ -2136,6 +2147,41 @@ def test_evt0_phone_mold_process_window_quantifies_tooling_risks(tmp_path, monke
     assert "mold_tooling.png" in mold_process["linked_evidence"]
     assert (tmp_path / "mold-process-window.json").is_file()
     assert (tmp_path / "mold-process-window.md").is_file()
+
+
+def test_evt0_phone_tooling_action_register_links_dfm_to_toolmaker_returns(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    tooling = cad.tooling_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    mold_process = cad.write_mold_process_window_artifacts(
+        params,
+        parts,
+        tooling,
+        dfm,
+        tolerance_stack,
+    )
+    register = cad.write_tooling_action_register_artifacts(dfm, mold_process)
+    csv_text = (tmp_path / "tooling-action-register.csv").read_text()
+    action_ids = {item["id"] for item in register["actions"]}
+
+    assert register["status"] == "cad_tooling_action_register_ready"
+    assert register["physical_toolmaker_complete_count"] == 0
+    assert "snap_hook_release" in action_ids
+    assert "orange_cmf_texture_gate_review" in action_ids
+    assert "first_shot_metrology_loop" in action_ids
+    assert all(item["required_returned_evidence"] for item in register["actions"])
+    assert "marked_up_tool_design" in csv_text
+    assert "first_shot_cmm_report" in csv_text
+    assert (tmp_path / "tooling-action-register.json").is_file()
+    assert (tmp_path / "tooling-action-register.csv").is_file()
+    assert (tmp_path / "tooling-action-register.md").is_file()
 
 
 def test_evt0_phone_mold_flow_acceptance_fails_closed_without_physical_evidence(
@@ -2750,6 +2796,9 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "injection-molding-dfm.md",
         "mold-process-window.json",
         "mold-process-window.md",
+        "tooling-action-register.json",
+        "tooling-action-register.csv",
+        "tooling-action-register.md",
         "toolmaker-signoff-package.json",
         "toolmaker-signoff-package.md",
         "toolmaker-signoff-response-template.csv",
@@ -2773,9 +2822,13 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "full_front_iso.png",
         "full_back_iso.png",
         "rear_feature_detail.png",
+        "full_left_side.png",
         "full_bottom_port.png",
         "component_stack.png",
         "full_top_down.png",
+        "component-review-audio.png",
+        "component-review-io-buttons.png",
+        "component-review-optical.png",
         "mold_tooling.png",
     ]:
         (review / name).write_text("{}")
@@ -2998,6 +3051,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     assert readiness["subsystem_evidence_present"]["tolerance_release_package"]
     assert readiness["subsystem_evidence_present"]["physical_evt_results"]
     assert readiness["required_outputs"]["mold_process_window"]
+    assert readiness["required_outputs"]["tooling_action_register"]
     assert readiness["parameters"]["mold_process_window_status"] == "cad_mold_process_window_ready"
     assert readiness["required_outputs"]["toolmaker_signoff_package"]
     assert readiness["parameters"]["toolmaker_signoff_status"] == "blocked_no_toolmaker_signoff"
@@ -3080,11 +3134,16 @@ def test_evt0_phone_fit_report_writes_flat_check_schema(tmp_path, monkeypatch) -
         == "mechanical/e1-phone/review/physical-process-validation-acceptance.json"
     )
     assert (
+        report["artifacts"]["tooling_action_register_json"]
+        == "mechanical/e1-phone/review/tooling-action-register.json"
+    )
+    assert (
         report["artifacts"]["end_to_end_objective_acceptance_json"]
         == "mechanical/e1-phone/review/end-to-end-objective-acceptance.json"
     )
     readme = (tmp_path / "README.md").read_text()
     assert "routed-board-step-intake-template.csv" in readme
     assert "visual-review-coverage-acceptance.json" in readme
+    assert "tooling-action-register.json" in readme
     assert "physical-process-validation-acceptance.json" in readme
     assert "end-to-end-objective-acceptance.json" in readme

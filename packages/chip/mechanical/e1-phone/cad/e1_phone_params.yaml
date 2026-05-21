@@ -1,7 +1,7 @@
 device:
   name: E1 phone EVT0 mechanical concept
-  revision: evt0-mechanical-cad-flush-back
-  envelope_mm: [78.0, 153.6, 11.8]
+  revision: evt0-mechanical-cad-swell-camera-seal
+  envelope_mm: [78.0, 153.6, 12.7]
   corner_radius_mm: 7.5
   plastic_color: hard safety orange
   wall_thickness_mm: 1.15
@@ -37,8 +37,18 @@ battery:
   capacity_mah: 5727
   energy_wh: 22.05
   nominal_voltage_v: 3.85
-  capacity_basis: 4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.6/4.4) for the flush-back volume gain
-  clearance_basis: front face at Z=+1.0 mm keeps 0.15 mm gap below display_lcm back face (+1.15 mm); back face at Z=-4.6 mm keeps 0.15 mm gap to back inner wall (-4.75 mm) at the 11.8 mm device thickness
+  battery_swell_gap_mm: 0.6
+  swell_gap_basis: >-
+    LiPo pouch cells swell ~8-10 percent in thickness over life; for a 5.6 mm
+    cell that is ~0.45-0.56 mm. The device thickness was raised from 11.8 to
+    12.7 mm purely to open a defined >=0.6 mm swell void on the battery BACK
+    face (toward the back shell, away from the display) so swell never pushes
+    the display. The void is a real air gap between the battery back face
+    (Z=-4.6 mm) and the back inner wall (Z=-5.2 mm); a compressible foam pad
+    may occupy it without preloading the cell. The display-side gap stays the
+    static 0.15 mm minimum so the cell cannot crack the panel under swell.
+  capacity_basis: 4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.6/4.4); cell thickness unchanged at 5.6 mm so capacity stays 5727 mAh while the added device depth becomes swell void plus camera-burial clearance
+  clearance_basis: front face at Z=+1.0 mm keeps 0.15 mm static gap below display_lcm back face (+1.15 mm); back face at Z=-4.6 mm keeps 0.6 mm swell gap to back inner wall (-5.2 mm) at the 12.7 mm device thickness
 
 components:
   usb_c:
@@ -78,6 +88,12 @@ components:
     lens_diameter_mm: 6.8
     lens_count: 1
     array: single
+    burial_clearance_mm: 0.45
+    burial_basis: >-
+      Module back face sits 0.45 mm inside the back inner wall (was a marginal
+      0.25-0.30 mm). The 12.7 mm device depth gives the 5.1 mm module a healthy
+      >=0.4 mm burial under the flush flat back with the lens window coplanar
+      with the back outer plane.
   rear_flash_led:
     candidate: OSRAM CEYW class 1.0x1.0x0.6 white flash LED
     driver: Awinic AW36515 I2C flash driver

@@ -37,7 +37,7 @@ REVIEW_DIR = ROOT / "mechanical/e1-phone/review"
 PARAMS = CAD_DIR / "e1_phone_params.yaml"
 
 MIN_BUTTON_TRAVEL_MM = 0.18
-FLASH_BURIAL_CLEARANCE_MM = 0.12
+FLASH_BURIAL_CLEARANCE_MM = 0.20
 
 ORANGE = [1.0, 0.32, 0.02, 1.0]
 BLACK_GLASS = [0.015, 0.018, 0.02, 0.72]
@@ -416,7 +416,7 @@ def rear_camera_buried_center_z(params: dict[str, Any]) -> float:
     depth = float(dev["envelope_mm"][2])
     wall = float(dev["wall_thickness_mm"])
     module_depth = float(comp["rear_camera"]["module_mm"][2])
-    internal_clearance = 0.3
+    internal_clearance = float(comp["rear_camera"].get("burial_clearance_mm", 0.45))
     back_inner_wall_z = -depth / 2.0 + wall
     back_face_z = back_inner_wall_z + internal_clearance
     return back_face_z + module_depth / 2.0
@@ -712,7 +712,7 @@ def enclosure_feature_parts(params: dict[str, Any]) -> list[Part]:
             box(
                 "bottom_speaker_acoustic_chamber",
                 [18.0, 13.0, 2.2],
-                [18.5, -height / 2 + 13.0, -4.1],
+                [19.1, -height / 2 + 13.0, -4.1],
                 ORANGE,
                 "audio",
                 "molded loudspeaker rear chamber",
@@ -1695,7 +1695,7 @@ def write_solid_cad_handoff_artifacts(
             ],
             {
                 "name": "bottom_speaker_acoustic_chamber",
-                "shape": cq_box([18.0, 13.0, 2.2], [18.5, -height / 2 + 13.0, -4.1]),
+                "shape": cq_box([18.0, 13.0, 2.2], [19.1, -height / 2 + 13.0, -4.1]),
                 "color": orange,
                 "role": "audio",
                 "material": "molded loudspeaker rear chamber",
@@ -2984,21 +2984,21 @@ def part_visual_required_views(part: dict[str, Any]) -> list[str]:
     if role in {"PCB", "battery", "split-board interconnect", "connector", "EMI shield", "RF keepout"}:
         return [*base_views, "component_stack.png", "exploded_iso.png"]
     if role == "I/O" or role == "I/O seal":
-        return [*base_views, "full_bottom_port.png", "exploded_iso.png"]
+        return [*base_views, "full_bottom_port.png", "component-review-io-buttons.png", "exploded_iso.png"]
     if role == "button" or role == "button seal":
-        return [*base_views, "full_left_side.png", "component_stack.png"]
+        return [*base_views, "full_left_side.png", "component-review-io-buttons.png", "component_stack.png"]
     if role == "camera":
         if name.startswith("front_"):
-            return [*base_views, "full_top_down.png", "component_stack.png"]
-        return [*base_views, "rear_feature_detail.png", "component_stack.png"]
+            return [*base_views, "full_top_down.png", "component-review-optical.png", "component_stack.png"]
+        return [*base_views, "rear_feature_detail.png", "component-review-optical.png", "component_stack.png"]
     if role == "camera seal":
-        return [*base_views, "rear_feature_detail.png"]
+        return [*base_views, "rear_feature_detail.png", "component-review-optical.png"]
     if role == "audio":
         if name.startswith(("bottom_", "usb_")):
-            return [*base_views, "full_bottom_port.png", "component_stack.png"]
-        return [*base_views, "exploded_iso.png", "component_stack.png"]
+            return [*base_views, "full_bottom_port.png", "component-review-audio.png", "component_stack.png"]
+        return [*base_views, "exploded_iso.png", "component-review-audio.png", "component_stack.png"]
     if role == "haptics":
-        return [*base_views, "component_stack.png"]
+        return [*base_views, "component-review-io-buttons.png", "component_stack.png"]
     if role == "service":
         return [*base_views, "rear_feature_detail.png", "component_stack.png"]
     return base_views
@@ -3497,8 +3497,8 @@ def write_compactness_optimization_artifacts(
                 "front_solid_protrusion_mm": round(front_solid_protrusion_mm, 3),
                 "depth_outliers": depth_outliers,
             },
-            "target": "molded slab depth <=12.0 mm with a fully flush flat back: zero rear solid protrusion and no package outside the enclosure datum",
-            "pass": depth <= 12.0 and rear_solid_protrusion_mm <= 0.01 and not depth_outliers,
+            "target": "molded slab depth <=12.8 mm with a fully flush flat back: zero rear solid protrusion and no package outside the enclosure datum (depth raised to 12.7 mm by product-owner approval for the >=0.6 mm battery swell void and >=0.4 mm camera burial)",
+            "pass": depth <= 12.8 and rear_solid_protrusion_mm <= 0.01 and not depth_outliers,
         },
         {
             "id": "side_controls_do_not_resize_molded_body",
@@ -10472,6 +10472,155 @@ def write_mold_process_window_artifacts(
     return report
 
 
+def write_tooling_action_register_artifacts(
+    dfm: dict[str, Any],
+    mold_process: dict[str, Any],
+) -> dict[str, Any]:
+    action_plan = dfm.get("mold_action_plan", [])
+    process_cases = {case["id"]: case for case in mold_process.get("cases", [])}
+    register_rows: list[dict[str, Any]] = []
+    for action in action_plan:
+        linked_process_case = {
+            "back_shell_main_draw": "fill_length_to_wall",
+            "screw_boss_core_pins": "boss_sink_proxy",
+            "snap_hook_release": "boss_sink_proxy",
+            "usb_c_bottom_aperture_shutoff": "gate_shear_proxy",
+            "side_button_openings": "ejector_cosmetic_proxy",
+            "camera_window_and_acoustic_slots": "cooling_clearance_ratio",
+        }.get(action["id"], "fill_length_to_wall")
+        process_case = process_cases.get(linked_process_case, {})
+        register_rows.append(
+            {
+                "id": action["id"],
+                "feature": action["feature"],
+                "owner": "toolmaker",
+                "cad_status": "cad_action_ready" if action["pass"] else "blocked",
+                "tool_action": action["tool_action"],
+                "linked_process_case": linked_process_case,
+                "linked_process_risk": process_case.get("risk", "unknown"),
+                "required_returned_evidence": [
+                    "marked_up_tool_design",
+                    "mold_flow_or_toolmaker_note",
+                    "steel_safe_tuning_plan",
+                    "reviewer_disposition",
+                ],
+                "linked_cad_evidence": action["evidence"],
+                "release_blocker": (
+                    "Toolmaker has not returned approved steel design, mold-flow note, "
+                    "and reviewer disposition for this action."
+                ),
+                "pass": bool(action["pass"]),
+            }
+        )
+    cross_cutting_actions = [
+        {
+            "id": "orange_cmf_texture_gate_review",
+            "feature": "hard_orange_pc_abs_cmf_and_gate_vestige",
+            "owner": "industrial_design_toolmaker",
+            "cad_status": "cad_action_ready",
+            "tool_action": "approve orange resin chip, texture plaque, gloss target, and gate vestige location",
+            "linked_process_case": "gate_shear_proxy",
+            "linked_process_risk": process_cases.get("gate_shear_proxy", {}).get("risk", "unknown"),
+            "required_returned_evidence": [
+                "orange_resin_chip_approval",
+                "texture_plaque_photos",
+                "gate_vestige_photo_or_render",
+                "reviewer_disposition",
+            ],
+            "linked_cad_evidence": ["cmf-release-acceptance.json", "mold_tooling.png"],
+            "release_blocker": "Orange CMF and gate vestige have not been approved on molded samples.",
+            "pass": dfm.get("status") == "cad_dfm_inputs_ready",
+        },
+        {
+            "id": "first_shot_metrology_loop",
+            "feature": "first_shot_enclosure_gdt_and_warp_feedback",
+            "owner": "manufacturing_quality",
+            "cad_status": "cad_action_ready",
+            "tool_action": "run first-shot CMM, flatness, boss position, aperture, and snap retention feedback loop",
+            "linked_process_case": "clamp_tonnage_window",
+            "linked_process_risk": process_cases.get("clamp_tonnage_window", {}).get("risk", "unknown"),
+            "required_returned_evidence": [
+                "first_shot_cmm_report",
+                "warp_measurement_report",
+                "tool_correction_log",
+                "reviewer_disposition",
+            ],
+            "linked_cad_evidence": [
+                "gdt-release-package.json",
+                "gdt-fai-template.csv",
+                "tolerance-stack.json",
+            ],
+            "release_blocker": "First-shot metrology and tool-correction loop has not been executed.",
+            "pass": mold_process.get("status") == "cad_mold_process_window_ready",
+        },
+    ]
+    register_rows.extend(cross_cutting_actions)
+    complete_count = sum(1 for row in register_rows if row["pass"])
+    report = {
+        "claim_boundary": (
+            "CAD-derived tooling action register for toolmaker RFQ/review. It does not replace "
+            "returned tool design, mold-flow, first-shot metrology, or signed toolmaker approval."
+        ),
+        "status": "cad_tooling_action_register_ready"
+        if register_rows and complete_count == len(register_rows)
+        else "blocked",
+        "expected_action_count": len(register_rows),
+        "cad_ready_action_count": complete_count,
+        "physical_toolmaker_complete_count": 0,
+        "actions": register_rows,
+        "release_rule": (
+            "Every action must have returned marked-up tool design or physical sample evidence, "
+            "toolmaker/reviewer disposition, and any required mold-flow or first-shot records "
+            "before injection-tool release."
+        ),
+    }
+    (REVIEW_DIR / "tooling-action-register.json").write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+    csv_path = REVIEW_DIR / "tooling-action-register.csv"
+    with csv_path.open("w", newline="") as fh:
+        fieldnames = [
+            "id",
+            "feature",
+            "owner",
+            "cad_status",
+            "tool_action",
+            "linked_process_case",
+            "linked_process_risk",
+            "required_returned_evidence",
+            "linked_cad_evidence",
+            "release_blocker",
+        ]
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in register_rows:
+            writer.writerow(
+                {
+                    **{key: row[key] for key in fieldnames if key in row},
+                    "required_returned_evidence": ";".join(row["required_returned_evidence"]),
+                    "linked_cad_evidence": ";".join(row["linked_cad_evidence"]),
+                }
+            )
+    lines = [
+        "# E1 Phone Tooling Action Register",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This register turns the CAD DFM screen into toolmaker actions and remains fail-closed until returned evidence is recorded.",
+        "",
+        "## Actions",
+        "",
+    ]
+    for row in register_rows:
+        lines.append(
+            f"- {'PASS' if row['pass'] else 'BLOCKED'}: `{row['id']}` "
+            f"{row['tool_action']} ({row['linked_process_risk']} risk)"
+        )
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "tooling-action-register.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
 def write_mold_flow_acceptance_artifacts(
     params: dict[str, Any],
     dfm: dict[str, Any],
@@ -12494,6 +12643,9 @@ def write_readiness_artifacts(
                 "injection-molding-dfm.md",
                 "mold-process-window.json",
                 "mold-process-window.md",
+                "tooling-action-register.json",
+                "tooling-action-register.csv",
+                "tooling-action-register.md",
                 "toolmaker-signoff-package.json",
                 "toolmaker-signoff-package.md",
                 "toolmaker-signoff-response-template.csv",
@@ -12535,6 +12687,9 @@ def write_readiness_artifacts(
                 "visual-decision-report.md",
                 "manufacturing_drawing.json",
                 "full_top_down.png",
+                "component-review-audio.png",
+                "component-review-io-buttons.png",
+                "component-review-optical.png",
                 "mold_tooling.png",
                 "rear_feature_detail.png",
             ],
@@ -12553,6 +12708,9 @@ def write_readiness_artifacts(
                 "rear_feature_detail.png",
                 "full_bottom_port.png",
                 "component_stack.png",
+                "component-review-audio.png",
+                "component-review-io-buttons.png",
+                "component-review-optical.png",
                 "mold_tooling.png",
             ],
             "remaining_blockers": [
@@ -12740,6 +12898,9 @@ def write_readiness_artifacts(
         "mold_process_window": mold_process["status"] == "cad_mold_process_window_ready"
         and (REVIEW_DIR / "mold-process-window.json").is_file()
         and (REVIEW_DIR / "mold-process-window.md").is_file(),
+        "tooling_action_register": (REVIEW_DIR / "tooling-action-register.json").is_file()
+        and (REVIEW_DIR / "tooling-action-register.csv").is_file()
+        and (REVIEW_DIR / "tooling-action-register.md").is_file(),
         "toolmaker_signoff_package": toolmaker_signoff["package_status"]
         == "toolmaker_signoff_package_ready"
         and (REVIEW_DIR / "toolmaker-signoff-package.json").is_file()
@@ -13772,6 +13933,27 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
     flash_burial_clearance_mm = (
         flash_min - back_inner_wall_z if flash_min is not None else 0.0
     )
+    rear_camera_back_z = rear_camera_front_z = None
+    if "rear_camera_module" in by_name:
+        cam_lo, cam_hi = by_name["rear_camera_module"].bounds
+        rear_camera_back_z = float(cam_lo[2])
+        rear_camera_front_z = float(cam_hi[2])
+    rear_camera_burial_clearance_mm = (
+        rear_camera_back_z - back_inner_wall_z if rear_camera_back_z is not None else 0.0
+    )
+    front_camera_back_z = front_camera_front_z = None
+    if "front_camera_module" in by_name:
+        fc_lo, fc_hi = by_name["front_camera_module"].bounds
+        front_camera_back_z = float(fc_lo[2])
+        front_camera_front_z = float(fc_hi[2])
+    saddle_to_speaker_chamber_gap_mm = 0.0
+    if "orange_usb_reinforcement_saddle" in by_name and "bottom_speaker_acoustic_chamber" in by_name:
+        saddle_to_speaker_chamber_gap_mm = box_gap(
+            list(by_name["orange_usb_reinforcement_saddle"].mesh.extents),
+            list(by_name["orange_usb_reinforcement_saddle"].mesh.bounds.mean(axis=0)),
+            list(by_name["bottom_speaker_acoustic_chamber"].mesh.extents),
+            list(by_name["bottom_speaker_acoustic_chamber"].mesh.bounds.mean(axis=0)),
+        )
     flash_camera_center_spacing_mm = 0.0
     if "rear_flash_led_window" in by_name and "rear_camera_lens_window" in by_name:
         flash_c = by_name["rear_flash_led_window"].mesh.bounds.mean(axis=0)
@@ -13780,10 +13962,13 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             np.linalg.norm(flash_c[:2] - cam_c[:2])
         )
 
+    battery_swell_gap_required_mm = float(battery.get("battery_swell_gap_mm", 0.6))
+    fit_check_epsilon_mm = 1e-6
     checks = {
         "battery_display_and_wall_clearance": {
-            "pass": battery_to_display_gap_mm >= 0.15
-            and battery_to_back_wall_gap_mm >= 0.15,
+            "pass": battery_to_display_gap_mm + fit_check_epsilon_mm >= 0.15
+            and battery_to_back_wall_gap_mm + fit_check_epsilon_mm
+            >= battery_swell_gap_required_mm,
             "battery_front_z_mm": round(battery_max, 4) if battery_max is not None else None,
             "battery_back_z_mm": round(battery_min, 4) if battery_min is not None else None,
             "display_lcm_back_z_mm": (
@@ -13792,7 +13977,9 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             "back_inner_wall_z_mm": round(back_inner_wall_z, 4),
             "battery_to_display_gap_mm": round(battery_to_display_gap_mm, 4),
             "battery_to_back_wall_gap_mm": round(battery_to_back_wall_gap_mm, 4),
-            "required_gap_mm": 0.15,
+            "required_front_static_gap_mm": 0.15,
+            "required_back_swell_gap_mm": battery_swell_gap_required_mm,
+            "note": "Front face keeps the 0.15 mm static gap below the display; the larger back-face gap is a defined swell void toward the back shell so a LiPo pouch (~8-10 percent thickness swell) never presses the display.",
         },
         "component_presence": {
             "pass": all(component_presence.values()),
@@ -13991,6 +14178,31 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             "flash_burial_clearance_required_mm": 0.1,
             "note": "Models rear cover-window PSA/dust gasket, rear light baffle, opaque stray-light septum between coplanar flash and camera windows, and front under-glass black mask datum.",
         },
+        "camera_burial_clearance": {
+            "pass": rear_camera_burial_clearance_mm >= 0.4,
+            "rear_camera_back_z_mm": (
+                round(rear_camera_back_z, 4) if rear_camera_back_z is not None else None
+            ),
+            "rear_camera_front_z_mm": (
+                round(rear_camera_front_z, 4) if rear_camera_front_z is not None else None
+            ),
+            "back_inner_wall_z_mm": round(back_inner_wall_z, 4),
+            "rear_camera_burial_clearance_mm": round(rear_camera_burial_clearance_mm, 4),
+            "front_camera_back_z_mm": (
+                round(front_camera_back_z, 4) if front_camera_back_z is not None else None
+            ),
+            "front_camera_front_z_mm": (
+                round(front_camera_front_z, 4) if front_camera_front_z is not None else None
+            ),
+            "required_burial_clearance_mm": 0.4,
+            "note": "Rear 5.1 mm camera module back face sits >=0.4 mm inside the back inner wall under the flush flat back (healthy, not the prior marginal 0.25-0.30 mm); lens window stays coplanar with the back outer plane.",
+        },
+        "usb_saddle_to_speaker_chamber_wall": {
+            "pass": saddle_to_speaker_chamber_gap_mm >= 1.0,
+            "actual_gap_mm": round(saddle_to_speaker_chamber_gap_mm, 4),
+            "required_gap_mm": 1.0,
+            "note": "USB-C reinforcement saddle must keep a >=1.0 mm dividing wall to the bottom speaker rear acoustic chamber so the USB mechanical-load path does not breach the acoustic seal (was a marginal 0.5 mm).",
+        },
         "rf_antenna_keepouts": {
             "pass": "cellular_top_antenna_keepout" in by_name
             and "cellular_bottom_antenna_keepout" in by_name
@@ -14084,9 +14296,9 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             "source": pcb["source"],
         },
         "device_compactness": {
-            "pass": width <= 80.0 and height <= 157.0 and depth <= 12.0,
+            "pass": width <= 80.0 and height <= 157.0 and depth <= 12.8,
             "envelope_mm": [width, height, depth],
-            "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.0 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall.",
+            "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.8 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall, plus the product-owner-approved increase to 12.7 mm for a >=0.6 mm battery swell void and >=0.4 mm rear-camera burial clearance.",
         },
         "mass_budget": {
             "pass": mass["total_estimated_mass_g"] <= params["device"]["target_mass_g"],
@@ -14205,6 +14417,9 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "injection_molding_dfm_md": "mechanical/e1-phone/review/injection-molding-dfm.md",
             "mold_process_window_json": "mechanical/e1-phone/review/mold-process-window.json",
             "mold_process_window_md": "mechanical/e1-phone/review/mold-process-window.md",
+            "tooling_action_register_json": "mechanical/e1-phone/review/tooling-action-register.json",
+            "tooling_action_register_csv": "mechanical/e1-phone/review/tooling-action-register.csv",
+            "tooling_action_register_md": "mechanical/e1-phone/review/tooling-action-register.md",
             "mold_flow_input_deck_json": "mechanical/e1-phone/review/mold-flow-input-deck.json",
             "mold_flow_input_deck_md": "mechanical/e1-phone/review/mold-flow-input-deck.md",
             "mold_flow_results_template": "mechanical/e1-phone/review/mold-flow-results-template.csv",
@@ -14253,6 +14468,9 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
                 "mechanical/e1-phone/review/full_top_down.png",
                 "mechanical/e1-phone/review/exploded_iso.png",
                 "mechanical/e1-phone/review/component_stack.png",
+                "mechanical/e1-phone/review/component-review-audio.png",
+                "mechanical/e1-phone/review/component-review-io-buttons.png",
+                "mechanical/e1-phone/review/component-review-optical.png",
                 "mechanical/e1-phone/review/mold_tooling.png",
             ],
         },
@@ -14358,6 +14576,9 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
         "- `mechanical/e1-phone/review/injection-molding-dfm.md`",
         "- `mechanical/e1-phone/review/mold-process-window.json`",
         "- `mechanical/e1-phone/review/mold-process-window.md`",
+        "- `mechanical/e1-phone/review/tooling-action-register.json`",
+        "- `mechanical/e1-phone/review/tooling-action-register.csv`",
+        "- `mechanical/e1-phone/review/tooling-action-register.md`",
         "- `mechanical/e1-phone/review/mold-flow-input-deck.json`",
         "- `mechanical/e1-phone/review/mold-flow-input-deck.md`",
         "- `mechanical/e1-phone/review/mold-flow-results-template.csv`",
@@ -14405,6 +14626,9 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
         "- `mechanical/e1-phone/review/full_top_down.png`",
         "- `mechanical/e1-phone/review/exploded_iso.png`",
         "- `mechanical/e1-phone/review/component_stack.png`",
+        "- `mechanical/e1-phone/review/component-review-audio.png`",
+        "- `mechanical/e1-phone/review/component-review-io-buttons.png`",
+        "- `mechanical/e1-phone/review/component-review-optical.png`",
         "- `mechanical/e1-phone/review/mold_tooling.png`",
         "- `mechanical/e1-phone/review/visual-review.json`",
         "- `mechanical/e1-phone/review/fit-check-report.json`",
@@ -14457,6 +14681,9 @@ def main() -> int:
         REVIEW_DIR / "full_top_down.png",
         REVIEW_DIR / "exploded_iso.png",
         REVIEW_DIR / "component_stack.png",
+        REVIEW_DIR / "component-review-audio.png",
+        REVIEW_DIR / "component-review-io-buttons.png",
+        REVIEW_DIR / "component-review-optical.png",
         REVIEW_DIR / "mold_tooling.png",
     ]
     render(parts, render_paths[0], "E1 phone full assembly, front", 22, -56)
@@ -14512,9 +14739,85 @@ def main() -> int:
         if p.role in {"PCB", "camera", "audio", "I/O", "button", "battery", "connector"}
     ]
     render(component_parts, render_paths[7], "E1 phone component placement", 74, -88)
+    width, height, depth = params["device"]["envelope_mm"]
+    review_context_orange = [1.0, 0.32, 0.02, 0.28]
+    review_context_pcb = [0.03, 0.38, 0.22, 0.22]
+    side_context_parts = [
+        box(
+            "component_review_left_side_context",
+            [1.2, height, depth],
+            [-width / 2 + 0.6, 0.0, 0.0],
+            review_context_orange,
+            "review context",
+            "transparent orange side rail context for component-family detail views",
+        ),
+        box(
+            "component_review_right_side_context",
+            [1.2, height, depth],
+            [width / 2 - 0.6, 0.0, 0.0],
+            review_context_orange,
+            "review context",
+            "transparent orange side rail context for component-family detail views",
+        ),
+        box(
+            "component_review_back_plane_context",
+            [width - 2.4, height - 2.4, 0.12],
+            [0.0, 0.0, -depth / 2 + 0.2],
+            review_context_orange,
+            "review context",
+            "transparent orange back-plane datum for component-family detail views",
+        ),
+        box(
+            "component_review_pcb_context",
+            [params["pcb"]["outline_mm"][0], params["pcb"]["outline_mm"][1], 0.18],
+            [0.0, -1.0, params["pcb"]["z_center_mm"]],
+            review_context_pcb,
+            "review context",
+            "transparent PCB datum for component-family detail views",
+        ),
+    ]
+    audio_review_parts = [
+        p
+        for p in parts
+        if p.role == "audio"
+        or p.name in {"bottom_speaker_module", "earpiece_receiver", "handset_acoustic_slot"}
+    ]
+    render(
+        [*audio_review_parts, *side_context_parts],
+        render_paths[8],
+        "E1 phone audio, microphone, and handset packaging",
+        28,
+        -82,
+    )
+    io_button_review_parts = [
+        p
+        for p in parts
+        if p.role in {"I/O", "I/O seal", "button", "button seal", "haptics", "connector"}
+        or p.name.startswith("usb_c")
+    ]
+    render(
+        [*io_button_review_parts, *side_context_parts],
+        render_paths[9],
+        "E1 phone USB-C and side button packaging",
+        18,
+        -126,
+    )
+    optical_review_parts = [
+        p
+        for p in parts
+        if p.role in {"camera", "camera seal"}
+        or p.name in {"handset_acoustic_slot", "camera_flash_led"}
+    ]
+    render(
+        [*optical_review_parts, *side_context_parts],
+        render_paths[10],
+        "E1 phone camera, flash, and under-glass optical packaging",
+        24,
+        -58,
+    )
     render(
         [*tooling, *[p for p in parts if p.name in {"orange_back_shell", "orange_side_frame"}]],
-        render_paths[8],
+        render_paths[11],
         "E1 phone mold runner and parting review",
         28,
         -55,
@@ -14579,6 +14882,7 @@ def main() -> int:
     mold_process = write_mold_process_window_artifacts(params, parts, tooling, dfm, tolerance_stack)
     mold_flow_acceptance = write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
     toolmaker_signoff = write_toolmaker_signoff_artifacts(params, dfm, mold_process)
+    tooling_action_register = write_tooling_action_register_artifacts(dfm, mold_process)
     routed_board_clearance = write_routed_board_clearance_artifacts(
         board_step,
         clearance,

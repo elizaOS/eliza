@@ -20,15 +20,15 @@ Engine: OCP.BRepExtrema_DistShapeShape + BRepAlgoAPI_Common (swept insertion). E
 | 1 | Back-shell molding placed B-side-up (fixture datum) | +Z | S1 pallet, machined aluminum + PEEK locating bosses | 1.000 | PASS |
 | 2 | Rear flush windows + camera cover glass bonded into back wall | +Z | rear-window bond nest + PSA roller | 0.795 | PASS |
 | 3 | Rear torch LED seated on back inner wall (buried) | +Z | fine-pitch vacuum pick | 1.000 | PASS |
-| 4 | Rear camera module dropped into pocket (buried under flat back) | +Z | vacuum pick, rear_camera_alignment_pin | 0.740 | PASS |
+| 4 | Rear camera module dropped into pocket (buried under flat back) | +Z | vacuum pick, rear_camera_alignment_pin | 0.890 | PASS |
 | 5 | Battery pouch placed between locating ribs, FPC routed | +Z | S3 battery jig, pneumatic 8 N press | 1.000 | PASS |
 | 6 | Main PCB seated against boss 1/4 datum + EMI shield cans | +Z | S2 PCB datum nest, Wera 7440 torque driver | 1.000 | PASS |
 | 7 | USB-C receptacle seated into reinforcement saddle | +Z | USB-C placement nest | 1.000 | PASS |
-| 8 | USB-C perimeter gaskets applied around receptacle | +Z | gasket pick + seat | 0.955 | PASS |
+| 8 | USB-C perimeter gaskets applied around receptacle | +Z | gasket pick + seat | 1.000 | PASS |
 | 9 | Haptic LRA + bottom speaker + acoustic meshes placed | +Z | component pick + PSA | 0.500 | PASS |
 | 10 | Bottom + top mics placed on board islands | +Z | fine-pitch pick | 1.000 | PASS |
 | 11 | Split-board interconnect (connectors + flex tails + side loop) | +Z | FPC routing combs S4-FIX-004, locking probe | 0.010 | PASS |
-| 12 | Display FPC connector + bend keepout routed | +Z | FPC routing combs, locking probe | 0.925 | PASS |
+| 12 | Display FPC connector + bend keepout routed | +Z | FPC routing combs, locking probe | 1.000 | PASS |
 | 13 | Earpiece receiver + gasket placed (top island) | +Z | component pick + gasket | 1.000 | PASS |
 | 14 | Front camera module placed under top island | +Z | vacuum pick, front_camera_alignment_pin | 1.000 | PASS |
 | 15 | Display module + perimeter adhesive bonded | +Z | S1 screen_bond_clamp_frame, 90 s cure | 1.000 | PASS |

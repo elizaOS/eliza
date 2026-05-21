@@ -374,7 +374,7 @@
           "part": "rear_camera_module",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.74,
+          "min_clearance_during_insertion_mm": 0.89,
           "blocking_parts": []
         }
       ]
@@ -466,7 +466,7 @@
           "part": "usb_c_perimeter_gasket_bottom",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.955,
+          "min_clearance_during_insertion_mm": 1.0,
           "blocking_parts": []
         },
         {
@@ -621,7 +621,7 @@
           "part": "display_fpc_connector",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.925,
+          "min_clearance_during_insertion_mm": 1.0,
           "blocking_parts": []
         },
         {
@@ -743,7 +743,7 @@
           "part": "orange_side_frame",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 1.0,
+          "min_clearance_during_insertion_mm": 2.15,
           "blocking_parts": []
         },
         {
@@ -960,5 +960,5 @@
   },
   "trapped_parts": [],
   "device_assemblable": true,
-  "runtime_s": 5.29
+  "runtime_s": 6.86
 }

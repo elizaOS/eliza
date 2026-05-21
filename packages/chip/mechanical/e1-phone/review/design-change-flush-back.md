@@ -168,3 +168,73 @@ drip-break lip + internal drain shelf + four-sided perimeter gaskets
 | Flash window <-> camera lens spacing | 6.600 mm | >= 6.0 mm |
 | Stray-light septum part | `rear_flash_camera_septum` (added) | present |
 | Button travel | 0.20 mm | datasheet 0.20 mm |
+
+## Residual-closure rev (swell + camera + seal)
+
+Revision `evt0-mechanical-cad-swell-camera-seal`. Product-owner-approved device-thickness
+increase (11.8 -> 12.7 mm) to close three coupled geometry residuals. The 5.6 mm battery
+cell and 5727 mAh / 22.05 Wh capacity are UNCHANGED; the added 0.9 mm of depth becomes a
+defined battery swell void plus healthier rear-camera burial. Flush flat back holds.
+All numbers below are read back from generated geometry (`build_parts` mesh bounds and the
+OCP B-rep boolean checker), not asserted by hand.
+
+Z-stack (origin mid-plane, +Z toward screen): back outer plane = -6.350 mm; back inner wall
+= -6.350 + 1.15 = -5.200 mm. Display LCM back face = +1.150 mm (front-referenced, fixed).
+
+### R1 - Battery swell allowance
+
+A LiPo pouch swells ~8-10 percent in thickness over life (~0.45-0.56 mm for a 5.6 mm cell).
+A new `battery.battery_swell_gap_mm: 0.6` param defines a real void on the battery BACK face
+(toward the back shell, away from the display) so swell can never push the panel.
+
+- Battery cell: 5.6 mm, z_center -1.8 mm -> front face +1.000 mm, back face -4.600 mm.
+- Front (display) face: gap to display back = +1.150 - (+1.000) = **0.150 mm** static (>= 0.15).
+- Back (shell) face: gap to back inner wall = -4.600 - (-5.200) = **0.600 mm** swell void (>= 0.6).
+- Capacity unchanged: cell thickness held at 5.6 mm -> **5727 mAh / 22.05 Wh**. The swell void
+  is air (may host a compressible foam pad without preloading the cell).
+- Gate `battery_display_and_wall_clearance` now requires front >= 0.15 mm AND back >= 0.6 mm.
+
+### R2 - Camera fit / burial
+
+Rear-camera burial raised from a marginal 0.30 mm to a healthy clearance via a new
+`rear_camera.burial_clearance_mm: 0.45` param (consumed by `rear_camera_buried_center_z`).
+
+- Rear camera module (10 x 10 x 5.1): back face at **-4.750 mm** = back inner wall + 0.45 mm
+  -> **burial clearance 0.45 mm** (analytic) / **0.40 mm** (boolean mesh basis), both >= 0.4 mm.
+  Front face at +0.350 mm (lower than the prior +0.95 mm, i.e. further from the display).
+- Lens window stays coplanar with the back outer plane (flush, never proud).
+- Front camera (6.5 x 6.5 x 3.2) fits with margin: back face -0.600 mm, front face +2.600 mm.
+- New gate `camera_burial_clearance` fails closed if rear burial < 0.4 mm.
+
+### R3 - USB-C saddle <-> speaker seal
+
+The USB-C reinforcement saddle previously sat 0.5 mm from the bottom speaker rear acoustic
+chamber wall. The chamber was shifted +0.6 mm in X (center 18.5 -> 19.1 mm) so the dividing
+wall is now >= 1.0 mm; the 15 mm speaker module (x=18.5) remains fully enclosed and the bottom
+edge (USB-C + speaker + dual bottom mics) still fits on the 78 mm edge.
+
+- Saddle (18 mm wide, centered x=0) max X = +9.0 mm; chamber min X = +10.1 mm -> **gap 1.1 mm** (>= 1.0).
+- New gate `usb_saddle_to_speaker_chamber_wall` fails closed if the gap < 1.0 mm.
+
+### Verification (re-run clean)
+
+- `generate_e1_phone_cad.py`: regenerated all STEP/STL/OBJ + assembly manifest, fit report `pass`.
+- `check_e1_phone_boolean_interference.py`: **PASS**, 11/11 scopes, **0 unintentional clashes**,
+  flush-back max protrusion **0.0 mm**, rear-camera burial 0.40 mm, flash buried.
+- `check_e1_phone_button_orientation.py`: overall **pass** (all feature-orientation + coaxiality rows PASS).
+- `check_e1_phone_assemblability.py`: **assemblable**, 19 steps, 0 trapped, fastener + FPC pass.
+- `test_generate_e1_phone_cad.py`: **60/60 pass** (depth/gap/burial expectations updated as deliberate design changes).
+
+### Residual-closure clearance proof
+
+| Quantity | Value | Required |
+|---|---|---|
+| Device thickness | 12.7 mm | <= 12.8 mm (PO-approved) |
+| Battery cell thickness | 5.6 mm (5727 mAh / 22.05 Wh, unchanged) | capacity held |
+| Battery front -> display back (static) | 0.150 mm | >= 0.15 mm |
+| Battery back -> back inner wall (swell void) | 0.600 mm | >= 0.6 mm |
+| Rear-camera burial inside inner wall | 0.45 mm analytic / 0.40 mm boolean | >= 0.4 mm |
+| Front-camera back/front face | -0.600 / +2.600 mm | fits buried |
+| USB-C saddle <-> speaker chamber wall | 1.1 mm | >= 1.0 mm |
+| Flush-back rear solid protrusion | 0.0 mm | 0.0 mm |
+| Unintentional clashes | 0 | 0 |
