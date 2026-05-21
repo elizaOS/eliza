@@ -1119,6 +1119,89 @@ function resolveLegacyDeploymentTargetInConfig(
 	return { runtime: "local" };
 }
 
+function buildRemoteTextRouteFromDeploymentTarget(
+	config: Record<string, unknown> | null | undefined,
+	deploymentTarget: DeploymentTargetConfig,
+): ServiceRouteConfig | null {
+	if (
+		deploymentTarget.runtime !== "remote" ||
+		!deploymentTarget.remoteApiBase
+	) {
+		return null;
+	}
+
+	const remotePrimaryModel = readPrimaryModelFromConfig(config);
+	return {
+		backend: "remote",
+		transport: "remote",
+		remoteApiBase: deploymentTarget.remoteApiBase,
+		...(remotePrimaryModel ? { primaryModel: remotePrimaryModel } : {}),
+	};
+}
+
+function buildDetectedDirectTextRoute(
+	config: Record<string, unknown> | null | undefined,
+): ServiceRouteConfig | null {
+	const localProvider = resolveConfiguredLocalProviderFromSignals(config);
+	if (!localProvider) {
+		return null;
+	}
+
+	const primaryModel = readPrimaryModelFromConfig(config);
+	return {
+		backend: localProvider,
+		transport: "direct",
+		...(primaryModel ? { primaryModel } : {}),
+	};
+}
+
+function buildLegacyLlmTextRoute(
+	config: Record<string, unknown> | null | undefined,
+	deploymentTarget: DeploymentTargetConfig,
+): ServiceRouteConfig | null {
+	const remoteRoute = buildRemoteTextRouteFromDeploymentTarget(
+		config,
+		deploymentTarget,
+	);
+	if (remoteRoute) {
+		return remoteRoute;
+	}
+
+	if (inferLegacyCloudInferenceSelection(config)) {
+		const models = asConfigRecord(config?.models);
+		return buildElizaCloudTextRoute({
+			smallModel: readConfigString(models, "small"),
+			largeModel: readConfigString(models, "large"),
+		});
+	}
+
+	return buildDetectedDirectTextRoute(config);
+}
+
+const LEGACY_CLOUD_SERVICE_CAPABILITIES = [
+	"tts",
+	"media",
+	"embeddings",
+	"rpc",
+] as const;
+
+function applyLegacyCloudServiceRoutes(
+	next: ServiceRoutingConfig,
+	cloudServices: Record<string, unknown> | null,
+): void {
+	for (const capability of LEGACY_CLOUD_SERVICE_CAPABILITIES) {
+		if (next[capability] || cloudServices?.[capability] !== true) {
+			continue;
+		}
+
+		next[capability] = {
+			backend: "elizacloud",
+			transport: "cloud-proxy",
+			accountId: "elizacloud",
+		};
+	}
+}
+
 function resolveLegacyServiceRoutingInConfig(
 	config: Record<string, unknown> | null | undefined,
 ): ServiceRoutingConfig | null {
@@ -1130,76 +1213,15 @@ function resolveLegacyServiceRoutingInConfig(
 		resolveLegacyDeploymentTargetInConfig(config);
 	const cloud = asConfigRecord(config?.cloud);
 	const cloudServices = asConfigRecord(cloud?.services);
-	const models = asConfigRecord(config?.models);
 
 	if (!next.llmText) {
-		if (
-			deploymentTarget.runtime === "remote" &&
-			deploymentTarget.remoteApiBase
-		) {
-			const remotePrimaryModel = readPrimaryModelFromConfig(config);
-			next.llmText = {
-				backend: "remote",
-				transport: "remote",
-				remoteApiBase: deploymentTarget.remoteApiBase,
-				...(remotePrimaryModel ? { primaryModel: remotePrimaryModel } : {}),
-			};
-		} else if (inferLegacyCloudInferenceSelection(config)) {
-			next.llmText = buildElizaCloudTextRoute({
-				smallModel: readConfigString(models, "small"),
-				largeModel: readConfigString(models, "large"),
-			});
-		} else {
-			const localProvider = resolveConfiguredLocalProviderFromSignals(config);
-			const primaryModel = readPrimaryModelFromConfig(config);
-			if (localProvider) {
-				next.llmText = {
-					backend: localProvider,
-					transport: "direct",
-					...(primaryModel ? { primaryModel } : {}),
-				};
-			}
+		const legacyRoute = buildLegacyLlmTextRoute(config, deploymentTarget);
+		if (legacyRoute) {
+			next.llmText = legacyRoute;
 		}
 	}
 
-	const legacyCloudServices: Array<
-		["tts" | "media" | "embeddings" | "rpc", boolean | undefined]
-	> = [
-		[
-			"tts",
-			typeof cloudServices?.tts === "boolean" ? cloudServices.tts : undefined,
-		],
-		[
-			"media",
-			typeof cloudServices?.media === "boolean"
-				? cloudServices.media
-				: undefined,
-		],
-		[
-			"embeddings",
-			typeof cloudServices?.embeddings === "boolean"
-				? cloudServices.embeddings
-				: undefined,
-		],
-		[
-			"rpc",
-			typeof cloudServices?.rpc === "boolean" ? cloudServices.rpc : undefined,
-		],
-	];
-
-	for (const [capability, legacyValue] of legacyCloudServices) {
-		if (next[capability]) {
-			continue;
-		}
-		if (legacyValue !== true) {
-			continue;
-		}
-		next[capability] = {
-			backend: "elizacloud",
-			transport: "cloud-proxy",
-			accountId: "elizacloud",
-		};
-	}
+	applyLegacyCloudServiceRoutes(next, cloudServices);
 
 	return Object.keys(next).length > 0 ? next : null;
 }
@@ -1323,31 +1345,94 @@ export function resolveServiceRoutingInConfig(
 	const deploymentTarget = resolveDeploymentTargetInConfig(config);
 
 	if (!next.llmText) {
-		if (
-			deploymentTarget.runtime === "remote" &&
-			deploymentTarget.remoteApiBase
-		) {
-			const remotePrimaryModel = readPrimaryModelFromConfig(config);
-			next.llmText = {
-				backend: "remote",
-				transport: "remote",
-				remoteApiBase: deploymentTarget.remoteApiBase,
-				...(remotePrimaryModel ? { primaryModel: remotePrimaryModel } : {}),
-			};
-		} else {
-			const localProvider = resolveConfiguredLocalProviderFromSignals(config);
-			const primaryModel = readPrimaryModelFromConfig(config);
-			if (localProvider) {
-				next.llmText = {
-					backend: localProvider,
-					transport: "direct",
-					...(primaryModel ? { primaryModel } : {}),
-				};
-			}
+		const route =
+			buildRemoteTextRouteFromDeploymentTarget(config, deploymentTarget) ??
+			buildDetectedDirectTextRoute(config);
+		if (route) {
+			next.llmText = route;
 		}
 	}
 
 	return Object.keys(next).length > 0 ? next : null;
+}
+
+function buildCloudManagedConnectionFromRoute(
+	llmText: ServiceRouteConfig | undefined,
+	backend: OnboardingProviderId | null,
+): OnboardingCloudManagedConnection | null {
+	if (llmText?.transport !== "cloud-proxy" || backend !== "elizacloud") {
+		return null;
+	}
+
+	return {
+		kind: "cloud-managed",
+		cloudProvider: "elizacloud",
+		...pickOnboardingCloudModelPreferences(llmText),
+	};
+}
+
+function buildRemoteProviderConnectionFromRoute(args: {
+	llmText: ServiceRouteConfig | undefined;
+	deploymentTarget: DeploymentTargetConfig;
+	backend: OnboardingProviderId | null;
+	routeApiKey?: string;
+}): OnboardingRemoteProviderConnection | null {
+	const remoteApiBase =
+		args.llmText?.remoteApiBase ?? args.deploymentTarget.remoteApiBase;
+	if (!remoteApiBase) {
+		return null;
+	}
+
+	return {
+		kind: "remote-provider",
+		remoteApiBase,
+		...(args.deploymentTarget.remoteAccessToken
+			? { remoteAccessToken: args.deploymentTarget.remoteAccessToken }
+			: {}),
+		...(args.backend && args.backend !== "elizacloud"
+			? { provider: args.backend }
+			: {}),
+		...(args.routeApiKey ? { apiKey: args.routeApiKey } : {}),
+		...(args.llmText?.primaryModel
+			? { primaryModel: args.llmText.primaryModel }
+			: {}),
+	};
+}
+
+function buildLocalProviderConnectionFromRoute(
+	llmText: ServiceRouteConfig | undefined,
+	backend: OnboardingProviderId | null,
+	routeApiKey?: string,
+): OnboardingLocalProviderConnection | null {
+	if (!backend || backend === "elizacloud") {
+		return null;
+	}
+
+	return {
+		kind: "local-provider",
+		provider: backend,
+		...(routeApiKey ? { apiKey: routeApiKey } : {}),
+		...(llmText?.primaryModel ? { primaryModel: llmText.primaryModel } : {}),
+	};
+}
+
+function buildRemoteDeploymentConnection(
+	deploymentTarget: DeploymentTargetConfig,
+): OnboardingRemoteProviderConnection | null {
+	if (
+		deploymentTarget.runtime !== "remote" ||
+		!deploymentTarget.remoteApiBase?.trim()
+	) {
+		return null;
+	}
+
+	return {
+		kind: "remote-provider",
+		remoteApiBase: deploymentTarget.remoteApiBase,
+		...(deploymentTarget.remoteAccessToken
+			? { remoteAccessToken: deploymentTarget.remoteAccessToken }
+			: {}),
+	};
 }
 
 function deriveOnboardingConnectionFromRuntimeConfig(
@@ -1359,55 +1444,27 @@ function deriveOnboardingConnectionFromRuntimeConfig(
 	const backend = normalizeOnboardingProviderId(llmText?.backend);
 	const routeApiKey = readOnboardingProviderApiKey(config, backend);
 
-	if (llmText?.transport === "cloud-proxy" && backend === "elizacloud") {
-		return {
-			kind: "cloud-managed",
-			cloudProvider: "elizacloud",
-			...pickOnboardingCloudModelPreferences(llmText),
-		};
+	const cloudManagedConnection = buildCloudManagedConnectionFromRoute(
+		llmText,
+		backend,
+	);
+	if (cloudManagedConnection) {
+		return cloudManagedConnection;
 	}
 
 	if (llmText?.transport === "remote") {
-		const remoteApiBase =
-			llmText.remoteApiBase ?? deploymentTarget.remoteApiBase;
-		if (!remoteApiBase) {
-			return null;
-		}
-		return {
-			kind: "remote-provider",
-			remoteApiBase,
-			...(deploymentTarget.remoteAccessToken
-				? { remoteAccessToken: deploymentTarget.remoteAccessToken }
-				: {}),
-			...(backend && backend !== "elizacloud" ? { provider: backend } : {}),
-			...(routeApiKey ? { apiKey: routeApiKey } : {}),
-			...(llmText.primaryModel ? { primaryModel: llmText.primaryModel } : {}),
-		};
+		return buildRemoteProviderConnectionFromRoute({
+			llmText,
+			deploymentTarget,
+			backend,
+			routeApiKey,
+		});
 	}
 
-	if (backend && backend !== "elizacloud") {
-		return {
-			kind: "local-provider",
-			provider: backend,
-			...(routeApiKey ? { apiKey: routeApiKey } : {}),
-			...(llmText?.primaryModel ? { primaryModel: llmText.primaryModel } : {}),
-		};
-	}
-
-	if (
-		deploymentTarget.runtime === "remote" &&
-		deploymentTarget.remoteApiBase?.trim()
-	) {
-		return {
-			kind: "remote-provider",
-			remoteApiBase: deploymentTarget.remoteApiBase,
-			...(deploymentTarget.remoteAccessToken
-				? { remoteAccessToken: deploymentTarget.remoteAccessToken }
-				: {}),
-		};
-	}
-
-	return null;
+	return (
+		buildLocalProviderConnectionFromRoute(llmText, backend, routeApiKey) ??
+		buildRemoteDeploymentConnection(deploymentTarget)
+	);
 }
 
 function resolveConfiguredLocalProviderFromSignals(
@@ -1517,6 +1574,87 @@ export interface OnboardingCredentialPersistencePlan {
 	cloudApiKey?: string;
 }
 
+function withCredentialCloudApiKey(
+	llmSelection: OnboardingLlmPersistenceSelection | null,
+	cloudApiKey?: string,
+): OnboardingCredentialPersistencePlan {
+	return {
+		llmSelection,
+		...(cloudApiKey ? { cloudApiKey } : {}),
+	};
+}
+
+function deriveCloudManagedCredentialSelection(
+	llmRoute: ServiceRouteConfig | undefined,
+	cloudApiKey?: string,
+): OnboardingLlmPersistenceSelection | null {
+	if (
+		llmRoute?.transport !== "cloud-proxy" ||
+		normalizeOnboardingProviderId(llmRoute.backend) !== "elizacloud" ||
+		!cloudApiKey
+	) {
+		return null;
+	}
+
+	return {
+		backend: "elizacloud",
+		transport: "cloud-proxy",
+		apiKey: cloudApiKey,
+		...pickOnboardingCloudModelPreferences(llmRoute),
+	};
+}
+
+function deriveDirectCredentialSelection(
+	llmRoute: ServiceRouteConfig | undefined,
+	llmApiKey?: string,
+): OnboardingLlmPersistenceSelection | null {
+	if (llmRoute?.transport !== "direct" || !llmApiKey) {
+		return null;
+	}
+
+	const provider = normalizeOnboardingProviderId(llmRoute.backend);
+	if (!provider || provider === "elizacloud") {
+		return null;
+	}
+
+	return {
+		backend: provider,
+		transport: "direct",
+		apiKey: llmApiKey,
+		...(llmRoute.primaryModel ? { primaryModel: llmRoute.primaryModel } : {}),
+	};
+}
+
+function deriveRemoteCredentialSelection(args: {
+	llmRoute: ServiceRouteConfig | undefined;
+	llmApiKey?: string;
+	deploymentTarget: DeploymentTargetConfig | null;
+}): OnboardingLlmPersistenceSelection | null {
+	if (args.llmRoute?.transport !== "remote" || !args.llmApiKey) {
+		return null;
+	}
+
+	const provider = normalizeOnboardingProviderId(args.llmRoute.backend);
+	const remoteApiBase =
+		args.llmRoute.remoteApiBase ?? args.deploymentTarget?.remoteApiBase;
+	if (!provider || provider === "elizacloud" || !remoteApiBase) {
+		return null;
+	}
+
+	return {
+		backend: provider,
+		transport: "remote",
+		remoteApiBase,
+		...(args.deploymentTarget?.remoteAccessToken
+			? { remoteAccessToken: args.deploymentTarget.remoteAccessToken }
+			: {}),
+		apiKey: args.llmApiKey,
+		...(args.llmRoute.primaryModel
+			? { primaryModel: args.llmRoute.primaryModel }
+			: {}),
+	};
+}
+
 export function deriveOnboardingCredentialPersistencePlan(args: {
 	credentialInputs?: OnboardingCredentialInputs | null;
 	deploymentTarget?: DeploymentTargetConfig | null;
@@ -1534,66 +1672,24 @@ export function deriveOnboardingCredentialPersistencePlan(args: {
 	const cloudApiKey = credentialInputs?.cloudApiKey;
 	const llmApiKey = credentialInputs?.llmApiKey;
 
-	if (
-		llmRoute?.transport === "cloud-proxy" &&
-		normalizeOnboardingProviderId(llmRoute.backend) === "elizacloud" &&
-		cloudApiKey
-	) {
-		return {
-			llmSelection: {
-				backend: "elizacloud",
-				transport: "cloud-proxy",
-				apiKey: cloudApiKey,
-				...pickOnboardingCloudModelPreferences(llmRoute),
-			},
-			cloudApiKey,
-		};
+	const cloudManagedSelection = deriveCloudManagedCredentialSelection(
+		llmRoute,
+		cloudApiKey,
+	);
+	if (cloudManagedSelection) {
+		return withCredentialCloudApiKey(cloudManagedSelection, cloudApiKey);
 	}
 
-	if (llmRoute?.transport === "direct" && llmApiKey) {
-		const provider = normalizeOnboardingProviderId(llmRoute.backend);
-		if (provider && provider !== "elizacloud") {
-			return {
-				llmSelection: {
-					backend: provider,
-					transport: "direct",
-					apiKey: llmApiKey,
-					...(llmRoute.primaryModel
-						? { primaryModel: llmRoute.primaryModel }
-						: {}),
-				},
-				...(cloudApiKey ? { cloudApiKey } : {}),
-			};
-		}
-	}
-
-	if (llmRoute?.transport === "remote" && llmApiKey) {
-		const provider = normalizeOnboardingProviderId(llmRoute.backend);
-		const remoteApiBase =
-			llmRoute.remoteApiBase ?? deploymentTarget?.remoteApiBase;
-		if (provider && provider !== "elizacloud" && remoteApiBase) {
-			return {
-				llmSelection: {
-					backend: provider,
-					transport: "remote",
-					remoteApiBase,
-					...(deploymentTarget?.remoteAccessToken
-						? { remoteAccessToken: deploymentTarget.remoteAccessToken }
-						: {}),
-					apiKey: llmApiKey,
-					...(llmRoute.primaryModel
-						? { primaryModel: llmRoute.primaryModel }
-						: {}),
-				},
-				...(cloudApiKey ? { cloudApiKey } : {}),
-			};
-		}
-	}
-
-	return {
-		llmSelection: null,
-		...(cloudApiKey ? { cloudApiKey } : {}),
-	};
+	const directSelection = deriveDirectCredentialSelection(llmRoute, llmApiKey);
+	const remoteSelection = deriveRemoteCredentialSelection({
+		llmRoute,
+		llmApiKey,
+		deploymentTarget,
+	});
+	return withCredentialCloudApiKey(
+		directSelection ?? remoteSelection,
+		cloudApiKey,
+	);
 }
 
 export function stripOnboardingConnectionSecrets(
