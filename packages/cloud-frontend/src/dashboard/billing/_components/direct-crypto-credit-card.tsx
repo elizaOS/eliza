@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@elizaos/ui";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { ConnectButton, useConnectModal } from "@rainbow-me/rainbowkit";
 import {
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
@@ -11,7 +11,8 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { Coins, Loader2, ShieldCheck, Wallet } from "lucide-react";
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { erc20Abi } from "viem";
 import { useAccount, useConfig, useSwitchChain } from "wagmi";
@@ -101,16 +102,9 @@ async function confirmDirectPayment(
 }
 
 /**
-<<<<<<< HEAD
  * Durability anchor: records the broadcast tx hash on the server the instant
  * the wallet returns it. Best-effort — the cron auto-confirm path is the
  * backstop if this network call fails.
-=======
- * Records a broadcast tx hash against the payment so the server can recover
- * it via the cron path if the client confirm step fails. We fire-and-log
- * here — the user-driven confirm path still runs after this, and the cron
- * path is the durability backstop.
->>>>>>> shaw/wip-snapshot-2026-05-21
  */
 async function attachDirectPaymentTx(
   paymentId: string,
@@ -152,8 +146,6 @@ export function DirectCryptoCreditCard({
   const [tokenSymbol, setTokenSymbol] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [activePaymentId, setActivePaymentId] = useState<string | null>(null);
-<<<<<<< HEAD
-=======
 
   // Resume the waiting overlay if a payment is mid-flight in localStorage —
   // covers tab close / refresh between broadcast and confirm.
@@ -163,13 +155,13 @@ export function DirectCryptoCreditCard({
       setActivePaymentId(persisted.paymentId);
     }
   }, []);
->>>>>>> shaw/wip-snapshot-2026-05-21
   const evm = useAccount();
   const wagmiConfig = useConfig();
   const { switchChainAsync } = useSwitchChain();
   const solana = useWallet();
   const { connection } = useConnection();
   const { setVisible: setSolanaModalVisible } = useWalletModal();
+  const { openConnectModal } = useConnectModal();
 
   const networks = status?.directWallet?.networks ?? [];
   const enabledNetworks = networks.filter(
@@ -195,6 +187,27 @@ export function DirectCryptoCreditCard({
   useEffect(() => {
     setTokenSymbol(null);
   }, [selected?.network]);
+
+  // Recover users who signed in via the legacy SIWE bypass path: their account
+  // has a wallet_address but wagmi never saw the connection, so on this route
+  // mount `useAccount().isConnected` is false. Auto-open the RainbowKit modal
+  // exactly once so they get back into a wagmi-tracked state without having to
+  // notice the "Connect Wallet" button themselves.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current) return;
+    if (selected?.network === "solana") return;
+    if (!accountWalletAddress) return;
+    if (evm.isConnected) return;
+    if (!openConnectModal) return;
+    autoOpenedRef.current = true;
+    openConnectModal();
+  }, [
+    accountWalletAddress,
+    evm.isConnected,
+    openConnectModal,
+    selected?.network,
+  ]);
 
   // Resume the waiting overlay if a payment is mid-flight in localStorage —
   // covers tab close / refresh between broadcast and confirm.
@@ -228,6 +241,16 @@ export function DirectCryptoCreditCard({
       return solana.publicKey?.toBase58() ?? null;
     return evm.isConnected ? (evm.address ?? null) : null;
   }, [evm.address, evm.isConnected, selected?.network, solana.publicKey]);
+
+  // Network-aware case-insensitive equality. Solana addresses are base58 and
+  // case-sensitive in principle, but elsewhere in this app we treat the account
+  // wallet address as a single string regardless of chain, so a case-insensitive
+  // compare is safe and matches existing read sites.
+  const walletMatches = Boolean(
+    connectedAddress &&
+      accountWalletAddress &&
+      connectedAddress.toLowerCase() === accountWalletAddress.toLowerCase(),
+  );
 
   async function sendEvmPayment(
     cfg: DirectNetworkConfig,
@@ -326,16 +349,10 @@ export function DirectCryptoCreditCard({
         tokenSymbol: selectedToken?.symbol,
         promoCode,
       });
-<<<<<<< HEAD
-
-      // Persist BEFORE asking the wallet to sign — if the user reloads
-      // while the wallet popup is open we'll resume the overlay on return.
-=======
       paymentIdForRecovery = payment.paymentId;
 
       // Persist BEFORE asking the wallet to sign — if the user reloads while
       // the wallet popup is open, we'll resume the wait once they return.
->>>>>>> shaw/wip-snapshot-2026-05-21
       pendingPaymentStore.save({
         paymentId: payment.paymentId,
         txHash: null,
@@ -348,17 +365,10 @@ export function DirectCryptoCreditCard({
           ? await sendSolanaPayment(payment)
           : await sendEvmPayment(selected, payment);
 
-<<<<<<< HEAD
       // As soon as we have a hash: persist it, attach on the server
       // (durability anchor — cron picks up from `broadcast`), and show
       // the waiting overlay. Confirm is fire-and-forget below; the
       // overlay's polling + cron drive the actual resolution.
-=======
-      // Two things happen in parallel as soon as we have a hash:
-      //   1. Record it on the server (durability anchor — cron picks up
-      //      from `broadcast` if confirm fails).
-      //   2. Show the user the waiting overlay.
->>>>>>> shaw/wip-snapshot-2026-05-21
       pendingPaymentStore.save({
         paymentId: payment.paymentId,
         txHash: hash,
@@ -368,31 +378,15 @@ export function DirectCryptoCreditCard({
       setActivePaymentId(payment.paymentId);
       void attachDirectPaymentTx(payment.paymentId, hash);
 
-<<<<<<< HEAD
       try {
         await confirmDirectPayment(payment.paymentId, hash);
       } catch (confirmError) {
-        // Inline confirm failed — that's OK. The cron auto-confirm picks
-        // up `broadcast` rows by hash and resolves them.
-=======
-      // Best-effort optimistic confirm. If this fails, the overlay's poll
-      // loop + the cron auto-confirm path will still resolve the payment.
-      try {
-        await confirmDirectPayment(payment.paymentId, hash);
-      } catch (confirmError) {
->>>>>>> shaw/wip-snapshot-2026-05-21
         console.warn(
           "[direct-crypto] inline confirm failed; relying on cron",
           confirmError,
         );
       }
     } catch (error) {
-<<<<<<< HEAD
-=======
-      // If we never got a hash, clear the persisted record — no on-chain
-      // commit to wait on. If we did get a hash, leave it: the overlay
-      // is mounted and will resolve the rest.
->>>>>>> shaw/wip-snapshot-2026-05-21
       if (!activePaymentId) pendingPaymentStore.clear();
       toast.error(error instanceof Error ? error.message : "Payment failed");
       void paymentIdForRecovery;
@@ -401,41 +395,23 @@ export function DirectCryptoCreditCard({
     }
   }
 
-<<<<<<< HEAD
   function handleOverlayResolved(s: PaymentWaitingStatus) {
     pendingPaymentStore.clear();
     if (s.status === "confirmed") {
       toast.success(
         `Added $${s.creditsToAdd} in cloud credit${
           s.bonusCredits ? ` (incl. $${s.bonusCredits} bonus)` : ""
-=======
-  function handleOverlayResolved(status: PaymentWaitingStatus) {
-    pendingPaymentStore.clear();
-    if (status.status === "confirmed") {
-      toast.success(
-        `Added $${status.creditsToAdd} in cloud credit${
-          status.bonusCredits ? ` (incl. $${status.bonusCredits} bonus)` : ""
->>>>>>> shaw/wip-snapshot-2026-05-21
         }`,
       );
       void onSuccess();
     } else {
-<<<<<<< HEAD
       toast.error(s.error ?? "Payment did not confirm. Contact support.");
-=======
-      toast.error(status.error ?? "Payment did not confirm. Contact support.");
->>>>>>> shaw/wip-snapshot-2026-05-21
     }
   }
 
   function handleOverlayDismiss() {
-<<<<<<< HEAD
     // Keep localStorage — the cron is still working on it. Only clear on
     // terminal resolution. Closing the overlay just hides the UI.
-=======
-    // Don't clear localStorage on dismiss — the cron is still working on it.
-    // We only clear once the payment terminally resolves.
->>>>>>> shaw/wip-snapshot-2026-05-21
     setActivePaymentId(null);
   }
 
@@ -509,6 +485,45 @@ export function DirectCryptoCreditCard({
         </div>
       </CardHeader>
       <CardContent className={`space-y-4 p-5 ${dividerClassName}`}>
+        {selected && connectedAddress && accountWalletAddress === null ? (
+          <div
+            role="status"
+            className={`rounded-xs border px-3 py-2 text-xs ${infoTileClassName}`}
+          >
+            <div className={infoValueClassName}>
+              Paying from {formatAddress(connectedAddress)} — not saved to your
+              account.
+            </div>
+            <div className={`mt-1 ${mutedTextClassName}`}>
+              Credits go to your Eliza Cloud account. To link this wallet for
+              future,{" "}
+              <Link
+                to="/dashboard/settings?tab=billing"
+                className="font-medium underline underline-offset-2"
+              >
+                Link wallet
+              </Link>
+              .
+            </div>
+          </div>
+        ) : null}
+
+        {selected &&
+        connectedAddress &&
+        accountWalletAddress !== null &&
+        !walletMatches ? (
+          <div
+            role="status"
+            className={`rounded-xs border px-3 py-2 text-xs ${infoTileClassName}`}
+          >
+            <div className={mutedTextClassName}>
+              Different wallet than your account (
+              {formatAddress(accountWalletAddress)}). Credits still go to your
+              account.
+            </div>
+          </div>
+        ) : null}
+
         {showNetworkSelector ? (
           <div
             className={`grid grid-cols-3 gap-2 rounded-xs border p-1 text-xs sm:gap-3 ${segmentClassName}`}

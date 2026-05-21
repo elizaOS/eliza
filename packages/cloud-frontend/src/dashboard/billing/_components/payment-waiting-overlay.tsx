@@ -4,7 +4,7 @@
  * PaymentWaitingOverlay — holds the user on a "Confirming on-chain" screen
  * until a direct-crypto payment resolves to confirmed or failed_chain.
  *
- * Poll cadence: every 3s. Cancels on confirmed/failed/failed_chain/expired.
+ * Poll cadence: every 3s. Cancels on confirmed/failed_chain/failed/expired.
  *
  * Recovery: the parent persists `{paymentId, txHash, network}` to
  * localStorage immediately after broadcast, so a refresh re-enters this

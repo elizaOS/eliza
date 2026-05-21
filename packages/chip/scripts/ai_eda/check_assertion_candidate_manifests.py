@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_DIR = ROOT / "verify/ai_eda/assertion_candidates"
 EXPECTED_SCHEMA = "eliza.ai_eda.assertion_candidate_manifest.v1"
 EXPECTED_CLAIM_BOUNDARY = "assertion_candidates_only_no_rtl_bind_formal_pass_or_release_claim"
-CLAIM_BOUNDARY = "assertion_candidate_validation_only_no_rtl_bind_formal_or_release_claim"
+ALLOWED_REVIEW_STATUS = {"pending", "approved", "rejected", "needs_revision"}
+ALLOWED_GENERATOR_SOURCE = {"human_seed", "llm_candidate", "retrieval_candidate", "tool_import"}
 REQUIRED_CANDIDATE_FIELDS = (
     "id",
     "status",
@@ -31,8 +32,6 @@ REQUIRED_CANDIDATE_FIELDS = (
     "bind_status",
     "promotion_gate",
 )
-ALLOWED_REVIEW_STATUS = {"pending", "approved", "rejected", "needs_revision"}
-ALLOWED_GENERATOR_SOURCE = {"human_seed", "llm_candidate", "retrieval_candidate", "tool_import"}
 
 
 def rel(path: Path) -> str:
@@ -87,9 +86,8 @@ def validate_candidate(candidate: Any, path: Path, index: int, seen: set[str], e
             errors.append(f"{label}.{field} must contain only non-empty strings")
     reset = require_mapping(candidate.get("reset"), f"{label}.reset", errors)
     if reset:
-        require_non_empty_str(reset, "signal", f"{label}.reset", errors)
-        require_non_empty_str(reset, "active", f"{label}.reset", errors)
-        require_non_empty_str(reset, "semantics", f"{label}.reset", errors)
+        for key in ("signal", "active", "semantics"):
+            require_non_empty_str(reset, key, f"{label}.reset", errors)
     generated_by = require_mapping(candidate.get("generated_by"), f"{label}.generated_by", errors)
     if generated_by:
         if generated_by.get("source") not in ALLOWED_GENERATOR_SOURCE:
@@ -183,7 +181,7 @@ def main() -> int:
         return 1
     print(
         "STATUS: PASS ai_eda.assertion_candidate_manifests "
-        f"manifests={len(manifests)} candidates={candidate_count} claim_boundary={CLAIM_BOUNDARY}"
+        f"manifests={len(manifests)} candidates={candidate_count} claim_boundary={EXPECTED_CLAIM_BOUNDARY}"
     )
     return 0
 

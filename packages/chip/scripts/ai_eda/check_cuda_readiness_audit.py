@@ -49,7 +49,17 @@ def validate(report: dict[str, Any]) -> list[str]:
     if not isinstance(evidence_run_ids, dict):
         errors.append("evidence_run_ids must be a mapping")
     else:
-        for field in ("setup_check", "training_handoff"):
+        for field in (
+            "preflight",
+            "payload",
+            "run_plan_execution",
+            "run_plan_safety_matrix",
+            "alphachip_checkpoint",
+            "current_research_watchlist",
+            "replay_preflight",
+            "setup_check",
+            "training_handoff",
+        ):
             if not isinstance(evidence_run_ids.get(field), str) or not evidence_run_ids[field]:
                 errors.append(f"evidence_run_ids.{field} must be non-empty")
     policy = report.get("policy")
@@ -73,6 +83,11 @@ def validate(report: dict[str, Any]) -> list[str]:
             "e1_openlane_replay_ready",
             "setup_check_bootstrap_complete",
             "training_handoff_bootstrap_complete",
+            "torch_training_validated",
+            "torch_inference_validated",
+            "full_replay_plan_validated",
+            "replay_queue_validated",
+            "training_handoff_payload_ready",
         ):
             if not isinstance(capabilities.get(field), bool):
                 errors.append(f"capabilities.{field} must be boolean")
