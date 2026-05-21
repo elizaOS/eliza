@@ -22,6 +22,7 @@ import {
   type Hex,
   http,
   isAddress,
+  parseAbi,
   parseAbiItem,
   parseEventLogs,
 } from "viem";
@@ -117,6 +118,57 @@ const BSC_TOKEN_OPTIONS: DirectWalletTokenOption[] = [
     decimals: 18,
   },
 ];
+
+// Chainlink BNB/USD aggregator on BSC mainnet — 8-decimal answer, ~60s
+// heartbeat, 0.5% deviation. Override via CRYPTO_DIRECT_BSC_BNB_USD_FEED for
+// tests / private deployments.
+const CHAINLINK_BNB_USD_FEED = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
+const CHAINLINK_AGGREGATOR_ABI = parseAbi([
+  "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
+  "function decimals() view returns (uint8)",
+]);
+// Reject the oracle if the last update is older than this. The feed normally
+// ticks every minute; an hour of staleness means the feed is unhealthy and
+// the price could be far from market. Locking a payment to a stale quote is
+// how exchanges get drained.
+const BNB_USD_MAX_AGE_SECONDS = 60 * 60;
+
+async function bnbUsdQuote(
+  env: Bindings,
+): Promise<{ priceUsd: Decimal; updatedAt: number; feedAddress: Hex }> {
+  const feedOverride = envString(env, "CRYPTO_DIRECT_BSC_BNB_USD_FEED");
+  const feed = feedOverride ? getAddress(feedOverride) : getAddress(CHAINLINK_BNB_USD_FEED);
+  const rpcUrl =
+    envString(env, "CRYPTO_DIRECT_BSC_RPC_URL") ??
+    envString(env, "BSC_RPC_URL") ??
+    "https://bsc-dataseed.binance.org";
+  const client = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+  const [round, decimals] = await Promise.all([
+    client.readContract({
+      address: feed,
+      abi: CHAINLINK_AGGREGATOR_ABI,
+      functionName: "latestRoundData",
+    }),
+    client.readContract({
+      address: feed,
+      abi: CHAINLINK_AGGREGATOR_ABI,
+      functionName: "decimals",
+    }),
+  ]);
+  const answer = round[1];
+  const updatedAt = Number(round[3]);
+  if (answer <= 0n) {
+    throw new Error("BNB/USD oracle returned a non-positive price");
+  }
+  const ageSeconds = Math.floor(Date.now() / 1000) - updatedAt;
+  if (ageSeconds < 0 || ageSeconds > BNB_USD_MAX_AGE_SECONDS) {
+    throw new Error(
+      `BNB/USD oracle is stale (last update ${ageSeconds}s ago); refusing to quote`,
+    );
+  }
+  const priceUsd = new Decimal(answer.toString()).div(new Decimal(10).pow(Number(decimals)));
+  return { priceUsd, updatedAt, feedAddress: feed };
+}
 
 function resolveBscToken(symbol: string | undefined): DirectWalletTokenOption {
   if (!symbol) return BSC_TOKEN_OPTIONS[1]; // default USDT
