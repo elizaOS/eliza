@@ -5,6 +5,7 @@ mass rollup. Deterministic; safe to re-run.
 
 Evidence class: cad_estimate_for_evt_planning, not_measured_hardware.
 """
+
 from __future__ import annotations
 
 import json
@@ -104,20 +105,21 @@ def refresh_mass_budget() -> dict:
             if role == "camera":
                 rho = float(p["density_g_per_cm3"])
             mass_g = vol_mm3 * rho / 1000.0
-        refreshed_parts.append({
-            "name": p["name"],
-            "role": role,
-            "volume_mm3": round(vol_mm3, 3),
-            "density_g_per_cm3": round(rho, 3),
-            "mass_g": round(mass_g, 4),
-            "excluded_placeholder": p["excluded_placeholder"],
-        })
+        refreshed_parts.append(
+            {
+                "name": p["name"],
+                "role": role,
+                "volume_mm3": round(vol_mm3, 3),
+                "density_g_per_cm3": round(rho, 3),
+                "mass_g": round(mass_g, 4),
+                "excluded_placeholder": p["excluded_placeholder"],
+            }
+        )
         role_totals[role] = role_totals.get(role, 0.0) + mass_g
         rollup += mass_g
 
     hidden = [
-        {"item": name, "mass_g": round(m, 3), "source": src}
-        for name, m, src in HIDDEN_MASSES
+        {"item": name, "mass_g": round(m, 3), "source": src} for name, m, src in HIDDEN_MASSES
     ]
     hidden_total = sum(h["mass_g"] for h in hidden)
     total = rollup + hidden_total
@@ -242,17 +244,19 @@ def build_tolerance_stack() -> dict:
         rss = (sum(c["tol_mm"] ** 2 for c in contributors)) ** 0.5
         wc_pass = wc <= target_tol
         rss_pass = rss <= target_tol
-        stacks.append({
-            "name": name,
-            "target_nominal_mm": target_nom,
-            "target_tolerance_mm": target_tol,
-            "contributors": contributors,
-            "worst_case_sum_mm": round(wc, 4),
-            "rss_mm": round(rss, 4),
-            "worst_case_pass": wc_pass,
-            "rss_pass": rss_pass,
-            "verdict": "PASS" if rss_pass else "FAIL",
-        })
+        stacks.append(
+            {
+                "name": name,
+                "target_nominal_mm": target_nom,
+                "target_tolerance_mm": target_tol,
+                "contributors": contributors,
+                "worst_case_sum_mm": round(wc, 4),
+                "rss_mm": round(rss, 4),
+                "worst_case_pass": wc_pass,
+                "rss_pass": rss_pass,
+                "verdict": "PASS" if rss_pass else "FAIL",
+            }
+        )
 
     # Common contributors
     plastic_shrink = {"source": "PC+ABS molding shrink ±0.15%", "tol_mm": 0.05}
@@ -335,23 +339,32 @@ def md_mass_budget(mb: dict) -> str:
     ]
     for role, m in mb["mass_by_role_g"].items():
         lines.append(f"| {role} | {m:.3f} |")
-    lines += ["", "## Hidden / off-STEP masses", "",
-              "| Item | Mass (g) | Source |", "|---|---|---|"]
+    lines += [
+        "",
+        "## Hidden / off-STEP masses",
+        "",
+        "| Item | Mass (g) | Source |",
+        "|---|---|---|",
+    ]
     for h in mb["hidden_masses"]:
         lines.append(f"| {h['item']} | {h['mass_g']:.3f} | {h['source']} |")
     if mb["delta_to_target_g"] < 0:
-        lines += ["",
-                  f"Delta is **{mb['delta_to_target_g']:+.2f} g** (under target). "
-                  "Likely missed mass: cover-glass ink layer + polarizer "
-                  "(~1-2 g), bond-line adhesive coverage beyond perimeter "
-                  "ribbon, conformal coating, and labeling. EVT mass "
-                  "measurement will close the gap."]
+        lines += [
+            "",
+            f"Delta is **{mb['delta_to_target_g']:+.2f} g** (under target). "
+            "Likely missed mass: cover-glass ink layer + polarizer "
+            "(~1-2 g), bond-line adhesive coverage beyond perimeter "
+            "ribbon, conformal coating, and labeling. EVT mass "
+            "measurement will close the gap.",
+        ]
     else:
-        lines += ["",
-                  f"Delta is **{mb['delta_to_target_g']:+.2f} g** (over target). "
-                  "Optimization candidates: thin back-shell ribs, reduce EMI "
-                  "can wall thickness from 0.20 mm to 0.15 mm, lighter LRA "
-                  "counterweight."]
+        lines += [
+            "",
+            f"Delta is **{mb['delta_to_target_g']:+.2f} g** (over target). "
+            "Optimization candidates: thin back-shell ribs, reduce EMI "
+            "can wall thickness from 0.20 mm to 0.15 mm, lighter LRA "
+            "counterweight.",
+        ]
     return "\n".join(lines) + "\n"
 
 
@@ -372,7 +385,7 @@ def md_spec_sheet(s: dict) -> str:
         f"- Color / material: {s['mechanical']['color']} / {s['mechanical']['material']}",
         "",
         "## Display",
-        f"- 5.5\" IPS LCD, 1080x1920 FHD, MIPI DSI, capacitive multi-touch",
+        '- 5.5" IPS LCD, 1080x1920 FHD, MIPI DSI, capacitive multi-touch',
         f"- Cover glass: {s['display']['cover_glass_mm']} mm",
         f"- Active area: {s['display']['active_area_mm']} mm",
         "",
@@ -438,8 +451,7 @@ def md_tolerance_stack(t: dict) -> str:
             f"- Target: {s['target_nominal_mm']} ± {s['target_tolerance_mm']} mm",
             f"- Worst-case sum: {s['worst_case_sum_mm']} mm "
             f"({'PASS' if s['worst_case_pass'] else 'FAIL'})",
-            f"- RSS: {s['rss_mm']} mm "
-            f"({'PASS' if s['rss_pass'] else 'FAIL'})",
+            f"- RSS: {s['rss_mm']} mm ({'PASS' if s['rss_pass'] else 'FAIL'})",
             f"- **Verdict: {s['verdict']}**",
             "",
             "| Contributor | ± Tol (mm) |",
@@ -466,11 +478,12 @@ def main() -> None:
     (REVIEW / "tolerance-stack.json").write_text(json.dumps(tol, indent=2) + "\n")
     (REVIEW / "tolerance-stack.md").write_text(md_tolerance_stack(tol))
 
-    print(f"Total mass: {mb['total_estimated_mass_g']:.2f} g "
-          f"(delta {mb['delta_to_target_g']:+.2f} g vs {TARGET_MASS_G} g)")
+    print(
+        f"Total mass: {mb['total_estimated_mass_g']:.2f} g "
+        f"(delta {mb['delta_to_target_g']:+.2f} g vs {TARGET_MASS_G} g)"
+    )
     for s in tol["stacks"]:
-        print(f"  {s['name']}: WC={s['worst_case_sum_mm']} RSS={s['rss_mm']} "
-              f"-> {s['verdict']}")
+        print(f"  {s['name']}: WC={s['worst_case_sum_mm']} RSS={s['rss_mm']} -> {s['verdict']}")
 
 
 if __name__ == "__main__":

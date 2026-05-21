@@ -32,7 +32,9 @@ if not FIRST_BOOT.exists():
 AGENT_UNIT = VARIANT / "config/includes.chroot/etc/systemd/system/elizaos-agent.service"
 AGENT_INSTALL_HOOK = VARIANT / "config/hooks/normal/0010-elizaos-agent.hook.chroot"
 RELEASE_CHECK = VARIANT / "scripts/check_release_manifest.py"
-TUI_SMOKE_UNIT = VARIANT / "config/includes.chroot/etc/systemd/system/elizaos-terminal-tui-smoke.service"
+TUI_SMOKE_UNIT = (
+    VARIANT / "config/includes.chroot/etc/systemd/system/elizaos-terminal-tui-smoke.service"
+)
 TUI_SMOKE_SCRIPT = VARIANT / "config/includes.chroot/usr/lib/elizaos/run-terminal-tui-smoke.sh"
 REPORT = ROOT / "build/reports/os_rv64_chip_boot_contract.json"
 SCHEMA = "eliza.os_rv64_chip_boot_contract.v1"

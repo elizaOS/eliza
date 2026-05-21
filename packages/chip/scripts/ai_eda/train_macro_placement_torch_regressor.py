@@ -19,7 +19,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET_ROOT = ROOT / "build/ai_eda/macro_placement_supervised_dataset"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/macro_placement_torch_regressor"
-CLAIM_BOUNDARY = "macro_placement_torch_regressor_training_only_no_inference_replay_or_release_claim"
+CLAIM_BOUNDARY = (
+    "macro_placement_torch_regressor_training_only_no_inference_replay_or_release_claim"
+)
 ORIENTATIONS = ("N", "S", "E", "W", "FN", "FS", "FE", "FW")
 
 
@@ -105,7 +107,9 @@ def build_model(torch: Any) -> Any:
     )
 
 
-def evaluate(torch: Any, model: Any, samples: list[dict[str, Any]], device: Any, split: str) -> dict[str, Any]:
+def evaluate(
+    torch: Any, model: Any, samples: list[dict[str, Any]], device: Any, split: str
+) -> dict[str, Any]:
     if not samples:
         return {"split": split, "sample_count": 0}
     features, xy, orientation_ids = make_tensors(torch, samples, device)

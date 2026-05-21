@@ -13,7 +13,9 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/cuda_training_payloads/validation/cuda_training_payload_report.json"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/cuda_training_payloads/validation/cuda_training_payload_report.json"
+)
 LOCKFILE = ROOT / "external/SOURCES.lock.yaml"
 EXPECTED_REPORT_SCHEMA = "eliza.ai_eda.cuda_training_payload_report.v1"
 EXPECTED_PLAN_SCHEMA = "eliza.ai_eda.cuda_training_payload.v1"
@@ -64,6 +66,8 @@ REQUIRED_PLAN_COMMANDS = (
     "make PYTHON=python3 AI_EDA_RUN_ID=<cuda-host> ai-eda-cuda-readiness-audit",
     "python3 scripts/ai_eda/capture_cuda_readiness_audit.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/check_cuda_readiness_audit.py --report build/ai_eda/cuda_readiness_audit/<cuda-host>/cuda_readiness_audit.json",
+    "python3 scripts/ai_eda/package_cuda_evidence_bundle.py --run-id <cuda-host>",
+    "python3 scripts/ai_eda/check_cuda_evidence_bundle.py --report build/ai_eda/cuda_evidence_bundles/<cuda-host>/cuda_evidence_bundle.json",
     "python3 scripts/ai_eda/train_macro_placement_torch_regressor.py --run-id <cuda-host> --device auto --epochs 200",
     "python3 scripts/ai_eda/infer_macro_placement_torch_regressor.py --run-id <cuda-host> --device auto",
     "python3 scripts/ai_eda/convert_edalearn_to_internal_records.py --run-id <cuda-host> --sample-limit 64",
@@ -130,6 +134,7 @@ REQUIRED_OUTPUTS = {
     "build/ai_eda/cuda_readiness_audit/<run-id>/cuda_readiness_audit.json",
     "build/ai_eda/cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json",
     "build/ai_eda/cuda_run_plan_safety_matrix/<run-id>/cuda_run_plan_safety_matrix.json",
+    "build/ai_eda/cuda_evidence_bundles/<run-id>/cuda_evidence_bundle.json",
     "build/ai_eda/cuda_training_preflight/<run-id>/cuda_training_preflight.json",
     "build/ai_eda/dfm_yield_lithography_targets/<run-id>/targets_report.json",
     "build/ai_eda/dft_atpg_targets/<run-id>/targets_report.json",
@@ -186,6 +191,16 @@ REQUIRED_OUTPUTS = {
 }
 
 ORDER_CONSTRAINTS = (
+    (
+        "python3 scripts/ai_eda/check_cuda_readiness_audit.py --report build/ai_eda/cuda_readiness_audit/<cuda-host>/cuda_readiness_audit.json",
+        "python3 scripts/ai_eda/package_cuda_evidence_bundle.py --run-id <cuda-host>",
+        "readiness audit check before evidence bundle",
+    ),
+    (
+        "python3 scripts/ai_eda/package_cuda_evidence_bundle.py --run-id <cuda-host>",
+        "python3 scripts/ai_eda/check_cuda_evidence_bundle.py --report build/ai_eda/cuda_evidence_bundles/<cuda-host>/cuda_evidence_bundle.json",
+        "evidence bundle before evidence bundle check",
+    ),
     (
         "python3 scripts/ai_eda/materialize_internal_dataset_fixtures.py --run-id <cuda-host>",
         "python3 scripts/ai_eda/build_training_corpus_manifest.py --run-id <cuda-host>",
@@ -409,7 +424,9 @@ def validate_plan(plan: dict[str, Any], members: set[str], lock_ids: set[str]) -
     if not isinstance(outputs, list) or not outputs:
         errors.append("expected_outputs must be non-empty")
     else:
-        missing_outputs = sorted(REQUIRED_OUTPUTS - {item for item in outputs if isinstance(item, str)})
+        missing_outputs = sorted(
+            REQUIRED_OUTPUTS - {item for item in outputs if isinstance(item, str)}
+        )
         if missing_outputs:
             errors.append(f"missing expected output patterns: {', '.join(missing_outputs)}")
     return errors
@@ -426,7 +443,11 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
     payload = report.get("payload")
     run_plan = report.get("run_plan")
     runbook = report.get("runbook")
-    if not isinstance(payload, str) or not isinstance(run_plan, str) or not isinstance(runbook, str):
+    if (
+        not isinstance(payload, str)
+        or not isinstance(run_plan, str)
+        or not isinstance(runbook, str)
+    ):
         return errors + ["payload, run_plan, and runbook paths are required"]
     payload_path = repo_path(payload)
     run_plan_path = repo_path(run_plan)
@@ -446,7 +467,11 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
             members = {member.name for member in archive.getmembers() if member.isfile()}
             embedded_file = archive.extractfile("cuda_training_run_plan.json")
             embedded = json.loads(embedded_file.read().decode("utf-8")) if embedded_file else None
-            runbook_file = archive.extractfile(REQUIRED_RUNBOOK_MEMBER) if REQUIRED_RUNBOOK_MEMBER in members else None
+            runbook_file = (
+                archive.extractfile(REQUIRED_RUNBOOK_MEMBER)
+                if REQUIRED_RUNBOOK_MEMBER in members
+                else None
+            )
             embedded_runbook = runbook_file.read().decode("utf-8") if runbook_file else None
     except Exception as exc:  # noqa: BLE001
         return errors + [f"{rel(payload_path)}: {exc}"]

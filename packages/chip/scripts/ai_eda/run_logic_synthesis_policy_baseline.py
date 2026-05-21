@@ -7,8 +7,8 @@ import argparse
 import json
 import os
 import re
-import signal
 import shutil
+import signal
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,7 +46,9 @@ def parse_stat(log_text: str, top: str) -> dict[str, Any]:
         if match:
             metrics[key] = int(match.group(1))
     cell_histogram: dict[str, int] = {}
-    for count, cell_type in re.findall(r"^\s*(\d+)\s+(\$[A-Za-z0-9_]+)\s*$", section, flags=re.MULTILINE):
+    for count, cell_type in re.findall(
+        r"^\s*(\d+)\s+(\$[A-Za-z0-9_]+)\s*$", section, flags=re.MULTILINE
+    ):
         cell_histogram[cell_type] = int(count)
     if cell_histogram:
         metrics["cell_histogram"] = cell_histogram
@@ -101,7 +103,9 @@ def run_recipe(
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             _stdout, stderr = process.communicate()
-        log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
+        log_text = (
+            log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
+        )
         return {
             "id": result_id,
             "target": target_id,

@@ -11,7 +11,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/macro_placement_replay/validation/replay_plan.json"
-CLAIM_BOUNDARY = "macro_placement_replay_plan_validation_only_no_openroad_execution_or_release_claim"
+CLAIM_BOUNDARY = (
+    "macro_placement_replay_plan_validation_only_no_openroad_execution_or_release_claim"
+)
 PLAN_CLAIM_BOUNDARY = "macro_placement_replay_plan_only_no_openroad_execution_or_release_claim"
 ALLOWED_STATUSES = {
     "READY_FOR_DETERMINISTIC_REPLAY",
@@ -145,8 +147,14 @@ def validate_plan(plan: dict[str, Any], report_path: Path) -> list[str]:
         override_count = artifacts.get("override_count")
         if isinstance(overrides_list, list) and override_count != len(overrides_list):
             errors.append(f"{candidate_id}: override_count does not match overrides length")
-        if macro_cfg.exists() and isinstance(override_count, int) and cfg_move_count(macro_cfg) != override_count:
-            errors.append(f"{candidate_id}: macro_placement_cfg line count does not match override_count")
+        if (
+            macro_cfg.exists()
+            and isinstance(override_count, int)
+            and cfg_move_count(macro_cfg) != override_count
+        ):
+            errors.append(
+                f"{candidate_id}: macro_placement_cfg line count does not match override_count"
+            )
 
         tool_action = item.get("tool_action_manifest")
         if not isinstance(tool_action, str) or not repo_path(tool_action).exists():
@@ -156,7 +164,12 @@ def validate_plan(plan: dict[str, Any], report_path: Path) -> list[str]:
         if not isinstance(replay, dict):
             errors.append(f"{candidate_id}: deterministic_replay must be a mapping")
         else:
-            for field in ("candidate_schema_check", "placement_case_replay_command", "expected_report", "next_openlane_step"):
+            for field in (
+                "candidate_schema_check",
+                "placement_case_replay_command",
+                "expected_report",
+                "next_openlane_step",
+            ):
                 if not replay.get(field):
                     errors.append(f"{candidate_id}: deterministic_replay.{field} is required")
 

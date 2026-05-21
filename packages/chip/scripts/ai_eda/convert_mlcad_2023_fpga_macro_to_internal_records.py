@@ -132,7 +132,9 @@ def parse_lib(path: Path) -> list[dict[str, Any]]:
             current = None
             continue
         if current is not None and len(parts) >= 3 and parts[0] == "PIN":
-            current["pins"].append({"name": parts[1], "direction": parts[2], "attributes": parts[3:]})
+            current["pins"].append(
+                {"name": parts[1], "direction": parts[2], "attributes": parts[3:]}
+            )
     return cells
 
 
@@ -215,7 +217,9 @@ def convert_bucket(
         "FPGA macro-placement transfer is advisory until replayed on deterministic E1 OpenLane/OpenROAD cases",
     ]
     if full_case_files:
-        blockers[0] = "per-design files are present but require a dedicated full Bookshelf parser before score claims"
+        blockers[0] = (
+            "per-design files are present but require a dedicated full Bookshelf parser before score claims"
+        )
 
     design_bundle = {
         "schema": "eda.design_bundle.v1",
@@ -247,16 +251,45 @@ def convert_bucket(
         "graph": {
             "coordinate_system": "fpga_site_grid_metadata_only_no_macro_solution",
             "node_features": [
-                {"id": "clock_bucket", "node_type": "clock_group", "clock_count": clock_count, "design_count": len(design_ids)},
-                {"id": "device_grid", "node_type": "fpga_site_grid", **summaries["scl"]["sitemap_dimensions"]},
-                {"id": "site_types", "node_type": "resource_catalog", "site_type_count": len(summaries["scl"]["site_definitions"])},
+                {
+                    "id": "clock_bucket",
+                    "node_type": "clock_group",
+                    "clock_count": clock_count,
+                    "design_count": len(design_ids),
+                },
+                {
+                    "id": "device_grid",
+                    "node_type": "fpga_site_grid",
+                    **summaries["scl"]["sitemap_dimensions"],
+                },
+                {
+                    "id": "site_types",
+                    "node_type": "resource_catalog",
+                    "site_type_count": len(summaries["scl"]["site_definitions"]),
+                },
                 {"id": "library_cells", "node_type": "cell_catalog", "cell_count": lib_cell_count},
-                {"id": "cascade_shapes", "node_type": "macro_cascade_catalog", "instance_count": cascade_count},
+                {
+                    "id": "cascade_shapes",
+                    "node_type": "macro_cascade_catalog",
+                    "instance_count": cascade_count,
+                },
             ],
             "edge_features": [
-                {"src": "clock_bucket", "dst": "device_grid", "edge_type": "placement_constraint_context"},
-                {"src": "site_types", "dst": "library_cells", "edge_type": "legal_resource_mapping"},
-                {"src": "cascade_shapes", "dst": "device_grid", "edge_type": "macro_column_legality"},
+                {
+                    "src": "clock_bucket",
+                    "dst": "device_grid",
+                    "edge_type": "placement_constraint_context",
+                },
+                {
+                    "src": "site_types",
+                    "dst": "library_cells",
+                    "edge_type": "legal_resource_mapping",
+                },
+                {
+                    "src": "cascade_shapes",
+                    "dst": "device_grid",
+                    "edge_type": "macro_column_legality",
+                },
             ],
         },
         "labels": {
@@ -280,7 +313,10 @@ def convert_bucket(
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
         "toolchain": {
-            "tools": ["MLCAD 2023 FPGA Macro Placement Contest public specs", "Vivado contest flow metadata"],
+            "tools": [
+                "MLCAD 2023 FPGA Macro Placement Contest public specs",
+                "Vivado contest flow metadata",
+            ],
             "version_capture": "external/datasets/mlcad-2023-fpga-macro/manifest.yaml",
         },
         "command": "python3 scripts/ai_eda/convert_mlcad_2023_fpga_macro_to_internal_records.py --run-id <run-id>",
@@ -315,7 +351,7 @@ def convert_bucket(
             "design_count": len(design_ids),
             "status": result,
         }
-        for record, path in zip(records, paths)
+        for record, path in zip(records, paths, strict=False)
     ]
 
 
@@ -332,7 +368,9 @@ def main() -> int:
     files = source_files(args.payload)
     missing = [name for name, path in files.items() if name != "io_map" and not path.is_file()]
     if missing:
-        print(f"STATUS: BLOCKED ai_eda.mlcad_2023_fpga_macro_conversion missing_files={','.join(missing)}")
+        print(
+            f"STATUS: BLOCKED ai_eda.mlcad_2023_fpga_macro_conversion missing_files={','.join(missing)}"
+        )
         return 2
     buckets = parse_clock_buckets(files["clock_key"])
     if not buckets:

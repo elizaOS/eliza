@@ -92,8 +92,14 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
         return errors + ["queue must be a non-empty list"]
     if report.get("queue_count") != len(queue):
         errors.append("queue_count does not match queue length")
-    ready_count = sum(1 for item in queue if isinstance(item, dict) and item.get("ready_for_execution") is True)
-    blocked_count = sum(1 for item in queue if isinstance(item, dict) and item.get("ready_for_execution") is not True)
+    ready_count = sum(
+        1 for item in queue if isinstance(item, dict) and item.get("ready_for_execution") is True
+    )
+    blocked_count = sum(
+        1
+        for item in queue
+        if isinstance(item, dict) and item.get("ready_for_execution") is not True
+    )
     if report.get("ready_count") != ready_count:
         errors.append("ready_count does not match queue")
     if report.get("blocked_count") != blocked_count:
@@ -148,12 +154,19 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
                     "sha256": artifacts.get("placement_overrides_sha256"),
                 },
             )
-            if not isinstance(artifacts.get("override_count"), int) or artifacts["override_count"] < 1:
+            if (
+                not isinstance(artifacts.get("override_count"), int)
+                or artifacts["override_count"] < 1
+            ):
                 errors.append(f"{candidate_id}: artifacts.override_count must be positive")
-        check_hashed_path(errors, f"{candidate_id}.tool_action_manifest", item.get("tool_action_manifest"))
+        check_hashed_path(
+            errors, f"{candidate_id}.tool_action_manifest", item.get("tool_action_manifest")
+        )
         replay = item.get("deterministic_replay")
         if not isinstance(replay, dict) or not replay.get("candidate_schema_check"):
-            errors.append(f"{candidate_id}: deterministic_replay must include candidate_schema_check")
+            errors.append(
+                f"{candidate_id}: deterministic_replay must include candidate_schema_check"
+            )
     gates = report.get("next_required_gates")
     if not isinstance(gates, list) or not any("OpenLane/OpenROAD" in str(gate) for gate in gates):
         errors.append("next_required_gates must mention OpenLane/OpenROAD replay")

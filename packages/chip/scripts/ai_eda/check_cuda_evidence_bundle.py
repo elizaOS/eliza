@@ -11,7 +11,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_SCHEMA = "eliza.ai_eda.cuda_evidence_bundle.v1"
-EXPECTED_CLAIM_BOUNDARY = "cuda_evidence_bundle_manifest_only_no_training_inference_or_release_claim"
+EXPECTED_CLAIM_BOUNDARY = (
+    "cuda_evidence_bundle_manifest_only_no_training_inference_or_release_claim"
+)
 
 
 def rel(path: Path) -> str:
@@ -70,7 +72,10 @@ def validate(report: dict[str, Any]) -> list[str]:
             errors.append("source_readiness_audit missing on disk")
         elif sha256_file(audit_path) != report.get("source_readiness_audit_sha256"):
             errors.append("source_readiness_audit_sha256 is stale")
-    if report.get("readiness_status") not in {"READY_FOR_CUDA_EXECUTION", "PASS_WITH_BLOCKERS_RECORDED"}:
+    if report.get("readiness_status") not in {
+        "READY_FOR_CUDA_EXECUTION",
+        "PASS_WITH_BLOCKERS_RECORDED",
+    }:
         errors.append("readiness_status mismatch")
     if not isinstance(report.get("evidence_run_ids"), dict) or not report["evidence_run_ids"]:
         errors.append("evidence_run_ids must be a non-empty mapping")

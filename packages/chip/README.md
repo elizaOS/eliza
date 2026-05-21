@@ -113,9 +113,10 @@ tarball, embedded run plan, generated `cuda_handoff_README.md`, selected
 assets, critical fetch commands, expected CUDA outputs, the current-research
 watchlist capture handoff, OpenROAD ML snapshot handoff, the E1 AI workload
 manifest/checker, the fail-closed CT/SA/Hier-RTLMP/ChipDiffusion real-wrapper
-readiness contract, the quarantined assertion-candidate manifest checker, and
-the deterministic macro-placement replay queue for top ranked candidates, and
-the no-datasets/no-weights payload boundary.
+readiness contract, the quarantined assertion-candidate manifest checker, the
+deterministic macro-placement replay queue for top ranked candidates, the
+hash-pinned CUDA evidence bundle manifest, and the no-datasets/no-weights
+payload boundary.
 `make ai-eda-cuda-run-plan-dry-run`
 expands the embedded CUDA run plan into a reviewed execution manifest without
 running commands. `make ai-eda-cuda-run-plan-safety-matrix` then proves each
@@ -136,7 +137,9 @@ manual audits assembled from reviewed artifacts generated under separate run
 IDs, `capture_cuda_readiness_audit.py` also accepts explicit
 `--preflight-run-id`, `--payload-run-id`, `--run-plan-execution-run-id`,
 `--run-plan-safety-run-id`, `--alphachip-run-id`, `--watchlist-run-id`, and
-`--replay-preflight-run-id` arguments.
+`--replay-preflight-run-id` arguments. `make ai-eda-cuda-evidence-bundle`
+then packages the readiness audit and every referenced handoff artifact path,
+SHA256, size, capability flag, and blocker count into a replayable manifest.
 
 ## Docker Setup
 

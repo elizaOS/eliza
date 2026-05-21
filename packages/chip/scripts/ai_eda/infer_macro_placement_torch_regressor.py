@@ -108,7 +108,9 @@ def predicted_locations(
     min_x, min_y, max_x, max_y = [float(value) for value in core]
     core_w = max(max_x - min_x, 1.0)
     core_h = max(max_y - min_y, 1.0)
-    features = [sample_features(object_sample(case, obj, index)) for index, obj in enumerate(movable)]
+    features = [
+        sample_features(object_sample(case, obj, index)) for index, obj in enumerate(movable)
+    ]
     with torch.no_grad():
         output = model(torch.tensor(features, dtype=torch.float32, device=device))
         xy_values = output[:, :2].clamp(0.0, 1.0).detach().cpu().tolist()
@@ -116,7 +118,9 @@ def predicted_locations(
 
     predicted = []
     source_counts: Counter[str] = Counter()
-    for index, (obj, xy, orientation_id) in enumerate(zip(movable, xy_values, orientation_ids)):
+    for index, (obj, xy, orientation_id) in enumerate(
+        zip(movable, xy_values, orientation_ids, strict=False)
+    ):
         width, height = object_size_um(obj)
         x_um = min_x + float(xy[0]) * core_w
         y_um = min_y + float(xy[1]) * core_h
@@ -125,7 +129,9 @@ def predicted_locations(
                 index,
                 x_um + width / 2.0,
                 y_um + height / 2.0,
-                ORIENTATIONS[int(orientation_id)] if int(orientation_id) < len(ORIENTATIONS) else "N",
+                ORIENTATIONS[int(orientation_id)]
+                if int(orientation_id) < len(ORIENTATIONS)
+                else "N",
                 "torch_regressor",
             )
         )
@@ -138,6 +144,7 @@ def predicted_locations(
     for (obj_index, _px, _py, orientation, source), (_slot_index, slot) in zip(
         indexed_predictions,
         indexed_slots,
+        strict=False,
     ):
         locations_by_object[obj_index] = (slot[0], slot[1], orientation, source)
     return [
@@ -165,7 +172,10 @@ def score_candidate(case: dict[str, Any], changes: list[dict[str, Any]]) -> dict
         target_labels += 1
         value = change["value"]
         distances.append(
-            ((float(value["x_um"]) - float(target["x_um"])) ** 2 + (float(value["y_um"]) - float(target["y_um"])) ** 2)
+            (
+                (float(value["x_um"]) - float(target["x_um"])) ** 2
+                + (float(value["y_um"]) - float(target["y_um"])) ** 2
+            )
             ** 0.5
         )
     mean_target = sum(distances) / len(distances) if distances else None
@@ -191,7 +201,7 @@ def candidate_for_case(
         return None
     locations, source_counts = predicted_locations(torch, model, device, case, movable)
     changes = []
-    for obj, (x_um, y_um, orientation, _source) in zip(movable, locations):
+    for obj, (x_um, y_um, orientation, _source) in zip(movable, locations, strict=False):
         if not isinstance(obj, dict) or not obj.get("id"):
             continue
         changes.append(
@@ -296,7 +306,9 @@ def main() -> int:
             )
             continue
         candidate_path = candidates_dir / f"{candidate['id']}.json"
-        candidate_path.write_text(json.dumps(candidate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        candidate_path.write_text(
+            json.dumps(candidate, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         emitted.append(
             {
                 "id": candidate["id"],

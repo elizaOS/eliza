@@ -357,9 +357,9 @@ def main() -> int:
         "module_rf_pinout_execution_release_dependency": {
             "execution_status": module_rf_pinout["status"],
             "selected_cellular": module_rf_pinout["selected_module_context"]["cellular"]["family"],
-            "selected_wifi_bluetooth": module_rf_pinout["selected_module_context"]["wifi_bluetooth"][
-                "order_number"
-            ],
+            "selected_wifi_bluetooth": module_rf_pinout["selected_module_context"][
+                "wifi_bluetooth"
+            ]["order_number"],
             "rf_feed_count": len(module_rf_pinout["rf_feed_execution"]),
             "module_execution_record_ids": [
                 item["id"] for item in module_rf_pinout["module_pinout_execution"]

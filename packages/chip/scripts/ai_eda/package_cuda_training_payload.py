@@ -69,6 +69,8 @@ BASE_INCLUDE = (
     "scripts/ai_eda/check_cuda_run_plan_safety_matrix.py",
     "scripts/ai_eda/capture_cuda_readiness_audit.py",
     "scripts/ai_eda/check_cuda_readiness_audit.py",
+    "scripts/ai_eda/package_cuda_evidence_bundle.py",
+    "scripts/ai_eda/check_cuda_evidence_bundle.py",
     "scripts/ai_eda/bootstrap_ai_eda_stack.py",
     "scripts/ai_eda/build_training_corpus_manifest.py",
     "scripts/ai_eda/check_candidate_manifests.py",
@@ -290,6 +292,8 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
             "make PYTHON=python3 AI_EDA_RUN_ID=<cuda-host> ai-eda-cuda-readiness-audit",
             "python3 scripts/ai_eda/capture_cuda_readiness_audit.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/check_cuda_readiness_audit.py --report build/ai_eda/cuda_readiness_audit/<cuda-host>/cuda_readiness_audit.json",
+            "python3 scripts/ai_eda/package_cuda_evidence_bundle.py --run-id <cuda-host>",
+            "python3 scripts/ai_eda/check_cuda_evidence_bundle.py --report build/ai_eda/cuda_evidence_bundles/<cuda-host>/cuda_evidence_bundle.json",
             "python3 scripts/ai_eda/check_external_asset_manifests.py",
             "python3 scripts/ai_eda/check_external_intake_manifests.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/fetch_external_asset.py --all --dry-run --run-id <cuda-host>",
@@ -459,6 +463,7 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
             "build/ai_eda/cuda_readiness_audit/<run-id>/cuda_readiness_audit.json",
             "build/ai_eda/cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json",
             "build/ai_eda/cuda_run_plan_safety_matrix/<run-id>/cuda_run_plan_safety_matrix.json",
+            "build/ai_eda/cuda_evidence_bundles/<run-id>/cuda_evidence_bundle.json",
             "build/ai_eda/rag_index/source_manifest.json",
             "build/ai_eda/rag_index/citation_smoke_report.json",
             "build/ai_eda/backend_preflight/<run-id>/backend_preflight_report.json",
@@ -585,7 +590,9 @@ def write_runbook(out_dir: Path, plan_path: Path, args: argparse.Namespace) -> P
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     if not isinstance(plan, dict):
         raise SystemExit(f"{plan_path}: expected JSON object")
-    commands = [command for command in plan.get("required_remote_commands", []) if isinstance(command, str)]
+    commands = [
+        command for command in plan.get("required_remote_commands", []) if isinstance(command, str)
+    ]
     outputs = [output for output in plan.get("expected_outputs", []) if isinstance(output, str)]
     anchors = [
         "python3 scripts/ai_eda/execute_cuda_run_plan.py --plan build/ai_eda/cuda_training_payloads/<cuda-host>/cuda_training_run_plan.json --run-id <cuda-host>",
@@ -657,7 +664,16 @@ def write_runbook(out_dir: Path, plan_path: Path, args: argparse.Namespace) -> P
         "",
     ]
     for output in outputs:
-        if any(token in output for token in ("cuda_run_plan_execution", "cuda_readiness_audit", "training_corpus_manifest", "macro_placement_torch", "macro_placement_replay_preflight")):
+        if any(
+            token in output
+            for token in (
+                "cuda_run_plan_execution",
+                "cuda_readiness_audit",
+                "training_corpus_manifest",
+                "macro_placement_torch",
+                "macro_placement_replay_preflight",
+            )
+        ):
             lines.append(f"- `{output}`")
     lines.extend(
         [

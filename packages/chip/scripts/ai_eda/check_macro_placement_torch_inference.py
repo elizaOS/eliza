@@ -9,9 +9,13 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/macro_placement_torch_inference/validation/torch_inference_run.json"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/macro_placement_torch_inference/validation/torch_inference_run.json"
+)
 CLAIM_BOUNDARY = "macro_placement_torch_inference_only_no_openroad_replay_or_release_claim"
-TRAINING_CLAIM_BOUNDARY = "macro_placement_torch_regressor_training_only_no_inference_replay_or_release_claim"
+TRAINING_CLAIM_BOUNDARY = (
+    "macro_placement_torch_regressor_training_only_no_inference_replay_or_release_claim"
+)
 
 
 def rel(path: Path) -> str:
@@ -131,7 +135,9 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
 
     candidate_dir = report_path.parent / "candidates"
     if candidate_dir.exists():
-        actual_paths = sorted(path.resolve() for path in candidate_dir.glob("macro-placement-torch-regressor-*.json"))
+        actual_paths = sorted(
+            path.resolve() for path in candidate_dir.glob("macro-placement-torch-regressor-*.json")
+        )
         if sorted(reported_paths) != actual_paths:
             errors.append("candidate directory inventory does not match report.candidates")
     elif candidates:

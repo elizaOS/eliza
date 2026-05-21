@@ -134,9 +134,7 @@ def main() -> int:
     route_summary = routing_acceptance["routing_summary"]
     manufacturing_state = manufacturing["board_state_detected"]
 
-    execution_phases = [
-        phase_record(phase, release_outputs) for phase in evt1["route_phases"]
-    ]
+    execution_phases = [phase_record(phase, release_outputs) for phase in evt1["route_phases"]]
     output_manifest_closure = [
         {
             "id": key,
@@ -159,9 +157,7 @@ def main() -> int:
         for domain, item in routed_release["route_completion_requirements"].items()
     ]
 
-    footprint_items = {
-        item["function"]: item for item in footprint_capture["work_items"]
-    }
+    footprint_items = {item["function"]: item for item in footprint_capture["work_items"]}
     supplier_to_kicad_route_input_matrix = []
     for record in supplier_to_kicad["evidence_records"]:
         work_item = footprint_items[record["function"]]
@@ -187,91 +183,70 @@ def main() -> int:
         )
 
     display_camera_interfaces = {
-        item["interface_id"]: item
-        for item in display_camera_pinout["connector_pinout_execution"]
+        item["interface_id"]: item for item in display_camera_pinout["connector_pinout_execution"]
     }
     usb_c_required_nets = usb_sidekey["usb_c_port_context"]["required_nets"]
     side_key_required_nets = usb_sidekey["side_key_context"]["required_nets"]
-    acceptance_items = {
-        item["id"]: item for item in usb_sidekey_acceptance["acceptance_items"]
-    }
+    acceptance_items = {item["id"]: item for item in usb_sidekey_acceptance["acceptance_items"]}
     external_interface_hardware_closure = [
         {
             "id": "display_touch_fpc",
             "route_domain": "display_touch",
             "status": display_camera_interfaces["display_touch_fpc"]["status"],
-            "source_candidate": display_camera_interfaces["display_touch_fpc"][
-                "source_candidate"
-            ],
+            "source_candidate": display_camera_interfaces["display_touch_fpc"]["source_candidate"],
             "refdes": display_camera_interfaces["display_touch_fpc"]["refdes"],
             "required_contract_nets": display_camera_interfaces["display_touch_fpc"][
                 "required_contract_nets"
             ],
             "route_constraint_group_count": len(
-                display_camera_interfaces["display_touch_fpc"][
-                    "route_constraint_groups"
-                ]
+                display_camera_interfaces["display_touch_fpc"]["route_constraint_groups"]
             ),
             "mechanical_capture_tasks": display_camera_interfaces["display_touch_fpc"][
                 "mechanical_capture_tasks"
             ],
-            "release_blocker": display_camera_interfaces["display_touch_fpc"][
-                "status_note"
-            ],
+            "release_blocker": display_camera_interfaces["display_touch_fpc"]["status_note"],
         },
         {
             "id": "rear_camera_fpc",
             "route_domain": "cameras",
             "status": display_camera_interfaces["rear_camera_fpc"]["status"],
-            "source_candidate": display_camera_interfaces["rear_camera_fpc"][
-                "source_candidate"
-            ],
+            "source_candidate": display_camera_interfaces["rear_camera_fpc"]["source_candidate"],
             "refdes": display_camera_interfaces["rear_camera_fpc"]["refdes"],
             "required_contract_nets": display_camera_interfaces["rear_camera_fpc"][
                 "required_contract_nets"
             ],
             "route_constraint_group_count": len(
-                display_camera_interfaces["rear_camera_fpc"][
-                    "route_constraint_groups"
-                ]
+                display_camera_interfaces["rear_camera_fpc"]["route_constraint_groups"]
             ),
             "mechanical_capture_tasks": display_camera_interfaces["rear_camera_fpc"][
                 "mechanical_capture_tasks"
             ],
-            "release_blocker": display_camera_interfaces["rear_camera_fpc"][
-                "status_note"
-            ],
+            "release_blocker": display_camera_interfaces["rear_camera_fpc"]["status_note"],
         },
         {
             "id": "front_camera_fpc",
             "route_domain": "cameras",
             "status": display_camera_interfaces["front_camera_fpc"]["status"],
-            "source_candidate": display_camera_interfaces["front_camera_fpc"][
-                "source_candidate"
-            ],
+            "source_candidate": display_camera_interfaces["front_camera_fpc"]["source_candidate"],
             "refdes": display_camera_interfaces["front_camera_fpc"]["refdes"],
             "required_contract_nets": display_camera_interfaces["front_camera_fpc"][
                 "required_contract_nets"
             ],
             "route_constraint_group_count": len(
-                display_camera_interfaces["front_camera_fpc"][
-                    "route_constraint_groups"
-                ]
+                display_camera_interfaces["front_camera_fpc"]["route_constraint_groups"]
             ),
             "mechanical_capture_tasks": display_camera_interfaces["front_camera_fpc"][
                 "mechanical_capture_tasks"
             ],
-            "release_blocker": display_camera_interfaces["front_camera_fpc"][
-                "status_note"
-            ],
+            "release_blocker": display_camera_interfaces["front_camera_fpc"]["status_note"],
         },
         {
             "id": "usb_c_receptacle_evt0",
             "route_domain": "usb_c_power",
             "status": usb_sidekey["status"],
-            "source_candidate": usb_sidekey["usb_c_port_context"][
-                "selected_evt0_connector"
-            ]["family"],
+            "source_candidate": usb_sidekey["usb_c_port_context"]["selected_evt0_connector"][
+                "family"
+            ],
             "refdes": "J_USB_C",
             "required_contract_nets": usb_c_required_nets,
             "route_constraint_group_count": 1,
@@ -290,15 +265,11 @@ def main() -> int:
             "id": "side_buttons",
             "route_domain": "side_buttons",
             "status": usb_sidekey["status"],
-            "source_candidate": usb_sidekey["side_key_context"][
-                "primary_switch_family"
-            ]["family"],
+            "source_candidate": usb_sidekey["side_key_context"]["primary_switch_family"]["family"],
             "refdes": "SW_POWER_VOL",
             "required_contract_nets": side_key_required_nets,
             "route_constraint_group_count": 1,
-            "mechanical_capture_tasks": usb_sidekey["side_key_context"][
-                "mechanical_requirements"
-            ],
+            "mechanical_capture_tasks": usb_sidekey["side_key_context"]["mechanical_requirements"],
             "acceptance_items": [
                 acceptance_items["side_key_force_travel_and_solder_load"],
                 acceptance_items["side_key_recovery_and_wake"],
@@ -394,12 +365,8 @@ def main() -> int:
             "placement_area_after_battery_and_antenna_keepouts_mm2": route_summary[
                 "placement_area_after_battery_and_antenna_keepouts_mm2"
             ],
-            "differential_pair_count_required": route_summary[
-                "differential_pair_count_required"
-            ],
-            "split_interconnect_min_contacts": route_summary[
-                "split_interconnect_min_contacts"
-            ],
+            "differential_pair_count_required": route_summary["differential_pair_count_required"],
+            "split_interconnect_min_contacts": route_summary["split_interconnect_min_contacts"],
         },
         "routed_evt1_execution_phases": execution_phases,
         "domain_route_closure": domain_route_closure,
@@ -409,12 +376,12 @@ def main() -> int:
         "module_and_rf_dependency": {
             "execution_status": module_rf["status"],
             "required_rf_nets": routed_release["rf_release_dependency"]["required_rf_nets"],
-            "rf_feed_count": routed_release[
-                "module_rf_pinout_execution_release_dependency"
-            ]["rf_feed_count"],
-            "release_blockers": routed_release[
-                "module_rf_pinout_execution_release_dependency"
-            ]["release_blockers"],
+            "rf_feed_count": routed_release["module_rf_pinout_execution_release_dependency"][
+                "rf_feed_count"
+            ],
+            "release_blockers": routed_release["module_rf_pinout_execution_release_dependency"][
+                "release_blockers"
+            ],
         },
         "enclosure_dependency": {
             "execution_status": enclosure_fit["status"],
@@ -464,15 +431,14 @@ def main() -> int:
                 and record["required_production_evidence"]["footprint_review"]
                 == footprint_items[record["function"]]["review_outputs"]["footprint_review"]
                 and record["required_production_evidence"]["footprint_3d_binding"]
-                == footprint_items[record["function"]]["review_outputs"][
-                    "footprint_3d_binding"
-                ]
+                == footprint_items[record["function"]]["review_outputs"]["footprint_3d_binding"]
                 for record in supplier_to_kicad["evidence_records"]
             ),
             "display_camera_external_interfaces_fail_closed": all(
                 item["status"].startswith("blocked_")
                 for item in external_interface_hardware_closure
-                if item["id"] in {
+                if item["id"]
+                in {
                     "display_touch_fpc",
                     "rear_camera_fpc",
                     "front_camera_fpc",
@@ -485,15 +451,14 @@ def main() -> int:
             ),
             "external_interface_release_domain_nets_are_in_contracts": all(
                 set(
-                    routed_release["route_completion_requirements"][
-                        route_domain
-                    ]["required_nets"]
+                    routed_release["route_completion_requirements"][route_domain]["required_nets"]
                 ).issubset(contract_nets)
                 for route_domain, contract_nets in external_contract_nets_by_domain.items()
             ),
             "evt1_required_outputs_cover_routed_release_manifest": all(
                 item["expected_path"] in evt1["required_release_outputs"]
-                or key in {
+                or key
+                in {
                     "filled_zones",
                     "nc_drill_slots",
                     "stackup_impedance_report",
@@ -504,12 +469,10 @@ def main() -> int:
                 }
                 for key, item in release_outputs.items()
             ),
-            "module_rf_execution_blocks_radio_route": module_rf["status"].startswith(
-                "blocked_"
-            ),
-            "enclosure_fit_waits_for_routed_step": routed_release[
-                "enclosure_release_dependency"
-            ]["requires_routed_board_step"],
+            "module_rf_execution_blocks_radio_route": module_rf["status"].startswith("blocked_"),
+            "enclosure_fit_waits_for_routed_step": routed_release["enclosure_release_dependency"][
+                "requires_routed_board_step"
+            ],
             "current_pcb_has_no_tracks_or_zones": (
                 live_counts["segment_count"] == 0
                 and live_counts["zone_count"] == 0

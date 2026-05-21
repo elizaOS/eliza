@@ -91,13 +91,19 @@ def validate(report_path: Path) -> list[str]:
         errors.append("deterministic_run_artifacts_present must be boolean")
 
     metrics_rel = rel(metrics_path)
-    if deterministic and "pd/openlane/runs/RUN_" not in metrics_rel and selection_policy != "explicit_metrics_json":
+    if (
+        deterministic
+        and "pd/openlane/runs/RUN_" not in metrics_rel
+        and selection_policy != "explicit_metrics_json"
+    ):
         errors.append("deterministic auto-selected metrics must come from pd/openlane/runs/RUN_*")
     if not deterministic:
         if status != FIXTURE_STATUS:
             errors.append("fixture fallback must use fixture_metrics_parser_smoke_no_ppa_claim")
         if selection_policy != "fixture_fallback_no_local_openlane_run":
-            errors.append("non-deterministic fallback must record fixture_fallback_no_local_openlane_run")
+            errors.append(
+                "non-deterministic fallback must record fixture_fallback_no_local_openlane_run"
+            )
     if deterministic and status == FIXTURE_STATUS:
         errors.append("deterministic run metrics cannot use fixture label status")
 

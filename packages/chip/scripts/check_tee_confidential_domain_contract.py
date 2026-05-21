@@ -7,12 +7,8 @@ import json
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_CONTRACT = (
-    REPO_ROOT
-    / "packages/chip/docs/spec-db/tee-confidential-domain-contract.json"
-)
+DEFAULT_CONTRACT = REPO_ROOT / "packages/chip/docs/spec-db/tee-confidential-domain-contract.json"
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -99,8 +95,7 @@ def validate(contract: dict[str, object]) -> list[str]:
             errors,
         )
         require(
-            memory.get("externalMemoryEncryptionRequiredForWholeOsTeeClaim")
-            is True,
+            memory.get("externalMemoryEncryptionRequiredForWholeOsTeeClaim") is True,
             "external memory encryption must gate whole-OS TEE claims",
             errors,
         )
@@ -164,8 +159,7 @@ def validate(contract: dict[str, object]) -> list[str]:
             errors,
         )
         require(
-            side_channels.get("pmuDisabledOrVirtualizedInConfidentialMode")
-            is True,
+            side_channels.get("pmuDisabledOrVirtualizedInConfidentialMode") is True,
             "PMU must be disabled or virtualized in confidential mode",
             errors,
         )

@@ -34,6 +34,7 @@ Writes:
   mechanical/e1-phone/review/button-physics-sim.md
   mechanical/e1-phone/review/button-force-displacement.png
 """
+
 from __future__ import annotations
 
 import json
@@ -101,9 +102,7 @@ def load_params() -> dict[str, Any]:
             if key in ("travel_mm", "force_n"):
                 out[section][key] = float(val)
             elif key == "cap_mm":
-                out[section]["cap_mm"] = [
-                    float(v) for v in val.strip("[]").split(",")
-                ]
+                out[section]["cap_mm"] = [float(v) for v in val.strip("[]").split(",")]
         elif section and not raw.startswith(" "):
             section = None
     return out
@@ -202,7 +201,7 @@ def simulate_button(name: str, cap_mm: list[float], f_peak: float) -> dict[str, 
 
     # Dynamic: 1-DOF cap mass on the dome return spring.
     m = CAP_MASS_G[name] / 1000.0  # kg
-    k = (f_peak / (X_PEAK_MM / 1000.0))  # N/m, dome pre-travel stiffness
+    k = f_peak / (X_PEAK_MM / 1000.0)  # N/m, dome pre-travel stiffness
     wn = math.sqrt(k / m)  # rad/s
     fn = wn / (2 * math.pi)  # Hz
     zeta = DAMPING_RATIO
@@ -309,12 +308,18 @@ def plot_curve(power: dict[str, Any], volume: dict[str, Any]) -> Path:
     fig, ax = plt.subplots(figsize=(8, 5))
     for btn, color in ((power, "tab:orange"), (volume, "tab:blue")):
         fd = btn["force_displacement"]
-        ax.plot(fd["x_mm"], fd["f_n"], color=color, lw=2,
-                label=f"{btn['name']} (peak {fd['peak_force_n']:.2f} N)")
+        ax.plot(
+            fd["x_mm"],
+            fd["f_n"],
+            color=color,
+            lw=2,
+            label=f"{btn['name']} (peak {fd['peak_force_n']:.2f} N)",
+        )
         ax.scatter([fd["x_at_peak_mm"]], [fd["peak_force_n"]], color=color, zorder=5)
     ax.axvline(TRAVEL_MM, ls="--", color="gray", lw=1, label=f"hard stop {TRAVEL_MM} mm")
-    peak = max(power["force_displacement"]["peak_force_n"],
-               volume["force_displacement"]["peak_force_n"])
+    peak = max(
+        power["force_displacement"]["peak_force_n"], volume["force_displacement"]["peak_force_n"]
+    )
     ax.set_ylim(0, peak * 1.6)
     ax.set_xlabel("Displacement (mm)")
     ax.set_ylabel("Force (N)")
@@ -349,8 +354,7 @@ def main() -> None:
     # and dome-top pressures are switch-internal contact, reported against the
     # same comfort yardstick and flagged as switch-internal.
     skin_ok = all(
-        b["cap_mechanics"]["skin_pressure_n_per_mm2"] <= pressure_limit
-        for b in (power, volume)
+        b["cap_mechanics"]["skin_pressure_n_per_mm2"] <= pressure_limit for b in (power, volume)
     )
 
     verdicts = {
@@ -359,8 +363,7 @@ def main() -> None:
             and volume["travel_stack"]["actuation_before_hardstop"]
         ),
         "no_rest_preload": verdict(
-            power["travel_stack"]["no_rest_preload"]
-            and volume["travel_stack"]["no_rest_preload"]
+            power["travel_stack"]["no_rest_preload"] and volume["travel_stack"]["no_rest_preload"]
         ),
         "contact_pressure_within_limit": verdict(skin_ok),
         "single_end_rocker_actuation": verdict(rocker["single_end_actuation_ok"]),
@@ -394,12 +397,18 @@ def main() -> None:
     md_path.write_text(md)
 
     print(f"verdicts: {json.dumps(verdicts)}")
-    print(f"power peak {power['force_displacement']['peak_force_n']} N, "
-          f"volume peak {volume['force_displacement']['peak_force_n']} N")
-    print(f"skin pressure power {power['cap_mechanics']['skin_pressure_n_per_mm2']} "
-          f"N/mm^2, rib->dome power {power['cap_mechanics']['rib_to_dome_pressure_n_per_mm2']} N/mm^2")
-    print(f"settle power {power['dynamic']['settle_time_ms']} ms, "
-          f"volume {volume['dynamic']['settle_time_ms']} ms")
+    print(
+        f"power peak {power['force_displacement']['peak_force_n']} N, "
+        f"volume peak {volume['force_displacement']['peak_force_n']} N"
+    )
+    print(
+        f"skin pressure power {power['cap_mechanics']['skin_pressure_n_per_mm2']} "
+        f"N/mm^2, rib->dome power {power['cap_mechanics']['rib_to_dome_pressure_n_per_mm2']} N/mm^2"
+    )
+    print(
+        f"settle power {power['dynamic']['settle_time_ms']} ms, "
+        f"volume {volume['dynamic']['settle_time_ms']} ms"
+    )
     print(f"wrote: {json_path}\n       {md_path}\n       {png}")
 
 
@@ -428,92 +437,130 @@ def render_md(r: dict[str, Any], png: Path) -> str:
     lines.append("|---|---|---|---|---|")
     for b in (p, v):
         fd = b["force_displacement"]
-        lines.append(f"| {b['name']} | {fd['peak_force_n']} | {fd['x_at_peak_mm']} | "
-                     f"{fd['snap_force_n']} | {fd['hard_stop_mm']} |")
+        lines.append(
+            f"| {b['name']} | {fd['peak_force_n']} | {fd['x_at_peak_mm']} | "
+            f"{fd['snap_force_n']} | {fd['hard_stop_mm']} |"
+        )
     lines.append("")
-    lines.append("Pre-travel rises linearly to the operating-force peak, the metal dome "
-                 "buckles (snap/click, force drops to the return level), then a steep "
-                 "post-travel hard-stop rise. Peaks are [DATASHEET]; snap zone and "
-                 "hard-stop stiffness are [ASSUMED].")
+    lines.append(
+        "Pre-travel rises linearly to the operating-force peak, the metal dome "
+        "buckles (snap/click, force drops to the return level), then a steep "
+        "post-travel hard-stop rise. Peaks are [DATASHEET]; snap zone and "
+        "hard-stop stiffness are [ASSUMED]."
+    )
     lines.append("")
     lines.append("## Cap mechanics & contact pressure")
     lines.append("")
-    lines.append(f"Pressure limit (cap-to-skin comfort): **{r['pressure_limit_n_per_mm2']} N/mm^2**.")
+    lines.append(
+        f"Pressure limit (cap-to-skin comfort): **{r['pressure_limit_n_per_mm2']} N/mm^2**."
+    )
     lines.append("")
-    lines.append("| Button | Cap face (mm^2) | Skin pressure (N/mm^2) | Rib->dome (N/mm^2) | Dome top (N/mm^2) |")
+    lines.append(
+        "| Button | Cap face (mm^2) | Skin pressure (N/mm^2) | Rib->dome (N/mm^2) | Dome top (N/mm^2) |"
+    )
     lines.append("|---|---|---|---|---|")
     for b in (p, v):
         c = b["cap_mechanics"]
-        lines.append(f"| {b['name']} | {c['cap_face_area_mm2']} | "
-                     f"{c['skin_pressure_n_per_mm2']} | {c['rib_to_dome_pressure_n_per_mm2']} | "
-                     f"{c['dome_top_pressure_n_per_mm2']} |")
+        lines.append(
+            f"| {b['name']} | {c['cap_face_area_mm2']} | "
+            f"{c['skin_pressure_n_per_mm2']} | {c['rib_to_dome_pressure_n_per_mm2']} | "
+            f"{c['dome_top_pressure_n_per_mm2']} |"
+        )
     lines.append("")
-    lines.append("The cap distributes a deliberate finger press over its full face, so "
-                 "cap-to-skin pressure stays well under the 0.2 N/mm^2 comfort limit. "
-                 "Rib-to-dome and dome-top pressures are switch-internal contact "
-                 "(operating force concentrated on the rib tip / dome crown), reported "
-                 "for completeness; they are not bounded by the skin-comfort limit and "
-                 "are within the EVQ-P7 operating envelope.")
+    lines.append(
+        "The cap distributes a deliberate finger press over its full face, so "
+        "cap-to-skin pressure stays well under the 0.2 N/mm^2 comfort limit. "
+        "Rib-to-dome and dome-top pressures are switch-internal contact "
+        "(operating force concentrated on the rib tip / dome crown), reported "
+        "for completeness; they are not bounded by the skin-comfort limit and "
+        "are within the EVQ-P7 operating envelope."
+    )
     lines.append("")
     lines.append("## Travel stack")
     lines.append("")
-    lines.append("| Button | Cap proud (mm) | Rest clearance (mm) | Lost motion (mm) | Actuation (mm) | Hard stop (mm) |")
+    lines.append(
+        "| Button | Cap proud (mm) | Rest clearance (mm) | Lost motion (mm) | Actuation (mm) | Hard stop (mm) |"
+    )
     lines.append("|---|---|---|---|---|---|")
     for b in (p, v):
         t = b["travel_stack"]
-        lines.append(f"| {b['name']} | {t['cap_proud_mm']} | {t['rest_clearance_mm']} | "
-                     f"{t['lost_motion_mm']} | {t['actuation_point_mm']} | {t['hard_stop_mm']} |")
+        lines.append(
+            f"| {b['name']} | {t['cap_proud_mm']} | {t['rest_clearance_mm']} | "
+            f"{t['lost_motion_mm']} | {t['actuation_point_mm']} | {t['hard_stop_mm']} |"
+        )
     lines.append("")
-    lines.append("Cap rests with positive clearance to the dome (no rest pre-load), the "
-                 "dome reaches its actuation/buckling point before the hard stop, and "
-                 "lost motion stays under 0.1 mm.")
+    lines.append(
+        "Cap rests with positive clearance to the dome (no rest pre-load), the "
+        "dome reaches its actuation/buckling point before the hard stop, and "
+        "lost motion stays under 0.1 mm."
+    )
     lines.append("")
     lines.append("## Volume rocker")
     lines.append("")
-    lines.append(f"- Dome offset from center: {rk['dome_offset_from_center_mm']} mm (pivot: {rk['pivot']}).")
+    lines.append(
+        f"- Dome offset from center: {rk['dome_offset_from_center_mm']} mm (pivot: {rk['pivot']})."
+    )
     lines.append(f"- Tilt at full travel: {rk['tilt_angle_deg_full_travel']} deg.")
-    lines.append(f"- Far dome displacement when one end pressed: {rk['far_dome_displacement_mm']} mm "
-                 f"(threshold {rk['far_dome_actuation_threshold_mm']} mm) -> single-end actuation "
-                 f"{'OK' if rk['single_end_actuation_ok'] else 'FAIL'}. Pressing one end pivots the "
-                 f"rocker about its center, lifting the far dome away from actuation.")
+    lines.append(
+        f"- Far dome displacement when one end pressed: {rk['far_dome_displacement_mm']} mm "
+        f"(threshold {rk['far_dome_actuation_threshold_mm']} mm) -> single-end actuation "
+        f"{'OK' if rk['single_end_actuation_ok'] else 'FAIL'}. Pressing one end pivots the "
+        f"rocker about its center, lifting the far dome away from actuation."
+    )
     lines.append("")
     lines.append("## Gasket (IP54 seal)")
     lines.append("")
     lines.append(f"IP54 splash seal threshold: {IP54_SEAL_PRESSURE_MIN} N/mm^2 [ASSUMED].")
     lines.append("")
-    lines.append("| Button | Shore A | Modulus (MPa) | Seal pressure (N/mm^2) | Web k (N/mm) | Force added (N) | IP54 |")
+    lines.append(
+        "| Button | Shore A | Modulus (MPa) | Seal pressure (N/mm^2) | Web k (N/mm) | Force added (N) | IP54 |"
+    )
     lines.append("|---|---|---|---|---|---|---|")
     for b in (p, v):
         g = b["gasket"]
-        lines.append(f"| {b['name']} | {g['shore_a']} | {g['modulus_mpa']} | "
-                     f"{g['seal_pressure_n_per_mm2']} | {g['web_stiffness_n_per_mm']} | "
-                     f"{g['seal_force_added_n']} | "
-                     f"{'PASS' if g['ip54_preload_ok'] else 'FAIL'} |")
+        lines.append(
+            f"| {b['name']} | {g['shore_a']} | {g['modulus_mpa']} | "
+            f"{g['seal_pressure_n_per_mm2']} | {g['web_stiffness_n_per_mm']} | "
+            f"{g['seal_force_added_n']} | "
+            f"{'PASS' if g['ip54_preload_ok'] else 'FAIL'} |"
+        )
     lines.append("")
-    lines.append("Elastomer compression preloads the labyrinth seal above the IP54 "
-                 "splash threshold while adding only a small fraction of the operating "
-                 "force to the button feel. Shore A, membrane skirt geometry and "
-                 "compression are [ASSUMED].")
+    lines.append(
+        "Elastomer compression preloads the labyrinth seal above the IP54 "
+        "splash threshold while adding only a small fraction of the operating "
+        "force to the button feel. Shore A, membrane skirt geometry and "
+        "compression are [ASSUMED]."
+    )
     lines.append("")
     lines.append("## Fatigue")
     lines.append("")
-    lines.append(f"- Rated life: {fat['rated_life_cycles']} cycles ({fat['rated_life_note']}) [DATASHEET].")
-    lines.append(f"- Design target: {fat['design_target_cycles']} cycles [ASSUMED] -> "
-                 f"margin {fat['life_margin_x']}x ({'PASS' if fat['life_margin_ok'] else 'FAIL'}).")
+    lines.append(
+        f"- Rated life: {fat['rated_life_cycles']} cycles ({fat['rated_life_note']}) [DATASHEET]."
+    )
+    lines.append(
+        f"- Design target: {fat['design_target_cycles']} cycles [ASSUMED] -> "
+        f"margin {fat['life_margin_x']}x ({'PASS' if fat['life_margin_ok'] else 'FAIL'})."
+    )
     lines.append(f"- {fat['contact_stress_note']}")
     lines.append("")
     lines.append("## Dynamic response (1-DOF cap)")
     lines.append("")
-    lines.append("| Button | Cap mass (g) | Natural freq (Hz) | Damping ratio | Settle 2% (ms) | Debounce (ms) |")
+    lines.append(
+        "| Button | Cap mass (g) | Natural freq (Hz) | Damping ratio | Settle 2% (ms) | Debounce (ms) |"
+    )
     lines.append("|---|---|---|---|---|---|")
     for b in (p, v):
         d = b["dynamic"]
-        lines.append(f"| {b['name']} | {d['cap_mass_g']} | {d['natural_freq_hz']} | "
-                     f"{d['damping_ratio']} | {d['settle_time_ms']} | {d['debounce_window_ms']} |")
+        lines.append(
+            f"| {b['name']} | {d['cap_mass_g']} | {d['natural_freq_hz']} | "
+            f"{d['damping_ratio']} | {d['settle_time_ms']} | {d['debounce_window_ms']} |"
+        )
     lines.append("")
-    lines.append("Cap modeled as a mass on the dome return spring with elastomer "
-                 "damping. The recommended firmware debounce window exceeds the 2% "
-                 "settle time. Cap mass, damping ratio and finger force are [ASSUMED].")
+    lines.append(
+        "Cap modeled as a mass on the dome return spring with elastomer "
+        "damping. The recommended firmware debounce window exceeds the 2% "
+        "settle time. Cap mass, damping ratio and finger force are [ASSUMED]."
+    )
     lines.append("")
     return "\n".join(lines)
 

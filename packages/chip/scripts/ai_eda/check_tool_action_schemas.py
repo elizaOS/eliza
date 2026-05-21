@@ -20,7 +20,9 @@ def load_yaml(path: Path) -> Any:
         return yaml.safe_load(handle)
 
 
-def validate_nested(record_id: str, document: dict[str, Any], nested: dict[str, list[str]]) -> list[str]:
+def validate_nested(
+    record_id: str, document: dict[str, Any], nested: dict[str, list[str]]
+) -> list[str]:
     errors: list[str] = []
     for parent, fields in nested.items():
         value = document.get(parent)
@@ -55,7 +57,10 @@ def validate_example(path: Path, schema: dict[str, Any]) -> list[str]:
 
     if action_type in schema["forbidden_action_types"] and mode != "blocked":
         errors.append(f"{record_id}: forbidden action_type {action_type} must use mode blocked")
-    if action_type not in schema["allowed_action_types"] and action_type not in schema["forbidden_action_types"]:
+    if (
+        action_type not in schema["allowed_action_types"]
+        and action_type not in schema["forbidden_action_types"]
+    ):
         errors.append(f"{record_id}: unknown action_type {action_type!r}")
     if mode not in schema["allowed_modes"]:
         errors.append(f"{record_id}: invalid mode {mode!r}")
@@ -74,9 +79,11 @@ def validate_example(path: Path, schema: dict[str, Any]) -> list[str]:
     write_paths = scope.get("write_paths", [])
     if not isinstance(write_paths, list):
         errors.append(f"{record_id}: scope.write_paths must be a list")
-    elif any(isinstance(path, str) and not path.startswith("build/ai_eda/") for path in write_paths):
-        if mode != "blocked":
-            errors.append(f"{record_id}: non-blocked write paths must stay under build/ai_eda/")
+    elif (
+        any(isinstance(path, str) and not path.startswith("build/ai_eda/") for path in write_paths)
+        and mode != "blocked"
+    ):
+        errors.append(f"{record_id}: non-blocked write paths must stay under build/ai_eda/")
 
     forbidden_paths = scope.get("forbidden_paths", [])
     if not isinstance(forbidden_paths, list) or not forbidden_paths:
@@ -116,7 +123,10 @@ def main() -> int:
         return 1
     if schema.get("schema") != "eliza.ai_eda.tool_action_schemas.v1":
         errors.append("schema id must be eliza.ai_eda.tool_action_schemas.v1")
-    if schema.get("claim_boundary") != "tool_action_schema_only_no_tool_execution_design_change_or_release_claim":
+    if (
+        schema.get("claim_boundary")
+        != "tool_action_schema_only_no_tool_execution_design_change_or_release_claim"
+    ):
         errors.append("top-level claim_boundary is missing or incorrect")
     policy = schema.get("policy")
     if not isinstance(policy, dict):
@@ -130,7 +140,13 @@ def main() -> int:
             errors.append("policy.source_tree_write_forbidden must be true")
         if policy.get("release_use_allowed") is not False:
             errors.append("policy.release_use_allowed must be false")
-    for field in ("allowed_action_types", "forbidden_action_types", "required_fields", "required_nested", "tool_allowlist"):
+    for field in (
+        "allowed_action_types",
+        "forbidden_action_types",
+        "required_fields",
+        "required_nested",
+        "tool_allowlist",
+    ):
         if field not in schema:
             errors.append(f"schema missing {field}")
     examples = sorted(args.examples_dir.glob("*.yaml")) if args.examples_dir.exists() else []

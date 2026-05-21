@@ -8,11 +8,8 @@ import re
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_EVIDENCE = (
-    REPO_ROOT / "packages/chip/docs/spec-db/tee-attestation-evidence.example.json"
-)
+DEFAULT_EVIDENCE = REPO_ROOT / "packages/chip/docs/spec-db/tee-attestation-evidence.example.json"
 SHA256 = re.compile(r"^sha256:[a-f0-9]{64}$")
 REQUIRED_MEASUREMENTS = {"boot", "os", "agent", "policy", "device"}
 REQUIRED_TRUE_CLAIMS = {"debugDisabled", "secureBoot", "ioProtected"}
@@ -69,7 +66,9 @@ def validate(evidence: dict[str, object]) -> list[str]:
             errors.append("claims.memoryEncrypted must be true for cove evidence")
 
     report_data = evidence.get("reportData")
-    if report_data is not None and (not isinstance(report_data, str) or not SHA256.match(report_data)):
+    if report_data is not None and (
+        not isinstance(report_data, str) or not SHA256.match(report_data)
+    ):
         errors.append("reportData must be sha256:<64 lowercase hex> when present")
 
     return errors

@@ -15,7 +15,9 @@ DEFAULT_MANIFEST = ROOT / "docs/spec-db/ai-eda/external-method-wrapper-readiness
 LOCKFILE = ROOT / "external/SOURCES.lock.yaml"
 INVENTORY = ROOT / "research/alpha_chip_macro_placement/01_sources/ai_eda_source_inventory.yaml"
 EXPECTED_SCHEMA = "eliza.ai_eda.external_method_wrapper_readiness.v1"
-EXPECTED_CLAIM_BOUNDARY = "external_method_wrapper_readiness_only_no_inference_training_replay_or_release_claim"
+EXPECTED_CLAIM_BOUNDARY = (
+    "external_method_wrapper_readiness_only_no_inference_training_replay_or_release_claim"
+)
 EXPECTED_PROXY_POLICIES = {
     "circuit_training_proxy": "circuit_training_proxy_locations",
     "simulated_annealing_proxy": "simulated_annealing_proxy_locations",
@@ -129,12 +131,17 @@ def validate_manifest(path: Path) -> list[str]:
         else:
             seen_policies.add(proxy_policy)
             if EXPECTED_PROXY_POLICIES[proxy_policy] != proxy_function:
-                errors.append(f"{prefix}: proxy_function must be {EXPECTED_PROXY_POLICIES[proxy_policy]}")
+                errors.append(
+                    f"{prefix}: proxy_function must be {EXPECTED_PROXY_POLICIES[proxy_policy]}"
+                )
         if isinstance(proxy_policy, str) and proxy_policy not in proxy_text:
             errors.append(f"{prefix}: proxy policy is not present in proxy implementation")
         if isinstance(proxy_function, str) and f"def {proxy_function}(" not in proxy_text:
             errors.append(f"{prefix}: proxy function is not present in proxy implementation")
-        for field, allowed_ids in (("source_inventory_ids", inventory_ids), ("lock_asset_ids", lock_ids)):
+        for field, allowed_ids in (
+            ("source_inventory_ids", inventory_ids),
+            ("lock_asset_ids", lock_ids),
+        ):
             values = wrapper.get(field)
             if not isinstance(values, list) or not values:
                 errors.append(f"{prefix}: {field} must be a non-empty list")
@@ -152,17 +159,30 @@ def validate_manifest(path: Path) -> list[str]:
             errors.append(f"{prefix}: real_wrapper must be a mapping")
             continue
         if real.get("status") != "blocked_pending_payload_review":
-            errors.append(f"{prefix}: real_wrapper.status must remain blocked_pending_payload_review")
-        if not isinstance(real.get("expected_entrypoint"), str) or len(real["expected_entrypoint"]) < 40:
+            errors.append(
+                f"{prefix}: real_wrapper.status must remain blocked_pending_payload_review"
+            )
+        if (
+            not isinstance(real.get("expected_entrypoint"), str)
+            or len(real["expected_entrypoint"]) < 40
+        ):
             errors.append(f"{prefix}: real_wrapper.expected_entrypoint must be specific")
         for field in ("required_inputs", "output_contract", "blockers", "replay_gates"):
             values = real.get(field)
             if not isinstance(values, list) or len(values) < 3:
                 errors.append(f"{prefix}: real_wrapper.{field} must list at least three items")
-        blockers = " ".join(real.get("blockers", [])) if isinstance(real.get("blockers"), list) else ""
+        blockers = (
+            " ".join(real.get("blockers", [])) if isinstance(real.get("blockers"), list) else ""
+        )
         if "OpenLane/OpenROAD replay evidence" not in blockers:
-            errors.append(f"{prefix}: blockers must mention missing deterministic OpenLane/OpenROAD replay evidence")
-        gates = " ".join(real.get("replay_gates", [])) if isinstance(real.get("replay_gates"), list) else ""
+            errors.append(
+                f"{prefix}: blockers must mention missing deterministic OpenLane/OpenROAD replay evidence"
+            )
+        gates = (
+            " ".join(real.get("replay_gates", []))
+            if isinstance(real.get("replay_gates"), list)
+            else ""
+        )
         if "ai-eda-macro-placement-replay-preflight" not in gates:
             errors.append(f"{prefix}: replay_gates must include replay preflight")
 
@@ -185,7 +205,9 @@ def main() -> int:
     args = parse_args()
     manifest = repo_path(str(args.manifest))
     if not manifest.is_file():
-        print(f"STATUS: FAIL ai_eda.external_method_wrapper_readiness missing_manifest {rel(manifest)}")
+        print(
+            f"STATUS: FAIL ai_eda.external_method_wrapper_readiness missing_manifest {rel(manifest)}"
+        )
         return 1
     try:
         errors = validate_manifest(manifest)

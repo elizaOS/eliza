@@ -2063,6 +2063,9 @@ not as:
 - [x] Extend the CUDA readiness audit to accept split evidence run IDs for
   preflight, payload/run-plan, safety matrix, AlphaChip audit, current-research
   watchlist, E1 replay preflight, setup, and training-handoff artifacts.
+- [x] Add a hash-pinned CUDA evidence bundle manifest/checker that packages a
+  readiness audit plus every referenced artifact path, SHA256, capability flag,
+  blocker count, and replay command for remote handoff review.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Replace CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters with the real

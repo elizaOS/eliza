@@ -17,10 +17,14 @@ DEFAULT_WATCHLIST = (
     ROOT
     / "research/alpha_chip_macro_placement/01_sources/ai_eda_current_research_watchlist_2026.yaml"
 )
-DEFAULT_INVENTORY = ROOT / "research/alpha_chip_macro_placement/01_sources/ai_eda_source_inventory.yaml"
+DEFAULT_INVENTORY = (
+    ROOT / "research/alpha_chip_macro_placement/01_sources/ai_eda_source_inventory.yaml"
+)
 EXPECTED_SCHEMA = "eliza.ai_eda_current_research_watchlist.v1"
 EXPECTED_REPORT_SCHEMA = "eliza.ai_eda.current_research_watchlist.v1"
-EXPECTED_CLAIM_BOUNDARY = "current_research_watchlist_capture_only_no_import_training_inference_or_e1_claim"
+EXPECTED_CLAIM_BOUNDARY = (
+    "current_research_watchlist_capture_only_no_import_training_inference_or_e1_claim"
+)
 EXPECTED_POLICY_FALSE = {
     "metadata_only": True,
     "imports_code": False,
@@ -111,7 +115,9 @@ def inventory_ids(path: Path) -> set[str]:
     }
 
 
-def validate_watchlist(watchlist: dict[str, Any], inventory: set[str]) -> tuple[list[str], list[str]]:
+def validate_watchlist(
+    watchlist: dict[str, Any], inventory: set[str]
+) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     ids: list[str] = []
     if watchlist.get("schema") != EXPECTED_SCHEMA:
@@ -175,7 +181,9 @@ def validate_watchlist(watchlist: dict[str, Any], inventory: set[str]) -> tuple[
     return errors, ids
 
 
-def validate_report(report: dict[str, Any], report_path: Path, watchlist_path: Path, ids: list[str]) -> list[str]:
+def validate_report(
+    report: dict[str, Any], report_path: Path, watchlist_path: Path, ids: list[str]
+) -> list[str]:
     errors: list[str] = []
     if report.get("schema") != EXPECTED_REPORT_SCHEMA:
         errors.append("report schema mismatch")
@@ -215,7 +223,9 @@ def validate_report(report: dict[str, Any], report_path: Path, watchlist_path: P
     tasks = report.get("candidate_tasks")
     if not isinstance(tasks, list) or len(tasks) != len(ids):
         errors.append("report candidate_tasks count must match watchlist")
-    elif [task.get("id", "").removesuffix("-intake") for task in tasks if isinstance(task, dict)] != ids:
+    elif [
+        task.get("id", "").removesuffix("-intake") for task in tasks if isinstance(task, dict)
+    ] != ids:
         errors.append("report candidate_tasks must match watchlist order")
     if not report_path.is_file():
         errors.append(f"report disappeared during validation: {rel(report_path)}")

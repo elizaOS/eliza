@@ -8,7 +8,6 @@ or execute external assets.
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -111,7 +110,10 @@ def main() -> int:
 
     if lock.get("schema") != "eliza.ai_eda.external_sources_lock.v1":
         errors.append("lockfile schema must be eliza.ai_eda.external_sources_lock.v1")
-    if lock.get("claim_boundary") != "external_asset_registry_only_no_download_training_inference_or_release_claim":
+    if (
+        lock.get("claim_boundary")
+        != "external_asset_registry_only_no_download_training_inference_or_release_claim"
+    ):
         errors.append("lockfile claim_boundary is missing or incorrect")
 
     policy = lock.get("policy")
@@ -142,10 +144,7 @@ def main() -> int:
         return 1
 
     ids = [entry["id"] for entry in entries]
-    print(
-        "STATUS: PASS ai_eda.external_assets "
-        f"entries={len(ids)} claim_boundary={CLAIM_BOUNDARY}"
-    )
+    print(f"STATUS: PASS ai_eda.external_assets entries={len(ids)} claim_boundary={CLAIM_BOUNDARY}")
     return 0
 
 

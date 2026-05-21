@@ -10,7 +10,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/research_code_assets/validation/conversion_report.json"
-CLAIM_BOUNDARY = "ai_eda_research_code_asset_text_sample_only_no_training_inference_or_release_claim"
+CLAIM_BOUNDARY = (
+    "ai_eda_research_code_asset_text_sample_only_no_training_inference_or_release_claim"
+)
 REQUIRED_ASSETS = {
     "chipdiffusion",
     "chipformer",
@@ -88,17 +90,27 @@ def validate_record(path: Path) -> list[str]:
         errors.append(f"{record_id}: response must be a mapping")
     else:
         content = response.get("content")
-        if not isinstance(response.get("kind"), str) or not response["kind"].startswith("structured_research_asset_"):
+        if not isinstance(response.get("kind"), str) or not response["kind"].startswith(
+            "structured_research_asset_"
+        ):
             errors.append(f"{record_id}: response.kind mismatch")
         if not isinstance(content, dict):
             errors.append(f"{record_id}: response.content must be structured metadata")
         elif content.get("asset_id") != record.get("asset_id"):
             errors.append(f"{record_id}: response.content.asset_id mismatch")
     provenance = record.get("provenance")
-    if not isinstance(provenance, dict) or provenance.get("generated_by") != "scripts/ai_eda/convert_research_code_assets_to_internal_records.py":
+    if (
+        not isinstance(provenance, dict)
+        or provenance.get("generated_by")
+        != "scripts/ai_eda/convert_research_code_assets_to_internal_records.py"
+    ):
         errors.append(f"{record_id}: provenance.generated_by mismatch")
     replay = record.get("replay")
-    if not isinstance(replay, dict) or "convert_research_code_assets_to_internal_records.py" not in str(replay.get("deterministic_command")):
+    if not isinstance(
+        replay, dict
+    ) or "convert_research_code_assets_to_internal_records.py" not in str(
+        replay.get("deterministic_command")
+    ):
         errors.append(f"{record_id}: replay command mismatch")
     errors.extend(validate_source(record, record_id))
     return errors
@@ -122,11 +134,20 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
     if not isinstance(policy, dict):
         errors.append("policy must be a mapping")
     else:
-        for field in ("contains_model_weights", "executes_research_code", "trains_model", "runs_inference", "release_use_allowed", "e1_signoff_evidence"):
+        for field in (
+            "contains_model_weights",
+            "executes_research_code",
+            "trains_model",
+            "runs_inference",
+            "release_use_allowed",
+            "e1_signoff_evidence",
+        ):
             if policy.get(field) is not False:
                 errors.append(f"policy.{field} must be false")
         if policy.get("deterministic_replay_required_for_optimization_claims") is not True:
-            errors.append("policy.deterministic_replay_required_for_optimization_claims must be true")
+            errors.append(
+                "policy.deterministic_replay_required_for_optimization_claims must be true"
+            )
     converted = report.get("converted_records")
     if not isinstance(converted, list):
         return errors + ["converted_records must be a list"]
@@ -169,7 +190,9 @@ def main() -> int:
     args = parse_args()
     report_path = repo_path(str(args.report))
     if not report_path.is_file():
-        print(f"STATUS: FAIL ai_eda.research_code_assets_conversion missing_report {rel(report_path)}")
+        print(
+            f"STATUS: FAIL ai_eda.research_code_assets_conversion missing_report {rel(report_path)}"
+        )
         return 1
     try:
         report = load_json(report_path)

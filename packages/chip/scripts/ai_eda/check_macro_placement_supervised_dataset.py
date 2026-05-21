@@ -13,8 +13,12 @@ DEFAULT_REPORT = (
     ROOT
     / "build/ai_eda/macro_placement_supervised_dataset/validation/macro_placement_supervised_dataset_report.json"
 )
-CLAIM_BOUNDARY = "macro_placement_supervised_dataset_validation_only_no_training_inference_or_release_claim"
-DATASET_CLAIM_BOUNDARY = "macro_placement_supervised_dataset_only_no_training_inference_ppa_or_release_claim"
+CLAIM_BOUNDARY = (
+    "macro_placement_supervised_dataset_validation_only_no_training_inference_or_release_claim"
+)
+DATASET_CLAIM_BOUNDARY = (
+    "macro_placement_supervised_dataset_only_no_training_inference_ppa_or_release_claim"
+)
 REQUIRED_SPLITS = ("train", "val", "test")
 
 
@@ -37,7 +41,9 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def validate_sample(sample: dict[str, Any], split: str, source_path: Path, line_number: int) -> list[str]:
+def validate_sample(
+    sample: dict[str, Any], split: str, source_path: Path, line_number: int
+) -> list[str]:
     errors: list[str] = []
     sample_id = sample.get("id", f"{rel(source_path)}:{line_number}")
     if sample.get("schema") != "eliza.ai_eda.macro_placement_supervised_sample.v1":
@@ -46,7 +52,15 @@ def validate_sample(sample: dict[str, Any], split: str, source_path: Path, line_
         errors.append(f"{sample_id}: invalid claim_boundary")
     if sample.get("split") != split:
         errors.append(f"{sample_id}: split field does not match file split {split}")
-    for field in ("id", "source_record", "case_id", "design_bundle_id", "object", "floorplan", "label"):
+    for field in (
+        "id",
+        "source_record",
+        "case_id",
+        "design_bundle_id",
+        "object",
+        "floorplan",
+        "label",
+    ):
         if field not in sample:
             errors.append(f"{sample_id}: missing required field {field}")
 
@@ -93,7 +107,9 @@ def validate_sample(sample: dict[str, Any], split: str, source_path: Path, line_
 def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
     errors: list[str] = []
     if report.get("schema") != "eliza.ai_eda.macro_placement_supervised_dataset_report.v1":
-        errors.append("report schema must be eliza.ai_eda.macro_placement_supervised_dataset_report.v1")
+        errors.append(
+            "report schema must be eliza.ai_eda.macro_placement_supervised_dataset_report.v1"
+        )
     if report.get("claim_boundary") != DATASET_CLAIM_BOUNDARY:
         errors.append("report claim_boundary is missing or incorrect")
     if report.get("release_use_allowed") is not False:
@@ -189,7 +205,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if not args.report.exists():
-        print(f"STATUS: FAIL ai_eda.macro_placement_supervised_dataset missing_report {args.report}")
+        print(
+            f"STATUS: FAIL ai_eda.macro_placement_supervised_dataset missing_report {args.report}"
+        )
         return 1
     try:
         report = load_json(args.report)

@@ -103,15 +103,9 @@ def train_model(train_samples: list[dict[str, Any]]) -> dict[str, Any]:
         "algorithm": "macro_name_then_type_then_global_mean_normalized_placement",
         "global": mean_point(train_samples),
         "by_macro_name": {
-            key: mean_point(values)
-            for key, values in sorted(by_macro.items())
-            if values
+            key: mean_point(values) for key, values in sorted(by_macro.items()) if values
         },
-        "by_type": {
-            key: mean_point(values)
-            for key, values in sorted(by_type.items())
-            if values
-        },
+        "by_type": {key: mean_point(values) for key, values in sorted(by_type.items()) if values},
         "release_use_allowed": False,
     }
 
@@ -120,16 +114,33 @@ def predict_normalized(model: dict[str, Any], obj: dict[str, Any]) -> tuple[floa
     macro = obj.get("macro_name")
     if macro and str(macro) in model["by_macro_name"]:
         item = model["by_macro_name"][str(macro)]
-        return float(item["x_over_core"]), float(item["y_over_core"]), str(item["orientation"]), "macro_name_mean"
+        return (
+            float(item["x_over_core"]),
+            float(item["y_over_core"]),
+            str(item["orientation"]),
+            "macro_name_mean",
+        )
     obj_type = str(obj.get("type", "unknown"))
     if obj_type in model["by_type"]:
         item = model["by_type"][obj_type]
-        return float(item["x_over_core"]), float(item["y_over_core"]), str(item["orientation"]), "type_mean"
+        return (
+            float(item["x_over_core"]),
+            float(item["y_over_core"]),
+            str(item["orientation"]),
+            "type_mean",
+        )
     item = model["global"]
-    return float(item["x_over_core"]), float(item["y_over_core"]), str(item["orientation"]), "global_mean"
+    return (
+        float(item["x_over_core"]),
+        float(item["y_over_core"]),
+        str(item["orientation"]),
+        "global_mean",
+    )
 
 
-def evaluate_split(model: dict[str, Any], samples: list[dict[str, Any]], split: str) -> dict[str, Any]:
+def evaluate_split(
+    model: dict[str, Any], samples: list[dict[str, Any]], split: str
+) -> dict[str, Any]:
     if not samples:
         return {"split": split, "sample_count": 0, "mae_x_over_core": None, "mae_y_over_core": None}
     x_error = 0.0
@@ -156,7 +167,9 @@ def object_size_um(obj: dict[str, Any]) -> tuple[float, float]:
     return float(width if width is not None else 1.0), float(height if height is not None else 1.0)
 
 
-def clamp_location(core: list[Any], obj: dict[str, Any], x_um: float, y_um: float) -> tuple[float, float]:
+def clamp_location(
+    core: list[Any], obj: dict[str, Any], x_um: float, y_um: float
+) -> tuple[float, float]:
     width, height = object_size_um(obj)
     min_x, min_y, max_x, max_y = [float(value) for value in core]
     return (
@@ -182,7 +195,15 @@ def grid_locations(core: list[Any], movable: list[dict[str, Any]]) -> list[tuple
         cell_h = core_h / rows_candidate
         overflow = max(max_obj_w - cell_w, 0.0) + max(max_obj_h - cell_h, 0.0)
         aspect_error = abs((cols_candidate / rows_candidate) - (core_w / core_h))
-        options.append((overflow, aspect_error, abs(cols_candidate - rows_candidate), cols_candidate, rows_candidate))
+        options.append(
+            (
+                overflow,
+                aspect_error,
+                abs(cols_candidate - rows_candidate),
+                cols_candidate,
+                rows_candidate,
+            )
+        )
     _overflow, _aspect_error, _shape_error, cols, rows = min(options)
     locations = []
     for index, obj in enumerate(movable):
@@ -223,6 +244,7 @@ def legalized_prediction_locations(
     for (obj_index, _px, _py, orient, source), (_slot_index, slot) in zip(
         indexed_predictions,
         indexed_slots,
+        strict=False,
     ):
         locations_by_object[obj_index] = (slot[0], slot[1], orient, source)
     return [
@@ -250,7 +272,10 @@ def score_candidate(case: dict[str, Any], changes: list[dict[str, Any]]) -> dict
         target_labels += 1
         value = change["value"]
         distances.append(
-            math.hypot(float(value["x_um"]) - float(target["x_um"]), float(value["y_um"]) - float(target["y_um"]))
+            math.hypot(
+                float(value["x_um"]) - float(target["x_um"]),
+                float(value["y_um"]) - float(target["y_um"]),
+            )
         )
     mean_target = sum(distances) / len(distances) if distances else None
     return {
@@ -313,7 +338,7 @@ def candidate_for_case(
     core = case["floorplan"]["core_area_um"]
     locations, source_counts = legalized_prediction_locations(model, core, movable)
     changes = []
-    for obj, (x_um, y_um, orientation, _source) in zip(movable, locations):
+    for obj, (x_um, y_um, orientation, _source) in zip(movable, locations, strict=False):
         if not isinstance(obj, dict) or not obj.get("id"):
             continue
         changes.append(
@@ -442,7 +467,9 @@ def main() -> int:
             )
             continue
         candidate_path = candidates_dir / f"{candidate['id']}.json"
-        candidate_path.write_text(json.dumps(candidate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        candidate_path.write_text(
+            json.dumps(candidate, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         emitted.append(
             {
                 "id": candidate["id"],

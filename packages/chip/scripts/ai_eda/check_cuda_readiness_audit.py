@@ -109,7 +109,10 @@ def validate(report: dict[str, Any]) -> list[str]:
         if present < 3:
             errors.append("at least three core handoff artifacts must be present")
     blockers = report.get("blockers")
-    if report.get("status") == "PASS_WITH_BLOCKERS_RECORDED":
+    if report.get("status") == "PASS_WITH_BLOCKERS_RECORDED" and (  # noqa: SIM102
+        not isinstance(blockers, list) or not blockers
+    ):
+        errors.append("blocked readiness audit must list blockers")
         if not isinstance(blockers, list) or not blockers:
             errors.append("blocked readiness audit must list blockers")
     if isinstance(blockers, list):

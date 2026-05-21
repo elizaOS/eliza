@@ -71,7 +71,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    audit_path = args.readiness_audit or ROOT / f"build/ai_eda/cuda_readiness_audit/{args.run_id}/cuda_readiness_audit.json"
+    audit_path = (
+        args.readiness_audit
+        or ROOT / f"build/ai_eda/cuda_readiness_audit/{args.run_id}/cuda_readiness_audit.json"
+    )
     audit_path = repo_path(str(audit_path))
     if not audit_path.is_file():
         print(f"STATUS: FAIL ai_eda.cuda_evidence_bundle missing_readiness_audit {rel(audit_path)}")

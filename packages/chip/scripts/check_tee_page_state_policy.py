@@ -7,11 +7,8 @@ import json
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_POLICY = (
-    REPO_ROOT / "packages/chip/docs/spec-db/tee-page-state-transitions.json"
-)
+DEFAULT_POLICY = REPO_ROOT / "packages/chip/docs/spec-db/tee-page-state-transitions.json"
 REQUIRED_STATES = {
     "free",
     "measured",
@@ -75,9 +72,7 @@ def validate(policy: dict[str, object]) -> list[str]:
         ("scrub-pending", "free"),
     ]:
         if required_pair not in transition_pairs:
-            errors.append(
-                f"missing required transition {required_pair[0]} -> {required_pair[1]}"
-            )
+            errors.append(f"missing required transition {required_pair[0]} -> {required_pair[1]}")
 
     forbidden = policy.get("forbiddenTransitions")
     if not isinstance(forbidden, list):

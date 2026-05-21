@@ -130,14 +130,15 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
 
 
 def make_target(target: str, timeout_seconds: int, run_id: str) -> dict[str, Any]:
-    return run(["make", f"PYTHON={sys.executable}", f"AI_EDA_RUN_ID={run_id}", target], timeout_seconds)
+    return run(
+        ["make", f"PYTHON={sys.executable}", f"AI_EDA_RUN_ID={run_id}", target], timeout_seconds
+    )
 
 
 def print_step_status(kind: str, item: dict[str, Any], target: str | None = None) -> None:
     label = f" target={target}" if target else ""
     print(
-        "STATUS: STEP ai_eda.bootstrap "
-        f"kind={kind}{label} returncode={item['returncode']}",
+        f"STATUS: STEP ai_eda.bootstrap kind={kind}{label} returncode={item['returncode']}",
         flush=True,
     )
 
@@ -270,7 +271,12 @@ def main() -> int:
     overall_rc = 0
 
     preflight = run(
-        [sys.executable, "scripts/ai_eda/preflight_cuda_training_stack.py", "--run-id", args.run_id],
+        [
+            sys.executable,
+            "scripts/ai_eda/preflight_cuda_training_stack.py",
+            "--run-id",
+            args.run_id,
+        ],
         args.timeout_seconds,
     )
     steps.append({"kind": "preflight", **preflight})

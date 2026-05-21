@@ -50,7 +50,9 @@ def has_command(plan: dict[str, Any] | None, needle: str) -> bool:
     if not plan:
         return False
     commands = plan.get("required_remote_commands")
-    return isinstance(commands, list) and any(isinstance(command, str) and needle in command for command in commands)
+    return isinstance(commands, list) and any(
+        isinstance(command, str) and needle in command for command in commands
+    )
 
 
 def has_output(plan: dict[str, Any] | None, expected: str) -> bool:
@@ -74,7 +76,9 @@ def run_plan_execution_ready(report: dict[str, Any] | None, run_id: str) -> tupl
     if int(report.get("selected_command_count", 0)) <= 0:
         return False, "no selected commands recorded"
     outputs = report.get("expected_outputs")
-    expected_execution_output = f"build/ai_eda/cuda_run_plan_execution/{run_id}/cuda_run_plan_execution.json"
+    expected_execution_output = (
+        f"build/ai_eda/cuda_run_plan_execution/{run_id}/cuda_run_plan_execution.json"
+    )
     if not isinstance(outputs, list) or expected_execution_output not in outputs:
         return False, "dry-run manifest does not carry expanded execution output"
     return True, "validated dry-run execution manifest"
@@ -90,7 +94,9 @@ def run_plan_safety_matrix_ready(report: dict[str, Any] | None) -> tuple[bool, s
     checks = report.get("checks")
     if not isinstance(checks, list) or not checks:
         return False, "no safety checks recorded"
-    failed = [check for check in checks if isinstance(check, dict) and check.get("status") != "PASS"]
+    failed = [
+        check for check in checks if isinstance(check, dict) and check.get("status") != "PASS"
+    ]
     if failed:
         return False, f"failed_checks={len(failed)}"
     risky = report.get("risky_stages")
@@ -113,12 +119,16 @@ def replay_queue_ready(report: dict[str, Any] | None) -> tuple[bool, str]:
         return False, "queue_count mismatch"
     if report.get("missing_from_replay") not in ([], None):
         return False, "queue has candidates missing from replay plan"
-    if not isinstance(report.get("blocked_count"), int) or not isinstance(report.get("ready_count"), int):
+    if not isinstance(report.get("blocked_count"), int) or not isinstance(
+        report.get("ready_count"), int
+    ):
         return False, "ready/blocked counts missing"
     return True, "validated deterministic replay queue"
 
 
-def blocker(blocker_id: str, severity: str, detail: str, evidence: str | None = None) -> dict[str, str]:
+def blocker(
+    blocker_id: str, severity: str, detail: str, evidence: str | None = None
+) -> dict[str, str]:
     item = {"id": blocker_id, "severity": severity, "detail": detail}
     if evidence:
         item["evidence"] = evidence
@@ -189,21 +199,60 @@ def main() -> int:
     replay_preflight_run_id = args.replay_preflight_run_id or run_id
     setup_run_id = args.setup_run_id or run_id
     training_handoff_run_id = args.training_handoff_run_id or f"{run_id}-training-handoff"
-    preflight_path = ROOT / f"build/ai_eda/cuda_training_preflight/{preflight_run_id}/cuda_training_preflight.json"
-    payload_report_path = ROOT / f"build/ai_eda/cuda_training_payloads/{payload_run_id}/cuda_training_payload_report.json"
-    run_plan_path = ROOT / f"build/ai_eda/cuda_training_payloads/{payload_run_id}/cuda_training_run_plan.json"
-    run_plan_execution_path = ROOT / f"build/ai_eda/cuda_run_plan_execution/{run_plan_execution_run_id}/cuda_run_plan_execution.json"
-    run_plan_safety_matrix_path = ROOT / f"build/ai_eda/cuda_run_plan_safety_matrix/{run_plan_safety_run_id}/cuda_run_plan_safety_matrix.json"
-    alphachip_path = ROOT / f"build/ai_eda/alphachip_checkpoint_blocker/{alphachip_run_id}/alphachip_checkpoint_blocker_audit.json"
-    watchlist_path = ROOT / f"build/ai_eda/current_research_watchlist/{watchlist_run_id}/targets_report.json"
-    replay_path = ROOT / f"build/ai_eda/macro_placement_replay_preflight/{replay_preflight_run_id}/replay_preflight_report.json"
+    preflight_path = (
+        ROOT
+        / f"build/ai_eda/cuda_training_preflight/{preflight_run_id}/cuda_training_preflight.json"
+    )
+    payload_report_path = (
+        ROOT
+        / f"build/ai_eda/cuda_training_payloads/{payload_run_id}/cuda_training_payload_report.json"
+    )
+    run_plan_path = (
+        ROOT / f"build/ai_eda/cuda_training_payloads/{payload_run_id}/cuda_training_run_plan.json"
+    )
+    run_plan_execution_path = (
+        ROOT
+        / f"build/ai_eda/cuda_run_plan_execution/{run_plan_execution_run_id}/cuda_run_plan_execution.json"
+    )
+    run_plan_safety_matrix_path = (
+        ROOT
+        / f"build/ai_eda/cuda_run_plan_safety_matrix/{run_plan_safety_run_id}/cuda_run_plan_safety_matrix.json"
+    )
+    alphachip_path = (
+        ROOT
+        / f"build/ai_eda/alphachip_checkpoint_blocker/{alphachip_run_id}/alphachip_checkpoint_blocker_audit.json"
+    )
+    watchlist_path = (
+        ROOT / f"build/ai_eda/current_research_watchlist/{watchlist_run_id}/targets_report.json"
+    )
+    replay_path = (
+        ROOT
+        / f"build/ai_eda/macro_placement_replay_preflight/{replay_preflight_run_id}/replay_preflight_report.json"
+    )
     setup_bootstrap_path = ROOT / f"build/ai_eda/bootstrap/{setup_run_id}/bootstrap_report.json"
-    training_handoff_bootstrap_path = ROOT / f"build/ai_eda/bootstrap/{training_handoff_run_id}/bootstrap_report.json"
-    torch_training_path = ROOT / f"build/ai_eda/macro_placement_torch_regressor/{training_handoff_run_id}/torch_training_run.json"
-    torch_inference_path = ROOT / f"build/ai_eda/macro_placement_torch_inference/{training_handoff_run_id}/torch_inference_run.json"
-    full_replay_path = ROOT / f"build/ai_eda/macro_placement_full_replay/{training_handoff_run_id}/replay_plan.json"
-    replay_queue_path = ROOT / f"build/ai_eda/macro_placement_replay_queue/{training_handoff_run_id}/replay_queue.json"
-    training_handoff_payload_path = ROOT / f"build/ai_eda/cuda_training_payloads/{training_handoff_run_id}/cuda_training_payload_report.json"
+    training_handoff_bootstrap_path = (
+        ROOT / f"build/ai_eda/bootstrap/{training_handoff_run_id}/bootstrap_report.json"
+    )
+    torch_training_path = (
+        ROOT
+        / f"build/ai_eda/macro_placement_torch_regressor/{training_handoff_run_id}/torch_training_run.json"
+    )
+    torch_inference_path = (
+        ROOT
+        / f"build/ai_eda/macro_placement_torch_inference/{training_handoff_run_id}/torch_inference_run.json"
+    )
+    full_replay_path = (
+        ROOT
+        / f"build/ai_eda/macro_placement_full_replay/{training_handoff_run_id}/replay_plan.json"
+    )
+    replay_queue_path = (
+        ROOT
+        / f"build/ai_eda/macro_placement_replay_queue/{training_handoff_run_id}/replay_queue.json"
+    )
+    training_handoff_payload_path = (
+        ROOT
+        / f"build/ai_eda/cuda_training_payloads/{training_handoff_run_id}/cuda_training_payload_report.json"
+    )
 
     preflight = load_json(preflight_path)
     payload_report = load_json(payload_report_path)
@@ -223,7 +272,14 @@ def main() -> int:
 
     blockers: list[dict[str, str]] = []
     if preflight is None:
-        blockers.append(blocker("missing_cuda_preflight", "hard", "CUDA preflight report is missing", rel(preflight_path)))
+        blockers.append(
+            blocker(
+                "missing_cuda_preflight",
+                "hard",
+                "CUDA preflight report is missing",
+                rel(preflight_path),
+            )
+        )
     elif not preflight.get("cuda", {}).get("large_training_ready"):
         cuda = preflight.get("cuda", {})
         blockers.append(
@@ -236,37 +292,130 @@ def main() -> int:
         )
 
     if payload_report is None or run_plan is None:
-        blockers.append(blocker("missing_cuda_payload", "hard", "CUDA payload report or run plan is missing", rel(payload_report_path)))
+        blockers.append(
+            blocker(
+                "missing_cuda_payload",
+                "hard",
+                "CUDA payload report or run plan is missing",
+                rel(payload_report_path),
+            )
+        )
         payload_ready = False
     else:
         payload_path = ROOT / str(payload_report.get("payload", ""))
-        payload_ready = payload_path.is_file() and bool(payload_report.get("included_file_count", 0))
+        payload_ready = payload_path.is_file() and bool(
+            payload_report.get("included_file_count", 0)
+        )
         if not payload_ready:
-            blockers.append(blocker("payload_tarball_missing", "hard", "CUDA payload tarball is missing or empty", rel(payload_path)))
+            blockers.append(
+                blocker(
+                    "payload_tarball_missing",
+                    "hard",
+                    "CUDA payload tarball is missing or empty",
+                    rel(payload_path),
+                )
+            )
         if not has_command(run_plan, "ai-eda-all-target-captures"):
-            blockers.append(blocker("run_plan_missing_target_capture_gate", "hard", "Run plan lacks all-target capture gate"))
+            blockers.append(
+                blocker(
+                    "run_plan_missing_target_capture_gate",
+                    "hard",
+                    "Run plan lacks all-target capture gate",
+                )
+            )
         if not has_command(run_plan, "ai-eda-cuda-readiness-audit"):
-            blockers.append(blocker("run_plan_missing_readiness_audit", "hard", "Run plan lacks readiness audit gate"))
-        if not has_output(run_plan, "build/ai_eda/cuda_readiness_audit/<run-id>/cuda_readiness_audit.json"):
-            blockers.append(blocker("run_plan_missing_readiness_output", "hard", "Run plan lacks readiness audit expected output"))
+            blockers.append(
+                blocker(
+                    "run_plan_missing_readiness_audit",
+                    "hard",
+                    "Run plan lacks readiness audit gate",
+                )
+            )
+        if not has_output(
+            run_plan, "build/ai_eda/cuda_readiness_audit/<run-id>/cuda_readiness_audit.json"
+        ):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_readiness_output",
+                    "hard",
+                    "Run plan lacks readiness audit expected output",
+                )
+            )
         if not has_command(run_plan, "execute_cuda_run_plan.py"):
-            blockers.append(blocker("run_plan_missing_dry_run_executor", "hard", "Run plan lacks its dry-run executor command"))
+            blockers.append(
+                blocker(
+                    "run_plan_missing_dry_run_executor",
+                    "hard",
+                    "Run plan lacks its dry-run executor command",
+                )
+            )
         if not has_command(run_plan, "check_cuda_run_plan_execution.py"):
-            blockers.append(blocker("run_plan_missing_dry_run_checker", "hard", "Run plan lacks its dry-run checker command"))
+            blockers.append(
+                blocker(
+                    "run_plan_missing_dry_run_checker",
+                    "hard",
+                    "Run plan lacks its dry-run checker command",
+                )
+            )
         if not has_command(run_plan, "check_cuda_run_plan_safety_matrix.py"):
-            blockers.append(blocker("run_plan_missing_safety_matrix_checker", "hard", "Run plan lacks its safety-matrix checker command"))
-        if not has_output(run_plan, "build/ai_eda/cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json"):
-            blockers.append(blocker("run_plan_missing_dry_run_output", "hard", "Run plan lacks dry-run execution expected output"))
-        if not has_output(run_plan, "build/ai_eda/cuda_run_plan_safety_matrix/<run-id>/cuda_run_plan_safety_matrix.json"):
-            blockers.append(blocker("run_plan_missing_safety_matrix_output", "hard", "Run plan lacks safety-matrix expected output"))
+            blockers.append(
+                blocker(
+                    "run_plan_missing_safety_matrix_checker",
+                    "hard",
+                    "Run plan lacks its safety-matrix checker command",
+                )
+            )
+        if not has_output(
+            run_plan, "build/ai_eda/cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json"
+        ):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_dry_run_output",
+                    "hard",
+                    "Run plan lacks dry-run execution expected output",
+                )
+            )
+        if not has_output(
+            run_plan,
+            "build/ai_eda/cuda_run_plan_safety_matrix/<run-id>/cuda_run_plan_safety_matrix.json",
+        ):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_safety_matrix_output",
+                    "hard",
+                    "Run plan lacks safety-matrix expected output",
+                )
+            )
         if not has_command(run_plan, "select_macro_placement_replay_queue.py"):
-            blockers.append(blocker("run_plan_missing_replay_queue_builder", "hard", "Run plan lacks macro-placement replay queue builder"))
+            blockers.append(
+                blocker(
+                    "run_plan_missing_replay_queue_builder",
+                    "hard",
+                    "Run plan lacks macro-placement replay queue builder",
+                )
+            )
         if not has_command(run_plan, "check_macro_placement_replay_queue.py"):
-            blockers.append(blocker("run_plan_missing_replay_queue_checker", "hard", "Run plan lacks macro-placement replay queue checker"))
-        if not has_output(run_plan, "build/ai_eda/macro_placement_replay_queue/<run-id>/replay_queue.json"):
-            blockers.append(blocker("run_plan_missing_replay_queue_output", "hard", "Run plan lacks macro-placement replay queue expected output"))
+            blockers.append(
+                blocker(
+                    "run_plan_missing_replay_queue_checker",
+                    "hard",
+                    "Run plan lacks macro-placement replay queue checker",
+                )
+            )
+        if not has_output(
+            run_plan, "build/ai_eda/macro_placement_replay_queue/<run-id>/replay_queue.json"
+        ):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_replay_queue_output",
+                    "hard",
+                    "Run plan lacks macro-placement replay queue expected output",
+                )
+            )
 
-    run_plan_dry_run_validated, run_plan_dry_run_detail = run_plan_execution_ready(run_plan_execution, run_plan_execution_run_id)
+    run_plan_dry_run_validated, run_plan_dry_run_detail = run_plan_execution_ready(
+        run_plan_execution, run_plan_execution_run_id
+    )
     if not run_plan_dry_run_validated:
         blockers.append(
             blocker(
@@ -277,7 +426,9 @@ def main() -> int:
             )
         )
 
-    run_plan_safety_matrix_validated, run_plan_safety_matrix_detail = run_plan_safety_matrix_ready(run_plan_safety_matrix)
+    run_plan_safety_matrix_validated, run_plan_safety_matrix_detail = run_plan_safety_matrix_ready(
+        run_plan_safety_matrix
+    )
     if not run_plan_safety_matrix_validated:
         blockers.append(
             blocker(
@@ -289,7 +440,14 @@ def main() -> int:
         )
 
     if alphachip is None:
-        blockers.append(blocker("missing_alphachip_checkpoint_audit", "hard", "AlphaChip checkpoint audit is missing", rel(alphachip_path)))
+        blockers.append(
+            blocker(
+                "missing_alphachip_checkpoint_audit",
+                "hard",
+                "AlphaChip checkpoint audit is missing",
+                rel(alphachip_path),
+            )
+        )
         alphachip_available = False
     else:
         alphachip_available = alphachip.get("status") == "PASS_AVAILABLE"
@@ -304,9 +462,20 @@ def main() -> int:
             )
 
     if watchlist is None:
-        blockers.append(blocker("missing_current_research_watchlist_report", "hard", "Current-research watchlist report is missing", rel(watchlist_path)))
+        blockers.append(
+            blocker(
+                "missing_current_research_watchlist_report",
+                "hard",
+                "Current-research watchlist report is missing",
+                rel(watchlist_path),
+            )
+        )
 
-    setup_complete = bool(setup_bootstrap and setup_bootstrap.get("status") == "PASS" and setup_bootstrap.get("complete") is True)
+    setup_complete = bool(
+        setup_bootstrap
+        and setup_bootstrap.get("status") == "PASS"
+        and setup_bootstrap.get("complete") is True
+    )
     if not setup_complete:
         blockers.append(
             blocker(
@@ -324,7 +493,8 @@ def main() -> int:
     )
     torch_training_complete = bool(
         torch_training
-        and torch_training.get("schema") == "eliza.ai_eda.macro_placement_torch_regressor_training_run.v1"
+        and torch_training.get("schema")
+        == "eliza.ai_eda.macro_placement_torch_regressor_training_run.v1"
         and torch_training.get("train_sample_count", 0) > 0
         and isinstance(torch_training.get("model"), str)
     )
@@ -345,7 +515,10 @@ def main() -> int:
     if not training_handoff_complete:
         severity = (
             "soft"
-            if torch_training_complete and torch_inference_complete and full_replay_complete and training_handoff_payload_ready
+            if torch_training_complete
+            and torch_inference_complete
+            and full_replay_complete
+            and training_handoff_payload_ready
             else "hard"
         )
         blockers.append(
@@ -357,11 +530,32 @@ def main() -> int:
             )
         )
     if not torch_training_complete:
-        blockers.append(blocker("torch_training_not_validated", "hard", "Torch macro-placement training report is missing or not PASS", rel(torch_training_path)))
+        blockers.append(
+            blocker(
+                "torch_training_not_validated",
+                "hard",
+                "Torch macro-placement training report is missing or not PASS",
+                rel(torch_training_path),
+            )
+        )
     if not torch_inference_complete:
-        blockers.append(blocker("torch_inference_not_validated", "hard", "Torch macro-placement inference report is missing or not PASS", rel(torch_inference_path)))
+        blockers.append(
+            blocker(
+                "torch_inference_not_validated",
+                "hard",
+                "Torch macro-placement inference report is missing or not PASS",
+                rel(torch_inference_path),
+            )
+        )
     if not full_replay_complete:
-        blockers.append(blocker("full_replay_plan_not_validated", "hard", "Full macro-placement replay plan is missing or empty", rel(full_replay_path)))
+        blockers.append(
+            blocker(
+                "full_replay_plan_not_validated",
+                "hard",
+                "Full macro-placement replay plan is missing or empty",
+                rel(full_replay_path),
+            )
+        )
     if not replay_queue_validated:
         blockers.append(
             blocker(
@@ -372,13 +566,29 @@ def main() -> int:
             )
         )
     if not training_handoff_payload_ready:
-        blockers.append(blocker("training_handoff_payload_not_validated", "hard", "Training-handoff payload report is missing or empty", rel(training_handoff_payload_path)))
+        blockers.append(
+            blocker(
+                "training_handoff_payload_not_validated",
+                "hard",
+                "Training-handoff payload report is missing or empty",
+                rel(training_handoff_payload_path),
+            )
+        )
 
     replay_ready = False
     if replay is None:
-        blockers.append(blocker("missing_e1_replay_preflight", "hard", "E1 macro-placement replay preflight report is missing", rel(replay_path)))
+        blockers.append(
+            blocker(
+                "missing_e1_replay_preflight",
+                "hard",
+                "E1 macro-placement replay preflight report is missing",
+                rel(replay_path),
+            )
+        )
     else:
-        replay_ready = str(replay.get("status", "")).startswith("READY") or str(replay.get("status", "")).startswith("EXECUTED")
+        replay_ready = str(replay.get("status", "")).startswith("READY") or str(
+            replay.get("status", "")
+        ).startswith("EXECUTED")
         if not replay_ready:
             blockers.append(
                 blocker(
@@ -406,7 +616,9 @@ def main() -> int:
             "setup_check": setup_run_id,
             "training_handoff": training_handoff_run_id,
         },
-        "status": "READY_FOR_CUDA_EXECUTION" if not hard_blockers else "PASS_WITH_BLOCKERS_RECORDED",
+        "status": "READY_FOR_CUDA_EXECUTION"
+        if not hard_blockers
+        else "PASS_WITH_BLOCKERS_RECORDED",
         "claim_boundary": CLAIM_BOUNDARY,
         "policy": {
             "runs_training": False,

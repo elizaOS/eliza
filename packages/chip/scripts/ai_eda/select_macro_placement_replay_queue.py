@@ -102,7 +102,8 @@ def queue_item(plan: dict[str, Any], rank: int) -> dict[str, Any]:
         "rank": rank,
         "candidate_id": plan["candidate_id"],
         "status": plan.get("status"),
-        "ready_for_execution": plan.get("status") == "READY_FOR_DETERMINISTIC_REPLAY" and not blockers,
+        "ready_for_execution": plan.get("status") == "READY_FOR_DETERMINISTIC_REPLAY"
+        and not blockers,
         "blockers": blockers if isinstance(blockers, list) else [],
         "design_bundle_id": plan.get("design_bundle_id"),
         "placement_case_id": plan.get("placement_case_id"),
@@ -147,7 +148,10 @@ def main() -> int:
         raise SystemExit("--per-case must be >= 1")
     if args.limit < 1:
         raise SystemExit("--limit must be >= 1")
-    eval_path = args.eval_report or DEFAULT_EVAL_ROOT / args.run_id / "macro_placement_candidate_eval_report.json"
+    eval_path = (
+        args.eval_report
+        or DEFAULT_EVAL_ROOT / args.run_id / "macro_placement_candidate_eval_report.json"
+    )
     replay_path = args.replay_plan or DEFAULT_REPLAY_ROOT / args.run_id / "replay_plan.json"
     eval_report = load_json(eval_path)
     replay_report = load_json(replay_path)
