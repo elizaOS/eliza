@@ -3450,6 +3450,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return result.map((row) => ({
           id: row.id as UUID,
+          agentId: row.agentId as UUID,
           name: row.name,
           description: row.description ?? "",
           roomId: row.roomId as UUID,
@@ -3476,6 +3477,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return result.map((row) => ({
           id: row.id as UUID,
+          agentId: row.agentId as UUID,
           name: row.name,
           description: row.description ?? "",
           roomId: row.roomId as UUID,
@@ -3508,6 +3510,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const row = result[0];
         return {
           id: row.id as UUID,
+          agentId: row.agentId as UUID,
           name: row.name,
           description: row.description ?? "",
           roomId: row.roomId as UUID,
