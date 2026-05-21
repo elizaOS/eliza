@@ -199,7 +199,17 @@ export default function StewardLoginSection() {
         ),
         tenantId: STEWARD_TENANT_ID,
       })
-        .then(() => {
+        .then((res) => {
+          // Mirror the JWT into localStorage so `@stwd/react`'s `useAuth()`
+          // and `readStewardSessionFromStorage()` see the session on the
+          // very next route mount. Without this, OAuth users land back on
+          // `/login` after a successful exchange (HttpOnly cookies alone
+          // aren't enough — the SPA auth check requires the localStorage
+          // copy until that's relaxed).
+          if (res?.token) {
+            writeStoredStewardToken(res.token);
+            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          }
           setRedirectTo(resolveLoginReturnTo(searchParams));
         })
         .catch((sessionError) => {

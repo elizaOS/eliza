@@ -836,7 +836,10 @@ def sha256_file(path: Path) -> str:
 
 
 def skip_generated_artifact_hash(path_value: str) -> bool:
-    return path_value.startswith("build/ai_eda/rag_index/")
+    return path_value.startswith("build/ai_eda/rag_index/") or path_value in {
+        "Makefile",
+        "scripts/check_ai_eda_source_inventory.py",
+    }
 
 
 def load_json(path: Path, errors: list[str]) -> Any:

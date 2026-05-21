@@ -243,7 +243,7 @@ def convert_design(
             "num_nets": num_nets,
             "initial_proxy_cost": proxy_cost,
         }
-        for record, path in zip(records, paths, strict=False)
+        for record, path in zip(records, paths)
     ]
 
 

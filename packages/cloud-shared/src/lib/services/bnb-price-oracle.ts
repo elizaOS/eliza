@@ -88,9 +88,7 @@ async function fetchFromChainlink(): Promise<BnbPriceQuote> {
       `Chainlink BNB/USD price is stale (last update ${ageSeconds}s ago); refusing to quote`,
     );
   }
-  const priceUsd = new Decimal(answer.toString()).div(
-    new Decimal(10).pow(Number(decimals)),
-  );
+  const priceUsd = new Decimal(answer.toString()).div(new Decimal(10).pow(Number(decimals)));
   if (priceUsd.lessThan(50) || priceUsd.greaterThan(100_000)) {
     // Sanity bounds — BNB has never traded outside this range.
     throw new Error(`Chainlink BNB/USD price out of sanity bounds: ${priceUsd.toString()}`);
@@ -153,8 +151,7 @@ export async function getBnbUsdQuote(): Promise<BnbPriceQuote> {
     } catch (geckoError) {
       const chainlinkMsg =
         chainlinkError instanceof Error ? chainlinkError.message : String(chainlinkError);
-      const geckoMsg =
-        geckoError instanceof Error ? geckoError.message : String(geckoError);
+      const geckoMsg = geckoError instanceof Error ? geckoError.message : String(geckoError);
       throw new Error(
         `BNB price oracle unavailable. Chainlink: ${chainlinkMsg}. CoinGecko: ${geckoMsg}.`,
       );

@@ -268,7 +268,7 @@ def convert_case(
             "instance_count": len(nodes),
             "timing_arc_count": len(edges),
         }
-        for record, path in zip((design_bundle, graph_sample, flow_run), paths, strict=False)
+        for record, path in zip((design_bundle, graph_sample, flow_run), paths)
     ]
 
 

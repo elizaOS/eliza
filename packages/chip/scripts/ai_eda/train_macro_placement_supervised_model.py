@@ -244,7 +244,6 @@ def legalized_prediction_locations(
     for (obj_index, _px, _py, orient, source), (_slot_index, slot) in zip(
         indexed_predictions,
         indexed_slots,
-        strict=False,
     ):
         locations_by_object[obj_index] = (slot[0], slot[1], orient, source)
     return [
@@ -338,7 +337,7 @@ def candidate_for_case(
     core = case["floorplan"]["core_area_um"]
     locations, source_counts = legalized_prediction_locations(model, core, movable)
     changes = []
-    for obj, (x_um, y_um, orientation, _source) in zip(movable, locations, strict=False):
+    for obj, (x_um, y_um, orientation, _source) in zip(movable, locations):
         if not isinstance(obj, dict) or not obj.get("id"):
             continue
         changes.append(

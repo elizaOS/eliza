@@ -132,7 +132,7 @@ def parse_demand_map(path: Path) -> dict[str, Any]:
             )
     if not edge_features and len(nonzero_cells) > 1:
         for (row, col, demand), (next_row, next_col, other_demand) in zip(
-            nonzero_cells, nonzero_cells[1:], strict=False
+            nonzero_cells, nonzero_cells[1:]
         ):
             edge_features.append(
                 {
@@ -249,7 +249,7 @@ def convert_map(path: Path, out_dir: Path) -> list[dict[str, Any]]:
             "nonzero_count": stats["nonzero_count"],
             "edge_count": stats["edge_count"],
         }
-        for record, out_path in zip(records, paths, strict=False)
+        for record, out_path in zip(records, paths)
     ]
 
 

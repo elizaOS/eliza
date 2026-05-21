@@ -226,7 +226,7 @@ def convert_bench(path: Path, out_dir: Path) -> list[dict[str, Any]]:
             "logic_gate_count": len(parsed["assignments"]),
             "edge_count": len(parsed["edge_features"]),
         }
-        for record, out_path in zip(records, paths, strict=False)
+        for record, out_path in zip(records, paths)
     ]
 
 

@@ -645,9 +645,7 @@ describe.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       await service.processBroadcastBatch(env);
       const row1 = await dbWrite.query.cryptoPayments.findFirst();
       expect(row1?.status).toBe("broadcast");
-      const attempts1 = Number(
-        (row1?.metadata as Record<string, unknown>).verify_attempts ?? 0,
-      );
+      const attempts1 = Number((row1?.metadata as Record<string, unknown>).verify_attempts ?? 0);
       expect(attempts1).toBeGreaterThanOrEqual(1);
 
       // Jump straight to MAX-1 to keep the test fast, then one more pass should

@@ -295,7 +295,7 @@ def convert_case(case_dir: Path, out_dir: Path, payload: Path) -> list[dict[str,
             "macro_count": len(movable),
             "target_count": flow_run["metrics"]["macro_target_count"],
         }
-        for record, path in zip((design_bundle, placement_case, flow_run), paths, strict=False)
+        for record, path in zip((design_bundle, placement_case, flow_run), paths)
     ]
 
 

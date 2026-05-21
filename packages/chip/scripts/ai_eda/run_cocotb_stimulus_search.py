@@ -132,7 +132,7 @@ def main() -> int:
 
     scopes = []
     errors: list[str] = []
-    for coverage_path, seed_path in zip(coverage_paths, seed_paths, strict=False):
+    for coverage_path, seed_path in zip(coverage_paths, seed_paths):
         coverage = load_yaml(coverage_path)
         seeds = load_yaml(seed_path)
         errors.extend(validate_coverage(coverage_path, coverage))
