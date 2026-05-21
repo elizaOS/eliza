@@ -14,15 +14,7 @@
  *   - mock `bnb-price-oracle` so we don't hit the network for BNB quotes.
  */
 
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  test,
-  vi,
-} from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 // This integration test relies on Vitest-only module-mock plumbing
 // (`vi.mock(id, async () => ({ ...await vi.importActual<T>(id), ...overrides }))`)
@@ -39,8 +31,7 @@ import {
 // state-machine paths are exercised by other integration suites that use
 // real test fixtures rather than vi.mock.
 const SUPPORTS_VITEST_MOCK_API =
-  typeof (vi as unknown as { importActual?: unknown }).importActual ===
-  "function";
+  typeof (vi as unknown as { importActual?: unknown }).importActual === "function";
 const d = SUPPORTS_VITEST_MOCK_API ? describe : describe.skip;
 
 // --- Required env BEFORE any imports of cloud-shared/db ---------------------
@@ -83,90 +74,92 @@ interface FakeTx {
 
 const chainTxs = new Map<string, FakeTx>();
 
-if (SUPPORTS_VITEST_MOCK_API) vi.mock("viem", async () => {
-  const actual = (await vi.importActual("viem")) as typeof import("viem");
-  return {
-    ...actual,
-    createPublicClient: () => ({
-      async getTransactionReceipt({ hash }: { hash: string }) {
-        const tx = chainTxs.get(hash);
-        if (!tx) {
-          const err = new Error("Transaction receipt not found");
-          err.name = "TransactionReceiptNotFoundError";
-          throw err;
-        }
-        if (tx.throwNotFound) {
-          const err = new Error("could not be found");
-          err.name = "TransactionReceiptNotFoundError";
-          throw err;
-        }
-        if (tx.throwTerminal) {
-          throw new Error(tx.throwTerminal);
-        }
-        return {
-          status: tx.status,
-          blockNumber: 12345n,
-          logs: tx.erc20
-            ? [
-                {
-                  address: tx.erc20.tokenAddress,
-                  topics: [],
-                  data: "0x",
-                  // parseEventLogs uses these — we shortcut via stubbed parseEventLogs below
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("viem", async () => {
+    const actual = (await vi.importActual("viem")) as typeof import("viem");
+    return {
+      ...actual,
+      createPublicClient: () => ({
+        async getTransactionReceipt({ hash }: { hash: string }) {
+          const tx = chainTxs.get(hash);
+          if (!tx) {
+            const err = new Error("Transaction receipt not found");
+            err.name = "TransactionReceiptNotFoundError";
+            throw err;
+          }
+          if (tx.throwNotFound) {
+            const err = new Error("could not be found");
+            err.name = "TransactionReceiptNotFoundError";
+            throw err;
+          }
+          if (tx.throwTerminal) {
+            throw new Error(tx.throwTerminal);
+          }
+          return {
+            status: tx.status,
+            blockNumber: 12345n,
+            logs: tx.erc20
+              ? [
+                  {
+                    address: tx.erc20.tokenAddress,
+                    topics: [],
+                    data: "0x",
+                    // parseEventLogs uses these — we shortcut via stubbed parseEventLogs below
+                  },
+                ]
+              : [],
+          };
+        },
+        async getTransaction({ hash }: { hash: string }) {
+          const tx = chainTxs.get(hash);
+          if (!tx) throw new Error("not found");
+          return { from: tx.from, to: tx.to, value: tx.value };
+        },
+        async readContract() {
+          return 18n;
+        },
+      }),
+      parseEventLogs: ({ logs }: { logs: Array<{ address: string }> }) => {
+        // Map the stub-receipt log back to a parsed Transfer event using the
+        // chainTxs entry whose tokenAddress matches.
+        const out: Array<{
+          address: string;
+          args: { from: string; to: string; value: bigint };
+        }> = [];
+        for (const log of logs) {
+          for (const tx of chainTxs.values()) {
+            if (tx.erc20 && tx.erc20.tokenAddress.toLowerCase() === log.address.toLowerCase()) {
+              out.push({
+                address: tx.erc20.tokenAddress,
+                args: {
+                  from: tx.erc20.from,
+                  to: tx.erc20.to,
+                  value: tx.erc20.value,
                 },
-              ]
-            : [],
-        };
-      },
-      async getTransaction({ hash }: { hash: string }) {
-        const tx = chainTxs.get(hash);
-        if (!tx) throw new Error("not found");
-        return { from: tx.from, to: tx.to, value: tx.value };
-      },
-      async readContract() {
-        return 18n;
-      },
-    }),
-    parseEventLogs: ({ logs }: { logs: Array<{ address: string }> }) => {
-      // Map the stub-receipt log back to a parsed Transfer event using the
-      // chainTxs entry whose tokenAddress matches.
-      const out: Array<{
-        address: string;
-        args: { from: string; to: string; value: bigint };
-      }> = [];
-      for (const log of logs) {
-        for (const tx of chainTxs.values()) {
-          if (tx.erc20 && tx.erc20.tokenAddress.toLowerCase() === log.address.toLowerCase()) {
-            out.push({
-              address: tx.erc20.tokenAddress,
-              args: {
-                from: tx.erc20.from,
-                to: tx.erc20.to,
-                value: tx.erc20.value,
-              },
-            });
-            break;
+              });
+              break;
+            }
           }
         }
-      }
-      return out;
-    },
-  };
-});
+        return out;
+      },
+    };
+  });
 
 // BNB price oracle — fixed quote so the math is predictable.
-if (SUPPORTS_VITEST_MOCK_API) vi.mock("../bnb-price-oracle", async () => {
-  const Decimal = (await import("decimal.js")).default;
-  return {
-    getBnbUsdQuote: vi.fn(async () => ({
-      priceUsd: new Decimal(600),
-      source: "chainlink",
-      feedAddress: "0xfeed",
-      updatedAt: "2026-01-01T00:00:00Z",
-      fetchedAt: "2026-01-01T00:00:01Z",
-    })),
-  };
-});
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("../bnb-price-oracle", async () => {
+    const Decimal = (await import("decimal.js")).default;
+    return {
+      getBnbUsdQuote: vi.fn(async () => ({
+        priceUsd: new Decimal(600),
+        source: "chainlink",
+        feedAddress: "0xfeed",
+        updatedAt: "2026-01-01T00:00:00Z",
+        fetchedAt: "2026-01-01T00:00:01Z",
+      })),
+    };
+  });
 
 // Solana — we don't test the Solana confirm path through verify (would need a
 // huge mock of getParsedTransaction + ATA owner check). The Solana createPayment
@@ -179,39 +172,43 @@ const solanaTestState = vi.hoisted(() => ({
   parsedTxOverride: null as unknown,
 }));
 
-if (SUPPORTS_VITEST_MOCK_API) vi.mock("@solana/spl-token", async () => {
-  const actual = (await vi.importActual("@solana/spl-token")) as typeof import("@solana/spl-token");
-  return {
-    ...actual,
-    getAccount: vi.fn(async (_connection: unknown, ata: { toBase58(): string }) => {
-      if (solanaTestState.ataOwnerOverride) {
-        const { PublicKey } = await import("@solana/web3.js");
-        return {
-          address: ata,
-          owner: new PublicKey(solanaTestState.ataOwnerOverride),
-          mint: ata,
-          amount: 0n,
-        } as unknown as Awaited<ReturnType<typeof actual.getAccount>>;
-      }
-      return actual.getAccount(_connection as never, ata as never);
-    }),
-  };
-});
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("@solana/spl-token", async () => {
+    const actual = (await vi.importActual(
+      "@solana/spl-token",
+    )) as typeof import("@solana/spl-token");
+    return {
+      ...actual,
+      getAccount: vi.fn(async (_connection: unknown, ata: { toBase58(): string }) => {
+        if (solanaTestState.ataOwnerOverride) {
+          const { PublicKey } = await import("@solana/web3.js");
+          return {
+            address: ata,
+            owner: new PublicKey(solanaTestState.ataOwnerOverride),
+            mint: ata,
+            amount: 0n,
+          } as unknown as Awaited<ReturnType<typeof actual.getAccount>>;
+        }
+        return actual.getAccount(_connection as never, ata as never);
+      }),
+    };
+  });
 
-if (SUPPORTS_VITEST_MOCK_API) vi.mock("@solana/web3.js", async () => {
-  const actual = (await vi.importActual("@solana/web3.js")) as typeof import("@solana/web3.js");
-  return {
-    ...actual,
-    Connection: class FakeConnection {
-      async getParsedTransaction() {
-        return solanaTestState.parsedTxOverride;
-      }
-      async getAccountInfo() {
-        return null;
-      }
-    },
-  };
-});
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("@solana/web3.js", async () => {
+    const actual = (await vi.importActual("@solana/web3.js")) as typeof import("@solana/web3.js");
+    return {
+      ...actual,
+      Connection: class FakeConnection {
+        async getParsedTransaction() {
+          return solanaTestState.parsedTxOverride;
+        }
+        async getAccountInfo() {
+          return null;
+        }
+      },
+    };
+  });
 
 // creditsService stand-in: respects stripePaymentIntentId idempotency, which
 // is the contract that prevents double-credit on retry.
@@ -221,43 +218,45 @@ const creditsLedger: Array<{
   stripePaymentIntentId: string | undefined;
 }> = [];
 
-if (SUPPORTS_VITEST_MOCK_API) vi.mock("../credits", () => ({
-  creditsService: {
-    async addCredits(params: {
-      organizationId: string;
-      amount: number;
-      description: string;
-      stripePaymentIntentId?: string;
-      metadata?: Record<string, unknown>;
-    }) {
-      if (params.stripePaymentIntentId) {
-        const existing = creditsLedger.find(
-          (l) => l.stripePaymentIntentId === params.stripePaymentIntentId,
-        );
-        if (existing) {
-          return { transaction: { id: "existing" }, newBalance: 0 };
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("../credits", () => ({
+    creditsService: {
+      async addCredits(params: {
+        organizationId: string;
+        amount: number;
+        description: string;
+        stripePaymentIntentId?: string;
+        metadata?: Record<string, unknown>;
+      }) {
+        if (params.stripePaymentIntentId) {
+          const existing = creditsLedger.find(
+            (l) => l.stripePaymentIntentId === params.stripePaymentIntentId,
+          );
+          if (existing) {
+            return { transaction: { id: "existing" }, newBalance: 0 };
+          }
         }
-      }
-      creditsLedger.push({
-        organizationId: params.organizationId,
-        amount: params.amount,
-        stripePaymentIntentId: params.stripePaymentIntentId,
-      });
-      return { transaction: { id: "new" }, newBalance: params.amount };
+        creditsLedger.push({
+          organizationId: params.organizationId,
+          amount: params.amount,
+          stripePaymentIntentId: params.stripePaymentIntentId,
+        });
+        return { transaction: { id: "new" }, newBalance: params.amount };
+      },
     },
-  },
-}));
+  }));
 
-if (SUPPORTS_VITEST_MOCK_API) vi.mock("../invoices", () => ({
-  invoicesService: {
-    async getByStripeInvoiceId() {
-      return undefined;
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("../invoices", () => ({
+    invoicesService: {
+      async getByStripeInvoiceId() {
+        return undefined;
+      },
+      async create() {
+        return { id: "invoice-stub" };
+      },
     },
-    async create() {
-      return { id: "invoice-stub" };
-    },
-  },
-}));
+  }));
 
 // ---------------------------------------------------------------------------
 // Test harness
