@@ -141,15 +141,14 @@ function getStoredConnectionRole(sourceContext: unknown): OAuthStandardConnectio
 function connectionSourceContext(
   connectionRole: OAuthStandardConnectionRole,
 ): PlatformCredentialSourceContext {
-  const sourceContext: PlatformCredentialSourceContext = {
-    connectionRole,
-  };
-  if (connectionRole === "OWNER") {
-    sourceContext.agentGoogleSide = "owner";
-  } else if (connectionRole === "AGENT") {
-    sourceContext.agentGoogleSide = "agent";
-  }
-  return sourceContext;
+  // We intentionally no longer write `agentGoogleSide`. `connectionRole`
+  // is the canonical field; existing rows that only have the legacy
+  // field are still readable via the fallbacks in `getStoredConnectionRole`
+  // (above, line 95), `oauth-service.ts` (`agentGoogleSide` fallback),
+  // and `connection-adapters/generic-adapter.ts`. The upsert
+  // setWhere clause below also COALESCEs both fields so a re-link
+  // matches the original row.
+  return { connectionRole };
 }
 
 function oauthSecretName(
