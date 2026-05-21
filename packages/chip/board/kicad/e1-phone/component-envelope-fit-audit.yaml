@@ -64,7 +64,7 @@ known_component_envelopes:
     device_envelope_mm:
       width: 78.0
       height: 153.6
-      thickness: 9.6
+      thickness: 11.2
     fit:
       fits_width: true
       fits_height: true

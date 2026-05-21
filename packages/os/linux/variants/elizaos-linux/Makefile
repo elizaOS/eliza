@@ -4,7 +4,7 @@
 #   make build ARCH=amd64
 #   make build ARCH=arm64
 #   make build ARCH=riscv64
-#   make build ARCH=amd64 PROFILE=tails-secure
+#   make build ARCH=amd64 PROFILE=secure
 #
 #   make qemu-boot ARCH=riscv64
 #   make release-check-strict ARCH=amd64
@@ -21,7 +21,7 @@ SUPPORTED_ARCHES := amd64 arm64 riscv64
 
 help:
 	@echo "elizaOS Linux build targets:"
-	@echo "  make build [ARCH=amd64|arm64|riscv64] [PROFILE=default|tails-secure]"
+	@echo "  make build [ARCH=amd64|arm64|riscv64] [PROFILE=default|secure]"
 	@echo "  make qemu-boot ARCH=<arch>"
 	@echo "  make release-check-strict ARCH=<arch>"
 	@echo "  make brand-assets       # regenerate PNG branding from SVG sources"

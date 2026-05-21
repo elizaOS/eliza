@@ -9,10 +9,10 @@
 #   arm64   — aarch64 SBCs and Apple Silicon (UTM), EFI via grub-efi
 #   riscv64 — TH1520 / SiFive boards + QEMU virt, EFI via grub-efi
 #
-# Tails security model (sudoers narrowing, persistence) lives under
-# config/profiles/tails-secure/ and is composed in via build.sh when
-# ELIZAOS_PROFILE=tails-secure on amd64. The default profile is plain
-# elizaOS desktop.
+# The elizaOS hardening profile (Tor routing, AppArmor enforcement, MAC
+# randomization, amnesic tmpfs home) lives under config/profiles/secure/
+# and is composed in via build.sh when ELIZAOS_PROFILE=secure. The default
+# profile is plain elizaOS desktop.
 set -eu
 
 ARCH="${ELIZAOS_ARCH:-amd64}"

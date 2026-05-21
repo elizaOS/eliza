@@ -44,6 +44,10 @@ for required in "${APP_JS}" "${APP_PACKAGE}" "${NODE_BIN}" "${CURL_BIN}"; do
     fi
 done
 
+chown root:root "${AGENT_BIN}" "${APP_JS}" "${APP_PACKAGE}"
+chmod 0755 "${AGENT_BIN}" "${APP_JS}"
+chmod 0644 "${APP_PACKAGE}"
+
 echo "[0030-elizaos-userland] enabling elizaos-first-boot.service in live root"
 systemctl enable elizaos-first-boot.service
 

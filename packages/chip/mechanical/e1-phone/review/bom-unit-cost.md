@@ -1,20 +1,25 @@
 # e1-phone — Production Unit Cost (10k / 100k volumes)
 
-**Date:** 2026-05-20
+**Date:** 2026-05-21
 **Status:** Sourcing-analyst estimate; NOT a release BOM, NOT a signed quote.
+**Design rev:** evt0-mechanical-cad-flush-back (11.2 mm flush back, 5830 mAh battery, rear torch/flash LED).
 **Currency:** USD, EXW Shenzhen.
 **Companion data:** [`bom-unit-cost.yaml`](./bom-unit-cost.yaml).
 
 ## Summary
 
 At an order volume of 10,000 units the e1-phone (5.5" FHD, Unisoc T606,
-4 GB / 64 GB, 5G RedCap, 4500 mAh) lands at an **ex-factory cost of
-≈ $115.70 per unit**, dominated by the Quectel RG255C 5G RedCap modem
+4 GB / 64 GB, 5G RedCap, 5830 mAh) lands at an **ex-factory cost of
+≈ $116.34 per unit**, dominated by the Quectel RG255C 5G RedCap modem
 ($22.50), the LCD module ($14.50), and LPDDR4X RAM ($9.50). Amortizing
 the ~$60k injection-mold NRE plus ~$6k PCBA NRE over 100,000 units and
 applying the volume-tier prices reachable for the SoC/modem/Wi-Fi/display/
-camera/battery lines, the ex-factory cost falls to **≈ $87.56 per unit**.
-A 3× retail markup yields the typical range **$249 (100k) to $347 (10k)**,
+camera/battery lines, the ex-factory cost falls to **≈ $88.14 per unit**.
+The flush-back rev adds ≈ $0.58-0.64 / unit vs the prior 9.6 mm design: a
+larger 5830 mAh pouch (≈ +$0.40), a rear torch/flash LED (≈ +$0.06-0.08),
+and an AW36515-class flash driver IC (≈ +$0.12-0.16). The single-lens rear
+and single-lens front cameras are unchanged (no array), so camera lines hold.
+A 3× retail markup yields the typical range **$264 (100k) to $349 (10k)**,
 which is consistent with positioning this device against entry-level
 Redmi/Realme RedCap handsets in the China-domestic and emerging-market
 segments. The single largest cost-reduction lever (≈ -$12 / unit) is
@@ -53,15 +58,17 @@ roughly 78% of total BOM dollars, so even if every estimate line is off by
 | 12 | 5.5" FHD LCD + CTP | 1 | Chenghao CH550FH01A-CT | 14.50 | 11.80 | med |
 | 13 | Cover glass 2.5D 0.7 mm | 1 | Lens/Biel chemically-strengthened | 1.60 | 1.20 | est |
 | 14 | Display adhesive frame | 1 | Tesa/3M die-cut | 0.12 | 0.08 | est |
-| 15 | Rear camera 13 MP OV13855 | 1 | Sincere First / Sunny Optical | 4.80 | 3.90 | med |
-| 16 | Front camera 5 MP GC5035 | 1 | Sincere First / O-Film | 1.40 | 1.10 | med |
+| 15 | Rear camera 13 MP OV13855 (single lens) | 1 | Sincere First / Sunny Optical | 4.80 | 3.90 | med |
+| 15a | Rear torch/flash LED ~1.0x1.0 mm | 1 | Everlight / OSRAM-class white flash LED | 0.08 | 0.06 | est |
+| 15b | Flash driver IC | 1 | Awinic AW36515FCR (SGM3140 alt) | 0.16 | 0.12 | est |
+| 16 | Front camera 5 MP GC5035 (single lens) | 1 | Sincere First / O-Film | 1.40 | 1.10 | med |
 | 17 | USB-C receptacle | 1 | GCT USB4105-GF-A | 0.42 | 0.31 | high |
 | 18 | Tactile switches (side) | 3 | Panasonic EVQP7A01P | 0.18 | 0.13 | high |
 | 19 | MEMS mics | 2 | Knowles SPK0641HT4H-1 | 0.95 | 0.74 | high |
 | 20 | Earpiece receiver 1206 | 1 | AAC / Goertek | 0.45 | 0.32 | est |
 | 21 | Speaker module 1115 + chamber | 1 | AAC / Goertek 1115 box | 0.95 | 0.70 | est |
 | 22 | LRA 0612 X-axis | 1 | Leader Microelectronics LRA0612X | 1.60 | 1.20 | est |
-| 23 | Battery LiPo 4500 mAh + PCM | 1 | LiPol LP446487 (incl. PCM, NTC, JST) | 3.80 | 2.95 | med |
+| 23 | Battery LiPo 5830 mAh + PCM | 1 | LiPol LP576487-class (incl. PCM, NTC, JST) | 4.20 | 3.35 | med |
 | 24 | Battery PCM | — | bundled in line 23 | 0.00 | 0.00 | high |
 | 25 | Battery FPC/harness | — | bundled in line 23 | 0.00 | 0.00 | high |
 | 26 | NFC | 0 | excluded per spec | 0.00 | 0.00 | high |

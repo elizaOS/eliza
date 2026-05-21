@@ -281,10 +281,10 @@ thermal_management:
   device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 9.6
+    max_thickness: 11.2
   skin_limit_c: 43
   sustained_skin_limited_budget_w: 4.0
-  z_stack_risk: 'The stack can exceed 9.6 mm unless shield can heights, battery thickness,
+  z_stack_risk: 'The stack can exceed 11.2 mm unless shield can heights, battery thickness,
     camera z-height, and rear cover design are locked together. A STEP tolerance stack
     is mandatory before claiming enclosure fit.
 

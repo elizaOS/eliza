@@ -24,7 +24,7 @@ source_artifacts:
   - docs/board/e1-phone-enclosure-interface.yaml
 
 shared_geometry:
-  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 9.6}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.2}
   board_bbox_mm: {width: 64.0, height: 132.0}
   selected_display_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
   selected_display_active_area_mm: {width: 68.04, height: 120.96}

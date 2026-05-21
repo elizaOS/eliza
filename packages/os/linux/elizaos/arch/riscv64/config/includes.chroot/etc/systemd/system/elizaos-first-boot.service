@@ -3,7 +3,7 @@
 Description=elizaOS first-boot setup (one-shot)
 DefaultDependencies=no
 After=local-fs.target systemd-tmpfiles-setup.service
-Before=multi-user.target elizaos-agent.service
+Before=multi-user.target
 ConditionPathExists=!/var/lib/elizaos/.first-boot-complete
 
 [Service]

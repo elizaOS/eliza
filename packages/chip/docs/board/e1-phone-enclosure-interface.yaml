@@ -84,7 +84,7 @@ component_keepouts:
 next_me_artifacts_required:
   - STEP_model_for_board_display_battery_camera_usb_c_and_buttons
   - 2D_drawing_with_datums_for_display_lens_camera_usb_c_and_side_buttons
-  - tolerance_stack_for_9p6_mm_thickness_target
+  - tolerance_stack_for_11p2_mm_flush_back_thickness_target
   - antenna_plastic_and_metal_keepout_model
   - acoustic_chamber_model_for_speaker_mics_and_earpiece
   - drop_and_connector_insertion_load_review

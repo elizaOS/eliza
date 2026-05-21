@@ -54,7 +54,8 @@ def _good_transcript() -> str:
         "systemd[1]: Reached target Multi-User System.\n"
         "elizaos-firstboot[123]: first boot complete; emitting marker\n"
         f"elizaos-firstboot[123]: {gate.REQUIRED_TRANSCRIPT_MARKER}\n"
-        "login: \n"
+        "curl http://127.0.0.1:31337/api/health -> 200 OK\n"
+        "elizaos-agent-ready\n"
     )
 
 
@@ -278,6 +279,16 @@ class FixedPathTests(unittest.TestCase):
         self.assertEqual(status, "FAIL")
         self.assertTrue(
             any("missing required marker" in r.message for r in results),
+            msg=[(r.status, r.message) for r in results],
+        )
+
+    def test_missing_agent_marker_fails(self) -> None:
+        bad_transcript = self.sandbox.transcript_path
+        bad_transcript.write_text(_good_transcript().replace("elizaos-agent-ready", ""))
+        status, results = _run(self.sandbox)
+        self.assertEqual(status, "FAIL")
+        self.assertTrue(
+            any("elizaos-agent-ready" in r.message for r in results),
             msg=[(r.status, r.message) for r in results],
         )
 

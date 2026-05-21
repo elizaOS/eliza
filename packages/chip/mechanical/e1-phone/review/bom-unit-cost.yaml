@@ -1,5 +1,11 @@
 schema: eliza.e1_phone_bom_unit_cost.v1
-date: 2026-05-20
+date: 2026-05-21
+design_rev: evt0-mechanical-cad-flush-back
+design_change_note: >
+  Flush-back rev: device 9.6 -> 11.2 mm, battery 4500 mAh/17.33 Wh -> 5830 mAh/22.45 Wh
+  (LP576487-class thick pouch), single-lens rear + single-lens front (unchanged single
+  configuration), and a new rear torch/flash LED + flash driver IC. BOM lines and rollup
+  below reflect these deltas; all other lines unchanged from the prior rev.
 status: sourcing_estimate_not_release_bom
 claim_boundary: >
   Unit-cost analysis assembled from public Alibaba/AliExpress/LCSC/Made-in-China
@@ -14,8 +20,8 @@ volume_assumptions:
 currency: USD
 incoterms_assumption: EXW Shenzhen, components landed at CM, no VAT
 target_phone:
-  envelope_mm: [78.0, 153.6, 9.6]
-  battery_wh: 17.33
+  envelope_mm: [78.0, 153.6, 11.2]
+  battery_wh: 22.45
   display_in: 5.5
   region: global / China-domestic first
 
@@ -247,6 +253,39 @@ lines:
       sample pricing $25/pc at MOQ 5 collapses to $4-5 at 10k. Sunny Optical
       reference module ~$3.80-4.40 at 100k.
 
+  - line: 15a
+    function: rear_flash_torch_led
+    qty: 1
+    mpn: Everlight/OSRAM-class white flash/torch LED, ~1.0 x 1.0 x 0.6 mm top-fire
+    chinese_alternate: Everlight 1006 white flash LED / generic Shenzhen 1W torch LED
+    source:
+      - https://en.everlight.com/visible_led/category-flash_led/
+      - https://www.lcsc.com/brand-detail/138.html
+    price_usd_10k: 0.08
+    price_usd_100k: 0.06
+    confidence: estimate
+    notes: >
+      Single rear torch/flash LED behind a flush light-pipe window. Commodity
+      1.0 x 1.0 mm white flash LEDs (Everlight/OSRAM-class) run $0.08-0.12 single
+      at LCSC and fall to ~$0.05-0.07 at 100k from Shenzhen LED houses. Estimate
+      tier: exact MPN not yet selected.
+
+  - line: 15b
+    function: flash_led_driver_ic
+    qty: 1
+    mpn: Awinic AW36515FCR (2 A boost flash/torch LED driver, I2C, FCQFN-10 1.2x1.6)
+    chinese_alternate: SGMicro SGM3140 (single-channel charge-pump flash driver)
+    source:
+      - https://www.lcsc.com/product-detail/LED-Drivers_AWINIC-Shanghai-Awinic-Tech-AW36515FCR_C2844183.html
+      - https://www.sg-micro.com/product/SGM3140
+    price_usd_10k: 0.16
+    price_usd_100k: 0.12
+    confidence: estimate
+    notes: >
+      AW36515FCR LCSC pricing $0.2746 at 5+, $0.2587 at 520+ (3000/reel); 10k/100k
+      contract via Awinic channel lands ~$0.14-0.18 at 10k, ~$0.11-0.13 at 100k.
+      SGM3140 single-channel alternate ~$0.10-0.14 if only one LED string is driven.
+
   - line: 16
     function: front_camera_module
     qty: 1
@@ -357,19 +396,20 @@ lines:
   - line: 23
     function: battery_lipo
     qty: 1
-    mpn: LiPol LP446487 4500 mAh 3.85 V 17.33 Wh (with PCM + NTC + JST SHR-03V)
-    chinese_alternate: Made-in-China 446487 4500 mAh family / Alibaba custom 3.85V pack
+    mpn: LiPol LP576487-class 5830 mAh 3.85 V 22.45 Wh thick pouch (with PCM + NTC + JST SHR-03V)
+    chinese_alternate: Made-in-China LPHV486697 / 576487 5800 mAh family / Alibaba custom 3.85V pack
     source:
-      - https://www.lipobattery.us/lihv-lipo-battery-3-85v-lp446487-4500mah-17-33wh-with-pcm-and-ntc-and-jst-shr-03v-s-b/
-      - https://lipo-battery.com/3-85v-lipo-battery-lp446487-4500mah-17-325wh/
-      - https://www.alibaba.com/showroom/4500mah-lipo-battery-cell.html
-    price_usd_10k: 3.80
-    price_usd_100k: 2.95
+      - https://li-polymer-battery.com/high-energy-density-option-li-polymer-battery-3-85v-5800mah-lphv486697/
+      - https://www.lipobattery.us/3-85v-high-voltage-lipo-battery/
+      - https://www.alibaba.com/showroom/lipo-battery-5800mah.html
+    price_usd_10k: 4.20
+    price_usd_100k: 3.35
     confidence: med
     notes: >
-      LiPol/LiPo factory pricing for 17 Wh pouch with PCM+NTC+connector lands
-      $3.20-4.20 at 10k from Chinese cell makers (DEMSO, Grepow, Eve). PCM and
-      connector are bundled in this number.
+      Flush-back rev moves to a thicker 5.7 mm pouch (5830 mAh / 22.45 Wh,
+      LP576487 / LPHV486697 class). 5800 mAh 3.85 V pouch with PCM+NTC+connector
+      runs $3.60-4.60 at 10k from Chinese cell makers (DEMSO, Grepow, Eve) — about
+      +$0.40 over the prior 4500 mAh / 17.33 Wh cell. PCM and connector bundled.
 
   - line: 24
     function: battery_protection_pcm
@@ -607,8 +647,8 @@ rollup:
   notes: >
     Sum of all per-unit costs above (line 24, 25, 26 are zero placeholders;
     line 28b and 30 amortize NRE).
-  bom_components_only_10k_usd: 97.45
-  bom_components_only_100k_usd: 79.32
+  bom_components_only_10k_usd: 98.09
+  bom_components_only_100k_usd: 79.90
   pcba_per_unit_10k_usd: 3.50
   pcba_per_unit_100k_usd: 2.10
   pcba_nre_amortized_10k_usd: 0.60
@@ -626,12 +666,21 @@ rollup:
   logistics_inbound_per_unit_100k_usd: 0.55
   screws_standoffs_per_unit_10k_usd: 0.12
   screws_standoffs_per_unit_100k_usd: 0.08
-  ex_factory_unit_cost_10k_usd: 115.70
-  ex_factory_unit_cost_100k_usd: 87.56
-  retail_target_3x_unit_cost_10k_usd: 347.10
-  retail_target_3x_unit_cost_100k_usd: 262.68
-  retail_target_2x_unit_cost_10k_usd: 231.40
-  retail_target_2x_unit_cost_100k_usd: 175.12
+  ex_factory_unit_cost_10k_usd: 116.34
+  ex_factory_unit_cost_100k_usd: 88.14
+  retail_target_3x_unit_cost_10k_usd: 349.02
+  retail_target_3x_unit_cost_100k_usd: 264.42
+  retail_target_2x_unit_cost_10k_usd: 232.68
+  retail_target_2x_unit_cost_100k_usd: 176.28
+  flush_back_rev_delta_per_unit_10k_usd: 0.64
+  flush_back_rev_delta_per_unit_100k_usd: 0.58
+  flush_back_rev_delta_breakdown:
+    torch_led_usd_10k: 0.08
+    torch_led_usd_100k: 0.06
+    flash_driver_usd_10k: 0.16
+    flash_driver_usd_100k: 0.12
+    bigger_battery_usd_10k: 0.40
+    bigger_battery_usd_100k: 0.40
 
 cost_down_levers_ranked:
   - lever: swap Quectel RG255C 5G RedCap -> LTE Cat4 (Quectel EC25 / Fibocom L610)
@@ -654,13 +703,13 @@ confidence_summary:
   high_count: 5
   med_count: 9
   low_count: 1
-  estimate_count: 15
+  estimate_count: 17
   comment: >
-    14 of 30 numbered lines are formal "estimate" because Alibaba/AliExpress
-    listings rarely publish 10k-tier quotes online. The high/med-confidence
-    lines (SoC, RAM, eMMC, modem, Wi-Fi, display, cameras, battery, PD/charger/codec)
-    cover ~78% of BOM dollars, so total ex-factory cost is well-constrained even
-    with the estimate-tier line items.
+    The two new flush-back-rev lines (rear torch/flash LED, flash driver IC) are
+    estimate-tier; together they add only ~$0.18-0.24/unit, so they do not move
+    the cost envelope. The high/med-confidence lines (SoC, RAM, eMMC, modem, Wi-Fi,
+    display, cameras, battery, PD/charger/codec) still cover ~78% of BOM dollars,
+    so total ex-factory cost remains well-constrained.
 
 required_followups_before_release_bom:
   - signed RFQ responses from Unisoc / authorized distributor for T606 at 10k and 100k

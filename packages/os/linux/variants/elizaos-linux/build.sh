@@ -19,7 +19,7 @@
 #
 # Tunables:
 #   ELIZAOS_ARCH            amd64 | arm64 | riscv64 (default: amd64)
-#   ELIZAOS_PROFILE         default | tails-secure (amd64 only)
+#   ELIZAOS_PROFILE         default | secure
 #   ELIZAOS_OUT_DIR         override host-side output dir
 #   ELIZAOS_MIN_ISO_BYTES   override 200 MiB minimum
 set -euo pipefail
@@ -33,11 +33,6 @@ PROFILE="${ELIZAOS_PROFILE:-default}"
 BUILD_TS="$(date -u +%Y%m%dT%H%M%SZ)"
 ARTIFACT_BASENAME="elizaos-linux-${ARCH}-${PROFILE}-${BUILD_TS}"
 MIN_ISO_BYTES="${ELIZAOS_MIN_ISO_BYTES:-209715200}"
-
-if [ "${PROFILE}" = "tails-secure" ] && [ "${ARCH}" != "amd64" ]; then
-    echo "ERROR: profile=tails-secure is amd64-only (upstream Tails constraint)." >&2
-    exit 65
-fi
 
 mkdir -p "${OUT}"
 
@@ -57,12 +52,22 @@ fi
 
 ELIZAOS_ARCH="${ARCH}" "${HERE}/auto/config"
 
-# Compose tails-secure overlay on top of default config (amd64 only).
-if [ "${PROFILE}" = "tails-secure" ]; then
-    if [ -d "${HERE}/config/profiles/tails-secure" ]; then
-        echo "    overlaying tails-secure profile..."
-        cp -a "${HERE}/config/profiles/tails-secure/." "${HERE}/config/"
+# Compose the secure hardening overlay on top of the default config.
+if [ "${PROFILE}" = "secure" ]; then
+    if [ -d "${HERE}/config/profiles/secure" ]; then
+        echo "    overlaying secure profile..."
+        cp -a "${HERE}/config/profiles/secure/." "${HERE}/config/"
     fi
+fi
+
+# Generate raster branding from SVG sources into config/includes.chroot.
+# Skipped when ImageMagick is unavailable (branding then falls back to
+# whatever PNGs are already staged in the tree).
+if command -v convert >/dev/null 2>&1; then
+    echo "    generating brand assets..."
+    "${HERE}/scripts/generate-elizaos-brand-assets.sh"
+else
+    echo "    convert (ImageMagick) not found — skipping brand-asset generation." >&2
 fi
 
 # ── Step 2: lb build ─────────────────────────────────────────────────

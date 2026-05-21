@@ -2,8 +2,8 @@
 
 A single Debian-based live ISO build that targets **x86_64 (amd64), arm64,
 and riscv64** from one live-build configuration. It replaces the earlier
-per-arch trees (an amd64 Tails fork and a separate riscv64 Debian variant)
-with one config whose architecture-specific bits are selected at build time.
+per-arch trees with one config whose architecture-specific bits are
+selected at build time.
 
 ## How multi-arch works
 

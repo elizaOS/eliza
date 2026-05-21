@@ -20,10 +20,18 @@ for f in config/hooks/normal/*.hook.chroot; do
     head -1 "${f}" | grep -q '^#!' || { echo "MISSING SHEBANG: ${f}"; fail=1; }
 done
 
-# Shell scripts pass `sh -n` parse.
+# Shell scripts parse with their declared interpreter. Several harnesses use
+# bash arrays/process substitution and are intentionally not POSIX sh.
 while IFS= read -r f; do
-    sh -n "${f}" 2>/dev/null || { echo "SH PARSE FAIL: ${f}"; fail=1; }
-done < <(find scripts config/includes.chroot/usr/local/lib/elizaos -name "*.sh" -o -name "first-boot.sh" -o -name "start-launcher" -o -name "start-chat-overlay" 2>/dev/null)
+    first_line="$(head -1 "${f}")"
+    if printf '%s\n' "${first_line}" | grep -q 'bash'; then
+        bash -n "${f}" 2>/dev/null || { echo "BASH PARSE FAIL: ${f}"; fail=1; }
+    else
+        sh -n "${f}" 2>/dev/null || { echo "SH PARSE FAIL: ${f}"; fail=1; }
+    fi
+done < <(find scripts config/includes.chroot/usr/local/lib/elizaos \
+    \( -name "*.sh" -o -name "first-boot.sh" -o -name "start-launcher" -o -name "start-chat-overlay" \) \
+    2>/dev/null)
 
 # Systemd unit files have [Unit] + [Install] (or are .path/.target).
 for f in $(find config/includes.chroot/etc/systemd -name "*.service" 2>/dev/null); do

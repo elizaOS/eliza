@@ -1,0 +1,131 @@
+{
+  "schema": "eliza.e1_phone_component_review.v1",
+  "review": "io-buttons",
+  "revision_reviewed": "evt0-mechanical-cad-flush-back",
+  "device_envelope_mm": [78.0, 153.6, 11.2],
+  "reviewer": "mechanical/electromechanical EVT specialist",
+  "evidence_class": "public_supplier_datasheets_and_lcsc_pricing_live",
+  "quantity_basis": "100k_lcsc_listed_break_floor_used_as_ceiling",
+  "captured_date": "2026-05-21",
+  "priority_deliverable": {
+    "single_standardized_button_sku": {
+      "mpn": "TS-1187A-B-A-B",
+      "manufacturer": "XKB Connectivity",
+      "lcsc": "C318884",
+      "actuation": "side",
+      "package_mm": [3.5, 2.9, 1.7],
+      "force_n": 1.57,
+      "force_gf": 160,
+      "travel_mm_real": 0.20,
+      "contact_form": "SPST_NO",
+      "terminals": 4,
+      "unit_price_usd_at_100k_ceiling": 0.011,
+      "jlcpcb_class": "basic",
+      "qty_per_phone": 3,
+      "usage": ["power_button_x1", "volume_button_x2_rocker"],
+      "alternate_second_source": {
+        "mpn": "EVQ-P7A01P",
+        "manufacturer": "Panasonic",
+        "lcsc": "C79167",
+        "footprint_compatible": true,
+        "unit_price_usd_at_100k_ceiling": 0.071
+      },
+      "rationale": "EVQ-P7 footprint/form clone, side-push, same 1.57N/160gf, JLCPCB Basic, ~1/6 price; one SKU for power+volume"
+    }
+  },
+  "candidate_comparison_buttons": [
+    {"mpn": "EVQ-P7A01P", "mfr": "Panasonic", "lcsc": "C79167", "actuation": "side", "pkg_mm": [3.5,2.9,1.7], "force_n": 1.6, "travel_mm": 0.20, "price_usd_100k": 0.071, "verdict": "qualified_alternate"},
+    {"mpn": "TS-1187A-B-A-B", "mfr": "XKB", "lcsc": "C318884", "actuation": "side", "pkg_mm": [3.5,2.9,1.7], "force_n": 1.57, "travel_mm": 0.20, "price_usd_100k": 0.011, "verdict": "RECOMMENDED"},
+    {"mpn": "SKRPABE010", "mfr": "Alps", "lcsc": "C115360", "actuation": "top", "pkg_mm": [4.2,3.2,2.5], "force_n": 1.57, "travel_mm": 0.20, "price_usd_100k": 0.039, "verdict": "REJECT_top_actuated_wrong_axis"},
+    {"mpn": "KMR221GLFS", "mfr": "C&K", "lcsc": "C72443", "actuation": "top", "pkg_mm": [3.9,2.9,1.9], "force_n": 1.96, "travel_mm": 0.20, "price_usd_100k": 0.33, "verdict": "REJECT_top_actuated_and_30x_price"}
+  ],
+  "components": {
+    "power_button": {
+      "verdict": "manufacturable_with_corrections",
+      "recommended_mpn": "TS-1187A-B-A-B",
+      "source": "LCSC C318884 / JLCPCB basic",
+      "unit_price_usd_at_100k_ceiling": 0.011,
+      "cap_mm": [2.0, 12.0, 1.1],
+      "cap_proud_mm": {"nominal": 0.30, "tolerance": 0.10},
+      "edge": "+X",
+      "validation": {
+        "cap_to_switch_alignment": "PASS_register_pm0.11mm_overlap_>=0.39mm_each_side_require_centering_boss",
+        "travel_stack": "BLOCKER_params_say_0.35mm_real_datasheet_0.20mm_rebuild_stack",
+        "gasket_labyrinth_seal_ip54": "REQUIRED_switch_unsealed_need_labyrinth_or_TPU_gasket_15-25pct_compression",
+        "rib_pressure_limit": "PASS_spread_force_over_>=8mm2_limit_0.2N_per_mm2",
+        "wake_gpio": "PASS_SPST_NO_COM_A_to_wake_gpio_pullup_COM_B_gnd_debounce"
+      },
+      "tolerances_mm": {"lateral_register": 0.11, "cap_proud": 0.30, "aperture_to_cap_gap": 0.20},
+      "spacing_neighbor": "isolated_on_+X_no_interaction_with_-X_volume",
+      "occlusion_collision_risk": "none_single_proud_cap_clean_edge",
+      "open_issues": ["travel_data_fix_0.35_to_0.20mm", "explicit_gasket_labyrinth_callout_for_ip54", "free_state_preload_gap_spec"]
+    },
+    "volume_button": {
+      "verdict": "manufacturable_single_sku_with_power",
+      "recommended_mpn": "TS-1187A-B-A-B",
+      "source": "LCSC C318884 / JLCPCB basic",
+      "unit_price_usd_at_100k_ceiling": 0.011,
+      "switches_per_button": 2,
+      "cap_mm": [2.0, 21.0, 1.1],
+      "edge": "-X",
+      "single_sku_with_power": true,
+      "validation": {
+        "rocker_pivot": "central_living_hinge_or_pin_on_cap_centerline_specify_inter_switch_pitch_12-15mm",
+        "dual_dome": "two_TS-1187A_0.20mm_travel_each_lever_amplifies_tip_to_0.4-0.6mm",
+        "travel": "correct_to_0.20mm_same_as_power",
+        "force_balance": "drop_1.5_1.6N_split_single_switch_is_1.57N"
+      },
+      "tolerances_mm": {"lateral_register_per_dome": 0.11, "cap_slot_clearance_per_side": 0.15},
+      "spacing_neighbor": "-X_opposite_power_no_crosstalk_check_pcb_edge_2.5mm",
+      "occlusion_collision_risk": "21mm_cap_may_foul_sim_tray_keepout_or_screw_boss_on_-X_verify",
+      "open_issues": ["define_inter_switch_pitch", "travel_0.35_to_0.20", "collapse_1.5_1.6N_to_1.57N", "verify_rocker_vs_sim_tray_keepout"]
+    },
+    "usb_c": {
+      "verdict": "manufacturable",
+      "recommended_mpn": "USB4105-GF-A",
+      "manufacturer": "GCT",
+      "source": "LCSC C3020560 / JLCPCB stocked",
+      "unit_price_usd_at_100k_ceiling": 0.548,
+      "envelope_mm": [8.94, 7.8, 3.25],
+      "insertion_keepout_mm": [12.5, 10.5, 5.0],
+      "edge": "-Y_bottom",
+      "cycles": 20000,
+      "retention_force_n": [8.0, 20.0],
+      "insertion_force_n_max": 20.0,
+      "extraction_force_n_min": 8.0,
+      "validation": {
+        "standardization": "PASS_commodity_usb2_typeC_no_change_korean_hua_clones_exist_if_costdown_needed",
+        "aperture_clearance": "PASS_0.20pm0.10_min_0.10_clears_add_lead_in_chamfer_0.3-0.5mm_30-45deg",
+        "insertion_keepout_plug_travel": "PASS_+1.78X_+1.35Y_+0.875Z_each_side_verify_wall_return_not_shadowing_boot",
+        "retention_force": "PASS_8-20N_shell_stake_0.95mm_peg_on_0.8mm_pcb_heavy_gnd_copper",
+        "mate_cycles": "PASS_20k_matches_spec",
+        "ip54_gaskets_drip_lip_drain_shelf": "open_usb_not_sealed_use_drained_port_drip_lip_+_drain_shelf_+_weep_channel_+_conformal_coat",
+        "bottom_edge_congestion": "27.4mm_hard_parts_on_78mm_edge_fits_but_verify_usb_keepout_vs_speaker_chamber_and_mic_tunnel"
+      },
+      "tolerances_mm": {"aperture_radial": 0.20, "shell_to_aperture": 0.15, "z_profile_in_depth": 3.25},
+      "spacing_neighbor": "shares_-Y_edge_with_speaker_bottom_15x11x3.5_and_microphone_bottom_3.5x2.65x1.0",
+      "occlusion_collision_risk": "usb_keepout_vs_speaker_rear_chamber_and_mic_sound_tunnel_verify_>=1.0mm_wall",
+      "open_issues": ["add_lead_in_chamfer", "add_drip_lip_drain_shelf_weep_channel_for_ip54", "verify_usb_keepout_vs_speaker_and_mic"]
+    }
+  },
+  "blockers": [
+    {"id": "button_travel_data_error", "severity": "blocker", "detail": "params travel_mm 0.35 wrong; real EVQ-P7/TS-1187A/Alps datasheet travel 0.20mm; rebuild cap travel stack both buttons"},
+    {"id": "button_standard_change", "severity": "priority_deliverable", "detail": "set standardized_part XKB TS-1187A-B-A-B primary, EVQ-P7A01P alternate, one SKU power+volume"},
+    {"id": "ip54_elements_unspecified", "severity": "high", "detail": "add button gasket/labyrinth; add usb drip-lip + drain shelf + weep channel; switches and receptacle are unsealed"},
+    {"id": "volume_rocker_geometry", "severity": "medium", "detail": "define inter-switch pitch; collapse 1.5/1.6N split to single 1.57N"},
+    {"id": "usb_neighbor_check", "severity": "medium", "detail": "confirm usb insertion keepout clears speaker rear chamber and bottom-mic sound tunnel"}
+  ],
+  "sources": [
+    "https://www.lcsc.com/product-detail/C318884.html",
+    "https://jlcpcb.com/partdetail/XkbConnectivity-TS_1187A_B_AB/C318884",
+    "https://www.lcsc.com/product-detail/Tactile-Switches_PANASONIC-EVQP7A01P_C79167.html",
+    "https://industry.panasonic.com/global/en/products/control/switch/light-touch/3529m_smd_side",
+    "https://www.digikey.com/htmldatasheets/production/1364703/0/0/1/evq-p7-p3-9p7-series.html",
+    "https://www.lcsc.com/product-detail/tactile%20switches_alpsalpine_skrpabe010_C115360.html",
+    "https://tech.alpsalpine.com/e/products/detail/SKRPABE010/",
+    "https://www.ckswitches.com/products/switches/product-details/Tactile/KMR2/",
+    "https://lcsc.com/product-detail/Tactile-Switches_C-K_KMR221GLFS_C-K-KMR221GLFS_C72443.html",
+    "https://www.lcsc.com/product-detail/usb-connectors_global-connector-technology-usb4105-gf-a_C3020560.html",
+    "https://gct.co/connector/usb4105"
+  ]
+}

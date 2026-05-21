@@ -6,8 +6,10 @@ ConditionPathExists=!/var/lib/elizaos/.first-boot-complete
 
 [Service]
 Type=oneshot
-ExecStart=/usr/lib/elizaos/first-boot.sh
+ExecStart=/usr/local/lib/elizaos/first-boot.sh
 RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
 
 [Install]
 WantedBy=multi-user.target
