@@ -75,7 +75,7 @@ def flatten_metrics(value: Any, prefix: str = "") -> dict[str, float]:
 
 def direction_for_metric(name: str) -> str:
     lowered = name.lower()
-    if any(token in lowered for token in ("wns", "slack", "frequency", "fmax")):
+    if any(token in lowered for token in ("wns", "slack", "frequency", "fmax", "__ws")):
         return "higher_is_better"
     if any(
         token in lowered
@@ -94,7 +94,7 @@ def direction_for_metric(name: str) -> str:
         )
     ):
         return "lower_is_better"
-    if "tns" in lowered:
+    if "tns" in lowered or "timing" in lowered:
         return "higher_is_better"
     return "observed_only"
 
@@ -139,7 +139,10 @@ def compare_metrics(
 
 def is_signoff_metric(name: str) -> bool:
     lowered = name.lower()
-    return any(token in lowered for token in ("wns", "tns", "slack", "drc", "violat", "antenna", "lvs"))
+    return any(
+        token in lowered
+        for token in ("wns", "tns", "slack", "timing", "__ws", "drc", "violat", "antenna", "lvs")
+    )
 
 
 def execution_ready(report: dict[str, Any] | None) -> tuple[bool, str]:
@@ -154,6 +157,13 @@ def execution_ready(report: dict[str, Any] | None) -> tuple[bool, str]:
     if not isinstance(report.get("metric_summary"), dict) or not report["metric_summary"]:
         return False, "metric_summary missing"
     return True, "ready"
+
+
+def replay_role(report: dict[str, Any] | None) -> str | None:
+    if not isinstance(report, dict):
+        return None
+    role = report.get("replay_role", "candidate")
+    return str(role) if role in {"baseline", "candidate"} else None
 
 
 def parse_args() -> argparse.Namespace:
@@ -192,6 +202,10 @@ def main() -> int:
         blockers.append(f"candidate execution not ready: {candidate_detail}")
     if baseline_path == candidate_path:
         blockers.append("baseline and candidate execution reports must be distinct")
+    if baseline_ready and replay_role(baseline) != "baseline":
+        blockers.append("baseline execution report must have replay_role=baseline")
+    if candidate_ready and replay_role(candidate) != "candidate":
+        blockers.append("candidate execution report must have replay_role=candidate")
 
     comparisons: list[dict[str, Any]] = []
     improvements: list[dict[str, Any]] = []

@@ -28,6 +28,10 @@ ASSET_IDS = ("intel-floorset", "r-zoo-rectilinear-floorplan")
 R_ZOO_CONVERSION_SCHEMA = "eliza.ai_eda.r_zoo_rectilinear_floorplan_conversion_report.v1"
 R_ZOO_SPLIT_SCHEMA = "eliza.ai_eda.r_zoo_rectilinear_floorplan_split_manifest.v1"
 R_ZOO_LICENSE_SCHEMA = "eliza.ai_eda.r_zoo_license_review.v1"
+FLOORSET_LICENSE_SCHEMA = "eliza.ai_eda.floorset_license_review.v1"
+FLOORSET_CONVERSION_SCHEMA = "eliza.ai_eda.floorset_lite_conversion_report.v1"
+FLOORSET_SPLIT_SCHEMA = "eliza.ai_eda.floorset_lite_split_manifest.v1"
+FLOORSET_HF_ARCHIVE_SCHEMA = "eliza.ai_eda.floorset_hf_archive_manifest.v1"
 
 EXPECTED_CONVERSION_PRODUCTS = {
     "intel-floorset": [
@@ -205,6 +209,53 @@ def profile_rzoo_payload(payload: Path) -> dict[str, Any]:
     }
 
 
+def profile_floorset_payload(payload: Path) -> dict[str, Any]:
+    if not payload.is_dir():
+        return {"available": False, "reason": "payload_missing"}
+    test_configs = sorted((payload / "LiteTensorDataTest").glob("config_*"))
+    data_files = sorted((payload / "LiteTensorDataTest").glob("config_*/litedata_*.pth"))
+    label_files = sorted((payload / "LiteTensorDataTest").glob("config_*/litelabel_*.pth"))
+    contest_dir = payload / "iccad2026contest"
+    hf_archive_dir = payload / "LiteTensorData"
+    hf_archives = (
+        sorted(
+            path
+            for path in hf_archive_dir.iterdir()
+            if path.is_file() and path.name.endswith((".gz", ".tgz", ".pth"))
+        )
+        if hf_archive_dir.is_dir()
+        else []
+    )
+    return {
+        "available": True,
+        "profile_kind": "intel_floorset_lite_tensor_payload_profile_v1",
+        "lite_validation_config_count": len(test_configs),
+        "lite_validation_data_file_count": len(data_files),
+        "lite_validation_label_file_count": len(label_files),
+        "intel_static_layout_png_count": len(sorted((payload / "inteltest_layouts").glob("intel_p*.png"))),
+        "contest_framework_present": contest_dir.is_dir(),
+        "contest_files": {
+            "evaluate": (contest_dir / "iccad2026_evaluate.py").is_file(),
+            "optimizer_template": (contest_dir / "optimizer_template.py").is_file(),
+            "training_example": (contest_dir / "training_example.py").is_file(),
+            "spec_pdf": (contest_dir / "FloorplanningContest_ICCAD_2026_v9.pdf").is_file(),
+        },
+        "hf_archive_payload": {
+            "path": rel(hf_archive_dir),
+            "present": hf_archive_dir.is_dir(),
+            "archive_like_file_count": len(hf_archives),
+            "archive_like_total_bytes": sum(path.stat().st_size for path in hf_archives),
+            "filenames": [path.name for path in hf_archives],
+        },
+        "conversion_notes": [
+            "parse LiteTensorDataTest litedata/litelabel PyTorch tensors into graph and flow records",
+            "preserve area targets, b2b/p2b connectivity, pin positions, and placement constraints",
+            "record label metrics and target floorplan rectangles as training-only benchmark labels",
+            "keep contest/test outputs quarantined from E1 optimization claims until deterministic replay exists",
+        ],
+    }
+
+
 def read_manifest(asset_id: str) -> tuple[Path, dict[str, Any] | None]:
     path = ROOT / f"external/datasets/{asset_id}/manifest.yaml"
     if not path.is_file():
@@ -234,11 +285,12 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
     manifest_path, manifest = read_manifest(asset_id)
     payload_path = ROOT / f"external/datasets/{asset_id}/payload"
     payload = inspect_payload(payload_path)
-    schema_profile = (
-        profile_rzoo_payload(payload_path)
-        if asset_id == "r-zoo-rectilinear-floorplan"
-        else {"available": False, "reason": "profiler_not_implemented_for_asset"}
-    )
+    if asset_id == "r-zoo-rectilinear-floorplan":
+        schema_profile = profile_rzoo_payload(payload_path)
+    elif asset_id == "intel-floorset":
+        schema_profile = profile_floorset_payload(payload_path)
+    else:
+        schema_profile = {"available": False, "reason": "profiler_not_implemented_for_asset"}
     revision = entry.get("revision") if isinstance(entry.get("revision"), dict) else {}
     validation = entry.get("validation") if isinstance(entry.get("validation"), dict) else {}
     intake = manifest.get("intake") if isinstance(manifest, dict) else {}
@@ -249,7 +301,8 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
         blockers.append("external intake manifest is missing")
     if revision.get("value") == "PIN_AFTER_FETCH":
         blockers.append("upstream revision must be pinned after fetch")
-    if validation.get("license_review") != "complete":
+    license_review = validation.get("license_review")
+    if not (isinstance(license_review, str) and license_review.startswith("complete")):
         blockers.append("license review is pending")
     if validation.get("provenance_review") != "complete":
         blockers.append("provenance review is pending")
@@ -264,8 +317,8 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
     conversion_evidence: dict[str, Any] = {"available": False}
     split_evidence: dict[str, Any] = {"available": False}
     license_evidence: dict[str, Any] = {"available": False}
+    run_id = getattr(asset_report, "run_id", "validation")
     if asset_id == "r-zoo-rectilinear-floorplan":
-        run_id = getattr(asset_report, "run_id", "validation")
         conversion_path = ROOT / f"build/ai_eda/r_zoo_rectilinear_floorplan/{run_id}/conversion_report.json"
         split_path = ROOT / f"build/ai_eda/r_zoo_rectilinear_floorplan_splits/{run_id}/split_manifest.json"
         license_path = ROOT / f"build/ai_eda/r_zoo_license_review/{run_id}/license_review.json"
@@ -322,6 +375,86 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
             blockers.append("split manifest and benchmark contamination review are not present")
         if not license_ok:
             blockers.append("R-Zoo training-only license review evidence is missing")
+    elif asset_id == "intel-floorset":
+        conversion_path = ROOT / f"build/ai_eda/floorset_lite/{run_id}/conversion_report.json"
+        split_path = ROOT / f"build/ai_eda/floorset_lite_splits/{run_id}/split_manifest.json"
+        license_path = ROOT / f"build/ai_eda/floorset_license_review/{run_id}/license_review.json"
+        hf_archive_path = ROOT / f"build/ai_eda/floorset_hf_archives/{run_id}/archive_manifest.json"
+        conversion = load_json(conversion_path)
+        split = load_json(split_path)
+        license_review_report = load_json(license_path)
+        hf_archive_report = load_json(hf_archive_path)
+        conversion_ok = bool(
+            conversion
+            and conversion.get("schema") == FLOORSET_CONVERSION_SCHEMA
+            and conversion.get("converted_case_count") == 100
+            and conversion.get("converted_record_count") == 300
+        )
+        split_ok = bool(
+            split
+            and split.get("schema") == FLOORSET_SPLIT_SCHEMA
+            and split.get("training_use_allowed") is True
+            and split.get("contamination_review", {}).get("status") == "PASS"
+        )
+        license_ok = bool(
+            license_review_report
+            and license_review_report.get("schema") == FLOORSET_LICENSE_SCHEMA
+            and license_review_report.get("status") == "TRAINING_ONLY_REVIEW_COMPLETE"
+            and license_review_report.get("allowed_use", {}).get("cuda_training_handoff") is True
+            and license_review_report.get("allowed_use", {}).get("release_use_allowed") is False
+        )
+        license_evidence = {
+            "available": license_ok,
+            "artifact": evidence_artifact(license_path),
+            "status": license_review_report.get("status") if license_review_report else None,
+            "release_use_allowed": license_review_report.get("allowed_use", {}).get("release_use_allowed")
+            if license_review_report
+            else None,
+            "commercial_use_allowed": license_review_report.get("allowed_use", {}).get("commercial_use_allowed")
+            if license_review_report
+            else None,
+        }
+        hf_archive_ok = bool(
+            hf_archive_report
+            and hf_archive_report.get("schema") == FLOORSET_HF_ARCHIVE_SCHEMA
+            and hf_archive_report.get("status") == "VERIFIED_FULL_HF_ARCHIVE_SET"
+            and hf_archive_report.get("verified_archive_count") == 10
+            and hf_archive_report.get("training_use_allowed") is True
+            and hf_archive_report.get("release_use_allowed") is False
+        )
+        hf_archive_evidence = {
+            "available": hf_archive_ok,
+            "artifact": evidence_artifact(hf_archive_path),
+            "status": hf_archive_report.get("status") if hf_archive_report else None,
+            "verified_archive_count": hf_archive_report.get("verified_archive_count")
+            if hf_archive_report
+            else None,
+            "verified_total_bytes": hf_archive_report.get("verified_total_bytes")
+            if hf_archive_report
+            else None,
+        }
+        if license_ok:
+            blockers = [item for item in blockers if item != "license review is pending"]
+        else:
+            blockers.append("FloorSet training-only license review evidence is missing")
+        conversion_evidence = {
+            "available": conversion_ok,
+            "artifact": evidence_artifact(conversion_path),
+            "case_count": conversion.get("converted_case_count") if conversion else None,
+            "record_count": conversion.get("converted_record_count") if conversion else None,
+        }
+        split_evidence = {
+            "available": split_ok,
+            "artifact": evidence_artifact(split_path),
+            "summary": split.get("summary") if split else None,
+        }
+        if not conversion_ok:
+            blockers.append("dataset-specific schema converter is not implemented")
+            blockers.append("floorplan legality checker logs are not present")
+        if not split_ok:
+            blockers.append("split manifest and benchmark contamination review are not present")
+        if not hf_archive_ok:
+            blockers.append("FloorSet full Hugging Face archive hash manifest is missing or incomplete")
     else:
         blockers.extend(
             [
@@ -350,6 +483,7 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
         "conversion_evidence": conversion_evidence,
         "split_evidence": split_evidence,
         "license_evidence": license_evidence,
+        "hf_archive_evidence": hf_archive_evidence if asset_id == "intel-floorset" else None,
         "status": status,
         "expected_conversion_products": EXPECTED_CONVERSION_PRODUCTS[asset_id],
         "required_training_gates": [

@@ -34,6 +34,7 @@ ASSET_IDS = (
     "openroad-mcp",
     "open3dbench",
     "dreamplace",
+    "verireason",
 )
 
 ASSET_ROLES = {
@@ -50,6 +51,7 @@ ASSET_ROLES = {
     "openroad-mcp": "interactive OpenROAD MCP tool access for audited agent sessions",
     "open3dbench": "OpenROAD-based 3D-IC backend implementation and PPA benchmark transfer",
     "dreamplace": "GPU-accelerated analytical placement baseline and macro-placement reference",
+    "verireason": "testbench-feedback Verilog generation and RTL verification training",
 }
 
 

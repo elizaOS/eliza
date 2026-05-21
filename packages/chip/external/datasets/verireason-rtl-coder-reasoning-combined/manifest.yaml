@@ -1,0 +1,28 @@
+schema: eliza.ai_eda.external_intake_manifest.v1
+asset_id: verireason-rtl-coder-reasoning-combined
+kind: dataset
+source_url: https://huggingface.co/datasets/Nellyw888/RTL-Coder_7b_reasoning_tb_combined
+upstream_revision:
+  type: hf_revision
+  value: 28f8f2a9f78febe50fe581904a31c7aff718dc6a
+license:
+  status: dataset_card_review_required
+  evidence:
+    - https://huggingface.co/datasets/Nellyw888/RTL-Coder_7b_reasoning_tb_combined
+  reviewed_at: 2026-05-21
+intake:
+  review_status: pending
+  allowed_use: training-only
+  release_use_allowed: false
+  deterministic_replay_required: true
+  next_action: fetch_to_ignored_payload_then_review_license_schema_and_contamination_before_rtl_training
+local_payload:
+  downloaded: true
+  payload_path: external/datasets/verireason-rtl-coder-reasoning-combined/payload
+  checksum_status: verified_by_fetch_report_codex-verireason-hf-data-20260521
+  verified_revision: 28f8f2a9f78febe50fe581904a31c7aff718dc6a
+  verified_file_count: 11
+  verified_total_bytes: 19516275
+  jsonl_row_count: 1892
+  jsonl_total_bytes: 19507777
+claim_boundary: external_intake_metadata_only_no_payload_no_training_no_release_claim

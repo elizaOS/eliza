@@ -15,14 +15,12 @@ DEFAULT_REPORT = (
 )
 EXPECTED_SCHEMA = "eliza.ai_eda.openlane_replay_execution.v1"
 EXPECTED_CLAIM_BOUNDARY = "openlane_replay_execution_evidence_only_no_release_claim"
-REQUIRED_ARTIFACTS = {
+BASE_REQUIRED_ARTIFACTS = {
     "metrics",
     "openlane_log",
     "openroad_log",
     "def",
     "gds",
-    "replay_queue",
-    "replay_preflight",
 }
 
 
@@ -96,13 +94,20 @@ def validate(report: dict[str, Any]) -> list[str]:
         "optimization_claim_allowed"
     ) is not False:
         errors.append("optimization_claim_allowed must be false unless execution evidence is ready")
+    replay_role = report.get("replay_role", "candidate")
+    if replay_role not in {"baseline", "candidate"}:
+        errors.append("replay_role must be baseline or candidate")
     if not isinstance(report.get("candidate_id"), str) or not report["candidate_id"]:
         errors.append("candidate_id must be present")
     artifacts = report.get("artifacts")
     if not isinstance(artifacts, dict):
         return errors + ["artifacts must be a mapping"]
-    missing = sorted(REQUIRED_ARTIFACTS - set(artifacts))
-    if missing:
+    required_artifacts = set(BASE_REQUIRED_ARTIFACTS)
+    if replay_role == "candidate":
+        required_artifacts.update({"replay_queue", "replay_preflight"})
+        required_artifacts.add("replay_handoff")
+    missing = sorted(required_artifacts - set(artifacts))
+    if missing and report.get("status") == "EXECUTED_REPLAY_EVIDENCE_READY":
         errors.append(f"missing artifacts: {', '.join(missing)}")
     allow_missing_required = report.get("status") == "BLOCKED_EXECUTION_EVIDENCE"
     for name, item in artifacts.items():
@@ -110,6 +115,43 @@ def validate(report: dict[str, Any]) -> list[str]:
     metric_summary = report.get("metric_summary")
     if not isinstance(metric_summary, dict):
         errors.append("metric_summary must be a mapping")
+    metric_key_summary = report.get("metric_key_summary")
+    if not isinstance(metric_key_summary, dict):
+        errors.append("metric_key_summary must be a mapping")
+    else:
+        for field in (
+            "numeric_metric_count",
+            "has_timing_metric",
+            "has_drc_or_signoff_metric",
+            "has_objective_metric",
+        ):
+            if field not in metric_key_summary:
+                errors.append(f"metric_key_summary.{field} missing")
+        if report.get("status") == "EXECUTED_REPLAY_EVIDENCE_READY":
+            if metric_key_summary.get("numeric_metric_count", 0) <= 0:
+                errors.append("ready execution needs numeric metrics")
+            for field in ("has_timing_metric", "has_drc_or_signoff_metric", "has_objective_metric"):
+                if metric_key_summary.get(field) is not True:
+                    errors.append(f"ready execution needs metric_key_summary.{field}=true")
+    log_summary = report.get("log_summary")
+    if not isinstance(log_summary, dict):
+        errors.append("log_summary must be a mapping")
+    else:
+        for label in ("openlane_log", "openroad_log"):
+            summary = log_summary.get(label)
+            if not isinstance(summary, dict):
+                errors.append(f"log_summary.{label} must be a mapping")
+                continue
+            for field in ("status", "line_count", "error_like_line_count"):
+                if field not in summary:
+                    errors.append(f"log_summary.{label}.{field} missing")
+            if report.get("status") == "EXECUTED_REPLAY_EVIDENCE_READY":
+                if summary.get("status") != "PRESENT":
+                    errors.append(f"ready execution needs {label} present")
+                if summary.get("line_count", 0) <= 0:
+                    errors.append(f"ready execution needs non-empty {label}")
+                if summary.get("error_like_line_count", 0) != 0:
+                    errors.append(f"ready execution needs zero error-like lines in {label}")
     blockers = report.get("blockers")
     if report.get("status") == "BLOCKED_EXECUTION_EVIDENCE" and not blockers:
         errors.append("blocked execution evidence must list blockers")

@@ -122,6 +122,16 @@ def validate(report: dict[str, Any]) -> list[str]:
             errors.append("ready comparison must not include signoff regressions")
         if report.get("baseline_candidate_id") == report.get("candidate_id"):
             errors.append("baseline and candidate ids must differ")
+        baseline_path = artifacts.get("baseline_execution", {}).get("path")
+        candidate_path = artifacts.get("candidate_execution", {}).get("path")
+        if isinstance(baseline_path, str):
+            baseline = load_json(repo_path(baseline_path))
+            if baseline.get("replay_role", "candidate") != "baseline":
+                errors.append("ready comparison baseline execution must have replay_role=baseline")
+        if isinstance(candidate_path, str):
+            candidate = load_json(repo_path(candidate_path))
+            if candidate.get("replay_role", "candidate") != "candidate":
+                errors.append("ready comparison candidate execution must have replay_role=candidate")
     gates = report.get("next_required_gates")
     if not isinstance(gates, list) or len(gates) < 3:
         errors.append("next_required_gates must be concrete")

@@ -148,6 +148,25 @@ def validate_asset(asset: Any) -> list[str]:
                     errors.append(f"{asset_id}: diearea_samples[{index}] missing DIEAREA")
                 if sample.get("rectilinear_edges") is not True:
                     errors.append(f"{asset_id}: diearea_samples[{index}] must be rectilinear")
+    elif asset_id == "intel-floorset" and asset.get("payload", {}).get("present"):
+        if profile.get("available") is not True:
+            errors.append(f"{asset_id}: fetched payload must have a schema profile")
+        if profile.get("lite_validation_config_count") != 100:
+            errors.append(f"{asset_id}: schema profile must identify 100 LiteTensorDataTest configs")
+        if profile.get("lite_validation_data_file_count") != 100:
+            errors.append(f"{asset_id}: schema profile must identify 100 validation data tensors")
+        if profile.get("lite_validation_label_file_count") != 100:
+            errors.append(f"{asset_id}: schema profile must identify 100 validation label tensors")
+        if profile.get("contest_framework_present") is not True:
+            errors.append(f"{asset_id}: contest framework must be present")
+        contest_files = profile.get("contest_files")
+        if not isinstance(contest_files, dict) or not all(contest_files.values()):
+            errors.append(f"{asset_id}: contest framework file inventory is incomplete")
+        hf_profile = profile.get("hf_archive_payload")
+        if not isinstance(hf_profile, dict):
+            errors.append(f"{asset_id}: HF archive payload profile is missing")
+        elif hf_profile.get("archive_like_file_count", 0) < 7:
+            errors.append(f"{asset_id}: HF archive payload profile must identify local archives")
     blockers = asset.get("blockers")
     if not isinstance(blockers, list) or not blockers:
         errors.append(f"{asset_id}: blockers must be non-empty until conversion exists")
@@ -196,6 +215,63 @@ def validate_asset(asset: Any) -> list[str]:
                 errors.extend(
                     validate_evidence_artifact(
                         asset_id, license_evidence.get("artifact"), "license_evidence.artifact"
+                    )
+                )
+        elif asset_id == "intel-floorset":
+            conversion = asset.get("conversion_evidence")
+            split = asset.get("split_evidence")
+            license_evidence = asset.get("license_evidence")
+            hf_archive_evidence = asset.get("hf_archive_evidence")
+            if isinstance(conversion, dict) and conversion.get("available") is True:
+                if conversion.get("case_count") != 100 or conversion.get("record_count") != 300:
+                    errors.append(f"{asset_id}: conversion evidence must cover 100 cases / 300 records")
+                errors.extend(
+                    validate_evidence_artifact(
+                        asset_id, conversion.get("artifact"), "conversion_evidence.artifact"
+                    )
+                )
+                required_fragments.discard("dataset-specific schema converter is not implemented")
+                required_fragments.discard("floorplan legality checker logs are not present")
+            elif not isinstance(conversion, dict):
+                errors.append(f"{asset_id}: conversion_evidence must be a mapping")
+            if isinstance(split, dict) and split.get("available") is True:
+                summary = split.get("summary")
+                if not isinstance(summary, dict) or summary.get("case_count") != 100:
+                    errors.append(f"{asset_id}: split evidence must summarize 100 cases")
+                errors.extend(
+                    validate_evidence_artifact(
+                        asset_id, split.get("artifact"), "split_evidence.artifact"
+                    )
+                )
+                required_fragments.discard("split manifest and benchmark contamination review are not present")
+            elif not isinstance(split, dict):
+                errors.append(f"{asset_id}: split_evidence must be a mapping")
+            if not isinstance(license_evidence, dict) or license_evidence.get("available") is not True:
+                errors.append(f"{asset_id}: license_evidence.available must be true")
+            else:
+                if license_evidence.get("status") != "TRAINING_ONLY_REVIEW_COMPLETE":
+                    errors.append(f"{asset_id}: license evidence must be training-only complete")
+                if license_evidence.get("release_use_allowed") is not False:
+                    errors.append(f"{asset_id}: license evidence must keep release_use_allowed=false")
+                if license_evidence.get("commercial_use_allowed") is not False:
+                    errors.append(f"{asset_id}: license evidence must keep commercial_use_allowed=false")
+                errors.extend(
+                    validate_evidence_artifact(
+                        asset_id, license_evidence.get("artifact"), "license_evidence.artifact"
+                    )
+                )
+            if not isinstance(hf_archive_evidence, dict) or hf_archive_evidence.get("available") is not True:
+                errors.append(f"{asset_id}: hf_archive_evidence.available must be true")
+            else:
+                if hf_archive_evidence.get("status") != "VERIFIED_FULL_HF_ARCHIVE_SET":
+                    errors.append(f"{asset_id}: HF archive evidence must be fully verified")
+                if hf_archive_evidence.get("verified_archive_count") != 10:
+                    errors.append(f"{asset_id}: HF archive evidence must cover 10 files")
+                if hf_archive_evidence.get("verified_total_bytes") != 29665773263:
+                    errors.append(f"{asset_id}: HF archive byte total mismatch")
+                errors.extend(
+                    validate_evidence_artifact(
+                        asset_id, hf_archive_evidence.get("artifact"), "hf_archive_evidence.artifact"
                     )
                 )
         for fragment in required_fragments:

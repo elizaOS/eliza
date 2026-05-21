@@ -10,12 +10,15 @@ AI_EDA_EVIDENCE_BUNDLE_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
 AI_EDA_RESEARCH_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
 AI_EDA_REPLAY_PREREQUISITES_RUN_ID ?= $(AI_EDA_TRAINING_HANDOFF_RUN_ID)
 AI_EDA_REPLAY_PREFLIGHT_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
+AI_EDA_REPLAY_HANDOFF_RUN_ID ?= $(AI_EDA_REPLAY_PREFLIGHT_RUN_ID)
 AI_EDA_REPLAY_EXECUTION_RUN_ID ?= $(AI_EDA_REPLAY_PREFLIGHT_RUN_ID)
 AI_EDA_REPLAY_COMPARISON_RUN_ID ?= $(AI_EDA_REPLAY_EXECUTION_RUN_ID)
 AI_EDA_ALPHACHIP_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
 AI_EDA_ALPHACHIP_SUCCESSOR_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
 AI_EDA_ALPHACHIP_SUCCESSOR_REPRODUCTION_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
 AI_EDA_FULL_TRAINING_MATRIX_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
+AI_EDA_FORMAL_PREREQUISITES_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
+AI_EDA_FORMAL_EXECUTION_RUN_ID ?= $(AI_EDA_FORMAL_PREREQUISITES_RUN_ID)
 AI_EDA_CUDA_MATRIX_PAYLOAD_RUN_ID ?= $(AI_EDA_RUN_ID)
 AI_EDA_CUDA_MATRIX_PREFLIGHT_RUN_ID ?= $(AI_EDA_RUN_ID)
 AI_EDA_BASELINE_REPLAY_EXECUTION ?= build/ai_eda/openlane_replay_execution/$(AI_EDA_RUN_ID)-baseline/openlane_replay_execution.json
@@ -26,6 +29,7 @@ AI_EDA_REPLAY_OPENLANE_LOG ?= build/ai_eda/openlane_replay_inputs/$(AI_EDA_RUN_I
 AI_EDA_REPLAY_OPENROAD_LOG ?= build/ai_eda/openlane_replay_inputs/$(AI_EDA_RUN_ID)/openroad.log
 AI_EDA_REPLAY_DEF ?= build/ai_eda/openlane_replay_inputs/$(AI_EDA_RUN_ID)/final.def
 AI_EDA_REPLAY_GDS ?= build/ai_eda/openlane_replay_inputs/$(AI_EDA_RUN_ID)/final.gds
+AI_EDA_REPLAY_HANDOFF_REPORT ?= build/ai_eda/openlane_replay_handoff/$(AI_EDA_REPLAY_HANDOFF_RUN_ID)/openlane_replay_handoff.json
 VENV := .venv
 VENV_PYTHON := $(VENV)/bin/python
 BENCH_PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),$(PYTHON))
@@ -1540,19 +1544,20 @@ evidence-regression-test: no-hardware-action-check software-bsp-test physical-ga
 	ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert \
 	ai-eda-circuitnet3-convert ai-eda-chipbench-d-convert ai-eda-aieda-idata-convert \
 	ai-eda-edalearn-convert ai-eda-macro-place-challenge-convert ai-eda-mlcad-fpga-macro-convert \
-	ai-eda-floorplanning-dataset-readiness ai-eda-r-zoo-convert ai-eda-r-zoo-split-manifest ai-eda-r-zoo-license-review ai-eda-r-zoo-legality-baseline ai-eda-research-code-assets-convert ai-eda-current-research-watchlist-convert ai-eda-circuitnet3-surrogate \
+	ai-eda-floorplanning-dataset-readiness ai-eda-floorset-license-review ai-eda-floorset-lite-convert ai-eda-floorset-split-manifest ai-eda-r-zoo-convert ai-eda-r-zoo-split-manifest ai-eda-r-zoo-license-review ai-eda-r-zoo-legality-baseline ai-eda-research-code-assets-convert ai-eda-current-research-watchlist-convert ai-eda-verireason-rtl-dataset-manifest ai-eda-verireason-rtl-coder-convert ai-eda-circuitnet3-surrogate \
 	ai-eda-openabc-d-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert \
 	ai-eda-training-corpus-manifest \
 	ai-eda-openlane-flow-labels ai-eda-openroad-ml-snapshot ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train \
+	ai-eda-rtl-model-eval-dry-run \
 	ai-eda-macro-placement-supervised-dataset ai-eda-macro-placement-supervised-train \
 	ai-eda-macro-placement-torch-train ai-eda-macro-placement-torch-infer \
 	ai-eda-macro-placement-supervised-replay-plan ai-eda-macro-placement-baseline \
 	ai-eda-macro-placement-candidate-eval ai-eda-macro-placement-combined-candidate-eval \
 	ai-eda-macro-placement-full-candidate-eval ai-eda-macro-placement-replay-plan \
 	ai-eda-macro-placement-replay-preflight ai-eda-macro-placement-combined-replay-plan \
-	ai-eda-macro-placement-full-replay-plan ai-eda-macro-placement-replay-queue ai-eda-openlane-replay-prerequisites ai-eda-candidate-manifests-check \
+	ai-eda-macro-placement-full-replay-plan ai-eda-macro-placement-replay-queue ai-eda-openlane-replay-prerequisites ai-eda-openlane-replay-handoff ai-eda-candidate-manifests-check \
 	ai-eda-openlane-replay-execution ai-eda-openlane-replay-comparison \
-	ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-verification-targets \
+	ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-formal-verification-prerequisites ai-eda-verification-targets \
 	ai-eda-physical-design-targets ai-eda-optimization-targets ai-eda-all-target-captures ai-eda-logic-synthesis-recipes \
 	ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload \
 	ai-eda-cuda-payload-check ai-eda-cuda-full-training-matrix ai-eda-cuda-run-plan-dry-run ai-eda-cuda-run-plan-safety-matrix ai-eda-cuda-readiness-audit \
@@ -1577,6 +1582,10 @@ ai-eda-external-intake-check: ai-eda-external-assets-check
 
 ai-eda-external-assets-dry-run:
 	@$(PYTHON) scripts/ai_eda/fetch_external_asset.py --all --dry-run --run-id $(AI_EDA_RUN_ID)
+
+ai-eda-rtl-model-eval-dry-run:
+	@$(PYTHON) scripts/ai_eda/evaluate_rtl_model.py --run-id $(AI_EDA_RUN_ID) --dry-run
+	@$(PYTHON) scripts/ai_eda/check_rtl_model_evaluation.py --report build/ai_eda/rtl_model_eval/$(AI_EDA_RUN_ID)/eval_report.json
 
 ai-eda-local-rag-index:
 	@$(PYTHON) scripts/ai_eda/build_local_eda_rag_index.py --run-id $(AI_EDA_RUN_ID)
@@ -1655,9 +1664,26 @@ ai-eda-mlcad-fpga-macro-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/mlcad_2023_fpga_macro/$(AI_EDA_RUN_ID)/records
 	@$(PYTHON) scripts/ai_eda/check_mlcad_2023_fpga_macro_conversion.py --report build/ai_eda/mlcad_2023_fpga_macro/$(AI_EDA_RUN_ID)/conversion_report.json
 
-ai-eda-floorplanning-dataset-readiness: ai-eda-r-zoo-split-manifest ai-eda-r-zoo-license-review
+ai-eda-floorplanning-dataset-readiness: ai-eda-floorset-license-review ai-eda-floorset-hf-archive-manifest ai-eda-r-zoo-split-manifest ai-eda-r-zoo-license-review
 	@$(PYTHON) scripts/ai_eda/capture_floorplanning_dataset_readiness.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_floorplanning_dataset_readiness.py --report build/ai_eda/floorplanning_dataset_readiness/$(AI_EDA_RUN_ID)/floorplanning_dataset_readiness.json
+
+ai-eda-floorset-license-review:
+	@$(PYTHON) scripts/ai_eda/capture_floorset_license_review.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_floorset_license_review.py --report build/ai_eda/floorset_license_review/$(AI_EDA_RUN_ID)/license_review.json
+
+ai-eda-floorset-hf-archive-manifest:
+	@$(PYTHON) scripts/ai_eda/capture_floorset_hf_archive_manifest.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_floorset_hf_archive_manifest.py --report build/ai_eda/floorset_hf_archives/$(AI_EDA_RUN_ID)/archive_manifest.json
+
+ai-eda-floorset-lite-convert: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/convert_floorset_lite_to_internal_records.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/floorset_lite/$(AI_EDA_RUN_ID)/records
+	@$(PYTHON) scripts/ai_eda/check_floorset_lite_conversion.py --report build/ai_eda/floorset_lite/$(AI_EDA_RUN_ID)/conversion_report.json
+
+ai-eda-floorset-split-manifest: ai-eda-floorset-lite-convert
+	@$(PYTHON) scripts/ai_eda/capture_floorset_split_manifest.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_floorset_split_manifest.py --report build/ai_eda/floorset_lite_splits/$(AI_EDA_RUN_ID)/split_manifest.json
 
 ai-eda-r-zoo-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/convert_r_zoo_to_internal_records.py --run-id $(AI_EDA_RUN_ID)
@@ -1686,6 +1712,15 @@ ai-eda-current-research-watchlist-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/current_research_watchlist_records/$(AI_EDA_RUN_ID)/records
 	@$(PYTHON) scripts/ai_eda/check_current_research_watchlist_records.py --report build/ai_eda/current_research_watchlist_records/$(AI_EDA_RUN_ID)/conversion_report.json
 
+ai-eda-verireason-rtl-dataset-manifest:
+	@$(PYTHON) scripts/ai_eda/capture_verireason_rtl_dataset_manifest.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_verireason_rtl_dataset_manifest.py --report build/ai_eda/verireason_rtl_datasets/$(AI_EDA_RUN_ID)/dataset_manifest.json
+
+ai-eda-verireason-rtl-coder-convert: ai-eda-internal-schemas-check ai-eda-verireason-rtl-dataset-manifest
+	@$(PYTHON) scripts/ai_eda/convert_verireason_rtl_coder_to_internal_records.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/verireason_rtl_coder/$(AI_EDA_RUN_ID)/records
+	@$(PYTHON) scripts/ai_eda/check_verireason_rtl_coder_conversion.py --report build/ai_eda/verireason_rtl_coder/$(AI_EDA_RUN_ID)/conversion_report.json
+
 ai-eda-circuitnet3-surrogate: ai-eda-circuitnet3-convert
 	@$(PYTHON) scripts/ai_eda/train_circuitnet3_timing_power_baseline.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_circuitnet3_surrogate.py --report build/ai_eda/circuitnet3_surrogate/$(AI_EDA_RUN_ID)/training_run.json
@@ -1712,7 +1747,7 @@ ai-eda-openlane-flow-labels: ai-eda-e1-openlane-convert
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/openlane_flow_labels/$(AI_EDA_RUN_ID)/records
 	@$(PYTHON) scripts/ai_eda/check_openlane_flow_labels.py --report build/ai_eda/openlane_flow_labels/$(AI_EDA_RUN_ID)/label-parse-report.json
 
-ai-eda-training-corpus-manifest: ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert ai-eda-circuitnet3-convert ai-eda-chipbench-d-convert ai-eda-aieda-idata-convert ai-eda-edalearn-convert ai-eda-macro-place-challenge-convert ai-eda-mlcad-fpga-macro-convert ai-eda-r-zoo-legality-baseline ai-eda-research-code-assets-convert ai-eda-current-research-watchlist-convert ai-eda-openabc-d-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels
+ai-eda-training-corpus-manifest: ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert ai-eda-circuitnet3-convert ai-eda-chipbench-d-convert ai-eda-aieda-idata-convert ai-eda-edalearn-convert ai-eda-macro-place-challenge-convert ai-eda-mlcad-fpga-macro-convert ai-eda-floorset-split-manifest ai-eda-floorset-license-review ai-eda-r-zoo-legality-baseline ai-eda-research-code-assets-convert ai-eda-current-research-watchlist-convert ai-eda-verireason-rtl-coder-convert ai-eda-openabc-d-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels
 	@$(PYTHON) scripts/ai_eda/build_training_corpus_manifest.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_training_corpus_manifest.py --manifest build/ai_eda/training_corpus_manifest/$(AI_EDA_RUN_ID)/training_corpus_manifest.json
 
@@ -1726,7 +1761,7 @@ ai-eda-pd-surrogate-smoke: ai-eda-openlane-flow-labels
 ai-eda-fixture-placement-train: ai-eda-internal-fixtures
 	@$(PYTHON) scripts/ai_eda/train_fixture_placement_smoke.py --run-id $(AI_EDA_RUN_ID) --device cpu
 
-ai-eda-macro-placement-supervised-dataset: ai-eda-internal-fixtures ai-eda-tilos-macroplacement-convert ai-eda-chipbench-d-convert ai-eda-e1-softmacro-cases
+ai-eda-macro-placement-supervised-dataset: ai-eda-internal-fixtures ai-eda-e1-openlane-convert ai-eda-tilos-macroplacement-convert ai-eda-chipbench-d-convert ai-eda-e1-softmacro-cases
 	@$(PYTHON) scripts/ai_eda/build_macro_placement_supervised_dataset.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_macro_placement_supervised_dataset.py --report build/ai_eda/macro_placement_supervised_dataset/$(AI_EDA_RUN_ID)/macro_placement_supervised_dataset_report.json
 
@@ -1790,6 +1825,10 @@ ai-eda-openlane-replay-prerequisites: ai-eda-macro-placement-replay-queue
 	@$(PYTHON) scripts/ai_eda/capture_openlane_replay_prerequisites.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_openlane_replay_prerequisites.py --report build/ai_eda/openlane_replay_prerequisites/$(AI_EDA_RUN_ID)/openlane_replay_prerequisites.json
 
+ai-eda-openlane-replay-handoff: ai-eda-macro-placement-replay-queue ai-eda-macro-placement-replay-preflight
+	@$(PYTHON) scripts/ai_eda/package_openlane_replay_handoff.py --run-id $(AI_EDA_RUN_ID) --handoff-run-id $(AI_EDA_REPLAY_HANDOFF_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_openlane_replay_handoff.py --report build/ai_eda/openlane_replay_handoff/$(AI_EDA_REPLAY_HANDOFF_RUN_ID)/openlane_replay_handoff.json
+
 ai-eda-candidate-manifests-check: ai-eda-fixture-placement-train
 	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py
 
@@ -1799,7 +1838,20 @@ ai-eda-tool-actions-check: ai-eda-internal-schemas-check
 ai-eda-cocotb-stimulus-dry-run:
 	@$(PYTHON) scripts/ai_eda/run_cocotb_stimulus_search.py --dry-run --run-id $(AI_EDA_RUN_ID)
 
-ai-eda-verification-targets:
+ai-eda-formal-verification-prerequisites:
+	@$(PYTHON) scripts/ai_eda/capture_formal_verification_prerequisites.py --run-id $(AI_EDA_FORMAL_PREREQUISITES_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_formal_verification_prerequisites.py --report build/ai_eda/formal_verification_prerequisites/$(AI_EDA_FORMAL_PREREQUISITES_RUN_ID)/formal_verification_prerequisites.json
+
+ai-eda-formal-execution-evidence: ai-eda-formal-verification-prerequisites
+	@scripts/run_formal.sh || echo "Formal execution failed; capturing available formal evidence."
+	@$(PYTHON) scripts/ai_eda/capture_formal_execution_evidence.py --run-id $(AI_EDA_FORMAL_EXECUTION_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_formal_execution_evidence.py --report build/ai_eda/formal_execution_evidence/$(AI_EDA_FORMAL_EXECUTION_RUN_ID)/formal_execution_evidence.json
+
+ai-eda-formal-solver-isolation: ai-eda-formal-verification-prerequisites
+	@$(PYTHON) scripts/ai_eda/run_formal_solver_isolation.py --run-id $(AI_EDA_FORMAL_EXECUTION_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_formal_solver_isolation.py --report build/ai_eda/formal_solver_isolation/$(AI_EDA_FORMAL_EXECUTION_RUN_ID)/formal_solver_isolation.json
+
+ai-eda-verification-targets: ai-eda-formal-execution-evidence ai-eda-formal-solver-isolation
 	@$(PYTHON) scripts/ai_eda/capture_logic_synthesis_targets.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id $(AI_EDA_RUN_ID)
@@ -1894,8 +1946,8 @@ ai-eda-cuda-run-plan-dry-run: ai-eda-cuda-payload
 ai-eda-cuda-run-plan-safety-matrix: ai-eda-cuda-payload
 	@$(PYTHON) scripts/ai_eda/check_cuda_run_plan_safety_matrix.py --plan build/ai_eda/cuda_training_payloads/$(AI_EDA_RUN_ID)/cuda_training_run_plan.json --run-id $(AI_EDA_RUN_ID)
 
-ai-eda-cuda-readiness-audit: ai-eda-cuda-preflight ai-eda-cuda-run-plan-dry-run ai-eda-cuda-run-plan-safety-matrix ai-eda-alphachip-checkpoint-blocker-check ai-eda-alphachip-successor-plan ai-eda-optimization-targets ai-eda-openlane-replay-prerequisites ai-eda-macro-placement-replay-preflight ai-eda-openlane-replay-comparison ai-eda-cuda-full-training-matrix ai-eda-alphachip-successor-reproduction
-	@$(PYTHON) scripts/ai_eda/capture_cuda_readiness_audit.py --run-id $(AI_EDA_RUN_ID) --setup-run-id $(AI_EDA_SETUP_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID) --full-training-matrix-run-id $(AI_EDA_FULL_TRAINING_MATRIX_RUN_ID) --alphachip-successor-reproduction-run-id $(AI_EDA_ALPHACHIP_SUCCESSOR_REPRODUCTION_RUN_ID)
+ai-eda-cuda-readiness-audit: ai-eda-cuda-preflight ai-eda-cuda-run-plan-dry-run ai-eda-cuda-run-plan-safety-matrix ai-eda-alphachip-checkpoint-blocker-check ai-eda-alphachip-successor-plan ai-eda-optimization-targets ai-eda-openlane-replay-prerequisites ai-eda-openlane-replay-handoff ai-eda-openlane-replay-comparison ai-eda-cuda-full-training-matrix ai-eda-formal-execution-evidence ai-eda-alphachip-successor-reproduction
+	@$(PYTHON) scripts/ai_eda/capture_cuda_readiness_audit.py --run-id $(AI_EDA_RUN_ID) --setup-run-id $(AI_EDA_SETUP_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID) --replay-prerequisites-run-id $(AI_EDA_REPLAY_PREREQUISITES_RUN_ID) --replay-preflight-run-id $(AI_EDA_REPLAY_PREFLIGHT_RUN_ID) --replay-handoff-run-id $(AI_EDA_REPLAY_HANDOFF_RUN_ID) --replay-execution-run-id $(AI_EDA_REPLAY_EXECUTION_RUN_ID) --replay-comparison-run-id $(AI_EDA_REPLAY_COMPARISON_RUN_ID) --full-training-matrix-run-id $(AI_EDA_FULL_TRAINING_MATRIX_RUN_ID) --formal-prerequisites-run-id $(AI_EDA_FORMAL_PREREQUISITES_RUN_ID) --formal-execution-run-id $(AI_EDA_FORMAL_EXECUTION_RUN_ID) --alphachip-successor-reproduction-run-id $(AI_EDA_ALPHACHIP_SUCCESSOR_REPRODUCTION_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_cuda_readiness_audit.py --report build/ai_eda/cuda_readiness_audit/$(AI_EDA_RUN_ID)/cuda_readiness_audit.json
 
 ai-eda-cuda-evidence-bundle: ai-eda-cuda-readiness-audit
@@ -1903,18 +1955,18 @@ ai-eda-cuda-evidence-bundle: ai-eda-cuda-readiness-audit
 	@$(PYTHON) scripts/ai_eda/check_cuda_evidence_bundle.py --report build/ai_eda/cuda_evidence_bundles/$(AI_EDA_RUN_ID)/cuda_evidence_bundle.json
 
 ai-eda-objective-readiness-audit:
-	@$(PYTHON) scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id $(AI_EDA_RUN_ID) --readiness-run-id $(AI_EDA_READINESS_RUN_ID) --evidence-bundle-run-id $(AI_EDA_EVIDENCE_BUNDLE_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID) --training-corpus-run-id $(AI_EDA_TRAINING_CORPUS_RUN_ID) --research-run-id $(AI_EDA_RESEARCH_RUN_ID) --replay-prerequisites-run-id $(AI_EDA_REPLAY_PREREQUISITES_RUN_ID) --replay-preflight-run-id $(AI_EDA_REPLAY_PREFLIGHT_RUN_ID) --replay-execution-run-id $(AI_EDA_REPLAY_EXECUTION_RUN_ID) --replay-comparison-run-id $(AI_EDA_REPLAY_COMPARISON_RUN_ID) --alphachip-run-id $(AI_EDA_ALPHACHIP_RUN_ID) --alphachip-successor-run-id $(AI_EDA_ALPHACHIP_SUCCESSOR_RUN_ID) --alphachip-successor-reproduction-run-id $(AI_EDA_ALPHACHIP_SUCCESSOR_REPRODUCTION_RUN_ID) --full-training-matrix-run-id $(AI_EDA_FULL_TRAINING_MATRIX_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id $(AI_EDA_RUN_ID) --readiness-run-id $(AI_EDA_READINESS_RUN_ID) --evidence-bundle-run-id $(AI_EDA_EVIDENCE_BUNDLE_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID) --training-corpus-run-id $(AI_EDA_TRAINING_CORPUS_RUN_ID) --research-run-id $(AI_EDA_RESEARCH_RUN_ID) --replay-prerequisites-run-id $(AI_EDA_REPLAY_PREREQUISITES_RUN_ID) --replay-preflight-run-id $(AI_EDA_REPLAY_PREFLIGHT_RUN_ID) --replay-handoff-run-id $(AI_EDA_REPLAY_HANDOFF_RUN_ID) --replay-execution-run-id $(AI_EDA_REPLAY_EXECUTION_RUN_ID) --replay-comparison-run-id $(AI_EDA_REPLAY_COMPARISON_RUN_ID) --alphachip-run-id $(AI_EDA_ALPHACHIP_RUN_ID) --alphachip-successor-run-id $(AI_EDA_ALPHACHIP_SUCCESSOR_RUN_ID) --alphachip-successor-reproduction-run-id $(AI_EDA_ALPHACHIP_SUCCESSOR_REPRODUCTION_RUN_ID) --full-training-matrix-run-id $(AI_EDA_FULL_TRAINING_MATRIX_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_ai_eda_objective_readiness.py --report build/ai_eda/objective_readiness/$(AI_EDA_RUN_ID)/objective_readiness.json
 
 ai-eda-openlane-replay-execution:
-	@$(PYTHON) scripts/ai_eda/capture_openlane_replay_execution.py --run-id $(AI_EDA_RUN_ID) --candidate-id $(AI_EDA_REPLAY_CANDIDATE_ID) --metrics $(AI_EDA_REPLAY_METRICS) --openlane-log $(AI_EDA_REPLAY_OPENLANE_LOG) --openroad-log $(AI_EDA_REPLAY_OPENROAD_LOG) --def-file $(AI_EDA_REPLAY_DEF) --gds-file $(AI_EDA_REPLAY_GDS)
+	@$(PYTHON) scripts/ai_eda/capture_openlane_replay_execution.py --run-id $(AI_EDA_RUN_ID) --candidate-id $(AI_EDA_REPLAY_CANDIDATE_ID) --metrics $(AI_EDA_REPLAY_METRICS) --openlane-log $(AI_EDA_REPLAY_OPENLANE_LOG) --openroad-log $(AI_EDA_REPLAY_OPENROAD_LOG) --def-file $(AI_EDA_REPLAY_DEF) --gds-file $(AI_EDA_REPLAY_GDS) --replay-handoff $(AI_EDA_REPLAY_HANDOFF_REPORT)
 	@$(PYTHON) scripts/ai_eda/check_openlane_replay_execution.py --report build/ai_eda/openlane_replay_execution/$(AI_EDA_RUN_ID)/openlane_replay_execution.json
 
 ai-eda-openlane-replay-comparison: ai-eda-openlane-replay-execution
 	@$(PYTHON) scripts/ai_eda/capture_openlane_replay_comparison.py --run-id $(AI_EDA_RUN_ID) --baseline-execution $(AI_EDA_BASELINE_REPLAY_EXECUTION) --candidate-execution $(AI_EDA_CANDIDATE_REPLAY_EXECUTION)
 	@$(PYTHON) scripts/ai_eda/check_openlane_replay_comparison.py --report build/ai_eda/openlane_replay_comparison/$(AI_EDA_RUN_ID)/openlane_replay_comparison.json
 
-docs-check: ai-eda-local-rag-index ai-eda-backend-preflight ai-eda-all-target-captures ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-floorplanning-dataset-readiness ai-eda-alphachip-checkpoint-blocker-check ai-eda-external-method-wrapper-readiness-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
+docs-check: ai-eda-local-rag-index ai-eda-backend-preflight ai-eda-all-target-captures ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-floorplanning-dataset-readiness ai-eda-rtl-model-eval-dry-run ai-eda-alphachip-checkpoint-blocker-check ai-eda-external-method-wrapper-readiness-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
 	@$(PYTHON) scripts/docs_check.py
 
 tool-versions:
