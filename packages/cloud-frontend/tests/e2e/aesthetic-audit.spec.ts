@@ -758,7 +758,7 @@ for (const viewport of VIEWPORTS) {
         // is to render the empty-state UI, not to exercise application
         // logic.
         if (route.auth) {
-          await context.route(/\/api\/(v1\/|steward\/|dashboard\/)/, (r) => {
+          await context.route(/\/api\//, (r) => {
             const url = r.request().url();
             const empty = (json: unknown) =>
               r.fulfill({
@@ -766,7 +766,20 @@ for (const viewport of VIEWPORTS) {
                 headers: { "content-type": "application/json" },
               });
 
+            // Auth + session
+            if (/\/sessions\/current/.test(url))
+              return empty({
+                id: "test-session",
+                userId: "22222222-2222-4222-8222-222222222222",
+                expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+              });
+            if (/\/auth\/logout/.test(url)) return empty({ ok: true });
+            if (/\/me\/mfa/.test(url))
+              return empty({ enrolled: false, methods: [] });
+            if (/\/me\/plugin-grants/.test(url)) return empty({ grants: [] });
+
             // List endpoints
+            if (/\/api-keys\/explorer/.test(url)) return empty({ keys: [] });
             if (/\/api-keys($|\?)/.test(url))
               return empty({ keys: [], total: 0 });
             if (/\/containers(\/auth)?($|\?|\/[^/]+$)/.test(url))
@@ -775,49 +788,275 @@ for (const viewport of VIEWPORTS) {
               return empty({ agents: [] });
             if (/\/apps(\/[^/]+)?($|\?)/.test(url)) return empty({ apps: [] });
             if (/\/mcps($|\?)/.test(url)) return empty({ mcps: [] });
-            if (/\/documents($|\?)/.test(url)) return empty({ documents: [] });
+            if (/\/documents\/query/.test(url))
+              return empty({ documents: [], total: 0 });
+            if (/\/documents($|\?)/.test(url))
+              return empty({ documents: [], total: 0 });
+            if (/\/invoices\/list/.test(url))
+              return empty({ invoices: [], total: 0 });
             if (/\/invoices/.test(url)) return empty({ invoices: [] });
+            if (/\/redemptions\/balance/.test(url))
+              return empty({
+                balance: {
+                  totalEarned: 0,
+                  availableBalance: 0,
+                  pendingBalance: 0,
+                  totalRedeemed: 0,
+                  totalPending: 0,
+                  totalConvertedToCredits: 0,
+                },
+                bySource: [],
+                recentEarnings: [],
+              });
+            if (/\/redemptions\/status/.test(url))
+              return empty({ enabled: true });
             if (/\/redemptions/.test(url))
-              return empty({ redemptions: [], balance: 0 });
+              return empty({ redemptions: [], total: 0 });
             if (/\/affiliates|\/referrals/.test(url))
               return empty({
                 referrals: [],
                 stats: { totalEarned: 0, totalReferred: 0 },
+                total_referrals: 0,
               });
+            if (/\/quotas\/usage/.test(url))
+              return empty({
+                quotas: {},
+                usage: { tokens: 0, requests: 0 },
+              });
+            if (/\/credits\/transactions/.test(url))
+              return empty({ transactions: [], total: 0 });
 
-            // Singletons / dashboards
+            // Billing surfaces
             if (/\/credits\/balance/.test(url))
               return empty({ balance: 0, currency: "USD" });
-            if (/\/dashboard($|\?)/.test(url) || /\/dashboard\b/.test(url))
-              return empty({
-                user: { name: "Test User" },
-                agents: [],
-              });
-            if (/\/me($|\?)|\/profile/.test(url))
-              return empty({
-                id: "test-user",
-                name: "Test User",
-                email: "test@example.com",
-              });
             if (/\/billing/.test(url))
               return empty({
                 paymentMethods: [],
                 subscriptions: [],
                 upcomingInvoice: null,
               });
-            if (/\/settings|\/preferences/.test(url))
-              return empty({ settings: {}, preferences: {} });
-            if (/\/security|\/sessions/.test(url))
-              return empty({ sessions: [], twoFactor: { enrolled: false } });
+            if (/\/crypto\/(direct-payments|payments|status)/.test(url))
+              return empty({ payments: [], enabled: true });
+            if (/\/stripe\/create-checkout-session/.test(url))
+              return empty({ url: "https://example.com/checkout" });
+
+            // Dashboard / profile
+            if (/\/dashboard\b/.test(url))
+              return empty({
+                user: { name: "Test User" },
+                agents: [],
+              });
+            if (/\/v1\/user($|\?)/.test(url)) {
+              const now = new Date().toISOString();
+              return empty({
+                success: true,
+                data: {
+                  id: "22222222-2222-4222-8222-222222222222",
+                  email: "audit@example.com",
+                  email_verified: true,
+                  wallet_address: "0xE2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2",
+                  wallet_chain_type: "ethereum",
+                  wallet_verified: true,
+                  name: "Test User",
+                  avatar: null,
+                  organization_id: "33333333-3333-4333-8333-333333333333",
+                  role: "owner",
+                  steward_user_id: "steward-test-user",
+                  telegram_id: null,
+                  telegram_username: null,
+                  telegram_first_name: null,
+                  telegram_photo_url: null,
+                  discord_id: null,
+                  discord_username: null,
+                  discord_global_name: null,
+                  discord_avatar_url: null,
+                  whatsapp_id: null,
+                  whatsapp_name: null,
+                  phone_number: null,
+                  phone_verified: null,
+                  is_anonymous: false,
+                  anonymous_session_id: null,
+                  expires_at: null,
+                  nickname: "Test",
+                  work_function: null,
+                  preferences: null,
+                  email_notifications: true,
+                  response_notifications: true,
+                  is_active: true,
+                  created_at: now,
+                  updated_at: now,
+                  organization: {
+                    id: "33333333-3333-4333-8333-333333333333",
+                    name: "Test Org",
+                    created_at: now,
+                    updated_at: now,
+                    is_active: true,
+                  },
+                },
+              });
+            }
+            if (/\/me($|\?)|\/profile/.test(url))
+              return empty({
+                id: "test-user",
+                name: "Test User",
+                email: "test@example.com",
+              });
+            if (/\/stats\/account/.test(url))
+              return empty({
+                lifetimeSpend: 0,
+                requests: 0,
+                tokens: 0,
+              });
+
+            // Settings + connectors
+            if (
+              /\/(telegram|whatsapp|twilio|discord|google|microsoft|blooio)\b/.test(
+                url,
+              )
+            )
+              return empty({ connected: false, account: null });
+            if (/\/organizations\/(members|invites)/.test(url))
+              return empty({ members: [], invites: [], total: 0 });
+
+            // Security / sessions
+            if (/\/sessions($|\?)/.test(url))
+              return empty({ sessions: [], total: 0 });
+            if (/\/security|\/permissions/.test(url))
+              return empty({
+                sessions: [],
+                twoFactor: { enrolled: false },
+                permissions: [],
+              });
+
+            // Analytics
+            if (/\/analytics\/breakdown/.test(url))
+              return empty({
+                success: true,
+                data: {
+                  filters: {
+                    startDate: "2026-05-14",
+                    endDate: "2026-05-21",
+                    granularity: "day",
+                    timeRange: "weekly",
+                  },
+                  overallStats: {
+                    totalRequests: 0,
+                    totalInputTokens: 0,
+                    totalOutputTokens: 0,
+                    totalCost: 0,
+                    successRate: 0,
+                  },
+                  timeSeriesData: [],
+                  costTrending: {
+                    currentDailyBurn: 0,
+                    previousDailyBurn: 0,
+                    burnChangePercent: 0,
+                    projectedMonthlyBurn: 0,
+                    daysUntilBalanceZero: null,
+                    monthlyBurnPercent: 0,
+                    monthlyBurnPercentClamped: 0,
+                    burnAlertThresholdExceeded: false,
+                  },
+                  providerBreakdown: [],
+                  modelBreakdown: [],
+                  trends: {
+                    requestsChange: 0,
+                    costChange: 0,
+                    tokensChange: 0,
+                    successRateChange: 0,
+                    period: "week",
+                  },
+                  organization: { creditBalance: "0.00" },
+                },
+              });
+            if (/\/analytics\/projections/.test(url))
+              return empty({
+                success: true,
+                data: {
+                  historicalData: [],
+                  projections: [],
+                  alerts: [],
+                  creditBalance: 0,
+                },
+              });
             if (/\/analytics|\/usage/.test(url))
-              return empty({ series: [], totals: {} });
+              return empty({
+                success: true,
+                data: {
+                  filters: {
+                    startDate: "2026-05-14",
+                    endDate: "2026-05-21",
+                    granularity: "day",
+                    timeRange: "weekly",
+                  },
+                  overallStats: {
+                    totalRequests: 0,
+                    totalInputTokens: 0,
+                    totalOutputTokens: 0,
+                    totalCost: 0,
+                    successRate: 0,
+                  },
+                  timeSeriesData: [],
+                  costTrending: {
+                    currentDailyBurn: 0,
+                    previousDailyBurn: 0,
+                    burnChangePercent: 0,
+                    projectedMonthlyBurn: 0,
+                    daysUntilBalanceZero: null,
+                    monthlyBurnPercent: 0,
+                    monthlyBurnPercentClamped: 0,
+                    burnAlertThresholdExceeded: false,
+                  },
+                  providerBreakdown: [],
+                  modelBreakdown: [],
+                  trends: {
+                    requestsChange: 0,
+                    costChange: 0,
+                    tokensChange: 0,
+                    successRateChange: 0,
+                    period: "week",
+                  },
+                  organization: { creditBalance: "0.00" },
+                },
+              });
             if (/\/earnings/.test(url))
               return empty({ available: 0, lifetime: 0, history: [] });
+            if (/\/pricing\/summary/.test(url))
+              return empty({
+                tiers: [],
+                currentTier: null,
+              });
+
+            // OpenAPI spec — provide a tiny sample so api-explorer can
+            // render at least one endpoint card.
             if (/\/openapi/.test(url))
               return empty({
                 openapi: "3.0.0",
                 info: { title: "Eliza Cloud", version: "1" },
-                paths: {},
+                servers: [{ url: "https://api.eliza.os" }],
+                paths: {
+                  "/v1/chat": {
+                    post: {
+                      summary: "Chat completion",
+                      tags: ["AI Completions"],
+                      responses: {
+                        "200": { description: "Success" },
+                      },
+                    },
+                  },
+                },
+              });
+
+            // Admin (dev-open after the use-admin / Layout patch)
+            if (/\/admin\/moderation/.test(url))
+              return r.fulfill({
+                status: 200,
+                headers: {
+                  "content-type": "application/json",
+                  "X-Is-Admin": "true",
+                  "X-Admin-Role": "super_admin",
+                },
+                json: { isAdmin: true, role: "super_admin" },
               });
             if (/\/admin\//.test(url)) return empty({ items: [], metrics: {} });
 

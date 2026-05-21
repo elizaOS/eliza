@@ -22,7 +22,6 @@ import {
   type Hex,
   http,
   isAddress,
-  parseAbi,
   parseAbiItem,
   parseEventLogs,
 } from "viem";
@@ -35,6 +34,7 @@ import type { Bindings } from "../../types/cloud-worker-env";
 import { PAYMENT_EXPIRATION_MS, validatePaymentAmount } from "../config/crypto";
 import { createCryptoCustomerId, createCryptoInvoiceId } from "../constants/invoice-ids";
 import { logger, redact } from "../utils/logger";
+import { type BnbPriceQuote, getBnbUsdQuote } from "./bnb-price-oracle";
 import { creditsService } from "./credits";
 import { invoicesService } from "./invoices";
 
@@ -76,7 +76,9 @@ export type PublicDirectWalletNetworkConfig = Omit<
 interface CreateDirectPaymentParams {
   organizationId: string;
   userId: string;
-  accountWalletAddress: string;
+  // Wallet on the user's account, if any. OAuth-only users will not have one.
+  // No longer used to gate payment — kept for parity logging only.
+  accountWalletAddress: string | null;
   payerAddress: string;
   amountUsd: number;
   network: DirectWalletNetwork;
@@ -119,56 +121,13 @@ const BSC_TOKEN_OPTIONS: DirectWalletTokenOption[] = [
   },
 ];
 
-// Chainlink BNB/USD aggregator on BSC mainnet — 8-decimal answer, ~60s
-// heartbeat, 0.5% deviation. Override via CRYPTO_DIRECT_BSC_BNB_USD_FEED for
-// tests / private deployments.
-const CHAINLINK_BNB_USD_FEED = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
-const CHAINLINK_AGGREGATOR_ABI = parseAbi([
-  "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
-  "function decimals() view returns (uint8)",
-]);
-// Reject the oracle if the last update is older than this. The feed normally
-// ticks every minute; an hour of staleness means the feed is unhealthy and
-// the price could be far from market. Locking a payment to a stale quote is
-// how exchanges get drained.
-const BNB_USD_MAX_AGE_SECONDS = 60 * 60;
-
-async function bnbUsdQuote(
-  env: Bindings,
-): Promise<{ priceUsd: Decimal; updatedAt: number; feedAddress: Hex }> {
-  const feedOverride = envString(env, "CRYPTO_DIRECT_BSC_BNB_USD_FEED");
-  const feed = feedOverride ? getAddress(feedOverride) : getAddress(CHAINLINK_BNB_USD_FEED);
-  const rpcUrl =
-    envString(env, "CRYPTO_DIRECT_BSC_RPC_URL") ??
-    envString(env, "BSC_RPC_URL") ??
-    "https://bsc-dataseed.binance.org";
-  const client = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
-  const [round, decimals] = await Promise.all([
-    client.readContract({
-      address: feed,
-      abi: CHAINLINK_AGGREGATOR_ABI,
-      functionName: "latestRoundData",
-    }),
-    client.readContract({
-      address: feed,
-      abi: CHAINLINK_AGGREGATOR_ABI,
-      functionName: "decimals",
-    }),
-  ]);
-  const answer = round[1];
-  const updatedAt = Number(round[3]);
-  if (answer <= 0n) {
-    throw new Error("BNB/USD oracle returned a non-positive price");
-  }
-  const ageSeconds = Math.floor(Date.now() / 1000) - updatedAt;
-  if (ageSeconds < 0 || ageSeconds > BNB_USD_MAX_AGE_SECONDS) {
-    throw new Error(
-      `BNB/USD oracle is stale (last update ${ageSeconds}s ago); refusing to quote`,
-    );
-  }
-  const priceUsd = new Decimal(answer.toString()).div(new Decimal(10).pow(Number(decimals)));
-  return { priceUsd, updatedAt, feedAddress: feed };
-}
+/**
+ * Slippage tolerance applied to native-token (BNB) verification. The locked
+ * quote may move slightly between createPayment and the user broadcasting
+ * the tx; we accept up to ±200bps (2%) deviation before rejecting. Stables
+ * use 0 — there's no oracle to drift, so units must match exactly.
+ */
+const NATIVE_SLIPPAGE_BPS = 200;
 
 function resolveBscToken(symbol: string | undefined): DirectWalletTokenOption {
   if (!symbol) return BSC_TOKEN_OPTIONS[1]; // default USDT
@@ -372,18 +331,6 @@ function normalizePayer(network: DirectWalletNetwork, address: string): string {
   return network === "solana" ? normalizeSolanaAddress(address) : normalizeEvmAddress(address);
 }
 
-function assertAccountWalletMatches(params: {
-  network: DirectWalletNetwork;
-  accountWalletAddress: string;
-  payerAddress: string;
-}) {
-  const account = normalizePayer(params.network, params.accountWalletAddress);
-  const payer = normalizePayer(params.network, params.payerAddress);
-  if (account !== payer) {
-    throw new Error("Connected wallet must match the wallet on the account");
-  }
-}
-
 function unitsForUsd(amountUsd: Decimal, decimals: number): bigint {
   return BigInt(amountUsd.mul(new Decimal(10).pow(decimals)).toFixed(0));
 }
@@ -408,6 +355,7 @@ function directMetadata(payment: CryptoPayment): {
   tokenDecimals: number;
   expectedTokenUnits: bigint;
   bonusCredits: number;
+  slippageBps: number;
 } {
   const metadata = metadataOf(payment);
   if (metadata.kind !== "direct_wallet_credit_purchase") {
@@ -445,6 +393,7 @@ function directMetadata(payment: CryptoPayment): {
     tokenDecimals: Number(metadata.token_decimals ?? 0),
     expectedTokenUnits: BigInt(String(metadata.expected_token_units ?? "0")),
     bonusCredits: Number(metadata.bonus_credits ?? 0),
+    slippageBps: Number(metadata.slippage_bps ?? 0),
   };
 }
 
@@ -510,6 +459,7 @@ async function verifyEvmNativePayment(params: {
   payerAddress: string;
   txHash: string;
   expectedUnits: bigint;
+  slippageBps?: number;
 }): Promise<{ blockNumber: string; receivedUnits: bigint }> {
   if (!params.cfg.chainId || !params.cfg.receiveAddress) {
     throw new Error("Invalid EVM direct payment configuration");
@@ -533,8 +483,19 @@ async function verifyEvmNativePayment(params: {
   ) {
     throw new Error("Transaction recipient does not match the receive address");
   }
-  if (tx.value < params.expectedUnits) {
-    throw new Error("Transaction amount is lower than the expected payment");
+  // Apply slippage tolerance for native-token payments where the locked
+  // quote may have drifted between createPayment and broadcast. A non-native
+  // (stable) verify passes slippageBps=0, so the floor is the exact expected
+  // amount and an over-payment is still accepted.
+  const slippageBps = BigInt(params.slippageBps ?? 0);
+  const floor =
+    slippageBps > 0n
+      ? (params.expectedUnits * (10_000n - slippageBps)) / 10_000n
+      : params.expectedUnits;
+  if (tx.value < floor) {
+    throw new Error(
+      `Transaction amount ${tx.value} is below the expected floor ${floor} (expected ${params.expectedUnits}, slippage ${slippageBps} bps)`,
+    );
   }
   return {
     blockNumber: receipt.blockNumber.toString(),
@@ -707,11 +668,10 @@ export class DirectWalletPaymentsService {
   async createPayment(env: Bindings, params: CreateDirectPaymentParams) {
     const cfg = directPaymentConfig(env, params.network);
     requireConfigured(cfg);
-    assertAccountWalletMatches({
-      network: params.network,
-      accountWalletAddress: params.accountWalletAddress,
-      payerAddress: params.payerAddress,
-    });
+    // The payer wallet does NOT need to match the account wallet. Credits land
+    // on organization_id from the authenticated session, and the verified
+    // on-chain `from` address is recorded as `payer_wallet_address` for audit.
+    // This lets OAuth-only users pay from any EVM wallet they hold.
 
     // Resolve which token on the network this purchase is using. Networks
     // with a single token (Base USDC, Solana USDC) ignore the param.
@@ -731,13 +691,14 @@ export class DirectWalletPaymentsService {
     const creditsToAdd = amount.plus(bonusCredits);
 
     // Native BNB pricing: dollars are not tokens, so we quote the live
-    // BNB/USD price from Chainlink and lock it into the expected wei amount.
-    // Stables (USDT/USDC/$U) are 1:1 with USD by definition, so
-    // amount_usd × 10^decimals is correct without an oracle.
-    let priceQuote: { priceUsd: Decimal; updatedAt: number; feedAddress: Hex } | null = null;
+    // BNB/USD price from Chainlink (with CoinGecko fallback) and lock it
+    // into the expected wei amount. Stables (USDT/USDC/$U) are 1:1 with USD
+    // by definition, so amount_usd × 10^decimals is correct without an
+    // oracle.
+    let priceQuote: BnbPriceQuote | null = null;
     let expectedTokenUnits: bigint;
     if (params.network === "bsc" && selectedToken.kind === "native") {
-      priceQuote = await bnbUsdQuote(env);
+      priceQuote = await getBnbUsdQuote();
       const bnbAmount = amount.div(priceQuote.priceUsd);
       expectedTokenUnits = BigInt(
         bnbAmount.mul(new Decimal(10).pow(selectedToken.decimals)).toFixed(0),
@@ -807,12 +768,18 @@ export class DirectWalletPaymentsService {
             price_quote: priceQuote
               ? {
                   pair: "BNB/USD",
-                  source: "chainlink",
-                  feed_address: priceQuote.feedAddress,
+                  source: priceQuote.source,
+                  feed_address: priceQuote.feedAddress ?? null,
                   price_usd: priceQuote.priceUsd.toString(),
                   updated_at: priceQuote.updatedAt,
+                  fetched_at: priceQuote.fetchedAt,
                 }
               : null,
+            // Slippage tolerance for the on-chain verify step. Only meaningful
+            // when paying with a non-stable native token whose price moves
+            // between quote and broadcast. Stables ignore this.
+            slippage_bps:
+              selectedToken.kind === "native" ? NATIVE_SLIPPAGE_BPS : 0,
           },
         })
         .returning();
@@ -843,7 +810,15 @@ export class DirectWalletPaymentsService {
 
   async confirmPayment(
     env: Bindings,
-    params: { paymentId: string; txHash: string; userId: string },
+    params: {
+      paymentId: string;
+      txHash: string;
+      userId: string;
+      // Allow the cron auto-confirm path to confirm a tx that landed after
+      // the user-facing expiry. The on-chain tx is real money — refusing to
+      // credit it because of a clock-side timeout would orphan a paid sale.
+      allowExpired?: boolean;
+    },
   ) {
     const result = await dbWrite.transaction(async (tx) => {
       const [payment] = await tx
@@ -867,8 +842,15 @@ export class DirectWalletPaymentsService {
           sweep: metadataOf(payment).sweep,
         };
       }
-      if (payment.status !== "pending") throw new Error(`Payment is ${payment.status}`);
-      if (payment.expires_at < new Date()) throw new Error("Payment has expired");
+      if (payment.status !== "pending" && payment.status !== "broadcast") {
+        throw new Error(`Payment is ${payment.status}`);
+      }
+      // Expiry only blocks the user-initiated confirm path. A tx broadcast
+      // before expiry that landed late is auto-recovered by the cron path
+      // which calls verifyAndConfirmBroadcast() directly.
+      if (payment.expires_at < new Date() && !params.allowExpired) {
+        throw new Error("Payment has expired");
+      }
 
       const direct = directMetadata(payment);
       const cfg = directPaymentConfig(env, direct.network);
@@ -897,6 +879,7 @@ export class DirectWalletPaymentsService {
           payerAddress: direct.payerAddress,
           txHash: params.txHash,
           expectedUnits: direct.expectedTokenUnits,
+          slippageBps: direct.slippageBps,
         });
       } else {
         if (!direct.tokenAddress) {

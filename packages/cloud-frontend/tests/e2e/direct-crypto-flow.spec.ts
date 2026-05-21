@@ -298,9 +298,14 @@ test("/bsc renders the promo purchase state from direct wallet config", async ({
   expectNoJsonFallbackCrash(failures);
 });
 
-test("/bsc asks OAuth users to verify a wallet before payment", async ({
+test("/bsc lets OAuth users (no account wallet) reach the purchase UI directly", async ({
   page,
 }) => {
+  // Previously OAuth signups landed on an AttachWalletCard that forced a
+  // SIWE step before they could pay. The product now lets any logged-in
+  // user pay from any wallet — credits attach to the org_id from the
+  // session, not to the paying wallet. Verify the purchase surface renders
+  // with no "Verify your BSC wallet" gate.
   const failures = collectFailures(page);
   const mocks = await installBscMocks(page, { accountWalletAddress: null });
 
@@ -311,17 +316,11 @@ test("/bsc asks OAuth users to verify a wallet before payment", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Verify your BSC wallet" }),
-  ).toBeVisible();
-  await expect(page.getByText("Sign a one-time message")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Connect Wallet/i }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Verify wallet/i }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: /Pay and add credits/i }),
-  ).toHaveCount(0);
+  ).toBeVisible();
+  await expect(page.getByLabel("Token")).toBeVisible();
 
   expect(mocks.createPaymentCalls()).toBe(0);
   expectNoJsonFallbackCrash(failures);
@@ -349,18 +348,18 @@ test("/bsc shows BNB/USDT/USDC/$U token selector and $5 bonus is per-purchase, t
 
   await page.goto("/bsc");
 
-  const tokenGroup = page.getByRole("radiogroup", { name: "Token" });
-  await expect(tokenGroup).toBeVisible();
-  // The four BSC tokens are all selectable.
-  for (const label of ["BNB", "USDT", "USDC", "$U"]) {
-    await expect(tokenGroup.getByRole("radio", { name: label })).toBeVisible();
+  const tokenSelect = page.getByLabel("Token");
+  await expect(tokenSelect).toBeVisible();
+  // All four BSC tokens are selectable as <option> entries.
+  for (const value of ["BNB", "USDT", "USDC", "U"]) {
+    await expect(tokenSelect.locator(`option[value="${value}"]`)).toHaveCount(1);
   }
 
   // The +$5 bonus is independent of which token the buyer picked; it is gated
   // only by network=bsc + amount>=10. Switching tokens must keep the
   // promo-applied banner and the "You receive 15.00 credits" tile.
-  for (const label of ["BNB", "USDC", "$U"]) {
-    await tokenGroup.getByRole("radio", { name: label }).click();
+  for (const value of ["BNB", "USDC", "U"]) {
+    await tokenSelect.selectOption(value);
     await expect(page.getByText("BSC promotion applied")).toBeVisible();
     await expect(page.getByText("15.00 credits")).toBeVisible();
   }

@@ -248,6 +248,7 @@ const STEWARD_RUNTIME_ROUTE_PATTERNS = [
   /^\/app-auth(?:\/|$)/,
   /^\/auth\/callback\/email(?:\/|$)/,
   /^\/auth\/cli-login(?:\/|$)/,
+  /^\/bsc(?:\/|$)/,
   /^\/dashboard(?:\/|$)/,
   /^\/login(?:\/|$)/,
   /^\/payment(?:\/|$)/,

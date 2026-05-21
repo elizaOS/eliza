@@ -1,0 +1,214 @@
+schema: eliza.ai_eda.ai_workload_manifest.v1
+updated: 2026-05-21
+claim_boundary: ai_workload_manifest_only_no_benchmark_performance_or_release_claim
+policy:
+  release_use_allowed: false
+  performance_claim_allowed: false
+  fallback_ops_must_be_reported: true
+  e1_npu_claim_requires_zero_fallback_proof: true
+  calibrated_power_or_timing_required_for_tops_per_watt: true
+workloads:
+  - id: mobile-smoke-tflite-cpu
+    category: runtime_benchmark
+    benchmark_plan_ref: tflite_cpu
+    source: benchmarks/models/generate_mobile_smoke_tflite.py
+    license_status: redistributable_generated_fixture
+    artifacts:
+      - path: benchmarks/models/mobile_smoke.tflite
+        sha256: 6bb01f97e01d782b139eecf32fecada42c08a8edc8d2148da4dcf63b22dd972a
+        role: model
+    input_shape:
+      input: [1, 32]
+    quantization: fp32
+    expected_ops:
+      - FULLY_CONNECTED
+      - RELU
+      - SOFTMAX
+    fallback_ops: []
+    runtime_path: benchmark_model_cpu
+    golden_output_tolerance:
+      kind: smoke_runtime_only
+      max_abs_error: null
+    evidence_status: ready_for_cpu_smoke_when_benchmark_model_exists
+    blockers:
+      - benchmark_model_binary_required_for_real_runtime_numbers
+  - id: mobile-smoke-tflite-e1-npu
+    category: runtime_benchmark
+    benchmark_plan_ref: tflite_e1_npu
+    source: benchmarks/models/generate_mobile_smoke_tflite.py
+    license_status: redistributable_generated_fixture
+    artifacts:
+      - path: benchmarks/models/mobile_smoke.tflite
+        sha256: 6bb01f97e01d782b139eecf32fecada42c08a8edc8d2148da4dcf63b22dd972a
+        role: model
+      - path: docs/benchmarks/capabilities/e1_npu_nnapi.proof.template.json
+        role: proof_template
+    input_shape:
+      input: [1, 32]
+    quantization: fp32
+    expected_ops:
+      - FULLY_CONNECTED
+      - RELU
+      - SOFTMAX
+    fallback_ops: []
+    runtime_path: benchmark_model_nnapi_e1_npu
+    requires_zero_fallback_proof: true
+    golden_output_tolerance:
+      kind: cpu_vs_nnapi_profiled_smoke
+      max_abs_error: 0.001
+    evidence_status: blocked_until_e1_nnapi_proof
+    blockers:
+      - missing_e1_npu_nnapi_proof_json
+      - missing_target_benchmark_model_nnapi_transcript
+  - id: npu-arch-sim-open-2028
+    category: architecture_sim
+    benchmark_plan_ref: npu_arch_sim_open_2028
+    source: benchmarks/sim/run_npu_scale_sim.py
+    license_status: local_project_fixture
+    artifacts:
+      - path: benchmarks/sim/run_npu_scale_sim.py
+        role: simulator
+      - path: docs/spec-db/npu-2028-target.yaml
+        role: target_contract
+    input_shape:
+      sweep: deterministic_gemm_conv_attention
+    quantization: int8
+    expected_ops:
+      - GEMM
+      - CONV
+      - ATTENTION
+    fallback_ops: []
+    runtime_path: python_scale_sim
+    golden_output_tolerance:
+      kind: deterministic_json_metrics
+      max_abs_error: 0.0
+    evidence_status: modeled_only_not_release_benchmark
+    blockers:
+      - modeled_tops_not_calibrated_to_e1_rtl_or_silicon
+  - id: npu-arch-sim-sota-2028
+    category: architecture_sim
+    benchmark_plan_ref: npu_arch_sim_sota_2028
+    source: benchmarks/sim/run_npu_scale_sim.py
+    license_status: local_project_fixture
+    artifacts:
+      - path: benchmarks/sim/run_npu_scale_sim.py
+        role: simulator
+      - path: docs/spec-db/competitor-2028-target.md
+        role: comparison_target
+    input_shape:
+      sweep: deterministic_gemm_conv_attention
+    quantization: int8
+    expected_ops:
+      - GEMM
+      - CONV
+      - ATTENTION
+    fallback_ops: []
+    runtime_path: python_scale_sim
+    golden_output_tolerance:
+      kind: deterministic_json_metrics
+      max_abs_error: 0.0
+    evidence_status: modeled_only_not_release_benchmark
+    blockers:
+      - modeled_tops_not_calibrated_to_e1_rtl_or_silicon
+  - id: e1-npu-timeloop-arch
+    category: dataflow_mapping
+    source: benchmarks/sim/run_npu_timeloop.py
+    license_status: local_project_fixture_plus_optional_external_tool
+    artifacts:
+      - path: benchmarks/sim/run_npu_timeloop.py
+        role: runner
+      - path: benchmarks/sim/configs/e1_npu_timeloop_arch.yaml
+        role: architecture_config
+    input_shape:
+      mapping: local_architecture_config
+    quantization: int8
+    expected_ops:
+      - GEMM
+      - CONV
+    fallback_ops: []
+    runtime_path: timeloop_accelergy_optional_backend
+    golden_output_tolerance:
+      kind: blocked_until_backend_installed
+      max_abs_error: null
+    evidence_status: blocked_until_timeloop_backend_present
+    blockers:
+      - timeloop_accelergy_not_required_for_default_local_gate
+      - mapping_outputs_not_calibrated_to_e1_rtl
+  - id: e1-stablehlo-tiny-mlp
+    category: compiler_lowering
+    source: compiler/runtime/test_e1_npu_tiny_mlp_e2e.py
+    license_status: local_project_fixture
+    artifacts:
+      - path: compiler/runtime/test_e1_npu_tiny_mlp_e2e.py
+        role: e2e_test
+      - path: compiler/runtime/e1_npu_stablehlo.py
+        role: lowering
+      - path: compiler/runtime/e1_npu_runtime.py
+        role: runtime
+    input_shape:
+      input: tiny_mlp_test_fixture
+    quantization: int8
+    expected_ops:
+      - stablehlo.dot_general
+      - stablehlo.add
+      - stablehlo.relu
+    fallback_ops: []
+    runtime_path: python_e1_npu_runtime_sim
+    golden_output_tolerance:
+      kind: test_assertions
+      max_abs_error: 0.0
+    evidence_status: local_test_fixture_only
+    blockers:
+      - not_a_target_hardware_benchmark
+  - id: e1-quantization-int4-awq-gptq
+    category: quantization
+    source: compiler/quantization
+    license_status: local_project_fixture
+    artifacts:
+      - path: compiler/quantization/awq_int4.py
+        role: awq_calibrator
+      - path: compiler/quantization/gptq_int4.py
+        role: gptq_calibrator
+      - path: compiler/quantization/tests/test_awq_int4_mlp_e2e.py
+        role: e2e_test
+    input_shape:
+      input: local_mlp_calibration_fixture
+    quantization: int4
+    expected_ops:
+      - eliza.group_scaled_int4_matmul
+      - tflite.matmul
+    fallback_ops: []
+    runtime_path: python_quantization_fixture
+    golden_output_tolerance:
+      kind: quantized_vs_float_fixture
+      max_abs_error: 0.25
+    evidence_status: local_test_fixture_only
+    blockers:
+      - no_representative_product_calibration_set
+      - no_e1_runtime_power_latency_capture
+  - id: e1-quantization-fp8-sparse24
+    category: quantization
+    source: compiler/quantization
+    license_status: local_project_fixture
+    artifacts:
+      - path: compiler/quantization/fp8_e4m3_calibration.py
+        role: fp8_calibrator
+      - path: compiler/quantization/sparse_2_4.py
+        role: sparse_calibrator
+      - path: compiler/quantization/tests/test_calibrators.py
+        role: calibrator_tests
+    input_shape:
+      input: local_calibration_fixture
+    quantization: fp8_e4m3_and_sparse_2_4
+    expected_ops:
+      - eliza.fp8_matmul
+      - eliza.sparse_2_4_matmul
+    fallback_ops: []
+    runtime_path: python_quantization_fixture
+    golden_output_tolerance:
+      kind: quantized_vs_float_fixture
+      max_abs_error: 0.25
+    evidence_status: local_test_fixture_only
+    blockers:
+      - no_representative_product_calibration_set
+      - no_e1_runtime_power_latency_capture
