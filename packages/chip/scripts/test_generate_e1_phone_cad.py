@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 import importlib.util
 import json
+import unittest
 from pathlib import Path
 
-import generate_e1_phone_cad as cad
-import pytest
+_required_modules = ("matplotlib", "numpy", "trimesh", "yaml")
+_missing_modules = [
+    module for module in _required_modules if importlib.util.find_spec(module) is None
+]
+if _missing_modules:
+    raise unittest.SkipTest(
+        "optional E1 phone CAD dependencies are not installed: " + ", ".join(_missing_modules)
+    ) from None
+
+import generate_e1_phone_cad as cad  # noqa: E402
+import pytest  # noqa: E402
 
 _cadquery_available = importlib.util.find_spec("cadquery") is not None
 

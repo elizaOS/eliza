@@ -46,6 +46,45 @@ try:
 except ImportError:  # pragma: no cover - skip when hypothesis is absent
     HYPOTHESIS_AVAILABLE = False
 
+    class _MissingHealthCheck:
+        too_slow = "too_slow"
+        function_scoped_fixture = "function_scoped_fixture"
+
+    class _MissingStrategy:
+        def filter(self, *_args: object, **_kwargs: object) -> "_MissingStrategy":
+            return self
+
+    class _MissingStrategies:
+        def sampled_from(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
+            return _MissingStrategy()
+
+        def lists(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
+            return _MissingStrategy()
+
+        def text(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
+            return _MissingStrategy()
+
+        def characters(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
+            return _MissingStrategy()
+
+        def integers(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
+            return _MissingStrategy()
+
+    def given(*_args: object, **_kwargs: object):
+        def decorator(fn):
+            return fn
+
+        return decorator
+
+    def settings(*_args: object, **_kwargs: object):
+        def decorator(fn):
+            return fn
+
+        return decorator
+
+    HealthCheck = _MissingHealthCheck
+    st = _MissingStrategies()
+
 
 def minimal_valid_spec() -> dict[str, Any]:
     return {
