@@ -48,9 +48,10 @@ def require(condition: bool, message: str, failures: list[str]) -> None:
         failures.append(message)
 
 
-def load_json(path: Path, failures: list[str]) -> dict:
+def load_json(path: Path, failures: list[str], blockers: list[str] | None = None) -> dict:
     if not path.is_file():
-        failures.append(f"missing {rel(path)}")
+        target = blockers if blockers is not None else failures
+        target.append(f"missing {rel(path)}")
         return {}
     try:
         data = json.loads(read(path))
@@ -73,9 +74,10 @@ def mem_region(memmap: dict, name: str) -> tuple[int, int] | None:
     return None
 
 
-def check_dts(failures: list[str]) -> None:
+def check_dts(failures: list[str], blockers: list[str]) -> None:
     for path in (DTS, GEN_DTS):
-        require(path.is_file(), f"missing generated DTS: {rel(path)}", failures)
+        if not path.is_file():
+            blockers.append(f"missing generated DTS: {rel(path)}")
     if not DTS.is_file():
         return
 
@@ -109,8 +111,8 @@ def check_dts(failures: list[str]) -> None:
     )
 
 
-def check_memmap(failures: list[str]) -> None:
-    memmap = load_json(MEMMAP, failures)
+def check_memmap(failures: list[str], blockers: list[str]) -> None:
+    memmap = load_json(MEMMAP, failures, blockers)
     if not memmap:
         return
 
@@ -131,7 +133,7 @@ def check_memmap(failures: list[str]) -> None:
         )
 
 
-def check_regmaps(failures: list[str]) -> None:
+def check_regmaps(failures: list[str], blockers: list[str]) -> None:
     required_by_regmap = {
         "boot_address": ["bitWidth"],
         "clint": ["msip_0", "mtimecmp_0", "mtime_0"],
@@ -139,7 +141,7 @@ def check_regmaps(failures: list[str]) -> None:
         "uart": ["txdata", "rxdata", "txctrl", "rxen", "ie", "ip", "div"],
     }
     for name, path in REGMAPS.items():
-        data = load_json(path, failures)
+        data = load_json(path, failures, blockers)
         if not data:
             continue
         text = json.dumps(data)
@@ -159,9 +161,9 @@ def bootrom_bytes_from_fir(path: Path) -> bytes:
     return bytes(image)
 
 
-def check_embedded_bootrom_dtb(failures: list[str]) -> None:
-    require(GEN_FIR.is_file(), f"missing generated FIR: {rel(GEN_FIR)}", failures)
+def check_embedded_bootrom_dtb(failures: list[str], blockers: list[str]) -> None:
     if not GEN_FIR.is_file():
+        blockers.append(f"missing generated FIR: {rel(GEN_FIR)}")
         return
 
     image = bootrom_bytes_from_fir(GEN_FIR)
@@ -202,7 +204,8 @@ def check_embedded_bootrom_dtb(failures: list[str]) -> None:
 
 
 def check_import_state(failures: list[str], blockers: list[str]) -> None:
-    require(VERILOG.is_file(), f"missing generated Verilog: {rel(VERILOG)}", failures)
+    if not VERILOG.is_file():
+        blockers.append(f"missing generated Verilog: {rel(VERILOG)}")
     if VERILOG.is_file():
         text = read(VERILOG)
         require(
@@ -240,24 +243,25 @@ def main() -> int:
 
     failures: list[str] = []
     blockers: list[str] = []
-    check_dts(failures)
-    check_memmap(failures)
-    check_regmaps(failures)
-    check_embedded_bootrom_dtb(failures)
+    check_dts(failures, blockers)
+    check_memmap(failures, blockers)
+    check_regmaps(failures, blockers)
+    check_embedded_bootrom_dtb(failures, blockers)
     check_import_state(failures, blockers)
 
     if failures:
         print("STATUS: FAIL chipyard.generated_linux_contract")
         for failure in failures:
             print(f"  - {failure}")
+        if blockers:
+            print("  blocked follow-up artifacts/evidence:")
+            for blocker in blockers:
+                print(f"    - {blocker}")
         return 1
 
-    print(
-        "STATUS: PASS chipyard.generated_linux_contract - generated DTS/memmap/regmaps expose minimum Linux launch nodes"
-    )
     if blockers:
         print(
-            "STATUS: BLOCKED chipyard.generated_linux_boot - generated AP is not boot-evidence complete:"
+            "STATUS: BLOCKED chipyard.generated_linux_contract - generated AP artifacts/evidence are not complete:"
         )
         for blocker in blockers:
             print(f"  - {blocker}")
@@ -269,6 +273,9 @@ def main() -> int:
         )
         return 1 if args.require_boot_evidence else 0
 
+    print(
+        "STATUS: PASS chipyard.generated_linux_contract - generated DTS/memmap/regmaps expose minimum Linux launch nodes"
+    )
     print("STATUS: PASS chipyard.generated_linux_boot")
     return 0
 
