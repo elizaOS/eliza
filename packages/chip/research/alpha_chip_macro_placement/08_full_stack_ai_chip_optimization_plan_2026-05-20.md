@@ -1543,9 +1543,16 @@ Implementation TODOs:
 - Replace the current `scripts/ai_eda/run_cocotb_stimulus_search.py` dry-run
   manifest validator with a real LLM4DV/CVDP-backed seed generator for the
   descriptor queue, DMA, IOMMU, interrupt, reset, and NPU command-buffer bins.
-- Add a candidate assertion schema:
-  module, signal scope, reset semantics, clock domain, antecedent,
-  consequent, bounded depth, generated-by, reviewer, bind status.
+- [x] Add a candidate assertion schema/check gate:
+  `verify/ai_eda/assertion_candidates/e1_npu_descriptor.yaml` now records
+  module, signal scope, reset semantics, clock domain, antecedent, consequent,
+  bounded depth, generated-by, reviewer, bind status, quarantine path, and
+  promotion gates for the first E1 NPU descriptor properties.
+  `scripts/ai_eda/check_assertion_candidate_manifests.py` validates that
+  generated or human-seeded assertions remain unbound to RTL, require review,
+  require formal/cocotb promotion gates, and write only under
+  `build/ai_eda/assertion_candidates/`. `make docs-check`, bootstrap metadata,
+  and the CUDA payload/runbook now carry this gate.
 - Add `scripts/ai_eda/replay_assertion_candidate.py` that runs only on
   quarantined copies until reviewed.
 - Add failure clustering for formal traces and cocotb logs.
@@ -2038,6 +2045,8 @@ not as:
   RAG/CUDA runbook training, with no execution or optimization claim.
 - [x] Add and validate the E1 AI workload/model manifest for TFLite, NPU scale,
   Timeloop, StableHLO lowering, INT4, FP8, and sparse 2:4 benchmark lanes.
+- [x] Add and validate the E1 assertion-candidate manifest gate for
+  quarantined, unbound NPU descriptor SVA candidates.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Replace CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters with the real

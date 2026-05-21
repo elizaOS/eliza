@@ -306,21 +306,70 @@ export function DirectCryptoCreditCard({
         tokenSymbol: selectedToken?.symbol,
         promoCode,
       });
+
+      // Persist BEFORE asking the wallet to sign — if the user reloads
+      // while the wallet popup is open we'll resume the overlay on return.
+      pendingPaymentStore.save({
+        paymentId: payment.paymentId,
+        txHash: null,
+        network: selected.network,
+        createdAt: Date.now(),
+      });
+
       const hash =
         selected.network === "solana"
           ? await sendSolanaPayment(payment)
           : await sendEvmPayment(selected, payment);
-      toast.message("Transaction sent. Confirming on-chain...");
-      await confirmDirectPayment(payment.paymentId, hash);
-      toast.success(
-        `Added $${payment.instructions.creditsToAdd} in cloud credit`,
-      );
-      await onSuccess();
+
+      // As soon as we have a hash: persist it, attach on the server
+      // (durability anchor — cron picks up from `broadcast`), and show
+      // the waiting overlay. Confirm is fire-and-forget below; the
+      // overlay's polling + cron drive the actual resolution.
+      pendingPaymentStore.save({
+        paymentId: payment.paymentId,
+        txHash: hash,
+        network: selected.network,
+        createdAt: Date.now(),
+      });
+      setActivePaymentId(payment.paymentId);
+      void attachDirectPaymentTx(payment.paymentId, hash);
+
+      try {
+        await confirmDirectPayment(payment.paymentId, hash);
+      } catch (confirmError) {
+        // Inline confirm failed — that's OK. The cron auto-confirm picks
+        // up `broadcast` rows by hash and resolves them.
+        console.warn(
+          "[direct-crypto] inline confirm failed; relying on cron",
+          confirmError,
+        );
+      }
     } catch (error) {
+      if (!activePaymentId) pendingPaymentStore.clear();
       toast.error(error instanceof Error ? error.message : "Payment failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleOverlayResolved(s: PaymentWaitingStatus) {
+    pendingPaymentStore.clear();
+    if (s.status === "confirmed") {
+      toast.success(
+        `Added $${s.creditsToAdd} in cloud credit${
+          s.bonusCredits ? ` (incl. $${s.bonusCredits} bonus)` : ""
+        }`,
+      );
+      void onSuccess();
+    } else {
+      toast.error(s.error ?? "Payment did not confirm. Contact support.");
+    }
+  }
+
+  function handleOverlayDismiss() {
+    // Keep localStorage — the cron is still working on it. Only clear on
+    // terminal resolution. Closing the overlay just hides the UI.
+    setActivePaymentId(null);
   }
 
   const isCloudSurface = surface === "cloud";
