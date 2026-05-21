@@ -101,6 +101,7 @@ def validate(report: dict[str, Any]) -> list[str]:
             "replay_comparison",
             "alphachip",
             "alphachip_successor",
+            "full_training_matrix",
         ):
             if not isinstance(evidence_run_ids.get(field), str) or not evidence_run_ids[field]:
                 errors.append(f"evidence_run_ids.{field} must be non-empty")

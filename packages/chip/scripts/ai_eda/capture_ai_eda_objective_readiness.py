@@ -144,6 +144,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="AlphaChip successor/fallback plan run id; defaults to --readiness-run-id.",
     )
+    parser.add_argument(
+        "--full-training-matrix-run-id",
+        default=None,
+        help="Full CUDA training/evaluation matrix run id; defaults to --readiness-run-id.",
+    )
     parser.add_argument("--research-doc", type=Path, default=DEFAULT_RESEARCH_DOC)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     return parser.parse_args()
@@ -162,6 +167,7 @@ def main() -> int:
     replay_comparison_run_id = args.replay_comparison_run_id or replay_execution_run_id
     alphachip_run_id = args.alphachip_run_id or readiness_run_id
     alphachip_successor_run_id = args.alphachip_successor_run_id or readiness_run_id
+    full_training_matrix_run_id = args.full_training_matrix_run_id or readiness_run_id
 
     readiness_path = (
         ROOT
@@ -218,6 +224,10 @@ def main() -> int:
         ROOT
         / f"build/ai_eda/alphachip_successor_plan/{alphachip_successor_run_id}/alphachip_successor_plan.json"
     )
+    full_training_matrix_path = (
+        ROOT
+        / f"build/ai_eda/cuda_full_training_matrix/{full_training_matrix_run_id}/cuda_full_training_matrix.json"
+    )
 
     readiness = load_json(readiness_path)
     bundle = load_json(evidence_bundle_path)
@@ -230,6 +240,7 @@ def main() -> int:
     replay_comparison = load_json(replay_comparison_path)
     alphachip = load_json(alphachip_path)
     alphachip_successor = load_json(alphachip_successor_path)
+    full_training_matrix = load_json(full_training_matrix_path)
 
     requirements: list[dict[str, Any]] = []
     requirements.append(
@@ -295,14 +306,27 @@ def main() -> int:
         )
     )
     large_cuda_ok = capability(readiness, "large_cuda_training_ready")
+    full_training_matrix_ok = capability(readiness, "full_training_matrix_validated") or (
+        full_training_matrix is not None
+        and full_training_matrix.get("schema") == "eliza.ai_eda.cuda_full_training_matrix.v1"
+    )
     requirements.append(
         requirement(
             "large_cuda_training",
             "Large CUDA training is ready or completed on a CUDA host",
             "PROVEN" if large_cuda_ok else "BLOCKED",
-            [readiness_path],
-            "Mac/MPS smoke work is not enough for the requested large CUDA training objective.",
-            [] if large_cuda_ok else ["cuda.available=false or large_training_ready=false in readiness evidence"],
+            [readiness_path, full_training_matrix_path],
+            "Mac/MPS smoke work is not enough for the requested large CUDA training objective; the full matrix must also be unblocked and executed on CUDA.",
+            []
+            if large_cuda_ok
+            else [
+                "cuda.available=false or large_training_ready=false in readiness evidence"
+                + (
+                    "; full CUDA training matrix is present but blocked pending CUDA/full-dataset execution"
+                    if full_training_matrix_ok
+                    else "; full CUDA training matrix evidence is missing"
+                )
+            ],
         )
     )
     alphachip_ok = capability(readiness, "alphachip_checkpoint_available") or (
@@ -424,6 +448,7 @@ def main() -> int:
             "replay_comparison": replay_comparison_run_id,
             "alphachip": alphachip_run_id,
             "alphachip_successor": alphachip_successor_run_id,
+            "full_training_matrix": full_training_matrix_run_id,
         },
         "summary": {
             "requirement_count": len(requirements),
@@ -435,6 +460,7 @@ def main() -> int:
         "blockers": blockers,
         "next_required_actions": [
             "run the validated CUDA handoff on a real CUDA host and recapture readiness there",
+            "complete the full CUDA training matrix over reviewed full-dataset conversion modes",
             "resolve AlphaChip checkpoint access or land a documented from-scratch successor training route",
             "provide OpenLane/OpenROAD/PDK prerequisites with a ready replay queue item",
             "execute deterministic baseline and candidate E1 replay, archive metrics/logs/DEF/GDS, and compare them",
