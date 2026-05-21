@@ -101,16 +101,9 @@ async function confirmDirectPayment(
 }
 
 /**
-<<<<<<< HEAD
  * Durability anchor: records the broadcast tx hash on the server the instant
  * the wallet returns it. Best-effort — the cron auto-confirm path is the
  * backstop if this network call fails.
-=======
- * Records a broadcast tx hash against the payment so the server can recover
- * it via the cron path if the client confirm step fails. We fire-and-log
- * here — the user-driven confirm path still runs after this, and the cron
- * path is the durability backstop.
->>>>>>> shaw/wip-snapshot-2026-05-21
  */
 async function attachDirectPaymentTx(
   paymentId: string,
@@ -152,7 +145,6 @@ export function DirectCryptoCreditCard({
   const [tokenSymbol, setTokenSymbol] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [activePaymentId, setActivePaymentId] = useState<string | null>(null);
-<<<<<<< HEAD
 =======
 
   // Resume the waiting overlay if a payment is mid-flight in localStorage —
@@ -330,12 +322,6 @@ export function DirectCryptoCreditCard({
 
       // Persist BEFORE asking the wallet to sign — if the user reloads
       // while the wallet popup is open we'll resume the overlay on return.
-=======
-      paymentIdForRecovery = payment.paymentId;
-
-      // Persist BEFORE asking the wallet to sign — if the user reloads while
-      // the wallet popup is open, we'll resume the wait once they return.
->>>>>>> shaw/wip-snapshot-2026-05-21
       pendingPaymentStore.save({
         paymentId: payment.paymentId,
         txHash: null,
@@ -348,17 +334,10 @@ export function DirectCryptoCreditCard({
           ? await sendSolanaPayment(payment)
           : await sendEvmPayment(selected, payment);
 
-<<<<<<< HEAD
       // As soon as we have a hash: persist it, attach on the server
       // (durability anchor — cron picks up from `broadcast`), and show
       // the waiting overlay. Confirm is fire-and-forget below; the
       // overlay's polling + cron drive the actual resolution.
-=======
-      // Two things happen in parallel as soon as we have a hash:
-      //   1. Record it on the server (durability anchor — cron picks up
-      //      from `broadcast` if confirm fails).
-      //   2. Show the user the waiting overlay.
->>>>>>> shaw/wip-snapshot-2026-05-21
       pendingPaymentStore.save({
         paymentId: payment.paymentId,
         txHash: hash,
@@ -368,26 +347,17 @@ export function DirectCryptoCreditCard({
       setActivePaymentId(payment.paymentId);
       void attachDirectPaymentTx(payment.paymentId, hash);
 
-<<<<<<< HEAD
       try {
         await confirmDirectPayment(payment.paymentId, hash);
       } catch (confirmError) {
         // Inline confirm failed — that's OK. The cron auto-confirm picks
         // up `broadcast` rows by hash and resolves them.
-=======
-      // Best-effort optimistic confirm. If this fails, the overlay's poll
-      // loop + the cron auto-confirm path will still resolve the payment.
-      try {
-        await confirmDirectPayment(payment.paymentId, hash);
-      } catch (confirmError) {
->>>>>>> shaw/wip-snapshot-2026-05-21
         console.warn(
           "[direct-crypto] inline confirm failed; relying on cron",
           confirmError,
         );
       }
     } catch (error) {
-<<<<<<< HEAD
 =======
       // If we never got a hash, clear the persisted record — no on-chain
       // commit to wait on. If we did get a hash, leave it: the overlay
@@ -408,34 +378,17 @@ export function DirectCryptoCreditCard({
       toast.success(
         `Added $${s.creditsToAdd} in cloud credit${
           s.bonusCredits ? ` (incl. $${s.bonusCredits} bonus)` : ""
-=======
-  function handleOverlayResolved(status: PaymentWaitingStatus) {
-    pendingPaymentStore.clear();
-    if (status.status === "confirmed") {
-      toast.success(
-        `Added $${status.creditsToAdd} in cloud credit${
-          status.bonusCredits ? ` (incl. $${status.bonusCredits} bonus)` : ""
->>>>>>> shaw/wip-snapshot-2026-05-21
         }`,
       );
       void onSuccess();
     } else {
-<<<<<<< HEAD
       toast.error(s.error ?? "Payment did not confirm. Contact support.");
-=======
-      toast.error(status.error ?? "Payment did not confirm. Contact support.");
->>>>>>> shaw/wip-snapshot-2026-05-21
     }
   }
 
   function handleOverlayDismiss() {
-<<<<<<< HEAD
     // Keep localStorage — the cron is still working on it. Only clear on
     // terminal resolution. Closing the overlay just hides the UI.
-=======
-    // Don't clear localStorage on dismiss — the cron is still working on it.
-    // We only clear once the payment terminally resolves.
->>>>>>> shaw/wip-snapshot-2026-05-21
     setActivePaymentId(null);
   }
 

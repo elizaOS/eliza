@@ -4,11 +4,7 @@
  * PaymentWaitingOverlay — holds the user on a "Confirming on-chain" screen
  * until a direct-crypto payment resolves to confirmed or failed_chain.
  *
-<<<<<<< HEAD
  * Poll cadence: every 3s. Cancels on confirmed/failed_chain/failed/expired.
-=======
- * Poll cadence: every 3s. Cancels on confirmed/failed_chain/expired.
->>>>>>> shaw/wip-snapshot-2026-05-21
  *
  * Recovery: the parent persists `{paymentId, txHash, network}` to
  * localStorage immediately after broadcast, so a refresh re-enters this
@@ -20,41 +16,7 @@ import { Button } from "@elizaos/ui";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ExternalLink, Loader2, XCircle } from "lucide-react";
 import { useEffect } from "react";
-<<<<<<< HEAD
 
-=======
->>>>>>> shaw/wip-snapshot-2026-05-21
-import { api } from "../../../lib/api-client";
-
-export interface PaymentWaitingStatus {
-  paymentId: string;
-  status: string;
-  network: "base" | "bsc" | "solana" | null;
-  txHash: string | null;
-  blockNumber: string | null;
-  expectedAmount: string;
-  creditsToAdd: string;
-  bonusCredits: number;
-  expiresAt: string;
-  confirmedAt: string | null;
-  explorerUrl: string | null;
-  error: string | null;
-}
-
-interface ApiResponse {
-  success: boolean;
-  data: PaymentWaitingStatus;
-}
-
-interface PaymentWaitingOverlayProps {
-  paymentId: string;
-  /** Called once the payment terminally resolves. */
-  onResolved: (status: PaymentWaitingStatus) => void;
-<<<<<<< HEAD
-  /** User dismisses the overlay manually (e.g. "Hide and keep watching"). */
-=======
-  /** User dismisses the overlay manually (e.g. "Hide and continue browsing"). */
->>>>>>> shaw/wip-snapshot-2026-05-21
   onDismiss: () => void;
 }
 
