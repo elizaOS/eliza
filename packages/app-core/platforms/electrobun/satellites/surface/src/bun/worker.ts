@@ -68,9 +68,9 @@ function invokeRuntime(
 	post({
 		type: "host-request",
 		requestId,
-		method: "invoke-carrot",
+		method: "invoke-remote-plugin",
 		params: {
-			carrotId: RUNTIME_SATELLITE_ID,
+			remotePluginId: RUNTIME_SATELLITE_ID,
 			method,
 			params,
 		},

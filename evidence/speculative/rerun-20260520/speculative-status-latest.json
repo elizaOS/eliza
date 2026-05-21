@@ -1,0 +1,84 @@
+{
+  "generatedAt": "2026-05-20T19:27:08.517Z",
+  "conclusion": "Current evidence has measured Metal speedups for DFlash and tuned MTP on 0.8B, 2B, and 4B. DFlash uses true dflash-draft artifacts at draft-one; 0.8B/2B candidates are short 200-step proof artifacts and need longer training/packaging before release.",
+  "rows": [
+    {
+      "file": "evidence/speculative/rerun-20260520/true-dflash-0_8b-200step-metal-n1-512.json",
+      "speculator": "dflash",
+      "tier": "0_8b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 15,
+      "withSpec": 16.4,
+      "speedup": 1.0933333333333333,
+      "drafted": 255,
+      "accepted": 255,
+      "acceptance": 1
+    },
+    {
+      "file": "evidence/speculative/rerun-20260520/true-dflash-2b-200step-q4-metal-n1-512-rerun.json",
+      "speculator": "dflash",
+      "tier": "2b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 2.5,
+      "withSpec": 3.3,
+      "speedup": 1.3199999999999998,
+      "drafted": 255,
+      "accepted": 255,
+      "acceptance": 1
+    },
+    {
+      "file": "evidence/speculative/rerun-20260520/true-dflash-4b-existing-metal-n1-512-rerun.json",
+      "speculator": "dflash",
+      "tier": "4b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 3.6,
+      "withSpec": 5,
+      "speedup": 1.3888888888888888,
+      "drafted": 255,
+      "accepted": 255,
+      "acceptance": 1
+    },
+    {
+      "file": "evidence/speculative/rerun-20260520/mtp-0_8b-tuned-verifier-512-rerun.json",
+      "speculator": "mtp",
+      "tier": "0_8b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 10.4,
+      "withSpec": 12.9,
+      "speedup": 1.2403846153846154,
+      "drafted": 78,
+      "accepted": 31,
+      "acceptance": 0.3974358974358974
+    },
+    {
+      "file": "evidence/speculative/rerun-20260520/mtp-2b-tuned-verifier-512.json",
+      "speculator": "mtp",
+      "tier": "2b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 12,
+      "withSpec": 28.4,
+      "speedup": 2.3666666666666667,
+      "drafted": 122,
+      "accepted": 62,
+      "acceptance": 0.5081967213114754
+    },
+    {
+      "file": "evidence/speculative/rerun-20260520/mtp-4b-tuned-verifier-512.json",
+      "speculator": "mtp",
+      "tier": "4b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 8.2,
+      "withSpec": 24.3,
+      "speedup": 2.963414634146342,
+      "drafted": 96,
+      "accepted": 49,
+      "acceptance": 0.5104166666666666
+    }
+  ]
+}

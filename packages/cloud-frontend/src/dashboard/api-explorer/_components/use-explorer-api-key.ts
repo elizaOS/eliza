@@ -35,12 +35,15 @@ export function useExplorerApiKey() {
       const response = await fetch("/api/v1/api-keys/explorer", {
         cache: "no-store",
       });
-      const data = (await response.json()) as ExplorerApiKeyResponse;
+      const text = await response.text();
+      const data: ExplorerApiKeyResponse = text
+        ? (JSON.parse(text) as ExplorerApiKeyResponse)
+        : {};
 
       if (!response.ok || !data.apiKey) {
         setExplorerKey(null);
         setAuthToken("");
-        setError(data.error || "Failed to fetch API key");
+        setError(data.error || `Failed to fetch API key (HTTP ${response.status})`);
         return;
       }
 

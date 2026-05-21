@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import signal
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -56,6 +58,7 @@ def run_recipe(
     target: dict[str, Any],
     recipe: dict[str, Any],
     out_dir: Path,
+    timeout_s: int,
 ) -> dict[str, Any]:
     recipe_id = str(recipe["id"])
     target_id = str(target["id"])
@@ -80,25 +83,49 @@ def run_recipe(
         *recipe["passes"],
     ]
     script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    completed = subprocess.run(
+    process = subprocess.Popen(
         [yosys_bin, "-l", str(log_path), str(script_path)],
         cwd=ROOT,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        check=False,
+        start_new_session=True,
     )
+    try:
+        _stdout, stderr = process.communicate(timeout=timeout_s)
+        returncode = process.returncode
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            _stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            _stdout, stderr = process.communicate()
+        log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
+        return {
+            "id": result_id,
+            "target": target_id,
+            "recipe": recipe_id,
+            "status": "BLOCKED_RECIPE_TIMEOUT",
+            "timeout_s": timeout_s,
+            "script": str(script_path.relative_to(ROOT)),
+            "log": str(log_path.relative_to(ROOT)),
+            "metrics": parse_stat(log_text, str(target["top"])),
+            "stderr_tail": stderr[-2000:],
+            "claim_boundary": CLAIM_BOUNDARY,
+        }
     log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
-    status = "PASS_YOSYS_RECIPE_SMOKE" if completed.returncode == 0 else "FAIL_YOSYS_RECIPE"
+    status = "PASS_YOSYS_RECIPE_SMOKE" if returncode == 0 else "FAIL_YOSYS_RECIPE"
     return {
         "id": result_id,
         "target": target_id,
         "recipe": recipe_id,
         "status": status,
-        "returncode": completed.returncode,
+        "returncode": returncode,
         "script": str(script_path.relative_to(ROOT)),
         "log": str(log_path.relative_to(ROOT)),
         "metrics": parse_stat(log_text, str(target["top"])),
-        "stderr_tail": completed.stderr[-2000:],
+        "stderr_tail": stderr[-2000:],
         "claim_boundary": CLAIM_BOUNDARY,
     }
 
@@ -108,6 +135,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--timeout-s", type=int, default=20)
     return parser.parse_args()
 
 
@@ -134,7 +162,7 @@ def main() -> int:
         return 0
 
     results = [
-        run_recipe(yosys_bin, target, recipe, out_dir)
+        run_recipe(yosys_bin, target, recipe, out_dir, args.timeout_s)
         for target in corpus["target_modules"]
         for recipe in corpus["recipes"]
     ]

@@ -986,6 +986,82 @@ article {
   color: rgba(8, 9, 12, 0.6);
 }
 
+.app-os-downloads {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1.5rem;
+}
+
+.app-os-downloads .app-h3 {
+  margin: 0;
+  font-size: clamp(1.25rem, 1.6vw, 1.55rem);
+  font-weight: 600;
+}
+
+.app-os-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.app-os-card {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem;
+  border-radius: var(--radius-xs);
+  border: 1px solid rgba(8, 9, 12, 0.08);
+  background: rgba(8, 9, 12, 0.025);
+  color: var(--brand-black);
+  text-decoration: none;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.app-os-card[data-status="available"]:hover {
+  background: var(--brand-black);
+  color: var(--brand-white);
+  border-color: var(--brand-black);
+}
+
+.app-os-card[data-status="pending"] {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.app-os-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.app-os-status {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.app-os-card p {
+  margin: 0;
+  font-size: 0.92rem;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.app-os-card small {
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+  color: inherit;
+  opacity: 0.55;
+  text-transform: lowercase;
+}
+
 .app-action-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));

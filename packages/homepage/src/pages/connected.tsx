@@ -249,15 +249,13 @@ export default function ConnectedPage() {
       className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4 relative"
       style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
     >
-      <header
-        className="absolute top-0 inset-x-0 z-10 p-4 flex items-center justify-between"
-      >
+      <header className="absolute top-0 inset-x-0 z-10 p-4 flex items-center justify-between pointer-events-none">
         <Link
           to="/"
           aria-label={t("homepage_eliza.common.brandHomeAria", {
             defaultValue: "Eliza home",
           })}
-          className="inline-flex items-center"
+          className="inline-flex items-center pointer-events-auto"
         >
           <ElizaLogo className="h-8" />
         </Link>
