@@ -95,23 +95,19 @@ for (const viewport of VIEWPORTS) {
         await installCloudMocks(page);
         if (route.authed) await seedAuthed(page);
 
-        await page.goto(route.path, { waitUntil: "domcontentloaded" });
+        await page.goto(route.path, { waitUntil: "networkidle" });
         await page.evaluate(() => document.fonts.ready);
+        // The App-level Suspense fallback is just an orange <main> with a
+        // spinner. Wait for the *real* page chrome (a <header> element)
+        // before screenshotting, so we don't capture the loading state.
         await page
-          .waitForSelector(
-            'h1, h2, button, [data-marquee], [aria-label="Eliza"]',
-            { timeout: 10_000 },
-          )
+          .waitForSelector("header", { timeout: 20_000 })
           .catch(() => {});
-        await page
-          .waitForLoadState("networkidle", { timeout: 10_000 })
-          .catch(() => {});
-
         // /leaderboard runs a ~1800ms intro animation. Wait it out.
         if (route.path === "/leaderboard") {
-          await page.waitForTimeout(2200);
+          await page.waitForTimeout(2400);
         } else {
-          await page.waitForTimeout(400);
+          await page.waitForTimeout(600);
         }
 
         await page.screenshot({

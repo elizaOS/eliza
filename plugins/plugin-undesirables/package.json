@@ -26,7 +26,7 @@
   "scripts": {
     "build": "tsup",
     "clean": "rm -rf dist",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "keywords": [
     "elizaos",

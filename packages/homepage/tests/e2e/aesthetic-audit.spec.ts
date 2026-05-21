@@ -123,6 +123,23 @@ async function settle(page: Page) {
   await page
     .waitForLoadState("networkidle", { timeout: 10_000 })
     .catch(() => {});
+  // Wait for all <img> tags to finish loading. Header logo buttons have
+  // no explicit height; their img child sets `h-8 w-auto`, so before the
+  // SVG decodes the button measures 0px tall and trips toBeVisible().
+  await page
+    .evaluate(() =>
+      Promise.all(
+        Array.from(document.images).map((img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise<void>((res) => {
+                img.addEventListener("load", () => res(), { once: true });
+                img.addEventListener("error", () => res(), { once: true });
+              }),
+        ),
+      ),
+    )
+    .catch(() => {});
   // The /leaderboard route runs a ~1800ms intro animation before the
   // primary UI (BlobButton, tab bar, model figure) is positioned. Wait
   // long enough that the screenshot captures the settled state on every

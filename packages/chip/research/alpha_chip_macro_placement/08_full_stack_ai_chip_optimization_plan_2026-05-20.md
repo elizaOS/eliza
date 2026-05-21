@@ -412,6 +412,12 @@ Current local validation on the 128 GiB M4 host:
   validates exact report-to-record inventory, BENCH source hashes, positive
   graph gate/edge counts, flow blockers, and the training-only/no-E1-signoff
   claim boundary.
+- `make ai-eda-aieda-idata-convert`: PASS when the reviewed local AiEDA/iDATA
+  payload is present. The bounded local sample converts 3 public iDATA route
+  demand maps into 9 internal design/graph/flow records with positive-demand
+  grid cells, route-demand adjacency edges, source hashes, grid statistics, and
+  fail-closed status. The CUDA payload run plan includes 64-map iDATA
+  conversion and checker commands for the remote host.
 - Verify-only payload checks now PASS for restored `chipbench-d`,
   `circuitnet3`, `aieda-idata`, `chipdiffusion`, `openabc-d`, and
   `timeloop-accelergy`. `openroad-flow-scripts` is intentionally BLOCKED
@@ -1549,7 +1555,7 @@ not as:
   license/storage review.
 - [x] Convert one real CircuitNet 3.0 graph sample after local payload fetch
   and schema review.
-- [ ] Convert one real iDATA graph/flow sample after license/storage review.
+- [x] Convert one real iDATA graph/flow sample after license/storage review.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Train/run first CT/SA/Hier-RTLMP/ChipDiffusion macro-placement baselines

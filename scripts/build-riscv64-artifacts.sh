@@ -140,14 +140,14 @@ build_native_plugin() {
     local build_log="$builddir.build.log"
     if [ -n "$extra_flag" ]; then
         if ! cmake -S "$pkgdir" -B "$builddir" \
-            -DCMAKE_TOOLCHAIN_FILE="$repo_root/cmake/toolchain-riscv64-linux-musl.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$repo_root/packages/native/cmake/toolchain-riscv64-linux-musl.cmake" \
             "$extra_flag" >"$config_log" 2>&1; then
             echo "  ✗ $pkg: cmake configure failed (see $config_log)"
             FAIL_N=$((FAIL_N+1)); return
         fi
     else
         if ! cmake -S "$pkgdir" -B "$builddir" \
-            -DCMAKE_TOOLCHAIN_FILE="$repo_root/cmake/toolchain-riscv64-linux-musl.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$repo_root/packages/native/cmake/toolchain-riscv64-linux-musl.cmake" \
             >"$config_log" 2>&1; then
             echo "  ✗ $pkg: cmake configure failed (see $config_log)"
             FAIL_N=$((FAIL_N+1)); return
