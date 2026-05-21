@@ -11,6 +11,7 @@ WorkingDirectory=/var/lib/elizaos
 Environment=ELIZA_STATE_DIR=/var/lib/elizaos
 Environment=ELIZA_API_PORT=31337
 ExecStart=/opt/elizaos/bin/bun /opt/elizaos/app/server.js --headless --port=31337
+ExecStartPost=/usr/lib/elizaos/wait-agent-health.sh http://127.0.0.1:31337/api/health
 Restart=on-failure
 RestartSec=2
 SyslogIdentifier=elizaos-agent

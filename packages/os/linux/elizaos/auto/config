@@ -16,6 +16,8 @@
 set -eu
 
 ARCH="${ELIZAOS_ARCH:-amd64}"
+FIRMWARE_OPTIONS=""
+QEMU_BOOTSTRAP_OPTIONS=""
 
 case "${ARCH}" in
     amd64)
@@ -27,11 +29,18 @@ case "${ARCH}" in
         KERNEL_FLAVOUR="arm64"
         BOOTLOADERS="grub-efi"
         BOOTAPPEND="boot=live components quiet splash console=tty0 console=ttyAMA0,115200n8"
+        if [ "$(dpkg --print-architecture 2>/dev/null || true)" != "arm64" ]; then
+            QEMU_BOOTSTRAP_OPTIONS="--bootstrap-qemu-arch arm64 --bootstrap-qemu-static /usr/bin/qemu-aarch64-static"
+        fi
         ;;
     riscv64)
         KERNEL_FLAVOUR="riscv64"
         BOOTLOADERS="grub-efi"
         BOOTAPPEND="boot=live components earlycon=sbi loglevel=7 console=ttyS0,115200n8 console=tty0"
+        FIRMWARE_OPTIONS="--firmware-chroot false --firmware-binary false"
+        if [ "$(dpkg --print-architecture 2>/dev/null || true)" != "riscv64" ]; then
+            QEMU_BOOTSTRAP_OPTIONS="--bootstrap-qemu-arch riscv64 --bootstrap-qemu-static /usr/bin/qemu-riscv64-static"
+        fi
         ;;
     *)
         echo "ERROR: unsupported ELIZAOS_ARCH=${ARCH}" >&2
@@ -49,6 +58,8 @@ lb config noauto \
     --uefi-secure-boot disable \
     --binary-image iso-hybrid \
     --apt-recommends false \
+    ${QEMU_BOOTSTRAP_OPTIONS} \
+    ${FIRMWARE_OPTIONS} \
     --debian-installer none \
     --bootappend-live "${BOOTAPPEND}" \
     "${@}"

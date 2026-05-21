@@ -36,6 +36,79 @@ MIN_ISO_BYTES="${ELIZAOS_MIN_ISO_BYTES:-209715200}"
 
 mkdir -p "${OUT}"
 
+ensure_foreign_binfmt() {
+    case "${ARCH}" in
+        amd64)
+            return 0
+            ;;
+        arm64)
+            BINFMT_NAME=qemu-aarch64
+            ;;
+        riscv64)
+            BINFMT_NAME=qemu-riscv64
+            ;;
+        *)
+            echo "ERROR: unsupported ELIZAOS_ARCH=${ARCH}" >&2
+            exit 64
+            ;;
+    esac
+
+    if [ "$(dpkg --print-architecture 2>/dev/null || true)" = "${ARCH}" ]; then
+        return 0
+    fi
+
+    echo "    ensuring ${BINFMT_NAME} binfmt_misc registration..."
+
+    if [ ! -d /proc/sys/fs/binfmt_misc ]; then
+        echo "ERROR: /proc/sys/fs/binfmt_misc missing; foreign ${ARCH} bootstrap cannot run." >&2
+        exit 65
+    fi
+
+    if [ ! -e /proc/sys/fs/binfmt_misc/register ]; then
+        mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
+    fi
+
+    if [ ! -e /proc/sys/fs/binfmt_misc/register ]; then
+        echo "ERROR: binfmt_misc is not mounted; run the builder container with --privileged." >&2
+        exit 65
+    fi
+
+    if [ -e "/proc/sys/fs/binfmt_misc/${BINFMT_NAME}" ]; then
+        if grep -q '^enabled' "/proc/sys/fs/binfmt_misc/${BINFMT_NAME}"; then
+            return 0
+        fi
+        echo 1 >"/proc/sys/fs/binfmt_misc/${BINFMT_NAME}" 2>/dev/null || true
+        if grep -q '^enabled' "/proc/sys/fs/binfmt_misc/${BINFMT_NAME}"; then
+            return 0
+        fi
+        echo -1 >"/proc/sys/fs/binfmt_misc/${BINFMT_NAME}" 2>/dev/null || true
+    fi
+
+    BINFMT_CONF="/usr/lib/binfmt.d/${BINFMT_NAME}.conf"
+    if [ ! -r "${BINFMT_CONF}" ]; then
+        BINFMT_CONF="/usr/share/qemu/binfmt.d/${BINFMT_NAME}.conf"
+    fi
+
+    if [ ! -r "${BINFMT_CONF}" ]; then
+        echo "ERROR: no ${BINFMT_NAME} binfmt config found in the builder image." >&2
+        exit 65
+    fi
+
+    BINFMT_LINE="$(sed -n '1p' "${BINFMT_CONF}")"
+    if [ -z "${BINFMT_LINE}" ]; then
+        echo "ERROR: ${BINFMT_CONF} is empty." >&2
+        exit 65
+    fi
+
+    printf '%s\n' "${BINFMT_LINE}" >/proc/sys/fs/binfmt_misc/register
+
+    if [ ! -e "/proc/sys/fs/binfmt_misc/${BINFMT_NAME}" ] ||
+        ! grep -q '^enabled' "/proc/sys/fs/binfmt_misc/${BINFMT_NAME}"; then
+        echo "ERROR: failed to register ${BINFMT_NAME} with binfmt_misc." >&2
+        exit 65
+    fi
+}
+
 # Clear stale live-build working state from any prior/interrupted run so each
 # build starts from a clean tree (cache/ is kept for download speed). Runs as
 # root here, so it can remove the root-owned chroot from earlier runs.
@@ -49,6 +122,8 @@ echo "    arch:        ${ARCH}"
 echo "    profile:     ${PROFILE}"
 echo "    output dir:  ${OUT}"
 echo "    build ts:    ${BUILD_TS}"
+
+ensure_foreign_binfmt
 
 # ── Step 1: lb config ────────────────────────────────────────────────
 echo

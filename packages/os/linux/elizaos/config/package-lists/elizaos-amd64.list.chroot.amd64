@@ -5,3 +5,22 @@ grub-pc-bin
 shim-signed
 intel-microcode
 amd64-microcode
+
+# Desktop session (GNOME, minimal seed).
+xorg
+gdm3
+gnome-session
+gnome-shell
+gnome-terminal
+gnome-control-center
+nautilus
+network-manager
+network-manager-gnome
+pulseaudio
+pipewire
+pipewire-pulse
+
+# Boot splash.
+plymouth
+plymouth-themes
+plymouth-label

@@ -39,3 +39,4 @@ config/includes.chroot/usr/share/backgrounds/elizaos/*.png
 config/includes.chroot/usr/share/icons/hicolor/*/apps/elizaos.png
 config/includes.chroot/usr/share/plymouth/themes/elizaos/*.png
 config/includes.binary/boot/grub/elizaos-splash.png
+.build.lock
