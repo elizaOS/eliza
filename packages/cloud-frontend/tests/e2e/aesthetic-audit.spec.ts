@@ -24,7 +24,9 @@ test.skip(
 );
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const OUT_ROOT = path.resolve(HERE, "../../test-results/aesthetic-audit");
+// Write outside test-results/ so Playwright's per-run cleanup doesn't wipe
+// the contact sheet between runs.
+const OUT_ROOT = path.resolve(HERE, "../../aesthetic-audit-output");
 
 const ROUTES: { path: string; slug: string; auth?: boolean }[] = [
   { path: "/", slug: "landing" },

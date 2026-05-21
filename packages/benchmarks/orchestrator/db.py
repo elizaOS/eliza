@@ -831,7 +831,13 @@ def summarize_latest_scores(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             r.model,
             r.high_score_label,
             r.high_score_value,
-            r.delta_to_high_score
+            r.delta_to_high_score,
+            r.token_metrics_json,
+            r.llm_call_count,
+            r.total_prompt_tokens,
+            r.total_completion_tokens,
+            r.total_cache_read_input_tokens,
+            r.total_cache_creation_input_tokens
         FROM benchmark_runs r
         JOIN latest l
           ON r.benchmark_id = l.benchmark_id
@@ -842,7 +848,67 @@ def summarize_latest_scores(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         ORDER BY r.benchmark_id ASC, r.agent ASC
         """
     ).fetchall()
-    return [dict(row) for row in rows]
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        record = dict(row)
+        raw_token_metrics = record.pop("token_metrics_json", None)
+        token_metrics: dict[str, Any] = {}
+        if isinstance(raw_token_metrics, str):
+            try:
+                decoded = json.loads(raw_token_metrics)
+            except json.JSONDecodeError:
+                decoded = {}
+            if isinstance(decoded, dict):
+                token_metrics = decoded
+
+        prompt_tokens = _int_or_none(
+            token_metrics.get("input_tokens", token_metrics.get("prompt_tokens"))
+        )
+        if prompt_tokens is None:
+            prompt_tokens = _int_or_none(record.get("total_prompt_tokens"))
+        completion_tokens = _int_or_none(
+            token_metrics.get("output_tokens", token_metrics.get("completion_tokens"))
+        )
+        if completion_tokens is None:
+            completion_tokens = _int_or_none(record.get("total_completion_tokens"))
+        total_tokens = _int_or_none(token_metrics.get("total_tokens"))
+        if total_tokens is None and prompt_tokens is not None and completion_tokens is not None:
+            total_tokens = prompt_tokens + completion_tokens
+        cached_tokens = _int_or_none(
+            token_metrics.get("cached_tokens", token_metrics.get("cache_read_input_tokens"))
+        )
+        if cached_tokens is None:
+            cached_tokens = _int_or_none(record.get("total_cache_read_input_tokens"))
+        calls = _int_or_none(token_metrics.get("llm_call_count", token_metrics.get("call_count")))
+        if calls is None:
+            calls = _int_or_none(record.get("llm_call_count"))
+
+        record["input_tokens"] = prompt_tokens if prompt_tokens is not None else 0
+        record["output_tokens"] = completion_tokens if completion_tokens is not None else 0
+        record["total_tokens"] = total_tokens if total_tokens is not None else 0
+        record["cached_tokens"] = cached_tokens if cached_tokens is not None else 0
+        record["cache_creation_input_tokens"] = _int_or_none(
+            token_metrics.get("cache_creation_input_tokens")
+        )
+        if record["cache_creation_input_tokens"] is None:
+            record["cache_creation_input_tokens"] = _int_or_none(
+                record.get("total_cache_creation_input_tokens")
+            ) or 0
+        record["llm_call_count"] = calls if calls is not None else 0
+        record["call_count"] = _int_or_none(token_metrics.get("call_count"))
+        if record["call_count"] is None:
+            record["call_count"] = record["llm_call_count"]
+        record["token_metrics"] = {
+            "input_tokens": record["input_tokens"],
+            "output_tokens": record["output_tokens"],
+            "total_tokens": record["total_tokens"],
+            "cached_tokens": record["cached_tokens"],
+            "cache_creation_input_tokens": record["cache_creation_input_tokens"],
+            "llm_call_count": record["llm_call_count"],
+            "call_count": record["call_count"],
+        }
+        out.append(record)
+    return out
 
 
 def recover_stale_running_runs(

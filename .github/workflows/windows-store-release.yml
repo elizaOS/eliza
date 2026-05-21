@@ -52,7 +52,7 @@ jobs:
       can_submit: ${{ steps.store.outputs.can_submit }}
       msix_path: ${{ steps.build.outputs.msix_path }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
         with:

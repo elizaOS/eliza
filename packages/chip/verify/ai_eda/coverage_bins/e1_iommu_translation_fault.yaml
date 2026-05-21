@@ -1,0 +1,44 @@
+schema: eliza.ai_eda.coverage_bins.v1
+updated: 2026-05-20
+source_ids:
+  - riscv-iommu-v1.0.1
+  - llm4dv
+dut: e1_riscv_iommu
+scope: >
+  Dry-run coverage targets for future AI-assisted cocotb stimulus proposals
+  against IOMMU translation, fault, PASID, ATS, and page-request register
+  behavior. Candidate tests are not evidence until accepted into source and
+  passing the named cocotb gates.
+required_followup_gates:
+  - make cocotb-iommu
+bins:
+  - id: iommu_bare_mode_passthrough
+    description: BARE DDTP mode must pass unknown device traffic without fault.
+    required_observation: downstream request accepted and fault counter stable
+    existing_reference:
+      - verify/cocotb/iommu/test_riscv_iommu.py
+  - id: iommu_unknown_devid_fault
+    description: Translated mode must fault unknown device IDs.
+    required_observation: fault count increments and downstream traffic is suppressed
+    existing_reference:
+      - verify/cocotb/iommu/test_riscv_iommu.py
+  - id: iommu_authorized_devid_path
+    description: Allowlisted device ID must pass in translated mode.
+    required_observation: no new fault after authorized read/write
+    existing_reference:
+      - verify/cocotb/iommu/test_riscv_iommu.py
+  - id: iommu_pasid_revoke_reauthorize
+    description: PASID/device context revoke and re-authorize must isolate streams.
+    required_observation: revoked stream faults and re-authorized stream passes
+    existing_reference:
+      - verify/cocotb/iommu/test_riscv_iommu.py
+  - id: iommu_ats_pri_capability_probe
+    description: Capability register must advertise ATS, PRI, PAS, T2GPA, and MSI IGS.
+    required_observation: capability bits match Linux-facing contract
+    existing_reference:
+      - verify/cocotb/iommu/test_riscv_iommu.py
+  - id: iommu_translation_request_mmio
+    description: Translation request MMIO interface must latch and read back probe registers.
+    required_observation: TR_REQ_IOVA and TR_REQ_CTL round-trip correctly
+    existing_reference:
+      - verify/cocotb/iommu/test_riscv_iommu.py

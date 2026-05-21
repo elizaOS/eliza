@@ -1,0 +1,59 @@
+{
+  "reportSchema": "eliza.speculative-benchmark.v1",
+  "generatedAt": "2026-05-20T18:18:38.251Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+  "speculator": "mtp",
+  "tier": "0_8b",
+  "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-0.8B-MTP-GGUF/snapshots/cf8a611f6ed2c2060046219a19f12cd3d5ecd67c/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "benchTokens": 512,
+  "available": true,
+  "status": "pass",
+  "failure": null,
+  "backend": "unknown",
+  "binary": {
+    "path": ".tmp/llama-mtp-build/bin/llama-cli",
+    "exists": true,
+    "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+  },
+  "drafted": 335,
+  "accepted": 175,
+  "acceptanceRate": 0.5223880597014925,
+  "speedup": 0.6246246246246245,
+  "withDrafter": {
+    "available": true,
+    "withMtp": true,
+    "status": 0,
+    "wallMs": 5116,
+    "failure": null,
+    "outputTail": "> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Length: Short paragraph.\n    *   Goal: Explain the concept in a concise but informative way.\n\n2.  **Define \"Speculative Decoding\":**\n    *   It's a term that has evolved in several different contexts (specifically related to \"Speculative Decoding\" or \"Speculative Decoding\" as a specific language model context? Or general?)\n    *   Wait, let me check my internal knowledge. \"Speculative decoding\" isn't a standard, widely recognized technical term like \"Neural Decoding\" or \"Decoding a Sequence\".\n    *   However, the most common confusion might be with \"Speculative Decoding\" as a specific AI model's capability (e.g., in the context of the *Speculative Decoding* of a sequence).\n    *   Actually, looking deeper into the specific context of \"Speculative Decoding\", it often appears in the context of *Deep Learning* or *NLP* or *LLM* (Large Language Models) in the context of *Inference* or *Probabilistic* reasoning.\n    *   Wait, is it \"Speculative Decoding\" as a specific technique in *NLP*? Or is it a confusion with \"Speculative Decoding\" (a specific code block or a specific dataset)?\n    *   Let's search mental database for \"Speculative Decoding\". It usually refers to a specific method where a model tries to decode a string to a sequence of characters using a probabilistic approach, often in the context of *sequence-to-sequence* models, *Transformer* or *BERT* models.\n    *   Wait, I need to be careful. Is there a specific *code* or *context* where \"Speculative Decoding\" is a known term?\n    *   There is a concept called \"Speculative Decoding\" in the context of *NLP* where a model attempts to generate text that *looks* like text but isn't actually text, often due to *hallucinations* or *hallucinations* in *prompt engineering*.\n    *   *Correction*: Actually, the most likely context for \"Speculative Decoding\" in the context of *coding* or *AI* is related to **Speculative Decoding** (or sometimes just **Speculative Decoding** in the context of\n\n[ Prompt: 609.7 t/s | Generation: 124.8 t/s ]\n[ Draft: 175 accepted / 335 generated | Acceptance: 0.5224 ]\n\nExiting...",
+    "tokensPerSecond": 124.8,
+    "accepted": 175,
+    "drafted": 335,
+    "acceptanceRate": 0.5223880597014925
+  },
+  "withoutDrafter": {
+    "available": true,
+    "withMtp": false,
+    "status": 0,
+    "wallMs": 3580,
+    "failure": null,
+    "outputTail": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Length: Short paragraph.\n    *   Goal: Write an explanation or description of this concept.\n\n2.  **Define \"Speculative Decoding\":**\n    *   Wait, I need to clarify the term \"speculative decoding\" in a general sense. It sounds like a specific field of research or a niche term.\n    *   Search mental knowledge base for \"speculative decoding\" (or similar terms like \"de-serialization in a speculative manner\").\n    *   *Correction:* There isn't a widely known standard term called \"speculative decoding\" in general computer science or AI contexts. It could refer to:\n        *   An interpretation of decoding as a process of inference/understanding from patterns.\n        *   It's often used in specific contexts like \"de-serialization\" in specific libraries, or \"speculative\" in terms of \"speculative execution\" or \"hyper-spectral\" (unlikely).\n        *   Wait, is this a trick question or a specific prompt from a dataset?\n        *   Let's re-evaluate. Is it possible the user is referring to a specific *concept*?\n        *   Actually, looking closer, there isn't a standard definition for \"speculative decoding.\" \"Speculative\" implies \"thinking ahead\" or \"predicting.\" \"Decoding\" usually means translating data.\n        *   *Hypothesis:* The user might be referring to \"De-serialization\" in a specific context, or they might be asking about \"Speculative Interpretation of Decoding.\"\n        *   *Alternative Hypothesis:* Is this a request about a specific technology like \"Speculative Decoding\" in the context of a specific AI model (e.g., \"speculative decoding\" in the context of *De-serialization* or *Encryption*)?\n        *   *Wait, let's look for synonyms or similar terms:* \"Speculative inference,\" \"De-serialization,\" \"Holographic decoding,\" \"Inference in a speculative manner.\"\n        *   *Actually, there is a specific context:* In some fields (like cryptography or specific AI models), there is a concept called \"Speculative Decoding\" which might refer to a specific *method* or *topic* related to *Hyper-Spectral* or *Predictive* decoding.\n        *   *Wait, is\n\n[ Prompt: 892.7 t/s | Generation: 199.8 t/s ]\n\nExiting...",
+    "tokensPerSecond": 199.8,
+    "accepted": null,
+    "drafted": null,
+    "acceptanceRate": null
+  },
+  "summary": {
+    "speculator": "mtp",
+    "tier": "0_8b",
+    "backend": "unknown",
+    "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+    "drafted": 335,
+    "accepted": 175,
+    "acceptanceRate": 0.5223880597014925,
+    "speedup": 0.6246246246246245,
+    "status": "pass",
+    "failure": null
+  }
+}
