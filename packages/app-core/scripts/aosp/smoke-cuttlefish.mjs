@@ -189,6 +189,7 @@ export async function runSmoke({
   adb: adbImpl = adb,
   packageName,
   appName = null,
+  expectedAbi = null,
 } = {}) {
   if (!packageName) {
     throw new Error(
@@ -288,6 +289,27 @@ export async function runSmoke({
     serial,
   });
   const abi = abiOut.stdout.trim() || "unknown";
+  // When --expected-abi is set, fail closed on a wrong-arch device so a
+  // riscv64 caller can't silently pass against an x86_64/arm64 cvd. The
+  // abilist must also list the expected abi, mirroring the riscv64 boot
+  // gate's abi/abilist assertions. Omitted by default — the abi stays a
+  // report-only detail for the x86_64/arm64 callers.
+  if (expectedAbi) {
+    const abilistOut = adbImpl(
+      ["shell", "getprop", "ro.product.cpu.abilist"],
+      { serial },
+    );
+    const abilist = abilistOut.stdout.trim();
+    if (abi !== expectedAbi || !abilist.split(",").includes(expectedAbi)) {
+      results.push({
+        step: 2,
+        label: `${apkLabel} installed`,
+        ok: false,
+        detail: `expected abi ${expectedAbi}; ro.product.cpu.abi=${abi}, ro.product.cpu.abilist=${abilist || "<empty>"}`,
+      });
+      return results;
+    }
+  }
   results.push({
     step: 2,
     label: `${apkLabel} installed`,
@@ -605,7 +627,7 @@ export async function runSmoke({
 }
 
 function parseSmokeArgs(argv) {
-  const out = { json: false, appConfigPath: null };
+  const out = { json: false, appConfigPath: null, expectedAbi: null };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--json") {
@@ -617,9 +639,16 @@ function parseSmokeArgs(argv) {
       }
       out.appConfigPath = path.resolve(value);
       i += 1;
+    } else if (arg === "--expected-abi") {
+      const value = argv[i + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error("--expected-abi requires a value");
+      }
+      out.expectedAbi = value;
+      i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node eliza/packages/app-core/scripts/aosp/smoke-cuttlefish.mjs [--json] [--app-config <PATH>]",
+        "Usage: node eliza/packages/app-core/scripts/aosp/smoke-cuttlefish.mjs [--json] [--app-config <PATH>] [--expected-abi <ABI>]",
       );
       process.exit(0);
     } else {
@@ -630,7 +659,7 @@ function parseSmokeArgs(argv) {
 }
 
 export async function main(argv = process.argv.slice(2)) {
-  const { json: wantJson, appConfigPath } = parseSmokeArgs(argv);
+  const { json: wantJson, appConfigPath, expectedAbi } = parseSmokeArgs(argv);
   const cfgPath = resolveAppConfigPath({ repoRoot, flagValue: appConfigPath });
   if (!fs.existsSync(cfgPath)) {
     throw new Error(
@@ -646,6 +675,7 @@ export async function main(argv = process.argv.slice(2)) {
   const results = await runSmoke({
     packageName: variant.packageName,
     appName: variant.appName,
+    expectedAbi,
   });
   if (wantJson) {
     console.log(JSON.stringify(results, null, 2));
