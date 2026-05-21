@@ -30,9 +30,9 @@ import {
 } from "@elizaos/core";
 import type { SandboxConnectOpts, SandboxOpts } from "e2b";
 
-const LOG_CONTEXT = { src: "service:cloud_sandbox_runner" } as const;
+const LOG_CONTEXT = { src: "service:e2b_remote_capability_router" } as const;
 const DEFAULT_E2B_WORKDIR = "/home/user";
-const DEFAULT_SATELLITE_WORKDIR = "/workspace";
+const DEFAULT_REMOTE_WORKDIR = "/workspace";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
@@ -53,7 +53,7 @@ const DEFAULT_SANDBOX_AGENT_RUNNERS: CodingAgentRunner[] = [
   "opencode",
 ];
 
-export interface E2BSatelliteRunnerConfig {
+export interface E2BRemoteRunnerConfig {
   enabled: boolean;
   provider: SandboxRunnerProvider;
   apiKey?: string;
@@ -64,9 +64,9 @@ export interface E2BSatelliteRunnerConfig {
   cloudApiBaseUrl?: string;
   cloudApiToken?: string;
   cloudContainerImage?: string;
-  satelliteHttpBaseUrl?: string;
-  satelliteHttpToken?: string;
-  satelliteAccessUrl?: string;
+  remoteHttpBaseUrl?: string;
+  remoteHttpToken?: string;
+  remoteAccessUrl?: string;
   agentRunners: CodingAgentRunner[];
   workdir: string;
   hostWorkspaceRoot: string;
@@ -81,7 +81,7 @@ export interface E2BSatelliteRunnerConfig {
 }
 
 export interface E2BSandboxFactory {
-  create(config: E2BSatelliteRunnerConfig): Promise<E2BSandboxClient>;
+  create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient>;
 }
 
 export interface SandboxEntryInfo {
@@ -140,7 +140,7 @@ export interface E2BSandboxClient {
 }
 
 class DefaultE2BSandboxFactory implements E2BSandboxFactory {
-  async create(config: E2BSatelliteRunnerConfig): Promise<E2BSandboxClient> {
+  async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
     const { Sandbox } = await import("e2b");
     if (config.sandboxId) {
       return new E2BSandboxSdkClient(
@@ -251,39 +251,39 @@ class E2BSandboxSdkClient implements E2BSandboxClient {
 
 class DefaultSandboxFactory implements E2BSandboxFactory {
   private readonly e2bFactory = new DefaultE2BSandboxFactory();
-  private readonly satelliteHttpFactory = new SatelliteHttpFactory();
+  private readonly remoteHttpFactory = new RemoteRunnerHttpFactory();
   private readonly cloudFactory = new ElizaCloudCodingContainerFactory(
-    this.satelliteHttpFactory,
+    this.remoteHttpFactory,
   );
 
-  async create(config: E2BSatelliteRunnerConfig): Promise<E2BSandboxClient> {
+  async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
     if (config.provider === "eliza-cloud") {
-      if (config.satelliteHttpBaseUrl) {
-        return this.satelliteHttpFactory.create(config);
+      if (config.remoteHttpBaseUrl) {
+        return this.remoteHttpFactory.create(config);
       }
       return this.cloudFactory.create(config);
     }
     if (config.provider === "home") {
-      return this.satelliteHttpFactory.create(config);
+      return this.remoteHttpFactory.create(config);
     }
     return this.e2bFactory.create(config);
   }
 }
 
-class SatelliteHttpFactory implements E2BSandboxFactory {
-  async create(config: E2BSatelliteRunnerConfig): Promise<E2BSandboxClient> {
-    if (!config.satelliteHttpBaseUrl) {
-      throw new Error(`${config.provider} runner requires a Satellite URL.`);
+class RemoteRunnerHttpFactory implements E2BSandboxFactory {
+  async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
+    if (!config.remoteHttpBaseUrl) {
+      throw new Error(`${config.provider} runner requires a remote runner URL.`);
     }
-    const apiBase = config.satelliteHttpBaseUrl.replace(/\/+$/, "");
-    const headers = authHeaders(config.satelliteHttpToken);
+    const apiBase = config.remoteHttpBaseUrl.replace(/\/+$/, "");
+    const headers = authHeaders(config.remoteHttpToken);
     const response = await fetch(`${apiBase}/v1/health`, { headers });
     if (!response.ok) throw new Error(await response.text());
-    return new SatelliteHttpClient(config.provider, apiBase, headers);
+    return new RemoteRunnerHttpClient(config.provider, apiBase, headers);
   }
 }
 
-class SatelliteHttpClient implements E2BSandboxClient {
+class RemoteRunnerHttpClient implements E2BSandboxClient {
   readonly workspacePrepared = true;
   readonly files = {
     list: (path: string) => this.list(path),
@@ -318,17 +318,17 @@ class SatelliteHttpClient implements E2BSandboxClient {
         ? payload.entries
         : null;
     if (!entries) {
-      throw new Error("Satellite fs entries response was not an array.");
+      throw new Error("Remote runner fs entries response was not an array.");
     }
     return entries.map((entry) => {
       if (!isObject(entry)) {
-        throw new Error("Satellite fs entry was not an object.");
+        throw new Error("Remote runner fs entry was not an object.");
       }
       const pathValue = String(entry.path ?? "");
       const stat: SandboxEntryInfo = {
         path: pathValue,
         name: String(entry.name ?? nodePath.posix.basename(pathValue)),
-        type: satelliteEntryType(entry),
+        type: remoteEntryType(entry),
         size: typeof entry.size === "number" ? entry.size : 0,
       };
       const modified =
@@ -413,7 +413,7 @@ class SatelliteHttpClient implements E2BSandboxClient {
       if (!response.ok) throw new Error(await response.text());
       const payload = await response.json();
       if (!isObject(payload)) {
-        throw new Error("Satellite process response was not an object.");
+        throw new Error("Remote runner process response was not an object.");
       }
       const exitCode =
         typeof payload.exitCode === "number"
@@ -452,31 +452,31 @@ type CloudEnvelope = {
 };
 
 class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
-  constructor(private readonly satelliteHttpFactory: SatelliteHttpFactory) {}
+  constructor(private readonly remoteHttpFactory: RemoteRunnerHttpFactory) {}
 
-  async create(config: E2BSatelliteRunnerConfig): Promise<E2BSandboxClient> {
+  async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
     if (!config.cloudApiBaseUrl || !config.cloudApiToken) {
       throw new Error(
         "Eliza Cloud runner requires a Cloud API base URL and API key.",
       );
     }
-    const satelliteToken = randomUUID();
-    const session = await this.requestCodingContainer(config, satelliteToken);
+    const remoteToken = randomUUID();
+    const session = await this.requestCodingContainer(config, remoteToken);
     if (!session.url) {
       throw new Error(
-        `Eliza Cloud coding container ${session.containerId} did not return a Satellite URL.`,
+        `Eliza Cloud coding container ${session.containerId} did not return a remote runner URL.`,
       );
     }
-    return this.satelliteHttpFactory.create({
+    return this.remoteHttpFactory.create({
       ...config,
-      satelliteHttpBaseUrl: session.url,
-      satelliteHttpToken: satelliteToken,
+      remoteHttpBaseUrl: session.url,
+      remoteHttpToken: remoteToken,
     });
   }
 
   private async requestCodingContainer(
-    config: E2BSatelliteRunnerConfig,
-    satelliteToken: string,
+    config: E2BRemoteRunnerConfig,
+    remoteToken: string,
   ): Promise<CloudCodingContainerSession> {
     const response = await fetch(
       `${config.cloudApiBaseUrl}/coding-containers`,
@@ -494,8 +494,8 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
               ? { image: config.cloudContainerImage }
               : {}),
             environmentVars: {
-              ELIZA_SATELLITE_HTTP_TOKEN: satelliteToken,
-              SATELLITE_HTTP_TOKEN: satelliteToken,
+              ELIZA_REMOTE_RUNNER_HTTP_TOKEN: remoteToken,
+              REMOTE_RUNNER_HTTP_TOKEN: remoteToken,
               ELIZA_CODING_WORKSPACE: config.workdir,
               ELIZA_SANDBOX_AGENT_RUNNERS: config.agentRunners.join(","),
               ...config.envs,
@@ -516,7 +516,7 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
   }
 
   private async pollCodingContainer(
-    config: E2BSatelliteRunnerConfig,
+    config: E2BRemoteRunnerConfig,
     session: CloudCodingContainerSession,
   ): Promise<CloudCodingContainerSession> {
     const deadline = Date.now() + Math.min(config.timeoutMs, 120_000);
@@ -549,13 +549,13 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
   }
 }
 
-export class E2BSatelliteCapabilityRouterService
+export class E2BRemoteCapabilityRouterService
   extends Service
   implements ElizaCapabilityRouter
 {
   static serviceType = CAPABILITY_ROUTER_SERVICE_TYPE;
   capabilityDescription =
-    "Routes filesystem, terminal, and local Git capabilities to a cloud Satellite runner.";
+    "Routes filesystem, terminal, and local Git capabilities to a cloud remote runner.";
 
   readonly environment = "server";
   readonly fs = {
@@ -605,26 +605,26 @@ export class E2BSatelliteCapabilityRouterService
   private sandboxPromise: Promise<E2BSandboxClient> | null = null;
   private preparePromise: Promise<void> | null = null;
   private createdSandbox = false;
-  private readonly routerConfig: E2BSatelliteRunnerConfig;
+  private readonly routerConfig: E2BRemoteRunnerConfig;
 
   constructor(
     runtime?: IAgentRuntime,
-    routerConfig?: E2BSatelliteRunnerConfig,
+    routerConfig?: E2BRemoteRunnerConfig,
     private readonly factory: E2BSandboxFactory = new DefaultSandboxFactory(),
   ) {
     if (!runtime) {
       throw new Error(
-        "E2BSatelliteCapabilityRouterService requires a runtime.",
+        "E2BRemoteCapabilityRouterService requires a runtime.",
       );
     }
     super(runtime);
     this.routerConfig =
-      routerConfig ?? resolveE2BSatelliteRunnerConfig(runtime);
+      routerConfig ?? resolveE2BRemoteRunnerConfig(runtime);
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
-    const config = resolveE2BSatelliteRunnerConfig(runtime);
-    const service = new E2BSatelliteCapabilityRouterService(runtime, config);
+    const config = resolveE2BRemoteRunnerConfig(runtime);
+    const service = new E2BRemoteCapabilityRouterService(runtime, config);
     logger.info(
       {
         ...LOG_CONTEXT,
@@ -635,7 +635,7 @@ export class E2BSatelliteCapabilityRouterService
         hasBootstrapGitUrl: Boolean(config.bootstrapGitUrl),
         agentRunners: config.agentRunners,
       },
-      "[CloudSandboxCapabilityRouter] Service started",
+      "[E2BRemoteCapabilityRouter] Service started",
     );
     return service;
   }
@@ -861,7 +861,7 @@ export class E2BSatelliteCapabilityRouterService
       code: "CAPABILITY_UNAVAILABLE",
       capability: "model",
       method: "model.status",
-      message: "Cloud sandbox runner does not own local model control.",
+      message: "Remote coding runner does not own local model control.",
     });
   }
 
@@ -870,7 +870,7 @@ export class E2BSatelliteCapabilityRouterService
       code: "CAPABILITY_UNAVAILABLE",
       capability: "plugin",
       method,
-      message: "Cloud sandbox runner does not own remote plugin execution.",
+      message: "Remote coding runner does not own remote plugin execution.",
     });
   }
 
@@ -917,7 +917,7 @@ export class E2BSatelliteCapabilityRouterService
       code: "CAPABILITY_UNAVAILABLE",
       capability,
       method,
-      message: availability.reason ?? "Cloud sandbox runner is unavailable.",
+      message: availability.reason ?? "Remote coding runner is unavailable.",
     });
   }
 
@@ -1014,7 +1014,7 @@ export class E2BSatelliteCapabilityRouterService
   private rootObject(path: string): JsonObject {
     return {
       id: this.routerConfig.provider,
-      provider: `satellite:${this.routerConfig.provider}`,
+      provider: `remote:${this.routerConfig.provider}`,
       path,
       hostWorkspaceRoot: this.routerConfig.hostWorkspaceRoot,
       sandboxId: this.routerConfig.sandboxId ?? null,
@@ -1027,28 +1027,28 @@ export type E2BRegistrationResult =
   | { registered: true }
   | { registered: false; reason: "disabled" | "already-registered" };
 
-export async function registerE2BSatelliteCapabilityRouterIfEnabled(
+export async function registerE2BRemoteCapabilityRouterIfEnabled(
   runtime: IAgentRuntime,
 ): Promise<E2BRegistrationResult> {
-  const config = resolveE2BSatelliteRunnerConfig(runtime);
+  const config = resolveE2BRemoteRunnerConfig(runtime);
   if (!config.enabled) return { registered: false, reason: "disabled" };
   if (runtime.getService(CAPABILITY_ROUTER_SERVICE_TYPE)) {
     return { registered: false, reason: "already-registered" };
   }
-  await runtime.registerService(E2BSatelliteCapabilityRouterService);
+  await runtime.registerService(E2BRemoteCapabilityRouterService);
   return { registered: true };
 }
 
-export function resolveE2BSatelliteRunnerConfig(
+export function resolveE2BRemoteRunnerConfig(
   runtime: IAgentRuntime,
-): E2BSatelliteRunnerConfig {
+): E2BRemoteRunnerConfig {
   const codingRunner = normalizeRunnerSetting(
-    readSetting(runtime, "ELIZA_CODING_SATELLITE_RUNNER"),
+    readSetting(runtime, "ELIZA_CODING_REMOTE_RUNNER"),
   );
   const runner = normalizeRunnerSetting(
-    readSetting(runtime, "ELIZA_SATELLITE_RUNNER"),
+    readSetting(runtime, "ELIZA_REMOTE_RUNNER"),
   );
-  const direct = readSetting(runtime, "ELIZA_E2B_SATELLITE_RUNNER");
+  const direct = readSetting(runtime, "ELIZA_E2B_REMOTE_RUNNER");
   const provider = resolveRunnerProvider(runtime, codingRunner ?? runner);
   const enabled =
     provider === "eliza-cloud" || provider === "home"
@@ -1075,7 +1075,7 @@ export function resolveE2BSatelliteRunnerConfig(
       provider === "eliza-cloud"
         ? readSetting(runtime, "ELIZA_CLOUD_SANDBOX_ID")
         : provider === "home"
-          ? readSetting(runtime, "ELIZA_HOME_SATELLITE_ID")
+          ? readSetting(runtime, "ELIZA_HOME_REMOTE_RUNNER_ID")
           : readSetting(runtime, "E2B_SANDBOX_ID"),
     template:
       readSetting(runtime, "E2B_TEMPLATE") ??
@@ -1083,9 +1083,9 @@ export function resolveE2BSatelliteRunnerConfig(
     cloudApiBaseUrl: cloudApiBaseUrl(runtime, provider),
     cloudApiToken: cloudApiToken(runtime, provider),
     cloudContainerImage: cloudContainerImage(runtime, provider),
-    satelliteHttpBaseUrl: satelliteHttpBaseUrl(runtime, provider),
-    satelliteHttpToken: satelliteHttpToken(runtime, provider),
-    satelliteAccessUrl: satelliteAccessUrl(runtime, provider),
+    remoteHttpBaseUrl: remoteHttpBaseUrl(runtime, provider),
+    remoteHttpToken: remoteHttpToken(runtime, provider),
+    remoteAccessUrl: remoteAccessUrl(runtime, provider),
     agentRunners: agentRunnersSetting(runtime, provider),
     workdir,
     hostWorkspaceRoot: nodePath.resolve(hostWorkspaceRoot),
@@ -1117,14 +1117,14 @@ export function resolveE2BSatelliteRunnerConfig(
     },
     metadata: {
       app: "elizaos",
-      provider: `satellite:${provider}`,
+      provider: `remote:${provider}`,
       agentId,
       agentName,
     },
   };
 }
 
-function createOptions(config: E2BSatelliteRunnerConfig): SandboxOpts {
+function createOptions(config: E2BRemoteRunnerConfig): SandboxOpts {
   return {
     apiKey: config.apiKey,
     accessToken: config.accessToken,
@@ -1138,7 +1138,7 @@ function createOptions(config: E2BSatelliteRunnerConfig): SandboxOpts {
   };
 }
 
-function connectOptions(config: E2BSatelliteRunnerConfig): SandboxConnectOpts {
+function connectOptions(config: E2BRemoteRunnerConfig): SandboxConnectOpts {
   return {
     apiKey: config.apiKey,
     accessToken: config.accessToken,
@@ -1148,27 +1148,27 @@ function connectOptions(config: E2BSatelliteRunnerConfig): SandboxConnectOpts {
   };
 }
 
-function hasRunnerCredentials(config: E2BSatelliteRunnerConfig): boolean {
+function hasRunnerCredentials(config: E2BRemoteRunnerConfig): boolean {
   if (config.provider === "eliza-cloud") {
     return Boolean(
-      config.satelliteHttpBaseUrl ||
+      config.remoteHttpBaseUrl ||
         (config.cloudApiBaseUrl && config.cloudApiToken),
     );
   }
   if (config.provider === "home") {
-    return Boolean(config.satelliteHttpBaseUrl);
+    return Boolean(config.remoteHttpBaseUrl);
   }
   return Boolean(config.apiKey || config.accessToken);
 }
 
-function runnerUnavailableReason(config: E2BSatelliteRunnerConfig): string {
+function runnerUnavailableReason(config: E2BRemoteRunnerConfig): string {
   if (config.provider === "eliza-cloud") {
-    return "Eliza Cloud runner requires a direct Satellite URL or ELIZA_CLOUD_API_KEY/ELIZACLOUD_API_KEY for coding-container provisioning.";
+    return "Eliza Cloud runner requires a direct remote runner URL or ELIZA_CLOUD_API_KEY/ELIZACLOUD_API_KEY for coding-container provisioning.";
   }
   if (config.provider === "home") {
-    return "Home runner requires ELIZA_HOME_SATELLITE_URL.";
+    return "Home runner requires ELIZA_HOME_REMOTE_RUNNER_URL.";
   }
-  return "E2B Satellite runner requires E2B_API_KEY, E2B_ACCESS_TOKEN, or matching runtime setting.";
+  return "E2B remote runner requires E2B_API_KEY, E2B_ACCESS_TOKEN, or matching runtime setting.";
 }
 
 function authHeaders(apiKey: string | undefined): Record<string, string> {
@@ -1185,7 +1185,7 @@ function normalizeEntryType(
   return "other";
 }
 
-function satelliteEntryType(entry: JsonObject): SandboxEntryInfo["type"] {
+function remoteEntryType(entry: JsonObject): SandboxEntryInfo["type"] {
   const value =
     typeof entry.type === "string"
       ? entry.type
@@ -1301,7 +1301,7 @@ function normalizeRunnerSetting(
   if (normalized === "cloudflare") return "cloudflare";
   if (normalized === "sandbox-agent" || normalized === "rivet") return "rivet";
   if (normalized === "vercel") return "vercel";
-  throw new Error(`Unsupported cloud sandbox runner: ${value}`);
+  throw new Error(`Unsupported remote runner provider: ${value}`);
 }
 
 function resolveRunnerProvider(
@@ -1321,7 +1321,7 @@ function resolveRunnerProvider(
   if (
     hasAnySetting(runtime, [
       "ELIZA_CLOUD_SANDBOX_BASE_URL",
-      "ELIZA_CLOUD_SATELLITE_RUNNER_URL",
+      "ELIZA_CLOUD_REMOTE_RUNNER_URL",
       "ELIZA_CLOUD_RUNNER_URL",
     ])
   ) {
@@ -1329,7 +1329,7 @@ function resolveRunnerProvider(
   }
   if (
     hasAnySetting(runtime, [
-      "ELIZA_HOME_SATELLITE_URL",
+      "ELIZA_HOME_REMOTE_RUNNER_URL",
       "ELIZA_HOME_RUNNER_URL",
     ])
   ) {
@@ -1347,28 +1347,28 @@ function providerSettingKey(
   suffix: string,
 ): string {
   if (provider === "eliza-cloud") return `ELIZA_CLOUD_SANDBOX_${suffix}`;
-  if (provider === "home") return `ELIZA_HOME_SATELLITE_${suffix}`;
+  if (provider === "home") return `ELIZA_HOME_REMOTE_RUNNER_${suffix}`;
   return `ELIZA_E2B_${suffix}`;
 }
 
 function defaultWorkdir(provider: SandboxRunnerProvider): string {
-  return provider === "e2b" ? DEFAULT_E2B_WORKDIR : DEFAULT_SATELLITE_WORKDIR;
+  return provider === "e2b" ? DEFAULT_E2B_WORKDIR : DEFAULT_REMOTE_WORKDIR;
 }
 
-function satelliteHttpBaseUrl(
+function remoteHttpBaseUrl(
   runtime: IAgentRuntime,
   provider: SandboxRunnerProvider,
 ): string | undefined {
   if (provider === "eliza-cloud") {
     return (
       readSetting(runtime, "ELIZA_CLOUD_SANDBOX_BASE_URL") ??
-      readSetting(runtime, "ELIZA_CLOUD_SATELLITE_RUNNER_URL") ??
+      readSetting(runtime, "ELIZA_CLOUD_REMOTE_RUNNER_URL") ??
       readSetting(runtime, "ELIZA_CLOUD_RUNNER_URL")
     );
   }
   if (provider === "home") {
     return (
-      readSetting(runtime, "ELIZA_HOME_SATELLITE_URL") ??
+      readSetting(runtime, "ELIZA_HOME_REMOTE_RUNNER_URL") ??
       readSetting(runtime, "ELIZA_HOME_RUNNER_URL")
     );
   }
@@ -1410,13 +1410,13 @@ function cloudContainerImage(
   if (provider !== "eliza-cloud") return undefined;
   return (
     readSetting(runtime, "ELIZA_CLOUD_SANDBOX_IMAGE") ??
-    readSetting(runtime, "ELIZA_CLOUD_CODING_SATELLITE_IMAGE") ??
-    readSetting(runtime, "ELIZA_CODING_SATELLITE_IMAGE") ??
-    readSetting(runtime, "ELIZA_CLOUD_SATELLITE_IMAGE")
+    readSetting(runtime, "ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE") ??
+    readSetting(runtime, "ELIZA_CODING_REMOTE_RUNNER_IMAGE") ??
+    readSetting(runtime, "ELIZA_CLOUD_REMOTE_RUNNER_IMAGE")
   );
 }
 
-function satelliteHttpToken(
+function remoteHttpToken(
   runtime: IAgentRuntime,
   provider: SandboxRunnerProvider,
 ): string | undefined {
@@ -1428,7 +1428,7 @@ function satelliteHttpToken(
     );
   }
   if (provider === "home") {
-    return readSetting(runtime, "ELIZA_HOME_SATELLITE_TOKEN");
+    return readSetting(runtime, "ELIZA_HOME_REMOTE_RUNNER_TOKEN");
   }
   return undefined;
 }
@@ -1439,7 +1439,7 @@ function normalizeCloudApiBaseUrl(value: string): string {
   return `${trimmed}/api/v1`;
 }
 
-function satelliteAccessUrl(
+function remoteAccessUrl(
   runtime: IAgentRuntime,
   provider: SandboxRunnerProvider,
 ): string | undefined {
@@ -1448,7 +1448,7 @@ function satelliteAccessUrl(
   }
   if (provider === "home") {
     return (
-      readSetting(runtime, "ELIZA_HOME_SATELLITE_ACCESS_URL") ??
+      readSetting(runtime, "ELIZA_HOME_REMOTE_RUNNER_ACCESS_URL") ??
       readSetting(runtime, "ELIZA_HOME_ACCESS_URL")
     );
   }
