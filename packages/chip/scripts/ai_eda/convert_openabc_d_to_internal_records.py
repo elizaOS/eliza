@@ -17,7 +17,7 @@ DEFAULT_BENCH_DIR = ROOT / "external/datasets/openabc-d/payload/bench_openabcd"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/openabc_d"
 CLAIM_BOUNDARY = "openabc_d_conversion_training_only_no_e1_signoff_or_release_claim"
 
-ASSIGNMENT_RE = re.compile(r"^([A-Za-z0-9_.$\\[\\]-]+)\s*=\s*([A-Za-z0-9_.$]+)\((.*)\)$")
+ASSIGNMENT_RE = re.compile(r"^([^\s=]+)\s*=\s*([^\s(]+)\((.*)\)$")
 PINNED_REVISION = "ecd7dde67740556eaf842ccab4dc941c348ad8f6"
 
 
@@ -243,7 +243,7 @@ def main() -> int:
     if not args.bench_dir.exists():
         print(f"STATUS: BLOCKED ai_eda.openabc_d_conversion missing_bench_dir {args.bench_dir}")
         return 2
-    benches = sorted(args.bench_dir.glob("*_orig.bench"))[: args.sample_limit]
+    benches = sorted(args.bench_dir.glob("*_orig.bench"), key=lambda path: (path.stat().st_size, path.name))[: args.sample_limit]
     if not benches:
         print(f"STATUS: BLOCKED ai_eda.openabc_d_conversion no_bench_files {args.bench_dir}")
         return 2

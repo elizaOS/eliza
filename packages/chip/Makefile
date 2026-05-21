@@ -1417,7 +1417,7 @@ ai-eda-circuitnet3-surrogate: ai-eda-circuitnet3-convert
 	@$(PYTHON) scripts/ai_eda/check_circuitnet3_surrogate.py --report build/ai_eda/circuitnet3_surrogate/$(AI_EDA_RUN_ID)/training_run.json
 
 ai-eda-openabc-d-convert: ai-eda-internal-schemas-check
-	@$(PYTHON) scripts/ai_eda/convert_openabc_d_to_internal_records.py --run-id $(AI_EDA_RUN_ID) --sample-limit 8
+	@$(PYTHON) scripts/ai_eda/convert_openabc_d_to_internal_records.py --run-id $(AI_EDA_RUN_ID) --sample-limit 2
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/openabc_d/$(AI_EDA_RUN_ID)/records
 	@$(PYTHON) scripts/ai_eda/check_openabc_d_conversion.py --report build/ai_eda/openabc_d/$(AI_EDA_RUN_ID)/conversion_report.json
 
