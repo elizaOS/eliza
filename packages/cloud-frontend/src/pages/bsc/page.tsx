@@ -18,11 +18,6 @@ import { Link } from "react-router-dom";
 import type { CryptoStatusResponse } from "@/lib/types/crypto-status";
 import { useUserProfile } from "../../lib/data/user";
 
-const LazyStewardWalletProviders = lazy(async () => {
-  const mod = await import("../login/steward-wallet-providers");
-  return { default: mod.StewardWalletProviders };
-});
-
 const LazyDirectCryptoCreditCard = lazy(async () => {
   const mod = await import(
     "../../dashboard/billing/_components/direct-crypto-credit-card"
@@ -227,28 +222,26 @@ export default function BscPromoPage() {
                     </Card>
                   }
                 >
-                  <LazyStewardWalletProviders>
-                    {user.wallet_address ? (
-                      <LazyDirectCryptoCreditCard
-                        amount={amountValue}
-                        promoCode="bsc"
-                        status={status}
-                        accountWalletAddress={user.wallet_address}
-                        surface="cloud"
-                        lockedNetwork="bsc"
-                        onSuccess={() => undefined}
-                      />
-                    ) : (
-                      // OAuth signups (Google / Discord / GitHub / Magic
-                      // Link / Passkey) land here. The direct-crypto-payments
-                      // endpoint requires `user.wallet_address`, so until
-                      // they verify a wallet against their account the pay
-                      // button is a dead-end. AttachWalletCard drives the
-                      // SIWE flow that fixes that, then `useUserProfile`
-                      // refetches and this branch swaps to the purchase UI.
-                      <LazyAttachWalletCard chainId={56} />
-                    )}
-                  </LazyStewardWalletProviders>
+                  {user.wallet_address ? (
+                    <LazyDirectCryptoCreditCard
+                      amount={amountValue}
+                      promoCode="bsc"
+                      status={status}
+                      accountWalletAddress={user.wallet_address}
+                      surface="cloud"
+                      lockedNetwork="bsc"
+                      onSuccess={() => undefined}
+                    />
+                  ) : (
+                    // OAuth signups (Google / Discord / GitHub / Magic
+                    // Link / Passkey) land here. The direct-crypto-payments
+                    // endpoint requires `user.wallet_address`, so until
+                    // they verify a wallet against their account the pay
+                    // button is a dead-end. AttachWalletCard drives the
+                    // SIWE flow that fixes that, then `useUserProfile`
+                    // refetches and this branch swaps to the purchase UI.
+                    <LazyAttachWalletCard chainId={56} />
+                  )}
                 </Suspense>
               )}
             </div>
