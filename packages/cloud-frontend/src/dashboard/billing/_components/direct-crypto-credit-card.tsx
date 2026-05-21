@@ -184,6 +184,7 @@ export function DirectCryptoCreditCard({
   // When the network changes (or the underlying token list does), reset the
   // selected token to the network's default so we don't carry a stale BSC
   // selection into Base/Solana.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selected?.network is the intentional reset signal here
   useEffect(() => {
     setTokenSymbol(null);
   }, [selected?.network]);
