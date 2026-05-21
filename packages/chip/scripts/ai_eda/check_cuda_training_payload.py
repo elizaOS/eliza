@@ -13,7 +13,9 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/cuda_training_payloads/validation/cuda_training_payload_report.json"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/cuda_training_payloads/validation/cuda_training_payload_report.json"
+)
 LOCKFILE = ROOT / "external/SOURCES.lock.yaml"
 EXPECTED_REPORT_SCHEMA = "eliza.ai_eda.cuda_training_payload_report.v1"
 EXPECTED_PLAN_SCHEMA = "eliza.ai_eda.cuda_training_payload.v1"
@@ -148,7 +150,13 @@ def validate_plan(plan: dict[str, Any], members: set[str], lock_ids: set[str]) -
         errors.append("run plan selected_assets must be non-empty")
         selected_ids: set[str] = set()
     else:
-        selected_ids = {asset.get("id") for asset in selected_assets if isinstance(asset, dict)}
+        selected_ids = {
+            asset_id
+            for asset in selected_assets
+            if isinstance(asset, dict)
+            for asset_id in [asset.get("id")]
+            if isinstance(asset_id, str)
+        }
         unknown = sorted(asset_id for asset_id in selected_ids if asset_id not in lock_ids)
         if unknown:
             errors.append(f"selected_assets contain unknown ids: {', '.join(unknown)}")
@@ -178,7 +186,9 @@ def validate_plan(plan: dict[str, Any], members: set[str], lock_ids: set[str]) -
     if not isinstance(outputs, list) or not outputs:
         errors.append("expected_outputs must be non-empty")
     else:
-        missing_outputs = sorted(REQUIRED_OUTPUTS - {item for item in outputs if isinstance(item, str)})
+        missing_outputs = sorted(
+            REQUIRED_OUTPUTS - {item for item in outputs if isinstance(item, str)}
+        )
         if missing_outputs:
             errors.append(f"missing expected output patterns: {', '.join(missing_outputs)}")
     return errors

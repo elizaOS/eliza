@@ -8,12 +8,14 @@ import hashlib
 import json
 import math
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_MAP_DIR = ROOT / "external/datasets/aieda-idata/payload/PPU/iEDA_route_process_data/PPU_a_place"
+DEFAULT_MAP_DIR = (
+    ROOT / "external/datasets/aieda-idata/payload/PPU/iEDA_route_process_data/PPU_a_place"
+)
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/aieda_idata"
 CLAIM_BOUNDARY = "aieda_idata_conversion_training_only_no_e1_signoff_or_release_claim"
 
@@ -57,31 +59,33 @@ def percentile(values: list[float], percentile_value: float) -> float:
 
 def parse_demand_map(path: Path) -> dict[str, Any]:
     rows: list[list[float]] = []
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
+    ):
         cells = [cell.strip() for cell in raw_line.split(",") if cell.strip()]
         if not cells:
             continue
         try:
-            row = [float(cell) for cell in cells]
+            values_row = [float(cell) for cell in cells]
         except ValueError as exc:
             raise ValueError(f"{path}: non-numeric value on line {line_number}") from exc
-        if any(not math.isfinite(value) for value in row):
+        if any(not math.isfinite(value) for value in values_row):
             raise ValueError(f"{path}: non-finite value on line {line_number}")
-        rows.append(row)
+        rows.append(values_row)
 
     if not rows:
         raise ValueError(f"{path}: demand map is empty")
     width = len(rows[0])
     if width <= 0:
         raise ValueError(f"{path}: demand map has zero columns")
-    for index, row in enumerate(rows, start=1):
-        if len(row) != width:
-            raise ValueError(f"{path}: row {index} has width {len(row)}, expected {width}")
+    for index, demand_row in enumerate(rows, start=1):
+        if len(demand_row) != width:
+            raise ValueError(f"{path}: row {index} has width {len(demand_row)}, expected {width}")
 
     nonzero_cells: list[tuple[int, int, float]] = []
     all_values: list[float] = []
-    for row_index, row in enumerate(rows):
-        for col_index, demand in enumerate(row):
+    for row_index, demand_row in enumerate(rows):
+        for col_index, demand in enumerate(demand_row):
             all_values.append(demand)
             if demand > 0:
                 nonzero_cells.append((row_index, col_index, demand))
@@ -127,7 +131,9 @@ def parse_demand_map(path: Path) -> dict[str, Any]:
                 }
             )
     if not edge_features and len(nonzero_cells) > 1:
-        for (row, col, demand), (next_row, next_col, other_demand) in zip(nonzero_cells, nonzero_cells[1:]):
+        for (row, col, demand), (next_row, next_col, other_demand) in zip(
+            nonzero_cells, nonzero_cells[1:], strict=False
+        ):
             edge_features.append(
                 {
                     "src": f"cell_r{row}_c{col}",
@@ -243,7 +249,7 @@ def convert_map(path: Path, out_dir: Path) -> list[dict[str, Any]]:
             "nonzero_count": stats["nonzero_count"],
             "edge_count": stats["edge_count"],
         }
-        for record, out_path in zip(records, paths)
+        for record, out_path in zip(records, paths, strict=True)
     ]
 
 
@@ -251,7 +257,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--map-dir", type=Path, default=DEFAULT_MAP_DIR)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=3)
     return parser.parse_args()
 
@@ -279,7 +285,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.aieda_idata_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "map_dir": rel(args.map_dir),

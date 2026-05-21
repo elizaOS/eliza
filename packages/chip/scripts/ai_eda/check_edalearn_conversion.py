@@ -54,11 +54,19 @@ def validate_source(record: Any, label: str) -> list[str]:
     return errors
 
 
-def validate_metrics(values: Any, record_id: str, node_count: int | None = None, edge_count: int | None = None) -> list[str]:
+def validate_metrics(
+    values: Any, record_id: str, node_count: int | None = None, edge_count: int | None = None
+) -> list[str]:
     if not isinstance(values, dict):
         return [f"{record_id}: metrics must be a mapping"]
     errors: list[str] = []
-    for field in ("rtl_file_count", "rtl_total_bytes", "rtl_total_lines", "graph_node_count", "graph_edge_count"):
+    for field in (
+        "rtl_file_count",
+        "rtl_total_bytes",
+        "rtl_total_lines",
+        "graph_node_count",
+        "graph_edge_count",
+    ):
         if not positive_int(values.get(field)):
             errors.append(f"{record_id}: {field} must be positive")
     if node_count is not None and values.get("graph_node_count") != node_count:
@@ -116,7 +124,9 @@ def validate_graph(record: dict[str, Any], path: Path) -> tuple[list[str], dict[
         edges = []
     if labels.get("label_status") != "public_edalearn_rtl_config_training_only_not_e1_signoff":
         errors.append(f"{record_id}: invalid label_status")
-    if not any(isinstance(node, dict) and node.get("node_type") == "rtl_source_file" for node in nodes):
+    if not any(
+        isinstance(node, dict) and node.get("node_type") == "rtl_source_file" for node in nodes
+    ):
         errors.append(f"{record_id}: graph must include rtl_source_file nodes")
     errors.extend(validate_metrics(labels.get("values"), record_id, len(nodes), len(edges)))
     return errors, {"node_count": len(nodes), "edge_count": len(edges)}

@@ -182,9 +182,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def default_report_paths(run_id: str) -> list[Path]:
+    paths: list[Path] = []
+    for item in REPORTS.values():
+        path_template = item["path"]
+        if not isinstance(path_template, str):
+            raise TypeError("REPORTS path entries must be strings")
+        paths.append(repo_path(path_template.format(run_id=run_id)))
+    return paths
+
+
 def main() -> int:
     args = parse_args()
-    paths = args.report or [repo_path(item["path"].format(run_id=args.run_id)) for item in REPORTS.values()]
+    paths = args.report or default_report_paths(args.run_id)
     expected_by_schema = {item["schema"]: (key, item) for key, item in REPORTS.items()}
     errors: list[str] = []
     validated = 0
@@ -210,7 +220,9 @@ def main() -> int:
         for error in errors:
             print(f"STATUS: FAIL ai_eda.verification_target_captures {error}")
         return 1
-    print(f"STATUS: PASS ai_eda.verification_target_captures reports={validated} run_id={args.run_id}")
+    print(
+        f"STATUS: PASS ai_eda.verification_target_captures reports={validated} run_id={args.run_id}"
+    )
     return 0
 
 
