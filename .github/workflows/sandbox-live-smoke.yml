@@ -26,7 +26,7 @@ on:
       - "packages/agent/scripts/live-sandbox-smoke.ts"
       - "packages/agent/src/services/e2b-capability-router.ts"
       - "packages/agent/src/services/e2b-capability-router.test.ts"
-      - "packages/cloud-services/coding-satellite/**"
+      - "packages/cloud-services/coding-remote-runner/**"
       - "packages/cloud-shared/src/lib/config/containers-env.ts"
       - "packages/cloud-shared/src/lib/services/coding-containers.ts"
       - "plugins/plugin-elizacloud/**"
@@ -39,7 +39,7 @@ on:
       - "packages/agent/scripts/live-sandbox-smoke.ts"
       - "packages/agent/src/services/e2b-capability-router.ts"
       - "packages/agent/src/services/e2b-capability-router.test.ts"
-      - "packages/cloud-services/coding-satellite/**"
+      - "packages/cloud-services/coding-remote-runner/**"
       - "packages/cloud-shared/src/lib/config/containers-env.ts"
       - "packages/cloud-shared/src/lib/services/coding-containers.ts"
       - "plugins/plugin-elizacloud/**"
@@ -58,18 +58,18 @@ env:
   E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
   E2B_SANDBOX_ID: ${{ vars.E2B_SANDBOX_ID || secrets.E2B_SANDBOX_ID }}
   ELIZA_CLOUD_SANDBOX_API_BASE_URL: ${{ vars.ELIZA_CLOUD_SANDBOX_API_BASE_URL || vars.ELIZA_CLOUD_API_BASE_URL || 'https://api.elizacloud.ai/api/v1' }}
-  ELIZA_CLOUD_SANDBOX_BASE_URL: ${{ vars.ELIZA_CLOUD_SANDBOX_BASE_URL || vars.ELIZA_CLOUD_SATELLITE_RUNNER_URL }}
-  ELIZA_CLOUD_SATELLITE_RUNNER_URL: ${{ vars.ELIZA_CLOUD_SATELLITE_RUNNER_URL || vars.ELIZA_CLOUD_SANDBOX_BASE_URL }}
+  ELIZA_CLOUD_SANDBOX_BASE_URL: ${{ vars.ELIZA_CLOUD_SANDBOX_BASE_URL || vars.ELIZA_CLOUD_REMOTE_RUNNER_URL }}
+  ELIZA_CLOUD_REMOTE_RUNNER_URL: ${{ vars.ELIZA_CLOUD_REMOTE_RUNNER_URL || vars.ELIZA_CLOUD_SANDBOX_BASE_URL }}
   ELIZA_CLOUD_SANDBOX_TOKEN: ${{ secrets.ELIZA_CLOUD_SANDBOX_TOKEN || secrets.ELIZACLOUD_API_KEY || secrets.ELIZAOS_CLOUD_API_KEY }}
   ELIZA_CLOUD_SANDBOX_ACCESS_URL: ${{ vars.ELIZA_CLOUD_SANDBOX_ACCESS_URL }}
   ELIZA_CLOUD_SANDBOX_IMAGE: ${{ vars.ELIZA_CLOUD_SANDBOX_IMAGE }}
-  ELIZA_CLOUD_SATELLITE_IMAGE: ${{ vars.ELIZA_CLOUD_SATELLITE_IMAGE }}
-  ELIZA_CLOUD_CODING_SATELLITE_IMAGE: ${{ vars.ELIZA_CLOUD_CODING_SATELLITE_IMAGE }}
-  ELIZA_HOME_SATELLITE_URL: ${{ vars.ELIZA_HOME_SATELLITE_URL }}
-  ELIZA_HOME_SATELLITE_TOKEN: ${{ secrets.ELIZA_HOME_SATELLITE_TOKEN }}
-  ELIZA_HOME_SATELLITE_ACCESS_URL: ${{ vars.ELIZA_HOME_SATELLITE_ACCESS_URL }}
-  ELIZA_HOME_SATELLITE_SSH_TARGET: ${{ vars.ELIZA_HOME_SATELLITE_SSH_TARGET }}
-  ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT: ${{ vars.ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT }}
+  ELIZA_CLOUD_REMOTE_RUNNER_IMAGE: ${{ vars.ELIZA_CLOUD_REMOTE_RUNNER_IMAGE }}
+  ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE: ${{ vars.ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE }}
+  ELIZA_HOME_REMOTE_RUNNER_URL: ${{ vars.ELIZA_HOME_REMOTE_RUNNER_URL }}
+  ELIZA_HOME_REMOTE_RUNNER_TOKEN: ${{ secrets.ELIZA_HOME_REMOTE_RUNNER_TOKEN }}
+  ELIZA_HOME_REMOTE_RUNNER_ACCESS_URL: ${{ vars.ELIZA_HOME_REMOTE_RUNNER_ACCESS_URL }}
+  ELIZA_HOME_REMOTE_RUNNER_SSH_TARGET: ${{ vars.ELIZA_HOME_REMOTE_RUNNER_SSH_TARGET }}
+  ELIZA_HOME_REMOTE_RUNNER_SSH_LOCAL_PORT: ${{ vars.ELIZA_HOME_REMOTE_RUNNER_SSH_LOCAL_PORT }}
   OPENCODE_SERVER_USERNAME: ${{ vars.OPENCODE_SERVER_USERNAME || 'opencode' }}
   OPENCODE_SERVER_PASSWORD: ${{ secrets.OPENCODE_SERVER_PASSWORD }}
   CODEX_BIN: ${{ vars.CODEX_BIN || 'codex' }}
