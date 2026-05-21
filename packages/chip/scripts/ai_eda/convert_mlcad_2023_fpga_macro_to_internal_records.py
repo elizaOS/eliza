@@ -351,7 +351,7 @@ def convert_bucket(
             "design_count": len(design_ids),
             "status": result,
         }
-        for record, path in zip(records, paths, strict=False)
+        for record, path in zip(records, paths)
     ]
 
 

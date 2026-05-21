@@ -94,6 +94,8 @@ REQUIRED_PLAN_COMMANDS = (
     "python3 scripts/ai_eda/check_macro_placement_baseline.py --report build/ai_eda/macro_placement_policy/<cuda-host>/macro_placement_baseline_report.json",
     "python3 scripts/ai_eda/select_macro_placement_replay_queue.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/check_macro_placement_replay_queue.py --report build/ai_eda/macro_placement_replay_queue/<cuda-host>/replay_queue.json",
+    "python3 scripts/ai_eda/capture_openlane_replay_prerequisites.py --run-id <cuda-host>",
+    "python3 scripts/ai_eda/check_openlane_replay_prerequisites.py --report build/ai_eda/openlane_replay_prerequisites/<cuda-host>/openlane_replay_prerequisites.json",
     "python3 scripts/ai_eda/replay_macro_placement_on_e1.py --run-id <cuda-host> --plan build/ai_eda/macro_placement_replay/<cuda-host>/replay_plan.json",
     "python3 scripts/ai_eda/check_macro_placement_replay_preflight.py --report build/ai_eda/macro_placement_replay_preflight/<cuda-host>/replay_preflight_report.json",
     "python3 scripts/ai_eda/check_verification_target_captures.py --run-id <cuda-host>",
@@ -172,6 +174,7 @@ REQUIRED_OUTPUTS = {
     "build/ai_eda/e1_softmacro_cases/<run-id>/records/*.json",
     "build/ai_eda/macro_placement_replay_preflight/<run-id>/replay_preflight_report.json",
     "build/ai_eda/macro_placement_replay_queue/<run-id>/replay_queue.json",
+    "build/ai_eda/openlane_replay_prerequisites/<run-id>/openlane_replay_prerequisites.json",
     "build/ai_eda/macro_placement_torch_regressor/<run-id>/torch_regressor.pt",
     "build/ai_eda/memory_interconnect_targets/<run-id>/targets_report.json",
     "build/ai_eda/memory_macro_library_targets/<run-id>/targets_report.json",
@@ -290,6 +293,16 @@ ORDER_CONSTRAINTS = (
         "python3 scripts/ai_eda/select_macro_placement_replay_queue.py --run-id <cuda-host>",
         "python3 scripts/ai_eda/check_macro_placement_replay_queue.py --report build/ai_eda/macro_placement_replay_queue/<cuda-host>/replay_queue.json",
         "replay queue before replay queue check",
+    ),
+    (
+        "python3 scripts/ai_eda/check_macro_placement_replay_queue.py --report build/ai_eda/macro_placement_replay_queue/<cuda-host>/replay_queue.json",
+        "python3 scripts/ai_eda/capture_openlane_replay_prerequisites.py --run-id <cuda-host>",
+        "replay queue check before OpenLane replay prerequisites",
+    ),
+    (
+        "python3 scripts/ai_eda/capture_openlane_replay_prerequisites.py --run-id <cuda-host>",
+        "python3 scripts/ai_eda/check_openlane_replay_prerequisites.py --report build/ai_eda/openlane_replay_prerequisites/<cuda-host>/openlane_replay_prerequisites.json",
+        "OpenLane replay prerequisites before prerequisite check",
     ),
     (
         "python3 scripts/ai_eda/plan_macro_placement_replay.py --run-id <cuda-host>",

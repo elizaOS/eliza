@@ -135,7 +135,7 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
             nodes.append({"id": entity_id, "node_type": "vhdl_entity", "name": name})
             edges.append({"src": source_id, "dst": entity_id, "edge_type": "defines_entity"})
     if not edges and len(nodes) > 1:
-        for src, dst in zip(nodes, nodes[1:], strict=False):
+        for src, dst in zip(nodes, nodes[1:]):
             edges.append(
                 {"src": src["id"], "dst": dst["id"], "edge_type": "source_sequence_fallback"}
             )
@@ -232,7 +232,7 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
             "graph_node_count": metrics["graph_node_count"],
             "graph_edge_count": metrics["graph_edge_count"],
         }
-        for record, path in zip(records, paths, strict=False)
+        for record, path in zip(records, paths)
     ]
 
 

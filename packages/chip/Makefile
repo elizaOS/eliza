@@ -1391,7 +1391,7 @@ evidence-regression-test: no-hardware-action-check software-bsp-test physical-ga
 	ai-eda-macro-placement-candidate-eval ai-eda-macro-placement-combined-candidate-eval \
 	ai-eda-macro-placement-full-candidate-eval ai-eda-macro-placement-replay-plan \
 	ai-eda-macro-placement-replay-preflight ai-eda-macro-placement-combined-replay-plan \
-	ai-eda-macro-placement-full-replay-plan ai-eda-macro-placement-replay-queue ai-eda-candidate-manifests-check \
+	ai-eda-macro-placement-full-replay-plan ai-eda-macro-placement-replay-queue ai-eda-openlane-replay-prerequisites ai-eda-candidate-manifests-check \
 	ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-verification-targets \
 	ai-eda-physical-design-targets ai-eda-optimization-targets ai-eda-all-target-captures ai-eda-logic-synthesis-recipes \
 	ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload \
@@ -1596,6 +1596,10 @@ ai-eda-macro-placement-replay-queue: ai-eda-macro-placement-full-replay-plan
 	@$(PYTHON) scripts/ai_eda/select_macro_placement_replay_queue.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_macro_placement_replay_queue.py --report build/ai_eda/macro_placement_replay_queue/$(AI_EDA_RUN_ID)/replay_queue.json
 
+ai-eda-openlane-replay-prerequisites: ai-eda-macro-placement-replay-queue
+	@$(PYTHON) scripts/ai_eda/capture_openlane_replay_prerequisites.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_openlane_replay_prerequisites.py --report build/ai_eda/openlane_replay_prerequisites/$(AI_EDA_RUN_ID)/openlane_replay_prerequisites.json
+
 ai-eda-candidate-manifests-check: ai-eda-fixture-placement-train
 	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py
 
@@ -1696,7 +1700,7 @@ ai-eda-cuda-run-plan-dry-run: ai-eda-cuda-payload
 ai-eda-cuda-run-plan-safety-matrix: ai-eda-cuda-payload
 	@$(PYTHON) scripts/ai_eda/check_cuda_run_plan_safety_matrix.py --plan build/ai_eda/cuda_training_payloads/$(AI_EDA_RUN_ID)/cuda_training_run_plan.json --run-id $(AI_EDA_RUN_ID)
 
-ai-eda-cuda-readiness-audit: ai-eda-cuda-preflight ai-eda-cuda-run-plan-dry-run ai-eda-cuda-run-plan-safety-matrix ai-eda-alphachip-checkpoint-blocker-check ai-eda-optimization-targets ai-eda-macro-placement-replay-preflight
+ai-eda-cuda-readiness-audit: ai-eda-cuda-preflight ai-eda-cuda-run-plan-dry-run ai-eda-cuda-run-plan-safety-matrix ai-eda-alphachip-checkpoint-blocker-check ai-eda-optimization-targets ai-eda-openlane-replay-prerequisites ai-eda-macro-placement-replay-preflight
 	@$(PYTHON) scripts/ai_eda/capture_cuda_readiness_audit.py --run-id $(AI_EDA_RUN_ID) --setup-run-id $(AI_EDA_SETUP_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_cuda_readiness_audit.py --report build/ai_eda/cuda_readiness_audit/$(AI_EDA_RUN_ID)/cuda_readiness_audit.json
 
