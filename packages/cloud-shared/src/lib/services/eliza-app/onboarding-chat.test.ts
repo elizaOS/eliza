@@ -272,7 +272,7 @@ describe("runOnboardingChat", () => {
   test("sanitizes duplicated URL schemes from generated onboarding replies", async () => {
     cloudEnv = { CEREBRAS_API_KEY: "test-key" };
     generateText.mockResolvedValue({
-      text: "Open <httpshttps://elizacloud.ai/dashboard/containers>.",
+      text: "Open <httpshttps://elizacloud.ai/dashboard/agents>.",
     });
     findOrCreateByPhone.mockResolvedValue({
       user: { id: "user-1", name: null },
@@ -297,7 +297,7 @@ describe("runOnboardingChat", () => {
       },
     });
 
-    expect(result.reply).toBe("Open <https://elizacloud.ai/dashboard/containers>.");
+    expect(result.reply).toBe("Open <https://elizacloud.ai/dashboard/agents>.");
   });
 
   test("copies the onboarding transcript into memory once the provisioned agent is running", async () => {
@@ -336,7 +336,7 @@ describe("runOnboardingChat", () => {
         },
       });
       launchManagedElizaAgent.mockResolvedValue({
-        appUrl: "https://app.elizacloud.ai/dashboard/containers/agents/agent-1",
+        appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
         connection: {
           apiBase: "https://agent-1.example/",
           token: "agent-token",
@@ -357,13 +357,13 @@ describe("runOnboardingChat", () => {
 
       expect(result.handoffComplete).toBe(true);
       expect(result.launchUrl).toBe(
-        "https://app.elizacloud.ai/dashboard/containers/agents/agent-1",
+        "https://app.elizacloud.ai/dashboard/agents/agent-1",
       );
       expect(result.session.userId).toBe("user-1");
       expect(result.session.organizationId).toBe("org-1");
       expect(result.session.agentId).toBe("agent-1");
       expect(result.session.launchUrl).toBe(
-        "https://app.elizacloud.ai/dashboard/containers/agents/agent-1",
+        "https://app.elizacloud.ai/dashboard/agents/agent-1",
       );
       expect(result.session.handoffCopiedAt).toBeTruthy();
       expect(result.reply).toContain("copied this onboarding chat into its memory");
@@ -400,7 +400,7 @@ describe("runOnboardingChat", () => {
       expect(continued.session.agentId).toBe("agent-1");
       expect(continued.session.handoffCopiedAt).toBe(result.session.handoffCopiedAt);
       expect(continued.launchUrl).toBe(
-        "https://app.elizacloud.ai/dashboard/containers/agents/agent-1",
+        "https://app.elizacloud.ai/dashboard/agents/agent-1",
       );
       expect(launchManagedElizaAgent).not.toHaveBeenCalled();
       expect(rememberRequests).toHaveLength(1);

@@ -121,7 +121,7 @@ function AgentsEmptyState() {
           asChild
           className="h-9 md:h-10 bg-[#FF5800] text-white hover:bg-[#FF5800]/90 active:bg-[#FF5800]/80"
         >
-          <Link to="/dashboard/containers">
+          <Link to="/dashboard/agents">
             <Rocket className="h-4 w-4" />
             Launch Instance
           </Link>

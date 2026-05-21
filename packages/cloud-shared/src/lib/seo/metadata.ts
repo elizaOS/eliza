@@ -112,37 +112,6 @@ export function generateDynamicMetadata(options: DynamicMetadataOptions): Metada
 }
 
 /**
- * Generates metadata for a container page.
- *
- * @param id - Container ID.
- * @param name - Container name.
- * @param description - Container description.
- * @param characterName - Optional character name running in container.
- * @returns Metadata object.
- */
-export function generateContainerMetadata(
-  id: string,
-  name: string,
-  description: string | null,
-  characterName?: string | null,
-): Metadata {
-  const title = `${name} - Container Details`;
-  const desc =
-    description ||
-    `View logs, metrics, and deployment history for ${name}${characterName ? ` running ${characterName}` : ""}`;
-
-  return generateDynamicMetadata({
-    title,
-    description: desc,
-    keywords: ["container", "deployment", name, ...(characterName ? [characterName] : [])],
-    path: `/dashboard/containers/${id}`,
-    ogImage: "/og-image.png",
-    entityId: id,
-    entityType: "container",
-  });
-}
-
-/**
  * Generates metadata for a character page.
  *
  * @param id - Character ID.

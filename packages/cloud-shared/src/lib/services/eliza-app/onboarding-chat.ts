@@ -397,7 +397,7 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
 
 function controlPanelUrl(agentId?: string | null): string {
   return onboardingAppPath(
-    agentId ? `/dashboard/containers/agents/${agentId}` : "/dashboard/containers",
+    agentId ? `/dashboard/agents/${agentId}` : "/dashboard/agents",
   );
 }
 

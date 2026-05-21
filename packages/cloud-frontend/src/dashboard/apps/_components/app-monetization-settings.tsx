@@ -437,11 +437,11 @@ function SelfHostCTA() {
           </p>
           <div className="flex flex-wrap gap-2">
             <Link
-              to="/dashboard/containers"
+              to="/dashboard/agents"
               className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 text-white text-sm font-mono transition-colors"
             >
               <Server className="h-4 w-4" />
-              Deploy a Container
+              Deploy an Agent
             </Link>
             <Link
               to="/dashboard/earnings"

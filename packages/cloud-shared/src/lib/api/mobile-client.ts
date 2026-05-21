@@ -295,7 +295,6 @@ export const endpoints = {
   dashboard: {
     data: "/api/v1/dashboard",
     agents: "/api/v1/agents",
-    containers: "/api/v1/containers",
   },
 
   // Billing

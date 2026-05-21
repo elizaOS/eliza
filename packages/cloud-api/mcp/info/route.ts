@@ -102,16 +102,6 @@ const tools = [
     category: "agents",
   },
   {
-    name: "list_containers",
-    description: "List deployed containers",
-    category: "containers",
-  },
-  {
-    name: "get_container_health",
-    description: "Check container health status",
-    category: "containers",
-  },
-  {
     name: "list_models",
     description: "List available AI models",
     category: "models",
