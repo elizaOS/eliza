@@ -13,6 +13,17 @@ draft:
   source_basis:
     - preliminary side-button binding and enclosure interface plan
   verified_public_source_ids: []
+  selected_hardware_trace:
+    selection_source: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+    selected_side_key_family: Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+    conditional_alternate: Littelfuse_CK_KMR2
+    external_buttons:
+      - power
+      - volume_up
+      - volume_down
+    side_key_bus_constraint: SIDE_KEYS
+    release_allowed_without_supplier_response_packs: false
+    route_release_dependency: side_key_route_release_remain_blocked_until_switch_or_flex_drawing_force_travel_stack_wake_recovery_and_routed_step_clearance
   recipient_candidates:
     - supplier: Panasonic Industry
       candidate: EVQ-P7/EVQ-P3/EVQ-9P7 side-push tactile family

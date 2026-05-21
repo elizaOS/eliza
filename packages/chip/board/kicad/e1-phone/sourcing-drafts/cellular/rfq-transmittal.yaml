@@ -16,6 +16,15 @@ draft:
     - Fibocom MC665 compact LTE Cat 1 bis public module page
   verified_public_source_ids:
     - cellular_primary_quectel_rg255c
+  selected_hardware_trace:
+    selection_source: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    selected_reference: Quectel_RG255C_or_RM255C_5G_RedCap_Sub_6
+    selected_phone_form_factor: RG255C_LGA
+    active_space_saving_rfq_branch: quectel_eg915q_na_or_eg915u_class
+    current_region_fits_selected_reference: false
+    rf_feed_count_required: 5
+    release_allowed_without_supplier_response_packs: false
+    route_release_dependency: U_CELL_route_release_remain_blocked_until_top_rf_island_repack_or_smaller_supplier_approved_module
   recipient_candidates:
     - supplier: Quectel
       candidate: RG255C_series

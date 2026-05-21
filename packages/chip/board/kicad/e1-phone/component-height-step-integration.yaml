@@ -30,7 +30,7 @@ compactness_context:
 concept_step_context:
   enclosure_placement_status: enclosure_placement_cross_checked_not_release_ready
   step_validation_status: pass
-  validated_step_count: 123
+  validated_step_count: 132
   assembly_step: mechanical/e1-phone/out/e1-phone-solid-assembly.step
   assembly_step_imported: true
   assembly_step_bbox_span_mm:

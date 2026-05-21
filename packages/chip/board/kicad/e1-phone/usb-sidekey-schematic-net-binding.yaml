@@ -11,6 +11,7 @@ claim_boundary: >
 
 source_artifacts:
   - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
   - board/kicad/e1-phone/usb-sidekey-integration.yaml
   - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
   - board/kicad/e1-phone/block-netlist.yaml

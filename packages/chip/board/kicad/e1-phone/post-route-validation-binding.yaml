@@ -97,6 +97,29 @@ validation_domains:
     required_outputs: [routed_board_step, routed_clearance_release]
     status: blocked_missing_routed_step_supplier_models_and_enclosure_clearance_release
 
+route_to_enclosure_validation_handoff:
+  status: blocked_until_route_validation_outputs_and_routed_step_clearance_release_exist
+  source_execution_order: board/kicad/e1-phone/first-article-route-execution-order.yaml
+  route_handoff_status: blocked_until_routed_pcb_drc_step_supplier_models_and_clearance_release_exist
+  validation_allowed_before_handoff_complete: false
+  required_output_keys:
+    - routed_kicad_pcb
+    - pcb_drc_report
+    - zone_fill_report
+    - routed_board_step
+    - routed_clearance_release
+  required_output_paths:
+    routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    pcb_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    zone_fill_report: board/kicad/e1-phone/production/reports/zone-fill.json
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    routed_clearance_release: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  present_output_count: 0
+  missing_output_count: 5
+  enclosure_release_blocked: true
+  fabrication_release_blocked: true
+  factory_release_blocked: true
+
 release_coupling:
   blocks_ready_to_fabricate: true
   blocks_ready_for_enclosure: true

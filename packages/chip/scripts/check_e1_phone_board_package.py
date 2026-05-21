@@ -1288,6 +1288,15 @@ def check_supplier_rfq_transmittal_drafts() -> None:
     drafts = load_yaml(ROOT / "board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml")
     intake = load_yaml(ROOT / "board/kicad/e1-phone/supplier-rfq-intake.yaml")
     source_verification = load_yaml(ROOT / "board/kicad/e1-phone/supplier-source-verification.yaml")
+    display_camera_revalidation = load_yaml(
+        ROOT / "board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml"
+    )
+    radio_selection = load_yaml(
+        ROOT / "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml"
+    )
+    usb_sidekey_selection = load_yaml(
+        ROOT / "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml"
+    )
     evidence_map = load_yaml(ROOT / "board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml")
 
     if drafts["schema"] != "eliza.e1_phone_supplier_rfq_transmittal_drafts.v1":
@@ -1351,6 +1360,116 @@ def check_supplier_rfq_transmittal_drafts() -> None:
         "routed_pcb_ready",
         "enclosure_ready",
     }
+    display_camera_rfq_matrix = display_camera_revalidation["rfq_readiness_matrix"]
+    expected_display_camera_trace_keys = {
+        "display_touch": "display_touch",
+        "rear_camera": "rear_camera",
+        "front_camera": "front_camera",
+    }
+    radio_stack = radio_selection["selected_wireless_stack"]
+    radio_fit = radio_selection["placement_fit_decision"]
+    radio_rf = radio_selection["rf_feed_contract"]
+    usb_stack = usb_sidekey_selection["selected_hardware_stack"]
+    usb_route = usb_sidekey_selection["route_and_probe_contract"]
+    expected_selected_hardware_traces = {
+        "cellular": {
+            "selection_source": "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml",
+            "selected_reference": (
+                f"{radio_stack['cellular_performance_reference']['vendor']}_"
+                f"{radio_stack['cellular_performance_reference']['family']}_"
+                f"{radio_stack['cellular_performance_reference']['class']}"
+            ),
+            "selected_phone_form_factor": (
+                radio_stack["cellular_performance_reference"]["selected_phone_form_factor"]
+            ),
+            "active_space_saving_rfq_branch": (
+                radio_stack["cellular_space_saving_branch"]["preferred_candidate_id"]
+            ),
+            "current_region_fits_selected_reference": (
+                radio_fit["cellular_current_region"]["fits_current_region"]
+            ),
+            "rf_feed_count_required": radio_rf["required_rf_feed_count"],
+            "release_allowed_without_supplier_response_packs": (
+                radio_selection["supplier_release_policy"][
+                    "release_allowed_without_supplier_response_packs"
+                ]
+            ),
+            "route_release_dependency": (
+                "U_CELL_route_release_remain_blocked_until_top_rf_island_repack_or_smaller_supplier_approved_module"
+            ),
+        },
+        "wifi_bluetooth": {
+            "selection_source": "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml",
+            "selected_module": (
+                f"{radio_stack['wifi_bluetooth_primary']['vendor']}_"
+                f"{radio_stack['wifi_bluetooth_primary']['order_number']}_"
+                f"{radio_stack['wifi_bluetooth_primary']['chipset']}"
+            ),
+            "wifi_standard": radio_stack["wifi_bluetooth_primary"]["wireless"]["wifi"],
+            "bluetooth_standard": (
+                radio_stack["wifi_bluetooth_primary"]["wireless"]["bluetooth"]
+            ),
+            "current_region_fits_selected_module": (
+                radio_fit["wifi_bluetooth_current_region"]["fits_current_region"]
+            ),
+            "rf_feed_count_required": len(radio_rf["wifi_bluetooth_ports"]),
+            "release_allowed_without_supplier_response_packs": (
+                radio_selection["supplier_release_policy"][
+                    "release_allowed_without_supplier_response_packs"
+                ]
+            ),
+            "route_release_dependency": (
+                "U_WIFI_BT_route_release_remain_blocked_until_murata_design_pack_reference_layout_firmware_and_regulatory_scope"
+            ),
+        },
+        "usb_c_receptacle_evt0": {
+            "selection_source": "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
+            "selected_connector": (
+                f"{usb_stack['usb_c_evt0_connector']['vendor']}_"
+                f"{usb_stack['usb_c_evt0_connector']['family']}"
+            ),
+            "conditional_alternate": (
+                f"{usb_stack['usb_c_conditional_alternate']['vendor']}_"
+                f"{usb_stack['usb_c_conditional_alternate']['family']}"
+            ),
+            "pd_controller": usb_stack["usb_pd_controller"]["part"],
+            "charger_power_path": usb_stack["charger_power_path"]["part"],
+            "usb2_diff_pair_constraint": usb_route["usb2_diff_pair"]["routing_constraint"],
+            "release_allowed_without_supplier_response_packs": (
+                usb_sidekey_selection["bringup_and_release_policy"][
+                    "release_allowed_without_supplier_response_packs"
+                ]
+            ),
+            "route_release_dependency": (
+                "J_USB_C_route_release_remain_blocked_until_signed_connector_drawing_step_shell_load_path_and_routed_board_step"
+            ),
+        },
+        "side_buttons": {
+            "selection_source": "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
+            "selected_side_key_family": (
+                f"{usb_stack['side_key_primary']['vendor']}_"
+                f"{usb_stack['side_key_primary']['family']}"
+            ),
+            "conditional_alternate": (
+                f"{usb_stack['side_key_conditional_alternate']['vendor']}_"
+                f"{usb_stack['side_key_conditional_alternate']['family']}"
+            ),
+            "external_buttons": (
+                usb_sidekey_selection["placement_and_mechanical_policy"]["side_keys"][
+                    "external_buttons"
+                ]
+            ),
+            "side_key_bus_constraint": usb_route["side_key_bus"]["routing_constraint"],
+            "release_allowed_without_supplier_response_packs": (
+                usb_sidekey_selection["bringup_and_release_policy"][
+                    "release_allowed_without_supplier_response_packs"
+                ]
+            ),
+            "route_release_dependency": (
+                "side_key_route_release_remain_blocked_until_switch_or_flex_drawing_force_travel_stack_wake_recovery_and_routed_step_clearance"
+            ),
+        },
+    }
 
     for function, draft in master_drafts.items():
         intake_line = intake_lines[function]
@@ -1412,6 +1531,49 @@ def check_supplier_rfq_transmittal_drafts() -> None:
                 raise SystemExit(f"supplier RFQ draft {function} recipient missing https URL")
             if not candidate.get("public_page_status"):
                 raise SystemExit(f"supplier RFQ draft {function} recipient missing page status")
+        if function in expected_display_camera_trace_keys:
+            trace = draft.get("source_revalidation_trace")
+            if not trace:
+                raise SystemExit(f"supplier RFQ draft missing source revalidation trace: {function}")
+            rfq_key = expected_display_camera_trace_keys[function]
+            matrix_item = display_camera_rfq_matrix[rfq_key]
+            if trace["rfq_matrix_key"] != rfq_key:
+                raise SystemExit(f"supplier RFQ source trace key stale: {function}")
+            if trace["primary_revalidated_source_id"] != matrix_item["primary_source_id"]:
+                raise SystemExit(f"supplier RFQ source trace primary stale: {function}")
+            if trace["rfq_ready_from_public_page"] != matrix_item["rfq_ready_from_public_page"]:
+                raise SystemExit(f"supplier RFQ source trace ready flag stale: {function}")
+            if trace["production_release_ready"] != matrix_item["production_release_ready"]:
+                raise SystemExit(f"supplier RFQ source trace release flag stale: {function}")
+            if trace["route_release_dependency"] != matrix_item["route_release_dependency"]:
+                raise SystemExit(f"supplier RFQ source trace dependency stale: {function}")
+            if trace["production_release_ready"] is not False:
+                raise SystemExit(f"supplier RFQ source trace unexpectedly release-ready: {function}")
+            if "remain_blocked" not in trace["route_release_dependency"]:
+                raise SystemExit(f"supplier RFQ source trace must remain blocked: {function}")
+            if function == "display_touch":
+                if (
+                    trace.get("supplemental_revalidated_source_id")
+                    != matrix_item["supplemental_public_source_id"]
+                ):
+                    raise SystemExit("display RFQ source trace supplemental source stale")
+            if function == "front_camera":
+                rejected = display_camera_rfq_matrix["alibaba_camera_alternate"]
+                if trace.get("rejected_alibaba_alternate_source_id") != rejected["primary_source_id"]:
+                    raise SystemExit("front camera RFQ rejected Alibaba source trace stale")
+                if (
+                    trace.get("rejected_alibaba_alternate_rfq_ready_from_public_page")
+                    != rejected["rfq_ready_from_public_page"]
+                ):
+                    raise SystemExit("front camera RFQ rejected Alibaba ready flag stale")
+        if function in expected_selected_hardware_traces:
+            trace = draft.get("selected_hardware_trace")
+            if trace != expected_selected_hardware_traces[function]:
+                raise SystemExit(f"supplier RFQ selected hardware trace stale: {function}")
+            if trace["release_allowed_without_supplier_response_packs"] is not False:
+                raise SystemExit(f"supplier RFQ selected hardware trace unexpectedly releasable: {function}")
+            if "remain_blocked" not in trace["route_release_dependency"]:
+                raise SystemExit(f"supplier RFQ selected hardware trace must remain blocked: {function}")
 
         archive_paths = draft["planned_archive_paths_after_send"]
         if archive_paths["draft"] != evidence["rfq_transmittal_draft"]["planned_draft_path"]:
@@ -1546,6 +1708,54 @@ def check_display_camera_source_revalidation() -> None:
     ):
         raise SystemExit("Alibaba Junde layout decision changed")
 
+    rfq_matrix = revalidation["rfq_readiness_matrix"]
+    expected_rfq_sources = {
+        "display_touch": "display_primary_chenghao_ch550fh01a_ct",
+        "rear_camera": "rear_camera_primary_sincere_first_ov13855",
+        "front_camera": "front_camera_primary_sincere_first_gc5035",
+        "alibaba_camera_alternate": "front_camera_alternate_alibaba_junde_imx219",
+    }
+    if set(rfq_matrix) != set(expected_rfq_sources):
+        raise SystemExit("display/camera RFQ readiness matrix set diverges")
+    for item_id, source_id in expected_rfq_sources.items():
+        item = rfq_matrix[item_id]
+        if item["primary_source_id"] != source_id:
+            raise SystemExit(f"display/camera RFQ matrix source stale: {item_id}")
+        if item["production_release_ready"] is not False:
+            raise SystemExit(f"display/camera RFQ matrix unexpectedly release-ready: {item_id}")
+        if len(item.get("supplier_questions_to_send", [])) < 2:
+            raise SystemExit(f"display/camera RFQ matrix questions too weak: {item_id}")
+        if "remain_blocked" not in item["route_release_dependency"]:
+            raise SystemExit(f"display/camera RFQ matrix dependency must stay blocked: {item_id}")
+    display_rfq = rfq_matrix["display_touch"]
+    if display_rfq["candidate_to_quote"] != display["observed_public_fields"]["model"]:
+        raise SystemExit("display RFQ candidate diverges from observed public model")
+    if display_rfq["supplemental_public_source_id"] != "display_primary_chenghao_ch550fh01a_ct_public_pdf":
+        raise SystemExit("display RFQ missing PDF supplemental source")
+    if not {
+        "qty_2_to_299",
+        "qty_300_to_999",
+        "qty_1000_plus",
+    } <= set(display_rfq["observed_quote_basis"]["public_price_signal_usd"]):
+        raise SystemExit("display RFQ price ladder too weak")
+    if "HX8399C" not in " ".join(display_rfq["supplier_questions_to_send"]):
+        raise SystemExit("display RFQ questions missing display driver request")
+    rear_rfq = rfq_matrix["rear_camera"]
+    if rear_rfq["observed_quote_basis"]["public_pin_count"] != rear["observed_public_fields"]["pin_count"]:
+        raise SystemExit("rear camera RFQ pin-count diverges from public source")
+    if rear_rfq["observed_quote_basis"]["public_sensor_class"] != rear["observed_public_fields"]["sensor_class"]:
+        raise SystemExit("rear camera RFQ sensor diverges from public source")
+    front_rfq = rfq_matrix["front_camera"]
+    if front_rfq["observed_quote_basis"]["public_pin_count"] != front["observed_public_fields"]["pin_count"]:
+        raise SystemExit("front camera RFQ pin-count diverges from public source")
+    if front_rfq["observed_quote_basis"]["public_mipi_lanes"] != front["observed_public_fields"]["mipi_lanes"]:
+        raise SystemExit("front camera RFQ MIPI lane count diverges from public source")
+    alibaba_rfq = rfq_matrix["alibaba_camera_alternate"]
+    if alibaba_rfq["rfq_ready_from_public_page"] is not False:
+        raise SystemExit("Alibaba camera alternate must remain not RFQ-ready from current page")
+    if alibaba_rfq["observed_quote_basis"]["fit_result"] != "rejected_for_current_17_x_13_mm_camera_region":
+        raise SystemExit("Alibaba camera alternate RFQ fit result stale")
+
     checks = revalidation["cross_checks"]
     for key in [
         "primary_display_matches_display_fit",
@@ -1560,6 +1770,8 @@ def check_display_camera_source_revalidation() -> None:
         "supplier_source_verification_still_fail_closed",
         "current_public_fields_revalidated_2026_05_21",
         "alibaba_direct_page_remains_shortlist_only_until_parseable_or_supplier_response",
+        "rfq_matrix_tracks_display_camera_primary_sources",
+        "rfq_matrix_keeps_alibaba_camera_alternate_out_of_current_layout_release",
     ]:
         if checks[key] is not True:
             raise SystemExit(f"display/camera source revalidation cross-check failed: {key}")
@@ -2194,6 +2406,205 @@ def check_display_camera_acceptance() -> None:
     )
 
 
+def check_usb_sidekey_selection_wiring_decision() -> None:
+    decision = load_yaml(
+        ROOT / "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml"
+    )
+    manifest = load_yaml(MANIFEST)
+    usb_binding = load_yaml(ROOT / "package/usb-c/e1-phone-usb-c-port.yaml")
+    pd_binding = load_yaml(ROOT / "package/usb-pd/tps65987.yaml")
+    charger_binding = load_yaml(ROOT / "package/charger/max77860.yaml")
+    side_buttons = load_yaml(ROOT / "package/human-interface/side-buttons.yaml")
+    revalidation = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml")
+    mechanical = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml")
+    integration = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-integration.yaml")
+    binding = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml")
+    acceptance = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml")
+    netlist = load_yaml(ROOT / "board/kicad/e1-phone/block-netlist.yaml")
+    routing = load_yaml(ROOT / "board/kicad/e1-phone/routing-constraints.yaml")
+    placement = load_yaml(ROOT / "board/kicad/e1-phone/placement-interface-matrix.yaml")
+    factory_probe = load_yaml(ROOT / "board/kicad/e1-phone/factory-probe-map.yaml")
+    supplier_responses = load_yaml(
+        ROOT / "board/kicad/e1-phone/supplier-rfq-response-normalization.yaml"
+    )
+
+    if decision["schema"] != "eliza.e1_phone_usb_sidekey_selection_wiring_decision.v1":
+        raise SystemExit("USB/side-key selection/wiring decision schema diverges")
+    if (
+        decision["status"]
+        != "blocked_usb_sidekey_selection_requires_supplier_drawings_real_schematic_route_measurements_and_enclosure_load_path"
+    ):
+        raise SystemExit(f"unexpected USB/side-key selection status: {decision['status']}")
+    rel = "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml"
+    if rel not in manifest["current_artifacts"]["planning"]:
+        raise SystemExit("manifest missing USB/side-key selection/wiring decision")
+    for artifact in [integration, binding, acceptance]:
+        if rel not in artifact["source_artifacts"]:
+            raise SystemExit("USB/side-key selection/wiring decision is not cited downstream")
+    for source in decision["source_artifacts"]:
+        require_path(ROOT / source)
+
+    expected_upstream = {
+        "usb_c_package": usb_binding["status"],
+        "usb_pd_package": pd_binding["status"],
+        "charger_package": charger_binding["status"],
+        "side_buttons_package": side_buttons["status"],
+        "usb_sidekey_source_revalidation": revalidation["status"],
+        "usb_sidekey_mechanical_decision": mechanical["status"],
+        "usb_sidekey_integration": integration["status"],
+        "usb_sidekey_schematic_net_binding": binding["status"],
+        "usb_sidekey_acceptance": acceptance["status"],
+        "placement_interface_matrix": placement["status"],
+        "supplier_rfq_response_normalization": supplier_responses["status"],
+    }
+    if decision["upstream_status"] != expected_upstream:
+        raise SystemExit("USB/side-key selection upstream status stale")
+
+    selected = decision["selected_hardware_stack"]
+    if selected["usb_c_evt0_connector"]["family"] != usb_binding["connector_strategy"]["evt0_low_risk"]["family"]:
+        raise SystemExit("USB/side-key selected EVT0 connector stale")
+    if (
+        selected["usb_c_evt0_connector"]["active_contacts"]
+        != usb_binding["connector_strategy"]["evt0_low_risk"]["active_contacts"]
+    ):
+        raise SystemExit("USB/side-key EVT0 connector active contacts stale")
+    if selected["usb_c_conditional_alternate"]["family"] != usb_binding["connector_strategy"]["production_superspeed"]["family"]:
+        raise SystemExit("USB/side-key USB-C alternate stale")
+    if len(selected["usb_c_conditional_alternate"]["promote_only_if"]) < 3:
+        raise SystemExit("USB/side-key USB-C alternate gate too weak")
+    if selected["usb_pd_controller"]["part"] != pd_binding["part"]:
+        raise SystemExit("USB/side-key PD controller stale")
+    if selected["charger_power_path"]["part"] != charger_binding["part"]:
+        raise SystemExit("USB/side-key charger stale")
+    if (
+        selected["charger_power_path"]["charge_current_max_a"]
+        != charger_binding["charge_profile"]["charge_current_max_a"]
+    ):
+        raise SystemExit("USB/side-key charger current stale")
+    if selected["side_key_primary"]["family"] != side_buttons["primary_switch_family"]["family"]:
+        raise SystemExit("USB/side-key side-switch primary stale")
+    if selected["side_key_primary"]["dimensions_mm"] != side_buttons["primary_switch_family"]["dimensions_mm"]:
+        raise SystemExit("USB/side-key side-switch dimensions stale")
+    if selected["side_key_conditional_alternate"]["family"] != side_buttons["alternate_switch_family"]["family"]:
+        raise SystemExit("USB/side-key side-switch alternate stale")
+
+    placements = {item["refdes_group"]: item for item in placement["placements"]}
+    mech = decision["placement_and_mechanical_policy"]
+    if mech["usb_c"]["board_region_mm"] != placements["J_USB_C"]["region_mm"]:
+        raise SystemExit("USB/side-key USB region diverges from placement matrix")
+    if mech["usb_c"]["board_region_mm"] != usb_binding["placement"]["board_region_mm"]:
+        raise SystemExit("USB/side-key USB region diverges from package")
+    usb_region = mech["usb_c"]["board_region_mm"]
+    if usb_region["y"] + usb_region["height"] != manifest["design_target"]["board_bbox_mm"]["height"]:
+        raise SystemExit("USB/side-key USB region must terminate at bottom edge")
+    if mech["side_keys"]["connector_region_mm"] != placements["SW_POWER_VOL"]["region_mm"]:
+        raise SystemExit("USB/side-key connector region diverges from placement matrix")
+    if mech["side_keys"]["actuator_spine_region_mm"] != side_buttons["mechanical_target"]["board_region_mm"]:
+        raise SystemExit("USB/side-key actuator spine region diverges from package")
+    if mech["side_keys"]["external_buttons"] != manifest["design_target"]["side_buttons"]:
+        raise SystemExit("USB/side-key external buttons diverge from manifest")
+
+    all_block_nets: set[str] = set()
+    for block in netlist["blocks"]:
+        all_block_nets.update(flatten_net_groups(block["nets"]))
+    wiring = decision["wiring_contract"]
+    if wiring["usb_c_required_nets"] != integration["usb_c_port_context"]["required_nets"]:
+        raise SystemExit("USB/side-key USB-C wiring diverges from integration")
+    if wiring["pd_required_nets"] != integration["usb_pd_and_charger_context"]["pd_controller"]["required_nets"]:
+        raise SystemExit("USB/side-key PD wiring diverges from integration")
+    if wiring["charger_required_nets"] != integration["usb_pd_and_charger_context"]["charger"]["required_nets"]:
+        raise SystemExit("USB/side-key charger wiring diverges from integration")
+    if wiring["side_key_required_nets"] != side_buttons["layout_closure_requirements"]["side_key_flex_pin_budget"]["required_nets"]:
+        raise SystemExit("USB/side-key side-key wiring diverges from package")
+    if (
+        wiring["side_key_recommended_min_contacts"]
+        != side_buttons["layout_closure_requirements"]["side_key_flex_pin_budget"]["recommended_min_contacts"]
+    ):
+        raise SystemExit("USB/side-key contact budget stale")
+    for key in [
+        "usb_c_required_nets",
+        "pd_required_nets",
+        "charger_required_nets",
+        "side_key_required_nets",
+    ]:
+        missing = sorted(set(wiring[key]) - all_block_nets)
+        if missing:
+            raise SystemExit(f"USB/side-key wiring nets missing from block netlist: {key} {missing}")
+
+    route_probe = decision["route_and_probe_contract"]
+    diff_pairs = {item["name"]: item for item in routing["differential_pairs"]}
+    single_ended = {item["name"]: item for item in routing["single_ended_buses"]}
+    usb_route = route_probe["usb2_diff_pair"]
+    if usb_route["nets"] != diff_pairs["USB_DP_DN"]["nets"]:
+        raise SystemExit("USB/side-key USB2 route nets diverge")
+    if usb_route["impedance_ohm_diff"] != routing["impedance_classes"]["usb2_diff"]["impedance_ohm"]:
+        raise SystemExit("USB/side-key USB2 impedance stale")
+    if usb_route["max_length_mm"] != diff_pairs["USB_DP_DN"]["max_length_mm"]:
+        raise SystemExit("USB/side-key USB2 length stale")
+    side_route = route_probe["side_key_bus"]
+    if not set(single_ended["SIDE_KEYS"]["nets"]).issubset(side_route["nets"]):
+        raise SystemExit("USB/side-key side-key route nets diverge")
+    if side_route["max_length_mm"] != single_ended["SIDE_KEYS"]["max_length_mm"]:
+        raise SystemExit("USB/side-key side-key route length stale")
+    probe_nets = set(route_probe["factory_probe_required_nets"])
+    probe_domains = {item["id"]: item for item in factory_probe["probe_domains"]}
+    covered_probe_nets = (
+        set(probe_domains["usb_c"]["nets"])
+        | set(probe_domains["buttons_sensors_nfc"]["nets"])
+        | set(probe_domains["power_rails"]["nets"])
+    )
+    if not probe_nets.issubset(covered_probe_nets):
+        raise SystemExit("USB/side-key factory probe coverage stale")
+
+    release = decision["bringup_and_release_policy"]
+    if (
+        release["supplier_response_packs_received"]
+        != supplier_responses["normalization_outputs"]["present_response_pack_count"]
+    ):
+        raise SystemExit("USB/side-key supplier response count stale")
+    if release["release_allowed_without_supplier_response_packs"] is not False:
+        raise SystemExit("USB/side-key supplier response policy unexpectedly open")
+    if len(release["required_before_layout_release"]) < 5:
+        raise SystemExit("USB/side-key release policy too weak")
+
+    for key, value in decision["cross_checks"].items():
+        if value is not True:
+            raise SystemExit(f"USB/side-key selection cross-check failed: {key}")
+    for blocker in [
+        "USB-C connector signed drawing, land pattern, STEP, shell stake datum, insertion-force data, and plug overmold sweep are missing.",
+        "USB-PD controller firmware/configuration, CC attach, dead-battery boot, PPS/EPR, Type-C class, and HAL evidence are missing.",
+        "Charger schematic, I2C readback, NTC/ID readback, CC/CV cycle, JEITA hot/cold, current-limit, and thermal validation are missing.",
+        "Side-key switch/flex drawing, force/travel sample data, enclosure load path, wake/recovery combo logs, and debounce/leakage review are missing.",
+        "Routed USB2/CC/VBUS/charger/side-key copper, DRC/ERC/SI/PI evidence, routed STEP, and enclosure clearance rerun are missing.",
+    ]:
+        if blocker not in decision["release_blockers"]:
+            raise SystemExit(f"USB/side-key selection missing blocker: {blocker}")
+    for claim in [
+        "usb_sidekey_selection_final",
+        "usb_c_ready",
+        "pd_ready",
+        "charging_ready",
+        "side_buttons_ready",
+        "power_key_wake_ready",
+        "recovery_key_combo_ready",
+        "waterproof_ready",
+        "superspeed_ready",
+        "routed_pcb_ready",
+        "enclosure_ready",
+        "fabrication_ready",
+        "end_to_end_phone_ready",
+    ]:
+        if claim not in decision["forbidden_claims"]:
+            raise SystemExit(f"USB/side-key selection missing forbidden claim {claim}")
+    print(
+        "USB/side-key selection/wiring decision ok: "
+        f"usb={selected['usb_c_evt0_connector']['family']} "
+        f"pd={selected['usb_pd_controller']['part']} "
+        f"charger={selected['charger_power_path']['part']} "
+        f"buttons={len(mech['side_keys']['external_buttons'])} fail-closed"
+    )
+
+
 def check_usb_sidekey_mechanical_decision() -> None:
     decision = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml")
     manifest = load_yaml(MANIFEST)
@@ -2361,6 +2772,7 @@ def check_usb_sidekey_integration() -> None:
         "board/kicad/e1-phone/external-interface-design-review.yaml",
         "board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml",
         "board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml",
+        "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
         "board/kicad/e1-phone/power-sequence-bringup-closure.yaml",
         "board/kicad/e1-phone/power-thermal-budget.yaml",
         "board/kicad/e1-phone/block-netlist.yaml",
@@ -2602,6 +3014,7 @@ def check_usb_sidekey_schematic_net_binding() -> None:
     if rel not in acceptance["source_artifacts"]:
         raise SystemExit("USB/side-key acceptance must cite schematic net binding")
     for source in [
+        "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
         "board/kicad/e1-phone/usb-sidekey-integration.yaml",
         "board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml",
         "board/kicad/e1-phone/block-netlist.yaml",
@@ -2783,6 +3196,7 @@ def check_usb_sidekey_acceptance() -> None:
     ):
         raise SystemExit(f"unexpected USB/side-key acceptance status: {acceptance['status']}")
     for source in [
+        "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
         "board/kicad/e1-phone/usb-sidekey-integration.yaml",
         "board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml",
         "board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml",
@@ -10178,6 +10592,7 @@ def check_module_rf_pinout_execution() -> None:
         raise SystemExit("manifest missing module RF pinout execution artifact")
     for source in [
         "board/kicad/e1-phone/radio-module-integration.yaml",
+        "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml",
         "board/kicad/e1-phone/module-host-integration-acceptance-checklist.yaml",
         "board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml",
         "board/kicad/e1-phone/rf-connectivity-closure.yaml",
@@ -10306,6 +10721,7 @@ def check_radio_module_schematic_net_binding() -> None:
         raise SystemExit("module RF pinout execution must cite schematic net binding")
     for source in [
         "board/kicad/e1-phone/radio-module-integration.yaml",
+        "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml",
         "board/kicad/e1-phone/module-rf-pinout-execution.yaml",
         "board/kicad/e1-phone/module-host-integration-closure.yaml",
         "board/kicad/e1-phone/rf-connectivity-closure.yaml",
@@ -11447,7 +11863,102 @@ def check_first_article_route_execution_order() -> None:
             if next_phase not in expected_phase_ids:
                 raise SystemExit(f"first-article route phase references unknown successor: {next_phase}")
 
+    handoff = order["route_to_enclosure_handoff"]
+    if (
+        handoff["status"]
+        != "blocked_until_routed_pcb_drc_step_supplier_models_and_clearance_release_exist"
+    ):
+        raise SystemExit("first-article route-to-enclosure handoff status stale")
+    if handoff["route_phase"] != "high_speed_rf_power_route_and_drc":
+        raise SystemExit("first-article route-to-enclosure handoff route phase stale")
+    if handoff["enclosure_phase"] != "routed_step_and_enclosure_clearance":
+        raise SystemExit("first-article route-to-enclosure handoff enclosure phase stale")
+    if handoff["handoff_is_strict"] is not True:
+        raise SystemExit("first-article route-to-enclosure handoff must be strict")
+    if handoff["enclosure_claim_allowed_before_all_handoff_evidence"] is not False:
+        raise SystemExit("first-article route-to-enclosure handoff opened enclosure claim")
+
     release_manifest = routed_release["required_release_output_manifest"]
+    route_evidence = {item["release_output_id"]: item for item in handoff["required_route_evidence"]}
+    expected_route_ids = ["routed_kicad_pcb", "pcb_drc_report", "filled_zones"]
+    if set(route_evidence) != set(expected_route_ids):
+        raise SystemExit("first-article route handoff route evidence set diverges")
+    for output_id in expected_route_ids:
+        item = route_evidence[output_id]
+        expected_path = release_manifest[output_id]["expected_path"]
+        if item["expected_path"] != expected_path:
+            raise SystemExit(f"first-article route handoff path stale: {output_id}")
+        present = (ROOT / expected_path).exists()
+        if item["present"] != present:
+            raise SystemExit(f"first-article route handoff presence stale: {output_id}")
+        if present:
+            raise SystemExit(f"first-article route handoff unexpectedly has evidence: {output_id}")
+
+    step_contract = routed_step["export_contract"]
+    step_evidence = {item["evidence_id"]: item for item in handoff["required_step_evidence"]}
+    expected_step_paths = {
+        "required_step_output": step_contract["required_step_output"],
+        "required_component_model_directory": step_contract["required_component_model_directory"],
+        "required_report_output": step_contract["required_report_output"],
+    }
+    if set(step_evidence) != set(expected_step_paths):
+        raise SystemExit("first-article route handoff STEP evidence set diverges")
+    for evidence_id, expected_path in expected_step_paths.items():
+        item = step_evidence[evidence_id]
+        if item["source_contract"] != "routed-board-step-export-contract.yaml":
+            raise SystemExit(f"first-article route handoff STEP source stale: {evidence_id}")
+        if item["expected_path"] != expected_path:
+            raise SystemExit(f"first-article route handoff STEP path stale: {evidence_id}")
+        present = (ROOT / expected_path).exists()
+        if item["present"] != present:
+            raise SystemExit(f"first-article route handoff STEP presence stale: {evidence_id}")
+        if present:
+            raise SystemExit(f"first-article route handoff unexpectedly has STEP evidence: {evidence_id}")
+
+    mechanical_evidence = {
+        item.get("release_output_id") or item.get("post_export_check_id"): item
+        for item in handoff["required_mechanical_release_evidence"]
+    }
+    expected_mechanical = {
+        "enclosure_clearance_report_using_routed_step": {
+            "expected_path": release_manifest["enclosure_clearance_report_using_routed_step"][
+                "expected_path"
+            ],
+            "production_release_path": (
+                "board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml"
+            ),
+        },
+        "full_cad_boolean_interference_passed": {
+            "expected_path": "mechanical/e1-phone/review/full-cad-boolean-interference.json",
+            "production_release_path": (
+                "board/kicad/e1-phone/production/reports/full-cad-boolean-interference-release.yaml"
+            ),
+        },
+    }
+    if set(mechanical_evidence) != set(expected_mechanical):
+        raise SystemExit("first-article route handoff mechanical evidence set diverges")
+    for evidence_id, expected in expected_mechanical.items():
+        item = mechanical_evidence[evidence_id]
+        for key, value in expected.items():
+            if item[key] != value:
+                raise SystemExit(f"first-article route handoff mechanical path stale: {evidence_id}")
+        release_present = (ROOT / expected["production_release_path"]).exists()
+        if item["present"] != release_present:
+            raise SystemExit(f"first-article route handoff mechanical presence stale: {evidence_id}")
+        if release_present:
+            raise SystemExit(
+                f"first-article route handoff unexpectedly has mechanical release evidence: {evidence_id}"
+            )
+    for blocker in [
+        "routed KiCad PCB and DRC evidence are absent",
+        "zone-fill report is absent",
+        "routed STEP with supplier component models is absent",
+        "routed-board clearance release report is absent",
+        "full CAD boolean interference release report is absent",
+    ]:
+        if blocker not in handoff["blocked_by"]:
+            raise SystemExit(f"first-article route handoff missing blocker: {blocker}")
+
     production_outputs = production_factory["release_output_execution"]
     inventory = order["release_output_inventory"]
     if inventory["routed_release_required_output_count"] != len(release_manifest):
@@ -11609,6 +12120,53 @@ def check_post_route_validation_binding() -> None:
         for output_key in domain["required_outputs"]:
             if output_key not in outputs:
                 raise SystemExit(f"post-route validation domain references unknown output: {output_key}")
+
+    handoff = binding["route_to_enclosure_validation_handoff"]
+    if (
+        handoff["status"]
+        != "blocked_until_route_validation_outputs_and_routed_step_clearance_release_exist"
+    ):
+        raise SystemExit("post-route validation route-to-enclosure handoff status stale")
+    if handoff["source_execution_order"] != "board/kicad/e1-phone/first-article-route-execution-order.yaml":
+        raise SystemExit("post-route validation handoff source execution order stale")
+    if (
+        handoff["route_handoff_status"]
+        != first_article_order["route_to_enclosure_handoff"]["status"]
+    ):
+        raise SystemExit("post-route validation handoff route status stale")
+    if handoff["validation_allowed_before_handoff_complete"] is not False:
+        raise SystemExit("post-route validation handoff unexpectedly allows validation")
+    required_handoff_keys = [
+        "routed_kicad_pcb",
+        "pcb_drc_report",
+        "zone_fill_report",
+        "routed_board_step",
+        "routed_clearance_release",
+    ]
+    if handoff["required_output_keys"] != required_handoff_keys:
+        raise SystemExit("post-route validation handoff output key order diverges")
+    expected_handoff_paths = {
+        key: outputs[key]
+        for key in required_handoff_keys
+    }
+    if handoff["required_output_paths"] != expected_handoff_paths:
+        raise SystemExit("post-route validation handoff output paths stale")
+    handoff_present = [
+        key for key, rel_path in handoff["required_output_paths"].items() if (ROOT / rel_path).exists()
+    ]
+    if handoff["present_output_count"] != len(handoff_present):
+        raise SystemExit("post-route validation handoff present count stale")
+    if handoff["missing_output_count"] != len(required_handoff_keys) - len(handoff_present):
+        raise SystemExit("post-route validation handoff missing count stale")
+    if handoff_present:
+        raise SystemExit(f"post-route validation handoff outputs unexpectedly present: {handoff_present}")
+    for flag in [
+        "enclosure_release_blocked",
+        "fabrication_release_blocked",
+        "factory_release_blocked",
+    ]:
+        if handoff[flag] is not True:
+            raise SystemExit(f"post-route validation handoff unexpectedly opened {flag}")
 
     release_outputs = routed_release["required_release_output_manifest"]
     for key in [
@@ -11924,6 +12482,12 @@ def check_layout_optimization_execution() -> None:
     camera_downselect = load_yaml(
         ROOT / "board/kicad/e1-phone/camera-module-fit-downselect.yaml"
     )
+    radio_selection = load_yaml(
+        ROOT / "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml"
+    )
+    usb_sidekey_selection = load_yaml(
+        ROOT / "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml"
+    )
     repack = load_yaml(ROOT / "board/kicad/e1-phone/placement-repack-candidate.yaml")
     feasibility = load_yaml(ROOT / "board/kicad/e1-phone/route-feasibility-density.yaml")
     routed_release = load_yaml(ROOT / "board/kicad/e1-phone/routed-release-plan.yaml")
@@ -11947,6 +12511,8 @@ def check_layout_optimization_execution() -> None:
         "board/kicad/e1-phone/cellular-top-island-repack-feasibility.yaml",
         "board/kicad/e1-phone/display-envelope-downselect.yaml",
         "board/kicad/e1-phone/camera-module-fit-downselect.yaml",
+        "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml",
+        "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
         "board/kicad/e1-phone/placement-repack-candidate.yaml",
         "board/kicad/e1-phone/route-feasibility-density.yaml",
         "board/kicad/e1-phone/trial-route-input-matrix.yaml",
@@ -11969,6 +12535,8 @@ def check_layout_optimization_execution() -> None:
         "cellular_top_island_repack_feasibility": cellular_top_island["status"],
         "display_envelope_downselect": display_downselect["status"],
         "camera_module_fit_downselect": camera_downselect["status"],
+        "radio_module_selection_wiring_decision": radio_selection["status"],
+        "usb_sidekey_selection_wiring_decision": usb_sidekey_selection["status"],
         "placement_repack_candidate": repack["status"],
         "route_feasibility_density": feasibility["status"],
         "routed_release_plan": routed_release["status"],
@@ -12021,6 +12589,45 @@ def check_layout_optimization_execution() -> None:
         raise SystemExit("layout optimization known-envelope blocker count stale")
     if not pressure["status"].startswith("blocked_"):
         raise SystemExit("layout optimization pressure closure unexpectedly unblocked")
+
+    trace = execution["hardware_decision_traceability"]
+    expected_trace_sources = {
+        "display_size_anchor": "board/kicad/e1-phone/display-envelope-downselect.yaml",
+        "camera_module_fit": "board/kicad/e1-phone/camera-module-fit-downselect.yaml",
+        "radio_module_selection": "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml",
+        "usb_sidekey_selection": "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
+    }
+    if {key: value["source"] for key, value in trace.items()} != expected_trace_sources:
+        raise SystemExit("layout optimization hardware decision traceability sources diverge")
+    if trace["display_size_anchor"]["selected_part"] != display_downselect["selected_screen_decision"]["part"]:
+        raise SystemExit("layout optimization display decision trace stale")
+    if trace["camera_module_fit"]["rejected_public_alternate"] not in camera_downselect["candidate_fit"]:
+        raise SystemExit("layout optimization camera decision trace stale")
+    if (
+        trace["radio_module_selection"]["primary_cellular_reference"]
+        != f"Quectel_{radio_selection['selected_wireless_stack']['cellular_performance_reference']['family']}_5G_RedCap"
+    ):
+        raise SystemExit("layout optimization radio cellular decision trace stale")
+    if (
+        trace["radio_module_selection"]["wifi_bluetooth_primary"]
+        != "Murata_LBEE5XV2EA_802_Type_2EA"
+    ):
+        raise SystemExit("layout optimization Wi-Fi/Bluetooth decision trace stale")
+    if trace["usb_sidekey_selection"]["usb_evt0_connector"] != "GCT_USB4105":
+        raise SystemExit("layout optimization USB decision trace stale")
+    if (
+        trace["usb_sidekey_selection"]["pd_controller"]
+        != usb_sidekey_selection["selected_hardware_stack"]["usb_pd_controller"]["part"]
+    ):
+        raise SystemExit("layout optimization PD decision trace stale")
+    if (
+        trace["usb_sidekey_selection"]["charger"]
+        != usb_sidekey_selection["selected_hardware_stack"]["charger_power_path"]["part"]
+    ):
+        raise SystemExit("layout optimization charger decision trace stale")
+    for item_id, item in trace.items():
+        if not item["status"].startswith("blocked_") or not item.get("layout_dependency"):
+            raise SystemExit(f"layout optimization hardware trace must remain blocked: {item_id}")
 
     performance = execution["performance_constraint_closure"]
     for key in [
@@ -12135,7 +12742,11 @@ def check_end_to_end_readiness() -> None:
     display_pinout = load_yaml(
         ROOT / "board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml"
     )
+    usb_selection = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml")
     usb_acceptance = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml")
+    radio_selection = load_yaml(
+        ROOT / "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml"
+    )
     module_rf = load_yaml(ROOT / "board/kicad/e1-phone/module-rf-pinout-execution.yaml")
     routed_release = load_yaml(ROOT / "board/kicad/e1-phone/routed-release-plan.yaml")
     routed_pcb = load_yaml(
@@ -12168,7 +12779,9 @@ def check_end_to_end_readiness() -> None:
         "board/kicad/e1-phone/display-envelope-downselect.yaml",
         "board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml",
         "board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml",
+        "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
         "board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml",
+        "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml",
         "board/kicad/e1-phone/module-rf-pinout-execution.yaml",
         "board/kicad/e1-phone/routed-release-plan.yaml",
         "board/kicad/e1-phone/routed-pcb-implementation-execution.yaml",
@@ -12188,7 +12801,9 @@ def check_end_to_end_readiness() -> None:
         "artifact_manifest_status": manifest["status"],
         "display_camera_source_revalidation_status": display_source["status"],
         "display_camera_connector_pinout_execution_status": display_pinout["status"],
+        "usb_sidekey_selection_wiring_decision_status": usb_selection["status"],
         "usb_sidekey_acceptance_status": usb_acceptance["status"],
+        "radio_module_selection_wiring_decision_status": radio_selection["status"],
         "module_rf_pinout_execution_status": module_rf["status"],
         "routed_release_plan_status": routed_release["status"],
         "routed_pcb_implementation_execution_status": routed_pcb["status"],
@@ -12232,8 +12847,8 @@ def check_end_to_end_readiness() -> None:
     expected_evidence = {
         "popular_screen_size_fit": "board/kicad/e1-phone/display-envelope-downselect.yaml",
         "screen_camera_oem_sourcing": "board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml",
-        "usb_c_power_volume_hardware": "board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml",
-        "off_the_shelf_wireless_modules": "board/kicad/e1-phone/module-rf-pinout-execution.yaml",
+        "usb_c_power_volume_hardware": "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
+        "off_the_shelf_wireless_modules": "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml",
         "board_size_power_rf_thermal_optimization": "board/kicad/e1-phone/layout-optimization-execution.yaml",
         "schematic_and_pcb_routed_release": "board/kicad/e1-phone/routed-pcb-implementation-execution.yaml",
         "manufacturing_and_factory_release": "board/kicad/e1-phone/production-factory-release-execution.yaml",
@@ -12241,6 +12856,40 @@ def check_end_to_end_readiness() -> None:
     for objective, evidence_path in expected_evidence.items():
         if objectives[objective]["evidence_artifact"] != evidence_path:
             raise SystemExit(f"end-to-end readiness evidence artifact stale: {objective}")
+
+    selected_usb = objectives["usb_c_power_volume_hardware"].get("selected_stack", {})
+    usb_stack = usb_selection["selected_hardware_stack"]
+    expected_usb_stack = {
+        "usb_c_connector": f"{usb_stack['usb_c_evt0_connector']['vendor']}_{usb_stack['usb_c_evt0_connector']['family']}",
+        "usb_pd_controller": usb_stack["usb_pd_controller"]["part"],
+        "charger_power_path": usb_stack["charger_power_path"]["part"],
+        "side_key_primary": (
+            f"{usb_stack['side_key_primary']['vendor']}_{usb_stack['side_key_primary']['family']}"
+        ),
+    }
+    if selected_usb != expected_usb_stack:
+        raise SystemExit("end-to-end readiness USB/sidekey selected stack stale")
+
+    selected_radio = objectives["off_the_shelf_wireless_modules"].get("selected_stack", {})
+    radio_stack = radio_selection["selected_wireless_stack"]
+    expected_radio_stack = {
+        "cellular_performance_reference": (
+            f"{radio_stack['cellular_performance_reference']['vendor']}_"
+            f"{radio_stack['cellular_performance_reference']['family']}_"
+            f"{radio_stack['cellular_performance_reference']['class']}"
+        ),
+        "active_space_saving_rfq_branch": (
+            radio_stack["cellular_space_saving_branch"]["preferred_candidate_id"]
+        ),
+        "wifi_bluetooth_primary": (
+            f"{radio_stack['wifi_bluetooth_primary']['vendor']}_"
+            f"{radio_stack['wifi_bluetooth_primary']['order_number']}_"
+            f"{radio_stack['wifi_bluetooth_primary']['chipset']}"
+        ),
+        "rf_feed_count_required": radio_selection["rf_feed_contract"]["required_rf_feed_count"],
+    }
+    if selected_radio != expected_radio_stack:
+        raise SystemExit("end-to-end readiness radio selected stack stale")
 
     decision = readiness["release_decision"]
     for flag in [
@@ -12445,9 +13094,11 @@ def main() -> int:
     check_display_camera_schematic_net_binding()
     check_display_camera_acceptance()
     check_usb_sidekey_mechanical_decision()
+    check_usb_sidekey_selection_wiring_decision()
     check_usb_sidekey_integration()
     check_usb_sidekey_schematic_net_binding()
     check_usb_sidekey_acceptance()
+    check_radio_module_selection_wiring_decision()
     check_radio_module_integration()
     check_radio_module_envelope_orderability_gate()
     check_cellular_top_island_repack_feasibility()

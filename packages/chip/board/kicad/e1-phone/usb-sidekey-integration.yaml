@@ -14,6 +14,7 @@ source_artifacts:
   - board/kicad/e1-phone/external-interface-design-review.yaml
   - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
   - board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
   - board/kicad/e1-phone/power-sequence-bringup-closure.yaml
   - board/kicad/e1-phone/power-thermal-budget.yaml
   - board/kicad/e1-phone/block-netlist.yaml

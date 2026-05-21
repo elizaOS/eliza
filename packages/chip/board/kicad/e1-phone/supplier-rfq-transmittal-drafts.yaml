@@ -7,6 +7,9 @@ claim_boundary: Draft RFQ transmittal package only. These drafts are not sent RF
 source_artifacts:
   - board/kicad/e1-phone/supplier-rfq-intake.yaml
   - board/kicad/e1-phone/supplier-source-verification.yaml
+  - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
   - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
 draft_policy:
   quote_quantities: &id001
@@ -41,6 +44,13 @@ drafts:
       - display_primary_chenghao_ch550fh01a_ct
       - display_alternate_made_in_china_5p5_1080p_mipi_ctp
       - display_alternate_alibaba_youritech_5p5_1080p_40pin
+    source_revalidation_trace:
+      rfq_matrix_key: display_touch
+      primary_revalidated_source_id: display_primary_chenghao_ch550fh01a_ct
+      supplemental_revalidated_source_id: display_primary_chenghao_ch550fh01a_ct_public_pdf
+      rfq_ready_from_public_page: true
+      production_release_ready: false
+      route_release_dependency: J_DISPLAY_TOUCH symbol_footprint_and_MIPI_DSI_route_remain_blocked_until_supplier_pack_received
     recipient_candidates:
       - supplier: Shenzhen Chenghao Optoelectronic
         candidate: CH550FH01A-CT
@@ -99,6 +109,12 @@ drafts:
       - front_camera_primary_sincere_first_gc5035
       - rear_camera_alternate_alibaba_ov13855_mipi
       - front_camera_alternate_made_in_china_gc5035_mipi
+    source_revalidation_trace:
+      rfq_matrix_key: rear_camera
+      primary_revalidated_source_id: rear_camera_primary_sincere_first_ov13855
+      rfq_ready_from_public_page: true
+      production_release_ready: false
+      route_release_dependency: J_CAM0 symbol_footprint_CSI_route_and_lens_window_remain_blocked_until_supplier_pack_received
     recipient_candidates:
       - supplier: Guangzhou Sincere Information Technology / Sincere First
         candidate: SF-XR3855A-A0
@@ -159,6 +175,14 @@ drafts:
       - front_camera_primary_sincere_first_gc5035
       - rear_camera_alternate_alibaba_ov13855_mipi
       - front_camera_alternate_made_in_china_gc5035_mipi
+    source_revalidation_trace:
+      rfq_matrix_key: front_camera
+      primary_revalidated_source_id: front_camera_primary_sincere_first_gc5035
+      rejected_alibaba_alternate_source_id: front_camera_alternate_alibaba_junde_imx219
+      rejected_alibaba_alternate_rfq_ready_from_public_page: false
+      rfq_ready_from_public_page: true
+      production_release_ready: false
+      route_release_dependency: J_CAM1 symbol_footprint_CSI_route_and_front_camera_earpiece_keepout_remain_blocked_until_supplier_pack_received
     recipient_candidates:
       - supplier: Guangzhou Sincere Information Technology / Sincere First
         candidate: SF-XR3855A-A0
@@ -216,6 +240,15 @@ drafts:
       - Fibocom MC665 compact LTE Cat 1 bis public module page
     verified_public_source_ids:
       - cellular_primary_quectel_rg255c
+    selected_hardware_trace:
+      selection_source: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      selected_reference: Quectel_RG255C_or_RM255C_5G_RedCap_Sub_6
+      selected_phone_form_factor: RG255C_LGA
+      active_space_saving_rfq_branch: quectel_eg915q_na_or_eg915u_class
+      current_region_fits_selected_reference: false
+      rf_feed_count_required: 5
+      release_allowed_without_supplier_response_packs: false
+      route_release_dependency: U_CELL_route_release_remain_blocked_until_top_rf_island_repack_or_smaller_supplier_approved_module
     recipient_candidates:
       - supplier: Quectel
         candidate: RG255C_series
@@ -274,6 +307,15 @@ drafts:
       - Murata Type 2EA vendor product page
     verified_public_source_ids:
       - wifi_bluetooth_primary_murata_type_2ea
+    selected_hardware_trace:
+      selection_source: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      selected_module: Murata_LBEE5XV2EA-802_Infineon_CYW55573
+      wifi_standard: 802.11a_b_g_n_ac_ax_2x2_MIMO_2p4_5_6_GHz
+      bluetooth_standard: 5.3_BR_EDR_LE
+      current_region_fits_selected_module: true
+      rf_feed_count_required: 2
+      release_allowed_without_supplier_response_packs: false
+      route_release_dependency: U_WIFI_BT_route_release_remain_blocked_until_murata_design_pack_reference_layout_firmware_and_regulatory_scope
     recipient_candidates:
       - supplier: Murata
         candidate: LBEE5XV2EA-802
@@ -319,6 +361,15 @@ drafts:
     source_basis:
       - preliminary USB-C binding and waterproof Molex production alternate
     verified_public_source_ids: []
+    selected_hardware_trace:
+      selection_source: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+      selected_connector: GCT_USB4105
+      conditional_alternate: Molex_221632_or_217804_Port_On
+      pd_controller: TPS65987DDH
+      charger_power_path: MAX77860
+      usb2_diff_pair_constraint: USB_DP_DN
+      release_allowed_without_supplier_response_packs: false
+      route_release_dependency: J_USB_C_route_release_remain_blocked_until_signed_connector_drawing_step_shell_load_path_and_routed_board_step
     recipient_candidates:
       - supplier: GCT
         candidate: USB4105 USB2 Type-C receptacle family
@@ -366,6 +417,17 @@ drafts:
     source_basis:
       - preliminary side-button binding and enclosure interface plan
     verified_public_source_ids: []
+    selected_hardware_trace:
+      selection_source: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+      selected_side_key_family: Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      conditional_alternate: Littelfuse_CK_KMR2
+      external_buttons:
+        - power
+        - volume_up
+        - volume_down
+      side_key_bus_constraint: SIDE_KEYS
+      release_allowed_without_supplier_response_packs: false
+      route_release_dependency: side_key_route_release_remain_blocked_until_switch_or_flex_drawing_force_travel_stack_wake_recovery_and_routed_step_clearance
     recipient_candidates:
       - supplier: Panasonic Industry
         candidate: EVQ-P7/EVQ-P3/EVQ-9P7 side-push tactile family

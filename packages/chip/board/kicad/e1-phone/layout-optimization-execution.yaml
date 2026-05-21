@@ -13,6 +13,8 @@ source_artifacts:
   - board/kicad/e1-phone/cellular-top-island-repack-feasibility.yaml
   - board/kicad/e1-phone/display-envelope-downselect.yaml
   - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
   - board/kicad/e1-phone/placement-repack-candidate.yaml
   - board/kicad/e1-phone/route-feasibility-density.yaml
   - board/kicad/e1-phone/trial-route-input-matrix.yaml
@@ -30,6 +32,8 @@ upstream_status:
   cellular_top_island_repack_feasibility: blocked_selected_lga_overfills_current_top_island_without_repack_or_module_change
   display_envelope_downselect: blocked_display_envelope_downselect_requires_signed_display_stack_connector_and_routed_clearance
   camera_module_fit_downselect: blocked_camera_module_xy_z_downselect_requires_supplier_drawings_and_samples
+  radio_module_selection_wiring_decision: blocked_radio_module_selection_requires_supplier_design_packs_region_decision_routed_rf_and_firmware_evidence
+  usb_sidekey_selection_wiring_decision: blocked_usb_sidekey_selection_requires_supplier_drawings_real_schematic_route_measurements_and_enclosure_load_path
   placement_repack_candidate: active_matrix_matches_overlap_free_repack_candidate_not_routed
   route_feasibility_density: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
   routing_acceptance: blocked_routing_acceptance_requires_supplier_footprints_trial_route_drc_and_outputs
@@ -74,6 +78,31 @@ layout_pressure_closure:
   active_region_overlap_count: 0
   known_envelope_blockers_count: 2
   status: blocked_until_supplier_footprints_routed_utilization_escape_density_and_drc_exist
+hardware_decision_traceability:
+  display_size_anchor:
+    source: board/kicad/e1-phone/display-envelope-downselect.yaml
+    selected_part: CH550FH01A-CT
+    layout_dependency: preserve_78p0_x_153p6_mm_device_envelope_until_signed_display_stack_or_smaller_supplier_pack
+    status: blocked_display_stack_connector_step_and_bringup_missing
+  camera_module_fit:
+    source: board/kicad/e1-phone/camera-module-fit-downselect.yaml
+    rejected_public_alternate: front_alternate_alibaba_junde_imx219
+    layout_dependency: do_not_widen_or_release_camera_region_until_primary_camera_supplier_xy_z_drawings_arrive
+    status: blocked_camera_xy_z_supplier_drawings_samples_and_capture_evidence_missing
+  radio_module_selection:
+    source: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    primary_cellular_reference: Quectel_RG255C_or_RM255C_5G_RedCap
+    wifi_bluetooth_primary: Murata_LBEE5XV2EA_802_Type_2EA
+    layout_dependency: repack_top_rf_island_or_select_smaller_supplier_approved_cellular_module_before_evt1_route
+    status: blocked_cellular_region_module_branch_rf_layout_firmware_and_regulatory_evidence_missing
+  usb_sidekey_selection:
+    source: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+    usb_evt0_connector: GCT_USB4105
+    pd_controller: TPS65987DDH
+    charger: MAX77860
+    side_key_primary: Panasonic_EVQ_P7_EVQ_P3_EVQ_9P7
+    layout_dependency: preserve_bottom_center_usb2_pd_port_and_left_side_button_spine_until_supplier_drawings_routed_step_and_measurements_exist
+    status: blocked_usb_sidekey_supplier_drawings_route_measurements_and_enclosure_load_path_missing
 performance_constraint_closure:
   route_density:
     status: blocked_high_pressure_trial_route_required
