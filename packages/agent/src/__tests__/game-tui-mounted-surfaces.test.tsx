@@ -103,6 +103,7 @@ const uiMock = vi.hoisted(() => ({
 
 vi.mock("@elizaos/ui", () => uiMock);
 vi.mock("@elizaos/app-core", () => uiMock);
+vi.mock("@elizaos/app-core/ui-compat", () => uiMock);
 
 import {
   interact as interact2004scape,
