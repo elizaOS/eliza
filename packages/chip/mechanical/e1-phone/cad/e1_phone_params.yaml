@@ -16,6 +16,20 @@ display:
   tft_outline_mm: [70.78, 129.17, 1.7]
   active_area_mm: [68.04, 120.96]
   cover_glass_mm: [77.1, 151.77, 0.7]
+  cover_glass_inset_below_rim_mm: 0.3
+  cover_glass_inset_basis: >-
+    Cover glass top surface sits 0.3 mm below the molded bezel rim crown so that
+    on a face drop the PC+ABS rim contacts the floor first and absorbs the impact
+    energy before the glass back face sees its peak bending stress. The recessed
+    glass is captured by a perimeter cushion (glass_perimeter_cushion) under its
+    edge. Drop sim models the inset as an energy split: the rim takes the
+    first-contact share, lowering the load delivered into the glass plate.
+  glass_perimeter_cushion:
+    candidate: die-cut PORON 4701-class polyurethane foam edge cushion under cover glass perimeter
+    envelope_mm: [77.1, 151.77, 0.25]
+    perimeter_width_mm: 1.0
+    purpose: compliant perimeter cushion under the recessed cover-glass edge that spreads and damps face-drop edge load into the rim
+    material: PORON-style microcellular polyurethane foam, low compression set
   adhesive_width_mm: 1.0
   adhesive_thickness_mm: 0.18
   compression_target_pct: 25
@@ -38,6 +52,9 @@ battery:
   energy_wh: 22.05
   nominal_voltage_v: 3.85
   battery_swell_gap_mm: 0.6
+  back_void_foam_pad_mm: [60.0, 80.0, 0.18]
+  back_void_foam_compression_allowance_mm: 0.18
+  back_void_foam_material: PORON-style low-compression-set polyurethane foam, low-preload battery back pad
   swell_gap_basis: >-
     LiPo pouch cells swell ~8-10 percent in thickness over life; for a 5.6 mm
     cell that is ~0.45-0.56 mm. The device thickness was raised from 11.8 to
@@ -45,8 +62,10 @@ battery:
     face (toward the back shell, away from the display) so swell never pushes
     the display. The void is a real air gap between the battery back face
     (Z=-4.6 mm) and the back inner wall (Z=-5.2 mm); a compressible foam pad
-    may occupy it without preloading the cell. The display-side gap stays the
-    static 0.15 mm minimum so the cell cannot crack the panel under swell.
+    occupies the back-shell side of the void with 0.18 mm documented compression
+    allowance, absorbing the arithmetic worst-case tolerance overage without
+    preloading the cell. The display-side gap stays the static 0.15 mm minimum
+    so the cell cannot crack the panel under swell.
   capacity_basis: 4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.6/4.4); cell thickness unchanged at 5.6 mm so capacity stays 5727 mAh while the added device depth becomes swell void plus camera-burial clearance
   clearance_basis: front face at Z=+1.0 mm keeps 0.15 mm static gap below display_lcm back face (+1.15 mm); back face at Z=-4.6 mm keeps 0.6 mm swell gap to back inner wall (-5.2 mm) at the 12.7 mm device thickness
 
@@ -152,6 +171,31 @@ radio:
     candidate: Murata Type 2EA Wi-Fi 6E + Bluetooth module
     source_url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
     antenna_keepout_mm: [34.0, 5.0, 2.0]
+  antenna_aperture_tuner:
+    candidate: Qorvo QPC1252Q antenna aperture/band-switch tuner
+    standardized_mpn_primary: QPC1252Q
+    standardized_mpn_alternate: pSemi PE613050
+    second_source: Onsemi/Murata equivalent RFFE tunable switch
+    envelope_mm: [2.0, 2.0, 0.5]
+    control: MIPI RFFE v2.1 serial bus, modem-programmed per active channel
+    placement: in cellular_bottom antenna keepout feed region, RFFE bus from RG255C modem
+    source_url: https://www.qorvo.com/products/p/QPC1252Q
+    state_count: 12
+    instantaneous_carrier_bw_mhz: 20
+    purpose: >-
+      Aperture/band-switch tuner that retunes the electrically-small low-band
+      element across 700-960 MHz. The radio matches only one ~20 MHz carrier at a
+      time, so the modem programs the tuner state to center the Chu-limited match
+      window on the active channel. Each state's instantaneous carrier bandwidth
+      fits the Chu cap and the state grid step stays inside the match window (no
+      coverage gap), resolving the whole-band shortfall (31.7% span vs 8.4% Chu
+      instantaneous BW). Modeled in simulate_e1_phone_rf_si_pi.py; verdict
+      PASS_WITH_TUNER, worst-state total efficiency ~-3.1 dB after 0.5 dB tuner IL.
+    state_grid_basis: >-
+      12 resonance-center states span 700-960 MHz; the grid is denser at the low
+      end where the Chu match window narrows to ~28 MHz (smaller ka, higher Q) and
+      sparser at the top where it widens to >120 MHz. Realizable with a wide-state
+      RFFE aperture tuner or cascaded QPC1252Q tunable-capacitor banks.
 
 manufacturing:
   process: low-volume CNC or soft-tool injection molding first, hard-tool injection molding later
@@ -163,7 +207,29 @@ manufacturing:
   screw_boss_core_diameter_mm: 1.8
   rib_thickness_mm: 0.75
   snap_hook_count: 8
-  screw_boss_count: 6
+  screw_boss_count: 10
+  screw_boss_count_basis: >-
+    Raised from 6 to 10 to cut per-boss inertial shear under a corner drop. The
+    drop sim showed 6 bosses sharing the battery+PCB inertial load gave a corner
+    boss SF of 0.78 (< 1.0); 10 bosses drop the per-boss shear ~40% and, combined
+    with the compliant battery retention shelf, lift the corner boss SF above 1.0.
+  corner_rib:
+    count: 4
+    thickness_mm: 0.9
+    leg_mm: 7.0
+    height_mm: 2.4
+    location: four enclosure corners, gusseting the corner screw bosses into the side frame
+    purpose: triangular corner gussets that tie the four corner screw bosses to the side frame so corner-drop shear is shared into the rib network instead of the boss neck alone
+  battery_retention:
+    type: compliant_foam_shelf
+    foam_thickness_mm: 0.6
+    coupling_factor: 0.6
+    basis: >-
+      The 0.6 mm battery-back swell foam doubles as a compliant retention shelf:
+      it softens the rigid inertial coupling of the battery mass to the enclosure
+      during a corner drop. Drop sim applies a 0.6 coupling factor (vs 1.0 rigid)
+      to the battery share of the boss inertial shear, reflecting the foam's
+      force-limiting compliance over the few-ms contact pulse.
   gate_strategy: two submarine gates into back cover long edge, fan gate alternate for color consistency
   sprue_diameter_mm: 4.0
   runner_diameter_mm: 2.2
@@ -228,4 +294,14 @@ tolerances:
       basis: IP54 design intent derives from the button cap labyrinth rails plus elastomer gasket and the USB-C drip-break lip, internal drain shelf, and four-sided perimeter gaskets; all parts exist in the CAD assembly
     max_skin_temp_c: 43
     acoustic_leakage_status: requires sample test
+    acoustic_gasket_compression_set_max_um: 8
+    acoustic_gasket_ctq_basis: >-
+      Speaker/earpiece perimeter gasket compression-set CTQ: the residual leak slit
+      after lifetime compression set must stay <= 8 um (closed-cell silicone foam,
+      higher static preload, controlled compression). At the uncontrolled 20 um
+      worst-case slit the sealed-box low-frequency leak was 5.56 dB; the 8 um CTQ
+      drops the leak corner near the box corner and the LF loss to ~2 dB. Enforced
+      in the process control plan as a measured gasket compression-set CTQ. The
+      10 um value is the absolute reject limit; 8 um is the control target.
+    acoustic_gasket_compression_set_reject_um: 10
     rf_pre_scan_status: requires antenna simulation and chamber pre-scan

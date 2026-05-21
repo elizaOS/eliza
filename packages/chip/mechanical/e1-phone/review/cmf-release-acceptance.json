@@ -25,8 +25,8 @@
   ],
   "results_template": "mechanical/e1-phone/review/cmf-results-template.csv",
   "visual_gate": {
-    "front_orange_ratio": 0.52137,
-    "back_orange_ratio": 0.97568,
+    "front_orange_ratio": 0.5462,
+    "back_orange_ratio": 0.97613,
     "bottom_orange_ratio": 0.77781,
     "visual_decision_status": "pass",
     "visual_review_coverage_status": "visual_review_coverage_acceptance_pass",
@@ -168,8 +168,8 @@
         "accepted": false,
         "pass": true,
         "visual_gate": {
-          "front_orange_ratio": 0.52137,
-          "back_orange_ratio": 0.97568,
+          "front_orange_ratio": 0.5462,
+          "back_orange_ratio": 0.97613,
           "bottom_orange_ratio": 0.77781,
           "visual_decision_status": "pass",
           "visual_review_coverage_status": "visual_review_coverage_acceptance_pass",

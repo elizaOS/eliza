@@ -14,12 +14,15 @@ Production visual signoff ready: False.
 - PASS: `full_top_down.png` - compact footprint, screen margin, buttons, and front features
 - PASS: `exploded_iso.png` - glass, display, shell, and component stack separation
 - PASS: `component_stack.png` - PCB, battery, camera, audio, haptic, and I/O placement
+- PASS: `component-review-audio.png` - speaker, earpiece, microphone, acoustic mesh, and port packaging
+- PASS: `component-review-io-buttons.png` - USB-C, side buttons, seals, and tactile actuation packaging
+- PASS: `component-review-optical.png` - front/rear cameras, flash, baffles, cover windows, and optical seals
 - PASS: `mold_tooling.png` - parting plane, runner, gate, ejector, and cooling placeholders
 
 ## Supporting Cases
 
-- Part review: PASS (95 parts).
-- Part-to-view coverage: PASS (95/95 parts).
+- Part review: PASS (118 parts).
+- Part-to-view coverage: PASS (118/118 parts).
 - Visual decisions: PASS (7 decisions, 5 open manual review items).
 
 ## Release Rule

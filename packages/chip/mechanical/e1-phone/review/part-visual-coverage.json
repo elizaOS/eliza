@@ -2,9 +2,12 @@
   "claim_boundary": "Automated part-to-view coverage map. It proves every generated CAD part is assigned to generated review artifacts and the per-part top-view and exploded-context contact sheets; it does not prove human CMF approval or pixel-level part segmentation.",
   "status": "part_visual_coverage_pass",
   "coverage_mode": "role_and_name_based_review_view_mapping",
-  "expected_part_count": 95,
-  "covered_part_count": 95,
+  "expected_part_count": 118,
+  "covered_part_count": 118,
   "required_review_artifacts": [
+    "component-review-audio.png",
+    "component-review-io-buttons.png",
+    "component-review-optical.png",
     "component_stack.png",
     "exploded_iso.png",
     "full_back_iso.png",
@@ -107,12 +110,25 @@
       "pass": true
     },
     {
+      "part": "battery_back_void_foam_pad",
+      "role": "battery support",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
       "part": "usb_c_receptacle",
       "role": "I/O",
       "required_views": [
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-io-buttons.png",
         "exploded_iso.png"
       ],
       "missing_or_failed_views": [],
@@ -127,6 +143,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-io-buttons.png",
         "exploded_iso.png"
       ],
       "missing_or_failed_views": [],
@@ -141,6 +158,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-io-buttons.png",
         "exploded_iso.png"
       ],
       "missing_or_failed_views": [],
@@ -155,6 +173,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-io-buttons.png",
         "exploded_iso.png"
       ],
       "missing_or_failed_views": [],
@@ -169,6 +188,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-io-buttons.png",
         "exploded_iso.png"
       ],
       "missing_or_failed_views": [],
@@ -183,6 +203,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-io-buttons.png",
         "exploded_iso.png"
       ],
       "missing_or_failed_views": [],
@@ -197,6 +218,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-io-buttons.png",
         "exploded_iso.png"
       ],
       "missing_or_failed_views": [],
@@ -211,6 +233,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-io-buttons.png",
         "exploded_iso.png"
       ],
       "missing_or_failed_views": [],
@@ -225,6 +248,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -239,6 +263,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "exploded_iso.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -253,6 +278,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -267,6 +293,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "exploded_iso.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -281,7 +308,80 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "rear_feature_detail.png",
+        "component-review-optical.png",
         "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_shell_aperture",
+      "role": "camera aperture",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_rear_camera_bezel_top",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_rear_camera_bezel_bottom",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_rear_camera_bezel_left",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_rear_camera_bezel_right",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,
@@ -295,6 +395,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "rear_feature_detail.png",
+        "component-review-optical.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -309,6 +410,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "rear_feature_detail.png",
+        "component-review-optical.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -323,6 +425,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "rear_feature_detail.png",
+        "component-review-optical.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -337,6 +440,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_top_down.png",
+        "component-review-optical.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -351,6 +455,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_top_down.png",
+        "component-review-optical.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -364,7 +469,8 @@
       "required_views": [
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
-        "rear_feature_detail.png"
+        "rear_feature_detail.png",
+        "component-review-optical.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,
@@ -377,7 +483,8 @@
       "required_views": [
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
-        "rear_feature_detail.png"
+        "rear_feature_detail.png",
+        "component-review-optical.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,
@@ -390,7 +497,8 @@
       "required_views": [
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
-        "rear_feature_detail.png"
+        "rear_feature_detail.png",
+        "component-review-optical.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,
@@ -403,7 +511,8 @@
       "required_views": [
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
-        "rear_feature_detail.png"
+        "rear_feature_detail.png",
+        "component-review-optical.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,
@@ -416,7 +525,8 @@
       "required_views": [
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
-        "rear_feature_detail.png"
+        "rear_feature_detail.png",
+        "component-review-optical.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,
@@ -429,7 +539,8 @@
       "required_views": [
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
-        "rear_feature_detail.png"
+        "rear_feature_detail.png",
+        "component-review-optical.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,
@@ -442,7 +553,8 @@
       "required_views": [
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
-        "rear_feature_detail.png"
+        "rear_feature_detail.png",
+        "component-review-optical.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,
@@ -455,7 +567,8 @@
       "required_views": [
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
-        "rear_feature_detail.png"
+        "rear_feature_detail.png",
+        "component-review-optical.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,
@@ -469,6 +582,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_left_side.png",
+        "component-review-io-buttons.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -483,6 +597,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_left_side.png",
+        "component-review-io-buttons.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -497,6 +612,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "exploded_iso.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -511,6 +627,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "exploded_iso.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -525,6 +642,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -539,6 +657,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -553,6 +672,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -567,6 +687,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -581,6 +702,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -595,6 +717,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -679,6 +802,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -693,6 +817,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -707,6 +832,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -721,6 +847,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -735,6 +862,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "exploded_iso.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -749,6 +877,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "exploded_iso.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -763,6 +892,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_left_side.png",
+        "component-review-io-buttons.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -777,6 +907,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_left_side.png",
+        "component-review-io-buttons.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -791,6 +922,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_left_side.png",
+        "component-review-io-buttons.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -805,6 +937,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_left_side.png",
+        "component-review-io-buttons.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -819,6 +952,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_left_side.png",
+        "component-review-io-buttons.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -833,6 +967,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_left_side.png",
+        "component-review-io-buttons.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -959,6 +1094,58 @@
     },
     {
       "part": "orange_screw_boss_6",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_screw_boss_7",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_screw_boss_8",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_screw_boss_9",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_screw_boss_10",
       "role": "molded enclosure",
       "required_views": [
         "part-review-contact-sheet.png",
@@ -1149,6 +1336,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "full_bottom_port.png",
+        "component-review-audio.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -1163,7 +1351,180 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "exploded_iso.png",
+        "component-review-audio.png",
         "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_corner_rib_1",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_corner_rib_1_leg",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_corner_rib_2",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_corner_rib_2_leg",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_corner_rib_3",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_corner_rib_3_leg",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_corner_rib_4",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_corner_rib_4_leg",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "glass_perimeter_cushion_top",
+      "role": "screen retention",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "glass_perimeter_cushion_bottom",
+      "role": "screen retention",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "glass_perimeter_cushion_left",
+      "role": "screen retention",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "glass_perimeter_cushion_right",
+      "role": "screen retention",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "exploded_iso.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,
@@ -1206,6 +1567,18 @@
         "part-explode-contact-sheet.png",
         "component_stack.png",
         "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "antenna_aperture_tuner",
+      "role": "RF tuner",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,
@@ -1260,6 +1633,7 @@
       "required_views": [
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
+        "component-review-io-buttons.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],
@@ -1302,6 +1676,7 @@
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png",
         "rear_feature_detail.png",
+        "component-review-optical.png",
         "component_stack.png"
       ],
       "missing_or_failed_views": [],

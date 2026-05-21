@@ -43,6 +43,12 @@
       ]
     },
     {
+      "id": "battery_back_void_foam_to_pouch",
+      "actual_mm": 0.42,
+      "required_mm": 0.25,
+      "pass": true
+    },
+    {
       "id": "split_interconnect_flex_to_battery_edge",
       "actual_mm": 1.3,
       "required_mm": 0.5,
@@ -99,5 +105,5 @@
       "pass": true
     }
   ],
-  "checked_case_count": 14
+  "checked_case_count": 15
 }

@@ -111,7 +111,7 @@
     {
       "id": "nominal_z_stack_margin",
       "datum": "A",
-      "nominal_mm": 3.32,
+      "nominal_mm": 4.22,
       "minimum_mm": 1.0,
       "pass": true,
       "contributors": [

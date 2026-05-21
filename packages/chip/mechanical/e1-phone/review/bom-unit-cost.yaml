@@ -1,11 +1,24 @@
 schema: eliza.e1_phone_bom_unit_cost.v1
 date: 2026-05-21
-design_rev: evt0-mechanical-cad-flush-back
+evidence_class: public_sourcing_estimate
+design_rev: evt0-mechanical-cad-swell-camera-seal
+compute_sourcing_note: >
+  Compute (line 1) is now sourced as a turnkey RK3566 System-on-Module
+  (Firefly Core-3566JD4 class, PATH A) with a PUBLIC 260-pin SODIMM connector
+  pinout, retiring the former NDA-gated bare-SoC blocker. Lines 2 (RAM), 3
+  (eMMC) and 4 (PMIC) are folded into the SoM and zeroed in the rollup. The
+  bare-SoC + discrete-DDR/eMMC/PMIC path (PATH B) is retained as a documented
+  cost-down-at-scale option (needs SoC vendor NDA). SoM premium = +$7.10/unit
+  @ 10k, +$4.55/unit @ 100k. See review/compute-sourcing-resolution.md.
 design_change_note: >
-  Flush-back rev: device 9.6 -> 11.8 mm, battery 4500 mAh/17.33 Wh -> 5830 mAh/22.45 Wh
-  (LP576487-class thick pouch), single-lens rear + single-lens front (unchanged single
-  configuration), and a new rear torch/flash LED + flash driver IC. BOM lines and rollup
-  below reflect these deltas; all other lines unchanged from the prior rev.
+  Flush-back + swell/camera/seal + Wave-2 rev: device 9.6 -> 12.7 mm, battery
+  4500 mAh/17.33 Wh -> 5727 mAh/22.05 Wh (LP566487-class 5.6 mm thick pouch with a
+  0.6 mm back-face swell void), single-lens rear + single-lens front (unchanged single
+  configuration), a rear torch/flash LED + AW36515 flash driver IC, a Qorvo QPC1252Q
+  antenna aperture/band-switch tuner (low-band cellular fix), a PORON glass-perimeter
+  cushion (face-drop fix), and molded-in corner ribs + 6->10 screw bosses (corner-drop
+  fix; +4 M1.4 screws). BOM lines and rollup below reflect these deltas; all other lines
+  unchanged from the prior rev.
 status: sourcing_estimate_not_release_bom
 claim_boundary: >
   Unit-cost analysis assembled from public Alibaba/AliExpress/LCSC/Made-in-China
@@ -20,76 +33,142 @@ volume_assumptions:
 currency: USD
 incoterms_assumption: EXW Shenzhen, components landed at CM, no VAT
 target_phone:
-  envelope_mm: [78.0, 153.6, 11.8]
-  battery_wh: 22.45
+  envelope_mm: [78.0, 153.6, 12.7]
+  battery_wh: 22.05
   display_in: 5.5
   region: global / China-domestic first
 
 lines:
 
   - line: 1
-    function: soc
+    function: compute
     qty: 1
-    mpn: Unisoc T606 (UMS512 family, 12 nm, 8x A55, Mali-G57)
-    chinese_alternate: Unisoc T616 (same family, higher clock) — directly substitutable
-    source:
-      - https://www.unisoc.com/en_us/home/TZNSJ-T606-5-2
-      - https://www.alibaba.com/product-detail/Unisoc-T606-Phones-Mobile-Android-Smartphone_1600688616501.html
-    price_usd_10k: 8.20
-    price_usd_100k: 7.00
+    sourcing_decision: >
+      Compute is sourced two ways. PATH A (buildable-now, default): a turnkey
+      RK3566 System-on-Module (Firefly Core-3566JD4 class) that bundles SoC +
+      LPDDR4 + eMMC + PMIC behind a PUBLIC 260-pin SODIMM connector pinout
+      (see board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml). This
+      retires the only NDA-gated procurement blocker on the BoM. PATH B
+      (cost-down-at-scale, optional/later): bare Unisoc T606 (or RK3566) SoC +
+      discrete LPDDR4 + eMMC + PMIC, which is cheaper per unit at volume but
+      requires the SoC vendor NDA for the production BGA ball-map. The two
+      bundled-vs-discrete cost paths are itemized below.
+
+    # ---- PATH A: buildable-now SoM (default; replaces former soc+ram+emmc+pmic lines 1/2/4) ----
+    path_a_som:
+      mpn: Firefly Core-3566JD4 (RK3566 quad-core A55, Mali-G52, 1 TOPS NPU; 2 GB LPDDR4 + 32 GB eMMC + on-module PMIC)
+      bundles_functions: [soc, ram_lpddr4x, emmc, pmic]
+      connector: 260-pin gold-finger SODIMM, 0.5 mm pitch (public pinout)
+      source:
+        - https://en.t-firefly.com/product/core/core3566jd4.html
+        - https://download.t-firefly.com/Spec/CoreBorads/Core-3566JD4_Specification_EN.pdf
+        - https://www.alibaba.com/product-detail/RK3566-SOM-Core-Board-with-Android_1601173331751.html
+      price_usd_10k: 32.00
+      price_usd_100k: 26.00
+      confidence: med
+      notes: >
+        Core-3566JD4-class RK3566 SoM (2 GB/32 GB) is ~$49 single-qty at
+        IndustryPC/Firefly Store. Generic-vendor RK3566 SoMs of the same config
+        on Alibaba run $28-35 at small volume and quote toward $24-28 at 1k+ OEM
+        (e.g. Core3566/SOD3566/Thinkcore modules). Working estimate $32 @ 10k,
+        $26 @ 100k for a Core-3566JD4-equivalent module. This single line
+        REPLACES bundled functions soc + ram_lpddr4x_4gb + emmc_5p1_64gb + pmic
+        (former lines 1+2+4 = $24.90 @ 10k / $21.45 @ 100k), so the SoM premium
+        is +$7.10 @ 10k / +$4.55 @ 100k (it also folds in the b2b connector and
+        eliminates SoC/DDR/eMMC routing + DDR signal-integrity NRE). Note the
+        RK3566 (4x A55) is weaker than the T606 (2x A75 + 6x A55) in multithread;
+        acceptable for the AP role since the e1-phone offloads the modem.
+
+    # ---- PATH B: bare-SoC cost-down (optional, later; needs NDA for BGA ball-map) ----
+    path_b_bare_soc:
+      mpn: Unisoc T606 (UMS512, 12 nm, 8x A55+A75, Mali-G57) — or bare RK3566
+      chinese_alternate: Unisoc T616 (same family, higher clock) — directly substitutable
+      requires: vendor_nda_for_production_bga_ball_map
+      source:
+        - https://www.unisoc.com/en_us/home/TZNSJ-T606-5-2
+        - https://www.lcsc.com/product-detail/C2943786.html
+        - https://www.alibaba.com/product-detail/Unisoc-T606-Phones-Mobile-Android-Smartphone_1600688616501.html
+      bare_soc_price_usd_10k: 8.20
+      bare_soc_price_usd_100k: 7.00
+      bundle_with_discrete_ram_emmc_pmic_usd_10k: 24.90
+      bundle_with_discrete_ram_emmc_pmic_usd_100k: 21.45
+      confidence: med
+      notes: >
+        Bare T606 reverse-engineers to $7-9; bare RK3566 is ~$10 single at LCSC,
+        lower at volume. Adding discrete LPDDR4 ($9.50/$8.40), eMMC ($5.40/$4.60)
+        and PMIC ($1.80/$1.45) reconstructs the SoM functionality at $24.90 @ 10k
+        / $21.45 @ 100k of BoM cost — i.e. ~$7/unit cheaper than the SoM at 10k —
+        but only after the vendor NDA + design-in unlocks the BGA ball-map and
+        the team takes on DDR/eMMC layout + SI bring-up. This is the
+        cost-down-at-scale path, not a current blocker.
+
+    # rollup uses PATH A (SoM). Lines 2 (ram) and 4 (pmic) are folded into this SoM line.
+    price_usd_10k: 32.00
+    price_usd_100k: 26.00
     confidence: med
     notes: >
-      Unisoc does not publish chip pricing; T606 ships in $60-class budget phones
-      where bill-of-materials reverse-engineering pegs the SoC at $7-9. Direct
-      Unisoc rep / SoM channel quotes for T606/T616 in 10k volumes cluster
-      around $8 with ~15% drop into 100k volumes. T616 trades roughly +$0.40.
+      Default cost path = PATH A SoM. This line now also covers RAM and PMIC
+      (former lines 2 and 4 are zeroed and annotated as folded-into-SoM). eMMC
+      (former line 3) is likewise on-module. See sourcing_decision and
+      compute-sourcing-resolution.md.
 
   - line: 2
     function: ram_lpddr4x_4gb
-    qty: 1
-    mpn: SK Hynix H9HCNNNCPMMLXR-NEE class LPDDR4X 32Gb (4 GB) 4266 MT/s
-    chinese_alternate: Changxin Memory CXMT LPDDR4X 4 GB (domestic China DRAM)
+    qty: included_in_line_1_som
+    mpn: on-module LPDDR4 (Firefly Core-3566JD4 SoM, PATH A) — bare alt SK Hynix H9HCNNNCPMMLXR-NEE class LPDDR4X 4 GB
+    chinese_alternate: Changxin Memory CXMT LPDDR4X 4 GB (domestic China DRAM) — PATH B bare-SoC only
     source:
       - https://product.skhynix.com/products/dram/lpddr/lpddr4x_4.go
       - https://www.trendforce.com/news/2025/07/11/news-sk-hynix-reportedly-raises-ddr4-lpddr4x-contract-prices-by-20-as-q3-demand-stays-strong/
-    price_usd_10k: 9.50
-    price_usd_100k: 8.40
+    price_usd_10k: 0.00
+    price_usd_100k: 0.00
+    bare_soc_path_b_price_usd_10k: 9.50
+    bare_soc_path_b_price_usd_100k: 8.40
     confidence: med
     notes: >
-      LPDDR4X spot under contract has been tightening through 2025-2026 as
-      hynix/Samsung wind down legacy nodes; 4 GB die contract pricing reported
-      ~$8-10 May 2026. CXMT trims ~10-15% at 100k.
+      FOLDED INTO LINE 1 SoM (PATH A default): LPDDR4 is on the RK3566 module,
+      so this line is zeroed in the rollup. Discrete pricing ($9.50/$8.40) is
+      retained as PATH B bare-SoC input only. LPDDR4X 4 GB die contract pricing
+      ~$8-10 May 2026; CXMT trims ~10-15% at 100k.
 
   - line: 3
     function: emmc_5p1_64gb
-    qty: 1
-    mpn: Kioxia THGBMNG6D1LBAIL (eMMC 5.1, 64 GB, 153-ball BGA)
-    chinese_alternate: YMTC X3-9070 64 GB eMMC / Longsys FORESEE eMMC 64 GB
+    qty: included_in_line_1_som
+    mpn: on-module eMMC (Firefly Core-3566JD4 SoM, PATH A; 32 GB std, 64/128 GB option) — bare alt Kioxia THGBMNG6D1LBAIL 64 GB
+    chinese_alternate: YMTC X3-9070 64 GB eMMC / Longsys FORESEE eMMC 64 GB — PATH B bare-SoC only
     source:
       - https://www.lcsc.com/product-detail/eMMC_KIOXIA_C2895986.html
       - https://en.manduic.com/cpzx/kioxia
-    price_usd_10k: 5.40
-    price_usd_100k: 4.60
+    price_usd_10k: 0.00
+    price_usd_100k: 0.00
+    bare_soc_path_b_price_usd_10k: 5.40
+    bare_soc_path_b_price_usd_100k: 4.60
     confidence: med
     notes: >
-      Kioxia 32 GB eMMC is ~$5.93 at LCSC singles; 64 GB at 10k pricing reported
-      ~$5.20-5.60 via contract. Longsys/Foresee 64 GB ~10% cheaper at volume.
+      FOLDED INTO LINE 1 SoM (PATH A default): eMMC is on the RK3566 module
+      (32 GB in the costed config; 64/128 GB available), so this line is zeroed
+      in the rollup. Discrete 64 GB pricing ($5.40/$4.60) retained as PATH B
+      bare-SoC input only.
 
   - line: 4
     function: pmic
-    qty: 1
-    mpn: Unisoc SC2730 (companion PMIC paired with T606)
-    chinese_alternate: Renesas DA9063 (drop-in for non-Unisoc paths)
+    qty: included_in_line_1_som
+    mpn: on-module PMIC (Firefly Core-3566JD4 SoM, PATH A; RK809/RK817-class) — bare alt Unisoc SC2730 (T606 pair)
+    chinese_alternate: Renesas DA9063 (PATH B non-Unisoc bare-SoC paths only)
     source:
       - https://www.lcsc.com/brand-detail/13177.html
       - https://www.lcsc.com/datasheet/lcsc_datasheet_2401261508_RENESAS-DA9063-A0HO1_C20350475.pdf
-    price_usd_10k: 1.80
-    price_usd_100k: 1.45
+    price_usd_10k: 0.00
+    price_usd_100k: 0.00
+    bare_soc_path_b_price_usd_10k: 1.80
+    bare_soc_path_b_price_usd_100k: 1.45
     confidence: low
     notes: >
-      SC2730 ships as Unisoc reference PMIC bundled with T606 SoC at $1.50-2.00
-      in 10k volumes. DA9063 LCSC singles $14 — bulk contract approx $4-5. Cost
-      model assumes Unisoc-pair PMIC, not Renesas.
+      FOLDED INTO LINE 1 SoM (PATH A default): the RK3566 module carries its own
+      PMIC and generates the internal rails; the SoM takes a single 5 V input
+      (VCC5V0_SYS) and returns 3.3 V/1.8 V rails on the connector. Zeroed in the
+      rollup. Discrete companion-PMIC pricing ($1.80/$1.45) retained as PATH B
+      bare-SoC input only.
 
   - line: 5
     function: usb_pd_controller
@@ -226,6 +305,23 @@ lines:
       ~$1.20-1.80 at 10k from Lens/Biel-class Chinese suppliers. Corning
       Gorilla 5 license adds ~$1.50-2.00.
 
+  - line: 13a
+    function: glass_perimeter_cushion
+    qty: 1
+    mpn: die-cut PORON 4701-class microcellular polyurethane foam edge cushion, 1.0 mm wide perimeter, 0.25 mm thick
+    chinese_alternate: Rogers PORON / domestic microcellular PU foam die-cut (Yongtai / Nitto China)
+    source:
+      - https://www.rogerscorp.com/elastomeric-material-solutions/poron-industrial-polyurethanes
+      - https://alphadiecut.com/poron-foam-gaskets/
+    price_usd_10k: 0.03
+    price_usd_100k: 0.02
+    confidence: estimate
+    notes: >
+      Compliant perimeter cushion under the recessed cover-glass edge (DROP-1 face-drop
+      fix: cuts glass back-face tensile share 0.80x). One thin die-cut PU-foam frame ring;
+      commodity die-cut PORON-class foam parts of this size run a few cents at phone
+      volume. No public per-piece price; estimate-tier.
+
   - line: 14
     function: display_adhesive
     qty: 1
@@ -285,6 +381,26 @@ lines:
       AW36515FCR LCSC pricing $0.2746 at 5+, $0.2587 at 520+ (3000/reel); 10k/100k
       contract via Awinic channel lands ~$0.14-0.18 at 10k, ~$0.11-0.13 at 100k.
       SGM3140 single-channel alternate ~$0.10-0.14 if only one LED string is driven.
+
+  - line: 15c
+    function: antenna_aperture_tuner
+    qty: 1
+    mpn: Qorvo QPC1252Q antenna aperture/band-switch tuner (MIPI RFFE v2.1)
+    chinese_alternate: pSemi PE613050 (Murata) SP4T tuning-control switch / Onsemi RFFE tunable switch
+    source:
+      - https://www.qorvo.com/products/p/QPC1252Q
+      - https://psemi.com/products/rf-switches/antenna-tuning-switches/pe613050/
+    price_usd_10k: 0.40
+    price_usd_100k: 0.30
+    confidence: estimate
+    notes: >
+      Aperture/band-switch tuner that retunes the electrically-small low-band element
+      across 700-960 MHz (modem programs the state per active ~20 MHz carrier),
+      resolving the low-band Chu-limit shortfall (verdict PASS_WITH_TUNER, worst-state
+      total efficiency ~-3.1 dB after 0.5 dB tuner IL). Single RFFE aperture/SP4T tuner
+      die. No public LCSC unit price for QPC1252Q (legacy/limited availability) or the
+      PE613050 alt; volume RFFE aperture-tuner ICs typically run $0.25-0.50, so $0.40 @10k
+      / $0.30 @100k is an estimate-tier working number pending vendor RFQ.
 
   - line: 16
     function: front_camera_module
@@ -396,8 +512,8 @@ lines:
   - line: 23
     function: battery_lipo
     qty: 1
-    mpn: LiPol LP576487-class 5830 mAh 3.85 V 22.45 Wh thick pouch (with PCM + NTC + JST SHR-03V)
-    chinese_alternate: Made-in-China LPHV486697 / 576487 5800 mAh family / Alibaba custom 3.85V pack
+    mpn: LiPol LP566487-class 5727 mAh 3.85 V 22.05 Wh thick pouch (with PCM + NTC + JST SHR-03V)
+    chinese_alternate: Made-in-China LPHV486697 / 566487 5700 mAh family / Alibaba custom 3.85V pack
     source:
       - https://li-polymer-battery.com/high-energy-density-option-li-polymer-battery-3-85v-5800mah-lphv486697/
       - https://www.lipobattery.us/3-85v-high-voltage-lipo-battery/
@@ -406,10 +522,12 @@ lines:
     price_usd_100k: 3.35
     confidence: med
     notes: >
-      Flush-back rev moves to a thicker 5.7 mm pouch (5830 mAh / 22.45 Wh,
-      LP576487 / LPHV486697 class). 5800 mAh 3.85 V pouch with PCM+NTC+connector
-      runs $3.60-4.60 at 10k from Chinese cell makers (DEMSO, Grepow, Eve) — about
-      +$0.40 over the prior 4500 mAh / 17.33 Wh cell. PCM and connector bundled.
+      Swell/camera/seal rev settles on a 5.6 mm pouch (5727 mAh / 22.05 Wh,
+      LP566487 / LPHV486697 class; the device gained depth for a 0.6 mm back-face
+      swell void and camera burial, not cell thickness). 5700 mAh 3.85 V pouch with
+      PCM+NTC+connector runs $3.60-4.60 at 10k from Chinese cell makers (DEMSO, Grepow,
+      Eve) — about +$0.40 over the prior 4500 mAh / 17.33 Wh cell. PCM and connector
+      bundled.
 
   - line: 24
     function: battery_protection_pcm
@@ -420,7 +538,7 @@ lines:
     price_usd_10k: 0.00
     price_usd_100k: 0.00
     confidence: high
-    notes: PCM integrated in LP446487 pack price.
+    notes: PCM integrated in LP566487 pack price.
 
   - line: 25
     function: battery_fpc
@@ -535,14 +653,18 @@ lines:
 
   - line: 31
     function: screws_standoffs
-    qty: 6
+    qty: 10
     mpn: M1.4 Torx-T2 stainless self-tap screws + brass heat-stake standoffs
     chinese_alternate: Shenzhen Yueda / Foxconn screw house
     source: "estimate based on Alibaba M1.4 micro-screw $0.012-0.020 each at 10k"
-    price_usd_10k: 0.12
-    price_usd_100k: 0.08
+    price_usd_10k: 0.15
+    price_usd_100k: 0.10
     confidence: estimate
-    notes: 6x screws + 4-6 heat-stake brass inserts.
+    notes: >
+      Screw count raised 6 -> 10 (corner-drop boss SF fix; +4 M1.4 screws ~$0.008 each
+      adds ~$0.03 @10k / ~$0.02 @100k) plus heat-stake brass inserts. Corner ribs/gussets
+      are molded into the orange shell (no separate fastener cost; their plastic is in the
+      enclosure-plastic line and their mass in the mass budget).
 
   - line: 32
     function: antennas
@@ -645,10 +767,31 @@ lines:
 
 rollup:
   notes: >
-    Sum of all per-unit costs above (line 24, 25, 26 are zero placeholders;
-    line 28b and 30 amortize NRE).
-  bom_components_only_10k_usd: 98.09
-  bom_components_only_100k_usd: 79.90
+    Sum of all per-unit costs above (lines 2, 3, 4 are now folded into the
+    line-1 compute SoM and zeroed; lines 24, 25, 26 are zero placeholders;
+    line 28b and 30 amortize NRE). Default cost path = PATH A (RK3566 SoM,
+    buildable from public data). See compute_sourcing_path below for the
+    PATH B bare-SoC cost-down delta. Swell/camera/seal + Wave-2 rev adds the
+    QPC1252Q aperture tuner (line 15c, +$0.40/$0.30), the PORON glass-perimeter
+    cushion (line 13a, +$0.03/$0.02) and +4 screws on line 31 (+$0.03/$0.02):
+    total +$0.46/unit @10k, +$0.34/unit @100k over the prior flush-back rollup.
+    Molded-in corner ribs/gussets carry no extra fastener cost.
+  compute_sourcing_path:
+    default: path_a_som
+    path_a_som_compute_10k_usd: 32.00
+    path_a_som_compute_100k_usd: 26.00
+    path_b_bare_soc_compute_10k_usd: 24.90   # bare T606/RK3566 + discrete LPDDR4 + eMMC + PMIC
+    path_b_bare_soc_compute_100k_usd: 21.45
+    som_premium_per_unit_10k_usd: 7.10
+    som_premium_per_unit_100k_usd: 4.55
+    note: >
+      PATH A is buildable today from public data (public SoM connector pinout).
+      PATH B is ~$7/unit (10k) / ~$4.55/unit (100k) cheaper but requires the SoC
+      vendor NDA for the BGA ball-map plus DDR/eMMC layout + SI bring-up.
+  bom_components_only_10k_usd: 105.65
+  bom_components_only_100k_usd: 84.79
+  bom_components_only_path_b_bare_soc_10k_usd: 98.55
+  bom_components_only_path_b_bare_soc_100k_usd: 80.24
   pcba_per_unit_10k_usd: 3.50
   pcba_per_unit_100k_usd: 2.10
   pcba_nre_amortized_10k_usd: 0.60
@@ -664,14 +807,18 @@ rollup:
   packaging_per_unit_100k_usd: 1.30
   logistics_inbound_per_unit_10k_usd: 0.85
   logistics_inbound_per_unit_100k_usd: 0.55
-  screws_standoffs_per_unit_10k_usd: 0.12
-  screws_standoffs_per_unit_100k_usd: 0.08
-  ex_factory_unit_cost_10k_usd: 116.34
-  ex_factory_unit_cost_100k_usd: 88.14
-  retail_target_3x_unit_cost_10k_usd: 349.02
-  retail_target_3x_unit_cost_100k_usd: 264.42
-  retail_target_2x_unit_cost_10k_usd: 232.68
-  retail_target_2x_unit_cost_100k_usd: 176.28
+  screws_standoffs_per_unit_10k_usd: 0.15
+  screws_standoffs_per_unit_100k_usd: 0.10
+  ex_factory_unit_cost_10k_usd: 123.90
+  ex_factory_unit_cost_100k_usd: 93.03
+  ex_factory_unit_cost_path_b_bare_soc_10k_usd: 116.80
+  ex_factory_unit_cost_path_b_bare_soc_100k_usd: 88.48
+  ex_factory_som_premium_vs_bare_soc_10k_usd: 7.10
+  ex_factory_som_premium_vs_bare_soc_100k_usd: 4.55
+  retail_target_3x_unit_cost_10k_usd: 371.70
+  retail_target_3x_unit_cost_100k_usd: 279.09
+  retail_target_2x_unit_cost_10k_usd: 247.80
+  retail_target_2x_unit_cost_100k_usd: 186.06
   flush_back_rev_delta_per_unit_10k_usd: 0.64
   flush_back_rev_delta_per_unit_100k_usd: 0.58
   flush_back_rev_delta_breakdown:
@@ -681,6 +828,15 @@ rollup:
     flash_driver_usd_100k: 0.12
     bigger_battery_usd_10k: 0.40
     bigger_battery_usd_100k: 0.40
+  swell_camera_seal_wave2_rev_delta_per_unit_10k_usd: 0.46
+  swell_camera_seal_wave2_rev_delta_per_unit_100k_usd: 0.34
+  swell_camera_seal_wave2_rev_delta_breakdown:
+    antenna_aperture_tuner_usd_10k: 0.40
+    antenna_aperture_tuner_usd_100k: 0.30
+    glass_perimeter_cushion_usd_10k: 0.03
+    glass_perimeter_cushion_usd_100k: 0.02
+    plus_4_screws_usd_10k: 0.03
+    plus_4_screws_usd_100k: 0.02
 
 cost_down_levers_ranked:
   - lever: swap Quectel RG255C 5G RedCap -> LTE Cat4 (Quectel EC25 / Fibocom L610)
@@ -703,19 +859,24 @@ confidence_summary:
   high_count: 5
   med_count: 9
   low_count: 1
-  estimate_count: 17
+  estimate_count: 19
   comment: >
-    The two new flush-back-rev lines (rear torch/flash LED, flash driver IC) are
-    estimate-tier; together they add only ~$0.18-0.24/unit, so they do not move
-    the cost envelope. The high/med-confidence lines (SoC, RAM, eMMC, modem, Wi-Fi,
-    display, cameras, battery, PD/charger/codec) still cover ~78% of BOM dollars,
-    so total ex-factory cost remains well-constrained.
+    The new estimate-tier lines (rear torch/flash LED, flash driver IC, QPC1252Q
+    aperture tuner, PORON glass-perimeter cushion) together add only ~$0.6-0.7/unit,
+    so they do not move the cost envelope. The aperture tuner ($0.40/$0.30) is the
+    largest of the new lines and is estimate-tier (no public LCSC unit price for the
+    QPC1252Q or PE613050 alt; banded against typical $0.25-0.50 RFFE-tuner volume
+    pricing). The high/med-confidence lines (SoC, RAM, eMMC, modem, Wi-Fi, display,
+    cameras, battery, PD/charger/codec) still cover ~78% of BOM dollars, so total
+    ex-factory cost remains well-constrained.
 
 required_followups_before_release_bom:
-  - signed RFQ responses from Unisoc / authorized distributor for T606 at 10k and 100k
+  - signed RFQ from the chosen RK3566 SoM vendor (Firefly Core-3566JD4 or equivalent) at 10k and 100k, with the public 260-pin SODIMM pinout confirmed against the shipped revision
+  - (PATH B cost-down only) signed RFQ + NDA/design-in from Unisoc/Rockchip distributor for bare T606/RK3566 at 10k and 100k
   - signed RFQ from Quectel for RG255C-GL with region SKU pricing
   - direct Murata authorized distributor 10k quote vs Realtek RTL8852BS Chinese channel
   - LCD module supplier (Chenghao or BOE) 10k quote with init sequence + FPC drawing
   - LiPol/Grepow battery pack 10k quote with safety doc package
+  - Qorvo (QPC1252Q) or pSemi/Murata (PE613050) RFFE aperture-tuner RFQ + availability confirmation at 10k and 100k
   - tool shop quote for hard-tool front+rear+small parts mold set
   - ODM (Wingtech / Huaqin) loaded PCBA + assembly + test quote at both volumes

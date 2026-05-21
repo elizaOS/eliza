@@ -1,23 +1,26 @@
 {
   "claim_boundary": "Rough CAD mass estimate using nominal densities; not measured mass.",
-  "total_estimated_mass_g": 162.42,
+  "total_estimated_mass_g": 164.45,
   "mass_by_role_g": {
     "EMI shield": 7.01,
     "I/O": 1.77,
     "I/O seal": 0.02,
     "PCB": 4.17,
     "RF keepout": 0.0,
+    "RF tuner": 0.0,
     "audio": 1.75,
     "battery": 82.63,
+    "battery support": 1.04,
     "button": 0.09,
     "button seal": 0.03,
     "camera": 1.03,
-    "camera seal": 0.04,
+    "camera aperture": 0.0,
+    "camera seal": 0.05,
     "connector": 0.21,
     "haptics": 0.22,
-    "molded enclosure": 24.07,
+    "molded enclosure": 24.93,
     "screen": 39.03,
-    "screen retention": 0.08,
+    "screen retention": 0.2,
     "service": 0.0,
     "split-board interconnect": 0.28
   },
@@ -33,9 +36,9 @@
     {
       "name": "orange_side_frame",
       "role": "molded enclosure",
-      "volume_mm3": 6036.78,
+      "volume_mm3": 6497.212,
       "density_g_per_cm3": 1.15,
-      "mass_g": 6.942,
+      "mass_g": 7.472,
       "excluded_placeholder": false
     },
     {
@@ -68,6 +71,14 @@
       "volume_mm3": 31180.8,
       "density_g_per_cm3": 2.65,
       "mass_g": 82.629,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "battery_back_void_foam_pad",
+      "role": "battery support",
+      "volume_mm3": 864.0,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 1.037,
       "excluded_placeholder": false
     },
     {
@@ -175,6 +186,46 @@
       "excluded_placeholder": false
     },
     {
+      "name": "rear_camera_shell_aperture",
+      "role": "camera aperture",
+      "volume_mm3": 8.989,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "orange_rear_camera_bezel_top",
+      "role": "molded enclosure",
+      "volume_mm3": 1.764,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.004,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_rear_camera_bezel_bottom",
+      "role": "molded enclosure",
+      "volume_mm3": 1.764,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.004,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_rear_camera_bezel_left",
+      "role": "molded enclosure",
+      "volume_mm3": 1.484,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.003,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_rear_camera_bezel_right",
+      "role": "molded enclosure",
+      "volume_mm3": 1.484,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.003,
+      "excluded_placeholder": false
+    },
+    {
       "name": "rear_camera_lens_window",
       "role": "camera",
       "volume_mm3": 19.917,
@@ -273,9 +324,9 @@
     {
       "name": "rear_flash_camera_septum",
       "role": "camera seal",
-      "volume_mm3": 10.458,
+      "volume_mm3": 12.699,
       "density_g_per_cm3": 2.2,
-      "mass_g": 0.023,
+      "mass_g": 0.028,
       "excluded_placeholder": false
     },
     {
@@ -575,6 +626,38 @@
       "excluded_placeholder": false
     },
     {
+      "name": "orange_screw_boss_7",
+      "role": "molded enclosure",
+      "volume_mm3": 38.544,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.044,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_screw_boss_8",
+      "role": "molded enclosure",
+      "volume_mm3": 38.544,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.044,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_screw_boss_9",
+      "role": "molded enclosure",
+      "volume_mm3": 38.544,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.044,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_screw_boss_10",
+      "role": "molded enclosure",
+      "volume_mm3": 38.544,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.044,
+      "excluded_placeholder": false
+    },
+    {
       "name": "orange_snap_hook_1",
       "role": "molded enclosure",
       "volume_mm3": 9.1,
@@ -695,6 +778,102 @@
       "excluded_placeholder": false
     },
     {
+      "name": "orange_corner_rib_1",
+      "role": "molded enclosure",
+      "volume_mm3": 15.12,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.017,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_corner_rib_1_leg",
+      "role": "molded enclosure",
+      "volume_mm3": 15.12,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.017,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_corner_rib_2",
+      "role": "molded enclosure",
+      "volume_mm3": 15.12,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.017,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_corner_rib_2_leg",
+      "role": "molded enclosure",
+      "volume_mm3": 15.12,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.017,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_corner_rib_3",
+      "role": "molded enclosure",
+      "volume_mm3": 15.12,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.017,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_corner_rib_3_leg",
+      "role": "molded enclosure",
+      "volume_mm3": 15.12,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.017,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_corner_rib_4",
+      "role": "molded enclosure",
+      "volume_mm3": 15.12,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.017,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_corner_rib_4_leg",
+      "role": "molded enclosure",
+      "volume_mm3": 15.12,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.017,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "glass_perimeter_cushion_top",
+      "role": "screen retention",
+      "volume_mm3": 15.525,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.019,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "glass_perimeter_cushion_bottom",
+      "role": "screen retention",
+      "volume_mm3": 15.525,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.019,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "glass_perimeter_cushion_left",
+      "role": "screen retention",
+      "volume_mm3": 34.193,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.041,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "glass_perimeter_cushion_right",
+      "role": "screen retention",
+      "volume_mm3": 34.193,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.041,
+      "excluded_placeholder": false
+    },
+    {
       "name": "cellular_top_antenna_keepout",
       "role": "RF keepout",
       "volume_mm3": 744.0,
@@ -714,6 +893,14 @@
       "name": "wifi_bt_side_antenna_keepout",
       "role": "RF keepout",
       "volume_mm3": 340.0,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "antenna_aperture_tuner",
+      "role": "RF tuner",
+      "volume_mm3": 2.0,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
       "excluded_placeholder": true

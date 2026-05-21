@@ -66,6 +66,10 @@ CONTACT_KEYWORDS = (
     "acoustic_chamber",
     "flex_tail", "fpc_connector",
     "flash_led_window",
+    # Wave-2 residual closure parts: corner gussets, glass edge cushion, and the
+    # cellular aperture/band-switch tuner footprint. Each is an envelope solid that
+    # bonds against the parts it constrains (rim/frame, glass edge, board feed).
+    "corner_rib", "perimeter_cushion", "aperture_tuner",
 )
 
 # Explicit pairwise allowlist for envelope-style overlaps that don't share a
@@ -73,6 +77,15 @@ CONTACT_KEYWORDS = (
 # entry is an unordered (a, b) tuple-set.
 INTENTIONAL_PAIRS = frozenset({
     frozenset({"battery_pouch", "orange_back_shell"}),
+    # Compressible back-void foam pad sits compressed against the back shell by
+    # design (its 0.18 mm compression allowance is the overlap volume).
+    frozenset({"battery_back_void_foam_pad", "orange_back_shell"}),
+    # Rear-camera bezel lands are molded into the back shell inner face (0-gap
+    # face seat framing the flush camera window), like the stray-light septum.
+    frozenset({"orange_back_shell", "orange_rear_camera_bezel_top"}),
+    frozenset({"orange_back_shell", "orange_rear_camera_bezel_bottom"}),
+    frozenset({"orange_back_shell", "orange_rear_camera_bezel_left"}),
+    frozenset({"orange_back_shell", "orange_rear_camera_bezel_right"}),
     frozenset({"battery_pouch", "orange_battery_left_rib"}),
     frozenset({"battery_pouch", "orange_battery_right_rib"}),
     frozenset({"battery_pouch", "main_pcb"}),

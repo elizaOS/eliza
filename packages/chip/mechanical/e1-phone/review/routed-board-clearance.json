@@ -40,7 +40,7 @@
       "blocks_clearance": true
     }
   ],
-  "expected_clearance_case_count": 11,
+  "expected_clearance_case_count": 12,
   "complete_clearance_result_count": 0,
   "required_evidence_class": "physical_routed_board_clearance_result",
   "template_evidence_class": "",
@@ -115,6 +115,17 @@
       "concept_margin_mm": 0.025,
       "rerun_priority": 1,
       "risk_level": "high",
+      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_rerun": true
+    },
+    {
+      "case_id": "battery_back_void_foam_to_pouch",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 0.42,
+      "concept_required_mm": 0.25,
+      "concept_margin_mm": 0.17,
+      "rerun_priority": 2,
+      "risk_level": "medium",
       "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
       "requires_routed_step_rerun": true
     },
@@ -236,6 +247,17 @@
       "evidence_class_allowed": false,
       "measured_min_gap_mm": null,
       "required_min_gap_mm": 0.15,
+      "interference_count": null,
+      "reviewer_present": false,
+      "measurement_artifact_present": false,
+      "pass": false
+    },
+    {
+      "case_id": "battery_back_void_foam_to_pouch",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "measured_min_gap_mm": null,
+      "required_min_gap_mm": 0.25,
       "interference_count": null,
       "reviewer_present": false,
       "measurement_artifact_present": false,

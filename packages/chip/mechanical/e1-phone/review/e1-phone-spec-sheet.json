@@ -3,25 +3,25 @@
   "source_params_yaml": "chip/mechanical/e1-phone/cad/e1_phone_params.yaml",
   "device": {
     "name": "E1 phone EVT0 mechanical concept",
-    "revision": "evt0-mechanical-cad-flush-back",
+    "revision": "evt0-mechanical-cad-swell-camera-seal",
     "os": "AOSP / Android 14"
   },
   "mechanical": {
     "dimensions_mm": {
       "width": 78.0,
       "height": 153.6,
-      "thickness": 11.8
+      "thickness": 12.7
     },
     "back_face": "fully flush flat back, no camera bump, no protruding lens ring",
-    "envelope_volume_cm3": 141.37,
+    "envelope_volume_cm3": 152.15,
     "corner_radius_mm": 7.5,
-    "mass_g": 170.82,
-    "mass_cad_geometry_subtotal_g": 162.42,
+    "mass_g": 172.85,
+    "mass_cad_geometry_subtotal_g": 164.45,
     "mass_missing_items_subtotal_g": 8.4,
     "mass_ship_target_g": 168.0,
     "mass_ship_target_tolerance_g": 10.0,
     "mass_target_g": 185.0,
-    "mass_target_note": "185 g is the original aspirational concept target; 168 +/-10 g is the EVT0 ship target. Flush-back rev (11.8 mm, 5727 mAh battery) reconciled mass 170.82 g still passes the 168 +/-10 g ship target; ship target unchanged.",
+    "mass_target_note": "185 g is the original aspirational concept target; 168 +/-10 g (158-178 g window) is the EVT0 ship target. Swell/camera/seal + Wave-2 rev (12.7 mm device for the 0.6 mm battery swell void + healthier camera burial, 5.6 mm/5727 mAh battery, 10 screw bosses, 4 corner ribs, glass cushions, RF tuner, flash LED) reconciles to 172.85 g (164.45 g CAD geometry across 118 parts + 8.4 g assembly-stage reserve), still inside the ship-target window. Ship target unchanged. The +0.9 mm device depth adds taller side-wall plastic but the dominant mass remains the battery (82.63 g) and screen stack (39.03 g).",
     "color": "hard safety orange",
     "material": "PC+ABS injection molded"
   },
@@ -45,11 +45,13 @@
     ]
   },
   "compute": {
-    "soc_class": "Unisoc T606",
-    "ram_gb": 4,
-    "ram_type": "LPDDR4X",
-    "storage_gb": 64,
-    "storage_type": "eMMC 5.1"
+    "soc_class": "Rockchip RK3566 (quad Cortex-A55, Mali-G52, 1 TOPS NPU)",
+    "module": "Firefly Core-3566JD4-class System-on-Module (PATH A, default)",
+    "ram_gb": 2,
+    "ram_type": "LPDDR4 (on-module)",
+    "storage_gb": 32,
+    "storage_type": "eMMC 5.1 (on-module; 64/128 GB option)",
+    "sourcing_note": "Compute is sourced as a turnkey RK3566 SoM bundling SoC + LPDDR4 + eMMC + PMIC behind a public 260-pin SODIMM pinout (PATH A, buildable today). A bare-SoC cost-down path (bare Unisoc T606/RK3566 + discrete LPDDR4/eMMC/PMIC, PATH B) is ~$4.55-7.10/unit cheaper but needs the SoC vendor NDA for the BGA ball-map."
   },
   "cellular": {
     "modem": "Quectel RG255C 5G RedCap LGA",
@@ -64,7 +66,8 @@
       "n77",
       "n78"
     ],
-    "note": "5G RedCap (NR-Light); LTE fallback per module datasheet"
+    "antenna_aperture_tuner": "Qorvo QPC1252Q (pSemi PE613050 alt), MIPI RFFE v2.1 aperture/band-switch tuner",
+    "note": "5G RedCap (NR-Light); LTE fallback per module datasheet. Cellular low band (700-960 MHz) is covered via a modem-programmed aperture/band-switch tuner that retunes the electrically-small low-band element per active ~20 MHz carrier, resolving the Chu-limit instantaneous-bandwidth shortfall (analytical RF pre-scan verdict PASS_WITH_TUNER, worst-state total efficiency ~-3.1 dB; not chamber-measured)."
   },
   "wireless": {
     "module": "Murata Type 2EA",

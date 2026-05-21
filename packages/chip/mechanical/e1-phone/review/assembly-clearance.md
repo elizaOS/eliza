@@ -10,6 +10,7 @@ Status: targeted CAD clearance checks.
 - PASS: `usb_to_bottom_speaker` actual 6.53 mm, required 1.0 mm
 - PASS: `bottom_mic_to_usb` actual 11.78 mm, required 1.0 mm
 - PASS: `battery_to_pcb_islands` actual 0.5 mm, required 0.5 mm
+- PASS: `battery_back_void_foam_to_pouch` actual 0.42 mm, required 0.25 mm
 - PASS: `split_interconnect_flex_to_battery_edge` actual 1.3 mm, required 0.5 mm
 - PASS: `split_interconnect_flex_within_side_rail` actual 3.3 mm, required 1.5 mm
 - PASS: `split_interconnect_connectors_on_pcb_islands` actual 0.0 mm, required 0.0 mm

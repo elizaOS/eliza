@@ -21,6 +21,22 @@
       "pass": true
     },
     {
+      "id": "rear_camera_back_shell_aperture",
+      "actual": {
+        "aperture_mm": [
+          10.6,
+          10.6
+        ],
+        "cover_window_mm": [
+          9.2,
+          9.2
+        ],
+        "bezel_part_count": 4
+      },
+      "target": "explicit molded back-shell opening larger than the flush cover window with four orange bevel lands",
+      "pass": true
+    },
+    {
       "id": "rear_camera_z_stack",
       "actual": {
         "module_depth_mm": 5.1,

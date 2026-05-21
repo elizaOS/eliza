@@ -2,13 +2,13 @@
 
 - Evidence class: `cad_estimate_for_evt_planning, not_measured_hardware`
 - Source: `chip/mechanical/e1-phone/cad/e1_phone_params.yaml`
-- Revision: evt0-mechanical-cad-flush-back
+- Revision: evt0-mechanical-cad-swell-camera-seal
 
 ## Mechanical
-- Dimensions: 78.0 x 153.6 x 11.8 mm (fully flush flat back, no camera bump, no protruding lens ring)
-- Envelope volume: 141.37 cm^3
+- Dimensions: 78.0 x 153.6 x 12.7 mm (fully flush flat back, no camera bump, no protruding lens ring)
+- Envelope volume: 152.15 cm^3
 - Corner radius: 7.5 mm
-- Mass: 170.82 g reconciled (162.42 g CAD geometry + 8.4 g assembly-stage items); ship target 168 +/-10 g (PASS, unchanged). Aspirational concept target 185 g retained for reference.
+- Mass: 172.85 g reconciled (164.45 g CAD geometry across 118 parts + 8.4 g assembly-stage reserve); ship target 168 +/-10 g / 158-178 g window (PASS, unchanged). The device is intentionally 12.7 mm (was 11.8 mm) to open a 0.6 mm battery swell void plus healthier rear-camera burial under the flush back; the added side-wall plastic and Wave-2 hardening (10 screw bosses, 4 corner ribs, glass cushions, RF tuner, flash LED) add ~2 g of geometry. Aspirational concept target 185 g retained for reference.
 - Color / material: hard safety orange / PC+ABS injection molded
 
 ## Display
@@ -17,15 +17,18 @@
 - Active area: [68.04, 120.96] mm
 
 ## Compute
-- SoC class: Unisoc T606
-- RAM: 4 GB LPDDR4X
-- Storage: 64 GB eMMC 5.1
+- SoC class: Rockchip RK3566 (quad Cortex-A55, Mali-G52, 1 TOPS NPU)
+- Module: Firefly Core-3566JD4-class System-on-Module (PATH A, default) bundling SoC + LPDDR4 + eMMC + PMIC behind a public 260-pin SODIMM pinout
+- RAM: 2 GB LPDDR4 (on-module)
+- Storage: 32 GB eMMC 5.1 (on-module; 64/128 GB option)
 - OS: AOSP / Android 14
+- Cost-down note: a bare-SoC path (bare Unisoc T606 / RK3566 + discrete LPDDR4/eMMC/PMIC, PATH B) is ~$4.55-7.10/unit cheaper but requires the SoC vendor NDA for the BGA ball-map.
 
 ## Cellular
 - Modem: Quectel RG255C 5G RedCap LGA
 - Bands (typical): n1, n3, n5, n8, n28, n40, n41, n77, n78
-- Note: 5G RedCap (NR-Light); LTE fallback per module datasheet
+- Antenna aperture tuner: Qorvo QPC1252Q (pSemi PE613050 alt), MIPI RFFE v2.1
+- Note: 5G RedCap (NR-Light); LTE fallback per module datasheet. Low band (700-960 MHz) is covered via the modem-programmed aperture/band-switch tuner (retunes the electrically-small low-band element per active ~20 MHz carrier), resolving the Chu-limit instantaneous-bandwidth shortfall (analytical RF pre-scan PASS_WITH_TUNER, worst-state total efficiency ~-3.1 dB; not chamber-measured).
 
 ## Wireless
 - Module: Murata Type 2EA

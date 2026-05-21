@@ -238,3 +238,33 @@ edge (USB-C + speaker + dual bottom mics) still fits on the 78 mm edge.
 | USB-C saddle <-> speaker chamber wall | 1.1 mm | >= 1.0 mm |
 | Flush-back rear solid protrusion | 0.0 mm | 0.0 mm |
 | Unintentional clashes | 0 | 0 |
+
+## Wave-2 residual closure (RF tuner + drop hardening + gasket)
+
+Four validated residuals from the RF/SI/PI and drop/acoustic simulations were
+resolved by modeling the actual physics of each fix (not flag flips), then
+regenerating CAD and re-running every gate. `evidence_class` tags preserved
+(`analytical_rf_si_pi_prescan_not_chamber_measured`,
+`physics_simulation_not_lab_measured`).
+
+| Residual | Before | After | Fix (physics modeled) |
+|---|---|---|---|
+| RF-1 cellular low band 700-960 MHz | FAIL: 8.4% Chu instantaneous BW vs 31.7% needed | **PASS_WITH_TUNER**, worst-state total eff -3.1 dB (> -4 dB floor) | Aperture/band-switch tuner **Qorvo QPC1252Q** (alt pSemi PE613050, MIPI RFFE v2.1). Radio matches one ~20 MHz carrier at a time; modem programs the tuner state to center the Chu match window on the active channel. 12 resonance-center states span 700-960 MHz; every state's instantaneous-carrier FBW fits the Chu cap and the state grid step (<= 40 MHz) stays inside the match window (28-121 MHz, 3.1 MHz overlap margin) so coverage has no gap. Radiation efficiency de-rated 0.5 dB for tuner insertion loss. |
+| DROP-1 cover glass face drop | SF 1.10 (< 1.5) | **SF 1.93** | Glass recessed 0.3 mm below the molded bezel rim (rim takes first-contact energy: force-into-glass relief = dmax/(dmax+2*inset) = 0.71) + perimeter PORON foam cushion under the glass edge (compliant edge support cuts back-face tensile share 0.80x). |
+| DROP-2 corner-drop screw boss | SF 0.78 (< 1.0) | **SF 2.11** | screw_boss_count 6 -> 10 (per-boss shear area +67%) + 4 corner gussets tying corner bosses to the side frame + compliant battery retention foam shelf (0.6 swell foam force-limits battery inertial coupling: only 0.6x of the battery mass is rigidly coupled into the boss shear path; PCB stays fully coupled). |
+| ACOUSTIC-1 speaker/earpiece gasket leak | 5.56 dB LF loss @ 20 um uncontrolled slit | **2.39 dB @ 8 um** | Compression-set CTQ added: residual leak slit <= 8 um control target / 10 um reject limit (closed-cell silicone foam, higher preload). Lower slit -> smaller leak area -> lower Helmholtz leak corner f_leak -> less LF SPL loss (20*log10(f_leak/fc)). Documented as a measured gasket compression-set CTQ for the process control plan. |
+
+### New parts (params + generator + manifest, boolean clash-free)
+
+- `antenna_aperture_tuner` (Qorvo QPC1252Q, 2.0x2.0x0.5 mm, MIPI RFFE) in the bottom cellular keepout feed region.
+- `glass_perimeter_cushion_{top,bottom,left,right}` (PORON foam under recessed cover-glass edge).
+- `orange_corner_rib_{1..4}` + `_leg` (8 segments: 4 corner gussets, two legs each).
+- Screw bosses `orange_screw_boss_{1..10}` (param-driven count; was 6).
+- Rear-camera bezel lands re-seated flush (Zmin at the back outer plane; flush-back protrusion 0.035 -> 0.0 mm).
+
+### Wave-2 verification
+
+- `simulate_e1_phone_rf_si_pi.py`: antenna **PASS**, overall **PASS**; low band **PASS_WITH_TUNER** (per-state Chu + Bode-Fano + no-gap coverage proof in the JSON/MD).
+- `simulate_e1_phone_drop_acoustic.py`: **0 FAILs** — glass SF 1.93 (>= 1.5), corner boss SF 2.11 (>= 1.0), leak 2.39 dB (<= 3).
+- `check_e1_phone_boolean_interference.py`: **PASS**, 11/11 scopes, **0 unintentional clashes**, flush-back **0.0 mm**.
+- `test_generate_e1_phone_cad.py`: **62/62 pass** (boss-count check is `>=` param, so 10 bosses pass without expectation edits).

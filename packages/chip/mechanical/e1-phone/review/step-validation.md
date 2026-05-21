@@ -1,6 +1,6 @@
 # E1 Phone STEP Validation
 
-Status: pass; re-imported 95 part STEP files.
+Status: pass; re-imported 118 part STEP files.
 
 ## Cases
 
@@ -10,8 +10,14 @@ Status: pass; re-imported 95 part STEP files.
 - PASS: `display_lcm` max span error 0.0 mm
 - PASS: `main_pcb` max span error 0.0 mm
 - PASS: `battery_pouch` max span error 0.0 mm
+- PASS: `battery_back_void_foam_pad` max span error 0.0 mm
 - PASS: `usb_c_receptacle` max span error 0.0 mm
 - PASS: `rear_camera_module` max span error 0.0 mm
+- PASS: `rear_camera_shell_aperture` max span error 0.0 mm
+- PASS: `orange_rear_camera_bezel_top` max span error 0.0 mm
+- PASS: `orange_rear_camera_bezel_bottom` max span error 0.0 mm
+- PASS: `orange_rear_camera_bezel_left` max span error 0.0 mm
+- PASS: `orange_rear_camera_bezel_right` max span error 0.0 mm
 - PASS: `rear_flash_led` max span error 0.0 mm
 - PASS: `rear_flash_led_window` max span error 0.0 mm
 - PASS: `front_camera_module` max span error 0.0 mm
@@ -57,6 +63,10 @@ Status: pass; re-imported 95 part STEP files.
 - PASS: `screen_adhesive_bottom` max span error 0.0 mm
 - PASS: `screen_adhesive_left` max span error 0.0 mm
 - PASS: `screen_adhesive_right` max span error 0.0 mm
+- PASS: `glass_perimeter_cushion_top` max span error 0.0 mm
+- PASS: `glass_perimeter_cushion_bottom` max span error 0.0 mm
+- PASS: `glass_perimeter_cushion_left` max span error 0.0 mm
+- PASS: `glass_perimeter_cushion_right` max span error 0.0 mm
 - PASS: `bottom_speaker_grille_slot_1` max span error 0.0 mm
 - PASS: `bottom_speaker_grille_slot_2` max span error 0.0 mm
 - PASS: `bottom_speaker_grille_slot_3` max span error 0.0 mm
@@ -80,6 +90,18 @@ Status: pass; re-imported 95 part STEP files.
 - PASS: `orange_screw_boss_4` max span error 0.0 mm
 - PASS: `orange_screw_boss_5` max span error 0.0 mm
 - PASS: `orange_screw_boss_6` max span error 0.0 mm
+- PASS: `orange_screw_boss_7` max span error 0.0 mm
+- PASS: `orange_screw_boss_8` max span error 0.0 mm
+- PASS: `orange_screw_boss_9` max span error 0.0 mm
+- PASS: `orange_screw_boss_10` max span error 0.0 mm
+- PASS: `orange_corner_rib_1` max span error 0.0 mm
+- PASS: `orange_corner_rib_1_leg` max span error 0.0 mm
+- PASS: `orange_corner_rib_2` max span error 0.0 mm
+- PASS: `orange_corner_rib_2_leg` max span error 0.0 mm
+- PASS: `orange_corner_rib_3` max span error 0.0 mm
+- PASS: `orange_corner_rib_3_leg` max span error 0.0 mm
+- PASS: `orange_corner_rib_4` max span error 0.0 mm
+- PASS: `orange_corner_rib_4_leg` max span error 0.0 mm
 - PASS: `orange_snap_hook_1` max span error 0.0 mm
 - PASS: `orange_snap_hook_2` max span error 0.0 mm
 - PASS: `orange_snap_hook_3` max span error 0.0 mm
@@ -95,6 +117,7 @@ Status: pass; re-imported 95 part STEP files.
 - PASS: `cellular_top_antenna_keepout` max span error 0.0 mm
 - PASS: `cellular_bottom_antenna_keepout` max span error 0.0 mm
 - PASS: `wifi_bt_side_antenna_keepout` max span error 0.0 mm
+- PASS: `antenna_aperture_tuner` max span error 0.0 mm
 - PASS: `soc_shield_can` max span error 0.0 mm
 - PASS: `pmic_shield_can` max span error 0.0 mm
 - PASS: `radio_shield_can` max span error 0.0 mm

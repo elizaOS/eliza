@@ -422,13 +422,78 @@ def rear_camera_buried_center_z(params: dict[str, Any]) -> float:
     return back_face_z + module_depth / 2.0
 
 
+def rear_camera_center_xy(params: dict[str, Any]) -> tuple[float, float]:
+    _width, height, _depth = params["device"]["envelope_mm"]
+    return 21.0, height / 2 - 19.0
+
+
+def rear_camera_shell_aperture_mm(params: dict[str, Any]) -> list[float]:
+    glass_w, glass_h, _glass_t = params["components"]["rear_camera_glass"]["envelope_mm"]
+    return [round(float(glass_w) + 1.4, 3), round(float(glass_h) + 1.4, 3)]
+
+
+def side_frame_external_cutout_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
+    width, height, _depth = params["device"]["envelope_mm"]
+    comp = params["components"]
+    power_cap = comp["power_button"]["cap_mm"]
+    volume_cap = comp["volume_button"]["cap_mm"]
+    cutouts: list[dict[str, Any]] = [
+        {
+            "name": "usb_c_side_frame_cutout",
+            "source_aperture": "usb_c_external_aperture",
+            "size": [10.8, 4.0, 4.2],
+            "center": [0.0, -height / 2.0, -1.45],
+        }
+    ]
+    for idx, x in enumerate([11.5, 14.5, 17.5, 20.5, 23.5], start=1):
+        cutouts.append(
+            {
+                "name": f"bottom_speaker_side_frame_cutout_{idx}",
+                "source_aperture": f"bottom_speaker_grille_slot_{idx}",
+                "size": [1.35, 4.0, 4.4],
+                "center": [x, -height / 2.0, -1.35],
+            }
+        )
+    for idx, x in enumerate([-22.0, -17.0], start=1):
+        cutouts.append(
+            {
+                "name": f"bottom_microphone_side_frame_cutout_{idx}",
+                "source_aperture": f"bottom_microphone_port_{idx}",
+                "size": [1.2, 4.0, 1.2],
+                "center": [x, -height / 2.0, -1.35],
+            }
+        )
+    cutouts.extend(
+        [
+            {
+                "name": "top_microphone_side_frame_cutout",
+                "source_aperture": "top_microphone_port",
+                "size": [1.2, 4.0, 1.2],
+                "center": [18.0, height / 2.0, -1.35],
+            },
+            {
+                "name": "power_button_side_frame_cutout",
+                "source_aperture": "power_button_cap",
+                "size": [4.0, float(power_cap[1]) + 0.8, float(power_cap[2]) + 0.6],
+                "center": [width / 2.0, 20.0, -0.4],
+            },
+            {
+                "name": "volume_button_side_frame_cutout",
+                "source_aperture": "volume_button_cap",
+                "size": [4.0, float(volume_cap[1]) + 0.8, float(volume_cap[2]) + 0.6],
+                "center": [-width / 2.0, 14.0, -0.4],
+            },
+        ]
+    )
+    return cutouts
+
+
 def camera_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
     dev = params["device"]
     comp = params["components"]
     height = float(dev["envelope_mm"][1])
     depth = float(dev["envelope_mm"][2])
-    rear_x = 21.0
-    rear_y = height / 2 - 19.0
+    rear_x, rear_y = rear_camera_center_xy(params)
     rear_z = -depth / 2 + comp["rear_camera_glass"]["envelope_mm"][2] + 0.08
     rear_glass = comp["rear_camera_glass"]["envelope_mm"]
     rear_lens = float(comp["rear_camera"]["lens_diameter_mm"])
@@ -618,19 +683,69 @@ def adhesive_gasket_parts(params: dict[str, Any]) -> list[Part]:
     ]
 
 
+def screw_boss_points(params: dict[str, Any]) -> list[tuple[float, float]]:
+    """XY centres of the molded screw bosses, sized from manufacturing.screw_boss_count.
+
+    Four bosses sit at the corners (worst-case corner-drop load path), the rest are
+    distributed along the long edges. A 10-boss layout halves the spacing between
+    corner and edge bosses versus the original 6, cutting per-boss inertial shear.
+    """
+    count = int(params["manufacturing"]["screw_boss_count"])
+    corners = [(-29.0, 58.0), (29.0, 58.0), (-29.0, -58.0), (29.0, -58.0)]
+    edge_rows = [20.0, -20.0, 38.0, -38.0, 0.0, 58.0 - 2.0, -(58.0 - 2.0)]
+    points = list(corners)
+    for y in edge_rows:
+        if len(points) >= count:
+            break
+        points.append((-29.0, y))
+        if len(points) >= count:
+            break
+        points.append((29.0, y))
+    return points[:count]
+
+
+def corner_rib_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Triangular corner gussets tying the four corner bosses into the side frame.
+
+    Modeled as a small L of two thin legs at each corner; they share corner-drop
+    shear into the rib network rather than loading the boss neck alone.
+    """
+    rib = params["manufacturing"].get("corner_rib")
+    if not rib:
+        return []
+    width, height, depth = params["device"]["envelope_mm"]
+    leg = float(rib["leg_mm"])
+    t = float(rib["thickness_mm"])
+    h = float(rib["height_mm"])
+    z = -depth / 2 + 2.0
+    corners = [(-29.0, 58.0), (29.0, 58.0), (-29.0, -58.0), (29.0, -58.0)]
+    specs: list[dict[str, Any]] = []
+    for idx, (cx, cy) in enumerate(corners, start=1):
+        sx = 1.0 if cx > 0 else -1.0
+        sy = 1.0 if cy > 0 else -1.0
+        specs.append(
+            {
+                "name": f"orange_corner_rib_{idx}",
+                "size": [leg, t, h],
+                "center": [cx + sx * leg / 2.0, cy + sy * t / 2.0, z],
+            }
+        )
+        specs.append(
+            {
+                "name": f"orange_corner_rib_{idx}_leg",
+                "size": [t, leg, h],
+                "center": [cx + sx * t / 2.0, cy + sy * leg / 2.0, z],
+            }
+        )
+    return specs
+
+
 def enclosure_feature_parts(params: dict[str, Any]) -> list[Part]:
     width, height, depth = params["device"]["envelope_mm"]
     mfg = params["manufacturing"]
     boss_radius = mfg["screw_boss_outer_diameter_mm"] / 2.0
     boss_z = -depth / 2 + 2.0
-    boss_points = [
-        (-29.0, 58.0),
-        (29.0, 58.0),
-        (-29.0, -58.0),
-        (29.0, -58.0),
-        (-29.0, -20.0),
-        (29.0, -20.0),
-    ]
+    boss_points = screw_boss_points(params)
     snap_points = [
         (-width / 2 + 1.9, 52.0),
         (-width / 2 + 1.9, 24.0),
@@ -727,6 +842,42 @@ def enclosure_feature_parts(params: dict[str, Any]) -> list[Part]:
             ),
         ]
     )
+    for rib in corner_rib_specs(params):
+        parts.append(
+            box(
+                rib["name"],
+                rib["size"],
+                rib["center"],
+                ORANGE,
+                "molded enclosure",
+                "PC+ABS corner gusset tying corner boss to side frame",
+            )
+        )
+    cushion = params["display"].get("glass_perimeter_cushion")
+    if cushion:
+        glass_w, glass_h, _ = params["display"]["cover_glass_mm"]
+        cw = float(cushion["perimeter_width_mm"])
+        ct = float(cushion["envelope_mm"][2])
+        front_z = depth / 2 - 0.35
+        cushion_z = front_z - 0.7 - ct / 2.0
+        straight_w = glass_w - 2.0 * params["device"]["corner_radius_mm"]
+        straight_h = glass_h - 2.0 * params["device"]["corner_radius_mm"]
+        for name, size, center in [
+            ("glass_perimeter_cushion_top", [straight_w, cw, ct], [0, glass_h / 2 - cw / 2, cushion_z]),
+            ("glass_perimeter_cushion_bottom", [straight_w, cw, ct], [0, -glass_h / 2 + cw / 2, cushion_z]),
+            ("glass_perimeter_cushion_left", [cw, straight_h, ct], [-glass_w / 2 + cw / 2, 0, cushion_z]),
+            ("glass_perimeter_cushion_right", [cw, straight_h, ct], [glass_w / 2 - cw / 2, 0, cushion_z]),
+        ]:
+            parts.append(
+                box(
+                    name,
+                    size,
+                    center,
+                    ADHESIVE,
+                    "screen retention",
+                    cushion["material"],
+                )
+            )
     return parts
 
 
@@ -762,6 +913,16 @@ def advanced_phone_parts(params: dict[str, Any]) -> list[Part]:
             [0.12, 0.12, 0.12, 0.35],
             "RF keepout",
             "side Wi-Fi/Bluetooth antenna keepout volume",
+        ),
+        box(
+            "antenna_aperture_tuner",
+            radio.get("antenna_aperture_tuner", {}).get("envelope_mm", [2.0, 2.0, 0.5]),
+            [-cellular_keepout[0] / 2.0 + 4.0, -height / 2 + 9.0, -1.6],
+            METAL,
+            "RF tuner",
+            radio.get("antenna_aperture_tuner", {}).get(
+                "candidate", "Qorvo QPC1252Q antenna aperture tuner"
+            ),
         ),
         box(
             "soc_shield_can",
@@ -839,14 +1000,7 @@ def tooling_parts(params: dict[str, Any]) -> list[Part]:
     sprue_d = mfg["sprue_diameter_mm"]
     gate_t = mfg["gate_thickness_mm"]
     boss_z = -depth / 2 + 2.05
-    boss_points = [
-        (-29.0, 58.0),
-        (29.0, 58.0),
-        (-29.0, -58.0),
-        (29.0, -58.0),
-        (-29.0, -20.0),
-        (29.0, -20.0),
-    ]
+    boss_points = screw_boss_points(params)
     parts = [
         cyl_z(
             "mold_sprue_bushing",
@@ -956,6 +1110,13 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
     wall = dev["wall_thickness_mm"]
     rear_camera_glass_t = comp["rear_camera_glass"]["envelope_mm"][2]
     rear_camera_center_z = rear_camera_buried_center_z(params)
+    rear_camera_x, rear_camera_y = rear_camera_center_xy(params)
+    rear_aperture_w, rear_aperture_h = rear_camera_shell_aperture_mm(params)
+    rear_aperture_z = -depth / 2.0 + 0.035
+    # Bezel lands are 0.14 mm thick; seat their center so the outer face stays at
+    # or inside the flat back outer plane (Zmin >= -depth/2), keeping flush back.
+    rear_bezel_z = -depth / 2.0 + 0.14 / 2.0
+    rear_bezel_border_mm = 1.0
     flash_offset_x = comp["rear_camera"]["module_mm"][0] / 2.0 + 1.6
 
     parts: list[Part] = [
@@ -1009,6 +1170,20 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
             [0.16, 0.16, 0.17, 1],
             "battery",
             "LiPo pouch",
+        ),
+        box(
+            "battery_back_void_foam_pad",
+            battery["back_void_foam_pad_mm"],
+            [
+                0,
+                -7.0,
+                -depth / 2
+                + wall
+                + float(battery["back_void_foam_pad_mm"][2]) / 2.0,
+            ],
+            [0.07, 0.075, 0.08, 0.55],
+            "battery support",
+            battery["back_void_foam_material"],
         ),
     ]
 
@@ -1076,16 +1251,80 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
             box(
                 "rear_camera_module",
                 comp["rear_camera"]["module_mm"],
-                [21.0, height / 2 - 19.0, rear_camera_center_z],
+                [rear_camera_x, rear_camera_y, rear_camera_center_z],
                 CAMERA,
                 "camera",
                 "single 13 MP simple-AF module, buried",
+            ),
+            box(
+                "rear_camera_shell_aperture",
+                [rear_aperture_w, rear_aperture_h, 0.08],
+                [rear_camera_x, rear_camera_y, -depth / 2.0 - 0.015],
+                [0.01, 0.008, 0.006, 1.0],
+                "camera aperture",
+                "open molded back-shell camera hole exposing the flush cover window",
+            ),
+            box(
+                "orange_rear_camera_bezel_top",
+                [
+                    rear_aperture_w + 2.0 * rear_bezel_border_mm,
+                    rear_bezel_border_mm,
+                    0.14,
+                ],
+                [
+                    rear_camera_x,
+                    rear_camera_y + rear_aperture_h / 2.0 + rear_bezel_border_mm / 2.0,
+                    rear_bezel_z,
+                ],
+                ORANGE,
+                "molded enclosure",
+                "integral orange camera aperture bevel/top land",
+            ),
+            box(
+                "orange_rear_camera_bezel_bottom",
+                [
+                    rear_aperture_w + 2.0 * rear_bezel_border_mm,
+                    rear_bezel_border_mm,
+                    0.14,
+                ],
+                [
+                    rear_camera_x,
+                    rear_camera_y - rear_aperture_h / 2.0 - rear_bezel_border_mm / 2.0,
+                    rear_bezel_z,
+                ],
+                ORANGE,
+                "molded enclosure",
+                "integral orange camera aperture bevel/bottom land",
+            ),
+            box(
+                "orange_rear_camera_bezel_left",
+                [rear_bezel_border_mm, rear_aperture_h, 0.14],
+                [
+                    rear_camera_x - rear_aperture_w / 2.0 - rear_bezel_border_mm / 2.0,
+                    rear_camera_y,
+                    rear_bezel_z,
+                ],
+                ORANGE,
+                "molded enclosure",
+                "integral orange camera aperture bevel/left land",
+            ),
+            box(
+                "orange_rear_camera_bezel_right",
+                [rear_bezel_border_mm, rear_aperture_h, 0.14],
+                [
+                    rear_camera_x + rear_aperture_w / 2.0 + rear_bezel_border_mm / 2.0,
+                    rear_camera_y,
+                    rear_bezel_z,
+                ],
+                ORANGE,
+                "molded enclosure",
+                "integral orange camera aperture bevel/right land",
             ),
             cyl_z(
                 "rear_camera_lens_window",
                 comp["rear_camera"]["lens_diameter_mm"] / 2,
                 rear_camera_glass_t,
-                [21.0, height / 2 - 19.0, -depth / 2 + rear_camera_glass_t / 2.0],
+                [rear_camera_x, rear_camera_y, -depth / 2 + rear_camera_glass_t / 2.0],
                 CAMERA,
                 "camera",
                 "flush internal lens window, coplanar with flat back",
@@ -1094,8 +1333,8 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 "rear_flash_led",
                 comp["rear_flash_led"]["envelope_mm"],
                 [
-                    21.0 - flash_offset_x,
-                    height / 2 - 19.0,
+                    rear_camera_x - flash_offset_x,
+                    rear_camera_y,
                     -depth / 2 + wall + FLASH_BURIAL_CLEARANCE_MM
                     + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
                 ],
@@ -1108,8 +1347,8 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 comp["rear_flash_led"]["window_mm"][0] / 2.0,
                 rear_camera_glass_t,
                 [
-                    21.0 - flash_offset_x,
-                    height / 2 - 19.0,
+                    rear_camera_x - flash_offset_x,
+                    rear_camera_y,
                     -depth / 2 + rear_camera_glass_t / 2.0,
                 ],
                 CAMERA,
@@ -1413,19 +1652,33 @@ def write_solid_cad_handoff_artifacts(
     wall = dev["wall_thickness_mm"]
     rear_camera_glass_t = comp["rear_camera_glass"]["envelope_mm"][2]
     rear_camera_center_z = rear_camera_buried_center_z(params)
+    rear_camera_x, rear_camera_y = rear_camera_center_xy(params)
+    rear_aperture_w, rear_aperture_h = rear_camera_shell_aperture_mm(params)
+    rear_bezel_border_mm = 1.0
     flash_offset_x = comp["rear_camera"]["module_mm"][0] / 2.0 + 1.6
 
     def artifact_path(path: Path) -> str:
         return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix()
 
-    back_shell = cq_box([width, height, 1.2], [0, 0, -depth / 2 + 0.6], radius)
+    back_shell = cq_box([width, height, 1.2], [0, 0, -depth / 2 + 0.6], radius).cut(
+        cq_box(
+            [rear_aperture_w, rear_aperture_h, 2.4],
+            [rear_camera_x, rear_camera_y, -depth / 2 + 0.6],
+        )
+    )
     side_outer = cq_box([width, height, depth], [0, 0, 0], radius)
     side_inner = cq_box(
         [width - 2 * dev["wall_thickness_mm"], height - 2 * dev["wall_thickness_mm"], depth + 1.0],
         [0, 0, 0],
         max(radius - dev["wall_thickness_mm"], 0.5),
     )
-    side_frame = side_outer.cut(side_inner)
+    side_frame_uncut = side_outer.cut(side_inner)
+    side_frame = side_frame_uncut
+    side_frame_cutouts = side_frame_external_cutout_specs(params)
+    for cutout in side_frame_cutouts:
+        side_frame = side_frame.cut(cq_box(cutout["size"], cutout["center"]))
+    side_frame_uncut_volume_mm3 = round(float(side_frame_uncut.val().Volume()), 3)
+    side_frame_cut_volume_mm3 = round(float(side_frame.val().Volume()), 3)
     solids: list[dict[str, Any]] = [
         {
             "name": "orange_back_shell",
@@ -1477,6 +1730,22 @@ def write_solid_cad_handoff_artifacts(
             "material": "LiPo pouch envelope",
         },
         {
+            "name": "battery_back_void_foam_pad",
+            "shape": cq_box(
+                battery["back_void_foam_pad_mm"],
+                [
+                    0,
+                    -7.0,
+                    -depth / 2
+                    + wall
+                    + float(battery["back_void_foam_pad_mm"][2]) / 2.0,
+                ],
+            ),
+            "color": cq.Color(0.07, 0.075, 0.08, 0.55),
+            "role": "battery support",
+            "material": battery["back_void_foam_material"],
+        },
+        {
             "name": "usb_c_receptacle",
             "shape": cq_box(comp["usb_c"]["envelope_mm"], [0, -height / 2 + 4.1, -1.6]),
             "color": metal,
@@ -1487,19 +1756,85 @@ def write_solid_cad_handoff_artifacts(
             "name": "rear_camera_module",
             "shape": cq_box(
                 comp["rear_camera"]["module_mm"],
-                [21.0, height / 2 - 19.0, rear_camera_center_z],
+                [rear_camera_x, rear_camera_y, rear_camera_center_z],
             ),
             "color": black,
             "role": "camera",
             "material": comp["rear_camera"]["candidate"],
         },
         {
+            "name": "rear_camera_shell_aperture",
+            "shape": cq_box(
+                [rear_aperture_w, rear_aperture_h, 0.08],
+                [rear_camera_x, rear_camera_y, -depth / 2.0 - 0.015],
+            ),
+            "color": black,
+            "role": "camera aperture",
+            "material": "open molded back-shell camera hole envelope",
+        },
+        {
+            "name": "orange_rear_camera_bezel_top",
+            "shape": cq_box(
+                [rear_aperture_w + 2.0 * rear_bezel_border_mm, rear_bezel_border_mm, 0.14],
+                [
+                    rear_camera_x,
+                    rear_camera_y + rear_aperture_h / 2.0 + rear_bezel_border_mm / 2.0,
+                    -depth / 2.0 + 0.07,
+                ],
+            ),
+            "color": orange,
+            "role": "molded enclosure",
+            "material": "integral orange camera aperture bevel/top land",
+        },
+        {
+            "name": "orange_rear_camera_bezel_bottom",
+            "shape": cq_box(
+                [rear_aperture_w + 2.0 * rear_bezel_border_mm, rear_bezel_border_mm, 0.14],
+                [
+                    rear_camera_x,
+                    rear_camera_y - rear_aperture_h / 2.0 - rear_bezel_border_mm / 2.0,
+                    -depth / 2.0 + 0.07,
+                ],
+            ),
+            "color": orange,
+            "role": "molded enclosure",
+            "material": "integral orange camera aperture bevel/bottom land",
+        },
+        {
+            "name": "orange_rear_camera_bezel_left",
+            "shape": cq_box(
+                [rear_bezel_border_mm, rear_aperture_h, 0.14],
+                [
+                    rear_camera_x - rear_aperture_w / 2.0 - rear_bezel_border_mm / 2.0,
+                    rear_camera_y,
+                    -depth / 2.0 + 0.07,
+                ],
+            ),
+            "color": orange,
+            "role": "molded enclosure",
+            "material": "integral orange camera aperture bevel/left land",
+        },
+        {
+            "name": "orange_rear_camera_bezel_right",
+            "shape": cq_box(
+                [rear_bezel_border_mm, rear_aperture_h, 0.14],
+                [
+                    rear_camera_x + rear_aperture_w / 2.0 + rear_bezel_border_mm / 2.0,
+                    rear_camera_y,
+                    -depth / 2.0 + 0.07,
+                ],
+            ),
+            "color": orange,
+            "role": "molded enclosure",
+            "material": "integral orange camera aperture bevel/right land",
+        },
+        {
             "name": "rear_flash_led",
             "shape": cq_box(
                 comp["rear_flash_led"]["envelope_mm"],
                 [
-                    21.0 - flash_offset_x,
-                    height / 2 - 19.0,
+                    rear_camera_x - flash_offset_x,
+                    rear_camera_y,
                     -depth / 2 + wall + FLASH_BURIAL_CLEARANCE_MM
                     + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
                 ],
@@ -1513,8 +1848,8 @@ def write_solid_cad_handoff_artifacts(
             "shape": cq_box(
                 comp["rear_flash_led"]["window_mm"],
                 [
-                    21.0 - flash_offset_x,
-                    height / 2 - 19.0,
+                    rear_camera_x - flash_offset_x,
+                    rear_camera_y,
                     -depth / 2 + comp["rear_flash_led"]["window_mm"][2] / 2.0,
                 ],
             ),
@@ -1606,8 +1941,8 @@ def write_solid_cad_handoff_artifacts(
                 "shape": cq_box(
                     comp["rear_camera_glass"]["envelope_mm"],
                     [
-                        21.0,
-                        height / 2 - 19.0,
+                        rear_camera_x,
+                        rear_camera_y,
                         -depth / 2 + comp["rear_camera_glass"]["envelope_mm"][2] / 2.0,
                     ],
                 ),
@@ -1623,7 +1958,7 @@ def write_solid_cad_handoff_artifacts(
                         comp["rear_camera"]["lens_diameter_mm"],
                         rear_camera_glass_t,
                     ],
-                    [21.0, height / 2 - 19.0, -depth / 2 + rear_camera_glass_t / 2.0],
+                    [rear_camera_x, rear_camera_y, -depth / 2 + rear_camera_glass_t / 2.0],
                     radius=0.4,
                 ),
                 "color": black,
@@ -1763,6 +2098,29 @@ def write_solid_cad_handoff_artifacts(
             }
         )
 
+    cushion = display.get("glass_perimeter_cushion")
+    if cushion:
+        cw = float(cushion["perimeter_width_mm"])
+        ct = float(cushion["envelope_mm"][2])
+        cushion_z = depth / 2 - 0.35 - 0.7 - ct / 2.0
+        straight_w = glass_w - 2.0 * radius
+        straight_h = glass_h - 2.0 * radius
+        for cname, csize, ccenter in [
+            ("glass_perimeter_cushion_top", [straight_w, cw, ct], [0, glass_h / 2 - cw / 2, cushion_z]),
+            ("glass_perimeter_cushion_bottom", [straight_w, cw, ct], [0, -glass_h / 2 + cw / 2, cushion_z]),
+            ("glass_perimeter_cushion_left", [cw, straight_h, ct], [-glass_w / 2 + cw / 2, 0, cushion_z]),
+            ("glass_perimeter_cushion_right", [cw, straight_h, ct], [glass_w / 2 - cw / 2, 0, cushion_z]),
+        ]:
+            solids.append(
+                {
+                    "name": cname,
+                    "shape": cq_box(csize, ccenter),
+                    "color": adhesive_color,
+                    "role": "screen retention",
+                    "material": "PORON foam cover-glass perimeter cushion envelope",
+                }
+            )
+
     for idx, x in enumerate([11.5, 14.5, 17.5, 20.5, 23.5], start=1):
         solids.append(
             {
@@ -1836,10 +2194,7 @@ def write_solid_cad_handoff_artifacts(
 
     boss_radius = params["manufacturing"]["screw_boss_outer_diameter_mm"] / 2.0
     boss_z = -depth / 2 + 2.0
-    for idx, (x, y) in enumerate(
-        [(-29.0, 58.0), (29.0, 58.0), (-29.0, -58.0), (29.0, -58.0), (-29.0, -20.0), (29.0, -20.0)],
-        start=1,
-    ):
+    for idx, (x, y) in enumerate(screw_boss_points(params), start=1):
         solids.append(
             {
                 "name": f"orange_screw_boss_{idx}",
@@ -1849,6 +2204,16 @@ def write_solid_cad_handoff_artifacts(
                 "color": orange,
                 "role": "molded enclosure",
                 "material": "PC+ABS screw boss envelope",
+            }
+        )
+    for rib in corner_rib_specs(params):
+        solids.append(
+            {
+                "name": rib["name"],
+                "shape": cq_box(rib["size"], rib["center"]),
+                "color": orange,
+                "role": "molded enclosure",
+                "material": "PC+ABS corner gusset envelope",
             }
         )
     for idx, (x, y) in enumerate(
@@ -1931,6 +2296,17 @@ def write_solid_cad_handoff_artifacts(
             "side Wi-Fi/Bluetooth antenna keepout volume",
         ),
         (
+            "antenna_aperture_tuner",
+            params["radio"].get("antenna_aperture_tuner", {}).get("envelope_mm", [2.0, 2.0, 0.5]),
+            [
+                -params["radio"]["cellular"]["antenna_keepout_mm"][0] / 2.0 + 4.0,
+                -height / 2 + 9.0,
+                -1.6,
+            ],
+            "RF tuner",
+            "Qorvo QPC1252Q antenna aperture/band-switch tuner (MIPI RFFE)",
+        ),
+        (
             "soc_shield_can",
             [18.0, 16.0, 1.2],
             [-7.0, 55.0, -0.9],
@@ -1999,6 +2375,7 @@ def write_solid_cad_handoff_artifacts(
         "display_lcm",
         "main_pcb",
         "battery_pouch",
+        "battery_back_void_foam_pad",
         "usb_c_receptacle",
         "usb_c_external_aperture",
         "usb_c_perimeter_gasket_top",
@@ -2020,6 +2397,11 @@ def write_solid_cad_handoff_artifacts(
         "top_microphone_port",
         "top_microphone_mesh",
         "rear_camera_module",
+        "rear_camera_shell_aperture",
+        "orange_rear_camera_bezel_top",
+        "orange_rear_camera_bezel_bottom",
+        "orange_rear_camera_bezel_left",
+        "orange_rear_camera_bezel_right",
         "rear_camera_cover_glass",
         "rear_camera_lens_window",
         "rear_flash_led",
@@ -2077,6 +2459,29 @@ def write_solid_cad_handoff_artifacts(
         "part_count": len(part_rows),
         "parts": part_rows,
         "required_solid_presence": required_solid_presence,
+        "side_frame_external_cutouts": {
+            "status": "pass" if side_frame_cut_volume_mm3 < side_frame_uncut_volume_mm3 else "blocked",
+            "cutout_count": len(side_frame_cutouts),
+            "cutouts": [
+                {
+                    "name": cutout["name"],
+                    "source_aperture": cutout["source_aperture"],
+                    "size_mm": cutout["size"],
+                    "center_mm": cutout["center"],
+                }
+                for cutout in side_frame_cutouts
+            ],
+            "uncut_side_frame_volume_mm3": side_frame_uncut_volume_mm3,
+            "cut_side_frame_volume_mm3": side_frame_cut_volume_mm3,
+            "removed_volume_mm3": round(
+                side_frame_uncut_volume_mm3 - side_frame_cut_volume_mm3, 3
+            ),
+            "note": (
+                "Orange side-frame STEP is boolean-cut for USB-C, bottom speaker grille, "
+                "bottom/top microphone ports, and side-key cap openings instead of relying "
+                "only on separate black aperture markers."
+            ),
+        },
         "linked_fit_status": checks["status"],
         "remaining_blockers": [
             "Solids are parametric envelopes, not final supplier STEP models.",
@@ -2092,10 +2497,24 @@ def write_solid_cad_handoff_artifacts(
         "",
         f"- Assembly STEP: `{report['assembly_step']}`",
         f"- Part STEP count: {report['part_count']}",
+        f"- Side-frame external cutouts: {report['side_frame_external_cutouts']['cutout_count']} "
+        f"({report['side_frame_external_cutouts']['removed_volume_mm3']} mm^3 removed)",
         "",
-        "## Parts",
+        "## Side-Frame Cutouts",
         "",
     ]
+    for cutout in report["side_frame_external_cutouts"]["cutouts"]:
+        lines.append(
+            f"- `{cutout['name']}` from `{cutout['source_aperture']}`: "
+            f"{cutout['size_mm']} mm at {cutout['center_mm']} mm"
+        )
+    lines.extend(
+        [
+            "",
+            "## Parts",
+            "",
+        ]
+    )
     for row in part_rows:
         lines.append(f"- `{row['name']}`: `{row['step']}` ({row['role']})")
     lines.extend(["", "## Remaining Blockers", ""])
@@ -2666,9 +3085,11 @@ def write_visual_decision_artifacts(
         {
             "id": "rear_camera_cover_window",
             "decision": "keep_for_evt0",
-            "basis": "Single rear AF camera is buried under the flat back wall behind a flush internal window (no bump, no proud ring); device depth was raised to fully bury the module.",
+            "basis": "Single rear AF camera is buried under the flat back wall behind an explicit molded shell aperture and flush cover window (no bump, no proud ring); device depth was raised to fully bury the module.",
             "evidence": [
                 "rear_feature_detail.png",
+                "rear_camera_shell_aperture",
+                "orange_rear_camera_bezel_top",
                 "rear_camera_module",
                 "rear_camera_cover_glass",
             ],
@@ -3175,10 +3596,14 @@ def write_component_selection_review_artifacts(
             "camera",
             components["rear_camera"]["candidate"],
             components["rear_camera"]["module_mm"],
-            ["camera_speaker_behind_glass", "camera_optical_seal_stack"],
+            [
+                "camera_speaker_behind_glass",
+                "rear_camera_back_shell_aperture",
+                "camera_optical_seal_stack",
+            ],
             notes=[
                 components["rear_camera_glass"]["candidate"],
-                "Flush-back rear camera remains conditional on supplier z-height, optical center, and image-quality validation.",
+                "Flush-back rear camera now has an explicit molded orange shell aperture; final lock remains conditional on supplier z-height, optical center, and image-quality validation.",
             ],
         ),
         component_case(
@@ -5973,6 +6398,8 @@ def write_camera_validation_artifacts(
     rear_cover_margin_mm = (
         comp["rear_camera_glass"]["envelope_mm"][0] - comp["rear_camera"]["lens_diameter_mm"]
     ) / 2.0
+    aperture_w, aperture_h = rear_camera_shell_aperture_mm(params)
+    rear_glass_w, rear_glass_h, _rear_glass_t = comp["rear_camera_glass"]["envelope_mm"]
     front_under_glass_margin_mm = (
         comp["front_camera"]["module_mm"][0] - comp["front_camera"]["lens_diameter_mm"]
     ) / 2.0
@@ -5990,6 +6417,21 @@ def write_camera_validation_artifacts(
             "pass": rear_cover_margin_mm >= 0.8
             and "rear_camera_cover_glass" in part_names
             and "rear_camera_lens_window" in part_names,
+        },
+        {
+            "id": "rear_camera_back_shell_aperture",
+            "actual": {
+                "aperture_mm": [aperture_w, aperture_h],
+                "cover_window_mm": [rear_glass_w, rear_glass_h],
+                "bezel_part_count": sum(
+                    1 for name in part_names if name.startswith("orange_rear_camera_bezel_")
+                ),
+            },
+            "target": "explicit molded back-shell opening larger than the flush cover window with four orange bevel lands",
+            "pass": "rear_camera_shell_aperture" in part_names
+            and aperture_w > rear_glass_w
+            and aperture_h > rear_glass_h
+            and sum(1 for name in part_names if name.startswith("orange_rear_camera_bezel_")) == 4,
         },
         {
             "id": "rear_camera_z_stack",
@@ -9929,6 +10371,12 @@ def write_assembly_clearance_artifacts(params: dict[str, Any], parts: list[Part]
             "segment_gaps_mm": [round(value, 3) for value in battery_to_pcb],
         },
         {
+            "id": "battery_back_void_foam_to_pouch",
+            "actual_mm": round(part_gap("battery_back_void_foam_pad", "battery_pouch"), 3),
+            "required_mm": 0.25,
+            "pass": part_gap("battery_back_void_foam_pad", "battery_pouch") >= 0.25,
+        },
+        {
             "id": "split_interconnect_flex_to_battery_edge",
             "actual_mm": round(flex_to_battery_edge, 3),
             "required_mm": 0.5,
@@ -10003,6 +10451,109 @@ def write_assembly_clearance_artifacts(params: dict[str, Any], parts: list[Part]
             f"- {result}: `{item['id']}` actual {item['actual_mm']} mm, required {item['required_mm']} mm"
         )
     (REVIEW_DIR / "assembly-clearance.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_battery_swell_management_artifacts(
+    params: dict[str, Any],
+    parts: list[Part],
+    checks: dict[str, Any],
+    clearance: dict[str, Any],
+) -> dict[str, Any]:
+    by_name = {part.name: part for part in parts}
+    battery = params["battery"]
+    foam_part = by_name.get("battery_back_void_foam_pad")
+    foam_bounds = None
+    if foam_part is not None:
+        foam_bounds = [
+            [round(float(value), 4) for value in foam_part.bounds[0]],
+            [round(float(value), 4) for value in foam_part.bounds[1]],
+        ]
+    fit_checks = checks["checks"]
+    display_wall = fit_checks["battery_display_and_wall_clearance"]
+    foam_check = fit_checks["battery_back_void_foam_management"]
+    clearance_cases = {case["id"]: case for case in clearance["cases"]}
+    report = {
+        "claim_boundary": (
+            "CAD battery swell management screen for the EVT0 compact enclosure. "
+            "It records the modeled foam pad and worst-case arithmetic stack, but "
+            "does not replace supplier pack swelling data, foam compression-set data, "
+            "or physical thermal/aging validation."
+        ),
+        "status": "cad_battery_swell_management_ready"
+        if display_wall["pass"]
+        and foam_check["pass"]
+        and clearance_cases["battery_back_void_foam_to_pouch"]["pass"]
+        else "blocked",
+        "battery_candidate": battery["candidate"],
+        "battery_envelope_mm": battery["envelope_mm"],
+        "battery_back_void_gap_mm": display_wall["battery_to_back_wall_gap_mm"],
+        "display_static_gap_mm": display_wall["battery_to_display_gap_mm"],
+        "foam_pad": {
+            "part": "battery_back_void_foam_pad",
+            "material": battery["back_void_foam_material"],
+            "envelope_mm": battery["back_void_foam_pad_mm"],
+            "bounds_mm": foam_bounds,
+            "compression_allowance_mm": battery["back_void_foam_compression_allowance_mm"],
+            "free_gap_to_pouch_mm": clearance_cases["battery_back_void_foam_to_pouch"][
+                "actual_mm"
+            ],
+        },
+        "worst_case_arithmetic": {
+            "battery_swell_high_mm": foam_check["battery_swell_high_mm"],
+            "back_void_tolerance_arithmetic_mm": foam_check[
+                "back_void_tolerance_arithmetic_mm"
+            ],
+            "required_back_void_capacity_mm": foam_check[
+                "back_void_required_worst_case_mm"
+            ],
+            "managed_back_void_capacity_mm": foam_check["back_void_managed_capacity_mm"],
+            "margin_mm": round(
+                foam_check["back_void_managed_capacity_mm"]
+                - foam_check["back_void_required_worst_case_mm"],
+                4,
+            ),
+        },
+        "checks": {
+            "battery_display_and_wall_clearance": display_wall,
+            "battery_back_void_foam_management": foam_check,
+            "battery_back_void_foam_to_pouch": clearance_cases[
+                "battery_back_void_foam_to_pouch"
+            ],
+        },
+        "release_blockers": [
+            "Supplier battery drawing must include end-of-life swelling envelope, PCM, connector, pull-tab, and sample thickness data.",
+            "Foam supplier must provide compression-set data at thermal aging conditions.",
+            "Physical EVT thermal/aging/drop validation must confirm the foam does not preload the pouch or push the display.",
+        ],
+    }
+    (REVIEW_DIR / "battery-swell-management.json").write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+    lines = [
+        "# E1 Phone Battery Swell Management",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "## Foam Pad",
+        "",
+        f"- Part: `{report['foam_pad']['part']}`",
+        f"- Material: {report['foam_pad']['material']}",
+        f"- Envelope: {report['foam_pad']['envelope_mm']} mm",
+        f"- Compression allowance: {report['foam_pad']['compression_allowance_mm']} mm",
+        "",
+        "## Worst-Case Arithmetic",
+        "",
+        f"- Required capacity: {report['worst_case_arithmetic']['required_back_void_capacity_mm']} mm",
+        f"- Managed capacity: {report['worst_case_arithmetic']['managed_back_void_capacity_mm']} mm",
+        f"- Margin: {report['worst_case_arithmetic']['margin_mm']} mm",
+        "",
+        "## Release Blockers",
+        "",
+    ]
+    for blocker in report["release_blockers"]:
+        lines.append(f"- {blocker}")
+    (REVIEW_DIR / "battery-swell-management.md").write_text("\n".join(lines) + "\n")
     return report
 
 
@@ -12080,6 +12631,9 @@ def write_full_cad_boolean_interference_artifacts(
         "status": "full_cad_boolean_interference_pass"
         if all(prerequisites.values())
         else "blocked_boolean_interference_incomplete",
+        "overall_status": "full_cad_boolean_interference_pass"
+        if all(prerequisites.values())
+        else "blocked_boolean_interference_incomplete",
         "source_reviews": {
             "solid_cad_status": solid_cad.get("status"),
             "step_validation_status": step_validation.get("status"),
@@ -12212,6 +12766,26 @@ def write_readiness_artifacts(
             "remaining_blockers": [
                 "Envelope is optimized against current EVT0 supplier envelopes only.",
                 "Need supplier STEP and routed PCB before proving no further local reduction is possible.",
+            ],
+        },
+        {
+            "subsystem": "battery_swell_management",
+            "status": "cad_pass"
+            if (REVIEW_DIR / "battery-swell-management.json").is_file()
+            and (REVIEW_DIR / "battery-swell-management.md").is_file()
+            and check_status["battery_back_void_foam_management"]["pass"]
+            else "blocked",
+            "evidence": [
+                "battery_pouch",
+                "battery_back_void_foam_pad",
+                "battery_display_and_wall_clearance",
+                "battery_back_void_foam_management",
+                "battery-swell-management.json",
+                "battery-swell-management.md",
+            ],
+            "remaining_blockers": [
+                "CAD now models a compressible back-void foam pad, but supplier battery swelling and foam compression-set data are still missing.",
+                "Need physical thermal aging, drop, and pouch-preload validation before battery release.",
             ],
         },
         {
@@ -12838,6 +13412,8 @@ def write_readiness_artifacts(
         and (REVIEW_DIR / "compactness-optimization.md").is_file()
         and (REVIEW_DIR / "compactness-optimization.png").is_file()
         and (REVIEW_DIR / "compactness-optimization.svg").is_file(),
+        "battery_swell_management": (REVIEW_DIR / "battery-swell-management.json").is_file()
+        and (REVIEW_DIR / "battery-swell-management.md").is_file(),
         "supplier_lock": (REVIEW_DIR / "supplier-lock.json").is_file(),
         "kicad_mechanical_handoff": (REVIEW_DIR / "kicad-mechanical-handoff.json").is_file(),
         "kicad_placement_reconciliation": kicad_reconciliation["status"]
@@ -13814,12 +14390,18 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
         "display_lcm",
         "main_pcb",
         "battery_pouch",
+        "battery_back_void_foam_pad",
         "usb_c_receptacle",
         "bottom_speaker_module",
         "earpiece_receiver",
         "bottom_mic",
         "top_mic",
         "rear_camera_module",
+        "rear_camera_shell_aperture",
+        "orange_rear_camera_bezel_top",
+        "orange_rear_camera_bezel_bottom",
+        "orange_rear_camera_bezel_left",
+        "orange_rear_camera_bezel_right",
         "front_camera_module",
         "rear_camera_cover_adhesive_top",
         "rear_camera_cover_adhesive_bottom",
@@ -13927,6 +14509,23 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
     battery_to_back_wall_gap_mm = (
         battery_min - back_inner_wall_z if battery_min is not None else 0.0
     )
+    foam_low = foam_high = None
+    if "battery_back_void_foam_pad" in by_name:
+        foam_lo, foam_hi = by_name["battery_back_void_foam_pad"].bounds
+        foam_low = float(foam_lo[2])
+        foam_high = float(foam_hi[2])
+    foam_pad_thickness_mm = float(battery.get("back_void_foam_pad_mm", [0.0, 0.0, 0.0])[2])
+    foam_compression_allowance_mm = float(
+        battery.get("back_void_foam_compression_allowance_mm", 0.0)
+    )
+    battery_swell_high_mm = round(float(battery["envelope_mm"][2]) * 0.10, 4)
+    back_void_tolerance_arithmetic_mm = 0.182
+    back_void_required_worst_case_mm = (
+        battery_swell_high_mm + back_void_tolerance_arithmetic_mm
+    )
+    back_void_managed_capacity_mm = (
+        battery_to_back_wall_gap_mm + foam_compression_allowance_mm
+    )
     if "rear_flash_led" in by_name:
         flash_lo = by_name["rear_flash_led"].bounds[0]
         flash_min = float(flash_lo[2])
@@ -13961,6 +14560,14 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
         flash_camera_center_spacing_mm = float(
             np.linalg.norm(flash_c[:2] - cam_c[:2])
         )
+    rear_aperture_w, rear_aperture_h = rear_camera_shell_aperture_mm(params)
+    rear_glass_w, rear_glass_h, _rear_glass_t = comp["rear_camera_glass"]["envelope_mm"]
+    rear_camera_aperture_bezel_parts = [
+        "orange_rear_camera_bezel_top",
+        "orange_rear_camera_bezel_bottom",
+        "orange_rear_camera_bezel_left",
+        "orange_rear_camera_bezel_right",
+    ]
 
     battery_swell_gap_required_mm = float(battery.get("battery_swell_gap_mm", 0.6))
     fit_check_epsilon_mm = 1e-6
@@ -13980,6 +14587,28 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             "required_front_static_gap_mm": 0.15,
             "required_back_swell_gap_mm": battery_swell_gap_required_mm,
             "note": "Front face keeps the 0.15 mm static gap below the display; the larger back-face gap is a defined swell void toward the back shell so a LiPo pouch (~8-10 percent thickness swell) never presses the display.",
+        },
+        "battery_back_void_foam_management": {
+            "pass": "battery_back_void_foam_pad" in by_name
+            and foam_pad_thickness_mm > 0.0
+            and foam_compression_allowance_mm >= 0.142
+            and back_void_managed_capacity_mm + fit_check_epsilon_mm
+            >= back_void_required_worst_case_mm,
+            "foam_pad_present": "battery_back_void_foam_pad" in by_name,
+            "foam_pad_thickness_mm": round(foam_pad_thickness_mm, 4),
+            "foam_low_z_mm": round(foam_low, 4) if foam_low is not None else None,
+            "foam_high_z_mm": round(foam_high, 4) if foam_high is not None else None,
+            "foam_to_battery_free_gap_mm": (
+                round(battery_min - foam_high, 4)
+                if battery_min is not None and foam_high is not None
+                else None
+            ),
+            "foam_compression_allowance_mm": round(foam_compression_allowance_mm, 4),
+            "battery_swell_high_mm": battery_swell_high_mm,
+            "back_void_tolerance_arithmetic_mm": back_void_tolerance_arithmetic_mm,
+            "back_void_required_worst_case_mm": round(back_void_required_worst_case_mm, 4),
+            "back_void_managed_capacity_mm": round(back_void_managed_capacity_mm, 4),
+            "note": "Back-shell-side compressible foam absorbs the 0.142 mm arithmetic worst-case swell/tolerance overage while preserving the 0.15 mm display-side static gap.",
         },
         "component_presence": {
             "pass": all(component_presence.values()),
@@ -14145,11 +14774,27 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             "pass": "front_camera_under_glass" in by_name
             and "earpiece_gasket" in by_name
             and "handset_acoustic_mesh" in by_name
-            and "rear_camera_cover_glass" in by_name,
+            and "rear_camera_cover_glass" in by_name
+            and "rear_camera_shell_aperture" in by_name,
             "front_camera": "behind cover glass at upper-left display border",
             "earpiece": "behind cover-glass acoustic slot with gasketed receiver",
             "earpiece_mesh_present": "handset_acoustic_mesh" in by_name,
-            "rear_camera": "behind a separate rear cover glass window",
+            "rear_camera": "behind a separate rear cover glass window in an explicit molded back-shell aperture",
+        },
+        "rear_camera_back_shell_aperture": {
+            "pass": "rear_camera_shell_aperture" in by_name
+            and "rear_camera_cover_glass" in by_name
+            and "rear_camera_lens_window" in by_name
+            and all(name in by_name for name in rear_camera_aperture_bezel_parts)
+            and rear_aperture_w > rear_glass_w
+            and rear_aperture_h > rear_glass_h,
+            "aperture_mm": [rear_aperture_w, rear_aperture_h],
+            "cover_glass_mm": [rear_glass_w, rear_glass_h],
+            "bezel_parts": [
+                name for name in rear_camera_aperture_bezel_parts if name in by_name
+            ],
+            "aperture_present": "rear_camera_shell_aperture" in by_name,
+            "note": "Back shell now carries an explicit through-aperture and four orange bevel lands around the flush camera cover window instead of relying on an internal black window hidden under an unbroken shell.",
         },
         "camera_optical_seal_stack": {
             "pass": {
@@ -14329,6 +14974,8 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "manufacturing_drawing_json": "mechanical/e1-phone/review/manufacturing_drawing.json",
             "manufacturing_readiness_json": "mechanical/e1-phone/review/manufacturing-readiness.json",
             "manufacturing_readiness_md": "mechanical/e1-phone/review/manufacturing-readiness.md",
+            "battery_swell_management_json": "mechanical/e1-phone/review/battery-swell-management.json",
+            "battery_swell_management_md": "mechanical/e1-phone/review/battery-swell-management.md",
             "mass_budget_json": "mechanical/e1-phone/review/mass-budget.json",
             "mass_budget_md": "mechanical/e1-phone/review/mass-budget.md",
             "compactness_optimization_json": "mechanical/e1-phone/review/compactness-optimization.json",
@@ -14492,6 +15139,8 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
         "- `mechanical/e1-phone/review/manufacturing_drawing.json`",
         "- `mechanical/e1-phone/review/manufacturing-readiness.json`",
         "- `mechanical/e1-phone/review/manufacturing-readiness.md`",
+        "- `mechanical/e1-phone/review/battery-swell-management.json`",
+        "- `mechanical/e1-phone/review/battery-swell-management.md`",
         "- `mechanical/e1-phone/review/mass-budget.json`",
         "- `mechanical/e1-phone/review/mass-budget.md`",
         "- `mechanical/e1-phone/review/compactness-optimization.json`",
@@ -14656,7 +15305,7 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "## Design Decisions From This Pass",
             "",
             "- The envelope is held to 78.0 x 153.6 mm around the 77.1 x 151.77 mm commodity touch panel module to keep the orange side rails compact while preserving a narrow positive screen margin.",
-            "- Front camera and earpiece are kept behind the cover glass. The single rear camera and single rear torch/flash LED are fully buried under the flat flush back wall behind flush internal windows (no camera bump, no proud lens ring); device depth was raised to accommodate burying the rear module.",
+            "- Front camera and earpiece are kept behind the cover glass. The single rear camera and single rear torch/flash LED are fully buried under the flat flush back wall, and the orange back shell now has an explicit camera aperture with four molded bevel lands around the flush rear cover window (no camera bump, no proud lens ring).",
             "- Orange hard plastic is modeled as the entire molded shell and button material. The black glass remains a separate bonded part.",
             "- The enclosure now includes six screw bosses, eight snap hooks, battery ribs, a USB-C insertion saddle, display adhesive, display FPC connector keepout, and explicit cold-runner/submarine-gate placeholders for mold review.",
             "- The exterior shell and cover glass now use rounded-rectangle geometry tied to the 7.5 mm corner-radius parameter instead of square block placeholders.",
@@ -14702,6 +15351,11 @@ def main() -> int:
         *[
             by_name[name]
             for name in [
+                "rear_camera_shell_aperture",
+                "orange_rear_camera_bezel_top",
+                "orange_rear_camera_bezel_bottom",
+                "orange_rear_camera_bezel_left",
+                "orange_rear_camera_bezel_right",
                 "rear_camera_module",
                 "rear_camera_lens_window",
                 "rear_camera_cover_glass",
@@ -14805,7 +15459,8 @@ def main() -> int:
     optical_review_parts = [
         p
         for p in parts
-        if p.role in {"camera", "camera seal"}
+        if p.role in {"camera", "camera seal", "camera aperture"}
+        or p.name.startswith("orange_rear_camera_bezel_")
         or p.name in {"handset_acoustic_slot", "camera_flash_led"}
     ]
     render(
@@ -14828,6 +15483,12 @@ def main() -> int:
     step_validation = write_step_validation_artifacts(solid_cad)
     part_review = write_part_review_artifacts(parts, exploded)
     clearance = write_assembly_clearance_artifacts(params, parts)
+    battery_swell_management = write_battery_swell_management_artifacts(
+        params,
+        parts,
+        checks,
+        clearance,
+    )
     mass = write_mass_budget(parts)
     compactness = write_compactness_optimization_artifacts(params, parts, checks)
     write_drafting_artifacts(params, checks)

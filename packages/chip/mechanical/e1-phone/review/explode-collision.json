@@ -5,7 +5,7 @@
   "ring_offset_mm": 25.0,
   "trajectory_samples": 21,
   "overlap_tolerance_mm3": 0.05,
-  "solid_part_count": 89,
+  "solid_part_count": 90,
   "excluded_virtual_volume_count": 5,
   "excluded_virtual_volumes": [
     "display_fpc_bend_keepout",
@@ -14,7 +14,7 @@
     "wifi_bt_side_antenna_keepout",
     "sim_tray_keepout"
   ],
-  "pair_count": 3916,
+  "pair_count": 4005,
   "pass_through_pair_count": 0,
   "pass_through_pairs": [],
   "residual_overlap_at_full_explode_pair_count": 15,
@@ -32,12 +32,12 @@
     {
       "a": "battery_pouch",
       "b": "orange_screw_boss_5",
-      "fully_exploded_overlap_mm3": 37.044
+      "fully_exploded_overlap_mm3": 29.106
     },
     {
       "a": "battery_pouch",
       "b": "orange_screw_boss_6",
-      "fully_exploded_overlap_mm3": 37.044
+      "fully_exploded_overlap_mm3": 29.106
     },
     {
       "a": "battery_pouch",
@@ -72,22 +72,22 @@
     {
       "a": "orange_screw_boss_3",
       "b": "orange_battery_left_rib",
-      "fully_exploded_overlap_mm3": 0.105
+      "fully_exploded_overlap_mm3": 0.0562
     },
     {
       "a": "orange_screw_boss_4",
       "b": "orange_battery_right_rib",
-      "fully_exploded_overlap_mm3": 0.105
+      "fully_exploded_overlap_mm3": 0.0562
     },
     {
       "a": "orange_screw_boss_5",
       "b": "orange_battery_left_rib",
-      "fully_exploded_overlap_mm3": 4.41
+      "fully_exploded_overlap_mm3": 2.3625
     },
     {
       "a": "orange_screw_boss_6",
       "b": "orange_battery_right_rib",
-      "fully_exploded_overlap_mm3": 4.41
+      "fully_exploded_overlap_mm3": 2.3625
     },
     {
       "a": "soc_shield_can",
@@ -97,7 +97,7 @@
   ],
   "release_rule": "No part-part overlap may grow beyond its assembled baseline anywhere on the explode trajectory (no pass-through). Residual overlaps at full explode are reported for review; same-axis stacked parts may legitimately remain nested if their assembled overlap does not grow.",
   "part_screenshots": {
-    "part_shot_count": 94,
+    "part_shot_count": 95,
     "contact_sheet": "/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/review/part-explode-contact-sheet.png"
   }
 }

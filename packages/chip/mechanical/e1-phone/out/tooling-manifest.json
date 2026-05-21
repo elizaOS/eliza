@@ -179,12 +179,12 @@
     "bounds_mm": [
       [
         -29.9,
-        -20.9,
+        19.1,
         -5.8
       ],
       [
         -28.1,
-        -19.1,
+        20.9,
         -2.8
       ]
     ]
@@ -198,12 +198,88 @@
     "bounds_mm": [
       [
         28.1,
+        19.1,
+        -5.8
+      ],
+      [
+        29.9,
+        20.9,
+        -2.8
+      ]
+    ]
+  },
+  {
+    "name": "screw_core_pin_clearance_7",
+    "role": "tooling clearance",
+    "material": "modeled core-pin clearance marker",
+    "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_7.obj",
+    "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_7.stl",
+    "bounds_mm": [
+      [
+        -29.9,
+        -20.9,
+        -5.8
+      ],
+      [
+        -28.1,
+        -19.1,
+        -2.8
+      ]
+    ]
+  },
+  {
+    "name": "screw_core_pin_clearance_8",
+    "role": "tooling clearance",
+    "material": "modeled core-pin clearance marker",
+    "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_8.obj",
+    "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_8.stl",
+    "bounds_mm": [
+      [
+        28.1,
         -20.9,
         -5.8
       ],
       [
         29.9,
         -19.1,
+        -2.8
+      ]
+    ]
+  },
+  {
+    "name": "screw_core_pin_clearance_9",
+    "role": "tooling clearance",
+    "material": "modeled core-pin clearance marker",
+    "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_9.obj",
+    "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_9.stl",
+    "bounds_mm": [
+      [
+        -29.9,
+        37.1,
+        -5.8
+      ],
+      [
+        -28.1,
+        38.9,
+        -2.8
+      ]
+    ]
+  },
+  {
+    "name": "screw_core_pin_clearance_10",
+    "role": "tooling clearance",
+    "material": "modeled core-pin clearance marker",
+    "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_10.obj",
+    "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_10.stl",
+    "bounds_mm": [
+      [
+        28.1,
+        37.1,
+        -5.8
+      ],
+      [
+        29.9,
+        38.9,
         -2.8
       ]
     ]

@@ -1,6 +1,7 @@
 {
   "claim_boundary": "Fail-closed full CAD boolean interference acceptance. Targeted AABB clearance, concept STEP envelopes, and blank templates do not count as supplier B-rep/routed-board boolean clash evidence.",
   "status": "blocked_boolean_interference_incomplete",
+  "overall_status": "blocked_boolean_interference_incomplete",
   "source_reviews": {
     "solid_cad_status": "generated",
     "step_validation_status": "pass",

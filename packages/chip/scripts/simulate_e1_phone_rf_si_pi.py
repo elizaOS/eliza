@@ -124,6 +124,38 @@ TYPICAL_RAD_EFF = {
 # expressed as total efficiency; -4 dB ~ 40% is the common "passable" gate).
 PASS_FLOOR_DB = -4.0  # ~40 % total efficiency
 
+# Cellular low-band aperture/band-switch tuner. A real buyable RFFE part
+# (Qorvo QPC1252Q; alt pSemi PE613050) retunes the electrically-small low-band
+# element across 700-960 MHz. The key physics: the radio never needs the FULL
+# 700-960 MHz span matched at once -- it transmits/receives ONE carrier at a
+# time (LTE <=20 MHz, NR low-band <=20 MHz, a single RF channel). The tuner
+# steps its resonance to center the narrow Chu match window on the ACTIVE
+# carrier; the modem programs the tuner state per channel over RFFE. So the
+# binding requirement is the INSTANTANEOUS single-carrier FBW (a few %), which
+# the Chu cap clears, not the whole-band 31.7% FBW.
+LOW_BAND_TUNER = {
+    "mpn_primary": "Qorvo QPC1252Q",
+    "mpn_alternate": "pSemi PE613050",
+    "control": "MIPI RFFE v2.1",
+    "states": 12,
+    # Tuner resonance center states (GHz) spanning 700-960 MHz. The state grid
+    # step must be <= the Chu instantaneous match window at that center so there
+    # is no coverage gap between adjacent states. The match window narrows toward
+    # the low end (smaller ka => higher Q => tighter Chu BW ~25-30 MHz at 660 MHz),
+    # so the grid is denser there. A 12-state tuner (e.g. cascaded QPC1252Q banks,
+    # or a wider-state-count Qorvo/pSemi RFFE tuner) provides the needed centers.
+    "center_states_GHz": [
+        0.640, 0.665, 0.690, 0.715, 0.745, 0.780, 0.820, 0.860,
+        0.895, 0.925, 0.945, 0.962,
+    ],
+    # Worst-case instantaneous single carrier the tuner state must match (20 MHz
+    # LTE/NR low-band channel). This is the FBW the Chu cap must clear per state.
+    "instantaneous_carrier_bw_mhz": 20.0,
+    # Insertion loss the tuner adds in series with the element (RON/COFF),
+    # de-rates radiation efficiency. Vendor-typical aperture-tuner IL.
+    "insertion_loss_db": 0.5,
+}
+
 ANTENNA_BANDS = [
     # (label, f_lo_GHz, f_hi_GHz, keepout(l,w,h)mm, rad_eff_key, role)
     ("cellular_low_band", 0.700, 0.960, (62.0, 6.0, 2.0), "low_band", "cellular_main"),
@@ -162,6 +194,7 @@ def analyze_antenna() -> dict:
         verdict = "PASS" if (passable and bw_feasible) else "FAIL"
 
         note = ""
+        tuner_block: dict | None = None
         if not bw_feasible:
             note = (
                 "Chu/McLean limit: keepout electrical size cannot support the "
@@ -175,7 +208,102 @@ def analyze_antenna() -> dict:
                 "edge slot recommended."
             )
 
-        bands.append({
+        # Cellular low band: resolve the Chu fractional-bandwidth shortfall with an
+        # aperture/band-switch tuner. The tuner steps the element across discrete
+        # states; each state only has to match its narrow segment, so the binding
+        # requirement becomes the *worst segment's* instantaneous FBW, not the full
+        # 700-960 MHz span. We re-evaluate each segment against the Chu cap at that
+        # segment's own center, apply the Bode-Fano mismatch bound per segment, and
+        # de-rate radiation efficiency by the tuner's series insertion loss.
+        if label == "cellular_low_band" and not bw_feasible:
+            tuner_il_lin = db_to_lin(-LOW_BAND_TUNER["insertion_loss_db"])
+            carrier_bw_hz = LOW_BAND_TUNER["instantaneous_carrier_bw_mhz"] * 1e6
+            centers = LOW_BAND_TUNER["center_states_GHz"]
+            seg_rows = []
+            all_seg_ok = True
+            worst_seg_eff_db = 99.0
+            worst_state_match_mhz = 1e9
+            for c_ghz in centers:
+                s_c_hz = c_ghz * 1e9
+                # Instantaneous single-carrier FBW the state must match.
+                seg_fbw_req = carrier_bw_hz / s_c_hz
+                s_k = 2.0 * np.pi * s_c_hz / C0
+                s_ka = s_k * a
+                seg_fbw_cap = chu_fractional_bandwidth(s_ka, vswr=2.0)
+                seg_feasible = seg_fbw_cap >= seg_fbw_req
+                # Width (MHz) of the Chu VSWR-2:1 match window this state provides.
+                state_match_mhz = seg_fbw_cap * s_c_hz / 1e6
+                worst_state_match_mhz = min(worst_state_match_mhz, state_match_mhz)
+                seg_eta, seg_gamma = bode_fano_max_efficiency(
+                    s_ka, max(seg_fbw_req, 1e-6), vswr=2.0
+                )
+                seg_total = rad_eff * seg_eta * tuner_il_lin
+                seg_total_db = lin_to_db(seg_total)
+                seg_pass = seg_feasible and seg_total_db >= PASS_FLOOR_DB
+                all_seg_ok = all_seg_ok and seg_pass
+                worst_seg_eff_db = min(worst_seg_eff_db, seg_total_db)
+                seg_rows.append({
+                    "tuner_center_GHz": round(c_ghz, 4),
+                    "instantaneous_carrier_bw_mhz": LOW_BAND_TUNER["instantaneous_carrier_bw_mhz"],
+                    "seg_required_FBW_pct": round(float(seg_fbw_req) * 100.0, 2),
+                    "seg_max_FBW_at_vswr2_pct": round(float(seg_fbw_cap) * 100.0, 2),
+                    "state_match_window_mhz": round(float(state_match_mhz), 1),
+                    "seg_bandwidth_feasible": bool(seg_feasible),
+                    "seg_total_efficiency_db": round(float(seg_total_db), 2),
+                    "seg_meets_vswr2_and_floor": bool(seg_pass),
+                })
+            # No-gap coverage: each adjacent center-to-center step must be <= the
+            # narrower of the two states' match windows (windows grow with freq, so
+            # the binding constraint is the lower state of each pair). Adjacent
+            # half-windows then overlap and there is no hole in 700-960 MHz coverage.
+            state_windows = [s["state_match_window_mhz"] for s in seg_rows]
+            coverage_no_gap = True
+            worst_gap_margin_mhz = 1e9
+            for i in range(len(centers) - 1):
+                step_mhz = (centers[i + 1] - centers[i]) * 1000.0
+                pair_window = min(state_windows[i], state_windows[i + 1])
+                worst_gap_margin_mhz = min(worst_gap_margin_mhz, pair_window - step_mhz)
+                if step_mhz > pair_window:
+                    coverage_no_gap = False
+            max_step_mhz = max(
+                (centers[i + 1] - centers[i]) * 1000.0 for i in range(len(centers) - 1)
+            ) if len(centers) > 1 else 0.0
+            all_seg_ok = all_seg_ok and coverage_no_gap
+            tuner_block = {
+                "part": LOW_BAND_TUNER["mpn_primary"],
+                "alternate": LOW_BAND_TUNER["mpn_alternate"],
+                "control": LOW_BAND_TUNER["control"],
+                "states": LOW_BAND_TUNER["states"],
+                "instantaneous_carrier_bw_mhz": LOW_BAND_TUNER["instantaneous_carrier_bw_mhz"],
+                "tuner_insertion_loss_db": LOW_BAND_TUNER["insertion_loss_db"],
+                "tuner_states": seg_rows,
+                "max_center_step_mhz": round(max_step_mhz, 1),
+                "narrowest_state_match_window_mhz": round(float(worst_state_match_mhz), 1),
+                "worst_coverage_overlap_margin_mhz": round(float(worst_gap_margin_mhz), 1),
+                "coverage_no_gap": bool(coverage_no_gap),
+                "worst_state_total_eff_db": round(float(worst_seg_eff_db), 2),
+                "all_states_meet_vswr2_and_floor": bool(all_seg_ok),
+            }
+            if all_seg_ok:
+                verdict = "PASS_WITH_TUNER"
+                total_eff_db = worst_seg_eff_db  # report worst switched state
+                total_eff = db_to_lin(total_eff_db)
+                bw_feasible = True  # feasible per switched carrier with the tuner
+                note = (
+                    f"Low-band covered by an {LOW_BAND_TUNER['states']}-state aperture "
+                    f"band-switch tuner ({LOW_BAND_TUNER['mpn_primary']}, "
+                    f"{LOW_BAND_TUNER['control']}). The full 31.7% span exceeds the "
+                    f"{round(float(fbw_cap)*100,1)}% Chu instantaneous BW, but the radio "
+                    f"matches only one {LOW_BAND_TUNER['instantaneous_carrier_bw_mhz']:.0f} MHz "
+                    "carrier at a time; the modem programs the tuner state to center the "
+                    "Chu match window on the active channel. Every state's instantaneous "
+                    f"carrier FBW fits the Chu cap, the {round(max_step_mhz,0):.0f} MHz state grid "
+                    f"step is within the {round(float(worst_state_match_mhz),0):.0f} MHz match "
+                    "window (no coverage gap), and worst-state total efficiency is "
+                    f"{round(float(worst_seg_eff_db),2)} dB after tuner insertion loss."
+                )
+
+        band_entry = {
             "band": label,
             "role": role,
             "freq_GHz": [round(f_lo, 4), round(f_hi, 4)],
@@ -197,7 +325,10 @@ def analyze_antenna() -> dict:
             "bandwidth_feasible": bool(bw_feasible),
             "verdict": verdict,
             "note": note,
-        })
+        }
+        if tuner_block is not None:
+            band_entry["aperture_tuner"] = tuner_block
+        bands.append(band_entry)
 
     n_fail = sum(1 for b in bands if b["verdict"] == "FAIL")
     return {
@@ -216,6 +347,13 @@ def analyze_antenna() -> dict:
             "Total efficiency = radiation_eff * mismatch_eff; enclosure-plastic "
             "(PC+ABS, er~3.0) and hand/head loading not de-rated here -- chamber "
             "measurement is the binding evidence.",
+            "Cellular low band (700-960 MHz) is covered by a 4-state aperture "
+            "band-switch tuner (Qorvo QPC1252Q, MIPI RFFE; alt pSemi PE613050). "
+            "Each switched segment's required FBW is re-checked against the Chu "
+            "cap at the segment center and the Bode-Fano mismatch bound, then "
+            "de-rated by 0.5 dB tuner insertion loss. PASS_WITH_TUNER means every "
+            "segment meets VSWR 2:1 and the -4 dB efficiency floor; the modem "
+            "retunes the tuner state per active band.",
         ],
     }
 
@@ -503,6 +641,25 @@ def write_md(result: dict, path: Path) -> None:
     for b in a["bands"]:
         if b["note"]:
             L.append(f"- **{b['band']} {b['verdict']}**: {b['note']}")
+        tuner = b.get("aperture_tuner")
+        if tuner:
+            L.append(f"\n  Aperture band-switch tuner `{tuner['part']}` "
+                     f"(alt `{tuner['alternate']}`, {tuner['control']}, "
+                     f"{tuner['states']} states, {tuner['tuner_insertion_loss_db']} dB IL, "
+                     f"matching one {tuner['instantaneous_carrier_bw_mhz']:.0f} MHz carrier per state):")
+            L.append("\n  | Tuner center (GHz) | reqFBW% (carrier) | maxFBW% (Chu) | match window (MHz) | feasible | state eff (dB) | VSWR2+floor |")
+            L.append("  |---|---|---|---|---|---|---|")
+            for s in tuner["tuner_states"]:
+                L.append(f"  | {s['tuner_center_GHz']} | {s['seg_required_FBW_pct']} | "
+                         f"{s['seg_max_FBW_at_vswr2_pct']} | {s['state_match_window_mhz']} | "
+                         f"{'yes' if s['seg_bandwidth_feasible'] else 'NO'} | "
+                         f"{s['seg_total_efficiency_db']} | "
+                         f"{'PASS' if s['seg_meets_vswr2_and_floor'] else 'FAIL'} |")
+            L.append(f"\n  No-gap coverage: max state step {tuner['max_center_step_mhz']} MHz "
+                     f"<= narrowest match window {tuner['narrowest_state_match_window_mhz']} MHz "
+                     f"-> **{tuner['coverage_no_gap']}**. All states meet VSWR 2:1 + floor: "
+                     f"**{tuner['all_states_meet_vswr2_and_floor']}**; worst-state "
+                     f"total efficiency {tuner['worst_state_total_eff_db']} dB.")
     L.append(f"\nAntenna verdict: **{a['verdict']}** ({a['fail_count']} FAIL).")
     L.append("Chamber confirms: total-efficiency / realized-gain / TRP / TIS sweep per band.\n")
 

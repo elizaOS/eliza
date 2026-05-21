@@ -3,10 +3,10 @@
   "status": "visual_review_coverage_acceptance_pass",
   "automated_visual_coverage_ready": true,
   "production_visual_signoff_ready": false,
-  "expected_view_count": 9,
-  "complete_view_count": 9,
-  "expected_visual_gate_count": 5,
-  "passing_visual_gate_count": 5,
+  "expected_view_count": 12,
+  "complete_view_count": 12,
+  "expected_visual_gate_count": 6,
+  "passing_visual_gate_count": 6,
   "view_cases": [
     {
       "view": "full_front_iso.png",
@@ -21,7 +21,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05634
+      "nonwhite_pixel_ratio": 0.05744
     },
     {
       "view": "full_back_iso.png",
@@ -36,7 +36,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05957
+      "nonwhite_pixel_ratio": 0.06065
     },
     {
       "view": "rear_feature_detail.png",
@@ -51,7 +51,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.11032
+      "nonwhite_pixel_ratio": 0.11033
     },
     {
       "view": "full_left_side.png",
@@ -66,7 +66,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.03289
+      "nonwhite_pixel_ratio": 0.03416
     },
     {
       "view": "full_bottom_port.png",
@@ -96,7 +96,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.11022
+      "nonwhite_pixel_ratio": 0.11028
     },
     {
       "view": "exploded_iso.png",
@@ -111,7 +111,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.07853
+      "nonwhite_pixel_ratio": 0.07984
     },
     {
       "view": "component_stack.png",
@@ -129,6 +129,51 @@
       "nonwhite_pixel_ratio": 0.07941
     },
     {
+      "view": "component-review-audio.png",
+      "purpose": "speaker, earpiece, microphone, acoustic mesh, and port packaging",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.05668
+    },
+    {
+      "view": "component-review-io-buttons.png",
+      "purpose": "USB-C, side buttons, seals, and tactile actuation packaging",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.04714
+    },
+    {
+      "view": "component-review-optical.png",
+      "purpose": "front/rear cameras, flash, baffles, cover windows, and optical seals",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.05707
+    },
+    {
       "view": "mold_tooling.png",
       "purpose": "parting plane, runner, gate, ejector, and cooling placeholders",
       "pass": true,
@@ -141,11 +186,11 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.04206
+      "nonwhite_pixel_ratio": 0.0427
     }
   ],
   "part_review_case": {
-    "part_count": 95,
+    "part_count": 118,
     "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
     "contact_sheet_pass": true,
     "exploded_contact_sheet": "mechanical/e1-phone/review/part-explode-contact-sheet.png",
@@ -154,8 +199,8 @@
   },
   "part_visual_coverage_case": {
     "status": "part_visual_coverage_pass",
-    "expected_part_count": 95,
-    "covered_part_count": 95,
+    "expected_part_count": 118,
+    "covered_part_count": 118,
     "missing_or_incomplete_part_count": 0,
     "pass": true
   },
@@ -166,6 +211,10 @@
     },
     {
       "id": "compact_screen_margin",
+      "pass": true
+    },
+    {
+      "id": "component_family_detail_views",
       "pass": true
     },
     {

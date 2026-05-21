@@ -8,17 +8,53 @@
   "device_envelope_mm": [
     78.0,
     153.6,
-    11.8
+    12.7
   ],
   "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
   "screen_margin_mm": 0.45,
   "visual_deltas": {
-    "front_back_mean_rgb_sum_delta": 7.872,
+    "front_back_mean_rgb_sum_delta": 7.604,
     "front_back_minimum_sum_delta": 7.5,
-    "front_back_orange_ratio_delta": 0.45431,
-    "front_back_dark_ratio_delta": 0.45184
+    "front_back_orange_ratio_delta": 0.42993,
+    "front_back_dark_ratio_delta": 0.42755
   },
   "review_views": [
+    {
+      "file": "component-review-audio.png",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "nonwhite_pixel_ratio": 0.05668,
+      "orange_pixel_ratio_of_nonwhite": 0.0728,
+      "dark_pixel_ratio_of_nonwhite": 0.04933,
+      "purpose": "speaker, earpiece, microphone, acoustic mesh, and port packaging"
+    },
+    {
+      "file": "component-review-io-buttons.png",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "nonwhite_pixel_ratio": 0.04714,
+      "orange_pixel_ratio_of_nonwhite": 0.21987,
+      "dark_pixel_ratio_of_nonwhite": 0.02442,
+      "purpose": "USB-C, side buttons, seals, and tactile actuation packaging"
+    },
+    {
+      "file": "component-review-optical.png",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "nonwhite_pixel_ratio": 0.05707,
+      "orange_pixel_ratio_of_nonwhite": 0.16165,
+      "dark_pixel_ratio_of_nonwhite": 0.03572,
+      "purpose": "front/rear cameras, flash, baffles, cover windows, and optical seals"
+    },
     {
       "file": "component_stack.png",
       "pass": true,
@@ -28,7 +64,7 @@
       ],
       "nonwhite_pixel_ratio": 0.07941,
       "orange_pixel_ratio_of_nonwhite": 0.01136,
-      "dark_pixel_ratio_of_nonwhite": 0.67444,
+      "dark_pixel_ratio_of_nonwhite": 0.67436,
       "purpose": "PCB, battery, camera, audio, haptic, and I/O placement"
     },
     {
@@ -38,9 +74,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.07853,
-      "orange_pixel_ratio_of_nonwhite": 0.46942,
-      "dark_pixel_ratio_of_nonwhite": 0.51572,
+      "nonwhite_pixel_ratio": 0.07984,
+      "orange_pixel_ratio_of_nonwhite": 0.46793,
+      "dark_pixel_ratio_of_nonwhite": 0.5171,
       "purpose": "glass, display, shell, and component stack separation"
     },
     {
@@ -50,9 +86,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.05957,
-      "orange_pixel_ratio_of_nonwhite": 0.97568,
-      "dark_pixel_ratio_of_nonwhite": 0.01199,
+      "nonwhite_pixel_ratio": 0.06065,
+      "orange_pixel_ratio_of_nonwhite": 0.97613,
+      "dark_pixel_ratio_of_nonwhite": 0.01178,
       "purpose": "rear-side orange shell, camera window, and service-feature review"
     },
     {
@@ -74,9 +110,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.05634,
-      "orange_pixel_ratio_of_nonwhite": 0.52137,
-      "dark_pixel_ratio_of_nonwhite": 0.46383,
+      "nonwhite_pixel_ratio": 0.05744,
+      "orange_pixel_ratio_of_nonwhite": 0.5462,
+      "dark_pixel_ratio_of_nonwhite": 0.43933,
       "purpose": "front silhouette, orange side rail, black glass stack"
     },
     {
@@ -86,9 +122,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.03289,
-      "orange_pixel_ratio_of_nonwhite": 0.96789,
-      "dark_pixel_ratio_of_nonwhite": 0.0198,
+      "nonwhite_pixel_ratio": 0.03416,
+      "orange_pixel_ratio_of_nonwhite": 0.96897,
+      "dark_pixel_ratio_of_nonwhite": 0.01907,
       "purpose": "left-side button protrusion and shell depth"
     },
     {
@@ -98,9 +134,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.11022,
-      "orange_pixel_ratio_of_nonwhite": 0.07246,
-      "dark_pixel_ratio_of_nonwhite": 0.91642,
+      "nonwhite_pixel_ratio": 0.11028,
+      "orange_pixel_ratio_of_nonwhite": 0.07531,
+      "dark_pixel_ratio_of_nonwhite": 0.91468,
       "purpose": "compact footprint, screen margin, buttons, and front features"
     },
     {
@@ -110,9 +146,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.04206,
-      "orange_pixel_ratio_of_nonwhite": 0.16453,
-      "dark_pixel_ratio_of_nonwhite": 0.0243,
+      "nonwhite_pixel_ratio": 0.0427,
+      "orange_pixel_ratio_of_nonwhite": 0.17673,
+      "dark_pixel_ratio_of_nonwhite": 0.02397,
       "purpose": "parting plane, runner, gate, ejector, and cooling placeholders"
     },
     {
@@ -122,9 +158,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.11032,
-      "orange_pixel_ratio_of_nonwhite": 0.0018,
-      "dark_pixel_ratio_of_nonwhite": 0.00942,
+      "nonwhite_pixel_ratio": 0.11033,
+      "orange_pixel_ratio_of_nonwhite": 0.0059,
+      "dark_pixel_ratio_of_nonwhite": 0.00941,
       "purpose": "translucent rear shell review of camera window, SIM edge, and service-label recess"
     }
   ],
@@ -132,6 +168,9 @@
     "expected_review_view_coverage": {
       "pass": true,
       "expected_views": [
+        "component-review-audio.png",
+        "component-review-io-buttons.png",
+        "component-review-optical.png",
         "component_stack.png",
         "exploded_iso.png",
         "full_back_iso.png",
@@ -146,18 +185,26 @@
     },
     "hard_orange_shell_visible": {
       "pass": true,
-      "front_orange_ratio": 0.52137,
-      "back_orange_ratio": 0.97568,
+      "front_orange_ratio": 0.5462,
+      "back_orange_ratio": 0.97613,
       "bottom_orange_ratio": 0.77781
     },
     "black_glass_front_visible": {
       "pass": true,
-      "front_dark_ratio": 0.46383,
-      "top_down_dark_ratio": 0.91642
+      "front_dark_ratio": 0.43933,
+      "top_down_dark_ratio": 0.91468
     },
     "component_stack_visible": {
       "pass": true,
       "component_stack_nonwhite_ratio": 0.07941
+    },
+    "component_family_detail_views": {
+      "pass": true,
+      "required_views": [
+        "component-review-audio.png",
+        "component-review-io-buttons.png",
+        "component-review-optical.png"
+      ]
     },
     "compact_screen_margin": {
       "pass": true,
@@ -200,9 +247,11 @@
     {
       "id": "rear_camera_cover_window",
       "decision": "keep_for_evt0",
-      "basis": "Single rear AF camera is buried under the flat back wall behind a flush internal window (no bump, no proud ring); device depth was raised to fully bury the module.",
+      "basis": "Single rear AF camera is buried under the flat back wall behind an explicit molded shell aperture and flush cover window (no bump, no proud ring); device depth was raised to fully bury the module.",
       "evidence": [
         "rear_feature_detail.png",
+        "rear_camera_shell_aperture",
+        "orange_rear_camera_bezel_top",
         "rear_camera_module",
         "rear_camera_cover_glass"
       ]
@@ -242,7 +291,7 @@
     {
       "id": "compact_orange_shell",
       "decision": "keep",
-      "basis": "Hold 78.0 x 153.6 x 11.8 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
+      "basis": "Hold 78.0 x 153.6 x 12.7 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
       "evidence": [
         "full_front_iso.png",
         "full_top_down.png",
@@ -264,7 +313,7 @@
     {
       "id": "compact_orange_shell",
       "decision": "keep",
-      "basis": "Hold 78.0 x 153.6 x 11.8 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
+      "basis": "Hold 78.0 x 153.6 x 12.7 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
       "evidence": [
         "full_front_iso.png",
         "full_top_down.png",
@@ -294,9 +343,11 @@
     {
       "id": "rear_camera_cover_window",
       "decision": "keep_for_evt0",
-      "basis": "Single rear AF camera is buried under the flat back wall behind a flush internal window (no bump, no proud ring); device depth was raised to fully bury the module.",
+      "basis": "Single rear AF camera is buried under the flat back wall behind an explicit molded shell aperture and flush cover window (no bump, no proud ring); device depth was raised to fully bury the module.",
       "evidence": [
         "rear_feature_detail.png",
+        "rear_camera_shell_aperture",
+        "orange_rear_camera_bezel_top",
         "rear_camera_module",
         "rear_camera_cover_glass"
       ]

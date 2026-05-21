@@ -49,8 +49,21 @@ def test_evt0_phone_cad_checks_pass() -> None:
     battery_clearance = report["checks"]["battery_display_and_wall_clearance"]
     assert battery_clearance["battery_to_display_gap_mm"] >= 0.15
     assert battery_clearance["battery_to_back_wall_gap_mm"] >= 0.6
+    foam_management = report["checks"]["battery_back_void_foam_management"]
+    assert foam_management["pass"]
+    assert foam_management["foam_pad_present"]
+    assert foam_management["foam_to_battery_free_gap_mm"] >= 0.25
+    assert (
+        foam_management["back_void_managed_capacity_mm"]
+        >= foam_management["back_void_required_worst_case_mm"]
+    )
     assert report["checks"]["camera_burial_clearance"]["pass"]
     assert report["checks"]["camera_burial_clearance"]["rear_camera_burial_clearance_mm"] >= 0.4
+    assert report["checks"]["rear_camera_back_shell_aperture"]["pass"]
+    rear_aperture = report["checks"]["rear_camera_back_shell_aperture"]
+    assert rear_aperture["aperture_present"]
+    assert rear_aperture["aperture_mm"][0] > rear_aperture["cover_glass_mm"][0]
+    assert len(rear_aperture["bezel_parts"]) == 4
     assert report["checks"]["usb_saddle_to_speaker_chamber_wall"]["pass"]
     assert report["checks"]["usb_saddle_to_speaker_chamber_wall"]["actual_gap_mm"] >= 1.0
     assert params["device"]["envelope_mm"][2] == 12.7
@@ -97,10 +110,16 @@ def test_evt0_phone_cad_required_parts_are_named() -> None:
         "orange_side_frame",
         "screen_cover_glass",
         "main_pcb",
+        "battery_back_void_foam_pad",
         "usb_c_receptacle",
         "bottom_speaker_module",
         "earpiece_receiver",
         "rear_camera_module",
+        "rear_camera_shell_aperture",
+        "orange_rear_camera_bezel_top",
+        "orange_rear_camera_bezel_bottom",
+        "orange_rear_camera_bezel_left",
+        "orange_rear_camera_bezel_right",
         "front_camera_module",
         "rear_camera_cover_adhesive_top",
         "rear_camera_cover_adhesive_bottom",
@@ -793,6 +812,18 @@ def test_evt0_phone_step_validation_reimports_step_files(tmp_path, monkeypatch) 
     cad.REVIEW_DIR.mkdir()
 
     solid_cad = cad.write_solid_cad_handoff_artifacts(params, checks)
+    side_frame_cutouts = solid_cad["side_frame_external_cutouts"]
+    assert side_frame_cutouts["status"] == "pass"
+    assert side_frame_cutouts["cutout_count"] == 11
+    assert side_frame_cutouts["removed_volume_mm3"] > 0
+    assert {
+        "usb_c_side_frame_cutout",
+        "bottom_speaker_side_frame_cutout_1",
+        "bottom_microphone_side_frame_cutout_1",
+        "top_microphone_side_frame_cutout",
+        "power_button_side_frame_cutout",
+        "volume_button_side_frame_cutout",
+    }.issubset({cutout["name"] for cutout in side_frame_cutouts["cutouts"]})
     validation = cad.write_step_validation_artifacts(solid_cad)
 
     assert validation["status"] == "pass"
@@ -851,6 +882,32 @@ def test_evt0_phone_engineering_validation_plan_tracks_evt_risks(tmp_path, monke
     assert any(item["test"] == "USB-C insertion/removal" for item in validation["dvt_plan"])
     assert (tmp_path / "engineering-validation.json").is_file()
     assert (tmp_path / "engineering-validation.md").is_file()
+
+
+def test_evt0_phone_battery_swell_management_models_back_void_foam(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    report = cad.write_battery_swell_management_artifacts(
+        params,
+        parts,
+        checks,
+        clearance,
+    )
+
+    assert report["status"] == "cad_battery_swell_management_ready"
+    assert report["foam_pad"]["part"] == "battery_back_void_foam_pad"
+    assert report["foam_pad"]["compression_allowance_mm"] >= 0.142
+    assert report["foam_pad"]["free_gap_to_pouch_mm"] >= 0.25
+    assert report["worst_case_arithmetic"]["margin_mm"] >= 0.0
+    assert report["checks"]["battery_back_void_foam_management"]["pass"]
+    assert (tmp_path / "battery-swell-management.json").is_file()
+    assert (tmp_path / "battery-swell-management.md").is_file()
 
 
 def test_evt0_phone_interface_validation_tracks_named_mechanical_interfaces(
@@ -1178,6 +1235,7 @@ def test_evt0_phone_camera_validation_quantifies_optical_stack_and_lab_template(
     assert camera["status"] == "cad_camera_validation_ready"
     assert {
         "rear_camera_cover_window_margin",
+        "rear_camera_back_shell_aperture",
         "rear_camera_z_stack",
         "front_under_glass_margin",
         "front_camera_earpiece_clearance",
@@ -1686,6 +1744,7 @@ def test_evt0_phone_clearance_and_part_review_cover_assembly(tmp_path, monkeypat
     assert clearance["status"] == "pass"
     assert {
         "battery_to_pcb_islands",
+        "battery_back_void_foam_to_pouch",
         "split_interconnect_flex_to_battery_edge",
         "split_interconnect_flex_within_side_rail",
         "split_interconnect_connectors_on_pcb_islands",
@@ -1847,6 +1906,10 @@ def test_evt0_phone_component_selection_review_reconciles_current_params(
     assert cases["rear_flash_and_stray_light_septum"]["pass"] is True
     assert any(
         check["id"] == "camera_optical_seal_stack"
+        for check in cases["rear_camera_and_flush_window"]["critical_checks"]
+    )
+    assert any(
+        check["id"] == "rear_camera_back_shell_aperture"
         for check in cases["rear_camera_and_flush_window"]["critical_checks"]
     )
     assert "supplier drawings" in report["release_rule"]
@@ -2641,6 +2704,7 @@ def test_evt0_phone_full_cad_boolean_interference_requires_physical_brep_inputs(
     )
 
     assert report["status"] == "blocked_boolean_interference_incomplete"
+    assert report["overall_status"] == "blocked_boolean_interference_incomplete"
     assert report["expected_scope_count"] == 10
     assert report["cad_prerequisite_scope_count"] >= 7
     assert report["concept_aabb_pair_check_count"] >= 12
@@ -2690,6 +2754,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "orange_side_frame.step",
         "screen_cover_glass.step",
         "main_pcb.step",
+        "battery_back_void_foam_pad.step",
         "usb_c_receptacle.step",
         "usb_c_external_aperture.step",
         "usb_c_perimeter_gasket_top.step",
@@ -2710,6 +2775,11 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "top_microphone_port.step",
         "top_microphone_mesh.step",
         "rear_camera_module.step",
+        "rear_camera_shell_aperture.step",
+        "orange_rear_camera_bezel_top.step",
+        "orange_rear_camera_bezel_bottom.step",
+        "orange_rear_camera_bezel_left.step",
+        "orange_rear_camera_bezel_right.step",
         "rear_camera_cover_glass.step",
         "rear_camera_cover_adhesive_top.step",
         "rear_camera_cover_adhesive_bottom.step",
@@ -2743,6 +2813,8 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "fit-check-report.json",
         "visual-review.json",
         "manufacturing_drawing.json",
+        "battery-swell-management.json",
+        "battery-swell-management.md",
         "mass-budget.json",
         "compactness-optimization.json",
         "compactness-optimization.md",
@@ -2851,6 +2923,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     }
     validation = cad.write_engineering_validation_artifacts(params, parts, checks, mass, supplier)
     clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    cad.write_battery_swell_management_artifacts(params, parts, checks, clearance)
     part_review = cad.write_part_review_artifacts(parts)
     dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
     tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
@@ -2976,6 +3049,8 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     assert readiness["subsystem_evidence_present"]["component_selection_review"]
     assert readiness["required_outputs"]["component_selection_review"]
     assert component_selection["status"] == "cad_component_selection_review_ready"
+    assert readiness["subsystem_evidence_present"]["battery_swell_management"]
+    assert readiness["required_outputs"]["battery_swell_management"]
     assert readiness["parameters"]["compactness_status"] == "cad_compactness_optimized"
     assert readiness["parameters"]["compactness_width_excess_mm"] <= 1.0
     assert readiness["parameters"]["compactness_height_excess_mm"] <= 1.5
@@ -3138,6 +3213,10 @@ def test_evt0_phone_fit_report_writes_flat_check_schema(tmp_path, monkeypatch) -
         == "mechanical/e1-phone/review/tooling-action-register.json"
     )
     assert (
+        report["artifacts"]["battery_swell_management_json"]
+        == "mechanical/e1-phone/review/battery-swell-management.json"
+    )
+    assert (
         report["artifacts"]["end_to_end_objective_acceptance_json"]
         == "mechanical/e1-phone/review/end-to-end-objective-acceptance.json"
     )
@@ -3145,5 +3224,6 @@ def test_evt0_phone_fit_report_writes_flat_check_schema(tmp_path, monkeypatch) -
     assert "routed-board-step-intake-template.csv" in readme
     assert "visual-review-coverage-acceptance.json" in readme
     assert "tooling-action-register.json" in readme
+    assert "battery-swell-management.json" in readme
     assert "physical-process-validation-acceptance.json" in readme
     assert "end-to-end-objective-acceptance.json" in readme

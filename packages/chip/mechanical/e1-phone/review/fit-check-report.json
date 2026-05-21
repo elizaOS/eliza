@@ -4,11 +4,11 @@
   "params": {
     "device": {
       "name": "E1 phone EVT0 mechanical concept",
-      "revision": "evt0-mechanical-cad-flush-back",
+      "revision": "evt0-mechanical-cad-swell-camera-seal",
       "envelope_mm": [
         78.0,
         153.6,
-        11.8
+        12.7
       ],
       "corner_radius_mm": 7.5,
       "plastic_color": "hard safety orange",
@@ -39,6 +39,19 @@
         151.77,
         0.7
       ],
+      "cover_glass_inset_below_rim_mm": 0.3,
+      "cover_glass_inset_basis": "Cover glass top surface sits 0.3 mm below the molded bezel rim crown so that on a face drop the PC+ABS rim contacts the floor first and absorbs the impact energy before the glass back face sees its peak bending stress. The recessed glass is captured by a perimeter cushion (glass_perimeter_cushion) under its edge. Drop sim models the inset as an energy split: the rim takes the first-contact share, lowering the load delivered into the glass plate.",
+      "glass_perimeter_cushion": {
+        "candidate": "die-cut PORON 4701-class polyurethane foam edge cushion under cover glass perimeter",
+        "envelope_mm": [
+          77.1,
+          151.77,
+          0.25
+        ],
+        "perimeter_width_mm": 1.0,
+        "purpose": "compliant perimeter cushion under the recessed cover-glass edge that spreads and damps face-drop edge load into the rim",
+        "material": "PORON-style microcellular polyurethane foam, low compression set"
+      },
       "adhesive_width_mm": 1.0,
       "adhesive_thickness_mm": 0.18,
       "compression_target_pct": 25,
@@ -72,8 +85,17 @@
       "capacity_mah": 5727,
       "energy_wh": 22.05,
       "nominal_voltage_v": 3.85,
-      "capacity_basis": "4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.6/4.4) for the flush-back volume gain",
-      "clearance_basis": "front face at Z=+1.0 mm keeps 0.15 mm gap below display_lcm back face (+1.15 mm); back face at Z=-4.6 mm keeps 0.15 mm gap to back inner wall (-4.75 mm) at the 11.8 mm device thickness"
+      "battery_swell_gap_mm": 0.6,
+      "back_void_foam_pad_mm": [
+        60.0,
+        80.0,
+        0.18
+      ],
+      "back_void_foam_compression_allowance_mm": 0.18,
+      "back_void_foam_material": "PORON-style low-compression-set polyurethane foam, low-preload battery back pad",
+      "swell_gap_basis": "LiPo pouch cells swell ~8-10 percent in thickness over life; for a 5.6 mm cell that is ~0.45-0.56 mm. The device thickness was raised from 11.8 to 12.7 mm purely to open a defined >=0.6 mm swell void on the battery BACK face (toward the back shell, away from the display) so swell never pushes the display. The void is a real air gap between the battery back face (Z=-4.6 mm) and the back inner wall (Z=-5.2 mm); a compressible foam pad occupies the back-shell side of the void with 0.18 mm documented compression allowance, absorbing the arithmetic worst-case tolerance overage without preloading the cell. The display-side gap stays the static 0.15 mm minimum so the cell cannot crack the panel under swell.",
+      "capacity_basis": "4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.6/4.4); cell thickness unchanged at 5.6 mm so capacity stays 5727 mAh while the added device depth becomes swell void plus camera-burial clearance",
+      "clearance_basis": "front face at Z=+1.0 mm keeps 0.15 mm static gap below display_lcm back face (+1.15 mm); back face at Z=-4.6 mm keeps 0.6 mm swell gap to back inner wall (-5.2 mm) at the 12.7 mm device thickness"
     },
     "components": {
       "usb_c": {
@@ -164,7 +186,9 @@
         ],
         "lens_diameter_mm": 6.8,
         "lens_count": 1,
-        "array": "single"
+        "array": "single",
+        "burial_clearance_mm": 0.45,
+        "burial_basis": "Module back face sits 0.45 mm inside the back inner wall (was a marginal 0.25-0.30 mm). The 12.7 mm device depth gives the 5.1 mm module a healthy >=0.4 mm burial under the flush flat back with the lens window coplanar with the back outer plane."
       },
       "rear_flash_led": {
         "candidate": "OSRAM CEYW class 1.0x1.0x0.6 white flash LED",
@@ -265,6 +289,24 @@
           5.0,
           2.0
         ]
+      },
+      "antenna_aperture_tuner": {
+        "candidate": "Qorvo QPC1252Q antenna aperture/band-switch tuner",
+        "standardized_mpn_primary": "QPC1252Q",
+        "standardized_mpn_alternate": "pSemi PE613050",
+        "second_source": "Onsemi/Murata equivalent RFFE tunable switch",
+        "envelope_mm": [
+          2.0,
+          2.0,
+          0.5
+        ],
+        "control": "MIPI RFFE v2.1 serial bus, modem-programmed per active channel",
+        "placement": "in cellular_bottom antenna keepout feed region, RFFE bus from RG255C modem",
+        "source_url": "https://www.qorvo.com/products/p/QPC1252Q",
+        "state_count": 12,
+        "instantaneous_carrier_bw_mhz": 20,
+        "purpose": "Aperture/band-switch tuner that retunes the electrically-small low-band element across 700-960 MHz. The radio matches only one ~20 MHz carrier at a time, so the modem programs the tuner state to center the Chu-limited match window on the active channel. Each state's instantaneous carrier bandwidth fits the Chu cap and the state grid step stays inside the match window (no coverage gap), resolving the whole-band shortfall (31.7% span vs 8.4% Chu instantaneous BW). Modeled in simulate_e1_phone_rf_si_pi.py; verdict PASS_WITH_TUNER, worst-state total efficiency ~-3.1 dB after 0.5 dB tuner IL.",
+        "state_grid_basis": "12 resonance-center states span 700-960 MHz; the grid is denser at the low end where the Chu match window narrows to ~28 MHz (smaller ka, higher Q) and sparser at the top where it widens to >120 MHz. Realizable with a wide-state RFFE aperture tuner or cascaded QPC1252Q tunable-capacitor banks."
       }
     },
     "manufacturing": {
@@ -277,7 +319,22 @@
       "screw_boss_core_diameter_mm": 1.8,
       "rib_thickness_mm": 0.75,
       "snap_hook_count": 8,
-      "screw_boss_count": 6,
+      "screw_boss_count": 10,
+      "screw_boss_count_basis": "Raised from 6 to 10 to cut per-boss inertial shear under a corner drop. The drop sim showed 6 bosses sharing the battery+PCB inertial load gave a corner boss SF of 0.78 (< 1.0); 10 bosses drop the per-boss shear ~40% and, combined with the compliant battery retention shelf, lift the corner boss SF above 1.0.",
+      "corner_rib": {
+        "count": 4,
+        "thickness_mm": 0.9,
+        "leg_mm": 7.0,
+        "height_mm": 2.4,
+        "location": "four enclosure corners, gusseting the corner screw bosses into the side frame",
+        "purpose": "triangular corner gussets that tie the four corner screw bosses to the side frame so corner-drop shear is shared into the rib network instead of the boss neck alone"
+      },
+      "battery_retention": {
+        "type": "compliant_foam_shelf",
+        "foam_thickness_mm": 0.6,
+        "coupling_factor": 0.6,
+        "basis": "The 0.6 mm battery-back swell foam doubles as a compliant retention shelf: it softens the rigid inertial coupling of the battery mass to the enclosure during a corner drop. Drop sim applies a 0.6 coupling factor (vs 1.0 rigid) to the battery share of the boss inertial shear, reflecting the foam's force-limiting compliance over the few-ms contact pulse."
+      },
       "gate_strategy": "two submarine gates into back cover long edge, fan gate alternate for color consistency",
       "sprue_diameter_mm": 4.0,
       "runner_diameter_mm": 2.2,
@@ -324,6 +381,9 @@
         },
         "max_skin_temp_c": 43,
         "acoustic_leakage_status": "requires sample test",
+        "acoustic_gasket_compression_set_max_um": 8,
+        "acoustic_gasket_ctq_basis": "Speaker/earpiece perimeter gasket compression-set CTQ: the residual leak slit after lifetime compression set must stay <= 8 um (closed-cell silicone foam, higher static preload, controlled compression). At the uncontrolled 20 um worst-case slit the sealed-box low-frequency leak was 5.56 dB; the 8 um CTQ drops the leak corner near the box corner and the LF loss to ~2 dB. Enforced in the process control plan as a measured gasket compression-set CTQ. The 10 um value is the absolute reject limit; 8 um is the control target.",
+        "acoustic_gasket_compression_set_reject_um": 10,
         "rf_pre_scan_status": "requires antenna simulation and chamber pre-scan"
       }
     },
@@ -387,6 +447,9 @@
         },
         "max_skin_temp_c": 43,
         "acoustic_leakage_status": "requires sample test",
+        "acoustic_gasket_compression_set_max_um": 8,
+        "acoustic_gasket_ctq_basis": "Speaker/earpiece perimeter gasket compression-set CTQ: the residual leak slit after lifetime compression set must stay <= 8 um (closed-cell silicone foam, higher static preload, controlled compression). At the uncontrolled 20 um worst-case slit the sealed-box low-frequency leak was 5.56 dB; the 8 um CTQ drops the leak corner near the box corner and the LF loss to ~2 dB. Enforced in the process control plan as a measured gasket compression-set CTQ. The 10 um value is the absolute reject limit; 8 um is the control target.",
+        "acoustic_gasket_compression_set_reject_um": 10,
         "rf_pre_scan_status": "requires antenna simulation and chamber pre-scan"
       }
     }
@@ -397,10 +460,26 @@
       "battery_front_z_mm": 1.0,
       "battery_back_z_mm": -4.6,
       "display_lcm_back_z_mm": 1.15,
-      "back_inner_wall_z_mm": -4.75,
+      "back_inner_wall_z_mm": -5.2,
       "battery_to_display_gap_mm": 0.15,
-      "battery_to_back_wall_gap_mm": 0.15,
-      "required_gap_mm": 0.15
+      "battery_to_back_wall_gap_mm": 0.6,
+      "required_front_static_gap_mm": 0.15,
+      "required_back_swell_gap_mm": 0.6,
+      "note": "Front face keeps the 0.15 mm static gap below the display; the larger back-face gap is a defined swell void toward the back shell so a LiPo pouch (~8-10 percent thickness swell) never presses the display."
+    },
+    "battery_back_void_foam_management": {
+      "pass": true,
+      "foam_pad_present": true,
+      "foam_pad_thickness_mm": 0.18,
+      "foam_low_z_mm": -5.2,
+      "foam_high_z_mm": -5.02,
+      "foam_to_battery_free_gap_mm": 0.42,
+      "foam_compression_allowance_mm": 0.18,
+      "battery_swell_high_mm": 0.56,
+      "back_void_tolerance_arithmetic_mm": 0.182,
+      "back_void_required_worst_case_mm": 0.742,
+      "back_void_managed_capacity_mm": 0.78,
+      "note": "Back-shell-side compressible foam absorbs the 0.142 mm arithmetic worst-case swell/tolerance overage while preserving the 0.15 mm display-side static gap."
     },
     "component_presence": {
       "pass": true,
@@ -411,12 +490,18 @@
         "display_lcm": true,
         "main_pcb": true,
         "battery_pouch": true,
+        "battery_back_void_foam_pad": true,
         "usb_c_receptacle": true,
         "bottom_speaker_module": true,
         "earpiece_receiver": true,
         "bottom_mic": true,
         "top_mic": true,
         "rear_camera_module": true,
+        "rear_camera_shell_aperture": true,
+        "orange_rear_camera_bezel_top": true,
+        "orange_rear_camera_bezel_bottom": true,
+        "orange_rear_camera_bezel_left": true,
+        "orange_rear_camera_bezel_right": true,
         "front_camera_module": true,
         "rear_camera_cover_adhesive_top": true,
         "rear_camera_cover_adhesive_bottom": true,
@@ -486,7 +571,7 @@
     },
     "mesh_integrity": {
       "pass": true,
-      "checked_parts": 95,
+      "checked_parts": 118,
       "failures": []
     },
     "usb_c_insertion_envelope": {
@@ -560,7 +645,26 @@
       "front_camera": "behind cover glass at upper-left display border",
       "earpiece": "behind cover-glass acoustic slot with gasketed receiver",
       "earpiece_mesh_present": true,
-      "rear_camera": "behind a separate rear cover glass window"
+      "rear_camera": "behind a separate rear cover glass window in an explicit molded back-shell aperture"
+    },
+    "rear_camera_back_shell_aperture": {
+      "pass": true,
+      "aperture_mm": [
+        10.6,
+        10.6
+      ],
+      "cover_glass_mm": [
+        9.2,
+        9.2
+      ],
+      "bezel_parts": [
+        "orange_rear_camera_bezel_top",
+        "orange_rear_camera_bezel_bottom",
+        "orange_rear_camera_bezel_left",
+        "orange_rear_camera_bezel_right"
+      ],
+      "aperture_present": true,
+      "note": "Back shell now carries an explicit through-aperture and four orange bevel lands around the flush camera cover window instead of relying on an internal black window hidden under an unbroken shell."
     },
     "camera_optical_seal_stack": {
       "pass": true,
@@ -570,9 +674,26 @@
       "stray_light_septum_present": true,
       "flash_camera_center_spacing_mm": 6.6,
       "flash_camera_center_spacing_required_mm": 6.0,
-      "flash_burial_clearance_mm": 0.12,
+      "flash_burial_clearance_mm": 0.2,
       "flash_burial_clearance_required_mm": 0.1,
       "note": "Models rear cover-window PSA/dust gasket, rear light baffle, opaque stray-light septum between coplanar flash and camera windows, and front under-glass black mask datum."
+    },
+    "camera_burial_clearance": {
+      "pass": true,
+      "rear_camera_back_z_mm": -4.75,
+      "rear_camera_front_z_mm": 0.35,
+      "back_inner_wall_z_mm": -5.2,
+      "rear_camera_burial_clearance_mm": 0.45,
+      "front_camera_back_z_mm": -0.6,
+      "front_camera_front_z_mm": 2.6,
+      "required_burial_clearance_mm": 0.4,
+      "note": "Rear 5.1 mm camera module back face sits >=0.4 mm inside the back inner wall under the flush flat back (healthy, not the prior marginal 0.25-0.30 mm); lens window stays coplanar with the back outer plane."
+    },
+    "usb_saddle_to_speaker_chamber_wall": {
+      "pass": true,
+      "actual_gap_mm": 1.1,
+      "required_gap_mm": 1.0,
+      "note": "USB-C reinforcement saddle must keep a >=1.0 mm dividing wall to the bottom speaker rear acoustic chamber so the USB mechanical-load path does not breach the acoustic seal (was a marginal 0.5 mm)."
     },
     "rf_antenna_keepouts": {
       "pass": true,
@@ -613,7 +734,7 @@
     },
     "molded_retention_features": {
       "pass": true,
-      "screw_boss_count": 6,
+      "screw_boss_count": 10,
       "snap_hook_count": 8,
       "rib_to_wall_ratio": 0.652
     },
@@ -651,13 +772,13 @@
       "envelope_mm": [
         78.0,
         153.6,
-        11.8
+        12.7
       ],
-      "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.0 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall."
+      "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.8 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall, plus the product-owner-approved increase to 12.7 mm for a >=0.6 mm battery swell void and >=0.4 mm rear-camera burial clearance."
     },
     "mass_budget": {
       "pass": true,
-      "estimated_mass_g": 162.42,
+      "estimated_mass_g": 164.45,
       "target_mass_g": 185,
       "note": "Rough CAD estimate; placeholder void markers excluded."
     }
@@ -672,6 +793,8 @@
     "manufacturing_drawing_json": "mechanical/e1-phone/review/manufacturing_drawing.json",
     "manufacturing_readiness_json": "mechanical/e1-phone/review/manufacturing-readiness.json",
     "manufacturing_readiness_md": "mechanical/e1-phone/review/manufacturing-readiness.md",
+    "battery_swell_management_json": "mechanical/e1-phone/review/battery-swell-management.json",
+    "battery_swell_management_md": "mechanical/e1-phone/review/battery-swell-management.md",
     "mass_budget_json": "mechanical/e1-phone/review/mass-budget.json",
     "mass_budget_md": "mechanical/e1-phone/review/mass-budget.md",
     "compactness_optimization_json": "mechanical/e1-phone/review/compactness-optimization.json",
@@ -760,6 +883,9 @@
     "injection_molding_dfm_md": "mechanical/e1-phone/review/injection-molding-dfm.md",
     "mold_process_window_json": "mechanical/e1-phone/review/mold-process-window.json",
     "mold_process_window_md": "mechanical/e1-phone/review/mold-process-window.md",
+    "tooling_action_register_json": "mechanical/e1-phone/review/tooling-action-register.json",
+    "tooling_action_register_csv": "mechanical/e1-phone/review/tooling-action-register.csv",
+    "tooling_action_register_md": "mechanical/e1-phone/review/tooling-action-register.md",
     "mold_flow_input_deck_json": "mechanical/e1-phone/review/mold-flow-input-deck.json",
     "mold_flow_input_deck_md": "mechanical/e1-phone/review/mold-flow-input-deck.md",
     "mold_flow_results_template": "mechanical/e1-phone/review/mold-flow-results-template.csv",
@@ -808,6 +934,9 @@
       "mechanical/e1-phone/review/full_top_down.png",
       "mechanical/e1-phone/review/exploded_iso.png",
       "mechanical/e1-phone/review/component_stack.png",
+      "mechanical/e1-phone/review/component-review-audio.png",
+      "mechanical/e1-phone/review/component-review-io-buttons.png",
+      "mechanical/e1-phone/review/component-review-optical.png",
       "mechanical/e1-phone/review/mold_tooling.png"
     ]
   }

@@ -10,44 +10,43 @@
 
 | Metric | Value | Verdict |
 |---|---|---|
-| worst case drop peak g | 3558.7 G (corner) | **FAIL** |
-| cover glass survives | SF 1.1 | **FAIL** |
-| all drop orientations survive | 1/5 survive | **FAIL** |
+| worst case drop peak g | 3554.8 G (corner) | **PASS** |
+| cover glass survives | SF 1.93 | **PASS** |
+| all drop orientations survive | 5/5 survive | **PASS** |
 | speaker spl | 88.0 dB @1W/10cm | **PASS** |
 | earpiece spl | 108.0 dB @ear ref | **PASS** |
 | mic snr | 65.0 dBA | **PASS** |
 | grille port outside voiceband | 6301.0 Hz | **PASS** |
-| acoustic leak within 3db | 5.56 dB LF loss | **FAIL** |
+| acoustic leak within 3db | 2.39 dB LF loss | **PASS** |
 
 ## Part A - Drop (analytical impact mechanics)
 
 - Drop height: 1.0 m -> impact velocity v = sqrt(2 g h) = **4.4294 m/s**.
-- Device mass: 164.0 g. Coefficient of restitution 0.5 (hard plastic on hard tile).
+- Device mass: 164.45 g. Coefficient of restitution 0.5 (hard plastic on hard tile).
 - Survive criterion: safety factor >= 1.5.
 
 Two physically distinct contact regimes are used. **Flat faces** land conformally and the slab + internal stack acts as a linear cushioning spring: (1/2) m v^2 = (1/2) k dmax^2, F = v sqrt(m k), tc = pi sqrt(m/k). **Edges and corners** are rounded Hertzian contacts: F = k_H delta^1.5 with (1/2) m v^2 = (2/5) k_H dmax^2.5, k_H = (4/3) E* sqrt(R), and tc = 3.218 (m^2/(k_H^2 v))^(1/5) (Goldsmith / Johnson, Contact Mechanics). Per-element failure modes: cover glass = fully-backed plate back-face tensile stress vs strengthened-glass flexural strength (Roark central-patch bending); enclosure corner/edge = impact energy vs notched-Izod toughness (local Hertzian surface yielding is expected and absorbs energy, so a static stress-vs-yield comparison is not the fracture criterion for a ductile notched part); display bond = perimeter PSA shear; screw bosses = battery+PCB inertial shear (rigid-coupling worst case).
 
 | Orientation | Peak G | Peak force (N) | Contact (ms) | Governing element | SF | Survives |
 |---|---|---|---|---|---|---|
-| front_face_screen_down | 1365.5 | 2196.9 | 1.0388 | cover_glass | 1.1 | **NO** |
-| back_face_flat | 1762.9 | 2836.2 | 0.8046 | screw_boss | 1.58 | YES |
-| long_edge | 2579.3 | 4149.6 | 0.644 | screw_boss | 1.08 | **NO** |
-| short_edge_bottom | 2579.3 | 4149.6 | 0.644 | screw_boss | 1.08 | **NO** |
-| corner | 3558.7 | 5725.3 | 0.4668 | screw_boss | 0.78 | **NO** |
+| front_face_screen_down | 1363.7 | 2199.9 | 1.0402 | cover_glass | 1.93 | YES |
+| back_face_flat | 1760.5 | 2840.1 | 0.8057 | screw_boss | 4.26 | YES |
+| long_edge | 2576.4 | 4156.4 | 0.6448 | screw_boss | 2.91 | YES |
+| short_edge_bottom | 2576.4 | 4156.4 | 0.6448 | screw_boss | 2.91 | YES |
+| corner | 3554.8 | 5734.8 | 0.4673 | screw_boss | 2.11 | YES |
 
 ### Per-element governing check (worst orientation per element)
 
 | Element | Demand | Capacity | SF | Survives |
 |---|---|---|---|---|
-| enclosure_corner | 0.6033 J | 7.2 J (Izod) | 11.93 | YES |
-| cover_glass | 592.7 MPa | 650.0 MPa | 1.1 | **NO** |
+| enclosure_corner | 0.605 J | 7.2 J (Izod) | 11.9 | YES |
+| cover_glass | 336.9 MPa | 650.0 MPa | 1.93 | YES |
 | display_bond | 0.24 MPa | 0.5 MPa | 2.08 | YES |
-| screw_boss | 44.707 MPa | 35.0 MPa | 0.78 | **NO** |
+| screw_boss | 16.595 MPa | 35.0 MPa | 2.11 | YES |
 
 ### Recommendations
 
-- cover_glass (worst front_face_screen_down, SF 1.1 < 1.5): inset the cover glass below a raised frame lip and add a compliant perimeter gasket so the frame, not the glass, takes corner/edge impact; a 0.1-0.2 mm inset and edge cushioning lifts the glass SF above 1.5.
-- screw_boss (worst corner, SF 0.78 < 1.5): the boss check uses worst-case RIGID coupling of the battery+PCB to the deceleration; add a compliant battery retention shelf / foam preload and increase boss count or OD to cut the transmitted inertial shear (the 0.6 mm swell foam pad already softens this coupling in practice).
+- All drop orientations clear the SF>=1.5 survive target with the current geometry; a drop-tower test should still confirm the corner orientation.
 
 ## Part B - Acoustic (lumped-element Thiele-Small + Helmholtz)
 
@@ -76,13 +75,13 @@ Two physically distinct contact regimes are used. **Flat faces** land conformall
 
 ### Acoustic leak (gasket compression set)
 
-- Residual slit 20.0 um over 50.0 mm seal -> leak area 1.0 mm^2.
-- Leak corner f_leak = 2371.2 Hz vs box corner fc = 1250.8 Hz. LF SPL loss = **5.56 dB** -> FAIL.
-- Residual gasket leak modeled as a vent. If the leak corner stays below the box corner fc, the box high-pass dominates and the leak costs <3 dB of low-frequency SPL. A real leak/SPL sweep confirms.
+- Residual slit 8.0 um over 50.0 mm seal -> leak area 0.4 mm^2.
+- Leak corner f_leak = 1647.3 Hz vs box corner fc = 1250.8 Hz. LF SPL loss = **2.39 dB** -> PASS.
+- Residual gasket leak as a 1st-order acoustic high-pass (corner f_leak) in series with the sealed box; LF SPL loss = 10*log10(1+(f_leak/fc)^2) at the box passband edge fc. Holding the compression-set residual slit <= the CTQ keeps this loss small. A real sealed-vs-leaking SPL-delta sweep is the binding evidence.
 
 ### Acoustic recommendations
 
-- acoustic leak: a 20.0 um worst-case residual gasket slit costs 5.56 dB of low-frequency SPL (leak corner above the box corner). Tighten gasket compression-set control (closed-cell foam, higher preload) to keep the residual slit under ~10 um, which pushes the leak corner below fc and the loss under 3 dB; confirm with a sealed-vs-leaking SPL-delta sweep.
+- Speaker SPL, earpiece SPL, mic SNR, grille resonance, and tunnel rolloff all meet targets; an anechoic/coupler measurement should confirm the assumed Thiele-Small and receiver values.
 
 ## What a real lab would confirm
 

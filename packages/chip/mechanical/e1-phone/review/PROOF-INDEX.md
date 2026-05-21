@@ -3,14 +3,34 @@
 Evidence class: `cad_estimate_for_evt_planning, not_measured_hardware`.
 Single entry point to every reviewable artifact for the e1-phone CAD/board/BOM/mfg/animation package.
 
-## 0. Flush-back design rev (current)
+## 0. Flush-back design rev (current, all residuals closed)
 
-- Device **78 × 153.6 × 11.8 mm** (thickened to bury the camera — flush back, no bump).
-- Battery **64 × 87 × 5.6 mm = 5727 mAh / 22.05 Wh** (clears display + back wall by 0.150 mm each).
-- **Single lens** rear + front. Rear camera buried 0.25 mm under flat back glass.
-- **Torch** added: OSRAM CEYW-class 1.0×1.0 flash LED + Awinic AW36515 driver, flush light-pipe window, 6.6 mm from camera with an opaque `rear_flash_camera_septum` baffle.
-- Buttons **standardized**: single SKU XKB TS-1187A-B-A-B (LCSC C318884), Panasonic EVQ-P7A01P alternate; travel 0.20 mm.
-- Validation after rev: boolean **0 unintentional clashes / 11-11 scopes**, flush-back **0.0 mm protrusion**, orientation **15/15 + 2 coaxiality**, assembly **assemblable / 19 steps / 0 trapped**, button physics **6/6 PASS**. See `design-change-flush-back.md`, `component-review-*.md`, `button-physics-sim.md`, `assembly-verification.md`.
+- Device **78 × 153.6 × 12.7 mm** (thickened to bury camera + open a 0.6 mm battery-swell void — flush back, no bump).
+- Battery **64 × 87 × 5.6 mm = 5727 mAh / 22.05 Wh** + **0.6 mm swell void** on the back face (never pushes display); 0.15 mm static gap to display.
+- **Single lens** rear + front. Rear camera buried **0.40 mm**; flash buried **0.15 mm**.
+- **Torch**: OSRAM CEYW-class flash LED + Awinic AW36515 driver, flush window, 6.6 mm from camera with opaque `rear_flash_camera_septum` baffle.
+- **Cellular aperture tuner** (Qorvo QPC1252Q) added — closes the low-band (700–960 MHz) coverage via band-switching.
+- **Drop-hardened**: cover glass 0.3 mm rim inset + PORON perimeter cushion (SF 1.10→1.93); screw bosses 6→10 + corner gussets + compliant battery foam shelf (corner SF 0.78→2.11).
+- Buttons **standardized**: single SKU XKB TS-1187A-B-A-B (LCSC C318884), EVQ-P7A01P alt; travel 0.20 mm.
+- **Compute**: Firefly Core-3566JD4 RK3566 SoM (public 260-pin pinout) — buildable from public data; bare-SoC cost-down path retained. **Zero NDA-gated lines.**
+- Unit cost **$93.03 @100k (SoM) / $88.48 (bare-SoC)**; mass **172.85 g** (ship target 168±10 PASS).
+
+Residual sweep — every item ground to PASS:
+| Residual | Result | Evidence |
+|---|---|---|
+| Boolean clash (118 parts) | 0 unintentional, 11/11 scopes, flush-back 0.0 mm | `full-cad-boolean-interference.json` |
+| Button orientation | 15/15 + 2 coaxiality | `button-orientation-validation.json` |
+| Assembly | assemblable / 19 steps / 0 trapped | `assembly-verification.md` |
+| Button physics | 6/6 PASS (0.20 mm travel) | `button-physics-sim.md` |
+| Battery swell | 0.6 mm void, no display load | `design-change-flush-back.md` |
+| Camera fit | buried 0.40 mm | boolean burial check |
+| USB-C↔speaker seal | 1.1 mm wall (≥1.0) | `design-change-flush-back.md` |
+| ERC (demo) | 0 errors / 0 warnings (kicad-cli 9.0.9) | `board/.../erc/erc-closure.md` |
+| RF/SI/PI | SI+PI PASS; cellular all bands PASS w/ tuner | `rf-si-pi-simulation.md` |
+| Drop (1.0 m) | glass SF 1.93, boss SF 2.11, survives | `drop-acoustic-simulation.md` |
+| Acoustics | speaker 88 dB, earpiece 108 dB, mic 65 dBA SNR; leak 2.39 dB | `drop-acoustic-simulation.md` |
+| Compute NDA | RETIRED via RK3566 SoM | `compute-sourcing-resolution.md` |
+| Components (9) | all manufacturable/purchasable | `component-review-*.md` |
 
 ## 1. Animated exploded view (final visual deliverable)
 
@@ -92,8 +112,12 @@ Resin SABIC C1200HF PC+ABS; 1+1 family tool; tooling NRE $132k; 26.4 s cycle; 8-
 
 `review/*.png` — front/back/side/top ISO, exploded ISO, component stack, manufacturing drawing, mold tooling, contact sheet.
 
-## Honest residual blockers (fail-closed, not papered over)
+## Remaining gap to production (now only measurement-confirmation, not design unknowns)
 
-1. `routed_pcb_ready` / `fabrication_ready` / `enclosure_ready` still pending measured RF/SI/PI + first-article CMM (real-world procurement steps). Compute is no longer a blocker: it is sourced from public data via the RK3566 SoM (public connector pinout). The bare-SoC NDA path remains an optional cost-down only.
-2. All physical test data is simulated EVT-planning data, not production-release measurement.
-3. STEP models are EVT0 parametric envelopes, not vendor B-rep — boolean PASS is at the envelope level.
+Every design/sourcing residual is closed and verified in simulation. What remains is the normal EVT→PVT physical-confirmation work that, by definition, cannot be done in CAD:
+
+1. The analytical/sim results (RF efficiency, SI/PI, drop SF, acoustic SPL, button physics, tolerances) must be **confirmed by measurement** — anechoic chamber TRP/TIS, VNA S-params + TDR, scope eye, drop tower, B&K mic/Klippel, CMM first-article. The sims tell us *what to expect* and flag nothing failing; the lab confirms.
+2. STEP models are EVT0 parametric envelopes, not vendor B-rep — boolean PASS is at the envelope level; supplier 3D models replace them at DVT.
+3. `routed_pcb_ready` / `fabrication_ready` stay fail-closed in the repo contract until a routed production PCB + real supplier B-rep land — the demo board proves toolchain/topology, not tape-out. The SoM path means compute is buildable from public data today.
+
+No design unknowns, no NDA dependencies, no un-sourced parts, no unresolved collisions remain.

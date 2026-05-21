@@ -12,13 +12,13 @@
     "device_envelope_mm": [
       78.0,
       153.6,
-      11.8
+      12.7
     ],
     "corner_radius_mm": 7.5,
     "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
     "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
     "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
-    "estimated_mass_g": 162.42,
+    "estimated_mass_g": 164.45,
     "target_mass_g": 185,
     "compactness_status": "cad_compactness_optimized",
     "compactness_width_excess_mm": 0.3,
@@ -79,15 +79,15 @@
     "production_visual_signoff_ready": false,
     "open_manual_visual_review_count": 5,
     "solid_cad_handoff_status": "generated",
-    "solid_cad_step_part_count": 95,
+    "solid_cad_step_part_count": 118,
     "step_validation_status": "pass",
-    "step_validation_count": 95,
+    "step_validation_count": 118,
     "supplier_rfq_status": "rfq_ready",
     "supplier_rfq_package_count": 5,
     "supplier_response_status": "blocked_no_supplier_responses",
     "supplier_response_complete_count": 0,
     "supplier_response_expected_count": 8,
-    "part_review_count": 95
+    "part_review_count": 118
   },
   "required_outputs": {
     "assembly_glb": true,
@@ -99,6 +99,7 @@
     "manufacturing_drawing": true,
     "mass_budget": true,
     "compactness_optimization": true,
+    "battery_swell_management": true,
     "supplier_lock": true,
     "kicad_mechanical_handoff": true,
     "kicad_placement_reconciliation": true,
@@ -120,6 +121,7 @@
     "assembly_clearance": true,
     "injection_molding_dfm": true,
     "mold_process_window": true,
+    "tooling_action_register": true,
     "toolmaker_signoff_package": true,
     "tolerance_stack": true,
     "gdt_release_package": true,
@@ -134,6 +136,7 @@
   "subsystem_evidence_present": {
     "molded_orange_enclosure": true,
     "compact_envelope_optimization": true,
+    "battery_swell_management": true,
     "component_selection_review": true,
     "screen_stack": true,
     "pcb_integration": true,
@@ -200,6 +203,22 @@
       "remaining_blockers": [
         "Envelope is optimized against current EVT0 supplier envelopes only.",
         "Need supplier STEP and routed PCB before proving no further local reduction is possible."
+      ]
+    },
+    {
+      "subsystem": "battery_swell_management",
+      "status": "cad_pass",
+      "evidence": [
+        "battery_pouch",
+        "battery_back_void_foam_pad",
+        "battery_display_and_wall_clearance",
+        "battery_back_void_foam_management",
+        "battery-swell-management.json",
+        "battery-swell-management.md"
+      ],
+      "remaining_blockers": [
+        "CAD now models a compressible back-void foam pad, but supplier battery swelling and foam compression-set data are still missing.",
+        "Need physical thermal aging, drop, and pouch-preload validation before battery release."
       ]
     },
     {
@@ -589,6 +608,9 @@
         "injection-molding-dfm.md",
         "mold-process-window.json",
         "mold-process-window.md",
+        "tooling-action-register.json",
+        "tooling-action-register.csv",
+        "tooling-action-register.md",
         "toolmaker-signoff-package.json",
         "toolmaker-signoff-package.md",
         "toolmaker-signoff-response-template.csv",
@@ -628,6 +650,9 @@
         "visual-decision-report.md",
         "manufacturing_drawing.json",
         "full_top_down.png",
+        "component-review-audio.png",
+        "component-review-io-buttons.png",
+        "component-review-optical.png",
         "mold_tooling.png",
         "rear_feature_detail.png"
       ],
@@ -646,6 +671,9 @@
         "rear_feature_detail.png",
         "full_bottom_port.png",
         "component_stack.png",
+        "component-review-audio.png",
+        "component-review-io-buttons.png",
+        "component-review-optical.png",
         "mold_tooling.png"
       ],
       "remaining_blockers": [
