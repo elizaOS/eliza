@@ -203,6 +203,80 @@ describe("action tiering", () => {
 		);
 	});
 
+	it("lets canonical candidate names beat another parent's simile", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "SCHEDULED_TASKS",
+				description: "Manage reminders and scheduled tasks.",
+				similes: ["TASKS", "REMINDER_TASK"],
+			},
+			{
+				name: "TASKS",
+				description: "Delegate coding work to a sub-agent.",
+				subActions: ["TASKS_SPAWN_AGENT"],
+			},
+			{
+				name: "TASKS_SPAWN_AGENT",
+				description: "Spawn a coding sub-agent.",
+				similes: ["SPAWN_AGENT"],
+			},
+		]);
+		const scheduledTasks = catalog.parentByName.get("SCHEDULED_TASKS");
+		const codingTasks = catalog.parentByName.get("TASKS");
+		if (!scheduledTasks || !codingTasks) {
+			throw new Error("missing collision parents");
+		}
+
+		const surface = tierActionResults({
+			catalog,
+			results: [resultFor(scheduledTasks, 0.95), resultFor(codingTasks, 0.12)],
+			narrowToCandidateActions: ["TASKS"],
+		});
+
+		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
+			"TASKS",
+		]);
+		expect(surface.exposedActionNames).toEqual(
+			expect.arrayContaining(["TASKS", "TASKS_SPAWN_AGENT"]),
+		);
+		expect(surface.exposedActionNames).not.toContain("SCHEDULED_TASKS");
+	});
+
+	it("keeps simile candidate matching when there is no canonical name collision", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "SCHEDULED_TASKS",
+				description: "Manage reminders and scheduled tasks.",
+				similes: ["TASKS", "REMINDER_TASK"],
+			},
+			{
+				name: "TASKS",
+				description: "Delegate coding work to a sub-agent.",
+				subActions: ["TASKS_SPAWN_AGENT"],
+			},
+			{
+				name: "TASKS_SPAWN_AGENT",
+				description: "Spawn a coding sub-agent.",
+				similes: ["SPAWN_AGENT"],
+			},
+		]);
+		const scheduledTasks = catalog.parentByName.get("SCHEDULED_TASKS");
+		if (!scheduledTasks) {
+			throw new Error("missing scheduled tasks parent");
+		}
+
+		const surface = tierActionResults({
+			catalog,
+			results: [resultFor(scheduledTasks, 0.12)],
+			narrowToCandidateActions: ["REMINDER_TASK"],
+		});
+
+		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
+			"SCHEDULED_TASKS",
+		]);
+		expect(surface.exposedActionNames).toContain("SCHEDULED_TASKS");
+	});
+
 	it("demotes non-candidate Tier A parents when a candidate is promoted", () => {
 		const catalog = buildActionCatalog(actions);
 		const music = catalog.parentByName.get("MUSIC");

@@ -108,32 +108,58 @@ export function tierActionResults(
 	// and the cap then applies to that smaller set.
 	const narrowSet = normalizeCandidateSet(input.narrowToCandidateActions);
 	if (narrowSet.size > 0) {
+		const canonicalOwnersByCandidate = new Map<string, Set<string>>();
+		for (const candidate of narrowSet) {
+			const owners = new Set<string>();
+			for (const parent of input.catalog.parents) {
+				if (candidate === parent.normalizedName) {
+					owners.add(parent.normalizedName);
+				}
+				for (const child of parent.childNormalizedNames) {
+					if (candidate === child) {
+						owners.add(parent.normalizedName);
+					}
+				}
+			}
+			if (owners.size > 0) {
+				canonicalOwnersByCandidate.set(candidate, owners);
+			}
+		}
+
 		// A parent matches a candidate when the candidate names the parent,
-		// one of its children, or any simile of either — so Stage-1 routing
-		// to a virtual sub-action (`TASKS_SPAWN_AGENT`) or a simile of one
-		// (`SPAWN_AGENT`) still resolves back to the `TASKS` parent. Reads
-		// the catalog parent (`result.parent`), not the tiered entry —
-		// tier-B / tier-C entries are stored parent-only so their
-		// `childNormalizedNames` are empty.
+		// one of its children, or any simile of either. Canonical names win
+		// over similes per candidate: if `TASKS` is a real action name,
+		// another parent's `TASKS` simile must not capture the surface.
+		// Reads the catalog parent (`result.parent`), not the tiered entry
+		// because tier-B / tier-C entries are stored parent-only.
 		const matchesCandidate = (parent: TieredParentAction): boolean => {
 			const catalogParent = parent.result.parent;
-			if (narrowSet.has(catalogParent.normalizedName)) {
-				return true;
-			}
-			for (const child of catalogParent.childNormalizedNames) {
-				if (narrowSet.has(child)) {
-					return true;
-				}
-			}
-			for (const simile of catalogParent.similes) {
-				if (narrowSet.has(normalizeActionName(simile))) {
-					return true;
-				}
-			}
-			for (const child of catalogParent.children) {
-				for (const simile of child.similes) {
-					if (narrowSet.has(normalizeActionName(simile))) {
+			for (const candidate of narrowSet) {
+				const canonicalOwners = canonicalOwnersByCandidate.get(candidate);
+				if (canonicalOwners) {
+					if (canonicalOwners.has(catalogParent.normalizedName)) {
 						return true;
+					}
+					continue;
+				}
+				if (candidate === catalogParent.normalizedName) {
+					return true;
+				}
+				for (const child of catalogParent.childNormalizedNames) {
+					if (candidate === child) {
+						return true;
+					}
+				}
+				for (const simile of catalogParent.similes) {
+					if (candidate === normalizeActionName(simile)) {
+						return true;
+					}
+				}
+				for (const child of catalogParent.children) {
+					for (const simile of child.similes) {
+						if (candidate === normalizeActionName(simile)) {
+							return true;
+						}
 					}
 				}
 			}

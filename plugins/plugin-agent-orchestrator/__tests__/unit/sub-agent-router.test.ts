@@ -648,6 +648,43 @@ describe("SubAgentRouter", () => {
       expect(handleMessage).not.toHaveBeenCalled();
     });
 
+    it("suppresses later original-session errors after handing off to a verification retry", async () => {
+      session = sessionWithTask(`build a calculator at ${DEAD_URL}`);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Done — the app is live at ${DEAD_URL}`,
+      });
+      await new Promise((r) => setTimeout(r, 1000));
+      acp.emit(SESSION_ID, "error", {
+        message: '"Method not found": session/cancel',
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(spawnSession).toHaveBeenCalledTimes(1);
+      expect(handleMessage).not.toHaveBeenCalled();
+    });
+
+    it("does not surface unsupported session/cancel errors to the user", async () => {
+      session = sessionWithTask("build a tiny app");
+      acp = makeAcpService(session);
+      const { runtime, handleMessage } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "error", {
+        message: '"Method not found": session/cancel',
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(handleMessage).not.toHaveBeenCalled();
+    });
+
     it("stops retrying once the budget is exhausted and posts honestly", async () => {
       // Already at the default max (2) → no further retry.
       session = sessionWithTask(`build it at ${DEAD_URL}`, 2);
@@ -865,6 +902,7 @@ describe("SubAgentRouter", () => {
                 {
                   urlPrefix: "https://example.test/apps/",
                   localPath: "data/apps/",
+                  requireFresh: true,
                 },
               ],
             },
@@ -927,6 +965,7 @@ describe("SubAgentRouter", () => {
                 {
                   urlPrefix: "https://example.test/apps/",
                   localPath: "data/apps/",
+                  requireFresh: true,
                 },
               ],
             },
@@ -951,6 +990,62 @@ describe("SubAgentRouter", () => {
           "not updated during this session",
         );
         expect(posted?.content?.text).toContain("[verification:");
+      } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+      }
+    });
+
+    it("does not reject a reachable mapped app URL for stale local mtime unless freshness is required", async () => {
+      const tmpRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), "sub-agent-router-"),
+      );
+      try {
+        const appUrl = "https://example.test/apps/random-tweet-idea/";
+        const appDir = path.join(tmpRoot, "data/apps/random-tweet-idea");
+        fs.mkdirSync(appDir, { recursive: true });
+        const indexFile = path.join(appDir, "index.html");
+        fs.writeFileSync(indexFile, "<html><body>existing app</body></html>");
+        const staleTime = new Date("2026-05-07T11:00:00.000Z");
+        fs.utimesSync(indexFile, staleTime, staleTime);
+
+        stubFetch(
+          vi.fn(async () => {
+            return new Response("<html><body>existing app</body></html>", {
+              status: 200,
+              headers: { "content-type": "text/html" },
+            });
+          }),
+        );
+        session = {
+          ...sessionWithTask(`build and verify ${appUrl}`, undefined, {
+            workdirRoute: {
+              id: "static-apps",
+              workdir: tmpRoot,
+              urlMappings: [
+                {
+                  urlPrefix: "https://example.test/apps/",
+                  localPath: "data/apps/",
+                },
+              ],
+            },
+          }),
+          workdir: tmpRoot,
+        };
+        acp = makeAcpService(session);
+        const { runtime, handleMessage, spawnSession } = makeRuntime({
+          acp: acp.service,
+        });
+        await SubAgentRouter.start(runtime);
+
+        acp.emit(SESSION_ID, "task_complete", {
+          response: `Done — live at ${appUrl}`,
+        });
+        await new Promise((r) => setTimeout(r, 200));
+
+        expect(spawnSession).not.toHaveBeenCalled();
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+        const posted = handleMessage.mock.calls[0]?.[1];
+        expect(posted?.content?.text).not.toContain("[verification:");
       } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });
       }

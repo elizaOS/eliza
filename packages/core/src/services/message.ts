@@ -7384,11 +7384,19 @@ function buildRuntimeActionLookup(runtime: {
 	actions?: readonly Action[];
 }): Map<string, Action> {
 	const actionMap = new Map<string, Action>();
+	const actions = runtime.actions ?? [];
 
-	for (const action of runtime.actions ?? []) {
-		const identifiers = [action.name, ...(action.similes ?? [])];
-		for (const identifier of identifiers) {
-			const normalized = normalizeActionIdentifier(identifier);
+	for (const action of actions) {
+		const normalized = normalizeActionIdentifier(action.name);
+		if (!normalized || actionMap.has(normalized)) {
+			continue;
+		}
+		actionMap.set(normalized, action);
+	}
+
+	for (const action of actions) {
+		for (const simile of action.similes ?? []) {
+			const normalized = normalizeActionIdentifier(simile);
 			if (!normalized || actionMap.has(normalized)) {
 				continue;
 			}

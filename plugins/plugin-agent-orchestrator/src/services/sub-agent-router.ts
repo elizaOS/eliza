@@ -285,6 +285,7 @@ export class SubAgentRouter extends Service {
   private readonly delivered = new Set<string>();
   private readonly roundTripCounts = new Map<string, number>();
   private readonly capExceededSessions = new Set<string>();
+  private readonly verifyRetryHandedOffSessions = new Set<string>();
   private started = false;
   private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
   private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -381,6 +382,7 @@ export class SubAgentRouter extends Service {
     this.delivered.clear();
     this.roundTripCounts.clear();
     this.capExceededSessions.clear();
+    this.verifyRetryHandedOffSessions.clear();
   }
 
   private async handleEvent(
@@ -393,6 +395,27 @@ export class SubAgentRouter extends Service {
     if (!acp) return;
     const session = (await acp.getSession(sessionId)) ?? undefined;
     if (!session) return;
+    if (this.verifyRetryHandedOffSessions.has(sessionId)) {
+      this.log(
+        "debug",
+        "suppressing original session event after verify retry handoff",
+        {
+          sessionId,
+          event,
+        },
+      );
+      return;
+    }
+    if (event === "error" && isUnsupportedCancelError(data)) {
+      this.log(
+        "debug",
+        "suppressing internal unsupported session/cancel error",
+        {
+          sessionId,
+        },
+      );
+      return;
+    }
 
     const dedupKey = computeDedupKey(sessionId, event, session, data);
     if (this.delivered.has(dedupKey)) return;
@@ -516,7 +539,10 @@ export class SubAgentRouter extends Service {
     // spawned, suppress this post — the retry's own task_complete reports.
     if (event === "task_complete" && deadUrls.length > 0) {
       const retried = await this.retryIncompleteBuild(session, deadUrls);
-      if (retried) return;
+      if (retried) {
+        this.verifyRetryHandedOffSessions.add(sessionId);
+        return;
+      }
     }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
@@ -836,6 +862,16 @@ function shouldInject(event: SessionEventName): boolean {
     event === "blocked" ||
     event === QUESTION_FOR_TASK_CREATOR ||
     event === AGENT_COORDINATION
+  );
+}
+
+function isUnsupportedCancelError(data: unknown): boolean {
+  const serialized = JSON.stringify(data);
+  const message =
+    pickPayloadString(data, "message") ??
+    (typeof serialized === "string" ? serialized : "");
+  return (
+    /method\s+not\s+found/i.test(message) && /session\/cancel/i.test(message)
   );
 }
 
@@ -1502,7 +1538,7 @@ function verifyMappedLocalUrl(
     return verifyLocalTarget(
       localTarget,
       routeVerification.sessionStartedAtMs,
-      mapping.requireFresh !== false,
+      mapping.requireFresh === true,
     );
   }
   return undefined;

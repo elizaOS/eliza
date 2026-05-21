@@ -84,6 +84,28 @@ describe("TASKS:spawn_agent", () => {
     });
   });
 
+  it("carries the connector message id for platform-threaded final replies", async () => {
+    const svc = serviceMock();
+    await spawnAgentAction.handler(
+      runtimeWith(svc),
+      {
+        ...memory({ task: "fix bug", agentType: "codex" }),
+        metadata: {
+          messageIdFull: "1506941896755249255",
+          discord: { messageId: "1506941896755249255" },
+        },
+      } as never,
+      state,
+      spawnOptions,
+      callback(),
+    );
+
+    const call = svc.spawnSession.mock.calls[0]?.[0] as {
+      metadata?: Record<string, unknown>;
+    };
+    expect(call.metadata?.originConnectorMessageId).toBe("1506941896755249255");
+  });
+
   it("stamps deterministic deduped task/worktree swarm room metadata", async () => {
     const svc = serviceMock();
     const result = await spawnAgentAction.handler(

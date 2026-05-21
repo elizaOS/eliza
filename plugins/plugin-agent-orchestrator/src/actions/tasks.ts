@@ -215,6 +215,28 @@ function additionalSessionMetadata(
   };
 }
 
+function plainString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function connectorMessageIdFromMemory(
+  message: Memory,
+  content: Record<string, unknown>,
+): string | undefined {
+  const contentMetadata = objectValue(content.metadata);
+  const messageMetadata = objectValue(message.metadata);
+  const discordMetadata = objectValue(messageMetadata?.discord);
+  return (
+    plainString(contentMetadata?.originConnectorMessageId) ??
+    plainString(contentMetadata?.replyToExternalMessageId) ??
+    plainString(messageMetadata?.messageIdFull) ??
+    plainString(messageMetadata?.discordMessageId) ??
+    plainString(discordMetadata?.messageId)
+  );
+}
+
 function pickRoutingString(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -402,6 +424,10 @@ async function runCreate(
   const timeoutMs = getTimeoutMs(params, content);
   const baseLabel = pickString(params, content, "label");
   const extraMetadata = additionalSessionMetadata(params, content);
+  const originConnectorMessageId = connectorMessageIdFromMemory(
+    message,
+    content,
+  );
   const swarmRoomMetadata = buildSwarmRoomMetadata(
     message,
     params,
@@ -438,6 +464,7 @@ async function runCreate(
         timeoutMs,
         metadata: {
           ...extraMetadata,
+          ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
           requestedType: baseAgentType,
           messageId: message.id,
           roomId: swarmRoomMetadata.taskRoomId,
@@ -583,6 +610,10 @@ async function runSpawnAgent(
       requestsDeferredUserReply(task);
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
     const extraMetadata = additionalSessionMetadata(params, content);
+    const originConnectorMessageId = connectorMessageIdFromMemory(
+      message,
+      content,
+    );
     const swarmRoomMetadata = buildSwarmRoomMetadata(
       message,
       params,
@@ -631,6 +662,7 @@ async function runSpawnAgent(
       approvalPreset,
       metadata: {
         ...extraMetadata,
+        ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
         requestedType: explicitAgentType ?? agentType,
         messageId: message.id,
         roomId: swarmRoomMetadata.taskRoomId,

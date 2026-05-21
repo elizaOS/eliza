@@ -79,4 +79,17 @@ describe("attachmentsProvider", () => {
 		expect(result.text).toContain("# Attachments");
 		expect(result.text).toContain("webpage-old");
 	});
+
+	it("does not inject stale room attachments into sub-agent result turns", async () => {
+		const result = await attachmentsProvider.get(
+			makeRuntime([attachmentMemory()]),
+			makeMessage({
+				source: "sub_agent",
+				text: "[sub-agent: app-build (opencode) — task_complete]\nResult: https://example.test/apps/demo/",
+			}),
+		);
+
+		expect(result.text).toBe("");
+		expect(result.data?.visibleAttachments).toHaveLength(1);
+	});
 });
