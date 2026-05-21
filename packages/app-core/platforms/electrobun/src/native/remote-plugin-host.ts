@@ -20,8 +20,8 @@ import type {
   RemotePluginRuntimeContext,
   RemotePluginStoreSnapshot,
   RemotePluginWorkerMessage,
-  WorkerInitMessage,
   WorkerEventMessage,
+  WorkerInitMessage,
   WorkerResponseMessage,
 } from "@elizaos/plugin-remote-manifest";
 import {
@@ -436,7 +436,8 @@ function resolveWorkerEventBufferLimit(
   env: NodeJS.ProcessEnv = process.env,
 ): number {
   const raw =
-    env.ELIZA_REMOTE_PLUGIN_MAX_WORKER_EVENTS ?? env.ELIZA_CARROT_MAX_WORKER_EVENTS;
+    env.ELIZA_REMOTE_PLUGIN_MAX_WORKER_EVENTS ??
+    env.ELIZA_CARROT_MAX_WORKER_EVENTS;
   if (raw === undefined || raw.trim().length === 0) {
     return DEFAULT_WORKER_EVENT_BUFFER_LIMIT;
   }

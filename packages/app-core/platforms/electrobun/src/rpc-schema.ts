@@ -21,6 +21,11 @@ import type {
 } from "@elizaos/plugin-remote-manifest";
 import type { RPCSchema } from "electrobun/bun";
 import type {
+  DatabaseBackupResult,
+  DatabaseResetResult,
+  DatabaseSnapshot,
+} from "./database";
+import type {
   DynamicViewCloseParams,
   DynamicViewManifest,
   DynamicViewOpenParams,
@@ -29,11 +34,6 @@ import type {
   DynamicViewSession,
   DynamicViewUnregisterParams,
 } from "./dynamic-views/types";
-import type {
-  DatabaseBackupResult,
-  DatabaseResetResult,
-  DatabaseSnapshot,
-} from "./database";
 import type {
   LaunchBugReportBundleInfo,
   LaunchEventsTailParams,
@@ -62,8 +62,8 @@ import type {
   VoiceStopParams,
   VoiceSynthesisResult,
   VoiceSynthesizeSpeechParams,
-  VoiceTurn,
   VoiceTranscribeAudioParams,
+  VoiceTurn,
 } from "./voice/types";
 
 // ============================================================================

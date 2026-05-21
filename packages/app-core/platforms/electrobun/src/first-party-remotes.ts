@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { assertRemotePluginPayload } from "@elizaos/plugin-remote-manifest";
 import { logger } from "./logger";
 import {
-  type RemotePluginHost,
   getRemotePluginHost,
+  type RemotePluginHost,
 } from "./native/remote-plugin-host";
 
 export type FirstPartyRemotePluginKind = "required" | "recommended" | "dev";

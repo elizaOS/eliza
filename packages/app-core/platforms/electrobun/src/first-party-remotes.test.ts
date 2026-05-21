@@ -123,7 +123,10 @@ describe("first-party RemotePlugins", () => {
     withTempManager((manager) => {
       setFirstPartyRemotePluginDisabled("eliza.runtime", true, manager);
 
-      const results = seedFirstPartyRemotePlugins({ manager, includeDev: false });
+      const results = seedFirstPartyRemotePlugins({
+        manager,
+        includeDev: false,
+      });
       const runtime = results.find((result) => result.id === "eliza.runtime");
 
       expect(isFirstPartyRemotePluginDisabled("eliza.runtime", manager)).toBe(

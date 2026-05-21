@@ -58,12 +58,14 @@ import {
   getDynamicViewSessionManager,
   registerBuiltInDynamicViews,
 } from "./dynamic-views";
-import { createTraceHostForRuntime, getTraceService } from "./trace";
-import { createVoiceHostForRuntime, VoiceService } from "./voice";
 import {
   composeExtensionStatusSnapshot,
   readExtensionStatusViaHttp,
 } from "./extension-rpc";
+import {
+  getFirstPartyRemotePluginDefinitions,
+  setFirstPartyRemotePluginDisabled,
+} from "./first-party-remotes";
 import { getFloatingChatManager } from "./floating-chat-window";
 import {
   composeInboxChatsSnapshot,
@@ -73,12 +75,8 @@ import {
   readInboxMessagesViaHttp,
   readInboxSourcesViaHttp,
 } from "./inbox-rpc";
-import { logger } from "./logger";
-import {
-  getFirstPartyRemotePluginDefinitions,
-  setFirstPartyRemotePluginDisabled,
-} from "./first-party-remotes";
 import { LaunchOrchestrator } from "./launch";
+import { logger } from "./logger";
 import {
   getAgentManager,
   getStartupDiagnosticLogTail,
@@ -150,11 +148,13 @@ import {
   readSubscriptionStatusViaHttp,
 } from "./subscription-rpc";
 import { isDetachedSurface } from "./surface-windows";
+import { createTraceHostForRuntime, getTraceService } from "./trace";
 import type { SendToWebview } from "./types.js";
 import {
   composeUpdateStatusSnapshot,
   readUpdateStatusViaHttp,
 } from "./update-rpc";
+import { createVoiceHostForRuntime, VoiceService } from "./voice";
 
 function normalizeRendererRoutePath(path: string): string {
   const trimmed = path.trim();
