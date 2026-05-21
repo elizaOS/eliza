@@ -764,14 +764,18 @@ Current local validation on the 128 GiB M4 host:
   `BLOCKED_REPLAY_EXECUTION`.
 - `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-readiness-args
   AI_EDA_SETUP_RUN_ID=codex-cuda-ready-20260521
-  AI_EDA_TRAINING_HANDOFF_RUN_ID=codex-cuda-ready-20260521-training-handoff
+  AI_EDA_TRAINING_HANDOFF_RUN_ID=codex-cuda-ready-conda-20260521-training-handoff
   ai-eda-cuda-readiness-audit`: PASS with `PASS_WITH_BLOCKERS_RECORDED`. The
-  audit proves payload handoff is ready, the current-research watchlist is
-  captured, and setup-check evidence is complete, while recording four hard
-  blockers for full objective completion on this host: `cuda.available=false`
-  / `large_training_ready=false`, AlphaChip checkpoint access remains
-  `PASS_BLOCKED_CURRENT`, the training-handoff bootstrap evidence is not yet
-  complete, and E1 OpenLane/OpenROAD replay remains `BLOCKED_REPLAY_EXECUTION`.
+  audit proves payload handoff is ready, run-plan dry-run and safety-matrix
+  validation are complete, setup-check evidence is complete, Torch training and
+  inference are validated through the conda/MPS handoff artifacts, the full
+  169-candidate replay plan is validated, and the training-handoff payload is
+  present. It records three hard blockers for full objective completion on this
+  host: `cuda.available=false` / `large_training_ready=false`, AlphaChip
+  checkpoint access remains `PASS_BLOCKED_CURRENT`, and E1 OpenLane/OpenROAD
+  replay remains `BLOCKED_REPLAY_EXECUTION`. It also records a soft blocker
+  that the monolithic training-handoff bootstrap report did not complete even
+  though the critical Torch/full-replay/payload artifacts validated separately.
 - `make ai-eda-verification-targets`: PASS. The local verification capture
   lane emits and validates dry-run target reports for logic synthesis, RTL
   rewrite equivalence, and netlist/LEC readiness. The checker enforces

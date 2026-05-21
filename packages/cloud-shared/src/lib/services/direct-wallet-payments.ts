@@ -94,7 +94,6 @@ const TRANSFER_EVENT = parseAbiItem(
 
 const BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BSC_USDT_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";
-const BSC_USDC_ADDRESS = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 // United Stables ($U) — BEP-20, 18 decimals. Verified via BscScan.
 const BSC_U_ADDRESS = "0xcE24439F2D9C6a2289F741120FE202248B666666";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -105,12 +104,6 @@ const BSC_TOKEN_OPTIONS: DirectWalletTokenOption[] = [
     symbol: "USDT",
     kind: "bep20",
     tokenAddress: getAddress(BSC_USDT_ADDRESS),
-    decimals: 18,
-  },
-  {
-    symbol: "USDC",
-    kind: "bep20",
-    tokenAddress: getAddress(BSC_USDC_ADDRESS),
     decimals: 18,
   },
   {

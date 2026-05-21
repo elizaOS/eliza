@@ -48,7 +48,7 @@ OPENROAD_AUTOTUNE_SCRIPT = ROOT / "scripts/ai_eda/run_openroad_autotune_e1.sh"
 OPENROAD_AUTOTUNE_BUILD = ROOT / "build/ai_eda/openroad_autotuner"
 OPENROAD_AUTOTUNE_CLAIM_BOUNDARY = "no_ppa_claim_no_signoff_claim_no_ai_output_as_evidence"
 ASSERTION_CANDIDATES = ROOT / "verify/ai_eda/assertion_candidates/e1_npu_descriptor.yaml"
-ASSERTION_CLAIM_BOUNDARY = "assertion_candidates_only_not_bound_to_rtl"
+ASSERTION_CLAIM_BOUNDARY = "assertion_candidates_only_no_rtl_bind_formal_pass_or_release_claim"
 SIM_OPT_SCRIPT = ROOT / "scripts/ai_eda/capture_simulator_optimization_targets.py"
 SIM_OPT_BUILD = ROOT / "build/ai_eda/simulator_optimization"
 SIM_OPT_CLAIM_BOUNDARY = "optimization_targets_only_no_benchmark_or_product_claim"
@@ -1314,6 +1314,8 @@ def check_assertion_candidates(source_ids: set[str], errors: list[str]) -> None:
         fail(errors, "assertion candidates missing review_policy")
     elif (
         policy.get("generated_assertions_committed_to_rtl") is not False
+        or policy.get("generated_assertions_bound_to_rtl") is not False
+        or policy.get("source_tree_write_allowed") is not False
         or policy.get("requires_formal_or_simulation_pass") is not True
         or policy.get("requires_human_review") is not True
     ):
@@ -1331,16 +1333,30 @@ def check_assertion_candidates(source_ids: set[str], errors: list[str]) -> None:
             {
                 "id",
                 "status",
+                "module",
+                "clock",
+                "reset",
                 "source_spec",
-                "target_signal_group",
+                "signal_scope",
                 "property_intent",
+                "antecedent",
+                "consequent",
+                "bounded_depth",
+                "generated_by",
+                "reviewer",
+                "bind_status",
                 "promotion_gate",
             },
             f"assertion candidate {candidate.get('id')}",
             errors,
         )
+        bind_status = candidate.get("bind_status")
+        if not isinstance(bind_status, dict) or bind_status.get("bound_to_rtl") is not False:
+            fail(errors, f"assertion candidate {candidate.get('id')}: must remain unbound")
         if "make formal" not in (candidate.get("promotion_gate") or []):
             fail(errors, f"assertion candidate {candidate.get('id')}: missing formal gate")
+        if "make cocotb-npu" not in (candidate.get("promotion_gate") or []):
+            fail(errors, f"assertion candidate {candidate.get('id')}: missing cocotb-npu gate")
 
 
 def check_simulator_optimization(source_ids: set[str], errors: list[str]) -> None:

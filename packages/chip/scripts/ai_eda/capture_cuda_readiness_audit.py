@@ -252,11 +252,22 @@ def main() -> int:
         and training_handoff_bootstrap.get("status") == "PASS"
         and training_handoff_bootstrap.get("complete") is True
     )
-    torch_training_complete = bool(torch_training and torch_training.get("status") == "PASS")
-    torch_inference_complete = bool(
-        torch_inference and str(torch_inference.get("status", "")).startswith("PASS")
+    torch_training_complete = bool(
+        torch_training
+        and torch_training.get("schema") == "eliza.ai_eda.macro_placement_torch_regressor_training_run.v1"
+        and torch_training.get("train_sample_count", 0) > 0
+        and isinstance(torch_training.get("model"), str)
     )
-    full_replay_complete = bool(full_replay and full_replay.get("candidate_plan_count", 0) > 0)
+    torch_inference_complete = bool(
+        torch_inference
+        and torch_inference.get("schema") == "eliza.ai_eda.macro_placement_torch_inference_run.v1"
+        and torch_inference.get("candidate_count", 0) > 0
+    )
+    full_replay_complete = bool(
+        full_replay
+        and full_replay.get("schema") == "eliza.ai_eda.macro_placement_replay_plan.v1"
+        and full_replay.get("candidate_count", 0) > 0
+    )
     training_handoff_payload_ready = bool(
         training_handoff_payload and training_handoff_payload.get("included_file_count", 0) > 0
     )

@@ -809,7 +809,15 @@ for (const viewport of VIEWPORTS) {
                 recentEarnings: [],
               });
             if (/\/redemptions\/status/.test(url))
-              return empty({ enabled: true });
+              return empty({
+                enabled: true,
+                operational: true,
+                networks: {
+                  ethereum: { available: "available" },
+                  base: { available: "available" },
+                  solana: { available: "available" },
+                },
+              });
             if (/\/redemptions/.test(url))
               return empty({ redemptions: [], total: 0 });
             if (/\/affiliates|\/referrals/.test(url))
@@ -1057,6 +1065,19 @@ for (const viewport of VIEWPORTS) {
                   "X-Admin-Role": "super_admin",
                 },
                 json: { isAdmin: true, role: "super_admin" },
+              });
+            if (/\/admin\/metrics/.test(url))
+              return empty({
+                dailyTrend: [],
+                platformBreakdown: {},
+                retentionCohorts: [],
+                retentionRates: [],
+                oauthMetrics: { granted: 0, revoked: 0, providers: [] },
+                summary: {
+                  totalUsers: 0,
+                  totalMessages: 0,
+                  averageMessagesPerUser: "0",
+                },
               });
             if (/\/admin\//.test(url)) return empty({ items: [], metrics: {} });
 

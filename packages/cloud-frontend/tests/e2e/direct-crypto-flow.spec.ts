@@ -90,12 +90,6 @@ const BSC_TOKEN_OPTIONS = [
     decimals: 18,
   },
   {
-    symbol: "USDC",
-    kind: "bep20",
-    tokenAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-    decimals: 18,
-  },
-  {
     symbol: "U",
     kind: "bep20",
     tokenAddress: "0xcE24439F2D9C6a2289F741120FE202248B666666",
@@ -340,7 +334,7 @@ test("/bsc ignores an HTML API fallback instead of JSON-parsing it", async ({
   expectNoJsonFallbackCrash(failures);
 });
 
-test("/bsc shows BNB/USDT/USDC/$U token selector and $5 bonus is per-purchase, token-agnostic", async ({
+test("/bsc shows BNB/USDT/$U token selector and $5 bonus is per-purchase, token-agnostic", async ({
   page,
 }) => {
   const failures = collectFailures(page);
@@ -350,15 +344,16 @@ test("/bsc shows BNB/USDT/USDC/$U token selector and $5 bonus is per-purchase, t
 
   const tokenSelect = page.getByLabel("Token");
   await expect(tokenSelect).toBeVisible();
-  // All four BSC tokens are selectable as <option> entries.
-  for (const value of ["BNB", "USDT", "USDC", "U"]) {
+  // The three BSC tokens are selectable; USDC must NOT appear.
+  for (const value of ["BNB", "USDT", "U"]) {
     await expect(tokenSelect.locator(`option[value="${value}"]`)).toHaveCount(1);
   }
+  await expect(tokenSelect.locator('option[value="USDC"]')).toHaveCount(0);
 
   // The +$5 bonus is independent of which token the buyer picked; it is gated
   // only by network=bsc + amount>=10. Switching tokens must keep the
   // promo-applied banner and the "You receive 15.00 credits" tile.
-  for (const value of ["BNB", "USDC", "U"]) {
+  for (const value of ["BNB", "U"]) {
     await tokenSelect.selectOption(value);
     await expect(page.getByText("BSC promotion applied")).toBeVisible();
     await expect(page.getByText("15.00 credits")).toBeVisible();
