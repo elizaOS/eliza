@@ -128,6 +128,7 @@ kicad-phone-preview-check:
 
 phone-cad:
 	@$(BENCH_PYTHON) scripts/generate_e1_phone_cad.py
+	@$(BENCH_PYTHON) scripts/check_e1_phone_boolean_interference.py
 
 phone-cad-test:
 	@$(BENCH_PYTHON) -m pytest -q scripts/test_generate_e1_phone_cad.py
@@ -226,13 +227,11 @@ tapeout-readiness-strict: manufacturing-tapeout-scope-check
 tapeout-readiness-test:
 	@$(PYTHON) scripts/test_aggregate_tapeout_readiness.py
 
-# Unified chip + OS RV64 bring-up dashboard. The aggregator already
-# carries the OS gates under subsystem=os_rv64; this target is just a
-# friendly entry point that names the cross-package view explicitly so
-# operators can spot it next to ``tapeout-readiness``. It is view-only
-# and preserves the same ``claim_boundary`` as the chip aggregator.
+# Unified chip + OS RV64 bring-up objective gate. This is intentionally
+# strict: any missing Linux/AOSP boot, launcher, APK payload, or agent
+# liveness evidence exits nonzero and writes a dedicated report.
 chip-os-bring-up-status:
-	@$(PYTHON) scripts/aggregate_tapeout_readiness.py
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --strict --report build/reports/chip-os-bring-up-status.json
 
 manufacturing-tapeout-scope-check:
 	@$(PYTHON) scripts/check_manufacturing_tapeout_scope.py
@@ -995,7 +994,7 @@ cocotb-cpu:
 cocotb-coverage: cocotb cocotb-npu
 	@$(PYTHON) scripts/check_cocotb_coverage.py --require-blocks
 
-.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval mpki-eval-rtl mpki-eval-model bpu-lint
+.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval mpki-eval-rtl mpki-eval-model bpu-lint bpu-workload-trace bpu-workload-trace-decode bpu-sweep bpu-model-test
 
 cocotb-bpu: cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_bpu_top COCOTB_TOPLEVEL=bpu_top_tb scripts/run_cocotb_bpu.sh
@@ -1041,6 +1040,24 @@ mpki-eval-rtl:
 
 mpki-eval-model:
 	@$(PYTHON) benchmarks/cpu/branch/run_mpki.py --backend model
+
+# Capture a real RV64 branch trace of the llama.cpp agent duty cycle under
+# qemu-riscv64 + libexeclog (privilege-free, native toolchain). MODE=1 selects
+# the decode-heavy (hard-branch) variant; STEPS controls trace length.
+bpu-workload-trace:
+	@$(PYTHON) -m benchmarks.cpu.branch.capture_workload_trace \
+	  --name $(or $(NAME),agent_loop) --mode $(or $(MODE),0) --steps $(or $(STEPS),64)
+
+# Behavioural-model unit tests for the BPU (TAGE-SC-L+ITTAGE) model.
+bpu-model-test:
+	@$(PYTHON) -m pytest benchmarks/cpu/branch/test_bpu_model.py -q
+
+# Geometry/tuning sweep: rank bpu_pkg.sv geometries by workload-weighted MPKI
+# over the E1 trace set; writes the leaderboard + evidence envelope. Tuning
+# runs on a capped prefix (MAXBR); set MAXBR=0 to validate on full traces.
+bpu-sweep:
+	@$(PYTHON) -m benchmarks.cpu.branch.sweep \
+	  --max-branches $(or $(MAXBR),800000) --jobs $(or $(JOBS),8)
 
 .PHONY: cache-hierarchy-claim-gate cocotb-cache cocotb-cache-coherence \
 	cocotb-cache-l1d cocotb-cache-l1i cocotb-cache-drrip \

@@ -1,0 +1,537 @@
+{
+  "baseline_weighted_mpki": 1.08767,
+  "best_config": "combo_a",
+  "best_delta_vs_baseline": -0.015592,
+  "best_geometry_diff": {
+    "SC_ADAPTIVE": true,
+    "TAGE_ENTRIES_TABLE": 8192,
+    "TAGE_HIST_LEN": [
+      8,
+      16,
+      44,
+      90,
+      195
+    ]
+  },
+  "best_weighted_mpki": 1.072078,
+  "cbp5_reference_mpki": {
+    "sample_fp_trace": 0.5736,
+    "sample_int_trace": 5.1327
+  },
+  "generated_at_utc": "2026-05-21T12:09:36.896576+00:00",
+  "harness": "behavioural-bpu-model",
+  "max_branches_per_trace": 1200000,
+  "ranking": [
+    "combo_a",
+    "combo_b",
+    "tage_big_tables",
+    "tage_reach_long",
+    "tage6_tables",
+    "sc_wide",
+    "tage_reach_xlong",
+    "sc_thresh_high",
+    "baseline",
+    "loop_big",
+    "bim_big",
+    "sc_adaptive",
+    "tage7_tables",
+    "sc_thresh_low"
+  ],
+  "results": {
+    "baseline": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3856,
+          "mpki": 0.553105,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3166,
+          "mpki": 0.408189,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3053,
+          "mpki": 3.059912,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2217,
+          "mpki": 2.223,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.08767
+    },
+    "bim_big": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3856,
+          "mpki": 0.553105,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3167,
+          "mpki": 0.408318,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3053,
+          "mpki": 3.059912,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2217,
+          "mpki": 2.223,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.087725
+    },
+    "combo_a": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3858,
+          "mpki": 0.553392,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3170,
+          "mpki": 0.408704,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 2969,
+          "mpki": 2.975722,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2190,
+          "mpki": 2.195927,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.072078
+    },
+    "combo_b": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3862,
+          "mpki": 0.553966,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3183,
+          "mpki": 0.41038,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 2969,
+          "mpki": 2.975722,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2187,
+          "mpki": 2.192919,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.07253
+    },
+    "loop_big": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3856,
+          "mpki": 0.553105,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3166,
+          "mpki": 0.408189,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3053,
+          "mpki": 3.059912,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2217,
+          "mpki": 2.223,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.08767
+    },
+    "sc_adaptive": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3861,
+          "mpki": 0.553823,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3170,
+          "mpki": 0.408704,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3056,
+          "mpki": 3.062919,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2212,
+          "mpki": 2.217986,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.087809
+    },
+    "sc_thresh_high": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3857,
+          "mpki": 0.553249,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3157,
+          "mpki": 0.407028,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3054,
+          "mpki": 3.060915,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2213,
+          "mpki": 2.218989,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.086784
+    },
+    "sc_thresh_low": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3867,
+          "mpki": 0.554683,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3175,
+          "mpki": 0.409349,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3052,
+          "mpki": 3.05891,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2229,
+          "mpki": 2.235032,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.090194
+    },
+    "sc_wide": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3845,
+          "mpki": 0.551528,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3145,
+          "mpki": 0.405481,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3035,
+          "mpki": 3.041872,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2214,
+          "mpki": 2.219992,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.083052
+    },
+    "tage6_tables": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3882,
+          "mpki": 0.556835,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3202,
+          "mpki": 0.41283,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 2992,
+          "mpki": 2.998774,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2197,
+          "mpki": 2.202946,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.079126
+    },
+    "tage7_tables": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3891,
+          "mpki": 0.558126,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3214,
+          "mpki": 0.414377,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3018,
+          "mpki": 3.024833,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2236,
+          "mpki": 2.242051,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.089467
+    },
+    "tage_big_tables": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3844,
+          "mpki": 0.551384,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3158,
+          "mpki": 0.407157,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 2959,
+          "mpki": 2.9657,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2215,
+          "mpki": 2.220994,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.07299
+    },
+    "tage_reach_long": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3878,
+          "mpki": 0.556261,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3182,
+          "mpki": 0.410251,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 2981,
+          "mpki": 2.987749,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2196,
+          "mpki": 2.201943,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.076138
+    },
+    "tage_reach_xlong": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 1200000,
+          "instructions": 6971547,
+          "misp": 3900,
+          "mpki": 0.559417,
+          "weight": 2.0
+        },
+        "agent_loop": {
+          "branches": 1200000,
+          "instructions": 7756218,
+          "misp": 3195,
+          "mpki": 0.411928,
+          "weight": 3.0
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3038,
+          "mpki": 3.044878,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2202,
+          "mpki": 2.207959,
+          "weight": 1.0
+        }
+      },
+      "weighted_mpki": 1.086779
+    }
+  },
+  "schema": "eliza.bpu_sweep.v1",
+  "trace_set": [
+    {
+      "branches": 1200000,
+      "instructions": 7756218,
+      "name": "agent_loop",
+      "weight": 3.0
+    },
+    {
+      "branches": 1200000,
+      "instructions": 6971547,
+      "name": "agent_decode",
+      "weight": 2.0
+    },
+    {
+      "branches": 148723,
+      "instructions": 997741,
+      "name": "cbp5:sample_fp_trace",
+      "weight": 1.0
+    },
+    {
+      "branches": 181877,
+      "instructions": 997301,
+      "name": "cbp5:sample_int_trace",
+      "weight": 1.0
+    }
+  ],
+  "weights": {
+    "agent_decode": 2.0,
+    "agent_loop": 3.0,
+    "cbp5:sample_fp_trace": 1.0,
+    "cbp5:sample_int_trace": 1.0
+  }
+}

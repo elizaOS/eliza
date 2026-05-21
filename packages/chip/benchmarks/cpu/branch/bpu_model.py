@@ -235,6 +235,88 @@ class _Tage:
 
 
 @dataclass
+class _SC:
+    """Statistical corrector — signed-counter tables that can override a
+    low-confidence TAGE direction.
+
+    Mirrors ``rtl/cpu/bpu/sc.sv``: ``SC_TABLES`` tables of signed
+    ``SC_CTR_W``-bit counters, each indexed by the PC folded with a
+    different-length history segment. The summed vote overrides TAGE only
+    when TAGE reported low confidence and the absolute sum clears the
+    threshold. The RTL threshold is static at ``SC_THRESH_INIT`` (its
+    ``always_ff`` never rewrites ``threshold_q``), so the faithful model
+    keeps it fixed; adaptive-threshold is a tuning lever, not current RTL.
+    """
+
+    tables: int
+    entries: int
+    ctr_w: int
+    hist_lens: tuple[int, ...]
+    threshold: int
+    adaptive: bool = False
+    tc: int = 0  # threshold-control counter (Seznec TC) when adaptive
+    storage: list[list[int]] = field(default_factory=list)
+
+    @classmethod
+    def build(cls, geo: dict) -> _SC:
+        entries = geo["SC_ENTRIES_TABLE"]
+        tables = geo["SC_TABLES"]
+        return cls(
+            tables=tables,
+            entries=entries,
+            ctr_w=geo["SC_CTR_W"],
+            hist_lens=tuple(geo["SC_HIST_LEN"]),
+            threshold=geo["SC_THRESH_INIT"],
+            adaptive=bool(geo.get("SC_ADAPTIVE", False)),
+            storage=[[0] * entries for _ in range(tables)],
+        )
+
+    def _idx(self, tid: int, pc: int, hist: int) -> int:
+        idx_w = max(1, (self.entries - 1).bit_length())
+        return _index_hash(pc, hist, self.hist_lens[tid], idx_w, tid) % self.entries
+
+    def _sum(self, pc: int, hist: int) -> int:
+        total = 0
+        for tid in range(self.tables):
+            total += self.storage[tid][self._idx(tid, pc, hist)]
+        return total
+
+    def predict(self, pc: int, hist: int, tage_lowconf: bool) -> tuple[bool, bool]:
+        total = self._sum(pc, hist)
+        override = tage_lowconf and abs(total) >= self.threshold
+        return override, total >= 0
+
+    def update(self, pc: int, hist: int, taken: bool, tage_lowconf: bool) -> None:
+        if not tage_lowconf:
+            return
+        # Seznec adaptive threshold (TC): nudge the override threshold so the
+        # SC fires neither too eagerly nor too rarely. Off by default to match
+        # the static-threshold RTL; enabling it is a concrete RTL proposal.
+        if self.adaptive:
+            total = self._sum(pc, hist)
+            sc_taken = total >= 0
+            if sc_taken != taken:
+                self.tc += 1
+                if self.tc >= 12:
+                    self.threshold += 1
+                    self.tc = 0
+            elif abs(total) >= self.threshold:
+                self.tc -= 1
+                if self.tc <= -12:
+                    self.threshold = max(4, self.threshold - 1)
+                    self.tc = 0
+        hi = (1 << (self.ctr_w - 1)) - 1
+        lo = -(1 << (self.ctr_w - 1))
+        for tid in range(self.tables):
+            idx = self._idx(tid, pc, hist)
+            ctr = self.storage[tid][idx]
+            if taken and ctr < hi:
+                self.storage[tid][idx] = ctr + 1
+            elif not taken and ctr > lo:
+                self.storage[tid][idx] = ctr - 1
+
+
+@dataclass
 class _LoopPredictor:
     entries: int
     storage: dict[int, dict[str, int]] = field(default_factory=dict)
@@ -371,6 +453,7 @@ class BPUSimulator:
 
     geometry: dict = field(default_factory=lambda: dict(DEFAULT_GEOMETRY))
     tage: _Tage = field(init=False)
+    sc: _SC = field(init=False)
     loop: _LoopPredictor = field(init=False)
     ras: _RAS = field(init=False)
     ftb: _FTB = field(init=False)
@@ -380,6 +463,7 @@ class BPUSimulator:
 
     def __post_init__(self) -> None:
         self.tage = _Tage.build(self.geometry)
+        self.sc = _SC.build(self.geometry)
         self.loop = _LoopPredictor(entries=self.geometry["LOOP_ENTRIES"])
         self.ras = _RAS(
             spec_capacity=self.geometry["RAS_SPEC_ENTRIES"],
@@ -433,7 +517,13 @@ class BPUSimulator:
         if event.kind == BR_COND:
             loop_conf, loop_taken = self.loop.predict(event.pc)
             tage_taken, provider, low_conf = self.tage.predict(event.pc, self.hist)
-            taken = loop_taken if loop_conf else tage_taken
+            sc_override, sc_taken = self.sc.predict(event.pc, self.hist, low_conf)
+            if loop_conf:
+                taken = loop_taken
+            elif sc_override:
+                taken = sc_taken
+            else:
+                taken = tage_taken
             target = (
                 ftb_entry["target"]
                 if (ftb_entry and taken)
@@ -471,8 +561,12 @@ class BPUSimulator:
 
         # Train tables.
         if event.kind == BR_COND:
-            _, provider, _low_conf = self.tage.predict(event.pc, self.hist)
+            _, provider, low_conf = self.tage.predict(event.pc, self.hist)
+            sc_override, _ = self.sc.predict(event.pc, self.hist, low_conf)
+            if sc_override:
+                self.counters["sc_override"] += 1
             self.tage.update(event.pc, self.hist, self.hist, actual_taken, provider, misp)
+            self.sc.update(event.pc, self.hist, actual_taken, low_conf)
             self.loop.update(event.pc, actual_taken)
             self.ftb.update(event.pc, actual_target, event.kind)
         elif event.kind == BR_CALL:
