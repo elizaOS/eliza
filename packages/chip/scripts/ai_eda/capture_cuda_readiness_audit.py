@@ -137,6 +137,10 @@ def main() -> int:
     replay_path = ROOT / f"build/ai_eda/macro_placement_replay_preflight/{run_id}/replay_preflight_report.json"
     setup_bootstrap_path = ROOT / f"build/ai_eda/bootstrap/{setup_run_id}/bootstrap_report.json"
     training_handoff_bootstrap_path = ROOT / f"build/ai_eda/bootstrap/{training_handoff_run_id}/bootstrap_report.json"
+    torch_training_path = ROOT / f"build/ai_eda/macro_placement_torch_regressor/{training_handoff_run_id}/torch_training_run.json"
+    torch_inference_path = ROOT / f"build/ai_eda/macro_placement_torch_inference/{training_handoff_run_id}/torch_inference_run.json"
+    full_replay_path = ROOT / f"build/ai_eda/macro_placement_full_replay/{training_handoff_run_id}/replay_plan.json"
+    training_handoff_payload_path = ROOT / f"build/ai_eda/cuda_training_payloads/{training_handoff_run_id}/cuda_training_payload_report.json"
 
     preflight = load_json(preflight_path)
     payload_report = load_json(payload_report_path)
@@ -148,6 +152,10 @@ def main() -> int:
     replay = load_json(replay_path)
     setup_bootstrap = load_json(setup_bootstrap_path)
     training_handoff_bootstrap = load_json(training_handoff_bootstrap_path)
+    torch_training = load_json(torch_training_path)
+    torch_inference = load_json(torch_inference_path)
+    full_replay = load_json(full_replay_path)
+    training_handoff_payload = load_json(training_handoff_payload_path)
 
     blockers: list[dict[str, str]] = []
     if preflight is None:
@@ -244,15 +252,36 @@ def main() -> int:
         and training_handoff_bootstrap.get("status") == "PASS"
         and training_handoff_bootstrap.get("complete") is True
     )
+    torch_training_complete = bool(torch_training and torch_training.get("status") == "PASS")
+    torch_inference_complete = bool(
+        torch_inference and str(torch_inference.get("status", "")).startswith("PASS")
+    )
+    full_replay_complete = bool(full_replay and full_replay.get("candidate_plan_count", 0) > 0)
+    training_handoff_payload_ready = bool(
+        training_handoff_payload and training_handoff_payload.get("included_file_count", 0) > 0
+    )
     if not training_handoff_complete:
+        severity = (
+            "soft"
+            if torch_training_complete and torch_inference_complete and full_replay_complete and training_handoff_payload_ready
+            else "hard"
+        )
         blockers.append(
             blocker(
                 "training_handoff_bootstrap_not_complete",
-                "hard",
+                severity,
                 "training-handoff bootstrap report is missing or not complete for the configured handoff evidence run id",
                 rel(training_handoff_bootstrap_path),
             )
         )
+    if not torch_training_complete:
+        blockers.append(blocker("torch_training_not_validated", "hard", "Torch macro-placement training report is missing or not PASS", rel(torch_training_path)))
+    if not torch_inference_complete:
+        blockers.append(blocker("torch_inference_not_validated", "hard", "Torch macro-placement inference report is missing or not PASS", rel(torch_inference_path)))
+    if not full_replay_complete:
+        blockers.append(blocker("full_replay_plan_not_validated", "hard", "Full macro-placement replay plan is missing or empty", rel(full_replay_path)))
+    if not training_handoff_payload_ready:
+        blockers.append(blocker("training_handoff_payload_not_validated", "hard", "Training-handoff payload report is missing or empty", rel(training_handoff_payload_path)))
 
     replay_ready = False
     if replay is None:
@@ -301,6 +330,10 @@ def main() -> int:
             "e1_openlane_replay_ready": replay_ready,
             "setup_check_bootstrap_complete": setup_complete,
             "training_handoff_bootstrap_complete": training_handoff_complete,
+            "torch_training_validated": torch_training_complete,
+            "torch_inference_validated": torch_inference_complete,
+            "full_replay_plan_validated": full_replay_complete,
+            "training_handoff_payload_ready": training_handoff_payload_ready,
         },
         "input_artifacts": [
             artifact(preflight_path),
@@ -313,6 +346,10 @@ def main() -> int:
             artifact(replay_path),
             artifact(setup_bootstrap_path),
             artifact(training_handoff_bootstrap_path),
+            artifact(torch_training_path),
+            artifact(torch_inference_path),
+            artifact(full_replay_path),
+            artifact(training_handoff_payload_path),
         ],
         "blockers": blockers,
         "next_required_actions": [

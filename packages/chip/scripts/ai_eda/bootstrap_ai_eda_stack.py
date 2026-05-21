@@ -25,9 +25,8 @@ CLAIM_BOUNDARY = "ai_eda_bootstrap_orchestration_no_release_claim"
 METADATA_TARGETS = (
     "ai-eda-local-rag-index",
     "ai-eda-backend-preflight",
-    "ai-eda-verification-targets",
-    "ai-eda-physical-design-targets",
-    "ai-eda-optimization-targets",
+    "ai-eda-all-target-captures",
+    "ai-eda-local-rag-index",
     "ai-eda-source-inventory-check",
     "ai-eda-ai-workload-manifest-check",
     "ai-eda-assertion-candidate-manifests-check",
@@ -207,7 +206,14 @@ def selected_targets(profile: str, include_torch: bool) -> list[str]:
         targets.extend(TORCH_TARGETS)
     if profile == "training-handoff":
         targets.extend(HANDOFF_TARGETS)
-    return targets
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for target in targets:
+        if target in seen:
+            continue
+        seen.add(target)
+        deduped.append(target)
+    return deduped
 
 
 def fetch_commands(args: argparse.Namespace) -> list[list[str]]:

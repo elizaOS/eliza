@@ -2045,15 +2045,14 @@ not as:
   DREAMPlace research-code repos into normalized text-instruction records for
   RAG/CUDA runbook training, with no execution or optimization claim.
 - [x] Add and validate the E1 AI workload/model manifest for TFLite, NPU scale,
-<<<<<<< HEAD
-  Timeloop, StableHLO lowering, INT4, FP8, and sparse 2:4 benchmark lanes.
-- [x] Add and validate the E1 assertion-candidate manifest gate for
-  quarantined, unbound NPU descriptor SVA candidates.
-=======
   Timeloop, StableHLO lowering, INT4, FP8, and sparse 2:4 benchmark lanes,
   with SHA256 pins for every referenced local model, runner, config, proof
   template, runtime, lowering, calibrator, and test artifact.
->>>>>>> shaw/wip-snapshot-2026-05-21
+- [x] Add and validate the E1 assertion-candidate manifest gate for
+  quarantined, unbound NPU descriptor SVA candidates.
+- [x] Add a fail-closed external-method wrapper readiness contract for
+  replacing CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters, including required
+  payloads, output contracts, blockers, and replay gates.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Replace CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters with the real

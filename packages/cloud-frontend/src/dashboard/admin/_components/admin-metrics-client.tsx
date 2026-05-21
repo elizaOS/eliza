@@ -54,8 +54,9 @@ type MetricsOverview = AdminMetricsOverviewDto;
 
 const PLATFORM_COLORS: Record<string, string> = {
   web: "#FF5800",
-  telegram: "#0088CC",
-  discord: "#5865F2",
+  // Brand rule: no blue. These were platform-brand blues; neutralized.
+  telegram: "#A1A1AA",
+  discord: "#71717A",
   imessage: "#34C759",
   sms: "#F97316",
 };

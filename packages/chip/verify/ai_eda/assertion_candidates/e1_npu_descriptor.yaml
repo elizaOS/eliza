@@ -5,7 +5,7 @@ source_ids:
   - assertionforge
   - codev-sva
 dut: e1_npu
-claim_boundary: assertion_candidates_only_no_rtl_bind_formal_pass_or_release_claim
+claim_boundary: assertion_candidates_only_not_bound_to_rtl
 review_policy:
   generated_assertions_committed_to_rtl: false
   generated_assertions_bound_to_rtl: false
@@ -30,6 +30,7 @@ candidates:
       - desc_head
       - desc_busy
       - desc_status
+    target_signal_group: descriptor_queue
     property_intent: >
       A valid owned descriptor that is fetched and accepted eventually advances
       the descriptor tail exactly once.
@@ -66,6 +67,7 @@ candidates:
       - desc_timeout_count
       - desc_status
       - perf_errors
+    target_signal_group: descriptor_error_status
     property_intent: >
       A stalled descriptor fetch reaches timeout status and increments error
       accounting without reporting a successful completion.

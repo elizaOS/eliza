@@ -112,8 +112,9 @@ paper PDF, model weights, or generated assertions are treated as chip evidence.
 tarball, embedded run plan, generated `cuda_handoff_README.md`, selected
 assets, critical fetch commands, expected CUDA outputs, the current-research
 watchlist capture handoff, OpenROAD ML snapshot handoff, the E1 AI workload
-manifest/checker, the quarantined assertion-candidate manifest checker, and the
-no-datasets/no-weights payload boundary.
+manifest/checker, the fail-closed CT/SA/Hier-RTLMP/ChipDiffusion real-wrapper
+readiness contract, the quarantined assertion-candidate manifest checker, and
+the no-datasets/no-weights payload boundary.
 `make ai-eda-cuda-run-plan-dry-run`
 expands the embedded CUDA run plan into a reviewed execution manifest without
 running commands. `make ai-eda-cuda-run-plan-safety-matrix` then proves each

@@ -1,0 +1,134 @@
+schema: eliza.ai_eda.external_method_wrapper_readiness.v1
+updated: "2026-05-21"
+claim_boundary: external_method_wrapper_readiness_only_no_inference_training_replay_or_release_claim
+policy:
+  metadata_only: true
+  imports_external_code: false
+  downloads_assets: false
+  runs_inference: false
+  trains_model: false
+  runs_openroad: false
+  runs_openlane: false
+  writes_design_files: false
+  release_use_allowed: false
+  deterministic_e1_replay_required: true
+source:
+  proxy_implementation: scripts/ai_eda/train_macro_placement_policy.py
+  baseline_checker: scripts/ai_eda/check_macro_placement_baseline.py
+wrappers:
+  - id: circuit_training_real_wrapper
+    method: Circuit Training / AlphaChip
+    proxy_policy: circuit_training_proxy
+    proxy_function: circuit_training_proxy_locations
+    source_inventory_ids: [google-circuit-training]
+    lock_asset_ids: [google-circuit-training]
+    current_adapter:
+      status: proxy_only
+      description: deterministic target-aware constructive placement proxy used only to exercise the E1 candidate/replay lane
+    real_wrapper:
+      status: blocked_pending_payload_review
+      expected_entrypoint: external method runner that accepts normalized eda.e1_placement_case.v1 records and emits eda.e1_candidate.v1 manifests
+      required_inputs:
+        - reviewed Circuit Training source revision and dependency lock
+        - reviewed checkpoint or explicit from-scratch training declaration
+        - E1 placement-case bundle with macro geometry and fixed-object constraints
+      output_contract:
+        - candidate JSON with policy=circuit_training_real
+        - raw model/action log hash
+        - no mutation of RTL, constraints, OpenLane config, or source tree
+      blockers:
+        - public AlphaChip checkpoint availability is not established
+        - no reviewed E1-compatible Circuit Training inference command is pinned
+        - no deterministic E1 OpenLane/OpenROAD replay evidence exists for generated placements
+      replay_gates:
+        - make ai-eda-cuda-run-plan-safety-matrix
+        - make ai-eda-macro-placement-full-replay-plan
+        - make ai-eda-macro-placement-replay-preflight
+        - future guarded OpenLane/OpenROAD execution with archived logs and signoff hashes
+  - id: simulated_annealing_real_wrapper
+    method: MacroPlacement simulated annealing
+    proxy_policy: simulated_annealing_proxy
+    proxy_function: simulated_annealing_proxy_locations
+    source_inventory_ids: [tilos-macroplacement]
+    lock_asset_ids: [tilos-macroplacement]
+    current_adapter:
+      status: proxy_only
+      description: bounded deterministic swap-search proxy over target-distance score, not the external SA implementation
+    real_wrapper:
+      status: blocked_pending_payload_review
+      expected_entrypoint: reviewed SA runner over normalized Bookshelf/E1 placement cases with deterministic seed capture
+      required_inputs:
+        - pinned MacroPlacement/SA source payload
+        - converted E1 or benchmark case in a supported interchange format
+        - temperature, step-count, random-seed, and legalizer configuration
+      output_contract:
+        - candidate JSON with policy=simulated_annealing_real
+        - SA configuration and stdout/stderr hashes
+        - placement override bundle quarantined under build/ai_eda
+      blockers:
+        - current E1 adapter is a local proxy rather than the reviewed SA runner
+        - benchmark payloads must be converted without leaking training labels into evaluation claims
+        - no deterministic E1 OpenLane/OpenROAD replay evidence exists for generated placements
+      replay_gates:
+        - make ai-eda-training-corpus-manifest
+        - make ai-eda-macro-placement-full-replay-plan
+        - make ai-eda-macro-placement-replay-preflight
+        - future guarded OpenLane/OpenROAD execution with archived logs and signoff hashes
+  - id: hier_rtlmp_real_wrapper
+    method: OpenROAD Hier-RTLMP
+    proxy_policy: hier_rtlmp_proxy
+    proxy_function: hier_rtlmp_proxy_locations
+    source_inventory_ids: [openroad-rtlmp, openroad-gpl]
+    lock_asset_ids: [openroad]
+    current_adapter:
+      status: proxy_only
+      description: recursive-bisection grouping proxy approximation, not OpenROAD Hier-RTLMP execution
+    real_wrapper:
+      status: blocked_pending_payload_review
+      expected_entrypoint: OpenROAD-flow wrapper that runs Hier-RTLMP on an E1 design bundle inside a pinned tool/PDK environment
+      required_inputs:
+        - pinned OpenROAD/OpenLane or ORFS revision and binary/container digest
+        - E1 LEF/DEF/netlist/SDC/PDK bundle with hard macro definitions
+        - Tcl/config command manifest reviewed before execution
+      output_contract:
+        - candidate JSON with policy=hier_rtlmp_real
+        - OpenROAD command manifest and generated DEF/report hashes
+        - no promotion until DRC/LVS/STA/utilization/congestion gates pass
+      blockers:
+        - generated E1 softmacro cases are not yet real hard-macro LEF/DEF/OpenLane cases
+        - no pinned local OpenROAD/OpenLane execution wrapper is approved for AI-generated placement promotion
+        - no deterministic E1 OpenLane/OpenROAD replay evidence exists for generated placements
+      replay_gates:
+        - make ai-eda-external-assets-check
+        - make ai-eda-macro-placement-full-replay-plan
+        - make ai-eda-macro-placement-replay-preflight
+        - future guarded OpenROAD/OpenLane execution with signoff manifest capture
+  - id: chipdiffusion_real_wrapper
+    method: ChipDiffusion
+    proxy_policy: chipdiffusion_proxy
+    proxy_function: chipdiffusion_proxy_locations
+    source_inventory_ids: [chipdiffusion]
+    lock_asset_ids: [chipdiffusion]
+    current_adapter:
+      status: proxy_only
+      description: deterministic sampled denoise-style local-search proxy, not ChipDiffusion model inference
+    real_wrapper:
+      status: blocked_pending_payload_review
+      expected_entrypoint: reviewed ChipDiffusion inference runner over normalized E1 placement cases with model/checkpoint provenance
+      required_inputs:
+        - pinned ChipDiffusion source payload and dependency lock
+        - reviewed model weights or explicit training recipe and checkpoint hash
+        - normalized E1/benchmark placement-case conversion with contamination notes
+      output_contract:
+        - candidate JSON with policy=chipdiffusion_real
+        - model checkpoint, inference config, and generated placement hashes
+        - quarantined placement override bundle for replay only
+      blockers:
+        - current adapter does not execute ChipDiffusion code or model weights
+        - no reviewed E1-compatible ChipDiffusion inference contract is pinned
+        - no deterministic E1 OpenLane/OpenROAD replay evidence exists for generated placements
+      replay_gates:
+        - make ai-eda-bootstrap-training-handoff
+        - make ai-eda-macro-placement-full-replay-plan
+        - make ai-eda-macro-placement-replay-preflight
+        - future guarded OpenLane/OpenROAD execution with archived logs and signoff hashes

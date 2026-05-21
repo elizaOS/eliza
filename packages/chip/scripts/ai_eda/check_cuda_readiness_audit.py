@@ -73,6 +73,10 @@ def validate(report: dict[str, Any]) -> list[str]:
             "e1_openlane_replay_ready",
             "setup_check_bootstrap_complete",
             "training_handoff_bootstrap_complete",
+            "torch_training_validated",
+            "torch_inference_validated",
+            "full_replay_plan_validated",
+            "training_handoff_payload_ready",
         ):
             if not isinstance(capabilities.get(field), bool):
                 errors.append(f"capabilities.{field} must be boolean")

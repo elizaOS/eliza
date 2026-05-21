@@ -56,6 +56,7 @@ REQUIRED_PLAN_COMMANDS = (
     "python3 scripts/ai_eda/preflight_ai_eda_backends.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/check_backend_preflight.py --report build/ai_eda/backend_preflight/<cuda-host>/backend_preflight_report.json",
     "python3 scripts/ai_eda/check_ai_workload_manifest.py",
+    "python3 scripts/ai_eda/check_external_method_wrapper_readiness.py",
     "python3 scripts/ai_eda/check_assertion_candidate_manifests.py",
     "python3 scripts/ai_eda/execute_cuda_run_plan.py --plan build/ai_eda/cuda_training_payloads/<cuda-host>/cuda_training_run_plan.json --run-id <cuda-host>",
     "python3 scripts/ai_eda/check_cuda_run_plan_execution.py --report build/ai_eda/cuda_run_plan_execution/<cuda-host>/cuda_run_plan_execution.json",

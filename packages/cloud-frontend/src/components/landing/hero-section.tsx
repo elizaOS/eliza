@@ -25,11 +25,14 @@ export default function HeroSection() {
           className="max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
           style={{ fontFamily: "Poppins, Arial, system-ui, sans-serif" }}
         >
-          {t("cloud.landing.heroTitle", { defaultValue: "Launch Eliza." })}
+          {t("cloud.landing.heroTitle", {
+            defaultValue: "Your Agent. Anywhere.",
+          })}
         </h1>
-        <p className="mt-6 max-w-xl text-xl font-light leading-snug text-black/80 sm:text-2xl">
+        <p className="mt-6 max-w-2xl text-xl font-medium leading-snug text-black/80 sm:text-2xl">
           {t("cloud.landing.heroSubtitle", {
-            defaultValue: "Your agent, always online.",
+            defaultValue:
+              "Hosting, APIs and commerce tools for agents.",
           })}
         </p>
         <div className="mt-10 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">

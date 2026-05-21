@@ -26,7 +26,7 @@ export default function LandingHeader() {
   });
 
   return (
-    <motion.header className="pointer-events-auto fixed top-0 left-0 z-[100] w-full bg-transparent">
+    <motion.header className="pointer-events-auto fixed top-9 left-0 z-[100] w-full bg-transparent sm:top-10">
       <div className="flex h-16 w-full items-center justify-between px-5 sm:px-8 lg:px-12">
         <Link to="/" className="flex items-center gap-3">
           <img
