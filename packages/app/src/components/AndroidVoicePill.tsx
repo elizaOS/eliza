@@ -71,23 +71,12 @@ export function AndroidVoicePill() {
     [sendChatText, activeConversationId],
   );
 
-  const handleRecordingChange = useCallback((_recording: boolean): void => {
-    // TODO: route recording start/stop through the shared voice capture
-    // pipeline at `eliza/packages/ui/src/voice/local-asr-capture.ts` +
-    // `eliza/packages/ui/src/voice/voice-chat-recording.ts`. The main
-    // composer wires this via `useChatVoiceSession` — once that hook is
-    // refactored to be reusable outside the composer shell, swap this stub
-    // for a real start/stop call that funnels the transcript through
-    // `sendChatText` above.
-  }, []);
-
-  return (
-    <VoicePill
-      messages={messages}
-      onSubmit={handleSubmit}
-      onRecordingChange={handleRecordingChange}
-    />
-  );
+  // Recording lifecycle (mic permission, AudioRecord/SpeechRecognizer, ASR
+  // transcript) is owned by the shared `<VoicePill>` voice session, so no
+  // `onRecordingChange` bridge is needed here. Background-mic survival when
+  // the WebView is not foregrounded is held by the native
+  // `ElizaVoiceCaptureService` (manifest foregroundServiceType="microphone").
+  return <VoicePill messages={messages} onSubmit={handleSubmit} />;
 }
 
 export default AndroidVoicePill;
