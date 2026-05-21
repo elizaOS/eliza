@@ -37,7 +37,7 @@ BUILD := build
 .PHONY: ci-release-evidence evidence-regression-test formal-fast formal-strict openlane-orchestration-test physical-gates-test pipeline-check-strict strict-release-gate-test
 .PHONY: rail-plan-check upf-check pdn-workload-signoff pmic-procurement-gate cocotb-droop cocotb-clock-stretcher cocotb-avfs cocotb-pmc cocotb-power fw-pmc-build
 .PHONY: chipyard-external-generation-plan chipyard-generated-path-check chipyard-generated-path-repair chipyard-import-preflight chipyard-linux-payload-check chipyard-payload-path-check chipyard-generated-ap-boot chipyard-verilator-linux-smoke-test chipyard-verilator-preflight chipyard-verilator-stale-path-repair cpu-ap-capture-plan-shell cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-dts-audit linux-boot-artifacts-check cpu-ap-boot-readiness-check minimum-linux-target-check minimum-linux-target-strict mvp-npu-ml-evidence-check minimum-linux-npu-target-check minimum-linux-npu-target-strict hello-npu-linux-smoke-check
-.PHONY: tapeout-readiness tapeout-readiness-strict tapeout-readiness-test manufacturing-tapeout-scope-check manufacturing-tapeout-scope-test chip-os-bring-up-status chip-os-boot-gap-inventory chip-os-boot-gap-inventory-test chip-os-gap-keyword-inventory chip-os-gap-keyword-inventory-test chip-os-objective-evidence-matrix chip-os-objective-evidence-matrix-test chip-os-closure-plan chip-os-closure-plan-test chip-os-environment-preflight chip-os-environment-preflight-test chip-os-report-freshness chip-os-report-freshness-test
+.PHONY: tapeout-readiness tapeout-readiness-strict tapeout-readiness-test manufacturing-tapeout-scope-check manufacturing-tapeout-scope-test chip-os-bring-up-status chip-os-boot-gap-inventory chip-os-boot-gap-inventory-test chip-os-gap-keyword-inventory chip-os-gap-keyword-inventory-test chip-os-evidence-provenance chip-os-evidence-provenance-test chip-os-optimization-gap-inventory chip-os-optimization-gap-inventory-test chip-os-identity-contract chip-os-identity-contract-test chip-os-objective-evidence-matrix chip-os-objective-evidence-matrix-test chip-os-closure-plan chip-os-closure-plan-test chip-os-environment-preflight chip-os-environment-preflight-test chip-os-report-freshness chip-os-report-freshness-test
 .PHONY: sota-parity-audit sota-parity-audit-strict sota-parity-audit-test
 .PHONY: software-bsp-external-preflight software-bsp-evidence-check
 .PHONY: e1-phone-display-fit
@@ -61,7 +61,7 @@ BUILD := build
 .PHONY: software-bsp-firmware-ai-policy-check
 .PHONY: spec-traceability-ai-policy-check
 
-.PHONY: setup venv tools kicad-setup kicad-tools-check e1-phone-schematic-scaffold e1-phone-layout-metrics e1-phone-manufacturing-closure e1-phone-board-package-check kicad-phone-render kicad-phone-preview-check phone-cad phone-cad-test lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-check benchmark-efficiency-scope-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-scope-check power-thermal-scope-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test npu-scope-check npu-scope-test e1-npu-nnapi-proof-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-scope-check cpu-ap-scope-test cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-iommu-qos-sim-check memory-iommu-qos-sim-test memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-axi4-width-converter cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check npu-context-queue-sim-check npu-context-queue-sim-test scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check phone-soc-claim-check phone-media-pipeline-scope-check phone-media-pipeline-scope-test security-lifecycle-scope-check security-lifecycle-scope-test tee-software-check tee-confidential-domain-contract-check tee-page-state-policy-check tee-page-state-model-check tee-page-state-model-test tee-iopmp-policy-check tee-side-channel-claims-check tee-attestation-evidence-check tee-quote-serializer-test tee-otp-fuse-map-check tee-otp-fuse-map-test tee-mee-freshness-model-check tee-purge-sequence-scope-check radio-sensor-pmic-scope-check radio-sensor-pmic-scope-test product-feature-gates-check product-check product-check-status-test product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check buildroot-qemu-virt-smoke buildroot-qemu-virt-smoke-test aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-scope-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release otp-rtl-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check rot-integration-check boot-security-chain-contract-check rot-check clean
+.PHONY: setup venv tools kicad-setup kicad-tools-check e1-phone-schematic-scaffold e1-phone-layout-metrics e1-phone-manufacturing-closure e1-phone-board-package-check kicad-phone-render kicad-phone-preview-check phone-cad phone-cad-test lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-check benchmark-efficiency-scope-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-scope-check power-thermal-scope-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test npu-scope-check npu-scope-test e1-npu-nnapi-proof-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-scope-check cpu-ap-scope-test cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-iommu-qos-sim-check memory-iommu-qos-sim-test memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-axi4-width-converter cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check npu-context-queue-sim-check npu-context-queue-sim-test scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check phone-soc-claim-check phone-media-pipeline-scope-check phone-media-pipeline-scope-test security-lifecycle-scope-check security-lifecycle-scope-test tee-software-check tee-confidential-domain-contract-check tee-page-state-policy-check tee-page-state-model-check tee-page-state-model-test tee-iopmp-policy-check tee-side-channel-claims-check tee-attestation-evidence-check tee-quote-serializer-test tee-otp-fuse-map-check tee-otp-fuse-map-test tee-mee-freshness-model-check tee-purge-sequence-scope-check radio-sensor-pmic-scope-check radio-sensor-pmic-scope-test product-feature-gates-check product-check product-check-status-test product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check buildroot-qemu-virt-smoke buildroot-qemu-virt-smoke-test aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-scope-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release otp-rtl-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check avb-verify-check bootrom-sim-transcript-check rot-integration-check boot-security-chain-contract-check avb-verify-check bootrom-sim-transcript-check rot-check clean
 
 setup: kicad-setup venv tools kicad-tools-check
 	@echo "packages/chip setup complete"
@@ -266,6 +266,24 @@ chip-os-gap-keyword-inventory:
 
 chip-os-gap-keyword-inventory-test:
 	@$(PYTHON) scripts/test_chip_os_gap_keyword_inventory.py
+
+chip-os-evidence-provenance:
+	@$(PYTHON) scripts/check_chip_os_evidence_provenance.py
+
+chip-os-evidence-provenance-test:
+	@$(PYTHON) scripts/test_chip_os_evidence_provenance.py
+
+chip-os-optimization-gap-inventory:
+	@$(PYTHON) scripts/check_chip_os_optimization_gap_inventory.py
+
+chip-os-optimization-gap-inventory-test:
+	@$(PYTHON) scripts/test_chip_os_optimization_gap_inventory.py
+
+chip-os-identity-contract:
+	@$(PYTHON) scripts/check_chip_os_identity_contract.py
+
+chip-os-identity-contract-test:
+	@$(PYTHON) scripts/test_chip_os_identity_contract.py
 
 chip-os-objective-evidence-matrix:
 	@$(PYTHON) scripts/check_chip_os_objective_evidence_matrix.py
@@ -521,7 +539,7 @@ cpu-ap-evidence-test:
 cpu-ap-completion-gate: cpu-ap-scope-check
 	@$(PYTHON) scripts/check_cpu_ap_completion_gate.py
 
-.PHONY: core-selection-check core-selection-check-strict xiangshan-generator-check cva6-generator-check boom-generator-check ascalon-license-check linux-smoke linux-smoke-long linux-boot-check linux-boot-check-strict coremark embench jetstream spec-skeleton cocotb-cpu-extended pmu-event-alignment-check cpu-lint-check
+.PHONY: core-selection-check core-selection-check-strict xiangshan-generator-check cva6-generator-check boom-generator-check ascalon-license-check linux-smoke linux-smoke-long linux-boot-check linux-boot-check-strict coremark embench jetstream spec-skeleton coremark-cva6-verilator dhrystone-cva6-verilator open-core-comparison-check open-core-comparison-test cocotb-cpu-extended pmu-event-alignment-check cpu-lint-check
 
 core-selection-check:
 	@$(PYTHON) scripts/check_core_selection.py
@@ -565,6 +583,18 @@ jetstream:
 
 spec-skeleton:
 	@scripts/run_spec.sh
+
+coremark-cva6-verilator:
+	@E1_COREMARK_DUT=verilator scripts/run_coremark.sh
+
+dhrystone-cva6-verilator:
+	@scripts/run_dhrystone.sh
+
+open-core-comparison-check:
+	@$(PYTHON) scripts/check_open_core_comparison.py
+
+open-core-comparison-test:
+	@$(PYTHON) -m pytest scripts/test_open_core_comparison.py -q
 
 cocotb-cpu-extended:
 	@$(PYTHON) verify/cocotb/cpu/test_fusion_table.py
@@ -848,12 +878,18 @@ provisioning-readback-check:
 rot-integration-check:
 	@$(PYTHON) scripts/check_rot_integration.py
 
+avb-verify-check:
+	@$(PYTHON) scripts/check_avb_verify.py
+
+bootrom-sim-transcript-check:
+	@$(PYTHON) scripts/check_bootrom_sim_transcript.py
+
 boot-security-chain-contract-check:
 	@$(PYTHON) scripts/check_boot_security_chain_contract.py
 
 # Full RoT gate set. Fail-closed: rot-integration-check exits non-zero while the
 # OpenTitan crypto blocks are shimmed rather than integrated.
-rot-check: bootrom-check boot-security-chain-contract-check otp-rtl-check security-lifecycle-scope-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check tee-attestation-evidence-check rot-integration-check
+rot-check: bootrom-check bootrom-sim-transcript-check boot-security-chain-contract-check otp-rtl-check security-lifecycle-scope-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check avb-verify-check tee-attestation-evidence-check rot-integration-check
 	@echo "rot-check: RoT gate set evaluated"
 
 # ----- TEE-native Phase-1 software gates (buildable now; no silicon) ------
@@ -1914,7 +1950,7 @@ ai-eda-openlane-replay-comparison: ai-eda-openlane-replay-execution
 	@$(PYTHON) scripts/ai_eda/capture_openlane_replay_comparison.py --run-id $(AI_EDA_RUN_ID) --baseline-execution $(AI_EDA_BASELINE_REPLAY_EXECUTION) --candidate-execution $(AI_EDA_CANDIDATE_REPLAY_EXECUTION)
 	@$(PYTHON) scripts/ai_eda/check_openlane_replay_comparison.py --report build/ai_eda/openlane_replay_comparison/$(AI_EDA_RUN_ID)/openlane_replay_comparison.json
 
-docs-check: ai-eda-local-rag-index ai-eda-backend-preflight ai-eda-all-target-captures ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-floorplanning-dataset-readiness ai-eda-alphachip-checkpoint-blocker-check ai-eda-external-method-wrapper-readiness-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
+docs-check: open-core-comparison-check ai-eda-local-rag-index ai-eda-backend-preflight ai-eda-all-target-captures ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-floorplanning-dataset-readiness ai-eda-alphachip-checkpoint-blocker-check ai-eda-external-method-wrapper-readiness-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
 	@$(PYTHON) scripts/docs_check.py
 
 tool-versions:
