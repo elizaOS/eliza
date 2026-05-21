@@ -87,19 +87,25 @@ jobs:
 
           exit 1
 
-      - name: Skip migrations when database secret is unavailable
+      - name: Fail fast when database secret is missing
         if: ${{ env.MIGRATION_DATABASE_URL == '' }}
         run: |
-          echo "DATABASE_URL/RAILWAY_DATABASE_URL/NEON_DATABASE_URL is not configured for the ${{ needs.determine-env.outputs.environment }} environment; skipping database migrations." >> $GITHUB_STEP_SUMMARY
+          # Previously this step quietly skipped migrations whenever the secret
+          # was unset, so 46+ migrations silently accumulated against prod from
+          # 2026-04-22 onward (sukimyfun Stripe webhook 500 RCA, 2026-05-20).
+          # Fail loudly instead — a deploy that ships code expecting a newer
+          # schema must not succeed if the DB can't be migrated to match.
+          echo "::error::DATABASE_URL / RAILWAY_DATABASE_URL / NEON_DATABASE_URL secret is missing on the '${{ needs.determine-env.outputs.environment }}' environment. The schema cannot be migrated, so the worker would deploy against a stale DB."
+          echo "Add the secret in: Settings → Environments → ${{ needs.determine-env.outputs.environment }} → Environment secrets."
+          exit 1
 
       - name: Run migrations
-        if: ${{ env.MIGRATION_DATABASE_URL != '' }}
         env:
           DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
         run: bun run db:cloud:migrate
 
       - name: Notify Discord (Success)
-        if: success() && env.MIGRATION_DATABASE_URL != ''
+        if: success()
         uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
@@ -113,7 +119,7 @@ jobs:
           color: 0x00ff00
 
       - name: Notify Discord (Failure)
-        if: failure() && env.MIGRATION_DATABASE_URL != ''
+        if: failure()
         uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}

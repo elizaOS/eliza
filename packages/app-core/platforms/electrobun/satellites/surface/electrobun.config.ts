@@ -7,7 +7,7 @@ const surfaceSatellite = {
 	mode: "window",
 	permissions: {
 		host: {
-			"manage-carrots": true,
+			"manage-remote-plugins": true,
 		},
 		bun: {},
 		isolation: "shared-worker",

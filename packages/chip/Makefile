@@ -1357,7 +1357,7 @@ software-bsp-test:
 evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
-.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-assets-dry-run ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
+.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-assets-dry-run ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
 ai-eda-source-inventory-check:
 	@$(PYTHON) scripts/check_ai_eda_source_inventory.py
 
@@ -1397,6 +1397,9 @@ ai-eda-candidate-manifests-check: ai-eda-fixture-placement-train
 ai-eda-tool-actions-check: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/check_tool_action_schemas.py
 
+ai-eda-cocotb-stimulus-dry-run:
+	@$(PYTHON) scripts/ai_eda/run_cocotb_stimulus_search.py --dry-run --run-id validation
+
 ai-eda-logic-synthesis-recipes:
 	@$(PYTHON) scripts/ai_eda/generate_logic_synthesis_recipe_corpus.py --run-id validation
 
@@ -1409,7 +1412,7 @@ ai-eda-cuda-preflight:
 ai-eda-cuda-payload:
 	@$(PYTHON) scripts/ai_eda/package_cuda_training_payload.py --run-id validation
 
-docs-check: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check
+docs-check: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
 	@$(PYTHON) scripts/docs_check.py
 
 tool-versions:
