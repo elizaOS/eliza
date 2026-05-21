@@ -36,6 +36,14 @@ MIN_ISO_BYTES="${ELIZAOS_MIN_ISO_BYTES:-209715200}"
 
 mkdir -p "${OUT}"
 
+# Clear stale live-build working state from any prior/interrupted run so each
+# build starts from a clean tree (cache/ is kept for download speed). Runs as
+# root here, so it can remove the root-owned chroot from earlier runs.
+rm -rf "${HERE}/.build" "${HERE}/binary" "${HERE}/chroot" \
+    "${HERE}/config/binary" "${HERE}/config/bootstrap" "${HERE}/config/chroot" \
+    "${HERE}/config/common" "${HERE}/config/source" \
+    "${HERE}"/chroot.* "${HERE}"/binary.* "${HERE}"/live-image-* 2>/dev/null || true
+
 echo "=== elizaOS Linux build ==="
 echo "    arch:        ${ARCH}"
 echo "    profile:     ${PROFILE}"

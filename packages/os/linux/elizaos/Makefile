@@ -31,13 +31,19 @@ help:
 builder:
 	docker build -t elizaos-linux-builder .
 
+# live-build writes chroot/, binary/, .build/ in place, so two concurrent
+# builds in this tree would corrupt each other. Serialize on a tree-level
+# lock; build.sh clears stale working state on entry (as root, inside the
+# container). Build a different arch on a separate checkout for true
+# parallelism.
 build: builder check-arch
-	docker run --rm --privileged \
-	    -e ELIZAOS_ARCH=$(ARCH) \
-	    -e ELIZAOS_PROFILE=$(PROFILE) \
-	    -v "$(HERE):/build" \
-	    -v "$(OUT):/out" \
-	    elizaos-linux-builder
+	flock "$(HERE)/.build.lock" \
+	    docker run --rm --privileged \
+	        -e ELIZAOS_ARCH=$(ARCH) \
+	        -e ELIZAOS_PROFILE=$(PROFILE) \
+	        -v "$(HERE):/build" \
+	        -v "$(OUT):/out" \
+	        elizaos-linux-builder
 
 qemu-boot: check-arch
 	scripts/boot-qemu.sh $(ARCH)
