@@ -3,6 +3,8 @@ import * as path from "node:path";
 
 import {
   type ActionResult,
+  CapabilityError,
+  getCapabilityRouter,
   logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
@@ -32,6 +34,85 @@ interface LsEntry {
   name: string;
   type: EntryType;
   size?: number;
+}
+
+function sortEntries(entries: LsEntry[]): LsEntry[] {
+  const dirEntries = entries
+    .filter((e) => e.type === "dir")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const fileEntries = entries
+    .filter((e) => e.type !== "dir")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return [...dirEntries, ...fileEntries];
+}
+
+function formatLsText(params: {
+  dir: string;
+  entries: LsEntry[];
+  truncated: boolean;
+  totalAfterIgnore: number;
+}): string {
+  const lines = [
+    `Directory: ${params.dir}`,
+    ...params.entries.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
+  ];
+  if (params.truncated) {
+    lines.push(
+      `…[truncated, listed ${ENTRY_LIMIT} of ${params.totalAfterIgnore} entries]`,
+    );
+  }
+  return lines.join("\n");
+}
+
+async function listWithCapabilityRouter(params: {
+  runtime: IAgentRuntime;
+  dir: string;
+  ignore: string[];
+}): Promise<
+  | {
+      ok: true;
+      entries: LsEntry[];
+      truncated: boolean;
+      totalAfterIgnore: number;
+    }
+  | { ok: false; reason: "unavailable" | "failed"; message: string }
+> {
+  const router = getCapabilityRouter(params.runtime);
+  if (!router) return { ok: false, reason: "unavailable", message: "" };
+  try {
+    const result = await router.fs.list({
+      path: params.dir,
+      limit: ENTRY_LIMIT,
+      includeHidden: true,
+      ignore: params.ignore,
+    });
+    const entries = result.entries.map((entry): LsEntry => {
+      const type: EntryType =
+        entry.kind === "directory"
+          ? "dir"
+          : entry.kind === "symlink"
+            ? "symlink"
+            : "file";
+      return type === "file"
+        ? { name: entry.name, type, size: entry.size }
+        : { name: entry.name, type };
+    });
+    return {
+      ok: true,
+      entries: sortEntries(entries),
+      truncated: result.truncated,
+      totalAfterIgnore: result.totalAfterIgnore,
+    };
+  } catch (error) {
+    if (
+      error instanceof CapabilityError &&
+      error.code === "CAPABILITY_UNAVAILABLE"
+    ) {
+      return { ok: false, reason: "unavailable", message: error.message };
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: "failed", message };
+  }
 }
 
 function globToRegExp(pattern: string): RegExp {
@@ -114,11 +195,34 @@ export async function lsHandler(
   const dir = validation.resolved;
 
   const ignoreRaw = readArrayParam(options, "ignore");
-  const ignoreMatchers: RegExp[] = (ignoreRaw ?? [])
-    .filter(
-      (entry): entry is string => typeof entry === "string" && entry.length > 0,
-    )
-    .map((entry) => globToRegExp(entry));
+  const ignore = (ignoreRaw ?? []).filter(
+    (entry): entry is string => typeof entry === "string" && entry.length > 0,
+  );
+  const ignoreMatchers: RegExp[] = ignore.map((entry) => globToRegExp(entry));
+
+  const routed = await listWithCapabilityRouter({ runtime, dir, ignore });
+  if (routed.ok) {
+    const text = formatLsText({
+      dir,
+      entries: routed.entries,
+      truncated: routed.truncated,
+      totalAfterIgnore: routed.totalAfterIgnore,
+    });
+    coreLogger.debug(
+      `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${routed.entries.length} truncated=${routed.truncated}`,
+    );
+    if (callback) await callback({ text, source: "coding-tools" });
+    return successActionResult(text, {
+      entries: routed.entries,
+      truncated: routed.truncated,
+    });
+  }
+  if (routed.reason === "failed") {
+    return failureToActionResult({
+      reason: "io_error",
+      message: routed.message,
+    });
+  }
 
   let names: string[];
   try {
@@ -160,24 +264,13 @@ export async function lsHandler(
     enriched.push(size === undefined ? { name, type } : { name, type, size });
   }
 
-  const dirEntries = enriched
-    .filter((e) => e.type === "dir")
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const fileEntries = enriched
-    .filter((e) => e.type !== "dir")
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const sorted: LsEntry[] = [...dirEntries, ...fileEntries];
-
-  const lines = [
-    `Directory: ${dir}`,
-    ...sorted.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
-  ];
-  if (truncated) {
-    lines.push(
-      `…[truncated, listed ${ENTRY_LIMIT} of ${totalAfterIgnore} entries]`,
-    );
-  }
-  const text = lines.join("\n");
+  const sorted = sortEntries(enriched);
+  const text = formatLsText({
+    dir,
+    entries: sorted,
+    truncated,
+    totalAfterIgnore,
+  });
 
   coreLogger.debug(
     `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length} truncated=${truncated}`,

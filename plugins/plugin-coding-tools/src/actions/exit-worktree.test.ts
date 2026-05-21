@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SandboxService } from "../services/sandbox-service.js";
 import { SessionCwdService } from "../services/session-cwd-service.js";
+import { withUnavailablePlugin } from "../test-helpers/capability-router.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
 import { enterWorktreeHandler } from "./enter-worktree.js";
 import { exitWorktreeHandler } from "./exit-worktree.js";
@@ -106,7 +107,7 @@ function setCapabilityRouter(
 function makeGitRouter(
   commandRun: (params: GitCommandRunParams) => Promise<GitCommandRunResult>,
 ): ElizaCapabilityRouter {
-  return {
+  return withUnavailablePlugin({
     environment: "desktop",
     availability: async () => ({
       environment: "desktop",
@@ -116,6 +117,7 @@ function makeGitRouter(
         pty: false,
         git: true,
         model: false,
+        plugin: false,
       },
     }),
     fs: {
@@ -148,7 +150,7 @@ function makeGitRouter(
         throw new Error("model unavailable");
       },
     },
-  };
+  });
 }
 
 function gitCommandResult(params: GitCommandRunParams): GitCommandRunResult {

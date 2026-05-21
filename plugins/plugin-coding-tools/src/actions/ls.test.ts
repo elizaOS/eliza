@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SandboxService } from "../services/sandbox-service.js";
 import { SessionCwdService } from "../services/session-cwd-service.js";
+import { withUnavailablePlugin } from "../test-helpers/capability-router.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
 import { lsHandler } from "./ls.js";
 
@@ -40,7 +41,7 @@ function unavailableCapability(
 function makeListRouter(
   list: ElizaCapabilityRouter["fs"]["list"],
 ): ElizaCapabilityRouter {
-  return {
+  return withUnavailablePlugin({
     environment: "desktop",
     availability: async () => ({
       environment: "desktop",
@@ -50,6 +51,7 @@ function makeListRouter(
         pty: false,
         git: false,
         model: false,
+        plugin: false,
       },
     }),
     fs: {
@@ -68,7 +70,7 @@ function makeListRouter(
     model: {
       status: async () => unavailableCapability("model", "model.status"),
     },
-  };
+  });
 }
 
 async function buildRuntime(

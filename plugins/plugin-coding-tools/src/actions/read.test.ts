@@ -7,6 +7,7 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { withUnavailablePlugin } from "../test-helpers/capability-router.js";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
 import { readFileHandler } from "./read.js";
 
@@ -90,7 +91,7 @@ describe("READ", () => {
     const file = path.join(env.tmpDir, "routed.txt");
     await fs.writeFile(file, "local file content", "utf8");
     const calls: string[] = [];
-    const router: ElizaCapabilityRouter = {
+    const router: ElizaCapabilityRouter = withUnavailablePlugin({
       environment: "desktop",
       availability: async () => ({
         environment: "desktop",
@@ -100,6 +101,7 @@ describe("READ", () => {
           pty: false,
           git: false,
           model: false,
+          plugin: false,
         },
       }),
       fs: {
@@ -175,7 +177,7 @@ describe("READ", () => {
           });
         },
       },
-    };
+    });
     const runtime = {
       ...env.runtime,
       getService: <T>(serviceType: string): T | null =>

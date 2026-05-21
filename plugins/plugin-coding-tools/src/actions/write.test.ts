@@ -8,6 +8,7 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { withUnavailablePlugin } from "../test-helpers/capability-router.js";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
 import { writeFileHandler } from "./write.js";
 
@@ -26,7 +27,7 @@ function unavailableCapability(
 function makeWriteRouter(
   writeText: ElizaCapabilityRouter["fs"]["writeText"],
 ): ElizaCapabilityRouter {
-  return {
+  return withUnavailablePlugin({
     environment: "desktop",
     availability: async () => ({
       environment: "desktop",
@@ -36,6 +37,7 @@ function makeWriteRouter(
         pty: false,
         git: false,
         model: false,
+        plugin: false,
       },
     }),
     fs: {
@@ -49,13 +51,12 @@ function makeWriteRouter(
     git: {
       status: async () => unavailableCapability("git", "git.status"),
       diff: async () => unavailableCapability("git", "git.diff"),
-      commandRun: async () =>
-        unavailableCapability("git", "git.command.run"),
+      commandRun: async () => unavailableCapability("git", "git.command.run"),
     },
     model: {
       status: async () => unavailableCapability("model", "model.status"),
     },
-  };
+  });
 }
 
 function runtimeWithRouter(
