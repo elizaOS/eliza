@@ -107,7 +107,12 @@ function collectWorkspaceVersions(rootDir) {
       if (path.basename(entryPath) !== "package.json") {
         return;
       }
-      const data = JSON.parse(readFileSync(entryPath, "utf8"));
+      let data;
+      try {
+        data = JSON.parse(readFileSync(entryPath, "utf8"));
+      } catch {
+        return;
+      }
       if (typeof data.name === "string" && typeof data.version === "string") {
         versions.set(data.name, data.version);
       }
@@ -138,6 +143,8 @@ function walk(dirPath, visit) {
           "__pycache__",
           "android",
           "ios",
+          "external",
+          "output",
         ].includes(entry.name)
       ) {
         continue;
