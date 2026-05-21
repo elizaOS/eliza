@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@elizaos/ui";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { ConnectButton, useConnectModal } from "@rainbow-me/rainbowkit";
 import {
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
@@ -11,7 +11,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { Coins, Loader2, ShieldCheck, Wallet } from "lucide-react";
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { erc20Abi } from "viem";
@@ -161,6 +161,7 @@ export function DirectCryptoCreditCard({
   const solana = useWallet();
   const { connection } = useConnection();
   const { setVisible: setSolanaModalVisible } = useWalletModal();
+  const { openConnectModal } = useConnectModal();
 
   const networks = status?.directWallet?.networks ?? [];
   const enabledNetworks = networks.filter(
@@ -186,6 +187,27 @@ export function DirectCryptoCreditCard({
   useEffect(() => {
     setTokenSymbol(null);
   }, [selected?.network]);
+
+  // Recover users who signed in via the legacy SIWE bypass path: their account
+  // has a wallet_address but wagmi never saw the connection, so on this route
+  // mount `useAccount().isConnected` is false. Auto-open the RainbowKit modal
+  // exactly once so they get back into a wagmi-tracked state without having to
+  // notice the "Connect Wallet" button themselves.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current) return;
+    if (selected?.network === "solana") return;
+    if (!accountWalletAddress) return;
+    if (evm.isConnected) return;
+    if (!openConnectModal) return;
+    autoOpenedRef.current = true;
+    openConnectModal();
+  }, [
+    accountWalletAddress,
+    evm.isConnected,
+    openConnectModal,
+    selected?.network,
+  ]);
 
   // Resume the waiting overlay if a payment is mid-flight in localStorage —
   // covers tab close / refresh between broadcast and confirm.
