@@ -146,9 +146,24 @@ different run IDs, pass `AI_EDA_SETUP_RUN_ID=<setup-run>` and
 manual audits assembled from reviewed artifacts generated under separate run
 IDs, `capture_cuda_readiness_audit.py` also accepts explicit
 `--preflight-run-id`, `--payload-run-id`, `--run-plan-execution-run-id`,
-`--run-plan-safety-run-id`, `--alphachip-run-id`, `--watchlist-run-id`, and
-`--replay-preflight-run-id` arguments. `make
-ai-eda-openlane-replay-prerequisites` records the OpenLane/OpenROAD binary,
+`--run-plan-safety-run-id`, `--alphachip-run-id`,
+`--alphachip-successor-reproduction-run-id`, `--watchlist-run-id`, and
+`--replay-preflight-run-id` arguments. `make ai-eda-cuda-full-training-matrix`
+records the required CUDA host jobs for full-dataset conversion, large
+successor training/inference, replay, and closeout without running them; when
+the payload and preflight evidence come from separate runs, pass
+`--payload-run-id` and `--preflight-run-id` directly to
+`capture_cuda_full_training_matrix.py`, then pass
+`AI_EDA_FULL_TRAINING_MATRIX_RUN_ID=<matrix-run>` into the readiness/objective
+audits. The CUDA run plan uses `--all-records` converter modes for CircuitNet3,
+ChiPBench-D, OpenABC-D, AIEDA/iDATA, EDALearn, and Macro Placement Challenge
+2026, plus the complete R-Zoo evaluation DEF conversion and deterministic
+design-family train/validation/test split manifest. R-Zoo also carries a
+training-only license review gate: local CUDA handoff is allowed, while
+release, commercial use, model-weight release, and E1 signoff claims remain
+false. The local Make targets keep bounded samples for fast smoke validation
+where converters support sampling.
+`make ai-eda-openlane-replay-prerequisites` records the OpenLane/OpenROAD binary,
 PDK, config, run-tree, and replay-queue gates required before deterministic
 replay execution. `capture_openlane_replay_execution.py` and
 `check_openlane_replay_execution.py` define the post-execution evidence
@@ -163,28 +178,36 @@ open.
 referenced handoff artifact path, SHA256, size, capability flag, and blocker
 count into a replayable manifest. `make ai-eda-objective-readiness-audit`
 consumes those artifacts plus the research doc, training handoff, replay queue,
-AlphaChip blocker, OpenLane replay prerequisites, replay execution evidence,
-and replay comparison evidence to report which parts of the full AI-EDA
-objective are proven, incomplete, or blocked. `make
+AlphaChip blocker, full training matrix, OpenLane replay prerequisites, replay
+execution evidence, and replay comparison evidence to report which parts of
+the full AI-EDA objective are proven, incomplete, or blocked. `make
 ai-eda-alphachip-successor-plan` records the checked fallback
 route for AlphaChip-unavailable hosts: public-corpus PyTorch macro-placement
 training/inference/replay now, and Circuit Training scratch only if
-`plc_wrapper_main` is legally supplied and hash-pinned.
+`plc_wrapper_main` is legally supplied and hash-pinned. `make
+ai-eda-alphachip-successor-reproduction` then records whether that fallback has
+actually reached CUDA-scale reproduction evidence: CUDA training/inference,
+all-record matrix coverage, model/candidate hashes, ready replay queue, and a
+baseline-vs-candidate replay comparison.
+`make ai-eda-r-zoo-legality-baseline` trains the local dependency-free R-Zoo
+rectilinear-floorplan legality baseline from the deterministic design-family
+split manifest. It is wired into the corpus/payload/matrix path as
+training-only evidence and never counts as E1 signoff or an optimization claim.
 
 Current local validation uses `/usr/bin/python3` for non-Torch checks and
-`/opt/miniconda3/bin/python` for Torch training/inference. The latest split
-evidence refresh is `AI_EDA_RUN_ID=codex-replay-comparison-readiness`, with
-the payload/run-plan from `codex-replay-comparison-payload`, setup evidence
-from `codex-latest-setup-20260521`, training handoff from
-`codex-cuda-ready-conda-20260521-training-handoff`, replay execution from
-`codex-replay-execution-contract`, and replay comparison from
-`codex-replay-comparison-contract`. That audit validates the payload, dry-run,
-safety matrix, setup evidence, MPS Torch training/inference, full replay plan,
-replay queue, OpenLane prerequisite report, AlphaChip successor plan, and
-blocked replay comparison contract. It remains blocked by local CUDA absence,
-public AlphaChip checkpoint access, incomplete training-handoff bootstrap
-status, OpenLane/OpenROAD host prerequisites, E1 deterministic replay
-execution, and missing real baseline-vs-candidate replay comparison evidence.
+`/opt/miniconda3/bin/python` for Torch training/inference. The latest integrated
+evidence refresh is `AI_EDA_RUN_ID=codex-readiness-with-artifacts`, with setup
+evidence from `codex-bootstrap-setup5`, training handoff from
+`codex-handoff-artifacts`, and a validated training corpus from
+`codex-openroad-corpus-manifest`. That audit validates the 42-asset / 237-file
+payload, dry-run, safety matrix, setup evidence, complete MPS training-handoff
+bootstrap, Torch training/inference, full replay plan, replay queue, OpenLane
+prerequisite report, AlphaChip successor plan, blocked successor reproduction
+evidence, blocked 14-job full-training matrix, and blocked replay comparison
+contract. It remains blocked by local CUDA absence, public AlphaChip checkpoint
+access, CUDA-scale successor reproduction, OpenLane/OpenROAD host prerequisites,
+E1 deterministic replay execution, and missing real baseline-vs-candidate replay
+comparison evidence.
 
 ## Docker Setup
 

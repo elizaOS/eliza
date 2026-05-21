@@ -366,6 +366,17 @@ The first reproducibility spine is now checked in:
   report, tarball, embedded run plan, selected asset list, critical fetch
   commands, referenced scripts, expected CUDA outputs, and no-dataset/no-weight
   payload boundary.
+- `scripts/ai_eda/capture_cuda_full_training_matrix.py` and
+  `scripts/ai_eda/check_cuda_full_training_matrix.py` define the CUDA-host
+  acceptance matrix for the full AI-EDA training/evaluation run: asset fetch,
+  normalized corpus conversion, CircuitNet3 surrogate training, AlphaChip
+  successor CUDA training/inference, replay queue generation, baseline-vs-
+  candidate replay comparison, logic-synthesis baseline, target captures, and
+  objective closeout. The current matrix intentionally remains blocked until a
+  CUDA host reports `large_training_ready=true`; the CUDA run plan now uses
+  reviewed `--all-records` conversion modes for CircuitNet3, ChiPBench-D,
+  OpenABC-D, AIEDA iDATA, EDALearn, and Macro Placement Challenge 2026, plus
+  the complete R-Zoo rectilinear-floorplan evaluation DEF conversion.
 - `scripts/ai_eda/capture_cuda_readiness_audit.py` and
   `scripts/ai_eda/check_cuda_readiness_audit.py` are wired into
   `make ai-eda-cuda-readiness-audit`, which reconciles CUDA preflight, payload,
@@ -409,6 +420,13 @@ The first reproducibility spine is now checked in:
   corpora, run inference/ranking/replay-queue selection, and reserve Circuit
   Training scratch for hosts where the closed binary is legally supplied and
   hash-pinned.
+- `scripts/ai_eda/capture_alphachip_successor_reproduction.py` and
+  `scripts/ai_eda/check_alphachip_successor_reproduction.py` are wired into
+  `make ai-eda-alphachip-successor-reproduction`, recording whether the
+  fallback has true CUDA-scale reproduction evidence: CUDA training for at
+  least 200 epochs, CUDA inference, all-record matrix coverage, model/metrics/
+  candidate hashes, a ready replay queue item, and a baseline-vs-candidate
+  OpenLane/OpenROAD replay comparison.
 - `scripts/ai_eda/capture_openroad_ml_snapshot.py` and
   `scripts/ai_eda/check_openroad_ml_snapshot.py` are wired into
   `make ai-eda-openroad-ml-snapshot`, recording the latest local
@@ -844,8 +862,8 @@ Current local validation on the 128 GiB M4 host:
   `run_plan_dry_run_validated=true`, and
   `run_plan_safety_matrix_validated=true`. Remaining hard blockers are
   `cuda_large_training_not_ready`, `alphachip_checkpoint_blocked`,
-  `openlane_replay_host_not_ready`, `e1_openlane_replay_blocked`,
-  `openlane_replay_execution_not_validated`, and
+  `alphachip_successor_reproduction_blocked`, `openlane_replay_host_not_ready`,
+  `e1_openlane_replay_blocked`, `openlane_replay_execution_not_validated`, and
   `openlane_replay_comparison_not_validated`.
 - `make PYTHON=/opt/miniconda3/bin/python3
   AI_EDA_RUN_ID=codex-handoff-dedupe-20260521-training-handoff
@@ -866,6 +884,101 @@ Current local validation on the 128 GiB M4 host:
   repository. Both remain metadata-only until revision hashes, license review,
   schema converters, split manifests, contamination checks, and E1 replay/signoff
   gates exist.
+- R-Zoo external intake on 2026-05-21 added a reviewed metadata-only source
+  lock and intake manifest with `release_use_allowed=false`. `make
+  PYTHON=/opt/homebrew/opt/python@3.13/bin/python3.13
+  AI_EDA_RUN_ID=codex-rzoo-intake-20260521 ai-eda-external-assets-check
+  ai-eda-external-intake-check ai-eda-external-assets-dry-run`: PASS with 42
+  external assets and 22 intake manifests. The CUDA handoff now treats
+  `intel-floorset` and `r-zoo-rectilinear-floorplan` as critical floorplanning
+  fetch assets; `make PYTHON=/opt/homebrew/opt/python@3.13/bin/python3.13
+  AI_EDA_RUN_ID=codex-rzoo-intake-20260521 ai-eda-cuda-payload`: PASS with 42
+  asset groups and 227 packaged metadata/runbook files.
+- Floorplanning dataset readiness on 2026-05-21 added a checked
+  FloorSet/R-Zoo conversion-readiness contract. `make
+  PYTHON=/opt/homebrew/opt/python@3.13/bin/python3.13
+  AI_EDA_RUN_ID=codex-floorplan-readiness-20260521
+  ai-eda-floorplanning-dataset-readiness`: PASS_BLOCKED with two assets and 18
+  blockers covering payload absence, revision pins, license/provenance/hash
+  review, schema converters, legality logs, split/contamination manifests, and
+  generated-floorplan quarantine. The CUDA payload now includes the gate and
+  reports 42 asset groups and 229 metadata/runbook files; the full CUDA matrix
+  now tracks 13 jobs including this floorplanning dataset readiness job.
+- R-Zoo payload fetch/profile on 2026-05-21 completed the realistic local pull
+  for the smaller floorplanning corpus. `fetch_external_asset.py --asset
+  r-zoo-rectilinear-floorplan --execute/--verify-only --run-id
+  codex-rzoo-fetch-20260521`: PASS. The ignored payload is pinned at commit
+  `986d5ca24362bc6fc0a4980afdafccb814d740e6` with 693 hashed files and
+  11.24 GB hashed. The readiness profiler now records 280 DEFs, 266 PNGs,
+  seven JPGs, 14 evaluation DEFs, 121 modeling DEFs, 121 main dataset DEFs, 10
+  CV-application generated DEFs, and the expected evaluation legality split of
+  11 legal / 3 illegal. R-Zoo remains non-release and training-only pending
+  license resolution for CC BY-NC 4.0 plus the conflicting subset note and E1
+  replay/signoff gates. The regenerated CUDA payload reports 42 asset groups and 231
+  metadata/runbook files.
+- R-Zoo normalized conversion on 2026-05-21 added
+  `scripts/ai_eda/convert_r_zoo_to_internal_records.py` and
+  `check_r_zoo_conversion.py`. `make
+  PYTHON=/opt/homebrew/opt/python@3.13/bin/python3.13
+  AI_EDA_RUN_ID=codex-rzoo-convert-20260521 ai-eda-r-zoo-convert`: PASS with
+  14 evaluation floorplan cases, 42 normalized design/graph/flow records, and
+  the public 11 legal / 3 illegal label split preserved for training-only
+  legality modeling. `ai-eda-training-corpus-manifest`: PASS with 17 datasets,
+  286 JSON records, and 2,386 logical records. The CUDA payload now includes
+  the R-Zoo converter/checker and reports 42 asset groups and 233 handoff
+  files. R-Zoo legality labels remain benchmark labels, not E1 signoff or
+  optimization evidence.
+- R-Zoo split/contamination evidence on 2026-05-21 added
+  `scripts/ai_eda/capture_r_zoo_split_manifest.py` and
+  `check_r_zoo_split_manifest.py`. The manifest assigns whole design families
+  to deterministic splits (`train=10`, `val=2`, `test=2`) so single/multi-notch
+  variants do not cross split boundaries, validates 14 cases / 42 record hashes,
+  and records zero design-family overlap. Floorplanning readiness now recognizes
+  the R-Zoo converter, legality-label evidence, and split/contamination review;
+  R-Zoo remains blocked only on the generated-floorplan quarantine pending
+  deterministic E1 replay/signoff once the training-only license review is
+  present.
+- R-Zoo training-only license/provenance evidence on 2026-05-21 added
+  `scripts/ai_eda/capture_r_zoo_license_review.py` and
+  `check_r_zoo_license_review.py`. The review records the root CC BY-NC 4.0
+  license, the conflicting `for_modeling` MIT note, and a conservative
+  resolution: local research/CUDA training handoff is allowed, while release
+  use, commercial use, model-weight release, and E1 signoff claims remain
+  false. `capture_floorplanning_dataset_readiness.py --run-id
+  codex-r-zoo-conversion-20260521`: PASS with R-Zoo blocked only on deterministic
+  E1 replay/signoff quarantine; FloorSet remains independently blocked.
+- R-Zoo legality-baseline evidence on 2026-05-21 added
+  `scripts/ai_eda/train_r_zoo_legality_baseline.py` and
+  `check_r_zoo_legality_baseline.py`, wired through
+  `make ai-eda-r-zoo-legality-baseline`, the training-corpus dependency chain,
+  the CUDA payload, and the full CUDA matrix as
+  `r_zoo_rectilinear_legality_baseline`. The baseline is dependency-free
+  logistic regression over public R-Zoo diearea features and now consumes the
+  deterministic design-family split manifest directly. `make
+  PYTHON=/opt/homebrew/opt/python@3.13/bin/python3.13
+  AI_EDA_RUN_ID=codex-rzoo-legality-20260521
+  ai-eda-r-zoo-legality-baseline`: PASS with 14 samples, `train=10`, `val=2`,
+  `test=2`, and held-out `test_accuracy=1.0` recorded as training-only evidence.
+  The refreshed CUDA payload for `codex-rzoo-legality-20260521` now carries the
+  R-Zoo legality baseline train/check commands and expected model, metrics, and
+  training-run outputs, reporting 42 asset groups and 237 included handoff
+  files. The full CUDA matrix has 14 jobs including
+  `r_zoo_rectilinear_legality_baseline` and remains blocked only on missing CUDA
+  preflight evidence. This is useful pretraining smoke evidence only; it is not
+  E1 signoff or an optimization claim.
+- R-Zoo license/provenance evidence on 2026-05-21 added
+  `scripts/ai_eda/capture_r_zoo_license_review.py` and
+  `check_r_zoo_license_review.py`. `make
+  PYTHON=/opt/homebrew/opt/python@3.13/bin/python3.13
+  AI_EDA_RUN_ID=codex-rzoo-license-20260521 ai-eda-r-zoo-license-review
+  ai-eda-floorplanning-dataset-readiness`: PASS/PASS_BLOCKED. The review
+  records `TRAINING_ONLY_REVIEW_COMPLETE`, allows local research training and
+  CUDA handoff, and keeps release use, commercial use, model-weight release, and
+  E1 signoff claims false. Floorplanning readiness now recognizes R-Zoo
+  conversion, split/contamination evidence, and license evidence; R-Zoo's only
+  remaining floorplanning-readiness blocker is generated-floorplan quarantine
+  pending deterministic E1 replay/signoff. The Makefile and CUDA payload order
+  require this license review before the R-Zoo legality baseline can run.
 - `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-bootstrap-setup5
   ai-eda-bootstrap-setup-check`: PASS. This confirms the setup-check bootstrap
   order now captures all optimization targets before rebuilding the local RAG
@@ -2212,6 +2325,22 @@ not as:
   manifest/checker that requires distinct replay execution reports,
   non-regression on timing/DRC/LVS/antenna metrics, and at least one objective
   improvement before an E1 optimization claim can pass.
+- [x] Add a full CUDA training/evaluation matrix manifest/checker that
+  enumerates the required data, surrogate, AlphaChip-successor, inference,
+  replay, logic-synthesis, target-capture, and objective-closeout jobs, while
+  keeping large-training claims blocked until CUDA and full-dataset evidence
+  exist.
+- [x] Add explicit `--all-records` conversion modes for CircuitNet3,
+  ChiPBench-D, OpenABC-D, AIEDA iDATA, EDALearn, and Macro Placement Challenge
+  2026, require those modes in the CUDA training matrix, and include the
+  complete R-Zoo rectilinear-floorplan conversion as a required full-dataset
+  lane.
+- [x] Add AlphaChip-successor reproduction manifest/checker that blocks
+  replacement-AlphaChip claims until CUDA training/inference, all-record matrix
+  coverage, model/candidate hashes, ready replay queue, and replay comparison
+  evidence are all present.
+- [x] Add R-Zoo training-only license review evidence that allows local CUDA
+  handoff while keeping release/commercial/model-weight/E1-signoff claims false.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Replace CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters with the real

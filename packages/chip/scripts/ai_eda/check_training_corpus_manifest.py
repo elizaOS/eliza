@@ -24,6 +24,7 @@ REQUIRED_DATASETS = {
     "edalearn",
     "macro_place_challenge_2026",
     "mlcad_2023_fpga_macro",
+    "r_zoo_rectilinear_floorplan",
     "research_code_assets",
     "current_research_watchlist_records",
     "openabc_d",

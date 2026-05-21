@@ -21,6 +21,9 @@ REPLAY_EXECUTION_SCHEMA = "eliza.ai_eda.openlane_replay_execution.v1"
 REPLAY_COMPARISON_SCHEMA = "eliza.ai_eda.openlane_replay_comparison.v1"
 FULL_TRAINING_MATRIX_SCHEMA = "eliza.ai_eda.cuda_full_training_matrix.v1"
 ALPHACHIP_SUCCESSOR_SCHEMA = "eliza.ai_eda.alphachip_successor_plan.v1"
+ALPHACHIP_SUCCESSOR_REPRODUCTION_SCHEMA = (
+    "eliza.ai_eda.alphachip_successor_reproduction.v1"
+)
 
 
 def rel(path: Path) -> str:
@@ -168,6 +171,26 @@ def alphachip_successor_plan_valid(report: dict[str, Any] | None) -> tuple[bool,
     return True, status == "READY_FOR_CUDA_SCALE_TRAINING", f"status={status}"
 
 
+def alphachip_successor_reproduction_valid(
+    report: dict[str, Any] | None,
+) -> tuple[bool, bool, str]:
+    if report is None:
+        return False, False, "missing AlphaChip successor reproduction evidence"
+    if report.get("schema") != ALPHACHIP_SUCCESSOR_REPRODUCTION_SCHEMA:
+        return False, False, "schema mismatch"
+    if report.get("release_use_allowed") is not False:
+        return False, False, "release_use_allowed must be false"
+    status = report.get("status")
+    if status not in {"SUCCESSOR_REPRODUCTION_READY", "BLOCKED_REPRODUCTION_EVIDENCE"}:
+        return False, False, f"unsupported status={status}"
+    blockers = report.get("blockers")
+    if status == "BLOCKED_REPRODUCTION_EVIDENCE" and not blockers:
+        return False, False, "blocked reproduction report lacks blockers"
+    if status == "SUCCESSOR_REPRODUCTION_READY" and blockers:
+        return False, False, "ready reproduction report has blockers"
+    return True, status == "SUCCESSOR_REPRODUCTION_READY", f"status={status}"
+
+
 def replay_execution_ready(report: dict[str, Any] | None) -> tuple[bool, str]:
     if report is None:
         return False, "missing replay execution report"
@@ -271,6 +294,11 @@ def parse_args() -> argparse.Namespace:
         help="Run id for AlphaChip successor/fallback plan evidence; defaults to --run-id.",
     )
     parser.add_argument(
+        "--alphachip-successor-reproduction-run-id",
+        default=None,
+        help="Run id for AlphaChip successor reproduction evidence; defaults to --run-id.",
+    )
+    parser.add_argument(
         "--watchlist-run-id",
         default=None,
         help="Run id for current-research watchlist evidence; defaults to --run-id.",
@@ -323,6 +351,9 @@ def main() -> int:
     run_plan_safety_run_id = args.run_plan_safety_run_id or payload_run_id
     alphachip_run_id = args.alphachip_run_id or run_id
     alphachip_successor_run_id = args.alphachip_successor_run_id or run_id
+    alphachip_successor_reproduction_run_id = (
+        args.alphachip_successor_reproduction_run_id or run_id
+    )
     watchlist_run_id = args.watchlist_run_id or run_id
     replay_preflight_run_id = args.replay_preflight_run_id or run_id
     replay_prerequisites_run_id = args.replay_prerequisites_run_id or replay_preflight_run_id
@@ -357,6 +388,10 @@ def main() -> int:
     alphachip_successor_path = (
         ROOT
         / f"build/ai_eda/alphachip_successor_plan/{alphachip_successor_run_id}/alphachip_successor_plan.json"
+    )
+    alphachip_successor_reproduction_path = (
+        ROOT
+        / f"build/ai_eda/alphachip_successor_reproduction/{alphachip_successor_reproduction_run_id}/alphachip_successor_reproduction.json"
     )
     watchlist_path = (
         ROOT / f"build/ai_eda/current_research_watchlist/{watchlist_run_id}/targets_report.json"
@@ -413,6 +448,7 @@ def main() -> int:
     run_plan_safety_matrix = load_json(run_plan_safety_matrix_path)
     alphachip = load_json(alphachip_path)
     alphachip_successor = load_json(alphachip_successor_path)
+    alphachip_successor_reproduction = load_json(alphachip_successor_reproduction_path)
     watchlist = load_json(watchlist_path)
     replay = load_json(replay_path)
     replay_prerequisites = load_json(replay_prerequisites_path)
@@ -602,6 +638,22 @@ def main() -> int:
                     "Run plan lacks AlphaChip successor/fallback plan checker",
                 )
             )
+        if not has_command(run_plan, "capture_alphachip_successor_reproduction.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_alphachip_successor_reproduction",
+                    "hard",
+                    "Run plan lacks AlphaChip successor reproduction evidence capture",
+                )
+            )
+        if not has_command(run_plan, "check_alphachip_successor_reproduction.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_alphachip_successor_reproduction_checker",
+                    "hard",
+                    "Run plan lacks AlphaChip successor reproduction evidence checker",
+                )
+            )
         if not has_command(run_plan, "capture_openlane_replay_prerequisites.py"):
             blockers.append(
                 blocker(
@@ -704,6 +756,17 @@ def main() -> int:
                     "Run plan lacks AlphaChip successor/fallback plan expected output",
                 )
             )
+        if not has_output(
+            run_plan,
+            "build/ai_eda/alphachip_successor_reproduction/<run-id>/alphachip_successor_reproduction.json",
+        ):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_alphachip_successor_reproduction_output",
+                    "hard",
+                    "Run plan lacks AlphaChip successor reproduction evidence expected output",
+                )
+            )
 
     run_plan_dry_run_validated, run_plan_dry_run_detail = run_plan_execution_ready(
         run_plan_execution, run_plan_execution_run_id
@@ -763,6 +826,29 @@ def main() -> int:
                 "hard",
                 "AlphaChip successor/fallback training plan is missing or invalid",
                 f"{rel(alphachip_successor_path)}: {alphachip_successor_detail}",
+            )
+        )
+    (
+        alphachip_successor_reproduction_validated,
+        alphachip_successor_reproduced,
+        alphachip_successor_reproduction_detail,
+    ) = alphachip_successor_reproduction_valid(alphachip_successor_reproduction)
+    if not alphachip_successor_reproduction_validated:
+        blockers.append(
+            blocker(
+                "alphachip_successor_reproduction_not_validated",
+                "hard",
+                "AlphaChip successor reproduction evidence is missing or invalid",
+                f"{rel(alphachip_successor_reproduction_path)}: {alphachip_successor_reproduction_detail}",
+            )
+        )
+    elif not alphachip_successor_reproduced:
+        blockers.append(
+            blocker(
+                "alphachip_successor_reproduction_blocked",
+                "hard",
+                "AlphaChip successor reproduction evidence is recorded but not CUDA-scale ready",
+                f"{rel(alphachip_successor_reproduction_path)}: {alphachip_successor_reproduction_detail}",
             )
         )
 
@@ -981,6 +1067,7 @@ def main() -> int:
             "run_plan_safety_matrix": run_plan_safety_run_id,
             "alphachip_checkpoint": alphachip_run_id,
             "alphachip_successor_plan": alphachip_successor_run_id,
+            "alphachip_successor_reproduction": alphachip_successor_reproduction_run_id,
             "current_research_watchlist": watchlist_run_id,
             "replay_preflight": replay_preflight_run_id,
             "replay_prerequisites": replay_prerequisites_run_id,
@@ -1014,6 +1101,8 @@ def main() -> int:
             "alphachip_checkpoint_available": alphachip_available,
             "alphachip_successor_plan_validated": alphachip_successor_validated,
             "alphachip_successor_cuda_scale_ready": alphachip_successor_cuda_ready,
+            "alphachip_successor_reproduction_validated": alphachip_successor_reproduction_validated,
+            "alphachip_successor_reproduced": alphachip_successor_reproduced,
             "current_research_watchlist_captured": watchlist is not None,
             "e1_openlane_replay_ready": replay_ready,
             "openlane_replay_execution_validated": replay_execution_validated,
@@ -1037,6 +1126,7 @@ def main() -> int:
             artifact(full_training_matrix_path),
             artifact(alphachip_path),
             artifact(alphachip_successor_path),
+            artifact(alphachip_successor_reproduction_path),
             artifact(watchlist_path),
             artifact(replay_path),
             artifact(replay_prerequisites_path),

@@ -278,12 +278,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=3)
+    parser.add_argument(
+        "--all-records",
+        action="store_true",
+        help="Convert every available final case instead of the smoke sample limit.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if args.sample_limit <= 0:
+    if not args.all_records and args.sample_limit <= 0:
         raise SystemExit("--sample-limit must be positive")
     if not args.archive.exists():
         print(f"STATUS: BLOCKED ai_eda.circuitnet3 missing_archive {args.archive}")
@@ -295,7 +300,7 @@ def main() -> int:
     converted: list[dict[str, Any]] = []
     with zipfile.ZipFile(args.archive) as zip_file:
         prefixes = final_case_prefixes(zip_file)
-        selected = prefixes[: args.sample_limit]
+        selected = prefixes if args.all_records else prefixes[: args.sample_limit]
         for prefix in selected:
             converted.extend(convert_case(zip_file, prefix, out_dir, args.archive))
         report = {
@@ -309,6 +314,8 @@ def main() -> int:
             "zip_entry_count": len(zip_file.infolist()),
             "available_final_case_count": len(prefixes),
             "converted_case_count": len(selected),
+            "conversion_mode": "all_records" if args.all_records else "sample_limit",
+            "sample_limit": None if args.all_records else args.sample_limit,
             "converted_record_count": len(converted),
             "converted_records": converted,
             "next_required_gates": [

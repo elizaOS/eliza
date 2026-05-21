@@ -145,6 +145,11 @@ def parse_args() -> argparse.Namespace:
         help="AlphaChip successor/fallback plan run id; defaults to --readiness-run-id.",
     )
     parser.add_argument(
+        "--alphachip-successor-reproduction-run-id",
+        default=None,
+        help="AlphaChip successor reproduction evidence run id; defaults to --readiness-run-id.",
+    )
+    parser.add_argument(
         "--full-training-matrix-run-id",
         default=None,
         help="Full CUDA training/evaluation matrix run id; defaults to --readiness-run-id.",
@@ -167,6 +172,9 @@ def main() -> int:
     replay_comparison_run_id = args.replay_comparison_run_id or replay_execution_run_id
     alphachip_run_id = args.alphachip_run_id or readiness_run_id
     alphachip_successor_run_id = args.alphachip_successor_run_id or readiness_run_id
+    alphachip_successor_reproduction_run_id = (
+        args.alphachip_successor_reproduction_run_id or readiness_run_id
+    )
     full_training_matrix_run_id = args.full_training_matrix_run_id or readiness_run_id
 
     readiness_path = (
@@ -224,6 +232,10 @@ def main() -> int:
         ROOT
         / f"build/ai_eda/alphachip_successor_plan/{alphachip_successor_run_id}/alphachip_successor_plan.json"
     )
+    alphachip_successor_reproduction_path = (
+        ROOT
+        / f"build/ai_eda/alphachip_successor_reproduction/{alphachip_successor_reproduction_run_id}/alphachip_successor_reproduction.json"
+    )
     full_training_matrix_path = (
         ROOT
         / f"build/ai_eda/cuda_full_training_matrix/{full_training_matrix_run_id}/cuda_full_training_matrix.json"
@@ -240,6 +252,7 @@ def main() -> int:
     replay_comparison = load_json(replay_comparison_path)
     alphachip = load_json(alphachip_path)
     alphachip_successor = load_json(alphachip_successor_path)
+    alphachip_successor_reproduction = load_json(alphachip_successor_reproduction_path)
     full_training_matrix = load_json(full_training_matrix_path)
 
     requirements: list[dict[str, Any]] = []
@@ -338,18 +351,35 @@ def main() -> int:
         alphachip_successor is not None
         and alphachip_successor.get("schema") == "eliza.ai_eda.alphachip_successor_plan.v1"
     )
+    alphachip_successor_reproduced = capability(
+        readiness, "alphachip_successor_reproduced"
+    ) or (
+        alphachip_successor_reproduction is not None
+        and alphachip_successor_reproduction.get("schema")
+        == "eliza.ai_eda.alphachip_successor_reproduction.v1"
+        and alphachip_successor_reproduction.get("status") == "SUCCESSOR_REPRODUCTION_READY"
+    )
     alphachip_requirement_status = (
-        "PROVEN" if alphachip_ok else "INCOMPLETE" if alphachip_successor_validated else "BLOCKED"
+        "PROVEN"
+        if alphachip_ok or alphachip_successor_reproduced
+        else "INCOMPLETE"
+        if alphachip_successor_validated
+        else "BLOCKED"
     )
     requirements.append(
         requirement(
             "alphachip_or_successor_reproduction",
             "AlphaChip or successor model path is reproducible with checkpoint/source evidence",
             alphachip_requirement_status,
-            [alphachip_path, alphachip_successor_path, readiness_path],
+            [
+                alphachip_path,
+                alphachip_successor_path,
+                alphachip_successor_reproduction_path,
+                readiness_path,
+            ],
             "Public AlphaChip checkpoint/binary access or an equivalent reproducible successor must be available.",
             []
-            if alphachip_ok
+            if alphachip_ok or alphachip_successor_reproduced
             else [
                 "successor fallback plan is validated but AlphaChip checkpoint/binary access and CUDA-scale successor reproduction remain unproven"
             ]
@@ -448,6 +478,7 @@ def main() -> int:
             "replay_comparison": replay_comparison_run_id,
             "alphachip": alphachip_run_id,
             "alphachip_successor": alphachip_successor_run_id,
+            "alphachip_successor_reproduction": alphachip_successor_reproduction_run_id,
             "full_training_matrix": full_training_matrix_run_id,
         },
         "summary": {

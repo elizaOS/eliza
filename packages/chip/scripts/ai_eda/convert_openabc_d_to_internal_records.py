@@ -236,19 +236,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=8)
+    parser.add_argument(
+        "--all-records",
+        action="store_true",
+        help="Convert every discovered BENCH file instead of the smoke sample limit.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if args.sample_limit <= 0:
+    if not args.all_records and args.sample_limit <= 0:
         raise SystemExit("--sample-limit must be positive")
     if not args.bench_dir.exists():
         print(f"STATUS: BLOCKED ai_eda.openabc_d_conversion missing_bench_dir {args.bench_dir}")
         return 2
-    benches = sorted(
+    available_benches = sorted(
         args.bench_dir.glob("*_orig.bench"), key=lambda path: (path.stat().st_size, path.name)
-    )[: args.sample_limit]
+    )
+    benches = available_benches if args.all_records else available_benches[: args.sample_limit]
     if not benches:
         print(f"STATUS: BLOCKED ai_eda.openabc_d_conversion no_bench_files {args.bench_dir}")
         return 2
@@ -268,8 +274,10 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
         "bench_dir": rel(args.bench_dir),
-        "available_bench_count": len(list(args.bench_dir.glob("*_orig.bench"))),
+        "available_bench_count": len(available_benches),
         "converted_bench_count": len(benches),
+        "conversion_mode": "all_records" if args.all_records else "sample_limit",
+        "sample_limit": None if args.all_records else args.sample_limit,
         "converted_record_count": len(converted),
         "converted_records": converted,
         "next_required_gates": [

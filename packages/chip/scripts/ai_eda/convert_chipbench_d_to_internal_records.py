@@ -305,13 +305,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument("--run-id", default="validation")
     parser.add_argument("--sample-limit", type=int, default=3)
+    parser.add_argument(
+        "--all-records",
+        action="store_true",
+        help="Convert every discovered case unless --case filters are provided.",
+    )
     parser.add_argument("--case", action="append", default=[])
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if args.sample_limit <= 0:
+    if not args.all_records and args.sample_limit <= 0:
         raise SystemExit("--sample-limit must be positive")
     if not args.payload.exists():
         print(f"STATUS: BLOCKED ai_eda.chipbench_d missing_payload {args.payload}")
@@ -324,7 +329,7 @@ def main() -> int:
         if missing:
             raise SystemExit(f"missing ChiPBench-D cases: {', '.join(missing)}")
     else:
-        selected = available[: args.sample_limit]
+        selected = available if args.all_records else available[: args.sample_limit]
     out_dir = args.out_root / args.run_id / "records"
     out_dir.mkdir(parents=True, exist_ok=True)
     for stale_record in out_dir.glob("chipbench-d-*.json"):
@@ -340,6 +345,8 @@ def main() -> int:
         "payload": rel(args.payload),
         "available_case_count": len(available),
         "converted_case_count": len(selected),
+        "conversion_mode": "all_records" if args.all_records and not args.case else "case_filter" if args.case else "sample_limit",
+        "sample_limit": None if args.all_records or args.case else args.sample_limit,
         "record_count": len(converted),
         "converted": converted,
         "policy": {
