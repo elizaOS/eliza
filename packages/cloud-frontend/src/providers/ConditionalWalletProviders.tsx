@@ -98,8 +98,32 @@ export function ConditionalWalletProviders({
   }
 
   return (
-    <Suspense fallback={<div aria-busy="true" className="min-h-screen" />}>
-      <LazyStewardWalletProviders>{children}</LazyStewardWalletProviders>
-    </Suspense>
+    <ChunkLoadErrorBoundary
+      fallback={
+        <div className="flex min-h-screen items-center justify-center p-6 text-center text-sm text-muted-foreground">
+          <div>
+            <p>Failed to load the wallet module.</p>
+            <p className="mt-2">
+              <button
+                className="underline"
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.sessionStorage.removeItem(CHUNK_RELOAD_FLAG);
+                    window.location.reload();
+                  }
+                }}
+                type="button"
+              >
+                Reload page
+              </button>
+            </p>
+          </div>
+        </div>
+      }
+    >
+      <Suspense fallback={<div aria-busy="true" className="min-h-screen" />}>
+        <LazyStewardWalletProviders>{children}</LazyStewardWalletProviders>
+      </Suspense>
+    </ChunkLoadErrorBoundary>
   );
 }

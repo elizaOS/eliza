@@ -38,7 +38,7 @@ export default function HeroSection() {
           <button
             type="button"
             onClick={launchEliza}
-            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-[3px] border border-black bg-black px-8 py-4 text-base font-medium text-white transition-colors hover:bg-white hover:text-black sm:text-lg"
+            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-[3px] bg-black px-8 py-4 text-base font-medium text-white transition-colors hover:bg-white hover:text-black sm:text-lg"
           >
             {t("cloud.landing.launchEliza", { defaultValue: "Launch Eliza" })}
             <ArrowRight className="h-5 w-5" />
