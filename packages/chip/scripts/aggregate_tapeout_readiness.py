@@ -362,6 +362,13 @@ GATES: tuple[GateSpec, ...] = (
         subsystem="platform",
         tier="spec",
     ),
+    GateSpec(
+        name="chip-topology-pkg-sync",
+        script="scripts/gen_e1_topology_pkg.py",
+        subsystem="platform",
+        tier="spec",
+        args=("--check",),
+    ),
     # ---- BSP / Linux / Android ---------------------------------------------
     GateSpec(
         name="software-bsp-scaffold-check",
