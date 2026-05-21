@@ -1,0 +1,119 @@
+# config/binary - options for live-build(7), binary stage
+
+# Set image type
+LB_IMAGE_TYPE="iso-hybrid"
+
+# Set image filesystem
+LB_BINARY_FILESYSTEM="fat32"
+
+# Set apt/aptitude generic indices
+LB_APT_INDICES="true"
+
+# Set boot parameters
+LB_BOOTAPPEND_LIVE="boot=live components quiet splash"
+
+# Set boot parameters
+LB_BOOTAPPEND_INSTALL=""
+
+# Set boot parameters
+LB_BOOTAPPEND_LIVE_FAILSAFE="boot=live components memtest noapic noapm nodma nomce nosmp nosplash vga=788"
+
+# Set BIOS bootloader
+LB_BOOTLOADER_BIOS="grub-pc"
+
+# Set EFI bootloader
+LB_BOOTLOADER_EFI="grub-efi"
+
+# Set bootloaders
+LB_BOOTLOADERS="grub-efi grub-pc"
+
+# Set checksums
+LB_CHECKSUMS="sha256"
+
+# Set compression
+LB_COMPRESSION="none"
+
+# Support dm-verity on rootfs
+LB_DM_VERITY=""
+
+# Support FEC on dm-verity rootfs
+LB_DM_VERITY_FEC_ROOTS=""
+
+# Set sign script for roothash for dm-verity rootfs
+LB_DM_VERITY_SIGN=""
+
+# Set zsync
+LB_ZSYNC="false"
+
+# Control if we build binary images chrooted
+# NEVER, *EVER*, *E*V*E*R* SET THIS OPTION to false.
+LB_BUILD_WITH_CHROOT="true"
+
+# Set debian-installer
+LB_DEBIAN_INSTALLER="none"
+
+# Set debian-installer suite
+LB_DEBIAN_INSTALLER_DISTRIBUTION="trixie"
+
+# Set debian-installer preseed filename/url
+LB_DEBIAN_INSTALLER_PRESEEDFILE=""
+
+# Toggle use of GUI debian-installer
+LB_DEBIAN_INSTALLER_GUI="true"
+
+# Set hdd label
+LB_HDD_LABEL="DEBIAN_LIVE"
+
+# Set hdd filesystem size
+LB_HDD_SIZE="auto"
+
+# Set start of partition for the hdd target for BIOSes that expect a specific boot partition start (e.g. "63s"). If empty, use optimal layout.
+LB_HDD_PARTITION_START=""
+
+# Set iso author
+LB_ISO_APPLICATION="Debian Live"
+
+# Set iso preparer
+LB_ISO_PREPARER="live-build @LB_VERSION@; https://salsa.debian.org/live-team/live-build"
+
+# Set iso publisher
+LB_ISO_PUBLISHER="Debian Live project; https://wiki.debian.org/DebianLive; debian-live@lists.debian.org"
+
+# Set iso volume (max 32 chars)
+LB_ISO_VOLUME="Debian trixie @ISOVOLUME_TS@"
+
+# Set jffs2 eraseblock size
+LB_JFFS2_ERASEBLOCK=""
+
+# Set memtest
+LB_MEMTEST="none"
+
+# Set loadlin
+LB_LOADLIN="false"
+
+# Set win32-loader
+LB_WIN32_LOADER="false"
+
+# Set net tarball
+LB_NET_TARBALL="true"
+
+# Set onie
+LB_ONIE="false"
+
+# Set onie additional kernel cmdline options
+LB_ONIE_KERNEL_CMDLINE=""
+
+# Set inclusion of firmware packages in debian-installer
+LB_FIRMWARE_BINARY="true"
+
+# Set inclusion of firmware packages in the live image
+LB_FIRMWARE_CHROOT="true"
+
+# Set swap file path
+LB_SWAP_FILE_PATH=""
+
+# Set swap file size
+LB_SWAP_FILE_SIZE="512"
+
+# Enable/disable UEFI secure boot support
+LB_UEFI_SECURE_BOOT="disable"

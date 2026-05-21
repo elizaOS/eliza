@@ -1,0 +1,76 @@
+# config/bootstrap - options for live-build(7), bootstrap stage
+
+# Select architecture to use
+LB_ARCHITECTURE="amd64"
+
+# Select distribution to use
+LB_DISTRIBUTION="trixie"
+
+# Select parent distribution to use
+LB_PARENT_DISTRIBUTION=""
+
+# Select distribution to use in the chroot
+LB_DISTRIBUTION_CHROOT="trixie"
+
+# Select parent distribution to use in the chroot
+LB_PARENT_DISTRIBUTION_CHROOT="trixie"
+
+# Select distribution to use in the final image
+LB_DISTRIBUTION_BINARY="trixie"
+
+# Select parent distribution to use in the final image
+LB_PARENT_DISTRIBUTION_BINARY="trixie"
+
+# Select parent distribution for debian-installer to use
+LB_PARENT_DEBIAN_INSTALLER_DISTRIBUTION="trixie"
+
+# Select archive areas to use
+LB_ARCHIVE_AREAS="main contrib non-free-firmware"
+
+# Select parent archive areas to use
+LB_PARENT_ARCHIVE_AREAS="main contrib non-free-firmware"
+
+# Set parent mirror to bootstrap from
+LB_PARENT_MIRROR_BOOTSTRAP="http://deb.debian.org/debian/"
+
+# Set parent mirror to fetch packages from
+LB_PARENT_MIRROR_CHROOT="http://deb.debian.org/debian/"
+
+# Set security parent mirror to fetch packages from
+LB_PARENT_MIRROR_CHROOT_SECURITY="http://security.debian.org/"
+
+# Set parent mirror which ends up in the image
+LB_PARENT_MIRROR_BINARY="http://deb.debian.org/debian/"
+
+# Set security parent mirror which ends up in the image
+LB_PARENT_MIRROR_BINARY_SECURITY="http://security.debian.org/"
+
+# Set debian-installer parent mirror
+LB_PARENT_MIRROR_DEBIAN_INSTALLER="http://deb.debian.org/debian/"
+
+# Set mirror to bootstrap from
+LB_MIRROR_BOOTSTRAP="http://deb.debian.org/debian/"
+
+# Set mirror to fetch packages from
+LB_MIRROR_CHROOT="http://deb.debian.org/debian/"
+
+# Set security mirror to fetch packages from
+LB_MIRROR_CHROOT_SECURITY="http://security.debian.org/"
+
+# Set mirror which ends up in the image
+LB_MIRROR_BINARY="http://deb.debian.org/debian/"
+
+# Set security mirror which ends up in the image
+LB_MIRROR_BINARY_SECURITY="http://security.debian.org/"
+
+# Set debian-installer mirror
+LB_MIRROR_DEBIAN_INSTALLER="http://deb.debian.org/debian/"
+
+# Set architectures to use foreign bootstrap
+LB_BOOTSTRAP_QEMU_ARCHITECTURE=""
+
+# Set packages to exclude during foreign bootstrap
+LB_BOOTSTRAP_QEMU_EXCLUDE=""
+
+# Set static qemu binary for foreign bootstrap
+LB_BOOTSTRAP_QEMU_STATIC=""

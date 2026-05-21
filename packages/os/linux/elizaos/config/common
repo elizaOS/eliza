@@ -1,0 +1,102 @@
+# config/common - common options for live-build(7)
+
+# Version of live-build used to build config (config format version)
+LB_CONFIGURATION_VERSION="20250505+deb13u1"
+
+# Set package manager
+LB_APT="apt"
+
+# Set proxy for HTTP connections
+LB_APT_HTTP_PROXY=""
+
+# Set apt/aptitude pipeline depth
+LB_APT_PIPELINE=""
+
+# Set apt/aptitude recommends
+LB_APT_RECOMMENDS="false"
+
+# Set apt/aptitude security
+LB_APT_SECURE="true"
+
+# Set apt/aptitude source entries in sources.list
+LB_APT_SOURCE_ARCHIVES="true"
+
+# Control cache
+LB_CACHE="true"
+
+# Control if downloaded package indices should be cached
+LB_CACHE_INDICES="false"
+
+# Control if downloaded packages files should be cached
+LB_CACHE_PACKAGES="true"
+
+# Control if completed stages should be cached
+LB_CACHE_STAGES="bootstrap"
+
+# Set debconf(1) frontend to use
+LB_DEBCONF_FRONTEND="noninteractive"
+
+# Set debconf(1) priority to use
+LB_DEBCONF_PRIORITY="critical"
+
+# Set initramfs hook
+LB_INITRAMFS="live-boot"
+
+# Set initramfs compression
+LB_INITRAMFS_COMPRESSION="gzip"
+
+# Set init system
+LB_INITSYSTEM="systemd"
+
+# Set distribution mode
+LB_MODE="debian"
+
+# Set system type
+LB_SYSTEM="live"
+
+# Set base name of the image
+LB_IMAGE_NAME="live-image"
+
+# Set options to use with apt
+APT_OPTIONS="--yes -o Acquire::Retries=5"
+
+# Set options to use with aptitude
+APTITUDE_OPTIONS="--assume-yes -o Acquire::Retries=5"
+
+# Set options to use with debootstrap
+DEBOOTSTRAP_OPTIONS=""
+
+# Set script to use with debootstrap
+DEBOOTSTRAP_SCRIPT=""
+
+# Set options to use with gzip
+GZIP_OPTIONS="-6 --rsyncable"
+
+# Enable UTC timestamps
+LB_UTC_TIME="false"
+
+# live-build options
+
+# Enable breakpoints
+# If set here, overrides the command line option
+#_BREAKPOINTS="false"
+
+# Enable debug
+# If set here, overrides the command line option
+#_DEBUG="false"
+
+# Enable color
+# If set here, overrides the command line option
+#_COLOR="auto"
+
+# Enable force
+# If set here, overrides the command line option
+#_FORCE="false"
+
+# Enable quiet
+# If set here, overrides the command line option
+#_QUIET="false"
+
+# Enable verbose
+# If set here, overrides the command line option
+#_VERBOSE="false"
