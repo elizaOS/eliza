@@ -390,13 +390,28 @@ Current local validation on the 128 GiB M4 host:
   macro-placement dataset now consumes internal fixtures, TILOS MacroPlacement,
   bounded ChiPBench-D, and E1 softmacro cases by default, so the restored
   ChiPBench-D macro target labels are included in train/validation/test JSONL
-  preparation instead of remaining a detached conversion artifact.
+  preparation instead of remaining a detached conversion artifact. Current
+  validation emits 2,780 samples across 22 labeled cases with split counts
+  train=2,340, validation=200, and test=240; 361 train samples come from the
+  bounded ChiPBench-D conversion.
+- `make ai-eda-macro-placement-supervised-train`: PASS_WITH_BLOCKED_CASES. The
+  dependency-free supervised mean baseline trains on the enlarged 2,780-sample
+  dataset and emits 18 quarantined macro-placement candidates, including 3
+  ChiPBench-D-backed candidates; 6 cases are blocked by missing macros or
+  pre-replay geometry checks.
+- `make ai-eda-macro-placement-supervised-replay-plan`: PASS_WITH_BLOCKED_REPLAY.
+  The replay planner now resolves ChipBench-D candidate placement cases too and
+  emits replay bundles/tool-action dry runs for 18 supervised candidates, with
+  ready=0 and blocked=18 until deterministic OpenLane/OpenROAD replay exists.
 - `make ai-eda-openabc-d-convert`: PASS. The bounded local sample converts 8
   restored OpenABC-D BENCH logic networks into 24 internal
   `eda.design_bundle.v1`, `eda.graph_sample.v1`, and `eda.flow_run.v1`
   records for synthesis-policy pretraining. The records remain public
   benchmark training data only and require leakage review plus E1 equivalence
-  replay before they can influence a chip change.
+  replay before they can influence a chip change. A dedicated checker now
+  validates exact report-to-record inventory, BENCH source hashes, positive
+  graph gate/edge counts, flow blockers, and the training-only/no-E1-signoff
+  claim boundary.
 - Verify-only payload checks now PASS for restored `chipbench-d`,
   `circuitnet3`, `aieda-idata`, `chipdiffusion`, `openabc-d`, and
   `timeloop-accelergy`. `openroad-flow-scripts` is intentionally BLOCKED
@@ -711,6 +726,9 @@ Implemented schema foundation:
   OpenABC-D BENCH logic networks into graph and flow records for
   synthesis-policy pretraining, with explicit blockers for leakage review,
   sequence-label extraction, E1 replay, and equivalence checking.
+  `scripts/ai_eda/check_openabc_d_conversion.py` validates the converted graph
+  inventory and public-benchmark quarantine before logic-synthesis policy work
+  consumes it.
 - `scripts/ai_eda/convert_e1_openlane_to_internal_records.py` converts the
   checked-in E1 SKY130 OpenLane config into real local `eda.design_bundle.v1`,
   `eda.placement_case.v1`, and blocked `eda.flow_run.v1` records. The current

@@ -113,21 +113,27 @@ async function seedAuthed(page: Page) {
 
 async function settle(page: Page) {
   await page.evaluate(() => document.fonts.ready);
-  // Wait for at least one heading or substantive text content to render so
-  // the screenshot captures the page, not the empty loading background.
+  // Wait for substantive content. Leaderboard renders its primary UI
+  // behind [aria-label="Eliza"]; other routes have h1/h2/buttons earlier.
   await page
-    .waitForSelector("h1, h2, button, [data-marquee]", { timeout: 10_000 })
+    .waitForSelector('h1, h2, button, [data-marquee], [aria-label="Eliza"]', {
+      timeout: 10_000,
+    })
     .catch(() => {});
   await page
     .waitForLoadState("networkidle", { timeout: 10_000 })
     .catch(() => {});
-  await page.waitForTimeout(400);
+  // Leaderboard's hero animation can take an extra beat after networkidle
+  // before the interactive figure is positioned. A brief extra settle here
+  // catches that without slowing the rest of the suite measurably.
+  await page.waitForTimeout(600);
 }
 
 function dynamicMask(page: Page) {
+  // Mask only genuinely-non-deterministic UI. `<video>` is intentionally
+  // *not* masked — its poster image is the brand visual on the marketing
+  // hero and Playwright's animations:"disabled" already pauses playback.
   return [
-    page.locator("video"),
-    page.locator('[data-testid="cloud-video"]'),
     page.locator(".animate-pulse"),
     page.locator(".animate-spin"),
     page.locator("[data-marquee]"),

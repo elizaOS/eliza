@@ -250,6 +250,8 @@ def main() -> int:
 
     out_dir = args.out_root / args.run_id / "records"
     out_dir.mkdir(parents=True, exist_ok=True)
+    for stale_record in out_dir.glob("openabc-d-*.json"):
+        stale_record.unlink()
     converted: list[dict[str, Any]] = []
     for bench in benches:
         converted.extend(convert_bench(bench, out_dir))
