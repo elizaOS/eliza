@@ -50,10 +50,20 @@ const requireUser =
     (c: unknown) => Promise<{ id: string; wallet_address: string | null }>
   >();
 
+const requireUserOrApiKeyWithOrg =
+  mock<
+    (c: unknown) => Promise<{
+      id: string;
+      organization_id: string;
+      organization: { id: string; name: string; is_active: boolean };
+    }>
+  >();
+
 const buildRedisClient = mock<(env: unknown) => unknown>();
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUser,
+  requireUserOrApiKeyWithOrg,
 }));
 
 mock.module("@/lib/cache/redis-factory", () => ({
@@ -117,6 +127,7 @@ afterEach(() => {
   getByWalletAddress.mockReset();
   usersServiceUpdate.mockReset();
   requireUser.mockReset();
+  requireUserOrApiKeyWithOrg.mockReset();
   buildRedisClient.mockReset();
 });
 
