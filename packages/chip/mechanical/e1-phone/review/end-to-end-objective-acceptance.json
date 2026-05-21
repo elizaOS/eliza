@@ -394,7 +394,7 @@
     {
       "id": "tooling_mold_flow_and_toolmaker_signoff",
       "status": "blocked_no_toolmaker_signoff",
-      "source_status": "mold_flow_results_pass",
+      "source_status": "blocked_no_mold_flow_results",
       "pass": false,
       "required_evidence": [
         "mold-flow-acceptance.json",

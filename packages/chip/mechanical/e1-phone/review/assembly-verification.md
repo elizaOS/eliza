@@ -39,7 +39,7 @@ Engine: OCP.BRepExtrema_DistShapeShape + BRepAlgoAPI_Common (swept insertion). E
 
 ## Fastener Access
 
-Driver / snap-platen approach column (toward +Z, out the open back) checked for obstruction before side-frame closure.
+Driver / snap-platen approach column (toward -Z, from the up-facing back) checked for obstruction before side-frame closure.
 
 | Fastener | Accessible | Obstructions |
 |---|---|---|

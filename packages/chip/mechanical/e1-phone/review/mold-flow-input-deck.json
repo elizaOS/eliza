@@ -1,21 +1,19 @@
 {
-  "claim_boundary": "CAD-derived mold-flow input deck for toolmaker/simulation setup. This is not a returned Moldflow/SolidWorks Plastics result.",
+  "claim_boundary": "CAD-derived mold-flow input deck for a toolmaker or simulation package; not a returned Moldflow/SolidWorks Plastics/Moldex3D result.",
   "status": "mold_flow_input_deck_ready",
   "geometry_sources": {
     "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-    "mold_tooling_glb": "mechanical/e1-phone/out/e1-phone-mold-tooling.glb",
-    "tooling_render": "mechanical/e1-phone/review/mold_tooling.png",
-    "tooling_manifest": "mechanical/e1-phone/out/tooling-manifest.json"
+    "tooling_glb": "mechanical/e1-phone/out/e1-phone-mold-tooling.glb",
+    "tooling_render": "mechanical/e1-phone/review/mold_tooling.png"
   },
   "material_request": {
     "family": "PC+ABS or glass-filled PC/ABS, molded orange",
-    "color": "molded safety orange",
+    "color": "hard safety orange",
     "required_supplier_data": [
-      "resin grade and lot",
-      "PVT curve",
-      "viscosity curve",
-      "shrink tensor or isotropic shrink table",
-      "recommended drying and processing window"
+      "viscosity_curve",
+      "pvT_data",
+      "shrinkage_tensor",
+      "recommended_melt_and_mold_temperature"
     ]
   },
   "nominal_process_window": {
@@ -30,52 +28,13 @@
     ],
     "drying": "Dry PC+ABS per resin datasheet before molding; record dryer dew point and residence time.",
     "pack_hold": "Start with 95-99% fill transfer, stepped pack/hold DOE, and gate-freeze study.",
-    "venting": "Modeled vents at end-of-fill corners, camera/window, USB saddle, acoustic ports, and snap-hook roots; toolmaker must tune vent depth/land to resin and flash limits.",
+    "venting": "Add vents at end-of-fill around top corners, camera window, USB saddle, and snap-hook roots.",
     "cosmetic_controls": [
       "Orange color plaque approval before tool texture freeze.",
       "Gate vestige and blush review on first shots under production lighting.",
       "Texture-depth/draft review before any hard-tool steel commitment."
     ]
   },
-  "mesh_request": {
-    "shell_mesh_target_mm": 1.2,
-    "local_refinement_mm": 0.35,
-    "local_refinement_regions": [
-      "USB-C saddle and drip lip",
-      "front glass bonding ledge",
-      "rear camera cover land",
-      "snap-hook roots",
-      "screw bosses and battery ribs",
-      "speaker and microphone aperture fields"
-    ],
-    "minimum_layers_through_wall": 5
-  },
-  "injection_strategy": {
-    "primary": "two submarine gates into back cover long edge, fan gate alternate for color consistency",
-    "runner_diameter_mm": 2.2,
-    "sprue_diameter_mm": 4.0,
-    "gate_thickness_mm": 0.85,
-    "alternate_to_quote": "single fan gate into non-cosmetic back-shell edge if dual submarine gates create orange streak/blush or unbalanced fill"
-  },
-  "venting_strategy": {
-    "modeled_vent_slot_count": 10,
-    "vent_slot_depth_mm": 0.04,
-    "vent_slot_land_mm": 0.8,
-    "critical_air_trap_regions": [
-      "end-of-fill top and bottom shell corners",
-      "rear camera window land",
-      "USB-C saddle and bottom acoustic apertures",
-      "snap-hook roots",
-      "side button labyrinth rails"
-    ]
-  },
-  "cosmetic_keepout_surfaces": [
-    "front orange rail around bonded black glass",
-    "back hero orange surface",
-    "rear camera cover land",
-    "USB-C lip and bottom port field",
-    "side button caps and side rail"
-  ],
   "required_outputs": [
     "fill_pressure_at_vp_transfer_mpa",
     "clamp_tonnage_margin",
