@@ -1,3 +1,6 @@
+# riscv64 kernel and bootloader. The shared GNOME desktop + plymouth + kiosk
+# browser live in elizaos-common.list.chroot, giving riscv64 desktop parity.
+# No CPU microcode/shim-signed (those are amd64/arm64 firmware-specific).
 linux-image-riscv64
 grub-efi-riscv64-bin
 u-boot-menu

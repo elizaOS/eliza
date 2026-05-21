@@ -36,6 +36,11 @@ MIN_ISO_BYTES="${ELIZAOS_MIN_ISO_BYTES:-209715200}"
 
 mkdir -p "${OUT}"
 
+if ! command -v lb >/dev/null 2>&1; then
+    echo "ERROR: live-build (lb) not found on PATH. Run inside the builder container." >&2
+    exit 1
+fi
+
 ensure_foreign_binfmt() {
     case "${ARCH}" in
         amd64)
@@ -109,6 +114,180 @@ ensure_foreign_binfmt() {
     fi
 }
 
+patch_live_build_riscv64_grub_efi() {
+    if [ "${ARCH}" != "riscv64" ]; then
+        return 0
+    fi
+
+    GRUB_EFI_SCRIPT="/usr/lib/live/build/binary_grub-efi"
+    if [ ! -w "${GRUB_EFI_SCRIPT}" ]; then
+        echo "ERROR: cannot patch ${GRUB_EFI_SCRIPT}; builder image is not writable." >&2
+        exit 66
+    fi
+    if grep -q 'grub-efi-riscv64-bin' "${GRUB_EFI_SCRIPT}"; then
+        return 0
+    fi
+
+    echo "    patching live-build grub-efi support for riscv64..."
+    python3 - "${GRUB_EFI_SCRIPT}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+
+replacements = [
+    (
+        '\tarmhf)\n'
+        '\t\tCheck_package chroot /usr/lib/grub/arm-efi/configfile.mod grub-efi-arm-bin\n'
+        '\t\t;;\n',
+        '\tarmhf)\n'
+        '\t\tCheck_package chroot /usr/lib/grub/arm-efi/configfile.mod grub-efi-arm-bin\n'
+        '\t\t;;\n'
+        '\triscv64)\n'
+        '\t\tCheck_package chroot /usr/lib/grub/riscv64-efi/configfile.mod grub-efi-riscv64-bin\n'
+        '\t\t;;\n',
+    ),
+    (
+        '\tarmhf)\n'
+        '\t\t_SB_EFI_PLATFORM="arm"\n'
+        '\t\t_SB_EFI_NAME="arm"\n'
+        '\t\t_SB_EFI_DEB="arm"\n'
+        '\t\t;;\n',
+        '\tarmhf)\n'
+        '\t\t_SB_EFI_PLATFORM="arm"\n'
+        '\t\t_SB_EFI_NAME="arm"\n'
+        '\t\t_SB_EFI_DEB="arm"\n'
+        '\t\t;;\n'
+        '\triscv64)\n'
+        '\t\t_SB_EFI_PLATFORM="riscv64"\n'
+        '\t\t_SB_EFI_NAME="riscv64"\n'
+        '\t\t_SB_EFI_DEB="riscv64"\n'
+        '\t\t;;\n',
+    ),
+    (
+        'binary/boot/grub/arm64-efi binary/boot/grub/arm-efi',
+        'binary/boot/grub/arm64-efi binary/boot/grub/riscv64-efi binary/boot/grub/arm-efi',
+    ),
+    (
+        '\tarmhf)\n'
+        '\t\tgen_efi_boot_img "arm-efi" "arm" "debian-live/arm"\n'
+        '\t\tPATH="\\${PRE_EFI_IMAGE_PATH}"\n'
+        '\t\t;;\n',
+        '\tarmhf)\n'
+        '\t\tgen_efi_boot_img "arm-efi" "arm" "debian-live/arm"\n'
+        '\t\tPATH="\\${PRE_EFI_IMAGE_PATH}"\n'
+        '\t\t;;\n'
+        '\triscv64)\n'
+        '\t\tgen_efi_boot_img "riscv64-efi" "riscv64" "debian-live/riscv64"\n'
+        '\t\tPATH="\\${PRE_EFI_IMAGE_PATH}"\n'
+        '\t\t;;\n',
+    ),
+    (
+        'rm -rf chroot/grub-efi-temp-arm-efi\n',
+        'rm -rf chroot/grub-efi-temp-arm-efi\n'
+        'rm -rf chroot/grub-efi-temp-riscv64-efi\n',
+    ),
+]
+
+for old, new in replacements:
+    if old not in text:
+        raise SystemExit(f"live-build riscv64 grub-efi patch anchor missing: {old!r}")
+    text = text.replace(old, new, 1)
+
+path.write_text(text)
+PY
+
+    if ! grep -q 'gen_efi_boot_img "riscv64-efi" "riscv64"' "${GRUB_EFI_SCRIPT}"; then
+        echo "ERROR: failed to patch live-build riscv64 grub-efi support." >&2
+        exit 66
+    fi
+}
+
+patch_debootstrap_curl_downloader() {
+    FUNCTIONS="/usr/share/debootstrap/functions"
+    if [ ! -w "${FUNCTIONS}" ]; then
+        echo "ERROR: cannot patch ${FUNCTIONS}; builder image is not writable." >&2
+        exit 67
+    fi
+    if grep -q 'elizaOS curl downloader patch' "${FUNCTIONS}"; then
+        return 0
+    fi
+
+    echo "    patching debootstrap downloader to use curl retries..."
+    python3 - "${FUNCTIONS}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = '''\telif [ "${from#http://}" != "$from" ] || [ "${from#https://}" != "$from" ] || [ "${from#ftp://}" != "$from" ]; then
+\t\t# http/https/ftp mirror
+\t\tif wgetprogress ${CHECKCERTIF:+"$CHECKCERTIF"} ${CERTIFICATE:+"$CERTIFICATE"} ${PRIVATEKEY:+"$PRIVATEKEY"} -O "$dest" "$from"; then
+\t\t\treturn 0
+\t\telse
+\t\t\trm -f "$dest"
+\t\t\treturn 1
+\t\tfi
+'''
+new = '''\telif [ "${from#http://}" != "$from" ] || [ "${from#https://}" != "$from" ] || [ "${from#ftp://}" != "$from" ]; then
+\t\t# elizaOS curl downloader patch: wget intermittently returned corrupt
+\t\t# partial .deb payloads in this builder environment.
+\t\tif command -v curl >/dev/null 2>&1 && curl --silent --show-error --fail --location --retry 12 --retry-all-errors --connect-timeout 20 --output "$dest" "$from"; then
+\t\t\treturn 0
+\t\telif wgetprogress ${CHECKCERTIF:+"$CHECKCERTIF"} ${CERTIFICATE:+"$CERTIFICATE"} ${PRIVATEKEY:+"$PRIVATEKEY"} -O "$dest" "$from"; then
+\t\t\treturn 0
+\t\telse
+\t\t\trm -f "$dest"
+\t\t\treturn 1
+\t\tfi
+'''
+if old not in text:
+    raise SystemExit("debootstrap downloader patch anchor missing")
+path.write_text(text.replace(old, new, 1))
+PY
+}
+
+patch_debootstrap_foreign_dpkg_io() {
+    if [ "${ARCH}" = "amd64" ]; then
+        return 0
+    fi
+
+    SCRIPT="/usr/share/debootstrap/scripts/debian-common"
+    if [ ! -w "${SCRIPT}" ]; then
+        echo "ERROR: cannot patch ${SCRIPT}; builder image is not writable." >&2
+        exit 68
+    fi
+    if grep -q 'elizaOS foreign dpkg unsafe-io patch' "${SCRIPT}"; then
+        return 0
+    fi
+
+    echo "    patching foreign debootstrap dpkg unpack I/O..."
+    python3 - "${SCRIPT}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace(
+    "dpkg --status-fd 8 --force-depends --unpack $(debfor $required)",
+    "dpkg --status-fd 8 --force-depends --force-unsafe-io --unpack $(debfor $required)",
+    1,
+)
+text = text.replace(
+    "dpkg --status-fd 8 --force-overwrite --force-confold --skip-same-version --unpack $(debfor $base)",
+    "dpkg --status-fd 8 --force-overwrite --force-confold --force-unsafe-io --skip-same-version --unpack $(debfor $base)",
+    1,
+)
+if "--force-depends --force-unsafe-io --unpack" not in text:
+    raise SystemExit("debootstrap required dpkg unsafe-io patch anchor missing")
+if "--force-confold --force-unsafe-io --skip-same-version --unpack" not in text:
+    raise SystemExit("debootstrap base dpkg unsafe-io patch anchor missing")
+text += "\n# elizaOS foreign dpkg unsafe-io patch\n"
+path.write_text(text)
+PY
+}
+
 # Clear stale live-build working state from any prior/interrupted run so each
 # build starts from a clean tree (cache/ is kept for download speed). Runs as
 # root here, so it can remove the root-owned chroot from earlier runs.
@@ -116,6 +295,7 @@ rm -rf "${HERE}/.build" "${HERE}/binary" "${HERE}/chroot" \
     "${HERE}/config/binary" "${HERE}/config/bootstrap" "${HERE}/config/chroot" \
     "${HERE}/config/common" "${HERE}/config/source" \
     "${HERE}"/chroot.* "${HERE}"/binary.* "${HERE}"/live-image-* 2>/dev/null || true
+rm -f "${HERE}/.lock"
 
 echo "=== elizaOS Linux build ==="
 echo "    arch:        ${ARCH}"
@@ -124,16 +304,15 @@ echo "    output dir:  ${OUT}"
 echo "    build ts:    ${BUILD_TS}"
 
 ensure_foreign_binfmt
+patch_debootstrap_curl_downloader
+patch_debootstrap_foreign_dpkg_io
+patch_live_build_riscv64_grub_efi
 
 # ── Step 1: lb config ────────────────────────────────────────────────
 echo
 echo "--- step 1/5: lb config ---"
-if ! command -v lb >/dev/null 2>&1; then
-    echo "ERROR: live-build (lb) not found on PATH. Run inside the builder container." >&2
-    exit 1
-fi
-
 ELIZAOS_ARCH="${ARCH}" "${HERE}/auto/config"
+rm -f "${HERE}/.lock"
 
 # Compose the secure hardening overlay on top of the default config.
 if [ "${PROFILE}" = "secure" ]; then

@@ -31,6 +31,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         mtools \
         dosfstools \
         qemu-user-static \
+        qemu-system-misc \
+        qemu-efi-riscv64 \
         binfmt-support \
         python3 \
         python3-yaml \

@@ -5,6 +5,7 @@
 #   make build ARCH=arm64
 #   make build ARCH=riscv64
 #   make build ARCH=amd64 PROFILE=secure
+#   make build ARCH=riscv64 DEBIAN_MIRROR=https://ftp.debian.org/debian
 #
 #   make qemu-boot ARCH=riscv64
 #   make release-check-strict ARCH=amd64
@@ -12,6 +13,7 @@
 
 ARCH    ?= amd64
 PROFILE ?= default
+DEBIAN_MIRROR ?= https://mirrors.kernel.org/debian
 HERE    := $(shell pwd)
 OUT     := $(HERE)/out
 
@@ -39,8 +41,10 @@ builder:
 build: builder check-arch
 	flock "$(HERE)/.build.lock" \
 	    docker run --rm --privileged \
+	        --network host \
 	        -e ELIZAOS_ARCH=$(ARCH) \
 	        -e ELIZAOS_PROFILE=$(PROFILE) \
+	        -e ELIZAOS_DEBIAN_MIRROR="$(DEBIAN_MIRROR)" \
 	        -v "$(HERE):/build" \
 	        -v "$(OUT):/out" \
 	        elizaos-linux-builder

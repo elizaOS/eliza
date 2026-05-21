@@ -1,23 +1,6 @@
+# arm64 kernel and bootloader. The shared GNOME desktop + plymouth + kiosk
+# browser live in elizaos-common.list.chroot.
 linux-image-arm64
 grub-efi-arm64-bin
 grub-efi-arm64-signed
 shim-signed
-
-# Desktop session (GNOME, minimal seed).
-xorg
-gdm3
-gnome-session
-gnome-shell
-gnome-terminal
-gnome-control-center
-nautilus
-network-manager
-network-manager-gnome
-pulseaudio
-pipewire
-pipewire-pulse
-
-# Boot splash.
-plymouth
-plymouth-themes
-plymouth-label

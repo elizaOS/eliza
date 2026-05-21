@@ -26,3 +26,30 @@ pciutils
 usbutils
 htop
 strace
+
+# Desktop session (GNOME, minimal seed). Arch-neutral: Debian trixie ships
+# the GNOME stack for amd64, arm64, and riscv64 (release arch), so the same
+# graphical desktop installs on every elizaOS Linux arch = GUI parity.
+xorg
+gdm3
+gnome-session
+gnome-shell
+gnome-terminal
+gnome-control-center
+nautilus
+network-manager
+network-manager-gnome
+pulseaudio
+pipewire
+pipewire-pulse
+
+# WebKitGTK kiosk browser. Renders the agent's home web UI fullscreen as the
+# home surface where the Electrobun binary is absent (riscv64 has no Electrobun
+# prebuild) and as a universal fallback. GNOME Web (epiphany) ships on all
+# Debian trixie release arches including riscv64.
+epiphany-browser
+
+# Boot splash.
+plymouth
+plymouth-themes
+plymouth-label

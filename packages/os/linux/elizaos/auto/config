@@ -16,6 +16,7 @@
 set -eu
 
 ARCH="${ELIZAOS_ARCH:-amd64}"
+DEBIAN_MIRROR="${ELIZAOS_DEBIAN_MIRROR:-https://mirrors.kernel.org/debian}"
 FIRMWARE_OPTIONS=""
 QEMU_BOOTSTRAP_OPTIONS=""
 
@@ -51,6 +52,9 @@ esac
 
 lb config noauto \
     --distribution trixie \
+    --mirror-bootstrap "${DEBIAN_MIRROR}" \
+    --mirror-chroot "${DEBIAN_MIRROR}" \
+    --mirror-binary "${DEBIAN_MIRROR}" \
     --architecture "${ARCH}" \
     --linux-flavours "${KERNEL_FLAVOUR}" \
     --archive-areas "main contrib non-free-firmware" \
