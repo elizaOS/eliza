@@ -125,6 +125,14 @@ dependencies {
     // this explicit dep makes the worker classes resolvable from Java without relying on
     // transitive resolution and pins us to the same version (2.11.0).
     implementation "androidx.work:work-runtime:2.11.0"
+    // androidx.work's Worker/ListenableWorker API returns Guava's
+    // com.google.common.util.concurrent.ListenableFuture. That class ships in
+    // full Guava; the transitively-resolved listenablefuture artifact is the
+    // empty 9999.0-empty-to-avoid-conflict-with-guava stub, so without a direct
+    // Guava dep javac fails to compile ElizaTasksWorker (extends Worker) with
+    // "cannot access ListenableFuture". The empty-stub mechanism prevents any
+    // duplicate-class conflict once full Guava is on the classpath.
+    implementation "com.google.guava:guava:31.1-android"
     implementation project(':capacitor-android')
     implementation "com.google.code.gson:gson:2.14.0"
     implementation "com.google.firebase:firebase-common-ktx:21.0.0"
