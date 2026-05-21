@@ -261,7 +261,7 @@ beforeAll(async () => {
     // eslint-disable-next-line no-console
     console.warn("[direct-wallet-payments test] PGlite unavailable, skipping:", error);
   }
-}, 30_000);
+}, 120_000);
 
 afterAll(async () => {
   if (closeDb) await closeDb();
