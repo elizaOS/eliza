@@ -34,6 +34,7 @@ const PROVIDER_HINTS = [
   "ollama",
   "mistral",
   "together",
+  "nearai",
   "zai",
 ] as const;
 
@@ -50,6 +51,7 @@ const ENV_PROVIDER_SIGNALS: ReadonlyArray<{
   { envVar: "DEEPSEEK_API_KEY", label: "deepseek" },
   { envVar: "MISTRAL_API_KEY", label: "mistral" },
   { envVar: "TOGETHER_API_KEY", label: "together" },
+  { envVar: "NEARAI_API_KEY", label: "nearai" },
   { envVar: "ZAI_API_KEY", label: "zai" },
   { envVar: "MOONSHOT_API_KEY", label: "moonshot" },
   { envVar: "OLLAMA_BASE_URL", label: "ollama" },

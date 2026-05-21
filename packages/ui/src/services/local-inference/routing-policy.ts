@@ -73,6 +73,7 @@ const COST_PER_MILLION_TOKENS: Partial<
   "google-genai": { input: 1.25, output: 5 },
   moonshot: { input: 1.25, output: 5 },
   kimi: { input: 1.25, output: 5 },
+  nearai: { input: 0.85, output: 3.3 },
   zai: { input: 1.25, output: 5 },
   glm: { input: 1.25, output: 5 },
   mistral: { input: 2, output: 6 },

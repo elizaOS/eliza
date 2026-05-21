@@ -503,6 +503,13 @@ export async function runFirstTimeSetup(
       hint: "",
     },
     {
+      id: "nearai",
+      label: "NEAR AI",
+      envKey: "NEARAI_API_KEY",
+      detectKeys: ["NEARAI_API_KEY"],
+      hint: "",
+    },
+    {
       id: "moonshot",
       label: "Kimi / Moonshot",
       envKey: "MOONSHOT_API_KEY",
