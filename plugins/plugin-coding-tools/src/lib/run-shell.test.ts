@@ -49,7 +49,7 @@ function remoteRouter(): {
     availability: async () => ({
       environment: "server",
       available: true,
-      capabilities: { fs: true, pty: true, git: true, model: false },
+      capabilities: { fs: true, pty: true, git: true, model: false, plugin: false },
     }),
     fs: {
       list: vi.fn(),
@@ -64,6 +64,15 @@ function remoteRouter(): {
     },
     model: {
       status: vi.fn(),
+    },
+    plugin: {
+      listModules: vi.fn(), invokeAction: vi.fn(), getProvider: vi.fn(), callRoute: vi.fn(),
+      getAsset: vi.fn(), shouldRunEvaluator: vi.fn(), prepareEvaluator: vi.fn(),
+      promptEvaluator: vi.fn(), processEvaluator: vi.fn(),
+      shouldRunResponseHandlerEvaluator: vi.fn(), evaluateResponseHandlerEvaluator: vi.fn(),
+      shouldRunResponseHandlerFieldEvaluator: vi.fn(), parseResponseHandlerFieldEvaluator: vi.fn(),
+      handleResponseHandlerFieldEvaluator: vi.fn(), callLifecycle: vi.fn(), handleEvent: vi.fn(),
+      invokeModel: vi.fn(), callService: vi.fn(), callAppBridge: vi.fn(),
     },
   } satisfies ElizaCapabilityRouter;
   return { router, runCommand };

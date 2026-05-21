@@ -3,6 +3,8 @@ import * as path from "node:path";
 
 import {
   type ActionResult,
+  CapabilityError,
+  getCapabilityRouter,
   logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
@@ -119,6 +121,59 @@ export async function lsHandler(
       (entry): entry is string => typeof entry === "string" && entry.length > 0,
     )
     .map((entry) => globToRegExp(entry));
+
+  const router = getCapabilityRouter(runtime);
+  if (router) {
+    try {
+      const result = await router.fs.list({
+        path: dir,
+        limit: ENTRY_LIMIT,
+        includeHidden: true,
+        ignore: ignoreRaw ?? undefined,
+      });
+      const sorted: LsEntry[] = [
+        ...result.entries
+          .filter((e) => e.kind === "directory")
+          .map((e) => ({ name: e.name, type: "dir" as EntryType }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+        ...result.entries
+          .filter((e) => e.kind !== "directory")
+          .map((e) => {
+            const type: EntryType = e.kind === "symlink" ? "symlink" : "file";
+            return e.size !== undefined
+              ? { name: e.name, type, size: e.size }
+              : { name: e.name, type };
+          })
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      ];
+      const truncated = result.truncated;
+      const totalAfterIgnore = result.totalAfterIgnore;
+      const lines = [
+        `Directory: ${dir}`,
+        ...sorted.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
+      ];
+      if (truncated) {
+        lines.push(
+          `…[truncated, listed ${ENTRY_LIMIT} of ${totalAfterIgnore} entries]`,
+        );
+      }
+      const text = lines.join("\n");
+      coreLogger.debug(
+        `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length} truncated=${truncated} via=capability-router`,
+      );
+      if (callback) await callback({ text, source: "coding-tools" });
+      return successActionResult(text, { entries: sorted, truncated });
+    } catch (error) {
+      if (
+        !(
+          error instanceof CapabilityError &&
+          error.code === "CAPABILITY_UNAVAILABLE"
+        )
+      ) {
+        throw error;
+      }
+    }
+  }
 
   let names: string[];
   try {

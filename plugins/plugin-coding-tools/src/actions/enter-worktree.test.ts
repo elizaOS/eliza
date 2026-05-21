@@ -102,6 +102,21 @@ function setCapabilityRouter(
   ) => (key === CAPABILITY_ROUTER_SERVICE_TYPE ? router : getService(key));
 }
 
+function unavailablePlugin(): ElizaCapabilityRouter["plugin"] {
+  const stub = async (): Promise<never> => {
+    throw new Error("plugin unavailable");
+  };
+  return {
+    listModules: stub, invokeAction: stub, getProvider: stub, callRoute: stub,
+    getAsset: stub, shouldRunEvaluator: stub, prepareEvaluator: stub,
+    promptEvaluator: stub, processEvaluator: stub,
+    shouldRunResponseHandlerEvaluator: stub, evaluateResponseHandlerEvaluator: stub,
+    shouldRunResponseHandlerFieldEvaluator: stub, parseResponseHandlerFieldEvaluator: stub,
+    handleResponseHandlerFieldEvaluator: stub, callLifecycle: stub, handleEvent: stub,
+    invokeModel: stub, callService: stub, callAppBridge: stub,
+  };
+}
+
 function makeGitRouter(
   commandRun: (params: GitCommandRunParams) => Promise<GitCommandRunResult>,
 ): ElizaCapabilityRouter {
@@ -115,6 +130,7 @@ function makeGitRouter(
         pty: false,
         git: true,
         model: false,
+        plugin: false,
       },
     }),
     fs: {
@@ -147,6 +163,7 @@ function makeGitRouter(
         throw new Error("model unavailable");
       },
     },
+    plugin: unavailablePlugin(),
   };
 }
 

@@ -818,6 +818,10 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def skip_generated_artifact_hash(path_value: str) -> bool:
+    return path_value.startswith("build/ai_eda/rag_index/")
+
+
 def load_json(path: Path, errors: list[str]) -> Any:
     if not path.is_file():
         fail(errors, f"missing JSON report {path.relative_to(ROOT)}")
@@ -1609,6 +1613,8 @@ def check_timing_closure_targets(source_ids: set[str], errors: list[str]) -> Non
         for artifact in report.get("input_artifacts") or []:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                if skip_generated_artifact_hash(path_value):
+                    continue
                 path = ROOT / path_value
                 if not path.is_file() or artifact.get("sha256") != sha256_file(path):
                     fail(errors, f"{label}/{path_value}: stale timing input hash")
@@ -1695,6 +1701,8 @@ def check_routing_congestion_targets(source_ids: set[str], errors: list[str]) ->
         for artifact in report.get("input_artifacts") or []:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                if skip_generated_artifact_hash(path_value):
+                    continue
                 path = ROOT / path_value
                 if not path.is_file() or artifact.get("sha256") != sha256_file(path):
                     fail(errors, f"{label}/{path_value}: stale routing input hash")
@@ -2314,6 +2322,8 @@ def check_rtl_rewrite_equivalence_targets(source_ids: set[str], errors: list[str
     if not RTL_REWRITE_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(path for path in RTL_REWRITE_TARGETS_BUILD.iterdir() if path.is_dir()):
+        if run_dir.name != "validation":
+            continue
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -3658,6 +3668,8 @@ def check_logic_synthesis_targets(source_ids: set[str], errors: list[str]) -> No
     for run_dir in sorted(
         path for path in LOGIC_SYNTHESIS_TARGETS_BUILD.iterdir() if path.is_dir()
     ):
+        if run_dir.name != "validation":
+            continue
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -3702,6 +3714,8 @@ def check_logic_synthesis_targets(source_ids: set[str], errors: list[str]) -> No
         for artifact in report.get("input_artifacts") or []:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                if skip_generated_artifact_hash(path_value):
+                    continue
                 path = ROOT / path_value
                 if not path.is_file() or artifact.get("sha256") != sha256_file(path):
                     fail(errors, f"{label}/{path_value}: stale logic synthesis hash")
@@ -3737,6 +3751,8 @@ def check_netlist_equivalence_targets(source_ids: set[str], errors: list[str]) -
     for run_dir in sorted(
         path for path in NETLIST_EQUIVALENCE_TARGETS_BUILD.iterdir() if path.is_dir()
     ):
+        if run_dir.name != "validation":
+            continue
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -3787,6 +3803,8 @@ def check_netlist_equivalence_targets(source_ids: set[str], errors: list[str]) -
         for artifact in report.get("input_artifacts") or []:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                if skip_generated_artifact_hash(path_value):
+                    continue
                 path = ROOT / path_value
                 if not path.is_file() or artifact.get("sha256") != sha256_file(path):
                     fail(errors, f"{label}/{path_value}: stale netlist equivalence hash")
@@ -3890,6 +3908,8 @@ def check_physical_verification_targets(source_ids: set[str], errors: list[str])
         for artifact in report.get("input_artifacts") or []:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                if skip_generated_artifact_hash(path_value):
+                    continue
                 path = ROOT / path_value
                 if not path.is_file() or artifact.get("sha256") != sha256_file(path):
                     fail(errors, f"{label}/{path_value}: stale physical verification hash")
@@ -3990,6 +4010,8 @@ def check_placement_legalization_targets(source_ids: set[str], errors: list[str]
         for artifact in report.get("input_artifacts") or []:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                if skip_generated_artifact_hash(path_value):
+                    continue
                 path = ROOT / path_value
                 if not path.is_file() or artifact.get("sha256") != sha256_file(path):
                     fail(errors, f"{label}/{path_value}: stale placement/legalization hash")

@@ -158,6 +158,16 @@ export const facewearPlugin: Plugin = {
     },
     {
       id: "smartglasses",
+      viewType: "tui",
+      path: "/apps/smartglasses/tui",
+      label: "Smartglasses TUI",
+      description: "Terminal UI for smartglasses device management.",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "SmartglassesView",
+      tags: ["hearwear", "smartglasses", "wearable", "bluetooth", "tui"],
+    },
+    {
+      id: "smartglasses",
       viewType: "xr",
       path: "/apps/smartglasses/xr",
       label: "Smartglasses XR",
