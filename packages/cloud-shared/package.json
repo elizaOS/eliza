@@ -43,6 +43,7 @@
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-elevenlabs": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/security": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@neondatabase/serverless": "^1.1.0",

@@ -10,6 +10,10 @@ on:
       - "packages/os/usb-installer/**"
       - "packages/os/setup/**"
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   validate-os-release:
     name: Validate OS release surfaces

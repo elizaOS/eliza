@@ -22,6 +22,10 @@ concurrency:
   group: cloud-e2e-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   e2e:
     name: Mock-stack E2E

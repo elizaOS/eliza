@@ -613,6 +613,8 @@ reports/
 docs/*
 !docs/ELIZA_1_BUNDLE_EXTRAS.json
 !docs/tee-architecture-implementation-plan.md
+!docs/security/
+!docs/security/**
 yolov8n.pt
 *.pt
 

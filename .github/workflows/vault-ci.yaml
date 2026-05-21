@@ -35,6 +35,10 @@ on:
       - "packages/app-core/src/hooks/useSecretsManagerShortcut.ts"
       - ".github/workflows/vault-ci.yaml"
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: test (${{ matrix.os }})

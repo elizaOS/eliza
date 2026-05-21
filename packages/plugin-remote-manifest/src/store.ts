@@ -97,6 +97,14 @@ export interface InstallPrebuiltRemotePluginOptions {
   now?: () => number;
 }
 
+/**
+ * SOC2 A-1: callers fetching an artifact source MUST invoke
+ * `verifyPluginArtifact` BEFORE calling `installPrebuiltRemotePlugin`.
+ * The store layer is kept sync + KMS-free; verification belongs in the
+ * caller (agent download / install orchestrator) where the audit
+ * dispatcher and KMS client already exist.
+ */
+
 export class RemotePluginStoreError extends Error {
   constructor(message: string) {
     super(message);

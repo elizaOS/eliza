@@ -404,7 +404,7 @@ function LiveHealthBadge({
     warming: {
       variant: "outline",
       className:
-        "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30",
+        "bg-white/10 text-neutral-700 dark:text-white/80 border-white/20",
       icon: Loader2,
     },
     degraded: {
@@ -480,7 +480,7 @@ function ContainerStatusBadge({ status }: { status: string }) {
     provisioning: {
       variant: "outline",
       className:
-        "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30",
+        "bg-white/10 text-neutral-700 dark:text-white/80 border-white/20",
     },
     pending: {
       variant: "outline",
@@ -506,7 +506,7 @@ function ContainerStatusBadge({ status }: { status: string }) {
     created: {
       variant: "outline",
       className:
-        "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30",
+        "bg-white/10 text-neutral-700 dark:text-white/80 border-white/20",
     },
     restarting: {
       variant: "outline",

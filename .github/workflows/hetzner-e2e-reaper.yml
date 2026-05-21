@@ -15,6 +15,10 @@ concurrency:
   group: hetzner-e2e-reaper
   cancel-in-progress: false
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   reap:
     name: Sweep stale CI servers

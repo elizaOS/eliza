@@ -280,8 +280,8 @@ export default function AdminPage() {
             <DashboardStatCard
               label={t("cloud.admin.stat.admins", { defaultValue: "Admins" })}
               value={overview.adminCount}
-              icon={<Shield className="h-4 w-4 text-blue-400" />}
-              accent="blue"
+              icon={<Shield className="h-4 w-4 text-white/70" />}
+              accent="white"
             />
           </div>
         )}

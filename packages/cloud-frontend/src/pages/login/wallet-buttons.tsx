@@ -25,8 +25,14 @@ function isPhantomProvider(value: unknown): boolean {
   if (value === null || typeof value !== "object") return false;
   if (Reflect.get(value, "isPhantom") === true) return true;
   // window.phantom is also set when Phantom is installed
-  if (typeof window !== "undefined" && Reflect.get(window, "phantom") !== undefined) {
-    const phantomEth = Reflect.get(Reflect.get(window, "phantom") as object, "ethereum");
+  if (
+    typeof window !== "undefined" &&
+    Reflect.get(window, "phantom") !== undefined
+  ) {
+    const phantomEth = Reflect.get(
+      Reflect.get(window, "phantom") as object,
+      "ethereum",
+    );
     if (phantomEth === value) return true;
   }
   return false;
@@ -44,9 +50,13 @@ function getInjectedEthereumProvider(): EthereumProvider | null {
       : undefined;
   // Prefer the providers[] array (EIP-6963 multi-wallet) so we can skip Phantom.
   if (providers) {
-    return providers.find((p) => isEthereumProvider(p) && !isPhantomProvider(p)) ?? null;
+    return (
+      providers.find((p) => isEthereumProvider(p) && !isPhantomProvider(p)) ??
+      null
+    );
   }
-  if (isEthereumProvider(ethereum) && !isPhantomProvider(ethereum)) return ethereum;
+  if (isEthereumProvider(ethereum) && !isPhantomProvider(ethereum))
+    return ethereum;
   return null;
 }
 

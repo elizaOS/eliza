@@ -149,7 +149,13 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
       }
 
       const stripe = requireStripe();
-      const event = await stripe.webhooks.constructEventAsync(rawBody, signature, webhookSecret);
+      // 300s tolerance (Stripe SDK default, made explicit for SOC2 CC7.2).
+      const event = await stripe.webhooks.constructEventAsync(
+        rawBody,
+        signature,
+        webhookSecret,
+        300,
+      );
 
       switch (event.type) {
         case "checkout.session.completed": {

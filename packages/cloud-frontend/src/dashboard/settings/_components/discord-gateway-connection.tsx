@@ -87,7 +87,7 @@ function getStatusBadge(status: DiscordGatewayConnection["status"]) {
       );
     case "pending":
       return (
-        <Badge variant="secondary" className="bg-blue-500/20 text-blue-600">
+        <Badge variant="secondary" className="bg-white/10 text-white/80">
           <Clock className="h-3 w-3 mr-1" />
           Pending
         </Badge>

@@ -35,6 +35,10 @@ on:
         type: string
         required: true
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   publish-manifest:
     runs-on: ubuntu-24.04

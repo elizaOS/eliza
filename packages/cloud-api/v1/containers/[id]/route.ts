@@ -17,6 +17,8 @@
  */
 
 import { Hono } from "hono";
+import { assertOrgMembership } from "@/api-app/middleware/org-membership";
+import { requireApiKeyPermission } from "@/api-app/middleware/auth";
 import { usageRecordsRepository } from "@/db/repositories/usage-records";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -166,9 +168,25 @@ app.get("/", async (c) => {
   }
 });
 
-app.delete("/", async (c) => {
+app.delete("/", requireApiKeyPermission("containers:deploy"), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    const containerId = c.req.param("id");
+    if (!containerId) {
+      return c.json({ success: false, error: "Container id required" }, 400);
+    }
+    const container = await containersService.getById(
+      containerId,
+      user.organization_id,
+    );
+    if (!container) {
+      return c.json({ success: false, error: "Container not found" }, 404);
+    }
+    await assertOrgMembership(user, container.organization_id, {
+      resourceType: "container",
+      resourceId: containerId,
+      c,
+    });
     return forwardToContainerControlPlane(c, user);
   } catch (error) {
     logger.error("[Containers API] delete forward error:", error);
@@ -176,9 +194,25 @@ app.delete("/", async (c) => {
   }
 });
 
-app.patch("/", async (c) => {
+app.patch("/", requireApiKeyPermission("containers:deploy"), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    const containerId = c.req.param("id");
+    if (!containerId) {
+      return c.json({ success: false, error: "Container id required" }, 400);
+    }
+    const container = await containersService.getById(
+      containerId,
+      user.organization_id,
+    );
+    if (!container) {
+      return c.json({ success: false, error: "Container not found" }, 404);
+    }
+    await assertOrgMembership(user, container.organization_id, {
+      resourceType: "container",
+      resourceId: containerId,
+      c,
+    });
     return forwardToContainerControlPlane(c, user);
   } catch (error) {
     logger.error("[Containers API] patch forward error:", error);

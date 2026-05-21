@@ -277,7 +277,7 @@ export function AppSettings({ app }: AppSettingsProps) {
       <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
         <div>
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Shield className="h-4 w-4 text-blue-400" />
+            <Shield className="h-4 w-4 text-white/70" />
             Allowed Origins
           </h3>
           <p className="text-xs text-neutral-500 mt-1">

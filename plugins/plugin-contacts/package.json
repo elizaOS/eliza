@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-contacts",
-  "version": "2.0.1-beta.0",
+  "version": "2.0.3",
   "type": "module",
   "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
   "main": "./dist/index.js",

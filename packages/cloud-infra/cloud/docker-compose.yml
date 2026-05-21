@@ -8,6 +8,23 @@
 # Start: docker compose up -d storage
 # Stop:  docker compose down
 # Wipe:  docker compose down -v
+#
+# ---------------------------------------------------------------------------
+# SECRETS (SOC2 CC6.1 / CC7.2)
+# ---------------------------------------------------------------------------
+# All credentials below are read from environment variables (or .env in the
+# same directory). Copy .env.example -> .env and populate. .env is gitignored
+# at the repo root (see /Users/shawwalters/eliza-workspace/milady/.gitignore).
+#
+# Production: secrets are NOT supplied via this compose file. Production K8s
+# workloads receive secrets through external-secrets-operator (ESO) pulling
+# from the Steward credential proxy (see deploy/k8s/networkpolicies/README.md
+# and deploy/RUNBOOK-DR.md).
+#
+# TODO(soc2): wire Steward -> ESO ClusterSecretStore once the proxy is
+# reachable from the production GKE cluster. Until then operators must
+# create K8s Secrets manually from sealed-secrets manifests.
+# ---------------------------------------------------------------------------
 
 services:
   storage_db:
@@ -15,14 +32,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: storage
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${STORAGE_DB_USER:?STORAGE_DB_USER required, see .env.example}
+      POSTGRES_PASSWORD: ${STORAGE_DB_PASSWORD:?STORAGE_DB_PASSWORD required, see .env.example}
     ports:
       - "54322:5432"
     volumes:
       - storage_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${STORAGE_DB_USER}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -36,13 +53,13 @@ services:
     ports:
       - "54321:5000"
     environment:
-      ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIn0.jbWg5J-NKTeVMzQS9Tjj0VfHN1oaA_yt2P9hM1Q8d_o
-      SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UifQ.h4y7lP4sStTvqAkdKfp5EpzWi5VHBhfJ0tHKk5cdZqM
-      AUTH_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      ANON_KEY: ${STORAGE_ANON_KEY:?STORAGE_ANON_KEY required, see .env.example}
+      SERVICE_KEY: ${STORAGE_SERVICE_KEY:?STORAGE_SERVICE_KEY required, see .env.example}
+      AUTH_JWT_SECRET: ${STORAGE_AUTH_JWT_SECRET:?STORAGE_AUTH_JWT_SECRET required, see .env.example}
       AUTH_JWT_ALGORITHM: HS256
-      DATABASE_URL: postgres://postgres:postgres@storage_db:5432/storage
+      DATABASE_URL: postgres://${STORAGE_DB_USER}:${STORAGE_DB_PASSWORD}@storage_db:5432/storage
       DB_INSTALL_ROLES: "true"
-      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      PGRST_JWT_SECRET: ${STORAGE_PGRST_JWT_SECRET:?STORAGE_PGRST_JWT_SECRET required, see .env.example}
       POSTGREST_URL: http://storage_db:5432
       FILE_SIZE_LIMIT: "524288000"
       STORAGE_BACKEND: file
@@ -51,8 +68,8 @@ services:
       REGION: local
       GLOBAL_S3_BUCKET: stub
       ENABLE_IMAGE_TRANSFORMATION: "false"
-      S3_PROTOCOL_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-eliza-cloud-local}
-      S3_PROTOCOL_ACCESS_KEY_SECRET: ${STORAGE_SECRET_ACCESS_KEY:-eliza-cloud-local-secret-please-change}
+      S3_PROTOCOL_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID required, see .env.example}
+      S3_PROTOCOL_ACCESS_KEY_SECRET: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY required, see .env.example}
       S3_PROTOCOL_PREFIX: /storage/v1
       S3_PROTOCOL_NON_CANONICAL_HOST_HEADER: "true"
       UPLOAD_FILE_SIZE_LIMIT: "524288000"

@@ -1178,6 +1178,32 @@ export function normalizeStepId(value: unknown): string | null {
   return stepId.length > 0 ? stepId : null;
 }
 
+/** Fields in an LLM call payload that may carry PII / secrets. */
+const TRAJECTORY_REDACTABLE_FIELDS: readonly string[] = [
+  "systemPrompt",
+  "userPrompt",
+  "prompt",
+  "input",
+  "response",
+  "reasoning",
+];
+
+function redactTrajectoryParams(
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  let cloned: Record<string, unknown> | null = null;
+  for (const field of TRAJECTORY_REDACTABLE_FIELDS) {
+    const value = params[field];
+    if (typeof value !== "string" || value.length === 0) continue;
+    const redacted = redactTrajectoryText(value);
+    if (redacted !== value) {
+      cloned ??= { ...params };
+      cloned[field] = redacted;
+    }
+  }
+  return cloned ?? params;
+}
+
 export function normalizeLlmCallPayload(
   args: unknown[],
 ): { stepId: string; params: Record<string, unknown> } | null {
@@ -1188,10 +1214,10 @@ export function normalizeLlmCallPayload(
     if (!stepId || !details) return null;
     return {
       stepId,
-      params: {
+      params: redactTrajectoryParams({
         ...details,
         stepId,
-      },
+      }),
     };
   }
 
@@ -1202,15 +1228,15 @@ export function normalizeLlmCallPayload(
   if (params.stepId === stepId) {
     return {
       stepId,
-      params,
+      params: redactTrajectoryParams(params),
     };
   }
   return {
     stepId,
-    params: {
+    params: redactTrajectoryParams({
       ...params,
       stepId,
-    },
+    }),
   };
 }
 
@@ -2081,5 +2107,38 @@ export function shouldEnableTrajectoryLoggingByDefault(
 ): boolean {
   if (env.NODE_ENV === "test") return false;
   if (env.ELIZA_DISABLE_TRAJECTORY_LOGGING === "1") return false;
+  // SOC2 O-5: in production NODE_ENV the default is OFF; operators must
+  // explicitly opt in via ELIZA_TRAJECTORY_LOGGING=1. Dev/unset NODE_ENV
+  // preserves the previous always-on behavior for the local debugging
+  // workflow.
+  if (env.NODE_ENV === "production") {
+    return env.ELIZA_TRAJECTORY_LOGGING === "1";
+  }
   return true;
+}
+
+/**
+ * Coarse PII redaction applied to LLM prompts/responses before persistence
+ * (SOC2 O-5). Strips email addresses, common API/OAuth tokens, ETH/BTC
+ * addresses, and credit-card-shaped digit runs. Conservative — combine
+ * with workspace isolation rather than treating as a sole defence.
+ */
+const TRAJECTORY_REDACT_PATTERNS: { re: RegExp; label: string }[] = [
+  { re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, label: "<EMAIL>" },
+  { re: /sk-[A-Za-z0-9_-]{20,}/g, label: "<API_KEY>" },
+  { re: /(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, label: "<GH_TOKEN>" },
+  { re: /xox[bpars]-[A-Za-z0-9-]{10,}/g, label: "<SLACK_TOKEN>" },
+  { re: /0x[a-fA-F0-9]{40}/g, label: "<ETH_ADDR>" },
+  { re: /\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b/g, label: "<BTC_ADDR>" },
+  { re: /\b\d{13,19}\b/g, label: "<CARD>" },
+];
+
+export function redactTrajectoryText(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  if (value.length === 0) return value;
+  let out = value;
+  for (const { re, label } of TRAJECTORY_REDACT_PATTERNS) {
+    out = out.replace(re, label);
+  }
+  return out;
 }

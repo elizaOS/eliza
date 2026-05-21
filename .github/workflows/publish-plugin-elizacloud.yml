@@ -14,6 +14,10 @@ concurrency:
   group: publish-plugin-elizacloud-${{ github.ref }}
   cancel-in-progress: false
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   verify_version:
     runs-on: ubuntu-24.04
@@ -57,6 +61,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write   # npm OIDC trusted publishing (SOC2 CC9.2)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -86,7 +91,11 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish to npm
+        # Auth: prefer npm OIDC (id-token: write); NPM_TOKEN is the transition
+        # fallback. Configure Trusted Publisher on npmjs.com for this workflow:
+        # https://docs.npmjs.com/trusted-publishers
         working-directory: plugins/plugin-elizacloud
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"

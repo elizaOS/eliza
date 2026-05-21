@@ -21,6 +21,10 @@ on:
         type: boolean
         default: false
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   build-vm:
     runs-on: ubuntu-latest

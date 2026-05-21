@@ -876,6 +876,41 @@
       "when": 1778658100000,
       "tag": "0124_add_phone_gateway_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1778659000000,
+      "tag": "0126_encrypt_api_keys_d1",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1778659100000,
+      "tag": "0127_encrypt_pii_d3",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1778659200000,
+      "tag": "0128_audit_log_retention_d4",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1778659300000,
+      "tag": "0129_soft_delete_d5",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1778659400000,
+      "tag": "0130_drop_cli_auth_api_key_plain_d6",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,10 @@ on:
   pull_request_review:
     types: [submitted]
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   claude:
     if: |

@@ -105,7 +105,7 @@ export function DockerLogsViewer({
     if (l.includes("error") || l.includes("fatal") || l.includes("panic"))
       return "text-red-400 border-l-red-500";
     if (l.includes("warn")) return "text-yellow-400 border-l-yellow-500";
-    if (l.includes("info")) return "text-blue-300 border-l-blue-500";
+    if (l.includes("info")) return "text-white/70 border-l-white/40";
     return "text-neutral-300 border-l-neutral-700";
   };
 
@@ -118,7 +118,7 @@ export function DockerLogsViewer({
           label: "Admin",
           variant: "outline",
           className:
-            "border-blue-500/40 bg-blue-500/10 px-1.5 py-0 text-[10px] text-blue-400",
+            "border-white/20 bg-white/5 px-1.5 py-0 text-[10px] text-white/80",
         },
       ]}
       fetchedAt={logsState.fetchedAt}

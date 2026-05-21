@@ -3,14 +3,18 @@
  *
  * For every concrete router path:
  *   - capture a full-page screenshot at desktop + mobile
- *   - measure logo size, nav padding, primary-button hover color
+ *   - capture a `<slug>--hover.png` after hovering the first primary button
+ *   - measure logo size, nav padding, primary-button rest/hover/focus colors
  *   - flag any visible element whose computed border-radius is neither
  *     `--radius-xs` (3px) nor `9999px` (pill)
+ *   - flag any hover transition that violates the palette rule:
+ *     orange<->black or any blue (project rule: brand orange is accent only;
+ *     blue is banned from this palette).
  *   - collect console errors and failed network requests
+ *   - auto-stub `aesthetic-audit-output/manual-review/<slug>.md`
  *
- * Outputs `test-results/aesthetic-audit/<viewport>/<slug>.png` plus a
- * `contact-sheet.html` and `report.json` summarising findings across
- * every page.
+ * Outputs `aesthetic-audit-output/{desktop,mobile}/<slug>.png` plus
+ * `contact-sheet.html` and `report.json` summarising findings.
  */
 
 import fs from "node:fs";
@@ -27,21 +31,74 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Write outside test-results/ so Playwright's per-run cleanup doesn't wipe
 // the contact sheet between runs.
 const OUT_ROOT = path.resolve(HERE, "../../aesthetic-audit-output");
+const MANUAL_REVIEW_DIR = path.join(OUT_ROOT, "manual-review");
 
-const ROUTES: { path: string; slug: string; auth?: boolean }[] = [
+/**
+ * Fixture id passed for parameterized routes. Real fixtures aren't worth
+ * fabricating for a visual audit — capturing the empty/not-found state
+ * is itself the deliverable.
+ */
+const FIXTURE_ID = "e2e-fixture";
+
+interface RouteSpec {
+  path: string;
+  slug: string;
+  auth?: boolean;
+}
+
+const ROUTES: RouteSpec[] = [
+  // Public / unauthenticated
   { path: "/", slug: "landing" },
+  { path: "/os", slug: "os" },
   { path: "/login", slug: "login" },
   { path: "/privacy-policy", slug: "privacy-policy" },
   { path: "/terms-of-service", slug: "terms-of-service" },
   { path: "/bsc", slug: "bsc" },
+  { path: "/blog", slug: "blog" },
   { path: "/sandbox-proxy", slug: "sandbox-proxy" },
+  { path: `/chat/${FIXTURE_ID}`, slug: "public-chat" },
+
+  // Auth callbacks / shells
   { path: "/auth/success", slug: "auth-success" },
   { path: "/auth/cli-login", slug: "auth-cli-login" },
   { path: "/auth/error", slug: "auth-error" },
+  { path: "/auth/callback/email", slug: "auth-callback-email" },
+  { path: "/app-auth/authorize", slug: "app-auth-authorize" },
+  { path: "/invite/accept", slug: "invite-accept" },
+
+  // Payment + approval surfaces (parameterized — fixture renders error/empty)
+  {
+    path: `/payment/app-charge/${FIXTURE_ID}/${FIXTURE_ID}`,
+    slug: "payment-app-charge",
+  },
+  { path: `/payment/${FIXTURE_ID}`, slug: "payment-request" },
+  { path: "/payment/success", slug: "payment-success" },
+  {
+    path: `/sensitive-requests/${FIXTURE_ID}`,
+    slug: "sensitive-request",
+  },
+  { path: `/approve/${FIXTURE_ID}`, slug: "approve" },
+  { path: `/ballot/${FIXTURE_ID}`, slug: "ballot" },
+
+  // Docs
+  { path: "/docs/", slug: "docs-index" },
+
+  // Dashboard top-level
   { path: "/dashboard", slug: "dashboard-home", auth: true },
   { path: "/dashboard/account", slug: "dashboard-account", auth: true },
   { path: "/dashboard/settings", slug: "dashboard-settings", auth: true },
+  { path: "/dashboard/security", slug: "dashboard-security", auth: true },
+  {
+    path: "/dashboard/security/permissions",
+    slug: "dashboard-security-permissions",
+    auth: true,
+  },
   { path: "/dashboard/billing", slug: "dashboard-billing", auth: true },
+  {
+    path: "/dashboard/billing/success",
+    slug: "dashboard-billing-success",
+    auth: true,
+  },
   { path: "/dashboard/api-keys", slug: "dashboard-api-keys", auth: true },
   {
     path: "/dashboard/api-explorer",
@@ -49,15 +106,52 @@ const ROUTES: { path: string; slug: string; auth?: boolean }[] = [
     auth: true,
   },
   { path: "/dashboard/agents", slug: "dashboard-agents", auth: true },
+  {
+    path: `/dashboard/agents/${FIXTURE_ID}`,
+    slug: "dashboard-agent-detail",
+    auth: true,
+  },
+  {
+    path: `/dashboard/agents/${FIXTURE_ID}/chat`,
+    slug: "dashboard-agent-chat",
+    auth: true,
+  },
   { path: "/dashboard/my-agents", slug: "dashboard-my-agents", auth: true },
   { path: "/dashboard/apps", slug: "dashboard-apps", auth: true },
   { path: "/dashboard/apps/create", slug: "dashboard-apps-create", auth: true },
+  {
+    path: `/dashboard/apps/${FIXTURE_ID}`,
+    slug: "dashboard-app-detail",
+    auth: true,
+  },
   { path: "/dashboard/containers", slug: "dashboard-containers", auth: true },
+  {
+    path: `/dashboard/containers/${FIXTURE_ID}`,
+    slug: "dashboard-container-detail",
+    auth: true,
+  },
+  {
+    path: `/dashboard/containers/agents/${FIXTURE_ID}`,
+    slug: "dashboard-container-agent",
+    auth: true,
+  },
   { path: "/dashboard/mcps", slug: "dashboard-mcps", auth: true },
   { path: "/dashboard/documents", slug: "dashboard-documents", auth: true },
   { path: "/dashboard/analytics", slug: "dashboard-analytics", auth: true },
   { path: "/dashboard/earnings", slug: "dashboard-earnings", auth: true },
   { path: "/dashboard/affiliates", slug: "dashboard-affiliates", auth: true },
+  {
+    path: `/dashboard/invoices/${FIXTURE_ID}`,
+    slug: "dashboard-invoice",
+    auth: true,
+  },
+  { path: "/dashboard/chat", slug: "dashboard-chat", auth: true },
+  { path: "/dashboard/image", slug: "dashboard-image", auth: true },
+  { path: "/dashboard/video", slug: "dashboard-video", auth: true },
+  { path: "/dashboard/gallery", slug: "dashboard-gallery", auth: true },
+  { path: "/dashboard/voices", slug: "dashboard-voices", auth: true },
+
+  // Admin
   { path: "/dashboard/admin", slug: "dashboard-admin", auth: true },
   {
     path: "/dashboard/admin/infrastructure",
@@ -88,10 +182,19 @@ interface RadiusViolation {
   classes: string;
 }
 
+interface ButtonColors {
+  text: string;
+  background: string;
+  borderColor: string;
+  boxShadow: string;
+}
+
 interface ButtonHover {
   text: string;
-  rest: string;
-  hover: string;
+  rest: ButtonColors;
+  hover: ButtonColors;
+  focus: ButtonColors;
+  paletteViolations: string[];
 }
 
 interface PageReport {
@@ -99,6 +202,7 @@ interface PageReport {
   slug: string;
   viewport: string;
   screenshot: string;
+  hoverScreenshot: string | null;
   consoleErrors: string[];
   failedRequests: { url: string; status: number }[];
   logo: { width: number; height: number; src: string } | null;
@@ -106,6 +210,7 @@ interface PageReport {
   navPaddingRight: string | null;
   radiusViolations: RadiusViolation[];
   buttonHovers: ButtonHover[];
+  paletteViolations: string[];
   loadOk: boolean;
   loadError?: string;
 }
@@ -117,7 +222,64 @@ test.beforeAll(() => {
     fs.mkdirSync(path.join(OUT_ROOT, v.name), { recursive: true });
   }
   fs.mkdirSync(FRAGMENT_DIR, { recursive: true });
+  fs.mkdirSync(MANUAL_REVIEW_DIR, { recursive: true });
+  // Pre-seed manual-review stubs for every route. Existing files are never
+  // overwritten — the human-authored review notes are the source of truth.
+  for (const route of ROUTES) {
+    const file = path.join(MANUAL_REVIEW_DIR, `${route.slug}.md`);
+    if (fs.existsSync(file)) continue;
+    fs.writeFileSync(file, renderManualReviewStub(route));
+  }
 });
+
+function renderManualReviewStub(route: RouteSpec): string {
+  return `# Manual review — ${route.slug}
+
+Route: \`${route.path}\`${route.auth ? "  (auth-required)" : ""}
+
+Screenshots:
+- desktop: \`../desktop/${route.slug}.png\`
+- desktop hover: \`../desktop/${route.slug}--hover.png\`
+- mobile: \`../mobile/${route.slug}.png\`
+
+## Checklist
+
+- [ ] Header / nav present and aligned
+- [ ] Logo size + nav padding match other pages
+- [ ] No blue colors anywhere (banned from palette)
+- [ ] Hover states do not transition orange<->black on the same element
+- [ ] Focus ring is visible on every interactive element (tab through)
+- [ ] Empty state renders cleanly (no broken layout)
+- [ ] Loading state renders cleanly (no layout jump on data arrival)
+- [ ] Mobile layout: no horizontal scroll, no overflow, tap targets >= 44px
+- [ ] Text contrast meets WCAG AA against background
+- [ ] Border radius is 3px (xs) or pill — no other rounding values
+- [ ] No console errors in DevTools at rest
+- [ ] No 5xx network requests
+
+## Visual issues
+
+_List anything that looks wrong._
+
+## Color / hover violations
+
+_Cite the element + the rest/hover colors._
+
+## Layout breaks
+
+_Cite the viewport + the element._
+
+## Interaction targets to add to e2e
+
+_Buttons/links that need automated coverage._
+
+## Verdict
+
+\`good\` | \`needs-work\` | \`broken\`
+
+_Pick one. Until verdict is \`good\`, redo the audit loop after each fix._
+`;
+}
 
 function persistReport(report: PageReport) {
   const file = path.join(
@@ -164,16 +326,23 @@ function buildContactSheet(reports: PageReport[]): string {
           issues.push(`${r.failedRequests.length} failed requests`);
         if (r.radiusViolations.length)
           issues.push(`${r.radiusViolations.length} radius violations`);
+        if (r.paletteViolations.length)
+          issues.push(`${r.paletteViolations.length} palette violations`);
         const issueHtml = issues.length
-          ? `<div class="issues">${issues.map((i) => `<div>⚠ ${i}</div>`).join("")}</div>`
-          : `<div class="ok">✓ clean</div>`;
+          ? `<div class="issues">${issues.map((i) => `<div>! ${i}</div>`).join("")}</div>`
+          : `<div class="ok">ok clean</div>`;
+        const hoverImg = r.hoverScreenshot
+          ? `<img loading="lazy" class="hover" src="${r.hoverScreenshot}" alt="${r.route} hover" />`
+          : "";
         return `
           <figure>
             <img loading="lazy" src="${vp}/${r.slug}.png" alt="${r.route}" />
+            ${hoverImg}
             <figcaption>
               <strong>${r.route}</strong>
+              <div class="review"><a href="manual-review/${r.slug}.md">manual review</a></div>
               ${issueHtml}
-              ${r.logo ? `<div class="logo">logo ${Math.round(r.logo.width)}×${Math.round(r.logo.height)}</div>` : ""}
+              ${r.logo ? `<div class="logo">logo ${Math.round(r.logo.width)}x${Math.round(r.logo.height)}</div>` : ""}
               ${r.navPaddingLeft ? `<div class="nav">nav pad ${r.navPaddingLeft} / ${r.navPaddingRight}</div>` : ""}
             </figcaption>
           </figure>`;
@@ -191,13 +360,84 @@ function buildContactSheet(reports: PageReport[]): string {
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
   figure { margin: 0; background: #1a1a1a; border: 1px solid #333; padding: 8px; }
   figure img { width: 100%; height: auto; display: block; background: #fff; }
+  figure img.hover { margin-top: 6px; outline: 1px solid #ff8a00; }
   figcaption { padding-top: 8px; font-size: 12px; }
+  .review a { color: #6cd97e; }
   .issues { color: #ffb454; margin-top: 4px; }
   .ok { color: #6cd97e; margin-top: 4px; }
   .logo, .nav { color: #888; }
 </style>
 <h1>cloud aesthetic contact sheet — ${new Date().toISOString()}</h1>
 ${sections.join("\n")}`;
+}
+
+/**
+ * Palette rule:
+ *  - brand orange (#ff8a00-ish) is an accent only; never a hover destination
+ *    from neutral, and orange<->black hover transitions are banned.
+ *  - blue (any hue 200-260 with meaningful saturation) is banned entirely.
+ *
+ * Inputs are CSS color strings already resolved by getComputedStyle, so
+ * they should all be `rgb(...)` or `rgba(...)`. We parse them and bucket.
+ */
+function parseRgb(input: string): [number, number, number, number] | null {
+  const m = input.match(
+    /^rgba?\(\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)(?:\s*,\s*(\d+\.?\d*))?\s*\)$/,
+  );
+  if (!m) return null;
+  return [
+    Number(m[1]),
+    Number(m[2]),
+    Number(m[3]),
+    m[4] === undefined ? 1 : Number(m[4]),
+  ];
+}
+
+type Bucket = "orange" | "black" | "blue" | "white" | "neutral" | "transparent";
+
+function bucket(color: string): Bucket {
+  const rgb = parseRgb(color);
+  if (!rgb) return "neutral";
+  const [r, g, b, a] = rgb;
+  if (a === 0) return "transparent";
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  const saturation = max === 0 ? 0 : (max - min) / max;
+  if (lum < 0.08) return "black";
+  if (lum > 0.95 && saturation < 0.05) return "white";
+  if (saturation < 0.15) return "neutral";
+  // Orange: red dominant, green moderate, blue low.
+  if (r > 200 && g > 90 && g < 200 && b < 100) return "orange";
+  // Blue: blue dominant by a clear margin.
+  if (b > r + 20 && b > g + 10) return "blue";
+  return "neutral";
+}
+
+function paletteCheckTransition(
+  label: string,
+  from: string,
+  to: string,
+): string | null {
+  const a = bucket(from);
+  const b = bucket(to);
+  if (a === b) return null;
+  if (a === "blue" || b === "blue") {
+    return `${label}: blue is banned (${from} -> ${to})`;
+  }
+  if ((a === "orange" && b === "black") || (a === "black" && b === "orange")) {
+    return `${label}: orange<->black transition (${from} -> ${to})`;
+  }
+  if (a === "neutral" && b === "orange") {
+    return `${label}: neutral -> orange hover destination (${from} -> ${to})`;
+  }
+  return null;
+}
+
+function paletteCheckSingle(label: string, color: string): string | null {
+  if (bucket(color) === "blue")
+    return `${label}: blue color present (${color})`;
+  return null;
 }
 
 async function auditPage(
@@ -209,8 +449,45 @@ async function auditPage(
   navPaddingRight: string | null;
   radiusViolations: RadiusViolation[];
   buttonHovers: ButtonHover[];
+  paletteViolations: string[];
 }> {
-  return page.evaluate(() => {
+  const raw = await page.evaluate(() => {
+    interface RawColors {
+      text: string;
+      background: string;
+      borderColor: string;
+      boxShadow: string;
+    }
+    interface RawHover {
+      text: string;
+      rest: RawColors;
+      hover: RawColors;
+      focus: RawColors;
+    }
+    interface RawRadius {
+      selector: string;
+      borderRadius: string;
+      tag: string;
+      classes: string;
+    }
+    interface RawAudit {
+      logo: { width: number; height: number; src: string } | null;
+      navPaddingLeft: string | null;
+      navPaddingRight: string | null;
+      radiusViolations: RawRadius[];
+      buttonHovers: RawHover[];
+    }
+
+    function readColors(el: Element): RawColors {
+      const cs = getComputedStyle(el);
+      return {
+        text: cs.color,
+        background: cs.backgroundColor,
+        borderColor: cs.borderTopColor,
+        boxShadow: cs.boxShadow,
+      };
+    }
+
     const logoEl =
       (document.querySelector(
         'a[href="/"] img, a[href="/dashboard"] img, header img[alt*="liza" i], [aria-label="eliza cloud" i], [aria-label*="eliza" i][role="img"], img[alt*="eliza" i]',
@@ -235,7 +512,7 @@ async function auditPage(
       (document.querySelector('[role="banner"]') as HTMLElement | null);
     const navCs = nav ? getComputedStyle(nav) : null;
 
-    const violations: RadiusViolation[] = [];
+    const violations: RawRadius[] = [];
     const elements = document.querySelectorAll<HTMLElement>(
       'button, [role="button"], input, select, textarea, [class*="card"], [class*="panel"], [class*="box"], [data-slot]',
     );
@@ -246,7 +523,6 @@ async function auditPage(
       if (rect.width < 8 || rect.height < 8) continue;
       if (cs.display === "none" || cs.visibility === "hidden") continue;
       const r = cs.borderTopLeftRadius;
-      // Accept 3px (xs), 0px (no rounding intentionally), or pill (>= half min dimension)
       const rNum = parseFloat(r);
       const minDim = Math.min(rect.width, rect.height);
       const isPill = rNum >= minDim / 2 - 1;
@@ -269,13 +545,9 @@ async function auditPage(
         "button, a[role=button], [data-slot=button]",
       ),
     ).slice(0, 8);
-    const buttonHovers: ButtonHover[] = buttons.map((b) => {
-      const rest = getComputedStyle(b).backgroundColor;
-      // Simulate :hover by adding a marker class + reading the matched
-      // `:hover` style via getMatchedCSSRules isn't available; instead use
-      // CSS.supports check + querying stylesheet for a `:hover` rule on
-      // matching selectors. Fallback to rest if not derivable.
-      let hover = rest;
+
+    const findHoverRule = (b: HTMLElement): RawColors | null => {
+      const out: Partial<RawColors> = {};
       try {
         for (const sheet of Array.from(document.styleSheets)) {
           let rules: CSSRuleList | null = null;
@@ -290,24 +562,131 @@ async function auditPage(
             if (!rule.selectorText.includes(":hover")) continue;
             const base = rule.selectorText.replace(/:hover/g, "");
             try {
-              if (b.matches(base.trim()) && rule.style.backgroundColor) {
-                hover = rule.style.backgroundColor;
-              }
-            } catch {}
+              if (!b.matches(base.trim())) continue;
+            } catch {
+              continue;
+            }
+            if (rule.style.color) out.text = rule.style.color;
+            if (rule.style.backgroundColor)
+              out.background = rule.style.backgroundColor;
+            if (rule.style.borderColor)
+              out.borderColor = rule.style.borderColor;
+            if (rule.style.boxShadow) out.boxShadow = rule.style.boxShadow;
           }
         }
       } catch {}
-      return { text: (b.textContent ?? "").trim().slice(0, 40), rest, hover };
+      if (Object.keys(out).length === 0) return null;
+      const rest = readColors(b);
+      return {
+        text: out.text ?? rest.text,
+        background: out.background ?? rest.background,
+        borderColor: out.borderColor ?? rest.borderColor,
+        boxShadow: out.boxShadow ?? rest.boxShadow,
+      };
+    };
+
+    const findFocusRule = (b: HTMLElement): RawColors | null => {
+      const out: Partial<RawColors> = {};
+      try {
+        for (const sheet of Array.from(document.styleSheets)) {
+          let rules: CSSRuleList | null = null;
+          try {
+            rules = sheet.cssRules;
+          } catch {
+            continue;
+          }
+          if (!rules) continue;
+          for (const rule of Array.from(rules)) {
+            if (!(rule instanceof CSSStyleRule)) continue;
+            if (
+              !rule.selectorText.includes(":focus") &&
+              !rule.selectorText.includes(":focus-visible")
+            )
+              continue;
+            const base = rule.selectorText
+              .replace(/:focus-visible/g, "")
+              .replace(/:focus/g, "");
+            try {
+              if (!b.matches(base.trim())) continue;
+            } catch {
+              continue;
+            }
+            if (rule.style.boxShadow) out.boxShadow = rule.style.boxShadow;
+            if (rule.style.outlineColor)
+              out.borderColor = rule.style.outlineColor;
+          }
+        }
+      } catch {}
+      if (Object.keys(out).length === 0) return null;
+      const rest = readColors(b);
+      return {
+        text: rest.text,
+        background: rest.background,
+        borderColor: out.borderColor ?? rest.borderColor,
+        boxShadow: out.boxShadow ?? rest.boxShadow,
+      };
+    };
+
+    const buttonHovers: RawHover[] = buttons.map((b) => {
+      const rest = readColors(b);
+      const hover = findHoverRule(b) ?? rest;
+      const focus = findFocusRule(b) ?? rest;
+      return {
+        text: (b.textContent ?? "").trim().slice(0, 40),
+        rest,
+        hover,
+        focus,
+      };
     });
 
-    return {
+    const result: RawAudit = {
       logo,
       navPaddingLeft: navCs?.paddingLeft ?? null,
       navPaddingRight: navCs?.paddingRight ?? null,
       radiusViolations: violations,
       buttonHovers,
     };
+    return result;
   });
+
+  const buttonHovers: ButtonHover[] = raw.buttonHovers.map((b) => {
+    const paletteViolations: string[] = [];
+    const bgFlag = paletteCheckTransition(
+      `button "${b.text}" bg`,
+      b.rest.background,
+      b.hover.background,
+    );
+    if (bgFlag) paletteViolations.push(bgFlag);
+    const txtFlag = paletteCheckTransition(
+      `button "${b.text}" text`,
+      b.rest.text,
+      b.hover.text,
+    );
+    if (txtFlag) paletteViolations.push(txtFlag);
+    const restBlue = paletteCheckSingle(
+      `button "${b.text}" rest bg`,
+      b.rest.background,
+    );
+    if (restBlue) paletteViolations.push(restBlue);
+    const focusBlue = paletteCheckSingle(
+      `button "${b.text}" focus ring`,
+      b.focus.borderColor,
+    );
+    if (focusBlue) paletteViolations.push(focusBlue);
+    return { ...b, paletteViolations };
+  });
+
+  const paletteViolations: string[] = [];
+  for (const b of buttonHovers) paletteViolations.push(...b.paletteViolations);
+
+  return {
+    logo: raw.logo,
+    navPaddingLeft: raw.navPaddingLeft,
+    navPaddingRight: raw.navPaddingRight,
+    radiusViolations: raw.radiusViolations,
+    buttonHovers,
+    paletteViolations,
+  };
 }
 
 // Viewport is controlled by this spec, so run only via one project (pass
@@ -316,37 +695,145 @@ for (const viewport of VIEWPORTS) {
   test.describe(`aesthetic audit — ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
-    test.beforeEach(async ({ context }) => {
-      await context.addCookies([
-        {
-          name: "eliza-test-auth",
-          value: "1",
-          domain: "127.0.0.1",
-          path: "/",
-          httpOnly: false,
-          secure: false,
-          sameSite: "Lax",
-        },
-      ]);
-    });
-
     for (const route of ROUTES) {
-      test(`${route.slug} (${viewport.name})`, async ({ page }) => {
+      test(`${route.slug} (${viewport.name})`, async ({ page, context }) => {
+        // Only inject the test-auth cookie for routes that require it.
+        // Public routes (landing, login, /bsc, etc.) need to be captured
+        // anonymously — otherwise `/` redirects to /dashboard and the
+        // landing screenshot is wrong.
+        if (route.auth) {
+          await context.addCookies([
+            {
+              name: "eliza-test-auth",
+              value: "1",
+              domain: "127.0.0.1",
+              path: "/",
+              httpOnly: false,
+              secure: false,
+              sameSite: "Lax",
+            },
+          ]);
+          // Inject a synthetic JWT into localStorage so the api-fetch
+          // bridge sees a token and attaches the Bearer header. The
+          // route mocks below catch every request so the token never
+          // hits a real server; it just needs to exist for the auth
+          // wrapper to proceed past its "no token → fetch fails" branch.
+          const header = Buffer.from(
+            JSON.stringify({ alg: "HS256", typ: "JWT" }),
+            "utf8",
+          )
+            .toString("base64")
+            .replace(/=+$/, "")
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_");
+          const payload = Buffer.from(
+            JSON.stringify({
+              sub: "22222222-2222-4222-8222-222222222222",
+              userId: "22222222-2222-4222-8222-222222222222",
+              address: "0xE2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2",
+              email: "audit@example.com",
+              exp: Math.floor(Date.now() / 1000) + 3600,
+              iat: Math.floor(Date.now() / 1000),
+            }),
+            "utf8",
+          )
+            .toString("base64")
+            .replace(/=+$/, "")
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_");
+          const token = `${header}.${payload}.audit-fake-signature`;
+          await context.addInitScript((t: string) => {
+            try {
+              window.localStorage.setItem("steward_session_token", t);
+            } catch {}
+          }, token);
+        } else {
+          await context.clearCookies();
+        }
+
+        // Stub out API endpoints that 401 against the test JWT so the
+        // audit captures actual page content instead of the
+        // "Unauthorized" error boundary. We use a single broad route
+        // that maps URL patterns to canned empty/zero shapes — the goal
+        // is to render the empty-state UI, not to exercise application
+        // logic.
+        if (route.auth) {
+          await context.route(/\/api\/(v1\/|steward\/|dashboard\/)/, (r) => {
+            const url = r.request().url();
+            const empty = (json: unknown) =>
+              r.fulfill({
+                json,
+                headers: { "content-type": "application/json" },
+              });
+
+            // List endpoints
+            if (/\/api-keys($|\?)/.test(url))
+              return empty({ keys: [], total: 0 });
+            if (/\/containers(\/auth)?($|\?|\/[^/]+$)/.test(url))
+              return empty({ containers: [] });
+            if (/\/agents(\/[^/]+)?($|\?)/.test(url))
+              return empty({ agents: [] });
+            if (/\/apps(\/[^/]+)?($|\?)/.test(url)) return empty({ apps: [] });
+            if (/\/mcps($|\?)/.test(url)) return empty({ mcps: [] });
+            if (/\/documents($|\?)/.test(url)) return empty({ documents: [] });
+            if (/\/invoices/.test(url)) return empty({ invoices: [] });
+            if (/\/redemptions/.test(url))
+              return empty({ redemptions: [], balance: 0 });
+            if (/\/affiliates|\/referrals/.test(url))
+              return empty({
+                referrals: [],
+                stats: { totalEarned: 0, totalReferred: 0 },
+              });
+
+            // Singletons / dashboards
+            if (/\/credits\/balance/.test(url))
+              return empty({ balance: 0, currency: "USD" });
+            if (/\/dashboard($|\?)/.test(url) || /\/dashboard\b/.test(url))
+              return empty({
+                user: { name: "Test User" },
+                agents: [],
+              });
+            if (/\/me($|\?)|\/profile/.test(url))
+              return empty({
+                id: "test-user",
+                name: "Test User",
+                email: "test@example.com",
+              });
+            if (/\/billing/.test(url))
+              return empty({
+                paymentMethods: [],
+                subscriptions: [],
+                upcomingInvoice: null,
+              });
+            if (/\/settings|\/preferences/.test(url))
+              return empty({ settings: {}, preferences: {} });
+            if (/\/security|\/sessions/.test(url))
+              return empty({ sessions: [], twoFactor: { enrolled: false } });
+            if (/\/analytics|\/usage/.test(url))
+              return empty({ series: [], totals: {} });
+            if (/\/earnings/.test(url))
+              return empty({ available: 0, lifetime: 0, history: [] });
+            if (/\/openapi/.test(url))
+              return empty({
+                openapi: "3.0.0",
+                info: { title: "Eliza Cloud", version: "1" },
+                paths: {},
+              });
+            if (/\/admin\//.test(url)) return empty({ items: [], metrics: {} });
+
+            // Permissive default — empty array works for most list endpoints.
+            return empty([]);
+          });
+        }
+
         const consoleErrors: string[] = [];
         const failedRequests: { url: string; status: number }[] = [];
 
         page.on("console", (msg) => {
           if (msg.type() !== "error") return;
           const text = msg.text();
-          // Browser-generated "Failed to load resource" errors duplicate
-          // information already captured in failedRequests. RenderTelemetry
-          // warnings are heuristic, not real failures.
           if (text.startsWith("Failed to load resource")) return;
           if (text.includes("[RenderTelemetry]")) return;
-          // [MyAgents] / [CreditsProvider] errors triggered by 401s from
-          // unauthenticated audit (test cookie isn't a real session). These
-          // are downstream of the same root cause already counted via
-          // failedRequests when they're real.
           if (text.includes("[MyAgents] Failed to fetch")) return;
           if (text.includes("[MyAgents] Failed to claim")) return;
           if (text.includes("[CreditsProvider] Failed to fetch")) return;
@@ -372,6 +859,7 @@ for (const viewport of VIEWPORTS) {
           slug: route.slug,
           viewport: viewport.name,
           screenshot: `${viewport.name}/${route.slug}.png`,
+          hoverScreenshot: null,
           consoleErrors,
           failedRequests,
           logo: null,
@@ -379,6 +867,7 @@ for (const viewport of VIEWPORTS) {
           navPaddingRight: null,
           radiusViolations: [],
           buttonHovers: [],
+          paletteViolations: [],
           loadOk: false,
         };
 
@@ -388,13 +877,45 @@ for (const viewport of VIEWPORTS) {
             timeout: 30_000,
           });
           await page.evaluate(() => document.fonts.ready).catch(() => {});
-          await page.waitForTimeout(600);
+          // Wait for data fetches to settle so loading skeletons don't get
+          // captured. `networkidle` resolves when there have been no
+          // in-flight requests for 500ms; cap so a streaming endpoint
+          // doesn't hang the audit forever.
+          await page
+            .waitForLoadState("networkidle", { timeout: 6_000 })
+            .catch(() => {});
+          // Final settle — allows post-data layout shift to complete.
+          await page.waitForTimeout(400);
           const audit = await auditPage(page, route.path);
           Object.assign(report, audit, { loadOk: true });
           await page.screenshot({
             path: path.join(OUT_ROOT, viewport.name, `${route.slug}.png`),
             fullPage: true,
           });
+
+          // Hover screenshot: hover the first visible primary button.
+          const primary = page
+            .locator(
+              'button:visible, a[role="button"]:visible, [data-slot="button"]:visible',
+            )
+            .first();
+          if ((await primary.count()) > 0) {
+            try {
+              await primary.scrollIntoViewIfNeeded({ timeout: 1500 });
+              await primary.hover({ timeout: 1500, force: true });
+              await page.waitForTimeout(200);
+              const hoverPath = path.join(
+                OUT_ROOT,
+                viewport.name,
+                `${route.slug}--hover.png`,
+              );
+              await page.screenshot({ path: hoverPath, fullPage: true });
+              report.hoverScreenshot = `${viewport.name}/${route.slug}--hover.png`;
+            } catch {
+              // Hovering failed (off-screen, detached, etc.) — not a fatal
+              // condition. The rest screenshot is still captured.
+            }
+          }
         } catch (err) {
           report.loadError = err instanceof Error ? err.message : String(err);
         }

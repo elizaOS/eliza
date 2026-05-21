@@ -63,8 +63,9 @@ const ADMIN_SECTIONS = [
   {
     title: "Docs",
     description: "Read setup guides, APIs, MCP, apps, and runtime docs.",
-    to: "/docs",
+    to: "https://docs.elizaos.ai/cloud",
     icon: BookOpen,
+    external: true,
   },
 ] as const;
 
@@ -157,12 +158,10 @@ function AgentConsoleOverview({
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
         {ADMIN_SECTIONS.map((section) => {
           const Icon = section.icon;
-          return (
-            <Link
-              key={section.title}
-              to={section.to}
-              className="group flex items-start gap-3 border border-white/10 bg-black p-4 transition-colors hover:border-[#FF5800]/40 hover:bg-white/[0.03]"
-            >
+          const sectionClassName =
+            "group flex items-start gap-3 border border-white/10 bg-black p-4 transition-colors hover:border-[#FF5800]/40 hover:bg-white/[0.03]";
+          const sectionInner = (
+            <>
               <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-black text-[#FF5800]">
                 <Icon className="h-4 w-4" />
               </span>
@@ -177,6 +176,28 @@ function AgentConsoleOverview({
                   {section.description}
                 </span>
               </span>
+            </>
+          );
+          if ("external" in section && section.external) {
+            return (
+              <a
+                key={section.title}
+                href={section.to}
+                target="_blank"
+                rel="noreferrer"
+                className={sectionClassName}
+              >
+                {sectionInner}
+              </a>
+            );
+          }
+          return (
+            <Link
+              key={section.title}
+              to={section.to}
+              className={sectionClassName}
+            >
+              {sectionInner}
             </Link>
           );
         })}

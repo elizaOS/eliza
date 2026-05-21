@@ -7,6 +7,16 @@ import {
   resolveBrowserBridgeReleaseVersion,
 } from "./release-version.mjs";
 
+// SOC2 L-4: explicit host allowlist replacing the legacy `<all_urls>` grant.
+// Documented in README.md. Hosts beyond this list require runtime opt-in
+// through chrome.permissions.request against `optional_host_permissions`.
+export const BROWSER_BRIDGE_HOST_ALLOWLIST = [
+  "https://eliza.how/*",
+  "https://*.eliza.how/*",
+  "https://eliza.dev/*",
+  "https://*.eliza.dev/*",
+];
+
 const browserKind = process.argv[2] === "safari" ? "safari" : "chrome";
 const extensionRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -103,9 +113,20 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
       "declarativeNetRequest",
       "declarativeNetRequestWithHostAccess",
     ],
-    host_permissions: ["<all_urls>"],
+    // SOC2 L-4: scoped host permissions. The default-install allowlist is
+    // the minimum set the extension needs to function with first-party
+    // Eliza surfaces. Additional hosts must be requested at runtime via
+    // chrome.permissions.request against `optional_host_permissions` and
+    // gated by an in-product approval prompt.
+    host_permissions: BROWSER_BRIDGE_HOST_ALLOWLIST,
+    optional_host_permissions: ["https://*/*", "http://*/*"],
     background: {
       service_worker: "background.js",
+    },
+    // SOC2 L-4: strict CSP. Disallow inline scripts; only first-party
+    // bundle code may execute.
+    content_security_policy: {
+      extension_pages: "script-src 'self'; object-src 'self'",
     },
     action: {
       default_title: "Agent Browser Bridge",
@@ -113,12 +134,12 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
     },
     content_scripts: [
       {
-        matches: ["<all_urls>"],
+        matches: BROWSER_BRIDGE_HOST_ALLOWLIST,
         js: ["content.js"],
         run_at: "document_idle",
       },
       {
-        matches: ["<all_urls>"],
+        matches: BROWSER_BRIDGE_HOST_ALLOWLIST,
         js: ["wallet-shim.js"],
         run_at: "document_start",
         all_frames: true,

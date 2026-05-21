@@ -15,6 +15,10 @@ concurrency:
   group: windows-desktop-preload-smoke-${{ github.ref }}
   cancel-in-progress: true
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   preload-smoke:
     name: desktop preload preflight (windows)

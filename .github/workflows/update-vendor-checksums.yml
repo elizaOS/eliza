@@ -5,6 +5,10 @@ on:
     - cron: '0 0 * * 0'  # Every Sunday at 00:00 UTC
   workflow_dispatch:
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   update-checksums:
     runs-on: ubuntu-latest

@@ -1,17 +1,20 @@
 :root {
-  --brand-blue: #0b35f1;
+  /* --brand-blue retained as a legacy token but remapped to neutral so
+     stragglers that still reference it don't render blue. The Eliza Cloud
+     palette is black + white + orange accent only. */
+  --brand-blue: rgba(0, 0, 0, 0.6);
   --brand-orange: #ff5800;
   --brand-black: #000000;
   --brand-white: #ffffff;
-  --sky-0: var(--brand-blue);
-  --sky-1: var(--brand-blue);
+  --sky-0: rgba(0, 0, 0, 0.8);
+  --sky-1: rgba(0, 0, 0, 0.6);
   --sky-2: var(--brand-white);
   --eliza-orange: var(--brand-orange);
   --bg: var(--brand-white);
-  --bg-accent: rgba(11, 53, 241, 0.08);
+  --bg-accent: rgba(0, 0, 0, 0.04);
   --bg-elevated: rgba(255, 255, 255, 0.94);
-  --bg-hover: rgba(11, 53, 241, 0.1);
-  --bg-muted: rgba(11, 53, 241, 0.12);
+  --bg-hover: rgba(0, 0, 0, 0.06);
+  --bg-muted: rgba(0, 0, 0, 0.08);
   --card: var(--brand-white);
   --card-foreground: var(--brand-black);
   --surface: rgba(0, 0, 0, 0.04);
@@ -29,14 +32,14 @@
   --destructive: var(--brand-orange);
   --destructive-foreground: var(--brand-white);
   --destructive-subtle: rgba(255, 88, 0, 0.12);
-  --status-success: var(--brand-blue);
-  --status-success-bg: rgba(11, 53, 241, 0.12);
+  --status-success: #22c55e;
+  --status-success-bg: rgba(34, 197, 94, 0.12);
   --status-danger: var(--brand-orange);
   --status-danger-bg: rgba(255, 88, 0, 0.12);
   --status-warning: var(--brand-orange);
   --status-warning-bg: rgba(255, 88, 0, 0.14);
-  --status-info: var(--brand-blue);
-  --status-info-bg: rgba(11, 53, 241, 0.12);
+  --status-info: rgba(0, 0, 0, 0.7);
+  --status-info-bg: rgba(0, 0, 0, 0.06);
   --font-sans: "Poppins", Arial, system-ui, sans-serif;
   --font-body: var(--font-sans);
   --font-display: var(--font-body);
@@ -69,13 +72,13 @@
   --destructive: var(--brand-orange);
   --destructive-foreground: var(--brand-white);
   --destructive-subtle: rgba(255, 88, 0, 0.12);
-  --status-success: var(--brand-blue);
-  --status-success-bg: rgba(11, 53, 241, 0.16);
+  --status-success: #4ade80;
+  --status-success-bg: rgba(74, 222, 128, 0.16);
   --status-danger: var(--brand-orange);
   --status-danger-bg: rgba(255, 88, 0, 0.12);
   --status-warning: var(--brand-orange);
   --status-warning-bg: rgba(255, 88, 0, 0.12);
-  --status-info: var(--brand-blue);
-  --status-info-bg: rgba(11, 53, 241, 0.16);
+  --status-info: rgba(255, 255, 255, 0.7);
+  --status-info-bg: rgba(255, 255, 255, 0.06);
   color-scheme: dark;
 }

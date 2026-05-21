@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.1-beta.0",
+  "version": "2.0.3",
   "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
   "type": "module",
   "license": "MIT",
@@ -48,9 +48,7 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
-    "./docs.css": "./dist/cloud-ui/styles/docs.css",
     "./styles": "./dist/styles.js",
-    "./styles/docs.css": "./dist/cloud-ui/styles/docs.css",
     "./styles/*.css": "./dist/styles/*.css",
     "./cloud-ui": {
       "types": "./dist/cloud-ui/index.d.ts",

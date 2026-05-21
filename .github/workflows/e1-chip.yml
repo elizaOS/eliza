@@ -15,6 +15,10 @@ concurrency:
   group: e1-chip-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   docker-regression:
     runs-on: ubuntu-latest

@@ -272,7 +272,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
             </span>
           </div>
           <div className="flex items-center gap-1.5 text-white/50">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+            <span className="w-1.5 h-1.5 rounded-full bg-white/60" />
             <span>
               {t("cloud.mcps.sseHttp", {
                 defaultValue: "SSE & HTTP Transport",

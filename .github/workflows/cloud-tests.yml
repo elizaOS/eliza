@@ -43,6 +43,10 @@ env:
   CACHE_ENABLED: "false"
   NODE_OPTIONS: --max-old-space-size=4096
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   lint-and-types:
     runs-on: ubuntu-latest

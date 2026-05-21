@@ -39,11 +39,26 @@ function SidebarComponent({
       className: linkClassName,
       style,
       children,
-    }: DashboardSidebarLinkRenderProps) => (
-      <Link to={href} className={linkClassName} style={style}>
-        {children}
-      </Link>
-    ),
+    }: DashboardSidebarLinkRenderProps) => {
+      if (href.startsWith("http://") || href.startsWith("https://")) {
+        return (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className={linkClassName}
+            style={style}
+          >
+            {children}
+          </a>
+        );
+      }
+      return (
+        <Link to={href} className={linkClassName} style={style}>
+          {children}
+        </Link>
+      );
+    },
     [],
   );
 

@@ -1,0 +1,69 @@
+name: coverage-gate
+
+# SOC2 CC4.1 — track unit-test coverage on changed files. ADVISORY at first
+# (warns but does not fail the build). Flip to required by setting the env
+# var COVERAGE_GATE_ENFORCE=1 in this workflow once the baseline is stable.
+#
+# TODO(security): promote to required once the team agrees on a per-package
+# threshold floor. See docs/security/ai-pr-review-policy.md for the broader
+# review checklist.
+
+on:
+  pull_request:
+    branches: ["main", "develop"]
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: coverage on changed files
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        # actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        # oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Run tests with coverage
+        run: bun test --coverage --coverage-reporter=lcov || true
+        env:
+          # Tests must produce coverage/lcov.info. If a package emits to a
+          # different path, surface it here.
+          BUN_COVERAGE_DIR: coverage
+
+      - name: Determine changed files
+        id: changed
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+          {
+            echo 'files<<EOF'
+            git diff --name-only "$BASE" "$HEAD" -- '*.ts' '*.tsx' '*.js' '*.jsx' \
+              | grep -vE '(^|/)(__tests__|test|tests)/' || true
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Apply coverage gate (advisory)
+        env:
+          COVERAGE_GATE_ENFORCE: "0"   # flip to "1" once baseline established
+        run: |
+          if [ ! -f coverage/lcov.info ]; then
+            echo "no coverage/lcov.info produced; skipping gate"
+            exit 0
+          fi
+          awk \
+            -v changed="${{ steps.changed.outputs.files }}" \
+            -v threshold=70 \
+            -f scripts/security/coverage-gate.awk \
+            coverage/lcov.info
