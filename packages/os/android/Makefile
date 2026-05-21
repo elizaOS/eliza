@@ -71,7 +71,7 @@ sim: check-arch
 	node $(DISTRO)/sim.mjs --brand-config $(BRAND_CONFIG) --device-dir $(DEVICE_DIR) --aosp-root $(AOSP_ROOT) $(ARGS)
 
 splash:
-	$(HERE)scripts/generate-eliza-bootanimation.sh
+	node $(HERE)scripts/generate-eliza-bootanimation.mjs
 
 bootanimation: splash
 	node $(DISTRO)/build-bootanimation.mjs --frames $(VENDOR)/bootanimation --out $(VENDOR)/bootanimation/bootanimation.zip
