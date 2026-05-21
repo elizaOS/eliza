@@ -91,7 +91,7 @@ jobs:
       build_macos: ${{ steps.targets.outputs.macos }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Determine version
         id: ver
@@ -138,10 +138,10 @@ jobs:
       FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -269,7 +269,7 @@ jobs:
           fi
 
       - name: Upload IPA artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: ios-ipa
           path: packages/app/ios/build/Eliza.ipa
@@ -296,10 +296,10 @@ jobs:
       APP_STORE_API_KEY_P8: ${{ secrets.APP_STORE_API_KEY_P8 }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -467,7 +467,7 @@ jobs:
           rm -f "$KEY_FILE"
 
       - name: Upload pkg artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: macos-mas-pkg
           path: ${{ env.PKG_PATH }}

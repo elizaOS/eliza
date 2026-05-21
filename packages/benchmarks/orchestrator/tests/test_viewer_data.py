@@ -21,6 +21,7 @@ def _seed_run(
     started_at: str,
     status: str = "succeeded",
     score: float | None = 1.0,
+    token_metrics: dict[str, int] | None = None,
 ) -> None:
     insert_run_start(
         conn,
@@ -60,6 +61,7 @@ def _seed_run(
         high_score_label=None,
         high_score_value=None,
         delta_to_high_score=None,
+        token_metrics=token_metrics,
     )
 
 
@@ -136,6 +138,87 @@ def test_viewer_latest_scores_ignore_scoreless_succeeded_rows(tmp_path: Path) ->
 
     assert data["latest_scores"][0]["run_id"] == "run_scored_success"
     assert data["latest_scores"][0]["score"] == 0.75
+
+
+def test_viewer_latest_scores_include_token_and_call_metrics(tmp_path: Path) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_success",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.75,
+        token_metrics={
+            "input_tokens": 100,
+            "output_tokens": 25,
+            "total_tokens": 125,
+            "cached_tokens": 40,
+            "cache_creation_input_tokens": 7,
+            "llm_call_count": 3,
+            "call_count": 3,
+        },
+    )
+
+    data = build_viewer_dataset(conn)
+    latest = data["latest_scores"][0]
+
+    assert latest["input_tokens"] == 100
+    assert latest["output_tokens"] == 25
+    assert latest["total_tokens"] == 125
+    assert latest["cached_tokens"] == 40
+    assert latest["cache_creation_input_tokens"] == 7
+    assert latest["llm_call_count"] == 3
+    assert latest["call_count"] == 3
+    assert latest["token_metrics"]["total_tokens"] == 125
+
+
+def test_viewer_runs_include_flat_token_and_call_metrics(tmp_path: Path) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_success",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.75,
+        token_metrics={
+            "input_tokens": 100,
+            "output_tokens": 25,
+            "total_tokens": 125,
+            "cached_tokens": 40,
+            "llm_call_count": 3,
+            "call_count": 3,
+        },
+    )
+
+    data = build_viewer_dataset(conn)
+    row = data["runs"][0]
+
+    assert row["input_tokens"] == 100
+    assert row["output_tokens"] == 25
+    assert row["total_tokens"] == 125
+    assert row["cached_tokens"] == 40
+    assert row["llm_call_count"] == 3
+    assert row["call_count"] == 3
 
 
 def test_viewer_calibration_summary_uses_terminal_latest(tmp_path: Path) -> None:

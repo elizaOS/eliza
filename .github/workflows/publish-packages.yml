@@ -152,12 +152,12 @@ jobs:
       url: https://pypi.org/project/elizaos-app/${{ needs.prepare.outputs.pypi_version }}/
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.14"
 
@@ -216,7 +216,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -273,7 +273,7 @@ jobs:
       contents: write  # gh release upload
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -333,7 +333,7 @@ jobs:
           elizaos-app --version || echo "Version check completed"
 
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: debian-package
           path: deb-output/
@@ -388,7 +388,7 @@ jobs:
       contents: write  # gh release upload
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -446,7 +446,7 @@ jobs:
           flatpak run ai.elizaos.App --version || echo "Version check completed"
 
       - name: Upload Flatpak bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: flatpak-bundle
           path: packages/app-core/packaging/flatpak/elizaos-app.flatpak
