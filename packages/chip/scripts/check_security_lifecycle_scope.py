@@ -12,8 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SECURITY_SPEC = ROOT / "docs/spec-db/security-2028-target.yaml"
 PRODUCT_FEATURES = ROOT / "docs/manufacturing/product-feature-evidence-manifest.yaml"
 BOOT_ROM_SPEC = ROOT / "docs/arch/boot-rom-spec.md"
-LIFECYCLE_RTL = ROOT / "rtl/security/e1_lifecycle.sv"
+LIFECYCLE_RTL = ROOT / "rtl/security/lc/e1_lc_ctrl.sv"
 LIFECYCLE_TEST = ROOT / "verify/cocotb/test_e1_lifecycle.py"
+LC_CTRL_TEST = ROOT / "verify/cocotb/test_e1_lc_ctrl.py"
+RETIRED_LIFECYCLE_RTL = ROOT / "rtl/security/e1_lifecycle.sv"
 OUT = ROOT / "build/reports/security_lifecycle_scope.json"
 
 
@@ -27,6 +29,11 @@ def rel(path: Path) -> str:
 def contains_all(text: str, tokens: tuple[str, ...]) -> bool:
     lowered = text.lower()
     return all(token.lower() in lowered for token in tokens)
+
+
+def contains_none(text: str, tokens: tuple[str, ...]) -> bool:
+    lowered = text.lower()
+    return not any(token.lower() in lowered for token in tokens)
 
 
 def domain_by_id(domains: list[Any], domain_id: str) -> dict[str, Any]:
@@ -49,6 +56,7 @@ def build_report() -> dict[str, Any]:
     boot_rom_spec = BOOT_ROM_SPEC.read_text(encoding="utf-8")
     lifecycle_rtl = LIFECYCLE_RTL.read_text(encoding="utf-8")
     lifecycle_test = LIFECYCLE_TEST.read_text(encoding="utf-8")
+    lc_ctrl_test = LC_CTRL_TEST.read_text(encoding="utf-8")
 
     domains = product_features.get("domains")
     if not isinstance(domains, list):
@@ -79,18 +87,53 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(SECURITY_SPEC),
         },
         {
-            "id": "lifecycle_rtl_placeholder_key_visible",
+            # W5: the lifecycle RTL is the 6-state one-hot lc_ctrl whose debug
+            # auth is a signed challenge-response (CSRNG nonce + RoT verifier
+            # strobe). The placeholder XOR/device-key scheme MUST be gone.
+            "id": "lifecycle_rtl_one_hot_signed_auth",
             "status": "pass"
             if contains_all(
                 lifecycle_rtl,
-                ("DEVICE_KEY_PLACEHOLDER", "Placeholder device key", "not rtl"),
+                (
+                    "module e1_lc_ctrl",
+                    "one-hot",
+                    "ST_BLANK",
+                    "ST_SCRAP",
+                    "dbg_auth_verified_i",
+                    "csrng_nonce_i",
+                    "boot_counter",
+                ),
             )
-            or contains_all(
+            and contains_none(
                 lifecycle_rtl,
-                ("DEVICE_KEY_PLACEHOLDER", "Placeholder device key", "real device"),
+                ("DEVICE_KEY_PLACEHOLDER", "lfsr", "challenge ^"),
             )
             else "fail",
             "evidence": rel(LIFECYCLE_RTL),
+        },
+        {
+            # The 2-bit XOR-auth e1_lifecycle.sv block is retired, not merely
+            # superseded: its file must be absent so no stale path survives.
+            "id": "retired_two_bit_lifecycle_absent",
+            "status": "pass" if not RETIRED_LIFECYCLE_RTL.exists() else "fail",
+            "evidence": rel(RETIRED_LIFECYCLE_RTL),
+        },
+        {
+            # The lc_ctrl cocotb suite proves the signed-auth contract: a grant
+            # happens only on the verifier strobe, never via on-chip comparison.
+            "id": "lc_ctrl_signed_auth_test_present",
+            "status": "pass"
+            if contains_all(
+                lc_ctrl_test,
+                (
+                    "mfg_debug_requires_verified_strobe",
+                    "scrap_locks_everything",
+                    "rma_debug_gated_by_wipe_done",
+                    "dbg_auth_verified_i",
+                ),
+            )
+            else "fail",
+            "evidence": rel(LC_CTRL_TEST),
         },
         {
             "id": "top_level_lifecycle_window_absent",
@@ -135,7 +178,13 @@ def build_report() -> dict[str, Any]:
         "current_scaffold": {
             "lifecycle_rtl": rel(LIFECYCLE_RTL),
             "top_level_access": "absent_unmapped_in_current_cocotb_contract",
-            "device_key": "placeholder_non_secret",
+            # W5 retired the XOR/device-key scheme: debug auth is now a signed
+            # challenge-response. The block consumes a CSRNG nonce and a verifier
+            # pass strobe; no on-chip key, no LFSR. The off-chip Ed25519 verifier
+            # and CSRNG/EDN entropy source are not yet integrated (W1/W2), so the
+            # signed path is wired to the RoT block boundary, not exercised end to
+            # end against real entropy and a real signer.
+            "debug_auth": "signed_challenge_response_rot_boundary_unintegrated",
             "synthetic_otp": "non_production_only",
         },
         "blocked_until_real_evidence": [
@@ -205,8 +254,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("current_scaffold must be a mapping")
     else:
         require(
-            scaffold.get("device_key") == "placeholder_non_secret",
-            "current scaffold must expose placeholder key status",
+            scaffold.get("debug_auth")
+            == "signed_challenge_response_rot_boundary_unintegrated",
+            "current scaffold must expose unintegrated signed-auth status",
             errors,
         )
         require(
