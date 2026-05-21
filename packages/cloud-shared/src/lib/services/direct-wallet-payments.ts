@@ -1,6 +1,7 @@
 import {
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
+  getAccount,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
@@ -537,6 +538,27 @@ async function verifySolanaTokenPayment(params: {
   const mint = params.cfg.tokenMint;
   const receiver = normalizeSolanaAddress(params.cfg.receiveAddress);
   const payer = normalizeSolanaAddress(params.payerAddress);
+
+  // Independently verify that the receiving ATA's on-chain owner field is the
+  // configured treasury wallet. This is additive to the token-delta check
+  // below: it guards against `cfg.receiveAddress` being misconfigured to a
+  // wallet whose derived ATA is somehow controlled by a different account.
+  const receiverPubkey = new PublicKey(receiver);
+  const mintPubkey = new PublicKey(mint);
+  const receiverAta = getAssociatedTokenAddressSync(mintPubkey, receiverPubkey);
+  const receiverAtaAccount = await getAccount(connection, receiverAta);
+  if (receiverAtaAccount.owner.toBase58() !== receiverPubkey.toBase58()) {
+    logger.error("[DirectWalletPayments] Receiving ATA owner mismatch", {
+      expectedOwner: receiverPubkey.toBase58(),
+      actualOwner: receiverAtaAccount.owner.toBase58(),
+      ata: receiverAta.toBase58(),
+      mint,
+    });
+    throw new Error(
+      "Receiving ATA owner does not match configured treasury wallet",
+    );
+  }
+
   const before = new Map<string, bigint>();
   for (const bal of tx.meta.preTokenBalances ?? []) {
     if (bal.mint === mint && bal.owner) {

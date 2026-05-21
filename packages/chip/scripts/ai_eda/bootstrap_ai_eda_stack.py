@@ -23,7 +23,6 @@ DEFAULT_REPORT_ROOT = ROOT / "build/ai_eda/bootstrap"
 CLAIM_BOUNDARY = "ai_eda_bootstrap_orchestration_no_release_claim"
 
 METADATA_TARGETS = (
-    "ai-eda-local-rag-index",
     "ai-eda-backend-preflight",
     "ai-eda-all-target-captures",
     "ai-eda-local-rag-index",
