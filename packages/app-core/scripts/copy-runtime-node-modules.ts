@@ -55,9 +55,15 @@ const TRACKED_PACKAGE_CACHE = path.join(
 const PUBLISHED_PACKAGE_FETCH_TIMEOUT_MS = 10_000;
 const ALLOW_REGISTRY_FETCH =
   process.env.ELIZA_RUNTIME_COPY_ALLOW_REGISTRY_FETCH === "1";
-const DEP_SKIP = new Set(["typescript", "@types/node", "lucide-react"]);
-const ALWAYS_HOISTED_PACKAGES = new Set(["@elizaos/core"]);
-const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>();
+const DEP_SKIP = new Set(["typescript", "@types/node"]);
+const ALWAYS_HOISTED_PACKAGES = new Set(["@elizaos/core", "commander"]);
+const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>([
+  // git-workspace-service declares @octokit/rest as both a dependency (^20)
+  // and a peer (>=20). Desktop bundles it via plugin-agent-orchestrator,
+  // which ships @octokit/rest@22 at the runtime root. Re-copying the private
+  // Bun fallback produces tar-unsafe nested paths on Windows.
+  ["git-workspace-service", new Set(["@octokit/rest"])],
+]);
 const RUNTIME_COPY_PRUNED_DIR_NAMES = new Set([
   ".git",
   ".gradle",
@@ -582,11 +588,48 @@ function shouldPreservePrunedPackageEntry(
   packageDir: string | undefined,
   entryPath: string,
 ): boolean {
+  const relativePath = packageDir
+    ? toPosixPath(path.relative(packageDir, entryPath))
+    : "";
+  if (
+    packageName === "@elizaos/skills" &&
+    relativePath.startsWith("skills/") &&
+    /\.(?:md|markdown)$/i.test(relativePath)
+  ) {
+    return true;
+  }
+
+  if (
+    packageName === "googleapis" &&
+    (relativePath === "build/src/apis/docs" ||
+      relativePath.startsWith("build/src/apis/docs/"))
+  ) {
+    return true;
+  }
+
+  if (
+    packageName === "three" &&
+    (relativePath === "examples" ||
+      relativePath === "examples/jsm" ||
+      relativePath.startsWith("examples/jsm/") ||
+      relativePath === "examples/fonts" ||
+      relativePath.startsWith("examples/fonts/"))
+  ) {
+    return true;
+  }
+
+  if (
+    packageName === "@elizaos/ui" &&
+    (relativePath === "dist/cloud-ui/components/docs" ||
+      relativePath.startsWith("dist/cloud-ui/components/docs/"))
+  ) {
+    return true;
+  }
+
   if (packageName !== "@elevenlabs/elevenlabs-js" || !packageDir) {
     return false;
   }
 
-  const relativePath = toPosixPath(path.relative(packageDir, entryPath));
   return (
     relativePath === "api/resources/conversationalAi/resources/tests" ||
     relativePath.startsWith(
@@ -642,7 +685,8 @@ function pruneCopiedPackageDir(name: string, packageDir: string): void {
 
       if (
         entry.isFile() &&
-        RUNTIME_COPY_PRUNED_FILE_EXTENSIONS.has(path.extname(entry.name))
+        RUNTIME_COPY_PRUNED_FILE_EXTENSIONS.has(path.extname(entry.name)) &&
+        !shouldPreservePrunedPackageEntry(name, packageDir, entryPath)
       ) {
         fs.rmSync(entryPath, { force: true });
         continue;
@@ -753,6 +797,8 @@ function shouldSkipPackagedAppCoreEntry(relativeEntry: string): boolean {
 
 type PackageJsonManifest = {
   exports?: Record<string, unknown>;
+  main?: string;
+  module?: string;
 };
 
 type AgentDeepImportExportEntry = {
@@ -1113,7 +1159,10 @@ export function shouldCopyPackageEntry(
   ) {
     return false;
   }
-  if (RUNTIME_COPY_PRUNED_FILE_EXTENSIONS.has(path.extname(entry))) {
+  if (
+    RUNTIME_COPY_PRUNED_FILE_EXTENSIONS.has(path.extname(entry)) &&
+    !shouldPreservePrunedPackageEntry(packageName, packageRoot, entry)
+  ) {
     return false;
   }
   if (entry.endsWith(".d.ts") || entry.endsWith(".d.ts.map")) {
@@ -1366,6 +1415,21 @@ export function isPackageCompatibleWithCurrentPlatform(
   );
 }
 
+function hasRootPackageOverride(name: string): boolean {
+  try {
+    const manifest = readJson<{
+      overrides?: Record<string, unknown>;
+      resolutions?: Record<string, unknown>;
+    }>(PACKAGE_JSON_PATH);
+    return (
+      Object.hasOwn(manifest.overrides ?? {}, name) ||
+      Object.hasOwn(manifest.resolutions ?? {}, name)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function collectInstalledPackageDirs(
   name: string,
   requesterDir: string,
@@ -1385,6 +1449,13 @@ function collectInstalledPackageDirs(
     for (const candidate of workspacePackageIndex.get(name) ?? []) {
       addCandidate(candidate.sourceDir);
     }
+  }
+
+  // Root overrides/resolutions are the package manager's answer for peers.
+  // Prefer that install over requester-local Bun store fallbacks so runtime
+  // packaging follows the same graph used by app-core builds.
+  if (hasRootPackageOverride(name)) {
+    addCandidate(packagePath(name, ROOT_NODE_MODULES));
   }
 
   let dir = requesterDir;
@@ -1550,6 +1621,10 @@ export function getRuntimeDependencies(pkgPath: string): string[] {
   return getRuntimeDependencyEntries(pkgPath).map((entry) => entry.name);
 }
 
+function shouldHoistRuntimePackage(name: string): boolean {
+  return ALWAYS_HOISTED_PACKAGES.has(name) || name.startsWith("@solana/");
+}
+
 type CopyTargetOptions = {
   name: string;
   requesterDestDir: string;
@@ -1571,7 +1646,7 @@ export function selectCopyTargetNodeModules({
     return targetNodeModules;
   }
 
-  if (ALWAYS_HOISTED_PACKAGES.has(name) && topLevelVersions.has(name)) {
+  if (shouldHoistRuntimePackage(name) && topLevelVersions.has(name)) {
     return targetNodeModules;
   }
 
@@ -1609,35 +1684,135 @@ function copyPgliteCompatibilityAssets(targetDist: string): void {
   }
 }
 
+function isRuntimeManifestEntryPath(value: string): boolean {
+  if (!value.startsWith("./") || value.includes("*")) {
+    return false;
+  }
+  if (/\.(?:d\.)?ts$/i.test(value) || /\.d\.[cm]?ts$/i.test(value)) {
+    return false;
+  }
+  return true;
+}
+
+function runtimeManifestEntryExists(
+  packageDir: string,
+  entryPath: string,
+): boolean {
+  const resolved = path.resolve(packageDir, entryPath);
+  const relative = path.relative(packageDir, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return false;
+  }
+
+  if (fs.existsSync(resolved)) {
+    return true;
+  }
+
+  if (!path.extname(resolved)) {
+    return [
+      ".js",
+      ".mjs",
+      ".cjs",
+      "/index.js",
+      "/index.mjs",
+      "/index.cjs",
+    ].some((suffix) => fs.existsSync(`${resolved}${suffix}`));
+  }
+
+  return false;
+}
+
+function collectRuntimeExportEntryPaths(value: unknown): string[] {
+  if (typeof value === "string") {
+    return isRuntimeManifestEntryPath(value) ? [value] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectRuntimeExportEntryPaths(entry));
+  }
+
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  const hasSubpathKeys = entries.some(
+    ([key]) => key === "." || key.startsWith("./"),
+  );
+  if (hasSubpathKeys) {
+    return entries.flatMap(([, entry]) =>
+      collectRuntimeExportEntryPaths(entry),
+    );
+  }
+
+  return entries.flatMap(([condition, entry]) => {
+    if (condition === "types" || condition === "typings") {
+      return [];
+    }
+    return collectRuntimeExportEntryPaths(entry);
+  });
+}
+
+function getRequiredRuntimeEntryPaths(pkgJsonPath: string): string[] {
+  const manifest = readJson<PackageJsonManifest>(pkgJsonPath);
+  const entries = new Set<string>();
+
+  for (const entry of [manifest.main, manifest.module]) {
+    if (typeof entry === "string" && isRuntimeManifestEntryPath(entry)) {
+      entries.add(entry);
+    }
+  }
+
+  for (const entry of collectRuntimeExportEntryPaths(manifest.exports)) {
+    entries.add(entry);
+  }
+
+  return [...entries].sort();
+}
+
 // Post-copy assertion: missingAlwaysBundled catches resolve failures, but
 // can't catch a transitive-walk filter silently skipping a CORE plugin or
-// pruneCopiedPackageDir removing a load-bearing package.json.
+// pruneCopiedPackageDir removing a load-bearing package.json or entrypoint.
 export function assertRequiredBundledPackagesLanded(
   targetNodeModules: string,
   alwaysBundled: ReadonlySet<string>,
 ): void {
   const missing: string[] = [];
+  const missingEntrypoints: string[] = [];
+  const baselinePackages = new Set(BASELINE_BUNDLED_RUNTIME_PACKAGES);
   for (const name of alwaysBundled) {
     if (!isPackageNameCompatibleWithCurrentPlatform(name)) continue;
-    const pkgJsonPath = path.join(
-      packagePath(name, targetNodeModules),
-      "package.json",
-    );
+    const packageDir = packagePath(name, targetNodeModules);
+    const pkgJsonPath = path.join(packageDir, "package.json");
     if (!fs.existsSync(pkgJsonPath)) {
       missing.push(name);
+      continue;
+    }
+
+    if (!baselinePackages.has(name)) {
+      continue;
+    }
+
+    for (const entryPath of getRequiredRuntimeEntryPaths(pkgJsonPath)) {
+      if (!runtimeManifestEntryExists(packageDir, entryPath)) {
+        missingEntrypoints.push(
+          `${name}  (missing runtime entry ${path.join(packageDir, entryPath)})`,
+        );
+      }
     }
   }
-  if (missing.length === 0) return;
+  if (missing.length === 0 && missingEntrypoints.length === 0) return;
   throw new Error(
     [
-      `[runtime-copy] ${missing.length} required runtime package(s) failed to land in the bundle after copy + prune:`,
+      `[runtime-copy] ${missing.length + missingEntrypoints.length} required runtime package check(s) failed after copy + prune:`,
       ...missing
         .sort()
         .map(
           (n) =>
             `  ${n}  (missing ${path.join(packagePath(n, targetNodeModules), "package.json")})`,
         ),
-      "This usually means a filter in the transitive-walk or a rule in pruneCopiedPackageDir accidentally excluded a required package. Bundle is unsafe to ship.",
+      ...missingEntrypoints.sort().map((entry) => `  ${entry}`),
+      "This usually means a filter in the transitive-walk, build output, or a rule in pruneCopiedPackageDir accidentally excluded a required package entry. Bundle is unsafe to ship.",
     ].join("\n"),
   );
 }
