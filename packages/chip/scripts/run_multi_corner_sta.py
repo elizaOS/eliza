@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""Multi-corner STA wrapper for the Sky130 release flow.
+"""Multi-corner STA driver, scenario-DB driven.
 
-Drives OpenSTA across Sky130 SS/TT/FF process corners times 2 RC corners
-(min and max). Produces 6 per-corner timing reports plus a JSON summary that
-captures setup/hold WNS, TNS, and worst-path digest per corner. Even at
-130 nm this is the methodology that scales to POCV/SOCV with LVF at the
-2028 advanced-node target (100-200 corners typical at N3/N2 today; we plan
-to prune to 32-64 via ML corner selection).
+Builds an MMMC scenario set (`eliza.pd_mmmc_scenario.v1`) from the corner
+manifest for the chosen node (default sky130) and runs OpenSTA once per
+scenario (delay_corner x rc_corner x mode). Each run resolves a real Liberty
++ SPEF + SDC + netlist; emits OCV derates (or read_lvf when the manifest
+declares an LVF/SOCV model); and parses the digest into the
+`eliza.pd_multi_corner_sta.v1` summary.
 
-This is fail-closed: if any required Liberty/SPEF/SDC/netlist is missing we
-exit non-zero with a structured error block. We do NOT silently substitute
-the TT/typical liberty for SS or FF.
+Fail-closed: a missing Liberty/SPEF/SDC/netlist makes that scenario error and
+the run exit non-zero. We NEVER substitute the TT/typical Liberty for SS or
+FF, and we never fabricate timing numbers.
+
+Backward compatibility: --corners-json still accepts the legacy
+[{name,process,rc}] list and runs exactly those Sky130 corners with default
+OCV derates, bypassing the scenario DB. New work should rely on the scenario
+DB built from the corner manifests.
 """
 
 from __future__ import annotations
@@ -26,22 +31,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
+import sta_scenario_db as sdb
+from sta_scenario_db import OcvModel, Scenario
 
-DEFAULT_CORNERS = [
-    {"name": "SS_min", "process": "ss", "rc": "min"},
-    {"name": "SS_max", "process": "ss", "rc": "max"},
-    {"name": "TT_min", "process": "tt", "rc": "min"},
-    {"name": "TT_max", "process": "tt", "rc": "max"},
-    {"name": "FF_min", "process": "ff", "rc": "min"},
-    {"name": "FF_max", "process": "ff", "rc": "max"},
-]
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @dataclass
-class CornerInputs:
-    name: str
+class ScenarioInputs:
+    scenario: Scenario
     liberty: Path
+    lvf: Path | None
     spef: Path
     sdc: Path
     netlist: Path
@@ -62,84 +62,139 @@ def resolve(value: str) -> Path:
     return p
 
 
-def discover_inputs(run_dir: Path, corner: dict[str, str], pdk_root: Path) -> CornerInputs | str:
-    """Return CornerInputs if all required files exist, otherwise an error string."""
-    final = run_dir / "final"
-    netlist_dirs = [final / "nl", final / "pnl"]
-    netlist: Path | None = None
-    for cand in netlist_dirs:
+def _find_netlist(final: Path) -> Path | None:
+    for cand in (final / "nl", final / "pnl"):
         if cand.is_dir():
             for v in cand.glob("*.v"):
-                netlist = v
-                break
-        if netlist is not None:
-            break
-    if netlist is None:
-        netlist = next(final.glob("**/*.v"), None)
-    if netlist is None:
-        return f"corner={corner['name']}: gate netlist missing under {final}"
-    spef_glob = (
-        list((final / "spef").glob(f"*{corner['rc']}*.spef")) if (final / "spef").is_dir() else []
+                return v
+    return next(final.glob("**/*.v"), None)
+
+
+def _find_spef(final: Path, rc_name: str) -> Path | None:
+    spef_dir = final / "spef"
+    candidates = (
+        list(spef_dir.glob(f"*{rc_name}*.spef")) if spef_dir.is_dir() else []
     )
-    if not spef_glob:
-        spef_glob = list(final.glob(f"**/*{corner['rc']}*.spef"))
-    if not spef_glob:
-        return f"corner={corner['name']}: no SPEF matching '{corner['rc']}' under {final}"
+    if not candidates:
+        candidates = list(final.glob(f"**/*{rc_name}*.spef"))
+    return candidates[0] if candidates else None
+
+
+def _find_sdc(final: Path) -> Path | None:
     sdc = next(final.glob("**/*.sdc"), None)
-    if sdc is None:
-        sdc = (ROOT / "pd/constraints/e1_soc.sdc").resolve()
-        if not sdc.is_file():
-            return f"corner={corner['name']}: signoff SDC missing"
-    lib_glob = list(
-        pdk_root.glob(
-            f"sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__{corner['process']}*_*.lib"
-        )
-    )
-    if not lib_glob:
+    if sdc is not None:
+        return sdc
+    fallback = (ROOT / "pd/constraints/e1_soc.sdc").resolve()
+    return fallback if fallback.is_file() else None
+
+
+def _find_liberty(pdk_root: Path, liberty_name: str) -> Path | None:
+    """Resolve a Liberty by exact basename declared in the corner manifest.
+
+    We match on the basename so the PDK layout can change without editing
+    the manifest. We never fall back to a different process corner's Liberty.
+    """
+    matches = list(pdk_root.glob(f"**/{liberty_name}"))
+    return matches[0] if matches else None
+
+
+def _find_lvf(pdk_root: Path, liberty_name: str) -> Path | None:
+    """Resolve an LVF Liberty companion if one ships alongside the corner.
+
+    OpenSTA reads LVF data via `read_liberty` of an LVF-annotated .lib, or a
+    sidecar with a `.lvf.lib`/`_lvf.lib` suffix. We only return a file that
+    actually exists; absence is reported, never faked.
+    """
+    stem = liberty_name[:-4] if liberty_name.endswith(".lib") else liberty_name
+    for suffix in (f"{stem}.lvf.lib", f"{stem}_lvf.lib", f"{stem}.lvf"):
+        matches = list(pdk_root.glob(f"**/{suffix}"))
+        if matches:
+            return matches[0]
+    return None
+
+
+def discover_scenario_inputs(
+    run_dir: Path, scenario: Scenario, pdk_root: Path
+) -> ScenarioInputs | str:
+    final = run_dir / "final"
+    netlist = _find_netlist(final)
+    if netlist is None:
+        return f"scenario={scenario.name}: gate netlist missing under {final}"
+    spef = _find_spef(final, scenario.rc_corner.name)
+    if spef is None:
         return (
-            f"corner={corner['name']}: liberty for {corner['process']} not found under "
-            f"{pdk_root}/sky130A/libs.ref/sky130_fd_sc_hd/lib/. PDK_ROOT may be wrong."
+            f"scenario={scenario.name}: no SPEF matching RC corner "
+            f"'{scenario.rc_corner.name}' under {final}"
         )
-    return CornerInputs(
-        name=corner["name"],
-        liberty=lib_glob[0],
-        spef=spef_glob[0],
+    sdc = _find_sdc(final)
+    if sdc is None:
+        return f"scenario={scenario.name}: signoff SDC missing"
+    liberty = _find_liberty(pdk_root, scenario.delay_corner.liberty)
+    if liberty is None:
+        return (
+            f"scenario={scenario.name}: Liberty '{scenario.delay_corner.liberty}' "
+            f"not found under {pdk_root}. PDK_ROOT may be wrong. "
+            "Refusing to substitute another corner's Liberty."
+        )
+    lvf: Path | None = None
+    if scenario.ocv.lvf_declared:
+        lvf = _find_lvf(pdk_root, scenario.delay_corner.liberty)
+    return ScenarioInputs(
+        scenario=scenario,
+        liberty=liberty,
+        lvf=lvf,
+        spef=spef,
         sdc=sdc,
         netlist=netlist,
     )
 
 
-def render_opensta_script(inp: CornerInputs, out_dir: Path) -> Path:
+def _ocv_lines(ocv: OcvModel, lvf: Path | None) -> list[str]:
+    """Emit the OCV/LVF Tcl for one scenario.
+
+    - LVF declared AND an LVF file resolved: read_lvf, then a documented
+      margin derate as a backstop (LVF supplies statistical sigma; the
+      margin derate covers what LVF does not).
+    - LVF declared but no file resolved: fall back to OCV margin derates and
+      record nothing fake — the summary flags lvf_resolved=false.
+    - OCV model: documented graph-based early/late margin derates only.
+    """
+    lines: list[str] = []
+    if ocv.lvf_declared and lvf is not None:
+        lines.append(f"read_lvf {lvf}")
+    lines.append(f"set_timing_derate -late {ocv.late_derate:.4f}")
+    lines.append(f"set_timing_derate -early {ocv.early_derate:.4f}")
+    return lines
+
+
+def render_opensta_script(inp: ScenarioInputs, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    script = out_dir / f"{inp.name}.tcl"
-    rpt = out_dir / f"{inp.name}.rpt"
-    script.write_text(
-        "\n".join(
-            [
-                f"read_liberty {inp.liberty}",
-                f"read_verilog {inp.netlist}",
-                "link_design e1_chip_top",
-                f"read_sdc {inp.sdc}",
-                f"read_spef {inp.spef}",
-                "set_propagated_clock [all_clocks]",
-                "report_checks -path_delay max -group_count 10 -slack_max 0",
-                "report_checks -path_delay min -group_count 10 -slack_max 0",
-                "report_tns",
-                "report_wns",
-                "report_worst_slack -max",
-                "report_worst_slack -min",
-                "report_check_types -max_slew -max_capacitance -max_fanout -violators",
-                f"set fp [open {rpt} w]",
-                'puts $fp "setup_wns [sta::worst_slack -max]"',
-                'puts $fp "hold_wns [sta::worst_slack -min]"',
-                'puts $fp "setup_tns [sta::total_negative_slack -max]"',
-                'puts $fp "hold_tns [sta::total_negative_slack -min]"',
-                "close $fp",
-                "exit 0",
-            ]
-        )
-        + "\n"
-    )
+    script = out_dir / f"{inp.scenario.name}.tcl"
+    rpt = out_dir / f"{inp.scenario.name}.rpt"
+    body = [
+        f"read_liberty {inp.liberty}",
+        f"read_verilog {inp.netlist}",
+        "link_design e1_chip_top",
+        f"read_sdc {inp.sdc}",
+        f"read_spef {inp.spef}",
+        *_ocv_lines(inp.scenario.ocv, inp.lvf),
+        "set_propagated_clock [all_clocks]",
+        "report_checks -path_delay max -group_count 10 -slack_max 0",
+        "report_checks -path_delay min -group_count 10 -slack_max 0",
+        "report_tns",
+        "report_wns",
+        "report_worst_slack -max",
+        "report_worst_slack -min",
+        "report_check_types -max_slew -max_capacitance -max_fanout -violators",
+        f"set fp [open {rpt} w]",
+        'puts $fp "setup_wns [sta::worst_slack -max]"',
+        'puts $fp "hold_wns [sta::worst_slack -min]"',
+        'puts $fp "setup_tns [sta::total_negative_slack -max]"',
+        'puts $fp "hold_tns [sta::total_negative_slack -min]"',
+        "close $fp",
+        "exit 0",
+    ]
+    script.write_text("\n".join(body) + "\n")
     return script
 
 
@@ -157,11 +212,84 @@ def parse_corner_report(rpt: Path) -> dict[str, float]:
     return metrics
 
 
+def _legacy_corner_to_scenario(corner: dict[str, str], node_id: str) -> Scenario | str:
+    """Map a legacy {name,process,rc} entry onto a scenario from the node DB.
+
+    Picks the delay corner whose process matches and an RC corner whose name
+    matches (or contains) the legacy `rc`. Returns an error string if no
+    match exists, so the legacy path stays fail-closed too.
+    """
+    try:
+        sset = sdb.build_scenario_set(node_id)
+    except (FileNotFoundError, ValueError) as exc:
+        return f"corner={corner.get('name')}: {exc}"
+    if sset.blocked:
+        return f"corner={corner.get('name')}: node '{node_id}' scenario set is blocked"
+    process = str(corner.get("process", "")).lower()
+    rc = str(corner.get("rc", "")).lower()
+    for s in sset.scenarios:
+        if s.delay_corner.process != process:
+            continue
+        if rc and rc not in s.rc_corner.name.lower() and rc != s.rc_corner.role.lower():
+            continue
+        return Scenario(
+            name=str(corner.get("name", s.name)),
+            mode=s.mode,
+            analysis_type=s.analysis_type,
+            delay_corner=s.delay_corner,
+            rc_corner=s.rc_corner,
+            ocv=s.ocv,
+        )
+    return (
+        f"corner={corner.get('name')}: no scenario in node '{node_id}' matches "
+        f"process={process!r} rc={rc!r}"
+    )
+
+
+def _resolve_scenarios(args: argparse.Namespace) -> list[Scenario] | str:
+    if args.scenario_db:
+        path = resolve(args.scenario_db)
+        if not path.is_file():
+            return f"scenario DB not found: {path}"
+        payload = json.loads(path.read_text())
+        return sdb.dict_to_scenarios(payload)
+    if args.corners_json:
+        raw = json.loads(resolve(args.corners_json).read_text())
+        if not isinstance(raw, list):
+            return "corners-json must be a JSON list"
+        scenarios: list[Scenario] = []
+        for corner in raw:
+            mapped = _legacy_corner_to_scenario(corner, args.node_id)
+            if isinstance(mapped, str):
+                return mapped
+            scenarios.append(mapped)
+        return scenarios
+    sset = sdb.build_scenario_set(args.node_id)
+    if sset.blocked:
+        return (
+            f"node '{args.node_id}' scenario set is blocked: {sset.blocked_reason}"
+        )
+    return sset.scenarios
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--out-dir", required=True)
-    parser.add_argument("--corners-json")
+    parser.add_argument(
+        "--node-id",
+        default="sky130",
+        help=f"corner-manifest node to build scenarios from (default sky130); "
+        f"one of {', '.join(sorted(sdb.KNOWN_NODES))}",
+    )
+    parser.add_argument(
+        "--scenario-db",
+        help="prebuilt eliza.pd_mmmc_scenario.v1 JSON (overrides --node-id)",
+    )
+    parser.add_argument(
+        "--corners-json",
+        help="legacy [{name,process,rc}] override (mapped onto the node DB)",
+    )
     parser.add_argument("--pdk-root", default=os.environ.get("PDK_ROOT", ""))
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -173,40 +301,55 @@ def main() -> int:
     if not args.pdk_root:
         return fail("PDK_ROOT not set; pass --pdk-root or export PDK_ROOT")
     pdk_root = Path(args.pdk_root).resolve()
-    corners = (
-        json.loads(Path(args.corners_json).read_text()) if args.corners_json else DEFAULT_CORNERS
-    )
-    if not isinstance(corners, list) or len(corners) < 6:
-        return fail(
-            "corners list must hold at least 6 entries (SS/TT/FF x min/max minimum)",
-            corners=corners,
-        )
+
+    try:
+        scenarios = _resolve_scenarios(args)
+    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+        return fail("could not resolve scenario set", detail=str(exc))
+    if isinstance(scenarios, str):
+        return fail(scenarios)
+    if not scenarios:
+        return fail("scenario set is empty", node_id=args.node_id)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     summary: dict[str, Any] = {
         "schema": "eliza.pd_multi_corner_sta.v1",
+        "node_id": args.node_id,
         "run_dir": str(run_dir),
         "pdk_root": str(pdk_root),
+        "scenario_count": len(scenarios),
         "corners": [],
     }
-    errors: list[str] = []
+
     if args.dry_run:
-        for corner in corners:
-            summary["corners"].append({"corner": corner, "dry_run": True})
+        for s in scenarios:
+            summary["corners"].append(
+                {
+                    "scenario": s.name,
+                    "mode": s.mode,
+                    "delay_corner": s.delay_corner.name,
+                    "rc_corner": s.rc_corner.name,
+                    "liberty": s.delay_corner.liberty,
+                    "ocv": s.ocv.kind,
+                    "lvf_declared": s.ocv.lvf_declared,
+                    "dry_run": True,
+                }
+            )
         out_path = out_dir / "multi_corner_sta.json"
         out_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-        print(f"PASS: dry-run STA plan written: {out_path}")
+        print(f"PASS: dry-run STA plan ({len(scenarios)} scenarios): {out_path}")
         return 0
 
     sta_bin = shutil.which("sta") or shutil.which("openroad")
     if sta_bin is None:
         return fail("neither sta nor openroad on PATH; cannot run STA")
 
-    for corner in corners:
-        inp = discover_inputs(run_dir, corner, pdk_root)
+    errors: list[str] = []
+    for s in scenarios:
+        inp = discover_scenario_inputs(run_dir, s, pdk_root)
         if isinstance(inp, str):
             errors.append(inp)
-            summary["corners"].append({"corner": corner, "error": inp})
+            summary["corners"].append({"scenario": s.name, "error": inp})
             continue
         script = render_opensta_script(inp, out_dir)
         if Path(sta_bin).name == "sta":
@@ -214,14 +357,26 @@ def main() -> int:
         else:
             cmd = [sta_bin, "-exit", str(script)]
         proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
-        (out_dir / f"{inp.name}.stdout.log").write_text(proc.stdout)
-        (out_dir / f"{inp.name}.stderr.log").write_text(proc.stderr)
-        metrics = parse_corner_report(out_dir / f"{inp.name}.rpt")
+        (out_dir / f"{s.name}.stdout.log").write_text(proc.stdout)
+        (out_dir / f"{s.name}.stderr.log").write_text(proc.stderr)
+        metrics = parse_corner_report(out_dir / f"{s.name}.rpt")
         summary["corners"].append(
             {
-                "corner": corner,
+                "scenario": s.name,
+                "mode": s.mode,
+                "delay_corner": s.delay_corner.name,
+                "rc_corner": s.rc_corner.name,
+                "analysis_type": s.analysis_type,
+                "ocv": {
+                    "kind": s.ocv.kind,
+                    "lvf_declared": s.ocv.lvf_declared,
+                    "lvf_resolved": inp.lvf is not None,
+                    "late_derate": s.ocv.late_derate,
+                    "early_derate": s.ocv.early_derate,
+                },
                 "inputs": {
                     "liberty": str(inp.liberty),
+                    "lvf": str(inp.lvf) if inp.lvf else None,
                     "spef": str(inp.spef),
                     "sdc": str(inp.sdc),
                     "netlist": str(inp.netlist),
@@ -234,9 +389,9 @@ def main() -> int:
     out_path = out_dir / "multi_corner_sta.json"
     out_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     if errors:
-        print(f"FAIL: {len(errors)} corners could not run; see {out_path}", file=sys.stderr)
+        print(f"FAIL: {len(errors)} scenarios could not run; see {out_path}", file=sys.stderr)
         return 1
-    print(f"PASS: multi-corner STA written: {out_path}")
+    print(f"PASS: multi-corner STA ({len(scenarios)} scenarios) written: {out_path}")
     return 0
 
 

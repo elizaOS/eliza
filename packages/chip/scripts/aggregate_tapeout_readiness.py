@@ -432,6 +432,13 @@ GATES: tuple[GateSpec, ...] = (
         tier="spec",
     ),
     GateSpec(
+        name="android-system-apk-payload-check",
+        script="scripts/check_android_system_apk_payload.py",
+        subsystem="bsp",
+        tier="spec",
+        args=("--allow-missing-aapt",),
+    ),
+    GateSpec(
         name="android-launcher-runtime-evidence-check",
         script="scripts/check_android_launcher_runtime_evidence.py",
         subsystem="bsp",
@@ -651,12 +658,16 @@ def build_report(results: list[GateResult]) -> dict[str, object]:
     }
 
 
-def write_report(report: dict[str, object]) -> None:
-    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+def write_report(report: dict[str, object], report_path: Path | None = None) -> None:
+    if report_path is None:
+        report_path = REPORT_PATH
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
 
 
-def print_summary(report: dict[str, object], strict: bool) -> None:
+def print_summary(report: dict[str, object], strict: bool, report_path: Path | None = None) -> None:
+    if report_path is None:
+        report_path = REPORT_PATH
     gates = report["gates"]
     assert isinstance(gates, list)
     summary = report["summary"]
@@ -686,7 +697,11 @@ def print_summary(report: dict[str, object], strict: bool) -> None:
         f"effective_release_blocker={effective_release_blocker}  "
         f"strict={strict}"
     )
-    print(f"report: {REPORT_PATH.relative_to(ROOT)}")
+    try:
+        printable_report_path = report_path.relative_to(ROOT)
+    except ValueError:
+        printable_report_path = report_path
+    print(f"report: {printable_report_path}")
     print(f"claim_boundary: {report['claim_boundary']}")
 
 
@@ -709,16 +724,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Suppress the human summary table; only emit the JSON path.",
     )
+    parser.add_argument(
+        "--report",
+        default=str(REPORT_PATH),
+        help=f"Write aggregate report to this path (default: {REPORT_PATH.relative_to(ROOT)})",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    report_path = Path(args.report)
     results = [run_gate(spec) for spec in GATES]
     report = build_report(results)
-    write_report(report)
+    write_report(report, report_path)
     if not args.json_only:
-        print_summary(report, strict=args.strict)
+        print_summary(report, strict=args.strict, report_path=report_path)
     if args.strict:
         if report["summary"]["fail"] > 0 or report["summary"]["blocked"] > 0:  # type: ignore[index]
             return 1

@@ -39,15 +39,16 @@ enclosure_fit_policy:
   requires_all_clearance_cases_measured: true
   requires_no_boolean_interference: true
   requires_physical_fit_and_functional_logs: true
-  expected_clearance_case_count: 11
+  expected_clearance_case_count: 12
   complete_clearance_result_count: 0
 current_blockers:
   production_step_files: []
   missing_or_incomplete_clearance_cases:
-    - battery_to_pcb_islands
     - haptic_to_battery
     - split_interconnect_connectors_on_pcb_islands
     - usb_shell_to_external_aperture
+    - battery_back_void_foam_to_pouch
+    - battery_to_pcb_islands
     - bottom_mic_to_usb
     - front_camera_to_earpiece
     - haptic_to_pcb_islands

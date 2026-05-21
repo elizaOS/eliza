@@ -24,7 +24,7 @@ source_artifacts:
   - docs/board/e1-phone-enclosure-interface.yaml
 
 shared_geometry:
-  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.2}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.8}
   board_bbox_mm: {width: 64.0, height: 132.0}
   selected_display_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
   selected_display_active_area_mm: {width: 68.04, height: 120.96}
@@ -42,7 +42,7 @@ interface_reviews:
       part: CH550FH01A-CT
       sourcing_class: popular_5p5_in_1080x1920_mipi_lcm_ctp
       supplier_state: supplier_request_required
-    region_mm: {x: 49.0, y: 8.0, width: 13.0, height: 19.0}
+    region_mm: {x: 45.0, y: 3.0, width: 17.0, height: 8.0}
     enclosure_zone_ref: display_camera_fpc_zone
     required_nets:
       - DSI_CLK_P
@@ -170,7 +170,7 @@ interface_reviews:
         vendor: Sincere First
         module: SF-G5035S60FY
         sensor_class: GC5035_5MP_fixed_focus
-    region_mm: {x: 45.0, y: 3.0, width: 17.0, height: 24.0}
+    region_mm: {x: 45.0, y: 12.0, width: 17.0, height: 13.0}
     enclosure_zone_ref: display_camera_fpc_zone
     required_nets:
       - CAM0_CSI_CLK_P

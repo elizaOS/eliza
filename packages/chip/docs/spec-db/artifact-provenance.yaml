@@ -1,0 +1,37 @@
+schema: eliza.artifact_provenance.v1
+status: local_planning_contract
+release_use: prohibited
+claim_boundary: 'Provenance graph linking the E1 die revision -> package revision
+  -> board revision by source-artifact checksum. Each node pins the sha256 of its
+  own source artifact; each downstream node records the upstream checksum it was cut
+  against. scripts/build_artifact_provenance.py recomputes the source checksums and
+  fail-closes when any downstream node references a stale upstream checksum or an
+  ECO/ECN that has not propagated. This is provenance bookkeeping only; it makes no
+  fabrication-readiness claim.
+
+  '
+nodes:
+- id: die-rev
+  level: die
+  revision: e1_demo_padframe_r0
+  source_path: pd/padframe/e1_demo_padframe.yaml
+  node_checksum: 4d84cc60f94e745e9c085debce86d32cd7bc24c4682cd7fa1cada3e3106565ff
+  upstream: null
+  upstream_checksum: null
+  eco_ecn: []
+- id: package-rev
+  level: package
+  revision: e1_demo_qfn64_planning_r0
+  source_path: package/e1-demo-pinout.yaml
+  node_checksum: 00020121892abc42289af4d1fd56ae91bc53deeab69129ed538404f2117d1436
+  upstream: die-rev
+  upstream_checksum: 4d84cc60f94e745e9c085debce86d32cd7bc24c4682cd7fa1cada3e3106565ff
+  eco_ecn: []
+- id: board-rev
+  level: board
+  revision: e1_demo_board_r0
+  source_path: board/kicad/e1-demo/e1-demo.kicad_pro
+  node_checksum: 394710ec463149267fc0425f0b9096404203a624aafd6d275331955ea878fdab
+  upstream: package-rev
+  upstream_checksum: 00020121892abc42289af4d1fd56ae91bc53deeab69129ed538404f2117d1436
+  eco_ecn: []

@@ -78,18 +78,18 @@
   {
     "name": "main_pcb",
     "role": "PCB",
-    "material": "8L HDI FR-4 top/bottom islands around full-width battery",
+    "material": "8L HDI FR-4 top/bottom split-island board envelope around full-width battery",
     "obj": "mechanical/e1-phone/out/main_pcb.obj",
     "stl": "mechanical/e1-phone/out/main_pcb.stl",
     "bounds_mm": [
       [
         -32.0,
-        -66.0,
+        -73.5,
         -2.5
       ],
       [
         32.0,
-        66.0,
+        73.25,
         -1.7
       ]
     ]

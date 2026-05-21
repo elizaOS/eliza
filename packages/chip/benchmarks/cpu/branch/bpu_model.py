@@ -38,6 +38,11 @@ DEFAULT_GEOMETRY: dict[str, object] = {
     "TAGE_TAG_W": 8,
     "TAGE_CTR_W": 3,
     "TAGE_USEFUL_W": 2,
+    # Allocation/aging policy (off by default = current RTL behaviour). These
+    # are model levers evaluated by the sweep; enabling them is a concrete
+    # tage.sv proposal.
+    "TAGE_ALLOC_DECREMENT": False,
+    "TAGE_UBIT_RESET_PERIOD": 0,  # branches between useful-bit aging (0 = off)
     "TAGE_HIST_LEN": (8, 13, 32, 64, 119),
     "SC_TABLES": 4,
     "SC_ENTRIES_TABLE": 512,
@@ -173,12 +178,29 @@ class _TageTable:
         }
         return True
 
+    def decrement_useful(self, pc: int, hist: int) -> None:
+        """Age the candidate victim's useful counter on a failed allocation."""
+        idx, _tag = self._index_tag(pc, hist)
+        entry = self.storage.get(idx)
+        if entry is not None and entry["useful"] > 0:
+            entry["useful"] -= 1
+
+    def age_useful(self, clear_high: bool) -> None:
+        """Periodic useful-bit reset: alternately clear the high or low bit of
+        every allocated entry's useful counter (classic TAGE u-bit decay)."""
+        bit = (1 << (self.useful_w - 1)) if clear_high else 1
+        mask = _mask(self.useful_w) & ~bit
+        for entry in self.storage.values():
+            entry["useful"] &= mask
+
 
 @dataclass
 class _Tage:
     geo: dict
     tables: list[_TageTable]
     bim: _BimodalTable
+    branch_ctr: int = 0
+    reset_phase: int = 0
 
     @classmethod
     def build(cls, geo: dict) -> _Tage:
@@ -228,10 +250,28 @@ class _Tage:
         if provider > 0:
             self.tables[provider - 1].update(pc, hist_resolve_time, taken, not misp)
         if misp:
-            # Allocate the next-longer history table that has a victim.
+            # Allocate into a longer-history table that has a free victim
+            # (useful==0). With TAGE_ALLOC_DECREMENT, age the useful counter of
+            # each occupied candidate we pass over, so a later misprediction at
+            # the same site can allocate — this is the classic fix for the
+            # allocation starvation that pure first-fit suffers on long traces.
+            alloc_decrement = self.geo.get("TAGE_ALLOC_DECREMENT", False)
             for higher in range(provider, len(self.tables)):
                 if self.tables[higher].try_allocate(pc, hist_resolve_time, taken):
-                    return
+                    break
+                if alloc_decrement:
+                    self.tables[higher].decrement_useful(pc, hist_resolve_time)
+        # Periodic useful-bit reset (aging): without it, useful counters
+        # saturate and block all future allocation. Alternately clear the high
+        # then low bit of every entry's useful counter each period.
+        period = self.geo.get("TAGE_UBIT_RESET_PERIOD", 0)
+        if period:
+            self.branch_ctr += 1
+            if self.branch_ctr >= period:
+                self.branch_ctr = 0
+                for tbl in self.tables:
+                    tbl.age_useful(self.reset_phase == 0)
+                self.reset_phase ^= 1
 
 
 @dataclass

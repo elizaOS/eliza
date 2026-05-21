@@ -10,6 +10,7 @@ source_artifacts:
   - board/kicad/e1-phone/block-netlist.yaml
   - board/kicad/e1-phone/routing-constraints.yaml
   - board/kicad/e1-phone/pcb-implementation-audit.yaml
+  - board/kicad/e1-phone/split-interconnect-schematic-net-binding.yaml
   - package/interconnect/e1-phone-top-bottom-flex.yaml
 upstream_status:
   top_bottom_interconnect_status: blocked_interconnect_requires_connector_stackup_and_si

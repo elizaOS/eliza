@@ -14,6 +14,7 @@ source_artifacts:
   - board/kicad/e1-phone/block-netlist.yaml
   - board/kicad/e1-phone/placement-interface-matrix.yaml
   - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/radio-module-schematic-net-binding.yaml
   - package/cellular/quectel-5g-redcap.yaml
   - package/wifi/murata-type-2ea-wifi6e.yaml
 upstream_status:

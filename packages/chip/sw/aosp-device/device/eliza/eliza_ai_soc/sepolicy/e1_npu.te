@@ -13,6 +13,16 @@
 
 type e1_npu_device, dev_type;
 
+# Device/vendor policy compilation does not import new HAL attributes declared
+# through public system policy macros, so keep this custom HAL's attributes local
+# to the device policy while preserving the standard HAL domain shape.
+attribute hal_e1_npu;
+expandattribute hal_e1_npu true;
+attribute hal_e1_npu_client;
+expandattribute hal_e1_npu_client true;
+attribute hal_e1_npu_server;
+expandattribute hal_e1_npu_server false;
+
 type hal_e1_npu_default, domain;
 type hal_e1_npu_default_exec, exec_type, vendor_file_type, file_type;
 type hal_e1_npu_hwservice, hwservice_manager_type;

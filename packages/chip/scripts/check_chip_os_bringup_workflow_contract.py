@@ -175,7 +175,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
-        "release_blocker" in aggregate_text and "effective_release_blocker" in aggregate_text,
+        "release_blocker" in aggregate_text
+        and "effective_release_blocker" in aggregate_text
+        and "--strict" not in body_text,
         "normal_aggregate_semantics_not_objective_specific",
         "normal aggregate still separates FAIL from BLOCKED, so it is not itself the objective gate",
         rel(AGGREGATE),

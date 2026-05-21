@@ -11,6 +11,7 @@ source_artifacts:
   - board/kicad/e1-phone/artifact-manifest.yaml
   - board/kicad/e1-phone/block-netlist.yaml
   - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/evt1-stackup-impedance-coupon-plan.yaml
   - board/kicad/e1-phone/supplier-rfq-intake.yaml
   - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml

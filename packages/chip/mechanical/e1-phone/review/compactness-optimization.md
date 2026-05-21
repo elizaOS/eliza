@@ -4,7 +4,7 @@ Status: cad_compactness_optimized.
 
 ## Decision
 
-Keep 78.0 x 153.6 x 12.7 mm molded orange body: width/height stay display-driven; depth was deliberately raised to fully bury the rear camera and torch under a flat flush back wall (no camera bump, no proud lens ring).
+Keep 78.0 x 153.6 x 11.8 mm molded orange body: width/height stay display-driven; depth was deliberately raised to fully bury the rear camera and torch under a flat flush back wall (no camera bump, no proud lens ring).
 
 ## Cases
 

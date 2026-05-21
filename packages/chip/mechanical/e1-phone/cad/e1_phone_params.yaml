@@ -56,6 +56,28 @@ pcb:
   outline_mm: [64.0, 132.0, 0.8]
   z_center_mm: -2.1
   edge_clearance_mm: 2.5
+  topology: two_rigid_islands_bridged_by_split_flex
+  topology_basis: >-
+    board/kicad/e1-phone/board-topology-decision.yaml selects
+    top_bottom_rigid_islands_with_flex_or_board_to_board: a single rigid center
+    board cannot share the XY/Z envelope of the full-width 64x87 mm battery
+    (battery z-envelope [-4.15,+1.45] overlaps the PCB plane z [-2.5,-1.7]). The
+    board is therefore cut into two rigid islands placed in the Y regions NOT
+    occupied by the battery (battery spans y[-50.5,+36.5]); the islands sit above
+    and below it and the existing 49-contact split_interconnect flex bridges them.
+  top_island_outline_mm: [64.0, 35.5, 0.8]
+  top_island_center_y_mm: 55.5
+  top_island_role: SoC/modem/LPDDR/UFS/RF shields and display+camera FPC region
+  bottom_island_outline_mm: [64.0, 22.0, 0.8]
+  bottom_island_center_y_mm: -62.5
+  bottom_island_role: USB-C, USB-PD/charger, PMIC, audio, factory test access
+  bottom_island_size_basis: >-
+    The battery bottom edge sits at y=-50.5 and the bottom interior wall+clearance
+    limit is ~y=-74.15, leaving ~22.6 mm of board-bearing length below the pack.
+    The bottom island is sized to 22.0 mm (1.0 mm battery-edge gap, ~0.65 mm wall
+    margin) rather than the nominal ~30 mm request because the full-width pack
+    geometrically forecloses a 30 mm bottom island; USB-C/PMIC/charger fit in
+    22 mm at this width.
 
 battery:
   candidate: LiPol LP566487 class 3.85 V 5727 mAh 22.05 Wh thick pouch
@@ -124,6 +146,12 @@ components:
     candidate: single OV13855/OV13850 class 13 MP simple-AF MIPI module, single lens, buried under flush back wall
     module_mm: [10.0, 10.0, 5.1]
     lens_diameter_mm: 6.8
+    lens_window_opening_diameter_mm: 7.2
+    lens_window_radial_margin_basis: >-
+      The flush back-shell lens window opening was modeled at 6.8 mm = lens OD,
+      i.e. zero radial margin (seal-gap audit). Opened to 7.2 mm so there is
+      >=0.2 mm radial clearance between the 6.8 mm lens barrel and the window
+      wall, leaving room for the assembly placement tolerance and a thin bond.
     lens_count: 1
     array: single
     burial_clearance_mm: 0.45
@@ -142,6 +170,11 @@ components:
     window_mm: [1.6, 1.6, 0.5]
     emit_direction: -Z (out the flat back, through a flush light pipe/window)
     seat_match_note: 1.0x1.0 mm seat now matches a 1.0x1.0 mm-class emitter (replaces Lumileds LXCL-PWF1 1.64x0.90 mm mismatch flagged by optical review)
+    window_seal_ring_width_mm: 0.45
+    window_seal_basis: >-
+      The rear camera window has a four-side adhesive bond ring but the adjacent
+      flash light-pipe window had none (seal-gap audit). A PSA gasket ring around
+      the flash window matches the camera and closes the back-glass ingress path.
   rear_flash_camera_septum:
     candidate: thin opaque PC stray-light septum wall between rear flash light-pipe and rear camera baffle column
     thickness_mm: 0.6
@@ -155,6 +188,13 @@ components:
     lens_diameter_mm: 3.4
     lens_count: 1
     array: single
+  front_proximity_als:
+    candidate: combined proximity + ambient-light sensor behind earpiece mask
+    envelope_mm: [2.0, 2.0, 1.0]
+    placement: front face near earpiece slot, under black-mask aperture
+  battery_connector:
+    candidate: board-to-FPC battery connector (Molex 2-pos + JST signal class)
+    envelope_mm: [6.0, 3.0, 1.6]
   power_button:
     candidate: XKB TS-1187A-B-A-B side-push tactile switch, 3.5x2.9x1.7 mm
     standardized_part: XKB TS-1187A-B-A-B
@@ -191,6 +231,19 @@ radio:
     candidate: Murata Type 2EA Wi-Fi 6E + Bluetooth module
     source_url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
     antenna_keepout_mm: [34.0, 5.0, 2.0]
+  antenna_feeds:
+    candidate: gold-plated spring (pogo/clip) antenna feed contacts to flex antennas in keepout regions
+    feed_contact_mm: [2.0, 2.0, 3.0]
+    purpose: >-
+      Spring-finger feed contacts that bridge the board RF launch to the flex/LDS
+      antenna elements printed on the enclosure keepout walls. The interconnect
+      audit found antenna keepouts but no modeled feed contacts, so the launch
+      points were geometrically unproven.
+  gnss:
+    candidate: passive GNSS L1/L5 patch/strip element on top keepout wall + spring feed
+    element_mm: [10.0, 6.0, 0.4]
+    feed_contact_mm: [2.0, 2.0, 3.0]
+    basis: GNSS was routed in the board plan but no radiating element existed in CAD; this adds the element and its feed contact.
   antenna_aperture_tuner:
     candidate: Qorvo QPC1252Q antenna aperture/band-switch tuner
     standardized_mpn_primary: QPC1252Q
@@ -216,6 +269,51 @@ radio:
       end where the Chu match window narrows to ~28 MHz (smaller ka, higher Q) and
       sparser at the top where it widens to >120 MHz. Realizable with a wide-state
       RFFE aperture tuner or cascaded QPC1252Q tunable-capacitor banks.
+
+thermal:
+  soc_thermal_pad:
+    candidate: soft gap-pad (e.g. Bergquist GP1500-class) between SoC lid and spreader
+    envelope_mm: [22.0, 22.0, 0.5]
+    material: silicone gap pad, ~1.5-3 W/mK, compliant
+  soc_thermal_spreader:
+    candidate: graphite/Cu foil heat spreader bonded over SoC, conducting into mid-frame/back shell
+    envelope_mm: [25.0, 25.0, 0.1]
+    material: pyrolytic graphite sheet or Cu foil
+    basis: >-
+      Camera-back/missing-details audit found no SoC thermal path. The spreader
+      sits on a 0.5 mm gap pad over the SoC lid and conducts laterally to the
+      mid-frame stiffener / back shell, capping the 43 C skin target.
+
+emi:
+  display_ground_foam:
+    candidate: conductive (Ni/Cu) foam ESD/EMI ground strip around display module perimeter
+    strip_width_mm: 1.0
+    strip_height_mm: 1.0
+    material: conductive polyurethane foam, grounds display frame to board ground ring
+    basis: interconnect audit found no display perimeter EMI/ESD ground return; this closes it.
+
+mechanical_reinforcement:
+  mid_frame_stiffener:
+    candidate: thin SUS301 / 5052-Al panel-bend stiffener under the display over the battery cavity
+    envelope_mm: [60.0, 84.0, 0.3]
+    material: stainless steel or aluminum sheet, 0.3 mm
+    z_strategy: >-
+      Seated in the thin static gap between the display module back face (z=+1.63
+      after bond) and the battery front face (z=+1.45). The available band is only
+      ~0.18 mm so the plate is held to 0.3 mm and offset to sit just below the
+      display, doubling as the display back support and the battery swell reaction
+      surface. Where the 0.18 mm static gap cannot host the full plate thickness it
+      is documented as integrated into the side-frame rib network rather than a
+      free plate; the modeled solid represents the load-bearing footprint only.
+
+flex_circuits:
+  candidate: discrete polyimide FPCs routing each module to its island connector
+  thickness_mm: 0.18
+  basis: >-
+    Interconnect-completeness audit found several module-to-board connections that
+    existed electrically but had no routed flex solid in CAD (camera CSI, battery
+    harness, side keys, top mic PDM, earpiece, SIM). Each is now a thin polyimide
+    flex solid routed from the module to its island connector.
 
 manufacturing:
   process: low-volume CNC or soft-tool injection molding first, hard-tool injection molding later

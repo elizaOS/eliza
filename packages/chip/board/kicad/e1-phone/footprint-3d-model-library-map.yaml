@@ -144,6 +144,11 @@ components:
       - .tools/kicad-local/usr/share/kicad/3dmodels/Resistor_SMD.3dshapes/R_0201_0603Metric.wrl
       - .tools/kicad-local/usr/share/kicad/3dmodels/Capacitor_SMD.3dshapes/C_0402_1005Metric.wrl
       - .tools/kicad-local/usr/share/kicad/3dmodels/Capacitor_SMD.3dshapes/C_0201_0603Metric.wrl
+    step_path:
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Resistor_SMD.3dshapes/R_0402_1005Metric.step
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Resistor_SMD.3dshapes/R_0201_0603Metric.step
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Capacitor_SMD.3dshapes/C_0402_1005Metric.step
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Capacitor_SMD.3dshapes/C_0201_0603Metric.step
     status: matched
     notes: >
       Standard IPC chip land patterns with bundled .wrl + .step. Covers the
@@ -332,5 +337,32 @@ summary:
     - >
       This map assigns nothing in the .kicad_pcb and creates no netlist. The mainboard remains
       a concept scaffold with 87 NON-RELEASE placeholders.
+
+cross_checks:
+  exact_usb_c_footprint_and_step_available_locally: true
+  display_fpc_connector_candidate_footprint_and_step_available_locally: true
+  side_button_and_mems_microphone_footprints_available_but_3d_models_missing: true
+  module_soc_memory_pmic_and_wireless_land_patterns_remain_supplier_defined: true
+  local_map_assigns_no_footprints_to_kicad_pcb: true
+  concept_board_remains_placeholder_not_routed: true
+
+release_blockers:
+  - local catalog matches do not replace supplier pinouts, signed drawings, land patterns, or sample inspection
+  - side-button and MEMS microphone 3D bodies are missing from the local KiCad model subset
+  - SoC, memory, PMIC, cellular, Wi-Fi/Bluetooth, battery, cameras, audio, and interconnect footprints remain supplier-defined
+  - no local library match has been assigned to the production schematic or PCB
+  - routed board STEP with supplier component models is missing
+
+forbidden_claims:
+  - footprint_library_ready
+  - supplier_footprints_ready
+  - supplier_3d_models_ready
+  - symbols_ready
+  - erc_clean
+  - drc_clean
+  - routed_pcb_ready
+  - fabrication_ready
+  - enclosure_ready
+  - end_to_end_phone_ready
 
 next_step_after_this_map: docs/board/kicad/e1-phone-schematic-capture-work-breakdown.md

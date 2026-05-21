@@ -20,9 +20,12 @@ source_artifacts:
   - board/kicad/e1-phone/evt1-routing-work-package.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
   - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+  - board/kicad/e1-phone/first-article-route-execution-order.yaml
+  - board/kicad/e1-phone/post-route-validation-binding.yaml
   - board/kicad/e1-phone/layout-optimization-execution.yaml
   - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/supplier-sample-release-gate.yaml
   - board/kicad/e1-phone/manufacturing-closure.yaml
   - board/kicad/e1-phone/production-readiness.yaml
   - board/kicad/e1-phone/production-factory-release-execution.yaml
@@ -38,7 +41,7 @@ design_target:
   device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 11.2
+    max_thickness: 11.8
   battery_window_mm:
     width: 64.0
     height: 87.0
@@ -60,6 +63,8 @@ current_board_state:
   evt1_routing_status: blocked_requires_supplier_pinouts_routed_pcb_and_post_route_evidence
   routed_release_plan_status: blocked_routed_release_requires_real_route_and_supplier_outputs
   routed_pcb_implementation_execution_status: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
+  first_article_route_execution_order_status: blocked_first_article_route_requires_ordered_supplier_schematic_layout_factory_and_enclosure_evidence
+  post_route_validation_binding_status: blocked_post_route_validation_requires_routed_drc_si_pi_rf_power_factory_and_enclosure_evidence
   pcb_implementation_audit_status: blocked_live_kicad_pcb_scaffold_audited_not_routed
   live_utilization_audit_status: blocked_live_courtyard_utilization_not_routed_or_supplier_ready
   layout_optimization_execution_status: blocked_concept_layout_optimized_requires_supplier_footprints_trial_route_measurements_and_routed_step
@@ -69,6 +74,7 @@ current_board_state:
   module_rf_pinout_execution_status: blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence
   production_status: blocked_requires_routed_board_supplier_data_and_factory_quotes
   manufacturing_status: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
+  supplier_sample_release_gate_status: blocked_supplier_samples_response_packs_and_reviews_required_before_layout_release
   production_factory_release_execution_status: blocked_requires_routed_release_supplier_packs_fab_assembly_fixture_and_first_article
   enclosure_status: enclosure_placement_cross_checked_not_release_ready
   enclosure_fit_execution_status: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results

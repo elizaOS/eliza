@@ -1,0 +1,18 @@
+[options]
+mode bmc
+depth 24
+multiclock on
+
+[engines]
+smtbmc z3
+smtbmc bitwuzla
+
+[script]
+read -sv power_pkg.sv droop_sensor.sv cdc_properties.sv droop_cdc_bind.sv
+prep -top droop_cdc_props_top
+
+[files]
+../../rtl/power/power_pkg.sv
+../../rtl/power/droop_sensor.sv
+cdc_properties.sv
+droop_cdc_bind.sv

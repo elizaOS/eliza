@@ -8,6 +8,7 @@ source_artifacts:
   - package/audio/v0-codec.yaml
   - board/kicad/e1-phone/placement-interface-matrix.yaml
   - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/audio-haptic-schematic-net-binding.yaml
   - board/kicad/e1-phone/routing-constraints.yaml
   - docs/board/e1-phone-enclosure-interface.yaml
   - board/kicad/e1-phone/mechanical-overlay.yaml

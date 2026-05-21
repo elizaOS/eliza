@@ -296,7 +296,7 @@ placement_interfaces_closed_for_concept:
 release_blockers:
   - routed KiCad board STEP with final component 3D models
   - supplier display, camera, USB-C, button, battery, speaker, and radio STEP/B-rep models
-  - 'battery-swell + tolerance worst case is OVER BUDGET by 0.142 mm on the back swell void: UPSTREAM
+  - 'formal tolerance stack for battery swelling is OVER BUDGET by 0.142 mm on the back swell void: UPSTREAM
     FIX REQUIRED in mechanical/e1-phone/cad/e1_phone_params.yaml battery.battery_swell_gap_mm: raise from
     0.6 mm to >= 0.742 mm (and grow device envelope_mm[2] by the same delta), or tighten the tolerance
     class, or specify a back-void compressible foam pad with a documented compression set that absorbs

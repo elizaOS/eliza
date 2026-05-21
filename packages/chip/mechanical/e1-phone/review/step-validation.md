@@ -1,6 +1,6 @@
 # E1 Phone STEP Validation
 
-Status: pass; re-imported 118 part STEP files.
+Status: pass; re-imported 123 part STEP files.
 
 ## Cases
 
@@ -18,6 +18,11 @@ Status: pass; re-imported 118 part STEP files.
 - PASS: `orange_rear_camera_bezel_bottom` max span error 0.0 mm
 - PASS: `orange_rear_camera_bezel_left` max span error 0.0 mm
 - PASS: `orange_rear_camera_bezel_right` max span error 0.0 mm
+- PASS: `rear_flash_shell_aperture` max span error 0.0 mm
+- PASS: `orange_rear_flash_bezel_top` max span error 0.0 mm
+- PASS: `orange_rear_flash_bezel_bottom` max span error 0.0 mm
+- PASS: `orange_rear_flash_bezel_left` max span error 0.0 mm
+- PASS: `orange_rear_flash_bezel_right` max span error 0.0 mm
 - PASS: `rear_flash_led` max span error 0.0 mm
 - PASS: `rear_flash_led_window` max span error 0.0 mm
 - PASS: `front_camera_module` max span error 0.0 mm

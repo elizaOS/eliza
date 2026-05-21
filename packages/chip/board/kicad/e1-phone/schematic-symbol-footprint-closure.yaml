@@ -18,6 +18,7 @@ source_artifacts:
   - board/kicad/e1-phone/block-netlist.yaml
   - board/kicad/e1-phone/pinout-footprint-freeze.yaml
   - board/kicad/e1-phone/preliminary-bom.yaml
+  - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
   - board/kicad/e1-phone/placement-interface-matrix.yaml
 current_kicad_state:
   schematic_sheet_count: 14

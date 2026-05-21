@@ -18,6 +18,7 @@ source_artifacts:
   - board/kicad/e1-phone/block-netlist.yaml
   - board/kicad/e1-phone/routing-constraints.yaml
   - board/kicad/e1-phone/component-height-step-integration.yaml
+  - board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml
 usb_c_port_context:
   port_count: 1
   manifest_port_count: 1

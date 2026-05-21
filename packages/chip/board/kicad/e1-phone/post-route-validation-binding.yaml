@@ -1,0 +1,137 @@
+schema: eliza.e1_phone_post_route_validation_binding.v1
+status: blocked_post_route_validation_requires_routed_drc_si_pi_rf_power_factory_and_enclosure_evidence
+date: 2026-05-21
+claim_boundary: >
+  Aggregate post-route validation binding for the E1 phone PCB. This ties the
+  routed layout, DRC/ERC, SI/PI, RF, power/thermal, factory-test, first-article,
+  and routed-board enclosure evidence into one fail-closed validation contract.
+  It is not routed copper, not SI/PI/RF/power signoff, not factory release, not
+  a first-article result, and not enclosure-ready evidence.
+
+source_artifacts:
+  - board/kicad/e1-phone/routing-acceptance-checklist.yaml
+  - board/kicad/e1-phone/power-bringup-acceptance-checklist.yaml
+  - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
+  - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
+  - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+  - board/kicad/e1-phone/first-article-route-execution-order.yaml
+  - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/pcb-implementation-audit.yaml
+
+upstream_status:
+  routing_acceptance: blocked_routing_acceptance_requires_supplier_footprints_trial_route_drc_and_outputs
+  power_bringup_acceptance: blocked_power_bringup_acceptance_requires_routed_schematic_first_power_charge_thermal_and_factory_evidence
+  radio_antenna_acceptance: blocked_radio_antenna_acceptance_requires_supplier_route_firmware_regulatory_and_measurements
+  factory_production_acceptance: blocked_factory_production_acceptance_requires_routed_outputs_fixture_limits_quotes_and_first_article
+  routed_release_plan: blocked_routed_release_requires_real_route_and_supplier_outputs
+  routed_layout_readiness: blocked_layout_readiness_requires_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance
+  first_article_route_execution_order: blocked_first_article_route_requires_ordered_supplier_schematic_layout_factory_and_enclosure_evidence
+  routed_board_step_export: blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
+  enclosure_fit_execution: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+  pcb_implementation_audit: blocked_live_kicad_pcb_scaffold_audited_not_routed
+
+live_pcb_validation_state:
+  declared_net_count: 180
+  footprint_count: 87
+  segment_count: 0
+  zone_count: 0
+  keepout_zone_count: 11
+  has_tracks: false
+  has_filled_zones: false
+  has_production_outputs: false
+  validation_allowed: false
+
+required_validation_outputs:
+  schematic_erc_report: board/kicad/e1-phone/production/reports/erc.json
+  pcb_drc_report: board/kicad/e1-phone/production/reports/drc.json
+  zone_fill_report: board/kicad/e1-phone/production/reports/zone-fill.json
+  routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  routed_courtyard_utilization: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  escape_density_via_count: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  si_pi_report_directory: board/kicad/e1-phone/production/reports/si-pi
+  rf_report_directory: board/kicad/e1-phone/production/reports/rf
+  power_thermal_report_directory: board/kicad/e1-phone/production/reports/power-thermal
+  usb_pd_attach_log: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  charger_cycle_log: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  radio_coexistence_matrix: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  vna_report: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  factory_test_limits: board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  probe_coordinates: board/kicad/e1-phone/production/test/probe-coordinates.csv
+  rf_calibration_procedure: board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+  first_article_transcript: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  first_article_traveler: board/kicad/e1-phone/production/first-article
+  routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+  routed_clearance_release: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+
+validation_output_inventory:
+  required_output_count: 20
+  present_output_count: 0
+  missing_output_count: 20
+  every_required_output_absent: true
+
+validation_domains:
+  - id: drc_erc_zone_fill
+    source_acceptance_item: drc_erc_zone_fill_and_copper_release
+    required_outputs: [schematic_erc_report, pcb_drc_report, zone_fill_report, routed_kicad_pcb]
+    status: blocked_missing_routed_layout_and_drc_erc_evidence
+  - id: high_speed_si_pi
+    source_acceptance_item: high_speed_mipi_usb_pcie_memory_route
+    required_outputs: [si_pi_report_directory, routed_courtyard_utilization, escape_density_via_count]
+    status: blocked_missing_post_route_length_skew_impedance_return_path_and_pi_evidence
+  - id: rf_wireless
+    source_acceptance_item: rf_matching_conducted_access_and_vna
+    required_outputs: [rf_report_directory, vna_report, radio_coexistence_matrix, rf_calibration_procedure]
+    status: blocked_missing_vna_conducted_coexistence_regulatory_and_factory_rf_evidence
+  - id: power_thermal
+    source_acceptance_item: high_current_layout_pi_and_load_step
+    required_outputs: [power_thermal_report_directory, usb_pd_attach_log, charger_cycle_log]
+    status: blocked_missing_power_integrity_load_step_charge_and_thermal_evidence
+  - id: factory_first_article
+    source_acceptance_item: first_article_traveler_measurements_and_signoff
+    required_outputs: [factory_test_limits, probe_coordinates, first_article_transcript, first_article_traveler]
+    status: blocked_missing_factory_limits_probe_coordinates_and_first_article_evidence
+  - id: routed_step_enclosure
+    source_acceptance_item: routed_board_step_and_enclosure_rerun
+    required_outputs: [routed_board_step, routed_clearance_release]
+    status: blocked_missing_routed_step_supplier_models_and_enclosure_clearance_release
+
+release_coupling:
+  blocks_ready_to_fabricate: true
+  blocks_ready_for_enclosure: true
+  blocks_ready_for_factory_test: true
+  blocks_end_to_end_phone_ready: true
+
+cross_checks:
+  manifest_cites_binding: true
+  source_artifacts_exist: true
+  upstream_statuses_match_current_sources: true
+  live_pcb_state_matches_audit: true
+  every_required_validation_output_absent: true
+  validation_domains_all_blocked: true
+  routed_release_outputs_still_blocked: true
+  routed_layout_ready_flags_remain_false: true
+  factory_and_enclosure_coupling_remains_fail_closed: true
+
+release_blockers:
+  - routed KiCad PCB, DRC, ERC, and zone-fill evidence are missing
+  - post-route SI/PI length, skew, impedance, return-path, current-density, and load-step evidence is missing
+  - RF VNA, conducted, coexistence, regulatory, SAR, and factory RF calibration evidence is missing
+  - USB-C PD, charger, battery, PMIC, rail sequencing, thermal soak, and power factory limits are missing
+  - factory probe coordinates, test limits, first-article transcript, and traveler are missing
+  - routed board STEP, supplier models, and enclosure clearance release evidence are missing
+
+forbidden_claims:
+  - post_route_validated
+  - drc_clean
+  - erc_clean
+  - si_pi_ready
+  - rf_ready
+  - power_thermal_ready
+  - factory_test_ready
+  - first_article_ready
+  - routed_step_ready
+  - fabrication_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

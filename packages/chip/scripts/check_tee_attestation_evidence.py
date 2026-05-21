@@ -15,6 +15,7 @@ DEFAULT_EVIDENCE = (
 )
 SHA256 = re.compile(r"^sha256:[a-f0-9]{64}$")
 REQUIRED_MEASUREMENTS = {"boot", "os", "agent", "policy", "device"}
+NPU_PROTECTED_MEASUREMENTS = {"monitor", "npuFirmware"}
 REQUIRED_TRUE_CLAIMS = {"debugDisabled", "secureBoot", "ioProtected"}
 ALLOWED_KINDS = {
     "tdx",
@@ -67,6 +68,16 @@ def validate(evidence: dict[str, object]) -> list[str]:
                 errors.append(f"claims.{claim} must be true")
         if evidence.get("kind") == "cove" and claims.get("memoryEncrypted") is not True:
             errors.append("claims.memoryEncrypted must be true for cove evidence")
+        # Section 7.2: a true npuProtected claim is meaningless without the TSM
+        # monitor measurement and the measured NPU firmware/queue-policy digest.
+        if claims.get("npuProtected") is True and isinstance(measurements, dict):
+            for required in NPU_PROTECTED_MEASUREMENTS:
+                value = measurements.get(required)
+                if not isinstance(value, str) or not SHA256.match(value):
+                    errors.append(
+                        f"measurements.{required} must be sha256:<64 hex> "
+                        "when claims.npuProtected is true"
+                    )
 
     report_data = evidence.get("reportData")
     if report_data is not None and (not isinstance(report_data, str) or not SHA256.match(report_data)):

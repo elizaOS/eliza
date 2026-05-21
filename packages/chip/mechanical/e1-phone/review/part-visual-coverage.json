@@ -2,8 +2,8 @@
   "claim_boundary": "Automated part-to-view coverage map. It proves every generated CAD part is assigned to generated review artifacts and the per-part top-view and exploded-context contact sheets; it does not prove human CMF approval or pixel-level part segmentation.",
   "status": "part_visual_coverage_pass",
   "coverage_mode": "role_and_name_based_review_view_mapping",
-  "expected_part_count": 118,
-  "covered_part_count": 118,
+  "expected_part_count": 123,
+  "covered_part_count": 123,
   "required_review_artifacts": [
     "component-review-audio.png",
     "component-review-io-buttons.png",
@@ -375,6 +375,78 @@
     },
     {
       "part": "orange_rear_camera_bezel_right",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_flash_shell_aperture",
+      "role": "camera aperture",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_rear_flash_bezel_top",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_rear_flash_bezel_bottom",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_rear_flash_bezel_left",
+      "role": "molded enclosure",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_rear_flash_bezel_right",
       "role": "molded enclosure",
       "required_views": [
         "part-review-contact-sheet.png",

@@ -1,0 +1,73 @@
+schema: eliza.pdn_package_droop.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+claim_boundary: >
+  Package-aware first-order droop scenario schema for the E1 PDN. Couples a
+  load-step di/dt event through the package/board parasitic inductance
+  (BGA + bond-wire + board plane) and the multi-tier decoupling network
+  (on-die / package / board, from docs/pd/rail-plan-2028.yaml) to a first-order
+  supply-droop voltage estimate per rail. The parasitic inductance and ESR
+  values are planning-grade package/board engineering assumptions, NOT measured
+  s-parameters or extracted package PDN. The droop thresholds are tied to the
+  read-only droop_sensor / clock_stretcher cocotb contract
+  (verify/cocotb/power/test_droop_event.py, power_pkg.sv). This schema sizes the
+  droop budget those vectors and a later commercial dynamic-IR/EM run must
+  confirm; it never claims signoff.
+source_artifacts:
+  - docs/pd/rail-plan-2028.yaml
+  - docs/board/pdn-budget.md
+  - rtl/power/power_pkg.sv
+  - verify/cocotb/power/test_droop_event.py
+
+# Planning-grade package + board parasitics. Per-rail values scale with the
+# rail's package/board decoupling tier and pin/ball count class. These are
+# engineering assumptions for first-order droop sizing, not extracted PDN.
+parasitic_assumptions:
+  provenance: package_board_class_engineering_assumption_not_extracted_pdn
+  # Loop inductance seen by a di/dt step before the decap tier responds.
+  bga_ball_loop_l_ph_per_rail: 150       # pH, BGA ball + breakout, per power ball group
+  bond_wire_l_ph_if_wirebond: 800        # pH, only if a rail uses wirebond (else 0)
+  board_plane_l_ph: 250                  # pH, board plane + via to bulk decap
+  decap_esr_mohm_on_die: 5.0
+  decap_esr_mohm_package: 15.0
+  decap_esr_mohm_board: 30.0
+  packaging: flip_chip_bga       # E1 target; bond_wire_l applied only if wirebond
+
+# di/dt scenarios. edge_time_ns is the load-step rise time; the dynamic current
+# step is taken from the vectorless dynamic-IR budget (pdn-activity-model) at
+# check time, not duplicated here.
+di_dt_scenarios:
+  - id: cpu_big_burst_wakeup
+    rail: VDD_CPU_BIG
+    edge_time_ns: 2.0
+    note: Big-core wake from clock-gated idle to peak datapath.
+  - id: npu_gemm_saturation_step
+    rail: VDD_NPU
+    edge_time_ns: 5.0
+    note: NPU descriptor launch ramping MAC array to GEMM saturation.
+  - id: gpu_raster_burst
+    rail: VDD_GPU
+    edge_time_ns: 4.0
+    note: GPU/display compositor burst.
+
+# Droop acceptance, tied to droop_sensor cocotb + DVFS undervolt envelope.
+droop_acceptance:
+  # The clock stretcher (clock_stretcher.sv, CLKSTRETCH_CYCLES=1) reacts within
+  # one functional clock once droop_sensor.droop_alarm_o asserts. The droop
+  # event in test_droop_event.py models RO slowdown below threshold_i; the
+  # transient droop must not undervolt below the rail's dvfs_min_v before the
+  # stretch + dLDO (DLDO_RESPONSE_NS=20ns) recover the rail.
+  max_transient_droop_pct_of_nominal: 10.0
+  recover_within_ns: 20            # DLDO_RESPONSE_NS in power_pkg.sv
+  must_stay_above_dvfs_min_v: true
+  droop_sensor_contract:
+    confirm_samples: 2             # DROOP_CONFIRM_SAMPLES
+    sample_hz: 200000000           # DROOP_SAMPLE_HZ
+    stretch_cycles: 1              # CLKSTRETCH_CYCLES
+
+release_blockers:
+  - Parasitic inductance/ESR are package/board-class assumptions, not extracted PDN s-parameters.
+  - No measured package PDN impedance Z(f) profile is archived.
+  - Droop budget not confirmed by vector-driven dynamic-IR (Voltus / RedHawk-SC).
+  - dLDO + clock-stretcher recovery timing not closed against extracted netlist.
+check_command: python3 scripts/pdn_activity_model.py --droop

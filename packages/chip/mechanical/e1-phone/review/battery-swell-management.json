@@ -8,7 +8,7 @@
     5.6
   ],
   "battery_back_void_gap_mm": 0.6,
-  "display_static_gap_mm": 0.15,
+  "display_static_gap_mm": 0.18,
   "foam_pad": {
     "part": "battery_back_void_foam_pad",
     "material": "PORON-style low-compression-set polyurethane foam, low-preload battery back pad",
@@ -21,12 +21,12 @@
       [
         -30.0,
         -47.0,
-        -5.2
+        -4.75
       ],
       [
         30.0,
         33.0,
-        -5.02
+        -4.57
       ]
     ],
     "compression_allowance_mm": 0.18,
@@ -42,11 +42,11 @@
   "checks": {
     "battery_display_and_wall_clearance": {
       "pass": true,
-      "battery_front_z_mm": 1.0,
-      "battery_back_z_mm": -4.6,
-      "display_lcm_back_z_mm": 1.15,
-      "back_inner_wall_z_mm": -5.2,
-      "battery_to_display_gap_mm": 0.15,
+      "battery_front_z_mm": 1.45,
+      "battery_back_z_mm": -4.15,
+      "display_lcm_back_z_mm": 1.63,
+      "back_inner_wall_z_mm": -4.75,
+      "battery_to_display_gap_mm": 0.18,
       "battery_to_back_wall_gap_mm": 0.6,
       "required_front_static_gap_mm": 0.15,
       "required_back_swell_gap_mm": 0.6,
@@ -56,8 +56,8 @@
       "pass": true,
       "foam_pad_present": true,
       "foam_pad_thickness_mm": 0.18,
-      "foam_low_z_mm": -5.2,
-      "foam_high_z_mm": -5.02,
+      "foam_low_z_mm": -4.75,
+      "foam_high_z_mm": -4.57,
       "foam_to_battery_free_gap_mm": 0.42,
       "foam_compression_allowance_mm": 0.18,
       "battery_swell_high_mm": 0.56,

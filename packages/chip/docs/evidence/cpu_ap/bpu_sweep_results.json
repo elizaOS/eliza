@@ -1,58 +1,63 @@
 {
-  "baseline_weighted_mpki": 1.08767,
-  "best_config": "combo_a",
-  "best_delta_vs_baseline": -0.015592,
+  "baseline_weighted_mpki": 5.576196,
+  "best_config": "tage_big_tables",
+  "best_delta_vs_baseline": -0.037236,
   "best_geometry_diff": {
-    "SC_ADAPTIVE": true,
-    "TAGE_ENTRIES_TABLE": 8192,
-    "TAGE_HIST_LEN": [
-      8,
-      16,
-      44,
-      90,
-      195
-    ]
+    "TAGE_ENTRIES_TABLE": 8192
   },
-  "best_weighted_mpki": 1.072078,
+  "best_weighted_mpki": 5.53896,
   "cbp5_reference_mpki": {
     "sample_fp_trace": 0.5736,
     "sample_int_trace": 5.1327
   },
-  "generated_at_utc": "2026-05-21T12:09:36.896576+00:00",
+  "generated_at_utc": "2026-05-21T12:39:18.694224+00:00",
   "harness": "behavioural-bpu-model",
-  "max_branches_per_trace": 1200000,
+  "max_branches_per_trace": 700000,
   "ranking": [
-    "combo_a",
-    "combo_b",
     "tage_big_tables",
-    "tage_reach_long",
+    "combo_algo_geo",
+    "combo_b",
+    "combo_a",
     "tage6_tables",
+    "tage_reach_long",
     "sc_wide",
-    "tage_reach_xlong",
+    "tage7_tables",
+    "tage_ubit_reset",
+    "tage_alloc_aging",
+    "bim_big",
+    "tage_alloc_decr",
+    "combo_algo",
     "sc_thresh_high",
     "baseline",
     "loop_big",
-    "bim_big",
+    "tage_ubit_reset_fast",
+    "sc_thresh_low",
     "sc_adaptive",
-    "tage7_tables",
-    "sc_thresh_low"
+    "tage_reach_xlong"
   ],
   "results": {
     "baseline": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3856,
-          "mpki": 0.553105,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2930,
+          "mpki": 0.72048,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3166,
-          "mpki": 0.408189,
-          "weight": 3.0
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2541,
+          "mpki": 0.561614,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40656,
+          "mpki": 14.089598,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -67,25 +72,60 @@
           "misp": 2217,
           "mpki": 2.223,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12636,
+          "mpki": 4.02475,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36589,
+          "mpki": 13.387455,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 29026,
+          "mpki": 9.931887,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5024,
+          "mpki": 1.9021,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.08767
+      "weighted_mpki": 5.576196
     },
     "bim_big": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3856,
-          "mpki": 0.553105,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2930,
+          "mpki": 0.72048,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3167,
-          "mpki": 0.408318,
-          "weight": 3.0
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2542,
+          "mpki": 0.561835,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40655,
+          "mpki": 14.089251,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -100,25 +140,60 @@
           "misp": 2217,
           "mpki": 2.223,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12635,
+          "mpki": 4.024431,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36587,
+          "mpki": 13.386724,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 29000,
+          "mpki": 9.922991,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5023,
+          "mpki": 1.901722,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.087725
+      "weighted_mpki": 5.574999
     },
     "combo_a": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3858,
-          "mpki": 0.553392,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2934,
+          "mpki": 0.721463,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3170,
-          "mpki": 0.408704,
-          "weight": 3.0
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2543,
+          "mpki": 0.562056,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40452,
+          "mpki": 14.0189,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -133,91 +208,60 @@
           "misp": 2190,
           "mpki": 2.195927,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12636,
+          "mpki": 4.02475,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36372,
+          "mpki": 13.308058,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 28950,
+          "mpki": 9.905882,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5067,
+          "mpki": 1.91838,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.072078
+      "weighted_mpki": 5.549378
     },
-    "combo_b": {
+    "combo_algo": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3862,
-          "mpki": 0.553966,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2939,
+          "mpki": 0.722693,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3183,
-          "mpki": 0.41038,
-          "weight": 3.0
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 2969,
-          "mpki": 2.975722,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2187,
-          "mpki": 2.192919,
-          "weight": 1.0
-        }
-      },
-      "weighted_mpki": 1.07253
-    },
-    "loop_big": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3856,
-          "mpki": 0.553105,
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2544,
+          "mpki": 0.562277,
           "weight": 2.0
         },
-        "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3166,
-          "mpki": 0.408189,
-          "weight": 3.0
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3053,
-          "mpki": 3.059912,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2217,
-          "mpki": 2.223,
-          "weight": 1.0
-        }
-      },
-      "weighted_mpki": 1.08767
-    },
-    "sc_adaptive": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3861,
-          "mpki": 0.553823,
-          "weight": 2.0
-        },
-        "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3170,
-          "mpki": 0.408704,
-          "weight": 3.0
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40679,
+          "mpki": 14.097569,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -232,25 +276,332 @@
           "misp": 2212,
           "mpki": 2.217986,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12621,
+          "mpki": 4.019972,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36628,
+          "mpki": 13.401725,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 28973,
+          "mpki": 9.913752,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5005,
+          "mpki": 1.894907,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.087809
+      "weighted_mpki": 5.575491
+    },
+    "combo_algo_geo": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2934,
+          "mpki": 0.721463,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2543,
+          "mpki": 0.562056,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40337,
+          "mpki": 13.979047,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 2970,
+          "mpki": 2.976724,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2190,
+          "mpki": 2.195927,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12553,
+          "mpki": 3.998313,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36370,
+          "mpki": 13.307326,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 28918,
+          "mpki": 9.894933,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5063,
+          "mpki": 1.916866,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 5.540283
+    },
+    "combo_b": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2938,
+          "mpki": 0.722447,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2560,
+          "mpki": 0.565813,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40725,
+          "mpki": 14.11351,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 2969,
+          "mpki": 2.975722,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2187,
+          "mpki": 2.192919,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12609,
+          "mpki": 4.01615,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36401,
+          "mpki": 13.318669,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 28593,
+          "mpki": 9.783727,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5041,
+          "mpki": 1.908536,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 5.545756
+    },
+    "loop_big": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2930,
+          "mpki": 0.72048,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2541,
+          "mpki": 0.561614,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40656,
+          "mpki": 14.089598,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3053,
+          "mpki": 3.059912,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2217,
+          "mpki": 2.223,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12636,
+          "mpki": 4.02475,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36589,
+          "mpki": 13.387455,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 29026,
+          "mpki": 9.931887,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5024,
+          "mpki": 1.9021,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 5.576196
+    },
+    "sc_adaptive": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2934,
+          "mpki": 0.721463,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2542,
+          "mpki": 0.561835,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40652,
+          "mpki": 14.088212,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3056,
+          "mpki": 3.062919,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2212,
+          "mpki": 2.217986,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12697,
+          "mpki": 4.044179,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36624,
+          "mpki": 13.400261,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 29083,
+          "mpki": 9.951391,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5027,
+          "mpki": 1.903236,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 5.58213
     },
     "sc_thresh_high": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3857,
-          "mpki": 0.553249,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2931,
+          "mpki": 0.720726,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3157,
-          "mpki": 0.407028,
-          "weight": 3.0
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2533,
+          "mpki": 0.559846,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40649,
+          "mpki": 14.087172,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -265,25 +616,60 @@
           "misp": 2213,
           "mpki": 2.218989,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12643,
+          "mpki": 4.026979,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36581,
+          "mpki": 13.384528,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 29036,
+          "mpki": 9.935309,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5028,
+          "mpki": 1.903615,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.086784
+      "weighted_mpki": 5.57593
     },
     "sc_thresh_low": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3867,
-          "mpki": 0.554683,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2940,
+          "mpki": 0.722939,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3175,
-          "mpki": 0.409349,
-          "weight": 3.0
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2547,
+          "mpki": 0.56294,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40666,
+          "mpki": 14.093064,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -298,25 +684,60 @@
           "misp": 2229,
           "mpki": 2.235032,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12657,
+          "mpki": 4.031439,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36627,
+          "mpki": 13.401359,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 29057,
+          "mpki": 9.942495,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5035,
+          "mpki": 1.906265,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.090194
+      "weighted_mpki": 5.582013
     },
     "sc_wide": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3845,
-          "mpki": 0.551528,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2922,
+          "mpki": 0.718513,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3145,
-          "mpki": 0.405481,
-          "weight": 3.0
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2523,
+          "mpki": 0.557636,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40647,
+          "mpki": 14.086479,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -331,25 +752,60 @@
           "misp": 2214,
           "mpki": 2.219992,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12635,
+          "mpki": 4.024431,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36546,
+          "mpki": 13.371722,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 28978,
+          "mpki": 9.915463,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 4994,
+          "mpki": 1.890742,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.083052
+      "weighted_mpki": 5.56832
     },
     "tage6_tables": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3882,
-          "mpki": 0.556835,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2956,
+          "mpki": 0.726873,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3202,
-          "mpki": 0.41283,
-          "weight": 3.0
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2575,
+          "mpki": 0.569129,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40722,
+          "mpki": 14.112471,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -364,25 +820,60 @@
           "misp": 2197,
           "mpki": 2.202946,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12675,
+          "mpki": 4.037172,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36423,
+          "mpki": 13.326718,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 28609,
+          "mpki": 9.789201,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5058,
+          "mpki": 1.914973,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.079126
+      "weighted_mpki": 5.55393
     },
     "tage7_tables": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3891,
-          "mpki": 0.558126,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2968,
+          "mpki": 0.729824,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3214,
-          "mpki": 0.414377,
-          "weight": 3.0
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2585,
+          "mpki": 0.571339,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40759,
+          "mpki": 14.125293,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -397,25 +888,196 @@
           "misp": 2236,
           "mpki": 2.242051,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12554,
+          "mpki": 3.998632,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36412,
+          "mpki": 13.322693,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 28879,
+          "mpki": 9.881588,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5101,
+          "mpki": 1.931253,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.089467
+      "weighted_mpki": 5.56873
+    },
+    "tage_alloc_aging": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2935,
+          "mpki": 0.721709,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2544,
+          "mpki": 0.562277,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40673,
+          "mpki": 14.095489,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3053,
+          "mpki": 3.059912,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2217,
+          "mpki": 2.223,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12634,
+          "mpki": 4.024113,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36605,
+          "mpki": 13.39331,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 28958,
+          "mpki": 9.90862,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5017,
+          "mpki": 1.89945,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 5.574731
+    },
+    "tage_alloc_decr": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2935,
+          "mpki": 0.721709,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2544,
+          "mpki": 0.562277,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40668,
+          "mpki": 14.093757,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3053,
+          "mpki": 3.059912,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2217,
+          "mpki": 2.223,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12611,
+          "mpki": 4.016787,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36646,
+          "mpki": 13.408311,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 28980,
+          "mpki": 9.916147,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 4997,
+          "mpki": 1.891878,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 5.575412
     },
     "tage_big_tables": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3844,
-          "mpki": 0.551384,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2919,
+          "mpki": 0.717775,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3158,
-          "mpki": 0.407157,
-          "weight": 3.0
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2533,
+          "mpki": 0.559846,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40485,
+          "mpki": 14.030337,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -430,25 +1092,60 @@
           "misp": 2215,
           "mpki": 2.220994,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12437,
+          "mpki": 3.961365,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36688,
+          "mpki": 13.423678,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 28572,
+          "mpki": 9.776541,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 4993,
+          "mpki": 1.890363,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.07299
+      "weighted_mpki": 5.53896
     },
     "tage_reach_long": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3878,
-          "mpki": 0.556261,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2949,
+          "mpki": 0.725152,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3182,
-          "mpki": 0.410251,
-          "weight": 3.0
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2555,
+          "mpki": 0.564708,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40465,
+          "mpki": 14.023406,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -463,25 +1160,60 @@
           "misp": 2196,
           "mpki": 2.201943,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12505,
+          "mpki": 3.983024,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36264,
+          "mpki": 13.268542,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 29409,
+          "mpki": 10.062939,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5154,
+          "mpki": 1.951319,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.076138
+      "weighted_mpki": 5.564668
     },
     "tage_reach_xlong": {
       "per_trace": {
         "agent_decode": {
-          "branches": 1200000,
-          "instructions": 6971547,
-          "misp": 3900,
-          "mpki": 0.559417,
-          "weight": 2.0
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2974,
+          "mpki": 0.731299,
+          "weight": 1.5
         },
         "agent_loop": {
-          "branches": 1200000,
-          "instructions": 7756218,
-          "misp": 3195,
-          "mpki": 0.411928,
-          "weight": 3.0
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2570,
+          "mpki": 0.568024,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40788,
+          "mpki": 14.135343,
+          "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
@@ -496,24 +1228,218 @@
           "misp": 2202,
           "mpki": 2.207959,
           "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12627,
+          "mpki": 4.021883,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36305,
+          "mpki": 13.283543,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 29362,
+          "mpki": 10.046857,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5095,
+          "mpki": 1.928981,
+          "weight": 1.5
         }
       },
-      "weighted_mpki": 1.086779
+      "weighted_mpki": 5.585442
+    },
+    "tage_ubit_reset": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2930,
+          "mpki": 0.72048,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2541,
+          "mpki": 0.561614,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40592,
+          "mpki": 14.067418,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3053,
+          "mpki": 3.059912,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2217,
+          "mpki": 2.223,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12640,
+          "mpki": 4.026024,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36590,
+          "mpki": 13.387821,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 28992,
+          "mpki": 9.920253,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5023,
+          "mpki": 1.901722,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 5.57244
+    },
+    "tage_ubit_reset_fast": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 700000,
+          "instructions": 4066735,
+          "misp": 2930,
+          "mpki": 0.72048,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 700000,
+          "instructions": 4524460,
+          "misp": 2543,
+          "mpki": 0.562056,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 427497,
+          "instructions": 2885533,
+          "misp": 40676,
+          "mpki": 14.096529,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3053,
+          "mpki": 3.059912,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2217,
+          "mpki": 2.223,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "misp": 12535,
+          "mpki": 3.99258,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 700000,
+          "instructions": 2733081,
+          "misp": 36596,
+          "mpki": 13.390017,
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 480583,
+          "instructions": 2922506,
+          "misp": 29132,
+          "mpki": 9.968157,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5021,
+          "mpki": 1.900964,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 5.577701
     }
   },
   "schema": "eliza.bpu_sweep.v1",
   "trace_set": [
     {
-      "branches": 1200000,
-      "instructions": 7756218,
+      "branches": 700000,
+      "instructions": 4524460,
       "name": "agent_loop",
-      "weight": 3.0
+      "weight": 2.0
     },
     {
-      "branches": 1200000,
-      "instructions": 6971547,
+      "branches": 700000,
+      "instructions": 4066735,
       "name": "agent_decode",
-      "weight": 2.0
+      "weight": 1.5
+    },
+    {
+      "branches": 700000,
+      "instructions": 2733081,
+      "name": "http_parser",
+      "weight": 1.5
+    },
+    {
+      "branches": 480583,
+      "instructions": 2922506,
+      "name": "text_log",
+      "weight": 1.5
+    },
+    {
+      "branches": 471277,
+      "instructions": 3139574,
+      "name": "file_tlv",
+      "weight": 1.5
+    },
+    {
+      "branches": 275928,
+      "instructions": 2641291,
+      "name": "video_blocks",
+      "weight": 1.5
+    },
+    {
+      "branches": 427497,
+      "instructions": 2885533,
+      "name": "audio_frames",
+      "weight": 1.5
     },
     {
       "branches": 148723,
@@ -529,9 +1455,14 @@
     }
   ],
   "weights": {
-    "agent_decode": 2.0,
-    "agent_loop": 3.0,
+    "agent_decode": 1.5,
+    "agent_loop": 2.0,
+    "audio_frames": 1.5,
     "cbp5:sample_fp_trace": 1.0,
-    "cbp5:sample_int_trace": 1.0
+    "cbp5:sample_int_trace": 1.0,
+    "file_tlv": 1.5,
+    "http_parser": 1.5,
+    "text_log": 1.5,
+    "video_blocks": 1.5
   }
 }

@@ -63,24 +63,26 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
             os_rv64 / "config/hooks/normal/0010-elizaos-agent.hook.chroot",
             '{"stage": "placeholder", "provenance": "scaffolding"}\n',
         )
-        linux_userland_hook = write(
-            os_rv64 / "config/hooks/normal/0030-elizaos-userland.hook.chroot",
-            "touch /opt/elizaos/STATUS_LATER_AGENT_BINARY\n",
-        )
         linux_unit = write(
             os_rv64 / "config/includes.chroot/etc/systemd/system/elizaos-agent.service",
             "[Service]\nExecStart=/opt/elizaos/bin/elizaos start --headless --port=31337\n",
         )
-        linux_manifest = write(
-            os_rv64 / "manifest.json",
-            json.dumps(
-                {
-                    "validation": {
-                        "requiredEvidence": ["qemu-virt-boot"],
-                        "evidence": [{"id": "qemu-virt-boot"}],
-                    }
-                }
-            ),
+        linux_health_helper = write(
+            os_rv64 / "config/includes.chroot/usr/lib/elizaos/wait-agent-health.sh",
+            "#!/bin/sh\nexit 1\n",
+        )
+        linux_tui_smoke_unit = write(
+            os_rv64
+            / "config/includes.chroot/etc/systemd/system/elizaos-terminal-tui-smoke.service",
+            "[Unit]\nAfter=elizaos-agent.service\n",
+        )
+        linux_manifest_template = write(
+            os_rv64 / "manifest.json.template",
+            json.dumps({"validation": {"qemuBoot": {"status": "missing"}}}),
+        )
+        write(
+            os_rv64 / "docs/status.md",
+            "touch /opt/elizaos/STATUS_LATER_AGENT_BINARY\n",
         )
         patches = [
             mock.patch.object(gate, "WORKSPACE", workspace),
@@ -90,9 +92,14 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
             mock.patch.object(gate, "ANDROID_STAGE", android_stage),
             mock.patch.object(gate, "ANDROID_AGENT_SERVICE", android_service),
             mock.patch.object(gate, "LINUX_AGENT_HOOK", linux_agent_hook),
-            mock.patch.object(gate, "LINUX_USERLAND_HOOK", linux_userland_hook),
             mock.patch.object(gate, "LINUX_AGENT_UNIT", linux_unit),
-            mock.patch.object(gate, "LINUX_MANIFEST", linux_manifest),
+            mock.patch.object(gate, "LINUX_HEALTH_HELPER", linux_health_helper),
+            mock.patch.object(gate, "LINUX_TUI_SMOKE_UNIT", linux_tui_smoke_unit),
+            mock.patch.object(
+                gate,
+                "LINUX_MANIFEST_CANDIDATES",
+                (os_rv64 / "manifest.json", linux_manifest_template),
+            ),
         ]
         return patches, os_rv64
 
@@ -132,16 +139,22 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
                     "echo bun-linux-riscv64-musl.zip > /opt/elizaos/INSTALL_STATE.json\n",
                     encoding="utf-8",
                 )
-                gate.LINUX_USERLAND_HOOK.write_text(
-                    "test -x /opt/elizaos/bin/elizaos\n", encoding="utf-8"
-                )
+                (os_rv64 / "docs/status.md").write_text("agent installed\n", encoding="utf-8")
                 gate.LINUX_AGENT_UNIT.write_text(
                     "[Service]\n"
                     "ExecStart=/opt/elizaos/bin/elizaos start --headless --port=31337\n"
-                    "ExecStartPost=/usr/bin/curl --fail http://127.0.0.1:31337/api/health\n",
+                    "ExecStartPost=/usr/lib/elizaos/wait-agent-health.sh http://127.0.0.1:31337/api/health\n",
                     encoding="utf-8",
                 )
-                gate.LINUX_MANIFEST.write_text(
+                gate.LINUX_HEALTH_HELPER.write_text(
+                    "#!/bin/sh\ncurl --fail http://127.0.0.1:31337/api/health\n",
+                    encoding="utf-8",
+                )
+                gate.LINUX_TUI_SMOKE_UNIT.write_text(
+                    "[Unit]\nAfter=elizaos-agent.service\nRequires=elizaos-agent.service\n",
+                    encoding="utf-8",
+                )
+                gate.LINUX_MANIFEST_CANDIDATES[1].write_text(
                     json.dumps(
                         {
                             "validation": {

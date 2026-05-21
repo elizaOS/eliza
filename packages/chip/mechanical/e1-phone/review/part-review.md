@@ -8,10 +8,10 @@ Status: generated part index and contact sheet for every assembly part.
 ## Parts
 
 - `orange_back_shell`: role `molded enclosure`, span [78.0, 153.6, 1.2] mm, material PC+ABS orange rounded back shell
-- `orange_side_frame`: role `molded enclosure`, span [78.0, 153.6, 12.7] mm, material PC+ABS orange rounded perimeter frame
+- `orange_side_frame`: role `molded enclosure`, span [78.0, 153.6, 11.8] mm, material PC+ABS orange rounded perimeter frame
 - `screen_cover_glass`: role `screen`, span [77.1, 151.77, 0.7] mm, material black rounded cover glass
-- `display_lcm`: role `screen`, span [70.78, 129.17, 1.7] mm, material LCM
-- `main_pcb`: role `PCB`, span [64.0, 132.0, 0.8] mm, material 8L HDI FR-4 top/bottom islands around full-width battery
+- `display_lcm`: role `screen`, span [70.78, 129.17, 3.39] mm, material bonded LCD+CTP module (cover lens, touch, polarizers, TFT cell, BLU)
+- `main_pcb`: role `PCB`, span [64.0, 146.75, 0.8] mm, material 8L HDI FR-4 top/bottom split-island board envelope around full-width battery
 - `battery_pouch`: role `battery`, span [64.0, 87.0, 5.6] mm, material LiPo pouch
 - `battery_back_void_foam_pad`: role `battery support`, span [60.0, 80.0, 0.18] mm, material PORON-style low-compression-set polyurethane foam, low-preload battery back pad
 - `usb_c_receptacle`: role `I/O`, span [8.94, 7.8, 3.25] mm, material stainless shell
@@ -32,6 +32,11 @@ Status: generated part index and contact sheet for every assembly part.
 - `orange_rear_camera_bezel_bottom`: role `molded enclosure`, span [12.6, 1.0, 0.14] mm, material integral orange camera aperture bevel/bottom land
 - `orange_rear_camera_bezel_left`: role `molded enclosure`, span [1.0, 10.6, 0.14] mm, material integral orange camera aperture bevel/left land
 - `orange_rear_camera_bezel_right`: role `molded enclosure`, span [1.0, 10.6, 0.14] mm, material integral orange camera aperture bevel/right land
+- `rear_flash_shell_aperture`: role `camera aperture`, span [2.2, 2.2, 0.08] mm, material open molded back-shell flash hole exposing the flush light-pipe window
+- `orange_rear_flash_bezel_top`: role `molded enclosure`, span [3.1, 0.45, 0.12] mm, material integral orange flash aperture bevel/top land
+- `orange_rear_flash_bezel_bottom`: role `molded enclosure`, span [3.1, 0.45, 0.12] mm, material integral orange flash aperture bevel/bottom land
+- `orange_rear_flash_bezel_left`: role `molded enclosure`, span [0.45, 2.2, 0.12] mm, material integral orange flash aperture bevel/left land
+- `orange_rear_flash_bezel_right`: role `molded enclosure`, span [0.45, 2.2, 0.12] mm, material integral orange flash aperture bevel/right land
 - `rear_camera_lens_window`: role `camera`, span [6.8, 6.8, 0.55] mm, material flush internal lens window, coplanar with flat back
 - `rear_flash_led`: role `camera`, span [1.0, 1.0, 0.7] mm, material single rear torch/flash LED, buried
 - `rear_flash_led_window`: role `camera`, span [1.6, 1.6, 0.55] mm, material flush internal torch light pipe window, coplanar with flat back
@@ -44,7 +49,7 @@ Status: generated part index and contact sheet for every assembly part.
 - `rear_camera_light_baffle_top`: role `camera seal`, span [8.3, 0.35, 0.55] mm, material black molded rear camera anti-dust light baffle
 - `rear_camera_light_baffle_bottom`: role `camera seal`, span [8.3, 0.35, 0.55] mm, material black molded rear camera anti-dust light baffle
 - `front_camera_black_mask_window`: role `camera seal`, span [5.0, 5.0, 0.12] mm, material black printed mask datum around front under-glass camera
-- `rear_flash_camera_septum`: role `camera seal`, span [0.6, 8.3, 2.55] mm, material opaque PC stray-light septum between rear flash light-pipe and rear camera baffle column, molded to the back shell inner wall
+- `rear_flash_camera_septum`: role `camera seal`, span [0.6, 8.3, 2.1] mm, material opaque PC stray-light septum between rear flash light-pipe and rear camera baffle column, molded to the back shell inner wall
 - `power_button_cap`: role `button`, span [2.0, 12.0, 1.1] mm, material orange molded cap
 - `volume_button_cap`: role `button`, span [2.0, 21.0, 1.1] mm, material orange molded cap
 - `handset_acoustic_slot`: role `audio`, span [16.0, 1.0, 0.25] mm, material gasketed handset slot

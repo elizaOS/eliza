@@ -4,7 +4,7 @@
   "device_envelope_mm": [
     78.0,
     153.6,
-    12.7
+    11.8
   ],
   "design_language": "hard orange phone-like slab with teenage-engineering/rabbit-r1 influence",
   "plastic_color": "hard safety orange",
@@ -68,11 +68,11 @@
           "pass": true,
           "summary": {
             "pass": true,
-            "battery_front_z_mm": 1.0,
-            "battery_back_z_mm": -4.6,
-            "display_lcm_back_z_mm": 1.15,
-            "back_inner_wall_z_mm": -5.2,
-            "battery_to_display_gap_mm": 0.15,
+            "battery_front_z_mm": 1.45,
+            "battery_back_z_mm": -4.15,
+            "display_lcm_back_z_mm": 1.63,
+            "back_inner_wall_z_mm": -4.75,
+            "battery_to_display_gap_mm": 0.18,
             "battery_to_back_wall_gap_mm": 0.6,
             "required_front_static_gap_mm": 0.15,
             "required_back_swell_gap_mm": 0.6,
@@ -84,15 +84,15 @@
           "pass": true,
           "summary": {
             "pass": true,
-            "estimated_mass_g": 164.45,
+            "estimated_mass_g": 183.73,
             "target_mass_g": 185,
             "note": "Rough CAD estimate; placeholder void markers excluded."
           }
         }
       ],
       "notes": [
-        "4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.6/4.4); cell thickness unchanged at 5.6 mm so capacity stays 5727 mAh while the added device depth becomes swell void plus camera-burial clearance",
-        "front face at Z=+1.0 mm keeps 0.15 mm static gap below display_lcm back face (+1.15 mm); back face at Z=-4.6 mm keeps 0.6 mm swell gap to back inner wall (-5.2 mm) at the 12.7 mm device thickness",
+        "4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.6/4.4); cell thickness unchanged at 5.6 mm so capacity stays 5727 mAh; device depth carries swell void plus camera-burial clearance, not idle air",
+        "At the 11.8 mm device depth (back outer Z=-5.90, back inner wall Z=-4.75), battery back face Z=-4.15 keeps the 0.6 mm swell gap to the back inner wall; battery front face Z=+1.45 keeps a 0.18 mm static gap below the bonded display module back face (Z=+1.63). The bonded LCD+CTP module (3.39 mm) sits one adhesive_thickness_mm (0.18 mm OCA) below the cover-glass inner face, so the former 2.8 mm front air band is closed and the saved depth is removed from the device thickness rather than left as void.",
         "Pouch swell, UN38.3 pack drawing, protection board, and sample thickness data remain blocked."
       ],
       "pass": true
@@ -260,7 +260,7 @@
             "rear_light_baffle_count": 2,
             "front_black_mask_present": true,
             "stray_light_septum_present": true,
-            "flash_camera_center_spacing_mm": 6.6,
+            "flash_camera_center_spacing_mm": 8.1,
             "flash_camera_center_spacing_required_mm": 6.0,
             "flash_burial_clearance_mm": 0.2,
             "flash_burial_clearance_required_mm": 0.1,
@@ -336,16 +336,40 @@
             "rear_light_baffle_count": 2,
             "front_black_mask_present": true,
             "stray_light_septum_present": true,
-            "flash_camera_center_spacing_mm": 6.6,
+            "flash_camera_center_spacing_mm": 8.1,
             "flash_camera_center_spacing_required_mm": 6.0,
             "flash_burial_clearance_mm": 0.2,
             "flash_burial_clearance_required_mm": 0.1,
             "note": "Models rear cover-window PSA/dust gasket, rear light baffle, opaque stray-light septum between coplanar flash and camera windows, and front under-glass black mask datum."
           }
+        },
+        {
+          "id": "rear_flash_back_shell_aperture",
+          "pass": true,
+          "summary": {
+            "pass": true,
+            "aperture_mm": [
+              2.2,
+              2.2
+            ],
+            "window_mm": [
+              1.6,
+              1.6
+            ],
+            "bezel_parts": [
+              "orange_rear_flash_bezel_top",
+              "orange_rear_flash_bezel_bottom",
+              "orange_rear_flash_bezel_left",
+              "orange_rear_flash_bezel_right"
+            ],
+            "aperture_present": true,
+            "note": "Back shell now carries an explicit through-aperture and four orange bevel lands around the flush flash light-pipe window instead of treating the window/back-shell overlap as intentional contact."
+          }
         }
       ],
       "notes": [
         "1.0x1.0 mm seat now matches a 1.0x1.0 mm-class emitter (replaces Lumileds LXCL-PWF1 1.64x0.90 mm mismatch flagged by optical review)",
+        "Flush flash light-pipe now has its own molded orange shell aperture and bevel lands.",
         "blocks stray flash light into the camera baffle because both windows are coplanar in one flat back wall with no bump-edge to break stray light"
       ],
       "pass": true
@@ -488,7 +512,7 @@
             "envelope_mm": [
               78.0,
               153.6,
-              12.7
+              11.8
             ],
             "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.8 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall, plus the product-owner-approved increase to 12.7 mm for a >=0.6 mm battery swell void and >=0.4 mm rear-camera burial clearance."
           }
@@ -519,7 +543,7 @@
             "envelope_mm": [
               78.0,
               153.6,
-              12.7
+              11.8
             ],
             "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.8 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall, plus the product-owner-approved increase to 12.7 mm for a >=0.6 mm battery swell void and >=0.4 mm rear-camera burial clearance."
           }
@@ -550,7 +574,7 @@
             "envelope_mm": [
               78.0,
               153.6,
-              12.7
+              11.8
             ],
             "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.8 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall, plus the product-owner-approved increase to 12.7 mm for a >=0.6 mm battery swell void and >=0.4 mm rear-camera burial clearance."
           }

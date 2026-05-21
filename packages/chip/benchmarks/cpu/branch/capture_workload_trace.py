@@ -31,7 +31,7 @@ from benchmarks.cpu.branch.workload_trace import (  # noqa: E402
     write_workload_trace,
 )
 
-WORKLOAD_SRC = ROOT / "benchmarks/cpu/branch/workloads/agent_loop.c"
+WORKLOADS_DIR = ROOT / "benchmarks/cpu/branch/workloads"
 TRACE_DIR = ROOT / "external/workload-traces"
 QEMU = ROOT / "external/qemu-build/bin/qemu-riscv64"
 EXECLOG_PLUGIN = ROOT / "external/qemu-src/build/contrib/plugins/libexeclog.so"
@@ -57,16 +57,21 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--name", default="agent_loop", help="trace base name")
     ap.add_argument(
+        "--src",
+        default="agent_loop.c",
+        help="workload C source under benchmarks/cpu/branch/workloads/",
+    )
+    ap.add_argument(
         "--steps",
         type=int,
         default=96,
-        help="agent token-loop iterations (controls trace length)",
+        help="workload scale argv[1] (controls trace length)",
     )
     ap.add_argument(
         "--mode",
         type=int,
         default=0,
-        help="workload mode: 0=balanced duty cycle, 1=decode-heavy (hard branches)",
+        help="workload mode argv[2] (domain/variant selector)",
     )
     ap.add_argument(
         "--keep-execlog",
@@ -74,6 +79,10 @@ def main() -> int:
         help="retain the raw execlog text (large) next to the trace",
     )
     args = ap.parse_args()
+
+    workload_src = WORKLOADS_DIR / args.src
+    if not workload_src.is_file():
+        return _blocked(f"workload source not found: {workload_src.relative_to(ROOT)}")
 
     cc = _find_cc()
     if cc is None:
@@ -88,9 +97,9 @@ def main() -> int:
     execlog = TRACE_DIR / f"{args.name}.execlog.txt"
     out_trace = TRACE_DIR / f"{args.name}.btrace.json"
 
-    print(f"eliza-bpu: cross-compiling {WORKLOAD_SRC.name} -> {binary.name}")
+    print(f"eliza-bpu: cross-compiling {workload_src.name} -> {binary.name}")
     rc = subprocess.run(
-        [cc, "-O2", "-static", str(WORKLOAD_SRC), "-o", str(binary)],
+        [cc, "-O2", "-static", str(workload_src), "-o", str(binary)],
         cwd=str(ROOT),
         check=False,
     ).returncode
@@ -127,15 +136,12 @@ def main() -> int:
         branches,
         stats,
         source={
-            "workload": "agent_loop",
-            "description": (
-                "llama.cpp agent duty-cycle proxy: UTF-8/BPE tokenizer,"
-                " int8 GEMV, top-k sampler, streamed-JSON state machine"
-            ),
+            "workload": args.name,
+            "src": args.src,
             "isa": "rv64gc",
             "toolchain": cc,
             "qemu": "qemu-riscv64 user-mode + libexeclog",
-            "steps": args.steps,
+            "scale": args.steps,
             "mode": args.mode,
         },
     )

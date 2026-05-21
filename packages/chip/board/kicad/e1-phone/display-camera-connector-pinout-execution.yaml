@@ -11,6 +11,7 @@ source_artifacts:
   - package/camera/oem-mipi-csi-modules.yaml
   - board/kicad/e1-phone/routing-constraints.yaml
   - board/kicad/e1-phone/schematic-netclass-execution-package.yaml
+  - board/kicad/e1-phone/display-camera-schematic-net-binding.yaml
   - board/kicad/e1-phone/display-fit.yaml
 upstream_status:
   display_camera_integration_status: blocked_requires_display_camera_supplier_pack_routed_mipi_and_capture_evidence

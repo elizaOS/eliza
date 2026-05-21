@@ -36,7 +36,7 @@ fixed_geometry_inputs:
   top_island_mm: {x: 0.0, y: 0.0, width: 64.0, height: 29.0}
   battery_window_mm: {x: 0.0, y: 29.5, width: 64.0, height: 87.0}
   bottom_island_mm: {x: 0.0, y: 117.0, width: 64.0, height: 15.0}
-  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.2}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.8}
   display_anchor: 5.5_in_1080x1920_MIPI_LCM_CTP
   route_shield_test_reserve_pct_target: 10.6
 

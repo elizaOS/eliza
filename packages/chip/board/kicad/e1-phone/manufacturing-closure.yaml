@@ -208,10 +208,10 @@ non_release_pcb_implementation_scaffold:
     - HAPTIC_OUT
     - GND
   declared_net_count: 180
-  generated_net_class_count: 16
+  generated_net_class_count: 10
   generated_keepout_zone_count: 11
   copper_zone_count: 0
-  assigned_pad_net_count: 507
+  assigned_pad_net_count: 519
   testpoint_nets_assigned:
     - VBUS
     - VBAT

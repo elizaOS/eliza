@@ -1,11 +1,11 @@
 {
   "claim_boundary": "Rough CAD mass estimate using nominal densities; not measured mass.",
-  "total_estimated_mass_g": 164.45,
+  "total_estimated_mass_g": 183.73,
   "mass_by_role_g": {
     "EMI shield": 7.01,
     "I/O": 1.77,
     "I/O seal": 0.02,
-    "PCB": 4.17,
+    "PCB": 5.45,
     "RF keepout": 0.0,
     "RF tuner": 0.0,
     "audio": 1.75,
@@ -15,11 +15,11 @@
     "button seal": 0.03,
     "camera": 1.03,
     "camera aperture": 0.0,
-    "camera seal": 0.05,
+    "camera seal": 0.04,
     "connector": 0.21,
     "haptics": 0.22,
-    "molded enclosure": 24.93,
-    "screen": 39.03,
+    "molded enclosure": 24.41,
+    "screen": 57.57,
     "screen retention": 0.2,
     "service": 0.0,
     "split-board interconnect": 0.28
@@ -36,9 +36,9 @@
     {
       "name": "orange_side_frame",
       "role": "molded enclosure",
-      "volume_mm3": 6497.212,
+      "volume_mm3": 6036.78,
       "density_g_per_cm3": 1.15,
-      "mass_g": 7.472,
+      "mass_g": 6.942,
       "excluded_placeholder": false
     },
     {
@@ -52,17 +52,17 @@
     {
       "name": "display_lcm",
       "role": "screen",
-      "volume_mm3": 15542.509,
+      "volume_mm3": 30993.592,
       "density_g_per_cm3": 1.2,
-      "mass_g": 18.651,
+      "mass_g": 37.192,
       "excluded_placeholder": false
     },
     {
       "name": "main_pcb",
       "role": "PCB",
-      "volume_mm3": 2252.8,
+      "volume_mm3": 2944.0,
       "density_g_per_cm3": 1.85,
-      "mass_g": 4.168,
+      "mass_g": 5.446,
       "excluded_placeholder": false
     },
     {
@@ -226,6 +226,46 @@
       "excluded_placeholder": false
     },
     {
+      "name": "rear_flash_shell_aperture",
+      "role": "camera aperture",
+      "volume_mm3": 0.387,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "orange_rear_flash_bezel_top",
+      "role": "molded enclosure",
+      "volume_mm3": 0.167,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_rear_flash_bezel_bottom",
+      "role": "molded enclosure",
+      "volume_mm3": 0.167,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_rear_flash_bezel_left",
+      "role": "molded enclosure",
+      "volume_mm3": 0.119,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "orange_rear_flash_bezel_right",
+      "role": "molded enclosure",
+      "volume_mm3": 0.119,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
       "name": "rear_camera_lens_window",
       "role": "camera",
       "volume_mm3": 19.917,
@@ -324,9 +364,9 @@
     {
       "name": "rear_flash_camera_septum",
       "role": "camera seal",
-      "volume_mm3": 12.699,
+      "volume_mm3": 10.458,
       "density_g_per_cm3": 2.2,
-      "mass_g": 0.028,
+      "mass_g": 0.023,
       "excluded_placeholder": false
     },
     {

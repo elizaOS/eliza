@@ -12,13 +12,13 @@
     "device_envelope_mm": [
       78.0,
       153.6,
-      12.7
+      11.8
     ],
     "corner_radius_mm": 7.5,
     "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
     "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
     "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
-    "estimated_mass_g": 164.45,
+    "estimated_mass_g": 183.73,
     "target_mass_g": 185,
     "compactness_status": "cad_compactness_optimized",
     "compactness_width_excess_mm": 0.3,
@@ -33,7 +33,7 @@
     "board_step_has_tracks": false,
     "board_step_has_production_step": false,
     "board_step_has_concept_pcb_step": true,
-    "board_step_concept_split_islands_match_kicad": true,
+    "board_step_concept_split_islands_match_kicad": false,
     "engineering_validation_status": "cad_validation_inputs_ready",
     "interface_validation_status": "cad_interface_validation_pass",
     "interface_validation_case_count": 7,
@@ -79,15 +79,15 @@
     "production_visual_signoff_ready": false,
     "open_manual_visual_review_count": 5,
     "solid_cad_handoff_status": "generated",
-    "solid_cad_step_part_count": 118,
+    "solid_cad_step_part_count": 123,
     "step_validation_status": "pass",
-    "step_validation_count": 118,
+    "step_validation_count": 123,
     "supplier_rfq_status": "rfq_ready",
     "supplier_rfq_package_count": 5,
     "supplier_response_status": "blocked_no_supplier_responses",
     "supplier_response_complete_count": 0,
     "supplier_response_expected_count": 8,
-    "part_review_count": 118
+    "part_review_count": 123
   },
   "required_outputs": {
     "assembly_glb": true,

@@ -21,7 +21,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05744
+      "nonwhite_pixel_ratio": 0.05634
     },
     {
       "view": "full_back_iso.png",
@@ -36,7 +36,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.06065
+      "nonwhite_pixel_ratio": 0.05957
     },
     {
       "view": "rear_feature_detail.png",
@@ -51,7 +51,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.11033
+      "nonwhite_pixel_ratio": 0.11031
     },
     {
       "view": "full_left_side.png",
@@ -66,7 +66,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.03416
+      "nonwhite_pixel_ratio": 0.03312
     },
     {
       "view": "full_bottom_port.png",
@@ -96,7 +96,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.11028
+      "nonwhite_pixel_ratio": 0.11022
     },
     {
       "view": "exploded_iso.png",
@@ -111,7 +111,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.07984
+      "nonwhite_pixel_ratio": 0.07851
     },
     {
       "view": "component_stack.png",
@@ -126,7 +126,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.07941
+      "nonwhite_pixel_ratio": 0.08471
     },
     {
       "view": "component-review-audio.png",
@@ -141,7 +141,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05668
+      "nonwhite_pixel_ratio": 0.05649
     },
     {
       "view": "component-review-io-buttons.png",
@@ -156,7 +156,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.04714
+      "nonwhite_pixel_ratio": 0.04622
     },
     {
       "view": "component-review-optical.png",
@@ -171,7 +171,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05707
+      "nonwhite_pixel_ratio": 0.0563
     },
     {
       "view": "mold_tooling.png",
@@ -186,11 +186,11 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.0427
+      "nonwhite_pixel_ratio": 0.04206
     }
   ],
   "part_review_case": {
-    "part_count": 118,
+    "part_count": 123,
     "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
     "contact_sheet_pass": true,
     "exploded_contact_sheet": "mechanical/e1-phone/review/part-explode-contact-sheet.png",
@@ -199,8 +199,8 @@
   },
   "part_visual_coverage_case": {
     "status": "part_visual_coverage_pass",
-    "expected_part_count": 118,
-    "covered_part_count": 118,
+    "expected_part_count": 123,
+    "covered_part_count": 123,
     "missing_or_incomplete_part_count": 0,
     "pass": true
   },

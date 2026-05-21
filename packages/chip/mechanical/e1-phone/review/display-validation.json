@@ -15,7 +15,7 @@
         "device_envelope_mm": [
           78.0,
           153.6,
-          12.7
+          11.8
         ]
       },
       "target": ">=0.3 mm nominal CTP-to-orange-body margin",

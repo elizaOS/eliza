@@ -86,11 +86,18 @@ INTENTIONAL_PAIRS = frozenset({
     frozenset({"orange_back_shell", "orange_rear_camera_bezel_bottom"}),
     frozenset({"orange_back_shell", "orange_rear_camera_bezel_left"}),
     frozenset({"orange_back_shell", "orange_rear_camera_bezel_right"}),
+    frozenset({"orange_back_shell", "orange_rear_flash_bezel_top"}),
+    frozenset({"orange_back_shell", "orange_rear_flash_bezel_bottom"}),
+    frozenset({"orange_back_shell", "orange_rear_flash_bezel_left"}),
+    frozenset({"orange_back_shell", "orange_rear_flash_bezel_right"}),
     frozenset({"battery_pouch", "orange_battery_left_rib"}),
     frozenset({"battery_pouch", "orange_battery_right_rib"}),
     frozenset({"battery_pouch", "main_pcb"}),
     frozenset({"bottom_speaker_module", "orange_back_shell"}),
     frozenset({"bottom_speaker_module", "main_pcb"}),
+    frozenset({"bottom_mic", "main_pcb"}),
+    frozenset({"top_mic", "main_pcb"}),
+    frozenset({"usb_c_receptacle", "main_pcb"}),
     frozenset({"haptic_lra", "orange_back_shell"}),
     frozenset({"haptic_lra", "orange_side_frame"}),
     frozenset({"orange_side_frame", "screen_cover_glass"}),
@@ -516,6 +523,230 @@ def evaluate_burial(parts: Dict[str, Part], back_inner_z: float,
     return out
 
 
+def evaluate_rear_camera_back_shell_hole(parts: Dict[str, Part]) -> Dict:
+    """Strict proof that the rear camera/window stack does not collide with the back shell.
+
+    The generic collision checker allows some named envelope contacts, so this
+    targeted gate ignores the intentional-contact allowlist and directly
+    measures B-rep intersection volume against the orange back shell.
+    """
+    required = [
+        "orange_back_shell",
+        "rear_camera_shell_aperture",
+        "rear_camera_cover_glass",
+        "rear_camera_lens_window",
+        "rear_camera_module",
+    ]
+    missing = [name for name in required if name not in parts]
+    if missing:
+        return {
+            "id": "rear_camera_back_shell_hole_collision",
+            "status": "fail",
+            "missing_parts": missing,
+            "pairs": [],
+            "aperture_clears_cover_glass_xy": False,
+            "risk": "rear camera/window stack must pass through a real back-shell hole without colliding with orange plastic",
+        }
+
+    back = parts["orange_back_shell"]
+    aperture = parts["rear_camera_shell_aperture"]
+    cover = parts["rear_camera_cover_glass"]
+    axmn, aymn, _azmn, axmx, aymx, _azmx = aperture.bbox
+    cxmn, cymn, _czmn, cxmx, cymx, _czmx = cover.bbox
+    aperture_clears_cover = (
+        axmn <= cxmn + 1e-6
+        and axmx >= cxmx - 1e-6
+        and aymn <= cymn + 1e-6
+        and aymx >= cymx - 1e-6
+    )
+    pairs: List[Dict] = []
+    for target in ["rear_camera_cover_glass", "rear_camera_lens_window", "rear_camera_module"]:
+        target_part = parts[target]
+        inter = brep_intersection_volume(back.shape, target_part.shape)
+        dist = 0.0 if inter > 1e-6 else brep_min_distance(back.shape, target_part.shape)
+        pairs.append(
+            {
+                "parts": ["orange_back_shell", target],
+                "interference_volume_mm3": round(inter, 6),
+                "min_gap_mm": round(dist, 6) if dist == dist else None,
+                "status": "pass" if inter <= 1e-6 else "fail",
+            }
+        )
+    status = "pass" if aperture_clears_cover and all(p["status"] == "pass" for p in pairs) else "fail"
+    return {
+        "id": "rear_camera_back_shell_hole_collision",
+        "status": status,
+        "missing_parts": [],
+        "aperture_bbox_mm": [round(v, 4) for v in aperture.bbox],
+        "cover_glass_bbox_mm": [round(v, 4) for v in cover.bbox],
+        "aperture_clears_cover_glass_xy": aperture_clears_cover,
+        "pairs": pairs,
+        "risk": "rear camera/window stack must pass through a real back-shell hole without colliding with orange plastic",
+    }
+
+
+def evaluate_rear_flash_back_shell_hole(parts: Dict[str, Part]) -> Dict:
+    """Strict proof that the rear flash light-pipe window has a real shell opening."""
+    required = [
+        "orange_back_shell",
+        "rear_flash_shell_aperture",
+        "rear_flash_led_window",
+        "rear_flash_led",
+    ]
+    missing = [name for name in required if name not in parts]
+    if missing:
+        return {
+            "id": "rear_flash_back_shell_hole_collision",
+            "status": "fail",
+            "missing_parts": missing,
+            "pairs": [],
+            "aperture_clears_window_xy": False,
+            "risk": "rear flash light-pipe window must pass through a real back-shell hole without colliding with orange plastic",
+        }
+
+    back = parts["orange_back_shell"]
+    aperture = parts["rear_flash_shell_aperture"]
+    window = parts["rear_flash_led_window"]
+    axmn, aymn, _azmn, axmx, aymx, _azmx = aperture.bbox
+    wxmn, wymn, _wzmn, wxmx, wymx, _wzmx = window.bbox
+    aperture_clears_window = (
+        axmn <= wxmn + 1e-6
+        and axmx >= wxmx - 1e-6
+        and aymn <= wymn + 1e-6
+        and aymx >= wymx - 1e-6
+    )
+    pairs: List[Dict] = []
+    for target in ["rear_flash_led_window", "rear_flash_led"]:
+        target_part = parts[target]
+        inter = brep_intersection_volume(back.shape, target_part.shape)
+        dist = 0.0 if inter > 1e-6 else brep_min_distance(back.shape, target_part.shape)
+        pairs.append(
+            {
+                "parts": ["orange_back_shell", target],
+                "interference_volume_mm3": round(inter, 6),
+                "min_gap_mm": round(dist, 6) if dist == dist else None,
+                "status": "pass" if inter <= 1e-6 else "fail",
+            }
+        )
+    status = "pass" if aperture_clears_window and all(p["status"] == "pass" for p in pairs) else "fail"
+    return {
+        "id": "rear_flash_back_shell_hole_collision",
+        "status": status,
+        "missing_parts": [],
+        "aperture_bbox_mm": [round(v, 4) for v in aperture.bbox],
+        "window_bbox_mm": [round(v, 4) for v in window.bbox],
+        "aperture_clears_window_xy": aperture_clears_window,
+        "pairs": pairs,
+        "risk": "rear flash light-pipe window must pass through a real back-shell hole without colliding with orange plastic",
+    }
+
+
+def evaluate_handset_cover_glass_slot(parts: Dict[str, Part]) -> Dict:
+    """Strict proof that the handset acoustic slot is actually cut through cover glass."""
+    required = ["screen_cover_glass", "handset_acoustic_slot", "handset_acoustic_mesh"]
+    missing = [name for name in required if name not in parts]
+    if missing:
+        return {
+            "id": "handset_cover_glass_slot_collision",
+            "status": "fail",
+            "missing_parts": missing,
+            "pairs": [],
+            "risk": "handset acoustic slot must be a real cover-glass opening, not a visual marker colliding with glass",
+        }
+
+    glass = parts["screen_cover_glass"]
+    pairs: List[Dict] = []
+    for target in ["handset_acoustic_slot", "handset_acoustic_mesh"]:
+        target_part = parts[target]
+        inter = brep_intersection_volume(glass.shape, target_part.shape)
+        dist = 0.0 if inter > 1e-6 else brep_min_distance(glass.shape, target_part.shape)
+        pairs.append(
+            {
+                "parts": ["screen_cover_glass", target],
+                "interference_volume_mm3": round(inter, 6),
+                "min_gap_mm": round(dist, 6) if dist == dist else None,
+                "status": "pass" if inter <= 1e-6 else "fail",
+            }
+        )
+    return {
+        "id": "handset_cover_glass_slot_collision",
+        "status": "pass" if all(p["status"] == "pass" for p in pairs) else "fail",
+        "missing_parts": [],
+        "pairs": pairs,
+        "risk": "handset acoustic slot must be a real cover-glass opening, not a visual marker colliding with glass",
+    }
+
+
+def evaluate_side_frame_external_cutouts(parts: Dict[str, Part]) -> Dict:
+    """Strict proof that side-edge apertures are real side-frame cutouts."""
+    aperture_targets = [
+        "usb_c_external_aperture",
+        *[f"bottom_speaker_grille_slot_{idx}" for idx in range(1, 6)],
+        "bottom_microphone_port_1",
+        "bottom_microphone_port_2",
+        "top_microphone_port",
+    ]
+    captured_insert_targets = [
+        "bottom_speaker_dust_mesh",
+        "bottom_microphone_mesh_1",
+        "bottom_microphone_mesh_2",
+        "top_microphone_mesh",
+    ]
+    required = ["orange_side_frame", *aperture_targets]
+    missing = [name for name in required if name not in parts]
+    if missing:
+        return {
+            "id": "side_frame_external_cutout_collision",
+            "status": "fail",
+            "missing_parts": missing,
+            "aperture_pairs": [],
+            "captured_insert_contacts": [],
+            "risk": "USB, speaker, and microphone openings must be real side-frame holes, not visual markers colliding with orange plastic",
+        }
+
+    side_frame = parts["orange_side_frame"]
+    aperture_pairs: List[Dict] = []
+    for target in aperture_targets:
+        target_part = parts[target]
+        inter = brep_intersection_volume(side_frame.shape, target_part.shape)
+        dist = 0.0 if inter > 1e-6 else brep_min_distance(side_frame.shape, target_part.shape)
+        aperture_pairs.append(
+            {
+                "parts": ["orange_side_frame", target],
+                "interference_volume_mm3": round(inter, 6),
+                "min_gap_mm": round(dist, 6) if dist == dist else None,
+                "status": "pass" if inter <= 1e-6 else "fail",
+            }
+        )
+
+    insert_contacts: List[Dict] = []
+    for target in captured_insert_targets:
+        if target not in parts:
+            insert_contacts.append({"part": target, "status": "missing"})
+            continue
+        target_part = parts[target]
+        inter = brep_intersection_volume(side_frame.shape, target_part.shape)
+        dist = 0.0 if inter > 1e-6 else brep_min_distance(side_frame.shape, target_part.shape)
+        insert_contacts.append(
+            {
+                "parts": ["orange_side_frame", target],
+                "interference_volume_mm3": round(inter, 6),
+                "min_gap_mm": round(dist, 6) if dist == dist else None,
+                "status": "intentional_contact" if inter > 1e-6 else "clear",
+                "note": "captured hydrophobic mesh insert overlap is an intentional seal/contact envelope",
+            }
+        )
+
+    return {
+        "id": "side_frame_external_cutout_collision",
+        "status": "pass" if all(p["status"] == "pass" for p in aperture_pairs) else "fail",
+        "missing_parts": [],
+        "aperture_pairs": aperture_pairs,
+        "captured_insert_contacts": insert_contacts,
+        "risk": "USB, speaker, and microphone openings must be real side-frame holes, not visual markers colliding with orange plastic",
+    }
+
+
 def main() -> int:
     t0 = time.time()
     with open(MANIFEST) as f:
@@ -604,6 +835,10 @@ def main() -> int:
     flush_back = evaluate_flush_back(parts, back_outer_z)
     burial = evaluate_burial(parts, back_inner_z,
                              ["rear_camera_module", "rear_flash_led"])
+    rear_camera_hole = evaluate_rear_camera_back_shell_hole(parts)
+    rear_flash_hole = evaluate_rear_flash_back_shell_hole(parts)
+    handset_glass_slot = evaluate_handset_cover_glass_slot(parts)
+    side_frame_cutouts = evaluate_side_frame_external_cutouts(parts)
     print(f"[flush_back] max_protrusion={flush_back['max_protrusion_mm']}mm "
           f"status={flush_back['status']}", file=sys.stderr)
     for b in burial:
@@ -645,6 +880,10 @@ def main() -> int:
     overall_pass = (all(s["status"] == "pass" for s in scope_results)
                     and len(interferences) == 0
                     and flush_back["status"] == "pass"
+                    and rear_camera_hole["status"] == "pass"
+                    and rear_flash_hole["status"] == "pass"
+                    and handset_glass_slot["status"] == "pass"
+                    and side_frame_cutouts["status"] == "pass"
                     and all(b.get("buried") for b in burial))
 
     # --- write JSON ---
@@ -673,6 +912,10 @@ def main() -> int:
         ],
         "scope_results_full": scope_results,
         "flush_back_check": flush_back,
+        "rear_camera_back_shell_hole_check": rear_camera_hole,
+        "rear_flash_back_shell_hole_check": rear_flash_hole,
+        "handset_cover_glass_slot_check": handset_glass_slot,
+        "side_frame_external_cutout_check": side_frame_cutouts,
         "burial_check": {
             "back_inner_wall_z_mm": round(back_inner_z, 4),
             "targets": burial,
@@ -724,6 +967,58 @@ def main() -> int:
         md_lines.append("- Envelope/void excursions (not solid, not a fault): " +
                         ", ".join(f"`{e['part']}` ({e['protrusion_mm']}mm)"
                                   for e in flush_back["envelope_excursions"]))
+    md_lines += [
+        "",
+        "## Rear Camera Back-Shell Hole",
+        "",
+        f"Status: {rear_camera_hole['status'].upper()}. "
+        f"Aperture clears cover glass XY: {rear_camera_hole['aperture_clears_cover_glass_xy']}.",
+    ]
+    for pair in rear_camera_hole.get("pairs", []):
+        md_lines.append(
+            f"- `{pair['parts'][0]}` vs `{pair['parts'][1]}`: "
+            f"intersection {pair['interference_volume_mm3']} mm3, "
+            f"min gap {pair['min_gap_mm']} mm ({pair['status'].upper()})"
+        )
+    md_lines += [
+        "",
+        "## Rear Flash Back-Shell Hole",
+        "",
+        f"Status: {rear_flash_hole['status'].upper()}. "
+        f"Aperture clears flash window XY: {rear_flash_hole['aperture_clears_window_xy']}.",
+    ]
+    for pair in rear_flash_hole.get("pairs", []):
+        md_lines.append(
+            f"- `{pair['parts'][0]}` vs `{pair['parts'][1]}`: "
+            f"intersection {pair['interference_volume_mm3']} mm3, "
+            f"min gap {pair['min_gap_mm']} mm ({pair['status'].upper()})"
+        )
+    md_lines += [
+        "",
+        "## Handset Cover-Glass Slot",
+        "",
+        f"Status: {handset_glass_slot['status'].upper()}.",
+    ]
+    for pair in handset_glass_slot.get("pairs", []):
+        md_lines.append(
+            f"- `{pair['parts'][0]}` vs `{pair['parts'][1]}`: "
+            f"intersection {pair['interference_volume_mm3']} mm3, "
+            f"min gap {pair['min_gap_mm']} mm ({pair['status'].upper()})"
+        )
+    md_lines += [
+        "",
+        "## Side-Frame External Cutouts",
+        "",
+        f"Status: {side_frame_cutouts['status'].upper()}.",
+    ]
+    for pair in side_frame_cutouts.get("aperture_pairs", []):
+        md_lines.append(
+            f"- `{pair['parts'][0]}` vs `{pair['parts'][1]}`: "
+            f"intersection {pair['interference_volume_mm3']} mm3, "
+            f"min gap {pair['min_gap_mm']} mm ({pair['status'].upper()})"
+        )
+    if side_frame_cutouts.get("captured_insert_contacts"):
+        md_lines.append("- Captured mesh insert contacts reported as intentional seal envelopes.")
     md_lines.append("")
     md_lines.append(f"Burial vs back inner wall (Z = {round(back_inner_z,4)} mm); "
                     "clearance >= 0 means back face at or inside the wall:")

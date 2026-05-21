@@ -6,8 +6,8 @@ Engine: OCP.BRepExtrema_DistShapeShape + BRepAlgoAPI_Common (swept insertion). E
 
 ## Verdict: DEVICE IS ASSEMBLABLE
 
-- Parts in manifest: 95
-- Parts loaded (B-rep): 95
+- Parts in manifest: 123
+- Parts loaded (B-rep): 123
 - Parts placed across 19 assembly steps: 94
 - Trapped parts (no collision-free path): 0 
 - Fastener access (6 bosses + 8 snaps): PASS
@@ -24,18 +24,18 @@ Engine: OCP.BRepExtrema_DistShapeShape + BRepAlgoAPI_Common (swept insertion). E
 | 5 | Battery pouch placed between locating ribs, FPC routed | +Z | S3 battery jig, pneumatic 8 N press | 1.000 | PASS |
 | 6 | Main PCB seated against boss 1/4 datum + EMI shield cans | +Z | S2 PCB datum nest, Wera 7440 torque driver | 1.000 | PASS |
 | 7 | USB-C receptacle seated into reinforcement saddle | +Z | USB-C placement nest | 1.000 | PASS |
-| 8 | USB-C perimeter gaskets applied around receptacle | +Z | gasket pick + seat | 1.000 | PASS |
+| 8 | USB-C perimeter gaskets applied around receptacle | +Z | gasket pick + seat | 0.955 | PASS |
 | 9 | Haptic LRA + bottom speaker + acoustic meshes placed | +Z | component pick + PSA | 0.500 | PASS |
 | 10 | Bottom + top mics placed on board islands | +Z | fine-pitch pick | 1.000 | PASS |
 | 11 | Split-board interconnect (connectors + flex tails + side loop) | +Z | FPC routing combs S4-FIX-004, locking probe | 0.010 | PASS |
-| 12 | Display FPC connector + bend keepout routed | +Z | FPC routing combs, locking probe | 1.000 | PASS |
+| 12 | Display FPC connector + bend keepout routed | +Z | FPC routing combs, locking probe | 0.925 | PASS |
 | 13 | Earpiece receiver + gasket placed (top island) | +Z | component pick + gasket | 1.000 | PASS |
 | 14 | Front camera module placed under top island | +Z | vacuum pick, front_camera_alignment_pin | 1.000 | PASS |
 | 15 | Display module + perimeter adhesive bonded | +Z | S1 screen_bond_clamp_frame, 90 s cure | 1.000 | PASS |
 | 16 | Cover glass bonded over display | +Z | screen bond clamp, OCA roller | 1.000 | PASS |
 | 17 | Side-frame closure: snap onto perimeter + drive 6 screws | +Z | S5 snap platen 25 N (8 snaps), Wera 7440 (6 screws) | 1.000 | PASS |
 | 18 | Power button cap + gasket inserted through side frame (-X) | -X | side-key insertion tool | 0.585 | PASS |
-| 19 | Volume button cap + gasket inserted through side frame (+X) | +X | side-key insertion tool | 0.803 | PASS |
+| 19 | Volume button cap + gasket inserted through side frame (+X) | +X | side-key insertion tool | 1.000 | PASS |
 
 ## Fastener Access
 

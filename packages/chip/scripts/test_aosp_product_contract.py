@@ -67,6 +67,9 @@ class AospProductContractTests(unittest.TestCase):
         os_products = write(
             vendor / "AndroidProducts.mk",
             "COMMON_LUNCH_CHOICES := \\\n"
+            "    eliza_cf_arm64_phone-trunk_staging-userdebug \\\n"
+            "    eliza_cf_x86_64_phone-trunk_staging-userdebug \\\n"
+            "    eliza_cf_riscv64_phone-trunk_staging-userdebug \\\n"
             "    eliza_openagent_ai_soc_phone-trunk_staging-userdebug\n",
         )
         os_common = write(

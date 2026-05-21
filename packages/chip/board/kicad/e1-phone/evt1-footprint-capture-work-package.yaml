@@ -6,6 +6,7 @@ claim_boundary: EVT1 footprint capture work package only. This turns supplier in
   are complete, footprints are reviewed, the board is routed, or the enclosure is ready.
 source_artifacts:
   - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
+  - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
   - board/kicad/e1-phone/pinout-footprint-freeze.yaml
   - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
   - board/kicad/e1-phone/placement-interface-matrix.yaml
@@ -284,6 +285,7 @@ work_items:
       - shield_can_height
       - sim_or_esim_location
       - antenna_feed_datum
+      - compact_lte_alternate_package_datum
     supplier_gate_inputs_required:
       rfq_response_pack: false
       signed_2d_drawing: false
@@ -531,7 +533,7 @@ work_items:
       y: 27.0
       width: 12.0
       height: 2.0
-    primary_candidate: 5830mAh_22p45Wh_64x87x5p7mm_pouch_class
+    primary_candidate: 5727mAh_22p05Wh_64x87x5p6mm_pouch_class
     package_binding: package/battery/e1-phone-17p3wh-pack.yaml
     planned_contract_nets:
       - BAT_ID

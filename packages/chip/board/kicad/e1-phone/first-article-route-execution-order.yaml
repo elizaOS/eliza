@@ -1,0 +1,221 @@
+schema: eliza.e1_phone_first_article_route_execution_order.v1
+status: blocked_first_article_route_requires_ordered_supplier_schematic_layout_factory_and_enclosure_evidence
+date: 2026-05-21
+claim_boundary: >
+  Ordered EVT1 first-article route execution contract. This records the required
+  sequence from supplier samples through KiCad footprint capture, schematic/ERC,
+  routed PCB/DRC/SI/RF/PI, manufacturing exports, factory first article, routed
+  STEP, and enclosure clearance. It is not a routed PCB, not a fabrication
+  package, not a first-article result, and not enclosure-ready evidence.
+
+source_artifacts:
+  - board/kicad/e1-phone/supplier-sample-release-gate.yaml
+  - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+  - board/kicad/e1-phone/schematic-capture-readiness-binding.yaml
+  - board/kicad/e1-phone/evt1-routing-work-package.yaml
+  - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+  - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+  - board/kicad/e1-phone/production-factory-release-execution.yaml
+  - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/end-to-end-readiness.yaml
+
+upstream_status:
+  supplier_sample_release_gate: blocked_supplier_samples_response_packs_and_reviews_required_before_layout_release
+  evt1_footprint_capture: blocked_evt1_footprint_capture_requires_supplier_intake_reviews_and_real_kicad_libraries
+  schematic_capture_readiness: blocked_schematic_capture_requires_real_symbols_supplier_pinouts_footprints_erc_and_trial_route
+  evt1_routing_work_package: blocked_requires_supplier_pinouts_routed_pcb_and_post_route_evidence
+  routed_pcb_implementation: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
+  routed_layout_readiness: blocked_layout_readiness_requires_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance
+  routed_release_plan: blocked_routed_release_requires_real_route_and_supplier_outputs
+  routed_board_step_export: blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
+  production_factory_release: blocked_requires_routed_release_supplier_packs_fab_assembly_fixture_and_first_article
+  factory_production_acceptance: blocked_factory_production_acceptance_requires_routed_outputs_fixture_limits_quotes_and_first_article
+  enclosure_fit_execution: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+  end_to_end_readiness: blocked_not_end_to_end_ready_or_enclosure_ready
+
+execution_policy:
+  release_revision: EVT1-routed-first-article
+  current_revision: EVT0-concept
+  sequence_is_strict: true
+  no_phase_may_start_until_prior_phase_exit_evidence_is_present: true
+  no_fabrication_outputs_without_routed_pcb_and_drc: true
+  no_factory_limits_without_routed_probe_coordinates_and_first_article_measurements: true
+  no_enclosure_release_without_routed_board_step_supplier_models_and_clearance_rerun: true
+  all_phases_fail_closed_until_evidence_exists: true
+
+ordered_phases:
+  - order: 0
+    id: supplier_response_and_samples
+    source_status_key: supplier_sample_release_gate
+    current_status: blocked_supplier_samples_response_packs_and_reviews_required_before_layout_release
+    must_complete_before:
+      - footprint_symbol_and_3d_capture
+      - schematic_netclass_and_erc_capture
+      - placement_escape_and_trial_route
+    required_exit_evidence:
+      - board/kicad/e1-phone/production/sourcing/rfq-response-index.yaml
+      - board/kicad/e1-phone/production/sourcing/*/rfq-response-pack.yaml
+      - board/kicad/e1-phone/production/sourcing/*/signed-2d-drawing.pdf
+      - board/kicad/e1-phone/production/sourcing/*/pinout-or-pad-map.csv
+      - board/kicad/e1-phone/production/sourcing/*/recommended-land-pattern.pdf
+      - board/kicad/e1-phone/production/sourcing/*/supplier-model.step
+      - board/kicad/e1-phone/production/sourcing/*/sample-inspection.yaml
+      - board/kicad/e1-phone/production/sourcing/*/compliance-pack-index.yaml
+    present_exit_evidence_count: 0
+    blocked: true
+  - order: 1
+    id: footprint_symbol_and_3d_capture
+    source_status_key: evt1_footprint_capture
+    current_status: blocked_evt1_footprint_capture_requires_supplier_intake_reviews_and_real_kicad_libraries
+    must_complete_before:
+      - schematic_netclass_and_erc_capture
+      - placement_escape_and_trial_route
+    required_exit_evidence:
+      - board/kicad/e1-phone/production/reports/pinout-review
+      - board/kicad/e1-phone/production/reports/symbol-review
+      - board/kicad/e1-phone/production/reports/footprint-review
+      - board/kicad/e1-phone/production/reports/footprint-3d-binding
+      - board/kicad/e1-phone/production/step/component-models
+    present_exit_evidence_count: 0
+    blocked: true
+  - order: 2
+    id: schematic_netclass_and_erc_capture
+    source_status_key: schematic_capture_readiness
+    current_status: blocked_schematic_capture_requires_real_symbols_supplier_pinouts_footprints_erc_and_trial_route
+    must_complete_before:
+      - placement_escape_and_trial_route
+      - high_speed_rf_power_route_and_drc
+    required_exit_evidence:
+      - board/kicad/e1-phone/production/reports/erc.json
+      - board/kicad/e1-phone/production/reports/schematic-netclass-execution-package.yaml
+      - board/kicad/e1-phone/production/reports/schematic-capture-readiness-binding.yaml
+    present_exit_evidence_count: 0
+    blocked: true
+  - order: 3
+    id: placement_escape_and_trial_route
+    source_status_key: evt1_routing_work_package
+    current_status: blocked_requires_supplier_pinouts_routed_pcb_and_post_route_evidence
+    must_complete_before:
+      - high_speed_rf_power_route_and_drc
+      - manufacturing_release_outputs
+    required_exit_evidence:
+      - board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
+      - board/kicad/e1-phone/production/reports/live-utilization-audit.yaml
+      - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+      - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+    present_exit_evidence_count: 0
+    blocked: true
+  - order: 4
+    id: high_speed_rf_power_route_and_drc
+    source_status_key: routed_pcb_implementation
+    current_status: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
+    must_complete_before:
+      - manufacturing_release_outputs
+      - routed_step_and_enclosure_clearance
+    required_exit_evidence:
+      - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      - board/kicad/e1-phone/production/reports/drc.json
+      - board/kicad/e1-phone/production/reports/zone-fill.json
+      - board/kicad/e1-phone/production/reports/si-pi
+      - board/kicad/e1-phone/production/reports/rf
+      - board/kicad/e1-phone/production/reports/power-thermal
+    present_exit_evidence_count: 0
+    blocked: true
+  - order: 5
+    id: manufacturing_release_outputs
+    source_status_key: routed_release_plan
+    current_status: blocked_routed_release_requires_real_route_and_supplier_outputs
+    must_complete_before:
+      - factory_fixture_and_first_article
+      - routed_step_and_enclosure_clearance
+    required_exit_evidence:
+      - board/kicad/e1-phone/production/gerbers
+      - board/kicad/e1-phone/production/ipc-2581
+      - board/kicad/e1-phone/production/pos
+      - board/kicad/e1-phone/production/bom
+      - board/kicad/e1-phone/production/pdf/assembly.pdf
+      - board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+      - board/kicad/e1-phone/production/fab-quote
+    present_exit_evidence_count: 0
+    blocked: true
+  - order: 6
+    id: factory_fixture_and_first_article
+    source_status_key: production_factory_release
+    current_status: blocked_requires_routed_release_supplier_packs_fab_assembly_fixture_and_first_article
+    must_complete_before:
+      - final_readiness_decision
+    required_exit_evidence:
+      - board/kicad/e1-phone/production/test/probe-coordinates.csv
+      - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+      - board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+      - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+      - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+      - board/kicad/e1-phone/production/first-article
+    present_exit_evidence_count: 0
+    blocked: true
+  - order: 7
+    id: routed_step_and_enclosure_clearance
+    source_status_key: routed_board_step_export
+    current_status: blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
+    must_complete_before:
+      - final_readiness_decision
+    required_exit_evidence:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/routed-board-step-export-contract.yaml
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-release.yaml
+    present_exit_evidence_count: 0
+    blocked: true
+  - order: 8
+    id: final_readiness_decision
+    source_status_key: end_to_end_readiness
+    current_status: blocked_not_end_to_end_ready_or_enclosure_ready
+    must_complete_before: []
+    required_exit_evidence:
+      - board/kicad/e1-phone/production/reports/end-to-end-readiness.yaml
+      - board/kicad/e1-phone/production/reports/factory-production-acceptance-checklist.yaml
+      - board/kicad/e1-phone/production/reports/enclosure-fit-execution-package.yaml
+    present_exit_evidence_count: 0
+    blocked: true
+
+release_output_inventory:
+  routed_release_required_output_count: 20
+  routed_release_present_output_count: 0
+  production_factory_required_output_count: 20
+  production_factory_present_output_count: 0
+  routed_layout_ready_to_fabricate: false
+  routed_layout_ready_for_enclosure: false
+  routed_layout_ready_for_factory_test: false
+
+cross_checks:
+  manifest_cites_execution_order: true
+  source_artifacts_exist: true
+  upstream_statuses_match_current_sources: true
+  phases_are_strictly_ordered: true
+  every_phase_is_blocked: true
+  no_phase_has_present_exit_evidence: true
+  routed_release_inventory_matches_release_plan: true
+  production_factory_inventory_matches_release_execution: true
+  routed_layout_ready_flags_remain_false: true
+  enclosure_phase_depends_on_routed_step_and_supplier_models: true
+
+release_blockers:
+  - supplier response packs, samples, signed drawings, pinouts, land patterns, and STEP models are missing
+  - KiCad symbols, footprints, 3D bindings, and ERC evidence are missing
+  - routed PCB, DRC, filled zones, SI/PI/RF/power reports, and production outputs are missing
+  - factory probe coordinates, limits, fixture program, first-article transcript, and fab quote are missing
+  - routed board STEP, supplier-model enclosure clearance rerun, and final readiness decision are missing
+
+forbidden_claims:
+  - route_sequence_complete
+  - evt1_route_ready
+  - routed_pcb_ready
+  - manufacturing_outputs_ready
+  - factory_first_article_ready
+  - routed_step_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

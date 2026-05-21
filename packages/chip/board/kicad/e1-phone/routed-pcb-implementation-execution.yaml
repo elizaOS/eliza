@@ -9,10 +9,13 @@ source_artifacts:
   - board/kicad/e1-phone/routing-acceptance-checklist.yaml
   - board/kicad/e1-phone/evt1-routing-work-package.yaml
   - board/kicad/e1-phone/route-feasibility-density.yaml
+  - board/kicad/e1-phone/evt1-stackup-impedance-coupon-plan.yaml
   - board/kicad/e1-phone/pcb-implementation-audit.yaml
   - board/kicad/e1-phone/manufacturing-closure.yaml
   - board/kicad/e1-phone/production-readiness.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+  - board/kicad/e1-phone/first-article-route-execution-order.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
   - board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml
@@ -20,6 +23,7 @@ source_artifacts:
   - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
   - board/kicad/e1-phone/schematic-netclass-execution-package.yaml
   - board/kicad/e1-phone/route-corridor-execution-package.yaml
+  - board/kicad/e1-phone/trial-route-input-matrix.yaml
   - board/kicad/e1-phone/usb-route-topology-resolution.yaml
   - board/kicad/e1-phone/split-interconnect-pin-allocation.yaml
   - board/kicad/e1-phone/split-interconnect-connector-binding.yaml
@@ -562,7 +566,7 @@ supplier_to_kicad_route_input_matrix:
     footprint_capture_status: blocked_waiting_supplier_intake_and_review
     refdes_group: U_CELL
     planned_contract_net_count: 15
-    required_supplier_input_count: 9
+    required_supplier_input_count: 11
     required_production_evidence:
       rfq_transmittal: board/kicad/e1-phone/production/sourcing/cellular/rfq-transmittal.yaml
       rfq_response_pack: board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml

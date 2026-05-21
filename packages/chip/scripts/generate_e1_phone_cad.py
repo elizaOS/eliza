@@ -233,10 +233,19 @@ def load_params() -> dict[str, Any]:
 
 
 def pcb_island_segments(params: dict[str, Any]) -> list[tuple[list[float], list[float], str]]:
+    """Two rigid PCB islands placed in the Y regions NOT occupied by the full-width
+    battery, per board-topology-decision.yaml. The battery (64x87, center y=-7.0)
+    spans y[-50.5,+36.5]; the top island sits above it and the bottom below it, so
+    no board solid shares the battery's XY footprint and the impossible board<->
+    battery Z-overlap of a single center board is eliminated.
+    """
     pcb = params["pcb"]
+    z = pcb["z_center_mm"]
+    top = pcb["top_island_outline_mm"]
+    bot = pcb["bottom_island_outline_mm"]
     return [
-        ([64.0, 29.0, 0.8], [0.0, 51.5, pcb["z_center_mm"]], "pcb_top_logic_rf_island"),
-        ([64.0, 15.0, 0.8], [0.0, -58.5, pcb["z_center_mm"]], "pcb_bottom_usb_audio_island"),
+        (list(top), [0.0, float(pcb["top_island_center_y_mm"]), z], "main_pcb_top_island"),
+        (list(bot), [0.0, float(pcb["bottom_island_center_y_mm"]), z], "main_pcb_bottom_island"),
     ]
 
 
@@ -1245,7 +1254,7 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
             [(size, center) for size, center, _name in pcb_island_segments(params)],
             PCB_GREEN,
             "PCB",
-            "8L HDI FR-4 top/bottom islands around full-width battery",
+            "8L HDI FR-4 top/bottom split-island board envelope around full-width battery",
         ),
         box(
             "battery_pouch",
@@ -2616,6 +2625,14 @@ def write_solid_cad_handoff_artifacts(
         )
     assembly_path = OUT_DIR / "e1-phone-solid-assembly.step"
     assembly.save(str(assembly_path))
+    # Combined board STEP (union of the two rigid islands) kept only as the
+    # board-readiness / KiCad reconciliation evidence artifact (out/main_pcb.step).
+    # The assembly itself carries the two islands as separate parts; this file is
+    # the single-board projection used to compare against the KiCad Edge.Cuts.
+    cq.exporters.export(
+        cq_composite_box(pcb_island_segments(params)),
+        str(OUT_DIR / "main_pcb.step"),
+    )
     required_solid_names = [
         "orange_back_shell",
         "orange_side_frame",

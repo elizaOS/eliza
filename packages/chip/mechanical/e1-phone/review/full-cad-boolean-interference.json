@@ -9,7 +9,7 @@
   "parts_loaded": 123,
   "parts_missing": [],
   "pair_count_total": 7503,
-  "pair_count_brep_evaluated": 459,
+  "pair_count_brep_evaluated": 465,
   "unintentional_clashes": [],
   "scope_results": [
     {
@@ -162,7 +162,7 @@
             "orange_side_frame"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 5.85,
+          "min_gap_mm": 2.1203,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -1352,7 +1352,7 @@
             "main_pcb"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 0.5,
+          "min_gap_mm": 1.0,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -1392,7 +1392,7 @@
             "haptic_lra"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 1.118,
+          "min_gap_mm": 1.5811,
           "interference_volume_mm3": 0.0,
           "intentional_contact": false
         },
@@ -1909,7 +1909,7 @@
             "orange_side_frame"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 5.85,
+          "min_gap_mm": 2.1203,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -4123,7 +4123,7 @@
             "main_pcb"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 0.5,
+          "min_gap_mm": 1.0,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -4163,7 +4163,7 @@
             "haptic_lra"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 1.118,
+          "min_gap_mm": 1.5811,
           "interference_volume_mm3": 0.0,
           "intentional_contact": false
         },
@@ -5017,7 +5017,7 @@
             "main_pcb"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 22.0,
+          "min_gap_mm": 22.5,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -5057,7 +5057,7 @@
             "battery_pouch"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 0.5,
+          "min_gap_mm": 1.0,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         }
@@ -5216,6 +5216,137 @@
     ],
     "risk": "handset acoustic slot must be a real cover-glass opening, not a visual marker colliding with glass"
   },
+  "side_frame_external_cutout_check": {
+    "id": "side_frame_external_cutout_collision",
+    "status": "pass",
+    "missing_parts": [],
+    "aperture_pairs": [
+      {
+        "parts": [
+          "orange_side_frame",
+          "usb_c_external_aperture"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.3,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_grille_slot_1"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.075,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_grille_slot_2"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.075,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_grille_slot_3"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.075,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_grille_slot_4"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.075,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_grille_slot_5"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.075,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_microphone_port_1"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.1,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_microphone_port_2"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.1,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "top_microphone_port"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.1,
+        "status": "pass"
+      }
+    ],
+    "captured_insert_contacts": [
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_dust_mesh"
+        ],
+        "interference_volume_mm3": 5.652,
+        "min_gap_mm": 0.0,
+        "status": "intentional_contact",
+        "note": "captured hydrophobic mesh insert overlap is an intentional seal/contact envelope"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_microphone_mesh_1"
+        ],
+        "interference_volume_mm3": 0.0624,
+        "min_gap_mm": 0.0,
+        "status": "intentional_contact",
+        "note": "captured hydrophobic mesh insert overlap is an intentional seal/contact envelope"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_microphone_mesh_2"
+        ],
+        "interference_volume_mm3": 0.0624,
+        "min_gap_mm": 0.0,
+        "status": "intentional_contact",
+        "note": "captured hydrophobic mesh insert overlap is an intentional seal/contact envelope"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "top_microphone_mesh"
+        ],
+        "interference_volume_mm3": 0.0624,
+        "min_gap_mm": 0.0,
+        "status": "intentional_contact",
+        "note": "captured hydrophobic mesh insert overlap is an intentional seal/contact envelope"
+      }
+    ],
+    "risk": "USB, speaker, and microphone openings must be real side-frame holes, not visual markers colliding with orange plastic"
+  },
   "burial_check": {
     "back_inner_wall_z_mm": -4.7,
     "targets": [
@@ -5236,5 +5367,5 @@
     ]
   },
   "overall_status": "pass",
-  "wall_seconds": 12.36
+  "wall_seconds": 13.91
 }

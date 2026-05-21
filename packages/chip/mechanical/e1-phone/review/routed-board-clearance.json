@@ -75,17 +75,6 @@
   ],
   "rerun_matrix": [
     {
-      "case_id": "battery_to_pcb_islands",
-      "concept_clearance_pass": true,
-      "concept_actual_mm": 0.5,
-      "concept_required_mm": 0.5,
-      "concept_margin_mm": 0.0,
-      "rerun_priority": 1,
-      "risk_level": "high",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
-    },
-    {
       "case_id": "haptic_to_battery",
       "concept_clearance_pass": true,
       "concept_actual_mm": 0.5,
@@ -130,6 +119,17 @@
       "requires_routed_step_rerun": true
     },
     {
+      "case_id": "battery_to_pcb_islands",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 1.0,
+      "concept_required_mm": 0.5,
+      "concept_margin_mm": 0.5,
+      "rerun_priority": 2,
+      "risk_level": "medium",
+      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_rerun": true
+    },
+    {
       "case_id": "bottom_mic_to_usb",
       "concept_clearance_pass": true,
       "concept_actual_mm": 11.78,
@@ -154,9 +154,9 @@
     {
       "case_id": "haptic_to_pcb_islands",
       "concept_clearance_pass": true,
-      "concept_actual_mm": 1.118,
+      "concept_actual_mm": 1.581,
       "concept_required_mm": 0.5,
-      "concept_margin_mm": 0.618,
+      "concept_margin_mm": 1.081,
       "rerun_priority": 3,
       "risk_level": "normal",
       "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
@@ -209,17 +209,6 @@
   ],
   "result_cases": [
     {
-      "case_id": "battery_to_pcb_islands",
-      "evidence_class": "",
-      "evidence_class_allowed": false,
-      "measured_min_gap_mm": null,
-      "required_min_gap_mm": 0.5,
-      "interference_count": null,
-      "reviewer_present": false,
-      "measurement_artifact_present": false,
-      "pass": false
-    },
-    {
       "case_id": "haptic_to_battery",
       "evidence_class": "",
       "evidence_class_allowed": false,
@@ -258,6 +247,17 @@
       "evidence_class_allowed": false,
       "measured_min_gap_mm": null,
       "required_min_gap_mm": 0.25,
+      "interference_count": null,
+      "reviewer_present": false,
+      "measurement_artifact_present": false,
+      "pass": false
+    },
+    {
+      "case_id": "battery_to_pcb_islands",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "measured_min_gap_mm": null,
+      "required_min_gap_mm": 0.5,
       "interference_count": null,
       "reviewer_present": false,
       "measurement_artifact_present": false,

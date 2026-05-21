@@ -1,17 +1,17 @@
 {
   "claim_boundary": "Automated part-by-part CAD review index; thumbnails are top-view bounding-box and exploded-context projection proxies, not human industrial-design signoff.",
   "status": "pass",
-  "part_count": 118,
+  "part_count": 123,
   "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
   "contact_sheet_check": {
     "size": [
       1871,
-      5200
+      5460
     ],
     "mean_rgb": [
-      241.847,
-      235.199,
-      232.014
+      242.083,
+      235.521,
+      232.394
     ],
     "channel_spans": [
       255,
@@ -24,12 +24,12 @@
   "exploded_contact_sheet_check": {
     "size": [
       1871,
-      5200
+      5460
     ],
     "mean_rgb": [
-      25.083,
-      26.952,
-      31.123
+      25.093,
+      26.993,
+      31.182
     ],
     "channel_spans": [
       252,
@@ -51,12 +51,12 @@
         [
           -39.0,
           -76.8,
-          -6.35
+          -5.9
         ],
         [
           39.0,
           76.8,
-          -5.15
+          -4.7
         ]
       ],
       "span_mm": [
@@ -77,20 +77,20 @@
         [
           -39.0,
           -76.8,
-          -6.35
+          -5.9
         ],
         [
           39.0,
           76.8,
-          6.35
+          5.9
         ]
       ],
       "span_mm": [
         78.0,
         153.6,
-        12.7
+        11.8
       ],
-      "volume_mm3": 6497.212,
+      "volume_mm3": 6036.78,
       "mass_placeholder": false,
       "obj": "mechanical/e1-phone/out/orange_side_frame.obj",
       "stl": "mechanical/e1-phone/out/orange_side_frame.stl"
@@ -103,12 +103,12 @@
         [
           -38.55,
           -75.885,
-          5.65
+          5.2
         ],
         [
           38.55,
           75.885,
-          6.35
+          5.9
         ]
       ],
       "span_mm": [
@@ -124,25 +124,25 @@
     {
       "name": "display_lcm",
       "role": "screen",
-      "material": "LCM",
+      "material": "bonded LCD+CTP module (cover lens, touch, polarizers, TFT cell, BLU)",
       "bounds_mm": [
         [
           -35.39,
           -70.085,
-          1.15
+          1.63
         ],
         [
           35.39,
           59.085,
-          2.85
+          5.02
         ]
       ],
       "span_mm": [
         70.78,
         129.17,
-        1.7
+        3.39
       ],
-      "volume_mm3": 15542.509,
+      "volume_mm3": 30993.592,
       "mass_placeholder": false,
       "obj": "mechanical/e1-phone/out/display_lcm.obj",
       "stl": "mechanical/e1-phone/out/display_lcm.stl"
@@ -150,25 +150,25 @@
     {
       "name": "main_pcb",
       "role": "PCB",
-      "material": "8L HDI FR-4 top/bottom islands around full-width battery",
+      "material": "8L HDI FR-4 top/bottom split-island board envelope around full-width battery",
       "bounds_mm": [
         [
           -32.0,
-          -66.0,
+          -73.5,
           -2.5
         ],
         [
           32.0,
-          66.0,
+          73.25,
           -1.7
         ]
       ],
       "span_mm": [
         64.0,
-        132.0,
+        146.75,
         0.8
       ],
-      "volume_mm3": 2252.8,
+      "volume_mm3": 2944.0,
       "mass_placeholder": false,
       "obj": "mechanical/e1-phone/out/main_pcb.obj",
       "stl": "mechanical/e1-phone/out/main_pcb.stl"
@@ -181,12 +181,12 @@
         [
           -32.0,
           -50.5,
-          -4.6
+          -4.15
         ],
         [
           32.0,
           36.5,
-          1.0
+          1.45
         ]
       ],
       "span_mm": [
@@ -207,12 +207,12 @@
         [
           -30.0,
           -47.0,
-          -5.2
+          -4.75
         ],
         [
           30.0,
           33.0,
-          -5.02
+          -4.57
         ]
       ],
       "span_mm": [
@@ -545,12 +545,12 @@
         [
           16.0,
           52.8,
-          -4.75
+          -4.3
         ],
         [
           26.0,
           62.8,
-          0.35
+          0.8
         ]
       ],
       "span_mm": [
@@ -571,12 +571,12 @@
         [
           15.7,
           52.5,
-          -6.405
+          -5.955
         ],
         [
           26.3,
           63.1,
-          -6.325
+          -5.875
         ]
       ],
       "span_mm": [
@@ -597,12 +597,12 @@
         [
           14.7,
           63.1,
-          -6.35
+          -5.9
         ],
         [
           27.3,
           64.1,
-          -6.21
+          -5.76
         ]
       ],
       "span_mm": [
@@ -623,12 +623,12 @@
         [
           14.7,
           51.5,
-          -6.35
+          -5.9
         ],
         [
           27.3,
           52.5,
-          -6.21
+          -5.76
         ]
       ],
       "span_mm": [
@@ -649,12 +649,12 @@
         [
           14.7,
           52.5,
-          -6.35
+          -5.9
         ],
         [
           15.7,
           63.1,
-          -6.21
+          -5.76
         ]
       ],
       "span_mm": [
@@ -675,12 +675,12 @@
         [
           26.3,
           52.5,
-          -6.35
+          -5.9
         ],
         [
           27.3,
           63.1,
-          -6.21
+          -5.76
         ]
       ],
       "span_mm": [
@@ -694,6 +694,136 @@
       "stl": "mechanical/e1-phone/out/orange_rear_camera_bezel_right.stl"
     },
     {
+      "name": "rear_flash_shell_aperture",
+      "role": "camera aperture",
+      "material": "open molded back-shell flash hole exposing the flush light-pipe window",
+      "bounds_mm": [
+        [
+          11.8,
+          56.7,
+          -5.955
+        ],
+        [
+          14.0,
+          58.9,
+          -5.875
+        ]
+      ],
+      "span_mm": [
+        2.2,
+        2.2,
+        0.08
+      ],
+      "volume_mm3": 0.387,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/rear_flash_shell_aperture.obj",
+      "stl": "mechanical/e1-phone/out/rear_flash_shell_aperture.stl"
+    },
+    {
+      "name": "orange_rear_flash_bezel_top",
+      "role": "molded enclosure",
+      "material": "integral orange flash aperture bevel/top land",
+      "bounds_mm": [
+        [
+          11.35,
+          58.9,
+          -5.9
+        ],
+        [
+          14.45,
+          59.35,
+          -5.78
+        ]
+      ],
+      "span_mm": [
+        3.1,
+        0.45,
+        0.12
+      ],
+      "volume_mm3": 0.167,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_rear_flash_bezel_top.obj",
+      "stl": "mechanical/e1-phone/out/orange_rear_flash_bezel_top.stl"
+    },
+    {
+      "name": "orange_rear_flash_bezel_bottom",
+      "role": "molded enclosure",
+      "material": "integral orange flash aperture bevel/bottom land",
+      "bounds_mm": [
+        [
+          11.35,
+          56.25,
+          -5.9
+        ],
+        [
+          14.45,
+          56.7,
+          -5.78
+        ]
+      ],
+      "span_mm": [
+        3.1,
+        0.45,
+        0.12
+      ],
+      "volume_mm3": 0.167,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_rear_flash_bezel_bottom.obj",
+      "stl": "mechanical/e1-phone/out/orange_rear_flash_bezel_bottom.stl"
+    },
+    {
+      "name": "orange_rear_flash_bezel_left",
+      "role": "molded enclosure",
+      "material": "integral orange flash aperture bevel/left land",
+      "bounds_mm": [
+        [
+          11.35,
+          56.7,
+          -5.9
+        ],
+        [
+          11.8,
+          58.9,
+          -5.78
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        2.2,
+        0.12
+      ],
+      "volume_mm3": 0.119,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_rear_flash_bezel_left.obj",
+      "stl": "mechanical/e1-phone/out/orange_rear_flash_bezel_left.stl"
+    },
+    {
+      "name": "orange_rear_flash_bezel_right",
+      "role": "molded enclosure",
+      "material": "integral orange flash aperture bevel/right land",
+      "bounds_mm": [
+        [
+          14.0,
+          56.7,
+          -5.9
+        ],
+        [
+          14.45,
+          58.9,
+          -5.78
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        2.2,
+        0.12
+      ],
+      "volume_mm3": 0.119,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/orange_rear_flash_bezel_right.obj",
+      "stl": "mechanical/e1-phone/out/orange_rear_flash_bezel_right.stl"
+    },
+    {
       "name": "rear_camera_lens_window",
       "role": "camera",
       "material": "flush internal lens window, coplanar with flat back",
@@ -701,12 +831,12 @@
         [
           17.6,
           54.4,
-          -6.35
+          -5.9
         ],
         [
           24.4,
           61.2,
-          -5.8
+          -5.35
         ]
       ],
       "span_mm": [
@@ -725,14 +855,14 @@
       "material": "single rear torch/flash LED, buried",
       "bounds_mm": [
         [
-          13.9,
+          12.4,
           57.3,
-          -5.0
+          -4.55
         ],
         [
-          14.9,
+          13.4,
           58.3,
-          -4.3
+          -3.85
         ]
       ],
       "span_mm": [
@@ -751,14 +881,14 @@
       "material": "flush internal torch light pipe window, coplanar with flat back",
       "bounds_mm": [
         [
-          13.6,
+          12.1,
           57.0,
-          -6.35
+          -5.9
         ],
         [
-          15.2,
+          13.7,
           58.6,
-          -5.8
+          -5.35
         ]
       ],
       "span_mm": [
@@ -805,12 +935,12 @@
         [
           -20.7,
           67.625,
-          4.7
+          4.25
         ],
         [
           -17.3,
           67.975,
-          8.1
+          7.65
         ]
       ],
       "span_mm": [
@@ -831,12 +961,12 @@
         [
           15.95,
           62.455,
-          -5.8
+          -5.35
         ],
         [
           26.05,
           62.905,
-          -5.64
+          -5.19
         ]
       ],
       "span_mm": [
@@ -857,12 +987,12 @@
         [
           15.95,
           52.695,
-          -5.8
+          -5.35
         ],
         [
           26.05,
           53.145,
-          -5.64
+          -5.19
         ]
       ],
       "span_mm": [
@@ -883,12 +1013,12 @@
         [
           15.895,
           53.2,
-          -5.8
+          -5.35
         ],
         [
           16.345,
           62.4,
-          -5.64
+          -5.19
         ]
       ],
       "span_mm": [
@@ -909,12 +1039,12 @@
         [
           25.655,
           53.2,
-          -5.8
+          -5.35
         ],
         [
           26.105,
           62.4,
-          -5.64
+          -5.19
         ]
       ],
       "span_mm": [
@@ -935,12 +1065,12 @@
         [
           16.85,
           61.475,
-          -6.275
+          -5.825
         ],
         [
           25.15,
           61.825,
-          -5.725
+          -5.275
         ]
       ],
       "span_mm": [
@@ -961,12 +1091,12 @@
         [
           16.85,
           53.775,
-          -6.275
+          -5.825
         ],
         [
           25.15,
           54.125,
-          -5.725
+          -5.275
         ]
       ],
       "span_mm": [
@@ -987,12 +1117,12 @@
         [
           -21.5,
           65.3,
-          6.21
+          5.76
         ],
         [
           -16.5,
           70.3,
-          6.33
+          5.88
         ]
       ],
       "span_mm": [
@@ -1013,7 +1143,7 @@
         [
           14.9,
           53.65,
-          -5.2
+          -4.75
         ],
         [
           15.5,
@@ -1024,9 +1154,9 @@
       "span_mm": [
         0.6,
         8.3,
-        2.55
+        2.1
       ],
-      "volume_mm3": 12.699,
+      "volume_mm3": 10.458,
       "mass_placeholder": false,
       "obj": "mechanical/e1-phone/out/rear_flash_camera_septum.obj",
       "stl": "mechanical/e1-phone/out/rear_flash_camera_septum.stl"
@@ -1091,12 +1221,12 @@
         [
           -8.0,
           68.7,
-          6.305
+          5.855
         ],
         [
           8.0,
           69.7,
-          6.555
+          6.105
         ]
       ],
       "span_mm": [
@@ -1117,12 +1247,12 @@
         [
           -8.75,
           69.14,
-          5.87
+          4.75
         ],
         [
           8.75,
           69.26,
-          6.27
+          5.15
         ]
       ],
       "span_mm": [
@@ -1741,12 +1871,12 @@
         [
           -31.5,
           74.885,
-          5.41
+          4.96
         ],
         [
           31.5,
           75.885,
-          5.59
+          5.14
         ]
       ],
       "span_mm": [
@@ -1767,12 +1897,12 @@
         [
           -31.5,
           -75.885,
-          5.41
+          4.96
         ],
         [
           31.5,
           -74.885,
-          5.59
+          5.14
         ]
       ],
       "span_mm": [
@@ -1793,12 +1923,12 @@
         [
           -38.55,
           -68.835,
-          5.41
+          4.96
         ],
         [
           -37.55,
           68.835,
-          5.59
+          5.14
         ]
       ],
       "span_mm": [
@@ -1819,12 +1949,12 @@
         [
           37.55,
           -68.835,
-          5.41
+          4.96
         ],
         [
           38.55,
           68.835,
-          5.59
+          5.14
         ]
       ],
       "span_mm": [
@@ -1845,12 +1975,12 @@
         [
           -31.1,
           55.9,
-          -5.75
+          -5.3
         ],
         [
           -26.9,
           60.1,
-          -2.95
+          -2.5
         ]
       ],
       "span_mm": [
@@ -1871,12 +2001,12 @@
         [
           26.9,
           55.9,
-          -5.75
+          -5.3
         ],
         [
           31.1,
           60.1,
-          -2.95
+          -2.5
         ]
       ],
       "span_mm": [
@@ -1897,12 +2027,12 @@
         [
           -31.1,
           -60.1,
-          -5.75
+          -5.3
         ],
         [
           -26.9,
           -55.9,
-          -2.95
+          -2.5
         ]
       ],
       "span_mm": [
@@ -1923,12 +2053,12 @@
         [
           26.9,
           -60.1,
-          -5.75
+          -5.3
         ],
         [
           31.1,
           -55.9,
-          -2.95
+          -2.5
         ]
       ],
       "span_mm": [
@@ -1949,12 +2079,12 @@
         [
           -31.1,
           17.9,
-          -5.75
+          -5.3
         ],
         [
           -26.9,
           22.1,
-          -2.95
+          -2.5
         ]
       ],
       "span_mm": [
@@ -1975,12 +2105,12 @@
         [
           26.9,
           17.9,
-          -5.75
+          -5.3
         ],
         [
           31.1,
           22.1,
-          -2.95
+          -2.5
         ]
       ],
       "span_mm": [
@@ -2001,12 +2131,12 @@
         [
           -31.1,
           -22.1,
-          -5.75
+          -5.3
         ],
         [
           -26.9,
           -17.9,
-          -2.95
+          -2.5
         ]
       ],
       "span_mm": [
@@ -2027,12 +2157,12 @@
         [
           26.9,
           -22.1,
-          -5.75
+          -5.3
         ],
         [
           31.1,
           -17.9,
-          -2.95
+          -2.5
         ]
       ],
       "span_mm": [
@@ -2053,12 +2183,12 @@
         [
           -31.1,
           35.9,
-          -5.75
+          -5.3
         ],
         [
           -26.9,
           40.1,
-          -2.95
+          -2.5
         ]
       ],
       "span_mm": [
@@ -2079,12 +2209,12 @@
         [
           26.9,
           35.9,
-          -5.75
+          -5.3
         ],
         [
           31.1,
           40.1,
-          -2.95
+          -2.5
         ]
       ],
       "span_mm": [
@@ -2495,12 +2625,12 @@
         [
           -36.0,
           58.0,
-          -5.55
+          -5.1
         ],
         [
           -29.0,
           58.9,
-          -3.15
+          -2.7
         ]
       ],
       "span_mm": [
@@ -2521,12 +2651,12 @@
         [
           -29.9,
           58.0,
-          -5.55
+          -5.1
         ],
         [
           -29.0,
           65.0,
-          -3.15
+          -2.7
         ]
       ],
       "span_mm": [
@@ -2547,12 +2677,12 @@
         [
           29.0,
           58.0,
-          -5.55
+          -5.1
         ],
         [
           36.0,
           58.9,
-          -3.15
+          -2.7
         ]
       ],
       "span_mm": [
@@ -2573,12 +2703,12 @@
         [
           29.0,
           58.0,
-          -5.55
+          -5.1
         ],
         [
           29.9,
           65.0,
-          -3.15
+          -2.7
         ]
       ],
       "span_mm": [
@@ -2599,12 +2729,12 @@
         [
           -36.0,
           -58.9,
-          -5.55
+          -5.1
         ],
         [
           -29.0,
           -58.0,
-          -3.15
+          -2.7
         ]
       ],
       "span_mm": [
@@ -2625,12 +2755,12 @@
         [
           -29.9,
           -65.0,
-          -5.55
+          -5.1
         ],
         [
           -29.0,
           -58.0,
-          -3.15
+          -2.7
         ]
       ],
       "span_mm": [
@@ -2651,12 +2781,12 @@
         [
           29.0,
           -58.9,
-          -5.55
+          -5.1
         ],
         [
           36.0,
           -58.0,
-          -3.15
+          -2.7
         ]
       ],
       "span_mm": [
@@ -2677,12 +2807,12 @@
         [
           29.0,
           -65.0,
-          -5.55
+          -5.1
         ],
         [
           29.9,
           -58.0,
-          -3.15
+          -2.7
         ]
       ],
       "span_mm": [
@@ -2703,12 +2833,12 @@
         [
           -31.05,
           74.885,
-          5.05
+          4.6
         ],
         [
           31.05,
           75.885,
-          5.3
+          4.85
         ]
       ],
       "span_mm": [
@@ -2729,12 +2859,12 @@
         [
           -31.05,
           -75.885,
-          5.05
+          4.6
         ],
         [
           31.05,
           -74.885,
-          5.3
+          4.85
         ]
       ],
       "span_mm": [
@@ -2755,12 +2885,12 @@
         [
           -38.55,
           -68.385,
-          5.05
+          4.6
         ],
         [
           -37.55,
           68.385,
-          5.3
+          4.85
         ]
       ],
       "span_mm": [
@@ -2781,12 +2911,12 @@
         [
           37.55,
           -68.385,
-          5.05
+          4.6
         ],
         [
           38.55,
           68.385,
-          5.3
+          4.85
         ]
       ],
       "span_mm": [
@@ -3067,12 +3197,12 @@
         [
           16.4,
           53.2,
-          -6.35
+          -5.9
         ],
         [
           25.6,
           62.4,
-          -5.8
+          -5.35
         ]
       ],
       "span_mm": [
@@ -3093,12 +3223,12 @@
         [
           -16.0,
           -56.3,
-          -6.2
+          -5.75
         ],
         [
           16.0,
           -47.3,
-          -5.95
+          -5.5
         ]
       ],
       "span_mm": [

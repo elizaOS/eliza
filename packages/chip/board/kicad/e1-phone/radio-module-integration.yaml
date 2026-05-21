@@ -22,6 +22,7 @@ source_artifacts:
   - board/kicad/e1-phone/supplier-source-verification.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/radio-module-schematic-net-binding.yaml
 public_source_refresh:
   date: '2026-05-21'
   cellular:

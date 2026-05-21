@@ -173,6 +173,7 @@ Status: automated EVT0 concept generation, not tooling release.
 - PASS: `screen_mount_and_connection`
 - PASS: `camera_speaker_behind_glass`
 - PASS: `rear_camera_back_shell_aperture`
+- PASS: `rear_flash_back_shell_aperture`
 - PASS: `camera_optical_seal_stack`
 - PASS: `camera_burial_clearance`
 - PASS: `usb_saddle_to_speaker_chamber_wall`
@@ -197,7 +198,7 @@ Status: automated EVT0 concept generation, not tooling release.
 - Sprue diameter: 4.0 mm.
 - Runner diameter: 2.2 mm.
 - Gate thickness: 0.85 mm.
-- Estimated CAD mass: 164.45 g.
+- Estimated CAD mass: 183.73 g.
 
 ## Design Decisions From This Pass
 

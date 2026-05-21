@@ -4,25 +4,25 @@
   "tool": "cadquery",
   "tool_available": true,
   "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-  "assembly_step_bytes": 2624951,
-  "part_count": 118,
+  "assembly_step_bytes": 2744688,
+  "part_count": 123,
   "parts": [
     {
       "name": "orange_back_shell",
       "role": "molded enclosure",
       "material": "PC+ABS orange B-rep envelope",
       "step": "mechanical/e1-phone/out/orange_back_shell.step",
-      "bytes": 46960,
+      "bytes": 62267,
       "bbox_mm": {
         "min": [
           -39.0,
           -76.8,
-          -6.35
+          -5.9
         ],
         "max": [
           39.0,
           76.8,
-          -5.15
+          -4.7
         ],
         "span": [
           78.0,
@@ -36,41 +36,41 @@
       "role": "molded enclosure",
       "material": "PC+ABS orange B-rep ring",
       "step": "mechanical/e1-phone/out/orange_side_frame.step",
-      "bytes": 232746,
+      "bytes": 233158,
       "bbox_mm": {
         "min": [
           -39.0,
           -76.8,
-          -6.35
+          -5.9
         ],
         "max": [
           39.0,
           76.8,
-          6.35
+          5.9
         ],
         "span": [
           78.0,
           153.6,
-          12.7
+          11.8
         ]
       }
     },
     {
       "name": "screen_cover_glass",
       "role": "screen",
-      "material": "black cover glass B-rep envelope",
+      "material": "black cover glass B-rep envelope with handset acoustic slot cut",
       "step": "mechanical/e1-phone/out/screen_cover_glass.step",
-      "bytes": 32228,
+      "bytes": 46650,
       "bbox_mm": {
         "min": [
           -38.55,
           -76.085,
-          5.65
+          5.2
         ],
         "max": [
           38.55,
           75.685,
-          6.35
+          5.9
         ],
         "span": [
           77.1,
@@ -82,24 +82,24 @@
     {
       "name": "display_lcm",
       "role": "screen",
-      "material": "LCM supplier envelope",
+      "material": "bonded LCD+CTP module supplier envelope",
       "step": "mechanical/e1-phone/out/display_lcm.step",
-      "bytes": 15663,
+      "bytes": 15667,
       "bbox_mm": {
         "min": [
           -35.39,
           -70.085,
-          1.15
+          1.63
         ],
         "max": [
           35.39,
           59.085,
-          2.85
+          5.02
         ],
         "span": [
           70.78,
           129.17,
-          1.7
+          3.39
         ]
       }
     },
@@ -108,21 +108,21 @@
       "role": "PCB",
       "material": "concept KiCad top/bottom split-island board envelope",
       "step": "mechanical/e1-phone/out/main_pcb.step",
-      "bytes": 32739,
+      "bytes": 32821,
       "bbox_mm": {
         "min": [
           -32.0,
-          -66.0,
+          -73.5,
           -2.5
         ],
         "max": [
           32.0,
-          66.0,
+          73.25,
           -1.7
         ],
         "span": [
           64.0,
-          132.0,
+          146.75,
           0.8
         ]
       }
@@ -132,17 +132,17 @@
       "role": "battery",
       "material": "LiPo pouch envelope",
       "step": "mechanical/e1-phone/out/battery_pouch.step",
-      "bytes": 15521,
+      "bytes": 15556,
       "bbox_mm": {
         "min": [
           -32.0,
           -50.5,
-          -4.6
+          -4.15
         ],
         "max": [
           32.0,
           36.5,
-          1.0
+          1.45
         ],
         "span": [
           64.0,
@@ -156,17 +156,17 @@
       "role": "battery support",
       "material": "PORON-style low-compression-set polyurethane foam, low-preload battery back pad",
       "step": "mechanical/e1-phone/out/battery_back_void_foam_pad.step",
-      "bytes": 15526,
+      "bytes": 15543,
       "bbox_mm": {
         "min": [
           -30.0,
           -47.0,
-          -5.2
+          -4.75
         ],
         "max": [
           30.0,
           33.0,
-          -5.02
+          -4.57
         ],
         "span": [
           60.0,
@@ -204,17 +204,17 @@
       "role": "camera",
       "material": "single OV13855/OV13850 class 13 MP simple-AF MIPI module, single lens, buried under flush back wall",
       "step": "mechanical/e1-phone/out/rear_camera_module.step",
-      "bytes": 15522,
+      "bytes": 15496,
       "bbox_mm": {
         "min": [
           16.0,
           52.8,
-          -4.75
+          -4.3
         ],
         "max": [
           26.0,
           62.8,
-          0.35
+          0.8
         ],
         "span": [
           10.0,
@@ -233,12 +233,12 @@
         "min": [
           15.7,
           52.5,
-          -6.405
+          -5.955
         ],
         "max": [
           26.3,
           63.1,
-          -6.325
+          -5.875
         ],
         "span": [
           10.6,
@@ -252,17 +252,17 @@
       "role": "molded enclosure",
       "material": "integral orange camera aperture bevel/top land",
       "step": "mechanical/e1-phone/out/orange_rear_camera_bezel_top.step",
-      "bytes": 15563,
+      "bytes": 15546,
       "bbox_mm": {
         "min": [
           14.7,
           63.1,
-          -6.35
+          -5.9
         ],
         "max": [
           27.3,
           64.1,
-          -6.21
+          -5.76
         ],
         "span": [
           12.6,
@@ -276,17 +276,17 @@
       "role": "molded enclosure",
       "material": "integral orange camera aperture bevel/bottom land",
       "step": "mechanical/e1-phone/out/orange_rear_camera_bezel_bottom.step",
-      "bytes": 15563,
+      "bytes": 15546,
       "bbox_mm": {
         "min": [
           14.7,
           51.5,
-          -6.35
+          -5.9
         ],
         "max": [
           27.3,
           52.5,
-          -6.21
+          -5.76
         ],
         "span": [
           12.6,
@@ -300,17 +300,17 @@
       "role": "molded enclosure",
       "material": "integral orange camera aperture bevel/left land",
       "step": "mechanical/e1-phone/out/orange_rear_camera_bezel_left.step",
-      "bytes": 15563,
+      "bytes": 15546,
       "bbox_mm": {
         "min": [
           14.7,
           52.5,
-          -6.35
+          -5.9
         ],
         "max": [
           15.7,
           63.1,
-          -6.21
+          -5.76
         ],
         "span": [
           1.0,
@@ -324,17 +324,17 @@
       "role": "molded enclosure",
       "material": "integral orange camera aperture bevel/right land",
       "step": "mechanical/e1-phone/out/orange_rear_camera_bezel_right.step",
-      "bytes": 15563,
+      "bytes": 15546,
       "bbox_mm": {
         "min": [
           26.3,
           52.5,
-          -6.35
+          -5.9
         ],
         "max": [
           27.3,
           63.1,
-          -6.21
+          -5.76
         ],
         "span": [
           1.0,
@@ -344,21 +344,141 @@
       }
     },
     {
+      "name": "rear_flash_shell_aperture",
+      "role": "camera aperture",
+      "material": "open molded back-shell flash hole envelope",
+      "step": "mechanical/e1-phone/out/rear_flash_shell_aperture.step",
+      "bytes": 15588,
+      "bbox_mm": {
+        "min": [
+          11.8,
+          56.7,
+          -5.955
+        ],
+        "max": [
+          14.0,
+          58.9,
+          -5.875
+        ],
+        "span": [
+          2.2,
+          2.2,
+          0.08
+        ]
+      }
+    },
+    {
+      "name": "orange_rear_flash_bezel_top",
+      "role": "molded enclosure",
+      "material": "integral orange flash aperture bevel/top land",
+      "step": "mechanical/e1-phone/out/orange_rear_flash_bezel_top.step",
+      "bytes": 15585,
+      "bbox_mm": {
+        "min": [
+          11.35,
+          58.9,
+          -5.9
+        ],
+        "max": [
+          14.45,
+          59.35,
+          -5.78
+        ],
+        "span": [
+          3.1,
+          0.45,
+          0.12
+        ]
+      }
+    },
+    {
+      "name": "orange_rear_flash_bezel_bottom",
+      "role": "molded enclosure",
+      "material": "integral orange flash aperture bevel/bottom land",
+      "step": "mechanical/e1-phone/out/orange_rear_flash_bezel_bottom.step",
+      "bytes": 15593,
+      "bbox_mm": {
+        "min": [
+          11.35,
+          56.25,
+          -5.9
+        ],
+        "max": [
+          14.45,
+          56.7,
+          -5.78
+        ],
+        "span": [
+          3.1,
+          0.45,
+          0.12
+        ]
+      }
+    },
+    {
+      "name": "orange_rear_flash_bezel_left",
+      "role": "molded enclosure",
+      "material": "integral orange flash aperture bevel/left land",
+      "step": "mechanical/e1-phone/out/orange_rear_flash_bezel_left.step",
+      "bytes": 15567,
+      "bbox_mm": {
+        "min": [
+          11.35,
+          56.7,
+          -5.9
+        ],
+        "max": [
+          11.8,
+          58.9,
+          -5.78
+        ],
+        "span": [
+          0.45,
+          2.2,
+          0.12
+        ]
+      }
+    },
+    {
+      "name": "orange_rear_flash_bezel_right",
+      "role": "molded enclosure",
+      "material": "integral orange flash aperture bevel/right land",
+      "step": "mechanical/e1-phone/out/orange_rear_flash_bezel_right.step",
+      "bytes": 15542,
+      "bbox_mm": {
+        "min": [
+          14.0,
+          56.7,
+          -5.9
+        ],
+        "max": [
+          14.45,
+          58.9,
+          -5.78
+        ],
+        "span": [
+          0.45,
+          2.2,
+          0.12
+        ]
+      }
+    },
+    {
       "name": "rear_flash_led",
       "role": "camera",
       "material": "OSRAM CEYW class 1.0x1.0x0.6 white flash LED",
       "step": "mechanical/e1-phone/out/rear_flash_led.step",
-      "bytes": 15508,
+      "bytes": 15551,
       "bbox_mm": {
         "min": [
-          13.9,
+          12.4,
           57.3,
-          -5.0
+          -4.55
         ],
         "max": [
-          14.9,
+          13.4,
           58.3,
-          -4.3
+          -3.85
         ],
         "span": [
           1.0,
@@ -372,17 +492,17 @@
       "role": "camera",
       "material": "flush internal torch light pipe window, coplanar with flat back",
       "step": "mechanical/e1-phone/out/rear_flash_led_window.step",
-      "bytes": 15542,
+      "bytes": 15516,
       "bbox_mm": {
         "min": [
-          13.6,
+          12.1,
           57.0,
-          -6.35
+          -5.9
         ],
         "max": [
-          15.2,
+          13.7,
           58.6,
-          -5.85
+          -5.4
         ],
         "span": [
           1.6,
@@ -732,17 +852,17 @@
       "role": "camera",
       "material": "flush internal sapphire/glass insert set into the flat back wall, no proud ring",
       "step": "mechanical/e1-phone/out/rear_camera_cover_glass.step",
-      "bytes": 15554,
+      "bytes": 15546,
       "bbox_mm": {
         "min": [
           16.4,
           53.2,
-          -6.35
+          -5.9
         ],
         "max": [
           25.6,
           62.4,
-          -5.8
+          -5.35
         ],
         "span": [
           9.2,
@@ -756,17 +876,17 @@
       "role": "camera",
       "material": "flush internal rear camera optical window, coplanar with flat back",
       "step": "mechanical/e1-phone/out/rear_camera_lens_window.step",
-      "bytes": 31949,
+      "bytes": 31933,
       "bbox_mm": {
         "min": [
           17.6,
           54.4,
-          -6.35
+          -5.9
         ],
         "max": [
           24.4,
           61.2,
-          -5.8
+          -5.35
         ],
         "span": [
           6.8,
@@ -785,12 +905,12 @@
         "min": [
           -20.7,
           66.1,
-          6.225
+          5.775
         ],
         "max": [
           -17.3,
           69.5,
-          6.575
+          6.125
         ],
         "span": [
           3.4,
@@ -804,17 +924,17 @@
       "role": "camera seal",
       "material": "black PSA gasket above rear camera cover window",
       "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_top.step",
-      "bytes": 15632,
+      "bytes": 15649,
       "bbox_mm": {
         "min": [
           15.95,
           62.455,
-          -5.8
+          -5.35
         ],
         "max": [
           26.05,
           62.905,
-          -5.64
+          -5.19
         ],
         "span": [
           10.1,
@@ -828,17 +948,17 @@
       "role": "camera seal",
       "material": "black PSA gasket below rear camera cover window",
       "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_bottom.step",
-      "bytes": 15632,
+      "bytes": 15649,
       "bbox_mm": {
         "min": [
           15.95,
           52.695,
-          -5.8
+          -5.35
         ],
         "max": [
           26.05,
           53.145,
-          -5.64
+          -5.19
         ],
         "span": [
           10.1,
@@ -852,17 +972,17 @@
       "role": "camera seal",
       "material": "black PSA gasket left of rear camera cover window",
       "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_left.step",
-      "bytes": 15602,
+      "bytes": 15619,
       "bbox_mm": {
         "min": [
           15.895,
           53.2,
-          -5.8
+          -5.35
         ],
         "max": [
           16.345,
           62.4,
-          -5.64
+          -5.19
         ],
         "span": [
           0.45,
@@ -876,17 +996,17 @@
       "role": "camera seal",
       "material": "black PSA gasket right of rear camera cover window",
       "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_right.step",
-      "bytes": 15602,
+      "bytes": 15619,
       "bbox_mm": {
         "min": [
           25.655,
           53.2,
-          -5.8
+          -5.35
         ],
         "max": [
           26.105,
           62.4,
-          -5.64
+          -5.19
         ],
         "span": [
           0.45,
@@ -905,12 +1025,12 @@
         "min": [
           16.85,
           61.475,
-          -6.275
+          -5.825
         ],
         "max": [
           25.15,
           61.825,
-          -5.725
+          -5.275
         ],
         "span": [
           8.3,
@@ -929,12 +1049,12 @@
         "min": [
           16.85,
           53.775,
-          -6.275
+          -5.825
         ],
         "max": [
           25.15,
           54.125,
-          -5.725
+          -5.275
         ],
         "span": [
           8.3,
@@ -953,12 +1073,12 @@
         "min": [
           -21.5,
           65.3,
-          6.21
+          5.76
         ],
         "max": [
           -16.5,
           70.3,
-          6.33
+          5.88
         ],
         "span": [
           5.0,
@@ -972,12 +1092,12 @@
       "role": "camera seal",
       "material": "opaque PC stray-light septum between rear flash light-pipe and rear camera baffle column, molded to the back shell inner wall",
       "step": "mechanical/e1-phone/out/rear_flash_camera_septum.step",
-      "bytes": 15572,
+      "bytes": 15585,
       "bbox_mm": {
         "min": [
           14.9,
           53.65,
-          -5.2
+          -4.75
         ],
         "max": [
           15.5,
@@ -987,7 +1107,7 @@
         "span": [
           0.6,
           8.3,
-          2.55
+          2.1
         ]
       }
     },
@@ -1001,12 +1121,12 @@
         "min": [
           -8.0,
           68.7,
-          6.305
+          5.855
         ],
         "max": [
           8.0,
           69.7,
-          6.555
+          6.105
         ],
         "span": [
           16.0,
@@ -1025,12 +1145,12 @@
         "min": [
           -8.75,
           69.14,
-          5.87
+          4.75
         ],
         "max": [
           8.75,
           69.26,
-          6.27
+          5.15
         ],
         "span": [
           17.5,
@@ -1337,12 +1457,12 @@
         "min": [
           -31.5,
           74.885,
-          5.41
+          4.96
         ],
         "max": [
           31.5,
           75.885,
-          5.59
+          5.14
         ],
         "span": [
           63.0,
@@ -1361,12 +1481,12 @@
         "min": [
           -31.5,
           -75.885,
-          5.41
+          4.96
         ],
         "max": [
           31.5,
           -74.885,
-          5.59
+          5.14
         ],
         "span": [
           63.0,
@@ -1385,12 +1505,12 @@
         "min": [
           -38.55,
           -68.835,
-          5.41
+          4.96
         ],
         "max": [
           -37.55,
           68.835,
-          5.59
+          5.14
         ],
         "span": [
           1.0,
@@ -1409,12 +1529,12 @@
         "min": [
           37.55,
           -68.835,
-          5.41
+          4.96
         ],
         "max": [
           38.55,
           68.835,
-          5.59
+          5.14
         ],
         "span": [
           1.0,
@@ -1428,17 +1548,17 @@
       "role": "screen retention",
       "material": "PORON foam cover-glass perimeter cushion envelope",
       "step": "mechanical/e1-phone/out/glass_perimeter_cushion_top.step",
-      "bytes": 15623,
+      "bytes": 15615,
       "bbox_mm": {
         "min": [
           -31.05,
           74.885,
-          5.05
+          4.6
         ],
         "max": [
           31.05,
           75.885,
-          5.3
+          4.85
         ],
         "span": [
           62.1,
@@ -1452,17 +1572,17 @@
       "role": "screen retention",
       "material": "PORON foam cover-glass perimeter cushion envelope",
       "step": "mechanical/e1-phone/out/glass_perimeter_cushion_bottom.step",
-      "bytes": 15649,
+      "bytes": 15641,
       "bbox_mm": {
         "min": [
           -31.05,
           -75.885,
-          5.05
+          4.6
         ],
         "max": [
           31.05,
           -74.885,
-          5.3
+          4.85
         ],
         "span": [
           62.1,
@@ -1476,17 +1596,17 @@
       "role": "screen retention",
       "material": "PORON foam cover-glass perimeter cushion envelope",
       "step": "mechanical/e1-phone/out/glass_perimeter_cushion_left.step",
-      "bytes": 15657,
+      "bytes": 15649,
       "bbox_mm": {
         "min": [
           -38.55,
           -68.385,
-          5.05
+          4.6
         ],
         "max": [
           -37.55,
           68.385,
-          5.3
+          4.85
         ],
         "span": [
           1.0,
@@ -1500,17 +1620,17 @@
       "role": "screen retention",
       "material": "PORON foam cover-glass perimeter cushion envelope",
       "step": "mechanical/e1-phone/out/glass_perimeter_cushion_right.step",
-      "bytes": 15631,
+      "bytes": 15623,
       "bbox_mm": {
         "min": [
           37.55,
           -68.385,
-          5.05
+          4.6
         ],
         "max": [
           38.55,
           68.385,
-          5.3
+          4.85
         ],
         "span": [
           1.0,
@@ -1932,17 +2052,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_1.step",
-      "bytes": 32048,
+      "bytes": 31998,
       "bbox_mm": {
         "min": [
           -31.1,
           55.9,
-          -5.75
+          -5.3
         ],
         "max": [
           -26.9,
           60.1,
-          -2.95
+          -2.5
         ],
         "span": [
           4.2,
@@ -1956,17 +2076,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_2.step",
-      "bytes": 31998,
+      "bytes": 31948,
       "bbox_mm": {
         "min": [
           26.9,
           55.9,
-          -5.75
+          -5.3
         ],
         "max": [
           31.1,
           60.1,
-          -2.95
+          -2.5
         ],
         "span": [
           4.2,
@@ -1980,17 +2100,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_3.step",
-      "bytes": 32098,
+      "bytes": 32048,
       "bbox_mm": {
         "min": [
           -31.1,
           -60.1,
-          -5.75
+          -5.3
         ],
         "max": [
           -26.9,
           -55.9,
-          -2.95
+          -2.5
         ],
         "span": [
           4.2,
@@ -2004,17 +2124,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_4.step",
-      "bytes": 32048,
+      "bytes": 31998,
       "bbox_mm": {
         "min": [
           26.9,
           -60.1,
-          -5.75
+          -5.3
         ],
         "max": [
           31.1,
           -55.9,
-          -2.95
+          -2.5
         ],
         "span": [
           4.2,
@@ -2028,17 +2148,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_5.step",
-      "bytes": 32142,
+      "bytes": 32092,
       "bbox_mm": {
         "min": [
           -31.1,
           17.9,
-          -5.75
+          -5.3
         ],
         "max": [
           -26.9,
           22.1,
-          -2.95
+          -2.5
         ],
         "span": [
           4.2,
@@ -2052,17 +2172,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_6.step",
-      "bytes": 32092,
+      "bytes": 32042,
       "bbox_mm": {
         "min": [
           26.9,
           17.9,
-          -5.75
+          -5.3
         ],
         "max": [
           31.1,
           22.1,
-          -2.95
+          -2.5
         ],
         "span": [
           4.2,
@@ -2076,17 +2196,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_7.step",
-      "bytes": 32192,
+      "bytes": 32142,
       "bbox_mm": {
         "min": [
           -31.1,
           -22.1,
-          -5.75
+          -5.3
         ],
         "max": [
           -26.9,
           -17.9,
-          -2.95
+          -2.5
         ],
         "span": [
           4.2,
@@ -2100,17 +2220,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_8.step",
-      "bytes": 32142,
+      "bytes": 32092,
       "bbox_mm": {
         "min": [
           26.9,
           -22.1,
-          -5.75
+          -5.3
         ],
         "max": [
           31.1,
           -17.9,
-          -2.95
+          -2.5
         ],
         "span": [
           4.2,
@@ -2124,17 +2244,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_9.step",
-      "bytes": 32048,
+      "bytes": 31998,
       "bbox_mm": {
         "min": [
           -31.1,
           35.9,
-          -5.75
+          -5.3
         ],
         "max": [
           -26.9,
           40.1,
-          -2.95
+          -2.5
         ],
         "span": [
           4.2,
@@ -2148,17 +2268,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_10.step",
-      "bytes": 31998,
+      "bytes": 31948,
       "bbox_mm": {
         "min": [
           26.9,
           35.9,
-          -5.75
+          -5.3
         ],
         "max": [
           31.1,
           40.1,
-          -2.95
+          -2.5
         ],
         "span": [
           4.2,
@@ -2172,17 +2292,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_1.step",
-      "bytes": 15538,
+      "bytes": 15512,
       "bbox_mm": {
         "min": [
           -36.0,
           58.0,
-          -5.55
+          -5.1
         ],
         "max": [
           -29.0,
           58.9,
-          -3.15
+          -2.7
         ],
         "span": [
           7.0,
@@ -2196,17 +2316,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_1_leg.step",
-      "bytes": 15546,
+      "bytes": 15520,
       "bbox_mm": {
         "min": [
           -29.9,
           58.0,
-          -5.55
+          -5.1
         ],
         "max": [
           -29.0,
           65.0,
-          -3.15
+          -2.7
         ],
         "span": [
           0.9,
@@ -2220,17 +2340,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_2.step",
-      "bytes": 15512,
+      "bytes": 15486,
       "bbox_mm": {
         "min": [
           29.0,
           58.0,
-          -5.55
+          -5.1
         ],
         "max": [
           36.0,
           58.9,
-          -3.15
+          -2.7
         ],
         "span": [
           7.0,
@@ -2244,17 +2364,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_2_leg.step",
-      "bytes": 15512,
+      "bytes": 15486,
       "bbox_mm": {
         "min": [
           29.0,
           58.0,
-          -5.55
+          -5.1
         ],
         "max": [
           29.9,
           65.0,
-          -3.15
+          -2.7
         ],
         "span": [
           0.9,
@@ -2268,17 +2388,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_3.step",
-      "bytes": 15572,
+      "bytes": 15548,
       "bbox_mm": {
         "min": [
           -36.0,
           -58.9,
-          -5.55
+          -5.1
         ],
         "max": [
           -29.0,
           -58.0,
-          -3.15
+          -2.7
         ],
         "span": [
           7.0,
@@ -2292,17 +2412,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_3_leg.step",
-      "bytes": 15572,
+      "bytes": 15548,
       "bbox_mm": {
         "min": [
           -29.9,
           -65.0,
-          -5.55
+          -5.1
         ],
         "max": [
           -29.0,
           -58.0,
-          -3.15
+          -2.7
         ],
         "span": [
           0.9,
@@ -2316,17 +2436,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_4.step",
-      "bytes": 15546,
+      "bytes": 15522,
       "bbox_mm": {
         "min": [
           29.0,
           -58.9,
-          -5.55
+          -5.1
         ],
         "max": [
           36.0,
           -58.0,
-          -3.15
+          -2.7
         ],
         "span": [
           7.0,
@@ -2340,17 +2460,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_4_leg.step",
-      "bytes": 15538,
+      "bytes": 15514,
       "bbox_mm": {
         "min": [
           29.0,
           -65.0,
-          -5.55
+          -5.1
         ],
         "max": [
           29.9,
           -58.0,
-          -3.15
+          -2.7
         ],
         "span": [
           0.9,
@@ -2364,7 +2484,7 @@
       "role": "molded enclosure",
       "material": "PC+ABS snap hook envelope",
       "step": "mechanical/e1-phone/out/orange_snap_hook_1.step",
-      "bytes": 15581,
+      "bytes": 15583,
       "bbox_mm": {
         "min": [
           -37.75,
@@ -2633,12 +2753,12 @@
         "min": [
           -16.0,
           -56.3,
-          -6.555
+          -6.105
         ],
         "max": [
           16.0,
           -47.3,
-          -6.305
+          -5.855
         ],
         "span": [
           32.0,
@@ -2877,6 +2997,11 @@
     "rear_camera_cover_glass": true,
     "rear_camera_lens_window": true,
     "rear_flash_led": true,
+    "rear_flash_shell_aperture": true,
+    "orange_rear_flash_bezel_top": true,
+    "orange_rear_flash_bezel_bottom": true,
+    "orange_rear_flash_bezel_left": true,
+    "orange_rear_flash_bezel_right": true,
     "rear_flash_led_window": true,
     "rear_camera_cover_adhesive_top": true,
     "rear_camera_cover_adhesive_bottom": true,
@@ -3073,10 +3198,34 @@
         ]
       }
     ],
-    "uncut_side_frame_volume_mm3": 6524.215,
-    "cut_side_frame_volume_mm3": 6365.285,
+    "uncut_side_frame_volume_mm3": 6061.869,
+    "cut_side_frame_volume_mm3": 5902.939,
     "removed_volume_mm3": 158.93,
     "note": "Orange side-frame STEP is boolean-cut for USB-C, bottom speaker grille, bottom/top microphone ports, and side-key cap openings instead of relying only on separate black aperture markers."
+  },
+  "cover_glass_external_cutouts": {
+    "status": "pass",
+    "cutout_count": 1,
+    "cutouts": [
+      {
+        "name": "handset_cover_glass_slot_cutout",
+        "source_aperture": "handset_acoustic_slot",
+        "size_mm": [
+          16.4,
+          1.3,
+          1.2999999999999998
+        ],
+        "center_mm": [
+          0.0,
+          69.2,
+          5.98
+        ]
+      }
+    ],
+    "uncut_cover_glass_volume_mm3": 8167.178,
+    "cut_cover_glass_volume_mm3": 8155.025,
+    "removed_volume_mm3": 12.153,
+    "note": "Cover-glass STEP is boolean-cut for the handset acoustic slot instead of relying only on a separate black slot marker."
   },
   "linked_fit_status": "pass",
   "remaining_blockers": [

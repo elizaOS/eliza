@@ -8,7 +8,7 @@ This report records the EVT0 CAD visual decisions and the manual review items st
 
 ## Decisions
 
-- `compact_orange_shell`: keep; Hold 78.0 x 153.6 x 12.7 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.
+- `compact_orange_shell`: keep; Hold 78.0 x 153.6 x 11.8 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.
 - `black_bonded_glass_front`: keep; Black cover glass remains a separate bonded part over the display stack.
 - `under_glass_front_camera_and_earpiece`: keep_for_evt0; Front camera and earpiece are represented behind glass/acoustic gasketing for CAD packaging.
 - `rear_camera_cover_window`: keep_for_evt0; Single rear AF camera is buried under the flat back wall behind an explicit molded shell aperture and flush cover window (no bump, no proud ring); device depth was raised to fully bury the module.

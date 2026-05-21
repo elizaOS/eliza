@@ -4,7 +4,7 @@ Status: PASS.
 
 Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`.
 Date: 2026-05-20. Reviewer: `automated_boolean_check`.
-Parts loaded: 123/123. Pair count: 7503 (BRep-evaluated: 459).
+Parts loaded: 123/123. Pair count: 7503 (BRep-evaluated: 465).
 Unintentional clash pairs: 0.
 
 ## Scope Cases
@@ -46,6 +46,20 @@ Status: PASS. Aperture clears flash window XY: True.
 Status: PASS.
 - `screen_cover_glass` vs `handset_acoustic_slot`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
 - `screen_cover_glass` vs `handset_acoustic_mesh`: intersection 0.0 mm3, min gap 0.05 mm (PASS)
+
+## Side-Frame External Cutouts
+
+Status: PASS.
+- `orange_side_frame` vs `usb_c_external_aperture`: intersection 0.0 mm3, min gap 0.3 mm (PASS)
+- `orange_side_frame` vs `bottom_speaker_grille_slot_1`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
+- `orange_side_frame` vs `bottom_speaker_grille_slot_2`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
+- `orange_side_frame` vs `bottom_speaker_grille_slot_3`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
+- `orange_side_frame` vs `bottom_speaker_grille_slot_4`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
+- `orange_side_frame` vs `bottom_speaker_grille_slot_5`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
+- `orange_side_frame` vs `bottom_microphone_port_1`: intersection 0.0 mm3, min gap 0.1 mm (PASS)
+- `orange_side_frame` vs `bottom_microphone_port_2`: intersection 0.0 mm3, min gap 0.1 mm (PASS)
+- `orange_side_frame` vs `top_microphone_port`: intersection 0.0 mm3, min gap 0.1 mm (PASS)
+- Captured mesh insert contacts reported as intentional seal envelopes.
 
 Burial vs back inner wall (Z = -4.7 mm); clearance >= 0 means back face at or inside the wall:
 - `rear_camera_module`: back face Zmin = -4.3 mm, burial clearance = 0.4 mm (BURIED)

@@ -8,7 +8,7 @@ claim_boundary: >
 port_count: 1
 placement:
   board_edge: bottom_center
-  board_region_mm: {x: 26.0, y: 124.0, width: 16.0, height: 6.0}
+  board_region_mm: {x: 26.0, y: 126.0, width: 16.0, height: 6.0}
   enclosure_requirements:
     - connector_shell_captured_by_enclosure_not_only_solder_joints
     - chamfered_or_radiused_port_opening

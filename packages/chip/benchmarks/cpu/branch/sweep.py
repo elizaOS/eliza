@@ -54,11 +54,29 @@ CBP5_DIR = ROOT / "external/cbp5-traces"
 # the SOTA bar for the hard references (from run_mpki.CBP5_REFERENCE_PER_TRACE).
 CBP5_REFERENCE = {"sample_int_trace": 5.1327, "sample_fp_trace": 0.5736}
 
-# Default per-trace weights for the aggregate objective: the E1's own workload
-# is the optimisation target, so it outweighs the championship references.
+# Real RV64 workloads to include (besides the CBP-5 references). The two agent
+# traces are the inference duty cycle; the io_stream traces are the streaming/
+# IO/parsing duty cycle, where irregular control flow leaves real headroom.
+WORKLOAD_NAMES = (
+    "agent_loop",
+    "agent_decode",
+    "http_parser",
+    "text_log",
+    "file_tlv",
+    "video_blocks",
+    "audio_frames",
+)
+
+# Default per-trace weights for the aggregate objective: the E1's own workloads
+# are the optimisation target, so they outweigh the championship references.
 DEFAULT_WEIGHTS = {
-    "agent_loop": 3.0,
-    "agent_decode": 2.0,
+    "agent_loop": 2.0,
+    "agent_decode": 1.5,
+    "http_parser": 1.5,
+    "text_log": 1.5,
+    "file_tlv": 1.5,
+    "video_blocks": 1.5,
+    "audio_frames": 1.5,
     "cbp5:sample_int_trace": 1.0,
     "cbp5:sample_fp_trace": 1.0,
 }
@@ -92,6 +110,11 @@ CONFIGS: dict[str, dict] = {
     ),
     # ---- Loop predictor ----
     "loop_big": _geo(LOOP_ENTRIES=128),
+    # ---- TAGE allocation/aging policy (algorithmic, not just geometry) ----
+    "tage_alloc_decr": _geo(TAGE_ALLOC_DECREMENT=True),
+    "tage_ubit_reset": _geo(TAGE_UBIT_RESET_PERIOD=100_000),
+    "tage_ubit_reset_fast": _geo(TAGE_UBIT_RESET_PERIOD=20_000),
+    "tage_alloc_aging": _geo(TAGE_ALLOC_DECREMENT=True, TAGE_UBIT_RESET_PERIOD=100_000),
     # ---- Promising combination (TAGE reach + adaptive SC + bigger tables) ----
     "combo_a": _geo(
         TAGE_HIST_LEN=(8, 16, 44, 90, 195),
@@ -105,6 +128,19 @@ CONFIGS: dict[str, dict] = {
         SC_TABLES=6,
         SC_ENTRIES_TABLE=1024,
         SC_HIST_LEN=(0, 4, 10, 16, 27, 44),
+    ),
+    # ---- Algorithmic + geometry stack: the candidate "beat baseline" config ----
+    "combo_algo": _geo(
+        TAGE_ALLOC_DECREMENT=True,
+        TAGE_UBIT_RESET_PERIOD=100_000,
+        SC_ADAPTIVE=True,
+    ),
+    "combo_algo_geo": _geo(
+        TAGE_ALLOC_DECREMENT=True,
+        TAGE_UBIT_RESET_PERIOD=100_000,
+        TAGE_HIST_LEN=(8, 16, 44, 90, 195),
+        TAGE_ENTRIES_TABLE=8192,
+        SC_ADAPTIVE=True,
     ),
 }
 
@@ -126,7 +162,7 @@ def _cap(events: list[BranchEvent], total_inst: int, max_branches: int):
 
 def load_traces(max_branches: int, weights: dict[str, float]) -> list[LoadedTrace]:
     traces: list[LoadedTrace] = []
-    for name in ("agent_loop", "agent_decode"):
+    for name in WORKLOAD_NAMES:
         p = WORKLOAD_DIR / f"{name}.btrace.json"
         if not p.is_file():
             continue

@@ -31,6 +31,11 @@ This gate maps each CAD part to generated review views and the per-part contact 
 - PASS: `orange_rear_camera_bezel_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
 - PASS: `orange_rear_camera_bezel_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
 - PASS: `orange_rear_camera_bezel_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `rear_flash_shell_aperture` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `orange_rear_flash_bezel_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_rear_flash_bezel_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_rear_flash_bezel_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_rear_flash_bezel_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
 - PASS: `rear_camera_lens_window` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`, `component_stack.png`
 - PASS: `rear_flash_led` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`, `component_stack.png`
 - PASS: `rear_flash_led_window` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`, `component_stack.png`
