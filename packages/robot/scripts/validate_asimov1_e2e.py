@@ -38,7 +38,10 @@ def run_asimov1_e2e(out_dir: Path, *, steps: int, seed: int, require_real: bool 
     py = sys.executable
     steps_run = [
         _run("source_inventory", [py, "scripts/check_asimov1_source_inventory.py"]),
-        _run("released_model_audit", [py, "scripts/audit_asimov1_released_models.py", "--require-none"]),
+        _run(
+            "released_model_audit",
+            [py, "scripts/audit_asimov1_released_models.py", "--check-github-releases", "--require-none"],
+        ),
         _run("cad_mujoco_training_pipeline", [py, "scripts/validate_asimov1_pipeline.py"]),
         _run("cad_edit_loop", [py, "scripts/validate_asimov1_cad_edit_loop.py"]),
         _run(
