@@ -48,6 +48,10 @@ defaults:
   run:
     working-directory: packages/computeruse
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   # ============================================
   # Stage 1: computeruse-computer-use (base)

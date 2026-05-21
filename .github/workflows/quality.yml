@@ -39,6 +39,10 @@ env:
   BUN_VERSION: "1.3.13"
   NODE_VERSION: "24.15.0"
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   homepage-build:
     name: Homepage Build (PR smoke)

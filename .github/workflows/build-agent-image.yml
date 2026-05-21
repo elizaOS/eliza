@@ -30,6 +30,10 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   build-and-push:
     runs-on: ubuntu-24.04

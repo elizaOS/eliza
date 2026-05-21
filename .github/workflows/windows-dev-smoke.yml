@@ -18,6 +18,10 @@ concurrency:
   group: windows-dev-smoke-${{ github.ref }}
   cancel-in-progress: true
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   dev-smoke:
     name: Windows smoke (${{ matrix.bun-version }})

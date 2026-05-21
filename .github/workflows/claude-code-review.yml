@@ -12,6 +12,10 @@ on:
   # Allow manual triggering for when you specifically want a review
   workflow_dispatch:
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   claude-review:
     # Skip review if PR title contains [skip-review] or is a draft

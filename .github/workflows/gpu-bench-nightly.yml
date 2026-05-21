@@ -25,6 +25,10 @@ on:
         required: false
         default: "eliza-1-9b"
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   detect:
     name: detect host GPU

@@ -1,0 +1,38 @@
+name: gitleaks
+
+# SOC2 CC7.1 — automated secret scanning on every PR and push to protected
+# branches. Fails the run on any finding. Configuration: .gitleaks.toml at
+# repo root.
+
+on:
+  pull_request:
+    branches: ["main", "develop"]
+  push:
+    branches: ["main", "develop"]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        # actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          # Full history so gitleaks can scan the diff range on PRs.
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        # gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+        env:
+          # No license — uses default OSS scanning. Set GITLEAKS_LICENSE if/when
+          # an org license is provisioned for richer scans.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
+          GITLEAKS_ENABLE_SUMMARY: "true"

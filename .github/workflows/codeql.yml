@@ -8,6 +8,10 @@ on:
   schedule:
     - cron: "29 8 * * 6"
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})

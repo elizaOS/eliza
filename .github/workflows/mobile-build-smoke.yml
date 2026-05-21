@@ -21,6 +21,10 @@ concurrency:
 env:
   BUN_VERSION: "1.3.13"
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   build-ios:
     name: iOS Simulator Build

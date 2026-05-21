@@ -9,6 +9,10 @@ on:
   pull_request:
     types: [opened, edited, synchronize]
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   check-pr-title:
     runs-on: ubuntu-latest

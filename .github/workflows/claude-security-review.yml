@@ -23,6 +23,10 @@ concurrency:
   group: security-review-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   security:
     # Skip for draft PRs, [skip-security] in title, or bot-triggered

@@ -33,9 +33,28 @@ concurrency:
   group: npm-release-${{ github.ref }}
   cancel-in-progress: false
 
+# Required for npm OIDC trusted publishing. Each publish step mints a
+# short-lived OIDC token; npm verifies it against the Trusted Publisher entry
+# configured for the package on npmjs.com (SOC2 CC6.1 / CC9.2).
+#
+# HUMAN-IN-LOOP — operator must configure on npmjs.com:
+#   https://docs.npmjs.com/trusted-publishers
+#   For each @elizaos/* package, add Trusted Publisher:
+#     Publisher:    GitHub Actions
+#     Organization: elizaOS
+#     Repository:   eliza
+#     Workflow:     .github/workflows/release.yaml
+# Until the Trusted Publishers are configured, publish falls back to NPM_TOKEN.
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # release commits push lerna version bumps + git tags
+      id-token: write   # OIDC for npm publish
     # Skip if commit message contains [skip ci]. Alpha releases are disabled;
     # prerelease GitHub-release events are skipped so tag pushes are the single
     # npm publication path for beta versions.
@@ -571,7 +590,7 @@ jobs:
         id: publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "false"
+          NPM_CONFIG_PROVENANCE: "true"
         run: |
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
 
@@ -626,7 +645,7 @@ jobs:
         if: steps.publish.outcome == 'success'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "false"
+          NPM_CONFIG_PROVENANCE: "true"
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
