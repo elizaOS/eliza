@@ -317,9 +317,9 @@ export default function AgentDetailPage() {
               </div>
               {adminDetails.bridgePort !== null && adminDetails.headscaleIp && (
                 <div className="flex items-center gap-3 px-4 py-3 border border-white/10 bg-black/60">
-                  <Terminal className="h-4 w-4 text-blue-400 shrink-0" />
+                  <Terminal className="h-4 w-4 text-[#FF5800] shrink-0" />
                   <code
-                    className="text-sm text-blue-400 font-mono flex-1"
+                    className="text-sm text-[#FF5800] font-mono flex-1"
                     style={{ fontFamily: "var(--font-roboto-mono)" }}
                   >
                     {`curl http://${adminDetails.headscaleIp}:${adminDetails.bridgePort}/health`}
@@ -394,13 +394,13 @@ function InfoCell({
   label: string;
   value: string;
   mono?: boolean;
-  accent?: "emerald" | "blue" | "orange";
+  accent?: "emerald" | "neutral" | "orange";
 }) {
   const valueColor =
     accent === "emerald"
       ? "text-green-400"
-      : accent === "blue"
-        ? "text-blue-400"
+      : accent === "neutral"
+        ? "text-white/80"
         : accent === "orange"
           ? "text-orange-400"
           : "text-white/80";

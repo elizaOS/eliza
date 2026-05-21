@@ -166,7 +166,7 @@ function StatusCell({
         </Badge>
       </div>
       {isProvisioning && trackedJob && (
-        <span className="text-[10px] text-blue-400/80 flex items-center gap-1 pl-0.5">
+        <span className="text-[10px] text-white/60 flex items-center gap-1 pl-0.5">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
           Job {trackedJob.jobId.slice(0, 8)}
         </span>

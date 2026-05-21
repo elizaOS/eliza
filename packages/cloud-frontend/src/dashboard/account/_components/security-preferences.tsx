@@ -30,8 +30,8 @@ export function SecurityPreferences() {
           {/* API Keys */}
           <div className="flex items-start justify-between p-4 rounded-sm border border-white/10 bg-black/40">
             <div className="flex items-start gap-3">
-              <div className="rounded-sm p-2 bg-blue-500/20 border border-blue-500/40">
-                <Key className="h-4 w-4 text-blue-400" />
+              <div className="rounded-sm p-2 bg-[#FF5800]/15 border border-[#FF5800]/40">
+                <Key className="h-4 w-4 text-[#FF5800]" />
               </div>
               <div className="space-y-1">
                 <p className="font-medium text-sm text-white">API Keys</p>

@@ -175,10 +175,10 @@ export function AffiliatesPageClient() {
           WHY cyan accent: Visually distinct from orange affiliate branding so users don’t merge the two mentally. */}
       <BrandCard
         corners={false}
-        className="border-l-4 border-l-[var(--brand-blue)] border border-white/10"
+        className="border-l-4 border-l-[var(--brand-orange)] border border-white/10"
       >
         <div className="flex items-start gap-3 mb-4">
-          <Users className="h-5 w-5 text-[var(--brand-blue)] mt-0.5 shrink-0" />
+          <Users className="h-5 w-5 text-[var(--brand-orange)] mt-0.5 shrink-0" />
           <div className="min-w-0 flex-1">
             <h3 className="text-lg font-semibold text-white mb-1">
               Invite friends
@@ -200,7 +200,7 @@ export function AffiliatesPageClient() {
             <Button
               variant="secondary"
               size="sm"
-              className="shrink-0 bg-[var(--brand-blue)]/15 hover:bg-[var(--brand-blue)]/25 text-white border-[var(--brand-blue)]/30"
+              className="shrink-0 bg-[var(--brand-orange)]/15 hover:bg-[var(--brand-orange)]/25 text-white border-[var(--brand-orange)]/30"
               onClick={() => refetchReferral()}
             >
               Retry
@@ -215,7 +215,7 @@ export function AffiliatesPageClient() {
               mistake,{" "}
               <a
                 href="mailto:support@eliza.cloud?subject=Referral%20code%20inactive"
-                className="text-blue-300 underline hover:text-blue-200"
+                className="text-[#FF5800] underline hover:text-orange-300"
               >
                 email support@eliza.cloud
               </a>
@@ -227,21 +227,21 @@ export function AffiliatesPageClient() {
           </div>
         ) : (
           <>
-            <p className="text-xs text-blue-200/70 mb-3">
+            <p className="text-xs text-white/60 mb-3">
               {referralMe.total_referrals === 0
                 ? "No friends have joined yet—share your link to get started."
                 : referralMe.total_referrals === 1
                   ? "1 friend has joined with your link."
                   : `${referralMe.total_referrals} friends have joined with your link.`}
             </p>
-            <div className="flex items-center gap-3 bg-white/5 border border-[var(--brand-blue)]/20 rounded-sm p-3">
-              <LinkIcon className="h-5 w-5 text-[var(--brand-blue)]/60 shrink-0" />
+            <div className="flex items-center gap-3 bg-white/5 border border-[var(--brand-orange)]/20 rounded-sm p-3">
+              <LinkIcon className="h-5 w-5 text-[var(--brand-orange)]/60 shrink-0" />
               <div className="flex-1 font-mono text-white/80 overflow-hidden text-ellipsis whitespace-nowrap text-sm">
                 {buildReferralInviteLoginUrl(pageOrigin, referralMe.code)}
               </div>
               <Button
                 variant="secondary"
-                className="shrink-0 bg-[var(--brand-blue)]/15 hover:bg-[var(--brand-blue)]/25 text-white border-[var(--brand-blue)]/30"
+                className="shrink-0 bg-[var(--brand-orange)]/15 hover:bg-[var(--brand-orange)]/25 text-white border-[var(--brand-orange)]/30"
                 onClick={() => {
                   void (async () => {
                     if (!pageOrigin) {

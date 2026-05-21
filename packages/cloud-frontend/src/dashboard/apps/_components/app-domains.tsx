@@ -284,14 +284,14 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 copyToClipboard={copyToClipboard}
                 copiedValue={copiedValue}
               />
-              <div className="p-3 rounded-sm bg-blue-500/10 border border-blue-500/20">
+              <div className="p-3 rounded-sm bg-white/5 border border-white/10">
                 <div className="flex items-start gap-2">
-                  <Info className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+                  <Info className="h-4 w-4 text-white/70 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-xs text-blue-300 font-medium">
+                    <p className="text-xs text-white/90 font-medium">
                       Development URL
                     </p>
-                    <p className="text-xs text-blue-300/70 mt-0.5">
+                    <p className="text-xs text-white/60 mt-0.5">
                       Deploy your app to get a permanent subdomain and add
                       custom domains.
                     </p>
@@ -706,7 +706,7 @@ function DomainStatusBadge({
 
   if (sslStatus === "provisioning") {
     return (
-      <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/30 gap-1 text-[10px]">
+      <Badge className="bg-white/10 text-white/80 border-white/20 gap-1 text-[10px]">
         <Loader2 className="h-3 w-3 animate-spin" />
         SSL Provisioning
       </Badge>

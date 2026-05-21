@@ -166,7 +166,7 @@ export function WhatsAppConnection() {
                   href="https://developers.facebook.com/apps"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline inline-flex items-center gap-1"
+                  className="text-[#FF5800] hover:underline inline-flex items-center gap-1"
                 >
                   Meta App Dashboard
                   <ExternalLink className="h-3 w-3" />
