@@ -799,6 +799,41 @@ android smoke model works`,
 		}
 	});
 
+	it("retries malformed Stage 1 native tool calls until a usable response arrives", async () => {
+		const runtime = makeRuntime([
+			{
+				text: "",
+				toolCalls: [{ id: "mh-empty-args", name: "HANDLE_RESPONSE" }],
+				finishReason: "tool_calls",
+			},
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Recovered after malformed tool call.",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				reason: "malformed HANDLE_RESPONSE tool call",
+			}),
+			expect.stringContaining("malformed HANDLE_RESPONSE tool call"),
+		);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Recovered after malformed tool call.",
+			);
+		}
+	});
+
 	it("keeps quoted prose with braces as a direct reply", async () => {
 		const runtime = makeRuntime([
 			'"Here is an empty object: {} - it has no keys."',

@@ -3106,6 +3106,19 @@ function extractHandleResponseToolArguments(
 	return null;
 }
 
+function hasHandleResponseToolCall(raw: GenerateTextResult): boolean {
+	const toolCalls = Array.isArray(raw.toolCalls) ? raw.toolCalls : [];
+	return toolCalls.some((entry) => {
+		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+			return false;
+		}
+		const name = String(
+			entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
+		).trim();
+		return name === HANDLE_RESPONSE_TOOL_NAME;
+	});
+}
+
 function looksLikeMessageHandlerToolArguments(
 	args: Record<string, unknown>,
 ): boolean {
@@ -3817,6 +3830,27 @@ function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
 	);
 	if (contentText.trim().length > 0) return false;
 	return true;
+}
+
+function getStage1RetryReason(
+	raw: string | GenerateTextResult,
+): "empty completion" | "malformed HANDLE_RESPONSE tool call" | null {
+	if (isEmptyStage1Result(raw)) {
+		return "empty completion";
+	}
+	if (typeof raw === "string" || !raw || typeof raw !== "object") {
+		return null;
+	}
+	if (!hasHandleResponseToolCall(raw)) {
+		return null;
+	}
+	if (extractHandleResponseToolArguments(raw)) {
+		return null;
+	}
+	if (parseMessageHandlerOutput(getV5ModelText(raw))) {
+		return null;
+	}
+	return "malformed HANDLE_RESPONSE tool call";
 }
 
 function readStage1EmptyRetryLimit(runtime: IAgentRuntime): number {
@@ -4707,35 +4741,34 @@ export async function runV5MessageRuntimeStage1(args: {
 			// Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
 			providerOptions: stage1ProviderOptions,
 		};
-		// Empty-completion retry: cloud reasoning models reached over
-		// OpenAI-compatible providers intermittently return a completion with no
-		// content at all — every token went to a dropped reasoning channel, or
-		// the provider hiccuped. An empty Stage 1 result has no recoverable
-		// shape, so retry a small bounded number of times before surfacing a
-		// precise provider-shape failure.
-		const emptyRetryLimit = readStage1EmptyRetryLimit(args.runtime);
-		let emptyRetryCount = 0;
+		// Provider-shape retry: cloud reasoning models reached over
+		// OpenAI-compatible providers can intermittently return either no
+		// content at all or a required native tool call with no arguments. Both
+		// shapes have no recoverable Stage 1 payload, so retry a small bounded
+		// number of times before falling back to the planner.
+		const stage1RetryLimit = readStage1EmptyRetryLimit(args.runtime);
+		let stage1RetryCount = 0;
 		let rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			stage1ModelParams,
 		)) as string | GenerateTextResult;
-		while (
-			isEmptyStage1Result(rawMessageHandler) &&
-			emptyRetryCount < emptyRetryLimit
-		) {
-			emptyRetryCount += 1;
+		let stage1RetryReason = getStage1RetryReason(rawMessageHandler);
+		while (stage1RetryReason && stage1RetryCount < stage1RetryLimit) {
+			stage1RetryCount += 1;
 			args.runtime.logger?.warn?.(
 				{
 					src: "service:message",
-					attempt: emptyRetryCount + 1,
-					maxAttempts: emptyRetryLimit + 1,
+					attempt: stage1RetryCount + 1,
+					maxAttempts: stage1RetryLimit + 1,
+					reason: stage1RetryReason,
 				},
-				`[message] Stage 1 returned an empty completion — retrying (${emptyRetryCount}/${emptyRetryLimit})`,
+				`[message] Stage 1 returned ${stage1RetryReason} — retrying (${stage1RetryCount}/${stage1RetryLimit})`,
 			);
 			rawMessageHandler = (await args.runtime.useModel(
 				ModelType.RESPONSE_HANDLER,
 				stage1ModelParams,
 			)) as string | GenerateTextResult;
+			stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 		}
 		const messageHandlerEndedAt = Date.now();
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
@@ -4826,9 +4859,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			!messageHandler &&
 			shouldUseStage1PlannerFallback(args.runtime, args.message)
 		) {
-			const stage1FailureReason = isEmptyStage1Result(rawMessageHandler)
-				? `empty output after ${emptyRetryLimit + 1} attempts`
-				: "unparseable output";
+			const stage1FailureKind = getStage1RetryReason(rawMessageHandler);
+			const stage1FailureReason =
+				stage1FailureKind === "empty completion"
+					? `empty output after ${stage1RetryLimit + 1} attempts`
+					: stage1FailureKind === "malformed HANDLE_RESPONSE tool call"
+						? `malformed HANDLE_RESPONSE tool call after ${stage1RetryLimit + 1} attempts`
+						: "unparseable output";
 			messageHandler = synthesizePlannerFallbackFromStage1Failure({
 				reason: stage1FailureReason,
 				actions: args.runtime.actions,
@@ -4855,7 +4892,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		if (!messageHandler) {
 			if (isEmptyStage1Result(rawMessageHandler)) {
 				throw new Error(
-					`v5 messageHandler returned empty Stage 1 result after ${emptyRetryLimit + 1} attempts`,
+					`v5 messageHandler returned empty Stage 1 result after ${stage1RetryLimit + 1} attempts`,
 				);
 			}
 			throw new Error(
