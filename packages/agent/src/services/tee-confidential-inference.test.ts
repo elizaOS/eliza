@@ -2,7 +2,9 @@ import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   type SealedWeightsBlob,
+  sealModelWeightsShards,
   unsealModelWeights,
+  unsealModelWeightsStreaming,
 } from "./tee-confidential-inference.ts";
 import type {
   TeeKeyReleaseClient,
@@ -190,5 +192,214 @@ describe("TEE confidential-inference unseal", () => {
         requiredMeasurements: REQUIRED_MEASUREMENTS,
       }),
     ).rejects.toThrow();
+  });
+});
+
+// A multi-shard plaintext large enough to span several shards (7 bytes each ->
+// 7 shards, the last partial), so ordering and reassembly are exercised.
+const SHARDED_WEIGHTS = Buffer.from(
+  "eliza-1 confidential per-shard weights streaming fixture payload!",
+  "utf8",
+);
+const SHARDED_SHA256 = createHash("sha256")
+  .update(SHARDED_WEIGHTS)
+  .digest("hex");
+const SHARD_SIZE = 7;
+
+function shardPolicy(): TeeEvidencePolicy {
+  const p = policy();
+  if (p.requiredMeasurements) {
+    p.requiredMeasurements.modelWeights = `sha256:${SHARDED_SHA256}`;
+  }
+  return p;
+}
+
+function shardEvidence() {
+  return {
+    ...trustedEvidence,
+    measurements: {
+      ...trustedEvidence.measurements,
+      modelWeights: `sha256:${SHARDED_SHA256}`,
+    },
+  };
+}
+
+describe("TEE confidential-inference streaming per-shard unseal", () => {
+  it("round-trips a multi-shard blob in order with one onShard call per shard", async () => {
+    const key = randomBytes(32);
+    const manifest = sealModelWeightsShards({
+      weights: SHARDED_WEIGHTS,
+      key,
+      shardSizeBytes: SHARD_SIZE,
+    });
+    const expectedShardCount = Math.ceil(SHARDED_WEIGHTS.length / SHARD_SIZE);
+    expect(manifest.shards.length).toBe(expectedShardCount);
+
+    const seenIndices: number[] = [];
+    const chunks: Buffer[] = [];
+    const result = await unsealModelWeightsStreaming(
+      {
+        keyReleaseClient: fixtureKeyReleaseClient(key, shardEvidence()),
+        policy: shardPolicy(),
+        sealedWeights: manifest,
+        requiredMeasurements: REQUIRED_MEASUREMENTS,
+        context: "eliza-1",
+      },
+      ({ index, bytes }) => {
+        seenIndices.push(index);
+        // The buffer is zeroized after onShard returns, so copy what we keep.
+        chunks.push(Buffer.from(bytes));
+      },
+    );
+
+    expect(seenIndices).toEqual(
+      Array.from({ length: expectedShardCount }, (_, i) => i),
+    );
+    expect(Buffer.concat(chunks).equals(SHARDED_WEIGHTS)).toBe(true);
+    expect(result.weightsSha256).toBe(SHARDED_SHA256);
+    expect(result.shardCount).toBe(expectedShardCount);
+    expect(result.decision.trusted).toBe(true);
+  });
+
+  it("zeroizes each shard buffer after onShard returns", async () => {
+    const key = randomBytes(32);
+    const manifest = sealModelWeightsShards({
+      weights: SHARDED_WEIGHTS,
+      key,
+      shardSizeBytes: SHARD_SIZE,
+    });
+    const handed: Buffer[] = [];
+    await unsealModelWeightsStreaming(
+      {
+        keyReleaseClient: fixtureKeyReleaseClient(key, shardEvidence()),
+        policy: shardPolicy(),
+        sealedWeights: manifest,
+        requiredMeasurements: REQUIRED_MEASUREMENTS,
+      },
+      ({ bytes }) => {
+        handed.push(bytes);
+      },
+    );
+    // Every buffer handed to the sink is wiped once the loop advances past it.
+    for (const buf of handed) {
+      expect(buf.every((byte) => byte === 0)).toBe(true);
+    }
+  });
+
+  it("fails closed when a shard ciphertext is tampered", async () => {
+    const key = randomBytes(32);
+    const manifest = sealModelWeightsShards({
+      weights: SHARDED_WEIGHTS,
+      key,
+      shardSizeBytes: SHARD_SIZE,
+    });
+    const target = manifest.shards[2];
+    const tampered = Buffer.from(target.ciphertextBase64, "base64");
+    tampered[0] ^= 0xff;
+    const tamperedManifest = {
+      ...manifest,
+      shards: manifest.shards.map((s) =>
+        s.index === 2
+          ? { ...s, ciphertextBase64: tampered.toString("base64") }
+          : s,
+      ),
+    };
+    await expect(
+      unsealModelWeightsStreaming(
+        {
+          keyReleaseClient: fixtureKeyReleaseClient(key, shardEvidence()),
+          policy: shardPolicy(),
+          sealedWeights: tamperedManifest,
+          requiredMeasurements: REQUIRED_MEASUREMENTS,
+        },
+        () => {},
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("fails closed (auth-tag) when the released key is wrong", async () => {
+    const manifest = sealModelWeightsShards({
+      weights: SHARDED_WEIGHTS,
+      key: randomBytes(32),
+      shardSizeBytes: SHARD_SIZE,
+    });
+    await expect(
+      unsealModelWeightsStreaming(
+        {
+          keyReleaseClient: fixtureKeyReleaseClient(
+            randomBytes(32),
+            shardEvidence(),
+          ),
+          policy: shardPolicy(),
+          sealedWeights: manifest,
+          requiredMeasurements: REQUIRED_MEASUREMENTS,
+        },
+        () => {},
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("fails closed when the manifest weightsSha256 does not match the reassembly", async () => {
+    const key = randomBytes(32);
+    const manifest = sealModelWeightsShards({
+      weights: SHARDED_WEIGHTS,
+      key,
+      shardSizeBytes: SHARD_SIZE,
+    });
+    // Corrupt only the manifest-level digest; shard plaintext digests still pass,
+    // so this isolates the running-digest defense-in-depth check.
+    const mismatched = { ...manifest, weightsSha256: "a".repeat(64) };
+    const p = shardPolicy();
+    if (p.requiredMeasurements) {
+      p.requiredMeasurements.modelWeights = `sha256:${"a".repeat(64)}`;
+    }
+    const evidence = {
+      ...shardEvidence(),
+      measurements: {
+        ...shardEvidence().measurements,
+        modelWeights: `sha256:${"a".repeat(64)}`,
+      },
+    };
+    await expect(
+      unsealModelWeightsStreaming(
+        {
+          keyReleaseClient: fixtureKeyReleaseClient(key, evidence),
+          policy: p,
+          sealedWeights: mismatched,
+          requiredMeasurements: REQUIRED_MEASUREMENTS,
+        },
+        () => {},
+      ),
+    ).rejects.toThrow(/Reassembled model weights digest does not match/);
+  });
+
+  it("denies streaming unseal when evidence is not trusted", async () => {
+    const key = randomBytes(32);
+    const manifest = sealModelWeightsShards({
+      weights: SHARDED_WEIGHTS,
+      key,
+      shardSizeBytes: SHARD_SIZE,
+    });
+    const calls: number[] = [];
+    await expect(
+      unsealModelWeightsStreaming(
+        {
+          keyReleaseClient: fixtureKeyReleaseClient(key, {
+            ...shardEvidence(),
+            measurements: {
+              ...shardEvidence().measurements,
+              agent: "sha256:tampered",
+            },
+          }),
+          policy: shardPolicy(),
+          sealedWeights: manifest,
+          requiredMeasurements: REQUIRED_MEASUREMENTS,
+        },
+        ({ index }) => {
+          calls.push(index);
+        },
+      ),
+    ).rejects.toThrow(/model-key release denied/);
+    expect(calls).toEqual([]);
   });
 });

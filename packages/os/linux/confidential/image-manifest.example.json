@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "packages/os/docs/tee-os-implementation-plan.md §1.3/§2.2 (OS-1)",
+  "summary": "EXAMPLE confidential image manifest (fixture). The 'image is the policy' contract: records every measured component digest plus the build inputs a verifier needs to recompute them offline. The real reproducible image build is OS-5 and is BLOCKED on a build host, so the component digests here are golden placeholders that match the release manifest's tee.measurements; reproducibility.confirmed is false until OS-5 produces a real build.",
+  "image": {
+    "profile": "confidential",
+    "substrate": "tdx",
+    "builder": "meta-dstack",
+    "architecture": "x86_64"
+  },
+  "components": {
+    "kernel": {
+      "filename": "bzImage",
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "measuredInto": "RTMR1"
+    },
+    "initrd": {
+      "filename": "initramfs.cpio.zst",
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "measuredInto": "RTMR2"
+    },
+    "rootfs": {
+      "filename": "rootfs.squashfs",
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "measuredInto": "rootfs-hash (dm-verity root)"
+    },
+    "appCompose": {
+      "filename": "app-compose.json",
+      "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "measuredInto": "RTMR3"
+    }
+  },
+  "buildInputs": {
+    "toolchain": [
+      {
+        "name": "poky",
+        "version": "scarthgap",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000001"
+      },
+      {
+        "name": "rustc",
+        "version": "1.86.0",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000002"
+      }
+    ],
+    "layers": [
+      {
+        "name": "meta-dstack",
+        "repo": "https://github.com/Dstack-TEE/meta-dstack",
+        "commit": "1111111111111111111111111111111111111111"
+      },
+      {
+        "name": "meta-elizaos",
+        "repo": "packages/os/linux/confidential/meta-elizaos",
+        "commit": "2222222222222222222222222222222222222222"
+      }
+    ]
+  },
+  "measurements": {
+    "boot": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "os": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "policy": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "agent": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "container": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "compose": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "device": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "gpuFirmware": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "npuFirmware": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "modelWeights": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "monitor": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "reproducibility": {
+    "confirmed": false,
+    "reproBuildContext": "packages/os/linux/confidential/repro-build/",
+    "note": "No real reproducible image has been built. This is a schema fixture; gate confidential-image-reproducibility (OS-5) is BLOCKED on a build host. Component digests are golden placeholders that match the release manifest tee.measurements."
+  },
+  "gate": {
+    "name": "confidential-image-manifest-check",
+    "blockedOn": "Real component digests come from the reproducible meta-dstack build (gate confidential-image-reproducibility, OS-5, BLOCKED on a build host). This gate validates schema-conformance + digest shape only.",
+    "provingCommand": "node packages/os/scripts/check-confidential-image-manifest.mjs --input packages/os/linux/confidential/image-manifest.example.json"
+  }
+}
