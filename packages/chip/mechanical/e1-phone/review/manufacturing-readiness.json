@@ -12,13 +12,13 @@
     "device_envelope_mm": [
       78.0,
       153.6,
-      11.2
+      11.8
     ],
     "corner_radius_mm": 7.5,
     "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
     "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
     "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
-    "estimated_mass_g": 163.52,
+    "estimated_mass_g": 162.42,
     "target_mass_g": 185,
     "compactness_status": "cad_compactness_optimized",
     "compactness_width_excess_mm": 0.3,
@@ -79,15 +79,15 @@
     "production_visual_signoff_ready": false,
     "open_manual_visual_review_count": 5,
     "solid_cad_handoff_status": "generated",
-    "solid_cad_step_part_count": 94,
+    "solid_cad_step_part_count": 95,
     "step_validation_status": "pass",
-    "step_validation_count": 94,
+    "step_validation_count": 95,
     "supplier_rfq_status": "rfq_ready",
     "supplier_rfq_package_count": 5,
     "supplier_response_status": "blocked_no_supplier_responses",
     "supplier_response_complete_count": 0,
     "supplier_response_expected_count": 8,
-    "part_review_count": 94
+    "part_review_count": 95
   },
   "required_outputs": {
     "assembly_glb": true,
@@ -128,11 +128,13 @@
     "solid_cad_handoff": true,
     "supplier_rfq_package": true,
     "supplier_response_review": true,
-    "part_review": true
+    "part_review": true,
+    "component_selection_review": true
   },
   "subsystem_evidence_present": {
     "molded_orange_enclosure": true,
     "compact_envelope_optimization": true,
+    "component_selection_review": true,
     "screen_stack": true,
     "pcb_integration": true,
     "routed_board_step_import": true,
@@ -198,6 +200,23 @@
       "remaining_blockers": [
         "Envelope is optimized against current EVT0 supplier envelopes only.",
         "Need supplier STEP and routed PCB before proving no further local reduction is possible."
+      ]
+    },
+    {
+      "subsystem": "component_selection_review",
+      "status": "cad_pass",
+      "evidence": [
+        "component-selection-review.json",
+        "component-selection-review.md",
+        "screen_mount_and_connection",
+        "usb_c_insertion_envelope",
+        "button_force_and_travel",
+        "camera_optical_seal_stack",
+        "camera_speaker_behind_glass"
+      ],
+      "remaining_blockers": [
+        "Component review reconciles current CAD envelopes and selected off-the-shelf candidates only.",
+        "Need supplier drawings, STEP/B-rep models, samples, live procurement quotes, and lab validation before sourcing or tooling release."
       ]
     },
     {
@@ -604,6 +623,7 @@
         "visual-review.json",
         "part-review.json",
         "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
         "visual-decision-report.json",
         "visual-decision-report.md",
         "manufacturing_drawing.json",

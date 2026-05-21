@@ -32,7 +32,7 @@
     },
     {
       "id": "button_pressure",
-      "actual_n_per_mm2": 0.121,
+      "actual_n_per_mm2": 0.119,
       "required_max_n_per_mm2": 0.2,
       "pass": true,
       "note": "Nominal side-key force divided by cap contact area."
@@ -140,22 +140,22 @@
     "low": [
       -40.55,
       -76.8,
-      -5.6
+      -5.9
     ],
     "high": [
       40.55,
       76.8,
-      5.6
+      5.9
     ],
     "span": [
       81.1,
       153.6,
-      11.2
+      11.8
     ],
     "nominal_envelope": [
       78.0,
       153.6,
-      11.2
+      11.8
     ]
   },
   "linked_fit_checks": {
@@ -175,5 +175,5 @@
     "rear_camera",
     "front_camera"
   ],
-  "estimated_mass_g": 163.52
+  "estimated_mass_g": 162.42
 }

@@ -2,7 +2,7 @@
   "schema": "eliza.e1_phone_component_review.v1",
   "review": "io-buttons",
   "revision_reviewed": "evt0-mechanical-cad-flush-back",
-  "device_envelope_mm": [78.0, 153.6, 11.2],
+  "device_envelope_mm": [78.0, 153.6, 11.8],
   "reviewer": "mechanical/electromechanical EVT specialist",
   "evidence_class": "public_supplier_datasheets_and_lcsc_pricing_live",
   "quantity_basis": "100k_lcsc_listed_break_floor_used_as_ceiling",

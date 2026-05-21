@@ -3,13 +3,22 @@
 Evidence class: `cad_estimate_for_evt_planning, not_measured_hardware`.
 Single entry point to every reviewable artifact for the e1-phone CAD/board/BOM/mfg/animation package.
 
+## 0. Flush-back design rev (current)
+
+- Device **78 × 153.6 × 11.8 mm** (thickened to bury the camera — flush back, no bump).
+- Battery **64 × 87 × 5.6 mm = 5727 mAh / 22.05 Wh** (clears display + back wall by 0.150 mm each).
+- **Single lens** rear + front. Rear camera buried 0.25 mm under flat back glass.
+- **Torch** added: OSRAM CEYW-class 1.0×1.0 flash LED + Awinic AW36515 driver, flush light-pipe window, 6.6 mm from camera with an opaque `rear_flash_camera_septum` baffle.
+- Buttons **standardized**: single SKU XKB TS-1187A-B-A-B (LCSC C318884), Panasonic EVQ-P7A01P alternate; travel 0.20 mm.
+- Validation after rev: boolean **0 unintentional clashes / 11-11 scopes**, flush-back **0.0 mm protrusion**, orientation **15/15 + 2 coaxiality**, assembly **assemblable / 19 steps / 0 trapped**, button physics **6/6 PASS**. See `design-change-flush-back.md`, `component-review-*.md`, `button-physics-sim.md`, `assembly-verification.md`.
+
 ## 1. Animated exploded view (final visual deliverable)
 
 | Artifact | Path | Verified |
 |---|---|---|
 | Turntable video | `out/e1-phone-exploded.mp4` | 1920×1080, 30 fps, 12 s, h264/yuv420p |
-| Animated GLB | `out/e1-phone-exploded.glb` | 98 nodes, 97 meshes, clips: explode / reassemble / turntable |
-| Frame sequence | `out/e1-phone-exploded-frames/` | 360 frames + 24 keyframes (0.5 s) |
+| Animated GLB | `out/e1-phone-exploded.glb` | 96 nodes, 95 meshes, clips: explode / reassemble / turntable |
+| Frame sequence | `out/e1-phone-exploded-frames/` | 360 frames + 24 keyframes (0.5 s); flush back confirmed at t=6 |
 | Generator | `scripts/generate_e1_phone_exploded_animation.py` | re-runnable, pyrender EGL + ffmpeg |
 
 Timeline (12 s loop, continuous 360° Y orbit @ 30°/s, 15° tilt):

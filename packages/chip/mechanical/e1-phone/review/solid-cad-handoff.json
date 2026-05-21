@@ -4,8 +4,8 @@
   "tool": "cadquery",
   "tool_available": true,
   "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-  "assembly_step_bytes": 1935129,
-  "part_count": 94,
+  "assembly_step_bytes": 1952946,
+  "part_count": 95,
   "parts": [
     {
       "name": "orange_back_shell",
@@ -17,12 +17,12 @@
         "min": [
           -39.0,
           -76.8,
-          -5.6
+          -5.9
         ],
         "max": [
           39.0,
           76.8,
-          -4.4
+          -4.7
         ],
         "span": [
           78.0,
@@ -41,17 +41,17 @@
         "min": [
           -39.0,
           -76.8,
-          -5.6
+          -5.9
         ],
         "max": [
           39.0,
           76.8,
-          5.6
+          5.9
         ],
         "span": [
           78.0,
           153.6,
-          11.2
+          11.8
         ]
       }
     },
@@ -65,12 +65,12 @@
         "min": [
           -38.55,
           -76.085,
-          4.9
+          5.2
         ],
         "max": [
           38.55,
           75.685,
-          5.6
+          5.9
         ],
         "span": [
           77.1,
@@ -132,22 +132,22 @@
       "role": "battery",
       "material": "LiPo pouch envelope",
       "step": "mechanical/e1-phone/out/battery_pouch.step",
-      "bytes": 15530,
+      "bytes": 15521,
       "bbox_mm": {
         "min": [
           -32.0,
           -50.5,
-          -4.3
+          -4.6
         ],
         "max": [
           32.0,
           36.5,
-          1.4
+          1.0
         ],
         "span": [
           64.0,
           87.0,
-          5.7
+          5.6
         ]
       }
     },
@@ -185,12 +185,12 @@
         "min": [
           16.0,
           52.8,
-          -4.15
+          -4.45
         ],
         "max": [
           26.0,
           62.8,
-          0.95
+          0.65
         ],
         "span": [
           10.0,
@@ -202,19 +202,19 @@
     {
       "name": "rear_flash_led",
       "role": "camera",
-      "material": "OSRAM/Everlight class 1.0x1.0x0.6 mm top-fire white flash/torch LED beside the rear camera, buried under a flush light-pipe window",
+      "material": "OSRAM CEYW class 1.0x1.0x0.6 white flash LED",
       "step": "mechanical/e1-phone/out/rear_flash_led.step",
       "bytes": 15549,
       "bbox_mm": {
         "min": [
           13.9,
           57.3,
-          -4.45
+          -4.63
         ],
         "max": [
           14.9,
           58.3,
-          -3.75
+          -3.93
         ],
         "span": [
           1.0,
@@ -233,12 +233,12 @@
         "min": [
           13.6,
           57.0,
-          -5.6
+          -5.9
         ],
         "max": [
           15.2,
           58.6,
-          -5.1
+          -5.4
         ],
         "span": [
           1.6,
@@ -593,12 +593,12 @@
         "min": [
           16.4,
           53.2,
-          -5.6
+          -5.9
         ],
         "max": [
           25.6,
           62.4,
-          -5.05
+          -5.35
         ],
         "span": [
           9.2,
@@ -617,12 +617,12 @@
         "min": [
           17.6,
           54.4,
-          -5.6
+          -5.9
         ],
         "max": [
           24.4,
           61.2,
-          -5.05
+          -5.35
         ],
         "span": [
           6.8,
@@ -641,12 +641,12 @@
         "min": [
           -20.7,
           66.1,
-          5.475
+          5.775
         ],
         "max": [
           -17.3,
           69.5,
-          5.825
+          6.125
         ],
         "span": [
           3.4,
@@ -665,12 +665,12 @@
         "min": [
           15.95,
           62.455,
-          -5.05
+          -5.35
         ],
         "max": [
           26.05,
           62.905,
-          -4.89
+          -5.19
         ],
         "span": [
           10.1,
@@ -689,12 +689,12 @@
         "min": [
           15.95,
           52.695,
-          -5.05
+          -5.35
         ],
         "max": [
           26.05,
           53.145,
-          -4.89
+          -5.19
         ],
         "span": [
           10.1,
@@ -713,12 +713,12 @@
         "min": [
           15.895,
           53.2,
-          -5.05
+          -5.35
         ],
         "max": [
           16.345,
           62.4,
-          -4.89
+          -5.19
         ],
         "span": [
           0.45,
@@ -737,12 +737,12 @@
         "min": [
           25.655,
           53.2,
-          -5.05
+          -5.35
         ],
         "max": [
           26.105,
           62.4,
-          -4.89
+          -5.19
         ],
         "span": [
           0.45,
@@ -761,12 +761,12 @@
         "min": [
           16.85,
           61.475,
-          -5.525
+          -5.825
         ],
         "max": [
           25.15,
           61.825,
-          -4.975
+          -5.275
         ],
         "span": [
           8.3,
@@ -785,12 +785,12 @@
         "min": [
           16.85,
           53.775,
-          -5.525
+          -5.825
         ],
         "max": [
           25.15,
           54.125,
-          -4.975
+          -5.275
         ],
         "span": [
           8.3,
@@ -809,17 +809,41 @@
         "min": [
           -21.5,
           65.3,
-          5.46
+          5.76
         ],
         "max": [
           -16.5,
           70.3,
-          5.58
+          5.88
         ],
         "span": [
           5.0,
           5.0,
           0.12
+        ]
+      }
+    },
+    {
+      "name": "rear_flash_camera_septum",
+      "role": "camera seal",
+      "material": "opaque PC stray-light septum between rear flash light-pipe and rear camera baffle column, molded to the back shell inner wall",
+      "step": "mechanical/e1-phone/out/rear_flash_camera_septum.step",
+      "bytes": 15585,
+      "bbox_mm": {
+        "min": [
+          14.9,
+          53.65,
+          -4.75
+        ],
+        "max": [
+          15.5,
+          61.95,
+          -2.65
+        ],
+        "span": [
+          0.6,
+          8.3,
+          2.1
         ]
       }
     },
@@ -833,12 +857,12 @@
         "min": [
           -8.0,
           68.7,
-          5.555
+          5.855
         ],
         "max": [
           8.0,
           69.7,
-          5.805
+          6.105
         ],
         "span": [
           16.0,
@@ -857,12 +881,12 @@
         "min": [
           -8.75,
           69.14,
-          5.12
+          5.42
         ],
         "max": [
           8.75,
           69.26,
-          5.52
+          5.82
         ],
         "span": [
           17.5,
@@ -1169,12 +1193,12 @@
         "min": [
           -31.5,
           74.885,
-          4.66
+          4.96
         ],
         "max": [
           31.5,
           75.885,
-          4.84
+          5.14
         ],
         "span": [
           63.0,
@@ -1193,12 +1217,12 @@
         "min": [
           -31.5,
           -75.885,
-          4.66
+          4.96
         ],
         "max": [
           31.5,
           -74.885,
-          4.84
+          5.14
         ],
         "span": [
           63.0,
@@ -1217,12 +1241,12 @@
         "min": [
           -38.55,
           -68.835,
-          4.66
+          4.96
         ],
         "max": [
           -37.55,
           68.835,
-          4.84
+          5.14
         ],
         "span": [
           1.0,
@@ -1241,12 +1265,12 @@
         "min": [
           37.55,
           -68.835,
-          4.66
+          4.96
         ],
         "max": [
           38.55,
           68.835,
-          4.84
+          5.14
         ],
         "span": [
           1.0,
@@ -1668,17 +1692,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_1.step",
-      "bytes": 31965,
+      "bytes": 31998,
       "bbox_mm": {
         "min": [
           -31.1,
           55.9,
-          -5.0
+          -5.3
         ],
         "max": [
           -26.9,
           60.1,
-          -2.2
+          -2.5
         ],
         "span": [
           4.2,
@@ -1692,17 +1716,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_2.step",
-      "bytes": 31915,
+      "bytes": 31948,
       "bbox_mm": {
         "min": [
           26.9,
           55.9,
-          -5.0
+          -5.3
         ],
         "max": [
           31.1,
           60.1,
-          -2.2
+          -2.5
         ],
         "span": [
           4.2,
@@ -1716,17 +1740,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_3.step",
-      "bytes": 32015,
+      "bytes": 32048,
       "bbox_mm": {
         "min": [
           -31.1,
           -60.1,
-          -5.0
+          -5.3
         ],
         "max": [
           -26.9,
           -55.9,
-          -2.2
+          -2.5
         ],
         "span": [
           4.2,
@@ -1740,17 +1764,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_4.step",
-      "bytes": 31965,
+      "bytes": 31998,
       "bbox_mm": {
         "min": [
           26.9,
           -60.1,
-          -5.0
+          -5.3
         ],
         "max": [
           31.1,
           -55.9,
-          -2.2
+          -2.5
         ],
         "span": [
           4.2,
@@ -1764,17 +1788,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_5.step",
-      "bytes": 32109,
+      "bytes": 32142,
       "bbox_mm": {
         "min": [
           -31.1,
           -22.1,
-          -5.0
+          -5.3
         ],
         "max": [
           -26.9,
           -17.9,
-          -2.2
+          -2.5
         ],
         "span": [
           4.2,
@@ -1788,17 +1812,17 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_6.step",
-      "bytes": 32059,
+      "bytes": 32092,
       "bbox_mm": {
         "min": [
           26.9,
           -22.1,
-          -5.0
+          -5.3
         ],
         "max": [
           31.1,
           -17.9,
-          -2.2
+          -2.5
         ],
         "span": [
           4.2,
@@ -2081,12 +2105,12 @@
         "min": [
           -16.0,
           -56.3,
-          -5.805
+          -6.105
         ],
         "max": [
           16.0,
           -47.3,
-          -5.555
+          -5.855
         ],
         "span": [
           32.0,
@@ -2302,6 +2326,7 @@
     "rear_camera_cover_adhesive_right": true,
     "rear_camera_light_baffle_top": true,
     "rear_camera_light_baffle_bottom": true,
+    "rear_flash_camera_septum": true,
     "front_camera_module": true,
     "front_camera_under_glass": true,
     "front_camera_black_mask_window": true,

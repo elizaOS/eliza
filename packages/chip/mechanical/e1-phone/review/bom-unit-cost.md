@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-21
 **Status:** Sourcing-analyst estimate; NOT a release BOM, NOT a signed quote.
-**Design rev:** evt0-mechanical-cad-flush-back (11.2 mm flush back, 5830 mAh battery, rear torch/flash LED).
+**Design rev:** evt0-mechanical-cad-flush-back (11.8 mm flush back, 5830 mAh battery, rear torch/flash LED).
 **Currency:** USD, EXW Shenzhen.
 **Companion data:** [`bom-unit-cost.yaml`](./bom-unit-cost.yaml).
 

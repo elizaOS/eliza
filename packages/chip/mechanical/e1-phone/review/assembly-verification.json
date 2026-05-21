@@ -10,8 +10,8 @@
     "contact_tolerance_mm": 0.02,
     "seat_tolerance_mm": 0.05
   },
-  "total_parts_in_manifest": 94,
-  "parts_loaded": 94,
+  "total_parts_in_manifest": 95,
+  "parts_loaded": 95,
   "parts_placed_in_sequence": 94,
   "steps": [
     {
@@ -466,21 +466,21 @@
           "part": "usb_c_perimeter_gasket_bottom",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.655,
+          "min_clearance_during_insertion_mm": 0.955,
           "blocking_parts": []
         },
         {
           "part": "usb_c_perimeter_gasket_left",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.8,
+          "min_clearance_during_insertion_mm": 1.0,
           "blocking_parts": []
         },
         {
           "part": "usb_c_perimeter_gasket_right",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.8,
+          "min_clearance_during_insertion_mm": 1.0,
           "blocking_parts": []
         }
       ]
@@ -621,7 +621,7 @@
           "part": "display_fpc_connector",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.625,
+          "min_clearance_during_insertion_mm": 0.925,
           "blocking_parts": []
         },
         {
@@ -743,7 +743,7 @@
           "part": "orange_side_frame",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 2.15,
+          "min_clearance_during_insertion_mm": 1.0,
           "blocking_parts": []
         },
         {
@@ -960,5 +960,5 @@
   },
   "trapped_parts": [],
   "device_assemblable": true,
-  "runtime_s": 4.78
+  "runtime_s": 5.29
 }

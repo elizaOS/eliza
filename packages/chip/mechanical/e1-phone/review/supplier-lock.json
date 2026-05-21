@@ -55,11 +55,11 @@
     {
       "id": "side_buttons",
       "role": "power_volume_buttons",
-      "candidate": "Panasonic EVQ-P7/P3/9P7 side-push tactile switch",
+      "candidate": "XKB TS-1187A-B-A-B side-push tactile switch, 3.5x2.9x1.7 mm",
       "mechanical_lock": {
-        "power_force_n": 1.6,
-        "volume_force_n": 1.5,
-        "travel_mm": 0.35,
+        "power_force_n": 1.57,
+        "volume_force_n": 1.57,
+        "travel_mm": 0.2,
         "cap_power_mm": [
           2.0,
           12.0,
@@ -71,7 +71,7 @@
           1.1
         ]
       },
-      "source_url": "https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247",
+      "source_url": "https://www.lcsc.com/product-detail/Tactile-Switches_XKB-Connection-TS-1187A-B-A-B_C318884.html",
       "supplier_lock_state": "needs exact Panasonic part number and flex/direct-PCB decision"
     },
     {

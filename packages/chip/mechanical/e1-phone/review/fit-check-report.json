@@ -8,7 +8,7 @@
       "envelope_mm": [
         78.0,
         153.6,
-        11.2
+        11.8
       ],
       "corner_radius_mm": 7.5,
       "plastic_color": "hard safety orange",
@@ -62,17 +62,18 @@
       "edge_clearance_mm": 2.5
     },
     "battery": {
-      "candidate": "LiPol LP576487 class 3.85 V 5830 mAh 22.45 Wh thick pouch",
+      "candidate": "LiPol LP566487 class 3.85 V 5727 mAh 22.05 Wh thick pouch",
       "envelope_mm": [
         64.0,
         87.0,
-        5.7
+        5.6
       ],
-      "z_center_mm": -1.45,
-      "capacity_mah": 5830,
-      "energy_wh": 22.45,
+      "z_center_mm": -1.8,
+      "capacity_mah": 5727,
+      "energy_wh": 22.05,
       "nominal_voltage_v": 3.85,
-      "capacity_basis": "4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.7/4.4) for the flush-back volume gain"
+      "capacity_basis": "4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.6/4.4) for the flush-back volume gain",
+      "clearance_basis": "front face at Z=+1.0 mm keeps 0.15 mm gap below display_lcm back face (+1.15 mm); back face at Z=-4.6 mm keeps 0.15 mm gap to back inner wall (-4.75 mm) at the 11.8 mm device thickness"
     },
     "components": {
       "usb_c": {
@@ -166,7 +167,13 @@
         "array": "single"
       },
       "rear_flash_led": {
-        "candidate": "OSRAM/Everlight class 1.0x1.0x0.6 mm top-fire white flash/torch LED beside the rear camera, buried under a flush light-pipe window",
+        "candidate": "OSRAM CEYW class 1.0x1.0x0.6 white flash LED",
+        "driver": "Awinic AW36515 I2C flash driver",
+        "second_source": "Everlight 1.0x1.0 flash LED",
+        "seat_mm": [
+          1.0,
+          1.0
+        ],
         "envelope_mm": [
           1.0,
           1.0,
@@ -177,7 +184,16 @@
           1.6,
           0.5
         ],
-        "emit_direction": "-Z (out the flat back, through a flush light pipe/window)"
+        "emit_direction": "-Z (out the flat back, through a flush light pipe/window)",
+        "seat_match_note": "1.0x1.0 mm seat now matches a 1.0x1.0 mm-class emitter (replaces Lumileds LXCL-PWF1 1.64x0.90 mm mismatch flagged by optical review)"
+      },
+      "rear_flash_camera_septum": {
+        "candidate": "thin opaque PC stray-light septum wall between rear flash light-pipe and rear camera baffle column",
+        "thickness_mm": 0.6,
+        "offset_from_camera_center_mm": 5.8,
+        "color": "dark opaque PC",
+        "purpose": "blocks stray flash light into the camera baffle because both windows are coplanar in one flat back wall with no bump-edge to break stray light",
+        "seat_note": "molded into the orange back shell inner wall as a 0-gap face seat; rises from the back-glass plane up to one min-gap below the main PCB bottom face, covering the full back-glass stray-light coupling region while clearing the camera module (X offset) and the PCB box (Z extent)."
       },
       "front_camera": {
         "candidate": "single 5-8 MP fixed-focus MIPI module behind cover glass, single lens",
@@ -191,28 +207,38 @@
         "array": "single"
       },
       "power_button": {
-        "candidate": "Panasonic EVQ-P7/P3/9P7 side-push tactile switch",
-        "standardized_part": "Panasonic EVQ-P7xxx",
-        "travel_mm": 0.35,
-        "force_n": 1.6,
+        "candidate": "XKB TS-1187A-B-A-B side-push tactile switch, 3.5x2.9x1.7 mm",
+        "standardized_part": "XKB TS-1187A-B-A-B",
+        "standardized_mpn_primary": "XKB TS-1187A-B-A-B",
+        "standardized_mpn_alternate": "Panasonic EVQ-P7A01P",
+        "lcsc_part": "C318884",
+        "travel_mm": 0.2,
+        "force_n": 1.57,
         "cap_mm": [
           2.0,
           12.0,
           1.1
         ],
-        "source_url": "https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247"
+        "cap_proud_mm": 0.3,
+        "travel_basis": "0.20 mm datasheet travel; cap proud 0.30 mm > 0.20 mm hard stop so tactile actuation occurs before bottom-out, no rest preload",
+        "source_url": "https://www.lcsc.com/product-detail/Tactile-Switches_XKB-Connection-TS-1187A-B-A-B_C318884.html"
       },
       "volume_button": {
-        "candidate": "Panasonic EVQ-P7/P3/9P7 side-push tactile switch",
-        "standardized_part": "Panasonic EVQ-P7xxx",
-        "travel_mm": 0.35,
-        "force_n": 1.5,
+        "candidate": "XKB TS-1187A-B-A-B side-push tactile switch, 3.5x2.9x1.7 mm",
+        "standardized_part": "XKB TS-1187A-B-A-B",
+        "standardized_mpn_primary": "XKB TS-1187A-B-A-B",
+        "standardized_mpn_alternate": "Panasonic EVQ-P7A01P",
+        "lcsc_part": "C318884",
+        "travel_mm": 0.2,
+        "force_n": 1.57,
         "cap_mm": [
           2.0,
           21.0,
           1.1
         ],
-        "source_url": "https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247"
+        "cap_proud_mm": 0.3,
+        "travel_basis": "0.20 mm datasheet travel; cap proud 0.30 mm > 0.20 mm hard stop so tactile actuation occurs before bottom-out, no rest preload",
+        "source_url": "https://www.lcsc.com/product-detail/Tactile-Switches_XKB-Connection-TS-1187A-B-A-B_C318884.html"
       }
     },
     "radio": {
@@ -277,6 +303,25 @@
       "environmental_targets": {
         "drop_height_m": 1.0,
         "ingress_target": "IP54 design intent only",
+        "ingress_features": {
+          "button_seal": [
+            "power_button_labyrinth_upper_rail",
+            "power_button_labyrinth_lower_rail",
+            "power_button_elastomer_gasket",
+            "volume_button_labyrinth_upper_rail",
+            "volume_button_labyrinth_lower_rail",
+            "volume_button_elastomer_gasket"
+          ],
+          "usb_c_seal": [
+            "usb_c_molded_drip_break_lip",
+            "usb_c_internal_drain_shelf",
+            "usb_c_perimeter_gasket_top",
+            "usb_c_perimeter_gasket_bottom",
+            "usb_c_perimeter_gasket_left",
+            "usb_c_perimeter_gasket_right"
+          ],
+          "basis": "IP54 design intent derives from the button cap labyrinth rails plus elastomer gasket and the USB-C drip-break lip, internal drain shelf, and four-sided perimeter gaskets; all parts exist in the CAD assembly"
+        },
         "max_skin_temp_c": 43,
         "acoustic_leakage_status": "requires sample test",
         "rf_pre_scan_status": "requires antenna simulation and chamber pre-scan"
@@ -321,6 +366,25 @@
       "environmental_targets": {
         "drop_height_m": 1.0,
         "ingress_target": "IP54 design intent only",
+        "ingress_features": {
+          "button_seal": [
+            "power_button_labyrinth_upper_rail",
+            "power_button_labyrinth_lower_rail",
+            "power_button_elastomer_gasket",
+            "volume_button_labyrinth_upper_rail",
+            "volume_button_labyrinth_lower_rail",
+            "volume_button_elastomer_gasket"
+          ],
+          "usb_c_seal": [
+            "usb_c_molded_drip_break_lip",
+            "usb_c_internal_drain_shelf",
+            "usb_c_perimeter_gasket_top",
+            "usb_c_perimeter_gasket_bottom",
+            "usb_c_perimeter_gasket_left",
+            "usb_c_perimeter_gasket_right"
+          ],
+          "basis": "IP54 design intent derives from the button cap labyrinth rails plus elastomer gasket and the USB-C drip-break lip, internal drain shelf, and four-sided perimeter gaskets; all parts exist in the CAD assembly"
+        },
         "max_skin_temp_c": 43,
         "acoustic_leakage_status": "requires sample test",
         "rf_pre_scan_status": "requires antenna simulation and chamber pre-scan"
@@ -328,6 +392,16 @@
     }
   },
   "checks": {
+    "battery_display_and_wall_clearance": {
+      "pass": true,
+      "battery_front_z_mm": 1.0,
+      "battery_back_z_mm": -4.6,
+      "display_lcm_back_z_mm": 1.15,
+      "back_inner_wall_z_mm": -4.75,
+      "battery_to_display_gap_mm": 0.15,
+      "battery_to_back_wall_gap_mm": 0.15,
+      "required_gap_mm": 0.15
+    },
     "component_presence": {
       "pass": true,
       "details": {
@@ -350,6 +424,7 @@
         "rear_camera_cover_adhesive_right": true,
         "rear_camera_light_baffle_top": true,
         "rear_camera_light_baffle_bottom": true,
+        "rear_flash_camera_septum": true,
         "front_camera_black_mask_window": true,
         "power_button_cap": true,
         "volume_button_cap": true,
@@ -411,7 +486,7 @@
     },
     "mesh_integrity": {
       "pass": true,
-      "checked_parts": 94,
+      "checked_parts": 95,
       "failures": []
     },
     "usb_c_insertion_envelope": {
@@ -446,18 +521,18 @@
     "button_force_and_travel": {
       "pass": true,
       "power": {
-        "force_n": 1.6,
-        "travel_mm": 0.35
+        "force_n": 1.57,
+        "travel_mm": 0.2
       },
       "volume": {
-        "force_n": 1.5,
-        "travel_mm": 0.35
+        "force_n": 1.57,
+        "travel_mm": 0.2
       }
     },
     "button_pressure_support": {
       "pass": true,
-      "power_pressure_n_per_mm2": 0.1212,
-      "volume_pressure_n_per_mm2": 0.0649
+      "power_pressure_n_per_mm2": 0.1189,
+      "volume_pressure_n_per_mm2": 0.068
     },
     "button_ingress_seal_stack": {
       "pass": true,
@@ -492,7 +567,12 @@
       "rear_cover_adhesive_count": 4,
       "rear_light_baffle_count": 2,
       "front_black_mask_present": true,
-      "note": "Models rear cover-window PSA/dust gasket, rear light baffle, and front under-glass black mask datum."
+      "stray_light_septum_present": true,
+      "flash_camera_center_spacing_mm": 6.6,
+      "flash_camera_center_spacing_required_mm": 6.0,
+      "flash_burial_clearance_mm": 0.12,
+      "flash_burial_clearance_required_mm": 0.1,
+      "note": "Models rear cover-window PSA/dust gasket, rear light baffle, opaque stray-light septum between coplanar flash and camera windows, and front under-glass black mask datum."
     },
     "rf_antenna_keepouts": {
       "pass": true,
@@ -571,13 +651,13 @@
       "envelope_mm": [
         78.0,
         153.6,
-        11.2
+        11.8
       ],
-      "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth raised to <=11.5 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall."
+      "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.0 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall."
     },
     "mass_budget": {
       "pass": true,
-      "estimated_mass_g": 163.52,
+      "estimated_mass_g": 162.42,
       "target_mass_g": 185,
       "note": "Rough CAD estimate; placeholder void markers excluded."
     }
@@ -700,8 +780,11 @@
     "part_review_json": "mechanical/e1-phone/review/part-review.json",
     "part_review_md": "mechanical/e1-phone/review/part-review.md",
     "part_review_contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
+    "part_explode_contact_sheet": "mechanical/e1-phone/review/part-explode-contact-sheet.png",
     "part_visual_coverage_json": "mechanical/e1-phone/review/part-visual-coverage.json",
     "part_visual_coverage_md": "mechanical/e1-phone/review/part-visual-coverage.md",
+    "component_selection_review_json": "mechanical/e1-phone/review/component-selection-review.json",
+    "component_selection_review_md": "mechanical/e1-phone/review/component-selection-review.md",
     "visual_decision_report_json": "mechanical/e1-phone/review/visual-decision-report.json",
     "visual_decision_report_md": "mechanical/e1-phone/review/visual-decision-report.md",
     "visual_review_coverage_acceptance_json": "mechanical/e1-phone/review/visual-review-coverage-acceptance.json",

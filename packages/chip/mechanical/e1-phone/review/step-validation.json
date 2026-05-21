@@ -2,16 +2,16 @@
   "claim_boundary": "Automated STEP re-import and envelope validation; not supplier CAD approval.",
   "status": "pass",
   "tolerance_mm": 0.05,
-  "validated_count": 94,
+  "validated_count": 95,
   "assembly": {
     "step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-    "bytes": 1935129,
+    "bytes": 1952946,
     "imported": true,
     "pass": true,
     "bbox_span_mm": [
       81.1,
       154.24,
-      11.63
+      12.23
     ]
   },
   "cases": [
@@ -36,7 +36,7 @@
       "bbox_span_mm": [
         78.0,
         153.6,
-        11.2
+        11.8
       ],
       "max_span_error_mm": 0.0,
       "pass": true
@@ -83,12 +83,12 @@
     {
       "name": "battery_pouch",
       "step": "mechanical/e1-phone/out/battery_pouch.step",
-      "bytes": 15530,
+      "bytes": 15521,
       "imported": true,
       "bbox_span_mm": [
         64.0,
         87.0,
-        5.7
+        5.6
       ],
       "max_span_error_mm": 0.0,
       "pass": true
@@ -453,6 +453,19 @@
         5.0,
         5.0,
         0.12
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_flash_camera_septum",
+      "step": "mechanical/e1-phone/out/rear_flash_camera_septum.step",
+      "bytes": 15585,
+      "imported": true,
+      "bbox_span_mm": [
+        0.6,
+        8.3,
+        2.1
       ],
       "max_span_error_mm": 0.0,
       "pass": true
@@ -915,7 +928,7 @@
     {
       "name": "orange_screw_boss_1",
       "step": "mechanical/e1-phone/out/orange_screw_boss_1.step",
-      "bytes": 31965,
+      "bytes": 31998,
       "imported": true,
       "bbox_span_mm": [
         4.2,
@@ -928,7 +941,7 @@
     {
       "name": "orange_screw_boss_2",
       "step": "mechanical/e1-phone/out/orange_screw_boss_2.step",
-      "bytes": 31915,
+      "bytes": 31948,
       "imported": true,
       "bbox_span_mm": [
         4.2,
@@ -941,7 +954,7 @@
     {
       "name": "orange_screw_boss_3",
       "step": "mechanical/e1-phone/out/orange_screw_boss_3.step",
-      "bytes": 32015,
+      "bytes": 32048,
       "imported": true,
       "bbox_span_mm": [
         4.2,
@@ -954,7 +967,7 @@
     {
       "name": "orange_screw_boss_4",
       "step": "mechanical/e1-phone/out/orange_screw_boss_4.step",
-      "bytes": 31965,
+      "bytes": 31998,
       "imported": true,
       "bbox_span_mm": [
         4.2,
@@ -967,7 +980,7 @@
     {
       "name": "orange_screw_boss_5",
       "step": "mechanical/e1-phone/out/orange_screw_boss_5.step",
-      "bytes": 32109,
+      "bytes": 32142,
       "imported": true,
       "bbox_span_mm": [
         4.2,
@@ -980,7 +993,7 @@
     {
       "name": "orange_screw_boss_6",
       "step": "mechanical/e1-phone/out/orange_screw_boss_6.step",
-      "bytes": 32059,
+      "bytes": 32092,
       "imported": true,
       "bbox_span_mm": [
         4.2,

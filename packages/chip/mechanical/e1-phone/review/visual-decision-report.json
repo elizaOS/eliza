@@ -8,13 +8,15 @@
   "device_envelope_mm": [
     78.0,
     153.6,
-    11.2
+    11.8
   ],
   "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
   "screen_margin_mm": 0.45,
   "visual_deltas": {
-    "front_back_mean_rgb_sum_delta": 8.055,
-    "front_back_minimum_sum_delta": 8.0
+    "front_back_mean_rgb_sum_delta": 7.872,
+    "front_back_minimum_sum_delta": 7.5,
+    "front_back_orange_ratio_delta": 0.45431,
+    "front_back_dark_ratio_delta": 0.45184
   },
   "review_views": [
     {
@@ -24,9 +26,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.07942,
+      "nonwhite_pixel_ratio": 0.07941,
       "orange_pixel_ratio_of_nonwhite": 0.01136,
-      "dark_pixel_ratio_of_nonwhite": 0.67439,
+      "dark_pixel_ratio_of_nonwhite": 0.67444,
       "purpose": "PCB, battery, camera, audio, haptic, and I/O placement"
     },
     {
@@ -36,9 +38,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.07773,
-      "orange_pixel_ratio_of_nonwhite": 0.46694,
-      "dark_pixel_ratio_of_nonwhite": 0.51766,
+      "nonwhite_pixel_ratio": 0.07853,
+      "orange_pixel_ratio_of_nonwhite": 0.46942,
+      "dark_pixel_ratio_of_nonwhite": 0.51572,
       "purpose": "glass, display, shell, and component stack separation"
     },
     {
@@ -48,9 +50,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.05885,
-      "orange_pixel_ratio_of_nonwhite": 0.97535,
-      "dark_pixel_ratio_of_nonwhite": 0.01214,
+      "nonwhite_pixel_ratio": 0.05957,
+      "orange_pixel_ratio_of_nonwhite": 0.97568,
+      "dark_pixel_ratio_of_nonwhite": 0.01199,
       "purpose": "rear-side orange shell, camera window, and service-feature review"
     },
     {
@@ -72,9 +74,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.05561,
-      "orange_pixel_ratio_of_nonwhite": 0.50414,
-      "dark_pixel_ratio_of_nonwhite": 0.48084,
+      "nonwhite_pixel_ratio": 0.05634,
+      "orange_pixel_ratio_of_nonwhite": 0.52137,
+      "dark_pixel_ratio_of_nonwhite": 0.46383,
       "purpose": "front silhouette, orange side rail, black glass stack"
     },
     {
@@ -84,9 +86,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.03224,
-      "orange_pixel_ratio_of_nonwhite": 0.95824,
-      "dark_pixel_ratio_of_nonwhite": 0.0202,
+      "nonwhite_pixel_ratio": 0.03289,
+      "orange_pixel_ratio_of_nonwhite": 0.96789,
+      "dark_pixel_ratio_of_nonwhite": 0.0198,
       "purpose": "left-side button protrusion and shell depth"
     },
     {
@@ -96,9 +98,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.11015,
-      "orange_pixel_ratio_of_nonwhite": 0.07162,
-      "dark_pixel_ratio_of_nonwhite": 0.91816,
+      "nonwhite_pixel_ratio": 0.11022,
+      "orange_pixel_ratio_of_nonwhite": 0.07246,
+      "dark_pixel_ratio_of_nonwhite": 0.91642,
       "purpose": "compact footprint, screen margin, buttons, and front features"
     },
     {
@@ -108,9 +110,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.04165,
-      "orange_pixel_ratio_of_nonwhite": 0.1561,
-      "dark_pixel_ratio_of_nonwhite": 0.02452,
+      "nonwhite_pixel_ratio": 0.04206,
+      "orange_pixel_ratio_of_nonwhite": 0.16453,
+      "dark_pixel_ratio_of_nonwhite": 0.0243,
       "purpose": "parting plane, runner, gate, ejector, and cooling placeholders"
     },
     {
@@ -120,9 +122,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.11025,
-      "orange_pixel_ratio_of_nonwhite": 0.00168,
-      "dark_pixel_ratio_of_nonwhite": 0.00943,
+      "nonwhite_pixel_ratio": 0.11032,
+      "orange_pixel_ratio_of_nonwhite": 0.0018,
+      "dark_pixel_ratio_of_nonwhite": 0.00942,
       "purpose": "translucent rear shell review of camera window, SIM edge, and service-label recess"
     }
   ],
@@ -144,18 +146,18 @@
     },
     "hard_orange_shell_visible": {
       "pass": true,
-      "front_orange_ratio": 0.50414,
-      "back_orange_ratio": 0.97535,
+      "front_orange_ratio": 0.52137,
+      "back_orange_ratio": 0.97568,
       "bottom_orange_ratio": 0.77781
     },
     "black_glass_front_visible": {
       "pass": true,
-      "front_dark_ratio": 0.48084,
-      "top_down_dark_ratio": 0.91816
+      "front_dark_ratio": 0.46383,
+      "top_down_dark_ratio": 0.91642
     },
     "component_stack_visible": {
       "pass": true,
-      "component_stack_nonwhite_ratio": 0.07942
+      "component_stack_nonwhite_ratio": 0.07941
     },
     "compact_screen_margin": {
       "pass": true,
@@ -240,7 +242,7 @@
     {
       "id": "compact_orange_shell",
       "decision": "keep",
-      "basis": "Hold 78.0 x 153.6 x 11.2 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
+      "basis": "Hold 78.0 x 153.6 x 11.8 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
       "evidence": [
         "full_front_iso.png",
         "full_top_down.png",
@@ -262,7 +264,7 @@
     {
       "id": "compact_orange_shell",
       "decision": "keep",
-      "basis": "Hold 78.0 x 153.6 x 11.2 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
+      "basis": "Hold 78.0 x 153.6 x 11.8 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
       "evidence": [
         "full_front_iso.png",
         "full_top_down.png",

@@ -116,8 +116,11 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/part-review.json`
 - `mechanical/e1-phone/review/part-review.md`
 - `mechanical/e1-phone/review/part-review-contact-sheet.png`
+- `mechanical/e1-phone/review/part-explode-contact-sheet.png`
 - `mechanical/e1-phone/review/part-visual-coverage.json`
 - `mechanical/e1-phone/review/part-visual-coverage.md`
+- `mechanical/e1-phone/review/component-selection-review.json`
+- `mechanical/e1-phone/review/component-selection-review.md`
 - `mechanical/e1-phone/review/visual-decision-report.json`
 - `mechanical/e1-phone/review/visual-decision-report.md`
 - `mechanical/e1-phone/review/visual-review-coverage-acceptance.json`
@@ -146,6 +149,7 @@ Status: automated EVT0 concept generation, not tooling release.
 
 ## Fit Checks
 
+- PASS: `battery_display_and_wall_clearance`
 - PASS: `component_presence`
 - PASS: `pcb_edge_clearance`
 - PASS: `screen_mount_margin`
@@ -181,7 +185,7 @@ Status: automated EVT0 concept generation, not tooling release.
 - Sprue diameter: 4.0 mm.
 - Runner diameter: 2.2 mm.
 - Gate thickness: 0.85 mm.
-- Estimated CAD mass: 163.52 g.
+- Estimated CAD mass: 162.42 g.
 
 ## Design Decisions From This Pass
 

@@ -3,15 +3,16 @@
 Status: generated part index and contact sheet for every assembly part.
 
 - `mechanical/e1-phone/review/part-review-contact-sheet.png`
+- `mechanical/e1-phone/review/part-explode-contact-sheet.png`
 
 ## Parts
 
 - `orange_back_shell`: role `molded enclosure`, span [78.0, 153.6, 1.2] mm, material PC+ABS orange rounded back shell
-- `orange_side_frame`: role `molded enclosure`, span [78.0, 153.6, 11.2] mm, material PC+ABS orange rounded perimeter frame
+- `orange_side_frame`: role `molded enclosure`, span [78.0, 153.6, 11.8] mm, material PC+ABS orange rounded perimeter frame
 - `screen_cover_glass`: role `screen`, span [77.1, 151.77, 0.7] mm, material black rounded cover glass
 - `display_lcm`: role `screen`, span [70.78, 129.17, 1.7] mm, material LCM
 - `main_pcb`: role `PCB`, span [64.0, 132.0, 0.8] mm, material 8L HDI FR-4 top/bottom islands around full-width battery
-- `battery_pouch`: role `battery`, span [64.0, 87.0, 5.7] mm, material LiPo pouch
+- `battery_pouch`: role `battery`, span [64.0, 87.0, 5.6] mm, material LiPo pouch
 - `usb_c_receptacle`: role `I/O`, span [8.94, 7.8, 3.25] mm, material stainless shell
 - `usb_c_external_aperture`: role `I/O`, span [10.2, 0.35, 3.6] mm, material USB-C molded aperture visual check
 - `usb_c_perimeter_gasket_top`: role `I/O seal`, span [11.4, 0.45, 0.35] mm, material silicone USB-C perimeter gasket top rail
@@ -37,6 +38,7 @@ Status: generated part index and contact sheet for every assembly part.
 - `rear_camera_light_baffle_top`: role `camera seal`, span [8.3, 0.35, 0.55] mm, material black molded rear camera anti-dust light baffle
 - `rear_camera_light_baffle_bottom`: role `camera seal`, span [8.3, 0.35, 0.55] mm, material black molded rear camera anti-dust light baffle
 - `front_camera_black_mask_window`: role `camera seal`, span [5.0, 5.0, 0.12] mm, material black printed mask datum around front under-glass camera
+- `rear_flash_camera_septum`: role `camera seal`, span [0.6, 8.3, 2.1] mm, material opaque PC stray-light septum between rear flash light-pipe and rear camera baffle column, molded to the back shell inner wall
 - `power_button_cap`: role `button`, span [2.0, 12.0, 1.1] mm, material orange molded cap
 - `volume_button_cap`: role `button`, span [2.0, 21.0, 1.1] mm, material orange molded cap
 - `handset_acoustic_slot`: role `audio`, span [16.0, 1.0, 0.25] mm, material gasketed handset slot

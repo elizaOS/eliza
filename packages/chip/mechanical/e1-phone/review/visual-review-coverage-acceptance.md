@@ -18,10 +18,10 @@ Production visual signoff ready: False.
 
 ## Supporting Cases
 
-- Part review: PASS (94 parts).
-- Part-to-view coverage: PASS (94/94 parts).
+- Part review: PASS (95 parts).
+- Part-to-view coverage: PASS (95/95 parts).
 - Visual decisions: PASS (7 decisions, 5 open manual review items).
 
 ## Release Rule
 
-- Every required full-object, detail, exploded, component, tooling, and per-part review artifact must be generated, pass pixel/contact-sheet checks, every CAD part must map to at least one generated review view plus the per-part contact sheet, and the views must be covered by a recorded CAD visual/design decision before automated visual coverage is accepted. Production visual/CMF signoff remains blocked until manual review items are closed.
+- Every required full-object, detail, exploded, component, tooling, and per-part review artifact must be generated, pass pixel/contact-sheet checks, every CAD part must map to at least one generated review view plus the per-part top-view and exploded-context contact sheets, and the views must be covered by a recorded CAD visual/design decision before automated visual coverage is accepted. Production visual/CMF signoff remains blocked until manual review items are closed.

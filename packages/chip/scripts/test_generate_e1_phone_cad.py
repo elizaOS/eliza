@@ -42,6 +42,19 @@ def test_evt0_phone_cad_checks_pass() -> None:
     report = cad.run_checks(params, parts)
 
     assert report["status"] == "pass"
+    assert report["checks"]["battery_display_and_wall_clearance"]["pass"]
+    battery_clearance = report["checks"]["battery_display_and_wall_clearance"]
+    assert battery_clearance["battery_to_display_gap_mm"] >= 0.15
+    assert battery_clearance["battery_to_back_wall_gap_mm"] >= 0.15
+    optical = report["checks"]["camera_optical_seal_stack"]
+    assert optical["pass"]
+    assert optical["stray_light_septum_present"]
+    assert optical["flash_camera_center_spacing_mm"] >= 6.0
+    assert optical["flash_burial_clearance_mm"] >= 0.1
+    assert params["components"]["power_button"]["travel_mm"] == 0.2
+    assert params["components"]["volume_button"]["travel_mm"] == 0.2
+    assert params["components"]["power_button"]["lcsc_part"] == "C318884"
+    assert params["components"]["volume_button"]["standardized_mpn_primary"] == "XKB TS-1187A-B-A-B"
     assert report["checks"]["component_presence"]["pass"]
     assert report["checks"]["rounded_enclosure_geometry"]["pass"]
     assert report["checks"]["mesh_integrity"]["pass"]
@@ -85,6 +98,7 @@ def test_evt0_phone_cad_required_parts_are_named() -> None:
         "rear_camera_cover_adhesive_right",
         "rear_camera_light_baffle_top",
         "rear_camera_light_baffle_bottom",
+        "rear_flash_camera_septum",
         "front_camera_black_mask_window",
         "power_button_cap",
         "volume_button_cap",
@@ -170,7 +184,7 @@ def test_evt0_phone_params_stay_under_compactness_limit() -> None:
 
     assert width <= 80.0
     assert height <= 157.0
-    assert depth <= 11.5
+    assert depth <= 11.8
     assert Path(cad.PARAMS).is_file()
 
 
@@ -1658,6 +1672,7 @@ def test_evt0_phone_clearance_and_part_review_cover_assembly(tmp_path, monkeypat
     assert part_review["status"] == "pass"
     assert part_review["part_count"] == len(parts)
     assert part_review["contact_sheet_check"]["pass"]
+    assert part_review["exploded_contact_sheet_check"]["pass"]
     assert clearance["status"] == "pass"
     assert {
         "battery_to_pcb_islands",
@@ -1669,6 +1684,7 @@ def test_evt0_phone_clearance_and_part_review_cover_assembly(tmp_path, monkeypat
         "usb_to_bottom_speaker",
     }.issubset(case_ids)
     assert (tmp_path / "part-review-contact-sheet.png").is_file()
+    assert (tmp_path / "part-explode-contact-sheet.png").is_file()
     assert (tmp_path / "assembly-clearance.json").is_file()
 
 
@@ -1779,10 +1795,13 @@ def test_evt0_phone_part_visual_coverage_maps_every_part_to_review_views(
     assert coverage["covered_part_count"] == len(parts)
     assert coverage["missing_or_incomplete_parts"] == []
     assert "part-review-contact-sheet.png" in coverage["required_review_artifacts"]
+    assert "part-explode-contact-sheet.png" in coverage["required_review_artifacts"]
     usb_case = next(case for case in coverage["cases"] if case["part"] == "usb_c_receptacle")
     assert "full_bottom_port.png" in usb_case["required_views"]
+    assert "part-explode-contact-sheet.png" in usb_case["required_views"]
     button_case = next(case for case in coverage["cases"] if case["part"] == "power_button_cap")
     assert "full_left_side.png" in button_case["required_views"]
+    assert button_case["exploded_contact_sheet_present"]
     assert (tmp_path / "part-visual-coverage.json").is_file()
     assert (tmp_path / "part-visual-coverage.md").is_file()
 
@@ -1795,6 +1814,33 @@ def test_evt0_phone_part_visual_coverage_maps_every_part_to_review_views(
 
     assert blocked["status"] == "blocked_part_visual_coverage_incomplete"
     assert "usb_c_receptacle" in blocked["missing_or_incomplete_parts"]
+
+
+def test_evt0_phone_component_selection_review_reconciles_current_params(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    report = cad.write_component_selection_review_artifacts(params, checks)
+
+    assert report["status"] == "cad_component_selection_review_ready"
+    assert report["device_envelope_mm"] == params["device"]["envelope_mm"]
+    assert report["component_count"] >= 12
+    assert report["missing_or_failed_components"] == []
+    cases = {case["id"]: case for case in report["cases"]}
+    assert cases["side_buttons_single_sku"]["selected_component"] == "XKB TS-1187A-B-A-B"
+    assert cases["usb_c_receptacle"]["pass"] is True
+    assert cases["rear_flash_and_stray_light_septum"]["pass"] is True
+    assert any(
+        check["id"] == "camera_optical_seal_stack"
+        for check in cases["rear_camera_and_flush_window"]["critical_checks"]
+    )
+    assert "supplier drawings" in report["release_rule"]
+    assert (tmp_path / "component-selection-review.json").is_file()
+    assert (tmp_path / "component-selection-review.md").is_file()
 
 
 def test_evt0_phone_visual_review_coverage_acceptance_tracks_required_artifacts(
@@ -1832,6 +1878,7 @@ def test_evt0_phone_visual_review_coverage_acceptance_tracks_required_artifacts(
     assert acceptance["complete_view_count"] == 9
     assert acceptance["part_review_case"]["part_count"] == len(parts)
     assert acceptance["part_review_case"]["contact_sheet_pass"] is True
+    assert acceptance["part_review_case"]["exploded_contact_sheet_pass"] is True
     assert acceptance["part_visual_coverage_case"]["covered_part_count"] == len(parts)
     assert acceptance["part_visual_coverage_case"]["pass"] is True
     assert acceptance["visual_decision_case"]["decision_count"] >= 7
@@ -2718,6 +2765,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "part-review.json",
         "part-review.md",
         "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
         "solid-cad-handoff.json",
         "solid-cad-handoff.md",
         "step-validation.json",
@@ -2823,6 +2871,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "complete_response_count": 0,
         "expected_response_count": len(supplier["items"]) + 1,
     }
+    component_selection = cad.write_component_selection_review_artifacts(params, checks)
     cad.write_readiness_artifacts(
         params,
         parts,
@@ -2871,6 +2920,9 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     assert readiness["subsystem_evidence_present"]["molded_orange_enclosure"]
     assert readiness["subsystem_evidence_present"]["compact_envelope_optimization"]
     assert readiness["required_outputs"]["compactness_optimization"]
+    assert readiness["subsystem_evidence_present"]["component_selection_review"]
+    assert readiness["required_outputs"]["component_selection_review"]
+    assert component_selection["status"] == "cad_component_selection_review_ready"
     assert readiness["parameters"]["compactness_status"] == "cad_compactness_optimized"
     assert readiness["parameters"]["compactness_width_excess_mm"] <= 1.0
     assert readiness["parameters"]["compactness_height_excess_mm"] <= 1.5
@@ -3014,6 +3066,14 @@ def test_evt0_phone_fit_report_writes_flat_check_schema(tmp_path, monkeypatch) -
     assert (
         report["artifacts"]["visual_review_coverage_acceptance_json"]
         == "mechanical/e1-phone/review/visual-review-coverage-acceptance.json"
+    )
+    assert (
+        report["artifacts"]["part_explode_contact_sheet"]
+        == "mechanical/e1-phone/review/part-explode-contact-sheet.png"
+    )
+    assert (
+        report["artifacts"]["component_selection_review_json"]
+        == "mechanical/e1-phone/review/component-selection-review.json"
     )
     assert (
         report["artifacts"]["physical_process_validation_acceptance_json"]

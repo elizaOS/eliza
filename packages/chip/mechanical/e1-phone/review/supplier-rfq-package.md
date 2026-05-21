@@ -33,7 +33,7 @@ Status: generated RFQ package from EVT0 CAD evidence; not supplier lock.
 
 ## buttons_haptics_service
 
-- Candidate: Panasonic EVQ-P7/P3/9P7 side-push tactile switch
+- Candidate: XKB TS-1187A-B-A-B side-push tactile switch, 3.5x2.9x1.7 mm
 - Attached STEP evidence: mechanical/e1-phone/out/power_button_cap.step, mechanical/e1-phone/out/volume_button_cap.step, mechanical/e1-phone/out/power_button_elastomer_gasket.step, mechanical/e1-phone/out/power_button_labyrinth_upper_rail.step, mechanical/e1-phone/out/power_button_labyrinth_lower_rail.step, mechanical/e1-phone/out/volume_button_elastomer_gasket.step, mechanical/e1-phone/out/volume_button_labyrinth_upper_rail.step, mechanical/e1-phone/out/volume_button_labyrinth_lower_rail.step, mechanical/e1-phone/out/haptic_lra.step, mechanical/e1-phone/out/sim_tray_keepout.step, mechanical/e1-phone/out/sim_tray_outline.step
 - Questions:
   - Confirm side tactile switch part number, force bins, travel, and actuator tolerance stack.

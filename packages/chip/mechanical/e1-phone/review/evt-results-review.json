@@ -154,8 +154,8 @@
       "sample_id": "",
       "operator": "",
       "measured": null,
-      "min": 0.25,
-      "max": 0.55,
+      "min": 0.15,
+      "max": 0.3,
       "evidence_class": "",
       "evidence_class_allowed": false,
       "required_evidence_artifacts": [

@@ -2,7 +2,7 @@ schema: eliza.e1_phone_bom_unit_cost.v1
 date: 2026-05-21
 design_rev: evt0-mechanical-cad-flush-back
 design_change_note: >
-  Flush-back rev: device 9.6 -> 11.2 mm, battery 4500 mAh/17.33 Wh -> 5830 mAh/22.45 Wh
+  Flush-back rev: device 9.6 -> 11.8 mm, battery 4500 mAh/17.33 Wh -> 5830 mAh/22.45 Wh
   (LP576487-class thick pouch), single-lens rear + single-lens front (unchanged single
   configuration), and a new rear torch/flash LED + flash driver IC. BOM lines and rollup
   below reflect these deltas; all other lines unchanged from the prior rev.
@@ -20,7 +20,7 @@ volume_assumptions:
 currency: USD
 incoterms_assumption: EXW Shenzhen, components landed at CM, no VAT
 target_phone:
-  envelope_mm: [78.0, 153.6, 11.2]
+  envelope_mm: [78.0, 153.6, 11.8]
   battery_wh: 22.45
   display_in: 5.5
   region: global / China-domestic first

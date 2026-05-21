@@ -87,6 +87,8 @@ INTENTIONAL_PAIRS = frozenset({
     frozenset({"orange_side_frame", "sim_tray_outline"}),
     frozenset({"orange_back_shell", "rear_camera_cover_glass"}),
     frozenset({"orange_back_shell", "orange_side_frame"}),
+    # stray-light septum is molded to the back shell inner wall (0-gap face seat)
+    frozenset({"orange_back_shell", "rear_flash_camera_septum"}),
     frozenset({"main_pcb", "rear_camera_module"}),
     frozenset({"display_lcm", "rear_camera_module"}),
     frozenset({"display_fpc_connector", "rear_camera_module"}),

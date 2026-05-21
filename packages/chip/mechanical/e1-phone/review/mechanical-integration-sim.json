@@ -67,26 +67,26 @@
       "button_cases": [
         {
           "id": "power_button",
-          "switch_candidate": "Panasonic EVQ-P7xxx",
-          "actuation_force_n": 1.6,
-          "travel_mm": 0.35,
-          "cap_pressure_n_per_mm2": 0.1212,
+          "switch_candidate": "XKB TS-1187A-B-A-B",
+          "actuation_force_n": 1.57,
+          "travel_mm": 0.2,
+          "cap_pressure_n_per_mm2": 0.1189,
           "pressure_limit_n_per_mm2": 0.2,
           "required_parts_present": true,
           "planning_pass": true
         },
         {
           "id": "volume_button",
-          "switch_candidate": "Panasonic EVQ-P7xxx",
-          "actuation_force_n": 1.5,
-          "travel_mm": 0.35,
-          "cap_pressure_n_per_mm2": 0.0649,
+          "switch_candidate": "XKB TS-1187A-B-A-B",
+          "actuation_force_n": 1.57,
+          "travel_mm": 0.2,
+          "cap_pressure_n_per_mm2": 0.068,
           "pressure_limit_n_per_mm2": 0.2,
           "required_parts_present": true,
           "planning_pass": true
         }
       ],
-      "target": "power and volume force 1.2-2.2 N, travel >=0.25 mm, cap pressure <= limit",
+      "target": "power and volume force 1.2-2.2 N, travel >=0.18 mm, cap pressure <= limit",
       "planning_pass": true,
       "physical_release_evidence_required": [
         "power_button_force_raw_csv",

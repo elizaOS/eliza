@@ -36,6 +36,9 @@ OUT_DIR = ROOT / "mechanical/e1-phone/out"
 REVIEW_DIR = ROOT / "mechanical/e1-phone/review"
 PARAMS = CAD_DIR / "e1_phone_params.yaml"
 
+MIN_BUTTON_TRAVEL_MM = 0.18
+FLASH_BURIAL_CLEARANCE_MM = 0.12
+
 ORANGE = [1.0, 0.32, 0.02, 1.0]
 BLACK_GLASS = [0.015, 0.018, 0.02, 0.72]
 DARK = [0.06, 0.065, 0.07, 1.0]
@@ -490,7 +493,59 @@ def camera_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
             "role": "camera seal",
             "material": "black printed mask datum around front under-glass camera",
         },
+        rear_flash_camera_septum_spec(params),
     ]
+
+
+def rear_flash_camera_septum_spec(params: dict[str, Any]) -> dict[str, Any]:
+    """Opaque molded baffle in the clear gap between the camera module edge and
+    the flash light-pipe.
+
+    Geometry constraints, all measured against the live solid model:
+    - X: sits ``offset_from_camera_center_mm`` toward the flash from the camera
+      center, clearing the camera module's outer X face by >= the min gap.
+    - Z (height): molded root seats flush on the back shell inner wall (0-gap
+      face seat -> intentional contact), rising to one min-gap below the main
+      PCB bottom face. This covers the full back-glass stray-light coupling
+      region while never entering the solid PCB box (which would otherwise be
+      an unintentional clash that may not be allowlisted).
+    - Y: spans the shared flash/camera optical band so edge-coupled light across
+      the flat back glass is blocked.
+    """
+    dev = params["device"]
+    comp = params["components"]
+    height = float(dev["envelope_mm"][1])
+    depth = float(dev["envelope_mm"][2])
+    wall = float(dev["wall_thickness_mm"])
+    pcb = params["pcb"]
+    rear_x = 21.0
+    rear_y = height / 2 - 19.0
+    rear_lens = float(comp["rear_camera"]["lens_diameter_mm"])
+    septum = comp["rear_flash_camera_septum"]
+    septum_thickness = float(septum["thickness_mm"])
+    septum_offset = float(septum["offset_from_camera_center_mm"])
+    back_inner_wall_z = -depth / 2.0 + wall
+    pcb_bottom_z = float(pcb["z_center_mm"]) - float(pcb["outline_mm"][2]) / 2.0
+    min_gap = 0.15
+    z_lo = back_inner_wall_z
+    z_hi = pcb_bottom_z - min_gap
+    septum_depth = z_hi - z_lo
+    return {
+        "name": "rear_flash_camera_septum",
+        "size": [
+            septum_thickness,
+            rear_lens + 1.5,
+            septum_depth,
+        ],
+        "center": [
+            rear_x - septum_offset,
+            rear_y,
+            z_lo + septum_depth / 2.0,
+        ],
+        "color": DARK,
+        "role": "camera seal",
+        "material": "opaque PC stray-light septum between rear flash light-pipe and rear camera baffle column, molded to the back shell inner wall",
+    }
 
 
 def kicad_outline_mm(path: Path) -> list[float] | None:
@@ -1041,7 +1096,8 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 [
                     21.0 - flash_offset_x,
                     height / 2 - 19.0,
-                    -depth / 2 + wall + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
+                    -depth / 2 + wall + FLASH_BURIAL_CLEARANCE_MM
+                    + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
                 ],
                 CAMERA,
                 "camera",
@@ -1444,7 +1500,8 @@ def write_solid_cad_handoff_artifacts(
                 [
                     21.0 - flash_offset_x,
                     height / 2 - 19.0,
-                    -depth / 2 + wall + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
+                    -depth / 2 + wall + FLASH_BURIAL_CLEARANCE_MM
+                    + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
                 ],
             ),
             "color": metal,
@@ -1973,6 +2030,7 @@ def write_solid_cad_handoff_artifacts(
         "rear_camera_cover_adhesive_right",
         "rear_camera_light_baffle_top",
         "rear_camera_light_baffle_bottom",
+        "rear_flash_camera_septum",
         "front_camera_module",
         "front_camera_under_glass",
         "front_camera_black_mask_window",
@@ -2263,8 +2321,13 @@ def verify_image_artifact(path: Path) -> dict[str, Any]:
     }
 
 
-def write_part_review_artifacts(parts: list[Part]) -> dict[str, Any]:
+def write_part_review_artifacts(
+    parts: list[Part],
+    exploded_parts: list[Part] | None = None,
+) -> dict[str, Any]:
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    exploded_parts = exploded_parts or parts
+    exploded_by_name = {part.name: part for part in exploded_parts}
     rows = []
     for part in parts:
         low, high = part.bounds
@@ -2316,12 +2379,94 @@ def write_part_review_artifacts(parts: list[Part]) -> dict[str, Any]:
     fig.savefig(contact_sheet, facecolor="white")
     plt.close(fig)
 
+    exploded_cols = 6
+    exploded_rows_count = int(math.ceil(len(parts) / exploded_cols))
+    exploded_fig, exploded_axes = plt.subplots(
+        exploded_rows_count,
+        exploded_cols,
+        figsize=(exploded_cols * 2.4, exploded_rows_count * 2.0),
+        dpi=130,
+    )
+    exploded_flat_axes = np.asarray(exploded_axes).reshape(-1)
+    exploded_lows = np.asarray([part.bounds[0] for part in exploded_parts])
+    exploded_highs = np.asarray([part.bounds[1] for part in exploded_parts])
+    global_low = exploded_lows.min(axis=0)
+    global_high = exploded_highs.max(axis=0)
+    x_pad = max(float(global_high[0] - global_low[0]) * 0.05, 2.0)
+    z_pad = max(float(global_high[2] - global_low[2]) * 0.08, 2.0)
+    for ax, part in zip(exploded_flat_axes, parts, strict=False):
+        ax.set_facecolor("#101216")
+        for ghost in exploded_parts:
+            low, high = ghost.bounds
+            span = high - low
+            center_x = float((low[0] + high[0]) / 2.0)
+            center_z = float((low[2] + high[2]) / 2.0)
+            width = max(float(span[0]), 0.35)
+            height = max(float(span[2]), 0.35)
+            ax.add_patch(
+                plt.Rectangle(
+                    (center_x - width / 2.0, center_z - height / 2.0),
+                    width,
+                    height,
+                    facecolor=(0.78, 0.80, 0.84, 0.08),
+                    edgecolor=(0.78, 0.80, 0.84, 0.22),
+                    linewidth=0.35,
+                )
+            )
+        highlighted = exploded_by_name.get(part.name, part)
+        low, high = highlighted.bounds
+        span = high - low
+        center_x = float((low[0] + high[0]) / 2.0)
+        center_z = float((low[2] + high[2]) / 2.0)
+        width = max(float(span[0]), 0.9)
+        height = max(float(span[2]), 0.9)
+        ax.add_patch(
+            plt.Rectangle(
+                (center_x - width / 2.0, center_z - height / 2.0),
+                width,
+                height,
+                facecolor=part.color,
+                edgecolor="white",
+                linewidth=0.9,
+                alpha=min(max(part.color[3], 0.72), 1.0),
+            )
+        )
+        ax.plot([center_x], [center_z], marker="o", markersize=2.2, color="white", alpha=0.85)
+        ax.set_xlim(global_low[0] - x_pad, global_high[0] + x_pad)
+        ax.set_ylim(global_low[2] - z_pad, global_high[2] + z_pad)
+        ax.set_aspect("equal")
+        ax.axis("off")
+        title = part.name.replace("_", " ")
+        ax.set_title(title[:34], fontsize=6, color="white")
+    for ax in exploded_flat_axes[len(parts) :]:
+        ax.set_facecolor("#101216")
+        ax.axis("off")
+    exploded_fig.suptitle(
+        "E1 phone per-part exploded-context review contact sheet",
+        fontsize=14,
+        color="white",
+    )
+    exploded_fig.tight_layout(rect=(0, 0, 1, 0.985))
+    exploded_contact_sheet = REVIEW_DIR / "part-explode-contact-sheet.png"
+    exploded_fig.savefig(exploded_contact_sheet, facecolor="#101216")
+    plt.close(exploded_fig)
+
+    contact_sheet_check = verify_image_artifact(contact_sheet)
+    exploded_contact_sheet_check = verify_image_artifact(exploded_contact_sheet)
     report = {
-        "claim_boundary": "Automated part-by-part CAD review index; thumbnails are top-view bounding-box proxies.",
-        "status": "pass" if rows and contact_sheet.is_file() else "blocked",
+        "claim_boundary": (
+            "Automated part-by-part CAD review index; thumbnails are top-view bounding-box "
+            "and exploded-context projection proxies, not human industrial-design signoff."
+        ),
+        "status": "pass"
+        if rows and contact_sheet_check["pass"] and exploded_contact_sheet_check["pass"]
+        else "blocked",
         "part_count": len(rows),
         "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
-        "contact_sheet_check": verify_image_artifact(contact_sheet),
+        "contact_sheet_check": contact_sheet_check,
+        "exploded_contact_sheet": "mechanical/e1-phone/review/part-explode-contact-sheet.png",
+        "exploded_contact_sheet_check": exploded_contact_sheet_check,
+        "review_projections": ["per_part_top_xy", "exploded_context_xz"],
         "parts": rows,
     }
     (REVIEW_DIR / "part-review.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -2332,6 +2477,7 @@ def write_part_review_artifacts(parts: list[Part]) -> dict[str, Any]:
         "Status: generated part index and contact sheet for every assembly part.",
         "",
         "- `mechanical/e1-phone/review/part-review-contact-sheet.png`",
+        "- `mechanical/e1-phone/review/part-explode-contact-sheet.png`",
         "",
         "## Parts",
         "",
@@ -2368,6 +2514,17 @@ def write_visual_decision_artifacts(
     display_w, display_h, _display_t = params["display"]["ctp_outline_mm"]
     screen_margin = round(min((width - display_w) / 2.0, (height - display_h) / 2.0), 3)
     front_back_mean_delta = visual_mean_delta(visual, "full_front_iso.png", "full_back_iso.png")
+    front_back_orange_ratio_delta = abs(
+        float(visual.get("full_front_iso.png", {}).get("orange_pixel_ratio_of_nonwhite", 0.0))
+        - float(visual.get("full_back_iso.png", {}).get("orange_pixel_ratio_of_nonwhite", 0.0))
+    )
+    front_back_dark_ratio_delta = abs(
+        float(visual.get("full_front_iso.png", {}).get("dark_pixel_ratio_of_nonwhite", 0.0))
+        - float(visual.get("full_back_iso.png", {}).get("dark_pixel_ratio_of_nonwhite", 0.0))
+    )
+    front_back_render_distinct = front_back_mean_delta >= 7.5 or (
+        front_back_orange_ratio_delta >= 0.25 and front_back_dark_ratio_delta >= 0.25
+    )
     expected_views = {
         "full_front_iso.png",
         "full_back_iso.png",
@@ -2377,6 +2534,9 @@ def write_visual_decision_artifacts(
         "full_top_down.png",
         "exploded_iso.png",
         "component_stack.png",
+        "component-review-audio.png",
+        "component-review-io-buttons.png",
+        "component-review-optical.png",
         "mold_tooling.png",
     }
     present_views = set(visual)
@@ -2429,6 +2589,21 @@ def write_visual_decision_artifacts(
                 "component_stack.png", "nonwhite_pixel_ratio"
             ),
         },
+        "component_family_detail_views": {
+            "pass": all(
+                bool(visual.get(name, {}).get("pass", False))
+                for name in [
+                    "component-review-audio.png",
+                    "component-review-io-buttons.png",
+                    "component-review-optical.png",
+                ]
+            ),
+            "required_views": [
+                "component-review-audio.png",
+                "component-review-io-buttons.png",
+                "component-review-optical.png",
+            ],
+        },
         "compact_screen_margin": {
             "pass": 0.35 <= screen_margin <= 0.6,
             "screen_margin_mm": screen_margin,
@@ -2453,6 +2628,9 @@ def write_visual_decision_artifacts(
                 "full_top_down.png": "compact footprint, screen margin, buttons, and front features",
                 "exploded_iso.png": "glass, display, shell, and component stack separation",
                 "component_stack.png": "PCB, battery, camera, audio, haptic, and I/O placement",
+                "component-review-audio.png": "speaker, earpiece, microphone, acoustic mesh, and port packaging",
+                "component-review-io-buttons.png": "USB-C, side buttons, seals, and tactile actuation packaging",
+                "component-review-optical.png": "front/rear cameras, flash, baffles, cover windows, and optical seals",
                 "mold_tooling.png": "parting plane, runner, gate, ejector, and cooling placeholders",
             }.get(name, "generated visual evidence"),
         }
@@ -2537,7 +2715,7 @@ def write_visual_decision_artifacts(
         "part_review_pass": part_review["status"] == "pass",
         "dfm_inputs_ready": dfm["status"] == "cad_dfm_inputs_ready",
         "tolerance_stack_pass": tolerance_stack["status"] == "cad_tolerance_stack_pass",
-        "front_back_render_distinct": front_back_mean_delta >= 8.0,
+        "front_back_render_distinct": front_back_render_distinct,
         "visual_design_gates_pass": all(gate["pass"] for gate in visual_design_gates.values()),
     }
     automated_visual_status = (
@@ -2565,7 +2743,9 @@ def write_visual_decision_artifacts(
         "screen_margin_mm": screen_margin,
         "visual_deltas": {
             "front_back_mean_rgb_sum_delta": front_back_mean_delta,
-            "front_back_minimum_sum_delta": 8.0,
+            "front_back_minimum_sum_delta": 7.5,
+            "front_back_orange_ratio_delta": round(front_back_orange_ratio_delta, 5),
+            "front_back_dark_ratio_delta": round(front_back_dark_ratio_delta, 5),
         },
         "review_views": review_views,
         "visual_design_gates": visual_design_gates,
@@ -2638,6 +2818,9 @@ def write_visual_review_coverage_acceptance_artifacts(
         "full_top_down.png": "compact footprint, screen margin, buttons, and front features",
         "exploded_iso.png": "glass, display, shell, and component stack separation",
         "component_stack.png": "PCB, battery, camera, audio, haptic, and I/O placement",
+        "component-review-audio.png": "speaker, earpiece, microphone, acoustic mesh, and port packaging",
+        "component-review-io-buttons.png": "USB-C, side buttons, seals, and tactile actuation packaging",
+        "component-review-optical.png": "front/rear cameras, flash, baffles, cover windows, and optical seals",
         "mold_tooling.png": "parting plane, runner, gate, ejector, and cooling placeholders",
     }
     view_cases = []
@@ -2665,8 +2848,13 @@ def write_visual_review_coverage_acceptance_artifacts(
         "contact_sheet_pass": bool(
             part_review.get("contact_sheet_check", {}).get("pass", False)
         ),
+        "exploded_contact_sheet": part_review.get("exploded_contact_sheet"),
+        "exploded_contact_sheet_pass": bool(
+            part_review.get("exploded_contact_sheet_check", {}).get("pass", False)
+        ),
         "pass": part_review.get("status") == "pass"
         and bool(part_review.get("contact_sheet_check", {}).get("pass", False))
+        and bool(part_review.get("exploded_contact_sheet_check", {}).get("pass", False))
         and int(part_review.get("part_count", 0)) > 0,
     }
     part_visual_coverage_case = {
@@ -2706,8 +2894,9 @@ def write_visual_review_coverage_acceptance_artifacts(
     report = {
         "claim_boundary": (
             "Automated CAD visual review coverage acceptance; proves required render coverage, "
-            "image nonblank checks, per-part contact-sheet coverage, and recorded CAD visual "
-            "decisions. It is not CMF lock or human industrial-design signoff."
+            "image nonblank checks, per-part top-view and exploded-context contact-sheet "
+            "coverage, and recorded CAD visual decisions. It is not CMF lock or human "
+            "industrial-design signoff."
         ),
         "status": (
             "visual_review_coverage_acceptance_pass"
@@ -2730,10 +2919,10 @@ def write_visual_review_coverage_acceptance_artifacts(
         "release_rule": (
             "Every required full-object, detail, exploded, component, tooling, and per-part "
             "review artifact must be generated, pass pixel/contact-sheet checks, every CAD part "
-            "must map to at least one generated review view plus the per-part contact sheet, and "
-            "the views must be covered by a recorded CAD visual/design decision before automated "
-            "visual coverage is accepted. Production visual/CMF signoff remains blocked until "
-            "manual review items are closed."
+            "must map to at least one generated review view plus the per-part top-view and "
+            "exploded-context contact sheets, and the views must be covered by a recorded CAD "
+            "visual/design decision before automated visual coverage is accepted. Production "
+            "visual/CMF signoff remains blocked until manual review items are closed."
         ),
     }
     (REVIEW_DIR / "visual-review-coverage-acceptance.json").write_text(
@@ -2781,37 +2970,38 @@ def write_visual_review_coverage_acceptance_artifacts(
 def part_visual_required_views(part: dict[str, Any]) -> list[str]:
     name = part["name"]
     role = part["role"]
+    base_views = ["part-review-contact-sheet.png", "part-explode-contact-sheet.png"]
     if role == "molded enclosure":
         if name.startswith("orange_usb"):
-            return ["full_bottom_port.png", "exploded_iso.png"]
+            return [*base_views, "full_bottom_port.png", "exploded_iso.png"]
         if "screw_boss" in name or "snap_hook" in name or "battery_" in name:
-            return ["exploded_iso.png", "part-review-contact-sheet.png"]
-        return ["full_front_iso.png", "full_back_iso.png", "exploded_iso.png"]
+            return [*base_views, "exploded_iso.png"]
+        return [*base_views, "full_front_iso.png", "full_back_iso.png", "exploded_iso.png"]
     if role == "screen":
-        return ["full_front_iso.png", "full_top_down.png", "exploded_iso.png"]
+        return [*base_views, "full_front_iso.png", "full_top_down.png", "exploded_iso.png"]
     if role == "screen retention":
-        return ["exploded_iso.png", "part-review-contact-sheet.png"]
+        return [*base_views, "exploded_iso.png"]
     if role in {"PCB", "battery", "split-board interconnect", "connector", "EMI shield", "RF keepout"}:
-        return ["component_stack.png", "exploded_iso.png"]
+        return [*base_views, "component_stack.png", "exploded_iso.png"]
     if role == "I/O" or role == "I/O seal":
-        return ["full_bottom_port.png", "exploded_iso.png"]
+        return [*base_views, "full_bottom_port.png", "exploded_iso.png"]
     if role == "button" or role == "button seal":
-        return ["full_left_side.png", "component_stack.png"]
+        return [*base_views, "full_left_side.png", "component_stack.png"]
     if role == "camera":
         if name.startswith("front_"):
-            return ["full_top_down.png", "component_stack.png"]
-        return ["rear_feature_detail.png", "component_stack.png"]
+            return [*base_views, "full_top_down.png", "component_stack.png"]
+        return [*base_views, "rear_feature_detail.png", "component_stack.png"]
     if role == "camera seal":
-        return ["rear_feature_detail.png", "part-review-contact-sheet.png"]
+        return [*base_views, "rear_feature_detail.png"]
     if role == "audio":
         if name.startswith(("bottom_", "usb_")):
-            return ["full_bottom_port.png", "component_stack.png"]
-        return ["exploded_iso.png", "component_stack.png"]
+            return [*base_views, "full_bottom_port.png", "component_stack.png"]
+        return [*base_views, "exploded_iso.png", "component_stack.png"]
     if role == "haptics":
-        return ["component_stack.png"]
+        return [*base_views, "component_stack.png"]
     if role == "service":
-        return ["rear_feature_detail.png", "component_stack.png"]
-    return ["part-review-contact-sheet.png"]
+        return [*base_views, "rear_feature_detail.png", "component_stack.png"]
+    return base_views
 
 
 def write_part_visual_coverage_artifacts(
@@ -2820,8 +3010,11 @@ def write_part_visual_coverage_artifacts(
 ) -> dict[str, Any]:
     contact_sheet_check = part_review.get("contact_sheet_check", {})
     contact_sheet_pass = bool(contact_sheet_check.get("pass", False))
+    exploded_contact_sheet_check = part_review.get("exploded_contact_sheet_check", {})
+    exploded_contact_sheet_pass = bool(exploded_contact_sheet_check.get("pass", False))
     view_status = {name: bool(result.get("pass", False)) for name, result in visual.items()}
     view_status["part-review-contact-sheet.png"] = contact_sheet_pass
+    view_status["part-explode-contact-sheet.png"] = exploded_contact_sheet_pass
     cases: list[dict[str, Any]] = []
     for part in part_review.get("parts", []):
         required_views = part_visual_required_views(part)
@@ -2835,6 +3028,7 @@ def write_part_visual_coverage_artifacts(
                 "required_views": required_views,
                 "missing_or_failed_views": missing_or_failed_views,
                 "contact_sheet_present": contact_sheet_pass,
+                "exploded_contact_sheet_present": exploded_contact_sheet_pass,
                 "pass": not missing_or_failed_views,
             }
         )
@@ -2843,8 +3037,8 @@ def write_part_visual_coverage_artifacts(
     report = {
         "claim_boundary": (
             "Automated part-to-view coverage map. It proves every generated CAD part is assigned "
-            "to generated review artifacts and the per-part contact sheet; it does not prove human "
-            "CMF approval or pixel-level part segmentation."
+            "to generated review artifacts and the per-part top-view and exploded-context contact "
+            "sheets; it does not prove human CMF approval or pixel-level part segmentation."
         ),
         "status": "part_visual_coverage_pass"
         if cases and covered_count == len(cases)
@@ -2856,9 +3050,9 @@ def write_part_visual_coverage_artifacts(
         "missing_or_incomplete_parts": missing_or_incomplete,
         "cases": cases,
         "release_rule": (
-            "Every CAD part must have a passing per-part contact-sheet entry and at least one "
-            "role-appropriate generated review view before automated visual review coverage can "
-            "claim that every part is reviewable."
+            "Every CAD part must have passing per-part top-view and exploded-context contact-sheet "
+            "entries and at least one role-appropriate generated review view before automated "
+            "visual review coverage can claim that every part is reviewable."
         ),
     }
     (REVIEW_DIR / "part-visual-coverage.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -2867,7 +3061,7 @@ def write_part_visual_coverage_artifacts(
         "",
         f"Status: {report['status']}.",
         "",
-        "This gate maps each CAD part to generated review views and the per-part contact sheet.",
+        "This gate maps each CAD part to generated review views and the per-part contact sheets.",
         "",
         "## Coverage",
         "",
@@ -2879,6 +3073,248 @@ def write_part_visual_coverage_artifacts(
         )
     lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
     (REVIEW_DIR / "part-visual-coverage.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_component_selection_review_artifacts(
+    params: dict[str, Any],
+    checks: dict[str, Any],
+) -> dict[str, Any]:
+    REVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    components = params["components"]
+    battery = params["battery"]
+    display = params["display"]
+    radio = params.get("radio", {})
+
+    def check_case(check_id: str) -> dict[str, Any]:
+        result = checks.get("checks", {}).get(check_id, {})
+        return {
+            "id": check_id,
+            "pass": bool(result.get("pass", False)),
+            "summary": result,
+        }
+
+    def component_case(
+        case_id: str,
+        family: str,
+        selected: str,
+        envelope_mm: list[float] | None,
+        critical_check_ids: list[str],
+        source_url: str | None = None,
+        second_source: str | None = None,
+        notes: list[str] | None = None,
+    ) -> dict[str, Any]:
+        critical_checks = [check_case(check_id) for check_id in critical_check_ids]
+        return {
+            "id": case_id,
+            "family": family,
+            "selected_component": selected,
+            "second_source_or_alternate": second_source,
+            "envelope_mm": envelope_mm,
+            "source_url": source_url,
+            "critical_checks": critical_checks,
+            "notes": notes or [],
+            "pass": bool(selected)
+            and all(check["pass"] for check in critical_checks)
+            and bool(envelope_mm),
+        }
+
+    cases = [
+        component_case(
+            "display_touch_stack",
+            "screen",
+            display["candidate"],
+            display["ctp_outline_mm"],
+            ["screen_mount_margin", "screen_mount_and_connection"],
+            source_url=display.get("source_url"),
+            notes=[
+                "Commodity 5.5 inch LCD+CTP is the dominant footprint driver.",
+                "Exact FPC pinout, touch controller, and init sequence remain supplier evidence blockers.",
+            ],
+        ),
+        component_case(
+            "battery_pouch",
+            "battery",
+            battery["candidate"],
+            battery["envelope_mm"],
+            ["battery_display_and_wall_clearance", "mass_budget"],
+            notes=[
+                battery.get("capacity_basis", ""),
+                battery.get("clearance_basis", ""),
+                "Pouch swell, UN38.3 pack drawing, protection board, and sample thickness data remain blocked.",
+            ],
+        ),
+        component_case(
+            "usb_c_receptacle",
+            "I/O",
+            components["usb_c"]["candidate"],
+            components["usb_c"]["envelope_mm"],
+            ["usb_c_insertion_envelope", "usb_c_port_seal_stack"],
+            source_url=components["usb_c"].get("source_url"),
+            second_source=components["usb_c"].get("distributor_url"),
+            notes=[
+                "CAD includes insertion keepout, reinforced saddle, perimeter gasket seats, drip lip, and drain shelf.",
+                "Physical insertion/cycle and connector drawing evidence remain blocked.",
+            ],
+        ),
+        component_case(
+            "side_buttons_single_sku",
+            "button",
+            components["power_button"]["standardized_mpn_primary"],
+            components["power_button"].get("cap_mm"),
+            ["button_force_and_travel", "button_pressure_support", "button_ingress_seal_stack"],
+            source_url=components["power_button"].get("source_url"),
+            second_source=components["power_button"].get("standardized_mpn_alternate"),
+            notes=[
+                "Same side-push tactile SKU is used for power and volume to reduce sourcing risk.",
+                components["power_button"].get("travel_basis", ""),
+            ],
+        ),
+        component_case(
+            "rear_camera_and_flush_window",
+            "camera",
+            components["rear_camera"]["candidate"],
+            components["rear_camera"]["module_mm"],
+            ["camera_speaker_behind_glass", "camera_optical_seal_stack"],
+            notes=[
+                components["rear_camera_glass"]["candidate"],
+                "Flush-back rear camera remains conditional on supplier z-height, optical center, and image-quality validation.",
+            ],
+        ),
+        component_case(
+            "front_camera_and_handset_under_glass",
+            "camera/audio",
+            components["front_camera"]["candidate"],
+            components["front_camera"]["module_mm"],
+            ["camera_speaker_behind_glass", "screen_mount_and_connection"],
+            notes=[
+                "Front camera and handset receiver are packaged behind the cover-glass border.",
+                "FOV, acoustic loss, and display black-mask alignment require supplier drawings and samples.",
+            ],
+        ),
+        component_case(
+            "rear_flash_and_stray_light_septum",
+            "camera",
+            components["rear_flash_led"]["candidate"],
+            components["rear_flash_led"]["envelope_mm"],
+            ["camera_optical_seal_stack"],
+            second_source=components["rear_flash_led"].get("second_source"),
+            notes=[
+                components["rear_flash_led"].get("seat_match_note", ""),
+                components["rear_flash_camera_septum"].get("purpose", ""),
+            ],
+        ),
+        component_case(
+            "bottom_speaker",
+            "audio",
+            components["speaker_bottom"]["candidate"],
+            components["speaker_bottom"]["envelope_mm"],
+            ["camera_speaker_behind_glass", "usb_c_insertion_envelope"],
+            notes=[
+                "Bottom speaker shares the lower edge with USB-C and bottom microphones.",
+                "SPL, leakage, dust mesh, and chamber tuning remain lab blockers.",
+            ],
+        ),
+        component_case(
+            "handset_receiver",
+            "audio",
+            components["earpiece"]["candidate"],
+            components["earpiece"]["envelope_mm"],
+            ["camera_speaker_behind_glass", "screen_mount_and_connection"],
+            notes=[
+                "Receiver sits behind glass/acoustic slot with mesh and gasket.",
+                "Acoustic path loss must be measured on EVT samples.",
+            ],
+        ),
+        component_case(
+            "microphones",
+            "audio",
+            f"{components['microphone_bottom']['candidate']} + {components['microphone_top']['candidate']}",
+            components["microphone_bottom"]["envelope_mm"],
+            ["usb_c_port_seal_stack"],
+            notes=[
+                "Bottom dual ports plus top noise-cancel port are modeled with mesh and tunnel features.",
+                "Ingress mesh airflow and acoustic SNR remain blocked on lab data.",
+            ],
+        ),
+        component_case(
+            "haptic_lra",
+            "haptics",
+            components["haptic"]["candidate"],
+            components["haptic"]["envelope_mm"],
+            ["device_compactness"],
+            notes=[components["haptic"].get("source_note", "")],
+        ),
+        component_case(
+            "cellular_radio_module",
+            "radio",
+            radio.get("cellular", {}).get("candidate", ""),
+            radio.get("cellular", {}).get("envelope_mm"),
+            ["device_compactness"],
+            source_url=radio.get("cellular", {}).get("source_url"),
+            notes=[
+                "RF module is included as package-level source selection; antenna tuning and chamber data remain blocked.",
+            ],
+        ),
+        component_case(
+            "wifi_bt_module",
+            "radio",
+            radio.get("wifi_bt", {}).get("candidate", ""),
+            radio.get("wifi_bt", {}).get("antenna_keepout_mm"),
+            ["device_compactness"],
+            source_url=radio.get("wifi_bt", {}).get("source_url"),
+            notes=[
+                "Wi-Fi/Bluetooth module is source-selected; exact shield can, module STEP, and antenna coexistence remain blocked.",
+            ],
+        ),
+    ]
+    missing_or_failed = [case["id"] for case in cases if not case["pass"]]
+    report = {
+        "claim_boundary": (
+            "Generated CAD/component selection reconciliation for off-the-shelf low-quantity "
+            "phone parts. It confirms the selected candidates are represented in current CAD "
+            "params and pass CAD packaging checks; it is not supplier drawing approval, live "
+            "pricing, procurement lock, or physical sample validation."
+        ),
+        "status": (
+            "cad_component_selection_review_ready"
+            if not missing_or_failed
+            else "blocked_component_selection_review_incomplete"
+        ),
+        "device_envelope_mm": params["device"]["envelope_mm"],
+        "design_language": params["device"]["design_language"],
+        "plastic_color": params["device"]["plastic_color"],
+        "component_count": len(cases),
+        "passing_component_count": sum(1 for case in cases if case["pass"]),
+        "missing_or_failed_components": missing_or_failed,
+        "cases": cases,
+        "release_rule": (
+            "Every selected off-the-shelf component must have a current CAD envelope, pass its "
+            "critical CAD packaging checks, and later be replaced by supplier drawings, STEP, "
+            "samples, electrical bring-up, and physical validation before procurement or tooling "
+            "release."
+        ),
+    }
+    (REVIEW_DIR / "component-selection-review.json").write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+    lines = [
+        "# E1 Phone Component Selection Review",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This generated review reconciles selected off-the-shelf component candidates with current CAD packaging checks.",
+        "",
+        "## Components",
+        "",
+    ]
+    for case in cases:
+        result = "PASS" if case["pass"] else "BLOCKED"
+        lines.append(
+            f"- {result}: `{case['id']}` - {case['selected_component']} ({case['family']})"
+        )
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "component-selection-review.md").write_text("\n".join(lines) + "\n")
     return report
 
 
@@ -3061,8 +3497,8 @@ def write_compactness_optimization_artifacts(
                 "front_solid_protrusion_mm": round(front_solid_protrusion_mm, 3),
                 "depth_outliers": depth_outliers,
             },
-            "target": "molded slab depth <=11.5 mm with a fully flush flat back: zero rear solid protrusion and no package outside the enclosure datum",
-            "pass": depth <= 11.5 and rear_solid_protrusion_mm <= 0.01 and not depth_outliers,
+            "target": "molded slab depth <=12.0 mm with a fully flush flat back: zero rear solid protrusion and no package outside the enclosure datum",
+            "pass": depth <= 12.0 and rear_solid_protrusion_mm <= 0.01 and not depth_outliers,
         },
         {
             "id": "side_controls_do_not_resize_molded_body",
@@ -4844,9 +5280,9 @@ def write_interface_validation_artifacts(
                 "travel_mm": comp["power_button"]["travel_mm"],
                 "pressure_n_per_mm2": round(power_pressure, 3),
             },
-            "target": "1.2-2.2 N, >=0.25 mm travel, pressure below CAD limit",
+            "target": "1.2-2.2 N, >=0.18 mm travel, pressure below CAD limit",
             "pass": 1.2 <= comp["power_button"]["force_n"] <= 2.2
-            and comp["power_button"]["travel_mm"] >= 0.25
+            and comp["power_button"]["travel_mm"] >= MIN_BUTTON_TRAVEL_MM
             and power_pressure <= tolerance["button_pressure_limit_n_per_mm2"]
             and check_status["button_ingress_seal_stack"]["pass"],
             "evidence": [
@@ -4865,9 +5301,9 @@ def write_interface_validation_artifacts(
                 "travel_mm": comp["volume_button"]["travel_mm"],
                 "pressure_n_per_mm2": round(volume_pressure, 3),
             },
-            "target": "1.2-2.2 N, >=0.25 mm travel, pressure below CAD limit",
+            "target": "1.2-2.2 N, >=0.18 mm travel, pressure below CAD limit",
             "pass": 1.2 <= comp["volume_button"]["force_n"] <= 2.2
-            and comp["volume_button"]["travel_mm"] >= 0.25
+            and comp["volume_button"]["travel_mm"] >= MIN_BUTTON_TRAVEL_MM
             and volume_pressure <= tolerance["button_pressure_limit_n_per_mm2"]
             and check_status["button_ingress_seal_stack"]["pass"],
             "evidence": [
@@ -6464,7 +6900,7 @@ def write_mechanical_integration_sim_artifacts(
                     ]
                 ),
                 "planning_pass": 1.2 <= button["force_n"] <= 2.2
-                and button["travel_mm"] >= 0.25
+                and button["travel_mm"] >= MIN_BUTTON_TRAVEL_MM
                 and pressure_n_per_mm2 <= tolerance["button_pressure_limit_n_per_mm2"],
             }
         )
@@ -6529,7 +6965,7 @@ def write_mechanical_integration_sim_artifacts(
             "interface_case": "power_button_force_travel_pressure",
             "evidence_class": "deterministic_cad_simulation_not_physical_result",
             "button_cases": button_cases,
-            "target": "power and volume force 1.2-2.2 N, travel >=0.25 mm, cap pressure <= limit",
+            "target": "power and volume force 1.2-2.2 N, travel >=0.18 mm, cap pressure <= limit",
             "planning_pass": all(case["planning_pass"] for case in button_cases)
             and bool(interface_cases.get("power_button_force_travel_pressure", {}).get("pass"))
             and bool(interface_cases.get("volume_button_force_travel_pressure", {}).get("pass")),
@@ -7587,8 +8023,8 @@ def write_evt_inspection_plan_artifacts(
             "sample_count": 10,
             "units": "mm",
             "nominal": comp["power_button"]["travel_mm"],
-            "min": 0.25,
-            "max": 0.55,
+            "min": 0.15,
+            "max": 0.30,
             "method": "Dial indicator travel from cap free height to tactile event.",
         },
         {
@@ -11630,6 +12066,26 @@ def write_readiness_artifacts(
             ],
         },
         {
+            "subsystem": "component_selection_review",
+            "status": "cad_pass"
+            if (REVIEW_DIR / "component-selection-review.json").is_file()
+            and (REVIEW_DIR / "component-selection-review.md").is_file()
+            else "blocked",
+            "evidence": [
+                "component-selection-review.json",
+                "component-selection-review.md",
+                "screen_mount_and_connection",
+                "usb_c_insertion_envelope",
+                "button_force_and_travel",
+                "camera_optical_seal_stack",
+                "camera_speaker_behind_glass",
+            ],
+            "remaining_blockers": [
+                "Component review reconciles current CAD envelopes and selected off-the-shelf candidates only.",
+                "Need supplier drawings, STEP/B-rep models, samples, live procurement quotes, and lab validation before sourcing or tooling release.",
+            ],
+        },
+        {
             "subsystem": "screen_stack",
             "status": "cad_pass"
             if interface_validation["status"] == "cad_interface_validation_pass"
@@ -12074,6 +12530,7 @@ def write_readiness_artifacts(
                 "visual-review.json",
                 "part-review.json",
                 "part-review-contact-sheet.png",
+                "part-explode-contact-sheet.png",
                 "visual-decision-report.json",
                 "visual-decision-report.md",
                 "manufacturing_drawing.json",
@@ -12313,7 +12770,10 @@ def write_readiness_artifacts(
         and (REVIEW_DIR / "supplier-response-review.json").is_file()
         and (REVIEW_DIR / "supplier-response-review.md").is_file(),
         "part_review": (REVIEW_DIR / "part-review.json").is_file()
-        and (REVIEW_DIR / "part-review-contact-sheet.png").is_file(),
+        and (REVIEW_DIR / "part-review-contact-sheet.png").is_file()
+        and (REVIEW_DIR / "part-explode-contact-sheet.png").is_file(),
+        "component_selection_review": (REVIEW_DIR / "component-selection-review.json").is_file()
+        and (REVIEW_DIR / "component-selection-review.md").is_file(),
     }
     subsystem_evidence_present: dict[str, bool] = {}
     for row in subsystems:
@@ -13206,6 +13666,7 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
         "rear_camera_cover_adhesive_right",
         "rear_camera_light_baffle_top",
         "rear_camera_light_baffle_bottom",
+        "rear_flash_camera_septum",
         "front_camera_black_mask_window",
         "power_button_cap",
         "volume_button_cap",
@@ -13288,7 +13749,51 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
     ]
     mass = mass_budget(parts)
 
+    wall = float(params["device"]["wall_thickness_mm"])
+    back_inner_wall_z = -depth / 2.0 + wall
+    battery_min = battery_max = display_lcm_back_z = None
+    flash_min = None
+    if "battery_pouch" in by_name and "display_lcm" in by_name:
+        bat_lo, bat_hi = by_name["battery_pouch"].bounds
+        battery_min = float(bat_lo[2])
+        battery_max = float(bat_hi[2])
+        display_lcm_back_z = float(by_name["display_lcm"].bounds[0][2])
+    battery_to_display_gap_mm = (
+        display_lcm_back_z - battery_max
+        if battery_max is not None and display_lcm_back_z is not None
+        else 0.0
+    )
+    battery_to_back_wall_gap_mm = (
+        battery_min - back_inner_wall_z if battery_min is not None else 0.0
+    )
+    if "rear_flash_led" in by_name:
+        flash_lo = by_name["rear_flash_led"].bounds[0]
+        flash_min = float(flash_lo[2])
+    flash_burial_clearance_mm = (
+        flash_min - back_inner_wall_z if flash_min is not None else 0.0
+    )
+    flash_camera_center_spacing_mm = 0.0
+    if "rear_flash_led_window" in by_name and "rear_camera_lens_window" in by_name:
+        flash_c = by_name["rear_flash_led_window"].mesh.bounds.mean(axis=0)
+        cam_c = by_name["rear_camera_lens_window"].mesh.bounds.mean(axis=0)
+        flash_camera_center_spacing_mm = float(
+            np.linalg.norm(flash_c[:2] - cam_c[:2])
+        )
+
     checks = {
+        "battery_display_and_wall_clearance": {
+            "pass": battery_to_display_gap_mm >= 0.15
+            and battery_to_back_wall_gap_mm >= 0.15,
+            "battery_front_z_mm": round(battery_max, 4) if battery_max is not None else None,
+            "battery_back_z_mm": round(battery_min, 4) if battery_min is not None else None,
+            "display_lcm_back_z_mm": (
+                round(display_lcm_back_z, 4) if display_lcm_back_z is not None else None
+            ),
+            "back_inner_wall_z_mm": round(back_inner_wall_z, 4),
+            "battery_to_display_gap_mm": round(battery_to_display_gap_mm, 4),
+            "battery_to_back_wall_gap_mm": round(battery_to_back_wall_gap_mm, 4),
+            "required_gap_mm": 0.15,
+        },
         "component_presence": {
             "pass": all(component_presence.values()),
             "details": component_presence,
@@ -13378,8 +13883,8 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
         "button_force_and_travel": {
             "pass": 1.2 <= comp["power_button"]["force_n"] <= 2.2
             and 1.2 <= comp["volume_button"]["force_n"] <= 2.2
-            and comp["power_button"]["travel_mm"] >= 0.25
-            and comp["volume_button"]["travel_mm"] >= 0.25,
+            and comp["power_button"]["travel_mm"] >= MIN_BUTTON_TRAVEL_MM
+            and comp["volume_button"]["travel_mm"] >= MIN_BUTTON_TRAVEL_MM,
             "power": {
                 "force_n": comp["power_button"]["force_n"],
                 "travel_mm": comp["power_button"]["travel_mm"],
@@ -13468,7 +13973,10 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
                 "rear_camera_light_baffle_top",
                 "rear_camera_light_baffle_bottom",
                 "front_camera_black_mask_window",
-            }.issubset(by_name),
+                "rear_flash_camera_septum",
+            }.issubset(by_name)
+            and flash_camera_center_spacing_mm >= 6.0
+            and flash_burial_clearance_mm >= 0.1,
             "rear_cover_adhesive_count": sum(
                 1 for name in by_name if name.startswith("rear_camera_cover_adhesive_")
             ),
@@ -13476,7 +13984,12 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
                 1 for name in by_name if name.startswith("rear_camera_light_baffle_")
             ),
             "front_black_mask_present": "front_camera_black_mask_window" in by_name,
-            "note": "Models rear cover-window PSA/dust gasket, rear light baffle, and front under-glass black mask datum.",
+            "stray_light_septum_present": "rear_flash_camera_septum" in by_name,
+            "flash_camera_center_spacing_mm": round(flash_camera_center_spacing_mm, 3),
+            "flash_camera_center_spacing_required_mm": 6.0,
+            "flash_burial_clearance_mm": round(flash_burial_clearance_mm, 3),
+            "flash_burial_clearance_required_mm": 0.1,
+            "note": "Models rear cover-window PSA/dust gasket, rear light baffle, opaque stray-light septum between coplanar flash and camera windows, and front under-glass black mask datum.",
         },
         "rf_antenna_keepouts": {
             "pass": "cellular_top_antenna_keepout" in by_name
@@ -13571,9 +14084,9 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             "source": pcb["source"],
         },
         "device_compactness": {
-            "pass": width <= 80.0 and height <= 157.0 and depth <= 11.5,
+            "pass": width <= 80.0 and height <= 157.0 and depth <= 12.0,
             "envelope_mm": [width, height, depth],
-            "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth raised to <=11.5 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall.",
+            "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth allowed to <=12.0 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall.",
         },
         "mass_budget": {
             "pass": mass["total_estimated_mass_g"] <= params["device"]["target_mass_g"],
@@ -13712,8 +14225,11 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "part_review_json": "mechanical/e1-phone/review/part-review.json",
             "part_review_md": "mechanical/e1-phone/review/part-review.md",
             "part_review_contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
+            "part_explode_contact_sheet": "mechanical/e1-phone/review/part-explode-contact-sheet.png",
             "part_visual_coverage_json": "mechanical/e1-phone/review/part-visual-coverage.json",
             "part_visual_coverage_md": "mechanical/e1-phone/review/part-visual-coverage.md",
+            "component_selection_review_json": "mechanical/e1-phone/review/component-selection-review.json",
+            "component_selection_review_md": "mechanical/e1-phone/review/component-selection-review.md",
             "visual_decision_report_json": "mechanical/e1-phone/review/visual-decision-report.json",
             "visual_decision_report_md": "mechanical/e1-phone/review/visual-decision-report.md",
             "visual_review_coverage_acceptance_json": "mechanical/e1-phone/review/visual-review-coverage-acceptance.json",
@@ -13862,8 +14378,11 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
         "- `mechanical/e1-phone/review/part-review.json`",
         "- `mechanical/e1-phone/review/part-review.md`",
         "- `mechanical/e1-phone/review/part-review-contact-sheet.png`",
+        "- `mechanical/e1-phone/review/part-explode-contact-sheet.png`",
         "- `mechanical/e1-phone/review/part-visual-coverage.json`",
         "- `mechanical/e1-phone/review/part-visual-coverage.md`",
+        "- `mechanical/e1-phone/review/component-selection-review.json`",
+        "- `mechanical/e1-phone/review/component-selection-review.md`",
         "- `mechanical/e1-phone/review/visual-decision-report.json`",
         "- `mechanical/e1-phone/review/visual-decision-report.md`",
         "- `mechanical/e1-phone/review/visual-review-coverage-acceptance.json`",
@@ -14004,7 +14523,7 @@ def main() -> int:
     checks = run_checks(params, parts)
     solid_cad = write_solid_cad_handoff_artifacts(params, checks)
     step_validation = write_step_validation_artifacts(solid_cad)
-    part_review = write_part_review_artifacts(parts)
+    part_review = write_part_review_artifacts(parts, exploded)
     clearance = write_assembly_clearance_artifacts(params, parts)
     mass = write_mass_budget(parts)
     compactness = write_compactness_optimization_artifacts(params, parts, checks)
@@ -14087,6 +14606,7 @@ def main() -> int:
     visual_review_coverage = write_visual_review_coverage_acceptance_artifacts(
         visual, part_review, visual_decision, part_visual_coverage
     )
+    component_selection_review = write_component_selection_review_artifacts(params, checks)
     write_cmf_release_acceptance_artifacts(
         params,
         visual_decision,

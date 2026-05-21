@@ -19,6 +19,9 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
 - PASS: `compact_envelope_optimization`
   Evidence: compactness-optimization.json, compactness-optimization.md, compactness-optimization.png, compactness-optimization.svg, device_compactness, screen_mount_margin, pcb_battery_non_overlap
   Remaining: Envelope is optimized against current EVT0 supplier envelopes only.; Need supplier STEP and routed PCB before proving no further local reduction is possible.
+- PASS: `component_selection_review`
+  Evidence: component-selection-review.json, component-selection-review.md, screen_mount_and_connection, usb_c_insertion_envelope, button_force_and_travel, camera_optical_seal_stack, camera_speaker_behind_glass
+  Remaining: Component review reconciles current CAD envelopes and selected off-the-shelf candidates only.; Need supplier drawings, STEP/B-rep models, samples, live procurement quotes, and lab validation before sourcing or tooling release.
 - PASS: `screen_stack`
   Evidence: screen_cover_glass, display_lcm, screen_adhesive_top, display_fpc_connector, screen_mount_and_connection, interface-validation.json, interface-validation.md, display-validation.json, display-validation.md, display-results-template.csv, display-results-review.json, display-results-review.md, mechanical-integration-sim.json, mechanical-integration-sim.md
   Remaining: Need supplier drawing and exact FPC exit direction.; Need verified touch/display pinout and bend test with real sample.; Need populated display/touch bond, luminance, touch-grid, drop, and bring-up results.
@@ -71,7 +74,7 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
   Evidence: toolmaker-signoff-package.json, toolmaker-signoff-package.md, toolmaker-signoff-response-template.csv, toolmaker-signoff-review.json, toolmaker-signoff-review.md
   Remaining: No mold-flow report, toolmaker gate/ejector/cooling markup, or CMF signoff has been returned.; Need signed toolmaker response before steel release or manufacturing-ready claim.
 - PASS: `review_automation`
-  Evidence: fit-check-report.json, visual-review.json, part-review.json, part-review-contact-sheet.png, visual-decision-report.json, visual-decision-report.md, manufacturing_drawing.json, full_top_down.png, mold_tooling.png, rear_feature_detail.png
+  Evidence: fit-check-report.json, visual-review.json, part-review.json, part-review-contact-sheet.png, part-explode-contact-sheet.png, visual-decision-report.json, visual-decision-report.md, manufacturing_drawing.json, full_top_down.png, mold_tooling.png, rear_feature_detail.png
   Remaining: Visual checks prove nonblank/high-contrast renders and record EVT0 decisions; they do not replace CMF, tooling, or human DFM review.
 - PASS: `visual_aesthetic_decision_log`
   Evidence: visual-decision-report.json, visual-decision-report.md, full_front_iso.png, full_back_iso.png, rear_feature_detail.png, full_bottom_port.png, component_stack.png, mold_tooling.png
@@ -133,3 +136,4 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
 - PASS: `supplier_rfq_package`
 - PASS: `supplier_response_review`
 - PASS: `part_review`
+- PASS: `component_selection_review`
