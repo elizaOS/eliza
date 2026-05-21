@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -118,8 +117,14 @@ def main() -> int:
                 errors.append(f"{record_id}: record spec must be a mapping")
                 continue
             required = record.get("required_fields")
-            if not isinstance(required, list) or "schema" not in required or "claim_boundary" not in required:
-                errors.append(f"{record_id}: required_fields must include schema and claim_boundary")
+            if (
+                not isinstance(required, list)
+                or "schema" not in required
+                or "claim_boundary" not in required
+            ):
+                errors.append(
+                    f"{record_id}: required_fields must include schema and claim_boundary"
+                )
             nested = record.get("required_nested")
             if not isinstance(nested, dict):
                 errors.append(f"{record_id}: required_nested must be a mapping")

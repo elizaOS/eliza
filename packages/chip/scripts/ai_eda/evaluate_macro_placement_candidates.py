@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -90,7 +90,10 @@ def validate_candidate(record: dict[str, Any], path: Path) -> list[str]:
         if missing_replay:
             errors.append(f"{record_id}: missing replay gate requirements {missing_replay}")
     decision = record.get("decision")
-    if not isinstance(decision, dict) or decision.get("status") not in {"replayed_blocked", "pending"}:
+    if not isinstance(decision, dict) or decision.get("status") not in {
+        "replayed_blocked",
+        "pending",
+    }:
         errors.append(f"{record_id}: ranking requires a quarantined candidate status")
     claim_boundary = record.get("claim_boundary")
     if not isinstance(claim_boundary, str) or "release_claim" not in claim_boundary:
@@ -155,7 +158,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     candidate_dirs = args.candidate_dir or [
-        DEFAULT_CANDIDATE_DIR if args.run_id == DEFAULT_RUN_ID else ROOT / "build/ai_eda/macro_placement_policy" / args.run_id / "candidates"
+        DEFAULT_CANDIDATE_DIR
+        if args.run_id == DEFAULT_RUN_ID
+        else ROOT / "build/ai_eda/macro_placement_policy" / args.run_id / "candidates"
     ]
     selected_candidate_paths = candidate_paths(args.candidate, candidate_dirs)
     errors: list[str] = []
@@ -195,7 +200,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.macro_placement_candidate_eval.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "candidate_dirs": [rel(path) for path in candidate_dirs],

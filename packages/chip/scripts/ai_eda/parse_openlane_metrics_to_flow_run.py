@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_BASE_FLOW_RUN = ROOT / "build/ai_eda/e1_openlane_conversion/validation/records/flow-run.json"
+DEFAULT_BASE_FLOW_RUN = (
+    ROOT / "build/ai_eda/e1_openlane_conversion/validation/records/flow-run.json"
+)
 DEFAULT_METRICS = ROOT / "docs/spec-db/ai-eda/openlane-metrics-fixtures/e1_final_metrics.clean.json"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/openlane_flow_labels"
 CLAIM_BOUNDARY = "openlane_metric_parse_only_no_training_inference_signoff_or_release_claim"
@@ -106,7 +108,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-flow-run", type=Path, default=DEFAULT_BASE_FLOW_RUN)
     parser.add_argument("--metrics-json", type=Path, default=DEFAULT_METRICS)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     return parser.parse_args()
 
 
@@ -131,11 +133,17 @@ def main() -> int:
     }
     flow_run["outputs"] = {
         **flow_run.get("outputs", {}),
-        "reports": sorted(set(flow_run.get("outputs", {}).get("reports", []) + [rel(args.metrics_json.resolve())])),
+        "reports": sorted(
+            set(flow_run.get("outputs", {}).get("reports", []) + [rel(args.metrics_json.resolve())])
+        ),
     }
     flow_run["status"] = {
-        "result": "BLOCKED_MISSING_REQUIRED_METRICS" if missing else "PARSED_METRICS_REQUIRES_REPLAY_REVIEW",
-        "blockers": [f"missing normalized labels: {', '.join(missing)}"] if missing else [
+        "result": "BLOCKED_MISSING_REQUIRED_METRICS"
+        if missing
+        else "PARSED_METRICS_REQUIRES_REPLAY_REVIEW",
+        "blockers": [f"missing normalized labels: {', '.join(missing)}"]
+        if missing
+        else [
             "metrics parsed but still require deterministic run provenance, review, and train/test split assignment"
         ],
     }
@@ -147,7 +155,7 @@ def main() -> int:
     flow_path.write_text(json.dumps(flow_run, indent=2, sort_keys=True) + "\n")
     report = {
         "schema": "eliza.ai_eda.openlane_flow_label_parse_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,

@@ -8,7 +8,7 @@ import hashlib
 import json
 import re
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -193,7 +193,10 @@ def convert_bench(path: Path, out_dir: Path) -> list[dict[str, Any]]:
         "id": f"{record_prefix}-flow-run",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
-        "toolchain": {"tools": ["OpenABC-D public BENCH export"], "version_capture": "external/datasets/openabc-d/manifest.yaml"},
+        "toolchain": {
+            "tools": ["OpenABC-D public BENCH export"],
+            "version_capture": "external/datasets/openabc-d/manifest.yaml",
+        },
         "command": "python3 scripts/ai_eda/convert_openabc_d_to_internal_records.py --run-id <run-id>",
         "inputs": {"bench": source},
         "outputs": {"reports": [], "artifacts": [source]},
@@ -223,7 +226,7 @@ def convert_bench(path: Path, out_dir: Path) -> list[dict[str, Any]]:
             "logic_gate_count": len(parsed["assignments"]),
             "edge_count": len(parsed["edge_features"]),
         }
-        for record, out_path in zip(records, paths)
+        for record, out_path in zip(records, paths, strict=False)
     ]
 
 
@@ -231,7 +234,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bench-dir", type=Path, default=DEFAULT_BENCH_DIR)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=8)
     return parser.parse_args()
 
@@ -243,7 +246,9 @@ def main() -> int:
     if not args.bench_dir.exists():
         print(f"STATUS: BLOCKED ai_eda.openabc_d_conversion missing_bench_dir {args.bench_dir}")
         return 2
-    benches = sorted(args.bench_dir.glob("*_orig.bench"), key=lambda path: (path.stat().st_size, path.name))[: args.sample_limit]
+    benches = sorted(
+        args.bench_dir.glob("*_orig.bench"), key=lambda path: (path.stat().st_size, path.name)
+    )[: args.sample_limit]
     if not benches:
         print(f"STATUS: BLOCKED ai_eda.openabc_d_conversion no_bench_files {args.bench_dir}")
         return 2
@@ -258,7 +263,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.openabc_d_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,

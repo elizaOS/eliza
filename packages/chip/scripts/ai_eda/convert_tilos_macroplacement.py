@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -86,7 +86,9 @@ def parse_lef_macros(path: Path) -> dict[str, dict[str, float]]:
     return macros
 
 
-def parse_technology_lefs(payload: Path, technology: str) -> tuple[dict[str, dict[str, float]], list[Path]]:
+def parse_technology_lefs(
+    payload: Path, technology: str
+) -> tuple[dict[str, dict[str, float]], list[Path]]:
     lef_dir = payload / "Enablements" / technology / "lef"
     macros: dict[str, dict[str, float]] = {}
     lef_paths = sorted(lef_dir.glob("*.lef")) + sorted(lef_dir.glob("*.tlef"))
@@ -133,7 +135,9 @@ def component_entries(text: str) -> list[str]:
     return entries
 
 
-def parse_components(text: str, units: float, lef_macros: dict[str, dict[str, float]]) -> dict[str, dict[str, Any]]:
+def parse_components(
+    text: str, units: float, lef_macros: dict[str, dict[str, float]]
+) -> dict[str, dict[str, Any]]:
     components: dict[str, dict[str, Any]] = {}
     for entry in component_entries(text):
         head = re.match(r"-\s+(.+?)\s+(\S+)(?:\s+\+|$)", entry)
@@ -400,7 +404,9 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="TILOS case key like NanGate45/ariane133. Defaults to reviewed public cases.",
     )
-    parser.add_argument("--all", action="store_true", help="Convert every discovered direct DEF case.")
+    parser.add_argument(
+        "--all", action="store_true", help="Convert every discovered direct DEF case."
+    )
     return parser.parse_args()
 
 
@@ -433,15 +439,19 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.tilos_macroplacement_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "asset_id": "tilos-macroplacement",
         "source_revision": git_revision(payload) if payload.exists() else None,
         "claim_boundary": CLAIM_BOUNDARY,
         "discovered_case_count": len(discovered),
         "selected_case_count": len(selected_cases),
-        "converted_case_count": sum(1 for summary in case_summaries if summary.get("status") == "converted"),
-        "blocked_case_count": sum(1 for summary in case_summaries if summary.get("status") != "converted"),
+        "converted_case_count": sum(
+            1 for summary in case_summaries if summary.get("status") == "converted"
+        ),
+        "blocked_case_count": sum(
+            1 for summary in case_summaries if summary.get("status") != "converted"
+        ),
         "cases": case_summaries,
         "records": records,
         "blockers": blockers,

@@ -14,7 +14,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -83,7 +83,7 @@ HANDOFF_TARGETS = (
 
 
 def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
-    started = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    started = datetime.now(UTC).replace(microsecond=0).isoformat()
     try:
         result = subprocess.run(
             command,
@@ -96,7 +96,7 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
         return {
             "command": command,
             "started_at_utc": started,
-            "finished_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "finished_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "returncode": result.returncode,
             "stdout_tail": result.stdout[-8000:],
             "stderr_tail": result.stderr[-8000:],
@@ -105,7 +105,7 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
         return {
             "command": command,
             "started_at_utc": started,
-            "finished_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "finished_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "returncode": 124,
             "stdout_tail": (exc.stdout or "")[-8000:] if isinstance(exc.stdout, str) else "",
             "stderr_tail": (exc.stderr or "")[-8000:] if isinstance(exc.stderr, str) else "",
@@ -114,14 +114,15 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
 
 
 def make_target(target: str, timeout_seconds: int, run_id: str) -> dict[str, Any]:
-    return run(["make", f"PYTHON={sys.executable}", f"AI_EDA_RUN_ID={run_id}", target], timeout_seconds)
+    return run(
+        ["make", f"PYTHON={sys.executable}", f"AI_EDA_RUN_ID={run_id}", target], timeout_seconds
+    )
 
 
 def print_step_status(kind: str, item: dict[str, Any], target: str | None = None) -> None:
     label = f" target={target}" if target else ""
     print(
-        "STATUS: STEP ai_eda.bootstrap "
-        f"kind={kind}{label} returncode={item['returncode']}",
+        f"STATUS: STEP ai_eda.bootstrap kind={kind}{label} returncode={item['returncode']}",
         flush=True,
     )
 
@@ -194,7 +195,12 @@ def main() -> int:
     overall_rc = 0
 
     preflight = run(
-        [sys.executable, "scripts/ai_eda/preflight_cuda_training_stack.py", "--run-id", args.run_id],
+        [
+            sys.executable,
+            "scripts/ai_eda/preflight_cuda_training_stack.py",
+            "--run-id",
+            args.run_id,
+        ],
         args.timeout_seconds,
     )
     steps.append({"kind": "preflight", **preflight})
@@ -229,7 +235,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.bootstrap_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "profile": args.profile,
         "claim_boundary": CLAIM_BOUNDARY,

@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +43,9 @@ def source_record(path: Path) -> dict[str, Any]:
     }
 
 
-def softmacro_objects(grid: int, *, origin_um: float, pitch_um: float, size_um: float) -> list[dict[str, Any]]:
+def softmacro_objects(
+    grid: int, *, origin_um: float, pitch_um: float, size_um: float
+) -> list[dict[str, Any]]:
     objects: list[dict[str, Any]] = []
     for row in range(grid):
         for col in range(grid):
@@ -103,7 +105,12 @@ def build_records(grid: int) -> tuple[dict[str, Any], dict[str, Any], dict[str, 
         "design_bundle_id": design_id,
         "floorplan": {
             "die_area_um": [0.0, 0.0, die_max, die_max],
-            "core_area_um": [core_margin, core_margin, die_max - core_margin, die_max - core_margin],
+            "core_area_um": [
+                core_margin,
+                core_margin,
+                die_max - core_margin,
+                die_max - core_margin,
+            ],
             "rows": f"abstract_{grid}x{grid}_softmacro_rows",
             "macro_pitch_um": pitch,
         },
@@ -198,7 +205,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.e1_softmacro_case_materialization_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "grids": grids,

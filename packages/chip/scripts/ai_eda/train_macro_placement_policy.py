@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -121,7 +121,9 @@ def target_aware_grid_locations(
 ) -> list[tuple[float, float]]:
     """Assign grid locations to macros by nearest available labeled target."""
     locations = grid_locations(core, movable)
-    if len(locations) <= 1 or not all(isinstance(obj.get("target_placement"), dict) for obj in movable):
+    if len(locations) <= 1 or not all(
+        isinstance(obj.get("target_placement"), dict) for obj in movable
+    ):
         return locations
 
     remaining = set(range(len(locations)))
@@ -144,7 +146,8 @@ def target_aware_grid_locations(
         remaining.remove(best_location_index)
 
     candidate_locations = [
-        location if location is not None else locations[index] for index, location in enumerate(assigned)
+        location if location is not None else locations[index]
+        for index, location in enumerate(assigned)
     ]
     if legal_locations(core, movable, candidate_locations):
         return candidate_locations
@@ -156,13 +159,15 @@ def location_boxes(
     movable: list[dict[str, Any]],
 ) -> list[tuple[float, float, float, float]]:
     boxes = []
-    for (x_um, y_um), obj in zip(locations, movable):
+    for (x_um, y_um), obj in zip(locations, movable, strict=False):
         width, height = object_size_um(obj)
         boxes.append((x_um, y_um, x_um + width, y_um + height))
     return boxes
 
 
-def boxes_overlap(left: tuple[float, float, float, float], right: tuple[float, float, float, float]) -> bool:
+def boxes_overlap(
+    left: tuple[float, float, float, float], right: tuple[float, float, float, float]
+) -> bool:
     return left[0] < right[2] and right[0] < left[2] and left[1] < right[3] and right[1] < left[3]
 
 
@@ -172,7 +177,7 @@ def legal_locations(
     locations: list[tuple[float, float]],
 ) -> bool:
     min_x, min_y, max_x, max_y = [float(value) for value in core]
-    for (x_um, y_um), obj in zip(locations, movable):
+    for (x_um, y_um), obj in zip(locations, movable, strict=False):
         width, height = object_size_um(obj)
         if x_um < min_x or y_um < min_y or x_um + width > max_x or y_um + height > max_y:
             return False
@@ -202,7 +207,9 @@ def target_repair_locations(
 ) -> list[tuple[float, float]]:
     """Greedily snap labeled macros from grid slots to legal target locations."""
     locations = target_aware_grid_locations(core, movable)
-    if len(locations) <= 1 or not all(isinstance(obj.get("target_placement"), dict) for obj in movable):
+    if len(locations) <= 1 or not all(
+        isinstance(obj.get("target_placement"), dict) for obj in movable
+    ):
         return locations
 
     order = sorted(
@@ -223,7 +230,10 @@ def target_repair_locations(
             obj,
             (float(target["x_um"]), float(target["y_um"])),
         )
-        if legal_locations(core, movable, repaired) and mean_target_distance(repaired, movable) <= current_score:
+        if (
+            legal_locations(core, movable, repaired)
+            and mean_target_distance(repaired, movable) <= current_score
+        ):
             locations = repaired
 
     return locations
@@ -234,7 +244,7 @@ def mean_target_distance(
     movable: list[dict[str, Any]],
 ) -> float:
     distances = []
-    for (x_um, y_um), obj in zip(locations, movable):
+    for (x_um, y_um), obj in zip(locations, movable, strict=False):
         target = obj.get("target_placement")
         if not isinstance(target, dict):
             continue
@@ -313,7 +323,9 @@ def score_candidate(
     )
     overlaps = overlap_metrics(changes, movable_by_id)
     penalty = (int(overlaps["overlap_count"]) * 1_000_000.0) + (out_of_bounds * 1_000_000.0)
-    score_basis = mean_target_distance_um if mean_target_distance_um is not None else mean_center_distance_um
+    score_basis = (
+        mean_target_distance_um if mean_target_distance_um is not None else mean_center_distance_um
+    )
     return {
         "proxy": (
             "target_distance_when_labels_exist_else_center_distance_lower_is_better_"
@@ -356,7 +368,7 @@ def candidate_for_case(
         candidate_prefix = "macro-placement-center-baseline"
     else:
         raise ValueError(f"unsupported policy {policy!r}")
-    for obj, (x_um, y_um) in zip(movable, locations):
+    for obj, (x_um, y_um) in zip(movable, locations, strict=False):
         if not isinstance(obj, dict) or not obj.get("id"):
             continue
         changes.append(
@@ -425,7 +437,7 @@ def main() -> int:
 
     model = {
         "schema": "eliza.ai_eda.macro_placement_policy.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "policies": ["center_legal_baseline", "target_aware_grid", "target_repair_search"],
         "claim_boundary": CLAIM_BOUNDARY,
@@ -513,7 +525,7 @@ def main() -> int:
     report_status = "PASS_WITH_BLOCKED_CASES" if blocked else "PASS"
     report = {
         "schema": "eliza.ai_eda.macro_placement_baseline_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "status": report_status,
         "claim_boundary": CLAIM_BOUNDARY,

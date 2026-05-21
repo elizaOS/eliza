@@ -14,7 +14,7 @@ import hashlib
 import json
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -129,7 +129,10 @@ def expected_revision(asset: dict[str, Any]) -> str | None:
     if not isinstance(revision, dict):
         return None
     value = revision.get("value")
-    if not isinstance(value, str) or value in {"PIN_AFTER_FETCH", "BLOCKED_HTTP_403_REAUDIT_REQUIRED"}:
+    if not isinstance(value, str) or value in {
+        "PIN_AFTER_FETCH",
+        "BLOCKED_HTTP_403_REAUDIT_REQUIRED",
+    }:
         return None
     if revision.get("type") not in {"commit", "tag", "hf_revision"}:
         return None
@@ -223,7 +226,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--lockfile", type=Path, default=LOCKFILE)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--verify-only", action="store_true")
@@ -263,7 +266,11 @@ def main() -> int:
             }
         if action.get("status", "").startswith("BLOCKED"):
             overall_rc = max(overall_rc, 2)
-        if mode == "execute" and isinstance(action.get("returncode"), int) and action["returncode"] != 0:
+        if (
+            mode == "execute"
+            and isinstance(action.get("returncode"), int)
+            and action["returncode"] != 0
+        ):
             overall_rc = max(overall_rc, 1)
         reports.append(
             {
@@ -282,7 +289,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.external_asset_fetch_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "mode": mode,
         "claim_boundary": CLAIM_BOUNDARY,
@@ -294,9 +301,7 @@ def main() -> int:
     report_path = out_dir / ("all.json" if args.all else f"{reports[0]['asset']['id']}.json")
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
 
-    blocked = sum(
-        1 for item in reports if item["action"].get("status", "").startswith("BLOCKED")
-    )
+    blocked = sum(1 for item in reports if item["action"].get("status", "").startswith("BLOCKED"))
     failed = sum(
         1
         for item in reports

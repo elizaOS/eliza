@@ -51,7 +51,7 @@ except ImportError:  # pragma: no cover - skip when hypothesis is absent
         function_scoped_fixture = "function_scoped_fixture"
 
     class _MissingStrategy:
-        def filter(self, *_args: object, **_kwargs: object) -> "_MissingStrategy":
+        def filter(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
             return self
 
     class _MissingStrategies:

@@ -7,10 +7,10 @@ import argparse
 import json
 import os
 import re
-import signal
 import shutil
+import signal
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -46,7 +46,9 @@ def parse_stat(log_text: str, top: str) -> dict[str, Any]:
         if match:
             metrics[key] = int(match.group(1))
     cell_histogram: dict[str, int] = {}
-    for count, cell_type in re.findall(r"^\s*(\d+)\s+(\$[A-Za-z0-9_]+)\s*$", section, flags=re.MULTILINE):
+    for count, cell_type in re.findall(
+        r"^\s*(\d+)\s+(\$[A-Za-z0-9_]+)\s*$", section, flags=re.MULTILINE
+    ):
         cell_histogram[cell_type] = int(count)
     if cell_histogram:
         metrics["cell_histogram"] = cell_histogram
@@ -101,7 +103,9 @@ def run_recipe(
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             _stdout, stderr = process.communicate()
-        log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
+        log_text = (
+            log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
+        )
         return {
             "id": result_id,
             "target": target_id,
@@ -134,7 +138,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--timeout-s", type=int, default=20)
     return parser.parse_args()
 
@@ -149,7 +153,7 @@ def main() -> int:
     if yosys_bin is None:
         report = {
             "schema": "eliza.ai_eda.logic_synthesis_policy_baseline.v1",
-            "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "run_id": args.run_id,
             "claim_boundary": CLAIM_BOUNDARY,
             "status": "BLOCKED_YOSYS_NOT_FOUND",
@@ -171,7 +175,7 @@ def main() -> int:
     blocked = [item for item in results if str(item["status"]).startswith("BLOCKED")]
     report = {
         "schema": "eliza.ai_eda.logic_synthesis_policy_baseline.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "status": "PASS_WITH_BLOCKED_OPENABC_D" if not failed else "FAIL",

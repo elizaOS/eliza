@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from statistics import mean
 from typing import Any
@@ -14,9 +14,18 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RECORD_DIR = ROOT / "build/ai_eda/circuitnet3/validation/records"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/circuitnet3_surrogate"
-CLAIM_BOUNDARY = "circuitnet3_surrogate_training_pretraining_only_no_e1_ppa_signoff_or_release_claim"
+CLAIM_BOUNDARY = (
+    "circuitnet3_surrogate_training_pretraining_only_no_e1_ppa_signoff_or_release_claim"
+)
 TARGETS = ("min_slack", "mean_slack", "max_at", "mean_delay", "mean_slew", "total_power")
-FEATURES = ("instance_count", "timing_arc_count", "mean_fanout", "mean_delay", "mean_slew", "mean_setup")
+FEATURES = (
+    "instance_count",
+    "timing_arc_count",
+    "mean_fanout",
+    "mean_delay",
+    "mean_slew",
+    "mean_setup",
+)
 
 
 def rel(path: Path) -> str:
@@ -106,13 +115,17 @@ def mean_model(train_samples: list[dict[str, Any]]) -> dict[str, Any]:
         "model_type": "train_split_mean_baseline",
         "claim_boundary": CLAIM_BOUNDARY,
         "targets": {target: mean(values) for target, values in target_values.items() if values},
-        "feature_means": {feature: mean(values) for feature, values in feature_values.items() if values},
+        "feature_means": {
+            feature: mean(values) for feature, values in feature_values.items() if values
+        },
         "feature_schema": list(FEATURES),
         "release_use_allowed": False,
     }
 
 
-def evaluate_split(model: dict[str, Any], split: str, samples: list[dict[str, Any]]) -> dict[str, Any]:
+def evaluate_split(
+    model: dict[str, Any], split: str, samples: list[dict[str, Any]]
+) -> dict[str, Any]:
     predictions = model["targets"]
     metrics: dict[str, dict[str, Any]] = {}
     for target, prediction in predictions.items():
@@ -133,7 +146,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--record-dir", action="append", type=Path, default=[])
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     return parser.parse_args()
 
 
@@ -151,7 +164,9 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     for split, rows in splits.items():
         path = out_dir / f"{split}.jsonl"
-        path.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
+        path.write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8"
+        )
     model_path = out_dir / "circuitnet3_surrogate_model.json"
     metrics_path = out_dir / "metrics.json"
     run_path = out_dir / "training_run.json"
@@ -165,7 +180,7 @@ def main() -> int:
     metrics_path.write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     run = {
         "schema": "eliza.ai_eda.circuitnet3_surrogate_training_run.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "record_dirs": [rel(path) for path in record_dirs],

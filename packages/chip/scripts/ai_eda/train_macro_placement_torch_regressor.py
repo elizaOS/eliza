@@ -12,14 +12,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET_ROOT = ROOT / "build/ai_eda/macro_placement_supervised_dataset"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/macro_placement_torch_regressor"
-CLAIM_BOUNDARY = "macro_placement_torch_regressor_training_only_no_inference_replay_or_release_claim"
+CLAIM_BOUNDARY = (
+    "macro_placement_torch_regressor_training_only_no_inference_replay_or_release_claim"
+)
 ORIENTATIONS = ("N", "S", "E", "W", "FN", "FS", "FE", "FW")
 
 
@@ -67,7 +69,7 @@ def sample_features(sample: dict[str, Any]) -> list[float]:
 
 def import_torch() -> Any:
     try:
-        import torch  # type: ignore[import-not-found]
+        import torch
     except ImportError as exc:
         raise SystemExit(
             "PyTorch is required for train_macro_placement_torch_regressor.py; "
@@ -105,7 +107,9 @@ def build_model(torch: Any) -> Any:
     )
 
 
-def evaluate(torch: Any, model: Any, samples: list[dict[str, Any]], device: Any, split: str) -> dict[str, Any]:
+def evaluate(
+    torch: Any, model: Any, samples: list[dict[str, Any]], device: Any, split: str
+) -> dict[str, Any]:
     if not samples:
         return {"split": split, "sample_count": 0}
     features, xy, orientation_ids = make_tensors(torch, samples, device)
@@ -217,7 +221,7 @@ def main() -> int:
 
     metrics = {
         "schema": "eliza.ai_eda.macro_placement_torch_regressor_metrics.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "device": str(device),
@@ -235,7 +239,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.macro_placement_torch_regressor_training_run.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "dataset_dir": rel(dataset_dir),
