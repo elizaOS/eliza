@@ -1,3 +1,0 @@
-#!/bin/sh
-
-sudo kill "$(cat /boot-profile.pid)"

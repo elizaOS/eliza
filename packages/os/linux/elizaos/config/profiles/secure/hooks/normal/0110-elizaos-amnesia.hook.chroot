@@ -1,0 +1,32 @@
+#!/bin/sh
+# elizaOS secure profile — amnesic home (chroot hook).
+# Mounts /home as tmpfs so all user data lives in RAM and is discarded on
+# shutdown. This is a standard Linux tmpfs mount via a systemd .mount
+# unit; nothing is persisted to disk. Idempotent.
+set -e
+
+mkdir -p /etc/systemd/system
+
+# size=50% caps the tmpfs at half of RAM; mode=0755 matches a normal
+# /home. The unit is named "home.mount" because systemd requires the
+# unit filename to match the escaped mount point.
+cat > /etc/systemd/system/home.mount <<'EOF'
+[Unit]
+Description=elizaOS amnesic home (tmpfs, RAM-only)
+DefaultDependencies=no
+Conflicts=umount.target
+Before=local-fs.target umount.target
+
+[Mount]
+What=tmpfs
+Where=/home
+Type=tmpfs
+Options=mode=0755,nosuid,nodev,size=50%
+
+[Install]
+WantedBy=local-fs.target
+EOF
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable home.mount >/dev/null 2>&1 || true
+fi

@@ -1,4 +1,0 @@
-[[commands]]
-allowed_user = "amnesia"
-executable = "/usr/local/lib/elizaos/capability-runner"
-args = ["root-status"]
