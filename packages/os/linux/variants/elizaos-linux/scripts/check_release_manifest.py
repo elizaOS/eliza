@@ -86,7 +86,7 @@ TEMPLATE_BARE_PLACEHOLDERS: dict[str, str] = {
 # regex / minLength constraints so the schema check still focuses on the
 # evidence rows that actually need to be filled in.
 TEMPLATE_STRING_PLACEHOLDERS: dict[str, str] = {
-    "@@FILENAME@@": "elizaos-debian-riscv64-template.iso",
+    "@@FILENAME@@": "elizaos-linux-riscv64-template.iso",
     "@@SHA256@@": "0" * 64,
     "@@BUILD_TIMESTAMP@@": "template",
     "@@ARCH@@": "riscv64",
@@ -96,7 +96,7 @@ TEMPLATE_STRING_PLACEHOLDERS: dict[str, str] = {
 # un-promoted manifest (filled or templated). Cross-check these against
 # ``TEMPLATE_STRING_PLACEHOLDERS`` above.
 TEMPLATE_SENTINEL_SHA256 = "0" * 64
-TEMPLATE_SENTINEL_FILENAME = "elizaos-debian-riscv64-template.iso"
+TEMPLATE_SENTINEL_FILENAME = "elizaos-linux-riscv64-template.iso"
 
 Status = Literal["PASS", "BLOCKED", "FAIL"]
 
@@ -193,7 +193,7 @@ def check_schema(manifest: dict, schema: dict) -> list[GateResult]:
                 "BLOCKED",
                 "python dependency missing: jsonschema; run "
                 "`python3 -m pip install -r packages/os/linux/variants/"
-                "elizaos-debian-riscv64/requirements.txt`",
+                "elizaos-linux/requirements.txt`",
             )
         ]
     artifact_schema = _artifact_schema(schema)
