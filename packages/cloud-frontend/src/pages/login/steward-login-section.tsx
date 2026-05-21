@@ -349,9 +349,19 @@ export default function StewardLoginSection() {
     // deep-linked page land on /dashboard instead of the page that redirected
     // them to /login. The authorize endpoint reads `tenant_id` (snake_case);
     // camelCase `tenantId` falls back to the user's personal tenant.
+    // Cloudflare Pages preview deploys live on `*.pages.dev`, whose hashed
+    // subdomain is never on the Steward tenant's redirect_uri allowlist.
+    // Route OAuth through staging.elizacloud.ai (which is whitelisted, matching
+    // the api-fetch-bridge precedent) so sign-in works from previews. The user
+    // lands on staging after auth — previews remain unauthenticated visual
+    // review surfaces, which is what they're for.
+    const host = window.location.hostname.toLowerCase();
+    const oauthOrigin = host.endsWith(".pages.dev")
+      ? "https://staging.elizacloud.ai"
+      : window.location.origin;
     window.location.href = buildStewardOAuthAuthorizeUrl(
       provider,
-      window.location.origin,
+      oauthOrigin,
       {
         redirectSearch: window.location.search,
         stewardApiUrl,
