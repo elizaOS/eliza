@@ -372,6 +372,12 @@ The first reproducibility spine is now checked in:
   blocked-or-ready handoff artifact without running training, inference,
   OpenLane, downloads, or signoff. The audit accepts explicit setup/handoff
   evidence run IDs when those reports are produced by separate host runs.
+- `scripts/ai_eda/capture_openlane_replay_prerequisites.py` and
+  `scripts/ai_eda/check_openlane_replay_prerequisites.py` are wired into
+  `make ai-eda-openlane-replay-prerequisites`, recording the OpenLane/OpenROAD
+  binaries, PDK environment, OpenLane config hashes, fresh run-tree requirement,
+  replay queue state, and post-execution evidence contract before any
+  deterministic replay is allowed.
 - `scripts/ai_eda/capture_openroad_ml_snapshot.py` and
   `scripts/ai_eda/check_openroad_ml_snapshot.py` are wired into
   `make ai-eda-openroad-ml-snapshot`, recording the latest local

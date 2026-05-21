@@ -8,7 +8,7 @@ import csv
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -243,7 +243,7 @@ def convert_design(
             "num_nets": num_nets,
             "initial_proxy_cost": proxy_cost,
         }
-        for record, path in zip(records, paths)
+        for record, path in zip(records, paths, strict=False)
     ]
 
 
@@ -251,7 +251,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--payload", type=Path, default=PAYLOAD)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=4)
     return parser.parse_args()
 
@@ -281,7 +281,7 @@ def main() -> int:
         converted.extend(convert_design(design, metadata, ppa_baselines, args.payload, out_dir))
     report = {
         "schema": "eliza.ai_eda.macro_place_challenge_2026_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "payload": rel(args.payload),

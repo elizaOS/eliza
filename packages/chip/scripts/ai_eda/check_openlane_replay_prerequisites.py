@@ -176,7 +176,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if not args.report.is_file():
-        print(f"STATUS: FAIL ai_eda.openlane_replay_prerequisites missing_report {rel(args.report)}")
+        print(
+            f"STATUS: FAIL ai_eda.openlane_replay_prerequisites missing_report {rel(args.report)}"
+        )
         return 1
     try:
         report = load_json(args.report)

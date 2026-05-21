@@ -137,9 +137,12 @@ manual audits assembled from reviewed artifacts generated under separate run
 IDs, `capture_cuda_readiness_audit.py` also accepts explicit
 `--preflight-run-id`, `--payload-run-id`, `--run-plan-execution-run-id`,
 `--run-plan-safety-run-id`, `--alphachip-run-id`, `--watchlist-run-id`, and
-`--replay-preflight-run-id` arguments. `make ai-eda-cuda-evidence-bundle`
-then packages the readiness audit and every referenced handoff artifact path,
-SHA256, size, capability flag, and blocker count into a replayable manifest.
+`--replay-preflight-run-id` arguments. `make
+ai-eda-openlane-replay-prerequisites` records the OpenLane/OpenROAD binary,
+PDK, config, run-tree, and replay-queue gates required before deterministic
+replay execution. `make ai-eda-cuda-evidence-bundle` then packages the
+readiness audit and every referenced handoff artifact path, SHA256, size,
+capability flag, and blocker count into a replayable manifest.
 
 ## Docker Setup
 

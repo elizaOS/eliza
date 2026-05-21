@@ -14,7 +14,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -99,7 +99,7 @@ HANDOFF_TARGETS = (
 
 
 def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
-    started = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    started = datetime.now(UTC).replace(microsecond=0).isoformat()
     try:
         result = subprocess.run(
             command,
@@ -112,7 +112,7 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
         return {
             "command": command,
             "started_at_utc": started,
-            "finished_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "finished_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "returncode": result.returncode,
             "stdout_tail": result.stdout[-8000:],
             "stderr_tail": result.stderr[-8000:],
@@ -121,7 +121,7 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
         return {
             "command": command,
             "started_at_utc": started,
-            "finished_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "finished_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "returncode": 124,
             "stdout_tail": (exc.stdout or "")[-8000:] if isinstance(exc.stdout, str) else "",
             "stderr_tail": (exc.stderr or "")[-8000:] if isinstance(exc.stderr, str) else "",
@@ -151,7 +151,7 @@ def build_report(
 ) -> dict[str, Any]:
     return {
         "schema": "eliza.ai_eda.bootstrap_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "profile": args.profile,
         "status": status,

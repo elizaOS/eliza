@@ -14,7 +14,7 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -186,7 +186,7 @@ def main() -> int:
     status = "READY_FOR_REPLAY_PREREQUISITES" if not blockers else "BLOCKED_PREREQUISITES"
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
@@ -214,8 +214,7 @@ def main() -> int:
             f"{queue['path']}",
             "python3 scripts/ai_eda/replay_macro_placement_on_e1.py --run-id "
             f"{args.run_id} --plan build/ai_eda/macro_placement_replay/{args.run_id}/replay_plan.json --execute",
-            "python3 scripts/ai_eda/parse_openlane_metrics_to_flow_run.py --run-id "
-            f"{args.run_id}",
+            f"python3 scripts/ai_eda/parse_openlane_metrics_to_flow_run.py --run-id {args.run_id}",
         ],
         "required_post_execution_artifacts": [
             "openlane stdout/stderr logs",

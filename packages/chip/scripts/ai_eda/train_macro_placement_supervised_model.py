@@ -14,7 +14,7 @@ import argparse
 import json
 import math
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -98,7 +98,7 @@ def train_model(train_samples: list[dict[str, Any]]) -> dict[str, Any]:
         by_type[str(obj.get("type", "unknown"))].append(sample)
     return {
         "schema": "eliza.ai_eda.macro_placement_supervised_mean_model.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
         "algorithm": "macro_name_then_type_then_global_mean_normalized_placement",
         "global": mean_point(train_samples),
@@ -244,6 +244,7 @@ def legalized_prediction_locations(
     for (obj_index, _px, _py, orient, source), (_slot_index, slot) in zip(
         indexed_predictions,
         indexed_slots,
+        strict=False,
     ):
         locations_by_object[obj_index] = (slot[0], slot[1], orient, source)
     return [
@@ -337,7 +338,7 @@ def candidate_for_case(
     core = case["floorplan"]["core_area_um"]
     locations, source_counts = legalized_prediction_locations(model, core, movable)
     changes = []
-    for obj, (x_um, y_um, orientation, _source) in zip(movable, locations):
+    for obj, (x_um, y_um, orientation, _source) in zip(movable, locations, strict=False):
         if not isinstance(obj, dict) or not obj.get("id"):
             continue
         changes.append(
@@ -423,7 +424,7 @@ def main() -> int:
 
     metrics = {
         "schema": "eliza.ai_eda.macro_placement_supervised_metrics.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "splits": [
@@ -480,7 +481,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.macro_placement_supervised_training_run.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "dataset_dir": rel(dataset_dir),

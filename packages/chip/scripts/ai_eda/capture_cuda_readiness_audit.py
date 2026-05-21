@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,7 @@ CLAIM_BOUNDARY = "cuda_readiness_audit_only_no_training_inference_signoff_or_rel
 RUN_PLAN_EXECUTION_SCHEMA = "eliza.ai_eda.cuda_run_plan_execution.v1"
 RUN_PLAN_SAFETY_MATRIX_SCHEMA = "eliza.ai_eda.cuda_run_plan_safety_matrix.v1"
 REPLAY_QUEUE_SCHEMA = "eliza.ai_eda.macro_placement_replay_queue.v1"
+REPLAY_PREREQUISITES_SCHEMA = "eliza.ai_eda.openlane_replay_prerequisites.v1"
 
 
 def rel(path: Path) -> str:
@@ -126,6 +127,24 @@ def replay_queue_ready(report: dict[str, Any] | None) -> tuple[bool, str]:
     return True, "validated deterministic replay queue"
 
 
+def replay_prerequisites_valid(report: dict[str, Any] | None) -> tuple[bool, bool, str]:
+    if report is None:
+        return False, False, "missing replay prerequisites report"
+    if report.get("schema") != REPLAY_PREREQUISITES_SCHEMA:
+        return False, False, "schema mismatch"
+    if report.get("release_use_allowed") is not False:
+        return False, False, "release_use_allowed must be false"
+    status = report.get("status")
+    if status not in {"READY_FOR_REPLAY_PREREQUISITES", "BLOCKED_PREREQUISITES"}:
+        return False, False, f"unsupported status={status}"
+    blockers = report.get("blockers")
+    if status == "BLOCKED_PREREQUISITES" and not blockers:
+        return False, False, "blocked report lacks blockers"
+    if status == "READY_FOR_REPLAY_PREREQUISITES" and blockers:
+        return False, False, "ready report has blockers"
+    return True, status == "READY_FOR_REPLAY_PREREQUISITES", f"status={status}"
+
+
 def blocker(
     blocker_id: str, severity: str, detail: str, evidence: str | None = None
 ) -> dict[str, str]:
@@ -137,7 +156,7 @@ def blocker(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument(
         "--preflight-run-id",
         default=None,
@@ -174,6 +193,11 @@ def parse_args() -> argparse.Namespace:
         help="Run id for E1 replay-preflight evidence; defaults to --run-id.",
     )
     parser.add_argument(
+        "--replay-prerequisites-run-id",
+        default=None,
+        help="Run id for OpenLane replay prerequisite evidence; defaults to --replay-preflight-run-id.",
+    )
+    parser.add_argument(
         "--setup-run-id",
         default=None,
         help="Run id for the setup-check bootstrap evidence; defaults to --run-id.",
@@ -197,6 +221,7 @@ def main() -> int:
     alphachip_run_id = args.alphachip_run_id or run_id
     watchlist_run_id = args.watchlist_run_id or run_id
     replay_preflight_run_id = args.replay_preflight_run_id or run_id
+    replay_prerequisites_run_id = args.replay_prerequisites_run_id or replay_preflight_run_id
     setup_run_id = args.setup_run_id or run_id
     training_handoff_run_id = args.training_handoff_run_id or f"{run_id}-training-handoff"
     preflight_path = (
@@ -228,6 +253,10 @@ def main() -> int:
     replay_path = (
         ROOT
         / f"build/ai_eda/macro_placement_replay_preflight/{replay_preflight_run_id}/replay_preflight_report.json"
+    )
+    replay_prerequisites_path = (
+        ROOT
+        / f"build/ai_eda/openlane_replay_prerequisites/{replay_prerequisites_run_id}/openlane_replay_prerequisites.json"
     )
     setup_bootstrap_path = ROOT / f"build/ai_eda/bootstrap/{setup_run_id}/bootstrap_report.json"
     training_handoff_bootstrap_path = (
@@ -262,6 +291,7 @@ def main() -> int:
     alphachip = load_json(alphachip_path)
     watchlist = load_json(watchlist_path)
     replay = load_json(replay_path)
+    replay_prerequisites = load_json(replay_prerequisites_path)
     setup_bootstrap = load_json(setup_bootstrap_path)
     training_handoff_bootstrap = load_json(training_handoff_bootstrap_path)
     torch_training = load_json(torch_training_path)
@@ -402,6 +432,22 @@ def main() -> int:
                     "Run plan lacks macro-placement replay queue checker",
                 )
             )
+        if not has_command(run_plan, "capture_openlane_replay_prerequisites.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_openlane_replay_prerequisites",
+                    "hard",
+                    "Run plan lacks OpenLane/OpenROAD replay prerequisite capture",
+                )
+            )
+        if not has_command(run_plan, "check_openlane_replay_prerequisites.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_openlane_replay_prerequisite_checker",
+                    "hard",
+                    "Run plan lacks OpenLane/OpenROAD replay prerequisite checker",
+                )
+            )
         if not has_output(
             run_plan, "build/ai_eda/macro_placement_replay_queue/<run-id>/replay_queue.json"
         ):
@@ -410,6 +456,17 @@ def main() -> int:
                     "run_plan_missing_replay_queue_output",
                     "hard",
                     "Run plan lacks macro-placement replay queue expected output",
+                )
+            )
+        if not has_output(
+            run_plan,
+            "build/ai_eda/openlane_replay_prerequisites/<run-id>/openlane_replay_prerequisites.json",
+        ):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_openlane_replay_prerequisites_output",
+                    "hard",
+                    "Run plan lacks OpenLane/OpenROAD replay prerequisite expected output",
                 )
             )
 
@@ -509,6 +566,9 @@ def main() -> int:
         and full_replay.get("candidate_count", 0) > 0
     )
     replay_queue_validated, replay_queue_detail = replay_queue_ready(replay_queue)
+    replay_prerequisites_validated, openlane_replay_host_ready, replay_prerequisites_detail = (
+        replay_prerequisites_valid(replay_prerequisites)
+    )
     training_handoff_payload_ready = bool(
         training_handoff_payload and training_handoff_payload.get("included_file_count", 0) > 0
     )
@@ -565,6 +625,24 @@ def main() -> int:
                 f"{rel(replay_queue_path)}: {replay_queue_detail}",
             )
         )
+    if not replay_prerequisites_validated:
+        blockers.append(
+            blocker(
+                "openlane_replay_prerequisites_not_validated",
+                "hard",
+                "OpenLane/OpenROAD replay prerequisite manifest is missing or invalid",
+                f"{rel(replay_prerequisites_path)}: {replay_prerequisites_detail}",
+            )
+        )
+    elif not openlane_replay_host_ready:
+        blockers.append(
+            blocker(
+                "openlane_replay_host_not_ready",
+                "hard",
+                "OpenLane/OpenROAD replay host prerequisites are recorded but blocked",
+                f"{rel(replay_prerequisites_path)}: {replay_prerequisites_detail}",
+            )
+        )
     if not training_handoff_payload_ready:
         blockers.append(
             blocker(
@@ -603,7 +681,7 @@ def main() -> int:
     hard_blockers = [item for item in blockers if item["severity"] == "hard"]
     report = {
         "schema": "eliza.ai_eda.cuda_readiness_audit.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": run_id,
         "evidence_run_ids": {
             "preflight": preflight_run_id,
@@ -613,6 +691,7 @@ def main() -> int:
             "alphachip_checkpoint": alphachip_run_id,
             "current_research_watchlist": watchlist_run_id,
             "replay_preflight": replay_preflight_run_id,
+            "replay_prerequisites": replay_prerequisites_run_id,
             "setup_check": setup_run_id,
             "training_handoff": training_handoff_run_id,
         },
@@ -644,6 +723,8 @@ def main() -> int:
             "torch_inference_validated": torch_inference_complete,
             "full_replay_plan_validated": full_replay_complete,
             "replay_queue_validated": replay_queue_validated,
+            "openlane_replay_prerequisites_validated": replay_prerequisites_validated,
+            "openlane_replay_host_ready": openlane_replay_host_ready,
             "training_handoff_payload_ready": training_handoff_payload_ready,
         },
         "input_artifacts": [
@@ -655,6 +736,7 @@ def main() -> int:
             artifact(alphachip_path),
             artifact(watchlist_path),
             artifact(replay_path),
+            artifact(replay_prerequisites_path),
             artifact(setup_bootstrap_path),
             artifact(training_handoff_bootstrap_path),
             artifact(torch_training_path),
@@ -669,6 +751,7 @@ def main() -> int:
             "validate stage selection and risky-stage blocking with check_cuda_run_plan_safety_matrix.py on the CUDA host",
             "run this audit on the CUDA host after executing the selected stages from the embedded cuda_training_run_plan.json",
             "finish or explicitly record setup-check/training-handoff bootstrap reports for the CUDA host",
+            "resolve OpenLane/OpenROAD replay prerequisite blockers on the PD host before replay execution",
             "run deterministic E1 OpenLane/OpenROAD replay before accepting any candidate optimization",
             "resolve AlphaChip checkpoint/binary access or continue with from-scratch/non-AlphaChip training only",
         ],

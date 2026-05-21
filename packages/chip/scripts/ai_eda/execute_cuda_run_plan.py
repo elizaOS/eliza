@@ -14,7 +14,7 @@ import argparse
 import json
 import shlex
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -105,7 +105,7 @@ def command_script(command: str) -> str | None:
 
 
 def execute_command(command: str, timeout_s: int) -> dict[str, Any]:
-    started = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    started = datetime.now(UTC).replace(microsecond=0).isoformat()
     try:
         result = subprocess.run(
             command,
@@ -237,7 +237,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.cuda_run_plan_execution.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "mode": "execute" if args.execute else "dry-run",
         "run_id": args.run_id,
         "plan": rel(args.plan),

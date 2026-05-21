@@ -57,6 +57,7 @@ def validate(report: dict[str, Any]) -> list[str]:
             "alphachip_checkpoint",
             "current_research_watchlist",
             "replay_preflight",
+            "replay_prerequisites",
             "setup_check",
             "training_handoff",
         ):
@@ -87,6 +88,8 @@ def validate(report: dict[str, Any]) -> list[str]:
             "torch_inference_validated",
             "full_replay_plan_validated",
             "replay_queue_validated",
+            "openlane_replay_prerequisites_validated",
+            "openlane_replay_host_ready",
             "training_handoff_payload_ready",
         ):
             if not isinstance(capabilities.get(field), bool):
