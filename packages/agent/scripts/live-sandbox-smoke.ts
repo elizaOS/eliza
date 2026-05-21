@@ -2,7 +2,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import {
-  E2BSatelliteCapabilityRouterService,
+  E2BRemoteCapabilityRouterService,
   type SandboxRunnerProvider,
 } from "../src/services/e2b-capability-router.ts";
 
@@ -58,11 +58,11 @@ async function runSandboxProviderSmoke(
       target: provider,
       status: "skipped",
       message:
-        "Eliza Cloud runner requires ELIZA_CLOUD_CODING_SATELLITE_IMAGE or a direct runner URL.",
+        "Eliza Cloud runner requires ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE or a direct runner URL.",
     };
   }
-  const runtime = makeRuntime({ ELIZA_CODING_SATELLITE_RUNNER: provider });
-  const service = new E2BSatelliteCapabilityRouterService(runtime);
+  const runtime = makeRuntime({ ELIZA_CODING_REMOTE_RUNNER: provider });
+  const service = new E2BRemoteCapabilityRouterService(runtime);
   const availability = await service.availability();
   if (!availability.available) {
     return {
@@ -291,11 +291,11 @@ function hasArg(name: string): boolean {
 function hasElizaCloudRunnerTarget(): boolean {
   return Boolean(
     readEnv("ELIZA_CLOUD_SANDBOX_BASE_URL") ||
-      readEnv("ELIZA_CLOUD_SATELLITE_RUNNER_URL") ||
+      readEnv("ELIZA_CLOUD_REMOTE_RUNNER_URL") ||
       readEnv("ELIZA_CLOUD_RUNNER_URL") ||
       readEnv("ELIZA_CLOUD_SANDBOX_IMAGE") ||
-      readEnv("ELIZA_CLOUD_CODING_SATELLITE_IMAGE") ||
-      readEnv("ELIZA_CODING_SATELLITE_IMAGE"),
+      readEnv("ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE") ||
+      readEnv("ELIZA_CODING_REMOTE_RUNNER_IMAGE"),
   );
 }
 
