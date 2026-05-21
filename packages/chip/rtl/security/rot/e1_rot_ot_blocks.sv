@@ -10,17 +10,20 @@
 // E1_ROT_INSTANTIATE_<BLOCK> define, the same way the Ibex core is gated by
 // E1_ROT_INSTANTIATE_IBEX.
 //
-// The TL device port is driven idle (tlul_pkg::TL_H2D_DEFAULT) at this stage --
-// the RoT crossbar adapter that converts e1_rot_tlul_pkg <-> tlul_pkg and routes
-// Ibex MMIO accesses into these blocks is the next integration step. The point
-// proven by check_rot_integration.py at this stage is that the real OpenTitan
-// RTL (not a shim) elaborates clean under Verilator inside the RoT flow.
-//
-// Sideband tie-offs use each block's own package defaults (ALERT_RX_DEFAULT,
-// ESC_RX_DEFAULT, lc_ctrl_pkg::Off, '0 for request structs), matching how the
-// Earl Grey top ties unused inputs. No functional crypto is claimed from a
-// block whose data-path peers (EDN entropy, keymgr sideload, ROM image) are
-// tied off; that wiring lands with the full secure-boot data path.
+// The single-block harnesses (e1_rot_ot_<block>) expose only the TL-UL device
+// port; their entropy/sideload peers are tied to the package-default idle, so
+// they prove the vendored RTL elaborates clean but make no functional claim on
+// their own. The functional entropy datapath lives in e1_rot_ot_entropy_stack
+// (below), which wires the REAL entropy interconnect:
+//   entropy_src.entropy_src_hw_if  -> csrng push interface
+//   csrng.csrng_cmd                <-> edn application interface
+//   edn.edn_o/edn_i                -> the edn ports of aes / kmac / keymgr
+// using the vendored *_pkg struct types, plus a behavioral RNG noise model
+// (e1_rot_rng_model, the AST LFSR reference) feeding entropy_src's analog rng
+// port. That harness is what advances the integration gate past
+// rot_crypto_sideband_unwired: with the stack enabled over the TL-UL crossbar,
+// a real entropy consumer (KMAC, EnMasking=1) completes a SHA-3 KAT sourcing
+// its masking entropy from the real EDN.
 
 `timescale 1ns/1ps
 
