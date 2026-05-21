@@ -12,6 +12,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { Coins, Loader2, ShieldCheck, Wallet } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { erc20Abi } from "viem";
 import { useAccount, useConfig, useSwitchChain } from "wagmi";
@@ -218,6 +219,16 @@ export function DirectCryptoCreditCard({
       return solana.publicKey?.toBase58() ?? null;
     return evm.isConnected ? (evm.address ?? null) : null;
   }, [evm.address, evm.isConnected, selected?.network, solana.publicKey]);
+
+  // Network-aware case-insensitive equality. Solana addresses are base58 and
+  // case-sensitive in principle, but elsewhere in this app we treat the account
+  // wallet address as a single string regardless of chain, so a case-insensitive
+  // compare is safe and matches existing read sites.
+  const walletMatches = Boolean(
+    connectedAddress &&
+      accountWalletAddress &&
+      connectedAddress.toLowerCase() === accountWalletAddress.toLowerCase(),
+  );
 
   async function sendEvmPayment(
     cfg: DirectNetworkConfig,
@@ -452,6 +463,45 @@ export function DirectCryptoCreditCard({
         </div>
       </CardHeader>
       <CardContent className={`space-y-4 p-5 ${dividerClassName}`}>
+        {selected && connectedAddress && accountWalletAddress === null ? (
+          <div
+            role="status"
+            className={`rounded-xs border px-3 py-2 text-xs ${infoTileClassName}`}
+          >
+            <div className={infoValueClassName}>
+              Paying from {formatAddress(connectedAddress)} — not saved to your
+              account.
+            </div>
+            <div className={`mt-1 ${mutedTextClassName}`}>
+              Credits go to your Eliza Cloud account. To link this wallet for
+              future,{" "}
+              <Link
+                to="/dashboard/settings?tab=billing"
+                className="font-medium underline underline-offset-2"
+              >
+                Link wallet
+              </Link>
+              .
+            </div>
+          </div>
+        ) : null}
+
+        {selected &&
+        connectedAddress &&
+        accountWalletAddress !== null &&
+        !walletMatches ? (
+          <div
+            role="status"
+            className={`rounded-xs border px-3 py-2 text-xs ${infoTileClassName}`}
+          >
+            <div className={mutedTextClassName}>
+              Different wallet than your account (
+              {formatAddress(accountWalletAddress)}). Credits still go to your
+              account.
+            </div>
+          </div>
+        ) : null}
+
         {showNetworkSelector ? (
           <div
             className={`grid grid-cols-3 gap-2 rounded-xs border p-1 text-xs sm:gap-3 ${segmentClassName}`}
