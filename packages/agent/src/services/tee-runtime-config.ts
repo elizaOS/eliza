@@ -7,6 +7,7 @@ import {
 import {
   mergeTeeRevocationsIntoPolicy,
   type TeeRevocationManifest,
+  verifyTeeRevocationManifest,
 } from "./tee-revocation.ts";
 
 export type TeeRuntimeConfigEnv = Record<string, string | undefined>;
@@ -107,7 +108,10 @@ async function withRuntimeRevocations(
   if (inlineRevocations?.trim()) {
     return mergeTeeRevocationsIntoPolicy(
       policy,
-      JSON.parse(inlineRevocations) as TeeRevocationManifest,
+      verifiedRevocationManifest(
+        JSON.parse(inlineRevocations) as TeeRevocationManifest,
+        env,
+      ),
     );
   }
 
@@ -115,13 +119,69 @@ async function withRuntimeRevocations(
   if (revocationPath?.trim()) {
     return mergeTeeRevocationsIntoPolicy(
       policy,
-      JSON.parse(
-        await readText(revocationPath.trim()),
-      ) as TeeRevocationManifest,
+      verifiedRevocationManifest(
+        JSON.parse(
+          await readText(revocationPath.trim()),
+        ) as TeeRevocationManifest,
+        env,
+      ),
     );
   }
 
   return policy;
+}
+
+/**
+ * Verify the revocation manifest's signature before it is merged into the
+ * policy (plan §3.4 / A5). Refuses to merge an unsigned/invalid/untrusted
+ * manifest when a trusted authority key is configured via
+ * `ELIZA_TEE_REVOCATION_PUBKEY` (+ optional `ELIZA_TEE_REVOCATION_AUTHORITY`).
+ * A revocation list is security-relevant data: a tampered or forged one could
+ * silently un-revoke a compromised measurement, so this is fail-closed.
+ */
+function verifiedRevocationManifest(
+  manifest: TeeRevocationManifest,
+  env: TeeRuntimeConfigEnv,
+): TeeRevocationManifest {
+  const result = verifyTeeRevocationManifest(manifest, {
+    trustedAuthorities: resolveRevocationAuthorities(manifest, env),
+  });
+  if (!result.verified) {
+    throw new Error(
+      `TEE revocation manifest rejected: ${result.reason}${
+        result.detail ? ` (${result.detail})` : ""
+      }.`,
+    );
+  }
+  return manifest;
+}
+
+function resolveRevocationAuthorities(
+  manifest: TeeRevocationManifest,
+  env: TeeRuntimeConfigEnv,
+): Record<string, string> {
+  const pem = decodePublicKeyPem(env.ELIZA_TEE_REVOCATION_PUBKEY);
+  if (pem === undefined) return {};
+  const authorityId =
+    env.ELIZA_TEE_REVOCATION_AUTHORITY?.trim() || manifest.authority || "";
+  return { [authorityId]: pem };
+}
+
+/**
+ * Accept either a raw PEM (containing a BEGIN header) or a base64-encoded PEM
+ * (convenient for a single-line env var). Returns undefined when unset.
+ */
+function decodePublicKeyPem(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.includes("-----BEGIN")) return trimmed;
+  const decoded = Buffer.from(trimmed, "base64").toString("utf8");
+  if (!decoded.includes("-----BEGIN")) {
+    throw new Error(
+      "ELIZA_TEE_REVOCATION_PUBKEY must be a PEM public key or its base64 encoding.",
+    );
+  }
+  return decoded;
 }
 
 function runtimePolicyOptions(

@@ -1,10 +1,13 @@
+import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import {
   HttpTeeKeyReleaseClient,
   LocalTeeKeyReleaseClient,
+  wrapTeeReleaseKey,
 } from "./tee-key-release.ts";
 
 const masterSecretHex = "11".repeat(32);
+const releasedKeyHex = "a".repeat(64);
 
 describe("TEE key release", () => {
   it("derives key material only after evidence satisfies policy", async () => {
@@ -101,9 +104,14 @@ describe("TEE key release", () => {
       expect(body.nonce).toMatch(/^[a-f0-9]{64}$/);
       expect(body.ephemeralPublicKey.length).toBeGreaterThan(0);
       expect(body.reportData).toMatch(/^[a-f0-9]{64}$/);
+      // The KMS wraps the key to the agent's ephemeral public key.
       return Response.json({
         keyId: body.keyId,
-        keyMaterialHex: "a".repeat(64),
+        wrappedKey: wrapTeeReleaseKey({
+          keyMaterialHex: releasedKeyHex,
+          agentEphemeralPublicKeyDerBase64: body.ephemeralPublicKey,
+          nonceHex: body.nonce,
+        }),
         nonce: body.nonce,
         decision: { trusted: true, reason: "allowed" },
       });
@@ -125,7 +133,7 @@ describe("TEE key release", () => {
       }),
     ).resolves.toMatchObject({
       keyId: "agent-session",
-      keyMaterialHex: "a".repeat(64),
+      keyMaterialHex: releasedKeyHex,
       decision: { trusted: true },
     });
     expect(request).toHaveBeenCalledWith(
@@ -219,6 +227,39 @@ describe("TEE key release", () => {
     await expect(
       client.releaseKey({ keyId: "agent-session", policy: { required: true } }),
     ).rejects.toThrow(/report_data is not bound/);
+  });
+
+  it("rejects a key wrapped to a different ephemeral public key (binding forgery)", async () => {
+    const client = new HttpTeeKeyReleaseClient({
+      baseUrl: "https://kms.example.test",
+      // KMS wraps the key to an attacker-chosen epk, not the one the client
+      // sent. The ECDH shared secret differs, so the AEAD tag check fails.
+      fetch: vi.fn(async (_url: URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { nonce: string };
+        const { publicKey } = generateKeyPairSync("x25519");
+        const foreignEpk = publicKey
+          .export({ type: "spki", format: "der" })
+          .toString("base64");
+        return Response.json({
+          keyId: "agent-session",
+          wrappedKey: wrapTeeReleaseKey({
+            keyMaterialHex: releasedKeyHex,
+            agentEphemeralPublicKeyDerBase64: foreignEpk,
+            nonceHex: body.nonce,
+          }),
+          nonce: body.nonce,
+          decision: { trusted: true, reason: "allowed" },
+        });
+      }) as unknown as typeof fetch,
+      evidenceProvider: {
+        id: "fixture",
+        collectEvidence: async () => evidence({ agent: "sha256:abc" }),
+      },
+    });
+
+    await expect(
+      client.releaseKey({ keyId: "agent-session", policy: { required: true } }),
+    ).rejects.toThrow();
   });
 
   it("refuses a plain-http KMS URL under the production profile", () => {

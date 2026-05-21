@@ -34,6 +34,12 @@ export type TeeClaims = {
   ioProtected?: boolean;
   gpuProtected?: boolean;
   npuProtected?: boolean;
+  /**
+   * The on-device M-mode TSM/security-monitor was measured and folded into the
+   * DICE chain (CoVE path). Mirrors the `monitor` measurement; required by the
+   * confidential-channel OS release manifest so the tiny TCB cannot be swapped.
+   */
+  monitorMeasured?: boolean;
 };
 
 export type TeeFreshness = {
@@ -171,6 +177,7 @@ function normalizeClaims(value: unknown): TeeClaims | undefined {
     "ioProtected",
     "gpuProtected",
     "npuProtected",
+    "monitorMeasured",
   ] as const) {
     if (value[key] === undefined) continue;
     if (typeof value[key] !== "boolean") {

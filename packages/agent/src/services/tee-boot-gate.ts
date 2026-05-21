@@ -102,8 +102,8 @@ export async function evaluateTeeBootGate(
   const decision = evaluateTeeEvidencePolicy(evidence, policy);
   if (!decision.trusted) {
     logger.error(
-      "[TeeBootGate] TEE evidence is not trusted; secrets, model-key release, signing, and remote plugin sync are disabled.",
       { reason: decision.reason, detail: decision.detail },
+      "[TeeBootGate] TEE evidence is not trusted; secrets, model-key release, signing, and remote plugin sync are disabled.",
     );
     return {
       policy,
@@ -116,11 +116,11 @@ export async function evaluateTeeBootGate(
   }
 
   logger.info(
-    "[TeeBootGate] TEE evidence trusted; high-value capabilities enabled.",
     {
       reason: decision.reason,
       productionProfile: useProductionProfile,
     },
+    "[TeeBootGate] TEE evidence trusted; high-value capabilities enabled.",
   );
   return {
     policy,

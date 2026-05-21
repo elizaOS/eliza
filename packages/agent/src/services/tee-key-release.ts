@@ -1,7 +1,12 @@
 import {
+  createCipheriv,
+  createDecipheriv,
   createHash,
   createHmac,
+  createPublicKey,
+  diffieHellman,
   generateKeyPairSync,
+  hkdfSync,
   type KeyObject,
   randomBytes,
   timingSafeEqual,
@@ -204,22 +209,162 @@ export class HttpTeeKeyReleaseClient implements TeeKeyReleaseClient {
         "TEE key release response did not echo the request nonce.",
       );
     }
-    if (
-      typeof payload.keyId !== "string" ||
-      payload.keyId !== request.keyId ||
-      typeof payload.keyMaterialHex !== "string" ||
-      !/^[a-f0-9]{64}$/.test(payload.keyMaterialHex)
-    ) {
+    if (typeof payload.keyId !== "string" || payload.keyId !== request.keyId) {
       throw new Error("TEE key release response is malformed.");
     }
+    // The KMS MUST return the key wrapped to the ephemeral public key the
+    // client generated for THIS request (plan §3.2 step 5). We unwrap with the
+    // matching private key, which never left this process — so a passively
+    // captured response cannot be decrypted by anyone else, and a key not
+    // actually wrapped to our epk fails the AEAD tag check below.
+    const wrapped = parseWrappedTeeKey(payload.wrappedKey);
+    const keyMaterialHex = unwrapTeeReleaseKey(
+      wrapped,
+      binding.privateKey,
+      binding.nonce,
+    );
     // Zeroize the ephemeral binding inputs we still hold in memory.
     binding.publicKeyDer.fill(0);
     return {
       keyId: payload.keyId,
-      keyMaterialHex: payload.keyMaterialHex,
+      keyMaterialHex,
       decision,
     };
   }
+}
+
+/**
+ * A key wrapped to the requesting agent's ephemeral X25519 public key. The KMS
+ * performs X25519 ECDH against the agent's epk, derives an AES-256 key with
+ * HKDF-SHA256 (salted by the request nonce), and AES-256-GCM-encrypts the
+ * released key material. Only the holder of the ephemeral private key (the
+ * in-domain agent) can unwrap it.
+ */
+export type WrappedTeeKey = {
+  algorithm: "x25519-hkdf-sha256-aes-256-gcm";
+  /** KMS ephemeral X25519 public key, base64 SPKI DER. */
+  kmsEphemeralPublicKey: string;
+  ivBase64: string;
+  authTagBase64: string;
+  ciphertextBase64: string;
+};
+
+const WRAP_ALGORITHM = "x25519-hkdf-sha256-aes-256-gcm" as const;
+const WRAP_HKDF_INFO = "elizaos-tee-key-release/v1";
+
+function deriveWrapKey(sharedSecret: Buffer, nonceHex: string): Buffer {
+  return Buffer.from(
+    hkdfSync(
+      "sha256",
+      sharedSecret,
+      Buffer.from(nonceHex, "hex"),
+      Buffer.from(WRAP_HKDF_INFO, "utf8"),
+      32,
+    ),
+  );
+}
+
+/**
+ * KMS-side helper: wrap `keyMaterialHex` to the agent's ephemeral public key.
+ * Exported so a real KMS adapter, the local harness, and tests produce the
+ * exact wire shape {@link HttpTeeKeyReleaseClient} unwraps. The wrap key is
+ * zeroized after use.
+ */
+export function wrapTeeReleaseKey(options: {
+  keyMaterialHex: string;
+  agentEphemeralPublicKeyDerBase64: string;
+  nonceHex: string;
+}): WrappedTeeKey {
+  const keyMaterial = Buffer.from(options.keyMaterialHex, "hex");
+  const agentPub = createPublicKey({
+    key: Buffer.from(options.agentEphemeralPublicKeyDerBase64, "base64"),
+    format: "der",
+    type: "spki",
+  });
+  const { privateKey, publicKey } = generateKeyPairSync("x25519");
+  const shared = diffieHellman({ privateKey, publicKey: agentPub });
+  const wrapKey = deriveWrapKey(shared, options.nonceHex);
+  shared.fill(0);
+  try {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", wrapKey, iv);
+    const ciphertext = Buffer.concat([
+      cipher.update(keyMaterial),
+      cipher.final(),
+    ]);
+    return {
+      algorithm: WRAP_ALGORITHM,
+      kmsEphemeralPublicKey: publicKey
+        .export({ type: "spki", format: "der" })
+        .toString("base64"),
+      ivBase64: iv.toString("base64"),
+      authTagBase64: cipher.getAuthTag().toString("base64"),
+      ciphertextBase64: ciphertext.toString("base64"),
+    };
+  } finally {
+    wrapKey.fill(0);
+    keyMaterial.fill(0);
+  }
+}
+
+function unwrapTeeReleaseKey(
+  wrapped: WrappedTeeKey,
+  agentPrivateKey: KeyObject,
+  nonceHex: string,
+): string {
+  const kmsPub = createPublicKey({
+    key: Buffer.from(wrapped.kmsEphemeralPublicKey, "base64"),
+    format: "der",
+    type: "spki",
+  });
+  const shared = diffieHellman({ privateKey: agentPrivateKey, publicKey: kmsPub });
+  const wrapKey = deriveWrapKey(shared, nonceHex);
+  shared.fill(0);
+  try {
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      wrapKey,
+      Buffer.from(wrapped.ivBase64, "base64"),
+    );
+    decipher.setAuthTag(Buffer.from(wrapped.authTagBase64, "base64"));
+    // A key not actually wrapped to our epk (wrong shared secret) fails the
+    // GCM tag check here rather than yielding usable material.
+    const keyMaterial = Buffer.concat([
+      decipher.update(Buffer.from(wrapped.ciphertextBase64, "base64")),
+      decipher.final(),
+    ]);
+    const hex = keyMaterial.toString("hex");
+    keyMaterial.fill(0);
+    if (!/^[a-f0-9]{64}$/.test(hex)) {
+      throw new Error("Unwrapped TEE key material must be 32 bytes.");
+    }
+    return hex;
+  } finally {
+    wrapKey.fill(0);
+  }
+}
+
+function parseWrappedTeeKey(value: unknown): WrappedTeeKey {
+  if (!value || typeof value !== "object") {
+    throw new Error("TEE key release response did not include a wrapped key.");
+  }
+  const candidate = value as Record<string, unknown>;
+  if (candidate.algorithm !== WRAP_ALGORITHM) {
+    throw new Error(
+      `TEE key release wrap algorithm must be "${WRAP_ALGORITHM}".`,
+    );
+  }
+  for (const field of [
+    "kmsEphemeralPublicKey",
+    "ivBase64",
+    "authTagBase64",
+    "ciphertextBase64",
+  ] as const) {
+    if (typeof candidate[field] !== "string" || candidate[field] === "") {
+      throw new Error(`TEE key release wrapped key is missing "${field}".`);
+    }
+  }
+  return value as WrappedTeeKey;
 }
 
 function createReportDataBinding(): ReportDataBinding {
@@ -294,7 +439,7 @@ function deriveKeyMaterial(options: {
 
 async function readJsonResponse(response: Response): Promise<{
   keyId?: unknown;
-  keyMaterialHex?: unknown;
+  wrappedKey?: unknown;
   nonce?: unknown;
   decision?: TeeEvidencePolicyDecision;
 }> {
@@ -303,7 +448,7 @@ async function readJsonResponse(response: Response): Promise<{
   try {
     return JSON.parse(text) as {
       keyId?: unknown;
-      keyMaterialHex?: unknown;
+      wrappedKey?: unknown;
       nonce?: unknown;
       decision?: TeeEvidencePolicyDecision;
     };
