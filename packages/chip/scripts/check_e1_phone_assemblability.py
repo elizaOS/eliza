@@ -705,45 +705,45 @@ def check_fastener_access(parts: dict[str, Part]) -> dict:
 # / service-loop volume to its connector. We verify the bend-keepout volume is
 # not interpenetrated by any non-mating placed part (a pinch).
 # ----------------------------------------------------------------------------
-FPC_ROUTES = [
-    {
-        "flex": "display FPC",
-        "keepout": "display_fpc_bend_keepout",
-        "connector": "display_fpc_connector",
-        "mates": {
-            "display_fpc_connector",
-            "display_lcm",
-            "main_pcb",
-            "rear_camera_module",
-            "pmic_shield_can",
-            "orange_side_frame",
-        },
-    },
-    {
-        "flex": "battery/PMIC interconnect (side service loop)",
-        "keepout": "split_interconnect_side_flex",
-        "connector": "split_interconnect_top_connector",
-        "mates": {
-            "split_interconnect_top_connector",
-            "split_interconnect_bottom_connector",
-            "main_pcb",
-            "battery_pouch",
-            "orange_side_frame",
-            "haptic_lra",
-        },
-    },
-    {
-        "flex": "split top flex tail",
-        "keepout": "split_interconnect_top_flex_tail",
-        "connector": "split_interconnect_top_connector",
-        "mates": {"split_interconnect_top_connector", "main_pcb", "battery_pouch"},
-    },
-    {
-        "flex": "split bottom flex tail",
-        "keepout": "split_interconnect_bottom_flex_tail",
-        "connector": "split_interconnect_bottom_connector",
-        "mates": {"split_interconnect_bottom_connector", "main_pcb"},
-    },
+@dataclass
+class FpcRoute:
+    flex: str
+    keepout: str
+    connector: str
+    mates: frozenset[str]
+
+
+FPC_ROUTES: list[FpcRoute] = [
+    FpcRoute(
+        "display FPC",
+        "display_fpc_bend_keepout",
+        "display_fpc_connector",
+        frozenset({
+            "display_fpc_connector", "display_lcm", "main_pcb",
+            "rear_camera_module", "pmic_shield_can", "orange_side_frame",
+        }),
+    ),
+    FpcRoute(
+        "battery/PMIC interconnect (side service loop)",
+        "split_interconnect_side_flex",
+        "split_interconnect_top_connector",
+        frozenset({
+            "split_interconnect_top_connector", "split_interconnect_bottom_connector",
+            "main_pcb", "battery_pouch", "orange_side_frame", "haptic_lra",
+        }),
+    ),
+    FpcRoute(
+        "split top flex tail",
+        "split_interconnect_top_flex_tail",
+        "split_interconnect_top_connector",
+        frozenset({"split_interconnect_top_connector", "main_pcb", "battery_pouch"}),
+    ),
+    FpcRoute(
+        "split bottom flex tail",
+        "split_interconnect_bottom_flex_tail",
+        "split_interconnect_bottom_connector",
+        frozenset({"split_interconnect_bottom_connector", "main_pcb"}),
+    ),
 ]
 
 
@@ -751,14 +751,14 @@ def check_fpc_routing(parts: dict[str, Part]) -> dict:
     results = []
     all_ok = True
     for route in FPC_ROUTES:
-        ko = parts.get(route["keepout"])
+        ko = parts.get(route.keepout)
         if ko is None:
             results.append(
-                {"flex": route["flex"], "unpinched": False, "reason": "keepout part missing"}
+                {"flex": route.flex, "unpinched": False, "reason": "keepout part missing"}
             )
             all_ok = False
             continue
-        skip = set(route["mates"]) | {route["keepout"]}
+        skip = set(route.mates) | {route.keepout}
         clear, pinchers = clearance_at(
             ko.shape, ko.bbox, (0.0, 0.0, 0.0), list(parts.values()), skip=skip
         )
@@ -766,9 +766,9 @@ def check_fpc_routing(parts: dict[str, Part]) -> dict:
         all_ok = all_ok and unpinched
         results.append(
             {
-                "flex": route["flex"],
-                "keepout": route["keepout"],
-                "connector": route["connector"],
+                "flex": route.flex,
+                "keepout": route.keepout,
+                "connector": route.connector,
                 "unpinched": unpinched,
                 "min_clearance_mm": round(clear, 4),
                 "pinching_parts": pinchers,
@@ -940,7 +940,7 @@ def write_markdown(out: dict) -> None:
     lines.append("## Fastener Access")
     lines.append("")
     lines.append(
-        "Driver / snap-platen approach column (toward +Z, out the open back) "
+        "Driver / snap-platen approach column (toward -Z, from the up-facing back) "
         "checked for obstruction before side-frame closure."
     )
     lines.append("")

@@ -10237,12 +10237,18 @@ def write_mold_flow_acceptance_artifacts(
         }
         for criterion in criteria
     ]
-    _write_results_template_if_blank(
-        template_path,
-        fieldnames,
-        rows,
-        "criterion_id",
-        [
+    should_write_template = True
+    if template_path.is_file():
+        existing_text = template_path.read_text()
+        existing_lines = existing_text.splitlines()
+        if existing_lines and existing_lines[0].startswith("# evidence_class:"):
+            existing_text = "\n".join(existing_lines[1:]) + "\n"
+        with StringIO(existing_text) as existing_file:
+            existing_rows = list(csv.DictReader(existing_file))
+        existing_ids = {row.get("criterion_id", "") for row in existing_rows}
+        expected_ids = {row["criterion_id"] for row in rows}
+        existing_fields = list(existing_rows[0].keys()) if existing_rows else []
+        response_fields = [
             "toolmaker_name",
             "evidence_class",
             "returned_artifact",
@@ -10252,8 +10258,21 @@ def write_mold_flow_acceptance_artifacts(
             "measured_or_predicted_value",
             "accepted",
             "reviewer",
-        ],
-    )
+        ]
+        has_response_content = any(
+            row.get(field, "").strip()
+            for row in existing_rows
+            for field in response_fields
+        )
+        should_write_template = (
+            not has_response_content
+            and (existing_ids != expected_ids or existing_fields != fieldnames or not existing_rows)
+        )
+    if should_write_template:
+        with template_path.open("w", newline="") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
 
     template_evidence_class = ""
     csv_text = template_path.read_text() if template_path.is_file() else ""

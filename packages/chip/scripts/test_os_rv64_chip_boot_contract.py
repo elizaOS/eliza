@@ -142,6 +142,7 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
         self.assertIn("linux_release_gate_overstates_elizaos_ready_marker", codes)
         self.assertIn("agent_execstart_not_packaged", codes)
         self.assertIn("missing_agent_liveness_marker", codes)
+        self.assertIn("missing_tui_liveness_marker", codes)
 
     def test_chip_boot_and_agent_live_contract_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
