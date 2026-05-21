@@ -78,9 +78,7 @@ module e1_drrip #(
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int w = 0; w < WAYS; w++)
-                for (int s = 0; s < SETS; s++)
-                    rrpv[w][s] <= 2'b11;
+            rrpv       <= '{default: '{default: 2'b11}};
             psel_q     <= 10'sd0;
             bip_lfsr_q <= 5'd0;
         end else begin : tick_block

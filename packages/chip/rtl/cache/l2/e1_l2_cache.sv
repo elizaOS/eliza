@@ -208,15 +208,11 @@ module e1_l2_cache
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int w = 0; w < WAYS; w++) begin
-                for (int s = 0; s < SETS; s++) begin
-                    tag_array[w][s] <= '0;
-                    state_array[w][s] <= MESI_I;
-                    data_array[w][s] <= '0;
-                    l1i_pres[w][s] <= 1'b0;
-                end
-            end
-            for (int s = 0; s < SETS; s++) plru[s] <= '0;
+            tag_array   <= '{default: '{default: '0}};
+            state_array <= '{default: '{default: MESI_I}};
+            data_array  <= '{default: '{default: '0}};
+            l1i_pres    <= '{default: '{default: 1'b0}};
+            plru        <= '{default: '0};
 
             state_q             <= S_IDLE;
             pending_paddr_q     <= '0;

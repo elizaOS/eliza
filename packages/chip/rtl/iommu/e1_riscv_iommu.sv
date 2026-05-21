@@ -353,17 +353,16 @@ module e1_riscv_iommu
         d_awqos   = '0;
         d_awuser  = '0;
         if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) && aw_authorized) begin
-            int unsigned m = aw_grant_idx;
-            d_awvalid = u_awvalid[m];
-            d_awid    = u_awid[m];
-            d_awaddr  = u_awaddr[m];   // BARE = identity; G-stage IOVA→PA is a follow-on walker
-            d_awlen   = u_awlen[m];
-            d_awsize  = u_awsize[m];
-            d_awburst = u_awburst[m];
-            d_awcache = u_awcache[m];
-            d_awprot  = u_awprot[m];
-            d_awqos   = u_awqos[m];
-            d_awuser  = u_awuser[m];
+            d_awvalid = u_awvalid[aw_grant_idx];
+            d_awid    = u_awid[aw_grant_idx];
+            d_awaddr  = u_awaddr[aw_grant_idx];  // BARE = identity; G-stage IOVA->PA is a follow-on walker
+            d_awlen   = u_awlen[aw_grant_idx];
+            d_awsize  = u_awsize[aw_grant_idx];
+            d_awburst = u_awburst[aw_grant_idx];
+            d_awcache = u_awcache[aw_grant_idx];
+            d_awprot  = u_awprot[aw_grant_idx];
+            d_awqos   = u_awqos[aw_grant_idx];
+            d_awuser  = u_awuser[aw_grant_idx];
         end
     end
     always_comb begin
@@ -378,17 +377,16 @@ module e1_riscv_iommu
         d_arqos   = '0;
         d_aruser  = '0;
         if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) && ar_authorized) begin
-            int unsigned m = ar_grant_idx;
-            d_arvalid = u_arvalid[m];
-            d_arid    = u_arid[m];
-            d_araddr  = u_araddr[m];
-            d_arlen   = u_arlen[m];
-            d_arsize  = u_arsize[m];
-            d_arburst = u_arburst[m];
-            d_arcache = u_arcache[m];
-            d_arprot  = u_arprot[m];
-            d_arqos   = u_arqos[m];
-            d_aruser  = u_aruser[m];
+            d_arvalid = u_arvalid[ar_grant_idx];
+            d_arid    = u_arid[ar_grant_idx];
+            d_araddr  = u_araddr[ar_grant_idx];
+            d_arlen   = u_arlen[ar_grant_idx];
+            d_arsize  = u_arsize[ar_grant_idx];
+            d_arburst = u_arburst[ar_grant_idx];
+            d_arcache = u_arcache[ar_grant_idx];
+            d_arprot  = u_arprot[ar_grant_idx];
+            d_arqos   = u_arqos[ar_grant_idx];
+            d_aruser  = u_aruser[ar_grant_idx];
         end
     end
 
@@ -400,14 +398,12 @@ module e1_riscv_iommu
             u_arready[m] = 1'b0;
         end
         if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS)) begin
-            int unsigned m = aw_grant_idx;
-            u_awready[m] = aw_authorized ? d_awready :
-                           (fq_stage_count < $clog2(FAULT_Q_DEPTH+1)'(FAULT_Q_DEPTH));
+            u_awready[aw_grant_idx] = aw_authorized ? d_awready :
+                                      (fq_stage_count < $clog2(FAULT_Q_DEPTH+1)'(FAULT_Q_DEPTH));
         end
         if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS)) begin
-            int unsigned m = ar_grant_idx;
-            u_arready[m] = ar_authorized ? d_arready :
-                           (fq_stage_count < $clog2(FAULT_Q_DEPTH+1)'(FAULT_Q_DEPTH));
+            u_arready[ar_grant_idx] = ar_authorized ? d_arready :
+                                      (fq_stage_count < $clog2(FAULT_Q_DEPTH+1)'(FAULT_Q_DEPTH));
         end
     end
 
@@ -421,12 +417,11 @@ module e1_riscv_iommu
             u_wready[m] = 1'b1;  // accept all W; unauthorised data discarded
         end
         if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) && aw_authorized) begin
-            int unsigned m = aw_grant_idx;
-            d_wvalid    = u_wvalid[m];
-            d_wdata     = u_wdata[m];
-            d_wstrb     = u_wstrb[m];
-            d_wlast     = u_wlast[m];
-            u_wready[m] = d_wready;
+            d_wvalid               = u_wvalid[aw_grant_idx];
+            d_wdata                = u_wdata[aw_grant_idx];
+            d_wstrb                = u_wstrb[aw_grant_idx];
+            d_wlast                = u_wlast[aw_grant_idx];
+            u_wready[aw_grant_idx] = d_wready;
         end
     end
 
@@ -439,12 +434,11 @@ module e1_riscv_iommu
         end
         d_bready = 1'b0;
         if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS)) begin
-            int unsigned m = aw_grant_idx;
             if (aw_authorized) begin
-                u_bvalid[m] = d_bvalid;
-                u_bid[m]    = d_bid;
-                u_bresp[m]  = d_bresp;
-                d_bready    = u_bready[m];
+                u_bvalid[aw_grant_idx] = d_bvalid;
+                u_bid[aw_grant_idx]    = d_bid;
+                u_bresp[aw_grant_idx]  = d_bresp;
+                d_bready               = u_bready[aw_grant_idx];
             end
         end
     end
@@ -460,14 +454,13 @@ module e1_riscv_iommu
         end
         d_rready = 1'b0;
         if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS)) begin
-            int unsigned m = ar_grant_idx;
             if (ar_authorized) begin
-                u_rvalid[m] = d_rvalid;
-                u_rid[m]    = d_rid;
-                u_rdata[m]  = d_rdata;
-                u_rresp[m]  = d_rresp;
-                u_rlast[m]  = d_rlast;
-                d_rready    = u_rready[m];
+                u_rvalid[ar_grant_idx] = d_rvalid;
+                u_rid[ar_grant_idx]    = d_rid;
+                u_rdata[ar_grant_idx]  = d_rdata;
+                u_rresp[ar_grant_idx]  = d_rresp;
+                u_rlast[ar_grant_idx]  = d_rlast;
+                d_rready               = u_rready[ar_grant_idx];
             end
         end
     end

@@ -133,6 +133,19 @@ module e1_l1d_cache
     // Outgoing acq channel single-shot driver
     logic                          acq_pending_q;
     logic [MSHR_IDX_W-1:0]         acq_mshr_q;
+    logic                          mshr_alloc_available_c;
+    logic [MSHR_IDX_W-1:0]         mshr_alloc_idx_c;
+
+    always_comb begin
+        mshr_alloc_available_c = 1'b0;
+        mshr_alloc_idx_c       = '0;
+        for (int m = 0; m < MSHR_DEPTH; m++) begin
+            if (!mshr[m].valid && !mshr_alloc_available_c) begin
+                mshr_alloc_available_c = 1'b1;
+                mshr_alloc_idx_c       = m[MSHR_IDX_W-1:0];
+            end
+        end
+    end
 
     // -----------------------------------------------------------------
     // Per-port lookup helpers
@@ -306,19 +319,12 @@ module e1_l1d_cache
     // -----------------------------------------------------------------
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int w = 0; w < WAYS; w++)
-                for (int s = 0; s < SETS; s++) begin
-                    tag_array[w][s]   <= '0;
-                    state_array[w][s] <= MESI_I;
-                    for (int wd = 0; wd < WORDS_PER_LINE; wd++) begin
-                        data_array[w][s][wd] <= '0;
-                        ecc_array [w][s][wd] <= '0;
-                    end
-                end
-            for (int s = 0; s < SETS; s++)
-                plru[s] <= '0;
-            for (int m = 0; m < MSHR_DEPTH; m++)
-                mshr[m] <= '0;
+            tag_array   <= '{default: '{default: '0}};
+            state_array <= '{default: '{default: MESI_I}};
+            data_array  <= '{default: '{default: '{default: '0}}};
+            ecc_array   <= '{default: '{default: '{default: '0}}};
+            plru        <= '{default: '0};
+            mshr        <= '{default: '0};
 
             acq_pending_q     <= 1'b0;
             acq_mshr_q        <= '0;
@@ -399,19 +405,18 @@ module e1_l1d_cache
                     lsu_p0_resp.tag   <= lsu_p0_req.tag;
                     lsu_p0_resp.ecc_uncorrectable <= r0.ecc_double;
                     if (r0.ecc_double) hpm_l1d_ecc_uncorr <= 1'b1;
-                    for (int m = 0; m < MSHR_DEPTH; m++) begin
-                        if (!mshr[m].valid && !acq_pending_q) begin
-                            mshr[m].valid       <= 1'b1;
-                            mshr[m].paddr_line  <= {lsu_p0_req.paddr[PADDR_W-1:OFFSET_W],
-                                                    {OFFSET_W{1'b0}}};
-                            mshr[m].req_state   <= lsu_p0_req.is_load ?
-                                                   MESI_S : MESI_M;
-                            mshr[m].is_write    <= 1'b0;
-                            mshr[m].set_idx     <= addr_index(lsu_p0_req.paddr);
-                            mshr[m].victim_way  <= plru_victim(plru[addr_index(lsu_p0_req.paddr)]);
-                            mshr[m].granted     <= 1'b0;
-                            break;
-                        end
+                    if (mshr_alloc_available_c && !acq_pending_q) begin
+                        mshr[mshr_alloc_idx_c] <= '{
+                            valid: 1'b1,
+                            paddr_line: {lsu_p0_req.paddr[PADDR_W-1:OFFSET_W],
+                                         {OFFSET_W{1'b0}}},
+                            req_state: lsu_p0_req.is_load ? MESI_S : MESI_M,
+                            is_write: 1'b0,
+                            wb_data: '0,
+                            victim_way: plru_victim(plru[addr_index(lsu_p0_req.paddr)]),
+                            set_idx: addr_index(lsu_p0_req.paddr),
+                            granted: 1'b0
+                        };
                     end
                 end
             end

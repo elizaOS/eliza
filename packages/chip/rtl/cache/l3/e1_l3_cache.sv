@@ -207,19 +207,13 @@ module e1_l3_cache
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int b = 0; b < BANKS; b++)
-                for (int w = 0; w < WAYS; w++)
-                    for (int s = 0; s < SETS_PER_BANK; s++) begin
-                        tag_array[b][w][s]   <= '0;
-                        state_array[b][w][s] <= MESI_I;
-                        data_array[b][w][s]  <= '0;
-                        sharers[b][w][s]     <= '0;
-                        owner_id[b][w][s]    <= '0;
-                        rrpv[b][w][s]        <= 2'b11;
-                    end
-            for (int b = 0; b < BANKS; b++)
-                for (int s = 0; s < SETS_PER_BANK; s++)
-                    plru[b][s] <= '0;
+            tag_array   <= '{default: '{default: '{default: '0}}};
+            state_array <= '{default: '{default: '{default: MESI_I}}};
+            data_array  <= '{default: '{default: '{default: '0}}};
+            sharers     <= '{default: '{default: '{default: '0}}};
+            owner_id    <= '{default: '{default: '{default: '0}}};
+            rrpv        <= '{default: '{default: '{default: 2'b11}}};
+            plru        <= '{default: '{default: '0}};
             drrip_psel_q <= 10'sd0;
 
             state_q             <= T_IDLE;
