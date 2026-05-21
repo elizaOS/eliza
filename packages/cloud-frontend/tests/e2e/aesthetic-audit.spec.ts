@@ -718,47 +718,78 @@ for (const viewport of VIEWPORTS) {
         }
 
         // Stub out API endpoints that 401 against the test JWT so the
-        // audit captures actual page content instead of the "Unauthorized"
-        // error boundary. Each canned response uses a minimal shape — the
-        // goal is to render the empty-state UI, not to exercise
-        // application logic.
+        // audit captures actual page content instead of the
+        // "Unauthorized" error boundary. We use a single broad route
+        // that maps URL patterns to canned empty/zero shapes — the goal
+        // is to render the empty-state UI, not to exercise application
+        // logic.
         if (route.auth) {
-          await context.route(/\/api\/v1\/api-keys/, (r) =>
-            r.fulfill({
-              json: { keys: [] },
-              headers: { "content-type": "application/json" },
-            }),
-          );
-          await context.route(/\/api\/v1\/containers(\?|$)/, (r) =>
-            r.fulfill({
-              json: { containers: [] },
-              headers: { "content-type": "application/json" },
-            }),
-          );
-          await context.route(/\/api\/v1\/agents(\?|$)/, (r) =>
-            r.fulfill({
-              json: { agents: [] },
-              headers: { "content-type": "application/json" },
-            }),
-          );
-          await context.route(/\/api\/v1\/apps(\?|$)/, (r) =>
-            r.fulfill({
-              json: { apps: [] },
-              headers: { "content-type": "application/json" },
-            }),
-          );
-          await context.route(/\/api\/v1\/mcps(\?|$)/, (r) =>
-            r.fulfill({
-              json: { mcps: [] },
-              headers: { "content-type": "application/json" },
-            }),
-          );
-          await context.route(/\/api\/v1\/credits\/balance/, (r) =>
-            r.fulfill({
-              json: { balance: 0, currency: "USD" },
-              headers: { "content-type": "application/json" },
-            }),
-          );
+          await context.route(/\/api\/(v1\/|steward\/|dashboard\/)/, (r) => {
+            const url = r.request().url();
+            const empty = (json: unknown) =>
+              r.fulfill({
+                json,
+                headers: { "content-type": "application/json" },
+              });
+
+            // List endpoints
+            if (/\/api-keys($|\?)/.test(url))
+              return empty({ keys: [], total: 0 });
+            if (/\/containers(\/auth)?($|\?|\/[^/]+$)/.test(url))
+              return empty({ containers: [] });
+            if (/\/agents(\/[^/]+)?($|\?)/.test(url))
+              return empty({ agents: [] });
+            if (/\/apps(\/[^/]+)?($|\?)/.test(url)) return empty({ apps: [] });
+            if (/\/mcps($|\?)/.test(url)) return empty({ mcps: [] });
+            if (/\/documents($|\?)/.test(url)) return empty({ documents: [] });
+            if (/\/invoices/.test(url)) return empty({ invoices: [] });
+            if (/\/redemptions/.test(url))
+              return empty({ redemptions: [], balance: 0 });
+            if (/\/affiliates|\/referrals/.test(url))
+              return empty({
+                referrals: [],
+                stats: { totalEarned: 0, totalReferred: 0 },
+              });
+
+            // Singletons / dashboards
+            if (/\/credits\/balance/.test(url))
+              return empty({ balance: 0, currency: "USD" });
+            if (/\/dashboard($|\?)/.test(url) || /\/dashboard\b/.test(url))
+              return empty({
+                user: { name: "Test User" },
+                agents: [],
+              });
+            if (/\/me($|\?)|\/profile/.test(url))
+              return empty({
+                id: "test-user",
+                name: "Test User",
+                email: "test@example.com",
+              });
+            if (/\/billing/.test(url))
+              return empty({
+                paymentMethods: [],
+                subscriptions: [],
+                upcomingInvoice: null,
+              });
+            if (/\/settings|\/preferences/.test(url))
+              return empty({ settings: {}, preferences: {} });
+            if (/\/security|\/sessions/.test(url))
+              return empty({ sessions: [], twoFactor: { enrolled: false } });
+            if (/\/analytics|\/usage/.test(url))
+              return empty({ series: [], totals: {} });
+            if (/\/earnings/.test(url))
+              return empty({ available: 0, lifetime: 0, history: [] });
+            if (/\/openapi/.test(url))
+              return empty({
+                openapi: "3.0.0",
+                info: { title: "Eliza Cloud", version: "1" },
+                paths: {},
+              });
+            if (/\/admin\//.test(url)) return empty({ items: [], metrics: {} });
+
+            // Permissive default — empty array works for most list endpoints.
+            return empty([]);
+          });
         }
 
         const consoleErrors: string[] = [];
