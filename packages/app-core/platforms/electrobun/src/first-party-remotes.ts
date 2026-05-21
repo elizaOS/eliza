@@ -40,7 +40,7 @@ const platformRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const remotePluginsRoot = path.join(platformRoot, "remotePlugins");
+const remotePluginsRoot = path.join(platformRoot, "remotes");
 const stateFileName = "first-party-remotes.json";
 const skippedHashEntries = new Set([
   ".DS_Store",
