@@ -115,7 +115,7 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
       record.accountRole ??
       record.requestedRole,
   );
-  if (!raw) return "OWNER";
+  if (!raw) return "AGENT";
   const normalized = raw.toUpperCase();
   if (
     normalized === "OWNER" ||
@@ -124,7 +124,7 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
   ) {
     return normalized;
   }
-  return "OWNER";
+  return "AGENT";
 }
 
 function readClientConfig(runtime: IAgentRuntime): {
