@@ -50,9 +50,6 @@ from e1_npu_lowering import (  # noqa: E402
 )
 from e1_npu_runtime import E1NpuRuntime, golden_gemm_s8, golden_vrelu_s8  # noqa: E402
 
-# -- MMIO + descriptor helpers (mirrors of test_e1_npu.py's helpers, kept
-#    local so the file is self-contained for the npu-subdir cocotb run.)
-
 OPCODE_REG = 0x04
 CTRL_REG = 0x03
 OP_A_REG = 0x00
@@ -68,51 +65,6 @@ DESC_STATUS_REG = 0x13
 PERF_CYCLES_REG = 0x14
 DESC_DOORBELL_REG = 0x0C
 SCRATCH_REG_BASE = 0x20
-
-
-async def reset(dut):
-    dut.rst_n.value = 0
-    dut.valid.value = 0
-    dut.write.value = 0
-    dut.addr.value = 0
-    dut.wdata.value = 0
-    if hasattr(dut, "m_axil_arready"):
-        dut.m_axil_awready.value = 0
-        dut.m_axil_wready.value = 0
-        dut.m_axil_bvalid.value = 0
-        dut.m_axil_bresp.value = 0
-        dut.m_axil_arready.value = 0
-        dut.m_axil_rvalid.value = 0
-        dut.m_axil_rdata.value = 0
-        dut.m_axil_rresp.value = 0
-    await Timer(1, units="ns")
-    for _ in range(4):
-        await RisingEdge(dut.clk)
-    dut.rst_n.value = 1
-    await RisingEdge(dut.clk)
-
-
-async def write_reg(dut, addr, data):
-    dut.addr.value = addr
-    dut.wdata.value = data
-    dut.write.value = 1
-    dut.valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.valid.value = 0
-    dut.write.value = 0
-    await Timer(1, units="ns")
-
-
-async def read_reg(dut, addr):
-    dut.addr.value = addr
-    dut.write.value = 0
-    dut.valid.value = 1
-    await Timer(1, units="ns")
-    value = int(dut.rdata.value)
-    await RisingEdge(dut.clk)
-    dut.valid.value = 0
-    await Timer(1, units="ns")
-    return value
 
 
 async def poll_done(dut, cycles=256):

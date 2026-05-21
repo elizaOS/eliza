@@ -7,6 +7,7 @@ when they have an executable test, fail-closed behavior, or a documented blocker
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+REPORT = ROOT / "build/reports/stub_audit.json"
 OWNED_ROOTS = (ROOT / "rtl", ROOT / "sim", ROOT / "verify")
 SKIP_PARTS = {
     "__pycache__",
@@ -97,11 +99,6 @@ ALLOWLIST = (
         "Fail-closed CVA6-disabled mode ties CPU master outputs idle.",
     ),
     AllowedFinding(
-        "rtl/security/e1_lifecycle.sv",
-        "Placeholder device key",
-        "Lifecycle model uses a fixed non-secret debug-auth key until OTP provisioning exists.",
-    ),
-    AllowedFinding(
         "rtl/top/e1_soc_top.sv",
         "a stub with all AXI master outputs tied to idle",
         "Top-level CPU integration documents CVA6-disabled fail-closed behavior.",
@@ -175,6 +172,26 @@ ALLOWLIST = (
         "rtl/top/e1_soc_integrated.sv",
         "scaffold",
         "Integrated SoC top carries the documented AXI-Lite scaffold boundary.",
+    ),
+    AllowedFinding(
+        "rtl/top/e1_soc_pkg.sv",
+        "scaffold",
+        "Shared localparams extracted from both SoC tops' v0 MMIO debug scaffold.",
+    ),
+    AllowedFinding(
+        "rtl/peripherals/e1_clint.sv",
+        "scaffold",
+        "Bring-up CLINT register block extracted from both SoC tops' v0 MMIO debug scaffold.",
+    ),
+    AllowedFinding(
+        "rtl/peripherals/e1_mmio_decode.sv",
+        "scaffold",
+        "Shared MMIO address decode extracted from both SoC tops' v0 MMIO debug scaffold.",
+    ),
+    AllowedFinding(
+        "rtl/memory/e1_behavioral_dram.sv",
+        "scaffold",
+        "Behavioural scratch-DRAM model extracted from both SoC tops' v0 MMIO debug scaffold.",
     ),
     AllowedFinding(
         "rtl/top/e1_soc_integrated.sv",
@@ -274,7 +291,7 @@ def iter_files() -> list[Path]:
     return sorted(paths)
 
 
-def check_placeholder_terms() -> list[str]:
+def check_placeholder_terms() -> tuple[list[str], list[str]]:
     errors: list[str] = []
     inventory: list[str] = []
     for path in iter_files():
@@ -296,7 +313,7 @@ def check_placeholder_terms() -> list[str]:
     print("Allowed placeholder/stub inventory:")
     for item in inventory:
         print(f"  - {item}")
-    return errors
+    return errors, inventory
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -438,10 +455,52 @@ def check_gap_work_order() -> list[str]:
     return errors
 
 
+def finding_code(error: str) -> str:
+    if "silent placeholder term" in error:
+        return "silent_placeholder_term"
+    if "Renode" in error or "REPL" in error or "RESC" in error:
+        return "renode_scaffold_contract_gap"
+    if "RTL gap work order" in error or "critical_gaps" in error:
+        return "rtl_gap_work_order_contract_gap"
+    return "stub_audit_contract_gap"
+
+
+def build_report(errors: list[str], inventory: list[str]) -> dict[str, object]:
+    return {
+        "schema": "eliza.stub_audit.v1",
+        "status": "pass" if not errors else "fail",
+        "claim_boundary": "stub_inventory_only_not_rtl_completion_or_os_boot_evidence",
+        "summary": {
+            "errors": len(errors),
+            "allowed_placeholder_inventory": len(inventory),
+        },
+        "findings": [
+            {
+                "code": finding_code(error),
+                "severity": "blocker",
+                "message": "stub audit found an undocumented placeholder/stub/scaffold gap",
+                "evidence": error,
+                "next_step": (
+                    "Either remove the placeholder/stub/scaffold term by completing the implementation, "
+                    "or add a precise allowlist rationale tied to an executable fail-closed test or work order."
+                ),
+            }
+            for error in errors
+        ],
+        "allowed_placeholder_inventory": inventory,
+    }
+
+
+def write_report(report: dict[str, object]) -> None:
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main() -> int:
-    errors = check_placeholder_terms()
+    errors, inventory = check_placeholder_terms()
     errors.extend(check_renode_scaffold())
     errors.extend(check_gap_work_order())
+    write_report(build_report(errors, inventory))
 
     if errors:
         print("Stub audit failed:")
