@@ -69,8 +69,8 @@ Ex-factory unit cost: **$115.70 @ 10k / $87.56 @ 100k** (EXW Shenzhen). Retail @
 
 ## 6. Supplier pinouts
 
-`board/kicad/e1-phone/supplier-pinouts/` — 10 public datasheet pinouts captured (GCT USB4105, Hirose DF40, Panasonic EVQ-P7, Murata 2EA, Quectel RG255C, OV13855, GC5035, Chenghao CH550FH01A, TI TPS65987, ADI MAX77860) + `pinout-evidence-manifest.yaml`.
-Only remaining NDA-gated item: **Unisoc T606/T616 SoC BGA** — unblock path documented in `supplier-pinouts/README.md`.
+`board/kicad/e1-phone/supplier-pinouts/` — 11 public pinouts captured (Firefly Core-3566JD4 RK3566 compute SoM, GCT USB4105, Hirose DF40, Panasonic EVQ-P7, Murata 2EA, Quectel RG255C, OV13855, GC5035, Chenghao CH550FH01A, TI TPS65987, ADI MAX77860) + `pinout-evidence-manifest.yaml`.
+**Compute NDA blocker RETIRED:** the former sole NDA-gated item (bare Unisoc T606/T616 SoC BGA) is resolved by sourcing compute as the Firefly Core-3566JD4 RK3566 SoM with a public 260-pin SODIMM connector pinout (`compute-som-pinout.yaml`). **Zero NDA-gated lines remain.** The bare-SoC + NDA route is retained as an optional cost-down — see `review/compute-sourcing-resolution.md` and `supplier-pinouts/README.md`.
 
 ## 7. Molding / manufacturing / assembly
 
@@ -94,6 +94,6 @@ Resin SABIC C1200HF PC+ABS; 1+1 family tool; tooling NRE $132k; 26.4 s cycle; 8-
 
 ## Honest residual blockers (fail-closed, not papered over)
 
-1. `routed_pcb_ready` / `fabrication_ready` / `enclosure_ready` blocked on Unisoc T606 SoC pinout (NDA) + measured RF/SI/PI + first-article CMM. Real-world procurement steps.
+1. `routed_pcb_ready` / `fabrication_ready` / `enclosure_ready` still pending measured RF/SI/PI + first-article CMM (real-world procurement steps). Compute is no longer a blocker: it is sourced from public data via the RK3566 SoM (public connector pinout). The bare-SoC NDA path remains an optional cost-down only.
 2. All physical test data is simulated EVT-planning data, not production-release measurement.
 3. STEP models are EVT0 parametric envelopes, not vendor B-rep — boolean PASS is at the envelope level.
