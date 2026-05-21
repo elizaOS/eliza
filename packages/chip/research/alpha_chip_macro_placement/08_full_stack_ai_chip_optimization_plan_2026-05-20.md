@@ -1577,7 +1577,8 @@ Implementation TODOs:
   output tolerance, artifacts, and blockers for TFLite CPU/NNAPI smoke,
   NPU scale simulation, Timeloop mapping, StableHLO lowering, INT4, FP8, and
   sparse 2:4 fixtures. `scripts/ai_eda/check_ai_workload_manifest.py` validates
-  the manifest, benchmark-plan references, local artifact hashes, required
+  the manifest, benchmark-plan references, SHA256 hashes for every local
+  referenced artifact, required
   workload categories, and blocked zero-fallback lanes. `make docs-check`,
   bootstrap metadata, and the CUDA payload/run plan now carry this gate.
 - Integrate Timeloop/Accelergy and ZigZag outputs into the same E1 candidate
@@ -2037,7 +2038,9 @@ not as:
   DREAMPlace research-code repos into normalized text-instruction records for
   RAG/CUDA runbook training, with no execution or optimization claim.
 - [x] Add and validate the E1 AI workload/model manifest for TFLite, NPU scale,
-  Timeloop, StableHLO lowering, INT4, FP8, and sparse 2:4 benchmark lanes.
+  Timeloop, StableHLO lowering, INT4, FP8, and sparse 2:4 benchmark lanes,
+  with SHA256 pins for every referenced local model, runner, config, proof
+  template, runtime, lowering, calibrator, and test artifact.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Replace CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters with the real

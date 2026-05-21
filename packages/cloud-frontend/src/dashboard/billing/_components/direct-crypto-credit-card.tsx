@@ -20,6 +20,11 @@ import type {
   CryptoStatusResponse,
   CryptoStatusTokenOption,
 } from "@/lib/types/crypto-status";
+import {
+  PaymentWaitingOverlay,
+  type PaymentWaitingStatus,
+  pendingPaymentStore,
+} from "./payment-waiting-overlay";
 
 type DirectNetwork = "base" | "bsc" | "solana";
 
@@ -95,6 +100,37 @@ async function confirmDirectPayment(
   return data;
 }
 
+/**
+ * Records a broadcast tx hash against the payment so the server can recover
+ * it via the cron path if the client confirm step fails. We fire-and-log
+ * here — the user-driven confirm path still runs after this, and the cron
+ * path is the durability backstop.
+ */
+async function attachDirectPaymentTx(
+  paymentId: string,
+  transactionHash: string,
+): Promise<void> {
+  try {
+    const res = await fetch(
+      `/api/crypto/direct-payments/${paymentId}/attach-tx`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transactionHash }),
+      },
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      console.warn(
+        "[direct-crypto] attach-tx failed",
+        data?.error || res.statusText,
+      );
+    }
+  } catch (error) {
+    console.warn("[direct-crypto] attach-tx network error", error);
+  }
+}
+
 export function DirectCryptoCreditCard({
   amount,
   promoCode,
@@ -109,6 +145,16 @@ export function DirectCryptoCreditCard({
   );
   const [tokenSymbol, setTokenSymbol] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [activePaymentId, setActivePaymentId] = useState<string | null>(null);
+
+  // Resume the waiting overlay if a payment is mid-flight in localStorage —
+  // covers tab close / refresh between broadcast and confirm.
+  useEffect(() => {
+    const persisted = pendingPaymentStore.load();
+    if (persisted) {
+      setActivePaymentId(persisted.paymentId);
+    }
+  }, []);
   const evm = useAccount();
   const wagmiConfig = useConfig();
   const { switchChainAsync } = useSwitchChain();
@@ -255,6 +301,7 @@ export function DirectCryptoCreditCard({
     }
 
     setBusy(true);
+    let paymentIdForRecovery: string | null = null;
     try {
       const payment = await createDirectPayment({
         amount,
@@ -263,21 +310,75 @@ export function DirectCryptoCreditCard({
         tokenSymbol: selectedToken?.symbol,
         promoCode,
       });
+      paymentIdForRecovery = payment.paymentId;
+
+      // Persist BEFORE asking the wallet to sign — if the user reloads while
+      // the wallet popup is open, we'll resume the wait once they return.
+      pendingPaymentStore.save({
+        paymentId: payment.paymentId,
+        txHash: null,
+        network: selected.network,
+        createdAt: Date.now(),
+      });
+
       const hash =
         selected.network === "solana"
           ? await sendSolanaPayment(payment)
           : await sendEvmPayment(selected, payment);
-      toast.message("Transaction sent. Confirming on-chain...");
-      await confirmDirectPayment(payment.paymentId, hash);
-      toast.success(
-        `Added $${payment.instructions.creditsToAdd} in cloud credit`,
-      );
-      await onSuccess();
+
+      // Two things happen in parallel as soon as we have a hash:
+      //   1. Record it on the server (durability anchor — cron picks up
+      //      from `broadcast` if confirm fails).
+      //   2. Show the user the waiting overlay.
+      pendingPaymentStore.save({
+        paymentId: payment.paymentId,
+        txHash: hash,
+        network: selected.network,
+        createdAt: Date.now(),
+      });
+      setActivePaymentId(payment.paymentId);
+      void attachDirectPaymentTx(payment.paymentId, hash);
+
+      // Best-effort optimistic confirm. If this fails, the overlay's poll
+      // loop + the cron auto-confirm path will still resolve the payment.
+      try {
+        await confirmDirectPayment(payment.paymentId, hash);
+      } catch (confirmError) {
+        console.warn(
+          "[direct-crypto] inline confirm failed; relying on cron",
+          confirmError,
+        );
+      }
     } catch (error) {
+      // If we never got a hash, clear the persisted record — no on-chain
+      // commit to wait on. If we did get a hash, leave it: the overlay
+      // is mounted and will resolve the rest.
+      if (!activePaymentId) pendingPaymentStore.clear();
       toast.error(error instanceof Error ? error.message : "Payment failed");
+      void paymentIdForRecovery;
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleOverlayResolved(status: PaymentWaitingStatus) {
+    pendingPaymentStore.clear();
+    if (status.status === "confirmed") {
+      toast.success(
+        `Added $${status.creditsToAdd} in cloud credit${
+          status.bonusCredits ? ` (incl. $${status.bonusCredits} bonus)` : ""
+        }`,
+      );
+      void onSuccess();
+    } else {
+      toast.error(status.error ?? "Payment did not confirm. Contact support.");
+    }
+  }
+
+  function handleOverlayDismiss() {
+    // Don't clear localStorage on dismiss — the cron is still working on it.
+    // We only clear once the payment terminally resolves.
+    setActivePaymentId(null);
   }
 
   const isCloudSurface = surface === "cloud";
@@ -475,6 +576,13 @@ export function DirectCryptoCreditCard({
           </Button>
         </div>
       </CardContent>
+      {activePaymentId && (
+        <PaymentWaitingOverlay
+          paymentId={activePaymentId}
+          onResolved={handleOverlayResolved}
+          onDismiss={handleOverlayDismiss}
+        />
+      )}
     </Card>
   );
 }

@@ -19,8 +19,8 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write src",
     "verify": "bun run lint && bun run typecheck && bun run build",
-    "predev": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --clouds=4x",
-    "prebuild": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --clouds=4x"
+    "predev": "node ../shared/scripts/sync-to-public.mjs ./public --logos --ogembeds --clouds=4x",
+    "prebuild": "node ../shared/scripts/sync-to-public.mjs ./public --logos --ogembeds --clouds=4x"
   },
   "dependencies": {
     "@elizaos/cloud-shared": "workspace:*",
