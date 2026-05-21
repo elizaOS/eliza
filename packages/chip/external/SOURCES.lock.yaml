@@ -502,6 +502,110 @@ entries:
       hash_verification: pending
       deterministic_replay_required: true
       release_use_allowed: false
+  - id: rtlmul
+    name: RTL-MUL PPA Reward Model
+    kind: model
+    priority: P1
+    source_url: https://huggingface.co/stupid-zwl/rtlmul
+    license_status: review_required
+    revision:
+      type: hf_revision
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: advisory-inference-only
+    e1_lane:
+      - ppa_reward_model
+      - simulator_benchmark_optimization
+    fetch:
+      mode: model
+      command: scripts/ai_eda/fetch_external_asset.py --asset rtlmul --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset rtlmul --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset rtlmul --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: llm4dv
+    name: LLM4DV / ml4dv
+    kind: repo
+    priority: P1
+    source_url: https://github.com/ZixiBenZhang/ml4dv
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: advisory-inference-only
+    e1_lane:
+      - verification_stimulus_generation
+      - cocotb_coverage_search
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset llm4dv --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset llm4dv --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset llm4dv --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: assertllm
+    name: AssertLLM Hardware Assertion Generation
+    kind: paper
+    priority: P1
+    source_url: https://arxiv.org/abs/2411.14436
+    license_status: paper_method_reference_review_required
+    revision:
+      type: arxiv_version
+      value: PIN_AFTER_FETCH
+    expected_size: metadata_only
+    checksum_status: blocked_until_fetch
+    allowed_use: metadata-only
+    e1_lane:
+      - assertion_generation
+      - formal_property_candidates
+    fetch:
+      mode: paper
+      command: scripts/ai_eda/fetch_external_asset.py --asset assertllm --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset assertllm --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset assertllm --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: fault-dft
+    name: Fault Open-Source DFT Toolchain
+    kind: repo
+    priority: P1
+    source_url: https://github.com/AUCOHL/Fault
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: advisory-inference-only
+    e1_lane:
+      - dft_atpg
+      - manufacturing_test_analysis
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset fault-dft --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset fault-dft --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset fault-dft --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
   - id: openroad
     name: OpenROAD
     kind: repo

@@ -15,6 +15,7 @@ describe("Electrobun Store packaging", () => {
     expect(
       Object.values(copy).some((target) => target.startsWith("eliza-dist/")),
     ).toBe(false);
+    expect(Object.values(copy)).not.toContain("remotes");
   });
 
   it("keeps the embedded runtime tree for direct desktop builds", () => {
@@ -25,6 +26,7 @@ describe("Electrobun Store packaging", () => {
 
     expect(Object.values(copy)).toContain("eliza-dist");
     expect(Object.values(copy)).toContain("eliza-dist/package.json");
+    expect(copy.remotes).toBe("remotes");
   });
 
   it("omits the embedded runtime tree for external API desktop builds", () => {
@@ -38,6 +40,7 @@ describe("Electrobun Store packaging", () => {
 
     expect(Object.values(copy)).not.toContain("eliza-dist");
     expect(Object.values(copy)).not.toContain("eliza-dist/package.json");
+    expect(Object.values(copy)).not.toContain("remotes");
   });
 
   it("keeps the embedded runtime tree when external API env is invalid", () => {

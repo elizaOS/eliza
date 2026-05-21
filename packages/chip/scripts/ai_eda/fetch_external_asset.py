@@ -140,6 +140,20 @@ def expected_revision(asset: dict[str, Any]) -> str | None:
 
 
 def verify_existing(path: Path, asset: dict[str, Any]) -> dict[str, Any]:
+    if asset.get("kind") == "paper" or asset.get("fetch", {}).get("mode") == "paper":
+        metadata_path = path / "metadata.json"
+        if not metadata_path.is_file():
+            return {
+                "status": "BLOCKED_MISSING_METADATA_ONLY_PAPER_RECORD",
+                "path": str(path),
+                "expected_metadata": str(metadata_path),
+            }
+        return {
+            "status": "PRESENT_METADATA_ONLY_PAPER_RECORD",
+            "path": str(path),
+            "metadata": rel(metadata_path),
+            "file_manifest": payload_file_manifest(path),
+        }
     if not path.exists():
         return {"status": "BLOCKED_MISSING_LOCAL_ASSET", "path": str(path)}
     if (path / ".git").exists() and command_exists("git"):
@@ -166,9 +180,35 @@ def verify_existing(path: Path, asset: dict[str, Any]) -> dict[str, Any]:
 def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
     source_url = asset["source_url"]
     mode = asset["fetch"]["mode"]
-    if dest.exists():
+    if dest.exists() and mode != "paper":
         return {"status": "SKIPPED_ALREADY_PRESENT", "path": str(dest)}
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if mode == "paper":
+        dest.mkdir(parents=True, exist_ok=True)
+        metadata = {
+            "schema": "eliza.ai_eda.external_paper_metadata.v1",
+            "asset_id": asset["id"],
+            "name": asset["name"],
+            "source_url": source_url,
+            "revision": asset.get("revision"),
+            "license_status": asset.get("license_status"),
+            "allowed_use": asset.get("allowed_use"),
+            "claim_boundary": CLAIM_BOUNDARY,
+            "policy": {
+                "downloads_payload": False,
+                "downloads_model_weights": False,
+                "release_use_allowed": False,
+                "deterministic_replay_required": True,
+            },
+        }
+        metadata_path = dest / "metadata.json"
+        metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+        return {
+            "status": "PRESENT_METADATA_ONLY_PAPER_RECORD",
+            "path": str(dest),
+            "metadata": rel(metadata_path),
+            "file_manifest": payload_file_manifest(dest),
+        }
     if mode == "git":
         if not command_exists("git"):
             return {"status": "BLOCKED_MISSING_TOOL", "tool": "git"}

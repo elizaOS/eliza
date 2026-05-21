@@ -930,8 +930,15 @@ export class SlackService extends Service implements ISlackService {
     if (!state) {
       return this.getClientForAccount(accountId);
     }
-    if (state.account.role === "OWNER" && state.userClient) {
-      return state.userClient;
+    if (state.account.role === "OWNER") {
+      if (!state.userClient) {
+        this.runtime.logger.warn(
+          "[SlackService] Account is configured as OWNER but has no userToken — falling back to bot client. Set userToken (xoxp-) to route messages as user.",
+          { accountId },
+        );
+      } else {
+        return state.userClient;
+      }
     }
     return state.client;
   }

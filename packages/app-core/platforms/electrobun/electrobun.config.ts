@@ -229,7 +229,7 @@ const runtimeBundleNodeModulesPath = path.join(
   "node_modules",
 );
 const useMacIconsetBuild = isTruthyEnv(
-	process.env.ELIZA_ELECTROBUN_USE_ICONSET,
+  process.env.ELIZA_ELECTROBUN_USE_ICONSET,
 );
 const repoPluginsJsonPath = path.relative(
   electrobunDir,
@@ -342,6 +342,9 @@ export function resolveElectrobunCopyMap({
     if (fs.existsSync(path.join(repoRoot, "plugins.json"))) {
       copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`;
     }
+    if (fs.existsSync(path.join(electrobunDir, "remotes"))) {
+      copy["remotes"] = "remotes";
+    }
     copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
   }
 
@@ -429,164 +432,164 @@ export function createElectrobunConfig(): ElectrobunConfig {
   // (eliza/packages/app-core/platforms/electrobun/)
   // ../../../../../ goes to eliza repo root where dist/, plugins.json, package.json exist
 
-	return {
-		app: {
-			name: appName,
-			identifier: appId,
-			version: appVersion,
-			description: "AI agents for the desktop",
-			urlSchemes: [urlScheme],
-		},
-		runtime: {
-			exitOnLastWindowClosed: false,
-		},
-		scripts: {
-			// Electrobun removes the target build folder without `force: true`;
-			// seed it first so clean worktrees do not fail with ENOENT.
-			preBuild: "scripts/ensure-build-folder.ts",
-			// Sign native code inside the runtime dist node_modules on the inner app bundle
-			// before Electrobun runs the platform signing/notarization flow.
-			postBuild: "scripts/postwrap-sign-runtime-macos.ts",
-			// Capture wrapper-bundle binary metadata after the self-extractor is created.
-			postWrap: "scripts/postwrap-diagnostics.ts",
-		},
-		build: {
-			bun: {
-				entrypoint: "src/index.ts",
-				// The Electrobun bun process is a thin native shell — it creates
-				// windows, dispatches RPCs to the renderer, and manages the embedded
-				// API subprocess (or talks to an external API). It must NOT bundle
-				// the agent runtime, plugins, database, or ML stacks — those belong
-				// in the API subprocess. Any of these reaching the Electrobun bun
-				// bundle is a sign of an unintended import edge; either cut the edge
-				// or extend this list.
-				external: [
-					// Agent runtime packages — used only via type imports in the bun
-					// src, but workspace TS resolution can drag the source graph in.
-					"@elizaos/core",
-					"@elizaos/agent",
-					"@elizaos/app-core",
-					// Plugins — initialized by the API subprocess, never the bun shell.
-					"@elizaos/plugin-sql",
-					"@elizaos/plugin-local-inference",
-					"@elizaos/plugin-local-inference",
-					// Database stack pulled in by plugin-sql.
-					"@electric-sql/pglite",
-					"drizzle-orm",
-					"pg",
-					// Native ML/embedding packages ship platform-specific bindings via
-					// relative require()s or per-platform sibling packages; bundling
-					// them breaks those paths.
-					"node-llama-cpp",
-					"@node-llama-cpp/*",
-					"onnxruntime-node",
-					"onnxruntime-common",
-					"onnxruntime-web",
-					// chalk is pulled in transitively via @elizaos/shared/dist/terminal/theme.js.
-					// The Electrobun bun shell never renders to a TTY, so this branch is dead at
-					// runtime — externalising it just keeps the bundler from trying to resolve it.
-					"chalk",
-				],
-			},
-			views: {},
-			// Watch these extra dirs in dev --watch mode so changes to the Vite
-			// renderer build or shared types trigger a bun-side rebuild + relaunch.
-			watch: ["../dist", "src/shared/", "src/bridge/"],
-			// Ignore test files and build artifacts from watch triggers.
-			watchIgnore: [
-				"src/**/*.test.ts",
-				"src/**/*.spec.ts",
-				"artifacts/",
-				"build/",
-			],
-			// Desktop intentionally supports both WebGPU paths:
-			// 1. renderer-webview WebGPU (`three/webgpu` via browser `navigator.gpu`)
-			// 2. Electrobun-native Dawn for Bun-side GpuWindow / <electrobun-wgpu>
-			//    surfaces and future native compute workloads.
-			copy: {
-				...resolveElectrobunCopyMap({
-					buildVariant,
-					runtimeDistDir,
-					embedRuntime,
-				}),
-				[brandConfigCopySource]: "brand-config.json",
-				...(process.platform === "darwin" &&
-				fs.existsSync(libMacWindowEffectsDylib)
-					? { "src/libMacWindowEffects.dylib": "libMacWindowEffects.dylib" }
-					: {}),
-			},
-			mac: {
-				bundleWGPU: true,
-				codesign: process.env.ELECTROBUN_SKIP_CODESIGN !== "1",
-				notarize:
-					process.env.ELECTROBUN_SKIP_CODESIGN !== "1" &&
-					process.env.ELIZA_ELECTROBUN_NOTARIZE !== "0",
-				defaultRenderer: "native",
-				...(useMacIconsetBuild ? { icons: "assets/appIcon.iconset" } : {}),
-				// Entitlements are selected by the ELIZA_BUILD_VARIANT axis:
-				// - "store": parsed from entitlements/mas.entitlements; turns on
-				//   com.apple.security.app-sandbox for Mac App Store distribution.
-				// - "direct" (default): inline hardened-runtime entitlements with
-				//   no sandbox — current behavior for direct downloads.
-				//
-				// Child-process entitlements (mas-child.entitlements with
-				// com.apple.security.inherit) are applied after this packaging
-				// step by codesign-mas.mjs, which walks the bundle bottom-up.
-				// See scripts/codesign-mas.mjs. Set ELIZA_MAS_SIGNING_IDENTITY
-				// in the build env (and optionally ELIZA_MAS_INSTALLER_IDENTITY
-				// for productbuild).
-				entitlements:
-					buildVariant === "store"
-						? parseEntitlementsPlist(
-								path.join(electrobunDir, "entitlements/mas.entitlements"),
-							)
-						: {
-								"com.apple.security.cs.allow-jit": true,
-								"com.apple.security.cs.allow-unsigned-executable-memory": true,
-								"com.apple.security.cs.disable-library-validation": true,
-								"com.apple.security.network.client": true,
-								"com.apple.security.network.server": true,
-								"com.apple.security.files.user-selected.read-write": true,
-								"com.apple.security.device.camera": true,
-								"com.apple.security.device.microphone": true,
-								"com.apple.security.device.screen-recording": true,
-								"com.apple.security.personal-information.addressbook": true,
-								"com.apple.security.personal-information.calendars": true,
-								"com.apple.security.automation.apple-events": true,
-							},
-			},
-			linux: {
-				// Linux CEF remains opt-in until its helper processes are stable
-				// enough for the default desktop shell.
-				bundleCEF: linuxCefEnabled,
-				bundleWGPU: true,
-				defaultRenderer: "native",
-				icon: "assets/appIcon.png",
-				chromiumFlags: linuxCefEnabled ? linuxCefChromiumFlags() : {},
-			},
-			win: {
-				bundleCEF: true,
-				bundleWGPU: true,
-				defaultRenderer: "cef",
-				icon: "assets/appIcon.ico",
-				chromiumFlags: chromiumFlags({
-					"enable-unsafe-webgpu": true,
-					"enable-features": "Vulkan",
-					"in-process-gpu": true,
-					"disable-gpu-sandbox": true,
-					"no-sandbox": true,
-				}),
-			},
-		},
-		...(releaseUrl
-			? {
-					release: {
-						baseUrl: releaseUrl,
-						generatePatch: true,
-					},
-				}
-			: {}),
-	} satisfies ElectrobunConfig;
+  return {
+    app: {
+      name: appName,
+      identifier: appId,
+      version: appVersion,
+      description: "AI agents for the desktop",
+      urlSchemes: [urlScheme],
+    },
+    runtime: {
+      exitOnLastWindowClosed: false,
+    },
+    scripts: {
+      // Electrobun removes the target build folder without `force: true`;
+      // seed it first so clean worktrees do not fail with ENOENT.
+      preBuild: "scripts/ensure-build-folder.ts",
+      // Sign native code inside the runtime dist node_modules on the inner app bundle
+      // before Electrobun runs the platform signing/notarization flow.
+      postBuild: "scripts/postwrap-sign-runtime-macos.ts",
+      // Capture wrapper-bundle binary metadata after the self-extractor is created.
+      postWrap: "scripts/postwrap-diagnostics.ts",
+    },
+    build: {
+      bun: {
+        entrypoint: "src/index.ts",
+        // The Electrobun bun process is a thin native shell — it creates
+        // windows, dispatches RPCs to the renderer, and manages the embedded
+        // API subprocess (or talks to an external API). It must NOT bundle
+        // the agent runtime, plugins, database, or ML stacks — those belong
+        // in the API subprocess. Any of these reaching the Electrobun bun
+        // bundle is a sign of an unintended import edge; either cut the edge
+        // or extend this list.
+        external: [
+          // Agent runtime packages — used only via type imports in the bun
+          // src, but workspace TS resolution can drag the source graph in.
+          "@elizaos/core",
+          "@elizaos/agent",
+          "@elizaos/app-core",
+          // Plugins — initialized by the API subprocess, never the bun shell.
+          "@elizaos/plugin-sql",
+          "@elizaos/plugin-local-inference",
+          "@elizaos/plugin-local-inference",
+          // Database stack pulled in by plugin-sql.
+          "@electric-sql/pglite",
+          "drizzle-orm",
+          "pg",
+          // Native ML/embedding packages ship platform-specific bindings via
+          // relative require()s or per-platform sibling packages; bundling
+          // them breaks those paths.
+          "node-llama-cpp",
+          "@node-llama-cpp/*",
+          "onnxruntime-node",
+          "onnxruntime-common",
+          "onnxruntime-web",
+          // chalk is pulled in transitively via @elizaos/shared/dist/terminal/theme.js.
+          // The Electrobun bun shell never renders to a TTY, so this branch is dead at
+          // runtime — externalising it just keeps the bundler from trying to resolve it.
+          "chalk",
+        ],
+      },
+      views: {},
+      // Watch these extra dirs in dev --watch mode so changes to the Vite
+      // renderer build or shared types trigger a bun-side rebuild + relaunch.
+      watch: ["../dist", "src/shared/", "src/bridge/"],
+      // Ignore test files and build artifacts from watch triggers.
+      watchIgnore: [
+        "src/**/*.test.ts",
+        "src/**/*.spec.ts",
+        "artifacts/",
+        "build/",
+      ],
+      // Desktop intentionally supports both WebGPU paths:
+      // 1. renderer-webview WebGPU (`three/webgpu` via browser `navigator.gpu`)
+      // 2. Electrobun-native Dawn for Bun-side GpuWindow / <electrobun-wgpu>
+      //    surfaces and future native compute workloads.
+      copy: {
+        ...resolveElectrobunCopyMap({
+          buildVariant,
+          runtimeDistDir,
+          embedRuntime,
+        }),
+        [brandConfigCopySource]: "brand-config.json",
+        ...(process.platform === "darwin" &&
+        fs.existsSync(libMacWindowEffectsDylib)
+          ? { "src/libMacWindowEffects.dylib": "libMacWindowEffects.dylib" }
+          : {}),
+      },
+      mac: {
+        bundleWGPU: true,
+        codesign: process.env.ELECTROBUN_SKIP_CODESIGN !== "1",
+        notarize:
+          process.env.ELECTROBUN_SKIP_CODESIGN !== "1" &&
+          process.env.ELIZA_ELECTROBUN_NOTARIZE !== "0",
+        defaultRenderer: "native",
+        ...(useMacIconsetBuild ? { icons: "assets/appIcon.iconset" } : {}),
+        // Entitlements are selected by the ELIZA_BUILD_VARIANT axis:
+        // - "store": parsed from entitlements/mas.entitlements; turns on
+        //   com.apple.security.app-sandbox for Mac App Store distribution.
+        // - "direct" (default): inline hardened-runtime entitlements with
+        //   no sandbox — current behavior for direct downloads.
+        //
+        // Child-process entitlements (mas-child.entitlements with
+        // com.apple.security.inherit) are applied after this packaging
+        // step by codesign-mas.mjs, which walks the bundle bottom-up.
+        // See scripts/codesign-mas.mjs. Set ELIZA_MAS_SIGNING_IDENTITY
+        // in the build env (and optionally ELIZA_MAS_INSTALLER_IDENTITY
+        // for productbuild).
+        entitlements:
+          buildVariant === "store"
+            ? parseEntitlementsPlist(
+                path.join(electrobunDir, "entitlements/mas.entitlements"),
+              )
+            : {
+                "com.apple.security.cs.allow-jit": true,
+                "com.apple.security.cs.allow-unsigned-executable-memory": true,
+                "com.apple.security.cs.disable-library-validation": true,
+                "com.apple.security.network.client": true,
+                "com.apple.security.network.server": true,
+                "com.apple.security.files.user-selected.read-write": true,
+                "com.apple.security.device.camera": true,
+                "com.apple.security.device.microphone": true,
+                "com.apple.security.device.screen-recording": true,
+                "com.apple.security.personal-information.addressbook": true,
+                "com.apple.security.personal-information.calendars": true,
+                "com.apple.security.automation.apple-events": true,
+              },
+      },
+      linux: {
+        // Linux CEF remains opt-in until its helper processes are stable
+        // enough for the default desktop shell.
+        bundleCEF: linuxCefEnabled,
+        bundleWGPU: true,
+        defaultRenderer: "native",
+        icon: "assets/appIcon.png",
+        chromiumFlags: linuxCefEnabled ? linuxCefChromiumFlags() : {},
+      },
+      win: {
+        bundleCEF: true,
+        bundleWGPU: true,
+        defaultRenderer: "cef",
+        icon: "assets/appIcon.ico",
+        chromiumFlags: chromiumFlags({
+          "enable-unsafe-webgpu": true,
+          "enable-features": "Vulkan",
+          "in-process-gpu": true,
+          "disable-gpu-sandbox": true,
+          "no-sandbox": true,
+        }),
+      },
+    },
+    ...(releaseUrl
+      ? {
+          release: {
+            baseUrl: releaseUrl,
+            generatePatch: true,
+          },
+        }
+      : {}),
+  } satisfies ElectrobunConfig;
 }
 
 export default createElectrobunConfig();

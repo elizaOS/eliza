@@ -2,6 +2,7 @@
 Description=elizaOS local agent runtime
 ConditionUser=1000
 ConditionPathExists=!/run/elizaos/persistence-maintenance
+ConditionPathExists=!%t/elizaos-persistence-setup
 Wants=tails-dump-user-env.service
 After=tails-dump-user-env.service
 RefuseManualStop=yes

@@ -10,7 +10,7 @@
     "check:release-data": "node ../app-core/scripts/check-homepage-release-data.mjs",
     "test": "node --test tests/smoke.node.test.mjs",
     "test:e2e": "node ../app-core/scripts/write-homepage-release-data.mjs && ../../node_modules/.bin/playwright test",
-    "test:audit": "node ../app-core/scripts/write-homepage-release-data.mjs && ../../node_modules/.bin/playwright test tests/e2e/aesthetic-audit.spec.ts && node scripts/generate-contact-sheet.mjs",
+    "test:audit": "node ../app-core/scripts/write-homepage-release-data.mjs && ../../node_modules/.bin/playwright test tests/e2e/aesthetic-audit.spec.ts && ../../node_modules/.bin/playwright test tests/e2e/contact-sheet-capture.spec.ts && node scripts/generate-contact-sheet.mjs",
     "typecheck": "node ../app-core/scripts/write-homepage-release-data.mjs && tsc -b",
     "preview": "bun --bun vite preview --port 4444",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

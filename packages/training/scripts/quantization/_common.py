@@ -211,12 +211,11 @@ def validate_quantization_args(args: argparse.Namespace) -> None:
 
 
 def load_calibration_prompts(path: Path, n: int) -> list[str]:
-    """Pull up to ``n`` user-final prompts from a val.jsonl shaped file.
+    """Pull up to n user-final prompts from a JSONL file.
 
-    The eliza dataset schema stores the latest user turn under
-    ``currentMessage.content``. Lines that fail JSON parse or carry no
-    text are dropped silently. Raises ``RuntimeError`` if no prompts
-    survive.
+    Supports both eliza_native_v1 format (request.messages array) and
+    legacy format (currentMessage.content). Lines that fail JSON parse
+    or carry no text are dropped silently. Raises RuntimeError if none survive.
     """
     out: list[str] = []
     with path.open("r", encoding="utf-8") as f:
@@ -225,7 +224,23 @@ def load_calibration_prompts(path: Path, n: int) -> list[str]:
             if not line:
                 continue
             rec = json.loads(line)
-            text = (rec.get("currentMessage") or {}).get("content") or ""
+            text = ""
+            # eliza_native_v1: find last user turn in request.messages
+            req = rec.get("request") or {}
+            msgs = req.get("messages") or []
+            for msg in reversed(msgs):
+                if msg.get("role") == "user":
+                    c = msg.get("content") or ""
+                    if isinstance(c, list):
+                        c = " ".join(
+                            p.get("text", "") for p in c
+                            if isinstance(p, dict) and p.get("type") == "text"
+                        )
+                    text = c
+                    break
+            # legacy schema fallback
+            if not text:
+                text = (rec.get("currentMessage") or {}).get("content") or ""
             if text:
                 out.append(text)
             if len(out) >= n:

@@ -103,6 +103,13 @@ export default defineConfig({
         replacement: path.join(monorepoRoot, "packages/vault/src/$1"),
       },
       {
+        find: /^@elizaos\/plugin-worker-runtime$/,
+        replacement: path.join(
+          monorepoRoot,
+          "packages/plugin-worker-runtime/src/index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-cli$/,
         replacement: path.join(
           repoRoot,

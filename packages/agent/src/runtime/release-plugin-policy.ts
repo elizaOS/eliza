@@ -3,6 +3,8 @@ import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
 const BASELINE_RUNTIME_SUPPORT_PACKAGES = [
   "@elizaos/core",
   "@elizaos/prompts",
+  "@elizaos/plugin-remote-manifest",
+  "@elizaos/plugin-worker-runtime",
 ] as const;
 
 const BASELINE_PROVIDER_PLUGINS = [
@@ -12,12 +14,31 @@ const BASELINE_PROVIDER_PLUGINS = [
   "@elizaos/plugin-ollama",
 ] as const;
 
+// Desktop loads this through the legacy "agent-orchestrator" compatibility id,
+// but the implementation ships as the scoped package below.
+const BASELINE_DESKTOP_RUNTIME_PLUGINS = [
+  "@elizaos/plugin-agent-orchestrator",
+] as const;
+
+// These are implementation dependencies of bundled core plugins. They need
+// to ship in the runtime bundle, but are not auto-loaded by collectPluginNames.
+const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
+  "@elizaos/plugin-calendly",
+  "@elizaos/plugin-health",
+  "@elizaos/plugin-app-manager",
+  "@elizaos/plugin-registry",
+  "@elizaos/plugin-wallet-ui",
+  "@elizaos/plugin-wallet",
+] as const;
+
 const DESKTOP_RUNTIME_ONLY_PLUGINS = new Set<string>([
+  "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-browser",
   "@elizaos/plugin-computeruse",
 ]);
 
 const LOCAL_RUNTIME_ONLY_PLUGINS = new Set<string>([
+  "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-browser",
   "@elizaos/plugin-computeruse",
 ]);
@@ -36,6 +57,15 @@ export interface RegistryPluginReleaseCompatibility {
 
 export const BASELINE_BUNDLED_RUNTIME_PACKAGES: readonly string[] = [
   ...BASELINE_RUNTIME_SUPPORT_PACKAGES,
+  ...BASELINE_DESKTOP_RUNTIME_PLUGINS,
+  ...CORE_PLUGINS,
+  ...OPTIONAL_CORE_PLUGINS,
+  ...BASELINE_PLUGIN_SUPPORT_PACKAGES,
+  ...BASELINE_PROVIDER_PLUGINS,
+];
+
+const BASELINE_REGISTRY_BUNDLED_PLUGIN_PACKAGES: readonly string[] = [
+  ...BASELINE_DESKTOP_RUNTIME_PLUGINS,
   ...CORE_PLUGINS,
   ...OPTIONAL_CORE_PLUGINS,
   ...BASELINE_PROVIDER_PLUGINS,
@@ -47,6 +77,10 @@ export function derivePluginIdFromPackageName(packageName: string): string {
     .replace(/^@[^/]+\//, "")
     .replace(/^plugin-/, "");
 }
+
+const BASELINE_REGISTRY_BUNDLED_PLUGIN_IDS = new Set(
+  BASELINE_REGISTRY_BUNDLED_PLUGIN_PACKAGES.map(derivePluginIdFromPackageName),
+);
 
 export function getBundledRuntimePackages(
   availableDependencies: Iterable<string>,
@@ -60,7 +94,10 @@ export function getBundledRuntimePackages(
 export function getBundledRuntimePluginIds(
   availableDependencies: Iterable<string>,
 ): string[] {
-  return getBundledRuntimePackages(availableDependencies)
+  const available = new Set(availableDependencies);
+  return BASELINE_REGISTRY_BUNDLED_PLUGIN_PACKAGES.filter((packageName) =>
+    available.has(packageName),
+  )
     .map(derivePluginIdFromPackageName)
     .filter((pluginId) => pluginId.length > 0)
     .sort();
@@ -85,7 +122,9 @@ export function classifyRegistryPluginRelease(params: {
   }
 
   const pluginId = derivePluginIdFromPackageName(packageName);
-  const bundled = bundledPluginIds.has(pluginId);
+  const bundled =
+    BASELINE_REGISTRY_BUNDLED_PLUGIN_IDS.has(pluginId) &&
+    bundledPluginIds.has(pluginId);
   const requiresDesktopRuntime = DESKTOP_RUNTIME_ONLY_PLUGINS.has(packageName);
   const requiresLocalRuntime = LOCAL_RUNTIME_ONLY_PLUGINS.has(packageName);
 

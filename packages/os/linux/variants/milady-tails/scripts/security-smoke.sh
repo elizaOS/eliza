@@ -258,10 +258,25 @@ do
         "user service must be pinned to the live user"
     require_fixed 'ConditionPathExists=!/run/elizaos/persistence-maintenance' "${unit}" \
         "user service must stay down while Persistent Storage setup is active"
+    require_fixed 'ConditionPathExists=!%t/elizaos-persistence-setup' "${unit}" \
+        "user service must also honor the live user's Persistent Storage setup flag"
     require_fixed 'NoNewPrivileges=yes' "${unit}" \
         "user service must disable privilege escalation"
     if grep -q 'After=.*desktop.target' "${unit}"; then
         fail "user service must not wait on the inherited Tails desktop target: ${unit}"
+    fi
+done
+
+for hook in \
+    tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks/MiladyData/20-restart-milady \
+    tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-deactivated-hooks/MiladyData/20-restart-milady
+do
+    require_fixed 'session_flag="${runtime_dir}/elizaos-persistence-setup"' "${hook}" \
+        "MiladyData hook must not restart app services while the setup window is active"
+    require_fixed 'maintenance_helper=/usr/local/lib/elizaos/persistence-maintenance' "${hook}" \
+        "MiladyData hook must reuse the narrow elizaOS maintenance helper"
+    if grep -Eq 'systemctl (try-)?restart|systemctl --user restart' "${hook}"; then
+        fail "MiladyData hook must not directly restart locked app units: ${hook}"
     fi
 done
 
