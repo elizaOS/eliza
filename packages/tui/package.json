@@ -43,7 +43,7 @@
     "mime-types": "^3.0.1"
   },
   "devDependencies": {
-    "@xterm/headless": "^5.5.0",
+    "@xterm/headless": "^6.0.0",
     "@xterm/xterm": "^5.5.0",
     "vitest": "^4.0.17"
   },
