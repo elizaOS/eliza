@@ -9,7 +9,7 @@ Snapshot: updated 2026-05-21 after native-toolchain recovery; MVP rows mirror `s
 | docs-and-project-plan | `PASS` | `command_pass` | `none` |
 | architecture-docs | `PASS` | `command_pass` | `none` |
 | toolchain-fast-path | `PASS` | `tool_available` | `none` |
-| platform-contract | `FAIL` | `command_fail` | `make platform-contract-check` |
+| platform-contract | `PASS` | `command_pass` | `none` |
 | linux-boot-prerequisites | `PASS` | `command_pass` | `none` |
 | software-bsp | `FAIL` | `command_fail` | `make software-bsp-check` |
 | real-world-release-gates | `PASS` | `command_pass` | `none` |

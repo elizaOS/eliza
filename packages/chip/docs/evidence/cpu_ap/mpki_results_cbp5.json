@@ -1,9 +1,9 @@
 {
   "aggregate": {
-    "branch_count": 330600,
-    "instruction_count": 1995042,
-    "misprediction_count": 5279,
-    "mpki": 2.64606
+    "branch_count": 13207561,
+    "instruction_count": 79227755,
+    "misprediction_count": 123756,
+    "mpki": 1.562028
   },
   "cbp5_tage_sc_l_64kb_reference_mpki_by_class": {
     "compress": 2.799,
@@ -26,20 +26,20 @@
     "v8_claim": false
   },
   "evidence_class": "cbp5_train_traces_only",
-  "generated_at_utc": "2026-05-20T03:31:08.003566+00:00",
+  "generated_at_utc": "2026-05-21T19:26:20.134422+00:00",
   "geometry": {
     "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
     "FETCH_BLOCK_BYTES": 32,
-    "FTB_ENTRIES": 2048,
+    "FTB_ENTRIES": 4096,
     "FTB_WAYS": 4,
     "ITTAGE_CTR_W": 3,
     "ITTAGE_ENTRIES": [
-      256,
-      256,
       512,
       512,
-      512
+      1024,
+      1024,
+      1024
     ],
     "ITTAGE_HIST_LEN": [
       4,
@@ -55,6 +55,7 @@
     "LOOP_ENTRIES": 64,
     "RAS_ARCH_ENTRIES": 32,
     "RAS_SPEC_ENTRIES": 64,
+    "SC_ADAPTIVE": true,
     "SC_CTR_W": 6,
     "SC_ENTRIES_TABLE": 512,
     "SC_HIST_LEN": [
@@ -65,17 +66,19 @@
     ],
     "SC_TABLES": 4,
     "SC_THRESH_INIT": 6,
+    "TAGE_ALLOC_DECREMENT": true,
     "TAGE_CTR_W": 3,
-    "TAGE_ENTRIES_TABLE": 4096,
+    "TAGE_ENTRIES_TABLE": 8192,
     "TAGE_HIST_LEN": [
       8,
-      13,
-      32,
-      64,
-      119
+      16,
+      44,
+      90,
+      195
     ],
     "TAGE_TABLES": 5,
     "TAGE_TAG_W": 8,
+    "TAGE_UBIT_RESET_PERIOD": 100000,
     "TAGE_USEFUL_W": 2,
     "UFTB_ENTRIES": 512,
     "UFTB_WAYS": 4
@@ -83,6 +86,91 @@
   "harness": "behavioural-bpu-model",
   "schema": "eliza.bpu_mpki.v1",
   "workloads": {
+    "agent_decode": {
+      "branches": 6622719,
+      "counters": {
+        "call": 2650,
+        "cond": 6615499,
+        "cond_misp": 13287,
+        "ind": 1924,
+        "ind_misp": 118,
+        "misp": 13405,
+        "pred": 6622719,
+        "ret": 2646,
+        "sc_override": 1015
+      },
+      "instruction_count": 38475498,
+      "mpki": 0.348404,
+      "trace_class": "qemu_rv64_workload"
+    },
+    "agent_loop": {
+      "branches": 3839663,
+      "counters": {
+        "call": 2046,
+        "cond": 3833773,
+        "cond_misp": 6277,
+        "ind": 1803,
+        "ind_misp": 166,
+        "misp": 6443,
+        "pred": 3839663,
+        "ret": 2041,
+        "sc_override": 1283
+      },
+      "instruction_count": 24817722,
+      "mpki": 0.259613,
+      "trace_class": "qemu_rv64_workload"
+    },
+    "audio_frames": {
+      "branches": 432230,
+      "counters": {
+        "call": 1988,
+        "cond": 426512,
+        "cond_misp": 50072,
+        "ind": 1747,
+        "ind_misp": 162,
+        "misp": 50234,
+        "pred": 432230,
+        "ret": 1983,
+        "sc_override": 15238
+      },
+      "instruction_count": 2890947,
+      "mpki": 17.376313,
+      "trace_class": "qemu_rv64_workload"
+    },
+    "file_tlv": {
+      "branches": 471277,
+      "counters": {
+        "call": 1990,
+        "cond": 465554,
+        "cond_misp": 12389,
+        "ind": 1748,
+        "ind_misp": 164,
+        "misp": 12553,
+        "pred": 471277,
+        "ret": 1985,
+        "sc_override": 8015
+      },
+      "instruction_count": 3139574,
+      "mpki": 3.998313,
+      "trace_class": "qemu_rv64_workload"
+    },
+    "http_parser": {
+      "branches": 774042,
+      "counters": {
+        "call": 3389,
+        "cond": 765522,
+        "cond_misp": 17448,
+        "ind": 1747,
+        "ind_misp": 545,
+        "misp": 17993,
+        "pred": 774042,
+        "ret": 3384,
+        "sc_override": 660
+      },
+      "instruction_count": 2599051,
+      "mpki": 6.922911,
+      "trace_class": "qemu_rv64_workload"
+    },
     "sample_fp_trace": {
       "branch_stats": {
         "branch_count": 148723,
@@ -98,16 +186,17 @@
       "counters": {
         "call": 10589,
         "cond": 127544,
-        "cond_misp": 3066,
+        "cond_misp": 2965,
         "ind": 1,
         "ind_misp": 4,
-        "misp": 3071,
+        "misp": 2970,
         "pred": 148723,
         "ret": 10589,
-        "ret_misp": 1
+        "ret_misp": 1,
+        "sc_override": 1262
       },
       "instruction_count": 997741,
-      "mpki": 3.077953,
+      "mpki": 2.976724,
       "trace_class": "cbp5_train_traces_only"
     },
     "sample_int_trace": {
@@ -125,17 +214,52 @@
       "counters": {
         "call": 12900,
         "cond": 149840,
-        "cond_misp": 1885,
+        "cond_misp": 1867,
         "ind": 6235,
-        "ind_misp": 319,
-        "misp": 2208,
+        "ind_misp": 179,
+        "misp": 2050,
         "pred": 181877,
         "ret": 12902,
-        "ret_misp": 4
+        "ret_misp": 4,
+        "sc_override": 28
       },
       "instruction_count": 997301,
-      "mpki": 2.213976,
+      "mpki": 2.055548,
       "trace_class": "cbp5_train_traces_only"
+    },
+    "text_log": {
+      "branches": 461102,
+      "counters": {
+        "call": 4690,
+        "cond": 449979,
+        "cond_misp": 12880,
+        "ind": 1748,
+        "ind_misp": 165,
+        "misp": 13045,
+        "pred": 461102,
+        "ret": 4685,
+        "sc_override": 9097
+      },
+      "instruction_count": 2668630,
+      "mpki": 4.888276,
+      "trace_class": "qemu_rv64_workload"
+    },
+    "video_blocks": {
+      "branches": 275928,
+      "counters": {
+        "call": 1988,
+        "cond": 270210,
+        "cond_misp": 4901,
+        "ind": 1747,
+        "ind_misp": 162,
+        "misp": 5063,
+        "pred": 275928,
+        "ret": 1983,
+        "sc_override": 3874
+      },
+      "instruction_count": 2641291,
+      "mpki": 1.916866,
+      "trace_class": "qemu_rv64_workload"
     }
   }
 }

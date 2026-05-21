@@ -11,6 +11,7 @@ read -formal e1_bootrom.sv
 read -formal e1_peripherals.sv
 read -formal e1_dma.sv
 read -formal e1_npu.sv
+read -formal e1_weight_buffer_sram.sv
 read -formal e1_display.sv
 read -formal e1_cva6_wrapper.sv
 read -formal e1_cpu_axi_bridge.sv
@@ -26,6 +27,7 @@ rtl/bootrom/e1_bootrom.sv
 rtl/peripherals/e1_peripherals.sv
 rtl/dma/e1_dma.sv
 rtl/npu/e1_npu.sv
+rtl/memory/e1_weight_buffer_sram.sv
 rtl/display/e1_display.sv
 rtl/cpu/e1_cva6_wrapper.sv
 rtl/cpu/e1_cpu_axi_bridge.sv

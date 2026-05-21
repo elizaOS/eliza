@@ -128,6 +128,79 @@ def rounded_box(
     return Part(name, mesh, color, role, material)
 
 
+def part_from_cadquery(
+    name: str,
+    solid: Any,
+    color: list[float],
+    role: str,
+    material: str,
+    tolerance: float = 0.08,
+) -> Part:
+    vertices, faces = solid.val().tessellate(tolerance)
+    mesh = trimesh.Trimesh(
+        vertices=np.asarray([vertex.toTuple() for vertex in vertices], dtype=float),
+        faces=np.asarray(faces, dtype=int),
+        process=True,
+    )
+    mesh.merge_vertices()
+    mesh.fix_normals()
+    apply_face_color(mesh, color)
+    return Part(name, mesh, color, role, material)
+
+
+def cadquery_box(size: list[float], center: list[float], radius: float = 0.0) -> Any:
+    import cadquery as cq
+
+    solid = cq.Workplane("XY").box(float(size[0]), float(size[1]), float(size[2]))
+    if radius > 0:
+        max_radius = max(min(float(size[0]), float(size[1])) / 2.0 - 0.05, 0.0)
+        safe_radius = min(radius, max_radius)
+        if safe_radius > 0.05:
+            with suppress(Exception):
+                solid = solid.edges("|Z").fillet(safe_radius)
+    return solid.translate((float(center[0]), float(center[1]), float(center[2])))
+
+
+def orange_back_shell_part(params: dict[str, Any]) -> Part:
+    width, height, depth = params["device"]["envelope_mm"]
+    corner_radius = float(params["device"]["corner_radius_mm"])
+    rear_camera_x, rear_camera_y = rear_camera_center_xy(params)
+    rear_aperture_w, rear_aperture_h = rear_camera_shell_aperture_mm(params)
+    rear_flash_x, rear_flash_y = rear_flash_center_xy(params)
+    rear_flash_aperture_w, rear_flash_aperture_h = rear_flash_shell_aperture_mm(params)
+    try:
+        shell = cadquery_box([width, height, 1.2], [0, 0, -depth / 2 + 0.6], corner_radius)
+        shell = shell.cut(
+            cadquery_box(
+                [rear_aperture_w, rear_aperture_h, 2.4],
+                [rear_camera_x, rear_camera_y, -depth / 2 + 0.6],
+            )
+        )
+        shell = shell.cut(
+            cadquery_box(
+                [rear_flash_aperture_w, rear_flash_aperture_h, 2.4],
+                [rear_flash_x, rear_flash_y, -depth / 2 + 0.6],
+            )
+        )
+        return part_from_cadquery(
+            "orange_back_shell",
+            shell,
+            ORANGE,
+            "molded enclosure",
+            "PC+ABS orange rounded back shell with real rear camera and flash holes",
+        )
+    except Exception:
+        return rounded_box(
+            "orange_back_shell",
+            [width, height, 1.2],
+            [0, 0, -depth / 2 + 0.6],
+            corner_radius,
+            ORANGE,
+            "molded enclosure",
+            "PC+ABS orange rounded back shell",
+        )
+
+
 def rounded_frame(
     name: str,
     outer_size: list[float],
@@ -688,7 +761,108 @@ def camera_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
             "role": "camera seal",
             "material": "black printed mask datum around front under-glass camera",
         },
+        *flash_window_adhesive_specs(params),
+        *front_camera_under_glass_adhesive_specs(params),
         rear_flash_camera_septum_spec(params),
+    ]
+
+
+def flash_window_adhesive_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Four-side PSA bond ring sealing the rear flash light-pipe window to the
+    back shell, mirroring the rear-camera cover seal so the flash window is not
+    an unsealed back-glass ingress path (camera-back audit B-3).
+    """
+    comp = params["components"]
+    depth = float(params["device"]["envelope_mm"][2])
+    flash_x, flash_y = rear_flash_center_xy(params)
+    win_w, win_h, _win_t = comp["rear_flash_led"]["window_mm"]
+    ring = float(comp["rear_flash_led"]["window_seal_ring_width_mm"])
+    seal_z = -depth / 2 + comp["rear_camera_glass"]["envelope_mm"][2] + 0.08
+    half_w = float(win_w) / 2
+    half_h = float(win_h) / 2
+    gap = ring / 2 + 0.05
+    return [
+        {
+            "name": "rear_flash_window_adhesive_top",
+            "size": [float(win_w) + 2 * ring, ring, 0.16],
+            "center": [flash_x, flash_y + half_h + gap, seal_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "black PSA gasket above rear flash light-pipe window",
+        },
+        {
+            "name": "rear_flash_window_adhesive_bottom",
+            "size": [float(win_w) + 2 * ring, ring, 0.16],
+            "center": [flash_x, flash_y - half_h - gap, seal_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "black PSA gasket below rear flash light-pipe window",
+        },
+        {
+            "name": "rear_flash_window_adhesive_left",
+            "size": [ring, float(win_h), 0.16],
+            "center": [flash_x - half_w - gap, flash_y, seal_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "black PSA gasket left of rear flash light-pipe window",
+        },
+        {
+            "name": "rear_flash_window_adhesive_right",
+            "size": [ring, float(win_h), 0.16],
+            "center": [flash_x + half_w + gap, flash_y, seal_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "black PSA gasket right of rear flash light-pipe window",
+        },
+    ]
+
+
+def front_camera_under_glass_adhesive_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Four-side bond ring sealing the front under-glass camera window to the
+    black-mask aperture so the front-camera path is dust/light sealed under the
+    cover glass (camera-back audit B-4).
+    """
+    comp = params["components"]
+    front_x = -19.0
+    front_y = float(params["device"]["envelope_mm"][1]) / 2 - 9.0
+    front_z = front_camera_under_glass_center(params)[2]
+    win = float(comp["front_camera"]["lens_diameter_mm"])
+    ring = 0.4
+    half = win / 2
+    gap = ring / 2 + 0.05
+    return [
+        {
+            "name": "front_camera_under_glass_adhesive_top",
+            "size": [win + 2 * ring, ring, 0.08],
+            "center": [front_x, front_y + half + gap, front_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "optically-black PSA bond ring above front under-glass camera window",
+        },
+        {
+            "name": "front_camera_under_glass_adhesive_bottom",
+            "size": [win + 2 * ring, ring, 0.08],
+            "center": [front_x, front_y - half - gap, front_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "optically-black PSA bond ring below front under-glass camera window",
+        },
+        {
+            "name": "front_camera_under_glass_adhesive_left",
+            "size": [ring, win, 0.08],
+            "center": [front_x - half - gap, front_y, front_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "optically-black PSA bond ring left of front under-glass camera window",
+        },
+        {
+            "name": "front_camera_under_glass_adhesive_right",
+            "size": [ring, win, 0.08],
+            "center": [front_x + half + gap, front_y, front_z],
+            "color": ADHESIVE,
+            "role": "camera seal",
+            "material": "optically-black PSA bond ring right of front under-glass camera window",
+        },
     ]
 
 
@@ -1255,15 +1429,7 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
     side_frame_size, side_frame_center = side_frame_body_size_center(params)
 
     parts: list[Part] = [
-        rounded_box(
-            "orange_back_shell",
-            [width, height, 1.2],
-            [0, 0, back_z],
-            corner_radius,
-            ORANGE,
-            "molded enclosure",
-            "PC+ABS orange rounded back shell",
-        ),
+        orange_back_shell_part(params),
         rounded_frame(
             "orange_side_frame",
             side_frame_size,
@@ -1836,6 +2002,16 @@ def write_solid_cad_handoff_artifacts(
                     solid = solid.edges("|Z").fillet(safe_radius)
         return solid.translate((float(center[0]), float(center[1]), float(center[2])))
 
+    def cq_cyl_z(radius_mm: float, depth_mm: float, center: list[float]) -> Any:
+        solid = cq.Workplane("XY").circle(float(radius_mm)).extrude(float(depth_mm))
+        return solid.translate(
+            (
+                float(center[0]),
+                float(center[1]),
+                float(center[2]) - float(depth_mm) / 2.0,
+            )
+        )
+
     def cq_composite_box(segments: list[tuple[list[float], list[float], str]]) -> Any:
         solid = None
         for size, center, _name in segments:
@@ -1863,6 +2039,7 @@ def write_solid_cad_handoff_artifacts(
     rear_camera_center_z = rear_camera_buried_center_z(params)
     rear_camera_x, rear_camera_y = rear_camera_center_xy(params)
     rear_aperture_w, rear_aperture_h = rear_camera_shell_aperture_mm(params)
+    rear_sight_radius, rear_sight_depth = rear_camera_optical_sight_tunnel_mm(params)
     rear_bezel_border_mm = 1.0
     rear_flash_x, rear_flash_y = rear_flash_center_xy(params)
     rear_flash_aperture_w, rear_flash_aperture_h = rear_flash_shell_aperture_mm(params)
@@ -2275,6 +2452,17 @@ def write_solid_cad_handoff_artifacts(
                 "color": black,
                 "role": "camera",
                 "material": "flush internal rear camera optical window, coplanar with flat back",
+            },
+            {
+                "name": "rear_camera_optical_sight_tunnel",
+                "shape": cq_cyl_z(
+                    rear_sight_radius,
+                    rear_sight_depth,
+                    rear_camera_optical_sight_tunnel_center(params),
+                ),
+                "color": cq.Color(0.15, 0.35, 0.95, 0.26),
+                "role": "camera optical clearance",
+                "material": "clear rear-camera sight tunnel from exterior through back-shell aperture to module",
             },
             {
                 "name": "front_camera_under_glass",
@@ -2726,6 +2914,7 @@ def write_solid_cad_handoff_artifacts(
         "orange_rear_camera_bezel_right",
         "rear_camera_cover_glass",
         "rear_camera_lens_window",
+        "rear_camera_optical_sight_tunnel",
         "rear_flash_led",
         "rear_flash_shell_aperture",
         "orange_rear_flash_bezel_top",
@@ -2739,10 +2928,18 @@ def write_solid_cad_handoff_artifacts(
         "rear_camera_cover_adhesive_right",
         "rear_camera_light_baffle_top",
         "rear_camera_light_baffle_bottom",
+        "rear_flash_window_adhesive_top",
+        "rear_flash_window_adhesive_bottom",
+        "rear_flash_window_adhesive_left",
+        "rear_flash_window_adhesive_right",
         "rear_flash_camera_septum",
         "front_camera_module",
         "front_camera_under_glass",
         "front_camera_black_mask_window",
+        "front_camera_under_glass_adhesive_top",
+        "front_camera_under_glass_adhesive_bottom",
+        "front_camera_under_glass_adhesive_left",
+        "front_camera_under_glass_adhesive_right",
         "power_button_cap",
         "volume_button_cap",
         "power_button_elastomer_gasket",
@@ -6769,12 +6966,14 @@ def write_camera_validation_artifacts(
             "actual": {
                 "aperture_mm": [aperture_w, aperture_h],
                 "cover_window_mm": [rear_glass_w, rear_glass_h],
+                "optical_sight_tunnel_present": "rear_camera_optical_sight_tunnel" in part_names,
                 "bezel_part_count": sum(
                     1 for name in part_names if name.startswith("orange_rear_camera_bezel_")
                 ),
             },
-            "target": "explicit molded back-shell opening larger than the flush cover window with four orange bevel lands",
+            "target": "explicit molded back-shell opening larger than the flush cover window with a clear camera sight tunnel and four orange bevel lands",
             "pass": "rear_camera_shell_aperture" in part_names
+            and "rear_camera_optical_sight_tunnel" in part_names
             and aperture_w > rear_glass_w
             and aperture_h > rear_glass_h
             and sum(1 for name in part_names if name.startswith("orange_rear_camera_bezel_")) == 4,
@@ -14759,6 +14958,7 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
         "top_mic",
         "rear_camera_module",
         "rear_camera_shell_aperture",
+        "rear_camera_optical_sight_tunnel",
         "orange_rear_camera_bezel_top",
         "orange_rear_camera_bezel_bottom",
         "orange_rear_camera_bezel_left",
@@ -15753,8 +15953,9 @@ def main() -> int:
                 "orange_rear_flash_bezel_left",
                 "orange_rear_flash_bezel_right",
                 "rear_camera_module",
-                "rear_camera_lens_window",
                 "rear_camera_cover_glass",
+                "rear_camera_lens_window",
+                "rear_camera_optical_sight_tunnel",
                 "rear_flash_led_window",
                 "rear_flash_led",
                 "service_label_recess",

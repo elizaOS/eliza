@@ -689,12 +689,12 @@ entries:
     kind: dataset
     priority: P1
     source_url: https://github.com/IntelLabs/FloorSet
-    license_status: review_required
+    license_status: training_only_review_complete_apache-2.0_repo_cc-by-4.0_dataset
     revision:
       type: commit
-      value: PIN_AFTER_FETCH
-    expected_size: approximately_35_gb_public_notes
-    checksum_status: blocked_until_fetch
+      value: a01137f8cb0406fcb1eef4a76e09445d95aab863
+    expected_size: github_checkout_plus_hf_archives_29665773263_verified_bytes
+    checksum_status: verified_by_fetch_report_codex-floorset-verify-20260521_and_hf_archive_manifest_codex-floorset-hf-archives-20260521
     allowed_use: training-only
     e1_lane:
       - floorplan_policy_pretraining
@@ -704,10 +704,11 @@ entries:
       dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset intel-floorset --dry-run
       verify_command: scripts/ai_eda/fetch_external_asset.py --asset intel-floorset --verify-only
     validation:
-      license_review: pending
-      provenance_review: pending
-      hash_verification: pending
+      license_review: complete_training_only_2026-05-21
+      provenance_review: complete
+      hash_verification: complete
       deterministic_replay_required: true
+      release_use_allowed: false
       release_use_allowed: false
   - id: r-zoo-rectilinear-floorplan
     name: R-Zoo Rectilinear Floorplan Benchmark Dataset
@@ -1102,5 +1103,136 @@ entries:
       license_review: pending
       provenance_review: arxiv_metadata_reviewed_2026-05-21
       hash_verification: metadata_only
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: verireason
+    name: VeriReason
+    kind: repo
+    priority: P2
+    source_url: https://github.com/NellyW8/VeriReason
+    license_status: review_required
+    revision:
+      type: commit
+      value: d215b7fe1b3db6dd4ca725f7d9399c49414c7531
+    expected_size: verified_checkout_371591_hashed_bytes
+    checksum_status: verified_by_fetch_report_codex-verireason-fetch-20260521
+    allowed_use: training-only
+    e1_lane:
+      - rtl_generation
+      - verification_feedback
+      - formal_verification
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset verireason --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset verireason --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset verireason --verify-only
+    validation:
+      license_review: pending
+      provenance_review: github_metadata_reviewed_2026-05-21
+      hash_verification: complete
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: verireason-rtl-coder-small
+    name: VeriReason RTL-Coder Small Dataset
+    kind: dataset
+    priority: P2
+    source_url: https://huggingface.co/datasets/Nellyw888/RTL-Coder_small
+    license_status: dataset_card_review_required
+    revision:
+      type: hf_revision
+      value: 801eea76297a75ad4e1facdfccdc68aff6c89121
+    expected_size: verified_payload_2668400_bytes_jsonl_2661656_bytes_rows_2649
+    checksum_status: verified_by_fetch_report_codex-verireason-hf-data-20260521
+    allowed_use: training-only
+    e1_lane:
+      - rtl_generation
+      - verification_feedback
+    fetch:
+      mode: huggingface
+      command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-small --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-small --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-small --verify-only
+    validation:
+      license_review: pending
+      provenance_review: dataset_viewer_metadata_reviewed_2026-05-21
+      hash_verification: complete
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: verireason-rtl-coder-reasoning-simple
+    name: VeriReason RTL-Coder Reasoning Testbench Simple Dataset
+    kind: dataset
+    priority: P2
+    source_url: https://huggingface.co/datasets/Nellyw888/RTL-Coder_7b_reasoning_tb_simple
+    license_status: dataset_card_review_required
+    revision:
+      type: hf_revision
+      value: 61cc6a2a326dc96cb93bceb0e2040b953f0cb0a5
+    expected_size: verified_payload_7682186_bytes_jsonl_7673835_bytes_rows_743
+    checksum_status: verified_by_fetch_report_codex-verireason-hf-data-20260521
+    allowed_use: training-only
+    e1_lane:
+      - rtl_generation
+      - verification_feedback
+    fetch:
+      mode: huggingface
+      command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-reasoning-simple --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-reasoning-simple --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-reasoning-simple --verify-only
+    validation:
+      license_review: pending
+      provenance_review: huggingface_metadata_reviewed_2026-05-21
+      hash_verification: complete
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: verireason-rtl-coder-reasoning-hard
+    name: VeriReason RTL-Coder Reasoning Testbench Hard Dataset
+    kind: dataset
+    priority: P2
+    source_url: https://huggingface.co/datasets/Nellyw888/RTL-Coder_7b_reasoning_tb
+    license_status: dataset_card_review_required
+    revision:
+      type: hf_revision
+      value: 42823db968114c25da260dece0e4bea8ab20d573
+    expected_size: verified_payload_11841397_bytes_jsonl_11833942_bytes_rows_1149
+    checksum_status: verified_by_fetch_report_codex-verireason-hf-data-20260521
+    allowed_use: training-only
+    e1_lane:
+      - rtl_generation
+      - verification_feedback
+    fetch:
+      mode: huggingface
+      command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-reasoning-hard --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-reasoning-hard --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-reasoning-hard --verify-only
+    validation:
+      license_review: pending
+      provenance_review: huggingface_metadata_reviewed_2026-05-21
+      hash_verification: complete
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: verireason-rtl-coder-reasoning-combined
+    name: VeriReason RTL-Coder Reasoning Testbench Combined Dataset
+    kind: dataset
+    priority: P2
+    source_url: https://huggingface.co/datasets/Nellyw888/RTL-Coder_7b_reasoning_tb_combined
+    license_status: dataset_card_review_required
+    revision:
+      type: hf_revision
+      value: 28f8f2a9f78febe50fe581904a31c7aff718dc6a
+    expected_size: verified_payload_19516275_bytes_jsonl_19507777_bytes_rows_1892
+    checksum_status: verified_by_fetch_report_codex-verireason-hf-data-20260521
+    allowed_use: training-only
+    e1_lane:
+      - rtl_generation
+      - verification_feedback
+    fetch:
+      mode: huggingface
+      command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-reasoning-combined --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-reasoning-combined --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset verireason-rtl-coder-reasoning-combined --verify-only
+    validation:
+      license_review: pending
+      provenance_review: dataset_viewer_metadata_reviewed_2026-05-21
+      hash_verification: complete
       deterministic_replay_required: true
       release_use_allowed: false

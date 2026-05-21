@@ -2,10 +2,10 @@
   "claim_boundary": "Automated STEP re-import and envelope validation; not supplier CAD approval.",
   "status": "pass",
   "tolerance_mm": 0.05,
-  "validated_count": 123,
+  "validated_count": 132,
   "assembly": {
     "step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-    "bytes": 2744715,
+    "bytes": 2893017,
     "imported": true,
     "pass": true,
     "bbox_span_mm": [
@@ -497,6 +497,19 @@
       "pass": true
     },
     {
+      "name": "rear_camera_optical_sight_tunnel",
+      "step": "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.step",
+      "bytes": 5669,
+      "imported": true,
+      "bbox_span_mm": [
+        7.1,
+        7.1,
+        1.6
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
       "name": "front_camera_under_glass",
       "step": "mechanical/e1-phone/out/front_camera_under_glass.step",
       "bytes": 32216,
@@ -595,6 +608,110 @@
       "bbox_span_mm": [
         5.0,
         5.0,
+        0.08
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_flash_window_adhesive_top",
+      "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_top.step",
+      "bytes": 15610,
+      "imported": true,
+      "bbox_span_mm": [
+        2.5,
+        0.45,
+        0.16
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_flash_window_adhesive_bottom",
+      "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_bottom.step",
+      "bytes": 15602,
+      "imported": true,
+      "bbox_span_mm": [
+        2.5,
+        0.45,
+        0.16
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_flash_window_adhesive_left",
+      "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_left.step",
+      "bytes": 15559,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        1.6,
+        0.16
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_flash_window_adhesive_right",
+      "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_right.step",
+      "bytes": 15567,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        1.6,
+        0.16
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_top",
+      "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_top.step",
+      "bytes": 15597,
+      "imported": true,
+      "bbox_span_mm": [
+        4.2,
+        0.4,
+        0.08
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_bottom",
+      "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_bottom.step",
+      "bytes": 15597,
+      "imported": true,
+      "bbox_span_mm": [
+        4.2,
+        0.4,
+        0.08
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_left",
+      "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_left.step",
+      "bytes": 15597,
+      "imported": true,
+      "bbox_span_mm": [
+        0.4,
+        3.4,
+        0.08
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_right",
+      "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_right.step",
+      "bytes": 15597,
+      "imported": true,
+      "bbox_span_mm": [
+        0.4,
+        3.4,
         0.08
       ],
       "max_span_error_mm": 0.0,
@@ -1188,7 +1305,7 @@
     {
       "name": "orange_screw_boss_6",
       "step": "mechanical/e1-phone/out/orange_screw_boss_6.step",
-      "bytes": 32042,
+      "bytes": 32044,
       "imported": true,
       "bbox_span_mm": [
         4.2,
@@ -1201,7 +1318,7 @@
     {
       "name": "orange_screw_boss_7",
       "step": "mechanical/e1-phone/out/orange_screw_boss_7.step",
-      "bytes": 32142,
+      "bytes": 32144,
       "imported": true,
       "bbox_span_mm": [
         4.2,
@@ -1214,7 +1331,7 @@
     {
       "name": "orange_screw_boss_8",
       "step": "mechanical/e1-phone/out/orange_screw_boss_8.step",
-      "bytes": 32092,
+      "bytes": 32094,
       "imported": true,
       "bbox_span_mm": [
         4.2,
@@ -1227,7 +1344,7 @@
     {
       "name": "orange_screw_boss_9",
       "step": "mechanical/e1-phone/out/orange_screw_boss_9.step",
-      "bytes": 31998,
+      "bytes": 32000,
       "imported": true,
       "bbox_span_mm": [
         4.2,
@@ -1240,7 +1357,7 @@
     {
       "name": "orange_screw_boss_10",
       "step": "mechanical/e1-phone/out/orange_screw_boss_10.step",
-      "bytes": 31948,
+      "bytes": 31950,
       "imported": true,
       "bbox_span_mm": [
         4.2,
@@ -1253,7 +1370,7 @@
     {
       "name": "orange_corner_rib_1",
       "step": "mechanical/e1-phone/out/orange_corner_rib_1.step",
-      "bytes": 15512,
+      "bytes": 15514,
       "imported": true,
       "bbox_span_mm": [
         7.0,
@@ -1266,7 +1383,7 @@
     {
       "name": "orange_corner_rib_1_leg",
       "step": "mechanical/e1-phone/out/orange_corner_rib_1_leg.step",
-      "bytes": 15520,
+      "bytes": 15522,
       "imported": true,
       "bbox_span_mm": [
         0.9,
@@ -1279,7 +1396,7 @@
     {
       "name": "orange_corner_rib_2",
       "step": "mechanical/e1-phone/out/orange_corner_rib_2.step",
-      "bytes": 15486,
+      "bytes": 15488,
       "imported": true,
       "bbox_span_mm": [
         7.0,
@@ -1292,7 +1409,7 @@
     {
       "name": "orange_corner_rib_2_leg",
       "step": "mechanical/e1-phone/out/orange_corner_rib_2_leg.step",
-      "bytes": 15486,
+      "bytes": 15488,
       "imported": true,
       "bbox_span_mm": [
         0.9,

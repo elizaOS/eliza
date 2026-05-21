@@ -1,11 +1,11 @@
 {
   "claim_boundary": "Geometric explode-trajectory collision proxy. Part-part overlap is measured as world-AABB interpenetration volume sampled across the explode path; exact for axis-aligned box envelopes, conservative for curved parts. Supplier B-rep boolean remains the signoff engine for the assembled state.",
-  "status": "explode_collision_fail",
+  "status": "explode_collision_pass",
   "engine": "world_aabb_overlap_volume_swept_along_explode_trajectory",
   "ring_offset_mm": 25.0,
   "trajectory_samples": 21,
   "overlap_tolerance_mm3": 0.05,
-  "solid_part_count": 118,
+  "solid_part_count": 127,
   "excluded_virtual_volume_count": 5,
   "excluded_virtual_volumes": [
     "display_fpc_bend_keepout",
@@ -14,19 +14,10 @@
     "wifi_bt_side_antenna_keepout",
     "sim_tray_keepout"
   ],
-  "pair_count": 6903,
-  "pass_through_pair_count": 1,
-  "pass_through_pairs": [
-    {
-      "a": "orange_snap_hook_8",
-      "b": "haptic_lra",
-      "assembled_overlap_mm3": 0.0,
-      "peak_overlap_mm3": 0.91,
-      "peak_at_fraction": 0.05,
-      "growth_mm3": 0.91
-    }
-  ],
-  "residual_overlap_at_full_explode_pair_count": 28,
+  "pair_count": 8001,
+  "pass_through_pair_count": 0,
+  "pass_through_pairs": [],
+  "residual_overlap_at_full_explode_pair_count": 36,
   "residual_overlap_pairs": [
     {
       "a": "orange_side_frame",
@@ -37,6 +28,11 @@
       "a": "orange_side_frame",
       "b": "split_interconnect_bottom_connector",
       "fully_exploded_overlap_mm3": 34.56
+    },
+    {
+      "a": "orange_side_frame",
+      "b": "split_interconnect_side_flex",
+      "fully_exploded_overlap_mm3": 38.016
     },
     {
       "a": "orange_side_frame",
@@ -75,6 +71,11 @@
     },
     {
       "a": "rear_camera_shell_aperture",
+      "b": "rear_camera_optical_sight_tunnel",
+      "fully_exploded_overlap_mm3": 1.2603
+    },
+    {
+      "a": "rear_camera_shell_aperture",
       "b": "rear_camera_cover_glass",
       "fully_exploded_overlap_mm3": 2.116
     },
@@ -85,8 +86,18 @@
     },
     {
       "a": "rear_camera_lens_window",
+      "b": "rear_camera_optical_sight_tunnel",
+      "fully_exploded_overlap_mm3": 25.432
+    },
+    {
+      "a": "rear_camera_lens_window",
       "b": "rear_camera_cover_glass",
       "fully_exploded_overlap_mm3": 25.432
+    },
+    {
+      "a": "rear_camera_optical_sight_tunnel",
+      "b": "rear_camera_cover_glass",
+      "fully_exploded_overlap_mm3": 27.7255
     },
     {
       "a": "front_camera_under_glass",
@@ -102,6 +113,26 @@
       "a": "rear_camera_light_baffle_bottom",
       "b": "rear_camera_cover_glass",
       "fully_exploded_overlap_mm3": 1.3799
+    },
+    {
+      "a": "front_camera_black_mask_window",
+      "b": "front_camera_under_glass_adhesive_top",
+      "fully_exploded_overlap_mm3": 0.1344
+    },
+    {
+      "a": "front_camera_black_mask_window",
+      "b": "front_camera_under_glass_adhesive_bottom",
+      "fully_exploded_overlap_mm3": 0.1344
+    },
+    {
+      "a": "front_camera_black_mask_window",
+      "b": "front_camera_under_glass_adhesive_left",
+      "fully_exploded_overlap_mm3": 0.1088
+    },
+    {
+      "a": "front_camera_black_mask_window",
+      "b": "front_camera_under_glass_adhesive_right",
+      "fully_exploded_overlap_mm3": 0.1088
     },
     {
       "a": "orange_screw_boss_1",
@@ -171,7 +202,7 @@
   ],
   "release_rule": "No part-part overlap may grow beyond its assembled baseline anywhere on the explode trajectory (no pass-through). Residual overlaps at full explode are reported for review; same-axis stacked parts may legitimately remain nested if their assembled overlap does not grow.",
   "part_screenshots": {
-    "part_shot_count": 123,
+    "part_shot_count": 132,
     "contact_sheet": "/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/review/part-explode-contact-sheet.png"
   }
 }

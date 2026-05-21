@@ -1,0 +1,18 @@
+{
+  "schema": "eliza.cpu_benchmark_measured.v1",
+  "benchmark": "dhrystone",
+  "core": "cva6",
+  "core_role": "little_core_e1_pro",
+  "target_config": "cv64a6_imafdc_sv39",
+  "isa": "rv64gc",
+  "mabi": "lp64d",
+  "status": "blocked",
+  "claim_level": "L1_RTL_FULL_SOC",
+  "provenance": "simulator",
+  "result_recorded_at": "2026-05-21T16:13:05Z",
+  "dmips_per_mhz_formula": "(1e6 / cycles_per_dhrystone) / 1757",
+  "reason": "verilate failed",
+  "missing_dependency": "external/cva6/cva6 verilate",
+  "next_command": "cd external/cva6/cva6 && make verilate target=cv64a6_imafdc_sv39",
+  "metrics": {"total_cycles": null, "retired_instructions": null, "cpi": null, "dhrystone_runs": null, "cycles_per_dhrystone": null, "dmips_per_mhz": null}
+}

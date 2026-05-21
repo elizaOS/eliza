@@ -26,7 +26,7 @@ DEFAULT_OPENLANE_CONFIGS = (
     ROOT / "pd/openlane/config.sky130.json",
     ROOT / "pd/openlane/config.gf180.json",
     ROOT / "pd/openlane/config.ihp-sg13g2.json",
-    ROOT / "pd/openlane/config.asap7.yaml",
+    ROOT / "pd/asap7/config.asap7.yaml",
 )
 SCHEMA = "eliza.ai_eda.openlane_replay_prerequisites.v1"
 CLAIM_BOUNDARY = "openlane_replay_prerequisites_only_no_openlane_execution_or_release_claim"

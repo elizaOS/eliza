@@ -1,7 +1,15 @@
 # Boot Image Format and Key Ladder
 
-Status: pre-silicon specification. No image format, signature path, or key
-ladder is implemented today. ROM is identity-only (see `arch/security.md`).
+Status: implemented in firmware with host/sim evidence; silicon integration
+hardware-gated. The OPNPHN01 container, the Ed25519 + SHA-256 signature path,
+and the key ladder below are implemented in the mask-ROM verifier
+(`fw/boot-rom/secure/verify.c`) and the PMC verifier
+(`fw/pmc/src/secure_boot.c`), exercised by host known-answer tests
+(`fw/boot-rom/secure/tests/`) and reproducible negative-evidence transcripts
+(`tests/security/negative/`). Silicon RoT integration — the OTP macro, key
+manager, and on-die entropy that supply the verifier's trust inputs — remains
+hardware-gated; no production secure-boot claim follows from host/sim evidence
+alone.
 
 ## 1. Algorithms
 

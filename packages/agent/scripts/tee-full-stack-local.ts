@@ -1,312 +1,745 @@
+/**
+ * TEE full-stack local harness (plan §7 Phase A item A1).
+ *
+ * A runnable, self-checking, hardware-free end-to-end exercise of the
+ * confidential-AI trust pipeline:
+ *
+ *   collect TeeEvidence
+ *     -> evaluateTeeEvidencePolicy (the single trust decision)
+ *       -> HttpTeeKeyReleaseClient -> mock KMS (wrapTeeReleaseKey)
+ *
+ * It defines the three deployment topologies the product supports
+ * (local-only, desktop, cloud-routed), drives a golden (trusted) key release
+ * for each, and then drives a golden + tampered fixture for EVERY decision
+ * reason in the closed `TeeEvidencePolicyDecision` union, asserting the exact
+ * reason each time. Artifacts are written under evidence/tee/.
+ *
+ * This is NOT the unit test (tee-evidence-policy.matrix.test.ts owns the pure
+ * data matrix). This script wires the same vectors through the real key-release
+ * client + mock KMS so the wrap/unwrap, nonce, and report_data binding paths are
+ * exercised end to end. Real TDX/CoVE quote-signature verification is BLOCKED on
+ * hardware (plan Phase B/C); this verifies a normalized evidence document only.
+ *
+ * Run: bun packages/agent/scripts/tee-full-stack-local.ts
+ * Exit: 0 on all-green, non-zero on any mismatch.
+ */
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { unsealModelWeights } from "../src/services/tee-confidential-inference.ts";
-import type { TeeEvidence } from "../src/services/tee-evidence.ts";
-import { HttpTeeKeyReleaseClient } from "../src/services/tee-key-release.ts";
-import { evaluateTeeEvidencePolicy } from "../src/services/tee-policy.ts";
-import { teePolicyFromReleaseManifest } from "../src/services/tee-release-policy.ts";
-import { resolveTeeRuntimePolicy } from "../src/services/tee-runtime-config.ts";
+import {
+  type SealedWeightsBlob,
+  unsealModelWeights,
+} from "../src/services/tee-confidential-inference.ts";
+import type {
+  TeeEvidence,
+  TeeMeasurementName,
+} from "../src/services/tee-evidence.ts";
+import {
+  HttpTeeKeyReleaseClient,
+  type TeeReportDataBoundEvidenceProvider,
+  wrapTeeReleaseKey,
+} from "../src/services/tee-key-release.ts";
+import {
+  evaluateTeeEvidencePolicy,
+  type TeeEvidencePolicy,
+  type TeeEvidencePolicyDecision,
+} from "../src/services/tee-policy.ts";
+import { mergeTeeProductionProfile } from "../src/services/tee-production-profile.ts";
+import {
+  mergeTeeRevocationsIntoPolicy,
+  type TeeRevocationManifest,
+} from "../src/services/tee-revocation.ts";
 
-const nonce = "full-stack-local-nonce";
-const timestamp = "2026-05-20T00:00:00.000Z";
-const tmp = await mkdtemp(path.join(tmpdir(), "eliza-tee-full-stack-"));
-const inputDir = path.join(tmp, "inputs");
-await mkdir(inputDir, { recursive: true });
+// Fixed clock so timestamp-freshness vectors are deterministic.
+const NOW = Date.parse("2026-05-20T12:00:00.000Z");
+const FRESH_TIMESTAMP = "2026-05-20T11:59:30.000Z"; // 30s old, inside every topology window.
+const ISSUED_NONCE = "issued-nonce-full-stack-local";
 
-const inputs = {
-  boot: path.join(inputDir, "boot.bin"),
-  os: path.join(inputDir, "os.img"),
-  agent: path.join(inputDir, "agent.tar"),
-  policy: path.join(inputDir, "policy.json"),
-  container: path.join(inputDir, "compose.json"),
-  npuFirmware: path.join(inputDir, "npu-fw.bin"),
+// Deterministic golden measurement digests. Distinct per name so a tamper of
+// one cannot accidentally collide with another.
+const digest = (label: string) =>
+  `sha256:${createHash("sha256").update(`golden:${label}`).digest("hex")}`;
+
+const GOLDEN_MEASUREMENTS: Record<TeeMeasurementName, string> = {
+  boot: digest("boot"),
+  os: digest("os"),
+  agent: digest("agent"),
+  policy: digest("policy"),
+  device: digest("device"),
+  container: digest("container"),
+  npuFirmware: digest("npuFirmware"),
+  gpuFirmware: digest("gpuFirmware"),
 };
-for (const [name, filePath] of Object.entries(inputs)) {
-  await writeFile(filePath, `full stack tee fixture ${name}\n`);
-}
 
-const measurements = Object.fromEntries(
-  await Promise.all(
-    Object.entries(inputs).map(async ([name, filePath]) => [
-      name,
-      `sha256:${createHash("sha256")
-        .update(await readFile(filePath))
-        .digest("hex")}`,
-    ]),
-  ),
-);
-const releaseManifest = {
-  tee: {
-    enabled: true,
-    providers: ["dstack", "cove"],
-    measurements,
-    requiredClaims: {
+const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
+
+// ---------------------------------------------------------------------------
+// Topology policies. Each is the production profile (which forces required,
+// rejectSimulatedEvidence, the base claims, and a 5-min freshness floor)
+// merged with the topology's allowlists, golden digests, nonce, and clock.
+// ---------------------------------------------------------------------------
+
+type Topology = "local-only" | "desktop" | "cloud-routed";
+
+type TopologyFixture = {
+  topology: Topology;
+  /** The golden evidence the in-domain attestation agent would emit. */
+  evidence: TeeEvidence;
+  /** Policy the agent evaluates (production profile + topology specifics). */
+  policy: TeeEvidencePolicy;
+  /** KMS provider id this topology releases keys against. */
+  kmsProvider: string;
+  /** Key-release scope exercised for this topology. */
+  keyId: string;
+};
+
+function buildLocalOnly(): TopologyFixture {
+  // Local-only: on-device CVM/TVM, on-device verifier, NPU confidential I/O.
+  // required + npuProtected + local golden digests (boot/os/agent/policy/
+  // device/container/npuFirmware). No cloud provider.
+  const evidence: TeeEvidence = {
+    kind: "cove",
+    provider: "eliza-vault",
+    hardwareVendor: "elizaos-e1",
+    platformVersion: "local-only-cove",
+    securityVersion: 7,
+    measurements: {
+      boot: GOLDEN_MEASUREMENTS.boot,
+      os: GOLDEN_MEASUREMENTS.os,
+      agent: GOLDEN_MEASUREMENTS.agent,
+      policy: GOLDEN_MEASUREMENTS.policy,
+      device: GOLDEN_MEASUREMENTS.device,
+      container: GOLDEN_MEASUREMENTS.container,
+      npuFirmware: GOLDEN_MEASUREMENTS.npuFirmware,
+    },
+    freshness: {
+      nonce: ISSUED_NONCE,
+      timestamp: FRESH_TIMESTAMP,
+      verifier: "eliza-e1-verifier",
+    },
+    claims: {
       debugDisabled: true,
       secureBoot: true,
       memoryEncrypted: true,
       ioProtected: true,
+      productionLifecycle: true,
       npuProtected: true,
     },
-    minSecurityVersion: 1,
-  },
-};
-const releaseManifestPath = path.join(tmp, "release-manifest.json");
-await writeFile(
-  releaseManifestPath,
-  `${JSON.stringify(releaseManifest, null, 2)}\n`,
-);
+  };
+  const policy = mergeTeeProductionProfile(
+    {
+      allowedKinds: ["cove"],
+      allowedProviders: ["eliza-vault"],
+      minSecurityVersion: 7,
+      expectedNonce: ISSUED_NONCE,
+      maxAgeMs: 60_000,
+      nowMs: NOW,
+      requiredMeasurements: {
+        boot: GOLDEN_MEASUREMENTS.boot,
+        os: GOLDEN_MEASUREMENTS.os,
+        agent: GOLDEN_MEASUREMENTS.agent,
+        policy: GOLDEN_MEASUREMENTS.policy,
+        device: GOLDEN_MEASUREMENTS.device,
+        container: GOLDEN_MEASUREMENTS.container,
+        npuFirmware: GOLDEN_MEASUREMENTS.npuFirmware,
+      },
+    },
+    { inference: "local" },
+  );
+  return {
+    topology: "local-only",
+    evidence,
+    policy,
+    kmsProvider: "eliza-e1-verifier",
+    keyId: "model-key",
+  };
+}
 
-const policy = teePolicyFromReleaseManifest(releaseManifest, {
-  expectedNonce: nonce,
-  maxAgeMs: 60_000,
-  nowMs: Date.parse(timestamp),
-});
-const runtimePolicy = await resolveTeeRuntimePolicy({
-  nowMs: Date.parse(timestamp),
-  env: {
-    ELIZA_TEE_RELEASE_MANIFEST_PATH: releaseManifestPath,
-    ELIZA_TEE_EXPECTED_NONCE: nonce,
-    ELIZA_TEE_MAX_AGE_MS: "60000",
-  },
-});
+function buildDesktop(): TopologyFixture {
+  // Desktop: local agent in a dstack CVM (TDX) on a workstation. Local private
+  // inference (npuProtected) but no on-chip NPU firmware gate — the desktop
+  // attests boot/os/agent/policy/device/container only.
+  const evidence: TeeEvidence = {
+    kind: "dstack",
+    provider: "dstack",
+    hardwareVendor: "intel",
+    platformVersion: "desktop-tdx",
+    securityVersion: 5,
+    measurements: {
+      boot: GOLDEN_MEASUREMENTS.boot,
+      os: GOLDEN_MEASUREMENTS.os,
+      agent: GOLDEN_MEASUREMENTS.agent,
+      policy: GOLDEN_MEASUREMENTS.policy,
+      device: GOLDEN_MEASUREMENTS.device,
+      container: GOLDEN_MEASUREMENTS.container,
+    },
+    freshness: {
+      nonce: ISSUED_NONCE,
+      timestamp: FRESH_TIMESTAMP,
+      verifier: "intel-pcs",
+    },
+    claims: {
+      debugDisabled: true,
+      secureBoot: true,
+      memoryEncrypted: true,
+      ioProtected: true,
+      productionLifecycle: true,
+      npuProtected: true,
+    },
+  };
+  const policy = mergeTeeProductionProfile(
+    {
+      allowedKinds: ["dstack"],
+      allowedProviders: ["dstack"],
+      minSecurityVersion: 5,
+      expectedNonce: ISSUED_NONCE,
+      maxAgeMs: 120_000,
+      nowMs: NOW,
+      requiredMeasurements: {
+        boot: GOLDEN_MEASUREMENTS.boot,
+        os: GOLDEN_MEASUREMENTS.os,
+        agent: GOLDEN_MEASUREMENTS.agent,
+        policy: GOLDEN_MEASUREMENTS.policy,
+        device: GOLDEN_MEASUREMENTS.device,
+        container: GOLDEN_MEASUREMENTS.container,
+      },
+    },
+    { inference: "local" },
+  );
+  return {
+    topology: "desktop",
+    evidence,
+    policy,
+    kmsProvider: "dstack",
+    keyId: "agent-session",
+  };
+}
 
-const evidence: TeeEvidence = {
-  kind: "dstack",
-  provider: "dstack",
-  hardwareVendor: "mock-macos",
-  platformVersion: "full-stack-local",
-  securityVersion: 1,
-  measurements,
-  freshness: { nonce, timestamp, verifier: "full-stack-local" },
-  claims: {
-    debugDisabled: true,
-    secureBoot: true,
-    memoryEncrypted: true,
-    ioProtected: true,
-    npuProtected: true,
-  },
-};
+function buildCloudRouted(): TopologyFixture {
+  // Cloud-routed: prompt data goes to a dstack CVM on TDX + H100 confidential
+  // GPU. Adds the cloud KMS provider, requires gpuProtected + gpuFirmware.
+  const evidence: TeeEvidence = {
+    kind: "tdx",
+    provider: "eliza-cloud-kms",
+    hardwareVendor: "intel",
+    platformVersion: "cloud-tdx-h100",
+    securityVersion: 9,
+    measurements: {
+      boot: GOLDEN_MEASUREMENTS.boot,
+      os: GOLDEN_MEASUREMENTS.os,
+      agent: GOLDEN_MEASUREMENTS.agent,
+      policy: GOLDEN_MEASUREMENTS.policy,
+      device: GOLDEN_MEASUREMENTS.device,
+      container: GOLDEN_MEASUREMENTS.container,
+      gpuFirmware: GOLDEN_MEASUREMENTS.gpuFirmware,
+    },
+    freshness: {
+      nonce: ISSUED_NONCE,
+      timestamp: FRESH_TIMESTAMP,
+      verifier: "intel-pcs",
+    },
+    claims: {
+      debugDisabled: true,
+      secureBoot: true,
+      memoryEncrypted: true,
+      ioProtected: true,
+      productionLifecycle: true,
+      gpuProtected: true,
+    },
+  };
+  const policy = mergeTeeProductionProfile(
+    {
+      allowedKinds: ["tdx"],
+      // Cloud-routed adds the cloud KMS provider to the allowlist.
+      allowedProviders: ["dstack", "eliza-cloud-kms"],
+      minSecurityVersion: 9,
+      expectedNonce: ISSUED_NONCE,
+      maxAgeMs: 60_000,
+      nowMs: NOW,
+      requiredMeasurements: {
+        boot: GOLDEN_MEASUREMENTS.boot,
+        os: GOLDEN_MEASUREMENTS.os,
+        agent: GOLDEN_MEASUREMENTS.agent,
+        policy: GOLDEN_MEASUREMENTS.policy,
+        device: GOLDEN_MEASUREMENTS.device,
+        container: GOLDEN_MEASUREMENTS.container,
+        gpuFirmware: GOLDEN_MEASUREMENTS.gpuFirmware,
+      },
+    },
+    { inference: "cloud" },
+  );
+  return {
+    topology: "cloud-routed",
+    evidence,
+    policy,
+    kmsProvider: "eliza-cloud-kms",
+    keyId: "remote-signing",
+  };
+}
 
-const accepted = evaluateTeeEvidencePolicy(evidence, policy);
-const runtimeAccepted = evaluateTeeEvidencePolicy(evidence, runtimePolicy);
-const rejected = evaluateTeeEvidencePolicy(
-  {
-    ...evidence,
-    measurements: { ...measurements, agent: `sha256:${"0".repeat(64)}` },
-  },
-  policy,
-);
-const revoked = evaluateTeeEvidencePolicy(evidence, {
-  ...policy,
-  revokedMeasurements: {
-    agent: [measurements.agent ?? ""],
-  },
-});
+const topologies: TopologyFixture[] = [
+  buildLocalOnly(),
+  buildDesktop(),
+  buildCloudRouted(),
+];
 
-const keyRelease = await new HttpTeeKeyReleaseClient({
-  baseUrl: "https://kms.example.test",
-  fetch: async (_url, init) => {
+// ---------------------------------------------------------------------------
+// Mock KMS: verifies the same policy the agent evaluates, then wraps the
+// released key to the agent's ephemeral public key with wrapTeeReleaseKey so
+// the client's unwrap (X25519 ECDH + HKDF + AES-256-GCM) succeeds.
+// ---------------------------------------------------------------------------
+
+function makeMockKmsFetch(kmsSecretLabel: string): typeof fetch {
+  return (async (_url, init) => {
     const body = JSON.parse(String(init?.body)) as {
       keyId: string;
       nonce: string;
+      ephemeralPublicKey: string;
+      reportData: string;
       evidence: TeeEvidence;
-      policy: typeof policy;
+      policy: TeeEvidencePolicy;
     };
     const decision = evaluateTeeEvidencePolicy(body.evidence, body.policy);
     if (!decision.trusted) {
       return Response.json({ decision }, { status: 403 });
     }
+    // Deterministic per-app key bound to the measured agent/policy identity,
+    // mirroring dstack's deterministic-app-key model.
+    const keyMaterialHex = createHash("sha256")
+      .update(kmsSecretLabel)
+      .update(body.keyId)
+      .update(body.evidence.measurements?.agent ?? "")
+      .update(body.evidence.measurements?.policy ?? "")
+      .digest("hex");
+    const wrappedKey = wrapTeeReleaseKey({
+      keyMaterialHex,
+      agentEphemeralPublicKeyDerBase64: body.ephemeralPublicKey,
+      nonceHex: body.nonce,
+    });
     return Response.json({
       keyId: body.keyId,
-      // Echo the client-issued nonce so the replay check passes.
       nonce: body.nonce,
-      keyMaterialHex: createHash("sha256")
-        .update("full-stack-local-kms")
-        .update(body.keyId)
-        .update(body.evidence.measurements?.agent ?? "")
-        .update(body.evidence.measurements?.policy ?? "")
-        .digest("hex"),
+      wrappedKey,
       decision,
     });
-  },
-  // report_data-aware provider: bind the issued reportData onto the evidence
-  // so the client's nonce/epk binding check is satisfied.
-  evidenceProvider: {
-    id: "full-stack-local",
-    collectEvidence: async () => evidence,
-    collectEvidenceWithReportData: async ({ nonce: bound, reportDataHex }) => ({
-      ...evidence,
+  }) as typeof fetch;
+}
+
+function makeEvidenceProvider(
+  fixture: TopologyFixture,
+): TeeReportDataBoundEvidenceProvider {
+  return {
+    id: `full-stack-${fixture.topology}`,
+    collectEvidence: async () => fixture.evidence,
+    collectEvidenceWithReportData: async ({ nonce, reportDataHex }) => ({
+      ...fixture.evidence,
       reportData: reportDataHex,
-      freshness: { ...evidence.freshness, nonce: bound },
+      freshness: { ...fixture.evidence.freshness, nonce },
     }),
-  },
-}).releaseKey({
-  keyId: "full-stack-agent-session",
-  context: "full-stack-local",
-  policy,
-});
+  };
+}
 
-// Confidential-inference unseal path end-to-end against the mock KMS:
-// seal a weights blob at rest, release model-key (gated on agent/policy/
-// container/os/npuFirmware/modelWeights), decrypt in memory, assert no
-// plaintext touched disk. Real quote verification is BLOCKED on hardware.
-const plaintextWeights = Buffer.from("eliza-1 full-stack weights fixture\n");
-const weightsSha256 = createHash("sha256")
-  .update(plaintextWeights)
-  .digest("hex");
-const modelKey = randomBytes(32);
-const iv = randomBytes(12);
-const cipher = createCipheriv("aes-256-gcm", modelKey, iv);
-const ciphertext = Buffer.concat([
-  cipher.update(plaintextWeights),
-  cipher.final(),
-]);
-const sealedWeights = {
-  algorithm: "aes-256-gcm" as const,
-  ivBase64: iv.toString("base64"),
-  authTagBase64: cipher.getAuthTag().toString("base64"),
-  ciphertextBase64: ciphertext.toString("base64"),
-  weightsSha256,
+type TopologyRunResult = {
+  topology: Topology;
+  kmsProvider: string;
+  keyId: string;
+  golden: ReturnType<typeof summarize>;
+  keyMaterialSha256: string;
+  ok: boolean;
 };
-const modelKeyEvidence: TeeEvidence = {
-  ...evidence,
-  measurements: { ...measurements, modelWeights: `sha256:${weightsSha256}` },
+
+async function runTopology(
+  fixture: TopologyFixture,
+): Promise<TopologyRunResult> {
+  const golden = evaluateTeeEvidencePolicy(fixture.evidence, fixture.policy);
+  const client = new HttpTeeKeyReleaseClient({
+    baseUrl: "https://kms.example.test",
+    fetch: makeMockKmsFetch(`full-stack-${fixture.topology}-kms`),
+    evidenceProvider: makeEvidenceProvider(fixture),
+  });
+  const release = await client.releaseKey({
+    keyId: fixture.keyId,
+    context: `full-stack-${fixture.topology}`,
+    policy: fixture.policy,
+  });
+  const keyMaterialSha256 = createHash("sha256")
+    .update(release.keyMaterialHex)
+    .digest("hex");
+  const ok =
+    golden.trusted &&
+    golden.reason === "allowed" &&
+    release.decision.trusted &&
+    /^[a-f0-9]{64}$/.test(release.keyMaterialHex) &&
+    release.keyId === fixture.keyId;
+  return {
+    topology: fixture.topology,
+    kmsProvider: fixture.kmsProvider,
+    keyId: fixture.keyId,
+    golden: summarize(golden),
+    keyMaterialSha256,
+    ok,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Decision-reason matrix. A golden (trusted) base + a tampered variant per
+// reason in the closed union. The base is the cloud-routed evidence/policy
+// (richest measurement + claim set). Each tampered case asserts the EXACT
+// reason the policy must return; the harness exits non-zero on any mismatch.
+// ---------------------------------------------------------------------------
+
+const REASON_BASE_FIXTURE = buildCloudRouted();
+const reasonBaseEvidence = REASON_BASE_FIXTURE.evidence;
+const reasonBasePolicy = REASON_BASE_FIXTURE.policy;
+
+type ReasonVector = {
+  reason: TeeEvidencePolicyDecision["reason"];
+  evidence: unknown;
+  policy: TeeEvidencePolicy | undefined;
+  trusted: boolean;
 };
-const unsealPolicy = {
-  ...policy,
-  requiredMeasurements: {
-    ...(policy.requiredMeasurements ?? {}),
-    modelWeights: `sha256:${weightsSha256}`,
+
+const reasonVectors: ReasonVector[] = [
+  // Trusted reasons.
+  { reason: "no-policy", evidence: reasonBaseEvidence, policy: undefined, trusted: true },
+  {
+    reason: "not-required",
+    evidence: undefined,
+    policy: { required: false },
+    trusted: true,
   },
+  {
+    reason: "allowed",
+    evidence: reasonBaseEvidence,
+    policy: reasonBasePolicy,
+    trusted: true,
+  },
+  // Untrusted reasons (golden base, one field tampered each).
+  {
+    reason: "missing-evidence",
+    evidence: undefined,
+    policy: { required: true },
+    trusted: false,
+  },
+  {
+    reason: "invalid-evidence",
+    // No `kind` → normalizeTeeEvidence throws → invalid-evidence.
+    evidence: { provider: "eliza-cloud-kms" },
+    policy: { required: true },
+    trusted: false,
+  },
+  {
+    reason: "simulated-evidence-rejected",
+    // Production profile sets rejectSimulatedEvidence; a mock vendor is refused.
+    evidence: { ...reasonBaseEvidence, hardwareVendor: "mock-macos" },
+    policy: reasonBasePolicy,
+    trusted: false,
+  },
+  {
+    reason: "kind-not-allowed",
+    evidence: { ...reasonBaseEvidence, kind: "sev-snp" },
+    policy: reasonBasePolicy,
+    trusted: false,
+  },
+  {
+    reason: "provider-not-allowed",
+    evidence: { ...reasonBaseEvidence, provider: "rogue-kms" },
+    policy: reasonBasePolicy,
+    trusted: false,
+  },
+  {
+    reason: "measurement-mismatch",
+    evidence: {
+      ...reasonBaseEvidence,
+      measurements: { ...reasonBaseEvidence.measurements, agent: ZERO_DIGEST },
+    },
+    policy: reasonBasePolicy,
+    trusted: false,
+  },
+  {
+    reason: "measurement-revoked",
+    evidence: reasonBaseEvidence,
+    policy: mergeTeeRevocationsIntoPolicy(reasonBasePolicy, {
+      schemaVersion: 1,
+      revokedMeasurements: { agent: [GOLDEN_MEASUREMENTS.agent] },
+    } satisfies TeeRevocationManifest),
+    trusted: false,
+  },
+  {
+    reason: "security-version-too-low",
+    evidence: { ...reasonBaseEvidence, securityVersion: 1 },
+    policy: reasonBasePolicy,
+    trusted: false,
+  },
+  {
+    reason: "security-version-revoked",
+    evidence: reasonBaseEvidence,
+    policy: mergeTeeRevocationsIntoPolicy(reasonBasePolicy, {
+      schemaVersion: 1,
+      revokedSecurityVersions: [9],
+    } satisfies TeeRevocationManifest),
+    trusted: false,
+  },
+  {
+    reason: "missing-nonce",
+    evidence: {
+      ...reasonBaseEvidence,
+      freshness: { timestamp: FRESH_TIMESTAMP, verifier: "intel-pcs" },
+    },
+    policy: reasonBasePolicy,
+    trusted: false,
+  },
+  {
+    reason: "nonce-mismatch",
+    evidence: {
+      ...reasonBaseEvidence,
+      freshness: { ...reasonBaseEvidence.freshness, nonce: "stale-nonce" },
+    },
+    policy: reasonBasePolicy,
+    trusted: false,
+  },
+  {
+    reason: "missing-timestamp",
+    evidence: {
+      ...reasonBaseEvidence,
+      freshness: { nonce: ISSUED_NONCE, verifier: "intel-pcs" },
+    },
+    policy: reasonBasePolicy,
+    trusted: false,
+  },
+  {
+    reason: "timestamp-invalid",
+    evidence: {
+      ...reasonBaseEvidence,
+      freshness: { ...reasonBaseEvidence.freshness, timestamp: "not-a-date" },
+    },
+    policy: reasonBasePolicy,
+    trusted: false,
+  },
+  {
+    reason: "timestamp-stale",
+    evidence: reasonBaseEvidence,
+    // Advance the clock 10 min past the 5-min production freshness floor.
+    policy: { ...reasonBasePolicy, nowMs: NOW + 10 * 60_000 },
+    trusted: false,
+  },
+  {
+    reason: "claim-mismatch",
+    evidence: {
+      ...reasonBaseEvidence,
+      claims: { ...reasonBaseEvidence.claims, gpuProtected: false },
+    },
+    policy: reasonBasePolicy,
+    trusted: false,
+  },
+];
+
+const ALL_REASONS: TeeEvidencePolicyDecision["reason"][] = [
+  "no-policy",
+  "not-required",
+  "allowed",
+  "missing-evidence",
+  "invalid-evidence",
+  "simulated-evidence-rejected",
+  "kind-not-allowed",
+  "provider-not-allowed",
+  "measurement-mismatch",
+  "measurement-revoked",
+  "security-version-too-low",
+  "security-version-revoked",
+  "missing-nonce",
+  "nonce-mismatch",
+  "missing-timestamp",
+  "timestamp-invalid",
+  "timestamp-stale",
+  "claim-mismatch",
+];
+
+type ReasonResult = {
+  reason: TeeEvidencePolicyDecision["reason"];
+  expectedTrusted: boolean;
+  decision: ReturnType<typeof summarize>;
+  ok: boolean;
 };
-const unseal = await unsealModelWeights({
-  keyReleaseClient: {
-    releaseKey: async (req) => {
-      const decision = evaluateTeeEvidencePolicy(modelKeyEvidence, req.policy);
-      if (!decision.trusted) {
+
+function runReasonMatrix(): { results: ReasonResult[]; coverageOk: boolean } {
+  const results = reasonVectors.map((vector) => {
+    const decision = evaluateTeeEvidencePolicy(vector.evidence, vector.policy);
+    return {
+      reason: vector.reason,
+      expectedTrusted: vector.trusted,
+      decision: summarize(decision),
+      ok:
+        decision.reason === vector.reason &&
+        decision.trusted === vector.trusted,
+    };
+  });
+  const covered = new Set(reasonVectors.map((vector) => vector.reason));
+  const coverageOk =
+    covered.size === ALL_REASONS.length &&
+    ALL_REASONS.every((reason) => covered.has(reason));
+  return { results, coverageOk };
+}
+
+// ---------------------------------------------------------------------------
+// Confidential-inference unseal (plan §2.2 steps 4–7) against the mock KMS.
+// Seal a weights blob at rest, release model-key gated on the local-only
+// policy + modelWeights digest, decrypt in memory; assert the happy path
+// recovers the plaintext and the tampered path is denied.
+// ---------------------------------------------------------------------------
+
+const UNSEAL_REQUIRED: readonly TeeMeasurementName[] = [
+  "agent",
+  "policy",
+  "container",
+  "os",
+  "npuFirmware",
+  "modelWeights",
+];
+
+async function runUnseal(): Promise<{
+  happyPath: boolean;
+  deniedPath: boolean;
+  weightsSha256: string;
+}> {
+  const plaintextWeights = Buffer.from("eliza-1 full-stack weights fixture\n");
+  const weightsSha256 = createHash("sha256")
+    .update(plaintextWeights)
+    .digest("hex");
+  const modelKey = randomBytes(32);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", modelKey, iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintextWeights),
+    cipher.final(),
+  ]);
+  const sealedWeights: SealedWeightsBlob = {
+    algorithm: "aes-256-gcm",
+    ivBase64: iv.toString("base64"),
+    authTagBase64: cipher.getAuthTag().toString("base64"),
+    ciphertextBase64: ciphertext.toString("base64"),
+    weightsSha256,
+  };
+
+  const local = buildLocalOnly();
+  const modelKeyEvidence: TeeEvidence = {
+    ...local.evidence,
+    measurements: {
+      ...local.evidence.measurements,
+      modelWeights: `sha256:${weightsSha256}`,
+    },
+  };
+  const unsealPolicy: TeeEvidencePolicy = {
+    ...local.policy,
+    requiredMeasurements: {
+      ...(local.policy.requiredMeasurements ?? {}),
+      modelWeights: `sha256:${weightsSha256}`,
+    },
+  };
+
+  const unseal = await unsealModelWeights({
+    keyReleaseClient: {
+      releaseKey: async (req) => {
+        const decision = evaluateTeeEvidencePolicy(
+          modelKeyEvidence,
+          req.policy,
+        );
+        return {
+          keyId: req.keyId,
+          keyMaterialHex: decision.trusted ? modelKey.toString("hex") : "",
+          decision,
+        };
+      },
+    },
+    policy: unsealPolicy,
+    sealedWeights,
+    requiredMeasurements: UNSEAL_REQUIRED,
+    context: "full-stack-local-inference",
+  });
+  const happyPath =
+    unseal.weights.equals(plaintextWeights) &&
+    unseal.weightsSha256 === weightsSha256 &&
+    unseal.decision.trusted === true;
+
+  const deniedPath = await unsealModelWeights({
+    keyReleaseClient: {
+      releaseKey: async (req) => {
+        const decision = evaluateTeeEvidencePolicy(
+          {
+            ...modelKeyEvidence,
+            measurements: {
+              ...modelKeyEvidence.measurements,
+              agent: ZERO_DIGEST,
+            },
+          },
+          req.policy,
+        );
         return { keyId: req.keyId, keyMaterialHex: "", decision };
-      }
-      return {
-        keyId: req.keyId,
-        keyMaterialHex: modelKey.toString("hex"),
-        decision,
-      };
+      },
     },
-  },
-  policy: unsealPolicy,
-  sealedWeights,
-  requiredMeasurements: [
-    "agent",
-    "policy",
-    "container",
-    "os",
-    "npuFirmware",
-    "modelWeights",
-  ],
-  context: "full-stack-local-inference",
-});
-const unsealOk =
-  unseal.weights.equals(plaintextWeights) &&
-  unseal.weightsSha256 === weightsSha256 &&
-  unseal.decision.trusted === true;
-const unsealDenied = await unsealModelWeights({
-  keyReleaseClient: {
-    releaseKey: async (req) => {
-      const decision = evaluateTeeEvidencePolicy(
-        {
-          ...modelKeyEvidence,
-          measurements: { ...measurements, agent: `sha256:${"0".repeat(64)}` },
-        },
-        req.policy,
-      );
-      return { keyId: req.keyId, keyMaterialHex: "", decision };
-    },
-  },
-  policy: unsealPolicy,
-  sealedWeights,
-  requiredMeasurements: [
-    "agent",
-    "policy",
-    "container",
-    "os",
-    "npuFirmware",
-    "modelWeights",
-  ],
-}).then(
-  () => false,
-  (error: unknown) =>
-    error instanceof Error && /model-key release denied/.test(error.message),
-);
+    policy: unsealPolicy,
+    sealedWeights,
+    requiredMeasurements: UNSEAL_REQUIRED,
+  }).then(
+    () => false,
+    (error: unknown) =>
+      error instanceof Error && /model-key release denied/.test(error.message),
+  );
 
-const chipEvidence = JSON.parse(
-  await readFile(
-    "packages/chip/docs/spec-db/tee-attestation-evidence.example.json",
-    "utf8",
-  ),
-) as TeeEvidence;
-const chipEvidenceDecision = evaluateTeeEvidencePolicy(chipEvidence, {
-  required: true,
-  allowedKinds: ["cove"],
-  requiredMeasurements: {
-    agent: chipEvidence.measurements?.agent ?? "",
-    policy: chipEvidence.measurements?.policy ?? "",
-    device: chipEvidence.measurements?.device ?? "",
-  },
-  requiredClaims: {
-    debugDisabled: true,
-    secureBoot: true,
-    memoryEncrypted: true,
-    ioProtected: true,
-    npuProtected: true,
-  },
-});
+  return { happyPath, deniedPath, weightsSha256 };
+}
+
+// ---------------------------------------------------------------------------
+// Drive everything, self-check, write artifacts.
+// ---------------------------------------------------------------------------
+
+const topologyResults = await Promise.all(topologies.map(runTopology));
+const { results: reasonResults, coverageOk } = runReasonMatrix();
+const unseal = await runUnseal();
+
+const topologiesOk = topologyResults.every((result) => result.ok);
+const reasonsOk = reasonResults.every((result) => result.ok);
+const unsealOk = unseal.happyPath && unseal.deniedPath;
 
 const output = {
-  ok:
-    accepted.trusted &&
-    runtimeAccepted.trusted &&
-    !rejected.trusted &&
-    !revoked.trusted &&
-    /^[a-f0-9]{64}$/.test(keyRelease.keyMaterialHex) &&
-    chipEvidenceDecision.trusted &&
-    unsealOk &&
-    unsealDenied,
-  releaseManifestPath,
-  modelKeyUnseal: {
-    happyPath: unsealOk,
-    deniedPath: unsealDenied,
-    weightsSha256,
+  ok: topologiesOk && reasonsOk && coverageOk && unsealOk,
+  topologies: topologyResults,
+  decisionReasonMatrix: {
+    coverageOk,
+    reasonsCovered: reasonResults.length,
+    reasonsExpected: ALL_REASONS.length,
+    results: reasonResults,
   },
-  accepted: summarize(accepted),
-  runtimeAccepted: summarize(runtimeAccepted),
-  rejected: summarize(rejected),
-  revoked: summarize(revoked),
-  keyRelease: {
-    keyId: keyRelease.keyId,
-    keyMaterialSha256: createHash("sha256")
-      .update(keyRelease.keyMaterialHex)
-      .digest("hex"),
-    decision: summarize(keyRelease.decision),
-  },
-  chipEvidenceDecision: summarize(chipEvidenceDecision),
+  modelKeyUnseal: unseal,
 };
+
 if (!output.ok) {
-  throw new Error(`TEE full-stack local failed: ${JSON.stringify(output)}`);
+  const failedReasons = reasonResults.filter((result) => !result.ok);
+  const failedTopologies = topologyResults.filter((result) => !result.ok);
+  throw new Error(
+    `TEE full-stack local failed: ${JSON.stringify(
+      {
+        topologiesOk,
+        reasonsOk,
+        coverageOk,
+        unsealOk,
+        failedTopologies: failedTopologies.map((result) => result.topology),
+        failedReasons: failedReasons.map((result) => result.reason),
+      },
+      null,
+      2,
+    )}`,
+  );
 }
 
 const outputPath = "evidence/tee/full-stack-local-2026-05-20.json";
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`);
-console.log(`TEE full-stack local passed: ${outputPath}`);
+console.log(
+  `TEE full-stack local passed: ${topologyResults.length} topologies, ${reasonResults.length} decision reasons, unseal OK -> ${outputPath}`,
+);
 
-function summarize(decision: {
-  trusted: boolean;
-  reason: string;
-  detail?: string;
-  evidence?: TeeEvidence;
-}) {
+function summarize(decision: TeeEvidencePolicyDecision) {
   return {
     trusted: decision.trusted,
     reason: decision.reason,

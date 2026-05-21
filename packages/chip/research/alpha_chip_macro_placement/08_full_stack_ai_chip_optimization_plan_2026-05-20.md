@@ -396,8 +396,11 @@ The first reproducibility spine is now checked in:
   `scripts/ai_eda/check_openlane_replay_execution.py` define the PD-host
   return contract after deterministic replay: final metrics, OpenLane/OpenROAD
   logs, final DEF/GDS, replay queue/preflight links, optional DRC/LVS/antenna
-  reports, SHA256 hashes, and blocker accounting must validate before replay
-  execution can count as E1 optimization evidence.
+  reports, SHA256 hashes, flattened metric-key coverage, OpenLane/OpenROAD log
+  health summaries, and blocker accounting must validate before replay
+  execution can count as E1 optimization evidence. Ready execution evidence
+  must include timing, signoff/DRC, and objective metric families plus non-empty
+  logs with zero error-like lines.
 - `scripts/ai_eda/capture_openlane_replay_comparison.py` and
   `scripts/ai_eda/check_openlane_replay_comparison.py` define the baseline-vs-
   candidate replay comparison contract. It hash-pins both execution reports,
@@ -437,6 +440,10 @@ The first reproducibility spine is now checked in:
   `scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py`, and
   `scripts/ai_eda/capture_netlist_equivalence_targets.py` are wired into
   `make ai-eda-verification-targets`, with
+  `scripts/ai_eda/capture_formal_verification_prerequisites.py` and
+  `check_formal_verification_prerequisites.py` recording formal host/tool
+  readiness, strict SymbiYosys availability, Yosys fallback scope, formal spec
+  hashes, and required post-execution evidence before
   `scripts/ai_eda/check_verification_target_captures.py` validating that these
   formal/synthesis/LEC targets remain dry-run, fail-closed capture artifacts
   until deterministic E1 proof and replay gates exist.
@@ -966,6 +973,71 @@ Current local validation on the 128 GiB M4 host:
   `r_zoo_rectilinear_legality_baseline` and remains blocked only on missing CUDA
   preflight evidence. This is useful pretraining smoke evidence only; it is not
   E1 signoff or an optimization claim.
+- Integrated readiness refresh on 2026-05-21 produced
+  `codex-chipseek-watchlist-20260521` (19 current-research entries, adding
+  ChipSeek as a gated RTL/PPA feedback lane),
+  `codex-full-conversion-payload` (43 assets, 255 files), validated dry-run
+  execution (`commands=232`, `selected=228`), safety matrix (`stages=14`,
+  `checks=20`), formal-prerequisite evidence in
+  `codex-full-conversion-readiness` (`BLOCKED_FORMAL_PREREQUISITES` because
+  `sby` is missing locally, with Yosys fallback recorded as smoke coverage only),
+  formal-execution evidence in the same run
+  (`FALLBACK_FORMAL_EVIDENCE_CAPTURED_WITH_BLOCKERS`, not deep proof evidence),
+  `codex-full-conversion-matrix` (14 CUDA jobs, blocked only by non-CUDA local
+  preflight), `codex-successor-reproduction-contract` (blocked
+  successor-reproduction evidence), `codex-full-conversion-readiness` (25/25
+  evidence bundle artifacts, `PASS_WITH_BLOCKERS_RECORDED`, ten blockers), and
+  `codex-full-conversion-objective` (`INCOMPLETE_WITH_BLOCKERS`, 7/11 proven).
+  The remaining hard blockers are unchanged: CUDA-scale training/inference,
+  public AlphaChip checkpoint access or a CUDA successor reproduction,
+  OpenLane/OpenROAD/PDK replay host readiness, strict SymbiYosys formal host
+  and execution readiness, and real baseline-vs-candidate E1 replay comparison
+  evidence.
+- Readiness refresh refinement on 2026-05-21 retargeted the training-handoff
+  evidence to `codex-handoff-dedupe-20260521-training-handoff`, whose bootstrap
+  report is `PASS`/complete. `codex-full-conversion-readiness` now records
+  `PASS_WITH_BLOCKERS_RECORDED` with ten hard blockers, including strict formal
+  host and execution readiness, and no soft training-handoff-bootstrap blocker.
+  The OpenLane replay-prerequisite capture
+  also now points at the existing `pd/asap7/config.asap7.yaml` predictive-lane
+  config instead of a nonexistent `pd/openlane/config.asap7.yaml`.
+- E1 replay-readiness refinement on 2026-05-21 exposes the checked-in hard SRAM
+  macro in the E1 OpenLane conversion as a movable placement object, with the
+  checked-in OpenLane seed location retained as the target placement. The full
+  replay plan for `codex-handoff-dedupe-20260521-training-handoff` now has 176
+  candidates, 7 ready, and 169 blocked; the replay queue has 23 candidates, 1
+  ready, and 22 blocked. The OpenLane prerequisite report still blocks, but now
+  only on missing `openlane`, missing `openroad`, and unset `PDK_ROOT`; replay
+  preflight selects the ready E1 OpenLane candidate and blocks only on missing
+  OpenLane/OpenROAD executables. The successor-reproduction contract now has 6
+  blockers and no longer carries a no-ready-replay-queue-item blocker.
+- OpenLane replay handoff packaging on 2026-05-21 added
+  `package_openlane_replay_handoff.py` and `check_openlane_replay_handoff.py`.
+  `codex-openlane-replay-handoff-20260521` is `HANDOFF_READY_FOR_PD_HOST` with
+  seven ready candidates, a hash-pinned tarball, replay queue/preflight inputs,
+  generated macro-placement override files, placement-case/candidate manifests,
+  a generated PD-host Markdown runbook, a shell command stub, and the exact
+  execution/comparison capture commands the PD host must run after
+  OpenLane/OpenROAD produces final metrics, logs, DEF, and GDS. The handoff
+  checker now requires each execution command to pass `--replay-handoff`,
+  requires the runbook and command stub, and execution capture verifies the
+  handoff schema, ready status, and selected candidate before accepting replay
+  evidence. Execution capture now accepts any selected candidate that appears
+  in the validated handoff package, so all seven ready E1 OpenLane candidates
+  can return PD-host metrics without being forced through the single queue
+  preflight selection. The replay execution contract now also records
+  `metric_key_summary` and `log_summary`, requiring timing, signoff/DRC, and
+  objective metric families plus non-empty OpenLane/OpenROAD logs with no
+  error-like lines before execution evidence can become ready. The CUDA
+  readiness audit
+  `codex-openlane-handoff-readiness-20260521` now records
+  `openlane_replay_handoff_validated=true`, and its evidence bundle carries
+  the then-current readiness artifacts; the latest integrated refresh carries
+  25/25 artifacts after adding formal prerequisite and execution evidence. The corresponding objective audit
+  `codex-openlane-handoff-objective-20260521` proves the
+  `candidate_replay_queue` requirement while still blocking completion on CUDA
+  large training, AlphaChip/successor CUDA-scale reproduction,
+  OpenLane/OpenROAD/PDK host readiness, and real E1 replay execution/comparison.
 - R-Zoo license/provenance evidence on 2026-05-21 added
   `scripts/ai_eda/capture_r_zoo_license_review.py` and
   `check_r_zoo_license_review.py`. `make
@@ -979,6 +1051,65 @@ Current local validation on the 128 GiB M4 host:
   remaining floorplanning-readiness blocker is generated-floorplan quarantine
   pending deterministic E1 replay/signoff. The Makefile and CUDA payload order
   require this license review before the R-Zoo legality baseline can run.
+- FloorSet payload/license/conversion evidence on 2026-05-21 reduced the
+  floorplanning dataset blockers from stale intake/payload state to only
+  deterministic E1 replay quarantine. The local FloorSet checkout is pinned at
+  `a01137f8cb0406fcb1eef4a76e09445d95aab863`; `fetch_external_asset.py
+  --asset intel-floorset --verify-only --run-id codex-floorset-verify-20260521`:
+  PASS with 388 hashed files and 675,310,772 hashed bytes. The current upstream
+  README identifies FloorSet as the ICCAD 2026 FloorSet Challenge basis, with
+  1M available training samples, 100 available validation samples, hidden 100
+  final test samples, and Apache-2.0 repository / CC BY 4.0 dataset licensing.
+  `scripts/ai_eda/capture_floorset_license_review.py` and
+  `check_floorset_license_review.py` record a conservative training-only
+  review: local research training and CUDA handoff are allowed, while release,
+  model-weight release, and E1 signoff claims remain false. `convert_floorset_lite_to_internal_records.py`
+  decodes the 100 public LiteTensorDataTest tensor cases into 300 normalized
+  design/graph/flow records using the Torch-capable Python; `capture_floorset_split_manifest.py`
+  records a deterministic config-id split (`train=80`, `val=10`, `test=10`).
+  `codex-floorset-conversion-20260521`: FloorSet conversion PASS, split
+  manifest PASS, license review PASS, and floorplanning readiness PASS_BLOCKED
+  with two blockers: FloorSet generated-floorplan quarantine and R-Zoo
+  generated-floorplan quarantine pending deterministic E1 replay/signoff.
+  The training-handoff corpus manifest
+  `codex-handoff-dedupe-20260521-training-handoff` now includes `floorset_lite`
+  as a first-class dataset alongside R-Zoo and the other normalized corpora:
+  18 datasets, 589 normalized records, and 2,689 logical records.
+  `codex-floorset-full-archives-docs-20260521` verifies the complete local
+  Hugging Face FloorSet archive set: 10/10 archives and 29,665,773,263 bytes.
+  The FloorSet-specific payload lane is now folded into
+  `codex-floorset-payload-20260521`: CUDA payload PASS with 42 assets,
+  254 files, a 230-command dry-run with 226 selected commands, and a validated
+  safety matrix; the full matrix `codex-floorset-matrix-20260521` remains
+  blocked only by non-CUDA local preflight.
+- Current-research refresh on 2026-05-21 added EDA-Schema-V2
+  (`https://arxiv.org/abs/2605.06952`) to the metadata-only watchlist and
+  source inventory. The paper reports a multimodal physical-design schema and
+  OpenROAD-generated datasets across logic synthesis, floorplanning,
+  placement, clock network synthesis, and routing, with 7,776 design instances
+  and timing/power/area/routing benchmark tasks. E1 action is gated on finding
+  the public dataset location, pinning exact revisions, completing license and
+  PDK/tool provenance review, writing a schema-to-internal-record converter,
+  generating design-family-aware splits, and proving deterministic
+  OpenLane/OpenROAD replay compatibility before any optimization claim.
+- Current-research refresh on 2026-05-21 also adds two newly verified 2026
+  method lanes to the metadata-only watchlist and source inventory:
+  EXPlace / `explace-domain-expert-rl`
+  (`https://openreview.net/forum?id=yqvNwfxRR6`) and AMS-IO-Agent /
+  `ams-io-agent-layout`
+  (`https://ojs.aaai.org/index.php/AAAI/article/view/37134`). EXPlace is
+  relevant as an AlphaChip-successor RL macro-placement direction because it
+  combines EDA domain-expert knowledge injection with workflow imitation and
+  reports OpenROAD-benchmark PPA improvements. AMS-IO-Agent is relevant to the
+  broader chip-optimization stack because it converts AMS I/O design intent
+  into structured JSON/Python steps and reports DRC+LVS-oriented AMS I/O-ring
+  automation. Both remain blocked from E1 source or design-evidence use until
+  paper/code/data hashes, license review, local constraints, candidate hashes,
+  deterministic replay/signoff logs, and PD/AMS reviewer disposition exist.
+  `codex-latest-research-refresh-20260521` validates 19 watchlist entries and
+  19 converted `eda.text_instruction_sample.v1` metadata records; `validation`
+  target captures were regenerated so source-inventory validation now passes
+  with 595 inventory entries and 72 AI-optimization target tasks.
 - `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-bootstrap-setup5
   ai-eda-bootstrap-setup-check`: PASS. This confirms the setup-check bootstrap
   order now captures all optimization targets before rebuilding the local RAG
@@ -1024,12 +1155,15 @@ Current local validation on the 128 GiB M4 host:
   and `openlane_replay_comparison_not_validated`
   (`BLOCKED_COMPARISON_EVIDENCE`).
 - `make ai-eda-verification-targets`: PASS. The local verification capture
-  lane emits and validates dry-run target reports for logic synthesis, RTL
-  rewrite equivalence, and netlist/LEC readiness. The checker enforces
-  capture-only mode, no execution, no generated rewrites, no equivalence/PPA
-  claims, non-empty candidate task gates, artifact hashes for present inputs,
-  and explicit blocked-by lists before any formal/synthesis/signoff automation
-  can consume these targets.
+  lane first emits `formal_verification_prerequisites` and then validates
+  dry-run target reports for logic synthesis, RTL rewrite equivalence, and
+  netlist/LEC readiness. The formal preflight currently records
+  `BLOCKED_FORMAL_PREREQUISITES` because `sby` is missing locally while Yosys
+  fallback is possible; fallback evidence is explicitly not deep formal
+  signoff. The checker enforces capture-only mode, no execution, no generated
+  rewrites, no equivalence/PPA claims, non-empty candidate task gates, artifact
+  hashes for present inputs, and explicit blocked-by lists before any
+  formal/synthesis/signoff automation can consume these targets.
 - `make ai-eda-physical-design-targets`: PASS. The local physical-design
   capture lane emits and validates dry-run target reports for timing closure,
   routing/congestion, placement/legalization, and physical verification. The
@@ -1364,9 +1498,10 @@ Implemented schema foundation:
 - `scripts/ai_eda/convert_e1_openlane_to_internal_records.py` converts the
   checked-in E1 SKY130 OpenLane config into real local `eda.design_bundle.v1`,
   `eda.placement_case.v1`, and blocked `eda.flow_run.v1` records. The current
-  conversion captures 16 existing RTL files and one fixed SRAM macro placement,
-  but records `BLOCKED_NO_OPENLANE_RUN_ARTIFACTS` until deterministic OpenLane
-  reports are available.
+  conversion captures 16 existing RTL files and exposes the checked-in SRAM
+  macro as a movable placement object with its existing OpenLane seed location
+  as target placement, but records `BLOCKED_NO_OPENLANE_RUN_ARTIFACTS` until
+  deterministic OpenLane reports are available.
 - `docs/spec-db/ai-eda/openlane-metrics-fixtures/e1_final_metrics.clean.json`
   captures the OpenLane 2 `final/metrics.json` key shape expected by existing
   PD closure gates.
@@ -1478,12 +1613,13 @@ Implemented schema foundation:
   `make ai-eda-macro-placement-full-candidate-eval` and
   `make ai-eda-macro-placement-full-replay-plan` add the Torch-inference
   candidate directory to that queue when PyTorch is available. Current MPS
-  validation with `AI_EDA_RUN_ID=codex-torch-full-20260521` ranks 169
-  candidates across 22 placement cases and replay-plans all 169 candidates
-  fail-closed, with 0 ready for execution. The replay-plan claim boundary is
+  validation with `AI_EDA_RUN_ID=codex-handoff-dedupe-20260521-training-handoff`
+  ranks 176 candidates across 23 placement cases and replay-plans seven
+  E1 OpenLane candidates as ready for deterministic replay once the PD host
+  prerequisites exist, with 169 candidates still blocked. The replay-plan claim boundary is
   `macro_placement_replay_plan_only_no_openroad_execution_or_release_claim`.
   Current blocker counts in
-  `build/ai_eda/macro_placement_full_replay/codex-torch-full-20260521/replay_plan.json`:
+  `build/ai_eda/macro_placement_full_replay/codex-handoff-dedupe-20260521-training-handoff/replay_plan.json`:
   136 external benchmark candidates require local MacroPlacement/OpenROAD tool
   review, 18 abstract E1 softmacro candidates need real LEF/DEF/OpenLane macro
   integration, 9 fixture candidates are smoke-only, and 6 candidates lack
@@ -2309,6 +2445,10 @@ not as:
 - [x] Add a deterministic macro-placement replay queue that selects top-ranked
   candidates per case, records candidate/config/tool-action hashes, and keeps
   OpenLane/OpenROAD replay blocked until a pinned PD host can execute it.
+- [x] Add an OpenLane replay handoff package/checker for ready replay-queue
+  candidates, including candidate manifests, placement cases, macro placement
+  configs, overrides, OpenLane config, tool-action manifests, tarball SHA256,
+  and post-execution capture commands.
 - [x] Extend the CUDA readiness audit to accept split evidence run IDs for
   preflight, payload/run-plan, safety matrix, AlphaChip audit, current-research
   watchlist, E1 replay preflight, setup, and training-handoff artifacts.
@@ -2341,6 +2481,39 @@ not as:
   evidence are all present.
 - [x] Add R-Zoo training-only license review evidence that allows local CUDA
   handoff while keeping release/commercial/model-weight/E1-signoff claims false.
+- [x] Fetch and hash-verify the full public FloorSet Hugging Face archive set
+  under the ignored payload directory: 10 files, 29,665,773,263 verified bytes,
+  including `PrimeTensorData.tar.gz`, `LiteTensorData_v2.tar.gz`, and both
+  test archives. `ai-eda-floorset-hf-archive-manifest`,
+  `ai-eda-floorplanning-dataset-readiness`, `ai-eda-cuda-payload`, and
+  `ai-eda-cuda-full-training-matrix` pass for
+  `codex-floorset-hf-archives-20260521`, with release and E1 signoff claims
+  still blocked.
+- [x] Add EDA-Schema-V2 to the current-research/source-inventory intake as a
+  metadata-only physical-design dataset candidate with explicit license,
+  revision, schema-conversion, split, replay, and signoff gates.
+- [x] Refresh the current-research/source-inventory intake with three additional
+  metadata-only 2025/2026 AI-EDA lanes: ForgeEDA multimodal circuit dataset,
+  VeriReason testbench-feedback RTL generation, and AMIQ DVT MCP project
+  grounding. `capture_current_research_watchlist.py` now validates 16 entries,
+  `ai-eda-current-research-watchlist-convert` emits 16 internal records, and
+  `ai-eda-optimization-targets` reports 69 candidate tasks for
+  `codex-current-research-refresh-20260521`; no code/data/model import,
+  inference, or design-change claim is made.
+- [x] Promote VeriReason from metadata-only watchlist item to a governed
+  external research-code asset. The public GitHub repo is fetched into ignored
+  payload storage at commit `d215b7fe1b3db6dd4ca725f7d9399c49414c7531`;
+  verify-only records 24 files and 371,591 hashed bytes for
+  `codex-verireason-fetch-20260521`. The research-code converter now covers 14
+  fetched assets and emits 28 training-only text records, while the CUDA
+  payload carries 43 external assets and the VeriReason fetch/verify commands.
+  Hugging Face datasets/models remain review-required and are not imported.
+- [x] Add ChipSeek to the current-research watchlist as a quarantined RTL/PPA
+  feedback lane. `codex-chipseek-watchlist-20260521` validates 19 watchlist
+  entries and emits 19 internal metadata records; the refreshed CUDA payload
+  now carries 43 assets, 255 files, and a 232-command dry-run with 228 selected
+  commands. Generated RTL remains blocked from E1 until lint, simulation,
+  strict formal/equivalence, synthesis, OpenLane replay, and human review pass.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Replace CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters with the real

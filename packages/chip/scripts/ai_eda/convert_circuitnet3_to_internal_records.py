@@ -9,7 +9,7 @@ import math
 import re
 import zipfile
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +61,82 @@ def mean_or_none(values: list[float]) -> float | None:
 def parse_power_summary(text: str) -> float | None:
     match = re.search(r"Total\s+Power:\s*([-+0-9.eE]+)", text)
     return finite_float(match.group(1)) if match else None
+
+
+_INSTANCE_RE = re.compile(
+    r"^\s*([A-Z][A-Za-z0-9_]+)\s+([A-Za-z0-9_\\\[\]./$]+)\s*\((.*?)\)\s*;",
+    re.DOTALL | re.MULTILINE,
+)
+_PIN_CONN_RE = re.compile(r"\.([A-Za-z0-9_]+)\(\s*([^)]*?)\s*\)")
+
+
+def parse_netlist_connectivity(netlist_text: str) -> dict[str, dict[str, list[str]]]:
+    """Parse Innovus structural Verilog into per-instance pin->net connectivity.
+
+    Returns ``{instance_name: {"in": [nets], "out": [nets]}}`` derived from the
+    cell's output pin (``Y``/``Q``/``QN``/``ZN``...) versus input pins. Standard
+    cells in the CircuitNet 3.0 NanGate-style library drive ``Y``/``Q``/``QN``;
+    everything else on the instance is treated as an input net. This recovers the
+    real inter-cell net topology that ``feature.json`` alone does not encode.
+    """
+
+    output_pin_names = ("Y", "Q", "QN", "ZN", "Z", "CO")
+    connectivity: dict[str, dict[str, list[str]]] = {}
+    for match in _INSTANCE_RE.finditer(netlist_text):
+        cell_type, inst_name, body = match.group(1), match.group(2), match.group(3)
+        if cell_type in {"module", "input", "output", "inout", "wire", "reg", "assign"}:
+            continue
+        pins = _PIN_CONN_RE.findall(body)
+        if not pins:
+            continue
+        in_nets: list[str] = []
+        out_nets: list[str] = []
+        # A DFF has both Q (output) and S/CLK style inputs; classify per pin name.
+        has_out_pin = any(pin in output_pin_names for pin, _ in pins)
+        for pin, net in pins:
+            net = net.strip()
+            if not net:
+                continue
+            is_output = pin in output_pin_names if has_out_pin else pin == pins[-1][0]
+            (out_nets if is_output else in_nets).append(net)
+        connectivity[inst_name.lstrip("\\")] = {"in": in_nets, "out": out_nets}
+    return connectivity
+
+
+def net_connectivity_edges(
+    connectivity: dict[str, dict[str, list[str]]],
+    instance_ids: set[str],
+) -> tuple[list[dict[str, Any]], int]:
+    """Build directed driver->sink edges over shared nets between cell instances.
+
+    Only instances that also appear in ``feature.json`` (the GNN node set) are
+    linked, so the edge index stays aligned with the node feature matrix. Each
+    net's single structural driver fans out to every consuming instance.
+    """
+
+    drivers: dict[str, str] = {}
+    sinks: dict[str, list[str]] = {}
+    for inst, pins in connectivity.items():
+        if inst not in instance_ids:
+            continue
+        for net in pins["out"]:
+            drivers[net] = inst
+        for net in pins["in"]:
+            sinks.setdefault(net, []).append(inst)
+    edges: list[dict[str, Any]] = []
+    for net, driver in drivers.items():
+        for sink in sinks.get(net, ()):
+            if sink == driver:
+                continue
+            edges.append(
+                {
+                    "src": driver,
+                    "dst": sink,
+                    "edge_type": "net_fanout",
+                    "net": net,
+                }
+            )
+    return edges, len(edges)
 
 
 def final_case_prefixes(zip_file: zipfile.ZipFile) -> list[str]:
@@ -172,6 +248,12 @@ def convert_case(
     if not isinstance(features, dict):
         raise ValueError(f"{feature_path}: expected object")
     nodes, edges, labels = feature_records(features)
+    netlist_text = zip_file.read(netlist_path).decode("utf-8", errors="replace")
+    connectivity = parse_netlist_connectivity(netlist_text)
+    instance_ids = {node["id"] for node in nodes}
+    net_edges, net_edge_count = net_connectivity_edges(connectivity, instance_ids)
+    edges.extend(net_edges)
+    labels["net_fanout_edge_count"] = net_edge_count
     power_total = parse_power_summary(zip_file.read(power_path).decode("utf-8", errors="replace"))
     if power_total is not None:
         labels["total_power"] = power_total
@@ -268,7 +350,7 @@ def convert_case(
             "instance_count": len(nodes),
             "timing_arc_count": len(edges),
         }
-        for record, path in zip((design_bundle, graph_sample, flow_run), paths)
+        for record, path in zip((design_bundle, graph_sample, flow_run), paths, strict=True)
     ]
 
 
@@ -276,7 +358,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, default=DEFAULT_ZIP)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=3)
     parser.add_argument(
         "--all-records",
@@ -305,7 +387,7 @@ def main() -> int:
             converted.extend(convert_case(zip_file, prefix, out_dir, args.archive))
         report = {
             "schema": "eliza.ai_eda.circuitnet3_conversion_report.v1",
-            "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "run_id": args.run_id,
             "claim_boundary": CLAIM_BOUNDARY,
             "release_use_allowed": False,

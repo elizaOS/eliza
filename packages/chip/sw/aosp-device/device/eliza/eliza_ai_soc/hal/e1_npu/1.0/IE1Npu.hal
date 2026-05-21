@@ -4,10 +4,6 @@
 // Status: stub. Only one RPC is defined: a fixed-vector smoke that returns
 // the device-side identity word produced by the e1 NPU kernel driver. No
 // model load, no inference, no DMA, no power state.
-//
-// Build placement (external AOSP tree):
-//   device/eliza/eliza_ai_soc/hal/e1_npu/1.0/IE1Npu.hal
-// then regenerate vendor.eliza.e1_npu@1.0 with hidl-gen.
 
 package vendor.eliza.e1_npu@1.0;
 

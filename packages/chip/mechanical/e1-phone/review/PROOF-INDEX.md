@@ -15,7 +15,7 @@ Revision `evt0-mechanical-cad-bonded-display-thinned` (authoritative; matches `c
 - **Drop-hardened**: cover glass 0.3 mm rim inset + PORON perimeter cushion (SF 1.10→1.93); screw bosses 6→10 + corner gussets + compliant battery foam shelf (corner SF 0.78→2.11).
 - Buttons **standardized**: single SKU XKB TS-1187A-B-A-B (LCSC C318884), EVQ-P7A01P alt; travel 0.20 mm.
 - **Compute**: Firefly Core-3566JD4 RK3566 SoM (public 260-pin pinout) — buildable from public data; bare-SoC cost-down path retained. **Zero NDA-gated lines.**
-- Unit cost **$93.03 @100k (SoM) / $88.48 (bare-SoC)**; reconciled CAD mass **192.13 g** (183.73 g nominal-density geometry + 8.4 g assembly-stage). This is **over the 168±10 g ship target** (158–178 g window) by 14.13 g. The CAD figure is a nominal-density estimate, not measured hardware; the overage is an open EVT mass-reduction / measured-mass action, not a closed gate. See `e1-phone-spec-sheet.md` (mass verdict = FAIL).
+- Unit cost **$93.03 @100k (SoM) / $88.48 (bare-SoC)**; reconciled CAD mass **191.68 g** (183.28 g nominal-density geometry + 8.4 g assembly-stage). This is **over the 168±10 g ship target** (158–178 g window) by 13.68 g. The CAD figure is a nominal-density estimate, not measured hardware; the overage is an open EVT mass-reduction / measured-mass action, not a closed gate. See `e1-phone-spec-sheet.md` (mass verdict = FAIL).
 
 Residual sweep:
 | Residual | Result | Evidence |
@@ -58,7 +58,7 @@ Keyframes reviewed: t=0 (assembled front), t=3 (peak explode, distinct layers), 
 | Supplier-B-rep boolean release gate | `review/full-cad-boolean-interference.json` | fail-closed: 7 PASS + 3 BLOCKED (await supplier B-rep + routed STEP) |
 | Min-gap matrix | `review/full-cad-min-gap-matrix.csv` | full assembly, no negative non-contact rows |
 | Button/aperture orientation | `review/button-orientation-validation.json` | 15/15 features + 2/2 coaxiality PASS |
-| Solid assembly STEP | `out/e1-phone-solid-assembly.step` | 123-part envelope assembly |
+| Solid assembly STEP | `out/e1-phone-solid-assembly.step` | 132-part envelope assembly |
 | Generators | `scripts/check_e1_phone_boolean_interference.py`, `scripts/check_e1_phone_button_orientation.py` | reproducible (~11 s / <1 s) |
 
 Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`. USB-C plug-insertion sweep (0→8 mm) and button press sweep (0→0.20 mm) both clash-free.
@@ -87,8 +87,8 @@ Ex-factory unit cost (PATH A — SoM, buildable from public data): **$123.90 @ 1
 
 | Artifact | Path | Result |
 |---|---|---|
-| Spec sheet | `review/e1-phone-spec-sheet.md` | 78×153.6×11.8 mm, 192.13 g reconciled, IP54 design intent |
-| Mass budget | `review/mass-budget.md` | 183.73 g CAD + 8.4 g assembly = 192.13 g vs ship target 168±10 g (158–178 g) — **FAIL, over by 14.13 g** (nominal-density estimate; open EVT mass-reduction action) |
+| Spec sheet | `review/e1-phone-spec-sheet.md` | 78×153.6×11.8 mm, 191.68 g reconciled, IP54 design intent |
+| Mass budget | `review/mass-budget.md` | 183.28 g CAD + 8.4 g assembly = 191.68 g vs ship target 168±10 g (158–178 g) — **FAIL, over by 13.68 g** (nominal-density estimate; open EVT mass-reduction action) |
 | Tolerance stack | `review/tolerance-stack.md` | `cad_tolerance_stack_pass` (hard-tool Class 101 + alignment fixtures) |
 
 ## 6. Supplier pinouts

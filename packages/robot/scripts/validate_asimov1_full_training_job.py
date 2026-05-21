@@ -53,6 +53,7 @@ def validate_full_training_job(job_dir: Path, *, create: bool = False) -> dict:
         and bool((job_dir / "run_full_training.sh").stat().st_mode & 0o111),
         "run_script_train_mode": "--train" in run_script_text
         and "verify_brax_text_policy.py" in run_script_text
+        and "validate_asimov1_production_checkpoint.py" in run_script_text
         and "eval_text_policy.py --profile asimov-1 --backend mjx" in run_script_text
         and "sim_validation_gate.py --profile asimov-1" in run_script_text,
         "readme": (job_dir / "README.full_training.md").is_file(),
@@ -79,6 +80,11 @@ def validate_full_training_job(job_dir: Path, *, create: bool = False) -> dict:
         "expected_artifacts": {"policy_brax.pkl", "manifest.json", "metrics.json", "config.json"}.issubset(expected),
         "validation_commands": any("run_asimov1_full_training.py" in c for c in commands)
         and any("verify_brax_text_policy.py" in c and "--profile asimov-1" in c for c in commands)
+        and any(
+            "validate_asimov1_production_checkpoint.py" in c
+            and f"--min-steps {int(job.get('ppo', {}).get('num_timesteps', 0))}" in c
+            for c in commands
+        )
         and any(
             "eval_text_policy.py" in c
             and "--profile asimov-1" in c

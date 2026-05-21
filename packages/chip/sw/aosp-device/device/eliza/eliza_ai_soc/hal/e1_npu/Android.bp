@@ -15,19 +15,6 @@ hidl_package_root {
     name: "vendor.eliza.e1_npu",
 }
 
-hidl_interface {
-    name: "vendor.eliza.e1_npu@1.0",
-    root: "vendor.eliza.e1_npu",
-    srcs: [
-        "1.0/types.hal",
-        "1.0/IE1Npu.hal",
-    ],
-    interfaces: [
-        "android.hidl.base@1.0",
-    ],
-    gen_java: false,
-}
-
 cc_binary {
     name: "vendor.eliza.e1_npu@1.0-service",
     relative_install_path: "hw",

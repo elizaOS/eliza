@@ -11,8 +11,10 @@ source_artifacts:
   - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
   - board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml
   - board/kicad/e1-phone/usb-sidekey-integration.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
   - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
   - board/kicad/e1-phone/radio-module-integration.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
   - board/kicad/e1-phone/module-rf-pinout-execution.yaml
   - board/kicad/e1-phone/board-optimization-scorecard.yaml
   - board/kicad/e1-phone/component-height-step-integration.yaml
@@ -71,7 +73,9 @@ current_board_state:
   layout_optimization_execution_status: blocked_concept_layout_optimized_requires_supplier_footprints_trial_route_measurements_and_routed_step
   display_camera_source_revalidation_status: public_sources_revalidated_screen_camera_not_supplier_approved
   display_camera_connector_pinout_execution_status: blocked_requires_supplier_display_camera_pinouts_connector_mpn_footprints_and_step
+  usb_sidekey_selection_wiring_decision_status: blocked_usb_sidekey_selection_requires_supplier_drawings_real_schematic_route_measurements_and_enclosure_load_path
   usb_sidekey_acceptance_status: blocked_usb_c_sidekey_acceptance_requires_supplier_route_enclosure_and_measurements
+  radio_module_selection_wiring_decision_status: blocked_radio_module_selection_requires_supplier_design_packs_region_decision_routed_rf_and_firmware_evidence
   module_rf_pinout_execution_status: blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence
   production_status: blocked_requires_routed_board_supplier_data_and_factory_quotes
   manufacturing_status: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
@@ -120,8 +124,13 @@ objective_requirements:
     required_release_outputs: *id002
   usb_c_power_volume_hardware:
     requirement: Review and wire one USB-C port, USB-PD, charger, power button, and volume buttons.
-    evidence_artifact: board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
-    current_status: blocked_usb_c_sidekey_acceptance_requires_supplier_route_enclosure_and_measurements
+    evidence_artifact: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+    current_status: blocked_usb_sidekey_selection_requires_supplier_drawings_real_schematic_route_measurements_and_enclosure_load_path
+    selected_stack:
+      usb_c_connector: GCT_USB4105
+      usb_pd_controller: TPS65987DDH
+      charger_power_path: MAX77860
+      side_key_primary: Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
     objective_satisfied: false
     release_required: true
     blockers:
@@ -142,8 +151,13 @@ objective_requirements:
       - mechanical/e1-phone/review/routed-board-clearance.json
   off_the_shelf_wireless_modules:
     requirement: Use easy-to-acquire off-the-shelf cellular, Wi-Fi, and Bluetooth modules and wire host/RF contracts.
-    evidence_artifact: board/kicad/e1-phone/module-rf-pinout-execution.yaml
-    current_status: blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence
+    evidence_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    current_status: blocked_radio_module_selection_requires_supplier_design_packs_region_decision_routed_rf_and_firmware_evidence
+    selected_stack:
+      cellular_performance_reference: Quectel_RG255C_or_RM255C_5G_RedCap_Sub_6
+      active_space_saving_rfq_branch: quectel_eg915q_na_or_eg915u_class
+      wifi_bluetooth_primary: Murata_LBEE5XV2EA-802_Infineon_CYW55573
+      rf_feed_count_required: 5
     objective_satisfied: false
     release_required: true
     blockers:
@@ -344,12 +358,66 @@ objective_requirements:
 objective_traceability_cross_checks:
   public_screen_camera_sources_revalidated_not_approved: true
   display_camera_pinout_execution_remains_blocked_on_supplier_pack: true
+  usb_c_sidekey_selection_wiring_tracks_selected_connector_pd_charger_and_buttons: true
   usb_c_sidekey_acceptance_remains_blocked_on_supplier_route_enclosure_measurements: true
+  radio_module_selection_wiring_tracks_selected_cellular_wifi_bt_and_rf_feeds: true
   module_rf_pinout_execution_remains_blocked_on_supplier_rf_and_firmware_evidence: true
   layout_optimization_execution_tracks_current_size_power_rf_thermal_objective: true
   routed_pcb_implementation_execution_tracks_end_to_end_pcb_objective: true
   routed_release_plan_remains_blocked_until_real_route_and_supplier_outputs: true
+  post_route_validation_tracks_selected_hardware_evidence: true
+  production_factory_release_tracks_selected_hardware_traceability: true
   production_factory_release_execution_tracks_manufacturing_factory_objective: true
+selected_hardware_post_route_gate:
+  source_artifact: board/kicad/e1-phone/post-route-validation-binding.yaml
+  status: blocked_post_route_validation_requires_routed_drc_si_pi_rf_power_factory_and_enclosure_evidence
+  required_function_count: 5
+  blocked_function_count: 5
+  required_functions:
+    - display_touch
+    - rear_front_cameras
+    - usb_c_power_sidekeys
+    - cellular
+    - wifi_bluetooth
+  required_validation_domains:
+    - high_speed_si_pi
+    - power_thermal
+    - rf_wireless
+  release_required_outputs:
+    - board/kicad/e1-phone/production/reports/si-pi
+    - board/kicad/e1-phone/production/reports/rf
+    - board/kicad/e1-phone/production/reports/power-thermal
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  all_selected_hardware_evidence_absent: true
+  blocks_end_to_end_phone_ready: true
+selected_hardware_production_gate:
+  source_artifact: board/kicad/e1-phone/production-factory-release-execution.yaml
+  status: blocked_until_selected_hardware_identity_avl_fixture_and_first_article_evidence_exist
+  required_function_count: 5
+  blocked_function_count: 5
+  required_functions:
+    - display_touch
+    - rear_front_cameras
+    - usb_c_power_sidekeys
+    - cellular
+    - wifi_bluetooth
+  required_fixture_domains:
+    - buttons_sensors_nfc
+    - cameras
+    - display_touch
+    - power_rails
+    - radios
+    - usb_c
+  release_output_ids:
+    - assembly_drawing
+    - factory_test_limits
+    - first_article_traveler
+    - position_file
+    - production_bom_avl
+    - rf_reports
+  all_selected_hardware_traceability_absent: true
+  blocks_end_to_end_phone_ready: true
 release_decision:
   ready_to_fabricate: false
   ready_for_enclosure: false
@@ -384,6 +452,8 @@ cross_checks:
   production_remains_fail_closed: true
   pcb_audit_confirms_live_scaffold_and_missing_route: true
   live_utilization_audit_explicitly_reports_battery_window_status: true
+  selected_hardware_post_route_gate_blocks_final_readiness: true
+  selected_hardware_production_gate_blocks_final_readiness: true
   enclosure_requires_routed_board_step: true
   enclosure_fit_execution_blocks_release: true
   factory_requires_first_article: true

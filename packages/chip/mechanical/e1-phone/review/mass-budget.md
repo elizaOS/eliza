@@ -2,7 +2,7 @@
 
 Status: rough CAD estimate, not measured hardware mass.
 
-Total estimated mass: 183.29 g
+Total estimated mass: 183.28 g
 
 ## By Role
 
@@ -19,10 +19,11 @@ Total estimated mass: 183.29 g
 - `button seal`: 0.03 g
 - `camera`: 1.03 g
 - `camera aperture`: 0.0 g
+- `camera optical clearance`: 0.14 g
 - `camera seal`: 0.04 g
 - `connector`: 0.21 g
 - `haptics`: 0.22 g
-- `molded enclosure`: 23.96 g
+- `molded enclosure`: 23.82 g
 - `screen`: 57.57 g
 - `screen retention`: 0.2 g
 - `service`: 0.0 g

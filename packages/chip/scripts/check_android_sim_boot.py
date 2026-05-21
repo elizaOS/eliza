@@ -23,6 +23,10 @@ VIRTUAL_SMOKE_EVIDENCE = {
     "docs/evidence/android/renode_e1_soc_smoke.log",
 }
 CTS_VTS_PLAN_EVIDENCE = "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log"
+# A "pass" Android simulator boot must be backed by the structured launcher
+# runtime evidence (booted launcher as HOME + live local agent), not just a
+# generic virtual-device boot log.
+LAUNCHER_RUNTIME_EVIDENCE = "docs/evidence/android/eliza_launcher_runtime_evidence.json"
 REQUIRED_REPORT_FIELDS = {
     "schema": str,
     "status": str,
@@ -219,6 +223,35 @@ def main() -> int:
             errors.append(
                 f"pass report cannot clear while AOSP evidence_status={bsp_report['evidence_status']}"
             )
+        # A booted virtual device is not a booted product: require the
+        # structured launcher runtime evidence (launcher as HOME, local agent
+        # answering /api/health, no fatal crashes / SELinux denials) before a
+        # pass can clear.
+        launcher_path = ROOT / LAUNCHER_RUNTIME_EVIDENCE
+        if not launcher_path.is_file():
+            errors.append(
+                f"pass report is missing launcher runtime evidence {LAUNCHER_RUNTIME_EVIDENCE}"
+            )
+        else:
+            try:
+                launcher = json.loads(launcher_path.read_text())
+            except json.JSONDecodeError as exc:
+                errors.append(f"{LAUNCHER_RUNTIME_EVIDENCE} is invalid JSON: {exc}")
+            else:
+                device = launcher.get("device", {})
+                app = launcher.get("app", {})
+                agent = launcher.get("agent", {})
+                logs = launcher.get("logs", {})
+                if str(device.get("sys_boot_completed")) != "1":
+                    errors.append("launcher runtime evidence: device.sys_boot_completed != 1")
+                if not str(app.get("home_resolve_activity", "")):
+                    errors.append("launcher runtime evidence: launcher is not the resolved HOME")
+                if agent.get("health_http") != 200 or agent.get("health_ready") is not True:
+                    errors.append("launcher runtime evidence: local agent /api/health not ready")
+                if logs.get("fatal_crash_count") not in (0, "0"):
+                    errors.append("launcher runtime evidence: fatal crashes present")
+                if logs.get("avc_denial_count") not in (0, "0"):
+                    errors.append("launcher runtime evidence: SELinux AVC denials present")
     elif status == "blocked" and data.get("require_full_evidence") is False:
         attempted_paths = data.get("attempted_evidence", [])
         forbidden_build_only = sorted(set(attempted_paths) - set(build_only_evidence))

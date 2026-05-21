@@ -5,6 +5,10 @@ PWD := $(shell pwd)
 REPO := $(abspath ../..)
 
 VERILOG_SOURCES := \
+	$(REPO)/rtl/top/e1_soc_pkg.sv \
+	$(REPO)/rtl/peripherals/e1_mmio_decode.sv \
+	$(REPO)/rtl/peripherals/e1_clint.sv \
+	$(REPO)/rtl/memory/e1_behavioral_dram.sv \
 	$(REPO)/rtl/top/e1_chip_top.sv \
 	$(REPO)/rtl/clock/e1_reset_sync.sv \
 	$(REPO)/rtl/debug/e1_dbg_mmio_bridge.sv \
@@ -22,6 +26,7 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/memory/e1_weight_buffer_sram.sv \
 	$(REPO)/rtl/interrupts/e1_interrupt_controller.sv \
 	$(REPO)/rtl/interconnect/e1_linux_soc_contract.sv \
+	$(REPO)/rtl/security/lc/e1_lc_ctrl.sv \
 	$(REPO)/verify/cocotb/e1_tiny_cpu_contract_tb.sv
 
 TOPLEVEL ?= e1_chip_top

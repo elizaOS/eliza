@@ -34,32 +34,34 @@ DEFAULT_GEOMETRY: dict[str, object] = {
     "BIM_ENTRIES": 16384,
     "BIM_CTR_W": 2,
     "TAGE_TABLES": 5,
-    "TAGE_ENTRIES_TABLE": 4096,
+    "TAGE_ENTRIES_TABLE": 8192,
     "TAGE_TAG_W": 8,
     "TAGE_CTR_W": 3,
     "TAGE_USEFUL_W": 2,
-    # Allocation/aging policy (off by default = current RTL behaviour). These
-    # are model levers evaluated by the sweep; enabling them is a concrete
-    # tage.sv proposal.
-    "TAGE_ALLOC_DECREMENT": False,
-    "TAGE_UBIT_RESET_PERIOD": 0,  # branches between useful-bit aging (0 = off)
-    "TAGE_HIST_LEN": (8, 13, 32, 64, 119),
+    # Allocation/aging policy. Useful-bit aging mirrors bpu_pkg.sv
+    # TAGE_USEFUL_RESET_PERIOD; allocation decrement remains an experiment-only
+    # lever because tage.sv does not currently decrement occupied candidates
+    # while walking the allocation stack.
+    "TAGE_ALLOC_DECREMENT": True,
+    "TAGE_UBIT_RESET_PERIOD": 100_000,  # branches between useful-bit aging
+    "TAGE_HIST_LEN": (8, 16, 44, 90, 195),
     "SC_TABLES": 4,
     "SC_ENTRIES_TABLE": 512,
     "SC_CTR_W": 6,
     "SC_HIST_LEN": (0, 4, 10, 16),
     "SC_THRESH_INIT": 6,
+    "SC_ADAPTIVE": True,
     "LOOP_ENTRIES": 64,
     "LOOP_CTR_W": 14,
     "LOOP_CONF_W": 3,
-    "FTB_ENTRIES": 2048,
+    "FTB_ENTRIES": 4096,
     "FTB_WAYS": 4,
     "UFTB_ENTRIES": 512,
     "UFTB_WAYS": 4,
     "RAS_ARCH_ENTRIES": 32,
     "RAS_SPEC_ENTRIES": 64,
     "ITTAGE_TABLES": 5,
-    "ITTAGE_ENTRIES": (256, 256, 512, 512, 512),
+    "ITTAGE_ENTRIES": (512, 512, 1024, 1024, 1024),
     "ITTAGE_HIST_LEN": (4, 8, 13, 16, 32),
     "ITTAGE_TAG_W": 9,
     "ITTAGE_CTR_W": 3,

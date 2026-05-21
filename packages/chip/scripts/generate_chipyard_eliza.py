@@ -243,7 +243,6 @@ def main() -> int:
     import_artifacts(env)
     require_simulator_executable()
     write_manifest(env)
-    run([sys.executable, "scripts/conform_chipyard_ap_dts.py"], env=env)
     print(f"STATUS: PASS chipyard.eliza_generate - wrote {rel(MANIFEST)}")
     return 0
 

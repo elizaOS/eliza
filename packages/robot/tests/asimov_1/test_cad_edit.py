@@ -63,4 +63,5 @@ def test_asimov_cad_edit_workspace_patch_regenerate_promote_contract(tmp_path: P
     promotion = promote_asimov1_workspace(workspace, dry_run=True)
     assert promotion["dry_run"] is True
     assert len(promotion["copies"]) == 31
+    assert all(item["source_sha256"] for item in promotion["copies"])
     assert Path(workspace / "asimov_promotion_plan.json").is_file()

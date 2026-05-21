@@ -1,6 +1,6 @@
 # E1 Phone STEP Validation
 
-Status: pass; re-imported 123 part STEP files.
+Status: pass; re-imported 132 part STEP files.
 
 ## Cases
 
@@ -41,6 +41,7 @@ Status: pass; re-imported 123 part STEP files.
 - PASS: `top_mic` max span error 0.0 mm
 - PASS: `rear_camera_cover_glass` max span error 0.0 mm
 - PASS: `rear_camera_lens_window` max span error 0.0 mm
+- PASS: `rear_camera_optical_sight_tunnel` max span error 0.0 mm
 - PASS: `front_camera_under_glass` max span error 0.0 mm
 - PASS: `rear_camera_cover_adhesive_top` max span error 0.0 mm
 - PASS: `rear_camera_cover_adhesive_bottom` max span error 0.0 mm
@@ -49,6 +50,14 @@ Status: pass; re-imported 123 part STEP files.
 - PASS: `rear_camera_light_baffle_top` max span error 0.0 mm
 - PASS: `rear_camera_light_baffle_bottom` max span error 0.0 mm
 - PASS: `front_camera_black_mask_window` max span error 0.0 mm
+- PASS: `rear_flash_window_adhesive_top` max span error 0.0 mm
+- PASS: `rear_flash_window_adhesive_bottom` max span error 0.0 mm
+- PASS: `rear_flash_window_adhesive_left` max span error 0.0 mm
+- PASS: `rear_flash_window_adhesive_right` max span error 0.0 mm
+- PASS: `front_camera_under_glass_adhesive_top` max span error 0.0 mm
+- PASS: `front_camera_under_glass_adhesive_bottom` max span error 0.0 mm
+- PASS: `front_camera_under_glass_adhesive_left` max span error 0.0 mm
+- PASS: `front_camera_under_glass_adhesive_right` max span error 0.0 mm
 - PASS: `rear_flash_camera_septum` max span error 0.0 mm
 - PASS: `handset_acoustic_slot` max span error 0.0 mm
 - PASS: `handset_acoustic_mesh` max span error 0.0 mm

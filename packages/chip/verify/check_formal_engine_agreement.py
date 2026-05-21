@@ -117,10 +117,7 @@ def default_targets() -> list[Path]:
 
 
 def main(argv: list[str]) -> int:
-    if argv:
-        targets = [_resolve_logfile(a) for a in argv]
-    else:
-        targets = default_targets()
+    targets = [_resolve_logfile(a) for a in argv] if argv else default_targets()
 
     if not targets:
         print("STATUS: BLOCKED no SBY logfiles found", file=sys.stderr)

@@ -233,7 +233,7 @@ old = '''\telif [ "${from#http://}" != "$from" ] || [ "${from#https://}" != "$fr
 new = '''\telif [ "${from#http://}" != "$from" ] || [ "${from#https://}" != "$from" ] || [ "${from#ftp://}" != "$from" ]; then
 \t\t# elizaOS curl downloader patch: wget intermittently returned corrupt
 \t\t# partial .deb payloads in this builder environment.
-\t\tif command -v curl >/dev/null 2>&1 && curl --silent --show-error --fail --location --retry 12 --retry-all-errors --connect-timeout 20 --output "$dest" "$from"; then
+\t\tif command -v curl >/dev/null 2>&1 && curl --silent --show-error --fail --location --retry 12 --retry-all-errors --connect-timeout 20 --max-time 300 --speed-limit 1024 --speed-time 45 --output "$dest" "$from"; then
 \t\t\treturn 0
 \t\telif wgetprogress ${CHECKCERTIF:+"$CHECKCERTIF"} ${CERTIFICATE:+"$CERTIFICATE"} ${PRIVATEKEY:+"$PRIVATEKEY"} -O "$dest" "$from"; then
 \t\t\treturn 0

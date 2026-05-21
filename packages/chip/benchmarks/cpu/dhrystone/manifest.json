@@ -1,0 +1,45 @@
+{
+  "schema": "eliza.cpu_benchmark_manifest.v1",
+  "benchmark": "dhrystone",
+  "status": "pinned_not_run",
+  "claim_boundary": "build_only_until_real_core_runs_dhrystone_on_verilator_or_silicon",
+  "upstream": {
+    "name": "Dhrystone 2.1",
+    "vendor": "Reinhold P. Weicker (classic), CVA6-bundled port",
+    "source": "external/cva6/cva6/verif/tests/custom/dhrystone (dhrystone.c, dhrystone.h, dhrystone_main.c)",
+    "license": "public domain (Dhrystone) + Solderpad-2.0 (CVA6 port glue)",
+    "note": "Reuses the CVA6-bundled bare-metal Dhrystone with the common BSP (crt.S, syscalls.c). Timing source is the mcycle CSR via syscalls.c getStats; HTIF tohost terminates the run. No external download required; vendored under the CVA6 checkout."
+  },
+  "build_target": {
+    "isa": "rv64gc",
+    "abi": "lp64d",
+    "march": "rv64gc",
+    "mabi": "lp64d",
+    "compiler": {
+      "name": "riscv-none-elf-gcc 15.2.0 (xpack)",
+      "host_path": "external/xpack-riscv-none-elf-gcc-15.2.0-1/bin/riscv-none-elf-gcc",
+      "flags": "-O3 -static -mcmodel=medany -nostdlib -nostartfiles -fno-tree-loop-distribute-patterns --no-inline -lgcc"
+    }
+  },
+  "dut": "cva6 verilator (cycle-accurate). CVA6 RV64GC is the open-core reference and E1's little core (e1-pro).",
+  "metric": {
+    "primary": "dmips_per_mhz",
+    "formula_from_cycles": "DMIPS/MHz = (1e6 / cycles_per_dhrystone) / 1757",
+    "secondary": ["cpi", "total_cycles", "retired_instructions"]
+  },
+  "expected_results": {
+    "cva6_rv64gc": {
+      "dmips_per_mhz": 1.7,
+      "claim_status": "modeled_open_reference_pending_verilator_run",
+      "note": "CVA6 publishes ~1.7 DMIPS/MHz for the single-issue in-order config; this manifest does NOT assert it — it is the model's expectation pending a measured Verilator run."
+    }
+  },
+  "result_artifact": "benchmarks/results/cpu/dhrystone/result.json",
+  "result_schema": "eliza.cpu_benchmark_result.v1",
+  "run_command": "scripts/run_dhrystone.sh",
+  "fail_closed_until": [
+    "CVA6 corev_apu Verilator testharness submodules initialized (register_interface, riscv-dbg, axi_mem_if, apb_uart)",
+    "Variane_testharness model built",
+    "benchmarks/results/cpu/dhrystone/result.json exists and matches schema"
+  ]
+}

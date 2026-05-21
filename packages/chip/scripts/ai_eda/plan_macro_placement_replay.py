@@ -227,15 +227,27 @@ PPA_VARIANT_CFGS = {
     "stack_2x4": ROOT / "pd/openlane/macro_array_cand_stack2x4.cfg",
 }
 
+# Maximum mean per-macro displacement (um) at which a candidate is considered
+# the *same* placement as a measured variant. The SRAM macros legalize onto a
+# sub-micron site grid, so an honest measured-PPA reuse only holds when the
+# candidate snaps to within ~one placement-site of a measured cfg. Beyond this
+# the candidate is a genuinely different placement whose post-route PPA has not
+# been measured: attaching a neighbour's PPA would be a False-Dawn fabrication
+# (arXiv 2302.11014), so we fail closed and require its own OpenLane route.
+MEASURED_PPA_REUSE_MAX_DISPLACEMENT_UM = 5.0
+
 
 def score_against_real_ppa(candidate: dict[str, Any], ppa_report: dict[str, Any]) -> dict[str, Any] | None:
-    """Score a macro-array candidate against the nearest real measured placement.
+    """Attach real measured post-route PPA only when a candidate IS a measured variant.
 
     The candidate is matched to whichever of the three measured post-route
-    variants its macro coordinates are closest to (mean per-macro displacement),
-    and that variant's real post-route PPA is attached. An exact coordinate match
-    means the candidate IS that measured placement; otherwise the match is the
-    nearest measured neighbour and the report flags it as approximate.
+    variants its macro coordinates are closest to (mean per-macro displacement).
+    The measured variant's real post-route PPA is reused only when that
+    displacement is within ``MEASURED_PPA_REUSE_MAX_DISPLACEMENT_UM`` — i.e. the
+    candidate legalizes to the same placement that was actually routed.
+    Otherwise the candidate is a distinct, unmeasured placement: no PPA is
+    attributed and the report fails closed with the OpenLane route command that
+    would measure it, instead of laundering a neighbour's PPA into a fake score.
     """
 
     candidate_pos = candidate_positions(candidate)
@@ -262,18 +274,36 @@ def score_against_real_ppa(candidate: dict[str, Any], ppa_report: dict[str, Any]
             nearest_variant = variant
     if nearest_variant is None:
         return None
-    return {
-        "proxy": "nearest_measured_post_route_variant_real_ppa",
-        "matched_variant": nearest_variant,
+    matches_measured = nearest_distance <= MEASURED_PPA_REUSE_MAX_DISPLACEMENT_UM
+    score: dict[str, Any] = {
+        "nearest_measured_variant": nearest_variant,
         "exact_match": nearest_distance == 0.0,
+        "matches_measured_placement": matches_measured,
         "mean_macro_displacement_um": round(nearest_distance, 6),
-        "post_route_ppa": ppa_by_variant[nearest_variant],
-        "post_route_rank": next(
-            (item["rank"] for item in ppa_report.get("ranking", []) if item.get("variant") == nearest_variant),
-            None,
-        ),
+        "measured_reuse_max_displacement_um": MEASURED_PPA_REUSE_MAX_DISPLACEMENT_UM,
         "ppa_report": rel(DEFAULT_PPA_REPORT),
     }
+    if matches_measured:
+        score["proxy"] = "measured_post_route_variant_real_ppa"
+        score["matched_variant"] = nearest_variant
+        score["post_route_ppa"] = ppa_by_variant[nearest_variant]
+        score["post_route_rank"] = next(
+            (item["rank"] for item in ppa_report.get("ranking", []) if item.get("variant") == nearest_variant),
+            None,
+        )
+    else:
+        score["proxy"] = "unmeasured_placement_requires_own_post_route_run"
+        score["post_route_ppa"] = None
+        score["blocker"] = (
+            "candidate placement is not within the legalizer tolerance of any measured "
+            "variant; its post-route PPA has not been measured"
+        )
+        score["resume_command"] = (
+            "openlane --pdk-root external/pdks pd/openlane/config.macro-array.sky130.json "
+            "with MACRO_PLACEMENT_CFG set to this candidate's macro_placement.cfg, "
+            "then scripts/run_post_route_ppa.py on the resulting run dir"
+        )
+    return score
 
 
 def write_macro_cfg(path: Path, candidate: dict[str, Any]) -> int:

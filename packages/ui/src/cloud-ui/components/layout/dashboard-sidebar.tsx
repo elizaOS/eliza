@@ -3,7 +3,6 @@
 import { X } from "lucide-react";
 import { memo, type ReactNode, useCallback } from "react";
 import { cn } from "../../lib/utils";
-import { ScrollArea } from "../scroll-area";
 import { DashboardSidebarNavigationSection } from "./dashboard-sidebar-section";
 import type {
   DashboardSidebarItem,
@@ -65,7 +64,7 @@ function DashboardSidebarComponent({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,calc(100vw-1rem))] flex-col overflow-hidden border-r border-white/14 bg-black p-1.5 transition-transform duration-300 ease-in-out md:static md:z-auto md:h-full md:w-72 md:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,calc(100vw-1rem))] flex-col overflow-hidden border-r border-white/14 bg-black p-1.5 transition-transform duration-300 ease-in-out md:static md:z-auto md:h-auto md:min-h-dvh md:w-72 md:translate-x-0 md:overflow-visible",
           isOpen ? "translate-x-0" : "-translate-x-full",
           className,
         )}
@@ -84,7 +83,7 @@ function DashboardSidebarComponent({
           )}
         </div>
 
-        <ScrollArea className="flex-1">
+        <div className="min-h-0 flex-1 overflow-y-auto md:flex-none md:overflow-visible">
           <nav className="px-4 py-6">
             <div className="space-y-8">
               {sections.map((section) => (
@@ -107,7 +106,7 @@ function DashboardSidebarComponent({
               ))}
             </div>
           </nav>
-        </ScrollArea>
+        </div>
 
         {footer}
       </aside>

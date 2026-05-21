@@ -31,9 +31,10 @@
           9.2,
           9.2
         ],
+        "optical_sight_tunnel_present": true,
         "bezel_part_count": 4
       },
-      "target": "explicit molded back-shell opening larger than the flush cover window with four orange bevel lands",
+      "target": "explicit molded back-shell opening larger than the flush cover window with a clear camera sight tunnel and four orange bevel lands",
       "pass": true
     },
     {

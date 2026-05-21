@@ -221,6 +221,7 @@ def _write_full_training_job(
         "elif [[ \"$MODE\" == \"--train\" || \"$MODE\" == \"train\" ]]; then\n"
         "  python3 scripts/run_asimov1_full_training.py --job-dir \"$JOB_DIR\"\n"
         "  python3 scripts/verify_brax_text_policy.py --ckpt \"$JOB_DIR\" --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25\n"
+        f"  python3 scripts/validate_asimov1_production_checkpoint.py \"$JOB_DIR\" --min-steps {total_steps}\n"
         "  python3 scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt \"$JOB_DIR\" --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200\n"
         "  python3 scripts/sim_validation_gate.py --profile asimov-1 --checkpoint \"$JOB_DIR\"\n"
         "else\n"
@@ -235,8 +236,8 @@ def _write_full_training_job(
         "Run `./run_full_training.sh --check` on a development machine to validate "
         "the package and installed training dependencies. Run "
         "`./run_full_training.sh --train` on a GPU training host to start Brax/MJX "
-        "PPO and then execute the policy verifier, ASIMOV MJX evaluator, and "
-        "simulation validation gate.\n"
+        "PPO and then execute the policy verifier, production checkpoint "
+        "validator, ASIMOV MJX evaluator, and simulation validation gate.\n"
     )
     return job
 

@@ -14,6 +14,15 @@ draft:
     - Murata Type 2EA vendor product page
   verified_public_source_ids:
     - wifi_bluetooth_primary_murata_type_2ea
+  selected_hardware_trace:
+    selection_source: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    selected_module: Murata_LBEE5XV2EA-802_Infineon_CYW55573
+    wifi_standard: 802.11a_b_g_n_ac_ax_2x2_MIMO_2p4_5_6_GHz
+    bluetooth_standard: 5.3_BR_EDR_LE
+    current_region_fits_selected_module: true
+    rf_feed_count_required: 2
+    release_allowed_without_supplier_response_packs: false
+    route_release_dependency: U_WIFI_BT_route_release_remain_blocked_until_murata_design_pack_reference_layout_firmware_and_regulatory_scope
   recipient_candidates:
     - supplier: Murata
       candidate: LBEE5XV2EA-802

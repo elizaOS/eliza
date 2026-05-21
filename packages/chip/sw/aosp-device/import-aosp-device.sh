@@ -70,6 +70,9 @@ $device_src/sepolicy/e1_npu.te
 $device_src/sepolicy/property_contexts
 $device_src/sepolicy/hwservice_contexts
 $device_src/hal/e1_npu/Android.bp
+$device_src/hal/e1_npu/1.0/Android.bp
+$device_src/hal/e1_npu/1.0/IE1Npu.hal
+$device_src/hal/e1_npu/1.0/types.hal
 $device_src/hal/hwcomposer/Android.bp
 $cuttlefish_src/eliza_e1_cuttlefish.mk
 $cuttlefish_src/manifest.fragment.xml
@@ -111,7 +114,7 @@ fi
 
 if [ "$check_only" -eq 1 ]; then
 	if [ -d "$device_dst" ]; then
-		for rel in AndroidProducts.mk eliza_ai_soc.mk BoardConfig.mk device.mk init.eliza.rc fstab.eliza manifest.xml eliza_e1.xml device_framework_matrix.xml kernel/eliza_ai_soc.fragment dts/eliza-e1-android.dts sepolicy/file_contexts sepolicy/e1_npu.te sepolicy/property_contexts sepolicy/hwservice_contexts hal/e1_npu/Android.bp hal/hwcomposer/Android.bp; do
+		for rel in AndroidProducts.mk eliza_ai_soc.mk BoardConfig.mk device.mk init.eliza.rc fstab.eliza manifest.xml eliza_e1.xml device_framework_matrix.xml kernel/eliza_ai_soc.fragment dts/eliza-e1-android.dts sepolicy/file_contexts sepolicy/e1_npu.te sepolicy/property_contexts sepolicy/hwservice_contexts hal/e1_npu/Android.bp hal/e1_npu/1.0/Android.bp hal/e1_npu/1.0/IE1Npu.hal hal/e1_npu/1.0/types.hal hal/hwcomposer/Android.bp; do
 			if [ ! -f "$device_dst/$rel" ]; then
 				echo "FAIL: imported AOSP tree missing device/eliza/eliza_ai_soc/$rel" >&2
 				missing=1

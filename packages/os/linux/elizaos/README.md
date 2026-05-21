@@ -89,8 +89,10 @@ No promoted artifact exists yet — the manifest template carries
 
 This is the active, canonical Linux build. The build pipeline, multi-arch
 config, branding overlay, `secure` hardening profile, and release-manifest
-gate are in the tree. Not yet done: a produced+validated ISO per arch and
-full brand-asset path validation against a real chroot. See
+gate are in the tree. A riscv64 candidate ISO has qemu-virt boot evidence
+under `evidence/qemu_virt_boot.json`, including GRUB EFI, Linux, local curl
+health, agent-ready, and terminal TUI smoke markers. amd64 and arm64 still
+need produced ISO evidence before release promotion. See
 `packages/os/CLAUDE.md` for the distribution-channel and promotion policy.
 
 ## License

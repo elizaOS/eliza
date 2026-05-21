@@ -97,6 +97,7 @@ def validate(report: dict[str, Any]) -> list[str]:
             "research",
             "replay_prerequisites",
             "replay_preflight",
+            "replay_handoff",
             "replay_execution",
             "replay_comparison",
             "alphachip",

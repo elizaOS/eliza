@@ -17,6 +17,10 @@ source_artifacts:
   - board/kicad/e1-phone/module-host-integration-closure.yaml
   - board/kicad/e1-phone/route-feasibility-density.yaml
   - board/kicad/e1-phone/external-interface-design-review.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
   - board/kicad/e1-phone/enclosure-tolerance-stack-closure.yaml
   - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
   - board/kicad/e1-phone/board-optimization-scorecard.yaml
@@ -146,6 +150,90 @@ netclass_to_release_mapping:
     constraints: [VBUS, VBAT, SYS, AON_1V8, IO_1V8, RF_VBAT, CAM_AVDD_2V8, DISP_AVDD_5V5]
     release_evidence: [probe_coordinates_csv, factory_test_limits_yaml, first_article_transcript]
 
+selected_hardware_route_sequence:
+  status: blocked_selected_hardware_route_sequence_requires_supplier_footprints_pinouts_stackup_trial_route_and_drc
+  source_decisions:
+    display: board/kicad/e1-phone/display-envelope-downselect.yaml
+    camera: board/kicad/e1-phone/camera-module-fit-downselect.yaml
+    usb_sidekey: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+    radio: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  sequence_is_ordered: true
+  route_sequence:
+    - order: 0
+      id: display_touch_mipi_anchor
+      selected_hardware: CH550FH01A-CT
+      placement_lock: J_DISPLAY_TOUCH
+      corridor_constraints: [DSI_CLK, DSI_D0, DSI_D1, DSI_D2, DSI_D3]
+      required_supplier_function: display_touch
+      required_before_route:
+        - display supplier pinout, connector MPN, land pattern, and STEP model
+        - DSI lane order, polarity, TE/reset/touch I2C pins, and display FPC bend datum
+        - routed DSI length/skew/impedance and return-path report
+      required_release_evidence:
+        - board/kicad/e1-phone/production/reports/mipi-dsi-length-skew-impedance.json
+        - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+      blocked: true
+    - order: 1
+      id: camera_csi_pair
+      selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+      placement_lock: J_CAM0_CAM1
+      corridor_constraints: [CAM0_CSI_CLK, CAM1_CSI_CLK]
+      required_supplier_function: rear_camera_and_front_camera
+      required_before_route:
+        - rear and front camera FPC pinouts, connector MPNs, land patterns, and STEP models
+        - camera lens-axis, z-height, FPC exit, and cover-glass datums
+        - routed CSI length/skew/impedance and return-path report
+      required_release_evidence:
+        - board/kicad/e1-phone/production/reports/mipi-csi-length-skew-impedance.json
+        - board/kicad/e1-phone/production/reports/camera-capture-log.json
+      blocked: true
+    - order: 2
+      id: usb_c_power_sidekey_spine
+      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      placement_lock: J_USB_C_and_SW_POWER_VOL
+      corridor_constraints: [USB_DP_DN, VBUS_to_charger, charger_to_battery]
+      required_supplier_function: usb_c_receptacle_evt0_and_side_buttons
+      required_before_route:
+        - USB-C shell/load-path drawing, land pattern, STEP, ESD/CC/VBUS placement plan
+        - TPS65987DDH and MAX77860 pinout/configuration and thermal copper review
+        - side-key switch or flex drawing, force/travel stack, and enclosure load-path datum
+      required_release_evidence:
+        - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+        - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+        - board/kicad/e1-phone/production/reports/button-wake-recovery-log.json
+      blocked: true
+    - order: 3
+      id: radio_rf_and_host_escape
+      selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference_plus_Murata_LBEE5XV2EA-802
+      placement_lock: U_CELL_and_U_WIFI_BT
+      corridor_constraints: [CELL_USB2_DP_DN, CELL_PCIE_TX, CELL_PCIE_RX, WIFI_PCIE_TX, WIFI_PCIE_RX, CELL_RF_MAIN,
+        CELL_RF_DIV, CELL_GNSS_RF, WIFI_BT_RF0, WIFI_BT_RF1]
+      required_supplier_function: cellular_and_wifi_bluetooth
+      required_before_route:
+        - selected cellular branch, exact region SKU, pad map, reference layout, RF rules, and STEP model
+        - Murata Type 2EA land pattern, RF keepout, reference layout, firmware/regulatory scope, and STEP model
+        - RF matching/conducted access geometry plus antenna vendor review
+      required_release_evidence:
+        - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+        - board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+        - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+      blocked: true
+    - order: 4
+      id: factory_probe_and_enclosure_step_route
+      selected_hardware: selected_user_facing_and_radio_stack
+      placement_lock: factory_probe_and_routed_step
+      corridor_constraints: [test_access, enclosure_clearance, manufacturing_outputs]
+      required_supplier_function: all_supplier_response_packs
+      required_before_route:
+        - fixture-access review for rails, USB-C, display, cameras, radios, buttons, audio, and split interconnect
+        - routed STEP export with supplier models and no placeholder footprints
+        - routed-board enclosure clearance rerun and full CAD boolean release
+      required_release_evidence:
+        - board/kicad/e1-phone/production/test/probe-coordinates.csv
+        - board/kicad/e1-phone/production/step/routed-board-with-components.step
+        - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      blocked: true
+
 required_release_outputs:
   - board/kicad/e1-phone/production/reports/erc.json
   - board/kicad/e1-phone/production/reports/drc.json
@@ -185,6 +273,7 @@ cross_checks:
   board_optimization_scorecard_blocks_evt1_until_routed_metrics_and_measurements_exist: true
   power_sequence_bringup_blocks_evt1_until_first_power_scope_and_firmware_logs_exist: true
   rf_antenna_coexistence_blocks_evt1_until_tuned_feeds_firmware_and_regulatory_evidence_exist: true
+  selected_hardware_route_sequence_is_ordered_and_fail_closed: true
   required_outputs_match_routed_release_plan: true
   enclosure_rerun_depends_on_routed_board_step: true
   route_geometry_matches_64x132_board_and_64x87_battery_window: true

@@ -266,7 +266,7 @@ def required_jobs() -> list[dict[str, Any]]:
             "objective_readiness_closeout",
             "Repackage evidence and run objective readiness after CUDA/PD execution",
             "audit",
-            "python3 scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id <cuda-host> --readiness-run-id <cuda-host> --evidence-bundle-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff",
+            "python3 scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id <cuda-host> --readiness-run-id <cuda-host> --evidence-bundle-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff --replay-handoff-run-id <cuda-host>",
             ["CUDA readiness audit", "evidence bundle", "all job outputs above"],
             ["build/ai_eda/objective_readiness/<run-id>/objective_readiness.json"],
             0,

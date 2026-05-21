@@ -42,6 +42,11 @@ ASIMOV1_LEG_JOINT_ORDER = (
     "right_ankle_roll_joint",
 )
 
+ASIMOV1_LEG_OBSERVATION_DELAY_GROUPS = {
+    "left_leg": tuple(range(0, 6)),
+    "right_leg": tuple(range(6, 12)),
+}
+
 ASIMOV1_FIRMWARE_JOINT_ORDER = (
     *ASIMOV1_LEG_JOINT_ORDER,
     "left_shoulder_pitch_joint",

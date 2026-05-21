@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_DIR = ROOT / "generators/chipyard"
 EVIDENCE_DIR = ROOT / "docs/evidence/cpu_ap"
 EVIDENCE_PATH = EVIDENCE_DIR / "core-selection.json"
+REPORT = ROOT / "build/reports/core_selection.json"
 
 REQUIRED_FIELDS = (
     "schema",
@@ -164,6 +165,71 @@ def write_evidence(grouped: dict[str, list[tuple[str, dict, bool]]], errors: lis
     EVIDENCE_PATH.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
 
+def build_report(
+    grouped: dict[str, list[tuple[str, dict, bool]]],
+    errors: list[str],
+    *,
+    require_big_core_pin: bool,
+) -> dict[str, object]:
+    big_has_pin = any(has for _, _, has in grouped["big"])
+    findings: list[dict[str, object]] = []
+    for error in errors:
+        findings.append(
+            {
+                "code": "core_selection_manifest_contract_error",
+                "severity": "blocker",
+                "message": "core-selection manifest contract failed",
+                "evidence": error,
+                "next_step": "Fix the selected Chipyard core manifests so every required role has a schema-valid real upstream pin.",
+            }
+        )
+    if not big_has_pin:
+        findings.append(
+            {
+                "code": "core_selection_big_core_pin_blocked",
+                "severity": "blocker",
+                "message": "no big_core_e1_ultra manifest has a real pinned upstream commit",
+                "evidence": "Tenstorrent Ascalon-D8 license and procurement remain blocked",
+                "next_step": "Close the big-core IP license/procurement decision and record a real pinned upstream commit, or select a different phone-class big-core path.",
+            }
+        )
+    status = "fail" if errors and require_big_core_pin else ("blocked" if findings else "pass")
+    return {
+        "schema": "eliza.cpu_ap_core_selection_report.v1",
+        "status": status,
+        "claim_boundary": "core_selection_inventory_only_not_rv64_linux_or_aosp_boot_evidence",
+        "summary": {
+            "findings": len(findings),
+            "manifest_errors": len(errors),
+            "big_core_has_real_pin": big_has_pin,
+            "require_big_core_pin": require_big_core_pin,
+        },
+        "evidence": {
+            "manifest_dir": str(MANIFEST_DIR.relative_to(ROOT)),
+            "evidence_path": str(EVIDENCE_PATH.relative_to(ROOT)),
+            "target_topology": TARGET_TOPOLOGY,
+            "roles": {
+                role: [
+                    {
+                        "manifest": name,
+                        "core_role": data.get("core_role"),
+                        "status": data.get("status"),
+                        "has_real_pin": has_pin,
+                    }
+                    for name, data, has_pin in items
+                ]
+                for role, items in grouped.items()
+            },
+        },
+        "findings": findings,
+    }
+
+
+def write_report(report: dict[str, object]) -> None:
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -216,6 +282,13 @@ def main() -> int:
         )
 
     write_evidence(grouped, errors)
+    write_report(
+        build_report(
+            grouped,
+            errors,
+            require_big_core_pin=args.require_big_core_pin,
+        )
+    )
 
     if errors:
         print("Core selection check failed:")

@@ -25,7 +25,6 @@
 `timescale 1ns/1ps
 
 module e1_soc_top
-    import e1_soc_pkg::*;
 (
 `ifdef USE_POWER_PINS
     inout  wire         VPWR,

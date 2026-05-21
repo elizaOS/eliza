@@ -14,6 +14,10 @@ source_artifacts:
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
   - board/kicad/e1-phone/production-factory-release-execution.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
 factory_production_summary:
   production_readiness_status: blocked_requires_routed_board_supplier_data_and_factory_quotes
   manufacturing_status: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
@@ -163,6 +167,66 @@ acceptance_items:
         interconnect
       - DFM/DFA report and fab/assembly quote tied to the routed board, stencil, fixture, and enclosure constraints
     blocker: Routed STEP, enclosure clearance rerun, DFM/DFA, and production quote are missing.
+selected_hardware_factory_acceptance:
+  status: blocked_until_selected_hardware_fixture_limits_identity_and_first_article_signoff_exist
+  source_coupling: board/kicad/e1-phone/production-factory-release-execution.yaml
+  function_count: 5
+  functions:
+    - function: display_touch
+      selected_hardware: CH550FH01A-CT
+      source_artifact: board/kicad/e1-phone/display-envelope-downselect.yaml
+      required_acceptance_items:
+        - supplier_avl_lifecycle_and_substitutes
+        - assembly_outputs_bom_pnp_drawings_stencil
+        - fixture_probe_coordinates_and_accessibility
+        - factory_test_limits_and_stop_on_fail
+        - first_article_traveler_measurements_and_signoff
+      required_fixture_domains: [display_touch]
+      status: blocked_missing_display_fixture_limits_identity_and_first_article_signoff
+    - function: rear_front_cameras
+      selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+      source_artifact: board/kicad/e1-phone/camera-module-fit-downselect.yaml
+      required_acceptance_items:
+        - supplier_avl_lifecycle_and_substitutes
+        - assembly_outputs_bom_pnp_drawings_stencil
+        - fixture_probe_coordinates_and_accessibility
+        - factory_test_limits_and_stop_on_fail
+        - first_article_traveler_measurements_and_signoff
+      required_fixture_domains: [cameras]
+      status: blocked_missing_camera_fixture_limits_identity_and_first_article_signoff
+    - function: usb_c_power_sidekeys
+      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      source_artifact: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+      required_acceptance_items:
+        - supplier_avl_lifecycle_and_substitutes
+        - assembly_outputs_bom_pnp_drawings_stencil
+        - fixture_probe_coordinates_and_accessibility
+        - factory_test_limits_and_stop_on_fail
+        - first_article_traveler_measurements_and_signoff
+      required_fixture_domains: [usb_c, buttons_sensors_nfc, power_rails]
+      status: blocked_missing_usb_power_sidekey_fixture_limits_identity_and_first_article_signoff
+    - function: cellular
+      selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      required_acceptance_items:
+        - supplier_avl_lifecycle_and_substitutes
+        - assembly_outputs_bom_pnp_drawings_stencil
+        - rf_calibration_and_wireless_identity_traceability
+        - factory_test_limits_and_stop_on_fail
+        - first_article_traveler_measurements_and_signoff
+      required_fixture_domains: [radios]
+      status: blocked_missing_cellular_fixture_rf_identity_and_first_article_signoff
+    - function: wifi_bluetooth
+      selected_hardware: Murata_LBEE5XV2EA-802
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      required_acceptance_items:
+        - supplier_avl_lifecycle_and_substitutes
+        - assembly_outputs_bom_pnp_drawings_stencil
+        - rf_calibration_and_wireless_identity_traceability
+        - factory_test_limits_and_stop_on_fail
+        - first_article_traveler_measurements_and_signoff
+      required_fixture_domains: [radios]
+      status: blocked_missing_wifi_bt_fixture_rf_identity_and_first_article_signoff
 cross_checks:
   stackup_target_matches_production_readiness: true
   all_manufacturing_production_outputs_blocked: true
@@ -174,12 +238,14 @@ cross_checks:
   power_bringup_blocks_factory_limits: true
   all_factory_probe_domains_blocked: true
   all_acceptance_items_blocked: true
+  selected_hardware_factory_acceptance_fail_closed: true
 release_blockers:
   - routed DRC-clean PCB and production fabrication outputs are missing
   - fabricator stackup, impedance coupon quote, DFM/DFA, and fab/assembly quote are missing
   - production BOM/AVL, pick-and-place, assembly drawings, stencil, and supplier approval packs are missing
   - factory fixture coordinates, factory limits, RF calibration, traceability, and first-article transcript are
     missing
+  - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth factory acceptance evidence is missing
   - routed board STEP, enclosure clearance rerun, and final mechanical production signoff are missing
 forbidden_claims:
   - production_ready

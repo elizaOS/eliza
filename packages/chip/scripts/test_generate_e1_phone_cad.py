@@ -2738,6 +2738,7 @@ def test_evt0_phone_cad_make_target_runs_strict_boolean_checker() -> None:
 
     checker = Path("scripts/check_e1_phone_boolean_interference.py").read_text()
     assert "rear_camera_back_shell_hole_check" in checker
+    assert "rear_camera_optical_sightline_check" in checker
     assert "rear_flash_back_shell_hole_check" in checker
     assert "handset_cover_glass_slot_check" in checker
     assert "screen_cover_glass_collision_check" in checker
@@ -2745,6 +2746,7 @@ def test_evt0_phone_cad_make_target_runs_strict_boolean_checker() -> None:
     assert '"rear_camera_cover_glass"' in checker
     assert '"rear_camera_lens_window"' in checker
     assert '"rear_camera_module"' in checker
+    assert '"rear_camera_optical_sight_tunnel"' in checker
     assert '"rear_flash_shell_aperture"' in checker
     assert '"rear_flash_led_window"' in checker
     assert '"handset_acoustic_slot"' in checker

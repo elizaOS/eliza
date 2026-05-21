@@ -197,7 +197,7 @@ def promote_asimov1_workspace(workspace: Path, *, dry_run: bool = True) -> dict[
     src_manifest = Path(meta["generated_manifest"])
     if not src_mjcf.is_file() or not src_urdf.is_file() or not src_manifest.is_file():
         raise FileNotFoundError("workspace outputs are missing; run regeneration first")
-    copies = [
+    copies: list[dict[str, Any]] = [
         {"source": str(src_mjcf), "dest": str(ASIMOV1_GENERATED_MJCF)},
         {"source": str(src_urdf), "dest": str(ASIMOV1_GENERATED_URDF)},
         {"source": str(src_manifest), "dest": str(ASIMOV1_GENERATED_MANIFEST)},
@@ -211,6 +211,13 @@ def promote_asimov1_workspace(workspace: Path, *, dry_run: bool = True) -> dict[
             dest = Path(item["dest"])
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(item["source"], dest)
+    for item in copies:
+        source = Path(item["source"])
+        dest = Path(item["dest"])
+        item["source_sha256"] = sha256_file(source)
+        item["dest_exists"] = dest.is_file()
+        item["dest_sha256"] = sha256_file(dest) if dest.is_file() else None
+        item["hash_match"] = item["dest_sha256"] == item["source_sha256"] if dest.is_file() else False
     report = {"dry_run": dry_run, "workspace": str(Path(meta["workspace"])), "copies": copies}
     (Path(meta["workspace"]) / "asimov_promotion_plan.json").write_text(
         json.dumps(report, indent=2) + "\n",

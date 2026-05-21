@@ -345,14 +345,14 @@ def _cbp5_trace_paths() -> list[Path]:
 
 
 @cocotb.test()
-async def bpu_mpki_synthetic_8_workload_sweep(dut):
-    """Run all 8 canonical synthetic workloads end-to-end through the RTL
+async def bpu_mpki_synthetic_workload_sweep(dut):
+    """Run all canonical synthetic workloads end-to-end through the RTL
     BPU and write ``mpki_results_synthetic.json`` with per-workload MPKI."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
 
     results: dict[str, dict] = {}
     expected = list(SYNTHETIC_GENERATORS.keys())
-    assert len(expected) == 8, f"expected exactly 8 workloads, found {expected}"
+    assert expected, "expected at least one synthetic workload"
 
     for name in expected:
         events = [

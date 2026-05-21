@@ -21,7 +21,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05589
+      "nonwhite_pixel_ratio": 0.05591
     },
     {
       "view": "full_back_iso.png",
@@ -36,7 +36,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05905
+      "nonwhite_pixel_ratio": 0.05907
     },
     {
       "view": "rear_feature_detail.png",
@@ -51,7 +51,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.11031
+      "nonwhite_pixel_ratio": 0.11041
     },
     {
       "view": "full_left_side.png",
@@ -96,7 +96,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.11012
+      "nonwhite_pixel_ratio": 0.11013
     },
     {
       "view": "exploded_iso.png",
@@ -111,7 +111,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.07825
+      "nonwhite_pixel_ratio": 0.07826
     },
     {
       "view": "component_stack.png",
@@ -186,11 +186,11 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.04154
+      "nonwhite_pixel_ratio": 0.04156
     }
   ],
   "part_review_case": {
-    "part_count": 123,
+    "part_count": 132,
     "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
     "contact_sheet_pass": true,
     "exploded_contact_sheet": "mechanical/e1-phone/review/part-explode-contact-sheet.png",
@@ -199,8 +199,8 @@
   },
   "part_visual_coverage_case": {
     "status": "part_visual_coverage_pass",
-    "expected_part_count": 123,
-    "covered_part_count": 123,
+    "expected_part_count": 132,
+    "covered_part_count": 132,
     "missing_or_incomplete_part_count": 0,
     "pass": true
   },

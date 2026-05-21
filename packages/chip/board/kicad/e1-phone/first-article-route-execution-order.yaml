@@ -181,6 +181,51 @@ ordered_phases:
     present_exit_evidence_count: 0
     blocked: true
 
+route_to_enclosure_handoff:
+  status: blocked_until_routed_pcb_drc_step_supplier_models_and_clearance_release_exist
+  route_phase: high_speed_rf_power_route_and_drc
+  enclosure_phase: routed_step_and_enclosure_clearance
+  handoff_is_strict: true
+  enclosure_claim_allowed_before_all_handoff_evidence: false
+  required_route_evidence:
+    - release_output_id: routed_kicad_pcb
+      expected_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      present: false
+    - release_output_id: pcb_drc_report
+      expected_path: board/kicad/e1-phone/production/reports/drc.json
+      present: false
+    - release_output_id: filled_zones
+      expected_path: board/kicad/e1-phone/production/reports/zone-fill.json
+      present: false
+  required_step_evidence:
+    - source_contract: routed-board-step-export-contract.yaml
+      evidence_id: required_step_output
+      expected_path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: false
+    - source_contract: routed-board-step-export-contract.yaml
+      evidence_id: required_component_model_directory
+      expected_path: board/kicad/e1-phone/production/step/component-models
+      present: false
+    - source_contract: routed-board-step-export-contract.yaml
+      evidence_id: required_report_output
+      expected_path: board/kicad/e1-phone/production/reports/routed-board-step-export-contract.yaml
+      present: false
+  required_mechanical_release_evidence:
+    - release_output_id: enclosure_clearance_report_using_routed_step
+      expected_path: mechanical/e1-phone/review/routed-board-clearance.json
+      production_release_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      present: false
+    - post_export_check_id: full_cad_boolean_interference_passed
+      expected_path: mechanical/e1-phone/review/full-cad-boolean-interference.json
+      production_release_path: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-release.yaml
+      present: false
+  blocked_by:
+    - routed KiCad PCB and DRC evidence are absent
+    - zone-fill report is absent
+    - routed STEP with supplier component models is absent
+    - routed-board clearance release report is absent
+    - full CAD boolean interference release report is absent
+
 release_output_inventory:
   routed_release_required_output_count: 20
   routed_release_present_output_count: 0

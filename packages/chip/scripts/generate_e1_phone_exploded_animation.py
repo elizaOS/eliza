@@ -84,7 +84,12 @@ def classify(name: str) -> tuple[np.ndarray, int]:
         return np.array([1.0, 0.0, 0.0]), 2 if "cap" in n else 3 if "labyrinth" in n else 1
     if n.startswith("volume_button") or "volume_actuator" in n or "volume_flex" in n:
         return np.array([-1.0, 0.0, 0.0]), 2 if "cap" in n else 3 if "labyrinth" in n else 1
-    if "side_key" in n or "split_interconnect_side" in n or "wifi_bt_side" in n:
+    # The split-board side flex is a board-top interconnect running along the +X
+    # rail; lift it +Z off the board (like the other interconnect parts) so it
+    # clears the -Z-dropping snap hooks instead of sliding +X into them.
+    if "split_interconnect_side" in n:
+        return np.array([0.0, 0.0, 1.0]), 1
+    if "side_key" in n or "wifi_bt_side" in n:
         return np.array([1.0, 0.0, 0.0]), 1
     # Front of screen (+Z toward viewer): cover glass, adhesives, perimeter
     # cushion, display, fpc. The PORON glass-perimeter cushions sit under the
@@ -133,10 +138,15 @@ def classify(name: str) -> tuple[np.ndarray, int]:
     # the PCB (which ejects -Z) instead of sharing its ring and staying nested.
     if "antenna" in n or "interconnect" in n:
         return np.array([0.0, 0.0, 1.0]), 1
-    # Molded retention bosses/ribs/snaps belong to the enclosure and nest deep
+    # Snap hooks ride the shallow side-frame top (z near the parting line); eject
+    # them -Z at ring 1 so they do not overtake and dive through the deeper
+    # mid-stack parts (the haptic LRA) the way a ring-4 ejection would.
+    if "snap_hook" in n:
+        return np.array([0.0, 0.0, -1.0]), 1
+    # Molded retention bosses/ribs/saddle belong to the enclosure and nest deep
     # around the battery perimeter. They eject -Z at ring 4 — past the battery
     # (ring 2) so they separate from it, ahead of the back shell (ring 5).
-    if "snap_hook" in n or "screw_boss" in n or "rib" in n or "reinforcement" in n:
+    if "screw_boss" in n or "rib" in n or "reinforcement" in n:
         return np.array([0.0, 0.0, -1.0]), 4
     if "service_label" in n:
         return np.array([0.0, 0.0, -1.0]), 3

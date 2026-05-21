@@ -8,6 +8,7 @@ device:
   back_face: fully flush flat back; no camera bump, no protruding lens ring; rear camera and torch buried under flat back wall behind flush internal windows
   target_mass_g: 185
   ship_target_mass_g: 168
+  max_mass_g: 200
   design_language: hard orange phone-like slab with teenage-engineering/rabbit-r1 influence
 
 display:

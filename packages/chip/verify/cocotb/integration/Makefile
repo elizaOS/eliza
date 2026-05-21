@@ -1,12 +1,10 @@
-TOPLEVEL_LANG ?= verilog
-SIM           ?= verilator
-
-PWD  := $(shell pwd)
-REPO := $(abspath ../../..)
+include ../common.mk
 
 # Order matters: packages first (in dependency order), then leaf RTL,
 # then the integrated top, then the harness wrapper.
 VERILOG_SOURCES := \
+	$(REPO)/rtl/top/e1_topology_pkg.sv \
+	$(REPO)/rtl/top/e1_soc_pkg.sv \
 	$(REPO)/rtl/interconnect/axi4/e1_axi4_pkg.sv \
 	$(REPO)/rtl/cache/cache_pkg.sv \
 	$(REPO)/rtl/cache/ftq_to_l1i_pkg.sv \
@@ -45,14 +43,16 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/display/e1_display.sv \
 	$(REPO)/rtl/top/adapters/e1_slc_to_chi_line_shim.sv \
 	$(REPO)/rtl/top/adapters/e1_axi4_width_converter.sv \
+	$(REPO)/rtl/peripherals/e1_mmio_decode.sv \
+	$(REPO)/rtl/peripherals/e1_clint.sv \
+	$(REPO)/rtl/memory/e1_behavioral_dram.sv \
 	$(REPO)/rtl/top/e1_soc_integrated.sv \
 	$(PWD)/e1_soc_integrated_tb.sv
 
 TOPLEVEL ?= e1_soc_integrated_tb
 MODULE   ?= test_soc_boot_smoke
-PYTHON   ?= python3
 
-EXTRA_ARGS += -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-IMPLICITSTATIC -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT -Wno-DECLFILENAME -Wno-PINCONNECTEMPTY -Wno-SYNCASYNCNET
+EXTRA_ARGS += -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-IMPLICITSTATIC -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT -Wno-DECLFILENAME -Wno-PINCONNECTEMPTY -Wno-SYNCASYNCNET
 
 # Optional: wire the real Ibex into pmc_top when PMC_INSTANTIATE_IBEX=1 is set
 # in the environment. Default-off keeps the existing 26+25 baseline cocotb
@@ -82,4 +82,4 @@ EXTRA_ARGS += -Wno-DECLFILENAME -Wno-PINMISSING -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND
 endif
 endif
 
-include $(shell $(PYTHON) -m cocotb.config --makefiles)/Makefile.sim
+include $(COCOTB_SIM_MK)

@@ -285,6 +285,12 @@ GATES: tuple[GateSpec, ...] = (
         tier="spec",
     ),
     GateSpec(
+        name="chip-stats-consistency-check",
+        script="scripts/check_chip_stats_consistency.py",
+        subsystem="platform",
+        tier="spec",
+    ),
+    GateSpec(
         name="board-package-evidence-check",
         script="scripts/check_board_package_evidence.py",
         subsystem="platform",
@@ -347,6 +353,12 @@ GATES: tuple[GateSpec, ...] = (
     GateSpec(
         name="no-hardware-action-check",
         script="scripts/check_no_hardware_action_matrix.py",
+        subsystem="platform",
+        tier="spec",
+    ),
+    GateSpec(
+        name="chip-stats-consistency",
+        script="scripts/check_chip_stats_consistency.py",
         subsystem="platform",
         tier="spec",
     ),

@@ -125,6 +125,11 @@ def parse_args() -> argparse.Namespace:
         help="E1 replay preflight run id; defaults to --readiness-run-id.",
     )
     parser.add_argument(
+        "--replay-handoff-run-id",
+        default=None,
+        help="OpenLane replay handoff package run id; defaults to --replay-preflight-run-id.",
+    )
+    parser.add_argument(
         "--replay-execution-run-id",
         default=None,
         help="E1 replay execution evidence run id; defaults to --replay-preflight-run-id.",
@@ -168,6 +173,7 @@ def main() -> int:
     research_run_id = args.research_run_id or readiness_run_id
     replay_prerequisites_run_id = args.replay_prerequisites_run_id or training_handoff_run_id
     replay_preflight_run_id = args.replay_preflight_run_id or readiness_run_id
+    replay_handoff_run_id = args.replay_handoff_run_id or replay_preflight_run_id
     replay_execution_run_id = args.replay_execution_run_id or replay_preflight_run_id
     replay_comparison_run_id = args.replay_comparison_run_id or replay_execution_run_id
     alphachip_run_id = args.alphachip_run_id or readiness_run_id
@@ -216,6 +222,10 @@ def main() -> int:
         ROOT
         / f"build/ai_eda/macro_placement_replay_preflight/{replay_preflight_run_id}/replay_preflight_report.json"
     )
+    replay_handoff_path = (
+        ROOT
+        / f"build/ai_eda/openlane_replay_handoff/{replay_handoff_run_id}/openlane_replay_handoff.json"
+    )
     replay_execution_path = (
         ROOT
         / f"build/ai_eda/openlane_replay_execution/{replay_execution_run_id}/openlane_replay_execution.json"
@@ -248,6 +258,7 @@ def main() -> int:
     inference = load_json(torch_inference_path)
     replay_queue = load_json(replay_queue_path)
     replay_prerequisites = load_json(replay_prerequisites_path)
+    replay_handoff = load_json(replay_handoff_path)
     replay_execution = load_json(replay_execution_path)
     replay_comparison = load_json(replay_comparison_path)
     alphachip = load_json(alphachip_path)
@@ -390,14 +401,22 @@ def main() -> int:
     replay_queue_ok = capability(readiness, "full_replay_plan_validated") and capability(
         readiness, "replay_queue_validated"
     )
+    replay_handoff_ok = (
+        replay_handoff is not None
+        and replay_handoff.get("schema") == "eliza.ai_eda.openlane_replay_handoff.v1"
+        and replay_handoff.get("status") == "HANDOFF_READY_FOR_PD_HOST"
+        and replay_handoff.get("ready_candidate_count", 0) >= 1
+    )
     requirements.append(
         requirement(
             "candidate_replay_queue",
             "Ranked candidates are packaged for deterministic replay",
-            "PROVEN" if replay_queue_ok and replay_queue is not None else "INCOMPLETE",
-            [full_replay_path, replay_queue_path, readiness_path],
-            "Full replay plan and replay queue must validate before any PD execution.",
-            [] if replay_queue_ok and replay_queue is not None else ["full replay plan or replay queue is missing"],
+            "PROVEN" if replay_queue_ok and replay_queue is not None and replay_handoff_ok else "INCOMPLETE",
+            [full_replay_path, replay_queue_path, replay_handoff_path, readiness_path],
+            "Full replay plan, replay queue, and PD-host handoff package must validate before any PD execution.",
+            []
+            if replay_queue_ok and replay_queue is not None and replay_handoff_ok
+            else ["full replay plan, replay queue, or replay handoff package is missing"],
         )
     )
     prereq_ready = capability(readiness, "openlane_replay_host_ready") or (
@@ -444,10 +463,36 @@ def main() -> int:
         requirement(
             "verification_analysis_optimization_lanes",
             "Verification, physical-design, and optimization target lanes are captured",
-            "PROVEN" if present(research_watchlist_path) and cuda_ok else "INCOMPLETE",
+            "PROVEN"
+            if present(research_watchlist_path)
+            and cuda_ok
+            and capability(readiness, "formal_prerequisites_validated")
+            and (
+                capability(readiness, "strict_formal_host_ready")
+                or capability(readiness, "formal_yosys_fallback_possible")
+            )
+            and capability(readiness, "formal_execution_evidence_validated")
+            and (
+                capability(readiness, "strict_formal_execution_ready")
+                or capability(readiness, "formal_fallback_execution_captured")
+            )
+            else "INCOMPLETE",
             [research_watchlist_path, readiness_path],
-            "Formal/verification/analysis/optimization lanes must be represented in target captures and CUDA run plan.",
-            [] if present(research_watchlist_path) and cuda_ok else ["target captures or CUDA run-plan coverage is incomplete"],
+            "Formal/verification/analysis/optimization lanes must be represented in target captures, CUDA run plan, formal prerequisites, and captured formal execution evidence.",
+            []
+            if present(research_watchlist_path)
+            and cuda_ok
+            and capability(readiness, "formal_prerequisites_validated")
+            and (
+                capability(readiness, "strict_formal_host_ready")
+                or capability(readiness, "formal_yosys_fallback_possible")
+            )
+            and capability(readiness, "formal_execution_evidence_validated")
+            and (
+                capability(readiness, "strict_formal_execution_ready")
+                or capability(readiness, "formal_fallback_execution_captured")
+            )
+            else ["target captures, CUDA run-plan coverage, formal prerequisites, or formal execution evidence is incomplete"],
         )
     )
 
@@ -474,6 +519,7 @@ def main() -> int:
             "research": research_run_id,
             "replay_prerequisites": replay_prerequisites_run_id,
             "replay_preflight": replay_preflight_run_id,
+            "replay_handoff": replay_handoff_run_id,
             "replay_execution": replay_execution_run_id,
             "replay_comparison": replay_comparison_run_id,
             "alphachip": alphachip_run_id,
@@ -493,6 +539,7 @@ def main() -> int:
             "run the validated CUDA handoff on a real CUDA host and recapture readiness there",
             "complete the full CUDA training matrix over reviewed full-dataset conversion modes",
             "resolve AlphaChip checkpoint access or land a documented from-scratch successor training route",
+            "install SymbiYosys and archive strict formal proof evidence before claiming deep formal coverage",
             "provide OpenLane/OpenROAD/PDK prerequisites with a ready replay queue item",
             "execute deterministic baseline and candidate E1 replay, archive metrics/logs/DEF/GDS, and compare them",
         ],
