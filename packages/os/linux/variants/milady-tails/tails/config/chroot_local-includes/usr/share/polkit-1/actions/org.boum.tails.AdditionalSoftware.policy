@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+  <vendor>Tails</vendor>
+  <vendor_url>http://tails.net/</vendor_url>
+
+  <action id="org.boum.tails.AdditionalSoftware.remove">
+    <description>Remove an additional software package</description>
+    <description xml:lang="ar">ازالة حزمة برامج اضافية</description>
+    <description xml:lang="be">Выдаліць дадатковы пакет праграмнага забеспячэння</description>
+    <description xml:lang="bg">Премахване на пакети от допълнителните приложения</description>
+    <description xml:lang="bn">একটি অতিরিক্ত সফটওয়্যার প্যাকেজ অপসারণ করুন</description>
+    <description xml:lang="bs">Uklonite dodatni softverski paket</description>
+    <description xml:lang="ca">Elimineu un paquet de programari addicional</description>
+    <description xml:lang="cs">Odeberte balíček dodatečného softwaru</description>
+    <description xml:lang="da">Fjern en pakke med yderligere software</description>
+    <description xml:lang="de">Entferne ein zusätzliches Softwarepaket</description>
+    <description xml:lang="el">Αφαίρεση πρόσθετου πακέτου λογισμικού</description>
+    <description xml:lang="es">Borrar un paquete de software adicional</description>
+    <description xml:lang="fa">حذف یک بستهٔ نرم‌افزار اضافی</description>
+    <description xml:lang="fi">Poista toinen ohjelmistopaketti</description>
+    <description xml:lang="fr">Enlever un paquet logiciel supplémentaire</description>
+    <description xml:lang="ga">Bain ceann de na bogearraí breise atá agat</description>
+    <description xml:lang="gl">Retirar un paquete de software adicional</description>
+    <description xml:lang="he">הסר חבילה של תוכנה נוספת</description>
+    <description xml:lang="hr">Ukloni paket dodatnog softvera</description>
+    <description xml:lang="hu">Az addicionális szoftvercsomag eltávolítása</description>
+    <description xml:lang="hy">Ջնջել հավելյալ ծրագրային ապահովման փաթեթը</description>
+    <description xml:lang="id">Hapus sebuah paket perangkat lunak tambahan</description>
+    <description xml:lang="is">Fjarlægja viðbótarhugbúnaðarpakka</description>
+    <description xml:lang="it">Rimuovi un pacchetto di software aggiuntivo</description>
+    <description xml:lang="ja">追加ソフトウェアパッケージを削除</description>
+    <description xml:lang="ka">დამატებითი პროგრამის პაკეტის წაშლა</description>
+    <description xml:lang="kab">Kkes akemmus n useɣẓan amernu</description>
+    <description xml:lang="kk">Root Қосымша бағдарламалық құрал бумасын жойыңыз</description>
+    <description xml:lang="ko">추가 소프트웨어 패키지 제거하기</description>
+    <description xml:lang="lt">Šalinti papildomos programinės įrangos paketą</description>
+    <description xml:lang="mk">Отстрани дополнителни софтверски пакети</description>
+    <description xml:lang="ml">ഒരു അധിക സോഫ്റ്റ്വെയർ പാക്കേജ് നീക്കംചെയ്യുക</description>
+    <description xml:lang="ms_MY">Buang satu pakej perisian tambahan</description>
+    <description xml:lang="nb">Fjern en tilleggsprogramvare</description>
+    <description xml:lang="nl">Een extra-softwarepakket verwijderen</description>
+    <description xml:lang="pl">Usuń dodatkowy pakiet oprogramowania</description>
+    <description xml:lang="pt_BR">Remover um pacote adicional de programas</description>
+    <description xml:lang="pt_PT">Remover um pacote de software adicional</description>
+    <description xml:lang="ro">Eliminare aplicație adițională</description>
+    <description xml:lang="ru">Удалить дополнительные программные пакеты</description>
+    <description xml:lang="sk">Odstrániť balíček doplnkového softvéru</description>
+    <description xml:lang="sq">Hiqni një paketë software-i shtesë</description>
+    <description xml:lang="sr">Ukloni paket dodatnog softvera</description>
+    <description xml:lang="sv">Ta bort ett extra programpaket</description>
+    <description xml:lang="sw">Ondoa programu za ziada</description>
+    <description xml:lang="ta">கூடுதல் மென்பொருள் தொகுப்பை அகற்று</description>
+    <description xml:lang="tr">Bir ek uygulama paketini kaldır</description>
+    <description xml:lang="uk">Видалити додатковий пакет програмного забезпечення</description>
+    <description xml:lang="vi">Loại bỏ một gói package phần mềm bổ sung</description>
+    <description xml:lang="zh_CN">移除附加软件</description>
+    <description xml:lang="zh_TW">移除其他軟體套件</description>
+    <message>Authentication is required to remove a package from your additional software ($(command_line))</message>
+    <message xml:lang="ar">الاستيثاق مطلوب لازالة حزمة من برامجك الاضافية ($(command_line))</message>
+    <message xml:lang="be">Для выдалення пакета з вашага дадатковага праграмнага забеспячэння ($(command_line)) патрабуецца аўтэнтыфікацыя</message>
+    <message xml:lang="bg">За да премахвате на пакети от допълнителните приложения трябва да се удостоверите ($(command_line))</message>
+    <message xml:lang="bn">আপনার অতিরিক্ত সফ্টওয়্যার থেকে একটি প্যাকেজ অপসারণ করতে প্রত্যয়ন আবশ্যক ($(command_line))</message>
+    <message xml:lang="bs">Za uklanjanje paketa iz vašeg dodatnog softvera ($(command_line)) potrebna je autentifikacija</message>
+    <message xml:lang="ca">Es necessita l'autenticació per eliminar un paquet del programari addicional ($(command_line))</message>
+    <message xml:lang="cs">Pro odebrání balíčku dodatečného softwaru ($(command_line)) je vyžadována autentizace</message>
+    <message xml:lang="da">Der kræves autentifikation for at fjerne en pakke fra dine yderligere software ($(command_line))</message>
+    <message xml:lang="de">Authentifizierung wird benötigt, um ein Paket von deiner zusätzlichen Softwareliste zu entfernen ($(command_line))</message>
+    <message xml:lang="el">Απαιτείται ταυτοποίηση για την απομάκρυνση ενός πακέτου από το πρόσθετο λογισμικό σας ($(command_line))</message>
+    <message xml:lang="es">Se requiere autenticación para quitar un paquete de tu software adicional ($(command_line))</message>
+    <message xml:lang="fa">حذف بسته از نرم‌افزار اضافی شما نیازمند اصالت‌سنجی است ($(command_line))</message>
+    <message xml:lang="fi">Paketin poistamiseen lisäohjelmistostasi tarvitaan todennus ($(command_line))</message>
+    <message xml:lang="fr">Une authentification est requise afin d’enlever un paquet de vos logiciels supplémentaires ($(command_line))</message>
+    <message xml:lang="ga">Caithfidh tú d'fhocal faire a thabhairt chun pacáiste de na bogearraí breise a bhaint ($(command_line))</message>
+    <message xml:lang="gl">Requírese autenticación para retirar un paquete do seu software adicional ($(command_line))</message>
+    <message xml:lang="he">אימות נדרש כדי להסיר חבילה מתוך תוכנה נוספת שלך ($(command_line))</message>
+    <message xml:lang="hr">Za uklanjanje paketa iz dodatnog softvera ($(command_line)) potrebna ja autentifikacija</message>
+    <message xml:lang="hu">Azonosítás szükséges a további szoftverei közül egy csomag eltávolításához ($(command_line))</message>
+    <message xml:lang="id">Otentikasi diperlukan untuk menghapus sebuah paket dari perangkat lunak tambahan Anda. ($(command_line))</message>
+    <message xml:lang="is">Auðkenningar er krafist til að fjarlægja pakka úr viðbótarhugbúnaðnum þínum ($(command_line))</message>
+    <message xml:lang="it">È richiesta l'autenticazione per rimuovere un pacchetto dai tuoi software aggiuntivi ($(command_line))</message>
+    <message xml:lang="ja">追加ソフトウェアからパッケージを削除するには認証が必要です ($(command_line))</message>
+    <message xml:lang="ka">ანგარიშის მონაცემების მითითებაა საჭირო პაკეტის დამატებითი პროგრამიდან ამოსაშლელად ($(command_line))</message>
+    <message xml:lang="kab">Asesteb yettwasra i tukksa n ukemmus seg iseɣẓanen-ik·im imernan ($(command_line))</message>
+    <message xml:lang="kk">Түпнұсқалық растама пакетті қосымша бағдарламалық құралдан жою үшін қажет ($(command_line))</message>
+    <message xml:lang="ko">추가 소프트웨어에서 패키지를 제거하려면 인증이 필요합니다. ($(command_line))</message>
+    <message xml:lang="lt">Reikalingas tapatybės nustatymas, norint pašalinti paketą iš jūsų papildomos programinės įrangos ($(command_line))</message>
+    <message xml:lang="mk">Автентикацијата е потребна за да се отстрани пакетот од вашиот дополнителен софтвер ($(command_line))</message>
+    <message xml:lang="ml">നിങ്ങളുടെ അധിക സോഫ്റ്റ്വെയറിൽ നിന്ന് ഒരു പാക്കേജ് നീക്കംചെയ്യുന്നതിന് ഓതെന്റിക്കേറ്റ് ആവശ്യമാണ് ($(command_line))</message>
+    <message xml:lang="ms_MY">Pengesahihan diperlukan untuk membuang satu pakej daripada perisian tambahan anda ($(command_line))</message>
+    <message xml:lang="nb">Autentisering er påkrevd for å fjerne en pakke fra dine tilleggsprogrammer ($(command_line))</message>
+    <message xml:lang="nl">Er is authenticatie vereist om een pakket uit uw extra software te verwijderen ($(command_line))</message>
+    <message xml:lang="pl">Uwierzytelnienie jest wymagane do usunięcia pakietu z dodatkowego oprogramowania ($(command_line))</message>
+    <message xml:lang="pt_BR">Autenticação é necessária para remover um pacote de seus programas adicionais ($(command_line))</message>
+    <message xml:lang="pt_PT">É necessária a autenticação para remover um pacote dos seus programas adicionais ($(command_line))</message>
+    <message xml:lang="ro">Aveți nevoie de autentificare pentru a elimina un pachet din aplicațiile adiționale ($(command_line))</message>
+    <message xml:lang="ru">Для удаления пакета из вашего дополнительного ПО требуется аутентификация ($(command_line))</message>
+    <message xml:lang="sk">Vyžadovaná autentifikácia pre ostránenie balíšku z Vášho doplnkového softvéru ($(command_line))</message>
+    <message xml:lang="sq">Që të hiqni një paketë nga software-i juaj shtesë, lyspet mirëfilltësim ($(command_line))</message>
+    <message xml:lang="sr">Potrebna je autentifikacija da bi uklonili paket iz Vašeg dodatnog softvera ($(command_line))</message>
+    <message xml:lang="sv">Autentisering krävs för att ta bort ett paket från dina extra program ($(command_line))</message>
+    <message xml:lang="sw">Uthibitisho unahitajika ili kuondoa vifurushi kutoka katika programu zako za ziada ($(command_line))</message>
+    <message xml:lang="tr">Ek uygulamalarınızdan bir paket kaldırmak için kimlik doğrulaması gerekir ($(command_line))</message>
+    <message xml:lang="uk">Для видалення пакета з додаткового програмного забезпечення ($(command_line)) потрібна автентифікація</message>
+    <message xml:lang="vi">Việc xác thực được yêu cầu đề gỡ bỏ một gói package khỏi phần mềm bổ sung của bạn ($(command_line))</message>
+    <message xml:lang="zh_CN">移除附加软件需要认证 ($(command_line))</message>
+    <message xml:lang="zh_TW">需要驗證來從其他軟體中移除套件 ($(command_line))</message>
+    <icon_name>package-x-generic</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/lib/additional-software/asp-remove-package</annotate>
+  </action>
+
+</policyconfig>

@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface domain="tails">
+  <requires version="3.22" lib="gtk+"/>
+  <object id="window" class="GtkApplicationWindow">
+    <property name="default-width">700</property>
+    <property name="default-height">400</property>
+    <property name="can_focus">False</property>
+    <property name="window_position">center</property>
+    <property name="icon_name">unlock-veracrypt-volumes</property>
+    <child>
+      <object id="box" class="GtkScrolledWindow">
+        <property name="visible">True</property>
+        <property name="hscrollbar_policy">never</property>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="halign">center</property>
+            <property name="margin_left">20</property>
+            <property name="margin_right">20</property>
+            <property name="margin_top">10</property>
+            <property name="orientation">vertical</property>
+
+            
+            <child>
+              <object class="GtkBox">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="hexpand">True</property>
+              </object>
+            </child>
+
+            <child>
+              <object class="GtkBox">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="hexpand">True</property>
+              </object>
+              <packing>
+                <property name="pack_type">end</property>
+              </packing>
+            </child>
+
+            
+            <child>
+              <object id="content_box" class="GtkBox">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="orientation">vertical</property>
+                <property name="margin">32</property>
+                <property name="hexpand">True</property>
+                <property name="width-request">500</property>
+                <child>
+                  <object id="containers_label_box" class="GtkBox">
+                    <property name="margin_bottom">12</property>
+                    <child>
+                      <object id="containers_label" class="GtkLabel">
+                        <property name="visible">True</property>
+                        <property name="hexpand">True</property>
+                        <property name="xalign">0</property>
+                        <property translatable="yes" name="label">File Containers</property>
+                        <property name="ellipsize">end</property>
+                        <attributes>
+                          <attribute value="bold" name="weight"/>
+                        </attributes>
+                      </object>
+                    </child>
+                    <child>
+                      <object id="padding_label" class="GtkLabel">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                      </object>
+                      <packing>
+                        <property name="expand">True</property>
+                        <property name="fill">True</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object id="add_container_button" class="GtkButton">
+                        <property translatable="yes" name="label">_Add</property>
+                        <property name="use_underline">True</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="receives_default">True</property>
+                        <property name="has_tooltip">True</property>
+                        <property translatable="yes" name="tooltip_text">Add a file container</property>
+                        <signal swapped="no" name="clicked" handler="on_add_file_container_button_clicked"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object id="containers_frame" class="GtkFrame">
+                    <property name="shadow_type">in</property>
+                    <property name="margin_bottom">32</property>
+                  </object>
+                </child>
+                <child>
+                  <object id="devices_label" class="GtkLabel">
+                    <property name="visible">True</property>
+                    <property name="hexpand">True</property>
+                    <property name="xalign">0</property>
+                    <property translatable="yes" name="label">Partitions and Drives</property>
+                    <property name="ellipsize">end</property>
+                    <property name="margin-bottom">12</property>
+                    <attributes>
+                      <attribute value="bold" name="weight"/>
+                    </attributes>
+                  </object>
+                </child>
+                <child>
+                  <object id="devices_frame" class="GtkFrame">
+                    <property name="shadow_type">in</property>
+                    <property name="margin_bottom">32</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object id="disclaimer_label" class="GtkLabel">
+                <property translatable="yes" name="label">This application is not affiliated with or endorsed by the VeraCrypt project or IDRIX.</property>
+                <property name="margin">12</property>
+                <property name="sensitive">False</property>
+              </object>
+              <packing>
+                <property name="pack_type">end</property>
+              </packing>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

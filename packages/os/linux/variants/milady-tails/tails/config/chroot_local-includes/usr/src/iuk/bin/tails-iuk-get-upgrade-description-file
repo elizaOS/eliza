@@ -1,0 +1,17 @@
+#!/usr/bin/perl
+
+=head1 NAME
+
+tails-iuk-get-upgrade-description-file - download, verify and output an upgrade description file
+
+=cut
+
+use strictures 2;
+use 5.10.1;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
+use Tails::IUK::UpgradeDescriptionFile::Download;
+
+Tails::IUK::UpgradeDescriptionFile::Download->new_with_options()->run;

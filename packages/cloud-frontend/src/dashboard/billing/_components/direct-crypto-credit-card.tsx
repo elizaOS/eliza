@@ -20,6 +20,11 @@ import type {
   CryptoStatusResponse,
   CryptoStatusTokenOption,
 } from "@/lib/types/crypto-status";
+import {
+  PaymentWaitingOverlay,
+  type PaymentWaitingStatus,
+  pendingPaymentStore,
+} from "./payment-waiting-overlay";
 
 type DirectNetwork = "base" | "bsc" | "solana";
 
@@ -95,6 +100,36 @@ async function confirmDirectPayment(
   return data;
 }
 
+/**
+ * Durability anchor: records the broadcast tx hash on the server the instant
+ * the wallet returns it. Best-effort — the cron auto-confirm path is the
+ * backstop if this network call fails.
+ */
+async function attachDirectPaymentTx(
+  paymentId: string,
+  transactionHash: string,
+): Promise<void> {
+  try {
+    const res = await fetch(
+      `/api/crypto/direct-payments/${paymentId}/attach-tx`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transactionHash }),
+      },
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      console.warn(
+        "[direct-crypto] attach-tx failed",
+        data?.error || res.statusText,
+      );
+    }
+  } catch (error) {
+    console.warn("[direct-crypto] attach-tx network error", error);
+  }
+}
+
 export function DirectCryptoCreditCard({
   amount,
   promoCode,
@@ -109,6 +144,7 @@ export function DirectCryptoCreditCard({
   );
   const [tokenSymbol, setTokenSymbol] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [activePaymentId, setActivePaymentId] = useState<string | null>(null);
   const evm = useAccount();
   const wagmiConfig = useConfig();
   const { switchChainAsync } = useSwitchChain();
@@ -140,6 +176,13 @@ export function DirectCryptoCreditCard({
   useEffect(() => {
     setTokenSymbol(null);
   }, [selected?.network]);
+
+  // Resume the waiting overlay if a payment is mid-flight in localStorage —
+  // covers tab close / refresh between broadcast and confirm.
+  useEffect(() => {
+    const persisted = pendingPaymentStore.load();
+    if (persisted) setActivePaymentId(persisted.paymentId);
+  }, []);
 
   // Promo is data-driven from /api/crypto/status so the BSC bonus shows
   // anywhere this card renders (dashboard billing tab, /bsc promo page, etc.)
