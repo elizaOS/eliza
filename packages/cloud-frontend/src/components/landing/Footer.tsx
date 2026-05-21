@@ -6,7 +6,6 @@
 "use client";
 
 import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
-import { Link } from "react-router-dom";
 import { useT } from "@/providers/I18nProvider";
 
 export default function Footer() {
@@ -57,12 +56,14 @@ export default function Footer() {
             })}
             className="flex flex-col gap-1.5 md:gap-2.5 text-right relative items-end"
           >
-            <Link
-              to="/docs"
+            <a
+              href="https://docs.elizaos.ai/cloud"
+              target="_blank"
+              rel="noreferrer"
               className="text-base text-white transition-colors hover:text-[#FF5800]"
             >
               {t("cloud.footer.docs", { defaultValue: "Docs" })}
-            </Link>
+            </a>
             <a
               href={EXTERNAL_URLS.github}
               target="_blank"

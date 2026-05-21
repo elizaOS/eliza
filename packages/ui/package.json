@@ -48,9 +48,7 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
-    "./docs.css": "./dist/cloud-ui/styles/docs.css",
     "./styles": "./dist/styles.js",
-    "./styles/docs.css": "./dist/cloud-ui/styles/docs.css",
     "./styles/*.css": "./dist/styles/*.css",
     "./cloud-ui": {
       "types": "./dist/cloud-ui/index.d.ts",

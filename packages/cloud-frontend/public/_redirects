@@ -9,6 +9,14 @@
 # dead config.
 # The free-tier 200-rewrite to an external origin does not actually proxy.
 
+# Docs have moved to the unified Mintlify site at docs.elizaos.ai/cloud.
+# The /docs/api/* rule must precede /docs/* so API paths don't get mangled
+# by the catch-all (first-match-wins).
+/docs/api             https://docs.elizaos.ai/cloud/api          301
+/docs/api/*           https://docs.elizaos.ai/cloud/api/:splat   301
+/docs                 https://docs.elizaos.ai/cloud              301
+/docs/*               https://docs.elizaos.ai/cloud/:splat       301
+
 # SPA fallback — every other path falls through to index.html so React
 # Router can resolve client-side routes.
 /*  /index.html  200
