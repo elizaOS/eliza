@@ -24,7 +24,7 @@ Both forks consume the same code for everything above the OS layer:
   turboquant-cpu, silero-vad-cpp, wakeword-cpp, voice-classifier-cpp,
   doctr-cpp, face-cpp, yolo-cpp, llama}`. One CMakeLists per plugin
   with arch-conditional source-set selection (Wave 1 scalar + Wave 3
-  RVV intrinsics). Cross-toolchain files at `cmake/toolchain-*` cover
+  RVV intrinsics). Cross-toolchain files at `packages/native/cmake/toolchain-*` cover
   both bionic (`toolchain-android-riscv64.cmake`) and glibc/musl
   (`toolchain-riscv64-linux-{gnu,musl}.cmake`).
 - **Agent runtime** — `packages/agent`, `packages/elizaos`,

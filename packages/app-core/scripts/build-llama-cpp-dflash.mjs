@@ -26,9 +26,9 @@
  *   ios-arm64-metal, ios-arm64-simulator-metal  (macOS + Xcode host)
  *   windows-x64-cpu, windows-x64-cuda, windows-x64-vulkan
  *   windows-arm64-cpu, windows-arm64-vulkan  (Snapdragon X / Copilot+ PC; native MSVC arm64 or LLVM aarch64 mingw)
- *   ...plus desktop/server and iOS *-fused variants (omnivoice text+TTS source
- *   fusion). Android fused FFI targets are intentionally not advertised until
- *   their build flags and post-build verifier path are wired.
+ *   ...plus the desktop/server *-fused variants (omnivoice text+TTS source
+ *   fusion). Android/iOS fused FFI targets are intentionally not advertised
+ *   until their build flags and post-build verifier path are wired.
  *
  * Backend selection (legacy single-target mode, when --target is omitted):
  *   macOS           -> Metal
@@ -235,30 +235,14 @@ const SUPPORTED_TARGETS = [
   // wiring on x64 hosts in this script.
   "linux-aarch64-cpu",
   "linux-aarch64-cuda",
-  // Linux riscv64 (CPU-only). Mirrors linux-aarch64-cpu: requires a
-  // real riscv64 host or a riscv64 sysroot + cross-toolchain. There is
-  // no GPU-class hardware in this matrix yet; SiFive HiFive Premier /
-  // Milk-V Megrez / equivalents stay CPU-only until upstream
-  // ggml-vulkan riscv64 + RVV 1.0 paths land. Same zig-cc cross-driver
-  // story as linux-aarch64-cpu.
-  "linux-riscv64-cpu",
   "android-arm64-cpu",
   "android-arm64-vulkan",
-  // Android riscv64 (CPU-only; Vulkan path is not wired here — operators
-  // wanting GPU on a riscv64 device should add real GGML_VULKAN flags
-  // and Vulkan backend staging first, mirroring the arm64-vulkan path).
-  // riscv64-linux-musl cross-build via the same zig driver compile-shim
-  // and compile-libllama scripts use; QEMU-user-mode is the smoke
-  // target until Cuttlefish-riscv64 lands.
-  "android-riscv64-cpu",
   "darwin-arm64-metal",
   // iOS targets (require macOS host with Xcode). Output is a static .a +
   // headers that the LlamaCpp.xcframework patch in
   // packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch consumes.
   "ios-arm64-metal",
   "ios-arm64-simulator-metal",
-  "ios-arm64-metal-fused",
-  "ios-arm64-simulator-metal-fused",
   "windows-x64-cpu",
   "windows-x64-cuda",
   // windows-x64-vulkan: generic-GPU path on x64 Windows. NVIDIA/AMD/Intel
@@ -295,8 +279,6 @@ const FUSED_TARGETS = new Set([
   "linux-x64-vulkan-fused",
   "linux-aarch64-cuda-fused",
   "darwin-arm64-metal-fused",
-  "ios-arm64-metal-fused",
-  "ios-arm64-simulator-metal-fused",
   "windows-x64-cuda-fused",
 ]);
 
@@ -321,12 +303,12 @@ const UNSUPPORTED_FUSED_TARGET_REASONS = new Map([
     "Android x86_64 fused FFI is not a dflash target in this script; packages/app-core/scripts/aosp/compile-libllama.mjs owns emulator/system-agent fused artifacts.",
   ],
   [
-    "android-riscv64-cpu-fused",
-    "Android riscv64 fused FFI is not a dflash target in this script; packages/app-core/scripts/aosp/compile-libllama.mjs owns the riscv64 system-agent fused artifacts.",
+    "ios-arm64-metal-fused",
+    "iOS fused FFI is not wired or verifier-covered in build-llama-cpp-dflash.mjs; ios-arm64-metal-fused is not a supported dflash target.",
   ],
   [
-    "android-riscv64-vulkan-fused",
-    "Android riscv64 fused FFI is not a dflash target in this script; packages/app-core/scripts/aosp/compile-libllama.mjs owns the riscv64 system-agent fused artifacts (and Vulkan on riscv64 is not yet wired anywhere).",
+    "ios-arm64-simulator-metal-fused",
+    "iOS fused FFI is not wired or verifier-covered in build-llama-cpp-dflash.mjs; ios-arm64-simulator-metal-fused is not a supported dflash target.",
   ],
 ]);
 
@@ -548,34 +530,6 @@ function resolveAndroidNdk() {
   }
   return null;
 }
-
-// Parse the major version of an NDK by reading `source.properties` and
-// returning the integer leading the `Pkg.Revision` line, or null if the file
-// is missing/unparseable. NDKs ship `Pkg.Revision = 27.0.12077973` (the
-// release tag is r27, hence major=27). Used to gate the riscv64 Android ABI
-// behind r27+ since that is the first stable NDK with a real
-// `riscv64-linux-android` sysroot in `toolchains/llvm/prebuilt/<host>/sysroot`.
-function parseNdkMajorVersion(ndk) {
-  if (!ndk) return null;
-  const propsPath = path.join(ndk, "source.properties");
-  if (!fs.existsSync(propsPath)) return null;
-  try {
-    const text = fs.readFileSync(propsPath, "utf8");
-    const m = /^Pkg\.Revision\s*=\s*(\d+)/m.exec(text);
-    if (!m) return null;
-    const major = Number.parseInt(m[1], 10);
-    return Number.isFinite(major) ? major : null;
-  } catch {
-    return null;
-  }
-}
-
-// Floor: NDK r27 (released Sep-2024) is the first stable Android NDK with
-// first-class riscv64-linux-android sysroots and an unprefixed `riscv64`
-// ABI name. r26 shipped a developer-preview riscv64 sysroot only and
-// required out-of-tree patches; r25 and older have no riscv64 sysroot at
-// all. cmake/toolchain-android-riscv64.cmake encodes the same floor.
-const ANDROID_NDK_RISCV64_MIN_MAJOR = 27;
 
 // Find Vulkan headers usable for an Android build. Returns the include dir
 // (i.e. the parent of `vulkan/`) or null.
@@ -1079,7 +1033,7 @@ function patchOmnivoiceVoiceFilePicker(cacheDir, { dryRun = false } = {}) {
   if (!fs.existsSync(ffiPath)) {
     return;
   }
-  const source = fs.readFileSync(ffiPath, "utf8");
+  let source = fs.readFileSync(ffiPath, "utf8");
   let patched = source;
   if (!patched.includes("std::vector<std::string> tts_candidates;")) {
     const oldPicker = `    if (tts.empty()) return false;
@@ -1151,7 +1105,12 @@ function patchOmnivoiceVoiceFilePicker(cacheDir, { dryRun = false } = {}) {
 }
 
 function patchOmnivoiceStaticFfi(cacheDir, { dryRun = false } = {}) {
-  const cmakePath = path.join(cacheDir, "tools", "omnivoice", "CMakeLists.txt");
+  const cmakePath = path.join(
+    cacheDir,
+    "tools",
+    "omnivoice",
+    "CMakeLists.txt",
+  );
   if (!fs.existsSync(cmakePath)) {
     return;
   }
@@ -1178,8 +1137,7 @@ endif()`;
       `[dflash-build] patchOmnivoiceStaticFfi: elizainference add_library anchor not found in ${cmakePath}`,
     );
   }
-  const linkAnchor =
-    "if(APPLE)\n    target_link_options(elizainference PRIVATE";
+  const linkAnchor = "if(APPLE)\n    target_link_options(elizainference PRIVATE";
   if (!original.includes(linkAnchor)) {
     throw new Error(
       `[dflash-build] patchOmnivoiceStaticFfi: Apple reexport anchor not found in ${cmakePath}`,
@@ -1224,16 +1182,12 @@ function patchMobileKokoroTts(cacheDir, { dryRun = false } = {}) {
     "llama-mobile-kokoro-tts.patch",
   );
   if (!fs.existsSync(patchPath)) {
-    throw new Error(
-      `[dflash-build] missing mobile Kokoro TTS patch ${patchPath}`,
-    );
+    throw new Error(`[dflash-build] missing mobile Kokoro TTS patch ${patchPath}`);
   }
   if (!dryRun) {
     run("git", ["apply", "--whitespace=nowarn", patchPath], { cwd: cacheDir });
   }
-  console.log(
-    "[dflash-build] patched mobile Kokoro TTS and allocation preflight",
-  );
+  console.log("[dflash-build] patched mobile Kokoro TTS and allocation preflight");
 }
 
 function patchKokoroNativeIstftGuard(cacheDir, { dryRun = false } = {}) {
@@ -1897,25 +1851,10 @@ function cmakeFlagsForTarget(target, ctx) {
         "Android target requested but ANDROID_NDK_HOME is not set and no NDK was found under ANDROID_HOME, ANDROID_SDK_ROOT, ~/Library/Android/sdk, or ~/Android/Sdk",
       );
     }
-    // Map our internal arch token to the NDK's ANDROID_ABI value.
-    // arm64 → arm64-v8a (NDK's spelling for aarch64). x86_64 and
-    // riscv64 share their names. NDK r27+ supports ANDROID_ABI=riscv64
-    // (https://developer.android.com/ndk/guides/abis#riscv64); older
-    // NDKs will fail the toolchain probe — operators wanting the
-    // riscv64 Android ABI must run on NDK r27 or newer.
-    let androidAbi;
-    if (arch === "arm64") androidAbi = "arm64-v8a";
-    else if (arch === "x86_64") androidAbi = "x86_64";
-    else if (arch === "riscv64") androidAbi = "riscv64";
-    else {
-      throw new Error(
-        `Android target arch ${arch} is not mapped to an ANDROID_ABI value`,
-      );
-    }
     flags.push(
       `-DCMAKE_TOOLCHAIN_FILE=${path.join(ctx.androidNdk, "build", "cmake", "android.toolchain.cmake")}`,
       `-DANDROID_NDK=${ctx.androidNdk}`,
-      `-DANDROID_ABI=${androidAbi}`,
+      "-DANDROID_ABI=arm64-v8a",
       "-DANDROID_PLATFORM=android-28",
       // CURL is optional for llama-server and not part of the NDK sysroot.
       "-DLLAMA_CURL=OFF",
@@ -2068,22 +2007,6 @@ function targetCompatibility(target, ctx) {
         "linux-aarch64 target requires an arm64 Linux host (no aarch64 cross-toolchain wired here; run on a real arm64 build runner)",
     };
   }
-  // linux-riscv64-* mirrors the aarch64 story: no cross-toolchain is
-  // wired in this script, so non-riscv64 hosts can't produce riscv64
-  // binaries directly. Operators wanting riscv64 should run on a
-  // SiFive HiFive Premier / Milk-V Megrez build host or use the
-  // compile-libllama.mjs zig-cc cross path under packages/app-core/scripts/aosp/.
-  if (
-    platform === "linux" &&
-    arch === "riscv64" &&
-    process.arch !== "riscv64"
-  ) {
-    return {
-      ok: false,
-      reason:
-        "linux-riscv64 target requires a riscv64 Linux host (no riscv64 cross-toolchain wired in build-llama-cpp-dflash.mjs; run on a real riscv64 build runner or use packages/app-core/scripts/aosp/compile-libllama.mjs with --target android-riscv64-cpu for the musl cross path)",
-    };
-  }
   if (platform === "windows") {
     // arm64 Windows builds need either a native MSVC arm64 host or an
     // operator-supplied MINGW_TOOLCHAIN_FILE pointing at clang/LLVM
@@ -2116,53 +2039,6 @@ function targetCompatibility(target, ctx) {
         ok: false,
         reason: "Android Vulkan headers not found in NDK sysroot",
       };
-    }
-    if (arch === "riscv64") {
-      // The riscv64-linux-android sysroot landed in NDK r27 (Sep-2024).
-      // Older NDKs will fail the toolchain probe before any TU compiles
-      // (clang aborts with "unknown target triple"), so we refuse upfront
-      // with a usable error instead of letting cmake spit a 200-line trace.
-      const major = parseNdkMajorVersion(ctx.androidNdk);
-      if (major !== null && major < ANDROID_NDK_RISCV64_MIN_MAJOR) {
-        return {
-          ok: false,
-          reason: `android-riscv64 target requires NDK r${ANDROID_NDK_RISCV64_MIN_MAJOR}+ (found r${major} at ${ctx.androidNdk}; r26 only shipped a developer-preview riscv64 sysroot and r25/older have none)`,
-        };
-      }
-      const sysroot = path.join(
-        ctx.androidNdk,
-        "toolchains",
-        "llvm",
-        "prebuilt",
-      );
-      // Probe at least one host-prebuilt for an actual riscv64-linux-android
-      // libdir; even on r27 some custom NDK repackages strip it. If neither
-      // major check nor sysroot existence rules it out we let the build
-      // proceed.
-      if (fs.existsSync(sysroot)) {
-        const hosts = fs
-          .readdirSync(sysroot, { withFileTypes: true })
-          .filter((e) => e.isDirectory())
-          .map((e) => e.name);
-        const haveRiscvSysroot = hosts.some((host) =>
-          fs.existsSync(
-            path.join(
-              sysroot,
-              host,
-              "sysroot",
-              "usr",
-              "lib",
-              "riscv64-linux-android",
-            ),
-          ),
-        );
-        if (!haveRiscvSysroot) {
-          return {
-            ok: false,
-            reason: `android-riscv64 target requires an NDK with riscv64-linux-android sysroot files under <ndk>/toolchains/llvm/prebuilt/<host>/sysroot/usr/lib/riscv64-linux-android/ (none found at ${ctx.androidNdk}; verify the NDK is r27+)`,
-          };
-        }
-      }
     }
     return { ok: true };
   }
@@ -2624,15 +2500,6 @@ static BackendPair codec_backend_pair(BackendPair bp) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
-  patchOmnivoiceAndKokoro(cacheDir, backend, target, dryRun);
-  patchDflashDrafter(cacheDir, target, dryRun);
-  patchCpuKernels(cacheDir, dryRun);
-  patchBackendKernels(cacheDir, backend, target, dryRun);
-  patchServerStructuredOutput(cacheDir, target, dryRun);
-  patchPlatformLinkage(cacheDir, target);
-}
-
-function patchOmnivoiceAndKokoro(cacheDir, backend, target, dryRun) {
   if (backend === "metal") {
     patchOmnivoiceCodecCpuFallback(cacheDir, { dryRun });
   } else if (dryRun) {
@@ -2649,12 +2516,7 @@ function patchOmnivoiceAndKokoro(cacheDir, backend, target, dryRun) {
   patchMobileKokoroTts(cacheDir, { dryRun });
   patchKokoroNativeIstftGuard(cacheDir, { dryRun });
   patchOmnivoiceVoiceFilePicker(cacheDir, { dryRun });
-  if (target.startsWith("ios-")) {
-    patchOmnivoiceStaticFfi(cacheDir, { dryRun });
-  }
-}
-
-function patchDflashDrafter(cacheDir, target, dryRun) {
+  patchOmnivoiceStaticFfi(cacheDir, { dryRun });
   if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
     console.warn(
       `[dflash-build] skipping DFlash speculative dispatch patch for target=${target}; ` +
@@ -2672,9 +2534,6 @@ function patchDflashDrafter(cacheDir, target, dryRun) {
   } else {
     patchDflashDrafterArchImpl(cacheDir, { dryRun });
   }
-}
-
-function patchCpuKernels(cacheDir, dryRun) {
   // Wave A1: mirror the verified standalone QJL CPU SIMD TUs (AVX-VNNI int8
   // score path, ARMv8.4 dotprod, runtime-cpuid dispatcher) over the fork's
   // stale ggml-cpu/qjl/ snapshot and wire them into the ggml-cpu build. Runs
@@ -2697,9 +2556,6 @@ function patchCpuKernels(cacheDir, dryRun) {
   // GGML_OP_FUSED_ATTN_QJL_TBQ over ith/nth (n_tasks bump + a real
   // disjoint-output split + per-task scratch). Both halves together.
   patchCpuThreadParallelismImpl(cacheDir, { dryRun });
-}
-
-function patchBackendKernels(cacheDir, backend, target, dryRun) {
   if (backend === "metal") {
     patchMetalKernelsImpl(cacheDir, { dryRun });
   }
@@ -2717,9 +2573,6 @@ function patchBackendKernels(cacheDir, backend, target, dryRun) {
     patchCudaKernelsImpl(cacheDir, { dryRun });
     patchGgmlCudaForFusedAttn(cacheDir, { dryRun });
   }
-}
-
-function patchServerStructuredOutput(cacheDir, target, dryRun) {
   // llama-server structured-output + DFlash verifier-stream patch (Eliza-1
   // voice swarm, W4): assert grammar_lazy / json_schema / response_format /
   // prefill_assistant are present in the fork's post-refactor server sources
@@ -2750,9 +2603,6 @@ function patchServerStructuredOutput(cacheDir, target, dryRun) {
       patchServerStructuredOutputImpl(cacheDir, { dryRun });
     }
   }
-}
-
-function patchPlatformLinkage(cacheDir, target) {
   // W3-3 H2.c: the fused `/v1/audio/speech` mount lives in committed fork
   // source (`tools/server/server.cpp` namespace `eliza_omnivoice`, guarded
   // by `#ifdef ELIZA_FUSE_OMNIVOICE`). The cmake-graft separately links
@@ -2790,12 +2640,14 @@ function patchOmnivoiceCmakeConflictArtifact(root, { dryRun = false } = {}) {
   const cmakePath = path.join(root, "CMakeLists.txt");
   if (!fs.existsSync(cmakePath)) return;
   const source = fs.readFileSync(cmakePath, "utf8");
-  const conflictStartMarker = `${"<".repeat(7)} HEAD\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1`;
-  const conflictDividerMarker = `${"=".repeat(7)}\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1 (REMOVED`;
-  const conflictEndMarker = ">".repeat(7);
-  const begin = source.indexOf(conflictStartMarker);
-  const divider = source.indexOf(conflictDividerMarker, begin);
-  const end = source.indexOf(conflictEndMarker, divider);
+  const begin = source.indexOf(
+    "<<<<<<< HEAD\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1",
+  );
+  const divider = source.indexOf(
+    "=======\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1 (REMOVED",
+    begin,
+  );
+  const end = source.indexOf(">>>>>>>", divider);
   if (begin === -1 || divider === -1 || end === -1) return;
   const endLine = source.indexOf("\n", end);
   const replacement =
@@ -3485,13 +3337,11 @@ function canRunTargetOnHost(target) {
   if (platform === "darwin" && process.platform !== "darwin") return false;
   if (platform === "linux" && process.platform !== "linux") return false;
   // arm64 (Apple, Windows, Android) and aarch64 (Linux) both map to
-  // process.arch === "arm64" on Node. x64 maps to "x64". Node exposes
-  // riscv64 as "riscv64" since 21.x.
+  // process.arch === "arm64" on Node. x64 maps to "x64".
   if ((arch === "arm64" || arch === "aarch64") && process.arch !== "arm64") {
     return false;
   }
   if (arch === "x64" && process.arch !== "x64") return false;
-  if (arch === "riscv64" && process.arch !== "riscv64") return false;
   return true;
 }
 
@@ -4755,10 +4605,8 @@ function isCliEntrypoint(argvPath) {
   const resolvedArgvPath = path.resolve(argvPath);
   if (resolvedArgvPath === __filename) return true;
   try {
-    return (
-      fs.realpathSync.native(resolvedArgvPath) ===
-      fs.realpathSync.native(__filename)
-    );
+    return fs.realpathSync.native(resolvedArgvPath) ===
+      fs.realpathSync.native(__filename);
   } catch {
     return false;
   }

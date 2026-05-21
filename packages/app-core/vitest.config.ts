@@ -7,6 +7,10 @@ const fileDir = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(fileDir, "../..");
 const appCoreSrc = path.join(fileDir, "src");
 const agentSrc = path.join(monorepoRoot, "packages/agent/src");
+const pluginWorkerRuntimeSrc = path.join(
+  monorepoRoot,
+  "packages/plugin-worker-runtime/src",
+);
 const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
@@ -90,6 +94,14 @@ const pluginWhatsappRoot = path.join(monorepoRoot, "plugins/plugin-whatsapp");
 const pluginAgentOrchestratorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-orchestrator/src",
+);
+const pluginRemoteManifestSrc = path.join(
+  monorepoRoot,
+  "packages/plugin-remote-manifest/src",
+);
+const pluginWorkerRuntimeSrc = path.join(
+  monorepoRoot,
+  "packages/plugin-worker-runtime/src",
 );
 const pluginWorkflowSrc = path.join(
   monorepoRoot,
@@ -443,6 +455,22 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-agent-orchestrator\/(.+)$/,
         replacement: path.join(pluginAgentOrchestratorSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-remote-manifest$/,
+        replacement: path.join(pluginRemoteManifestSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-remote-manifest\/(.+)$/,
+        replacement: path.join(pluginRemoteManifestSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-worker-runtime$/,
+        replacement: path.join(pluginWorkerRuntimeSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-worker-runtime\/(.+)$/,
+        replacement: path.join(pluginWorkerRuntimeSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-workflow$/,

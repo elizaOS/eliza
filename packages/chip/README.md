@@ -47,30 +47,49 @@ under `build/ai_eda/`.
 
 ```sh
 make ai-eda-bootstrap-metadata
+make ai-eda-backend-preflight
 make ai-eda-bootstrap-setup-check
 make ai-eda-bootstrap-local-smoke
 make ai-eda-cuda-payload
 ```
 
 Use `make ai-eda-bootstrap-metadata` on a fresh machine first. It downloads
-nothing. Use `make ai-eda-bootstrap-setup-check` after reviewed payloads such as
-TILOS MacroPlacement, OpenROAD EDA Corpus, CircuitNet 3.0, ChiPBench-D, and
-OpenABC-D have been fetched or restored; it rebuilds normalized corpora,
+nothing and also records local AI/EDA backend availability without installing
+packages or cloning repositories. Use `make ai-eda-backend-preflight` directly
+when preparing a CUDA/Linux host for optional ZigZag, Timeloop/Accelergy,
+RTL-MUL, LLM4DV, AssertLLM, or Fault lanes. Use
+`make ai-eda-bootstrap-setup-check` after reviewed payloads such as TILOS
+MacroPlacement, OpenROAD EDA Corpus, CircuitNet 3.0, ChiPBench-D, OpenABC-D,
+and AiEDA/iDATA have been fetched or restored; it rebuilds normalized corpora,
 bounded surrogate baselines, and E1 cases without CUDA training. Use
-`make ai-eda-bootstrap-local-smoke` for the
-broader local evidence stack. On a CUDA host, run the generated payload flow
-with:
+`make ai-eda-bootstrap-local-smoke` for the broader local evidence stack,
+including candidate ranking, replay-plan generation, and guarded
+macro-placement replay preflight without OpenLane/OpenROAD execution. For
+concurrent or repeated setup runs, pass a unique
+`AI_EDA_RUN_ID=<machine-or-date>` so generated records do not share the default
+`build/ai_eda/**/validation` directories. If the default `python3` points at a
+broken local environment, override it with `PYTHON=/usr/bin/python3` or your
+managed virtualenv interpreter.
+
+On a CUDA host, run the generated payload flow with:
 
 ```sh
-python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id cuda-host --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --include-torch
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id cuda-host --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --include-torch
 ```
 
 To intentionally pull reviewed assets into ignored local payload directories,
 use explicit asset IDs:
 
 ```sh
-python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --execute-fetch
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --execute-fetch
 ```
+
+Paper/method-only assets such as AssertLLM are recorded as metadata-only
+payloads with hashes under ignored `external/repos/<asset>/payload` paths; no
+paper PDF, model weights, or generated assertions are treated as chip evidence.
+`make ai-eda-cuda-payload` also runs the payload checker, which validates the
+tarball, embedded run plan, selected assets, critical fetch commands, expected
+CUDA outputs, and the no-datasets/no-weights payload boundary.
 
 ## Docker Setup
 
