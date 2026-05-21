@@ -121,9 +121,7 @@ def main() -> int:
             "board_bbox_mm": scorecard["optimization_target"]["board_bbox_mm"],
             "battery_window_mm": scorecard["optimization_target"]["battery_window_mm"],
             "display_outline_mm": score["display_fit"]["selected_display_outline_mm"],
-            "display_clearance_mm": score["display_fit"][
-                "clearance_in_device_envelope_mm"
-            ],
+            "display_clearance_mm": score["display_fit"]["clearance_in_device_envelope_mm"],
             "physical_pcb_island_area_mm2": scorecard["optimization_target"][
                 "physical_pcb_island_area_mm2"
             ],
@@ -144,9 +142,7 @@ def main() -> int:
             "battery_window_intrusion_count": live["battery_window_intrusion_audit"][
                 "intrusion_count"
             ],
-            "active_region_overlap_count": repack["candidate_overlap_audit"][
-                "overlap_count"
-            ],
+            "active_region_overlap_count": repack["candidate_overlap_audit"]["overlap_count"],
             "known_envelope_blockers_count": envelopes["routing_impact"][
                 "known_envelope_blockers_count"
             ],
@@ -164,19 +160,13 @@ def main() -> int:
             "display_module": known_envelopes["display_module"],
             "battery_pack": known_envelopes["battery_pack"],
             "side_button_primary_switch": known_envelopes["side_button_primary_switch"],
-            "front_camera_alternate_junde": known_envelopes[
-                "front_camera_alternate_junde"
-            ],
-            "front_and_rear_camera_primary": known_envelopes[
-                "front_and_rear_camera_primary"
-            ],
+            "front_camera_alternate_junde": known_envelopes["front_camera_alternate_junde"],
+            "front_and_rear_camera_primary": known_envelopes["front_and_rear_camera_primary"],
         },
         "placement_repack_policy": {
             "candidate_regions_mm": repack["candidate_regions_mm"],
             "battery_window_audit": repack["battery_window_audit"],
-            "region_semantics_changes_required": repack[
-                "region_semantics_changes_required"
-            ],
+            "region_semantics_changes_required": repack["region_semantics_changes_required"],
             "required_before_routed_release": repack["required_before_routed_release"],
         },
         "routed_release_output_dependencies": required_release_outputs,
@@ -193,15 +183,11 @@ def main() -> int:
             ),
             "route_density_matches_feasibility": (
                 score["route_density"]["differential_pair_count_required"]
-                == feasibility["interface_complexity_counts"][
-                    "differential_pair_count_required"
-                ]
+                == feasibility["interface_complexity_counts"]["differential_pair_count_required"]
                 and score["route_density"]["rf_feed_count_required"]
                 == feasibility["interface_complexity_counts"]["rf_feed_count_required"]
                 and score["route_density"]["split_interconnect_min_contacts"]
-                == feasibility["interface_complexity_counts"][
-                    "split_interconnect_min_contacts"
-                ]
+                == feasibility["interface_complexity_counts"]["split_interconnect_min_contacts"]
             ),
             "repack_candidate_overlap_free_and_matches_active_matrix": (
                 repack["candidate_overlap_audit"]["overlap_count"] == 0

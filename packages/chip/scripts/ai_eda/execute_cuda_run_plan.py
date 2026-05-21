@@ -113,8 +113,7 @@ def execute_command(command: str, timeout_s: int) -> dict[str, Any]:
             shell=True,
             check=False,
             text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=timeout_s,
         )
         return {
@@ -153,7 +152,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if args.execute and not args.stage:
-        raise SystemExit("--execute requires at least one --stage so the CUDA runbook is reviewed in bounded slices")
+        raise SystemExit(
+            "--execute requires at least one --stage so the CUDA runbook is reviewed in bounded slices"
+        )
     plan = load_json(args.plan)
     commands = plan.get("required_remote_commands")
     outputs = plan.get("expected_outputs")
@@ -189,13 +190,28 @@ def main() -> int:
             item["status"] = "SKIPPED_TEMPLATE_COMMAND"
         if orchestration and selected:
             item["status"] = "SKIPPED_ORCHESTRATION_COMMAND"
-            item["skip_reason"] = "run-plan orchestration commands are not executed from inside the run plan"
+            item["skip_reason"] = (
+                "run-plan orchestration commands are not executed from inside the run plan"
+            )
         allow_flag = RISKY_STAGE_ALLOW_FLAGS.get(stage)
-        if args.execute and selected and not template and not orchestration and allow_flag and not getattr(args, allow_flag):
+        if (
+            args.execute
+            and selected
+            and not template
+            and not orchestration
+            and allow_flag
+            and not getattr(args, allow_flag)
+        ):
             item["status"] = "BLOCKED_REQUIRES_EXPLICIT_ALLOW"
             item["blocked_reason"] = f"stage {stage!r} requires --{allow_flag.replace('_', '-')}"
             blocked += 1
-        if args.execute and selected and not template and not orchestration and item["status"] != "BLOCKED_REQUIRES_EXPLICIT_ALLOW":
+        if (
+            args.execute
+            and selected
+            and not template
+            and not orchestration
+            and item["status"] != "BLOCKED_REQUIRES_EXPLICIT_ALLOW"
+        ):
             item["status"] = "EXECUTED"
             execution = execute_command(expanded, args.timeout_s)
             item["execution"] = execution
@@ -244,13 +260,17 @@ def main() -> int:
             "allow_inference": bool(args.allow_inference),
             "allow_replay": bool(args.allow_replay),
             "allow_alphachip": bool(args.allow_alphachip),
-            "orchestration_commands_skipped": sum(1 for item in manifest_commands if item.get("orchestration_command")),
+            "orchestration_commands_skipped": sum(
+                1 for item in manifest_commands if item.get("orchestration_command")
+            ),
             "blocked_command_count": blocked,
         },
         "command_count": len(manifest_commands),
         "template_command_count": sum(1 for item in manifest_commands if item["template"]),
         "selected_command_count": sum(
-            1 for item in manifest_commands if item["selected"] and not item["template"] and not item.get("orchestration_command")
+            1
+            for item in manifest_commands
+            if item["selected"] and not item["template"] and not item.get("orchestration_command")
         ),
         "executed_command_count": executed,
         "stage_counts": dict(sorted(stage_counts.items())),

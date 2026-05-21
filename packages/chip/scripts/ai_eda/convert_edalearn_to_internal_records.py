@@ -20,7 +20,9 @@ PINNED_REVISION = "fc34c2e89fd1e49b5cb97e04441b100014435384"
 
 CONFIG_RE = re.compile(r'^\s*set\s+([A-Za-z0-9_]+)\s+"?([^"\n]+?)"?\s*$')
 VERILOG_MODULE_RE = re.compile(r"^\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\b", re.MULTILINE)
-VHDL_ENTITY_RE = re.compile(r"^\s*entity\s+([A-Za-z_][A-Za-z0-9_]*)\s+is\b", re.IGNORECASE | re.MULTILINE)
+VHDL_ENTITY_RE = re.compile(
+    r"^\s*entity\s+([A-Za-z_][A-Za-z0-9_]*)\s+is\b", re.IGNORECASE | re.MULTILINE
+)
 
 
 def rel(path: Path) -> str:
@@ -61,7 +63,11 @@ def rtl_files(design_dir: Path) -> list[Path]:
     if not rtl_dir.exists():
         return []
     suffixes = {".v", ".sv", ".vh", ".vhd", ".vhdl"}
-    return [path for path in sorted(rtl_dir.rglob("*")) if path.is_file() and path.suffix.lower() in suffixes]
+    return [
+        path
+        for path in sorted(rtl_dir.rglob("*"))
+        if path.is_file() and path.suffix.lower() in suffixes
+    ]
 
 
 def parse_rtl(path: Path) -> dict[str, Any]:
@@ -130,7 +136,9 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
             edges.append({"src": source_id, "dst": entity_id, "edge_type": "defines_entity"})
     if not edges and len(nodes) > 1:
         for src, dst in zip(nodes, nodes[1:]):
-            edges.append({"src": src["id"], "dst": dst["id"], "edge_type": "source_sequence_fallback"})
+            edges.append(
+                {"src": src["id"], "dst": dst["id"], "edge_type": "source_sequence_fallback"}
+            )
 
     metrics = {
         "rtl_file_count": len(rtl),
@@ -156,7 +164,9 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
             "configs": [config_source],
         },
         "constraints": {
-            "clocks": ([{"name": clock, "period": clk_period, "source": rel(config_path)}] if clock else []),
+            "clocks": (
+                [{"name": clock, "period": clk_period, "source": rel(config_path)}] if clock else []
+            ),
             "resets": [],
         },
         "technology": {
@@ -190,7 +200,10 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
         "id": f"{record_prefix}-flow-run",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
-        "toolchain": {"tools": ["EDALearn public RTL/config export"], "version_capture": "external/repos/edalearn/manifest.yaml"},
+        "toolchain": {
+            "tools": ["EDALearn public RTL/config export"],
+            "version_capture": "external/repos/edalearn/manifest.yaml",
+        },
         "command": "python3 scripts/ai_eda/convert_edalearn_to_internal_records.py --run-id <run-id>",
         "inputs": {"config": config_source, "rtl": rtl_sources},
         "outputs": {"reports": [], "artifacts": [config_source, *rtl_sources]},

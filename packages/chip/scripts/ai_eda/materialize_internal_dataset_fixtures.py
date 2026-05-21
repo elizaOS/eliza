@@ -14,7 +14,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES_DIR = ROOT / "docs/spec-db/ai-eda/examples"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/internal_dataset_fixtures"
-CLAIM_BOUNDARY = "internal_dataset_fixture_materialization_only_no_training_inference_or_release_claim"
+CLAIM_BOUNDARY = (
+    "internal_dataset_fixture_materialization_only_no_training_inference_or_release_claim"
+)
 
 
 def load_yaml(path: Path) -> dict[str, Any]:

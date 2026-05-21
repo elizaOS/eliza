@@ -1,0 +1,9 @@
+Mirrors:
+http://time-based.snapshots.deb.tails.boum.org/debian/2026042702
+http://time-based.snapshots.deb.tails.boum.org/debian-security/2026052003
+http://time-based.snapshots.deb.tails.boum.org/torproject/2026050704
+Additional sources:
+deb http://time-based.snapshots.deb.tails.boum.org/debian/2026042702 sid main contrib non-free non-free-firmware
+deb http://deb.tails.boum.org/ stable main contrib non-free
+deb http://time-based.snapshots.deb.tails.boum.org/torproject/2026050704 trixie main
+deb http://time-based.snapshots.deb.tails.boum.org/debian/2026042702 trixie-backports main contrib non-free non-free-firmware

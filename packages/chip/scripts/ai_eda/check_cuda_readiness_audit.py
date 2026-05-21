@@ -49,7 +49,22 @@ def validate(report: dict[str, Any]) -> list[str]:
     if not isinstance(evidence_run_ids, dict):
         errors.append("evidence_run_ids must be a mapping")
     else:
-        for field in ("setup_check", "training_handoff"):
+        for field in (
+            "preflight",
+            "payload",
+            "run_plan_execution",
+            "run_plan_safety_matrix",
+            "full_training_matrix",
+            "alphachip_checkpoint",
+            "alphachip_successor_plan",
+            "current_research_watchlist",
+            "replay_preflight",
+            "replay_prerequisites",
+            "replay_execution",
+            "replay_comparison",
+            "setup_check",
+            "training_handoff",
+        ):
             if not isinstance(evidence_run_ids.get(field), str) or not evidence_run_ids[field]:
                 errors.append(f"evidence_run_ids.{field} must be non-empty")
     policy = report.get("policy")
@@ -67,12 +82,25 @@ def validate(report: dict[str, Any]) -> list[str]:
             "payload_handoff_ready",
             "run_plan_dry_run_validated",
             "run_plan_safety_matrix_validated",
+            "full_training_matrix_validated",
+            "full_training_matrix_ready",
             "large_cuda_training_ready",
             "alphachip_checkpoint_available",
+            "alphachip_successor_plan_validated",
+            "alphachip_successor_cuda_scale_ready",
             "current_research_watchlist_captured",
             "e1_openlane_replay_ready",
+            "openlane_replay_execution_validated",
+            "openlane_replay_comparison_validated",
             "setup_check_bootstrap_complete",
             "training_handoff_bootstrap_complete",
+            "torch_training_validated",
+            "torch_inference_validated",
+            "full_replay_plan_validated",
+            "replay_queue_validated",
+            "openlane_replay_prerequisites_validated",
+            "openlane_replay_host_ready",
+            "training_handoff_payload_ready",
         ):
             if not isinstance(capabilities.get(field), bool):
                 errors.append(f"capabilities.{field} must be boolean")
@@ -94,7 +122,10 @@ def validate(report: dict[str, Any]) -> list[str]:
         if present < 3:
             errors.append("at least three core handoff artifacts must be present")
     blockers = report.get("blockers")
-    if report.get("status") == "PASS_WITH_BLOCKERS_RECORDED":
+    if report.get("status") == "PASS_WITH_BLOCKERS_RECORDED" and (  # noqa: SIM102
+        not isinstance(blockers, list) or not blockers
+    ):
+        errors.append("blocked readiness audit must list blockers")
         if not isinstance(blockers, list) or not blockers:
             errors.append("blocked readiness audit must list blockers")
     if isinstance(blockers, list):

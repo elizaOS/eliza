@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_MAP_DIR = ROOT / "external/datasets/aieda-idata/payload/PPU/iEDA_route_process_data/PPU_a_place"
+DEFAULT_MAP_DIR = (
+    ROOT / "external/datasets/aieda-idata/payload/PPU/iEDA_route_process_data/PPU_a_place"
+)
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/aieda_idata"
 CLAIM_BOUNDARY = "aieda_idata_conversion_training_only_no_e1_signoff_or_release_claim"
 
@@ -57,7 +59,9 @@ def percentile(values: list[float], percentile_value: float) -> float:
 
 def parse_demand_map(path: Path) -> dict[str, Any]:
     rows: list[list[float]] = []
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
+    ):
         cells = [cell.strip() for cell in raw_line.split(",") if cell.strip()]
         if not cells:
             continue
@@ -127,7 +131,9 @@ def parse_demand_map(path: Path) -> dict[str, Any]:
                 }
             )
     if not edge_features and len(nonzero_cells) > 1:
-        for (row, col, demand), (next_row, next_col, other_demand) in zip(nonzero_cells, nonzero_cells[1:]):
+        for (row, col, demand), (next_row, next_col, other_demand) in zip(
+            nonzero_cells, nonzero_cells[1:]
+        ):
             edge_features.append(
                 {
                     "src": f"cell_r{row}_c{col}",

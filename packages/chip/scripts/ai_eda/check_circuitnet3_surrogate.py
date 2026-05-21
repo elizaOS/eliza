@@ -11,7 +11,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/circuitnet3_surrogate/validation/training_run.json"
-CLAIM_BOUNDARY = "circuitnet3_surrogate_training_pretraining_only_no_e1_ppa_signoff_or_release_claim"
+CLAIM_BOUNDARY = (
+    "circuitnet3_surrogate_training_pretraining_only_no_e1_ppa_signoff_or_release_claim"
+)
 REQUIRED_SPLITS = ("train", "val", "test")
 
 
@@ -40,7 +42,11 @@ def jsonl_count(path: Path) -> int:
 
 
 def valid_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
 
 
 def validate(report: dict[str, Any], report_path: Path) -> list[str]:
@@ -92,7 +98,9 @@ def validate(report: dict[str, Any], report_path: Path) -> list[str]:
     if metrics.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("metrics claim_boundary is missing or incorrect")
     splits = metrics.get("splits")
-    if not isinstance(splits, list) or {item.get("split") for item in splits if isinstance(item, dict)} != set(REQUIRED_SPLITS):
+    if not isinstance(splits, list) or {
+        item.get("split") for item in splits if isinstance(item, dict)
+    } != set(REQUIRED_SPLITS):
         errors.append("metrics splits must cover train, val, and test")
     else:
         for item in splits:

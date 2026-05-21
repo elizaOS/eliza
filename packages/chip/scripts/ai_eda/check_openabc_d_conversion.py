@@ -97,7 +97,9 @@ def validate_graph(record: dict[str, Any], path: Path) -> tuple[list[str], dict[
         values = {}
     if labels.get("label_status") != "public_openabc_d_logic_network_training_only_not_e1_signoff":
         errors.append(f"{record_id}: invalid label_status")
-    if values.get("logic_gate_count") != sum(1 for item in nodes if isinstance(item, dict) and item.get("node_type") == "logic_gate"):
+    if values.get("logic_gate_count") != sum(
+        1 for item in nodes if isinstance(item, dict) and item.get("node_type") == "logic_gate"
+    ):
         errors.append(f"{record_id}: logic_gate_count does not match graph nodes")
     if values.get("edge_count") != len(edges):
         errors.append(f"{record_id}: edge_count does not match graph edges")

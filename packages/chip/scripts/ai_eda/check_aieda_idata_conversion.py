@@ -58,14 +58,22 @@ def validate_source(record: Any, label: str) -> list[str]:
     return errors
 
 
-def validate_stats(values: Any, record_id: str, node_count: int | None = None, edge_count: int | None = None) -> list[str]:
+def validate_stats(
+    values: Any, record_id: str, node_count: int | None = None, edge_count: int | None = None
+) -> list[str]:
     errors: list[str] = []
     if not isinstance(values, dict):
         return [f"{record_id}: stats must be a mapping"]
     for field in ("row_count", "col_count", "cell_count", "nonzero_count"):
         if not positive_int(values.get(field)):
             errors.append(f"{record_id}: {field} must be a positive integer")
-    for field in ("max_demand", "total_demand", "mean_demand", "nonzero_mean_demand", "p95_nonzero_demand"):
+    for field in (
+        "max_demand",
+        "total_demand",
+        "mean_demand",
+        "nonzero_mean_demand",
+        "p95_nonzero_demand",
+    ):
         if not positive_number(values.get(field)):
             errors.append(f"{record_id}: {field} must be a positive number")
     if not positive_number(values.get("nonzero_density")) or values.get("nonzero_density") > 1:
@@ -79,7 +87,10 @@ def validate_stats(values: Any, record_id: str, node_count: int | None = None, e
     if positive_int(values.get("row_count")) and positive_int(values.get("col_count")):
         if values.get("cell_count") != values["row_count"] * values["col_count"]:
             errors.append(f"{record_id}: cell_count must equal row_count * col_count")
-        if positive_int(values.get("nonzero_count")) and values["nonzero_count"] > values["cell_count"]:
+        if (
+            positive_int(values.get("nonzero_count"))
+            and values["nonzero_count"] > values["cell_count"]
+        ):
             errors.append(f"{record_id}: nonzero_count cannot exceed cell_count")
     return errors
 
@@ -130,7 +141,11 @@ def validate_graph(record: dict[str, Any], path: Path) -> tuple[list[str], dict[
         if not positive_number(node.get("demand")):
             errors.append(f"{record_id}: node_features[{index}].demand must be positive")
     for index, edge in enumerate(edges[:20]):
-        if not isinstance(edge, dict) or not isinstance(edge.get("src"), str) or not isinstance(edge.get("dst"), str):
+        if (
+            not isinstance(edge, dict)
+            or not isinstance(edge.get("src"), str)
+            or not isinstance(edge.get("dst"), str)
+        ):
             errors.append(f"{record_id}: edge_features[{index}] must include src and dst")
     if labels.get("label_status") != LABEL_STATUS:
         errors.append(f"{record_id}: invalid label_status")

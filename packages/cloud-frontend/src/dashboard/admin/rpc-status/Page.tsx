@@ -1,6 +1,13 @@
 /** /dashboard/admin/rpc-status — verify the worker can reach each chain's RPC. */
 
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@elizaos/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@elizaos/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Helmet } from "react-helmet-async";
@@ -66,7 +73,9 @@ export default function AdminRpcStatusPage() {
         {error && (
           <Card className="border-destructive">
             <CardContent className="p-4 text-destructive">
-              {error instanceof Error ? error.message : "Failed to load RPC status"}
+              {error instanceof Error
+                ? error.message
+                : "Failed to load RPC status"}
             </CardContent>
           </Card>
         )}
@@ -84,7 +93,11 @@ export default function AdminRpcStatusPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   Treasury hot wallet
-                  <Badge variant={payload.hotWalletAddress ? "default" : "destructive"}>
+                  <Badge
+                    variant={
+                      payload.hotWalletAddress ? "default" : "destructive"
+                    }
+                  >
                     {payload.hotWalletAddress ? "configured" : "missing"}
                   </Badge>
                 </CardTitle>
@@ -99,7 +112,10 @@ export default function AdminRpcStatusPage() {
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               {payload.evm.map((p) => (
-                <Card key={p.network} className={p.reachable ? "" : "border-destructive"}>
+                <Card
+                  key={p.network}
+                  className={p.reachable ? "" : "border-destructive"}
+                >
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between text-base">
                       <span className="capitalize">{p.network}</span>
@@ -115,15 +131,18 @@ export default function AdminRpcStatusPage() {
                     <div>latency: {p.latencyMs ?? "—"} ms</div>
                     <div>latest block: {p.latestBlock ?? "—"}</div>
                     <div>
-                      ELIZA balance: {p.hotWalletBalance?.toLocaleString() ?? "—"}
+                      ELIZA balance:{" "}
+                      {p.hotWalletBalance?.toLocaleString() ?? "—"}
                     </div>
                     {p.error && (
-                      <div className="break-all text-destructive">error: {p.error}</div>
+                      <div className="break-all text-destructive">
+                        error: {p.error}
+                      </div>
                     )}
                     {p.rpcSource === "public_default" && (
                       <div className="text-amber-500">
-                        Using chain's public RPC — set a dedicated provider URL for
-                        production.
+                        Using chain's public RPC — set a dedicated provider URL
+                        for production.
                       </div>
                     )}
                   </CardContent>

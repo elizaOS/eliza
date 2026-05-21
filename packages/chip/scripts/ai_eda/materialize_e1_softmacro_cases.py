@@ -43,7 +43,9 @@ def source_record(path: Path) -> dict[str, Any]:
     }
 
 
-def softmacro_objects(grid: int, *, origin_um: float, pitch_um: float, size_um: float) -> list[dict[str, Any]]:
+def softmacro_objects(
+    grid: int, *, origin_um: float, pitch_um: float, size_um: float
+) -> list[dict[str, Any]]:
     objects: list[dict[str, Any]] = []
     for row in range(grid):
         for col in range(grid):
@@ -103,7 +105,12 @@ def build_records(grid: int) -> tuple[dict[str, Any], dict[str, Any], dict[str, 
         "design_bundle_id": design_id,
         "floorplan": {
             "die_area_um": [0.0, 0.0, die_max, die_max],
-            "core_area_um": [core_margin, core_margin, die_max - core_margin, die_max - core_margin],
+            "core_area_um": [
+                core_margin,
+                core_margin,
+                die_max - core_margin,
+                die_max - core_margin,
+            ],
             "rows": f"abstract_{grid}x{grid}_softmacro_rows",
             "macro_pitch_um": pitch,
         },

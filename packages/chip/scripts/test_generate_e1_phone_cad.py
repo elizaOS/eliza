@@ -402,9 +402,7 @@ def test_evt0_phone_supplier_response_review_fails_closed_until_vendor_returns(
     assert (tmp_path / "supplier-response-review.md").is_file()
 
 
-def test_evt0_phone_supplier_response_rejects_simulated_returns(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_supplier_response_rejects_simulated_returns(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     supplier = cad.supplier_matrix(params)
     monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
@@ -458,8 +456,7 @@ def test_evt0_phone_supplier_response_rejects_simulated_returns(
 
     assert review["status"] == "blocked_no_supplier_responses"
     assert (
-        review["template_evidence_class"]
-        == "simulated_supplier_response_for_planning_not_release"
+        review["template_evidence_class"] == "simulated_supplier_response_for_planning_not_release"
     )
     assert review["complete_response_count"] == 0
     assert "display_lcm_ctp" in review["missing_or_incomplete_items"]
@@ -569,16 +566,12 @@ def test_evt0_phone_supplier_evidence_acceptance_fails_closed_by_family(
 
     assert report["status"] == "blocked_no_supplier_evidence"
     assert report["source_status"]["supplier_rfq_status"] == "rfq_ready"
-    assert report["source_status"]["supplier_response_status"] == (
-        "blocked_no_supplier_responses"
-    )
+    assert report["source_status"]["supplier_response_status"] == ("blocked_no_supplier_responses")
     assert report["expected_family_count"] == 6
     assert report["complete_family_count"] == 0
     assert "display_touch_stack" in report["missing_or_incomplete_families"]
     assert "wireless_modules" in report["missing_or_incomplete_families"]
-    display = next(
-        family for family in report["families"] if family["id"] == "display_touch_stack"
-    )
+    display = next(family for family in report["families"] if family["id"] == "display_touch_stack")
     assert display["rfq_package_ready"] is True
     assert "step_model" in display["missing_required_evidence_keys"]
     assert display["items"][0]["response_case_present"] is True
@@ -757,9 +750,7 @@ def test_evt0_phone_assembly_build_traveler_requires_physical_records(
     assert not passing["missing_or_incomplete_steps"]
 
 
-def test_evt0_phone_process_control_plan_requires_factory_records(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_process_control_plan_requires_factory_records(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
@@ -1070,8 +1061,7 @@ def test_evt0_phone_mechanical_integration_sim_covers_usb_screen_and_buttons(
     }.issubset(cases)
     assert cases["usb_c_insertion_load_planning"]["planning_pass"]
     assert (
-        cases["usb_c_insertion_load_planning"]["actual"]["predicted_peak_insertion_force_n"]
-        <= 35.0
+        cases["usb_c_insertion_load_planning"]["actual"]["predicted_peak_insertion_force_n"] <= 35.0
     )
     assert cases["screen_bond_clamp_and_fpc_planning"]["planning_pass"]
     assert cases["screen_bond_clamp_and_fpc_planning"]["actual"]["compression_mm"] == 0.045
@@ -1081,9 +1071,7 @@ def test_evt0_phone_mechanical_integration_sim_covers_usb_screen_and_buttons(
     assert (tmp_path / "mechanical-integration-sim.md").is_file()
 
 
-def test_evt0_phone_display_results_reject_simulated_rows(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_display_results_reject_simulated_rows(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     checks = cad.run_checks(params, parts)
@@ -1115,17 +1103,13 @@ def test_evt0_phone_display_results_reject_simulated_rows(
     writer.writeheader()
     writer.writerows(rows)
     csv_path.write_text(
-        "# evidence_class: simulated_display_result_for_planning_not_release\n"
-        + output.getvalue()
+        "# evidence_class: simulated_display_result_for_planning_not_release\n" + output.getvalue()
     )
 
     review = cad.write_display_results_review_artifacts(display)
 
     assert review["status"] == "blocked_no_display_results"
-    assert (
-        review["template_evidence_class"]
-        == "simulated_display_result_for_planning_not_release"
-    )
+    assert review["template_evidence_class"] == "simulated_display_result_for_planning_not_release"
     assert "display_bond_peel_n_per_mm" in review["failed_measurements"]
     assert review["cases"][0]["evidence_class_allowed"] is False
 
@@ -1224,10 +1208,7 @@ def test_evt0_phone_acoustic_results_reject_simulated_rows(tmp_path, monkeypatch
     review = cad.write_acoustic_results_review_artifacts(acoustic)
 
     assert review["status"] == "blocked_no_acoustic_results"
-    assert (
-        review["template_evidence_class"]
-        == "simulated_acoustic_result_for_planning_not_release"
-    )
+    assert review["template_evidence_class"] == "simulated_acoustic_result_for_planning_not_release"
     assert review["complete_result_count"] == 0
     assert "bottom_speaker_spl_1khz_db" in review["failed_measurements"]
     assert review["cases"][0]["evidence_class_allowed"] is False
@@ -1464,7 +1445,9 @@ def test_evt0_phone_environmental_results_reject_simulated_rows(tmp_path, monkey
             }
         )
     with (tmp_path / "environmental-results-template.csv").open("w", newline="") as csv_file:
-        csv_file.write("# evidence_class: simulated_environmental_result_for_planning_not_release\n")
+        csv_file.write(
+            "# evidence_class: simulated_environmental_result_for_planning_not_release\n"
+        )
         writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -1601,7 +1584,9 @@ def test_evt0_phone_evt_results_review_fails_closed_on_blank_template(
 
     assert review_report["status"] == "blocked_no_physical_results"
     assert review_report["expected_measurement_count"] >= 10
-    assert review_report["expected_sample_result_count"] > review_report["expected_measurement_count"]
+    assert (
+        review_report["expected_sample_result_count"] > review_report["expected_measurement_count"]
+    )
     assert review_report["required_evidence_class"] == "physical_evt_result"
     assert review_report["populated_result_count"] == 0
     assert "power_button_actuation_force" in review_report["sample_shortage_measurements"]
@@ -1660,7 +1645,9 @@ def test_evt0_phone_evt_results_reject_simulated_rows(tmp_path, monkeypatch) -> 
     review_report = cad.write_evt_results_review_artifacts(evt_inspection)
 
     assert review_report["status"] == "blocked_no_physical_results"
-    assert review_report["template_evidence_class"] == "simulated_evt_result_for_planning_not_release"
+    assert (
+        review_report["template_evidence_class"] == "simulated_evt_result_for_planning_not_release"
+    )
     assert review_report["populated_result_count"] == len(rows)
     assert "power_button_actuation_force" in review_report["failed_measurements"]
     assert review_report["cases"][0]["evidence_class_allowed"] is False
@@ -1822,9 +1809,10 @@ def test_evt0_phone_visual_decision_report_tracks_render_reviews(tmp_path, monke
     assert report["technical_decisions"]
     assert report["visual_deltas"]["front_back_mean_rgb_sum_delta"] >= 8.0
     assert any("rear feature proportions" in item for item in report["manual_review_items"])
-    assert "production visual/CMF signoff requires zero open manual review items" in report[
-        "release_rule"
-    ]
+    assert (
+        "production visual/CMF signoff requires zero open manual review items"
+        in report["release_rule"]
+    )
     assert (tmp_path / "visual-decision-report.json").is_file()
     assert (tmp_path / "visual-decision-report.md").is_file()
 
@@ -1856,7 +1844,9 @@ def test_evt0_phone_render_verification_rejects_blank_or_sparse_images(
             10 + (idx * 11) % 150,
         )
         detailed_draw.rectangle((x, y, x + 54, y + 44), fill=color, outline="black")
-    detailed_draw.rounded_rectangle((160, 130, 1010, 890), radius=70, outline=(255, 82, 5), width=18)
+    detailed_draw.rounded_rectangle(
+        (160, 130, 1010, 890), radius=70, outline=(255, 82, 5), width=18
+    )
     detailed_image.save(detailed)
 
     review = cad.verify_render_artifacts([blank, sparse, detailed])
@@ -1982,17 +1972,13 @@ def test_evt0_phone_visual_review_coverage_acceptance_tracks_required_artifacts(
     assert acceptance["part_visual_coverage_case"]["pass"] is True
     assert acceptance["visual_decision_case"]["decision_count"] >= 7
     assert acceptance["visual_decision_case"]["open_manual_review_count"] > 0
-    assert acceptance["expected_visual_gate_count"] == len(
-        visual_decision["visual_design_gates"]
-    )
+    assert acceptance["expected_visual_gate_count"] == len(visual_decision["visual_design_gates"])
     assert "Production visual/CMF signoff remains blocked" in acceptance["release_rule"]
     assert (tmp_path / "visual-review-coverage-acceptance.json").is_file()
     assert (tmp_path / "visual-review-coverage-acceptance.md").is_file()
 
 
-def test_evt0_phone_cmf_release_acceptance_requires_physical_results(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_cmf_release_acceptance_requires_physical_results(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     tooling = cad.tooling_parts(params)
@@ -2039,14 +2025,14 @@ def test_evt0_phone_cmf_release_acceptance_requires_physical_results(
     assert "Color plaque" in report["release_rule"]
     assert (tmp_path / "cmf-release-acceptance.json").is_file()
     assert (tmp_path / "cmf-release-acceptance.md").is_file()
-    template_rows = list(csv.DictReader(StringIO((tmp_path / "cmf-results-template.csv").read_text())))
+    template_rows = list(
+        csv.DictReader(StringIO((tmp_path / "cmf-results-template.csv").read_text()))
+    )
     assert template_rows
     assert "evidence_class" in template_rows[0]
 
 
-def test_evt0_phone_cmf_release_acceptance_enforces_numeric_limits(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_cmf_release_acceptance_enforces_numeric_limits(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     tooling = cad.tooling_parts(params)
@@ -2307,9 +2293,7 @@ def test_evt0_phone_mold_flow_acceptance_fails_closed_without_physical_evidence(
     assert (tmp_path / "mold-flow-acceptance.md").is_file()
 
 
-def test_evt0_phone_mold_flow_acceptance_rejects_simulated_rows(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_mold_flow_acceptance_rejects_simulated_rows(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     tooling = cad.tooling_parts(params)
@@ -2396,9 +2380,7 @@ def test_evt0_phone_toolmaker_signoff_package_fails_closed_without_returns(
     assert (tmp_path / "toolmaker-signoff-review.md").is_file()
 
 
-def test_evt0_phone_toolmaker_signoff_rejects_simulated_returns(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_toolmaker_signoff_rejects_simulated_returns(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     tooling = cad.tooling_parts(params)
@@ -2432,9 +2414,7 @@ def test_evt0_phone_toolmaker_signoff_rejects_simulated_returns(
                 "measured_or_predicted_value": "simulated",
             }
         )
-    with (tmp_path / "toolmaker-signoff-response-template.csv").open(
-        "w", newline=""
-    ) as csv_file:
+    with (tmp_path / "toolmaker-signoff-response-template.csv").open("w", newline="") as csv_file:
         csv_file.write("# evidence_class: simulated_toolmaker_signoff_for_planning_not_release\n")
         writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
         writer.writeheader()
@@ -2444,8 +2424,7 @@ def test_evt0_phone_toolmaker_signoff_rejects_simulated_returns(
 
     assert signoff["status"] == "blocked_no_toolmaker_signoff"
     assert (
-        signoff["template_evidence_class"]
-        == "simulated_toolmaker_signoff_for_planning_not_release"
+        signoff["template_evidence_class"] == "simulated_toolmaker_signoff_for_planning_not_release"
     )
     assert signoff["complete_response_count"] == 0
     assert "mold_flow_fill_pack_warp" in signoff["missing_or_incomplete_items"]
@@ -2594,9 +2573,7 @@ def test_evt0_phone_board_step_readiness_fails_closed_on_concept_pcb(tmp_path, m
     assert (tmp_path / "board-step-readiness.md").is_file()
 
 
-def test_evt0_phone_board_step_readiness_rejects_demo_routed_intake(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_board_step_readiness_rejects_demo_routed_intake(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
     kicad_reconciliation = {
@@ -2654,7 +2631,7 @@ def test_evt0_phone_routed_board_clearance_fails_closed_until_routed_step(
 ) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
-    checks = cad.run_checks(params, parts)
+    cad.run_checks(params, parts)
     monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
     monkeypatch.setattr(cad, "OUT_DIR", tmp_path)
     (tmp_path / "main_pcb.step").write_text("ISO-10303-21;" + ("x" * 1200))
@@ -2667,9 +2644,7 @@ def test_evt0_phone_routed_board_clearance_fails_closed_until_routed_step(
         "status": "generated",
         "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
     }
-    board_step = cad.write_board_step_readiness_artifacts(
-        params, kicad_reconciliation, solid_cad
-    )
+    board_step = cad.write_board_step_readiness_artifacts(params, kicad_reconciliation, solid_cad)
     clearance = cad.write_assembly_clearance_artifacts(params, parts)
 
     report = cad.write_routed_board_clearance_artifacts(board_step, clearance, solid_cad)
@@ -2695,7 +2670,7 @@ def test_evt0_phone_full_cad_boolean_interference_requires_physical_brep_inputs(
 ) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
-    checks = cad.run_checks(params, parts)
+    cad.run_checks(params, parts)
     monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
     monkeypatch.setattr(cad, "OUT_DIR", tmp_path)
     (tmp_path / "main_pcb.step").write_text("ISO-10303-21;" + ("x" * 1200))
@@ -2710,13 +2685,9 @@ def test_evt0_phone_full_cad_boolean_interference_requires_physical_brep_inputs(
     }
     step_validation = {"status": "pass", "validated_count": 62}
     supplier_response = {"status": "blocked_no_supplier_responses"}
-    board_step = cad.write_board_step_readiness_artifacts(
-        params, kicad_reconciliation, solid_cad
-    )
+    board_step = cad.write_board_step_readiness_artifacts(params, kicad_reconciliation, solid_cad)
     clearance = cad.write_assembly_clearance_artifacts(params, parts)
-    routed_clearance = cad.write_routed_board_clearance_artifacts(
-        board_step, clearance, solid_cad
-    )
+    routed_clearance = cad.write_routed_board_clearance_artifacts(board_step, clearance, solid_cad)
 
     report = cad.write_full_cad_boolean_interference_artifacts(
         parts,
@@ -2744,13 +2715,16 @@ def test_evt0_phone_full_cad_boolean_interference_requires_physical_brep_inputs(
     )
     assert battery_scope["required_parts_present"] is True
     assert battery_scope["concept_aabb_scan_pass"] is True
-    assert all(check["component_pair_count"] >= 1 for check in battery_scope["concept_aabb_pair_checks"])
+    assert all(
+        check["component_pair_count"] >= 1 for check in battery_scope["concept_aabb_pair_checks"]
+    )
     assert report["required_evidence_class"] == (
         "physical_supplier_brep_boolean_interference_result"
     )
-    assert "evidence_class=physical_supplier_brep_boolean_interference_result" in report[
-        "release_rule"
-    ]
+    assert (
+        "evidence_class=physical_supplier_brep_boolean_interference_result"
+        in report["release_rule"]
+    )
     assert (tmp_path / "full-cad-boolean-interference-results-template.csv").is_file()
     assert (tmp_path / "full-cad-boolean-interference.json").is_file()
     assert (tmp_path / "full-cad-boolean-interference.md").is_file()
@@ -3215,10 +3189,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     assert readiness["parameters"]["gdt_fai_results_status"] == "blocked_no_fai_results"
     assert readiness["parameters"]["gdt_fai_results_complete_count"] == 0
     assert readiness["parameters"]["visual_decision_status"] == "pass"
-    assert (
-        readiness["parameters"]["automated_visual_status"]
-        == "automated_visual_coverage_pass"
-    )
+    assert readiness["parameters"]["automated_visual_status"] == "automated_visual_coverage_pass"
     assert (
         readiness["parameters"]["manual_visual_signoff_status"]
         == "blocked_manual_visual_review_open"

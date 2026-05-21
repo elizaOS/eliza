@@ -47,7 +47,9 @@ def head_status(url: str, timeout: int) -> dict[str, Any]:
     import urllib.error
     import urllib.request
 
-    request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "eliza-ai-eda-audit/1"})
+    request = urllib.request.Request(
+        url, method="HEAD", headers={"User-Agent": "eliza-ai-eda-audit/1"}
+    )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
             return {
@@ -73,7 +75,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--network", action="store_true", help="Probe canonical GCS URLs with HEAD.")
+    parser.add_argument(
+        "--network", action="store_true", help="Probe canonical GCS URLs with HEAD."
+    )
     parser.add_argument("--timeout", type=int, default=10)
     return parser.parse_args()
 
@@ -94,10 +98,17 @@ def main() -> int:
     if doc_last_audited is None:
         errors.append("blocker doc missing '**Last audited:** YYYY-MM-DD.'")
     elif month_key(doc_last_audited) != current_month:
-        errors.append(f"blocker doc audit is stale: {doc_last_audited}, current month {current_month}")
+        errors.append(
+            f"blocker doc audit is stale: {doc_last_audited}, current month {current_month}"
+        )
     if pin_last_audited != doc_last_audited:
-        errors.append(f"pin last_audited {pin_last_audited!r} does not match doc {doc_last_audited!r}")
-    if pin.get("checkpoint_status") != "gcs-403-with-local-mitigation-blocked-by-closed-source-binary":
+        errors.append(
+            f"pin last_audited {pin_last_audited!r} does not match doc {doc_last_audited!r}"
+        )
+    if (
+        pin.get("checkpoint_status")
+        != "gcs-403-with-local-mitigation-blocked-by-closed-source-binary"
+    ):
         errors.append("pin checkpoint_status changed without updating blocker checker")
     if pin.get("claim_boundary") != "metadata_only_no_checkpoint_binary_or_training_claim":
         errors.append("pin claim_boundary must forbid checkpoint/release claims")
@@ -111,7 +122,9 @@ def main() -> int:
     if lock_entry is None:
         errors.append("external/SOURCES.lock.yaml missing alphachip-tpu-checkpoint-20240815")
     else:
-        first_artifact_url = artifacts[0].get("url") if artifacts and isinstance(artifacts[0], dict) else None
+        first_artifact_url = (
+            artifacts[0].get("url") if artifacts and isinstance(artifacts[0], dict) else None
+        )
         if lock_entry.get("source_url") != first_artifact_url:
             errors.append(
                 "AlphaChip checkpoint source_url must match pin artifact URL "
@@ -121,9 +134,13 @@ def main() -> int:
             errors.append("AlphaChip checkpoint lock entry must remain allowed_use=blocked")
         if lock_entry.get("license_status") != "unavailable_for_review":
             errors.append("AlphaChip checkpoint lock entry must remain unavailable_for_review")
-        revision = lock_entry.get("revision") if isinstance(lock_entry.get("revision"), dict) else {}
+        revision = (
+            lock_entry.get("revision") if isinstance(lock_entry.get("revision"), dict) else {}
+        )
         if revision.get("value") != "BLOCKED_HTTP_403_REAUDIT_REQUIRED":
-            errors.append("AlphaChip checkpoint revision must remain BLOCKED_HTTP_403_REAUDIT_REQUIRED")
+            errors.append(
+                "AlphaChip checkpoint revision must remain BLOCKED_HTTP_403_REAUDIT_REQUIRED"
+            )
 
     for artifact in artifacts:
         if not isinstance(artifact, dict):
@@ -131,8 +148,13 @@ def main() -> int:
             continue
         if artifact.get("expected_http_status") != 403:
             errors.append(f"{artifact.get('name')}: expected_http_status must be 403")
-        if artifact.get("sha256") is not None and artifact.get("status") != "blocked_until_lawful_mirror":
-            warnings.append(f"{artifact.get('name')}: sha256 present; confirm blocker status is still accurate")
+        if (
+            artifact.get("sha256") is not None
+            and artifact.get("status") != "blocked_until_lawful_mirror"
+        ):
+            warnings.append(
+                f"{artifact.get('name')}: sha256 present; confirm blocker status is still accurate"
+            )
         url = artifact.get("url")
         if not isinstance(url, str) or url not in doc_text:
             errors.append(f"{artifact.get('name')}: URL missing from blocker doc")

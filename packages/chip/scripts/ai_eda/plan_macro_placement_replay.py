@@ -152,7 +152,9 @@ def geometry_check(case: dict[str, Any], candidate: dict[str, Any]) -> dict[str,
     }
 
 
-def replay_status(candidate: dict[str, Any], case: dict[str, Any], geometry: dict[str, Any]) -> tuple[str, list[str]]:
+def replay_status(
+    candidate: dict[str, Any], case: dict[str, Any], geometry: dict[str, Any]
+) -> tuple[str, list[str]]:
     blockers: list[str] = []
     if geometry["unknown_target_count"]:
         blockers.append("candidate targets missing movable objects in placement case")
@@ -169,7 +171,9 @@ def replay_status(candidate: dict[str, Any], case: dict[str, Any], geometry: dic
     elif design_bundle_id == "e1-softmacro-smoke-design-bundle":
         blockers.append("fixture case is schema smoke only, not a release OpenLane replay target")
     elif design_bundle_id.startswith("tilos-"):
-        blockers.append("external benchmark replay requires local MacroPlacement/OpenROAD tool review")
+        blockers.append(
+            "external benchmark replay requires local MacroPlacement/OpenROAD tool review"
+        )
     elif "openroad" not in replay_command.lower() and "openlane" not in replay_command.lower():
         blockers.append("placement case lacks OpenLane/OpenROAD deterministic replay command")
     if "release_claim" not in case_claim:
@@ -423,7 +427,9 @@ def main() -> int:
             },
             "deterministic_replay": {
                 "candidate_schema_check": f"python3 scripts/ai_eda/check_candidate_manifests.py --candidate {rel(candidate_path)}",
-                "placement_case_replay_command": case.get("replay", {}).get("deterministic_command"),
+                "placement_case_replay_command": case.get("replay", {}).get(
+                    "deterministic_command"
+                ),
                 "expected_report": case.get("replay", {}).get("expected_report"),
                 "next_openlane_step": (
                     "copy macro_placement.cfg into a quarantined OpenLane run directory and set "

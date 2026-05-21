@@ -13,7 +13,9 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/cuda_training_payloads/validation/cuda_training_payload_report.json"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/cuda_training_payloads/validation/cuda_training_payload_report.json"
+)
 LOCKFILE = ROOT / "external/SOURCES.lock.yaml"
 EXPECTED_REPORT_SCHEMA = "eliza.ai_eda.cuda_training_payload_report.v1"
 EXPECTED_PLAN_SCHEMA = "eliza.ai_eda.cuda_training_payload.v1"
@@ -56,12 +58,22 @@ REQUIRED_PLAN_COMMANDS = (
     "python3 scripts/ai_eda/preflight_ai_eda_backends.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/check_backend_preflight.py --report build/ai_eda/backend_preflight/<cuda-host>/backend_preflight_report.json",
     "python3 scripts/ai_eda/check_ai_workload_manifest.py",
+    "python3 scripts/ai_eda/check_external_method_wrapper_readiness.py",
+    "python3 scripts/ai_eda/check_assertion_candidate_manifests.py",
     "python3 scripts/ai_eda/execute_cuda_run_plan.py --plan build/ai_eda/cuda_training_payloads/<cuda-host>/cuda_training_run_plan.json --run-id <cuda-host>",
     "python3 scripts/ai_eda/check_cuda_run_plan_execution.py --report build/ai_eda/cuda_run_plan_execution/<cuda-host>/cuda_run_plan_execution.json",
     "python3 scripts/ai_eda/check_cuda_run_plan_safety_matrix.py --plan build/ai_eda/cuda_training_payloads/<cuda-host>/cuda_training_run_plan.json --run-id <cuda-host>",
+    "python3 scripts/ai_eda/capture_cuda_full_training_matrix.py --run-id <cuda-host> --payload-run-id <cuda-host> --preflight-run-id <cuda-host>",
+    "python3 scripts/ai_eda/check_cuda_full_training_matrix.py --report build/ai_eda/cuda_full_training_matrix/<cuda-host>/cuda_full_training_matrix.json",
     "make PYTHON=python3 AI_EDA_RUN_ID=<cuda-host> ai-eda-cuda-readiness-audit",
     "python3 scripts/ai_eda/capture_cuda_readiness_audit.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/check_cuda_readiness_audit.py --report build/ai_eda/cuda_readiness_audit/<cuda-host>/cuda_readiness_audit.json",
+    "python3 scripts/ai_eda/package_cuda_evidence_bundle.py --run-id <cuda-host>",
+    "python3 scripts/ai_eda/check_cuda_evidence_bundle.py --report build/ai_eda/cuda_evidence_bundles/<cuda-host>/cuda_evidence_bundle.json",
+    "python3 scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id <cuda-host> --readiness-run-id <cuda-host> --evidence-bundle-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff",
+    "python3 scripts/ai_eda/check_ai_eda_objective_readiness.py --report build/ai_eda/objective_readiness/<cuda-host>/objective_readiness.json",
+    "python3 scripts/ai_eda/capture_alphachip_successor_plan.py --run-id <cuda-host> --training-corpus-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff",
+    "python3 scripts/ai_eda/check_alphachip_successor_plan.py --report build/ai_eda/alphachip_successor_plan/<cuda-host>/alphachip_successor_plan.json",
     "python3 scripts/ai_eda/train_macro_placement_torch_regressor.py --run-id <cuda-host> --device auto --epochs 200",
     "python3 scripts/ai_eda/infer_macro_placement_torch_regressor.py --run-id <cuda-host> --device auto",
     "python3 scripts/ai_eda/convert_edalearn_to_internal_records.py --run-id <cuda-host> --sample-limit 64",
@@ -86,8 +98,16 @@ REQUIRED_PLAN_COMMANDS = (
     "python3 scripts/ai_eda/capture_openroad_ml_snapshot.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/check_openroad_ml_snapshot.py --report build/ai_eda/pd_predictor_dataset/<cuda-host>/snapshot_manifest.json",
     "python3 scripts/ai_eda/check_macro_placement_baseline.py --report build/ai_eda/macro_placement_policy/<cuda-host>/macro_placement_baseline_report.json",
+    "python3 scripts/ai_eda/select_macro_placement_replay_queue.py --run-id <cuda-host>",
+    "python3 scripts/ai_eda/check_macro_placement_replay_queue.py --report build/ai_eda/macro_placement_replay_queue/<cuda-host>/replay_queue.json",
+    "python3 scripts/ai_eda/capture_openlane_replay_prerequisites.py --run-id <cuda-host>",
+    "python3 scripts/ai_eda/check_openlane_replay_prerequisites.py --report build/ai_eda/openlane_replay_prerequisites/<cuda-host>/openlane_replay_prerequisites.json",
     "python3 scripts/ai_eda/replay_macro_placement_on_e1.py --run-id <cuda-host> --plan build/ai_eda/macro_placement_replay/<cuda-host>/replay_plan.json",
     "python3 scripts/ai_eda/check_macro_placement_replay_preflight.py --report build/ai_eda/macro_placement_replay_preflight/<cuda-host>/replay_preflight_report.json",
+    "python3 scripts/ai_eda/capture_openlane_replay_execution.py --run-id <cuda-host> --candidate-id <candidate-id> --metrics <final-metrics.json> --openlane-log <openlane.log> --openroad-log <openroad.log> --def-file <final.def> --gds-file <final.gds>",
+    "python3 scripts/ai_eda/check_openlane_replay_execution.py --report build/ai_eda/openlane_replay_execution/<cuda-host>/openlane_replay_execution.json",
+    "python3 scripts/ai_eda/capture_openlane_replay_comparison.py --run-id <cuda-host> --baseline-execution <baseline-openlane-replay-execution.json> --candidate-execution build/ai_eda/openlane_replay_execution/<cuda-host>/openlane_replay_execution.json",
+    "python3 scripts/ai_eda/check_openlane_replay_comparison.py --report build/ai_eda/openlane_replay_comparison/<cuda-host>/openlane_replay_comparison.json",
     "python3 scripts/ai_eda/check_verification_target_captures.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/check_physical_design_target_captures.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/capture_current_research_watchlist.py --run-id <cuda-host>",
@@ -101,6 +121,8 @@ REQUIRED_RUNBOOK_COMMANDS = (
     "python3 scripts/ai_eda/execute_cuda_run_plan.py --plan build/ai_eda/cuda_training_payloads/<cuda-host>/cuda_training_run_plan.json --run-id <cuda-host>",
     "python3 scripts/ai_eda/check_cuda_run_plan_execution.py --report build/ai_eda/cuda_run_plan_execution/<cuda-host>/cuda_run_plan_execution.json",
     "python3 scripts/ai_eda/check_cuda_run_plan_safety_matrix.py --plan build/ai_eda/cuda_training_payloads/<cuda-host>/cuda_training_run_plan.json --run-id <cuda-host>",
+    "python3 scripts/ai_eda/capture_cuda_full_training_matrix.py --run-id <cuda-host> --payload-run-id <cuda-host> --preflight-run-id <cuda-host>",
+    "python3 scripts/ai_eda/check_cuda_full_training_matrix.py --report build/ai_eda/cuda_full_training_matrix/<cuda-host>/cuda_full_training_matrix.json",
     "make PYTHON=python3 AI_EDA_RUN_ID=<cuda-host> ai-eda-cuda-readiness-audit",
     "python3 scripts/ai_eda/build_training_corpus_manifest.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/train_macro_placement_torch_regressor.py --run-id <cuda-host> --device auto --epochs 200",
@@ -126,6 +148,10 @@ REQUIRED_OUTPUTS = {
     "build/ai_eda/cuda_readiness_audit/<run-id>/cuda_readiness_audit.json",
     "build/ai_eda/cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json",
     "build/ai_eda/cuda_run_plan_safety_matrix/<run-id>/cuda_run_plan_safety_matrix.json",
+    "build/ai_eda/cuda_full_training_matrix/<run-id>/cuda_full_training_matrix.json",
+    "build/ai_eda/cuda_evidence_bundles/<run-id>/cuda_evidence_bundle.json",
+    "build/ai_eda/objective_readiness/<run-id>/objective_readiness.json",
+    "build/ai_eda/alphachip_successor_plan/<run-id>/alphachip_successor_plan.json",
     "build/ai_eda/cuda_training_preflight/<run-id>/cuda_training_preflight.json",
     "build/ai_eda/dfm_yield_lithography_targets/<run-id>/targets_report.json",
     "build/ai_eda/dft_atpg_targets/<run-id>/targets_report.json",
@@ -162,6 +188,10 @@ REQUIRED_OUTPUTS = {
     "build/ai_eda/e1_softmacro_cases/<run-id>/materialization_report.json",
     "build/ai_eda/e1_softmacro_cases/<run-id>/records/*.json",
     "build/ai_eda/macro_placement_replay_preflight/<run-id>/replay_preflight_report.json",
+    "build/ai_eda/openlane_replay_execution/<run-id>/openlane_replay_execution.json",
+    "build/ai_eda/openlane_replay_comparison/<run-id>/openlane_replay_comparison.json",
+    "build/ai_eda/macro_placement_replay_queue/<run-id>/replay_queue.json",
+    "build/ai_eda/openlane_replay_prerequisites/<run-id>/openlane_replay_prerequisites.json",
     "build/ai_eda/macro_placement_torch_regressor/<run-id>/torch_regressor.pt",
     "build/ai_eda/memory_interconnect_targets/<run-id>/targets_report.json",
     "build/ai_eda/memory_macro_library_targets/<run-id>/targets_report.json",
@@ -181,6 +211,56 @@ REQUIRED_OUTPUTS = {
 }
 
 ORDER_CONSTRAINTS = (
+    (
+        "python3 scripts/ai_eda/check_cuda_run_plan_safety_matrix.py --plan build/ai_eda/cuda_training_payloads/<cuda-host>/cuda_training_run_plan.json --run-id <cuda-host>",
+        "python3 scripts/ai_eda/capture_cuda_full_training_matrix.py --run-id <cuda-host> --payload-run-id <cuda-host> --preflight-run-id <cuda-host>",
+        "safety matrix before full training matrix",
+    ),
+    (
+        "python3 scripts/ai_eda/capture_cuda_full_training_matrix.py --run-id <cuda-host> --payload-run-id <cuda-host> --preflight-run-id <cuda-host>",
+        "python3 scripts/ai_eda/check_cuda_full_training_matrix.py --report build/ai_eda/cuda_full_training_matrix/<cuda-host>/cuda_full_training_matrix.json",
+        "full training matrix before matrix check",
+    ),
+    (
+        "python3 scripts/ai_eda/check_cuda_full_training_matrix.py --report build/ai_eda/cuda_full_training_matrix/<cuda-host>/cuda_full_training_matrix.json",
+        "make PYTHON=python3 AI_EDA_RUN_ID=<cuda-host> ai-eda-cuda-readiness-audit",
+        "full training matrix check before readiness audit",
+    ),
+    (
+        "python3 scripts/ai_eda/check_cuda_readiness_audit.py --report build/ai_eda/cuda_readiness_audit/<cuda-host>/cuda_readiness_audit.json",
+        "python3 scripts/ai_eda/package_cuda_evidence_bundle.py --run-id <cuda-host>",
+        "readiness audit check before evidence bundle",
+    ),
+    (
+        "python3 scripts/ai_eda/package_cuda_evidence_bundle.py --run-id <cuda-host>",
+        "python3 scripts/ai_eda/check_cuda_evidence_bundle.py --report build/ai_eda/cuda_evidence_bundles/<cuda-host>/cuda_evidence_bundle.json",
+        "evidence bundle before evidence bundle check",
+    ),
+    (
+        "python3 scripts/ai_eda/check_cuda_evidence_bundle.py --report build/ai_eda/cuda_evidence_bundles/<cuda-host>/cuda_evidence_bundle.json",
+        "python3 scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id <cuda-host> --readiness-run-id <cuda-host> --evidence-bundle-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff",
+        "evidence bundle check before objective readiness audit",
+    ),
+    (
+        "python3 scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id <cuda-host> --readiness-run-id <cuda-host> --evidence-bundle-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff",
+        "python3 scripts/ai_eda/check_ai_eda_objective_readiness.py --report build/ai_eda/objective_readiness/<cuda-host>/objective_readiness.json",
+        "objective readiness audit before objective readiness check",
+    ),
+    (
+        "python3 scripts/ai_eda/build_training_corpus_manifest.py --run-id <cuda-host>",
+        "python3 scripts/ai_eda/capture_alphachip_successor_plan.py --run-id <cuda-host> --training-corpus-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff",
+        "training corpus before AlphaChip successor plan",
+    ),
+    (
+        "python3 scripts/ai_eda/capture_alphachip_successor_plan.py --run-id <cuda-host> --training-corpus-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff",
+        "python3 scripts/ai_eda/check_alphachip_successor_plan.py --report build/ai_eda/alphachip_successor_plan/<cuda-host>/alphachip_successor_plan.json",
+        "AlphaChip successor plan before successor plan check",
+    ),
+    (
+        "python3 scripts/ai_eda/check_alphachip_successor_plan.py --report build/ai_eda/alphachip_successor_plan/<cuda-host>/alphachip_successor_plan.json",
+        "python3 scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id <cuda-host> --readiness-run-id <cuda-host> --evidence-bundle-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff",
+        "AlphaChip successor plan check before objective readiness audit",
+    ),
     (
         "python3 scripts/ai_eda/materialize_internal_dataset_fixtures.py --run-id <cuda-host>",
         "python3 scripts/ai_eda/build_training_corpus_manifest.py --run-id <cuda-host>",
@@ -262,9 +342,54 @@ ORDER_CONSTRAINTS = (
         "torch train before torch inference",
     ),
     (
+        "python3 scripts/ai_eda/plan_macro_placement_replay.py --run-id <cuda-host> --candidate-dir build/ai_eda/macro_placement_policy/<cuda-host>/candidates --candidate-dir build/ai_eda/macro_placement_supervised_model/<cuda-host>/candidates --candidate-dir build/ai_eda/macro_placement_torch_inference/<cuda-host>/candidates --out-root build/ai_eda/macro_placement_full_replay",
+        "python3 scripts/ai_eda/select_macro_placement_replay_queue.py --run-id <cuda-host>",
+        "full replay plan before replay queue",
+    ),
+    (
+        "python3 scripts/ai_eda/select_macro_placement_replay_queue.py --run-id <cuda-host>",
+        "python3 scripts/ai_eda/check_macro_placement_replay_queue.py --report build/ai_eda/macro_placement_replay_queue/<cuda-host>/replay_queue.json",
+        "replay queue before replay queue check",
+    ),
+    (
+        "python3 scripts/ai_eda/check_macro_placement_replay_queue.py --report build/ai_eda/macro_placement_replay_queue/<cuda-host>/replay_queue.json",
+        "python3 scripts/ai_eda/capture_openlane_replay_prerequisites.py --run-id <cuda-host>",
+        "replay queue check before OpenLane replay prerequisites",
+    ),
+    (
+        "python3 scripts/ai_eda/capture_openlane_replay_prerequisites.py --run-id <cuda-host>",
+        "python3 scripts/ai_eda/check_openlane_replay_prerequisites.py --report build/ai_eda/openlane_replay_prerequisites/<cuda-host>/openlane_replay_prerequisites.json",
+        "OpenLane replay prerequisites before prerequisite check",
+    ),
+    (
         "python3 scripts/ai_eda/plan_macro_placement_replay.py --run-id <cuda-host>",
         "python3 scripts/ai_eda/replay_macro_placement_on_e1.py --run-id <cuda-host> --plan build/ai_eda/macro_placement_replay/<cuda-host>/replay_plan.json",
         "replay plan before replay preflight",
+    ),
+    (
+        "python3 scripts/ai_eda/check_macro_placement_replay_preflight.py --report build/ai_eda/macro_placement_replay_preflight/<cuda-host>/replay_preflight_report.json",
+        "python3 scripts/ai_eda/capture_openlane_replay_execution.py --run-id <cuda-host> --candidate-id <candidate-id> --metrics <final-metrics.json> --openlane-log <openlane.log> --openroad-log <openroad.log> --def-file <final.def> --gds-file <final.gds>",
+        "replay preflight before replay execution evidence capture",
+    ),
+    (
+        "python3 scripts/ai_eda/capture_openlane_replay_execution.py --run-id <cuda-host> --candidate-id <candidate-id> --metrics <final-metrics.json> --openlane-log <openlane.log> --openroad-log <openroad.log> --def-file <final.def> --gds-file <final.gds>",
+        "python3 scripts/ai_eda/check_openlane_replay_execution.py --report build/ai_eda/openlane_replay_execution/<cuda-host>/openlane_replay_execution.json",
+        "replay execution evidence before replay execution check",
+    ),
+    (
+        "python3 scripts/ai_eda/check_openlane_replay_execution.py --report build/ai_eda/openlane_replay_execution/<cuda-host>/openlane_replay_execution.json",
+        "python3 scripts/ai_eda/capture_openlane_replay_comparison.py --run-id <cuda-host> --baseline-execution <baseline-openlane-replay-execution.json> --candidate-execution build/ai_eda/openlane_replay_execution/<cuda-host>/openlane_replay_execution.json",
+        "replay execution check before replay comparison",
+    ),
+    (
+        "python3 scripts/ai_eda/capture_openlane_replay_comparison.py --run-id <cuda-host> --baseline-execution <baseline-openlane-replay-execution.json> --candidate-execution build/ai_eda/openlane_replay_execution/<cuda-host>/openlane_replay_execution.json",
+        "python3 scripts/ai_eda/check_openlane_replay_comparison.py --report build/ai_eda/openlane_replay_comparison/<cuda-host>/openlane_replay_comparison.json",
+        "replay comparison before replay comparison check",
+    ),
+    (
+        "python3 scripts/ai_eda/check_openlane_replay_comparison.py --report build/ai_eda/openlane_replay_comparison/<cuda-host>/openlane_replay_comparison.json",
+        "python3 scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id <cuda-host> --readiness-run-id <cuda-host> --evidence-bundle-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff",
+        "replay comparison check before objective readiness audit",
     ),
 )
 
@@ -394,7 +519,9 @@ def validate_plan(plan: dict[str, Any], members: set[str], lock_ids: set[str]) -
     if not isinstance(outputs, list) or not outputs:
         errors.append("expected_outputs must be non-empty")
     else:
-        missing_outputs = sorted(REQUIRED_OUTPUTS - {item for item in outputs if isinstance(item, str)})
+        missing_outputs = sorted(
+            REQUIRED_OUTPUTS - {item for item in outputs if isinstance(item, str)}
+        )
         if missing_outputs:
             errors.append(f"missing expected output patterns: {', '.join(missing_outputs)}")
     return errors
@@ -411,7 +538,11 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
     payload = report.get("payload")
     run_plan = report.get("run_plan")
     runbook = report.get("runbook")
-    if not isinstance(payload, str) or not isinstance(run_plan, str) or not isinstance(runbook, str):
+    if (
+        not isinstance(payload, str)
+        or not isinstance(run_plan, str)
+        or not isinstance(runbook, str)
+    ):
         return errors + ["payload, run_plan, and runbook paths are required"]
     payload_path = repo_path(payload)
     run_plan_path = repo_path(run_plan)
@@ -431,7 +562,11 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
             members = {member.name for member in archive.getmembers() if member.isfile()}
             embedded_file = archive.extractfile("cuda_training_run_plan.json")
             embedded = json.loads(embedded_file.read().decode("utf-8")) if embedded_file else None
-            runbook_file = archive.extractfile(REQUIRED_RUNBOOK_MEMBER) if REQUIRED_RUNBOOK_MEMBER in members else None
+            runbook_file = (
+                archive.extractfile(REQUIRED_RUNBOOK_MEMBER)
+                if REQUIRED_RUNBOOK_MEMBER in members
+                else None
+            )
             embedded_runbook = runbook_file.read().decode("utf-8") if runbook_file else None
     except Exception as exc:  # noqa: BLE001
         return errors + [f"{rel(payload_path)}: {exc}"]

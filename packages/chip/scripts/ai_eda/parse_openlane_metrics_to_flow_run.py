@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_BASE_FLOW_RUN = ROOT / "build/ai_eda/e1_openlane_conversion/validation/records/flow-run.json"
+DEFAULT_BASE_FLOW_RUN = (
+    ROOT / "build/ai_eda/e1_openlane_conversion/validation/records/flow-run.json"
+)
 DEFAULT_METRICS = ROOT / "docs/spec-db/ai-eda/openlane-metrics-fixtures/e1_final_metrics.clean.json"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/openlane_flow_labels"
 OPENLANE_RUNS = ROOT / "pd/openlane/runs"
@@ -104,7 +106,11 @@ def label_status(metrics_path: Path, missing: list[str]) -> str:
 
 def discover_metrics_path(explicit: Path | None) -> tuple[Path, str, bool]:
     if explicit is not None:
-        return explicit.resolve(), "explicit_metrics_json", not is_fixture_metrics(explicit.resolve())
+        return (
+            explicit.resolve(),
+            "explicit_metrics_json",
+            not is_fixture_metrics(explicit.resolve()),
+        )
     candidates = sorted(OPENLANE_RUNS.glob("RUN_*/final/metrics.json"))
     if candidates:
         return candidates[-1].resolve(), "latest_local_openlane_run", True
@@ -137,7 +143,9 @@ def main() -> int:
     args = parse_args()
     if not args.base_flow_run.exists():
         raise SystemExit(f"base flow-run record missing: {args.base_flow_run}")
-    metrics_path, selection_policy, deterministic_run_artifacts_present = discover_metrics_path(args.metrics_json)
+    metrics_path, selection_policy, deterministic_run_artifacts_present = discover_metrics_path(
+        args.metrics_json
+    )
     if not metrics_path.exists():
         raise SystemExit(f"OpenLane metrics JSON missing: {metrics_path}")
     base = load_json(args.base_flow_run)
@@ -157,11 +165,17 @@ def main() -> int:
     }
     flow_run["outputs"] = {
         **flow_run.get("outputs", {}),
-        "reports": sorted(set(flow_run.get("outputs", {}).get("reports", []) + [rel(metrics_path)])),
+        "reports": sorted(
+            set(flow_run.get("outputs", {}).get("reports", []) + [rel(metrics_path)])
+        ),
     }
     flow_run["status"] = {
-        "result": "BLOCKED_MISSING_REQUIRED_METRICS" if missing else "PARSED_METRICS_REQUIRES_REPLAY_REVIEW",
-        "blockers": [f"missing normalized labels: {', '.join(missing)}"] if missing else [
+        "result": "BLOCKED_MISSING_REQUIRED_METRICS"
+        if missing
+        else "PARSED_METRICS_REQUIRES_REPLAY_REVIEW",
+        "blockers": [f"missing normalized labels: {', '.join(missing)}"]
+        if missing
+        else [
             "metrics parsed but still require deterministic run provenance, review, and train/test split assignment"
         ],
     }

@@ -387,10 +387,10 @@ tolerances:
     assembly_placement_mm: "Alignment-pin fixtures (front_camera_alignment_pin, rear_camera_alignment_pin, screen_bond_clamp_frame)"
     component_datasheet_typical_mm: "Vendor-controlled per published component datasheets"
   cosmetic_targets:
-    display_gap_to_bezel_mm: { nominal: 0.15, tolerance: 0.15 }
-    power_button_cap_proud_mm: { nominal: 0.30, tolerance: 0.10 }
-    usb_c_aperture_clearance_mm: { nominal: 0.20, tolerance: 0.10 }
-    rear_camera_window_flush_to_back_mm: { nominal: 0.0, tolerance: 0.05 }
+    display_gap_to_bezel_mm: {nominal: 0.15, tolerance: 0.15}
+    power_button_cap_proud_mm: {nominal: 0.30, tolerance: 0.10}
+    usb_c_aperture_clearance_mm: {nominal: 0.20, tolerance: 0.10}
+    rear_camera_window_flush_to_back_mm: {nominal: 0.0, tolerance: 0.05}
   environmental_targets:
     drop_height_m: 1.0
     ingress_target: IP54 design intent only

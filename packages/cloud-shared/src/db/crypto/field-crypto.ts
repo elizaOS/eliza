@@ -54,7 +54,11 @@ export async function encryptField(
   const kms = getKmsClient();
   const keyId = orgKey(orgId, "dek");
   await kms.getOrCreateKey(keyId);
-  const result = await kms.encrypt(keyId, enc.encode(plaintext), aadFor(coords.table, coords.rowId, coords.column));
+  const result = await kms.encrypt(
+    keyId,
+    enc.encode(plaintext),
+    aadFor(coords.table, coords.rowId, coords.column),
+  );
   return {
     ciphertext: b64encode(result.ciphertext),
     nonce: b64encode(result.nonce),

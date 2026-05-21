@@ -17,6 +17,7 @@ Re-runnable. Reads out/e1-phone-assembly.glb + out/assembly-manifest.json and th
 same classify()/RING_MM explode model the animation uses, so the proof matches the
 video frame-for-frame.
 """
+
 from __future__ import annotations
 
 import json
@@ -38,7 +39,7 @@ MANIFEST = OUT / "assembly-manifest.json"
 PART_SHOTS = OUT / "e1-phone-part-explode-shots"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from generate_e1_phone_exploded_animation import RING_MM, classify, color_for
+from generate_e1_phone_exploded_animation import RING_MM, classify, color_for  # noqa: E402
 
 # Penetration tolerance: assembled parts share datum faces, and CAD envelopes carry
 # datasheet-typical slop, so treat sub-0.05 mm^3 growth as numerical noise.
@@ -206,8 +207,8 @@ def render_part_screenshots(scene: trimesh.Scene, parts: list[dict]) -> dict:
         old.unlink()
 
     W, H = 720, 720
-    highlight_mesh: dict[str, "pyrender.Mesh"] = {}
-    ghost_mesh: dict[str, "pyrender.Mesh"] = {}
+    highlight_mesh: dict[str, pyrender.Mesh] = {}
+    ghost_mesh: dict[str, pyrender.Mesh] = {}
     poses: dict[str, np.ndarray] = {}
     for part in parts:
         name = part["name"]
@@ -243,7 +244,9 @@ def render_part_screenshots(scene: trimesh.Scene, parts: list[dict]) -> dict:
     cam_pose[:3, 1] = u
     cam_pose[:3, 2] = -fwd
     cam_pose[:3, 3] = eye
-    cam = pyrender.PerspectiveCamera(yfov=math.radians(30.0), aspectRatio=1.0, znear=1.0, zfar=4000.0)
+    cam = pyrender.PerspectiveCamera(
+        yfov=math.radians(30.0), aspectRatio=1.0, znear=1.0, zfar=4000.0
+    )
     key = pyrender.DirectionalLight(color=np.ones(3), intensity=3.2)
     fill = pyrender.DirectionalLight(color=np.ones(3) * 0.85, intensity=1.5)
     rim = pyrender.DirectionalLight(color=np.ones(3), intensity=1.8)
@@ -310,9 +313,11 @@ def main() -> int:
     print(f"[load] {len(parts)} parts from {ASM_GLB.name}")
     report = check_collisions(parts)
     write_collision_report(report)
-    print(f"[collision] status={report['status']} "
-          f"pass_through={report['pass_through_pair_count']} "
-          f"residual={report['residual_overlap_at_full_explode_pair_count']}")
+    print(
+        f"[collision] status={report['status']} "
+        f"pass_through={report['pass_through_pair_count']} "
+        f"residual={report['residual_overlap_at_full_explode_pair_count']}"
+    )
 
     shots_info = {"part_shot_count": 0, "contact_sheet": ""}
     try:

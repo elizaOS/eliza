@@ -518,6 +518,25 @@ def rear_flash_center_xy(params: dict[str, Any]) -> tuple[float, float]:
     return rear_camera_x - (module_w / 2.0 + 3.1), rear_camera_y
 
 
+def rear_camera_optical_sight_tunnel_mm(params: dict[str, Any]) -> tuple[float, float]:
+    """Radius and depth of the clear optical path from rear exterior to camera."""
+    depth = float(params["device"]["envelope_mm"][2])
+    lens_radius = float(params["components"]["rear_camera"]["lens_diameter_mm"]) / 2.0
+    module_center_z = rear_camera_buried_center_z(params)
+    module_depth = float(params["components"]["rear_camera"]["module_mm"][2])
+    module_rear_face_z = module_center_z - module_depth / 2.0
+    back_outer_z = -depth / 2.0
+    return lens_radius + 0.15, module_rear_face_z - back_outer_z
+
+
+def rear_camera_optical_sight_tunnel_center(params: dict[str, Any]) -> list[float]:
+    depth = float(params["device"]["envelope_mm"][2])
+    _radius, tunnel_depth = rear_camera_optical_sight_tunnel_mm(params)
+    back_outer_z = -depth / 2.0
+    rear_camera_x, rear_camera_y = rear_camera_center_xy(params)
+    return [rear_camera_x, rear_camera_y, back_outer_z + tunnel_depth / 2.0]
+
+
 def rear_flash_shell_aperture_mm(params: dict[str, Any]) -> list[float]:
     window_w, window_h, _window_t = params["components"]["rear_flash_led"]["window_mm"]
     return [round(float(window_w) + 0.6, 3), round(float(window_h) + 0.6, 3)]
@@ -1223,6 +1242,7 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
     rear_camera_center_z = rear_camera_buried_center_z(params)
     rear_camera_x, rear_camera_y = rear_camera_center_xy(params)
     rear_aperture_w, rear_aperture_h = rear_camera_shell_aperture_mm(params)
+    rear_sight_radius, rear_sight_depth = rear_camera_optical_sight_tunnel_mm(params)
     rear_aperture_z = -depth / 2.0 + 0.035
     # Bezel lands are 0.14 mm thick; seat their center so the outer face stays at
     # or inside the flat back outer plane (Zmin >= -depth/2), keeping flush back.
@@ -1507,6 +1527,16 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 CAMERA,
                 "camera",
                 "flush internal lens window, coplanar with flat back",
+            ),
+            cyl_z(
+                "rear_camera_optical_sight_tunnel",
+                rear_sight_radius,
+                rear_sight_depth,
+                rear_camera_optical_sight_tunnel_center(params),
+                [0.15, 0.35, 0.95, 0.26],
+                "camera optical clearance",
+                "clear rear-camera sight tunnel from exterior through the back-shell aperture to the module",
+                sections=32,
             ),
             box(
                 "rear_flash_led",
@@ -3007,11 +3037,7 @@ def verify_render_artifacts(paths: list[Path]) -> dict[str, Any]:
         if nonwhite_coords.size:
             y_min, x_min = nonwhite_coords.min(axis=0)
             y_max, x_max = nonwhite_coords.max(axis=0)
-            occupied_bbox_ratio = (
-                (int(x_max - x_min) + 1)
-                * (int(y_max - y_min) + 1)
-                / total_pixels
-            )
+            occupied_bbox_ratio = (int(x_max - x_min) + 1) * (int(y_max - y_min) + 1) / total_pixels
         else:
             occupied_bbox_ratio = 0.0
         grayscale = pixels.reshape(image.size[1], image.size[0], 3).astype(np.int16).mean(axis=2)
@@ -3467,8 +3493,7 @@ def write_visual_decision_artifacts(
     )
     manual_visual_signoff_status = (
         "production_visual_signoff_complete"
-        if automated_visual_status == "automated_visual_coverage_pass"
-        and not manual_review_items
+        if automated_visual_status == "automated_visual_coverage_pass" and not manual_review_items
         else "blocked_manual_visual_review_open"
     )
     report = {
@@ -3476,7 +3501,9 @@ def write_visual_decision_artifacts(
             "Automated EVT0 visual/design decision log; it records CAD review acceptance and open "
             "manual checks, not CMF lock, tooling release, or production validation."
         ),
-        "status": "pass" if automated_visual_status == "automated_visual_coverage_pass" else "blocked",
+        "status": "pass"
+        if automated_visual_status == "automated_visual_coverage_pass"
+        else "blocked",
         "automated_visual_status": automated_visual_status,
         "manual_visual_signoff_status": manual_visual_signoff_status,
         "production_visual_signoff_ready": manual_visual_signoff_status
@@ -3621,8 +3648,7 @@ def write_visual_review_coverage_acceptance_artifacts(
         ),
         "decision_count": len(visual_decision.get("decisions", [])),
         "open_manual_review_count": int(visual_decision.get("open_manual_review_count", 0)),
-        "pass": visual_decision.get("automated_visual_status")
-        == "automated_visual_coverage_pass"
+        "pass": visual_decision.get("automated_visual_status") == "automated_visual_coverage_pass"
         and len(visual_decision.get("decisions", [])) > 0,
     }
     expected_view_count = len(expected_views)
@@ -3648,9 +3674,7 @@ def write_visual_review_coverage_acceptance_artifacts(
             else "blocked_visual_review_coverage_incomplete"
         ),
         "automated_visual_coverage_ready": automated_pass,
-        "production_visual_signoff_ready": visual_decision_case[
-            "production_visual_signoff_ready"
-        ],
+        "production_visual_signoff_ready": visual_decision_case["production_visual_signoff_ready"],
         "expected_view_count": expected_view_count,
         "complete_view_count": complete_view_count,
         "expected_visual_gate_count": len(gate_cases),
@@ -3705,9 +3729,7 @@ def write_visual_review_coverage_acceptance_artifacts(
             f"- {report['release_rule']}",
         ]
     )
-    (REVIEW_DIR / "visual-review-coverage-acceptance.md").write_text(
-        "\n".join(lines) + "\n"
-    )
+    (REVIEW_DIR / "visual-review-coverage-acceptance.md").write_text("\n".join(lines) + "\n")
     return report
 
 
@@ -3790,7 +3812,9 @@ def write_part_visual_coverage_artifacts(
         "coverage_mode": "role_and_name_based_review_view_mapping",
         "expected_part_count": len(cases),
         "covered_part_count": covered_count,
-        "required_review_artifacts": sorted(set(view for case in cases for view in case["required_views"])),
+        "required_review_artifacts": sorted(
+            set(view for case in cases for view in case["required_views"])
+        ),
         "missing_or_incomplete_parts": missing_or_incomplete,
         "cases": cases,
         "release_rule": (
@@ -4687,7 +4711,9 @@ def write_supplier_response_artifacts(
                 "supplier_item_id": item["id"],
                 "rfq_package_id": package_by_item.get(item["id"], ""),
                 "candidate": item["candidate"] or "",
-                "supplier_listing_or_portal_url": item.get("source_url") or item.get("distributor_url") or "",
+                "supplier_listing_or_portal_url": item.get("source_url")
+                or item.get("distributor_url")
+                or "",
                 "vendor_name": "",
                 "vendor_part_number": "",
                 "moq_units": "",
@@ -4926,9 +4952,7 @@ def write_supplier_response_artifacts(
                 "evidence_class_allowed": evidence_class_allowed,
                 "required_evidence_artifacts": required_evidence_artifacts,
                 "quote_artifact_present": bool(row.get("quote_artifact", "").strip()),
-                "drawing_2d_artifact_present": bool(
-                    row.get("drawing_2d_artifact", "").strip()
-                ),
+                "drawing_2d_artifact_present": bool(row.get("drawing_2d_artifact", "").strip()),
                 "step_artifact_present": bool(row.get("step_artifact", "").strip()),
                 "pinout_or_process_artifact_present": bool(
                     row.get("pinout_or_process_artifact", "").strip()
@@ -5193,9 +5217,7 @@ def write_supplier_evidence_acceptance_artifacts(
     ]
     supplier_ids = {item["id"] for item in supplier.get("items", [])}
     package_by_id = {package["id"]: package for package in supplier_rfq.get("packages", [])}
-    response_cases = {
-        case["supplier_item_id"]: case for case in supplier_response.get("cases", [])
-    }
+    response_cases = {case["supplier_item_id"]: case for case in supplier_response.get("cases", [])}
     reviewed_families = []
     for family in families:
         items = []
@@ -5204,9 +5226,12 @@ def write_supplier_evidence_acceptance_artifacts(
             items.append(
                 {
                     "supplier_item_id": item_id,
-                    "in_supplier_matrix": item_id in supplier_ids or item_id == "orange_enclosure_tooling",
+                    "in_supplier_matrix": item_id in supplier_ids
+                    or item_id == "orange_enclosure_tooling",
                     "rfq_package_id": (
-                        response_case.get("rfq_package_id", "") if response_case else family["rfq_package_id"]
+                        response_case.get("rfq_package_id", "")
+                        if response_case
+                        else family["rfq_package_id"]
                     ),
                     "response_case_present": response_case is not None,
                     "response_pass": bool(response_case and response_case.get("pass")),
@@ -5216,9 +5241,7 @@ def write_supplier_evidence_acceptance_artifacts(
                 }
             )
         returned_basic_evidence = bool(items) and all(item["response_pass"] for item in items)
-        evidence_key_status = {
-            key: returned_basic_evidence for key in family["required_evidence"]
-        }
+        evidence_key_status = {key: returned_basic_evidence for key in family["required_evidence"]}
         missing_required_evidence_keys = [
             key for key, present in evidence_key_status.items() if not present
         ]
@@ -5228,8 +5251,7 @@ def write_supplier_evidence_acceptance_artifacts(
             if not item["in_supplier_matrix"] or not item["response_pass"]
         ]
         rfq_package_ready = (
-            family["rfq_package_id"] == ""
-            or family["rfq_package_id"] in package_by_id
+            family["rfq_package_id"] == "" or family["rfq_package_id"] in package_by_id
         )
         passed = (
             rfq_package_ready
@@ -6638,9 +6660,7 @@ def write_acoustic_results_review_artifacts(
                 "fixture_calibration_certificate_present": bool(
                     row.get("fixture_calibration_certificate", "").strip()
                 ),
-                "photo_or_log_artifact_present": bool(
-                    row.get("photo_or_log_artifact", "").strip()
-                ),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
                 "lot_traceability_record_present": bool(
                     row.get("lot_traceability_record", "").strip()
                 ),
@@ -7116,9 +7136,7 @@ def write_camera_results_review_artifacts(camera_validation: dict[str, Any]) -> 
                 "fixture_calibration_certificate_present": bool(
                     row.get("fixture_calibration_certificate", "").strip()
                 ),
-                "photo_or_log_artifact_present": bool(
-                    row.get("photo_or_log_artifact", "").strip()
-                ),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
                 "lot_traceability_record_present": bool(
                     row.get("lot_traceability_record", "").strip()
                 ),
@@ -7553,9 +7571,7 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
                 "fixture_calibration_certificate_present": bool(
                     row.get("fixture_calibration_certificate", "").strip()
                 ),
-                "photo_or_log_artifact_present": bool(
-                    row.get("photo_or_log_artifact", "").strip()
-                ),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
                 "lot_traceability_record_present": bool(
                     row.get("lot_traceability_record", "").strip()
                 ),
@@ -7778,9 +7794,7 @@ def write_mechanical_integration_sim_artifacts(
             "with calibrated fixtures and lot traceability."
         ),
     }
-    (REVIEW_DIR / "mechanical-integration-sim.json").write_text(
-        json.dumps(report, indent=2) + "\n"
-    )
+    (REVIEW_DIR / "mechanical-integration-sim.json").write_text(json.dumps(report, indent=2) + "\n")
     lines = [
         "# E1 Phone Mechanical Integration Simulation",
         "",
@@ -8539,9 +8553,7 @@ def write_environmental_results_review_artifacts(
                 "fixture_calibration_certificate_present": bool(
                     row.get("fixture_calibration_certificate", "").strip()
                 ),
-                "photo_or_log_artifact_present": bool(
-                    row.get("photo_or_log_artifact", "").strip()
-                ),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
                 "lot_traceability_record_present": bool(
                     row.get("lot_traceability_record", "").strip()
                 ),
@@ -9153,9 +9165,7 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
                 "fixture_calibration_certificate_present": bool(
                     row.get("fixture_calibration_certificate", "").strip()
                 ),
-                "photo_or_log_artifact_present": bool(
-                    row.get("photo_or_log_artifact", "").strip()
-                ),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
                 "lot_traceability_record_present": bool(
                     row.get("lot_traceability_record", "").strip()
                 ),
@@ -9174,11 +9184,7 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
         case["measurement_id"]
         for case in cases
         if case["populated"]
-        and not (
-            case["numeric_pass"]
-            and case["explicit_pass"]
-            and case["evidence_class_allowed"]
-        )
+        and not (case["numeric_pass"] and case["explicit_pass"] and case["evidence_class_allowed"])
     ]
     populated_count = sum(1 for case in cases if case["populated"])
     complete_count = sum(1 for case in cases if case["pass"])
@@ -9555,9 +9561,7 @@ def write_gdt_release_package_artifacts(
                     "pass": "",
                     "inspector": "",
                     "evidence_class": "",
-                    "required_evidence_artifacts": ";".join(
-                        row["required_evidence_artifacts"]
-                    ),
+                    "required_evidence_artifacts": ";".join(row["required_evidence_artifacts"]),
                     "raw_measurement_artifact": "",
                     "inspection_equipment_calibration_certificate": "",
                     "inspection_photo_or_scan": "",
@@ -9772,9 +9776,7 @@ def _write_results_template_if_blank(
         expected_ids = {str(row.get(id_field, "")) for row in rows}
         existing_fields = list(existing_rows[0].keys()) if existing_rows else []
         has_response_content = any(
-            row.get(field, "").strip()
-            for row in existing_rows
-            for field in response_fields
+            row.get(field, "").strip() for row in existing_rows for field in response_fields
         )
         should_write = (
             existing_ids != expected_ids or existing_fields != fieldnames or not existing_rows
@@ -10038,9 +10040,7 @@ def write_assembly_build_traveler_artifacts(
         },
     ]
     for step in steps:
-        step["missing_parts"] = [
-            name for name in step["required_parts"] if name not in part_names
-        ]
+        step["missing_parts"] = [name for name in step["required_parts"] if name not in part_names]
         step["cad_prerequisites_present"] = not step["missing_parts"]
         step["pass"] = step["cad_prerequisites_present"]
 
@@ -10204,9 +10204,7 @@ def write_assembly_build_traveler_artifacts(
             "photo/log artifact, and lot traceability before whole-phone build validation passes."
         ),
     }
-    (REVIEW_DIR / "assembly-build-traveler.json").write_text(
-        json.dumps(report, indent=2) + "\n"
-    )
+    (REVIEW_DIR / "assembly-build-traveler.json").write_text(json.dumps(report, indent=2) + "\n")
     lines = [
         "# E1 Phone Assembly Build Traveler",
         "",
@@ -10540,9 +10538,7 @@ def write_process_control_plan_artifacts(
                 "control_id": control_id,
                 "expected_control": control_id in control_by_id,
                 "traveler_step_present": bool(control.get("traveler_step_present", False)),
-                "cad_prerequisites_present": bool(
-                    control.get("cad_prerequisites_present", False)
-                ),
+                "cad_prerequisites_present": bool(control.get("cad_prerequisites_present", False)),
                 "operator_present": bool(row.get("operator", "").strip()),
                 "gauge_id_present": bool(row.get("gauge_id", "").strip()),
                 "result_present": bool(row.get("measured_or_observed_result", "").strip()),
@@ -11661,9 +11657,7 @@ def write_mold_flow_acceptance_artifacts(
         "required_outputs": [criterion["id"] for criterion in criteria],
         "first_shot_doe": mold_process["first_shot_doe"],
     }
-    (REVIEW_DIR / "mold-flow-input-deck.json").write_text(
-        json.dumps(input_deck, indent=2) + "\n"
-    )
+    (REVIEW_DIR / "mold-flow-input-deck.json").write_text(json.dumps(input_deck, indent=2) + "\n")
     input_lines = [
         "# E1 Phone Mold-Flow Input Deck",
         "",
@@ -11737,13 +11731,10 @@ def write_mold_flow_acceptance_artifacts(
             "reviewer",
         ]
         has_response_content = any(
-            row.get(field, "").strip()
-            for row in existing_rows
-            for field in response_fields
+            row.get(field, "").strip() for row in existing_rows for field in response_fields
         )
-        should_write_template = (
-            not has_response_content
-            and (existing_ids != expected_ids or existing_fields != fieldnames or not existing_rows)
+        should_write_template = not has_response_content and (
+            existing_ids != expected_ids or existing_fields != fieldnames or not existing_rows
         )
     if should_write_template:
         with template_path.open("w", newline="") as csv_file:
@@ -11834,9 +11825,7 @@ def write_mold_flow_acceptance_artifacts(
                     "required_evidence_keys": required_evidence_keys,
                     "required_numeric_results": required_numeric_results,
                     "linked_cad_evidence": [
-                        item
-                        for item in row.get("linked_cad_evidence", "").split(";")
-                        if item
+                        item for item in row.get("linked_cad_evidence", "").split(";") if item
                     ],
                     "populated": populated,
                     "physical_evidence_pass": evidence_class_allowed and evidence_fields_present,
@@ -12520,7 +12509,11 @@ def write_routed_board_clearance_artifacts(
                     "concept_required_mm": round(required, 3),
                     "concept_margin_mm": margin,
                     "rerun_priority": priority,
-                    "risk_level": "high" if priority == 1 else "medium" if priority == 2 else "normal",
+                    "risk_level": "high"
+                    if priority == 1
+                    else "medium"
+                    if priority == 2
+                    else "normal",
                     "measurement_instruction": (
                         "Rerun against routed KiCad STEP with production component 3D models."
                     ),
@@ -12743,22 +12736,39 @@ def write_full_cad_boolean_interference_artifacts(
     scopes = [
         {
             "id": "screen_stack_to_orange_rails",
-            "source_clearance_ids": ["screen_cover_glass_to_orange_body", "display_lcm_under_cover_glass"],
-            "required_parts": ["screen_cover_glass", "display_lcm", "screen_adhesive_top", "orange_side_frame"],
+            "source_clearance_ids": [
+                "screen_cover_glass_to_orange_body",
+                "display_lcm_under_cover_glass",
+            ],
+            "required_parts": [
+                "screen_cover_glass",
+                "display_lcm",
+                "screen_adhesive_top",
+                "orange_side_frame",
+            ],
             "concept_pair_checks": [["display_lcm", "screen_cover_glass"]],
             "risk": "screen glass, adhesive, and display stack must not clash with molded orange rails or ledges",
         },
         {
             "id": "routed_pcb_components_to_orange_enclosure",
             "source_clearance_ids": ["battery_to_pcb_islands"],
-            "required_parts": ["main_pcb", "battery_pouch", "orange_back_shell", "orange_side_frame"],
+            "required_parts": [
+                "main_pcb",
+                "battery_pouch",
+                "orange_back_shell",
+                "orange_side_frame",
+            ],
             "concept_pair_checks": [["main_pcb", "battery_pouch"]],
             "risk": "routed board components must clear enclosure ribs, bosses, snaps, and side rails",
         },
         {
             "id": "usb_c_port_saddle_aperture_and_gaskets",
             "source_clearance_ids": ["usb_shell_to_external_aperture", "usb_to_bottom_speaker"],
-            "required_parts": ["usb_c_receptacle", "usb_c_external_aperture", "orange_usb_reinforcement_saddle"],
+            "required_parts": [
+                "usb_c_receptacle",
+                "usb_c_external_aperture",
+                "orange_usb_reinforcement_saddle",
+            ],
             "concept_pair_checks": [
                 ["usb_c_receptacle", "bottom_speaker_module"],
                 ["usb_c_receptacle", "bottom_mic"],
@@ -12782,14 +12792,27 @@ def write_full_cad_boolean_interference_artifacts(
         {
             "id": "rear_camera_window_baffle_adhesive_stack",
             "source_clearance_ids": ["rear_camera_to_battery"],
-            "required_parts": ["rear_camera_module", "rear_camera_cover_glass", "rear_camera_light_baffle_top"],
+            "required_parts": [
+                "rear_camera_module",
+                "rear_camera_cover_glass",
+                "rear_camera_light_baffle_top",
+            ],
             "concept_pair_checks": [["rear_camera_module", "battery_pouch"]],
             "risk": "rear camera module, cover window, adhesive, and baffles must remain interference-free",
         },
         {
             "id": "battery_pouch_pcb_flex_haptic",
-            "source_clearance_ids": ["battery_to_pcb_islands", "haptic_to_pcb_islands", "split_interconnect_flex_to_battery_edge"],
-            "required_parts": ["battery_pouch", "main_pcb", "haptic_lra", "split_interconnect_side_flex"],
+            "source_clearance_ids": [
+                "battery_to_pcb_islands",
+                "haptic_to_pcb_islands",
+                "split_interconnect_flex_to_battery_edge",
+            ],
+            "required_parts": [
+                "battery_pouch",
+                "main_pcb",
+                "haptic_lra",
+                "split_interconnect_side_flex",
+            ],
             "concept_pair_checks": [
                 ["battery_pouch", "main_pcb"],
                 ["battery_pouch", "haptic_lra"],
@@ -12936,7 +12959,9 @@ def write_full_cad_boolean_interference_artifacts(
                 ),
                 "concept_aabb_scan_pass": concept_aabb_scan_pass,
                 "risk": scope["risk"],
-                "required_parts_present": all(name in part_names for name in scope["required_parts"]),
+                "required_parts_present": all(
+                    name in part_names for name in scope["required_parts"]
+                ),
                 "concept_clearance_case_count": len(source_cases),
                 "concept_clearance_pass": bool(source_cases)
                 and all(case.get("pass", False) for case in source_cases),
@@ -12985,7 +13010,9 @@ def write_full_cad_boolean_interference_artifacts(
         },
         "expected_scope_count": len(scopes),
         "scope_count": len(scope_cases),
-        "cad_prerequisite_scope_count": sum(1 for case in scope_cases if case["cad_prerequisite_pass"]),
+        "cad_prerequisite_scope_count": sum(
+            1 for case in scope_cases if case["cad_prerequisite_pass"]
+        ),
         "concept_aabb_pair_check_count": len(concept_aabb_pair_checks),
         "concept_aabb_interference_count": sum(
             int(check["interference_count"] or 0) for check in concept_aabb_pair_checks
@@ -13974,15 +14001,11 @@ def write_readiness_artifacts(
             "toolmaker_signoff_complete_count": toolmaker_signoff.get("complete_response_count", 0),
             "visual_decision_status": visual_decision["status"],
             "automated_visual_status": visual_decision.get("automated_visual_status"),
-            "manual_visual_signoff_status": visual_decision.get(
-                "manual_visual_signoff_status"
-            ),
+            "manual_visual_signoff_status": visual_decision.get("manual_visual_signoff_status"),
             "production_visual_signoff_ready": visual_decision.get(
                 "production_visual_signoff_ready", False
             ),
-            "open_manual_visual_review_count": visual_decision.get(
-                "open_manual_review_count", 0
-            ),
+            "open_manual_visual_review_count": visual_decision.get("open_manual_review_count", 0),
             "solid_cad_handoff_status": solid_cad["status"],
             "solid_cad_step_part_count": solid_cad.get("part_count", 0),
             "step_validation_status": step_validation["status"],
@@ -14099,8 +14122,7 @@ def write_end_to_end_objective_acceptance_artifacts(
         {
             "id": "automated_visual_and_manual_cmf_signoff",
             "status": visual_review_coverage.get("status"),
-            "pass": visual_review_coverage.get("status")
-            == "visual_review_coverage_acceptance_pass"
+            "pass": visual_review_coverage.get("status") == "visual_review_coverage_acceptance_pass"
             and visual_review_coverage.get("production_visual_signoff_ready") is True,
             "required_evidence": [
                 "visual-review-coverage-acceptance.json",
@@ -14155,9 +14177,9 @@ def write_end_to_end_objective_acceptance_artifacts(
     board_ready = bool(board_release_decision.get("end_to_end_phone_ready", False))
     complete_board_count = sum(1 for case in board_cases if case["pass"])
     complete_mechanical_count = sum(1 for case in mechanical_cases if case["pass"])
-    missing_items = [
-        f"board:{case['id']}" for case in board_cases if not case["pass"]
-    ] + [f"mechanical:{case['id']}" for case in mechanical_cases if not case["pass"]]
+    missing_items = [f"board:{case['id']}" for case in board_cases if not case["pass"]] + [
+        f"mechanical:{case['id']}" for case in mechanical_cases if not case["pass"]
+    ]
     required_release_outputs = list(board_data.get("required_release_outputs", []))
     for case in board_cases:
         required_release_outputs.extend(case.get("required_release_outputs", []))
@@ -14219,9 +14241,7 @@ def write_end_to_end_objective_acceptance_artifacts(
     for case in mechanical_cases:
         lines.append(f"- {'PASS' if case['pass'] else 'BLOCKED'}: `{case['id']}`")
     lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
-    (REVIEW_DIR / "end-to-end-objective-acceptance.md").write_text(
-        "\n".join(lines) + "\n"
-    )
+    (REVIEW_DIR / "end-to-end-objective-acceptance.md").write_text("\n".join(lines) + "\n")
     return report
 
 
@@ -14647,7 +14667,9 @@ def write_physical_process_validation_acceptance_artifacts() -> dict[str, Any]:
                 "complete_result_count": review.get("complete_result_count", 0),
                 "expected_result_count": review.get(
                     "expected_measurement_count",
-                    review.get("expected_characteristic_count", review.get("expected_result_count", 0)),
+                    review.get(
+                        "expected_characteristic_count", review.get("expected_result_count", 0)
+                    ),
                 ),
                 "pass": passed,
             }
@@ -14692,9 +14714,7 @@ def write_physical_process_validation_acceptance_artifacts() -> dict[str, Any]:
     for case in cases:
         lines.append(f"- {'PASS' if case['pass'] else 'BLOCKED'}: `{case['id']}`")
     lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
-    (REVIEW_DIR / "physical-process-validation-acceptance.md").write_text(
-        "\n".join(lines) + "\n"
-    )
+    (REVIEW_DIR / "physical-process-validation-acceptance.md").write_text("\n".join(lines) + "\n")
     return report
 
 
@@ -15920,7 +15940,7 @@ def main() -> int:
     evt_inspection = write_evt_inspection_plan_artifacts(params, interface_validation, evt_fixtures)
     evt_results = write_evt_results_review_artifacts(evt_inspection)
     mold_process = write_mold_process_window_artifacts(params, parts, tooling, dfm, tolerance_stack)
-    mold_flow_acceptance = write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
+    write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
     toolmaker_signoff = write_toolmaker_signoff_artifacts(params, dfm, mold_process)
     tooling_action_register = write_tooling_action_register_artifacts(dfm, mold_process)
     routed_board_clearance = write_routed_board_clearance_artifacts(
@@ -16005,7 +16025,7 @@ def main() -> int:
         supplier_rfq,
         supplier_response,
     )
-    physical_process_validation = write_physical_process_validation_acceptance_artifacts()
+    write_physical_process_validation_acceptance_artifacts()
     write_end_to_end_objective_acceptance_artifacts(
         manufacturing_readiness,
         board_step,

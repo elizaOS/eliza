@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  
+  <requires version="3.24" lib="gtk+"/>
+  <template parent="GtkApplicationWindow" class="Window">
+    <property name="default-height">640</property>
+    
+    <property name="default-width">780</property>
+    <property name="icon-name">elizaos</property>
+    <property name="window-position">center</property>
+    <signal name="delete-event" handler="on_close"/>
+    <child>
+      <object id="view_box" class="GtkBox">
+        <property name="orientation">vertical</property>
+        <property name="visible">True</property>
+      </object>
+    </child>
+    <child type="titlebar">
+      <object id="headerbar" class="GtkHeaderBar">
+        <property name="hexpand">True</property>
+        <property name="show-close-button">True</property>
+        <property translatable="yes" name="title">Persistent Storage</property>
+        <property name="visible">True</property>
+        <child>
+          <object id="delete_button" class="GtkButton">
+            <property name="can-focus">True</property>
+            <property translatable="yes" name="label">_Delete…</property>
+            <property name="receives-default">False</property>
+            <property name="use-underline">True</property>
+            <signal name="clicked" handler="on_delete_button_clicked"/>
+            <child internal-child="accessible">
+              <object class="AtkObject">
+                <property translatable="yes" name="accessible-name">Delete Persistent Storage</property>
+              </object>
+            </child>
+            <style>
+              <class name="destructive-action"/>
+            </style>
+          </object>
+          <packing>
+            <property name="pack-type">end</property>
+          </packing>
+        </child>
+        <child>
+          <object id="change_passphrase_button" class="GtkButton">
+            <property name="can-focus">True</property>
+            <property translatable="yes" name="label">_Change Passphrase…</property>
+            <property name="receives-default">True</property>
+            <property name="use-underline">True</property>
+            <signal name="clicked" handler="on_change_passphrase_button_clicked"/>
+            <child internal-child="accessible">
+              <object class="AtkObject">
+                <property translatable="yes" name="accessible-name">Change Passphrase</property>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <object id="restart_button" class="GtkButton">
+            <property name="can-focus">True</property>
+            <property translatable="yes" name="label">_Restart elizaOS</property>
+            <property name="receives-default">True</property>
+            <property name="use-underline">True</property>
+            <signal name="clicked" handler="on_restart_button_clicked"/>
+          </object>
+          <packing>
+            <property name="position">2</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

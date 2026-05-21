@@ -109,7 +109,9 @@ def parse_macro_sizes(lef_dir: Path) -> dict[str, dict[str, Any]]:
     return sizes
 
 
-def parse_components(def_path: Path, macro_sizes: dict[str, dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+def parse_components(
+    def_path: Path, macro_sizes: dict[str, dict[str, Any]]
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
     text = def_path.read_text(encoding="utf-8", errors="replace")
     units = def_units(text)
     components: dict[str, dict[str, Any]] = {}
@@ -197,7 +199,11 @@ def convert_case(case_dir: Path, out_dir: Path, payload: Path) -> list[dict[str,
         "schema": "eda.design_bundle.v1",
         "id": design_id,
         "claim_boundary": CLAIM_BOUNDARY,
-        "design": {"name": case_name, "revision": "chipbench_d_local_payload", "top_module": case_name},
+        "design": {
+            "name": case_name,
+            "revision": "chipbench_d_local_payload",
+            "top_module": case_name,
+        },
         "sources": {
             "rtl": [file_record(netlist)],
             "manifests": [

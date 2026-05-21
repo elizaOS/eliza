@@ -9,12 +9,12 @@ Produces:
 
 Re-runnable. Reads assembly-manifest.json + the existing assembly GLB.
 """
+
 from __future__ import annotations
 
 import json
 import math
 import os
-import struct
 import subprocess
 import sys
 import time
@@ -64,10 +64,20 @@ def classify(name: str) -> tuple[np.ndarray, int]:
     if "bottom_speaker_acoustic_chamber" in n:
         return np.array([0.0, 0.0, -1.0]), 3
     # USB-C bottom group → -Y
-    if n.startswith("usb_c") or n.startswith("bottom_mic") or n.startswith("bottom_microphone") or "bottom_speaker" in n:
+    if (
+        n.startswith("usb_c")
+        or n.startswith("bottom_mic")
+        or n.startswith("bottom_microphone")
+        or "bottom_speaker" in n
+    ):
         return np.array([0.0, -1.0, 0.0]), 2 if "module" in n or "receptacle" in n else 3
     # Top earpiece / top mic / front camera → +Y
-    if n.startswith("earpiece") or n.startswith("top_mic") or n.startswith("top_microphone") or n.startswith("front_camera"):
+    if (
+        n.startswith("earpiece")
+        or n.startswith("top_mic")
+        or n.startswith("top_microphone")
+        or n.startswith("front_camera")
+    ):
         return np.array([0.0, 1.0, 0.0]), 2 if "module" in n or "receiver" in n else 3
     # side buttons: power on +X, volume on -X
     if n.startswith("power_button") or "power_actuator" in n or "power_flex" in n:
@@ -86,7 +96,11 @@ def classify(name: str) -> tuple[np.ndarray, int]:
         or n.startswith("glass_perimeter_cushion")
     ):
         return np.array([0.0, 0.0, 1.0]), 3
-    if n.startswith("display") or n.startswith("rear_camera_cover") or n.startswith("rear_camera_lens"):
+    if (
+        n.startswith("display")
+        or n.startswith("rear_camera_cover")
+        or n.startswith("rear_camera_lens")
+    ):
         # display is front-stack; rear_camera_cover is actually on back but glass faces back; keep on +Z group for the cover stack? Use -Z for rear cam.
         if "rear_camera_cover" in n or "rear_camera_lens" in n:
             return np.array([0.0, 0.0, -1.0]), 4
@@ -100,7 +114,13 @@ def classify(name: str) -> tuple[np.ndarray, int]:
         return np.array([0.0, 0.0, -1.0]), 5
     if n.startswith("orange_side_frame"):
         return np.array([0.0, 0.0, 1.0]), 1  # frame slightly forward
-    if n.startswith("main_pcb") or "shield_can" in n or n.startswith("pmic") or n.startswith("soc") or n.startswith("radio"):
+    if (
+        n.startswith("main_pcb")
+        or "shield_can" in n
+        or n.startswith("pmic")
+        or n.startswith("soc")
+        or n.startswith("radio")
+    ):
         return np.array([0.0, 0.0, -1.0]), 1
     if n.startswith("battery") or "battery" in n:
         return np.array([0.0, 0.0, -1.0]), 2
@@ -169,9 +189,23 @@ def build_animated_glb(scene: trimesh.Scene, parts: list[dict]) -> None:
     """Author an animated GLB with translation keyframes per part node."""
     import pygltflib as pg
     from pygltflib import (
-        GLTF2, Scene as GScene, Node, Mesh, Primitive, Attributes,
-        Buffer, BufferView, Accessor, Material, PbrMetallicRoughness,
-        Animation, AnimationChannel, AnimationChannelTarget, AnimationSampler,
+        GLTF2,
+        Accessor,
+        Animation,
+        AnimationChannel,
+        AnimationChannelTarget,
+        AnimationSampler,
+        Attributes,
+        Buffer,
+        BufferView,
+        Material,
+        Mesh,
+        Node,
+        PbrMetallicRoughness,
+        Primitive,
+    )
+    from pygltflib import (
+        Scene as GScene,
     )
 
     bin_chunks: list[bytes] = []
@@ -195,8 +229,7 @@ def build_animated_glb(scene: trimesh.Scene, parts: list[dict]) -> None:
         buffer_views.append(bv)
         return len(buffer_views) - 1
 
-    def add_accessor(bv: int, ctype: int, count: int, atype: str,
-                     mn=None, mx=None) -> int:
+    def add_accessor(bv: int, ctype: int, count: int, atype: str, mn=None, mx=None) -> int:
         a = Accessor(bufferView=bv, componentType=ctype, count=count, type=atype)
         if mn is not None:
             a.min = list(map(float, mn))
@@ -230,12 +263,12 @@ def build_animated_glb(scene: trimesh.Scene, parts: list[dict]) -> None:
         faces = np.asarray(g.faces, dtype=np.uint32).reshape(-1)
         # accessors
         vb = add_bv(verts.tobytes(), target=34962)
-        va = add_accessor(vb, 5126, len(verts), "VEC3",
-                          mn=verts.min(0), mx=verts.max(0))
+        va = add_accessor(vb, 5126, len(verts), "VEC3", mn=verts.min(0), mx=verts.max(0))
         ib = add_bv(faces.tobytes(), target=34963)
         ia = add_accessor(ib, 5125, len(faces), "SCALAR")
-        prim = Primitive(attributes=Attributes(POSITION=va), indices=ia,
-                         material=get_material(color_for(name)))
+        prim = Primitive(
+            attributes=Attributes(POSITION=va), indices=ia, material=get_material(color_for(name))
+        )
         meshes.append(Mesh(primitives=[prim], name=name))
         mesh_idx = len(meshes) - 1
         nd = Node(mesh=mesh_idx, name=name, translation=[0.0, 0.0, 0.0])
@@ -255,16 +288,23 @@ def build_animated_glb(scene: trimesh.Scene, parts: list[dict]) -> None:
         ta = add_accessor(tb, 5126, 2, "SCALAR", mn=[float(times.min())], mx=[float(times.max())])
         samplers: list[AnimationSampler] = []
         channels: list[AnimationChannel] = []
-        for p, node_idx in zip(parts, part_node_indices):
+        for p, node_idx in zip(parts, part_node_indices, strict=False):
             dir_v = p["dir"]
             ring = p["ring"]
             offset = dir_v * (ring * RING_MM)
-            start = np.array([0.0, 0.0, 0.0], dtype=np.float32) if outward else offset.astype(np.float32)
-            end = offset.astype(np.float32) if outward else np.array([0.0, 0.0, 0.0], dtype=np.float32)
+            start = (
+                np.array([0.0, 0.0, 0.0], dtype=np.float32)
+                if outward
+                else offset.astype(np.float32)
+            )
+            end = (
+                offset.astype(np.float32)
+                if outward
+                else np.array([0.0, 0.0, 0.0], dtype=np.float32)
+            )
             arr = np.stack([start, end]).astype(np.float32)
             vb = add_bv(arr.tobytes())
-            va = add_accessor(vb, 5126, 2, "VEC3",
-                              mn=arr.min(0), mx=arr.max(0))
+            va = add_accessor(vb, 5126, 2, "VEC3", mn=arr.min(0), mx=arr.max(0))
             samp = AnimationSampler(input=ta, output=va, interpolation="LINEAR")
             samplers.append(samp)
             ch = AnimationChannel(
@@ -280,8 +320,14 @@ def build_animated_glb(scene: trimesh.Scene, parts: list[dict]) -> None:
     # continuous Y-rotation on root for the full 12s
     rot_times = np.linspace(0, TURNTABLE_S, 5, dtype=np.float32)
     rtb = add_bv(rot_times.tobytes())
-    rta = add_accessor(rtb, 5126, len(rot_times),
-                       "SCALAR", mn=[float(rot_times.min())], mx=[float(rot_times.max())])
+    rta = add_accessor(
+        rtb,
+        5126,
+        len(rot_times),
+        "SCALAR",
+        mn=[float(rot_times.min())],
+        mx=[float(rot_times.max())],
+    )
     quats = []
     for t in rot_times:
         ang = (t / TURNTABLE_S) * 2 * math.pi
@@ -289,10 +335,11 @@ def build_animated_glb(scene: trimesh.Scene, parts: list[dict]) -> None:
         quats.append([0.0, math.sin(ang / 2), 0.0, math.cos(ang / 2)])
     quats_arr = np.array(quats, dtype=np.float32)
     qb = add_bv(quats_arr.tobytes())
-    qa = add_accessor(qb, 5126, len(quats), "VEC4",
-                      mn=quats_arr.min(0), mx=quats_arr.max(0))
+    qa = add_accessor(qb, 5126, len(quats), "VEC4", mn=quats_arr.min(0), mx=quats_arr.max(0))
     rot_samp = AnimationSampler(input=rta, output=qa, interpolation="LINEAR")
-    rot_ch = AnimationChannel(sampler=0, target=AnimationChannelTarget(node=root_idx, path="rotation"))
+    rot_ch = AnimationChannel(
+        sampler=0, target=AnimationChannelTarget(node=root_idx, path="rotation")
+    )
     anim_spin = Animation(name="turntable", samplers=[rot_samp], channels=[rot_ch])
 
     # combine bin chunks
@@ -386,8 +433,9 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
             renderer.delete()
             renderer = pyrender.OffscreenRenderer(viewport_width=W, viewport_height=H)
         t = fi / FPS
-        pyscene = pyrender.Scene(bg_color=np.array([0.22, 0.22, 0.24, 1.0]),
-                                 ambient_light=np.array([0.28, 0.28, 0.30]))
+        pyscene = pyrender.Scene(
+            bg_color=np.array([0.22, 0.22, 0.24, 1.0]), ambient_light=np.array([0.28, 0.28, 0.30])
+        )
         # add parts with displaced positions
         for p in parts:
             offset = part_offset(t, p["dir"], p["ring"])
@@ -400,22 +448,29 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
         ang = (t / TURNTABLE_S) * 2 * math.pi
         eye = np.array([cam_r * math.sin(ang), cam_h, cam_r * math.cos(ang)])
         # look-at matrix
-        f = (target - eye); f = f / np.linalg.norm(f)
+        f = target - eye
+        f = f / np.linalg.norm(f)
         up = np.array([0.0, 1.0, 0.0])
-        s = np.cross(f, up); s = s / np.linalg.norm(s)
+        s = np.cross(f, up)
+        s = s / np.linalg.norm(s)
         u = np.cross(s, f)
         cam_pose = np.eye(4)
         cam_pose[:3, 0] = s
         cam_pose[:3, 1] = u
         cam_pose[:3, 2] = -f
         cam_pose[:3, 3] = eye
-        cam = pyrender.PerspectiveCamera(yfov=math.radians(28.0), aspectRatio=W / H, znear=1.0, zfar=4000.0)
+        cam = pyrender.PerspectiveCamera(
+            yfov=math.radians(28.0), aspectRatio=W / H, znear=1.0, zfar=4000.0
+        )
         pyscene.add(cam, pose=cam_pose)
         # World-anchored 3-point so the orange shell stays consistently lit
         # across the orbit (camera-anchored lights muddied the back face).
-        lp1 = np.eye(4); lp1[:3, 3] = np.array([350.0, 350.0, 350.0])
-        lp2 = np.eye(4); lp2[:3, 3] = np.array([-350.0, 250.0, 350.0])
-        lp3 = np.eye(4); lp3[:3, 3] = np.array([0.0, -200.0, -350.0])
+        lp1 = np.eye(4)
+        lp1[:3, 3] = np.array([350.0, 350.0, 350.0])
+        lp2 = np.eye(4)
+        lp2[:3, 3] = np.array([-350.0, 250.0, 350.0])
+        lp3 = np.eye(4)
+        lp3[:3, 3] = np.array([0.0, -200.0, -350.0])
         pyscene.add(key, pose=lp1)
         pyscene.add(fill, pose=lp2)
         pyscene.add(rim, pose=lp3)
@@ -433,10 +488,21 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
 
     # ffmpeg → mp4
     cmd = [
-        "ffmpeg", "-y", "-framerate", str(FPS), "-i",
+        "ffmpeg",
+        "-y",
+        "-framerate",
+        str(FPS),
+        "-i",
         str(FRAMES_DIR / "frame_%04d.png"),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20",
-        "-movflags", "+faststart", str(EXPL_MP4),
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-crf",
+        "20",
+        "-movflags",
+        "+faststart",
+        str(EXPL_MP4),
     ]
     subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return ("pyrender-egl + ffmpeg/libx264", elapsed)
@@ -445,6 +511,7 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
 # ------------------------------------------------------------ verify
 def verify_glb(path: Path) -> dict:
     import pygltflib as pg
+
     g = pg.GLTF2.load_binary(str(path))
     return {
         "size_bytes": path.stat().st_size,
@@ -496,18 +563,34 @@ def main() -> int:
         "frame_count": len(list(FRAMES_DIR.glob("frame_*.png"))),
         "keyframe_count": len(list(FRAMES_DIR.glob("keyframe_*.png"))),
         "clips": glb_info["animations"],
-        "clip_durations_s": {"explode": EXPLODE_S, "hold_exploded": HOLD_S,
-                              "reassemble": REASM_S, "hold_assembled": HOLD_S,
-                              "turntable_total": TURNTABLE_S},
+        "clip_durations_s": {
+            "explode": EXPLODE_S,
+            "hold_exploded": HOLD_S,
+            "reassemble": REASM_S,
+            "hold_assembled": HOLD_S,
+            "turntable_total": TURNTABLE_S,
+        },
         "fps": FPS,
         "part_count": len(parts),
         "ring_offset_mm": RING_MM,
         "renderer": renderer_label,
         "render_seconds": round(render_secs, 2),
-        "render_command": " ".join([
-            "ffmpeg", "-framerate", str(FPS),
-            "-i", "frame_%04d.png", "-c:v", "libx264",
-            "-pix_fmt", "yuv420p", "-crf", "20", str(EXPL_MP4.name)]),
+        "render_command": " ".join(
+            [
+                "ffmpeg",
+                "-framerate",
+                str(FPS),
+                "-i",
+                "frame_%04d.png",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-crf",
+                "20",
+                str(EXPL_MP4.name),
+            ]
+        ),
         "axis_decisions": {
             "screen_front_stack": "+Z",
             "back_shell_pcb_battery_haptic": "-Z",
@@ -520,10 +603,10 @@ def main() -> int:
     (REVIEW / "exploded-animation.json").write_text(json.dumps(summary, indent=2))
     md = f"""# e1-phone exploded animation
 
-- GLB: `{EXPL_GLB}` ({glb_info['size_bytes']:,} bytes)
-- MP4: `{EXPL_MP4}` ({summary['mp4_size_bytes']:,} bytes)
-- Frames: `{FRAMES_DIR}` ({summary['frame_count']} frames, {summary['keyframe_count']} keyframes)
-- Clips: {', '.join(glb_info['animations'])}
+- GLB: `{EXPL_GLB}` ({glb_info["size_bytes"]:,} bytes)
+- MP4: `{EXPL_MP4}` ({summary["mp4_size_bytes"]:,} bytes)
+- Frames: `{FRAMES_DIR}` ({summary["frame_count"]} frames, {summary["keyframe_count"]} keyframes)
+- Clips: {", ".join(glb_info["animations"])}
 - Durations: explode {EXPLODE_S}s, hold {HOLD_S}s, reassemble {REASM_S}s, hold {HOLD_S}s — total {TURNTABLE_S}s @ {FPS}fps
 - Parts animated: {len(parts)}
 - Ring spacing: {RING_MM} mm
@@ -553,7 +636,7 @@ python3 packages/chip/scripts/generate_e1_phone_exploded_animation.py
 - Vertex colors are baked per part (orange shell stays safety orange; kapton flex is amber; PCB green; shields silver).
 """
     (REVIEW / "exploded-animation.md").write_text(md)
-    print(f"[done] review/exploded-animation.{{json,md}}")
+    print("[done] review/exploded-animation.{json,md}")
     print(json.dumps(summary, indent=2))
     return 0
 

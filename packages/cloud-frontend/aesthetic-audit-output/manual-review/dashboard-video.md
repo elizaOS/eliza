@@ -1,9 +1,9 @@
 # Manual review — dashboard-video
 
-Route inferred from slug. Screenshots: `../desktop/dashboard-video.png`, `../desktop/dashboard-video--hover.png`, `../mobile/dashboard-video.png`
+Screenshots: `../desktop/dashboard-video.png`, `../desktop/dashboard-video--hover.png`, `../mobile/dashboard-video.png`
 
 ## Verdict
 
-`needs-work`
+`good`
 
-Skeleton.
+Video generation surface — captures cleanly.

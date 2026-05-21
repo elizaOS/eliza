@@ -66,7 +66,9 @@ def rtl_records(config: dict[str, Any], config_dir: Path) -> list[dict[str, Any]
     return records
 
 
-def manifest_records(config_path: Path, config: dict[str, Any], config_dir: Path) -> list[dict[str, Any]]:
+def manifest_records(
+    config_path: Path, config: dict[str, Any], config_dir: Path
+) -> list[dict[str, Any]]:
     paths = [config_path, ROOT / "sw/platform/e1_platform_contract.json"]
     for key in ("PNR_SDC_FILE", "SIGNOFF_SDC_FILE", "IO_PIN_ORDER_CFG"):
         value = config.get(key)
@@ -82,7 +84,9 @@ def macro_objects(config: dict[str, Any]) -> tuple[list[dict[str, Any]], list[di
         if not isinstance(macro, dict):
             continue
         for inst_name, inst in macro.get("instances", {}).items():
-            location = inst.get("location", [None, None]) if isinstance(inst, dict) else [None, None]
+            location = (
+                inst.get("location", [None, None]) if isinstance(inst, dict) else [None, None]
+            )
             item = {
                 "id": inst_name,
                 "type": "hard_macro",
@@ -199,7 +203,9 @@ def build_records(config_path: Path, run_id: str) -> dict[str, Any]:
             "artifacts": [rel(results_dir)] if results_dir.exists() else [],
         },
         "metrics": {
-            "label_status": "blocked_until_deterministic_openlane_run" if not run_present else "reports_present_unparsed",
+            "label_status": "blocked_until_deterministic_openlane_run"
+            if not run_present
+            else "reports_present_unparsed",
             "required_metrics": [
                 "timing_wns_ns",
                 "timing_tns_ns",
@@ -212,7 +218,9 @@ def build_records(config_path: Path, run_id: str) -> dict[str, Any]:
             ],
         },
         "status": {
-            "result": "BLOCKED_NO_OPENLANE_RUN_ARTIFACTS" if not run_present else "PRESENT_REPORTS_REQUIRE_PARSE",
+            "result": "BLOCKED_NO_OPENLANE_RUN_ARTIFACTS"
+            if not run_present
+            else "PRESENT_REPORTS_REQUIRE_PARSE",
             "blockers": []
             if run_present
             else ["run OpenLane/OpenROAD replay before using as training labels or PPA evidence"],

@@ -182,8 +182,14 @@ def validate_candidate_tasks(name: str, data: dict[str, Any]) -> list[str]:
         if not isinstance(task.get("target"), str) or not task["target"]:
             errors.append(f"{name}: candidate_tasks[{index}].target must be non-empty")
         gates = task.get("acceptance_gates")
-        if not isinstance(gates, list) or not gates or not all(isinstance(gate, str) and gate for gate in gates):
-            errors.append(f"{name}: candidate_tasks[{index}].acceptance_gates must be non-empty strings")
+        if (
+            not isinstance(gates, list)
+            or not gates
+            or not all(isinstance(gate, str) and gate for gate in gates)
+        ):
+            errors.append(
+                f"{name}: candidate_tasks[{index}].acceptance_gates must be non-empty strings"
+            )
     return errors
 
 
@@ -202,7 +208,9 @@ def validate_optional_backends(name: str, data: dict[str, Any]) -> list[str]:
                 errors.append(f"{name}: optional_backends.{field}[{index}] must be a mapping")
                 continue
             if entry.get("status") not in {"PRESENT", "MISSING"}:
-                errors.append(f"{name}: optional_backends.{field}[{index}].status must be PRESENT or MISSING")
+                errors.append(
+                    f"{name}: optional_backends.{field}[{index}].status must be PRESENT or MISSING"
+                )
     return errors
 
 

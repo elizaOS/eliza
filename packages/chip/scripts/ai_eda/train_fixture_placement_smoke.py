@@ -76,7 +76,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if args.device != "cpu":
-        raise SystemExit("fixture placement smoke is dependency-free and only supports --device cpu")
+        raise SystemExit(
+            "fixture placement smoke is dependency-free and only supports --device cpu"
+        )
     placement = find_record("eda.placement_case.v1")
     candidate = find_record("eda.e1_candidate.v1")
     core = placement["floorplan"]["core_area_um"]

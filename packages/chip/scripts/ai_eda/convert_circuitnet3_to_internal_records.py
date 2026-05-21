@@ -72,7 +72,9 @@ def final_case_prefixes(zip_file: zipfile.ZipFile) -> list[str]:
     return sorted(prefixes)
 
 
-def feature_records(features: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+def feature_records(
+    features: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
     cell_histogram: Counter[str] = Counter()
@@ -158,7 +160,9 @@ def feature_records(features: dict[str, Any]) -> tuple[list[dict[str, Any]], lis
     return nodes, edges, labels
 
 
-def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_path: Path) -> list[dict[str, Any]]:
+def convert_case(
+    zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_path: Path
+) -> list[dict[str, Any]]:
     case_name = prefix.rsplit("/", 1)[-1]
     safe_case = re.sub(r"[^A-Za-z0-9_.-]+", "_", case_name)
     feature_path = f"{prefix}/feature.json"
@@ -176,11 +180,18 @@ def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_
         "schema": "eda.design_bundle.v1",
         "id": f"circuitnet3-{safe_case}-design-bundle",
         "claim_boundary": CLAIM_BOUNDARY,
-        "design": {"name": case_name, "revision": "circuitnet3_payload_zip", "top_module": case_name},
+        "design": {
+            "name": case_name,
+            "revision": "circuitnet3_payload_zip",
+            "top_module": case_name,
+        },
         "sources": {
             "rtl": [],
             "netlists": [f"{rel(archive_path)}::{netlist_path}"],
-            "manifests": [f"{rel(archive_path)}::{feature_path}", f"{rel(archive_path)}::{power_path}"],
+            "manifests": [
+                f"{rel(archive_path)}::{feature_path}",
+                f"{rel(archive_path)}::{power_path}",
+            ],
         },
         "constraints": {"clocks": [], "resets": []},
         "technology": {
@@ -201,12 +212,18 @@ def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_
         },
         "labels": {
             "label_status": "public_circuitnet3_training_pretraining_labels_not_e1_signoff",
-            "label_sources": [f"{rel(archive_path)}::{feature_path}", f"{rel(archive_path)}::{power_path}"],
+            "label_sources": [
+                f"{rel(archive_path)}::{feature_path}",
+                f"{rel(archive_path)}::{power_path}",
+            ],
             "values": labels,
         },
         "provenance": {
             "generated_by": "scripts/ai_eda/convert_circuitnet3_to_internal_records.py",
-            "source_records": [f"{rel(archive_path)}::{feature_path}", f"{rel(archive_path)}::{power_path}"],
+            "source_records": [
+                f"{rel(archive_path)}::{feature_path}",
+                f"{rel(archive_path)}::{power_path}",
+            ],
         },
     }
     flow_run = {
@@ -214,10 +231,24 @@ def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_
         "id": f"circuitnet3-{safe_case}-flow-run",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
-        "toolchain": {"tools": ["CircuitNet3.0 public dataset export"], "version_capture": "external/datasets/circuitnet3/manifest.yaml"},
+        "toolchain": {
+            "tools": ["CircuitNet3.0 public dataset export"],
+            "version_capture": "external/datasets/circuitnet3/manifest.yaml",
+        },
         "command": "python3 scripts/ai_eda/convert_circuitnet3_to_internal_records.py --run-id <run-id>",
-        "inputs": {"archive": rel(archive_path), "feature_json": feature_path, "final_netlist": netlist_path, "power_summary": power_path},
-        "outputs": {"reports": [], "artifacts": [f"{rel(archive_path)}::{feature_path}", f"{rel(archive_path)}::{power_path}"]},
+        "inputs": {
+            "archive": rel(archive_path),
+            "feature_json": feature_path,
+            "final_netlist": netlist_path,
+            "power_summary": power_path,
+        },
+        "outputs": {
+            "reports": [],
+            "artifacts": [
+                f"{rel(archive_path)}::{feature_path}",
+                f"{rel(archive_path)}::{power_path}",
+            ],
+        },
         "metrics": {"instance_count": len(nodes), "timing_arc_count": len(edges), **labels},
         "status": {
             "result": "CONVERTED_PUBLIC_DATASET_LABELS_NOT_REPLAYED",
@@ -230,7 +261,13 @@ def convert_case(zip_file: zipfile.ZipFile, prefix: str, out_dir: Path, archive_
     }
     paths = [write_json(out_dir, record) for record in (design_bundle, graph_sample, flow_run)]
     return [
-        {"case": case_name, "schema": record["schema"], "json": rel(path), "instance_count": len(nodes), "timing_arc_count": len(edges)}
+        {
+            "case": case_name,
+            "schema": record["schema"],
+            "json": rel(path),
+            "instance_count": len(nodes),
+            "timing_arc_count": len(edges),
+        }
         for record, path in zip((design_bundle, graph_sample, flow_run), paths)
     ]
 

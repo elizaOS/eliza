@@ -150,7 +150,8 @@ def target_aware_grid_locations(
         remaining.remove(best_location_index)
 
     candidate_locations = [
-        location if location is not None else locations[index] for index, location in enumerate(assigned)
+        location if location is not None else locations[index]
+        for index, location in enumerate(assigned)
     ]
     if legal_locations(core, movable, candidate_locations):
         return candidate_locations
@@ -168,7 +169,9 @@ def location_boxes(
     return boxes
 
 
-def boxes_overlap(left: tuple[float, float, float, float], right: tuple[float, float, float, float]) -> bool:
+def boxes_overlap(
+    left: tuple[float, float, float, float], right: tuple[float, float, float, float]
+) -> bool:
     return left[0] < right[2] and right[0] < left[2] and left[1] < right[3] and right[1] < left[3]
 
 
@@ -233,7 +236,10 @@ def target_repair_locations(
             obj,
             (float(target["x_um"]), float(target["y_um"])),
         )
-        if legal_locations(core, movable, repaired) and mean_target_distance(repaired, movable) <= current_score:
+        if (
+            legal_locations(core, movable, repaired)
+            and mean_target_distance(repaired, movable) <= current_score
+        ):
             locations = repaired
 
     return locations
@@ -302,7 +308,9 @@ def hier_rtlmp_proxy_locations(
     )
     assigned: list[tuple[float, float] | None] = [None] * len(movable)
 
-    def place(group: list[tuple[int, dict[str, Any]]], box: tuple[float, float, float, float]) -> None:
+    def place(
+        group: list[tuple[int, dict[str, Any]]], box: tuple[float, float, float, float]
+    ) -> None:
         if not group:
             return
         if len(group) == 1:
@@ -331,7 +339,11 @@ def hier_rtlmp_proxy_locations(
     ]
     if len(movable) > 64:
         return target_aware_grid_locations(core, movable)
-    return locations if legal_locations(core, movable, locations) else target_aware_grid_locations(core, movable)
+    return (
+        locations
+        if legal_locations(core, movable, locations)
+        else target_aware_grid_locations(core, movable)
+    )
 
 
 def chipdiffusion_proxy_locations(
@@ -359,9 +371,15 @@ def chipdiffusion_proxy_locations(
                 anchor_x, anchor_y = base[index]
             radius_x = max((max_x - min_x - width) / (sample + 4), 0.0)
             radius_y = max((max_y - min_y - height) / (sample + 4), 0.0)
-            jitter_x = (deterministic_fraction("diff-x", sample, obj.get("id", index)) - 0.5) * radius_x
-            jitter_y = (deterministic_fraction("diff-y", sample, obj.get("id", index)) - 0.5) * radius_y
-            candidate.append(clamp_location_to_core(core, obj, (anchor_x + jitter_x, anchor_y + jitter_y)))
+            jitter_x = (
+                deterministic_fraction("diff-x", sample, obj.get("id", index)) - 0.5
+            ) * radius_x
+            jitter_y = (
+                deterministic_fraction("diff-y", sample, obj.get("id", index)) - 0.5
+            ) * radius_y
+            candidate.append(
+                clamp_location_to_core(core, obj, (anchor_x + jitter_x, anchor_y + jitter_y))
+            )
         if not legal_locations(core, movable, candidate):
             continue
         score = mean_target_distance(candidate, movable)
@@ -464,7 +482,9 @@ def score_candidate(
     )
     overlaps = overlap_metrics(changes, movable_by_id)
     penalty = (int(overlaps["overlap_count"]) * 1_000_000.0) + (out_of_bounds * 1_000_000.0)
-    score_basis = mean_target_distance_um if mean_target_distance_um is not None else mean_center_distance_um
+    score_basis = (
+        mean_target_distance_um if mean_target_distance_um is not None else mean_center_distance_um
+    )
     return {
         "proxy": (
             "target_distance_when_labels_exist_else_center_distance_lower_is_better_"

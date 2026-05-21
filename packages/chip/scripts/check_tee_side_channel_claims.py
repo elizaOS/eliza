@@ -7,7 +7,6 @@ import json
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_MATRIX = REPO_ROOT / "packages/chip/docs/spec-db/tee-side-channel-claim-matrix.json"
 REQUIRED_STATE_HANDLING = {"cache", "tlb", "bpu", "prefetcher"}
@@ -43,9 +42,7 @@ def validate(matrix: dict[str, object]) -> list[str]:
     else:
         missing = sorted(REQUIRED_STATE_HANDLING.difference(state_handling))
         if missing:
-            errors.append(
-                "claims.domainSwitchStateHandling missing: " + ", ".join(missing)
-            )
+            errors.append("claims.domainSwitchStateHandling missing: " + ", ".join(missing))
 
     generation_claims = matrix.get("generationClaims")
     if not isinstance(generation_claims, dict):

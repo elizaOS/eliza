@@ -9,6 +9,7 @@ geometry rather than a private, drifting copy.
 
 Evidence class: cad_estimate_for_evt_planning, not_measured_hardware.
 """
+
 from __future__ import annotations
 
 import json
@@ -231,7 +232,7 @@ def md_spec_sheet(s: dict) -> str:
         f"- Color / material: {m['color']} / {m['material']}",
         "",
         "## Display",
-        "- 5.5\" IPS LCD, 1080x1920 FHD, MIPI DSI, capacitive multi-touch",
+        '- 5.5" IPS LCD, 1080x1920 FHD, MIPI DSI, capacitive multi-touch',
         f"- Cover glass: {cg} mm",
         f"- Active area: {aa} mm",
         "",

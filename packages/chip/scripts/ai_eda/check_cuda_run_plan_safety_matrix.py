@@ -51,7 +51,9 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def run_executor(plan: Path, run_id: str, out_root: Path, args: list[str]) -> tuple[int, dict[str, Any], str, str]:
+def run_executor(
+    plan: Path, run_id: str, out_root: Path, args: list[str]
+) -> tuple[int, dict[str, Any], str, str]:
     command = [
         sys.executable,
         str(EXECUTOR),
@@ -108,7 +110,9 @@ def main() -> int:
             "kind": "all_stage_dry_run",
             "run_id": f"{args.run_id}-all-stage-dry-run",
             "returncode": baseline_code,
-            "status": "PASS" if baseline_code == 0 and baseline.get("mode") == "dry-run" else "FAIL",
+            "status": "PASS"
+            if baseline_code == 0 and baseline.get("mode") == "dry-run"
+            else "FAIL",
             "stdout_tail": baseline_stdout,
             "stderr_tail": baseline_stderr,
         }
@@ -129,7 +133,11 @@ def main() -> int:
             ["--stage", stage],
         )
         selected_stage_counts = report.get("selected_stage_counts")
-        selected_count = int(report.get("selected_command_count", -1)) if isinstance(report.get("selected_command_count"), int) else -1
+        selected_count = (
+            int(report.get("selected_command_count", -1))
+            if isinstance(report.get("selected_command_count"), int)
+            else -1
+        )
         expected_selected = sum(
             1
             for item in report.get("commands", [])
@@ -174,9 +182,20 @@ def main() -> int:
             matrix_out_root,
             ["--execute", "--stage", stage],
         )
-        blocked_count = int(report.get("blocked", -1)) if isinstance(report.get("blocked"), int) else -1
-        executed_count = int(report.get("executed_command_count", -1)) if isinstance(report.get("executed_command_count"), int) else -1
-        ok = code != 0 and report.get("mode") == "execute" and blocked_count > 0 and executed_count == 0
+        blocked_count = (
+            int(report.get("blocked", -1)) if isinstance(report.get("blocked"), int) else -1
+        )
+        executed_count = (
+            int(report.get("executed_command_count", -1))
+            if isinstance(report.get("executed_command_count"), int)
+            else -1
+        )
+        ok = (
+            code != 0
+            and report.get("mode") == "execute"
+            and blocked_count > 0
+            and executed_count == 0
+        )
         if not ok:
             failures.append(f"risky stage {stage} was not blocked without {allow_flag}")
         checks.append(

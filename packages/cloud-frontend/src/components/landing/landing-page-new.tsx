@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { useT } from "@/providers/I18nProvider";
 import LandingHeader from "../layout/landing-header";
+import BscPromoBanner from "./bsc-promo-banner";
 import Footer from "./Footer";
 import HeroSection from "./hero-section";
 
@@ -75,6 +76,7 @@ export function LandingPage({ accessError }: LandingPageProps) {
       id="main"
       className="theme-cloud flex min-h-screen w-full flex-col bg-black text-white"
     >
+      <BscPromoBanner />
       <LandingHeader />
       <HeroSection />
       <Footer />

@@ -147,7 +147,11 @@ def build_dataset_entry(spec: dict[str, str], run_id: str) -> dict[str, Any]:
     records_dir = ROOT / spec["records"].format(run_id=run_id)
     report_path = ROOT / spec["report"].format(run_id=run_id)
     record_paths = sorted(records_dir.glob("*.json")) if records_dir.is_dir() else []
-    jsonl_paths = sorted((ROOT / spec["jsonl"].format(run_id=run_id)).parent.glob(Path(spec["jsonl"]).name)) if "jsonl" in spec else []
+    jsonl_paths = (
+        sorted((ROOT / spec["jsonl"].format(run_id=run_id)).parent.glob(Path(spec["jsonl"]).name))
+        if "jsonl" in spec
+        else []
+    )
     schema_counts: Counter[str] = Counter()
     claim_boundaries: Counter[str] = Counter()
     records: list[dict[str, Any]] = []
@@ -175,7 +179,9 @@ def build_dataset_entry(spec: dict[str, str], run_id: str) -> dict[str, Any]:
         }
         for path in jsonl_paths
     ]
-    logical_record_count = sum(item["line_count"] for item in jsonl_files) if jsonl_files else len(records)
+    logical_record_count = (
+        sum(item["line_count"] for item in jsonl_files) if jsonl_files else len(records)
+    )
     return {
         "id": spec["id"],
         "lane": spec["lane"],
@@ -211,7 +217,11 @@ def main() -> int:
     for dataset in datasets:
         lane_counts[dataset["lane"]] += int(dataset["record_count"])
         schema_counts.update(dataset["schema_counts"])
-        if not dataset["records_dir_present"] or not dataset["report"]["present"] or dataset["record_count"] == 0:
+        if (
+            not dataset["records_dir_present"]
+            or not dataset["report"]["present"]
+            or dataset["record_count"] == 0
+        ):
             missing.append(dataset["id"])
     manifest = {
         "schema": "eliza.ai_eda.training_corpus_manifest.v1",

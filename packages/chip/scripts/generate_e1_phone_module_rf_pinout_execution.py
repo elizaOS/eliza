@@ -77,7 +77,9 @@ def main() -> int:
     rf_feed_execution = []
     for feed in rf["antenna_feed_assignments"]:
         matching = next(
-            item for item in routing["rf_layout"]["matching_networks_required"] if item["net"] == feed["net"]
+            item
+            for item in routing["rf_layout"]["matching_networks_required"]
+            if item["net"] == feed["net"]
         )
         plan = s11_plan[feed["net"]]
         rf_feed_execution.append(
@@ -177,7 +179,9 @@ def main() -> int:
                     name: routing_pairs[name] for name in ["WIFI_PCIE_TX", "WIFI_PCIE_RX"]
                 },
                 "single_ended_buses": {"WIFI_SDIO": routing_buses["WIFI_SDIO"]},
-                "bluetooth_uart_nets": contracts(wifi_bt["host_interfaces"]["bluetooth"]["signals"]),
+                "bluetooth_uart_nets": contracts(
+                    wifi_bt["host_interfaces"]["bluetooth"]["signals"]
+                ),
             },
             "required_supplier_inputs": [
                 "Murata Type 2EA pinout, land pattern, reference layout, and STEP model",
@@ -273,19 +277,22 @@ def main() -> int:
         "cross_checks": {
             "cellular_and_wifi_modules_match_acceptance_summary": (
                 module_host["module_host_summary"]["cellular_package_status"] == cellular["status"]
-                and module_host["module_host_summary"]["wifi_bluetooth_package_status"] == wifi_bt["status"]
+                and module_host["module_host_summary"]["wifi_bluetooth_package_status"]
+                == wifi_bt["status"]
             ),
             "module_placements_match_active_matrix": (
                 module_records[0]["placement_region_mm"] == placements["U_CELL"]["region_mm"]
                 and module_records[1]["placement_region_mm"] == placements["U_WIFI_BT"]["region_mm"]
             ),
-            "cellular_required_host_contracts_present_in_block_netlist": set(cellular_contracts).issubset(
-                cell_nets
-            ),
-            "wifi_bt_required_host_contracts_present_in_block_netlist": set(wifi_contracts).issubset(
-                wifi_nets
-            ),
-            "required_rf_nets_match_radio_antenna_acceptance": sorted(cellular_rf_nets + wifi_rf_nets)
+            "cellular_required_host_contracts_present_in_block_netlist": set(
+                cellular_contracts
+            ).issubset(cell_nets),
+            "wifi_bt_required_host_contracts_present_in_block_netlist": set(
+                wifi_contracts
+            ).issubset(wifi_nets),
+            "required_rf_nets_match_radio_antenna_acceptance": sorted(
+                cellular_rf_nets + wifi_rf_nets
+            )
             == sorted(radio_antenna["interface_summary"]["required_rf_nets"]),
             "all_rf_feeds_have_execution_records": sorted(item["net"] for item in rf_feed_execution)
             == sorted(rf["required_rf_nets"]),

@@ -39,6 +39,7 @@ import {
   type TokenRedemption,
   tokenRedemptions,
 } from "../../db/schemas/token-redemptions";
+import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
 import {
   checkKnownAddress,
   FRAUD_THRESHOLDS,
@@ -46,7 +47,6 @@ import {
   getWalletRecommendation,
 } from "../config/redemption-addresses";
 import { ARBITRAGE_PROTECTION } from "../config/redemption-security";
-import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";

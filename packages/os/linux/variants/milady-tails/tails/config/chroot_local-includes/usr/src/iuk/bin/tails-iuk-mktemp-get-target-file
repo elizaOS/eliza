@@ -1,0 +1,6 @@
+#!/bin/sh
+
+set -e
+directory=$(mktemp --directory)
+chmod 755 "$directory"
+echo "$directory"

@@ -86,15 +86,14 @@ def validate_artifacts(workload: dict[str, Any], label: str, errors: list[str]) 
             errors.append(f"{artifact_label}.path missing: {path_value}")
             continue
         expected_hash = artifact.get("sha256")
-        if expected_hash is not None:
-            if not isinstance(expected_hash, str) or len(expected_hash) != 64:
-                errors.append(f"{artifact_label}.sha256 must be a 64-character string")
-            else:
-                actual_hash = sha256_file(path)
-                if actual_hash != expected_hash:
-                    errors.append(
-                        f"{artifact_label}.sha256 mismatch for {path_value}: expected {expected_hash}, got {actual_hash}"
-                    )
+        if not isinstance(expected_hash, str) or len(expected_hash) != 64:
+            errors.append(f"{artifact_label}.sha256 must be a 64-character string")
+            continue
+        actual_hash = sha256_file(path)
+        if actual_hash != expected_hash:
+            errors.append(
+                f"{artifact_label}.sha256 mismatch for {path_value}: expected {expected_hash}, got {actual_hash}"
+            )
 
 
 def validate_workload(
@@ -129,7 +128,9 @@ def validate_workload(
         categories.add(category)
     benchmark_ref = workload.get("benchmark_plan_ref")
     if benchmark_ref is not None and benchmark_ref not in plan_names:
-        errors.append(f"{label}.benchmark_plan_ref not found in benchmark_plan.json: {benchmark_ref}")
+        errors.append(
+            f"{label}.benchmark_plan_ref not found in benchmark_plan.json: {benchmark_ref}"
+        )
     validate_artifacts(workload, label, errors)
     if not isinstance(workload.get("input_shape"), dict) or not workload["input_shape"]:
         errors.append(f"{label}.input_shape must be a non-empty mapping")
@@ -141,7 +142,9 @@ def validate_workload(
             errors.append(f"{label}.{key} must be non-empty")
         elif not all(isinstance(item, str) and item for item in value):
             errors.append(f"{label}.{key} must contain only non-empty strings")
-    tolerance = require_mapping(workload.get("golden_output_tolerance"), f"{label}.golden_output_tolerance", errors)
+    tolerance = require_mapping(
+        workload.get("golden_output_tolerance"), f"{label}.golden_output_tolerance", errors
+    )
     if tolerance:
         require_non_empty_str(tolerance, "kind", f"{label}.golden_output_tolerance", errors)
         if "max_abs_error" not in tolerance:
@@ -183,11 +186,14 @@ def validate(manifest: dict[str, Any]) -> list[str]:
         validate_workload(workload, index, seen_ids, plan_names, categories, errors)
     missing_categories = REQUIRED_CATEGORIES - categories
     if missing_categories:
-        errors.append(f"missing required workload categories: {', '.join(sorted(missing_categories))}")
+        errors.append(
+            f"missing required workload categories: {', '.join(sorted(missing_categories))}"
+        )
     blocked_count = sum(
         1
         for workload in workloads
-        if isinstance(workload, dict) and str(workload.get("evidence_status", "")).startswith("blocked")
+        if isinstance(workload, dict)
+        and str(workload.get("evidence_status", "")).startswith("blocked")
     )
     if blocked_count < 2:
         errors.append("manifest must preserve at least two blocked workload lanes")

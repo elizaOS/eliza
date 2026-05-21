@@ -115,6 +115,39 @@ entries:
       Source revision, license review, feature schema hashes, label provenance,
       split manifests, local checker coverage, deterministic E1 replay, and
       signoff review before any feature-derived optimization claim.
+  - id: floorset-iccad-2026
+    name: FloorSet / ICCAD 2026 Data-Driven SoC Floorplanning Challenge
+    year: 2026
+    lane: floorplanning_dataset
+    priority: P1
+    source_url: https://github.com/IntelLabs/FloorSet
+    public_code_status: available_to_review
+    e1_action: >
+      Track as a large constrained floorplanning training corpus and contest
+      harness candidate. Only import after license review, exact revision pin,
+      tensor-schema conversion, and non-overlap checks against E1 evaluation
+      cases are complete.
+    required_evidence: >
+      Repository and dataset hashes, Hugging Face artifact revisions if used,
+      license review, tensor-to-internal-schema converter logs, split manifests,
+      contamination review, generated floorplan quarantine, deterministic E1
+      OpenLane/OpenROAD replay, signoff checks, and PD reviewer disposition.
+  - id: r-zoo-rectilinear-floorplan
+    name: R-Zoo Rectilinear Floorplan Benchmark Dataset
+    year: 2026
+    lane: floorplanning_dataset
+    priority: P2
+    source_url: https://github.com/iCAS-SJTU/Chip-Like-A-House
+    public_code_status: available_to_review
+    e1_action: >
+      Track as a geometry-aware rectilinear floorplanning corpus for future
+      E1 macro-shape and whitespace experiments, not as a direct E1 placement
+      label source until format, license, and replay compatibility are proven.
+    required_evidence: >
+      Paper and repository hashes, dataset license review, rectilinear geometry
+      schema conversion, legality checker logs, split manifests, non-overlap
+      review, generated floorplan quarantine, deterministic E1 OpenLane/OpenROAD
+      replay, DRC/LVS/STA/power signoff checks, and PD reviewer disposition.
   - id: dreamerv3-fr-pcb
     name: DreamerV3+FR PCB Autorouting
     year: 2026

@@ -1,4 +1,4 @@
-import { lazy, type ReactNode, Suspense, useMemo } from "react";
+import { Component, lazy, type ReactNode, Suspense, useMemo } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 
 /**
@@ -34,6 +34,48 @@ const LazyStewardWalletProviders = lazy(async () => {
   return { default: mod.StewardWalletProviders };
 });
 
+const CHUNK_RELOAD_FLAG = "eliza:chunk-reload-attempted";
+
+function isChunkLoadError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message ?? "";
+  return (
+    error.name === "ChunkLoadError" ||
+    message.includes("Failed to fetch dynamically imported module") ||
+    message.includes("Importing a module script failed") ||
+    message.includes("error loading dynamically imported module") ||
+    /Expected a JavaScript-or-Wasm module script/.test(message)
+  );
+}
+
+class ChunkLoadErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(error: unknown) {
+    if (isChunkLoadError(error)) {
+      if (typeof window !== "undefined") {
+        const alreadyTried =
+          window.sessionStorage.getItem(CHUNK_RELOAD_FLAG) === "1";
+        if (!alreadyTried) {
+          window.sessionStorage.setItem(CHUNK_RELOAD_FLAG, "1");
+          window.location.reload();
+          return { failed: true };
+        }
+      }
+      return { failed: true };
+    }
+    throw error;
+  }
+
+  render() {
+    if (this.state.failed) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
 function isWalletRoute(pathname: string): boolean {
   if (pathname === "/payment/success") {
     return false;
@@ -56,8 +98,32 @@ export function ConditionalWalletProviders({
   }
 
   return (
-    <Suspense fallback={<div aria-busy="true" className="min-h-screen" />}>
-      <LazyStewardWalletProviders>{children}</LazyStewardWalletProviders>
-    </Suspense>
+    <ChunkLoadErrorBoundary
+      fallback={
+        <div className="flex min-h-screen items-center justify-center p-6 text-center text-sm text-muted-foreground">
+          <div>
+            <p>Failed to load the wallet module.</p>
+            <p className="mt-2">
+              <button
+                className="underline"
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.sessionStorage.removeItem(CHUNK_RELOAD_FLAG);
+                    window.location.reload();
+                  }
+                }}
+                type="button"
+              >
+                Reload page
+              </button>
+            </p>
+          </div>
+        </div>
+      }
+    >
+      <Suspense fallback={<div aria-busy="true" className="min-h-screen" />}>
+        <LazyStewardWalletProviders>{children}</LazyStewardWalletProviders>
+      </Suspense>
+    </ChunkLoadErrorBoundary>
   );
 }

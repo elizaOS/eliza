@@ -16,7 +16,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 LOCKFILE = ROOT / "external/SOURCES.lock.yaml"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/research_code_assets"
-CLAIM_BOUNDARY = "ai_eda_research_code_asset_text_sample_only_no_training_inference_or_release_claim"
+CLAIM_BOUNDARY = (
+    "ai_eda_research_code_asset_text_sample_only_no_training_inference_or_release_claim"
+)
 
 ASSET_IDS = (
     "chipdiffusion",
@@ -99,7 +101,9 @@ def read_text_excerpt(path: Path, limit: int = 4000) -> str:
 
 
 def file_inventory(payload: Path) -> dict[str, Any]:
-    files = [path for path in sorted(payload.rglob("*")) if path.is_file() and ".git" not in path.parts]
+    files = [
+        path for path in sorted(payload.rglob("*")) if path.is_file() and ".git" not in path.parts
+    ]
     suffix_counts: Counter[str] = Counter(path.suffix.lower() or "<none>" for path in files)
     key_files = [
         rel(path)
@@ -114,7 +118,9 @@ def file_inventory(payload: Path) -> dict[str, Any]:
     }
 
 
-def asset_record(asset_id: str, entry: dict[str, Any], payload: Path, readme: Path, out_dir: Path) -> list[dict[str, Any]]:
+def asset_record(
+    asset_id: str, entry: dict[str, Any], payload: Path, readme: Path, out_dir: Path
+) -> list[dict[str, Any]]:
     revision = entry.get("revision")
     revision_value = revision.get("value") if isinstance(revision, dict) else "UNKNOWN"
     inventory = file_inventory(payload)
@@ -156,7 +162,9 @@ def asset_record(asset_id: str, entry: dict[str, Any], payload: Path, readme: Pa
             "schema": "eda.text_instruction_sample.v1",
             "id": f"{asset_id}.research-inventory.000001",
             "asset_id": asset_id,
-            "source": source_record(payload / ".pinned-commit" if (payload / ".pinned-commit").is_file() else readme, 1),
+            "source": source_record(
+                payload / ".pinned-commit" if (payload / ".pinned-commit").is_file() else readme, 1
+            ),
             "split": "train",
             "task_type": "ai_eda_research_asset_inventory",
             "prompt": f"List the reproducibility inputs and blockers for using {asset_id}.",

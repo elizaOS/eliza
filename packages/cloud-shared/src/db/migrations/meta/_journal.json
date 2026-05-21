@@ -911,6 +911,13 @@
       "when": 1778659400000,
       "tag": "0130_drop_cli_auth_api_key_plain_d6",
       "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1778659500000,
+      "tag": "0131_partial_unique_tx_hash",
+      "breakpoints": true
     }
   ]
 }

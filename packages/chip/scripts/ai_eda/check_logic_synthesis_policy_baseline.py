@@ -11,7 +11,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CORPUS = ROOT / "build/ai_eda/logic_synthesis_recipes/validation/recipe_corpus.json"
 DEFAULT_REPORT = ROOT / "build/ai_eda/logic_synthesis_baselines/validation/baseline_report.json"
-CORPUS_CLAIM_BOUNDARY = "logic_synthesis_recipe_corpus_only_no_training_inference_ppa_or_release_claim"
+CORPUS_CLAIM_BOUNDARY = (
+    "logic_synthesis_recipe_corpus_only_no_training_inference_ppa_or_release_claim"
+)
 BASELINE_CLAIM_BOUNDARY = "logic_synthesis_baseline_only_no_ppa_equivalence_or_release_claim"
 VALID_RESULT_STATUSES = {
     "PASS_YOSYS_RECIPE_SMOKE",
@@ -176,7 +178,9 @@ def validate_report(report: dict[str, Any], report_path: Path, corpus: dict[str,
         errors.append("baseline results must be a list")
         return errors
     if len(results) != expected_count:
-        errors.append(f"baseline result count {len(results)} does not match expected {expected_count}")
+        errors.append(
+            f"baseline result count {len(results)} does not match expected {expected_count}"
+        )
 
     seen: set[str] = set()
     summary_counts = {"passed": 0, "blocked": 0, "failed": 0}
@@ -223,7 +227,9 @@ def validate_report(report: dict[str, Any], report_path: Path, corpus: dict[str,
                 for artifact_field in ("script", "log"):
                     artifact_path = repo_path(str(result.get(artifact_field, "")))
                     if not artifact_path.exists():
-                        errors.append(f"{result_id}: missing timeout {artifact_field} {rel(artifact_path)}")
+                        errors.append(
+                            f"{result_id}: missing timeout {artifact_field} {rel(artifact_path)}"
+                        )
         else:
             summary_counts["failed"] += 1
     summary = report.get("summary")
