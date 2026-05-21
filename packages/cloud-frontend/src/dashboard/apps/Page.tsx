@@ -85,7 +85,7 @@ export default function AppsPage() {
                 defaultValue: "Total Users",
               })}
               value={totalUsers.toLocaleString()}
-              icon={<Users className="h-5 w-5 text-blue-500" />}
+              icon={<Users className="h-5 w-5 text-white/70" />}
             />
             <DashboardStatCard
               label={t("cloud.apps.stat.totalRequests", {

@@ -450,8 +450,8 @@ host where the launch was attempted.
   time.
 - **CI churn.** Per the AOSP get-started doc, `aosp-main` CI builds are no
   longer kept current. Pin to `aosp-android-latest-release` for stability.
-- **Prebuilt vs Milady-specific edits.** The prebuilt boot path runs the stock
-  AOSP `aosp_cf_riscv64_phone` device. Milady's `eliza_ai_soc` board overlay,
+- **Prebuilt vs Eliza-specific edits.** The prebuilt boot path runs the stock
+  AOSP `aosp_cf_riscv64_phone` device. Eliza's `eliza_ai_soc` board overlay,
   custom HALs, and SEPolicy patches are **not** in this image. Use it for
   bring-up validation and Eliza APK install/run smoke; switch back to the
   from-source build (on a host with enough disk) for full BSP validation.

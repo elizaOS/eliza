@@ -1,8 +1,8 @@
-sample_id,measurement_id,unit,min,max,measured_value,pass,operator,notes
-,display_bond_peel_n_per_mm,N/mm,0.45,,,,,Peel strength around die-cut adhesive perimeter after dwell.
-,screen_adhesive_compression_mm,mm,0.03,0.08,,,,Compressed adhesive thickness after screen placement.
-,display_fpc_bend_radius_mm,mm,1.0,,,,,Measured bend radius after connector mating and closure.
-,display_luminance_cd_m2,cd/m2,450.0,,,,,White-screen luminance after DSI bring-up and backlight enable.
-,touch_grid_dead_zones,count,0.0,0.0,,,,Capacitive touch grid dead zones after bonding and enclosure close.
-,display_dsi_bringup_logs,pass_flag,1.0,1.0,,,,"Panel probes, init sequence runs, and display pipeline produces image."
-,screen_drop_lift_or_glass_crack,count,0.0,0.0,,,,"Glass crack, adhesive lift, or LCM shift after EVT drop screen check."
+sample_id,measurement_id,unit,min,max,measured_value,pass,operator,evidence_class,required_evidence_artifacts,raw_data_artifact,fixture_calibration_certificate,photo_or_log_artifact,lot_traceability_record,notes
+,display_bond_peel_n_per_mm,N/mm,0.45,,,,,,display_peel_force_raw_csv;peel_fixture_calibration_certificate;bond_perimeter_photo;display_adhesive_lot_record,,,,,Peel strength around die-cut adhesive perimeter after dwell.
+,screen_adhesive_compression_mm,mm,0.03,0.08,,,,,compression_height_raw_csv;screen_bond_fixture_certificate;compression_witness_photo;display_adhesive_lot_record,,,,,Compressed adhesive thickness after screen placement.
+,display_fpc_bend_radius_mm,mm,1.0,,,,,,fpc_bend_radius_measurement_csv;optical_measurement_fixture_certificate;mated_fpc_bend_photo;display_module_lot_record,,,,,Measured bend radius after connector mating and closure.
+,display_luminance_cd_m2,cd/m2,450.0,,,,,,display_luminance_raw_csv;colorimeter_calibration_certificate;white_screen_photo;display_module_lot_record,,,,,White-screen luminance after DSI bring-up and backlight enable.
+,touch_grid_dead_zones,count,0.0,0.0,,,,,touch_grid_raw_log;touch_fixture_calibration_record;touch_grid_screenshot;display_touch_module_lot_record,,,,,Capacitive touch grid dead zones after bonding and enclosure close.
+,display_dsi_bringup_logs,pass_flag,1.0,1.0,,,,,drm_or_surfaceflinger_bringup_log;display_driver_revision_record;display_image_output_photo;display_module_lot_record,,,,,"Panel probes, init sequence runs, and display pipeline produces image."
+,screen_drop_lift_or_glass_crack,count,0.0,0.0,,,,,drop_test_result_log;drop_fixture_calibration_certificate;post_drop_screen_inspection_photo;display_glass_and_adhesive_lot_records,,,,,"Glass crack, adhesive lift, or LCM shift after EVT drop screen check."

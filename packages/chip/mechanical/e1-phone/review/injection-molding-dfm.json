@@ -4,7 +4,7 @@
   "device_envelope_mm": [
     78.0,
     153.6,
-    9.6
+    11.2
   ],
   "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
   "cases": [
@@ -151,11 +151,18 @@
       "pass": true,
       "evidence": [
         "rear_camera_cover_glass",
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_cover_adhesive_bottom",
+        "rear_camera_cover_adhesive_left",
+        "rear_camera_cover_adhesive_right",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom",
         "front_camera_under_glass",
+        "front_camera_black_mask_window",
         "handset_acoustic_slot",
         "bottom_speaker_grille_slot_1"
       ],
-      "tooling_note": "Camera and acoustic apertures need insert/shutoff, venting, and flash-control review before texture freeze."
+      "tooling_note": "Camera and acoustic apertures need insert/shutoff, adhesive-seat, baffle, venting, and flash-control review before texture freeze."
     }
   ],
   "risks": [

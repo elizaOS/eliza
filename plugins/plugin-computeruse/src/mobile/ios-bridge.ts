@@ -111,7 +111,7 @@ export interface ReplayKitForegroundHandle {
 export interface BroadcastHandshakeResult {
   /** True if the broadcast extension target is bundled with this build. */
   readonly extensionInstalled: boolean;
-  /** App Group identifier (e.g. `group.com.miladyai.milady`). */
+  /** App Group identifier (e.g. `group.com.elizaai.eliza`). */
   readonly appGroupId: string;
   /** Absolute path to the App Group container used for IPC frames. */
   readonly sharedContainerPath: string;

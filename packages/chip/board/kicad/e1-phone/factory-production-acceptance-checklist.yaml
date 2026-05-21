@@ -1,0 +1,194 @@
+schema: eliza.e1_phone_factory_production_acceptance_checklist.v1
+status: blocked_factory_production_acceptance_requires_routed_outputs_fixture_limits_quotes_and_first_article
+date: '2026-05-21'
+claim_boundary: Factory and production handoff acceptance checklist for the E1 phone PCB. It joins production readiness,
+  manufacturing closure, factory probe coverage, routing acceptance, power bring-up acceptance, supplier evidence,
+  and the routed-release plan. It is not Gerber or IPC-2581 output, not a BOM/AVL, not a pick-and-place file, not
+  a fixture release, not a first-article transcript, not DFM/DFA approval, and not enclosure-ready evidence.
+source_artifacts:
+  - board/kicad/e1-phone/production-readiness.yaml
+  - board/kicad/e1-phone/manufacturing-closure.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/routing-acceptance-checklist.yaml
+  - board/kicad/e1-phone/power-bringup-acceptance-checklist.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/production-factory-release-execution.yaml
+factory_production_summary:
+  production_readiness_status: blocked_requires_routed_board_supplier_data_and_factory_quotes
+  manufacturing_status: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
+  factory_probe_status: blocked_requires_routed_board_fixture_and_first_article_limits
+  routing_acceptance_status: blocked_routing_acceptance_requires_supplier_footprints_trial_route_drc_and_outputs
+  power_bringup_acceptance_status: blocked_power_bringup_acceptance_requires_routed_schematic_first_power_charge_thermal_and_factory_evidence
+  supplier_evidence_status: blocked_supplier_evidence_not_ready_for_kicad_capture
+  routed_release_status: blocked_routed_release_requires_real_route_and_supplier_outputs
+  release_target: EVT1-routed-first-article
+  stackup_target: 10_layer_0p8_mm_hdi
+  board_thickness_mm: 0.8
+  impedance_coupon_group_count: 6
+  factory_coverage_group_count: 9
+  required_production_output_count: 11
+  manufacturing_output_count: 11
+  manufacturing_outputs_present: []
+  manufacturing_outputs_blocked:
+    - assembly_drawing
+    - bom_csv_or_ibom
+    - dfm_dfa_report
+    - drill
+    - fab_quote
+    - gerber_x2
+    - ipc_2581
+    - layout_pdf
+    - pick_and_place
+    - schematic_pdf
+    - step
+  factory_probe_domain_count: 9
+  factory_probe_domain_ids:
+    - power_rails
+    - usb_c
+    - display_touch
+    - cameras
+    - radios
+    - audio_haptics
+    - split_board_interconnect
+    - buttons_sensors_nfc
+    - compute_storage_debug
+  factory_probe_domains_blocked:
+    - power_rails
+    - usb_c
+    - display_touch
+    - cameras
+    - radios
+    - audio_haptics
+    - split_board_interconnect
+    - buttons_sensors_nfc
+    - compute_storage_debug
+  fixture_traceability_fields:
+    - board_serial
+    - imei_or_modem_identifier
+    - wifi_mac
+    - bluetooth_mac
+    - secure_key_provisioning_result
+    - fixture_id
+    - test_software_revision
+  fixture_outputs_required:
+    - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    - board/kicad/e1-phone/production/test/probe-coordinates.csv
+    - board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+    - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+    - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  routed_release_ready_flags:
+    ready_to_fabricate: false
+    ready_for_enclosure: false
+    ready_for_factory_test: false
+acceptance_items:
+  - id: fabricator_stackup_impedance_and_coupon_quote
+    owner: fabrication
+    status: blocked_missing_routed_outputs_fixture_limits_quotes_or_first_article_evidence
+    required_evidence:
+      - selected fabricator stackup drawing with dielectric constants, loss tangent, copper weights, and finish
+      - controlled-impedance table and coupon geometry for USB2, MIPI, PCIe, RF, memory/storage, and split-board
+        flex groups
+      - quote proving target layer count, 0.8 mm board thickness, HDI capability, flatness, warpage, and mobile
+        enclosure tolerances
+    blocker: Fabricator stackup, impedance coupon geometry, and quote are missing.
+  - id: fabrication_outputs_gerber_ipc_drill
+    owner: layout_fabrication
+    status: blocked_missing_routed_outputs_fixture_limits_quotes_or_first_article_evidence
+    required_evidence:
+      - DRC-clean routed KiCad PCB revision
+      - Gerber X2 or IPC-2581 fabrication output with stackup notes
+      - NC drill, slot, and board outline files tied to the routed release revision
+    blocker: The live PCB has no routed copper or production fabrication exports.
+  - id: assembly_outputs_bom_pnp_drawings_stencil
+    owner: assembly
+    status: blocked_missing_routed_outputs_fixture_limits_quotes_or_first_article_evidence
+    required_evidence:
+      - production BOM/AVL with exact MPNs, lifecycle, MOQ, lead time, approved alternates, and DNP policy
+      - pick-and-place with side, rotation, and centroid convention documented
+      - assembly drawing, split-board interconnect drawing, stencil notes, paste exceptions, AOI/X-ray rules, and
+        cleaning requirements
+    blocker: Assembly outputs and production BOM/AVL are absent.
+  - id: supplier_avl_lifecycle_and_substitutes
+    owner: sourcing
+    status: blocked_missing_routed_outputs_fixture_limits_quotes_or_first_article_evidence
+    required_evidence:
+      - supplier RFQ response packs and signed drawings for display, cameras, USB-C, battery, side keys, audio,
+        antennas, SIM/eSIM, radio modules, and interconnect
+      - AVL lifecycle, MOQ, lead time, substitution, sample-lot, and compliance evidence
+      - KiCad pinout, symbol, footprint, courtyard, and 3D-binding reviews for every production part
+    blocker: Public shortlist and draft RFQs are not supplier-approved production evidence.
+  - id: fixture_probe_coordinates_and_accessibility
+    owner: manufacturing_test
+    status: blocked_missing_routed_outputs_fixture_limits_quotes_or_first_article_evidence
+    required_evidence:
+      - probe-coordinates.csv generated from routed KiCad after DRC clean
+      - ICT or flying-probe program with fixture ID, pogo-pin access, and enclosure/component-height clearance review
+      - coverage map for power, USB-C, display, cameras, radios, audio/haptics, split interconnect, buttons/sensors/NFC,
+        and compute/debug
+    blocker: Factory fixture coordinates and accessibility review require the routed PCB.
+  - id: factory_test_limits_and_stop_on_fail
+    owner: manufacturing_test
+    status: blocked_missing_routed_outputs_fixture_limits_quotes_or_first_article_evidence
+    required_evidence:
+      - factory-test-limits.yaml derived from EVT1 first-article measurements
+      - current-limit table and stop-on-fail instructions for pre-power shorts, PD attach, rail bring-up, radios,
+        display, cameras, audio, haptics, and interconnect
+      - traceability schema for board serial, IMEI or modem identifier, Wi-Fi MAC, Bluetooth MAC, secure provisioning,
+        fixture ID, and test software revision
+    blocker: Factory limits and stop-on-fail thresholds are not derived from first article.
+  - id: rf_calibration_and_wireless_identity_traceability
+    owner: rf_manufacturing
+    status: blocked_missing_routed_outputs_fixture_limits_quotes_or_first_article_evidence
+    required_evidence:
+      - conducted RF fixture, shield-box or equivalent flow, and RF calibration procedure
+      - cellular IMEI, USIM/eSIM, Wi-Fi MAC, Bluetooth MAC, GNSS, and secure identity traceability
+      - wireless regulatory, carrier, coexistence, SAR pre-scan, and factory calibration limit evidence
+    blocker: RF factory calibration and wireless identity traceability are not release-ready.
+  - id: first_article_traveler_measurements_and_signoff
+    owner: manufacturing_validation
+    status: blocked_missing_routed_outputs_fixture_limits_quotes_or_first_article_evidence
+    required_evidence:
+      - first-article traveler with operator, fixture, software revision, board serial, lot, and stop-on-fail decisions
+      - measured rail, USB-C, display/touch, camera, radio, audio/haptic, interconnect, button, sensor, NFC, compute,
+        and debug transcripts
+      - engineering signoff tying DRC/ERC, SI/PI/RF, DFM/DFA, enclosure, and thermal measurements to the EVT1 revision
+    blocker: First-article measurements and signoff are missing.
+  - id: routed_board_step_dfa_enclosure_and_dfm_quote
+    owner: mechanical_manufacturing
+    status: blocked_missing_routed_outputs_fixture_limits_quotes_or_first_article_evidence
+    required_evidence:
+      - routed board STEP with supplier 3D models and final component heights
+      - enclosure clearance rerun for display, battery, cameras, USB-C, side keys, antennas, acoustics, and split
+        interconnect
+      - DFM/DFA report and fab/assembly quote tied to the routed board, stencil, fixture, and enclosure constraints
+    blocker: Routed STEP, enclosure clearance rerun, DFM/DFA, and production quote are missing.
+cross_checks:
+  stackup_target_matches_production_readiness: true
+  all_manufacturing_production_outputs_blocked: true
+  factory_probe_domains_match_production_coverage: true
+  probe_outputs_required_before_release: true
+  routed_release_ready_flags_false: true
+  supplier_evidence_blocks_kicad_capture: true
+  routing_acceptance_blocks_production_outputs: true
+  power_bringup_blocks_factory_limits: true
+  all_factory_probe_domains_blocked: true
+  all_acceptance_items_blocked: true
+release_blockers:
+  - routed DRC-clean PCB and production fabrication outputs are missing
+  - fabricator stackup, impedance coupon quote, DFM/DFA, and fab/assembly quote are missing
+  - production BOM/AVL, pick-and-place, assembly drawings, stencil, and supplier approval packs are missing
+  - factory fixture coordinates, factory limits, RF calibration, traceability, and first-article transcript are
+    missing
+  - routed board STEP, enclosure clearance rerun, and final mechanical production signoff are missing
+forbidden_claims:
+  - production_ready
+  - fabrication_ready
+  - assembly_ready
+  - factory_test_ready
+  - fixture_ready
+  - first_article_ready
+  - impedance_closed
+  - bom_avl_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

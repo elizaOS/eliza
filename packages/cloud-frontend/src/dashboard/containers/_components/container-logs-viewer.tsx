@@ -74,7 +74,7 @@ function getLevelColor(logLevel: string): string {
     case "warn":
       return "text-yellow-500";
     case "info":
-      return "text-blue-500";
+      return "text-white/70";
     case "debug":
       return "text-gray-500";
     default:
@@ -102,7 +102,7 @@ function getLevelBorderColor(logLevel: string): string {
     case "warn":
       return "#eab308";
     case "info":
-      return "#3b82f6";
+      return "#FF5800";
     default:
       return "#6b7280";
   }

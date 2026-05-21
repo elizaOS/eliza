@@ -1,0 +1,100 @@
+{
+  "claim_boundary": "Deterministic CAD/parameter simulation for USB-C insertion, display bonding/FPC routing, and side-button actuation planning. It is not measured physical validation and cannot satisfy release evidence gates.",
+  "status": "cad_mechanical_integration_sim_ready",
+  "evidence_class": "deterministic_cad_simulation_not_physical_result",
+  "case_count": 3,
+  "cases": [
+    {
+      "id": "usb_c_insertion_load_planning",
+      "interface_case": "usb_c_insertion_capture",
+      "evidence_class": "deterministic_cad_simulation_not_physical_result",
+      "actual": {
+        "usb_receptacle_shell_mm": [
+          8.94,
+          7.8,
+          3.25
+        ],
+        "aperture_mm": [
+          10.2,
+          3.6
+        ],
+        "plug_shell_mm": [
+          8.35,
+          2.6
+        ],
+        "shell_xy_clearance_each_side_mm": 0.63,
+        "shell_z_clearance_each_side_mm": 0.175,
+        "plug_min_clearance_mm": 0.5,
+        "predicted_peak_insertion_force_n": 18.0,
+        "cycle_rating": 20000
+      },
+      "target": ">=0.15 mm shell-to-aperture clearance, plug clearance positive, predicted peak insertion force <=35 N, cycle rating >=10000",
+      "planning_pass": true,
+      "physical_release_evidence_required": [
+        "usb_c_insertion_force_raw_csv",
+        "usb_insertion_fixture_calibration_certificate",
+        "usb_c_insertion_gauge_video_or_photo",
+        "post_cycle_continuity_log"
+      ]
+    },
+    {
+      "id": "screen_bond_clamp_and_fpc_planning",
+      "interface_case": "screen_bond_and_fpc_connection",
+      "evidence_class": "deterministic_cad_simulation_not_physical_result",
+      "actual": {
+        "adhesive_area_mm2": 457.7,
+        "adhesive_width_mm": 1.0,
+        "adhesive_thickness_mm": 0.18,
+        "compression_target_pct": 25,
+        "compression_mm": 0.045,
+        "estimated_clamp_force_n": 36.6,
+        "estimated_compression_pressure_n_per_mm2": 0.08,
+        "fpc_bend_radius_mm": 1.0
+      },
+      "target": "four-sided adhesive, 0.03-0.08 mm compression, FPC bend radius >=1.0 mm, display CAD cases pass",
+      "planning_pass": true,
+      "physical_release_evidence_required": [
+        "display_peel_force_raw_csv",
+        "screen_compression_witness_raw_csv",
+        "display_fpc_bend_radius_raw_csv",
+        "display_dsi_bringup_log"
+      ]
+    },
+    {
+      "id": "side_button_force_pressure_planning",
+      "interface_case": "power_button_force_travel_pressure",
+      "evidence_class": "deterministic_cad_simulation_not_physical_result",
+      "button_cases": [
+        {
+          "id": "power_button",
+          "switch_candidate": "Panasonic EVQ-P7xxx",
+          "actuation_force_n": 1.6,
+          "travel_mm": 0.35,
+          "cap_pressure_n_per_mm2": 0.1212,
+          "pressure_limit_n_per_mm2": 0.2,
+          "required_parts_present": true,
+          "planning_pass": true
+        },
+        {
+          "id": "volume_button",
+          "switch_candidate": "Panasonic EVQ-P7xxx",
+          "actuation_force_n": 1.5,
+          "travel_mm": 0.35,
+          "cap_pressure_n_per_mm2": 0.0649,
+          "pressure_limit_n_per_mm2": 0.2,
+          "required_parts_present": true,
+          "planning_pass": true
+        }
+      ],
+      "target": "power and volume force 1.2-2.2 N, travel >=0.25 mm, cap pressure <= limit",
+      "planning_pass": true,
+      "physical_release_evidence_required": [
+        "power_button_force_raw_csv",
+        "volume_button_force_raw_csv",
+        "button_cycle_log",
+        "post_dust_splash_button_stickiness_log"
+      ]
+    }
+  ],
+  "release_rule": "Release still requires physical USB insertion/cycle data, bonded display peel and compression data, FPC bend inspection, and button force/travel/cycle measurements with calibrated fixtures and lot traceability."
+}

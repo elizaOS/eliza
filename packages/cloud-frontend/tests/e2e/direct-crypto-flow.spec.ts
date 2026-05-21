@@ -81,6 +81,22 @@ function userPayload() {
   };
 }
 
+const BSC_TOKEN_OPTIONS = [
+  { symbol: "BNB", kind: "native", decimals: 18 },
+  {
+    symbol: "USDT",
+    kind: "bep20",
+    tokenAddress: "0x55d398326f99059fF775485246999027B3197955",
+    decimals: 18,
+  },
+  {
+    symbol: "U",
+    kind: "bep20",
+    tokenAddress: "0xcE24439F2D9C6a2289F741120FE202248B666666",
+    decimals: 18,
+  },
+];
+
 const directWalletStatus = {
   enabled: true,
   oxapayEnabled: false,
@@ -94,6 +110,14 @@ const directWalletStatus = {
         tokenSymbol: "USDC",
         tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         tokenDecimals: 6,
+        tokens: [
+          {
+            symbol: "USDC",
+            kind: "erc20",
+            tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            decimals: 6,
+          },
+        ],
         receiveAddress: "0x72D043586b6226A97197408b4EE41572dD000ac6",
         enabled: true,
       },
@@ -104,6 +128,7 @@ const directWalletStatus = {
         tokenSymbol: "USDT",
         tokenAddress: "0x55d398326f99059fF775485246999027B3197955",
         tokenDecimals: 18,
+        tokens: BSC_TOKEN_OPTIONS,
         receiveAddress: "0x93cacDACDf6791be31EA44742CA94db238C887EB",
         enabled: true,
       },
@@ -113,6 +138,14 @@ const directWalletStatus = {
         tokenSymbol: "USDC",
         tokenMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
         tokenDecimals: 6,
+        tokens: [
+          {
+            symbol: "USDC",
+            kind: "spl",
+            tokenMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            decimals: 6,
+          },
+        ],
         receiveAddress: "D9KjXwECD1nqDQA1ektXjen1PAMcDnYKPmEGU9oZctzX",
         enabled: true,
       },
@@ -162,6 +195,13 @@ async function installBscMocks(
 
     if (path === "/api/crypto/direct-payments") {
       createPaymentCalls += 1;
+      const body = await route.request().postDataJSON().catch(() => ({}));
+      const requestedSymbol: string =
+        typeof body?.tokenSymbol === "string" ? body.tokenSymbol : "USDT";
+      const token =
+        BSC_TOKEN_OPTIONS.find(
+          (t) => t.symbol.toUpperCase() === requestedSymbol.toUpperCase(),
+        ) ?? BSC_TOKEN_OPTIONS[1];
       return route.fulfill({
         json: {
           paymentId: "crypto_payment_1",
@@ -169,9 +209,10 @@ async function installBscMocks(
           instructions: {
             network: "bsc",
             chainId: 56,
-            tokenSymbol: "USDT",
-            tokenAddress: "0x55d398326f99059fF775485246999027B3197955",
-            tokenDecimals: 18,
+            tokenSymbol: token.symbol,
+            tokenKind: token.kind,
+            tokenAddress: token.tokenAddress,
+            tokenDecimals: token.decimals,
             receiveAddress: "0x93cacDACDf6791be31EA44742CA94db238C887EB",
             amountUnits: "10000000000000000000",
             amountToken: "10.000000000000000000",
@@ -251,9 +292,14 @@ test("/bsc renders the promo purchase state from direct wallet config", async ({
   expectNoJsonFallbackCrash(failures);
 });
 
-test("/bsc asks OAuth users to verify a wallet before payment", async ({
+test("/bsc lets OAuth users (no account wallet) reach the purchase UI directly", async ({
   page,
 }) => {
+  // Previously OAuth signups landed on an AttachWalletCard that forced a
+  // SIWE step before they could pay. The product now lets any logged-in
+  // user pay from any wallet — credits attach to the org_id from the
+  // session, not to the paying wallet. Verify the purchase surface renders
+  // with no "Verify your BSC wallet" gate.
   const failures = collectFailures(page);
   const mocks = await installBscMocks(page, { accountWalletAddress: null });
 
@@ -264,17 +310,11 @@ test("/bsc asks OAuth users to verify a wallet before payment", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Verify your BSC wallet" }),
-  ).toBeVisible();
-  await expect(page.getByText("Sign a one-time message")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Connect Wallet/i }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Verify wallet/i }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: /Pay and add credits/i }),
-  ).toHaveCount(0);
+  ).toBeVisible();
+  await expect(page.getByLabel("Token")).toBeVisible();
 
   expect(mocks.createPaymentCalls()).toBe(0);
   expectNoJsonFallbackCrash(failures);
@@ -292,4 +332,130 @@ test("/bsc ignores an HTML API fallback instead of JSON-parsing it", async ({
     page.getByText("Direct wallet payments are not configured yet."),
   ).toBeVisible();
   expectNoJsonFallbackCrash(failures);
+});
+
+test("/bsc shows BNB/USDT/$U token selector and $5 bonus is per-purchase, token-agnostic", async ({
+  page,
+}) => {
+  const failures = collectFailures(page);
+  await installBscMocks(page);
+
+  await page.goto("/bsc");
+
+  const tokenSelect = page.getByLabel("Token");
+  await expect(tokenSelect).toBeVisible();
+  // The three BSC tokens are selectable; USDC must NOT appear.
+  for (const value of ["BNB", "USDT", "U"]) {
+    await expect(tokenSelect.locator(`option[value="${value}"]`)).toHaveCount(1);
+  }
+  await expect(tokenSelect.locator('option[value="USDC"]')).toHaveCount(0);
+
+  // The +$5 bonus is independent of which token the buyer picked; it is gated
+  // only by network=bsc + amount>=10. Switching tokens must keep the
+  // promo-applied banner and the "You receive 15.00 credits" tile.
+  for (const value of ["BNB", "U"]) {
+    await tokenSelect.selectOption(value);
+    await expect(page.getByText("BSC promotion applied")).toBeVisible();
+    await expect(page.getByText("15.00 credits")).toBeVisible();
+  }
+
+  expectNoJsonFallbackCrash(failures);
+});
+
+test("/bsc renders a ConnectButton that surfaces injected EVM wallets (MetaMask + Phantom-as-EVM)", async ({
+  page,
+}) => {
+  // RainbowKit's default wallets are wired in StewardWalletProviders and
+  // include the "Injected"/"Browser Wallet" connector that surfaces any
+  // EIP-1193 `window.ethereum` — MetaMask, Phantom-in-EVM-mode, Brave, etc.
+  // We don't simulate the injected provider here (a partial Phantom stub
+  // breaks wagmi's connector init), but we DO assert the ConnectButton is
+  // present so the user has a path to connect any installed EVM wallet.
+  // The Phantom-must-NOT-trigger-SIWE direction is covered by the dedicated
+  // login test below.
+  await installBscMocks(page);
+
+  await page.goto("/bsc");
+
+  await expect(
+    page.getByRole("button", { name: /Connect Wallet/i }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Pay and add credits/i }),
+  ).toBeVisible();
+});
+
+test("Login with Ethereum (SIWE) excludes Phantom from the injected-provider path", async ({
+  page,
+}) => {
+  // When Phantom is the ONLY window.ethereum provider, the explicit Phantom
+  // filter in wallet-buttons.tsx must keep SIWE from using it. The button is
+  // still clickable — it just falls through to the RainbowKit modal (whose
+  // default wallet list does not include Phantom either), so Phantom never
+  // becomes the SIWE signer.
+  await page.addInitScript(() => {
+    const phantomEthereum = {
+      isPhantom: true,
+      request: async (req: { method: string }) => {
+        if (req.method === "eth_chainId") return "0x1";
+        // If our filter is broken and we ever reach eth_requestAccounts,
+        // throw a marker that the test will fail on. This is the regression
+        // safety net: a future refactor that drops the Phantom filter would
+        // surface here as an `unexpected_phantom_account_request`.
+        if (req.method === "eth_requestAccounts") {
+          throw new Error("unexpected_phantom_account_request");
+        }
+        return null;
+      },
+    };
+    Object.defineProperty(window, "ethereum", {
+      configurable: true,
+      value: phantomEthereum,
+    });
+    Object.defineProperty(window, "phantom", {
+      configurable: true,
+      value: { ethereum: phantomEthereum },
+    });
+  });
+
+  const errors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") errors.push(msg.text());
+  });
+  page.on("pageerror", (e) => errors.push(e.message));
+
+  // Mock the Steward providers endpoint so SIWE is enabled.
+  await page.route("**/auth/providers**", (route) =>
+    route.fulfill({
+      json: {
+        passkey: true,
+        email: true,
+        siwe: true,
+        siws: true,
+        google: false,
+        discord: false,
+        github: false,
+        oauth: [],
+      },
+    }),
+  );
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ json: { success: true, data: {} } }),
+  );
+
+  await page.goto("/login");
+
+  // The Ethereum SIWE button is present.
+  const ethereumButton = page.getByRole("button", { name: /^Ethereum$/i });
+  await expect(ethereumButton).toBeVisible();
+
+  // Clicking it must not trigger Phantom's eth_requestAccounts. We don't
+  // expect a successful sign-in (no real wallet), but we DO expect the
+  // marker error not to appear.
+  await ethereumButton.click();
+  // Brief wait for any async injected-provider call to fire.
+  await page.waitForTimeout(750);
+  expect(errors.some((m) => m.includes("unexpected_phantom_account_request"))).toBe(
+    false,
+  );
 });

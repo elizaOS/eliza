@@ -48,7 +48,7 @@ env:
   # Continuous RL data source: on-disk JSONL exports from the
   # eliza native trajectory writer. Override with $ELIZA_STATE_DIR.
   trajectory_source: "jsonl"
-  trajectory_dir: "${ELIZA_STATE_DIR:-${HOME}/.milady/state}/trajectories"
+  trajectory_dir: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/trajectories"
 
   # Trajectory loading settings
   lookback_hours: 72
@@ -127,4 +127,4 @@ slurm: false
 testing: false
 
 # Curriculum state — written to user state dir, NOT the repo.
-curriculum_state_path: "${ELIZA_STATE_DIR:-${HOME}/.milady/state}/training/curriculum_state.json"
+curriculum_state_path: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/training/curriculum_state.json"

@@ -20,15 +20,15 @@ envelope_cross_check:
   metrics_device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 9.6
+    max_thickness: 11.2
   enclosure_device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 9.6
+    max_thickness: 11.2
   cad_device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 9.6
+    max_thickness: 11.2
   display_primary_fits_current_envelope: true
   display_clearance_mm:
     width_clearance_mm: 0.9
@@ -78,6 +78,8 @@ mechanical_overlay_sync:
     - bottom_antenna_keepout
     - wifi_bt_side_antenna_keepout
   projected_tokens:
+    - MECH_KEEP_USB_C_CAPTURE
+    - MECH_KEEP_SIDE_KEY_ACTUATOR
     - MECH_KEEP_DISPLAY_FPC
     - MECH_KEEP_HAPTIC_LRA
     - MECH_KEEP_SIM_TRAY
@@ -87,7 +89,7 @@ step_artifacts:
   e1-phone-solid-assembly.step:
     path: mechanical/e1-phone/out/e1-phone-solid-assembly.step
     present: true
-    bytes: 1564193
+    bytes: 1989024
   main_pcb.step:
     path: mechanical/e1-phone/out/main_pcb.step
     present: true
@@ -185,13 +187,13 @@ step_artifacts:
     present: true
     bytes: 15482
 missing_step_artifacts: []
-assembly_manifest_part_count: 73
+assembly_manifest_part_count: 97
 solid_cad_handoff:
   status: generated
   tool_available: true
   assembly_step: mechanical/e1-phone/out/e1-phone-solid-assembly.step
-  assembly_step_bytes: 1564193
-  part_count: 73
+  assembly_step_bytes: 1989024
+  part_count: 97
   linked_fit_status: pass
   remaining_blockers:
     - Solids are parametric envelopes, not final supplier STEP models.
@@ -226,7 +228,7 @@ placement_interfaces_closed_for_concept:
 release_blockers:
   - routed KiCad board STEP with final component 3D models
   - supplier display, camera, USB-C, button, battery, speaker, and radio STEP/B-rep models
-  - formal 9.6 mm tolerance stack with gasket compression and battery swelling
+  - formal 11.2 mm flush-back tolerance stack with gasket compression and battery swelling
   - full CAD boolean interference check using supplier geometry
   - USB-C insertion/removal load test into enclosure saddle
   - side-button load-path and cycle test

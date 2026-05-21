@@ -7,6 +7,7 @@
 
 import { type Address, createPublicClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
 import { ELIZA_DECIMALS, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
@@ -255,9 +256,10 @@ class PayoutStatusService {
     const tokenAddress = ELIZA_TOKEN_ADDRESSES[network] as Address;
     const decimals = ELIZA_DECIMALS[network];
 
+    const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
     const publicClient = createPublicClient({
       chain,
-      transport: http(),
+      transport: http(rpcUrl),
     });
 
     const ERC20_ABI = parseAbi(["function balanceOf(address account) view returns (uint256)"]);
@@ -414,3 +416,37 @@ class PayoutStatusService {
 
 // Export singleton
 export const payoutStatusService = new PayoutStatusService();
+
+/**
+ * Public hot-wallet address lookup for admin tooling. Returns only the
+ * derived addresses (never the keys). `null` means the env var is unset
+ * or invalid.
+ */
+export function getHotWalletAddresses(): { evm: string | null; solana: string | null } {
+  const env = getCloudAwareEnv();
+
+  let evm: string | null = null;
+  const evmKey = env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY;
+  if (evmKey) {
+    const key = evmKey.startsWith("0x")
+      ? (evmKey as `0x${string}`)
+      : (`0x${evmKey}` as `0x${string}`);
+    evm = privateKeyToAccount(key).address;
+  }
+
+  let solana: string | null = null;
+  const solKey = env.SOLANA_PAYOUT_PRIVATE_KEY;
+  if (solKey) {
+    try {
+      const { Keypair } = require("@solana/web3.js") as typeof import("@solana/web3.js");
+      const bs58Mod = require("bs58") as { default: typeof import("bs58")["default"] };
+      const decoded = bs58Mod.default.decode(solKey);
+      solana = Keypair.fromSecretKey(decoded).publicKey.toBase58();
+    } catch (error) {
+      logger.warn("[getHotWalletAddresses] invalid Solana key", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return { evm, solana };
+}

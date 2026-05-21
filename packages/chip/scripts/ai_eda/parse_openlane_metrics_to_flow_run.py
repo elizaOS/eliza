@@ -15,6 +15,7 @@ DEFAULT_BASE_FLOW_RUN = (
 )
 DEFAULT_METRICS = ROOT / "docs/spec-db/ai-eda/openlane-metrics-fixtures/e1_final_metrics.clean.json"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/openlane_flow_labels"
+OPENLANE_RUNS = ROOT / "pd/openlane/runs"
 CLAIM_BOUNDARY = "openlane_metric_parse_only_no_training_inference_signoff_or_release_claim"
 
 
@@ -98,15 +99,41 @@ def normalized_metrics(metrics: dict[str, Any]) -> tuple[dict[str, Any], list[st
 def label_status(metrics_path: Path, missing: list[str]) -> str:
     if missing:
         return "blocked_missing_required_openlane_metrics"
-    if "docs/spec-db/ai-eda/openlane-metrics-fixtures" in rel(metrics_path):
+    if is_fixture_metrics(metrics_path):
         return "fixture_metrics_parser_smoke_no_ppa_claim"
     return "deterministic_openlane_metrics_unreviewed"
+
+
+def discover_metrics_path(explicit: Path | None) -> tuple[Path, str, bool]:
+    if explicit is not None:
+        return (
+            explicit.resolve(),
+            "explicit_metrics_json",
+            not is_fixture_metrics(explicit.resolve()),
+        )
+    candidates = sorted(OPENLANE_RUNS.glob("RUN_*/final/metrics.json"))
+    if candidates:
+        return candidates[-1].resolve(), "latest_local_openlane_run", True
+    return DEFAULT_METRICS.resolve(), "fixture_fallback_no_local_openlane_run", False
+
+
+def is_fixture_metrics(path: Path) -> bool:
+    try:
+        rel_path = rel(path)
+    except ValueError:
+        return False
+    return "docs/spec-db/ai-eda/openlane-metrics-fixtures" in rel_path
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-flow-run", type=Path, default=DEFAULT_BASE_FLOW_RUN)
-    parser.add_argument("--metrics-json", type=Path, default=DEFAULT_METRICS)
+    parser.add_argument(
+        "--metrics-json",
+        type=Path,
+        default=None,
+        help="OpenLane final metrics JSON. Defaults to the latest pd/openlane/runs/RUN_*/final/metrics.json, or the checked-in parser fixture if no local run exists.",
+    )
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     return parser.parse_args()
@@ -116,25 +143,30 @@ def main() -> int:
     args = parse_args()
     if not args.base_flow_run.exists():
         raise SystemExit(f"base flow-run record missing: {args.base_flow_run}")
-    if not args.metrics_json.exists():
-        raise SystemExit(f"OpenLane metrics JSON missing: {args.metrics_json}")
+    metrics_path, selection_policy, deterministic_run_artifacts_present = discover_metrics_path(
+        args.metrics_json
+    )
+    if not metrics_path.exists():
+        raise SystemExit(f"OpenLane metrics JSON missing: {metrics_path}")
     base = load_json(args.base_flow_run)
-    metrics = load_json(args.metrics_json)
+    metrics = load_json(metrics_path)
     labels, missing = normalized_metrics(metrics)
-    status = label_status(args.metrics_json.resolve(), missing)
+    status = label_status(metrics_path, missing)
     flow_run = dict(base)
     flow_run["id"] = f"{base['id']}--metrics-{args.run_id}"
     flow_run["claim_boundary"] = CLAIM_BOUNDARY
     flow_run["metrics"] = {
         "label_status": status,
         "normalized": labels,
-        "source_metrics": rel(args.metrics_json.resolve()),
+        "source_metrics": rel(metrics_path),
+        "selection_policy": selection_policy,
+        "deterministic_run_artifacts_present": deterministic_run_artifacts_present,
         "required_metrics": list(REQUIRED_LABELS),
     }
     flow_run["outputs"] = {
         **flow_run.get("outputs", {}),
         "reports": sorted(
-            set(flow_run.get("outputs", {}).get("reports", []) + [rel(args.metrics_json.resolve())])
+            set(flow_run.get("outputs", {}).get("reports", []) + [rel(metrics_path)])
         ),
     }
     flow_run["status"] = {
@@ -160,7 +192,9 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
         "base_flow_run": rel(args.base_flow_run.resolve()),
-        "metrics_json": rel(args.metrics_json.resolve()),
+        "metrics_json": rel(metrics_path),
+        "metrics_selection_policy": selection_policy,
+        "deterministic_run_artifacts_present": deterministic_run_artifacts_present,
         "flow_run_record": rel(flow_path),
         "label_status": status,
         "missing_required_labels": missing,

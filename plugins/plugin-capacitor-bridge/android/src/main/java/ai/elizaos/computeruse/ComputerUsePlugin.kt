@@ -141,9 +141,9 @@ class ComputerUsePlugin : Plugin() {
 
     @PluginMethod
     fun getAccessibilityTree(call: PluginCall) {
-        val svc = MiladyAccessibilityService.instance
+        val svc = ElizaAccessibilityService.instance
         if (svc == null) {
-            call.resolve(err("accessibility_unavailable", "MiladyAccessibilityService not running — enable in Settings > Accessibility"))
+            call.resolve(err("accessibility_unavailable", "ElizaAccessibilityService not running — enable in Settings > Accessibility"))
             return
         }
         val json = svc.getAccessibilityTreeJson()
@@ -155,9 +155,9 @@ class ComputerUsePlugin : Plugin() {
 
     @PluginMethod
     fun dispatchGesture(call: PluginCall) {
-        val svc = MiladyAccessibilityService.instance
+        val svc = ElizaAccessibilityService.instance
         if (svc == null) {
-            call.resolve(err("accessibility_unavailable", "MiladyAccessibilityService not running"))
+            call.resolve(err("accessibility_unavailable", "ElizaAccessibilityService not running"))
             return
         }
         val type = call.getString("type") ?: "tap"
@@ -181,9 +181,9 @@ class ComputerUsePlugin : Plugin() {
 
     @PluginMethod
     fun performGlobalAction(call: PluginCall) {
-        val svc = MiladyAccessibilityService.instance
+        val svc = ElizaAccessibilityService.instance
         if (svc == null) {
-            call.resolve(err("accessibility_unavailable", "MiladyAccessibilityService not running"))
+            call.resolve(err("accessibility_unavailable", "ElizaAccessibilityService not running"))
             return
         }
         val action = call.getString("action") ?: ""
@@ -202,9 +202,9 @@ class ComputerUsePlugin : Plugin() {
 
     @PluginMethod
     fun setText(call: PluginCall) {
-        val svc = MiladyAccessibilityService.instance
+        val svc = ElizaAccessibilityService.instance
         if (svc == null) {
-            call.resolve(err("accessibility_unavailable", "MiladyAccessibilityService not running"))
+            call.resolve(err("accessibility_unavailable", "ElizaAccessibilityService not running"))
             return
         }
         val text = call.getString("text")
@@ -346,7 +346,7 @@ class ComputerUsePlugin : Plugin() {
                 put("sdkInt", Build.VERSION.SDK_INT)
                 put("capabilities", JSObject().apply {
                     put("mediaProjection", hasMediaProjectionCapability())
-                    put("accessibilityService", MiladyAccessibilityService.instance != null)
+                    put("accessibilityService", ElizaAccessibilityService.instance != null)
                     put("usageStats", UsageStatsHelper.hasUsageStatsPermission(context))
                     put("camera", hasCameraCapability())
                     put("aospPrivileged", AospPrivilegedBridge.createIfAvailable() != null)

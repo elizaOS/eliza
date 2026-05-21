@@ -46,6 +46,7 @@ import {
   getWalletRecommendation,
 } from "../config/redemption-addresses";
 import { ARBITRAGE_PROTECTION } from "../config/redemption-security";
+import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
@@ -664,9 +665,10 @@ export class SecureTokenRedemptionService {
       // Fix #12: Check if address is a contract
       const chain = EVM_CHAINS[network as keyof typeof EVM_CHAINS];
       if (chain) {
+        const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
         const publicClient = createPublicClient({
           chain,
-          transport: http(),
+          transport: http(rpcUrl),
         });
 
         const code = await publicClient.getCode({
@@ -929,9 +931,10 @@ export class SecureTokenRedemptionService {
     const tokenAddress = ELIZA_TOKEN_ADDRESSES[network] as Address;
     const decimals = ELIZA_DECIMALS[network];
 
+    const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
     const publicClient = createPublicClient({
       chain,
-      transport: http(),
+      transport: http(rpcUrl),
     });
 
     const rawBalance = await publicClient.readContract({

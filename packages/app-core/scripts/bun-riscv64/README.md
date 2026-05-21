@@ -2,7 +2,7 @@
 
 Produces the `bun-linux-riscv64-musl.zip` artifact consumed by the
 Android agent staging step (`stage-android-agent.mjs`) when
-`MILADY_BUN_RISCV64_URL` points at a hosted copy.
+`ELIZA_BUN_RISCV64_URL` points at a hosted copy.
 
 Upstream Bun ships no riscv64 release
 ([oven-sh/bun#21923](https://github.com/oven-sh/bun/issues/21923) closed
@@ -63,7 +63,7 @@ cd packages/app-core/scripts/bun-riscv64
 
 # 1. Build the image (caches the toolchain layer; only re-runs when
 #    Dockerfile or its ARG values change).
-docker build -t milady/bun-riscv64-builder .
+docker build -t eliza/bun-riscv64-builder .
 
 # 2. Run the cross-build. Mount the patches and version pin read-only,
 #    and the dist directory writable for the artifact + log.
@@ -75,7 +75,7 @@ docker run --rm \
     -v "$PWD/webkit-patches:/opt/webkit-patches:ro" \
     -v "$PWD/dist:/artifact" \
     -e JOBS=8 \
-    milady/bun-riscv64-builder
+    eliza/bun-riscv64-builder
 ```
 
 The build takes 30-90 minutes depending on host CPU. On success:
@@ -100,7 +100,7 @@ docker run --rm \
     -v "$PWD/webkit-patches:/opt/webkit-patches:ro" \
     -v "$PWD/dist:/artifact" \
     -e BUN_RISCV64_FORCE_CLOOP=1 \
-    milady/bun-riscv64-builder
+    eliza/bun-riscv64-builder
 ```
 
 The resulting binary is slower (no JIT at all) but is the reproducible
@@ -110,7 +110,7 @@ C_LOOP was used.
 ## Hosting the artifact + wiring into Android staging
 
 `packages/app-core/scripts/lib/stage-android-agent.mjs` reads
-`MILADY_BUN_RISCV64_URL` and downloads the zip from there during the
+`ELIZA_BUN_RISCV64_URL` and downloads the zip from there during the
 Android APK assemble step. Acceptable hosting:
 
 - a GitHub Release on an internal mirror of this repo,
@@ -122,11 +122,11 @@ Android APK assemble step. Acceptable hosting:
 After uploading `bun-linux-riscv64-musl.zip` plus a public URL with HTTPS:
 
 ```bash
-export MILADY_BUN_RISCV64_URL='https://example.com/.../bun-linux-riscv64-musl.zip'
+export ELIZA_BUN_RISCV64_URL='https://example.com/.../bun-linux-riscv64-musl.zip'
 bun run mobile:build  # or the equivalent android assemble path
 ```
 
-`stage-android-agent.mjs` requires `MILADY_BUN_RISCV64_SHA256` (or
+`stage-android-agent.mjs` requires `ELIZA_BUN_RISCV64_SHA256` (or
 `ELIZA_BUN_RISCV64_SHA256`), verifies the downloaded zip digest, extracts,
 and stages `bun` into the APK's `assets/agent/riscv64/` directory alongside
 the matching musl loader and libstdc++ pulled from Alpine v3.21.
@@ -260,4 +260,4 @@ rm "$REPO_ROOT/packages/app-core/scripts/bun-riscv64/webkit-patches/"*.recipe
   scheduled GitHub Action against a self-hosted x86_64 runner with
   Docker) so artifact builds are reproducible per Bun bump.
 - **Artifact hosting policy.** Decide where the canonical riscv64 zip
-  lives so `MILADY_BUN_RISCV64_URL` has a stable production target.
+  lives so `ELIZA_BUN_RISCV64_URL` has a stable production target.

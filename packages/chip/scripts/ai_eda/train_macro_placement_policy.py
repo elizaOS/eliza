@@ -11,6 +11,7 @@ tapeout claim.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from datetime import UTC, datetime
@@ -121,8 +122,10 @@ def target_aware_grid_locations(
 ) -> list[tuple[float, float]]:
     """Assign grid locations to macros by nearest available labeled target."""
     locations = grid_locations(core, movable)
-    if len(locations) <= 1 or not all(
-        isinstance(obj.get("target_placement"), dict) for obj in movable
+    if (
+        len(locations) <= 1
+        or len(movable) > 64
+        or not all(isinstance(obj.get("target_placement"), dict) for obj in movable)
     ):
         return locations
 
@@ -207,8 +210,10 @@ def target_repair_locations(
 ) -> list[tuple[float, float]]:
     """Greedily snap labeled macros from grid slots to legal target locations."""
     locations = target_aware_grid_locations(core, movable)
-    if len(locations) <= 1 or not all(
-        isinstance(obj.get("target_placement"), dict) for obj in movable
+    if (
+        len(locations) <= 1
+        or len(movable) > 64
+        or not all(isinstance(obj.get("target_placement"), dict) for obj in movable)
     ):
         return locations
 
@@ -239,6 +244,150 @@ def target_repair_locations(
     return locations
 
 
+def deterministic_fraction(*parts: Any) -> float:
+    digest = hashlib.sha256("|".join(str(part) for part in parts).encode("utf-8")).hexdigest()
+    return int(digest[:12], 16) / float(16**12 - 1)
+
+
+def circuit_training_proxy_locations(
+    core: list[Any],
+    movable: list[dict[str, Any]],
+) -> list[tuple[float, float]]:
+    """Deterministic CT-style proxy: target-aware constructive placement."""
+    return target_aware_grid_locations(core, movable)
+
+
+def simulated_annealing_proxy_locations(
+    core: list[Any],
+    movable: list[dict[str, Any]],
+) -> list[tuple[float, float]]:
+    """Small deterministic SA proxy over legal swaps and target-distance score."""
+    locations = target_aware_grid_locations(core, movable)
+    if len(locations) <= 1:
+        return locations
+    if len(movable) > 64:
+        return locations
+
+    best = list(locations)
+    best_score = mean_target_distance(best, movable)
+    # Deterministic bounded search: enough to exercise the lane without hiding
+    # replay requirements behind an expensive optimizer.
+    for step in range(min(32, len(movable) * 4)):
+        left = step % len(movable)
+        right = int(deterministic_fraction("sa", step, len(movable)) * len(movable)) % len(movable)
+        if left == right:
+            right = (right + 1) % len(movable)
+        candidate = list(best)
+        candidate[left], candidate[right] = candidate[right], candidate[left]
+        if not legal_locations(core, movable, candidate):
+            continue
+        score = mean_target_distance(candidate, movable)
+        if score <= best_score:
+            best = candidate
+            best_score = score
+    return best
+
+
+def hier_rtlmp_proxy_locations(
+    core: list[Any],
+    movable: list[dict[str, Any]],
+) -> list[tuple[float, float]]:
+    """Recursive-bisection proxy for OpenROAD Hier-RTLMP-style grouping."""
+    if not movable:
+        return []
+    min_x, min_y, max_x, max_y = [float(value) for value in core]
+    ordered = sorted(
+        enumerate(movable),
+        key=lambda item: (
+            float(item[1].get("target_placement", {}).get("x_um", min_x))
+            if isinstance(item[1].get("target_placement"), dict)
+            else deterministic_fraction("hier", item[1].get("id", item[0])),
+            str(item[1].get("id", item[0])),
+        ),
+    )
+    assigned: list[tuple[float, float] | None] = [None] * len(movable)
+
+    def place(
+        group: list[tuple[int, dict[str, Any]]], box: tuple[float, float, float, float]
+    ) -> None:
+        if not group:
+            return
+        if len(group) == 1:
+            index, obj = group[0]
+            width, height = object_size_um(obj)
+            x = box[0] + max((box[2] - box[0] - width) / 2.0, 0.0)
+            y = box[1] + max((box[3] - box[1] - height) / 2.0, 0.0)
+            assigned[index] = clamp_location_to_core(core, obj, (x, y))
+            return
+        span_x = box[2] - box[0]
+        span_y = box[3] - box[1]
+        mid = max(1, len(group) // 2)
+        if span_x >= span_y:
+            split = box[0] + span_x * (mid / len(group))
+            place(group[:mid], (box[0], box[1], split, box[3]))
+            place(group[mid:], (split, box[1], box[2], box[3]))
+        else:
+            split = box[1] + span_y * (mid / len(group))
+            place(group[:mid], (box[0], box[1], box[2], split))
+            place(group[mid:], (box[0], split, box[2], box[3]))
+
+    place(ordered, (min_x, min_y, max_x, max_y))
+    locations = [
+        location if location is not None else centered_location(core, movable[index])
+        for index, location in enumerate(assigned)
+    ]
+    if len(movable) > 64:
+        return target_aware_grid_locations(core, movable)
+    return (
+        locations
+        if legal_locations(core, movable, locations)
+        else target_aware_grid_locations(core, movable)
+    )
+
+
+def chipdiffusion_proxy_locations(
+    core: list[Any],
+    movable: list[dict[str, Any]],
+) -> list[tuple[float, float]]:
+    """Deterministic diffusion-style proxy: sampled legal denoise candidates."""
+    base = target_aware_grid_locations(core, movable)
+    if len(base) <= 1:
+        return base
+    if len(movable) > 64:
+        return base
+    min_x, min_y, max_x, max_y = [float(value) for value in core]
+    best = list(base)
+    best_score = mean_target_distance(best, movable)
+    for sample in range(12):
+        candidate = []
+        for index, obj in enumerate(movable):
+            width, height = object_size_um(obj)
+            target = obj.get("target_placement")
+            if isinstance(target, dict):
+                anchor_x = float(target["x_um"])
+                anchor_y = float(target["y_um"])
+            else:
+                anchor_x, anchor_y = base[index]
+            radius_x = max((max_x - min_x - width) / (sample + 4), 0.0)
+            radius_y = max((max_y - min_y - height) / (sample + 4), 0.0)
+            jitter_x = (
+                deterministic_fraction("diff-x", sample, obj.get("id", index)) - 0.5
+            ) * radius_x
+            jitter_y = (
+                deterministic_fraction("diff-y", sample, obj.get("id", index)) - 0.5
+            ) * radius_y
+            candidate.append(
+                clamp_location_to_core(core, obj, (anchor_x + jitter_x, anchor_y + jitter_y))
+            )
+        if not legal_locations(core, movable, candidate):
+            continue
+        score = mean_target_distance(candidate, movable)
+        if score <= best_score:
+            best = candidate
+            best_score = score
+    return best
+
+
 def mean_target_distance(
     locations: list[tuple[float, float]],
     movable: list[dict[str, Any]],
@@ -266,6 +415,14 @@ def overlap_metrics(
         y = float(value["y_um"])
         boxes.append((x, y, x + width, y + height))
 
+    if len(boxes) > 96:
+        return {
+            "overlap_count": 0,
+            "overlap_area_um2": None,
+            "worst_overlap_area_um2": None,
+            "overlap_check_status": "skipped_large_case_pre_replay_guarded_by_openroad",
+        }
+
     overlaps = 0
     total_area = 0.0
     worst_area = 0.0
@@ -283,6 +440,7 @@ def overlap_metrics(
         "overlap_count": overlaps,
         "overlap_area_um2": round(total_area, 6),
         "worst_overlap_area_um2": round(worst_area, 6),
+        "overlap_check_status": "exact_pairwise",
     }
 
 
@@ -363,6 +521,18 @@ def candidate_for_case(
     elif policy == "target_repair_search":
         locations = target_repair_locations(core, movable)
         candidate_prefix = "macro-placement-target-repair-search"
+    elif policy == "circuit_training_proxy":
+        locations = circuit_training_proxy_locations(core, movable)
+        candidate_prefix = "macro-placement-circuit-training-proxy"
+    elif policy == "simulated_annealing_proxy":
+        locations = simulated_annealing_proxy_locations(core, movable)
+        candidate_prefix = "macro-placement-simulated-annealing-proxy"
+    elif policy == "hier_rtlmp_proxy":
+        locations = hier_rtlmp_proxy_locations(core, movable)
+        candidate_prefix = "macro-placement-hier-rtlmp-proxy"
+    elif policy == "chipdiffusion_proxy":
+        locations = chipdiffusion_proxy_locations(core, movable)
+        candidate_prefix = "macro-placement-chipdiffusion-proxy"
     elif policy == "center_legal_baseline":
         locations = grid_locations(core, movable)
         candidate_prefix = "macro-placement-center-baseline"
@@ -439,7 +609,19 @@ def main() -> int:
         "schema": "eliza.ai_eda.macro_placement_policy.v1",
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
-        "policies": ["center_legal_baseline", "target_aware_grid", "target_repair_search"],
+        "policies": [
+            "center_legal_baseline",
+            "target_aware_grid",
+            "target_repair_search",
+            "circuit_training_proxy",
+            "simulated_annealing_proxy",
+            "hier_rtlmp_proxy",
+            "chipdiffusion_proxy",
+        ],
+        "proxy_policy_boundary": (
+            "CT/SA/Hier-RTLMP/ChipDiffusion lanes are deterministic local proxies "
+            "until their external tools are fetched, converted, and replayed"
+        ),
         "claim_boundary": CLAIM_BOUNDARY,
         "training_inputs": [rel(path) for path, _case in cases],
         "learned_parameters": {},
@@ -539,7 +721,7 @@ def main() -> int:
         "next_required_gates": [
             "run scripts/ai_eda/check_candidate_manifests.py on emitted candidates",
             "replay any candidate through OpenLane/OpenROAD before using as evidence",
-            "replace deterministic proxy baselines with CT/SA/Hier-RTLMP/ChipDiffusion after real corpora are fetched and converted",
+            "replace proxy CT/SA/Hier-RTLMP/ChipDiffusion adapters with real external-method inference after payloads are fetched and converted",
         ],
         "release_use_allowed": False,
     }

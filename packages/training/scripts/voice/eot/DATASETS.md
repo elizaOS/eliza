@@ -42,7 +42,7 @@ Notable local sources:
   for diarization eval). Small (5 fixtures) but on-distribution.
 - **`eliza/packages/skills/skills/*/scenarios/`** — scenario files
   with user/assistant turn structure. Volume varies per skill.
-- **Trajectory logs at `~/.milady/trajectories/`** — real Eliza voice
+- **Trajectory logs at `~/.eliza/trajectories/`** — real Eliza voice
   sessions. **Privacy filter mandatory** before any write path touches
   these (per `packages/training/AGENTS.md`).
 

@@ -1,0 +1,24 @@
+schema: eliza.ai_eda.external_intake_manifest.v1
+asset_id: mcp4eda
+kind: repo
+source_url: https://github.com/NellyW8/mcp-EDA
+upstream_revision:
+  type: commit
+  value: c3d0e09b783b6dd3d182ebe6e4e77a0451148927
+license:
+  status: review_required
+  evidence:
+    - https://github.com/NellyW8/mcp-EDA
+    - https://arxiv.org/abs/2507.19570
+  reviewed_at: 2026-05-21
+intake:
+  review_status: pending
+  allowed_use: deterministic-replay-candidate
+  release_use_allowed: false
+  deterministic_replay_required: true
+  next_action: fetch_to_ignored_payload_then_review_mcp_tool_schema_allowlist_sandboxing_and_audit_logs
+local_payload:
+  downloaded: true
+  payload_path: external/repos/mcp4eda/payload
+  checksum_status: verify_only_records_file_manifest
+claim_boundary: external_intake_metadata_only_no_payload_no_training_no_release_claim

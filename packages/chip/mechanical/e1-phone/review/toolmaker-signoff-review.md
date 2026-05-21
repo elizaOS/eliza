@@ -18,4 +18,4 @@ Template: `mechanical/e1-phone/review/toolmaker-signoff-response-template.csv`
 
 ## Release Rule
 
-- Every toolmaker item must name the toolmaker, return a report/drawing artifact, be accepted by reviewer, and close mold-flow/tooling questions before tooling release.
+- Every toolmaker item must name the toolmaker, return signed mold-flow/tooling/CMF artifacts, include evidence_class=physical_toolmaker_signoff, include raw moldflow/tooling data, reviewer acceptance record, resin/CMF/tooling traceability, and be accepted before tooling release.

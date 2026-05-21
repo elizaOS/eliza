@@ -24,4 +24,4 @@ Template: `mechanical/e1-phone/review/gdt-fai-template.csv`
 
 ## Release Rule
 
-- Every GD&T/FAI characteristic must include sample ID, measured value, inspector, and passing disposition before tolerance release.
+- Every GD&T/FAI characteristic must include sample ID, measured value, inspector, passing disposition, evidence_class=physical_fai_result, raw CMM/inspection report, inspection equipment calibration certificate, inspection photo/scan, and part revision/tooling/resin lot traceability before tolerance release.

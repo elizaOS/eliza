@@ -29,6 +29,7 @@
     "ensure-plugin-test-conventions:check": "bun packages/scripts/ensure-plugin-test-conventions.mjs --check",
     "trajectory:inspect": "bun packages/scripts/trajectory.ts",
     "trajectory:inspect:test": "bun test packages/scripts/__tests__/trajectory-validate.test.ts",
+    "soc2:verify": "bun run packages/soc2-verify/src/cli.ts",
     "audit:duplicate-components": "node packages/scripts/audit-duplicate-components.mjs",
     "audit:duplicate-components:self-check": "node packages/scripts/audit-duplicate-components.mjs --self-check",
     "audit:action-availability": "node packages/scripts/audit-action-availability.mjs",

@@ -45,7 +45,7 @@ Status: shortlist for CAD lock, not a purchase order.
 ## rear_camera
 
 - Role: `camera`
-- Candidate: OV13855/OV13850 13 MP autofocus MIPI module
+- Candidate: single OV13855/OV13850 class 13 MP simple-AF MIPI module, single lens, buried under flush back wall
 - Source: https://sincerefirst.en.made-in-china.com/product/WACpUrRYOVkc/China-Ov13855-Ov13850-CMOS-Sensor-Autofocus-13MP-Mipi-Camera-Module.html
 - Lock state: needs exact module drawing, FPC side, and lens stack height
 - Mechanical lock: `{"lens_diameter_mm": 6.8, "module_mm": [10.0, 10.0, 5.1]}`
@@ -53,7 +53,7 @@ Status: shortlist for CAD lock, not a purchase order.
 ## front_camera
 
 - Role: `camera`
-- Candidate: 5-8 MP fixed-focus MIPI module behind cover glass
+- Candidate: single 5-8 MP fixed-focus MIPI module behind cover glass, single lens
 - Source: TBD
 - Lock state: placeholder envelope; needs Shenzhen/OEM module selection after cover-glass aperture decision
 - Mechanical lock: `{"lens_diameter_mm": 3.4, "module_mm": [6.5, 6.5, 3.2]}`

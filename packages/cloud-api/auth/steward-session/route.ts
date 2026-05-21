@@ -11,6 +11,7 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import {
   type StewardVerifyEnv,
@@ -184,6 +185,19 @@ app.post("/", async (c) => {
     const claims = await verifyStewardTokenCached(c.env, token);
     if (!claims) {
       logStewardAuth("invalid-token", null);
+      await getAuditDispatcher()
+        .emit({
+          actor: { type: "user", id: "anonymous" },
+          action: "auth.login.failed",
+          result: "failure",
+          resource: null,
+          ip:
+            c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+          user_agent: c.req.header("user-agent") ?? undefined,
+          request_id: c.get("requestId"),
+          metadata: { provider: "steward", reason: "invalid_token" },
+        })
+        .catch(() => undefined);
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
     }
 
@@ -247,6 +261,20 @@ app.post("/", async (c) => {
     });
 
     logStewardAuth("ok", ttl);
+    await getAuditDispatcher()
+      .emit({
+        actor: { type: "user", id: cloudUser.id },
+        action: "auth.login",
+        result: "success",
+        resource: null,
+        org_id: cloudUser.organization_id ?? undefined,
+        ip:
+          c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+        user_agent: c.req.header("user-agent") ?? undefined,
+        request_id: c.get("requestId"),
+        metadata: { provider: "steward", method: "session_exchange" },
+      })
+      .catch(() => undefined);
     const response: StewardSessionResponse = {
       ok: true,
       userId: cloudUser.id,

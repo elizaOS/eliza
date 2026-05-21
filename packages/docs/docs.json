@@ -323,7 +323,7 @@
         "tab": "Cloud",
         "groups": [
           {
-            "group": "Cloud APIs",
+            "group": "Concepts",
             "pages": [
               "tracks/cloud/overview",
               "tracks/cloud/auth",
@@ -335,7 +335,87 @@
             ]
           },
           {
-            "group": "Cloud guides",
+            "group": "Getting Started",
+            "pages": [
+              "cloud/index",
+              "cloud/quickstart",
+              "cloud/installation",
+              "cloud/authentication",
+              "cloud/wallet-api"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "cloud/agents",
+              "cloud/agent-creator",
+              "cloud/character-json"
+            ]
+          },
+          {
+            "group": "Runtime & Apps",
+            "pages": [
+              "cloud/apps",
+              "cloud/app-domains",
+              "cloud/containers",
+              "cloud/mcps",
+              "cloud/documents"
+            ]
+          },
+          {
+            "group": "Monetization",
+            "pages": [
+              "cloud/earnings",
+              "cloud/monetized-apps",
+              "cloud/billing"
+            ]
+          },
+          {
+            "group": "API Reference",
+            "pages": [
+              {
+                "group": "REST API",
+                "pages": [
+                  "cloud/api/index",
+                  "cloud/api/overview",
+                  "cloud/api/agents",
+                  "cloud/api/apps",
+                  "cloud/api/api-keys",
+                  "cloud/api/chat",
+                  "cloud/api/messages",
+                  "cloud/api/embeddings",
+                  "cloud/api/models",
+                  "cloud/api/images",
+                  "cloud/api/video",
+                  "cloud/api/voice",
+                  "cloud/api/credits",
+                  "cloud/api/redemptions",
+                  "cloud/api/containers",
+                  "cloud/api/documents",
+                  "cloud/api/gallery",
+                  "cloud/api/mcps"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Protocols",
+            "pages": [
+              "cloud/a2a",
+              "cloud/mcp"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "cloud/rate-limits",
+              "cloud/errors",
+              "cloud/sdks",
+              "cloud/changelog"
+            ]
+          },
+          {
+            "group": "Guides",
             "pages": [
               "guides/cloud",
               "guides/cloud-provider-routing",

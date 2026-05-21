@@ -80,7 +80,7 @@ async function loadStartEliza(): Promise<StartEliza> {
 //
 // Strategy:
 //   1. Resolve HOME (= getFilesDir) through realpathSync → canonical root.
-//   2. Update ELIZA_STATE_DIR / MILADY_STATE_DIR / HOME to use the canonical
+//   2. Update ELIZA_STATE_DIR / ELIZA_STATE_DIR / HOME to use the canonical
 //      prefix so any downstream path construction produces matching strings.
 //   3. Set sandbox root = canonical HOME → covers .eliza/, agent/ assets, etc.
 let _logPath = "";
@@ -90,7 +90,7 @@ function setupAndroidBridgeEnvironment(): string {
 		process.env.HOME ||
 		nodePath.dirname(
 			process.env.ELIZA_STATE_DIR ||
-				process.env.MILADY_STATE_DIR ||
+				process.env.ELIZA_STATE_DIR ||
 				"/data/local/tmp/.eliza",
 		);
 
@@ -107,9 +107,9 @@ function setupAndroidBridgeEnvironment(): string {
 		if (process.env.HOME) process.env.HOME = canonicalHome;
 		for (const key of [
 			"ELIZA_STATE_DIR",
-			"MILADY_STATE_DIR",
+			"ELIZA_STATE_DIR",
 			"ELIZA_WORKSPACE_DIR",
-			"MILADY_WORKSPACE_DIR",
+			"ELIZA_WORKSPACE_DIR",
 			"TMPDIR",
 		] as const) {
 			const val = process.env[key];
@@ -121,7 +121,7 @@ function setupAndroidBridgeEnvironment(): string {
 
 	const stateDir =
 		process.env.ELIZA_STATE_DIR ||
-		process.env.MILADY_STATE_DIR ||
+		process.env.ELIZA_STATE_DIR ||
 		`${canonicalHome}/.eliza`;
 
 	installMobileFsShim(canonicalHome);

@@ -28,7 +28,7 @@ interface LogsApiResponse {
 
 const STATUS_BADGE_STYLES: Record<string, string> = {
   running: "border-green-500/40 bg-green-500/10 text-green-400",
-  provisioning: "border-blue-500/40 bg-blue-500/10 text-blue-400",
+  provisioning: "border-white/20 bg-white/5 text-white/80",
   pending: "border-yellow-500/40 bg-yellow-500/10 text-yellow-400",
   stopped: "border-white/20 bg-white/5 text-white/70",
   disconnected: "border-orange-500/40 bg-orange-500/10 text-orange-400",
@@ -61,7 +61,7 @@ function getLineClass(line: string): string {
     return "border-l-yellow-500 text-yellow-300";
   }
   if (normalized.includes("info")) {
-    return "border-l-blue-500 text-blue-300";
+    return "border-l-white/40 text-white/70";
   }
   return "border-l-neutral-700 text-neutral-300";
 }

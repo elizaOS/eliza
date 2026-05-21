@@ -1,0 +1,795 @@
+schema: eliza.e1_phone_supplier_drawing_intake_checklist.v1
+status: blocked_supplier_drawing_intake_required_before_real_footprints_or_route
+date: '2026-05-21'
+claim_boundary: Supplier drawing intake checklist only. This is a fail-closed gate for incoming supplier response
+  packs before real KiCad symbols, footprints, 3D STEP bindings, routing, or enclosure clearance may be treated
+  as release evidence.
+source_artifacts:
+  - board/kicad/e1-phone/supplier-rfq-intake.yaml
+  - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+  - board/kicad/e1-phone/display-camera-acceptance-checklist.yaml
+  - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
+  - board/kicad/e1-phone/module-host-integration-acceptance-checklist.yaml
+  - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
+  - board/kicad/e1-phone/power-bringup-acceptance-checklist.yaml
+upstream_status:
+  rfq_status: blocked_waiting_supplier_quote_drawing_sample_and_approval_packs
+  rfq_drafts_status: drafts_prepared_not_sent_not_supplier_evidence
+  supplier_to_kicad_status: blocked_supplier_evidence_not_ready_for_kicad_capture
+  pinout_freeze_status: blocked_pinout_footprint_freeze_missing_supplier_evidence
+  display_camera_acceptance_status: blocked_display_camera_acceptance_requires_supplier_route_bringup_capture_and_clearance
+  usb_sidekey_acceptance_status: blocked_usb_c_sidekey_acceptance_requires_supplier_route_enclosure_and_measurements
+  module_host_acceptance_status: blocked_module_host_integration_requires_supplier_pinouts_routed_host_buses_firmware_identity_and_factory_evidence
+  radio_antenna_acceptance_status: blocked_radio_antenna_acceptance_requires_supplier_route_firmware_regulatory_and_measurements
+  power_bringup_acceptance_status: blocked_power_bringup_acceptance_requires_routed_schematic_first_power_charge_thermal_and_factory_evidence
+intake_policy:
+  sample_receipt_required_before_pinout_freeze: true
+  minimum_sample_lot_per_candidate: 5
+  accepted_response_format: supplier signed PDF or native CAD plus machine-readable summary
+  all_core_paths_required_before_real_footprint:
+    - rfq_response_pack
+    - signed_2d_drawing
+    - pinout_or_pad_map
+    - recommended_land_pattern
+    - step_or_brep_model
+    - sample_inspection
+    - compliance_pack
+    - pinout_review_signoff
+    - symbol_review
+    - footprint_review
+    - footprint_3d_binding
+intake_records:
+  - function: display_touch
+    status: blocked_waiting_supplier_response_pack_and_reviews
+    criticality: hard_blocker_for_evt1_route_and_enclosure
+    primary_candidate: CH550FH01A-CT
+    package_binding: package/display/v0-dsi-720x1280.yaml
+    freeze_record: display_touch_fpc
+    draft_id: e1_phone_display_touch_rfq_2026-05-21
+    draft_path: board/kicad/e1-phone/sourcing-drafts/display_touch/rfq-transmittal.yaml
+    supplier_artifacts_requested:
+      - signed LCM plus CTP 2D drawing with active, viewing, outline, FPC, and cover-lens datums
+      - FPC pinout including MIPI DSI lanes, touch I2C, reset, TE, backlight, bias, and grounds
+      - mating connector MPN, height, keepout, and recommended land pattern
+      - display/touch power sequence and inrush/backlight current data
+      - STEP model for display stack, FPC tail, stiffener, and adhesive stack
+      - sample inspection report for outline, FPC exit, and touch stack thickness
+    mechanical_datums_required:
+      - cover_glass_outline
+      - tft_outline
+      - fpc_exit_side
+      - stiffener_thickness
+      - minimum_bend_radius
+    planned_contract_nets:
+      - DISP_BL_EN
+      - DISP_BL_PWM
+      - DISP_RESET_N
+      - DISP_TE
+      - DSI_CLK_N
+      - DSI_CLK_P
+      - DSI_D0_N
+      - DSI_D0_P
+      - DSI_D1_N
+      - DSI_D1_P
+      - DSI_D2_N
+      - DSI_D2_P
+      - DSI_D3_N
+      - DSI_D3_P
+      - TOUCH_I2C_SCL
+      - TOUCH_I2C_SDA
+    production_evidence_paths:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/display_touch/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/display_touch/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/display_touch/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/display_touch/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/display_touch/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/display_touch/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/display_touch/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/display_touch.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/display_touch.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/display_touch.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/display_touch.yaml
+    missing_required_evidence_keys: []
+    gate_state:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    review_packages_required:
+      - display_camera_acceptance
+      - pinout_review
+      - symbol_review
+      - footprint_review
+      - 3d_step_binding
+      - enclosure_clearance
+    current_blocker: supplier response pack, signed drawings, pinout/pad map, land pattern, STEP model, sample inspection,
+      and KiCad reviews are all missing
+  - function: rear_camera
+    status: blocked_waiting_supplier_response_pack_and_reviews
+    criticality: hard_blocker_for_evt1_route_and_enclosure
+    primary_candidate: SF-XR3855A-A0_OV13855_or_OV13850_13MP_AF
+    package_binding: package/camera/oem-mipi-csi-modules.yaml
+    freeze_record: rear_camera_fpc
+    draft_id: e1_phone_rear_camera_rfq_2026-05-21
+    draft_path: board/kicad/e1-phone/sourcing-drafts/rear_camera/rfq-transmittal.yaml
+    supplier_artifacts_requested:
+      - sensor module 2D drawing with lens center, barrel height, FPC tail, and keepout
+      - 24 or 30 pin FPC pinout with CSI lanes, MCLK, I2C, reset, PWDN, AF, AVDD, DVDD, and grounds
+      - mating connector MPN and land pattern
+      - module STEP model including lens barrel and stiffener
+      - sensor bring-up register pack or Linux/Android driver notes
+      - image quality sample report and inspection dimensions
+    mechanical_datums_required:
+      - lens_axis_xy
+      - lens_z_height
+      - module_outline
+      - fpc_exit_side
+      - shield_can_height
+    planned_contract_nets:
+      - CAM0_CSI_CLK_N
+      - CAM0_CSI_CLK_P
+      - CAM0_CSI_D0_N
+      - CAM0_CSI_D0_P
+      - CAM0_CSI_D1_N
+      - CAM0_CSI_D1_P
+      - CAM0_CSI_D2_N
+      - CAM0_CSI_D2_P
+      - CAM0_CSI_D3_N
+      - CAM0_CSI_D3_P
+      - CAM0_MCLK
+      - CAM0_RESET_N
+      - CAM1_CSI_CLK_N
+      - CAM1_CSI_CLK_P
+      - CAM1_CSI_D0_N
+      - CAM1_CSI_D0_P
+      - CAM1_CSI_D1_N
+      - CAM1_CSI_D1_P
+      - CAM1_MCLK
+      - CAM1_RESET_N
+      - CAM_AVDD_2V8
+      - IO_1V8
+    production_evidence_paths:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/rear_camera/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/rear_camera/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/rear_camera/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/rear_camera/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/rear_camera/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/rear_camera/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/rear_camera/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/rear_camera.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/rear_camera.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/rear_camera.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/rear_camera.yaml
+    missing_required_evidence_keys: []
+    gate_state:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    review_packages_required:
+      - display_camera_acceptance
+      - pinout_review
+      - symbol_review
+      - footprint_review
+      - 3d_step_binding
+      - camera_lens_axis_enclosure_clearance
+    current_blocker: supplier response pack, signed drawings, pinout/pad map, land pattern, STEP model, sample inspection,
+      and KiCad reviews are all missing
+  - function: front_camera
+    status: blocked_waiting_supplier_response_pack_and_reviews
+    criticality: hard_blocker_for_evt1_route_and_enclosure
+    primary_candidate: SF-G5035S60FY_GC5035_5MP_FF_MIPI
+    package_binding: package/camera/oem-mipi-csi-modules.yaml
+    freeze_record: front_camera_fpc
+    draft_id: e1_phone_front_camera_rfq_2026-05-21
+    draft_path: board/kicad/e1-phone/sourcing-drafts/front_camera/rfq-transmittal.yaml
+    supplier_artifacts_requested:
+      - module 2D drawing with optical center, FPC exit, stiffener, and keepout
+      - CSI pinout and power sequence
+      - mating connector MPN and footprint
+      - STEP model with lens height
+      - driver or V4L2/Android integration notes
+      - sample inspection report
+    mechanical_datums_required:
+      - lens_axis_xy
+      - lens_z_height
+      - cover_glass_clearance
+      - fpc_exit_side
+    planned_contract_nets:
+      - CAM0_CSI_CLK_N
+      - CAM0_CSI_CLK_P
+      - CAM0_CSI_D0_N
+      - CAM0_CSI_D0_P
+      - CAM0_CSI_D1_N
+      - CAM0_CSI_D1_P
+      - CAM0_CSI_D2_N
+      - CAM0_CSI_D2_P
+      - CAM0_CSI_D3_N
+      - CAM0_CSI_D3_P
+      - CAM0_MCLK
+      - CAM0_RESET_N
+      - CAM1_CSI_CLK_N
+      - CAM1_CSI_CLK_P
+      - CAM1_CSI_D0_N
+      - CAM1_CSI_D0_P
+      - CAM1_CSI_D1_N
+      - CAM1_CSI_D1_P
+      - CAM1_MCLK
+      - CAM1_RESET_N
+      - CAM_AVDD_2V8
+      - IO_1V8
+    production_evidence_paths:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/front_camera/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/front_camera/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/front_camera/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/front_camera/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/front_camera/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/front_camera/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/front_camera/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/front_camera.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/front_camera.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/front_camera.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/front_camera.yaml
+    missing_required_evidence_keys: []
+    gate_state:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    review_packages_required:
+      - display_camera_acceptance
+      - pinout_review
+      - symbol_review
+      - footprint_review
+      - 3d_step_binding
+      - front_camera_cover_glass_clearance
+    current_blocker: supplier response pack, signed drawings, pinout/pad map, land pattern, STEP model, sample inspection,
+      and KiCad reviews are all missing
+  - function: cellular
+    status: blocked_waiting_supplier_response_pack_and_reviews
+    criticality: hard_blocker_for_evt1_route_and_enclosure
+    primary_candidate: Quectel_RG255C_or_RM255C_5G_RedCap
+    package_binding: package/cellular/quectel-5g-redcap.yaml
+    freeze_record: cellular_module
+    draft_id: e1_phone_cellular_rfq_2026-05-21
+    draft_path: board/kicad/e1-phone/sourcing-drafts/cellular/rfq-transmittal.yaml
+    supplier_artifacts_requested:
+      - selected region SKU band matrix and orderable MPN
+      - hardware design guide and reference layout revision
+      - module 2D drawing with package dimensions, shield height, datum, and keepouts
+      - module pinout, LGA pad map, signal-voltage table, and reserved-pin rules
+      - land pattern, paste mask, keepout, and shield height data
+      - STEP model with package body, shield, and maximum component height
+      - antenna feed and matching recommendations
+      - carrier/PTCRB/GCF/module grant documentation
+      - Linux/Android driver, firmware, and certification-use restrictions
+    mechanical_datums_required:
+      - module_land_pattern_or_m2_socket
+      - shield_can_height
+      - sim_or_esim_location
+      - antenna_feed_datum
+    planned_contract_nets:
+      - AP_WAKE_CELL
+      - CELL_PCIE_RX_N
+      - CELL_PCIE_RX_P
+      - CELL_PCIE_TX_N
+      - CELL_PCIE_TX_P
+      - CELL_RESET_N
+      - CELL_USB2_DN
+      - CELL_USB2_DP
+      - CELL_WAKE_AP
+      - CELL_W_DISABLE_N
+      - IO_1V8
+      - RF_VBAT
+      - USIM_CLK
+      - USIM_IO
+      - USIM_RST
+    production_evidence_paths:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/cellular/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/cellular/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/cellular/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/cellular/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/cellular/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/cellular/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/cellular/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/cellular.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/cellular.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/cellular.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/cellular.yaml
+    missing_required_evidence_keys: []
+    gate_state:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    review_packages_required:
+      - module_host_acceptance
+      - radio_antenna_acceptance
+      - pinout_review
+      - footprint_review
+      - rf_reference_layout_review
+    current_blocker: supplier response pack, signed drawings, pinout/pad map, land pattern, STEP model, sample inspection,
+      and KiCad reviews are all missing
+  - function: wifi_bluetooth
+    status: blocked_waiting_supplier_response_pack_and_reviews
+    criticality: hard_blocker_for_evt1_route_and_enclosure
+    primary_candidate: Murata_LBEE5XV2EA-802_Type_2EA
+    package_binding: package/wifi/murata-type-2ea-wifi6e.yaml
+    freeze_record: wifi_bluetooth_module
+    draft_id: e1_phone_wifi_bluetooth_rfq_2026-05-21
+    draft_path: board/kicad/e1-phone/sourcing-drafts/wifi_bluetooth/rfq-transmittal.yaml
+    supplier_artifacts_requested:
+      - module datasheet, hardware design guide, and reference layout package
+      - module 2D drawing with shield height, package datum, and RF keepout
+      - module pinout, SMT pad map, signal-voltage table, and reserved-pin rules
+      - paste mask, land pattern, keepout, and reflow restrictions
+      - certified antenna rules and modular grant limitations
+      - firmware, regulatory database, and driver license package
+      - conducted RF test procedure and coexistence guidance
+      - STEP model with shield height
+    mechanical_datums_required:
+      - module_land_pattern
+      - shield_can_height
+      - rf_feed_point
+      - antenna_keepout
+    planned_contract_nets:
+      - BT_EN
+      - BT_UART_CTS_N
+      - BT_UART_RTS_N
+      - BT_UART_RX
+      - BT_UART_TX
+      - IO_1V8
+      - WIFI_EN
+      - WIFI_HOST_WAKE
+      - WIFI_IRQ
+      - WIFI_PCIE_RX_N
+      - WIFI_PCIE_RX_P
+      - WIFI_PCIE_TX_N
+      - WIFI_PCIE_TX_P
+      - WIFI_SDIO_CLK
+      - WIFI_SDIO_CMD
+      - WIFI_SDIO_D0
+      - WIFI_SDIO_D1
+      - WIFI_SDIO_D2
+      - WIFI_SDIO_D3
+    production_evidence_paths:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/wifi_bluetooth.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/wifi_bluetooth.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/wifi_bluetooth.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/wifi_bluetooth.yaml
+    missing_required_evidence_keys: []
+    gate_state:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    review_packages_required:
+      - module_host_acceptance
+      - radio_antenna_acceptance
+      - pinout_review
+      - footprint_review
+      - rf_reference_layout_review
+    current_blocker: supplier response pack, signed drawings, pinout/pad map, land pattern, STEP model, sample inspection,
+      and KiCad reviews are all missing
+  - function: usb_c_receptacle_evt0
+    status: blocked_waiting_supplier_response_pack_and_reviews
+    criticality: hard_blocker_for_evt1_route_and_enclosure
+    primary_candidate: GCT_USB4105_class_USB2_Type_C
+    package_binding: package/usb-c/e1-phone-usb-c-port.yaml
+    freeze_record: usb_c_receptacle
+    draft_id: e1_phone_usb_c_receptacle_evt0_rfq_2026-05-21
+    draft_path: board/kicad/e1-phone/sourcing-drafts/usb_c_receptacle_evt0/rfq-transmittal.yaml
+    supplier_artifacts_requested:
+      - 2D drawing with shell tabs, board edge datum, tongue height, and keepouts
+      - connector pinout with A/B side USB2, CC, VBUS, GND, shield, and SBU disposition
+      - recommended footprint, stencil guidance, and shell grounding requirements
+      - mating-cycle rating, insertion/extraction force, and waterproof option data
+      - STEP model and enclosure aperture/tolerance recommendation
+      - reflow and coplanarity limits
+      - equivalent production alternate drawing pack
+    mechanical_datums_required:
+      - shell_stake_locations
+      - midplane_height
+      - plug_overmold_clearance
+      - port_cutout
+      - enclosure_capture_surface
+    planned_contract_nets:
+      - SHIELD_GND
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBUS
+    production_evidence_paths:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/usb_c_receptacle_evt0.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/usb_c_receptacle_evt0.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/usb_c_receptacle_evt0.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_c_receptacle_evt0.yaml
+    missing_required_evidence_keys: []
+    gate_state:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    review_packages_required:
+      - usb_sidekey_acceptance
+      - pinout_review
+      - symbol_review
+      - footprint_review
+      - 3d_step_binding
+      - usb_c_shell_load_path_review
+    current_blocker: supplier response pack, signed drawings, pinout/pad map, land pattern, STEP model, sample inspection,
+      and KiCad reviews are all missing
+  - function: side_buttons
+    status: blocked_waiting_supplier_response_pack_and_reviews
+    criticality: route_blocker
+    primary_candidate: side_key_flex_or_enclosure_mounted_switch_subassembly
+    package_binding: package/human-interface/side-buttons.yaml
+    freeze_record: side_power_volume_controls
+    draft_id: e1_phone_side_buttons_rfq_2026-05-21
+    draft_path: board/kicad/e1-phone/sourcing-drafts/side_buttons/rfq-transmittal.yaml
+    supplier_artifacts_requested:
+      - switch or side-key flex 2D drawing with plunger datum and force-travel curve
+      - flex pinout, stiffener stack, bend radius, and adhesive/fixture notes
+      - mating connector MPN, footprint, and insertion cycle rating
+      - ESD/debounce recommendation and environmental rating
+      - STEP model for buttons, flex, and connector stack
+      - sample force and life-cycle test report
+    mechanical_datums_required:
+      - actuator_rib_geometry
+      - button_travel
+      - force_curve
+      - solder_joint_load_path
+      - left_side_keepout
+    planned_contract_nets:
+      - AON_1V8
+      - GND
+      - PWR_KEY_N
+      - VOL_DOWN_N
+      - VOL_UP_N
+    production_evidence_paths:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/side_buttons/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/side_buttons/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/side_buttons/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/side_buttons/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/side_buttons/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/side_buttons/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/side_buttons/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/side_buttons.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/side_buttons.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/side_buttons.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/side_buttons.yaml
+    missing_required_evidence_keys: []
+    gate_state:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    review_packages_required:
+      - usb_sidekey_acceptance
+      - pinout_review
+      - symbol_review
+      - footprint_review
+      - 3d_step_binding
+      - force_travel_and_wake_review
+    current_blocker: supplier response pack, signed drawings, pinout/pad map, land pattern, STEP model, sample inspection,
+      and KiCad reviews are all missing
+  - function: battery_pack
+    status: blocked_waiting_supplier_response_pack_and_reviews
+    criticality: hard_blocker_for_evt1_route_and_enclosure
+    primary_candidate: 5830mAh_22p45Wh_64x87x5p7mm_pouch_class
+    package_binding: package/battery/e1-phone-17p3wh-pack.yaml
+    freeze_record: battery_pack_connector
+    draft_id: e1_phone_battery_pack_rfq_2026-05-21
+    draft_path: board/kicad/e1-phone/sourcing-drafts/battery_pack/rfq-transmittal.yaml
+    supplier_artifacts_requested:
+      - signed pack drawing with cell, PCM, tab, connector, and adhesive datums
+      - NTC beta curve, pack ID resistor, protection limits, and cell datasheet
+      - swelling, drop, puncture, UN38.3, IEC/UL, and shipping documentation
+      - mating connector MPN, connector pinout, harness polarity drawing, and cable exit datum
+      - STEP model for pouch, PCM, connector, cable tail, adhesive, and swelling envelope
+      - charge profile limits and fuel-gauge characterization data
+      - sample lot capacity, IR, and dimensional inspection report
+    mechanical_datums_required:
+      - pack_cell_outline
+      - pcm_tail_location
+      - connector_mating_direction
+      - compression_pad_stack
+      - swelling_clearance
+    planned_contract_nets:
+      - BAT_ID
+      - BAT_NTC
+      - GND
+      - VBAT
+    production_evidence_paths:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/battery_pack/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/battery_pack/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/battery_pack/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/battery_pack/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/battery_pack/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/battery_pack/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/battery_pack/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/battery_pack/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/battery_pack.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/battery_pack.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/battery_pack.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/battery_pack.yaml
+    missing_required_evidence_keys: []
+    gate_state:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    review_packages_required:
+      - power_bringup_acceptance
+      - pinout_review
+      - footprint_review
+      - pack_swelling_and_connector_clearance
+    current_blocker: supplier response pack, signed drawings, pinout/pad map, land pattern, STEP model, sample inspection,
+      and KiCad reviews are all missing
+  - function: audio_speaker_microphone_flexes
+    status: blocked_waiting_supplier_response_pack_and_reviews
+    criticality: route_blocker
+    primary_candidate: codec_amp_mics_speaker_receiver_haptic_stack
+    package_binding: package/audio/v0-codec.yaml
+    freeze_record: audio_speaker_microphone_flexes
+    draft_id: e1_phone_audio_speaker_microphone_flexes_rfq_2026-05-21
+    draft_path: board/kicad/e1-phone/sourcing-drafts/audio_speaker_microphone_flexes/rfq-transmittal.yaml
+    supplier_artifacts_requested:
+      - speaker, receiver, microphone, and haptic actuator 2D drawings
+      - flex pinouts, connector MPNs, gasket datums, and acoustic port dimensions
+      - impedance, sensitivity, SPL, distortion, and vibration test data
+      - STEP models for acoustic and haptic parts
+      - mesh, adhesive, and water/dust ingress material specs
+      - sample acoustic and haptic inspection reports
+    mechanical_datums_required:
+      - speaker_chamber
+      - mic_port_locations
+      - acoustic_gaskets
+      - haptic_mass_clearance
+    planned_contract_nets:
+      - AMP_INT
+      - AON_1V8
+      - AUDIO_I2C_SCL
+      - AUDIO_I2C_SDA
+      - CODEC_INT
+      - HAPTIC_OUT
+      - I2S_BCLK
+      - I2S_DIN
+      - I2S_DOUT
+      - I2S_LRCLK
+      - PDM_CLK
+      - PDM_DAT
+      - SPK_N
+      - SPK_P
+      - VDD_AMP_3V3
+      - VDD_AUDIO_3V3
+    production_evidence_paths:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/audio_speaker_microphone_flexes.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/audio_speaker_microphone_flexes.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/audio_speaker_microphone_flexes.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/audio_speaker_microphone_flexes.yaml
+    missing_required_evidence_keys: []
+    gate_state:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    review_packages_required:
+      - pinout_review
+      - symbol_review
+      - footprint_review
+    current_blocker: supplier response pack, signed drawings, pinout/pad map, land pattern, STEP model, sample inspection,
+      and KiCad reviews are all missing
+  - function: top_bottom_interconnect
+    status: blocked_waiting_supplier_response_pack_and_reviews
+    criticality: hard_blocker_for_evt1_route_and_enclosure
+    primary_candidate: Hirose_BM28_class_board_to_board_or_flex_stack
+    package_binding: package/interconnect/e1-phone-top-bottom-flex.yaml
+    freeze_record: top_bottom_interconnect_pair
+    draft_id: e1_phone_top_bottom_interconnect_rfq_2026-05-21
+    draft_path: board/kicad/e1-phone/sourcing-drafts/top_bottom_interconnect/rfq-transmittal.yaml
+    supplier_artifacts_requested:
+      - exact mating connector pair MPNs and circuit count
+      - top and bottom connector pinout plus flex pinout with ground-return allocation
+      - connector land patterns, keepouts, mated height, retention, and cycle rating
+      - STEP model for both mating connectors, stiffeners, and flex/board stack height
+      - flex stackup drawing with impedance, stiffeners, bend radius, and strain relief
+      - power contact current rating and ground/return allocation recommendation
+      - assembly drawing for mating sequence and inspection
+      - continuity and USB2/audio SI test recommendations
+    mechanical_datums_required:
+      - top_island_mating_location
+      - bottom_island_mating_location
+      - flex_bend_radius
+      - stiffener_clearance
+      - battery_insertion_sequence
+      - strain_relief_or_clamp
+    planned_contract_nets:
+      - AMP_INT
+      - AON_1V8
+      - AUDIO_I2C_SCL
+      - AUDIO_I2C_SDA
+      - CODEC_INT
+      - GND
+      - HAPTIC_OUT
+      - I2S_BCLK
+      - I2S_DIN
+      - I2S_DOUT
+      - I2S_LRCLK
+      - IO_1V8
+      - PDM_CLK
+      - PDM_DAT
+      - RF_VBAT
+      - SHIELD_GND
+      - SYS
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBAT
+      - VBUS
+      - VDD_AMP_3V3
+      - VDD_AUDIO_3V3
+    production_evidence_paths:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/top_bottom_interconnect.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/top_bottom_interconnect.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/top_bottom_interconnect.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/top_bottom_interconnect.yaml
+    missing_required_evidence_keys: []
+    gate_state:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    review_packages_required:
+      - pinout_review
+      - symbol_review
+      - footprint_review
+      - 3d_step_binding
+      - flex_bend_and_strain_relief_review
+    current_blocker: supplier response pack, signed drawings, pinout/pad map, land pattern, STEP model, sample inspection,
+      and KiCad reviews are all missing
+hard_blocker_functions:
+  - display_touch
+  - rear_camera
+  - front_camera
+  - cellular
+  - wifi_bluetooth
+  - usb_c_receptacle_evt0
+  - battery_pack
+  - top_bottom_interconnect
+cross_checks:
+  every_evidence_record_has_intake_record: true
+  every_intake_record_has_draft: true
+  every_intake_record_links_freeze_record: true
+  every_intake_record_has_supplier_artifacts: true
+  every_intake_record_has_mechanical_datums: true
+  every_intake_record_has_planned_nets: true
+  all_gate_states_fail_closed: true
+  no_required_evidence_keys_missing: true
+release_blockers:
+  - supplier RFQ response packs are not archived
+  - signed 2D drawings and pinout or pad maps are missing
+  - recommended land patterns and STEP/B-rep models are missing
+  - sample inspection reports are missing
+  - pinout, symbol, footprint, and 3D binding reviews are missing
+  - routed-board STEP enclosure clearance cannot start from placeholder footprints
+forbidden_claims:
+  - supplier_drawings_intake_complete
+  - supplier_samples_inspected
+  - pinouts_ready_for_symbol_capture
+  - footprints_ready_for_layout
+  - step_models_ready_for_enclosure
+  - routed_pcb_ready
+  - enclosure_ready
+  - fabrication_ready

@@ -200,7 +200,7 @@ export class AinexService extends Service {
 
   private async _tryConnect(): Promise<void> {
     const url =
-      this._readSetting("MILADY_AINEX_BRIDGE_URL") ?? "ws://localhost:9100";
+      this._readSetting("ELIZA_AINEX_BRIDGE_URL") ?? "ws://localhost:9100";
     const client = new AinexBridgeClient({ url });
     this._registerEventHandlers(client);
     try {

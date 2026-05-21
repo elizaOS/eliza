@@ -48,6 +48,10 @@ env:
   ELIZA_LIVE_TEST: "1"
   ELIZA_LIVE_SCENARIO_TEST: "1"
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   disabled:
     name: Scenario Matrix Disabled

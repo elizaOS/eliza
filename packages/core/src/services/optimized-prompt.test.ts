@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	_computeOptimizedPromptMacForTest,
 	OPTIMIZED_PROMPT_CURRENT_LINK,
 	OPTIMIZED_PROMPT_PREVIOUS_LINK,
 	OPTIMIZED_PROMPT_PREVIOUS2_LINK,
@@ -24,6 +25,19 @@ import {
 	type OptimizedPromptArtifact,
 	OptimizedPromptService,
 } from "./optimized-prompt";
+
+/**
+ * Helper for legacy-store tests: writes the artifact payload AND its `.mac`
+ * sidecar (the on-disk format every artifact now requires).
+ */
+function writeArtifactWithMac(path: string, payload: string): void {
+	writeFileSync(path, payload, "utf-8");
+	writeFileSync(
+		`${path}.mac`,
+		`${_computeOptimizedPromptMacForTest(payload)}\n`,
+		"utf-8",
+	);
+}
 
 function makeArtifact(index: number): OptimizedPromptArtifact {
 	const stamp = new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString();
@@ -198,8 +212,8 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		v1.prompt = "v1 (newer by generatedAt)";
 		const v2 = makeArtifact(2);
 		v2.prompt = "v2 (older by generatedAt but symlink target)";
-		writeFileSync(join(dir, "v1.json"), `${JSON.stringify(v1, null, 2)}\n`);
-		writeFileSync(join(dir, "v2.json"), `${JSON.stringify(v2, null, 2)}\n`);
+		writeArtifactWithMac(join(dir, "v1.json"), `${JSON.stringify(v1, null, 2)}\n`);
+		writeArtifactWithMac(join(dir, "v2.json"), `${JSON.stringify(v2, null, 2)}\n`);
 		// Manually set up symlinks so we don't go through setPrompt.
 		const { symlinkSync } = await import("node:fs");
 		symlinkSync("v2.json", join(dir, OPTIMIZED_PROMPT_CURRENT_LINK));
@@ -219,11 +233,11 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		older.prompt = "older";
 		const newer = makeArtifact(2);
 		newer.prompt = "newer";
-		writeFileSync(
+		writeArtifactWithMac(
 			join(dir, "legacy-1.json"),
 			`${JSON.stringify(older, null, 2)}\n`,
 		);
-		writeFileSync(
+		writeArtifactWithMac(
 			join(dir, "legacy-2.json"),
 			`${JSON.stringify(newer, null, 2)}\n`,
 		);
@@ -247,5 +261,63 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		expect(readlinkSync(join(respondDir, OPTIMIZED_PROMPT_CURRENT_LINK))).toBe(
 			"v1.json",
 		);
+	});
+});
+
+describe("OptimizedPromptService — HMAC integrity (SOC2 CC6.8)", () => {
+	let storeRoot: string;
+	let service: OptimizedPromptService;
+
+	beforeEach(async () => {
+		storeRoot = await mkdtemp(join(tmpdir(), "optimized-prompt-hmac-"));
+		service = new OptimizedPromptService();
+		service.setStoreRoot(storeRoot);
+	});
+
+	afterEach(async () => {
+		await rm(storeRoot, { recursive: true, force: true });
+	});
+
+	it("writes a `.mac` sidecar next to every artifact and loads when intact", async () => {
+		await service.setPrompt("action_planner", makeArtifact(1));
+		const macPath = join(storeRoot, "action_planner", "v1.json.mac");
+		expect(existsSync(macPath)).toBe(true);
+		await service.refresh();
+		const loaded = service.getPrompt("action_planner");
+		expect(loaded).not.toBeNull();
+		expect(loaded?.prompt).toBe("optimized prompt v1");
+	});
+
+	it("refuses to load when the `.mac` sidecar is missing", async () => {
+		await service.setPrompt("action_planner", makeArtifact(1));
+		const { unlink: unlinkAsync } = await import("node:fs/promises");
+		await unlinkAsync(join(storeRoot, "action_planner", "v1.json.mac"));
+		await service.refresh();
+		expect(service.getPrompt("action_planner")).toBeNull();
+	});
+
+	it("refuses to load when the artifact payload has been tampered with", async () => {
+		await service.setPrompt("action_planner", makeArtifact(1));
+		const artifactPath = join(storeRoot, "action_planner", "v1.json");
+		const tampered =
+			'{"task":"action_planner","optimizer":"instruction-search",' +
+			'"baseline":"baseline prompt","prompt":"INJECTED ADVERSARIAL PROMPT",' +
+			'"score":0.51,"baselineScore":0.4,"datasetId":"test-dataset",' +
+			'"datasetSize":100,"generatedAt":"2026-01-01T00:00:01.000Z",' +
+			'"lineage":[{"round":1,"variant":1,"score":0.51}]}\n';
+		writeFileSync(artifactPath, tampered, "utf-8");
+		await service.refresh();
+		expect(service.getPrompt("action_planner")).toBeNull();
+	});
+
+	it("refuses to load when the MAC was overwritten with garbage", async () => {
+		await service.setPrompt("action_planner", makeArtifact(1));
+		writeFileSync(
+			join(storeRoot, "action_planner", "v1.json.mac"),
+			`${"deadbeef".repeat(8)}\n`,
+			"utf-8",
+		);
+		await service.refresh();
+		expect(service.getPrompt("action_planner")).toBeNull();
 	});
 });

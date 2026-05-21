@@ -317,16 +317,16 @@ export async function getDesktopRemotePluginStoreRoot(): Promise<
   return result?.storeRoot ?? null;
 }
 
-export async function listDesktopCarrots(): Promise<
+export async function listDesktopRemotePlugins(): Promise<
   DesktopRemotePluginListEntry[] | null
 > {
   const result = await invokeDesktopBridgeRequest<{
-    carrots: DesktopRemotePluginListEntry[];
+    remotePlugins: DesktopRemotePluginListEntry[];
   }>({
     rpcMethod: "remotePluginList",
     ipcChannel: "remote-plugin:list",
   });
-  return result?.carrots ?? null;
+  return result?.remotePlugins ?? null;
 }
 
 export async function getDesktopRemotePluginStoreSnapshot(): Promise<DesktopRemotePluginStoreSnapshot | null> {
@@ -336,7 +336,7 @@ export async function getDesktopRemotePluginStoreSnapshot(): Promise<DesktopRemo
   });
 }
 
-export async function getDesktopCarrot(
+export async function getDesktopRemotePlugin(
   id: string,
 ): Promise<DesktopInstalledRemotePluginSnapshot | null> {
   return invokeDesktopBridgeRequest<DesktopInstalledRemotePluginSnapshot>({

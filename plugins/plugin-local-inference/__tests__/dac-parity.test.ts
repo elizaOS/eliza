@@ -135,7 +135,7 @@ function findCodecGguf(fixture: DacParityFixture): string | null {
     return existsSync(explicit) ? explicit : null;
   }
   const stateDir =
-    process.env.MILADY_STATE_DIR ??
+    process.env.ELIZA_STATE_DIR ??
     process.env.ELIZA_STATE_DIR ??
     path.join(os.homedir(), ".eliza");
   const modelsDir = path.join(stateDir, "local-inference", "models");

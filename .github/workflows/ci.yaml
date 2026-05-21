@@ -10,6 +10,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   # Test job
   test:

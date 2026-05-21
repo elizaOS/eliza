@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.1-beta.0",
+  "version": "2.0.3",
   "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
   "type": "module",
   "license": "MIT",
@@ -36,7 +36,7 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "bun run clean && bun run generate:css-strings && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css src/cloud-ui/styles src/components/voice-pill/voice-pill.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui",
+    "build:dist": "bun run clean && bun run generate:css-strings && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css src/components/voice-pill/voice-pill.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "stories:dev": "vite --config stories/vite.config.ts",
     "stories:build": "vite build --config stories/vite.config.ts"
@@ -48,9 +48,7 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
-    "./docs.css": "./dist/cloud-ui/styles/docs.css",
     "./styles": "./dist/styles.js",
-    "./styles/docs.css": "./dist/cloud-ui/styles/docs.css",
     "./styles/*.css": "./dist/styles/*.css",
     "./cloud-ui": {
       "types": "./dist/cloud-ui/index.d.ts",

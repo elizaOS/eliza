@@ -6,11 +6,48 @@
   "layout_utilization": "board/kicad/e1-phone/layout-utilization.yaml",
   "production_step_dir": "board/kicad/e1-phone/production/step",
   "production_step_files": [],
+  "demo_step_files_ignored": [
+    "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo.step"
+  ],
+  "routed_board_step_intake_template": "mechanical/e1-phone/review/routed-board-step-intake-template.csv",
+  "required_routed_board_evidence_class": "physical_routed_board_release",
+  "routed_board_intake_template_evidence_class": "",
+  "routed_board_forbidden_evidence_classes": [
+    "blank_template",
+    "concept",
+    "demo",
+    "demo_routed_board_for_planning_not_release",
+    "planning",
+    "simulated_routed_board_release_for_planning_not_release"
+  ],
+  "routed_board_intake_cases": [
+    {
+      "release_id": "",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_fields_present": false,
+      "artifact_paths_exist": false,
+      "artifact_path_checks": {
+        "kicad_pcb_path": false,
+        "routed_step_artifact": false,
+        "drc_report_artifact": false,
+        "erc_report_artifact": false,
+        "gerber_job_artifact": false,
+        "pick_place_artifact": false,
+        "bom_artifact": false,
+        "component_3d_model_manifest": false,
+        "enclosure_clearance_rerun_artifact": true
+      },
+      "pass": false
+    }
+  ],
   "concept_pcb_step": "mechanical/e1-phone/out/main_pcb.step",
   "board_state_detected": {
     "has_tracks": false,
-    "has_filled_zones": false,
+    "has_filled_zones": true,
     "has_production_step": false,
+    "has_demo_step": true,
+    "has_complete_routed_board_release_intake": false,
     "has_concept_pcb_step": true,
     "placeholder_marker_count": 116,
     "manufacturing_closure_status": "blocked_manufacturing_requires_routed_pcb_and_fab_outputs"
@@ -78,13 +115,23 @@
     },
     {
       "id": "filled_zones_present",
-      "pass": false,
+      "pass": true,
       "evidence": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
     },
     {
       "id": "production_board_step_present",
       "pass": false,
       "evidence": "board/kicad/e1-phone/production/step"
+    },
+    {
+      "id": "demo_board_step_not_counted",
+      "pass": true,
+      "evidence": "board/kicad/e1-phone/pcb/fab-demo"
+    },
+    {
+      "id": "routed_board_release_intake_complete",
+      "pass": false,
+      "evidence": "mechanical/e1-phone/review/routed-board-step-intake-template.csv"
     },
     {
       "id": "placeholder_footprints_replaced",
@@ -96,6 +143,7 @@
     "Replace E1Phone placeholder footprints with supplier land patterns and 3D models.",
     "Route the KiCad board with clean ERC/DRC, copper zones, impedance constraints, and test access.",
     "Export production board STEP from routed KiCad including component 3D models.",
+    "Populate routed-board-step-intake-template.csv with physical_routed_board_release evidence and artifact paths.",
     "Re-import routed board STEP into the phone CAD and re-run enclosure collision, USB insertion, button, screen FPC, and acoustic checks."
   ]
 }

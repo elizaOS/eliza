@@ -1,0 +1,31 @@
+name: verify-patches
+
+# SOC2 CC6.8 / CC8.1 — verify patches/ integrity against patches/CHECKSUMS.sha256.
+# Any patch change must be accompanied by a CHECKSUMS update produced by
+# `scripts/security/verify-patches.sh --generate` and reviewed in the PR.
+
+on:
+  pull_request:
+    paths:
+      - "patches/**"
+      - "scripts/security/verify-patches.sh"
+      - ".github/workflows/verify-patches.yml"
+  push:
+    branches: ["main", "develop"]
+    paths:
+      - "patches/**"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify patches/CHECKSUMS.sha256
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        # actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Verify
+        run: bash scripts/security/verify-patches.sh

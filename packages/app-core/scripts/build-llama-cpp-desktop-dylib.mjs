@@ -45,7 +45,7 @@ const LLAMA_CPP_REF = process.env.ELIZA_DESKTOP_LLAMA_CPP_REF || "main";
 
 const STATE_DIR =
   process.env.ELIZA_STATE_DIR ||
-  process.env.MILADY_STATE_DIR ||
+  process.env.ELIZA_STATE_DIR ||
   path.join(os.homedir(), ".eliza");
 
 const CACHE_DIR = path.join(

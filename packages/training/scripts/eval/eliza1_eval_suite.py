@@ -791,7 +791,7 @@ def _e2e_loop_bench_path() -> Path | None:
         _TRAINING_ROOT.parent.parent / "packages" / "inference" / "verify" / "e2e_loop_bench.mjs",
         # elizaOS monorepo: bench lives under plugins/plugin-local-inference/native/verify/
         _TRAINING_ROOT.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify" / "e2e_loop_bench.mjs",
-        # Milady repo structure: eliza subdir
+        # Eliza repo structure: eliza subdir
         _TRAINING_ROOT.parent.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify" / "e2e_loop_bench.mjs",
     ):
         if c.is_file():

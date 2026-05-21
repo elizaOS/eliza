@@ -230,7 +230,7 @@ describe("XR feature parity audit", () => {
     const config = JSON.parse(
       readFile("plugins/plugin-hearwear/native/android/quest/bubblewrap.json"),
     );
-    expect(config.packageId).toBe("com.milady.xr.quest");
+    expect(config.packageId).toBe("com.eliza.xr.quest");
     expect(config.metaQuest).toBe(true);
     expect(config.permissions).toContain("android.permission.CAMERA");
     expect(config.permissions).toContain("android.permission.RECORD_AUDIO");

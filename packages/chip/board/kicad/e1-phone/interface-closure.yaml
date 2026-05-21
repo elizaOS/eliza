@@ -16,7 +16,7 @@ source_files:
 device_envelope_mm:
   width: 78.0
   height: 153.6
-  max_thickness: 9.6
+  max_thickness: 11.2
 board_bbox_mm:
   width: 64.0
   height: 132.0
@@ -26,7 +26,7 @@ interfaces:
     placement_refdes_group: J_USB_C
     region_mm:
       x: 26.0
-      y: 124.0
+      y: 126.0
       width: 16.0
       height: 6.0
     side: bottom_edge
@@ -95,11 +95,11 @@ interfaces:
     status: planning_complete_no_wake_validation
     placement_refdes_group: SW_POWER_VOL
     region_mm:
-      x: 2.0
+      x: 18.0
       y: 26.0
-      width: 16.0
+      width: 12.0
       height: 3.0
-    side: top_island_left_edge_to_side_key_flex
+    side: top_island_side_key_flex_tail
     binding_paths:
       - package/human-interface/side-buttons.yaml
     block_ids:
@@ -164,10 +164,10 @@ interfaces:
     status: planning_complete_pinout_supplier_request_required
     placement_refdes_group: J_DISPLAY_TOUCH
     region_mm:
-      x: 49.0
-      y: 8.0
-      width: 13.0
-      height: 19.0
+      x: 45.0
+      y: 3.0
+      width: 17.0
+      height: 8.0
     side: top_right
     binding_paths:
       - package/display/v0-dsi-720x1280.yaml
@@ -229,9 +229,9 @@ interfaces:
     placement_refdes_group: J_CAM0_CAM1
     region_mm:
       x: 45.0
-      y: 3.0
+      y: 12.0
       width: 17.0
-      height: 24.0
+      height: 13.0
     side: top_right_camera_bump
     binding_paths:
       - package/camera/oem-mipi-csi-modules.yaml
@@ -297,7 +297,7 @@ interfaces:
     region_mm:
       top_mate:
         x: 46.0
-        y: 27.0
+        y: 26.0
         width: 16.0
         height: 3.0
       bottom_mate:
@@ -388,7 +388,7 @@ interfaces:
       - enclosure_clamp_or_adhesive_under_battery_edge_required
     assembly_closure_requirements:
       - battery must insert without overstressing the mated top/bottom flex
-      - connector mated height and stiffener stack must clear the 9.6 mm enclosure
+      - connector mated height and stiffener stack must clear the 11.2 mm flush-back enclosure
       - strain relief or clamp must be defined before drop/torsion testing
       - bottom island service order must be documented before first article assembly
     passes_planning_gate: true

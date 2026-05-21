@@ -37,7 +37,6 @@ INPUT_ARTIFACTS = (
     "pd/openlane/config.sky130.json",
     "pd/openroad/e1_soc.tcl",
     "build/ai_eda/rag_index/source_manifest.json",
-    "build/ai_eda/backend_preflight/validation/backend_preflight_report.json",
 )
 
 OPTIONAL_COMMANDS = (
@@ -113,6 +112,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    input_artifacts = [
+        *INPUT_ARTIFACTS,
+        f"build/ai_eda/backend_preflight/{args.run_id}/backend_preflight_report.json",
+    ]
     report = {
         "schema": "eliza.ai_eda.eda_tool_agent_interop_targets.v1",
         "run_id": args.run_id,
@@ -165,7 +168,7 @@ def main() -> int:
             "signoff_claim_allowed": False,
             "release_use_allowed": False,
         },
-        "input_artifacts": [artifact_entry(path) for path in INPUT_ARTIFACTS],
+        "input_artifacts": [artifact_entry(path) for path in input_artifacts],
         "optional_backends": {
             "commands": [command_entry(name) for name in OPTIONAL_COMMANDS],
             "python_modules": [module_entry(name) for name in OPTIONAL_PYTHON_MODULES],

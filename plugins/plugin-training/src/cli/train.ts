@@ -185,7 +185,7 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       const os = await import("node:os");
       const stateDir =
         process.env.ELIZA_STATE_DIR?.trim() ||
-        process.env.MILADY_STATE_DIR?.trim() ||
+        process.env.ELIZA_STATE_DIR?.trim() ||
         path.join(os.homedir(), ".eliza");
       const artifactPayload = {
         task,

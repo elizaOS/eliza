@@ -2,7 +2,7 @@
  * WS8 — Normalize Android accessibility-tree output into the WS6 `Scene.ax`
  * shape that the WS7 cascade consumes.
  *
- * The Kotlin side (`MiladyAccessibilityService.getAccessibilityTreeJson()`)
+ * The Kotlin side (`ElizaAccessibilityService.getAccessibilityTreeJson()`)
  * emits JSON with this shape per node:
  *
  *   { id: string, role: string, label: string|null,
@@ -33,7 +33,7 @@ export function androidAxIdToSceneId(rawId: string, displayId: number): string {
 }
 
 /**
- * Parse the JSON payload emitted by `MiladyAccessibilityService.getAccessibilityTreeJson()`
+ * Parse the JSON payload emitted by `ElizaAccessibilityService.getAccessibilityTreeJson()`
  * and normalize it into `SceneAxNode[]`. Invalid entries are dropped, not
  * thrown — the cascade prefers a partial tree to an unrecoverable error
  * when (e.g.) one rogue node is missing a field.

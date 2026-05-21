@@ -20,6 +20,10 @@ on:
 env:
   NODE_NO_WARNINGS: "1"
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   benchmark:
     runs-on: ubuntu-24.04

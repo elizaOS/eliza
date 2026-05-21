@@ -268,7 +268,7 @@ test.describe("SIWS (Solana) wallet flow", () => {
    *   - The `eliza-cloud-agent:local` image built from
    *     packages/app-core/deploy/Dockerfile.cloud-agent
    *   - The container-control-plane Bun service running on :8791
-   *   - cloud-api dev launched with MILADY_LOCAL_DOCKER_PROVIDER=1
+   *   - cloud-api dev launched with ELIZA_LOCAL_DOCKER_PROVIDER=1
    *
    * If those aren't set up, this test is skipped.
    */

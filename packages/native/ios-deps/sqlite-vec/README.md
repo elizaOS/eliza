@@ -15,7 +15,7 @@ The agent's `plugin-sql` uses pgvector-style `vector(N)` columns for
 embedding storage and KNN queries. PGlite (which is what plugin-sql uses
 on every other platform) cannot run inside JSContext on iOS 16.4+ because
 WebAssembly is gated off — so the iOS port falls back to native SQLite
-via the `__MILADY_BRIDGE__.sqlite_*` host functions. `sqlite-vec` is the
+via the `__ELIZA_BRIDGE__.sqlite_*` host functions. `sqlite-vec` is the
 drop-in replacement for pgvector inside that SQLite backend.
 
 The PGlite shim (`polyfill/src/modules/pglite-shim.ts`) rewrites
@@ -87,7 +87,7 @@ print(SqliteVecLoader.shared.versionString) // "v0.x.y" when linked
 And from JS:
 
 ```js
-const v = __MILADY_BRIDGE__.sqlite_version();
+const v = __ELIZA_BRIDGE__.sqlite_version();
 console.log(v.sqlite, v.sqlite_vec);
 ```
 

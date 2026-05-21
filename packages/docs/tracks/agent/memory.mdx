@@ -19,7 +19,7 @@ Per-room and per-agent key-value state. Goals, preferences, autonomy plans, and 
 
 ## Where it's stored
 
-- Local-only: PGLite, embedded in `~/.milady/db/` (no server).
+- Local-only: PGLite, embedded in `~/.elizaos/db/` (no server).
 - Server-backed: Postgres, configured via `POSTGRES_URL`.
 - The schema is owned by `@elizaos/plugin-sql`; plugins register tables via the `schemas` plugin surface.
 

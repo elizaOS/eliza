@@ -42,7 +42,7 @@ interface ProjectionsChartProps {
 const chartConfig = {
   historical: {
     label: "Historical",
-    color: "#3B82F6",
+    color: "#FF5800",
   },
   projected: {
     label: "Projected",

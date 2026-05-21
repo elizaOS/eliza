@@ -229,7 +229,9 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
         record = load_json(path)
         schema = record.get("schema")
         stem = path.name.removeprefix("aieda-idata-")
-        case = stem.rsplit("-", 2)[0]
+        case = stem.removesuffix("-design-bundle.json")
+        case = case.removesuffix("-route-demand-graph.json")
+        case = case.removesuffix("-flow-run.json")
         cases.setdefault(case, set()).add(str(schema))
         if schema == "eda.design_bundle.v1":
             errors.extend(validate_design(record, path))

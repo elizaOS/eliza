@@ -23,11 +23,26 @@ export function SidebarNavigationItem({
   const { authenticated } = useSessionAuth();
 
   const renderLink = useCallback(
-    ({ href, className, style, children }: DashboardSidebarLinkRenderProps) => (
-      <Link to={href} className={className} style={style}>
-        {children}
-      </Link>
-    ),
+    ({ href, className, style, children }: DashboardSidebarLinkRenderProps) => {
+      if (href.startsWith("http://") || href.startsWith("https://")) {
+        return (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className={className}
+            style={style}
+          >
+            {children}
+          </a>
+        );
+      }
+      return (
+        <Link to={href} className={className} style={style}>
+          {children}
+        </Link>
+      );
+    },
     [],
   );
 

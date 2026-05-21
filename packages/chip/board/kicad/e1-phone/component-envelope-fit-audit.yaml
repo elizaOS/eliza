@@ -1,0 +1,169 @@
+schema: eliza.e1_phone_component_envelope_fit_audit.v1
+status: blocked_component_envelopes_require_supplier_drawings_or_region_updates_before_routing
+date: '2026-05-21'
+claim_boundary: Planning audit only. This compares known public component/module envelopes against current concept
+  placement regions and device cavities. It is not a supplier land pattern, KiCad footprint, courtyard, 3D STEP,
+  DRC, or enclosure-release result.
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/layout-utilization.yaml
+  - board/kicad/e1-phone/live-utilization-audit.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+  - package/battery/e1-phone-17p3wh-pack.yaml
+  - package/display/v0-dsi-720x1280.yaml
+  - package/camera/oem-mipi-csi-modules.yaml
+  - package/human-interface/side-buttons.yaml
+known_component_envelopes:
+  wifi_bluetooth_module:
+    source: package/wifi/murata-type-2ea-wifi6e.yaml
+    known_envelope_mm:
+      width: 12.5
+      height: 9.4
+      thickness: 1.2
+    placement_refdes_group: U_WIFI_BT
+    placement_region_mm:
+      x: 3.0
+      y: 18.0
+      width: 14.0
+      height: 10.0
+    fit:
+      fits_width: true
+      fits_height: true
+      width_shortfall_mm: 0.0
+      height_shortfall_mm: 0.0
+      fits_xy: true
+    status: passes_known_module_outline_pending_supplier_land_pattern_and_rf_keepout
+    required_action: rerun antenna, ground, keepout, and supplier reference-layout checks before EVT1 routing
+  battery_pack:
+    source: package/battery/e1-phone-17p3wh-pack.yaml
+    known_envelope_mm:
+      width: 64.0
+      height: 87.0
+      thickness: 5.7
+    battery_window_mm:
+      x: 0.0
+      y: 29.5
+      width: 64.0
+      height: 87.0
+    fit:
+      fits_width: true
+      fits_height: true
+      width_shortfall_mm: 0.0
+      height_shortfall_mm: 0.0
+      fits_xy: true
+    status: passes_public_outline_only_pending_swelling_tail_pcm_and_supplier_step
+    required_action: replace public outline with supplier swelling, PCM, tab, connector, and tolerance drawing before
+      enclosure release
+  display_module:
+    source: package/display/v0-dsi-720x1280.yaml
+    known_envelope_mm:
+      width: 77.1
+      height: 151.77
+      thickness: 3.39
+    device_envelope_mm:
+      width: 78.0
+      height: 153.6
+      thickness: 11.2
+    fit:
+      fits_width: true
+      fits_height: true
+      width_shortfall_mm: 0.0
+      height_shortfall_mm: 0.0
+      fits_xy: true
+    status: passes_device_envelope_outline_only_pending_fpc_connector_and_stack
+    required_action: obtain final display/touch FPC drawing, connector land pattern, and cover-glass adhesive stack
+  front_camera_alternate_junde:
+    source: package/camera/oem-mipi-csi-modules.yaml
+    known_envelope_mm:
+      width: 25.0
+      height: 24.0
+    placement_refdes_group: J_CAM0_CAM1
+    placement_region_mm:
+      x: 45.0
+      y: 12.0
+      width: 17.0
+      height: 13.0
+    fit:
+      fits_width: false
+      fits_height: false
+      width_shortfall_mm: 8.0
+      height_shortfall_mm: 11.0
+      fits_xy: false
+    status: blocked_alternate_exceeds_current_camera_connector_escape_region
+    required_action: reject this alternate or widen the camera bump/display connector stack before locking the camera
+      FPC and lens-window datum
+  front_and_rear_camera_primary:
+    source: package/camera/oem-mipi-csi-modules.yaml
+    known_envelope_mm: unknown_supplier_drawing_required
+    placement_refdes_group: J_CAM0_CAM1
+    placement_region_mm:
+      x: 45.0
+      y: 12.0
+      width: 17.0
+      height: 13.0
+    status: blocked_primary_camera_xy_z_stack_unknown
+    required_action: request signed module XY, z-height, FPC tail, connector, and lens-axis drawings for both cameras
+  side_button_primary_switch:
+    source: package/human-interface/side-buttons.yaml
+    known_envelope_mm:
+      width: 3.5
+      height: 2.9
+      thickness: 1.35
+    placement_refdes_group: SW_POWER_VOL
+    placement_region_mm:
+      x: 18.0
+      y: 26.0
+      width: 12.0
+      height: 3.0
+    fit:
+      fits_width: true
+      fits_height: true
+      width_shortfall_mm: 0.0
+      height_shortfall_mm: 0.0
+      fits_xy: true
+    status: single_switch_outline_fits_aggregate_region_but_flex_actuator_stack_unknown
+    required_action: define side-key flex, switch centerlines, actuator force path, and enclosure rib datum
+routing_impact:
+  wifi_bt_region_requires_update_before_evt1_route: false
+  camera_alternate_requires_camera_bump_width_or_alternate_rejection: true
+  placement_regions_overlap_before_evt1_route: false
+  battery_window_currently_clear_in_live_audit: true
+  known_envelope_blockers_count: 1
+  placement_overlap_count: 0
+placement_region_overlap_audit:
+  status: pass_active_concept_regions_do_not_overlap
+  claim_boundary: Region-level rectangle overlap audit for the placement matrix only. Some records are high-level
+    interface zones, not final packages, but nonzero overlap proves the matrix is not a packed EVT1 placement.
+  overlap_count: 0
+  overlaps: []
+  wifi_bluetooth_overlaps: []
+  camera_region_overlaps: []
+  required_action: continue with supplier footprint, RF keepout, and camera module drawing closure
+cross_checks:
+  wifi_region_fits_known_module_outline: true
+  wifi_region_shortfall_detected: false
+  battery_window_matches_pack_public_outline: true
+  display_module_fits_device_envelope: true
+  camera_alternate_width_shortfall_detected: true
+  camera_alternate_still_rejected: true
+  side_button_single_switch_fits_region: true
+  wifi_region_overlap_detected: false
+  camera_region_overlap_detected: false
+  placement_regions_overlap_free: true
+  placement_overlap_audit_blocks_evt1_route: false
+  live_battery_intrusions_zero: true
+  known_envelopes_not_used_as_release_footprints: true
+release_blockers:
+  - the listed Junde front-camera alternate exceeds the current shared camera connector/escape region
+  - primary front and rear camera module XY and z-height drawings are still missing
+  - supplier 2D land patterns, courtyard rules, and STEP models are missing for final placement closure
+  - routed-board STEP and enclosure clearance rerun are missing
+forbidden_claims:
+  - component_envelopes_fit
+  - supplier_footprints_ready
+  - wifi_bt_region_ready
+  - camera_region_ready
+  - enclosure_ready
+  - routed_pcb_ready
+  - end_to_end_phone_ready

@@ -95,7 +95,7 @@ describe("plugin-ainex integration", () => {
   beforeEach(async () => {
     server = await buildBridgeServer();
     runtime = buildRuntime();
-    (runtime as unknown as { __state: FakeRuntime }).__state.settings.MILADY_AINEX_BRIDGE_URL = server.url;
+    (runtime as unknown as { __state: FakeRuntime }).__state.settings.ELIZA_AINEX_BRIDGE_URL = server.url;
     const service = await AinexService.start(runtime);
     (runtime as unknown as { __state: FakeRuntime }).__state.service = service;
     // Give the session.hello + telemetry replay a moment to settle.

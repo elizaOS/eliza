@@ -96,7 +96,7 @@ export function ElizaAgentPricingBanner({
           {/* Idle rate */}
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <TrendingDown className="h-3 w-3 text-blue-400" />
+              <TrendingDown className="h-3 w-3 text-white/60" />
               <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
                 {t("cloud.containers.pricingBanner.idle", {
                   defaultValue: "Idle",

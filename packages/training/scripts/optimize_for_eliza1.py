@@ -576,7 +576,32 @@ def execute_plan(plan: OptimizationPlan) -> int:
     """Run the full apply → GGUF → manifest → push pipeline."""
     plan.output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Seed stages list with any stages that already completed in a prior run.
+    # This lets re-runs with a subset of --apply still find prior outputs for
+    # GGUF assembly (e.g. running --apply qjl turboquant finds stage-polarquant).
+    _SIDECAR_FILES = {
+        "polarquant": "polarquant_config.json",
+        "qjl": "qjl_config.json",
+        "turboquant": "turboquant.json",
+        "fused_turboquant": "fused_turboquant.json",
+    }
     stages: list[StageResult] = []
+    for prior_stage in APPLY_ORDER:
+        if prior_stage in plan.apply:
+            break  # will be (re-)run below; stop seeding
+        prior_dir = _stage_output_dir(plan.output_dir, prior_stage)
+        sidecar = _SIDECAR_FILES.get(prior_stage)
+        if prior_dir.exists() and sidecar and (prior_dir / sidecar).exists():
+            log.info("seeding prior completed stage %s from %s", prior_stage, prior_dir)
+            stages.append(StageResult(
+                name=prior_stage,
+                exit_code=0,
+                output_dir=prior_dir,
+                duration_s=0.0,
+                sidecar_path=prior_dir / sidecar,
+                skipped=False,
+            ))
+
     for stage in plan.apply:
         if stage not in APPLY_ORDER:
             raise SystemExit(

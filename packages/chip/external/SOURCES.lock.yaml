@@ -1,5 +1,5 @@
 schema: eliza.ai_eda.external_sources_lock.v1
-updated: 2026-05-20
+updated: 2026-05-21
 claim_boundary: external_asset_registry_only_no_download_training_inference_or_release_claim
 policy:
   large_payloads_committed: forbidden
@@ -813,5 +813,268 @@ entries:
       license_review: pending
       provenance_review: pending
       hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: mcp4eda
+    name: MCP4EDA / mcp-EDA
+    kind: repo
+    priority: P1
+    source_url: https://github.com/NellyW8/mcp-EDA
+    license_status: review_required
+    revision:
+      type: commit
+      value: c3d0e09b783b6dd3d182ebe6e4e77a0451148927
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: deterministic-replay-candidate
+    e1_lane:
+      - eda_tool_agent_interop
+      - openroad_command_assistant
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset mcp4eda --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset mcp4eda --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset mcp4eda --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pinned_head_discovered_2026-05-21
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+    notes:
+      - Treat MCP tool access as quarantined until command schemas, allowlists, sandboxing, and audit logs exist.
+  - id: orfs-agent
+    name: ORFS-Agent
+    kind: repo
+    priority: P1
+    source_url: https://github.com/ABKGroup/ORFS-Agent
+    license_status: review_required
+    revision:
+      type: commit
+      value: 730f1fa11f9c17c0aaac332412af2b2538f42e9b
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: deterministic-replay-candidate
+    e1_lane:
+      - openroad_parameter_tuning
+      - pd_replay
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset orfs-agent --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset orfs-agent --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset orfs-agent --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pinned_head_discovered_2026-05-21
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: openroad-agent
+    name: OpenROAD Agent
+    kind: repo
+    priority: P1
+    source_url: https://github.com/OpenROAD-Assistant/OpenROAD-Agent
+    license_status: review_required
+    revision:
+      type: commit
+      value: 2b3889e0574b8167f15df8aee3d507b42ee83c14
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - openroad_command_assistant
+      - eda_log_triage
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset openroad-agent --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset openroad-agent --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset openroad-agent --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pinned_head_discovered_2026-05-21
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: openroad-mcp
+    name: OpenROAD MCP
+    kind: repo
+    priority: P1
+    source_url: https://github.com/luarss/openroad-mcp
+    license_status: review_required
+    revision:
+      type: commit
+      value: 64f6b9e14c2bcd45877d6222a6bb216ceb35e452
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: deterministic-replay-candidate
+    e1_lane:
+      - eda_tool_agent_interop
+      - openroad_command_assistant
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset openroad-mcp --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset openroad-mcp --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset openroad-mcp --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pinned_head_discovered_2026-05-21
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: open3dbench
+    name: Open3DBench
+    kind: repo
+    priority: P1
+    source_url: https://github.com/lamda-bbo/Open3DBench
+    license_status: review_required
+    revision:
+      type: commit
+      value: 397604eee16a6dee518ef574ea5315634dff1383
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - chiplet_3dic_package
+      - pd_surrogate_models
+      - placement_evaluation
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset open3dbench --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset open3dbench --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset open3dbench --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pinned_head_discovered_2026-05-21
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: dreamplace
+    name: DREAMPlace
+    kind: repo
+    priority: P1
+    source_url: https://github.com/limbo018/DREAMPlace
+    license_status: review_required
+    revision:
+      type: commit
+      value: 37214b40fe3837cc7d392c7d6092ccd6ff04a02c
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: deterministic-replay-candidate
+    e1_lane:
+      - macro_placement_policy
+      - placement_evaluation
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset dreamplace --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset dreamplace --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset dreamplace --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pinned_head_discovered_2026-05-21
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: chiplingo
+    name: ChipLingo
+    kind: paper
+    priority: P1
+    source_url: https://arxiv.org/abs/2604.27415
+    license_status: paper_metadata_only_review_required
+    revision:
+      type: arxiv
+      value: "2604.27415v1"
+    expected_size: metadata_only
+    checksum_status: metadata_only_no_payload
+    allowed_use: metadata-only
+    e1_lane:
+      - eda_llm_training
+      - rag_instruction_tuning
+    fetch:
+      mode: paper
+      command: scripts/ai_eda/fetch_external_asset.py --asset chiplingo --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset chiplingo --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset chiplingo --verify-only
+    validation:
+      license_review: pending
+      provenance_review: arxiv_metadata_reviewed_2026-05-21
+      hash_verification: metadata_only
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: veoplace-vlm
+    name: See it to Place it / VeoPlace
+    kind: paper
+    priority: P1
+    source_url: https://arxiv.org/abs/2603.28733
+    license_status: paper_metadata_only_review_required
+    revision:
+      type: arxiv
+      value: "2603.28733v1"
+    expected_size: metadata_only
+    checksum_status: metadata_only_no_payload
+    allowed_use: metadata-only
+    e1_lane:
+      - macro_placement_policy
+      - vlm_floorplanning
+    fetch:
+      mode: paper
+      command: scripts/ai_eda/fetch_external_asset.py --asset veoplace-vlm --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset veoplace-vlm --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset veoplace-vlm --verify-only
+    validation:
+      license_review: pending
+      provenance_review: arxiv_metadata_reviewed_2026-05-21
+      hash_verification: metadata_only
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: audopeda
+    name: AuDoPEDA
+    kind: paper
+    priority: P1
+    source_url: https://arxiv.org/abs/2601.06268
+    license_status: paper_metadata_only_review_required
+    revision:
+      type: arxiv
+      value: "2601.06268v1"
+    expected_size: metadata_only
+    checksum_status: metadata_only_no_payload
+    allowed_use: metadata-only
+    e1_lane:
+      - eda_tool_agent_interop
+      - openroad_qor_agent
+    fetch:
+      mode: paper
+      command: scripts/ai_eda/fetch_external_asset.py --asset audopeda --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset audopeda --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset audopeda --verify-only
+    validation:
+      license_review: pending
+      provenance_review: arxiv_metadata_reviewed_2026-05-21
+      hash_verification: metadata_only
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: ppa-3dic-surrogate-2026
+    name: PPA-Driven 3D-IC Partitioning Selection with Surrogate Models
+    kind: paper
+    priority: P2
+    source_url: https://arxiv.org/abs/2604.18806
+    license_status: paper_metadata_only_review_required
+    revision:
+      type: arxiv
+      value: "2604.18806v1"
+    expected_size: metadata_only
+    checksum_status: metadata_only_no_payload
+    allowed_use: metadata-only
+    e1_lane:
+      - chiplet_3dic_package
+      - pd_surrogate_models
+    fetch:
+      mode: paper
+      command: scripts/ai_eda/fetch_external_asset.py --asset ppa-3dic-surrogate-2026 --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset ppa-3dic-surrogate-2026 --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset ppa-3dic-surrogate-2026 --verify-only
+    validation:
+      license_review: pending
+      provenance_review: arxiv_metadata_reviewed_2026-05-21
+      hash_verification: metadata_only
       deterministic_replay_required: true
       release_use_allowed: false

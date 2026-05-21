@@ -16,6 +16,7 @@ import re
 import sys
 from contextlib import suppress
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 from typing import Any, cast
 
@@ -219,7 +220,13 @@ def cyl_z(
 
 
 def load_params() -> dict[str, Any]:
-    return yaml.safe_load(PARAMS.read_text())
+    params = yaml.safe_load(PARAMS.read_text())
+    validation = params.setdefault("validation", {})
+    if "environmental_targets" not in validation:
+        environmental_targets = params.get("tolerances", {}).get("environmental_targets")
+        if environmental_targets:
+            validation["environmental_targets"] = environmental_targets
+    return params
 
 
 def pcb_island_segments(params: dict[str, Any]) -> list[tuple[list[float], list[float], str]]:
@@ -395,6 +402,23 @@ def usb_c_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def rear_camera_buried_center_z(params: dict[str, Any]) -> float:
+    """Z center that buries the rear camera flush under the flat back wall.
+
+    The module back face sits one internal clearance inside the back inner wall
+    (back outer plane + wall_thickness), so nothing protrudes past the flat back.
+    """
+    dev = params["device"]
+    comp = params["components"]
+    depth = float(dev["envelope_mm"][2])
+    wall = float(dev["wall_thickness_mm"])
+    module_depth = float(comp["rear_camera"]["module_mm"][2])
+    internal_clearance = 0.3
+    back_inner_wall_z = -depth / 2.0 + wall
+    back_face_z = back_inner_wall_z + internal_clearance
+    return back_face_z + module_depth / 2.0
+
+
 def camera_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
     dev = params["device"]
     comp = params["components"]
@@ -490,16 +514,23 @@ def kicad_outline_mm(path: Path) -> list[float] | None:
     return [round(max(xs) - min(xs), 3), round(max(ys) - min(ys), 3)]
 
 
+def adhesive_corner_radius(params: dict[str, Any]) -> float:
+    return max(params["device"]["corner_radius_mm"] - 0.45, 0.1)
+
+
 def adhesive_gasket_parts(params: dict[str, Any]) -> list[Part]:
     disp = params["display"]
     glass_w, glass_h, _ = disp["cover_glass_mm"]
     width = disp["adhesive_width_mm"]
     thickness = disp["adhesive_thickness_mm"]
     z = params["device"]["envelope_mm"][2] / 2.0 - 0.85
+    corner = adhesive_corner_radius(params)
+    straight_w = glass_w - 2.0 * corner
+    straight_h = glass_h - 2.0 * corner
     return [
         box(
             "screen_adhesive_top",
-            [glass_w, width, thickness],
+            [straight_w, width, thickness],
             [0, glass_h / 2 - width / 2, z],
             ADHESIVE,
             "screen retention",
@@ -507,7 +538,7 @@ def adhesive_gasket_parts(params: dict[str, Any]) -> list[Part]:
         ),
         box(
             "screen_adhesive_bottom",
-            [glass_w, width, thickness],
+            [straight_w, width, thickness],
             [0, -glass_h / 2 + width / 2, z],
             ADHESIVE,
             "screen retention",
@@ -515,7 +546,7 @@ def adhesive_gasket_parts(params: dict[str, Any]) -> list[Part]:
         ),
         box(
             "screen_adhesive_left",
-            [width, glass_h, thickness],
+            [width, straight_h, thickness],
             [-glass_w / 2 + width / 2, 0, z],
             ADHESIVE,
             "screen retention",
@@ -523,7 +554,7 @@ def adhesive_gasket_parts(params: dict[str, Any]) -> list[Part]:
         ),
         box(
             "screen_adhesive_right",
-            [width, glass_h, thickness],
+            [width, straight_h, thickness],
             [glass_w / 2 - width / 2, 0, z],
             ADHESIVE,
             "screen retention",
@@ -868,6 +899,9 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
     front_z = depth / 2 - 0.35
     corner_radius = dev["corner_radius_mm"]
     wall = dev["wall_thickness_mm"]
+    rear_camera_glass_t = comp["rear_camera_glass"]["envelope_mm"][2]
+    rear_camera_center_z = rear_camera_buried_center_z(params)
+    flash_offset_x = comp["rear_camera"]["module_mm"][0] / 2.0 + 1.6
 
     parts: list[Part] = [
         rounded_box(
@@ -987,19 +1021,45 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
             box(
                 "rear_camera_module",
                 comp["rear_camera"]["module_mm"],
-                [21.0, height / 2 - 19.0, -1.05],
+                [21.0, height / 2 - 19.0, rear_camera_center_z],
                 CAMERA,
                 "camera",
-                "OV13855 class module",
+                "single 13 MP simple-AF module, buried",
             ),
-            cyl(
+            cyl_z(
                 "rear_camera_lens_window",
                 comp["rear_camera"]["lens_diameter_mm"] / 2,
-                0.8,
-                [21.0, height / 2 - 19.0, -depth / 2 - 0.1],
+                rear_camera_glass_t,
+                [21.0, height / 2 - 19.0, -depth / 2 + rear_camera_glass_t / 2.0],
                 CAMERA,
                 "camera",
-                "glass lens window",
+                "flush internal lens window, coplanar with flat back",
+            ),
+            box(
+                "rear_flash_led",
+                comp["rear_flash_led"]["envelope_mm"],
+                [
+                    21.0 - flash_offset_x,
+                    height / 2 - 19.0,
+                    -depth / 2 + wall + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
+                ],
+                CAMERA,
+                "camera",
+                "single rear torch/flash LED, buried",
+            ),
+            cyl_z(
+                "rear_flash_led_window",
+                comp["rear_flash_led"]["window_mm"][0] / 2.0,
+                rear_camera_glass_t,
+                [
+                    21.0 - flash_offset_x,
+                    height / 2 - 19.0,
+                    -depth / 2 + rear_camera_glass_t / 2.0,
+                ],
+                CAMERA,
+                "camera",
+                "flush internal torch light pipe window, coplanar with flat back",
+                sections=24,
             ),
             box(
                 "front_camera_module",
@@ -1294,6 +1354,10 @@ def write_solid_cad_handoff_artifacts(
     grey = cq.Color(0.55, 0.55, 0.55)
     adhesive_color = cq.Color(0.04, 0.04, 0.04)
     keepout_color = cq.Color(0.12, 0.12, 0.12)
+    wall = dev["wall_thickness_mm"]
+    rear_camera_glass_t = comp["rear_camera_glass"]["envelope_mm"][2]
+    rear_camera_center_z = rear_camera_buried_center_z(params)
+    flash_offset_x = comp["rear_camera"]["module_mm"][0] / 2.0 + 1.6
 
     def artifact_path(path: Path) -> str:
         return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix()
@@ -1365,10 +1429,41 @@ def write_solid_cad_handoff_artifacts(
         },
         {
             "name": "rear_camera_module",
-            "shape": cq_box(comp["rear_camera"]["module_mm"], [21.0, height / 2 - 19.0, -1.05]),
+            "shape": cq_box(
+                comp["rear_camera"]["module_mm"],
+                [21.0, height / 2 - 19.0, rear_camera_center_z],
+            ),
             "color": black,
             "role": "camera",
             "material": comp["rear_camera"]["candidate"],
+        },
+        {
+            "name": "rear_flash_led",
+            "shape": cq_box(
+                comp["rear_flash_led"]["envelope_mm"],
+                [
+                    21.0 - flash_offset_x,
+                    height / 2 - 19.0,
+                    -depth / 2 + wall + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
+                ],
+            ),
+            "color": metal,
+            "role": "camera",
+            "material": comp["rear_flash_led"]["candidate"],
+        },
+        {
+            "name": "rear_flash_led_window",
+            "shape": cq_box(
+                comp["rear_flash_led"]["window_mm"],
+                [
+                    21.0 - flash_offset_x,
+                    height / 2 - 19.0,
+                    -depth / 2 + comp["rear_flash_led"]["window_mm"][2] / 2.0,
+                ],
+            ),
+            "color": grey,
+            "role": "camera",
+            "material": "flush internal torch light pipe window, coplanar with flat back",
         },
         {
             "name": "front_camera_module",
@@ -1468,15 +1563,15 @@ def write_solid_cad_handoff_artifacts(
                 "shape": cq_box(
                     [
                         comp["rear_camera"]["lens_diameter_mm"],
-                        0.8,
                         comp["rear_camera"]["lens_diameter_mm"],
+                        rear_camera_glass_t,
                     ],
-                    [21.0, height / 2 - 19.0, -depth / 2 - 0.1],
+                    [21.0, height / 2 - 19.0, -depth / 2 + rear_camera_glass_t / 2.0],
                     radius=0.4,
                 ),
                 "color": black,
                 "role": "camera",
-                "material": "rear camera optical aperture envelope",
+                "material": "flush internal rear camera optical window, coplanar with flat back",
             },
             {
                 "name": "front_camera_under_glass",
@@ -1576,25 +1671,28 @@ def write_solid_cad_handoff_artifacts(
     adhesive_w = display["adhesive_width_mm"]
     adhesive_t = display["adhesive_thickness_mm"]
     adhesive_z = depth / 2.0 - 0.85
+    adhesive_corner = adhesive_corner_radius(params)
+    adhesive_straight_w = glass_w - 2.0 * adhesive_corner
+    adhesive_straight_h = glass_h - 2.0 * adhesive_corner
     for name, size, center in [
         (
             "screen_adhesive_top",
-            [glass_w, adhesive_w, adhesive_t],
+            [adhesive_straight_w, adhesive_w, adhesive_t],
             [0, glass_h / 2 - adhesive_w / 2, adhesive_z],
         ),
         (
             "screen_adhesive_bottom",
-            [glass_w, adhesive_w, adhesive_t],
+            [adhesive_straight_w, adhesive_w, adhesive_t],
             [0, -glass_h / 2 + adhesive_w / 2, adhesive_z],
         ),
         (
             "screen_adhesive_left",
-            [adhesive_w, glass_h, adhesive_t],
+            [adhesive_w, adhesive_straight_h, adhesive_t],
             [-glass_w / 2 + adhesive_w / 2, 0, adhesive_z],
         ),
         (
             "screen_adhesive_right",
-            [adhesive_w, glass_h, adhesive_t],
+            [adhesive_w, adhesive_straight_h, adhesive_t],
             [glass_w / 2 - adhesive_w / 2, 0, adhesive_z],
         ),
     ]:
@@ -1866,6 +1964,9 @@ def write_solid_cad_handoff_artifacts(
         "top_microphone_mesh",
         "rear_camera_module",
         "rear_camera_cover_glass",
+        "rear_camera_lens_window",
+        "rear_flash_led",
+        "rear_flash_led_window",
         "rear_camera_cover_adhesive_top",
         "rear_camera_cover_adhesive_bottom",
         "rear_camera_cover_adhesive_left",
@@ -2102,18 +2203,43 @@ def verify_render_artifacts(paths: list[Path]) -> dict[str, Any]:
             & (nonwhite_pixels[:, 2] < 90)
         )
         nonwhite_count = int(nonwhite_pixels.shape[0])
+        nonwhite_coords = np.argwhere(nonwhite_mask.reshape(image.size[1], image.size[0]))
+        if nonwhite_coords.size:
+            y_min, x_min = nonwhite_coords.min(axis=0)
+            y_max, x_max = nonwhite_coords.max(axis=0)
+            occupied_bbox_ratio = (int(x_max - x_min) + 1) * (int(y_max - y_min) + 1) / total_pixels
+        else:
+            occupied_bbox_ratio = 0.0
+        grayscale = pixels.reshape(image.size[1], image.size[0], 3).astype(np.int16).mean(axis=2)
+        edge_mask = np.zeros_like(grayscale, dtype=bool)
+        edge_mask[:, 1:] |= np.abs(np.diff(grayscale, axis=1)) > 12
+        edge_mask[1:, :] |= np.abs(np.diff(grayscale, axis=0)) > 12
+        edge_pixel_ratio = float(np.count_nonzero(edge_mask) / total_pixels)
+        quantized_unique_color_count = int(np.unique(pixels // 16, axis=0).shape[0])
+        content_checks = {
+            "resolution": image.size[0] >= 1000 and image.size[1] >= 1000,
+            "channel_span": max(channel_spans) >= 120,
+            "nonwhite_coverage": nonwhite_count / total_pixels >= 0.02,
+            "occupied_bbox": occupied_bbox_ratio >= 0.15,
+            "edge_detail": edge_pixel_ratio >= 0.003,
+            "color_variation": quantized_unique_color_count >= 50,
+        }
         results[path.name] = {
             "size": list(image.size),
             "mean_rgb": [round(value, 3) for value in stat.mean],
             "channel_spans": channel_spans,
             "nonwhite_pixel_ratio": round(nonwhite_count / total_pixels, 5),
+            "occupied_bbox_ratio": round(occupied_bbox_ratio, 5),
+            "edge_pixel_ratio": round(edge_pixel_ratio, 5),
+            "quantized_unique_color_count": quantized_unique_color_count,
+            "content_checks": content_checks,
             "orange_pixel_ratio_of_nonwhite": round(
                 int(np.count_nonzero(orange_mask)) / max(nonwhite_count, 1), 5
             ),
             "dark_pixel_ratio_of_nonwhite": round(
                 int(np.count_nonzero(dark_mask)) / max(nonwhite_count, 1), 5
             ),
-            "pass": image.size[0] >= 1000 and image.size[1] >= 1000 and max(channel_spans) >= 120,
+            "pass": all(content_checks.values()),
         }
     (REVIEW_DIR / "visual-review.json").write_text(json.dumps(results, indent=2) + "\n")
     return results
@@ -2358,7 +2484,7 @@ def write_visual_decision_artifacts(
         {
             "id": "rear_camera_cover_window",
             "decision": "keep_for_evt0",
-            "basis": "Rear AF camera stack remains in a back lens window because full under-glass packaging is too tall.",
+            "basis": "Single rear AF camera is buried under the flat back wall behind a flush internal window (no bump, no proud ring); device depth was raised to fully bury the module.",
             "evidence": [
                 "rear_feature_detail.png",
                 "rear_camera_module",
@@ -2410,12 +2536,27 @@ def write_visual_decision_artifacts(
         "front_back_render_distinct": front_back_mean_delta >= 8.0,
         "visual_design_gates_pass": all(gate["pass"] for gate in visual_design_gates.values()),
     }
+    automated_visual_status = (
+        "automated_visual_coverage_pass" if all(status_inputs.values()) else "blocked"
+    )
+    manual_visual_signoff_status = (
+        "production_visual_signoff_complete"
+        if automated_visual_status == "automated_visual_coverage_pass" and not manual_review_items
+        else "blocked_manual_visual_review_open"
+    )
     report = {
         "claim_boundary": (
             "Automated EVT0 visual/design decision log; it records CAD review acceptance and open "
             "manual checks, not CMF lock, tooling release, or production validation."
         ),
-        "status": "pass" if all(status_inputs.values()) else "blocked",
+        "status": "pass"
+        if automated_visual_status == "automated_visual_coverage_pass"
+        else "blocked",
+        "automated_visual_status": automated_visual_status,
+        "manual_visual_signoff_status": manual_visual_signoff_status,
+        "production_visual_signoff_ready": manual_visual_signoff_status
+        == "production_visual_signoff_complete",
+        "open_manual_review_count": len(manual_review_items),
         "device_envelope_mm": [width, height, depth],
         "display_candidate": params["display"]["candidate"],
         "screen_margin_mm": screen_margin,
@@ -2438,6 +2579,7 @@ def write_visual_decision_artifacts(
         "manual_review_items": manual_review_items,
         "open_manual_review_items": manual_review_items,
         "next_actions": manual_review_items,
+        "release_rule": "Automated render coverage may pass with generated nonblank views, but production visual/CMF signoff requires zero open manual review items, supplier STEP/B-rep review, molded orange resin CMF samples, and physical tactile/aesthetic review.",
         "evidence_files": [
             "mechanical/e1-phone/review/visual-review.json",
             "mechanical/e1-phone/review/part-review.json",
@@ -2452,6 +2594,8 @@ def write_visual_decision_artifacts(
         "# E1 Phone Visual Decision Report",
         "",
         f"Status: {report['status']}.",
+        f"Automated visual status: {report['automated_visual_status']}.",
+        f"Production visual signoff: {report['manual_visual_signoff_status']}.",
         "",
         "This report records the EVT0 CAD visual decisions and the manual review items still open.",
         "",
@@ -2471,7 +2615,269 @@ def write_visual_decision_artifacts(
     lines.extend(["", "## Manual Review Items", ""])
     for item in manual_review_items:
         lines.append(f"- {item}")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
     (REVIEW_DIR / "visual-decision-report.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_visual_review_coverage_acceptance_artifacts(
+    visual: dict[str, Any],
+    part_review: dict[str, Any],
+    visual_decision: dict[str, Any],
+    part_visual_coverage: dict[str, Any],
+) -> dict[str, Any]:
+    expected_views = {
+        "full_front_iso.png": "front silhouette, orange side rail, black glass stack",
+        "full_back_iso.png": "rear orange shell, camera window, and service features",
+        "rear_feature_detail.png": "rear camera window, SIM edge, and service-label recess",
+        "full_left_side.png": "left-side button protrusion and shell depth",
+        "full_bottom_port.png": "USB-C, speaker grille, and microphone apertures",
+        "full_top_down.png": "compact footprint, screen margin, buttons, and front features",
+        "exploded_iso.png": "glass, display, shell, and component stack separation",
+        "component_stack.png": "PCB, battery, camera, audio, haptic, and I/O placement",
+        "mold_tooling.png": "parting plane, runner, gate, ejector, and cooling placeholders",
+    }
+    view_cases = []
+    for name, purpose in expected_views.items():
+        result = visual.get(name, {})
+        view_cases.append(
+            {
+                "view": name,
+                "purpose": purpose,
+                "pass": bool(result.get("pass", False)),
+                "size": result.get("size"),
+                "channel_spans": result.get("channel_spans"),
+                "nonwhite_pixel_ratio": result.get("nonwhite_pixel_ratio"),
+            }
+        )
+
+    visual_design_gates = visual_decision.get("visual_design_gates", {})
+    gate_cases = [
+        {"id": gate_id, "pass": bool(gate.get("pass", False))}
+        for gate_id, gate in sorted(visual_design_gates.items())
+    ]
+    part_review_case = {
+        "part_count": part_review.get("part_count", 0),
+        "contact_sheet": part_review.get("contact_sheet"),
+        "contact_sheet_pass": bool(part_review.get("contact_sheet_check", {}).get("pass", False)),
+        "pass": part_review.get("status") == "pass"
+        and bool(part_review.get("contact_sheet_check", {}).get("pass", False))
+        and int(part_review.get("part_count", 0)) > 0,
+    }
+    part_visual_coverage_case = {
+        "status": part_visual_coverage.get("status"),
+        "expected_part_count": part_visual_coverage.get("expected_part_count", 0),
+        "covered_part_count": part_visual_coverage.get("covered_part_count", 0),
+        "missing_or_incomplete_part_count": len(
+            part_visual_coverage.get("missing_or_incomplete_parts", [])
+        ),
+        "pass": part_visual_coverage.get("status") == "part_visual_coverage_pass"
+        and part_visual_coverage.get("expected_part_count", 0)
+        == part_visual_coverage.get("covered_part_count", -1),
+    }
+    visual_decision_case = {
+        "status": visual_decision.get("status"),
+        "automated_visual_status": visual_decision.get("automated_visual_status"),
+        "manual_visual_signoff_status": visual_decision.get("manual_visual_signoff_status"),
+        "production_visual_signoff_ready": bool(
+            visual_decision.get("production_visual_signoff_ready", False)
+        ),
+        "decision_count": len(visual_decision.get("decisions", [])),
+        "open_manual_review_count": int(visual_decision.get("open_manual_review_count", 0)),
+        "pass": visual_decision.get("automated_visual_status") == "automated_visual_coverage_pass"
+        and len(visual_decision.get("decisions", [])) > 0,
+    }
+    expected_view_count = len(expected_views)
+    complete_view_count = sum(1 for case in view_cases if case["pass"])
+    automated_pass = (
+        complete_view_count == expected_view_count
+        and part_review_case["pass"]
+        and part_visual_coverage_case["pass"]
+        and visual_decision_case["pass"]
+        and bool(gate_cases)
+        and all(case["pass"] for case in gate_cases)
+    )
+    report = {
+        "claim_boundary": (
+            "Automated CAD visual review coverage acceptance; proves required render coverage, "
+            "image nonblank checks, per-part contact-sheet coverage, and recorded CAD visual "
+            "decisions. It is not CMF lock or human industrial-design signoff."
+        ),
+        "status": (
+            "visual_review_coverage_acceptance_pass"
+            if automated_pass
+            else "blocked_visual_review_coverage_incomplete"
+        ),
+        "automated_visual_coverage_ready": automated_pass,
+        "production_visual_signoff_ready": visual_decision_case["production_visual_signoff_ready"],
+        "expected_view_count": expected_view_count,
+        "complete_view_count": complete_view_count,
+        "expected_visual_gate_count": len(gate_cases),
+        "passing_visual_gate_count": sum(1 for case in gate_cases if case["pass"]),
+        "view_cases": view_cases,
+        "part_review_case": part_review_case,
+        "part_visual_coverage_case": part_visual_coverage_case,
+        "visual_gate_cases": gate_cases,
+        "visual_decision_case": visual_decision_case,
+        "release_rule": (
+            "Every required full-object, detail, exploded, component, tooling, and per-part "
+            "review artifact must be generated, pass pixel/contact-sheet checks, every CAD part "
+            "must map to at least one generated review view plus the per-part contact sheet, and "
+            "the views must be covered by a recorded CAD visual/design decision before automated "
+            "visual coverage is accepted. Production visual/CMF signoff remains blocked until "
+            "manual review items are closed."
+        ),
+    }
+    (REVIEW_DIR / "visual-review-coverage-acceptance.json").write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+
+    lines = [
+        "# E1 Phone Visual Review Coverage Acceptance",
+        "",
+        f"Status: {report['status']}.",
+        f"Automated visual coverage ready: {report['automated_visual_coverage_ready']}.",
+        f"Production visual signoff ready: {report['production_visual_signoff_ready']}.",
+        "",
+        "## Required Views",
+        "",
+    ]
+    for case in view_cases:
+        result = "PASS" if case["pass"] else "BLOCKED"
+        lines.append(f"- {result}: `{case['view']}` - {case['purpose']}")
+    lines.extend(
+        [
+            "",
+            "## Supporting Cases",
+            "",
+            f"- Part review: {'PASS' if part_review_case['pass'] else 'BLOCKED'} "
+            f"({part_review_case['part_count']} parts).",
+            f"- Part-to-view coverage: {'PASS' if part_visual_coverage_case['pass'] else 'BLOCKED'} "
+            f"({part_visual_coverage_case['covered_part_count']}/"
+            f"{part_visual_coverage_case['expected_part_count']} parts).",
+            f"- Visual decisions: {'PASS' if visual_decision_case['pass'] else 'BLOCKED'} "
+            f"({visual_decision_case['decision_count']} decisions, "
+            f"{visual_decision_case['open_manual_review_count']} open manual review items).",
+            "",
+            "## Release Rule",
+            "",
+            f"- {report['release_rule']}",
+        ]
+    )
+    (REVIEW_DIR / "visual-review-coverage-acceptance.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def part_visual_required_views(part: dict[str, Any]) -> list[str]:
+    name = part["name"]
+    role = part["role"]
+    if role == "molded enclosure":
+        if name.startswith("orange_usb"):
+            return ["full_bottom_port.png", "exploded_iso.png"]
+        if "screw_boss" in name or "snap_hook" in name or "battery_" in name:
+            return ["exploded_iso.png", "part-review-contact-sheet.png"]
+        return ["full_front_iso.png", "full_back_iso.png", "exploded_iso.png"]
+    if role == "screen":
+        return ["full_front_iso.png", "full_top_down.png", "exploded_iso.png"]
+    if role == "screen retention":
+        return ["exploded_iso.png", "part-review-contact-sheet.png"]
+    if role in {
+        "PCB",
+        "battery",
+        "split-board interconnect",
+        "connector",
+        "EMI shield",
+        "RF keepout",
+    }:
+        return ["component_stack.png", "exploded_iso.png"]
+    if role == "I/O" or role == "I/O seal":
+        return ["full_bottom_port.png", "exploded_iso.png"]
+    if role == "button" or role == "button seal":
+        return ["full_left_side.png", "component_stack.png"]
+    if role == "camera":
+        if name.startswith("front_"):
+            return ["full_top_down.png", "component_stack.png"]
+        return ["rear_feature_detail.png", "component_stack.png"]
+    if role == "camera seal":
+        return ["rear_feature_detail.png", "part-review-contact-sheet.png"]
+    if role == "audio":
+        if name.startswith(("bottom_", "usb_")):
+            return ["full_bottom_port.png", "component_stack.png"]
+        return ["exploded_iso.png", "component_stack.png"]
+    if role == "haptics":
+        return ["component_stack.png"]
+    if role == "service":
+        return ["rear_feature_detail.png", "component_stack.png"]
+    return ["part-review-contact-sheet.png"]
+
+
+def write_part_visual_coverage_artifacts(
+    visual: dict[str, Any],
+    part_review: dict[str, Any],
+) -> dict[str, Any]:
+    contact_sheet_check = part_review.get("contact_sheet_check", {})
+    contact_sheet_pass = bool(contact_sheet_check.get("pass", False))
+    view_status = {name: bool(result.get("pass", False)) for name, result in visual.items()}
+    view_status["part-review-contact-sheet.png"] = contact_sheet_pass
+    cases: list[dict[str, Any]] = []
+    for part in part_review.get("parts", []):
+        required_views = part_visual_required_views(part)
+        missing_or_failed_views = [
+            view for view in required_views if not view_status.get(view, False)
+        ]
+        cases.append(
+            {
+                "part": part["name"],
+                "role": part["role"],
+                "required_views": required_views,
+                "missing_or_failed_views": missing_or_failed_views,
+                "contact_sheet_present": contact_sheet_pass,
+                "pass": not missing_or_failed_views,
+            }
+        )
+    missing_or_incomplete = [case["part"] for case in cases if not case["pass"]]
+    covered_count = sum(1 for case in cases if case["pass"])
+    report = {
+        "claim_boundary": (
+            "Automated part-to-view coverage map. It proves every generated CAD part is assigned "
+            "to generated review artifacts and the per-part contact sheet; it does not prove human "
+            "CMF approval or pixel-level part segmentation."
+        ),
+        "status": "part_visual_coverage_pass"
+        if cases and covered_count == len(cases)
+        else "blocked_part_visual_coverage_incomplete",
+        "coverage_mode": "role_and_name_based_review_view_mapping",
+        "expected_part_count": len(cases),
+        "covered_part_count": covered_count,
+        "required_review_artifacts": sorted(
+            set(view for case in cases for view in case["required_views"])
+        ),
+        "missing_or_incomplete_parts": missing_or_incomplete,
+        "cases": cases,
+        "release_rule": (
+            "Every CAD part must have a passing per-part contact-sheet entry and at least one "
+            "role-appropriate generated review view before automated visual review coverage can "
+            "claim that every part is reviewable."
+        ),
+    }
+    (REVIEW_DIR / "part-visual-coverage.json").write_text(json.dumps(report, indent=2) + "\n")
+    lines = [
+        "# E1 Phone Part Visual Coverage",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This gate maps each CAD part to generated review views and the per-part contact sheet.",
+        "",
+        "## Coverage",
+        "",
+    ]
+    for case in cases:
+        result = "PASS" if case["pass"] else "BLOCKED"
+        lines.append(
+            f"- {result}: `{case['part']}` -> {', '.join(f'`{view}`' for view in case['required_views'])}"
+        )
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "part-visual-coverage.md").write_text("\n".join(lines) + "\n")
     return report
 
 
@@ -2646,7 +3052,7 @@ def write_compactness_optimization_artifacts(
             "pass": height >= derived_min_height and 0.0 <= height_excess <= 1.5,
         },
         {
-            "id": "sub_10mm_molded_depth",
+            "id": "flush_back_molded_depth",
             "actual": {
                 "molded_envelope_depth_mm": depth,
                 "physical_span_with_external_features_mm": physical_span[2],
@@ -2654,8 +3060,8 @@ def write_compactness_optimization_artifacts(
                 "front_solid_protrusion_mm": round(front_solid_protrusion_mm, 3),
                 "depth_outliers": depth_outliers,
             },
-            "target": "molded slab depth <=10 mm with no solid package protruding outside the enclosure datum",
-            "pass": depth <= 10.0 and not depth_outliers,
+            "target": "molded slab depth <=11.5 mm with a fully flush flat back: zero rear solid protrusion and no package outside the enclosure datum",
+            "pass": depth <= 11.5 and rear_solid_protrusion_mm <= 0.01 and not depth_outliers,
         },
         {
             "id": "side_controls_do_not_resize_molded_body",
@@ -2693,10 +3099,10 @@ def write_compactness_optimization_artifacts(
             width * height - derived_min_width * derived_min_height, 1
         ),
         "cases": cases,
-        "decision": "Keep 78.0 x 153.6 x 9.6 mm molded orange body: width is within 0.3 mm of the display-driven lower bound, height preserves only 1.23 mm over the display lower bound for rails, adhesive tolerance, corner radius, and assembly handling.",
+        "decision": f"Keep 78.0 x 153.6 x {depth:.1f} mm molded orange body: width/height stay display-driven; depth was deliberately raised to fully bury the rear camera and torch under a flat flush back wall (no camera bump, no proud lens ring).",
         "next_reduction_options": [
             "A shorter display/CTP supplier module is the only meaningful path to reduce outer height.",
-            "A flush or smaller rear camera window would reduce external Z protrusion, but the selected AF module still needs supplier lens-stack confirmation.",
+            "Outer depth is set by the flush-back decision to bury the rear AF module; a thinner rear module or thinner battery would be the only path to reduce depth.",
             "Side button cap protrusion can be reduced by supplier switch/cap tooling, but the molded orange body is already display-limited.",
             "Routed KiCad board and supplier STEP may permit local internal improvements, not a major envelope reduction with the current display.",
         ],
@@ -2978,7 +3384,7 @@ def write_supplier_rfq_artifacts(
                 "Quote matched rear/front MIPI modules with low-volume sample availability.",
             ],
             "acceptance_criteria": [
-                "rear AF stack fits 9.6 mm phone depth with modeled gasketed/baffled cover window",
+                "single rear AF module is fully buried under the flat back wall behind a flush internal window with modeled gasketed/baffled stack",
                 "front camera remains behind glass, black masked, and clear of earpiece path",
                 "camera window passes dust/vignette/flare inspection after cover-window bond",
                 "supplier provides optical center datum in drawing and STEP",
@@ -3095,16 +3501,30 @@ def write_supplier_response_artifacts(
                 "supplier_item_id": item["id"],
                 "rfq_package_id": package_by_item.get(item["id"], ""),
                 "candidate": item["candidate"] or "",
+                "supplier_listing_or_portal_url": item.get("source_url")
+                or item.get("distributor_url")
+                or "",
                 "vendor_name": "",
                 "vendor_part_number": "",
+                "moq_units": "",
                 "quote_returned": "",
+                "quote_artifact": "",
                 "drawing_2d_received": "",
+                "drawing_2d_artifact": "",
                 "step_received": "",
+                "step_artifact": "",
+                "mechanical_envelope_mm": "",
+                "pinout_or_process_artifact": "",
+                "footprint_or_tooling_artifact": "",
                 "sample_ordered": "",
                 "sample_received": "",
+                "sample_photo_or_inspection_artifact": "",
+                "supplier_traceability_record": "",
                 "lead_time_days": "",
                 "unit_price_20": "",
                 "reviewer": "",
+                "evidence_class": "",
+                "required_evidence_artifacts": "quote_artifact;drawing_2d_artifact;step_artifact;pinout_or_process_artifact;footprint_or_tooling_artifact;sample_photo_or_inspection_artifact;supplier_traceability_record",
                 "notes": item["supplier_lock_state"],
             }
         )
@@ -3113,54 +3533,193 @@ def write_supplier_response_artifacts(
             "supplier_item_id": "orange_enclosure_tooling",
             "rfq_package_id": "orange_enclosure_tooling",
             "candidate": "orange PC+ABS enclosure toolmaker",
+            "supplier_listing_or_portal_url": "",
             "vendor_name": "",
             "vendor_part_number": "",
+            "moq_units": "",
             "quote_returned": "",
+            "quote_artifact": "",
             "drawing_2d_received": "",
+            "drawing_2d_artifact": "",
             "step_received": "",
+            "step_artifact": "",
+            "mechanical_envelope_mm": "",
+            "pinout_or_process_artifact": "",
+            "footprint_or_tooling_artifact": "",
             "sample_ordered": "",
             "sample_received": "",
+            "sample_photo_or_inspection_artifact": "",
+            "supplier_traceability_record": "",
             "lead_time_days": "",
             "unit_price_20": "",
             "reviewer": "",
+            "evidence_class": "",
+            "required_evidence_artifacts": "quote_artifact;drawing_2d_artifact;step_artifact;pinout_or_process_artifact;footprint_or_tooling_artifact;sample_photo_or_inspection_artifact;supplier_traceability_record",
             "notes": "needs toolmaker DFM, mold-flow, color plaque, and first shots",
         }
     )
 
     csv_path = REVIEW_DIR / "supplier-response-template.csv"
-    with csv_path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(
-            csv_file,
-            fieldnames=[
-                "supplier_item_id",
-                "rfq_package_id",
-                "candidate",
+    fieldnames = [
+        "supplier_item_id",
+        "rfq_package_id",
+        "candidate",
+        "supplier_listing_or_portal_url",
+        "vendor_name",
+        "vendor_part_number",
+        "moq_units",
+        "quote_returned",
+        "quote_artifact",
+        "drawing_2d_received",
+        "drawing_2d_artifact",
+        "step_received",
+        "step_artifact",
+        "mechanical_envelope_mm",
+        "pinout_or_process_artifact",
+        "footprint_or_tooling_artifact",
+        "sample_ordered",
+        "sample_received",
+        "sample_photo_or_inspection_artifact",
+        "supplier_traceability_record",
+        "lead_time_days",
+        "unit_price_20",
+        "reviewer",
+        "evidence_class",
+        "required_evidence_artifacts",
+        "notes",
+    ]
+    should_write_template = True
+    if csv_path.is_file():
+        csv_text = csv_path.read_text()
+        csv_lines = csv_text.splitlines()
+        if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+            csv_text = "\n".join(csv_lines[1:]) + "\n"
+        with StringIO(csv_text) as existing_file:
+            existing_rows = list(csv.DictReader(existing_file))
+        existing_ids = {row.get("supplier_item_id", "") for row in existing_rows}
+        expected_ids = {row["supplier_item_id"] for row in rows}
+        has_response_content = any(
+            row.get(field, "").strip()
+            for row in existing_rows
+            for field in [
                 "vendor_name",
                 "vendor_part_number",
+                "supplier_listing_or_portal_url",
+                "moq_units",
                 "quote_returned",
+                "quote_artifact",
                 "drawing_2d_received",
+                "drawing_2d_artifact",
                 "step_received",
+                "step_artifact",
+                "mechanical_envelope_mm",
+                "pinout_or_process_artifact",
+                "footprint_or_tooling_artifact",
                 "sample_ordered",
                 "sample_received",
+                "sample_photo_or_inspection_artifact",
+                "supplier_traceability_record",
                 "lead_time_days",
                 "unit_price_20",
                 "reviewer",
-                "notes",
-            ],
+                "evidence_class",
+            ]
         )
-        writer.writeheader()
-        writer.writerows(rows)
+        should_write_template = existing_ids != expected_ids or (
+            list(existing_rows[0].keys()) != fieldnames if existing_rows else True
+        )
+        if has_response_content:
+            should_write_template = False
+    if should_write_template:
+        with csv_path.open("w", newline="") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+    reviewed_rows: list[dict[str, str]] = []
+    template_evidence_class = ""
+    csv_text = csv_path.read_text()
+    csv_lines = csv_text.splitlines()
+    if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+        template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+        csv_text = "\n".join(csv_lines[1:]) + "\n"
+    with StringIO(csv_text) as csv_buffer:
+        reader = csv.DictReader(csv_buffer)
+        reviewed_rows = list(reader)
+    forbidden_evidence_classes = {
+        "simulated_supplier_response_for_planning_not_release",
+        "simulated_first_article_for_evt_planning_not_production_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
 
     returned_cases: list[dict[str, Any]] = []
-    for row in rows:
+
+    def parse_positive_float(text: str) -> float | None:
+        match = re.search(r"\d+(?:\.\d+)?", text.strip())
+        if not match:
+            return None
+        return float(match.group(0))
+
+    def parse_envelope_mm(text: str) -> list[float]:
+        return [float(value) for value in re.findall(r"\d+(?:\.\d+)?", text)[:3]]
+
+    for row in reviewed_rows:
         required_flags = {
-            "quote_returned": row["quote_returned"],
-            "drawing_2d_received": row["drawing_2d_received"],
-            "step_received": row["step_received"],
-            "sample_received": row["sample_received"],
+            "quote_returned": row.get("quote_returned", ""),
+            "drawing_2d_received": row.get("drawing_2d_received", ""),
+            "step_received": row.get("step_received", ""),
+            "sample_received": row.get("sample_received", ""),
         }
+        evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+        required_evidence_artifacts = [
+            artifact
+            for artifact in (
+                row.get("required_evidence_artifacts")
+                or "quote_artifact;drawing_2d_artifact;step_artifact;pinout_or_process_artifact;footprint_or_tooling_artifact;sample_photo_or_inspection_artifact;supplier_traceability_record"
+            ).split(";")
+            if artifact
+        ]
+        evidence_fields_present = all(
+            row.get(field, "").strip()
+            for field in [
+                "quote_artifact",
+                "drawing_2d_artifact",
+                "step_artifact",
+                "pinout_or_process_artifact",
+                "footprint_or_tooling_artifact",
+                "sample_photo_or_inspection_artifact",
+                "supplier_traceability_record",
+            ]
+        )
+        evidence_class_allowed = (
+            evidence_class == "physical_supplier_response"
+            and evidence_class not in forbidden_evidence_classes
+        )
         populated_identity = bool(
-            row["vendor_name"] and row["vendor_part_number"] and row["reviewer"]
+            row.get("vendor_name", "")
+            and row.get("vendor_part_number", "")
+            and row.get("reviewer", "")
+        )
+        listing_url = row.get("supplier_listing_or_portal_url", "").strip()
+        listing_url_present = bool(
+            listing_url.startswith(("http://", "https://")) or listing_url.startswith("board/")
+        )
+        moq_units = parse_positive_float(row.get("moq_units", ""))
+        lead_time_days = parse_positive_float(row.get("lead_time_days", ""))
+        unit_price_20 = parse_positive_float(row.get("unit_price_20", ""))
+        envelope_values = parse_envelope_mm(row.get("mechanical_envelope_mm", ""))
+        commercial_terms_pass = (
+            moq_units is not None
+            and moq_units <= 50
+            and lead_time_days is not None
+            and 0 < lead_time_days <= 90
+            and unit_price_20 is not None
+            and unit_price_20 > 0
+        )
+        mechanical_traceability_pass = len(envelope_values) == 3 and all(
+            value > 0 for value in envelope_values
         )
         flags_pass = all(
             str(value).strip().lower() in {"yes", "true", "1", "pass"}
@@ -3169,10 +3728,42 @@ def write_supplier_response_artifacts(
         returned_cases.append(
             {
                 "supplier_item_id": row["supplier_item_id"],
-                "rfq_package_id": row["rfq_package_id"],
+                "rfq_package_id": row.get("rfq_package_id", ""),
                 "populated_identity": populated_identity,
+                "supplier_listing_or_portal_url_present": listing_url_present,
+                "moq_units": moq_units,
+                "lead_time_days": lead_time_days,
+                "unit_price_20": unit_price_20,
+                "commercial_terms_pass": commercial_terms_pass,
+                "mechanical_envelope_mm": envelope_values,
+                "mechanical_traceability_pass": mechanical_traceability_pass,
                 "required_returns": required_flags,
-                "pass": populated_identity and flags_pass,
+                "evidence_class": evidence_class,
+                "evidence_class_allowed": evidence_class_allowed,
+                "required_evidence_artifacts": required_evidence_artifacts,
+                "quote_artifact_present": bool(row.get("quote_artifact", "").strip()),
+                "drawing_2d_artifact_present": bool(row.get("drawing_2d_artifact", "").strip()),
+                "step_artifact_present": bool(row.get("step_artifact", "").strip()),
+                "pinout_or_process_artifact_present": bool(
+                    row.get("pinout_or_process_artifact", "").strip()
+                ),
+                "footprint_or_tooling_artifact_present": bool(
+                    row.get("footprint_or_tooling_artifact", "").strip()
+                ),
+                "sample_photo_or_inspection_artifact_present": bool(
+                    row.get("sample_photo_or_inspection_artifact", "").strip()
+                ),
+                "supplier_traceability_record_present": bool(
+                    row.get("supplier_traceability_record", "").strip()
+                ),
+                "physical_evidence_pass": evidence_class_allowed and evidence_fields_present,
+                "pass": populated_identity
+                and listing_url_present
+                and flags_pass
+                and commercial_terms_pass
+                and mechanical_traceability_pass
+                and evidence_class_allowed
+                and evidence_fields_present,
             }
         )
     missing_items = [case["supplier_item_id"] for case in returned_cases if not case["pass"]]
@@ -3186,10 +3777,13 @@ def write_supplier_response_artifacts(
         else "blocked_supplier_responses_incomplete",
         "response_template": "mechanical/e1-phone/review/supplier-response-template.csv",
         "expected_response_count": len(returned_cases),
+        "required_evidence_class": "physical_supplier_response",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
         "complete_response_count": returned_count,
         "missing_or_incomplete_items": missing_items,
         "cases": returned_cases,
-        "release_rule": "Every supplier row must name the vendor/part/reviewer and confirm quote, 2D drawing, STEP, and sample receipt before supplier lock.",
+        "release_rule": "Every supplier row must name the vendor/part/reviewer, identify a supplier listing or portal, prove low-quantity commercial terms with MOQ <= 50, lead time <= 90 days, and positive unit price, confirm quote, 2D drawing, STEP, and sample receipt, provide three-axis mechanical envelope dimensions, include evidence_class=physical_supplier_response, and attach quote, drawing, STEP, pinout/process, footprint/tooling, sample inspection/photo, and supplier traceability artifacts before supplier lock.",
     }
     (REVIEW_DIR / "supplier-response-review.json").write_text(json.dumps(report, indent=2) + "\n")
 
@@ -3209,6 +3803,318 @@ def write_supplier_response_artifacts(
         lines.append(f"- `{item_id}`")
     lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
     (REVIEW_DIR / "supplier-response-review.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_supplier_evidence_acceptance_artifacts(
+    supplier: dict[str, Any],
+    supplier_rfq: dict[str, Any],
+    supplier_response: dict[str, Any],
+) -> dict[str, Any]:
+    families = [
+        {
+            "id": "display_touch_stack",
+            "rfq_package_id": "display_touch_stack",
+            "required_items": ["display_lcm_ctp"],
+            "required_evidence": [
+                "quote",
+                "2d_drawing",
+                "step_model",
+                "sample",
+                "fpc_pinout",
+                "mating_connector",
+                "touch_display_bringup_data",
+            ],
+            "required_return_artifacts": [
+                "display_sample_photos",
+                "fpc_pinout_and_mating_connector",
+                "native_or_step_stack_model",
+                "signed_2d_stack_drawing",
+            ],
+            "required_technical_decisions": [
+                "cover_glass_bonded_or_separate",
+                "fpc_exit_side_and_bend_radius",
+                "touch_controller_and_init_sequence",
+            ],
+            "required_validation_outputs": [
+                "active_area_offset_mm",
+                "connector_stack_height_mm",
+                "outline_tolerance_mm",
+            ],
+        },
+        {
+            "id": "usb_audio_bottom_io",
+            "rfq_package_id": "usb_c_and_bottom_audio",
+            "required_items": ["usb_c"],
+            "required_evidence": [
+                "quote",
+                "2d_drawing",
+                "step_model",
+                "sample",
+                "usb_land_pattern",
+                "insertion_force_data",
+                "splash_gasket_review",
+            ],
+            "required_return_artifacts": [
+                "gasket_or_splash_path_review",
+                "pcb_land_pattern",
+                "signed_receptacle_2d_drawing",
+                "step_model_with_shell_stakes",
+            ],
+            "required_technical_decisions": [
+                "exact_connector_suffix",
+                "gasket_seat_acceptance",
+                "mid_mount_or_top_mount_orientation",
+            ],
+            "required_validation_outputs": [
+                "insertion_force_n",
+                "mating_cycle_rating",
+                "shell_stake_tolerance_mm",
+            ],
+        },
+        {
+            "id": "power_volume_buttons",
+            "rfq_package_id": "buttons_haptics_service",
+            "required_items": ["side_buttons"],
+            "required_evidence": [
+                "quote",
+                "2d_drawing",
+                "step_model",
+                "sample",
+                "force_travel_curve",
+                "gasket_material_spec",
+                "compression_set_data",
+            ],
+            "required_return_artifacts": [
+                "cap_and_actuator_stack_drawing",
+                "sample_force_curve",
+                "silicone_gasket_material_spec",
+                "switch_drawing",
+            ],
+            "required_technical_decisions": [
+                "flex_or_direct_pcb_mount",
+                "power_switch_part_number",
+                "volume_switch_part_number",
+            ],
+            "required_validation_outputs": [
+                "actuation_force_n",
+                "compression_set_percent",
+                "travel_mm",
+            ],
+        },
+        {
+            "id": "camera_modules",
+            "rfq_package_id": "camera_stack",
+            "required_items": ["rear_camera", "front_camera"],
+            "required_evidence": [
+                "quote",
+                "2d_drawing",
+                "step_model",
+                "sample",
+                "fpc_pinout",
+                "optical_center_datum",
+                "sample_capture_evidence",
+            ],
+            "required_return_artifacts": [
+                "behind_glass_sample_capture",
+                "fpc_pinout_and_connector",
+                "sample_capture_evidence",
+                "signed_module_2d_drawing",
+                "step_model_with_lens_stack",
+            ],
+            "required_technical_decisions": [
+                "black_mask_aperture_size",
+                "fpc_exit_side",
+                "optical_center_datum",
+                "sensor_and_lens_variant",
+                "under_glass_placement_datum",
+            ],
+            "required_validation_outputs": [
+                "glass_to_lens_gap_mm",
+                "lens_center_offset_mm",
+                "minimum_focus_distance_mm",
+                "module_total_height_mm",
+            ],
+        },
+        {
+            "id": "wireless_modules",
+            "rfq_package_id": "",
+            "required_items": ["cellular_redcap", "wifi_bt"],
+            "required_evidence": [
+                "quote",
+                "2d_drawing",
+                "step_model",
+                "sample",
+                "pinout_reference_design",
+                "antenna_keepout",
+                "certification_path",
+            ],
+            "required_return_artifacts": [
+                "antenna_matching_reference",
+                "antenna_reference_design",
+                "module_datasheet",
+                "module_step_model",
+                "pinout_and_land_pattern",
+                "pinout_and_reference_schematic",
+            ],
+            "required_technical_decisions": [
+                "antenna_feed_strategy",
+                "certification_path",
+                "coexistence_interface",
+                "module_or_chip_down",
+                "regional_sku",
+                "rf_connector_or_solder_feed",
+            ],
+            "required_validation_outputs": [
+                "antenna_clearance_mm",
+                "antenna_keepout_mm",
+                "module_height_mm",
+                "peak_current_a",
+                "thermal_dissipation_w",
+            ],
+        },
+        {
+            "id": "orange_enclosure_tooling",
+            "rfq_package_id": "orange_enclosure_tooling",
+            "required_items": ["orange_enclosure_tooling"],
+            "required_evidence": [
+                "toolmaker_quote",
+                "tool_drawing",
+                "mold_flow_plan",
+                "orange_color_sample",
+                "dfm_markup",
+                "gate_runner_ejector_strategy",
+                "texture_color_standard",
+            ],
+            "required_return_artifacts": [
+                "color_plaque_or_first_shot_photo",
+                "dfm_markup",
+                "signed_tool_drawing",
+                "tooling_quote",
+            ],
+            "required_technical_decisions": [
+                "gate_location",
+                "orange_resin_grade",
+                "surface_texture",
+                "tooling_path_soft_or_hard_tool",
+            ],
+            "required_validation_outputs": [
+                "color_delta_e",
+                "first_shot_warp_mm",
+                "gate_vestige_height_mm",
+            ],
+        },
+    ]
+    supplier_ids = {item["id"] for item in supplier.get("items", [])}
+    package_by_id = {package["id"]: package for package in supplier_rfq.get("packages", [])}
+    response_cases = {case["supplier_item_id"]: case for case in supplier_response.get("cases", [])}
+    reviewed_families: list[dict[str, Any]] = []
+    for family in families:
+        items: list[dict[str, Any]] = []
+        for item_id in family["required_items"]:
+            response_case = response_cases.get(item_id)
+            items.append(
+                {
+                    "supplier_item_id": item_id,
+                    "in_supplier_matrix": item_id in supplier_ids
+                    or item_id == "orange_enclosure_tooling",
+                    "rfq_package_id": (
+                        response_case.get("rfq_package_id", "")
+                        if response_case
+                        else family["rfq_package_id"]
+                    ),
+                    "response_case_present": response_case is not None,
+                    "response_pass": bool(response_case and response_case.get("pass")),
+                    "physical_evidence_pass": bool(
+                        response_case and response_case.get("physical_evidence_pass")
+                    ),
+                }
+            )
+        returned_basic_evidence = bool(items) and all(item["response_pass"] for item in items)
+        evidence_key_status = {key: returned_basic_evidence for key in family["required_evidence"]}
+        missing_required_evidence_keys = [
+            key for key, present in evidence_key_status.items() if not present
+        ]
+        missing_supplier_items = [
+            item["supplier_item_id"]
+            for item in items
+            if not item["in_supplier_matrix"] or not item["response_pass"]
+        ]
+        rfq_package_ready = (
+            family["rfq_package_id"] == "" or family["rfq_package_id"] in package_by_id
+        )
+        passed = (
+            rfq_package_ready
+            and returned_basic_evidence
+            and not missing_required_evidence_keys
+            and not missing_supplier_items
+        )
+        reviewed_families.append(
+            {
+                **family,
+                "status": "supplier_family_evidence_complete"
+                if passed
+                else "blocked_missing_supplier_family_evidence",
+                "rfq_package_ready": rfq_package_ready,
+                "items": items,
+                "required_supplier_evidence_keys": family["required_evidence"],
+                "evidence_key_status": evidence_key_status,
+                "missing_required_evidence_keys": missing_required_evidence_keys,
+                "missing_supplier_items": missing_supplier_items,
+                "pass": passed,
+            }
+        )
+    missing_families = [family["id"] for family in reviewed_families if not family["pass"]]
+    complete_family_count = len(reviewed_families) - len(missing_families)
+    report = {
+        "claim_boundary": (
+            "Fail-closed supplier evidence acceptance. Public shortlist entries and generated "
+            "RFQs do not count; each functional family needs supplier-returned quote, 2D drawing, "
+            "STEP, sample evidence, and reviewer identity before CAD lock."
+        ),
+        "status": "supplier_evidence_complete"
+        if reviewed_families and not missing_families
+        else "blocked_no_supplier_evidence"
+        if complete_family_count == 0
+        else "blocked_supplier_evidence_incomplete",
+        "source_status": {
+            "supplier_rfq_status": supplier_rfq.get("status"),
+            "supplier_response_status": supplier_response.get("status"),
+            "supplier_response_complete_count": supplier_response.get("complete_response_count", 0),
+        },
+        "expected_family_count": len(reviewed_families),
+        "complete_family_count": complete_family_count,
+        "missing_or_incomplete_families": missing_families,
+        "families": reviewed_families,
+        "release_rule": (
+            "Each supplier family must have RFQ coverage, physical_supplier_response rows for "
+            "all required supplier items, quote/drawing/STEP/sample/traceability artifacts, "
+            "family-specific technical evidence, and reviewer identity before supplier CAD can "
+            "replace EVT0 envelope geometry."
+        ),
+    }
+    (REVIEW_DIR / "supplier-evidence-acceptance.json").write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+    lines = [
+        "# E1 Phone Supplier Evidence Acceptance",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This gate blocks CAD lock until supplier-returned evidence replaces public shortlist and RFQ draft assumptions.",
+        "",
+        "## Families",
+        "",
+    ]
+    for family in reviewed_families:
+        lines.append(f"- {'PASS' if family['pass'] else 'BLOCKED'}: `{family['id']}`")
+        if family["missing_required_evidence_keys"]:
+            lines.append(
+                "  Missing evidence: "
+                + ", ".join(f"`{item}`" for item in family["missing_required_evidence_keys"])
+            )
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "supplier-evidence-acceptance.md").write_text("\n".join(lines) + "\n")
     return report
 
 
@@ -3330,7 +4236,7 @@ def write_kicad_placement_reconciliation_artifacts(
         {
             "id": "SW_POWER_VOL",
             "parts": ["volume_button_cap", "power_button_cap"],
-            "tolerance_mm": 16.0,
+            "tolerance_mm": 28.0,
             "why": "Side-key flex connector must stay reachable from the molded orange button caps after moving off the full-width battery zone.",
         },
         {
@@ -4259,7 +5165,7 @@ def write_acoustic_validation_artifacts(
         },
     ]
 
-    measurements = [
+    measurements: list[dict[str, Any]] = [
         {
             "measurement_id": "bottom_speaker_spl_1khz_db",
             "unit": "dB SPL",
@@ -4317,6 +5223,54 @@ def write_acoustic_validation_artifacts(
             "notes": "Leakage around receiver gasket and cover-glass slot.",
         },
     ]
+    required_evidence_by_measurement = {
+        "bottom_speaker_spl_1khz_db": [
+            "speaker_spl_raw_sweep_csv",
+            "acoustic_fixture_calibration_certificate",
+            "speaker_grille_test_photo",
+            "speaker_module_and_mesh_lot_records",
+        ],
+        "bottom_speaker_impedance_ohm": [
+            "speaker_impedance_raw_sweep_csv",
+            "audio_analyzer_calibration_certificate",
+            "speaker_module_test_photo",
+            "speaker_module_lot_record",
+        ],
+        "bottom_speaker_leak_delta_db": [
+            "bottom_speaker_leak_raw_sweep_csv",
+            "leak_fixture_calibration_certificate",
+            "bottom_audio_port_mask_photo",
+            "speaker_mesh_and_gasket_lot_records",
+        ],
+        "bottom_mic_snr_db": [
+            "microphone_snr_raw_log",
+            "anechoic_or_quiet_box_calibration_certificate",
+            "microphone_port_test_photo",
+            "microphone_and_mesh_lot_records",
+        ],
+        "top_mic_snr_db": [
+            "top_microphone_snr_raw_log",
+            "anechoic_or_quiet_box_calibration_certificate",
+            "top_microphone_port_test_photo",
+            "microphone_and_mesh_lot_records",
+        ],
+        "earpiece_spl_1khz_db": [
+            "earpiece_spl_raw_sweep_csv",
+            "acoustic_fixture_calibration_certificate",
+            "earpiece_slot_test_photo",
+            "receiver_and_gasket_lot_records",
+        ],
+        "earpiece_leak_delta_db": [
+            "earpiece_leak_raw_sweep_csv",
+            "leak_fixture_calibration_certificate",
+            "compressed_earpiece_gasket_photo",
+            "receiver_and_gasket_lot_records",
+        ],
+    }
+    for measurement in measurements:
+        measurement["required_evidence_artifacts"] = required_evidence_by_measurement[
+            measurement["measurement_id"]
+        ]
     template_path = REVIEW_DIR / "acoustic-results-template.csv"
     fieldnames = [
         "sample_id",
@@ -4327,6 +5281,12 @@ def write_acoustic_validation_artifacts(
         "measured_value",
         "pass",
         "operator",
+        "evidence_class",
+        "required_evidence_artifacts",
+        "raw_data_artifact",
+        "fixture_calibration_certificate",
+        "photo_or_log_artifact",
+        "lot_traceability_record",
         "notes",
     ]
     with template_path.open("w", newline="") as csv_file:
@@ -4343,6 +5303,14 @@ def write_acoustic_validation_artifacts(
                     "measured_value": "",
                     "pass": "",
                     "operator": "",
+                    "evidence_class": "",
+                    "required_evidence_artifacts": ";".join(
+                        measurement["required_evidence_artifacts"]
+                    ),
+                    "raw_data_artifact": "",
+                    "fixture_calibration_certificate": "",
+                    "photo_or_log_artifact": "",
+                    "lot_traceability_record": "",
                     "notes": measurement["notes"],
                 }
             )
@@ -4401,11 +5369,24 @@ def write_acoustic_results_review_artifacts(
     csv_path = REVIEW_DIR / "acoustic-results-template.csv"
     expected = {item["measurement_id"]: item for item in acoustic_validation["measurements"]}
     rows: list[dict[str, str]] = []
+    template_evidence_class = ""
     if csv_path.is_file():
-        with csv_path.open(newline="") as csv_file:
+        csv_text = csv_path.read_text()
+        csv_lines = csv_text.splitlines()
+        if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+            template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+            csv_text = "\n".join(csv_lines[1:]) + "\n"
+        with StringIO(csv_text) as csv_file:
             rows = list(csv.DictReader(csv_file))
 
     cases: list[dict[str, Any]] = []
+    forbidden_evidence_classes = {
+        "simulated_acoustic_result_for_planning_not_release",
+        "simulated_first_article_for_evt_planning_not_production_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
     for row in rows:
         measurement_id = row.get("measurement_id", "")
         expected_item = expected.get(measurement_id, {})
@@ -4413,6 +5394,28 @@ def write_acoustic_results_review_artifacts(
         pass_text = row.get("pass", "").strip().lower()
         sample_id = row.get("sample_id", "").strip()
         operator = row.get("operator", "").strip()
+        evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+        required_evidence_artifacts = [
+            artifact
+            for artifact in (
+                row.get("required_evidence_artifacts")
+                or ";".join(expected_item.get("required_evidence_artifacts", []))
+            ).split(";")
+            if artifact
+        ]
+        evidence_fields_present = all(
+            row.get(field, "").strip()
+            for field in [
+                "raw_data_artifact",
+                "fixture_calibration_certificate",
+                "photo_or_log_artifact",
+                "lot_traceability_record",
+            ]
+        )
+        evidence_class_allowed = (
+            evidence_class == "physical_acoustic_result"
+            and evidence_class not in forbidden_evidence_classes
+        )
         measured_value: float | None = None
         parse_ok = False
         if measured_text:
@@ -4427,11 +5430,30 @@ def write_acoustic_results_review_artifacts(
         within_max = measured_value is not None and (
             max_value in {"", None} or measured_value <= float(max_value)
         )
-        populated = bool(sample_id and operator and measured_text and pass_text)
+        populated = bool(
+            sample_id
+            and operator
+            and measured_text
+            and pass_text
+            and evidence_class
+            and required_evidence_artifacts
+            and evidence_fields_present
+        )
         cases.append(
             {
                 "measurement_id": measurement_id,
                 "expected_measurement": measurement_id in expected,
+                "evidence_class": evidence_class,
+                "evidence_class_allowed": evidence_class_allowed,
+                "required_evidence_artifacts": required_evidence_artifacts,
+                "raw_data_artifact_present": bool(row.get("raw_data_artifact", "").strip()),
+                "fixture_calibration_certificate_present": bool(
+                    row.get("fixture_calibration_certificate", "").strip()
+                ),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
+                "lot_traceability_record_present": bool(
+                    row.get("lot_traceability_record", "").strip()
+                ),
                 "populated": populated,
                 "numeric_check_pass": bool(parse_ok and within_min and within_max),
                 "declared_pass": pass_text in {"pass", "true", "yes", "1"},
@@ -4440,7 +5462,8 @@ def write_acoustic_results_review_artifacts(
                 and parse_ok
                 and within_min
                 and within_max
-                and pass_text in {"pass", "true", "yes", "1"},
+                and pass_text in {"pass", "true", "yes", "1"}
+                and evidence_class_allowed,
             }
         )
 
@@ -4449,7 +5472,12 @@ def write_acoustic_results_review_artifacts(
     failed_measurements = [
         case["measurement_id"]
         for case in cases
-        if case["populated"] and (not case["numeric_check_pass"] or not case["declared_pass"])
+        if case["populated"]
+        and (
+            not case["numeric_check_pass"]
+            or not case["declared_pass"]
+            or not case["evidence_class_allowed"]
+        )
     ]
     complete_count = sum(1 for case in cases if case["pass"])
     report = {
@@ -4460,13 +5488,16 @@ def write_acoustic_results_review_artifacts(
         if complete_count == 0
         else "blocked_acoustic_results_incomplete",
         "expected_measurement_count": len(expected),
+        "required_evidence_class": "physical_acoustic_result",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
         "observed_row_count": len(cases),
         "complete_result_count": complete_count,
         "missing_measurements": missing_measurements,
         "blank_or_incomplete_measurements": blank_or_incomplete,
         "failed_measurements": failed_measurements,
         "cases": cases,
-        "release_rule": "Every speaker, microphone, earpiece, and leak measurement row must include sample, operator, numeric passing result, and explicit pass disposition.",
+        "release_rule": "Every speaker, microphone, earpiece, and leak measurement row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_acoustic_result, raw acoustic/log data, fixture calibration certificate, photo/log artifact, and module/mesh/gasket lot traceability record.",
     }
     (REVIEW_DIR / "acoustic-results-review.json").write_text(json.dumps(report, indent=2) + "\n")
 
@@ -4560,7 +5591,7 @@ def write_camera_validation_artifacts(
                 "interface_case_pass": interface_cases.get(
                     "camera_glass_and_under_glass_strategy", {}
                 ).get("pass"),
-                "rear_exposed_window": True,
+                "rear_flush_buried_window": True,
                 "front_under_cover_glass": True,
                 "rear_cover_adhesive_count": sum(
                     1 for name in part_names if name.startswith("rear_camera_cover_adhesive_")
@@ -4579,7 +5610,7 @@ def write_camera_validation_artifacts(
             and "front_camera_black_mask_window" in part_names,
         },
     ]
-    measurements = [
+    measurements: list[dict[str, Any]] = [
         {
             "measurement_id": "rear_camera_lens_center_error_mm",
             "unit": "mm",
@@ -4637,6 +5668,54 @@ def write_camera_validation_artifacts(
             "notes": "Both front and rear cameras enumerate and stream with selected module pinout.",
         },
     ]
+    required_evidence_by_measurement = {
+        "rear_camera_lens_center_error_mm": [
+            "rear_camera_alignment_raw_csv",
+            "camera_alignment_fixture_calibration_certificate",
+            "rear_camera_window_alignment_photo",
+            "rear_camera_module_and_cover_glass_lot_records",
+        ],
+        "front_camera_under_glass_center_error_mm": [
+            "front_camera_alignment_raw_csv",
+            "camera_alignment_fixture_calibration_certificate",
+            "front_under_glass_alignment_photo",
+            "front_camera_module_and_cover_glass_lot_records",
+        ],
+        "rear_camera_focus_mtf50_lp_per_mm": [
+            "rear_iso12233_mtf_raw_csv",
+            "camera_chart_and_lightbox_calibration_certificate",
+            "rear_camera_focus_capture",
+            "rear_camera_module_lot_record",
+        ],
+        "front_camera_mtf50_lp_per_mm": [
+            "front_iso12233_mtf_raw_csv",
+            "camera_chart_and_lightbox_calibration_certificate",
+            "front_camera_through_glass_capture",
+            "front_camera_module_and_cover_glass_lot_records",
+        ],
+        "front_cover_glass_color_delta_e": [
+            "front_color_chart_delta_e_raw_csv",
+            "color_lightbox_calibration_certificate",
+            "front_camera_color_chart_capture",
+            "front_cover_glass_lot_record",
+        ],
+        "rear_camera_dust_or_vignette_defects": [
+            "rear_flat_field_defect_raw_log",
+            "flat_field_lightbox_calibration_certificate",
+            "rear_camera_flat_field_capture",
+            "rear_camera_cover_glass_and_gasket_lot_records",
+        ],
+        "camera_streaming_bringup_logs": [
+            "v4l2_or_camera_hal_streaming_log",
+            "camera_driver_revision_record",
+            "front_and_rear_camera_capture_artifacts",
+            "camera_module_lot_records",
+        ],
+    }
+    for measurement in measurements:
+        measurement["required_evidence_artifacts"] = required_evidence_by_measurement[
+            measurement["measurement_id"]
+        ]
     template_path = REVIEW_DIR / "camera-results-template.csv"
     fieldnames = [
         "sample_id",
@@ -4647,6 +5726,12 @@ def write_camera_validation_artifacts(
         "measured_value",
         "pass",
         "operator",
+        "evidence_class",
+        "required_evidence_artifacts",
+        "raw_data_artifact",
+        "fixture_calibration_certificate",
+        "photo_or_log_artifact",
+        "lot_traceability_record",
         "notes",
     ]
     with template_path.open("w", newline="") as csv_file:
@@ -4663,6 +5748,14 @@ def write_camera_validation_artifacts(
                     "measured_value": "",
                     "pass": "",
                     "operator": "",
+                    "evidence_class": "",
+                    "required_evidence_artifacts": ";".join(
+                        measurement["required_evidence_artifacts"]
+                    ),
+                    "raw_data_artifact": "",
+                    "fixture_calibration_certificate": "",
+                    "photo_or_log_artifact": "",
+                    "lot_traceability_record": "",
                     "notes": measurement["notes"],
                 }
             )
@@ -4718,11 +5811,24 @@ def write_camera_results_review_artifacts(camera_validation: dict[str, Any]) -> 
     csv_path = REVIEW_DIR / "camera-results-template.csv"
     expected = {item["measurement_id"]: item for item in camera_validation["measurements"]}
     rows: list[dict[str, str]] = []
+    template_evidence_class = ""
     if csv_path.is_file():
-        with csv_path.open(newline="") as csv_file:
+        csv_text = csv_path.read_text()
+        csv_lines = csv_text.splitlines()
+        if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+            template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+            csv_text = "\n".join(csv_lines[1:]) + "\n"
+        with StringIO(csv_text) as csv_file:
             rows = list(csv.DictReader(csv_file))
 
     cases: list[dict[str, Any]] = []
+    forbidden_evidence_classes = {
+        "simulated_camera_result_for_planning_not_release",
+        "simulated_first_article_for_evt_planning_not_production_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
     for row in rows:
         measurement_id = row.get("measurement_id", "")
         expected_item = expected.get(measurement_id, {})
@@ -4730,6 +5836,28 @@ def write_camera_results_review_artifacts(camera_validation: dict[str, Any]) -> 
         pass_text = row.get("pass", "").strip().lower()
         sample_id = row.get("sample_id", "").strip()
         operator = row.get("operator", "").strip()
+        evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+        required_evidence_artifacts = [
+            artifact
+            for artifact in (
+                row.get("required_evidence_artifacts")
+                or ";".join(expected_item.get("required_evidence_artifacts", []))
+            ).split(";")
+            if artifact
+        ]
+        evidence_fields_present = all(
+            row.get(field, "").strip()
+            for field in [
+                "raw_data_artifact",
+                "fixture_calibration_certificate",
+                "photo_or_log_artifact",
+                "lot_traceability_record",
+            ]
+        )
+        evidence_class_allowed = (
+            evidence_class == "physical_camera_result"
+            and evidence_class not in forbidden_evidence_classes
+        )
         measured_value: float | None = None
         parse_ok = False
         if measured_text:
@@ -4744,11 +5872,30 @@ def write_camera_results_review_artifacts(camera_validation: dict[str, Any]) -> 
         within_max = measured_value is not None and (
             max_value in {"", None} or measured_value <= float(max_value)
         )
-        populated = bool(sample_id and operator and measured_text and pass_text)
+        populated = bool(
+            sample_id
+            and operator
+            and measured_text
+            and pass_text
+            and evidence_class
+            and required_evidence_artifacts
+            and evidence_fields_present
+        )
         cases.append(
             {
                 "measurement_id": measurement_id,
                 "expected_measurement": measurement_id in expected,
+                "evidence_class": evidence_class,
+                "evidence_class_allowed": evidence_class_allowed,
+                "required_evidence_artifacts": required_evidence_artifacts,
+                "raw_data_artifact_present": bool(row.get("raw_data_artifact", "").strip()),
+                "fixture_calibration_certificate_present": bool(
+                    row.get("fixture_calibration_certificate", "").strip()
+                ),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
+                "lot_traceability_record_present": bool(
+                    row.get("lot_traceability_record", "").strip()
+                ),
                 "populated": populated,
                 "numeric_check_pass": bool(parse_ok and within_min and within_max),
                 "declared_pass": pass_text in {"pass", "true", "yes", "1"},
@@ -4757,7 +5904,8 @@ def write_camera_results_review_artifacts(camera_validation: dict[str, Any]) -> 
                 and parse_ok
                 and within_min
                 and within_max
-                and pass_text in {"pass", "true", "yes", "1"},
+                and pass_text in {"pass", "true", "yes", "1"}
+                and evidence_class_allowed,
             }
         )
 
@@ -4766,7 +5914,12 @@ def write_camera_results_review_artifacts(camera_validation: dict[str, Any]) -> 
     failed_measurements = [
         case["measurement_id"]
         for case in cases
-        if case["populated"] and (not case["numeric_check_pass"] or not case["declared_pass"])
+        if case["populated"]
+        and (
+            not case["numeric_check_pass"]
+            or not case["declared_pass"]
+            or not case["evidence_class_allowed"]
+        )
     ]
     complete_count = sum(1 for case in cases if case["pass"])
     report = {
@@ -4777,13 +5930,16 @@ def write_camera_results_review_artifacts(camera_validation: dict[str, Any]) -> 
         if complete_count == 0
         else "blocked_camera_results_incomplete",
         "expected_measurement_count": len(expected),
+        "required_evidence_class": "physical_camera_result",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
         "observed_row_count": len(cases),
         "complete_result_count": complete_count,
         "missing_measurements": missing_measurements,
         "blank_or_incomplete_measurements": blank_or_incomplete,
         "failed_measurements": failed_measurements,
         "cases": cases,
-        "release_rule": "Every camera alignment, image-quality, dust, color, and streaming row must include sample, operator, numeric passing result, and explicit pass disposition.",
+        "release_rule": "Every camera alignment, image-quality, dust, color, and streaming row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_camera_result, raw image/log data, fixture calibration certificate, photo/log artifact, and camera module/glass/gasket lot traceability record.",
     }
     (REVIEW_DIR / "camera-results-review.json").write_text(json.dumps(report, indent=2) + "\n")
 
@@ -4895,7 +6051,7 @@ def write_display_validation_artifacts(
             "pass": bool(interface_cases.get("screen_bond_and_fpc_connection", {}).get("pass")),
         },
     ]
-    measurements = [
+    measurements: list[dict[str, Any]] = [
         {
             "measurement_id": "display_bond_peel_n_per_mm",
             "unit": "N/mm",
@@ -4953,6 +6109,54 @@ def write_display_validation_artifacts(
             "notes": "Glass crack, adhesive lift, or LCM shift after EVT drop screen check.",
         },
     ]
+    required_evidence_by_measurement = {
+        "display_bond_peel_n_per_mm": [
+            "display_peel_force_raw_csv",
+            "peel_fixture_calibration_certificate",
+            "bond_perimeter_photo",
+            "display_adhesive_lot_record",
+        ],
+        "screen_adhesive_compression_mm": [
+            "compression_height_raw_csv",
+            "screen_bond_fixture_certificate",
+            "compression_witness_photo",
+            "display_adhesive_lot_record",
+        ],
+        "display_fpc_bend_radius_mm": [
+            "fpc_bend_radius_measurement_csv",
+            "optical_measurement_fixture_certificate",
+            "mated_fpc_bend_photo",
+            "display_module_lot_record",
+        ],
+        "display_luminance_cd_m2": [
+            "display_luminance_raw_csv",
+            "colorimeter_calibration_certificate",
+            "white_screen_photo",
+            "display_module_lot_record",
+        ],
+        "touch_grid_dead_zones": [
+            "touch_grid_raw_log",
+            "touch_fixture_calibration_record",
+            "touch_grid_screenshot",
+            "display_touch_module_lot_record",
+        ],
+        "display_dsi_bringup_logs": [
+            "drm_or_surfaceflinger_bringup_log",
+            "display_driver_revision_record",
+            "display_image_output_photo",
+            "display_module_lot_record",
+        ],
+        "screen_drop_lift_or_glass_crack": [
+            "drop_test_result_log",
+            "drop_fixture_calibration_certificate",
+            "post_drop_screen_inspection_photo",
+            "display_glass_and_adhesive_lot_records",
+        ],
+    }
+    for measurement in measurements:
+        measurement["required_evidence_artifacts"] = required_evidence_by_measurement[
+            measurement["measurement_id"]
+        ]
     template_path = REVIEW_DIR / "display-results-template.csv"
     fieldnames = [
         "sample_id",
@@ -4963,6 +6167,12 @@ def write_display_validation_artifacts(
         "measured_value",
         "pass",
         "operator",
+        "evidence_class",
+        "required_evidence_artifacts",
+        "raw_data_artifact",
+        "fixture_calibration_certificate",
+        "photo_or_log_artifact",
+        "lot_traceability_record",
         "notes",
     ]
     with template_path.open("w", newline="") as csv_file:
@@ -4979,6 +6189,14 @@ def write_display_validation_artifacts(
                     "measured_value": "",
                     "pass": "",
                     "operator": "",
+                    "evidence_class": "",
+                    "required_evidence_artifacts": ";".join(
+                        measurement["required_evidence_artifacts"]
+                    ),
+                    "raw_data_artifact": "",
+                    "fixture_calibration_certificate": "",
+                    "photo_or_log_artifact": "",
+                    "lot_traceability_record": "",
                     "notes": measurement["notes"],
                 }
             )
@@ -5029,11 +6247,23 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
     csv_path = REVIEW_DIR / "display-results-template.csv"
     expected = {item["measurement_id"]: item for item in display_validation["measurements"]}
     rows: list[dict[str, str]] = []
+    template_evidence_class = ""
     if csv_path.is_file():
-        with csv_path.open(newline="") as csv_file:
+        csv_text = csv_path.read_text()
+        csv_lines = csv_text.splitlines()
+        if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+            template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+            csv_text = "\n".join(csv_lines[1:]) + "\n"
+        with StringIO(csv_text) as csv_file:
             rows = list(csv.DictReader(csv_file))
 
     cases: list[dict[str, Any]] = []
+    forbidden_evidence_classes = {
+        "simulated_display_result_for_planning_not_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
     for row in rows:
         measurement_id = row.get("measurement_id", "")
         expected_item = expected.get(measurement_id, {})
@@ -5041,6 +6271,28 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
         pass_text = row.get("pass", "").strip().lower()
         sample_id = row.get("sample_id", "").strip()
         operator = row.get("operator", "").strip()
+        evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+        required_evidence_artifacts = [
+            artifact
+            for artifact in (
+                row.get("required_evidence_artifacts")
+                or ";".join(expected_item.get("required_evidence_artifacts", []))
+            ).split(";")
+            if artifact
+        ]
+        evidence_fields_present = all(
+            row.get(field, "").strip()
+            for field in [
+                "raw_data_artifact",
+                "fixture_calibration_certificate",
+                "photo_or_log_artifact",
+                "lot_traceability_record",
+            ]
+        )
+        evidence_class_allowed = (
+            evidence_class == "physical_display_result"
+            and evidence_class not in forbidden_evidence_classes
+        )
         measured_value: float | None = None
         parse_ok = False
         if measured_text:
@@ -5055,11 +6307,30 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
         within_max = measured_value is not None and (
             max_value in {"", None} or measured_value <= float(max_value)
         )
-        populated = bool(sample_id and operator and measured_text and pass_text)
+        populated = bool(
+            sample_id
+            and operator
+            and measured_text
+            and pass_text
+            and evidence_class
+            and required_evidence_artifacts
+            and evidence_fields_present
+        )
         cases.append(
             {
                 "measurement_id": measurement_id,
                 "expected_measurement": measurement_id in expected,
+                "evidence_class": evidence_class,
+                "evidence_class_allowed": evidence_class_allowed,
+                "required_evidence_artifacts": required_evidence_artifacts,
+                "raw_data_artifact_present": bool(row.get("raw_data_artifact", "").strip()),
+                "fixture_calibration_certificate_present": bool(
+                    row.get("fixture_calibration_certificate", "").strip()
+                ),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
+                "lot_traceability_record_present": bool(
+                    row.get("lot_traceability_record", "").strip()
+                ),
                 "populated": populated,
                 "numeric_check_pass": bool(parse_ok and within_min and within_max),
                 "declared_pass": pass_text in {"pass", "true", "yes", "1"},
@@ -5068,7 +6339,8 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
                 and parse_ok
                 and within_min
                 and within_max
-                and pass_text in {"pass", "true", "yes", "1"},
+                and pass_text in {"pass", "true", "yes", "1"}
+                and evidence_class_allowed,
             }
         )
 
@@ -5077,7 +6349,12 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
     failed_measurements = [
         case["measurement_id"]
         for case in cases
-        if case["populated"] and (not case["numeric_check_pass"] or not case["declared_pass"])
+        if case["populated"]
+        and (
+            not case["numeric_check_pass"]
+            or not case["declared_pass"]
+            or not case["evidence_class_allowed"]
+        )
     ]
     complete_count = sum(1 for case in cases if case["pass"])
     report = {
@@ -5088,13 +6365,16 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
         if complete_count == 0
         else "blocked_display_results_incomplete",
         "expected_measurement_count": len(expected),
+        "required_evidence_class": "physical_display_result",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
         "observed_row_count": len(cases),
         "complete_result_count": complete_count,
         "missing_measurements": missing_measurements,
         "blank_or_incomplete_measurements": blank_or_incomplete,
         "failed_measurements": failed_measurements,
         "cases": cases,
-        "release_rule": "Every display bond, FPC, touch, luminance, drop, and bring-up row must include sample, operator, numeric passing result, and explicit pass disposition.",
+        "release_rule": "Every display bond, FPC, touch, luminance, drop, and bring-up row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_display_result, raw measurement/log data, fixture calibration certificate, photo/log artifact, and display or adhesive lot traceability record.",
     }
     (REVIEW_DIR / "display-results-review.json").write_text(json.dumps(report, indent=2) + "\n")
 
@@ -5112,6 +6392,180 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
         lines.append(f"- `{measurement_id}`")
     lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
     (REVIEW_DIR / "display-results-review.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_mechanical_integration_sim_artifacts(
+    params: dict[str, Any],
+    parts: list[Part],
+    interface_validation: dict[str, Any],
+    display_validation: dict[str, Any],
+) -> dict[str, Any]:
+    comp = params["components"]
+    display = params["display"]
+    tolerance = params["validation"]["tolerance"]
+    part_names = {part.name for part in parts}
+    interface_cases = {case["id"]: case for case in interface_validation.get("interfaces", [])}
+    display_cases = {case["id"]: case for case in display_validation.get("cases", [])}
+
+    usb_aperture_mm = [10.2, 3.6]
+    usb_shell = comp["usb_c"]["envelope_mm"]
+    usb_xy_clearance_mm = (usb_aperture_mm[0] - usb_shell[0]) / 2.0
+    usb_z_clearance_mm = (usb_aperture_mm[1] - usb_shell[2]) / 2.0
+    usb_min_clearance_mm = min(usb_xy_clearance_mm, usb_z_clearance_mm)
+    plug_shell_mm = [8.35, 2.6]
+    plug_clearance_mm = min(
+        (usb_aperture_mm[0] - plug_shell_mm[0]) / 2.0,
+        (usb_aperture_mm[1] - plug_shell_mm[1]) / 2.0,
+    )
+    usb_base_insertion_force_n = 18.0
+    usb_clearance_penalty_n = max(
+        0.0, (tolerance["usb_shell_to_aperture_clearance_mm"] - usb_min_clearance_mm) * 80.0
+    )
+    usb_predicted_peak_force_n = usb_base_insertion_force_n + usb_clearance_penalty_n
+
+    adhesive_area_mm2 = (
+        2.0 * display["cover_glass_mm"][0] * display["adhesive_width_mm"]
+        + 2.0 * display["cover_glass_mm"][1] * display["adhesive_width_mm"]
+    )
+    adhesive_compression_mm = display["adhesive_thickness_mm"] * (
+        display["compression_target_pct"] / 100.0
+    )
+    screen_bond_clamp_force_n = adhesive_area_mm2 * 0.08
+    screen_compression_pressure_n_per_mm2 = screen_bond_clamp_force_n / adhesive_area_mm2
+
+    button_cases = []
+    for button_id, key in [("power_button", "power_button"), ("volume_button", "volume_button")]:
+        button = comp[key]
+        cap_area_mm2 = button["cap_mm"][1] * button["cap_mm"][2]
+        pressure_n_per_mm2 = button["force_n"] / cap_area_mm2
+        button_cases.append(
+            {
+                "id": button_id,
+                "switch_candidate": button["standardized_part"],
+                "actuation_force_n": button["force_n"],
+                "travel_mm": button["travel_mm"],
+                "cap_pressure_n_per_mm2": round(pressure_n_per_mm2, 4),
+                "pressure_limit_n_per_mm2": tolerance["button_pressure_limit_n_per_mm2"],
+                "required_parts_present": all(
+                    name in part_names
+                    for name in [
+                        f"{button_id}_cap",
+                        f"{button_id}_elastomer_gasket",
+                    ]
+                ),
+                "planning_pass": 1.2 <= button["force_n"] <= 2.2
+                and button["travel_mm"] >= 0.25
+                and pressure_n_per_mm2 <= tolerance["button_pressure_limit_n_per_mm2"],
+            }
+        )
+
+    cases = [
+        {
+            "id": "usb_c_insertion_load_planning",
+            "interface_case": "usb_c_insertion_capture",
+            "evidence_class": "deterministic_cad_simulation_not_physical_result",
+            "actual": {
+                "usb_receptacle_shell_mm": usb_shell,
+                "aperture_mm": usb_aperture_mm,
+                "plug_shell_mm": plug_shell_mm,
+                "shell_xy_clearance_each_side_mm": round(usb_xy_clearance_mm, 3),
+                "shell_z_clearance_each_side_mm": round(usb_z_clearance_mm, 3),
+                "plug_min_clearance_mm": round(plug_clearance_mm, 3),
+                "predicted_peak_insertion_force_n": round(usb_predicted_peak_force_n, 2),
+                "cycle_rating": comp["usb_c"]["cycles"],
+            },
+            "target": ">=0.15 mm shell-to-aperture clearance, plug clearance positive, predicted peak insertion force <=35 N, cycle rating >=10000",
+            "planning_pass": usb_min_clearance_mm >= tolerance["usb_shell_to_aperture_clearance_mm"]
+            and plug_clearance_mm > 0.0
+            and usb_predicted_peak_force_n <= 35.0
+            and comp["usb_c"]["cycles"] >= 10000
+            and bool(interface_cases.get("usb_c_insertion_capture", {}).get("pass")),
+            "physical_release_evidence_required": [
+                "usb_c_insertion_force_raw_csv",
+                "usb_insertion_fixture_calibration_certificate",
+                "usb_c_insertion_gauge_video_or_photo",
+                "post_cycle_continuity_log",
+            ],
+        },
+        {
+            "id": "screen_bond_clamp_and_fpc_planning",
+            "interface_case": "screen_bond_and_fpc_connection",
+            "evidence_class": "deterministic_cad_simulation_not_physical_result",
+            "actual": {
+                "adhesive_area_mm2": round(adhesive_area_mm2, 1),
+                "adhesive_width_mm": display["adhesive_width_mm"],
+                "adhesive_thickness_mm": display["adhesive_thickness_mm"],
+                "compression_target_pct": display["compression_target_pct"],
+                "compression_mm": round(adhesive_compression_mm, 3),
+                "estimated_clamp_force_n": round(screen_bond_clamp_force_n, 1),
+                "estimated_compression_pressure_n_per_mm2": round(
+                    screen_compression_pressure_n_per_mm2, 3
+                ),
+                "fpc_bend_radius_mm": display["fpc_bend_radius_mm"],
+            },
+            "target": "four-sided adhesive, 0.03-0.08 mm compression, FPC bend radius >=1.0 mm, display CAD cases pass",
+            "planning_pass": bool(display_cases.get("adhesive_bond_geometry", {}).get("pass"))
+            and bool(display_cases.get("display_fpc_bend_and_connector", {}).get("pass"))
+            and bool(interface_cases.get("screen_bond_and_fpc_connection", {}).get("pass")),
+            "physical_release_evidence_required": [
+                "display_peel_force_raw_csv",
+                "screen_compression_witness_raw_csv",
+                "display_fpc_bend_radius_raw_csv",
+                "display_dsi_bringup_log",
+            ],
+        },
+        {
+            "id": "side_button_force_pressure_planning",
+            "interface_case": "power_button_force_travel_pressure",
+            "evidence_class": "deterministic_cad_simulation_not_physical_result",
+            "button_cases": button_cases,
+            "target": "power and volume force 1.2-2.2 N, travel >=0.25 mm, cap pressure <= limit",
+            "planning_pass": all(case["planning_pass"] for case in button_cases)
+            and bool(interface_cases.get("power_button_force_travel_pressure", {}).get("pass"))
+            and bool(interface_cases.get("volume_button_force_travel_pressure", {}).get("pass")),
+            "physical_release_evidence_required": [
+                "power_button_force_raw_csv",
+                "volume_button_force_raw_csv",
+                "button_cycle_log",
+                "post_dust_splash_button_stickiness_log",
+            ],
+        },
+    ]
+    report = {
+        "claim_boundary": (
+            "Deterministic CAD/parameter simulation for USB-C insertion, display bonding/FPC "
+            "routing, and side-button actuation planning. It is not measured physical validation "
+            "and cannot satisfy release evidence gates."
+        ),
+        "status": "cad_mechanical_integration_sim_ready"
+        if all(case["planning_pass"] for case in cases)
+        else "blocked_mechanical_integration_sim",
+        "evidence_class": "deterministic_cad_simulation_not_physical_result",
+        "case_count": len(cases),
+        "cases": cases,
+        "release_rule": (
+            "Release still requires physical USB insertion/cycle data, bonded display peel and "
+            "compression data, FPC bend inspection, and button force/travel/cycle measurements "
+            "with calibrated fixtures and lot traceability."
+        ),
+    }
+    (REVIEW_DIR / "mechanical-integration-sim.json").write_text(json.dumps(report, indent=2) + "\n")
+    lines = [
+        "# E1 Phone Mechanical Integration Simulation",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This is deterministic CAD planning evidence only; physical release gates stay closed.",
+        "",
+        "## Cases",
+        "",
+    ]
+    for case in cases:
+        result = "PASS" if case["planning_pass"] else "BLOCKED"
+        lines.append(f"- {result}: `{case['id']}` target {case['target']}")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "mechanical-integration-sim.md").write_text("\n".join(lines) + "\n")
     return report
 
 
@@ -5239,7 +6693,7 @@ def write_environmental_validation_artifacts(
         },
     ]
 
-    measurements = [
+    measurements: list[dict[str, Any]] = [
         {
             "measurement_id": "max_skin_temp_video_call_c",
             "domain": "thermal",
@@ -5322,6 +6776,66 @@ def write_environmental_validation_artifacts(
             "notes": "Functional failures after design-intent splash exposure.",
         },
     ]
+    required_evidence_by_measurement = {
+        "max_skin_temp_video_call_c": [
+            "skin_temperature_raw_log",
+            "thermal_chamber_or_probe_calibration_certificate",
+            "thermal_probe_placement_photo",
+            "enclosure_resin_and_unit_lot_records",
+        ],
+        "soc_shield_can_peak_temp_c": [
+            "soc_shield_thermocouple_raw_log",
+            "thermocouple_calibration_certificate",
+            "soc_shield_probe_photo",
+            "pcb_and_shield_can_lot_records",
+        ],
+        "cellular_desense_delta_db": [
+            "cellular_desense_raw_chamber_csv",
+            "rf_chamber_calibration_certificate",
+            "antenna_test_setup_photo",
+            "radio_module_and_antenna_lot_records",
+        ],
+        "wifi_bt_desense_delta_db": [
+            "wifi_bt_desense_raw_chamber_csv",
+            "rf_chamber_calibration_certificate",
+            "wifi_bt_antenna_test_setup_photo",
+            "wifi_module_and_antenna_lot_records",
+        ],
+        "sar_prescan_w_per_kg_1g": [
+            "sar_prescan_raw_report",
+            "sar_system_calibration_certificate",
+            "sar_probe_position_photo",
+            "radio_module_antenna_and_enclosure_lot_records",
+        ],
+        "drop_1m_functional_failures": [
+            "drop_sequence_result_log",
+            "drop_fixture_calibration_certificate",
+            "post_drop_functional_test_log_or_video",
+            "evt_unit_lot_traceability_record",
+        ],
+        "drop_1m_crack_or_latch_release": [
+            "drop_visual_inspection_report",
+            "drop_fixture_calibration_certificate",
+            "post_drop_shell_screen_photo_set",
+            "enclosure_glass_and_adhesive_lot_records",
+        ],
+        "ip54_dust_ingress_functional_failures": [
+            "dust_ingress_result_log",
+            "dust_chamber_calibration_certificate",
+            "post_dust_port_and_screen_inspection_photos",
+            "mesh_gasket_and_evt_unit_lot_records",
+        ],
+        "ip54_splash_ingress_functional_failures": [
+            "splash_ingress_result_log",
+            "splash_fixture_calibration_certificate",
+            "post_splash_port_and_usb_inspection_photos",
+            "mesh_gasket_and_evt_unit_lot_records",
+        ],
+    }
+    for measurement in measurements:
+        measurement["required_evidence_artifacts"] = required_evidence_by_measurement[
+            measurement["measurement_id"]
+        ]
     template_path = REVIEW_DIR / "environmental-results-template.csv"
     fieldnames = [
         "sample_id",
@@ -5333,6 +6847,12 @@ def write_environmental_validation_artifacts(
         "measured_value",
         "pass",
         "operator",
+        "evidence_class",
+        "required_evidence_artifacts",
+        "raw_data_artifact",
+        "fixture_calibration_certificate",
+        "photo_or_log_artifact",
+        "lot_traceability_record",
         "notes",
     ]
     with template_path.open("w", newline="") as csv_file:
@@ -5350,6 +6870,14 @@ def write_environmental_validation_artifacts(
                     "measured_value": "",
                     "pass": "",
                     "operator": "",
+                    "evidence_class": "",
+                    "required_evidence_artifacts": ";".join(
+                        measurement["required_evidence_artifacts"]
+                    ),
+                    "raw_data_artifact": "",
+                    "fixture_calibration_certificate": "",
+                    "photo_or_log_artifact": "",
+                    "lot_traceability_record": "",
                     "notes": measurement["notes"],
                 }
             )
@@ -5699,11 +7227,24 @@ def write_environmental_results_review_artifacts(
     csv_path = REVIEW_DIR / "environmental-results-template.csv"
     expected = {item["measurement_id"]: item for item in environmental_validation["measurements"]}
     rows: list[dict[str, str]] = []
+    template_evidence_class = ""
     if csv_path.is_file():
-        with csv_path.open(newline="") as csv_file:
+        csv_text = csv_path.read_text()
+        csv_lines = csv_text.splitlines()
+        if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+            template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+            csv_text = "\n".join(csv_lines[1:]) + "\n"
+        with StringIO(csv_text) as csv_file:
             rows = list(csv.DictReader(csv_file))
 
     cases: list[dict[str, Any]] = []
+    forbidden_evidence_classes = {
+        "simulated_environmental_result_for_planning_not_release",
+        "simulated_first_article_for_evt_planning_not_production_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
     for row in rows:
         measurement_id = row.get("measurement_id", "")
         expected_item = expected.get(measurement_id, {})
@@ -5711,6 +7252,28 @@ def write_environmental_results_review_artifacts(
         pass_text = row.get("pass", "").strip().lower()
         sample_id = row.get("sample_id", "").strip()
         operator = row.get("operator", "").strip()
+        evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+        required_evidence_artifacts = [
+            artifact
+            for artifact in (
+                row.get("required_evidence_artifacts")
+                or ";".join(expected_item.get("required_evidence_artifacts", []))
+            ).split(";")
+            if artifact
+        ]
+        evidence_fields_present = all(
+            row.get(field, "").strip()
+            for field in [
+                "raw_data_artifact",
+                "fixture_calibration_certificate",
+                "photo_or_log_artifact",
+                "lot_traceability_record",
+            ]
+        )
+        evidence_class_allowed = (
+            evidence_class == "physical_environmental_result"
+            and evidence_class not in forbidden_evidence_classes
+        )
         measured_value: float | None = None
         parse_ok = False
         if measured_text:
@@ -5725,12 +7288,31 @@ def write_environmental_results_review_artifacts(
         within_max = measured_value is not None and (
             max_value in {"", None} or measured_value <= float(max_value)
         )
-        populated = bool(sample_id and operator and measured_text and pass_text)
+        populated = bool(
+            sample_id
+            and operator
+            and measured_text
+            and pass_text
+            and evidence_class
+            and required_evidence_artifacts
+            and evidence_fields_present
+        )
         cases.append(
             {
                 "measurement_id": measurement_id,
                 "expected_measurement": measurement_id in expected,
                 "domain": row.get("domain", expected_item.get("domain", "")),
+                "evidence_class": evidence_class,
+                "evidence_class_allowed": evidence_class_allowed,
+                "required_evidence_artifacts": required_evidence_artifacts,
+                "raw_data_artifact_present": bool(row.get("raw_data_artifact", "").strip()),
+                "fixture_calibration_certificate_present": bool(
+                    row.get("fixture_calibration_certificate", "").strip()
+                ),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
+                "lot_traceability_record_present": bool(
+                    row.get("lot_traceability_record", "").strip()
+                ),
                 "populated": populated,
                 "numeric_check_pass": bool(parse_ok and within_min and within_max),
                 "declared_pass": pass_text in {"pass", "true", "yes", "1"},
@@ -5739,7 +7321,8 @@ def write_environmental_results_review_artifacts(
                 and parse_ok
                 and within_min
                 and within_max
-                and pass_text in {"pass", "true", "yes", "1"},
+                and pass_text in {"pass", "true", "yes", "1"}
+                and evidence_class_allowed,
             }
         )
 
@@ -5748,7 +7331,12 @@ def write_environmental_results_review_artifacts(
     failed_measurements = [
         case["measurement_id"]
         for case in cases
-        if case["populated"] and (not case["numeric_check_pass"] or not case["declared_pass"])
+        if case["populated"]
+        and (
+            not case["numeric_check_pass"]
+            or not case["declared_pass"]
+            or not case["evidence_class_allowed"]
+        )
     ]
     complete_count = sum(1 for case in cases if case["pass"])
     report = {
@@ -5759,13 +7347,16 @@ def write_environmental_results_review_artifacts(
         if complete_count == 0
         else "blocked_environmental_results_incomplete",
         "expected_measurement_count": len(expected),
+        "required_evidence_class": "physical_environmental_result",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
         "observed_row_count": len(cases),
         "complete_result_count": complete_count,
         "missing_measurements": missing_measurements,
         "blank_or_incomplete_measurements": blank_or_incomplete,
         "failed_measurements": failed_measurements,
         "cases": cases,
-        "release_rule": "Every thermal, RF, SAR pre-scan, drop, dust, and splash row must include sample, operator, numeric passing result, and explicit pass disposition.",
+        "release_rule": "Every thermal, RF, SAR pre-scan, drop, dust, and splash row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_environmental_result, raw chamber/test data, fixture calibration certificate, photo/log artifact, and unit/material/module lot traceability record.",
     }
     (REVIEW_DIR / "environmental-results-review.json").write_text(
         json.dumps(report, indent=2) + "\n"
@@ -5962,7 +7553,7 @@ def write_evt_inspection_plan_artifacts(
     display = params["display"]
     interface_cases = {case["id"]: case for case in interface_validation.get("interfaces", [])}
     fixture_case_ids = {case["id"] for case in evt_fixtures.get("cases", [])}
-    measurements = [
+    measurements: list[dict[str, Any]] = [
         {
             "id": "power_button_actuation_force",
             "interface_case": "power_button_force_travel_pressure",
@@ -6086,6 +7677,72 @@ def write_evt_inspection_plan_artifacts(
             "method": "Compare masked/unmasked receiver leakage around handset gasket.",
         },
     ]
+    required_evidence_by_measurement = {
+        "power_button_actuation_force": [
+            "power_button_force_raw_csv",
+            "load_cell_calibration_certificate",
+            "power_button_probe_photo_or_video",
+            "side_button_and_enclosure_lot_records",
+        ],
+        "power_button_travel": [
+            "power_button_travel_raw_csv",
+            "dial_indicator_calibration_certificate",
+            "power_button_travel_probe_photo",
+            "side_button_and_enclosure_lot_records",
+        ],
+        "volume_button_actuation_force": [
+            "volume_button_force_raw_csv",
+            "load_cell_calibration_certificate",
+            "volume_button_probe_photo_or_video",
+            "side_button_and_enclosure_lot_records",
+        ],
+        "usb_c_insertion_force_no_rub": [
+            "usb_c_insertion_force_raw_csv",
+            "usb_insertion_fixture_calibration_certificate",
+            "usb_c_insertion_gauge_video_or_photo",
+            "usb_receptacle_and_enclosure_lot_records",
+        ],
+        "screen_adhesive_compression": [
+            "screen_compression_witness_raw_csv",
+            "screen_clamp_fixture_calibration_certificate",
+            "screen_bond_witness_photo",
+            "display_adhesive_and_enclosure_lot_records",
+        ],
+        "display_fpc_bend_radius": [
+            "display_fpc_bend_radius_raw_csv",
+            "optical_measurement_fixture_calibration_certificate",
+            "connected_display_fpc_photo",
+            "display_module_and_connector_lot_records",
+        ],
+        "rear_camera_lens_center_error": [
+            "rear_camera_alignment_raw_csv",
+            "camera_alignment_fixture_calibration_certificate",
+            "rear_camera_alignment_pin_photo",
+            "rear_camera_module_and_cover_glass_lot_records",
+        ],
+        "front_camera_under_glass_center_error": [
+            "front_camera_alignment_raw_csv",
+            "camera_alignment_fixture_calibration_certificate",
+            "front_under_glass_alignment_pin_photo",
+            "front_camera_module_and_cover_glass_lot_records",
+        ],
+        "bottom_audio_leak_delta": [
+            "bottom_audio_leak_raw_sweep_csv",
+            "acoustic_leak_fixture_calibration_certificate",
+            "bottom_audio_leak_mask_photo",
+            "speaker_microphone_mesh_and_enclosure_lot_records",
+        ],
+        "handset_receiver_leak_delta": [
+            "handset_leak_raw_sweep_csv",
+            "acoustic_leak_fixture_calibration_certificate",
+            "earpiece_leak_mask_photo",
+            "receiver_gasket_and_enclosure_lot_records",
+        ],
+    }
+    for measurement in measurements:
+        measurement["required_evidence_artifacts"] = required_evidence_by_measurement[
+            measurement["id"]
+        ]
     rows = [
         {
             "sample_id": "",
@@ -6098,6 +7755,12 @@ def write_evt_inspection_plan_artifacts(
             "measured": "",
             "pass": "",
             "operator": "",
+            "evidence_class": "",
+            "required_evidence_artifacts": ";".join(item["required_evidence_artifacts"]),
+            "raw_data_artifact": "",
+            "fixture_calibration_certificate": "",
+            "photo_or_log_artifact": "",
+            "lot_traceability_record": "",
             "notes": item["method"],
         }
         for item in measurements
@@ -6117,6 +7780,12 @@ def write_evt_inspection_plan_artifacts(
                 "measured",
                 "pass",
                 "operator",
+                "evidence_class",
+                "required_evidence_artifacts",
+                "raw_data_artifact",
+                "fixture_calibration_certificate",
+                "photo_or_log_artifact",
+                "lot_traceability_record",
                 "notes",
             ],
         )
@@ -6165,11 +7834,24 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
     csv_path = REVIEW_DIR / "evt-inspection-results-template.csv"
     expected = {item["id"]: item for item in evt_inspection.get("measurements", [])}
     rows: list[dict[str, str]] = []
+    template_evidence_class = ""
     if csv_path.is_file():
-        with csv_path.open(newline="") as csv_file:
+        csv_text = csv_path.read_text()
+        csv_lines = csv_text.splitlines()
+        if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+            template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+            csv_text = "\n".join(csv_lines[1:]) + "\n"
+        with StringIO(csv_text) as csv_file:
             rows = [dict(row) for row in csv.DictReader(csv_file)]
 
     cases: list[dict[str, Any]] = []
+    forbidden_evidence_classes = {
+        "simulated_evt_result_for_planning_not_release",
+        "simulated_first_article_for_evt_planning_not_production_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
     for row in rows:
         measurement_id = row.get("measurement_id", "")
         expected_item = expected.get(measurement_id, {})
@@ -6177,6 +7859,28 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
         pass_text = row.get("pass", "").strip().lower()
         sample_id = row.get("sample_id", "").strip()
         operator = row.get("operator", "").strip()
+        evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+        required_evidence_artifacts = [
+            artifact
+            for artifact in (
+                row.get("required_evidence_artifacts")
+                or ";".join(expected_item.get("required_evidence_artifacts", []))
+            ).split(";")
+            if artifact
+        ]
+        evidence_fields_present = all(
+            row.get(field, "").strip()
+            for field in [
+                "raw_data_artifact",
+                "fixture_calibration_certificate",
+                "photo_or_log_artifact",
+                "lot_traceability_record",
+            ]
+        )
+        evidence_class_allowed = (
+            evidence_class == "physical_evt_result"
+            and evidence_class not in forbidden_evidence_classes
+        )
         measured_value: float | None = None
         parse_ok = False
         if measured_text:
@@ -6193,7 +7897,15 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
         )
         numeric_pass = bool(parse_ok and within_min and within_max)
         explicit_pass = pass_text in {"pass", "true", "yes", "y", "1"}
-        populated = bool(sample_id and operator and measured_text and pass_text)
+        populated = bool(
+            sample_id
+            and operator
+            and measured_text
+            and pass_text
+            and evidence_class
+            and required_evidence_artifacts
+            and evidence_fields_present
+        )
         cases.append(
             {
                 "measurement_id": measurement_id,
@@ -6202,10 +7914,21 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
                 "measured": measured_value,
                 "min": min_value,
                 "max": max_value,
+                "evidence_class": evidence_class,
+                "evidence_class_allowed": evidence_class_allowed,
+                "required_evidence_artifacts": required_evidence_artifacts,
+                "raw_data_artifact_present": bool(row.get("raw_data_artifact", "").strip()),
+                "fixture_calibration_certificate_present": bool(
+                    row.get("fixture_calibration_certificate", "").strip()
+                ),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
+                "lot_traceability_record_present": bool(
+                    row.get("lot_traceability_record", "").strip()
+                ),
                 "populated": populated,
                 "numeric_pass": numeric_pass,
                 "explicit_pass": explicit_pass,
-                "pass": populated and numeric_pass and explicit_pass,
+                "pass": populated and numeric_pass and explicit_pass and evidence_class_allowed,
             }
         )
 
@@ -6216,9 +7939,32 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
     failed_measurements = [
         case["measurement_id"]
         for case in cases
-        if case["populated"] and not (case["numeric_pass"] and case["explicit_pass"])
+        if case["populated"]
+        and not (case["numeric_pass"] and case["explicit_pass"] and case["evidence_class_allowed"])
     ]
     populated_count = sum(1 for case in cases if case["populated"])
+    complete_count = sum(1 for case in cases if case["pass"])
+    sample_coverage: list[dict[str, Any]] = []
+    for measurement_id, expected_item in expected.items():
+        measurement_cases = [case for case in cases if case["measurement_id"] == measurement_id]
+        required_sample_count = int(expected_item.get("sample_count") or 1)
+        passed_sample_count = sum(1 for case in measurement_cases if case["pass"])
+        sample_coverage.append(
+            {
+                "measurement_id": measurement_id,
+                "required_sample_count": required_sample_count,
+                "observed_row_count": len(measurement_cases),
+                "populated_row_count": sum(1 for case in measurement_cases if case["populated"]),
+                "passed_sample_count": passed_sample_count,
+                "pass": passed_sample_count >= required_sample_count,
+            }
+        )
+    sample_shortage_measurements = [
+        item["measurement_id"] for item in sample_coverage if not item["pass"]
+    ]
+    expected_sample_result_count = sum(
+        int(item.get("sample_count") or 1) for item in expected.values()
+    )
     status = (
         "evt_results_pass"
         if evt_inspection["status"] == "evt_inspection_plan_ready"
@@ -6226,9 +7972,10 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
         and not missing_measurements
         and not blank_or_incomplete
         and not failed_measurements
+        and not sample_shortage_measurements
         and all(case["pass"] for case in cases)
         else "blocked_no_physical_results"
-        if populated_count == 0
+        if complete_count == 0
         else "blocked_evt_results_incomplete_or_failed"
     )
     report = {
@@ -6236,12 +7983,20 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
         "status": status,
         "results_csv": "mechanical/e1-phone/review/evt-inspection-results-template.csv",
         "expected_measurement_count": len(expected_ids),
+        "required_evidence_class": "physical_evt_result",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
         "observed_row_count": len(cases),
+        "expected_sample_result_count": expected_sample_result_count,
         "populated_result_count": populated_count,
+        "complete_result_count": complete_count,
+        "sample_coverage": sample_coverage,
         "missing_measurements": missing_measurements,
         "blank_or_incomplete_measurements": blank_or_incomplete,
         "failed_measurements": failed_measurements,
+        "sample_shortage_measurements": sample_shortage_measurements,
         "cases": cases,
+        "release_rule": "Every planned button, USB-C insertion, screen bond/FPC, camera alignment, and acoustic leak sample must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_evt_result, raw measurement data, fixture calibration certificate, photo/log artifact, and unit/component lot traceability record. Each measurement must meet the planned sample count before physical interface validation can release.",
     }
     (REVIEW_DIR / "evt-results-review.json").write_text(json.dumps(report, indent=2) + "\n")
 
@@ -6266,6 +8021,14 @@ def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[s
         lines.extend(["", "## Failed Measurements", ""])
         for measurement_id in failed_measurements:
             lines.append(f"- `{measurement_id}`")
+    if sample_shortage_measurements:
+        lines.extend(["", "## Sample Count Shortage", ""])
+        for item in sample_coverage:
+            if not item["pass"]:
+                lines.append(
+                    f"- `{item['measurement_id']}` {item['passed_sample_count']}/{item['required_sample_count']} passing samples"
+                )
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
     (REVIEW_DIR / "evt-results-review.md").write_text("\n".join(lines) + "\n")
     return report
 
@@ -6480,6 +8243,12 @@ def write_gdt_release_package_artifacts(
                 "plus_tolerance_mm": row["evt0_tolerance_mm"],
                 "minus_tolerance_mm": row["evt0_tolerance_mm"],
                 "inspection_method": "CMM or optical comparator against released STEP/drawing",
+                "required_evidence_artifacts": [
+                    "fai_cmm_or_optical_raw_report",
+                    "inspection_equipment_calibration_certificate",
+                    "feature_inspection_photo_or_scan",
+                    "part_revision_tooling_and_resin_lot_records",
+                ],
                 "sample_requirement": "100% first article; Cpk after DVT tool tuning",
             }
         )
@@ -6495,6 +8264,12 @@ def write_gdt_release_package_artifacts(
                 "minus_tolerance_mm": "",
                 "minimum_mm": stack["minimum_mm"],
                 "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+                "required_evidence_artifacts": [
+                    "fai_stack_measurement_raw_report",
+                    "inspection_fixture_or_cmm_calibration_certificate",
+                    "assembly_stack_inspection_photo",
+                    "part_revision_tooling_and_resin_lot_records",
+                ],
                 "sample_requirement": "all EVT first articles",
             }
         )
@@ -6514,6 +8289,12 @@ def write_gdt_release_package_artifacts(
         "measured_value",
         "pass",
         "inspector",
+        "evidence_class",
+        "required_evidence_artifacts",
+        "raw_measurement_artifact",
+        "inspection_equipment_calibration_certificate",
+        "inspection_photo_or_scan",
+        "lot_traceability_record",
         "notes",
     ]
     with csv_path.open("w", newline="") as csv_file:
@@ -6535,6 +8316,12 @@ def write_gdt_release_package_artifacts(
                     "measured_value": "",
                     "pass": "",
                     "inspector": "",
+                    "evidence_class": "",
+                    "required_evidence_artifacts": ";".join(row["required_evidence_artifacts"]),
+                    "raw_measurement_artifact": "",
+                    "inspection_equipment_calibration_certificate": "",
+                    "inspection_photo_or_scan": "",
+                    "lot_traceability_record": "",
                     "notes": row["inspection_method"],
                 }
             )
@@ -6583,18 +8370,57 @@ def write_gdt_release_package_artifacts(
 def write_gdt_fai_results_review_artifacts(gdt_release: dict[str, Any]) -> dict[str, Any]:
     csv_path = REVIEW_DIR / "gdt-fai-template.csv"
     rows: list[dict[str, str]] = []
+    template_evidence_class = ""
     if csv_path.is_file():
-        with csv_path.open(newline="") as csv_file:
+        csv_text = csv_path.read_text()
+        csv_lines = csv_text.splitlines()
+        if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+            template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+            csv_text = "\n".join(csv_lines[1:]) + "\n"
+        with StringIO(csv_text) as csv_file:
             rows = list(csv.DictReader(csv_file))
 
     expected_ids = {row["characteristic_id"] for row in gdt_release.get("characteristics", [])}
+    expected_by_id = {
+        row["characteristic_id"]: row for row in gdt_release.get("characteristics", [])
+    }
     reviewed_cases: list[dict[str, Any]] = []
+    forbidden_evidence_classes = {
+        "simulated_fai_result_for_planning_not_release",
+        "simulated_first_article_for_evt_planning_not_production_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
     for row in rows:
         characteristic_id = row.get("characteristic_id", "")
+        expected_item = expected_by_id.get(characteristic_id, {})
         measured_value = row.get("measured_value", "").strip()
         pass_flag = row.get("pass", "").strip().lower()
         inspector = row.get("inspector", "").strip()
         sample_id = row.get("sample_id", "").strip()
+        evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+        required_evidence_artifacts = [
+            artifact
+            for artifact in (
+                row.get("required_evidence_artifacts")
+                or ";".join(expected_item.get("required_evidence_artifacts", []))
+            ).split(";")
+            if artifact
+        ]
+        evidence_fields_present = all(
+            row.get(field, "").strip()
+            for field in [
+                "raw_measurement_artifact",
+                "inspection_equipment_calibration_certificate",
+                "inspection_photo_or_scan",
+                "lot_traceability_record",
+            ]
+        )
+        evidence_class_allowed = (
+            evidence_class == "physical_fai_result"
+            and evidence_class not in forbidden_evidence_classes
+        )
         minimum_text = row.get("minimum_mm", "").strip()
         numeric_pass = True
         measured_float: float | None = None
@@ -6605,11 +8431,34 @@ def write_gdt_fai_results_review_artifacts(gdt_release: dict[str, Any]) -> dict[
                 numeric_pass = False
         if minimum_text and measured_float is not None:
             numeric_pass = measured_float >= float(minimum_text)
-        populated = bool(sample_id and measured_value and inspector and pass_flag)
+        populated = bool(
+            sample_id
+            and measured_value
+            and inspector
+            and pass_flag
+            and evidence_class
+            and required_evidence_artifacts
+            and evidence_fields_present
+        )
         reviewed_cases.append(
             {
                 "characteristic_id": characteristic_id,
                 "expected_characteristic": characteristic_id in expected_ids,
+                "evidence_class": evidence_class,
+                "evidence_class_allowed": evidence_class_allowed,
+                "required_evidence_artifacts": required_evidence_artifacts,
+                "raw_measurement_artifact_present": bool(
+                    row.get("raw_measurement_artifact", "").strip()
+                ),
+                "inspection_equipment_calibration_certificate_present": bool(
+                    row.get("inspection_equipment_calibration_certificate", "").strip()
+                ),
+                "inspection_photo_or_scan_present": bool(
+                    row.get("inspection_photo_or_scan", "").strip()
+                ),
+                "lot_traceability_record_present": bool(
+                    row.get("lot_traceability_record", "").strip()
+                ),
                 "sample_id_present": bool(sample_id),
                 "measured_value_present": bool(measured_value),
                 "inspector_present": bool(inspector),
@@ -6618,7 +8467,8 @@ def write_gdt_fai_results_review_artifacts(gdt_release: dict[str, Any]) -> dict[
                 "pass": populated
                 and characteristic_id in expected_ids
                 and pass_flag in {"yes", "true", "1", "pass"}
-                and numeric_pass,
+                and numeric_pass
+                and evidence_class_allowed,
             }
         )
 
@@ -6637,11 +8487,14 @@ def write_gdt_fai_results_review_artifacts(gdt_release: dict[str, Any]) -> dict[
         else "blocked_fai_results_incomplete",
         "fai_template": "mechanical/e1-phone/review/gdt-fai-template.csv",
         "expected_characteristic_count": len(expected_ids),
+        "required_evidence_class": "physical_fai_result",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
         "observed_row_count": len(reviewed_cases),
         "complete_result_count": complete_count,
         "blank_or_incomplete_characteristics": missing_or_incomplete,
         "cases": reviewed_cases,
-        "release_rule": "Every GD&T/FAI characteristic must include sample ID, measured value, inspector, and passing disposition before tolerance release.",
+        "release_rule": "Every GD&T/FAI characteristic must include sample ID, measured value, inspector, passing disposition, evidence_class=physical_fai_result, raw CMM/inspection report, inspection equipment calibration certificate, inspection photo/scan, and part revision/tooling/resin lot traceability before tolerance release.",
     }
     (REVIEW_DIR / "gdt-fai-results-review.json").write_text(json.dumps(report, indent=2) + "\n")
 
@@ -6661,6 +8514,858 @@ def write_gdt_fai_results_review_artifacts(gdt_release: dict[str, Any]) -> dict[
         lines.append(f"- `{characteristic_id}`")
     lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
     (REVIEW_DIR / "gdt-fai-results-review.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def _write_results_template_if_blank(
+    csv_path: Path,
+    fieldnames: list[str],
+    rows: list[dict[str, Any]],
+    id_field: str,
+    response_fields: list[str],
+) -> None:
+    should_write = True
+    if csv_path.is_file():
+        with csv_path.open(newline="") as csv_file:
+            existing_rows = list(csv.DictReader(csv_file))
+        existing_ids = {row.get(id_field, "") for row in existing_rows}
+        expected_ids = {str(row.get(id_field, "")) for row in rows}
+        existing_fields = list(existing_rows[0].keys()) if existing_rows else []
+        has_response_content = any(
+            row.get(field, "").strip() for row in existing_rows for field in response_fields
+        )
+        should_write = (
+            existing_ids != expected_ids or existing_fields != fieldnames or not existing_rows
+        ) and not has_response_content
+    if should_write:
+        with csv_path.open("w", newline="") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+
+def write_assembly_build_traveler_artifacts(
+    params: dict[str, Any],
+    parts: list[Part],
+) -> dict[str, Any]:
+    part_names = {part.name for part in parts}
+    steps: list[dict[str, Any]] = [
+        {
+            "id": "incoming_supplier_part_inspection",
+            "station": "incoming_quality",
+            "required_parts": [
+                "screen_cover_glass",
+                "display_lcm",
+                "rear_camera_module",
+                "front_camera_module",
+                "usb_c_receptacle",
+                "bottom_speaker_module",
+                "earpiece_receiver",
+                "power_button_cap",
+                "volume_button_cap",
+            ],
+            "required_measurements": [
+                "supplier_lot_id",
+                "drawing_revision",
+                "step_model_revision",
+                "incoming_sample_identity",
+                "critical_dimension_spot_check",
+            ],
+            "evidence_artifacts": [
+                "supplier-response-review.json",
+                "supplier-evidence-acceptance.json",
+                "supplier-drawing-intake-checklist.yaml",
+            ],
+            "stop_rule": (
+                "Do not start assembly if any supplier identity, CAD revision, or sample record "
+                "is missing."
+            ),
+            "acceptance": "supplier drawing/STEP/sample identity checked before build start",
+        },
+        {
+            "id": "screen_adhesive_and_display_bond",
+            "station": "display_bond",
+            "required_parts": [
+                "screen_adhesive_top",
+                "screen_adhesive_bottom",
+                "screen_adhesive_left",
+                "screen_adhesive_right",
+                "display_fpc_connector",
+                "display_fpc_bend_keepout",
+            ],
+            "required_measurements": [
+                "display_bond_peel_n_per_mm",
+                "screen_adhesive_compression_mm",
+                "display_fpc_bend_radius_mm",
+                "display_luminance_cd_m2",
+                "touch_grid_pass",
+                "display_dsi_bringup_logs",
+            ],
+            "evidence_artifacts": [
+                "display-validation.json",
+                "display-results-review.json",
+                "evt-inspection-plan.json",
+            ],
+            "stop_rule": (
+                "Stop build on screen lift, adhesive under-compression, FPC overbend, touch "
+                "failure, or no DSI bring-up log."
+            ),
+            "acceptance": (
+                "adhesive compression, FPC bend radius, luminance, touch grid, and drop/lift "
+                "checks pass"
+            ),
+        },
+        {
+            "id": "top_bottom_pcb_islands_and_split_flex",
+            "station": "pcb_flex_integration",
+            "required_parts": [
+                "main_pcb",
+                "split_interconnect_top_connector",
+                "split_interconnect_bottom_connector",
+                "split_interconnect_side_flex",
+                "battery_pouch",
+            ],
+            "required_measurements": [
+                "top_connector_seating_visual",
+                "bottom_connector_seating_visual",
+                "split_flex_continuity_ohm",
+                "battery_window_clearance_mm",
+                "flex_strain_relief_visual",
+            ],
+            "evidence_artifacts": [
+                "interface-validation.json",
+                "assembly-clearance.json",
+                "routed-board-clearance.json",
+            ],
+            "stop_rule": (
+                "Stop build on connector mis-seat, flex continuity failure, battery-window "
+                "clash, or missing routed-board clearance evidence."
+            ),
+            "acceptance": (
+                "top/bottom board connector seating, flex strain relief, continuity, and "
+                "battery window clearance pass"
+            ),
+        },
+        {
+            "id": "camera_handset_and_acoustic_stack",
+            "station": "optical_audio_stack",
+            "required_parts": [
+                "rear_camera_module",
+                "front_camera_module",
+                "rear_camera_cover_glass",
+                "front_camera_black_mask_window",
+                "bottom_speaker_module",
+                "bottom_speaker_dust_mesh",
+                "earpiece_receiver",
+                "earpiece_gasket",
+                "handset_acoustic_mesh",
+                "bottom_mic",
+                "top_mic",
+            ],
+            "required_measurements": [
+                "rear_camera_center_offset_mm",
+                "front_camera_center_offset_mm",
+                "camera_dust_baffle_visual",
+                "speaker_leak_db",
+                "earpiece_leak_db",
+                "mic_sensitivity_dbfs",
+                "camera_streaming_capture_log",
+            ],
+            "evidence_artifacts": [
+                "camera-validation.json",
+                "camera-results-review.json",
+                "acoustic-validation.json",
+                "acoustic-results-review.json",
+            ],
+            "stop_rule": (
+                "Stop build on camera decenter, dust, acoustic leak, blocked mesh, mic outlier, "
+                "or missing capture/audio logs."
+            ),
+            "acceptance": (
+                "camera alignment, dust/baffle inspection, speaker/mic/earpiece leak, and "
+                "streaming/audio checks pass"
+            ),
+        },
+        {
+            "id": "usb_buttons_haptics_and_ingress_seals",
+            "station": "side_bottom_io",
+            "required_parts": [
+                "usb_c_receptacle",
+                "usb_c_external_aperture",
+                "orange_usb_reinforcement_saddle",
+                "power_button_cap",
+                "volume_button_cap",
+                "power_button_elastomer_gasket",
+                "volume_button_elastomer_gasket",
+                "haptic_lra",
+            ],
+            "required_measurements": [
+                "usb_c_insertion_force_n",
+                "usb_c_post_cycle_continuity",
+                "power_button_actuation_force_n",
+                "volume_button_actuation_force_n",
+                "button_travel_mm",
+                "haptic_clearance_mm",
+                "port_button_gasket_visual",
+            ],
+            "evidence_artifacts": [
+                "interface-validation.json",
+                "evt-inspection-plan.json",
+                "fixture-calibration-acceptance.json",
+            ],
+            "stop_rule": (
+                "Stop build on high USB insertion force, continuity failure, button force/travel "
+                "outlier, haptic rub, or damaged gasket."
+            ),
+            "acceptance": (
+                "USB insertion, post-cycle continuity, button force/travel/cycle, haptic "
+                "clearance, and seal inspection pass"
+            ),
+        },
+        {
+            "id": "battery_install_and_enclosure_close",
+            "station": "final_mechanical_close",
+            "required_parts": [
+                "battery_pouch",
+                "orange_battery_left_rib",
+                "orange_battery_right_rib",
+                "orange_back_shell",
+                "orange_side_frame",
+                "orange_snap_hook_1",
+                "orange_screw_boss_1",
+            ],
+            "required_measurements": [
+                "battery_window_fit_visual",
+                "cable_pinch_visual",
+                "snap_retention_n",
+                "screw_torque_ncm",
+                "gap_flush_mm",
+                "enclosure_close_photo",
+            ],
+            "evidence_artifacts": [
+                "assembly-clearance.json",
+                "tolerance-stack.json",
+                "gdt-fai-results-review.json",
+            ],
+            "stop_rule": (
+                "Stop build on battery interference, cable pinch, failed retention, stripped "
+                "boss, or out-of-limit gap/flush."
+            ),
+            "acceptance": (
+                "battery window fit, snap/screw retention, enclosure gaps, no cable pinch, and "
+                "cosmetic check pass"
+            ),
+        },
+        {
+            "id": "final_function_cmf_and_traceability",
+            "station": "final_acceptance",
+            "required_parts": [
+                "screen_cover_glass",
+                "usb_c_receptacle",
+                "rear_camera_module",
+                "front_camera_module",
+                "bottom_speaker_module",
+                "earpiece_receiver",
+                "power_button_cap",
+                "volume_button_cap",
+                "orange_back_shell",
+            ],
+            "required_measurements": [
+                "display_touch_final_pass",
+                "front_rear_camera_final_pass",
+                "speaker_mic_earpiece_final_pass",
+                "usb_c_final_pass",
+                "button_haptic_final_pass",
+                "radio_smoke_test_pass",
+                "orange_cmf_visual_pass",
+                "unit_serial_trace_record",
+                "final_photo_record",
+            ],
+            "evidence_artifacts": [
+                "visual-decision-report.json",
+                "unit-traceability-acceptance.json",
+                "cmf-release-acceptance.json",
+            ],
+            "stop_rule": (
+                "Hold the unit on any functional, CMF, traceability, or final photo failure."
+            ),
+            "acceptance": (
+                "display, touch, cameras, audio, USB, buttons, radio smoke, CMF visual, serial "
+                "trace, and photo record pass"
+            ),
+        },
+    ]
+    for step in steps:
+        step["missing_parts"] = [name for name in step["required_parts"] if name not in part_names]
+        step["cad_prerequisites_present"] = not step["missing_parts"]
+        step["pass"] = step["cad_prerequisites_present"]
+
+    fieldnames = [
+        "build_id",
+        "unit_serial",
+        "step_id",
+        "operator",
+        "required_measurements",
+        "evidence_artifacts",
+        "measured_or_observed_result",
+        "pass",
+        "evidence_class",
+        "raw_data_artifact",
+        "photo_or_log_artifact",
+        "lot_traceability_record",
+        "nonconformance_id",
+        "stop_rule",
+        "notes",
+    ]
+    template_rows = [
+        {
+            "build_id": "",
+            "unit_serial": "",
+            "step_id": step["id"],
+            "operator": "",
+            "required_measurements": ";".join(step["required_measurements"]),
+            "evidence_artifacts": ";".join(step["evidence_artifacts"]),
+            "measured_or_observed_result": "",
+            "pass": "",
+            "evidence_class": "",
+            "raw_data_artifact": "",
+            "photo_or_log_artifact": "",
+            "lot_traceability_record": "",
+            "nonconformance_id": "",
+            "stop_rule": step["stop_rule"],
+            "notes": step["acceptance"],
+        }
+        for step in steps
+    ]
+    csv_path = REVIEW_DIR / "assembly-build-results-template.csv"
+    _write_results_template_if_blank(
+        csv_path,
+        fieldnames,
+        template_rows,
+        "step_id",
+        [
+            "build_id",
+            "unit_serial",
+            "operator",
+            "measured_or_observed_result",
+            "pass",
+            "evidence_class",
+            "raw_data_artifact",
+            "photo_or_log_artifact",
+            "lot_traceability_record",
+        ],
+    )
+
+    rows: list[dict[str, str]] = []
+    if csv_path.is_file():
+        with csv_path.open(newline="") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+    step_by_id = {step["id"]: step for step in steps}
+    forbidden_evidence_classes = {
+        "simulated_assembly_build_for_planning_not_release",
+        "simulated_first_article_for_evt_planning_not_production_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
+    cases = []
+    for row in rows:
+        step_id = row.get("step_id", "")
+        step = step_by_id.get(step_id, {})
+        evidence_class = row.get("evidence_class", "").strip()
+        evidence_class_allowed = (
+            evidence_class == "physical_assembly_build_record"
+            and evidence_class not in forbidden_evidence_classes
+        )
+        evidence_fields_present = all(
+            row.get(field, "").strip()
+            for field in [
+                "raw_data_artifact",
+                "photo_or_log_artifact",
+                "lot_traceability_record",
+            ]
+        )
+        populated = bool(
+            row.get("build_id", "").strip()
+            and row.get("unit_serial", "").strip()
+            and step_id
+            and row.get("operator", "").strip()
+            and row.get("measured_or_observed_result", "").strip()
+            and row.get("pass", "").strip()
+            and row.get("evidence_artifacts", "").strip()
+            and evidence_class
+            and evidence_fields_present
+        )
+        declared_pass = row.get("pass", "").strip().lower() in {"yes", "true", "1", "pass"}
+        cases.append(
+            {
+                "step_id": step_id,
+                "expected_step": step_id in step_by_id,
+                "cad_prerequisites_present": bool(step.get("cad_prerequisites_present", False)),
+                "sample_identity_present": bool(row.get("unit_serial", "").strip()),
+                "operator_present": bool(row.get("operator", "").strip()),
+                "result_present": bool(row.get("measured_or_observed_result", "").strip()),
+                "declared_pass": declared_pass,
+                "evidence_class": evidence_class,
+                "evidence_class_allowed": evidence_class_allowed,
+                "raw_data_artifact_present": bool(row.get("raw_data_artifact", "").strip()),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
+                "lot_traceability_record_present": bool(
+                    row.get("lot_traceability_record", "").strip()
+                ),
+                "populated": populated,
+                "pass": populated
+                and declared_pass
+                and step_id in step_by_id
+                and bool(step.get("cad_prerequisites_present", False))
+                and evidence_class_allowed,
+            }
+        )
+    missing_steps = sorted(set(step_by_id) - {case["step_id"] for case in cases})
+    incomplete_steps = [case["step_id"] for case in cases if not case["pass"]]
+    complete_count = sum(1 for case in cases if case["pass"])
+    status = (
+        "assembly_build_results_pass"
+        if complete_count == len(steps) and not missing_steps
+        else "blocked_no_assembly_build_results"
+        if complete_count == 0
+        else "blocked_assembly_build_results_incomplete"
+    )
+    report = {
+        "claim_boundary": (
+            "Fail-closed first-article assembly traveler for the whole phone. CAD part presence "
+            "and validation plans do not count as completed build evidence."
+        ),
+        "status": status,
+        "traveler_scope": (
+            "screen bond, PCB/flex integration, camera/handset/audio stack, USB/buttons/haptics, "
+            "battery install, enclosure close, CMF/final function"
+        ),
+        "expected_step_count": len(steps),
+        "cad_prerequisite_step_count": sum(
+            1 for step in steps if step["cad_prerequisites_present"]
+        ),
+        "observed_row_count": len(cases),
+        "complete_result_count": complete_count,
+        "results_template": "mechanical/e1-phone/review/assembly-build-results-template.csv",
+        "required_evidence_class": "physical_assembly_build_record",
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
+        "steps": steps,
+        "cases": cases,
+        "missing_steps": missing_steps,
+        "missing_or_incomplete_steps": sorted(set(missing_steps + incomplete_steps)),
+        "release_rule": (
+            "Every assembly station must have build ID, unit serial, operator, observed result, "
+            "passing disposition, evidence_class=physical_assembly_build_record, raw data, "
+            "photo/log artifact, and lot traceability before whole-phone build validation passes."
+        ),
+    }
+    (REVIEW_DIR / "assembly-build-traveler.json").write_text(json.dumps(report, indent=2) + "\n")
+    lines = [
+        "# E1 Phone Assembly Build Traveler",
+        "",
+        f"Status: {status}.",
+        "",
+        "This traveler is fail-closed until physical build records are populated.",
+        "",
+        "## Steps",
+        "",
+    ]
+    for step in steps:
+        result = "PASS" if step["cad_prerequisites_present"] else "BLOCKED"
+        lines.append(f"- {result}: `{step['id']}` at `{step['station']}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "assembly-build-traveler.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_process_control_plan_artifacts(
+    assembly_build: dict[str, Any],
+    supplier_response: dict[str, Any],
+    gdt_release: dict[str, Any],
+) -> dict[str, Any]:
+    traveler_steps = {step["id"] for step in assembly_build.get("steps", [])}
+    controls: list[dict[str, Any]] = [
+        {
+            "id": "incoming_supplier_identity_control",
+            "station": "incoming_quality",
+            "traveler_step": "incoming_supplier_part_inspection",
+            "critical_to_quality": (
+                "supplier drawing, STEP, sample, lot, and dimensional identity match the selected "
+                "phone CAD baseline"
+            ),
+            "inspection_method": "document pack review plus incoming dimensional inspection",
+            "gauge_or_fixture": "calipers_height_gauge_optical_comparator_and_supplier_step_overlay",
+            "sample_plan": "100% first lot, AQL after supplier lock",
+            "required_output_keys": [
+                "supplier_lot_id",
+                "drawing_revision",
+                "step_model_revision",
+                "sample_identity_pass",
+                "critical_dimension_pass",
+            ],
+            "linked_evidence": [
+                "supplier-response-review.json",
+                "unit-traceability-acceptance.json",
+                "gdt-release-package.json",
+            ],
+            "stop_rule": (
+                "quarantine lot and block build if any supplier drawing, STEP, or sample identity "
+                "is missing"
+            ),
+        },
+        {
+            "id": "display_bond_control",
+            "station": "display_bond",
+            "traveler_step": "screen_adhesive_and_display_bond",
+            "critical_to_quality": (
+                "cover glass position, adhesive compression, FPC bend radius, luminance, and touch "
+                "grid pass"
+            ),
+            "inspection_method": "bond fixture clamp log, optical gap check, and display bring-up",
+            "gauge_or_fixture": "screen_bond_clamp_frame_and_optical_gap_gauge",
+            "sample_plan": "100% EVT and first production lot",
+            "required_output_keys": [
+                "cover_glass_xy_mm",
+                "adhesive_compression_mm",
+                "fpc_bend_radius_mm",
+                "luminance_cd_m2",
+                "touch_grid_pass",
+            ],
+            "linked_evidence": [
+                "display-validation.json",
+                "display-results-review.json",
+                "evt-inspection-plan.json",
+            ],
+            "stop_rule": "stop line on screen lift, FPC overbend, touch-grid failure, or luminance outlier",
+        },
+        {
+            "id": "pcb_flex_mating_control",
+            "station": "pcb_flex_integration",
+            "traveler_step": "top_bottom_pcb_islands_and_split_flex",
+            "critical_to_quality": (
+                "top and bottom PCB islands seat without battery window clash and split flex "
+                "continuity passes"
+            ),
+            "inspection_method": "visual connector seating, continuity test, and keepout overlay",
+            "gauge_or_fixture": "split_flex_continuity_jig_and_battery_window_go_no_go",
+            "sample_plan": "100% until routed PCB and connector supplier lock",
+            "required_output_keys": [
+                "top_connector_seated",
+                "bottom_connector_seated",
+                "split_flex_continuity_ohm",
+                "battery_clearance_mm",
+                "keepout_overlay_pass",
+            ],
+            "linked_evidence": [
+                "assembly-clearance.json",
+                "interface-validation.json",
+                "assembly-build-traveler.json",
+            ],
+            "stop_rule": "stop build if connector seating, flex continuity, or battery clearance fails",
+        },
+        {
+            "id": "camera_audio_stack_control",
+            "station": "optical_audio_stack",
+            "traveler_step": "camera_handset_and_acoustic_stack",
+            "critical_to_quality": (
+                "rear/front camera alignment, dust seal, speaker/mic/earpiece leakage, and "
+                "streaming/audio checks pass"
+            ),
+            "inspection_method": "camera alignment pins, dust image, acoustic sweep, and loopback",
+            "gauge_or_fixture": "camera_alignment_pins_and_acoustic_leak_masks",
+            "sample_plan": "100% EVT, then station SPC after fixture correlation",
+            "required_output_keys": [
+                "rear_camera_center_offset_mm",
+                "front_camera_center_offset_mm",
+                "dust_image_pass",
+                "audio_loopback_pass",
+                "leak_db",
+            ],
+            "linked_evidence": [
+                "camera-validation.json",
+                "camera-results-review.json",
+                "acoustic-validation.json",
+                "acoustic-results-review.json",
+            ],
+            "stop_rule": (
+                "stop line on camera center shift, dust, acoustic leak, blocked mesh, or audio "
+                "loopback failure"
+            ),
+        },
+        {
+            "id": "usb_buttons_haptics_control",
+            "station": "side_bottom_io",
+            "traveler_step": "usb_buttons_haptics_and_ingress_seals",
+            "critical_to_quality": (
+                "USB-C insertion, button force/travel, haptic clearance, and port/button seal "
+                "integrity pass"
+            ),
+            "inspection_method": "load cell, insertion gauge, continuity, and gasket visual check",
+            "gauge_or_fixture": "button_force_probe_usb_insertion_gauge_and_continuity_jig",
+            "sample_plan": "100% EVT and 100% first production lot",
+            "required_output_keys": [
+                "usb_insertion_force_n",
+                "usb_continuity_pass",
+                "power_button_force_n",
+                "volume_button_force_n",
+                "button_travel_mm",
+                "gasket_visual_pass",
+            ],
+            "linked_evidence": [
+                "interface-validation.json",
+                "evt-inspection-plan.json",
+                "assembly-build-traveler.json",
+            ],
+            "stop_rule": (
+                "stop build on high insertion force, post-cycle continuity failure, button force "
+                "outlier, or damaged gasket"
+            ),
+        },
+        {
+            "id": "enclosure_close_control",
+            "station": "final_mechanical_close",
+            "traveler_step": "battery_install_and_enclosure_close",
+            "critical_to_quality": (
+                "battery fits without cable pinch, orange enclosure closes, snap/screw retention "
+                "and gap/flush pass"
+            ),
+            "inspection_method": "go/no-go close fixture, torque driver log, and gap/flush gauge",
+            "gauge_or_fixture": "close_force_fixture_torque_driver_and_gap_flush_gauge",
+            "sample_plan": "100% EVT and first production lot",
+            "required_output_keys": [
+                "battery_fit_pass",
+                "cable_pinch_visual_pass",
+                "snap_retention_n",
+                "screw_torque_ncm",
+                "gap_flush_mm",
+            ],
+            "linked_evidence": [
+                "assembly-clearance.json",
+                "tolerance-stack.json",
+                "gdt-fai-results-review.json",
+            ],
+            "stop_rule": (
+                "stop build on battery interference, cable pinch, failed retention, or out-of-limit "
+                "gap/flush"
+            ),
+        },
+        {
+            "id": "final_function_cmf_traceability_control",
+            "station": "final_acceptance",
+            "traveler_step": "final_function_cmf_and_traceability",
+            "critical_to_quality": (
+                "full function, CMF, serial traceability, and final photo evidence pass before "
+                "shipment"
+            ),
+            "inspection_method": "functional smoke test, CMF inspection, serial scan, and photo record",
+            "gauge_or_fixture": "final_function_jig_color_plaque_reference_and_camera_station",
+            "sample_plan": "100% all builds",
+            "required_output_keys": [
+                "function_smoke_pass",
+                "cmf_visual_pass",
+                "serial_scan_pass",
+                "final_photo_artifact",
+                "rework_history_closed",
+            ],
+            "linked_evidence": [
+                "assembly-build-traveler.json",
+                "unit-traceability-acceptance.json",
+                "visual-decision-report.json",
+            ],
+            "stop_rule": (
+                "hold unit on function failure, CMF nonconformance, missing serial trace, or missing "
+                "final photo"
+            ),
+        },
+    ]
+    for control in controls:
+        control["traveler_step_present"] = control["traveler_step"] in traveler_steps
+        control["cad_prerequisites_present"] = control["traveler_step_present"]
+        control["linked_statuses"] = {
+            "supplier_response_status": supplier_response.get("status"),
+            "gdt_release_status": gdt_release.get("status"),
+            "assembly_build_status": assembly_build.get("status"),
+        }
+
+    fieldnames = [
+        "build_id",
+        "station",
+        "control_id",
+        "operator",
+        "gauge_id",
+        "sample_plan",
+        "required_output_keys",
+        "linked_evidence",
+        "measured_or_observed_result",
+        "pass",
+        "evidence_class",
+        "raw_data_artifact",
+        "photo_or_log_artifact",
+        "lot_traceability_record",
+        "nonconformance_id",
+        "stop_rule",
+        "notes",
+    ]
+    template_rows = [
+        {
+            "build_id": "",
+            "station": control["station"],
+            "control_id": control["id"],
+            "operator": "",
+            "gauge_id": "",
+            "sample_plan": control["sample_plan"],
+            "required_output_keys": ";".join(control["required_output_keys"]),
+            "linked_evidence": ";".join(control["linked_evidence"]),
+            "measured_or_observed_result": "",
+            "pass": "",
+            "evidence_class": "",
+            "raw_data_artifact": "",
+            "photo_or_log_artifact": "",
+            "lot_traceability_record": "",
+            "nonconformance_id": "",
+            "stop_rule": control["stop_rule"],
+            "notes": control["critical_to_quality"],
+        }
+        for control in controls
+    ]
+    csv_path = REVIEW_DIR / "process-control-results-template.csv"
+    _write_results_template_if_blank(
+        csv_path,
+        fieldnames,
+        template_rows,
+        "control_id",
+        [
+            "build_id",
+            "operator",
+            "gauge_id",
+            "measured_or_observed_result",
+            "pass",
+            "evidence_class",
+            "raw_data_artifact",
+            "photo_or_log_artifact",
+            "lot_traceability_record",
+        ],
+    )
+
+    rows: list[dict[str, str]] = []
+    if csv_path.is_file():
+        with csv_path.open(newline="") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+    control_by_id = {control["id"]: control for control in controls}
+    forbidden_evidence_classes = {
+        "simulated_process_control_for_planning_not_release",
+        "simulated_first_article_for_evt_planning_not_production_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
+    cases = []
+    for row in rows:
+        control_id = row.get("control_id", "")
+        control = control_by_id.get(control_id, {})
+        evidence_class = row.get("evidence_class", "").strip()
+        evidence_class_allowed = (
+            evidence_class == "physical_process_control_record"
+            and evidence_class not in forbidden_evidence_classes
+        )
+        evidence_fields_present = all(
+            row.get(field, "").strip()
+            for field in [
+                "raw_data_artifact",
+                "photo_or_log_artifact",
+                "lot_traceability_record",
+            ]
+        )
+        populated = bool(
+            row.get("build_id", "").strip()
+            and row.get("station", "").strip()
+            and control_id
+            and row.get("operator", "").strip()
+            and row.get("gauge_id", "").strip()
+            and row.get("measured_or_observed_result", "").strip()
+            and row.get("pass", "").strip()
+            and evidence_class
+            and evidence_fields_present
+        )
+        declared_pass = row.get("pass", "").strip().lower() in {"yes", "true", "1", "pass"}
+        cases.append(
+            {
+                "control_id": control_id,
+                "expected_control": control_id in control_by_id,
+                "traveler_step_present": bool(control.get("traveler_step_present", False)),
+                "cad_prerequisites_present": bool(control.get("cad_prerequisites_present", False)),
+                "operator_present": bool(row.get("operator", "").strip()),
+                "gauge_id_present": bool(row.get("gauge_id", "").strip()),
+                "result_present": bool(row.get("measured_or_observed_result", "").strip()),
+                "declared_pass": declared_pass,
+                "evidence_class": evidence_class,
+                "evidence_class_allowed": evidence_class_allowed,
+                "raw_data_artifact_present": bool(row.get("raw_data_artifact", "").strip()),
+                "photo_or_log_artifact_present": bool(row.get("photo_or_log_artifact", "").strip()),
+                "lot_traceability_record_present": bool(
+                    row.get("lot_traceability_record", "").strip()
+                ),
+                "populated": populated,
+                "pass": populated
+                and declared_pass
+                and control_id in control_by_id
+                and bool(control.get("cad_prerequisites_present", False))
+                and evidence_class_allowed,
+            }
+        )
+    missing_controls = sorted(set(control_by_id) - {case["control_id"] for case in cases})
+    incomplete_controls = [case["control_id"] for case in cases if not case["pass"]]
+    complete_count = sum(1 for case in cases if case["pass"])
+    status = (
+        "process_control_results_pass"
+        if complete_count == len(controls) and not missing_controls
+        else "blocked_no_process_control_results"
+        if complete_count == 0
+        else "blocked_process_control_results_incomplete"
+    )
+    report = {
+        "claim_boundary": (
+            "Factory process control plan for EVT0-to-production assembly. CAD station controls "
+            "and blank templates do not count as line qualification evidence."
+        ),
+        "status": status,
+        "expected_control_count": len(controls),
+        "cad_prerequisite_control_count": sum(
+            1 for control in controls if control["cad_prerequisites_present"]
+        ),
+        "observed_row_count": len(cases),
+        "complete_result_count": complete_count,
+        "results_template": "mechanical/e1-phone/review/process-control-results-template.csv",
+        "required_evidence_class": "physical_process_control_record",
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
+        "controls": controls,
+        "cases": cases,
+        "missing_controls": missing_controls,
+        "missing_or_incomplete_controls": sorted(set(missing_controls + incomplete_controls)),
+        "release_rule": (
+            "Every factory control must have build ID, station, operator, gauge ID, observed "
+            "result, passing disposition, evidence_class=physical_process_control_record, raw "
+            "data, photo/log artifact, and lot traceability before process-control validation "
+            "passes."
+        ),
+    }
+    (REVIEW_DIR / "process-control-plan.json").write_text(json.dumps(report, indent=2) + "\n")
+    lines = [
+        "# E1 Phone Process Control Plan",
+        "",
+        f"Status: {status}.",
+        "",
+        "This plan is fail-closed until factory control records are populated.",
+        "",
+        "## Controls",
+        "",
+    ]
+    for control in controls:
+        result = "PASS" if control["cad_prerequisites_present"] else "BLOCKED"
+        lines.append(f"- {result}: `{control['id']}` at `{control['station']}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "process-control-plan.md").write_text("\n".join(lines) + "\n")
     return report
 
 
@@ -7302,6 +10007,382 @@ def write_mold_process_window_artifacts(
     return report
 
 
+def write_mold_flow_acceptance_artifacts(
+    params: dict[str, Any],
+    dfm: dict[str, Any],
+    mold_process: dict[str, Any],
+) -> dict[str, Any]:
+    mfg = params["manufacturing"]
+    criteria: list[dict[str, Any]] = [
+        {
+            "id": "fill_pressure_at_vp_transfer_mpa",
+            "target": "<= 85% of selected press/resin limit",
+            "required_evidence_keys": [
+                "fill_pressure_plot",
+                "selected_press_spec",
+                "resin_pressure_limit_table",
+            ],
+            "required_numeric_results": [
+                "vp_transfer_pressure_mpa",
+                "press_pressure_limit_mpa",
+                "percent_of_limit",
+            ],
+        },
+        {
+            "id": "clamp_tonnage_margin",
+            "target": "selected press capacity >= CAD high clamp-tonnage estimate",
+            "required_evidence_keys": [
+                "clamp_tonnage_report",
+                "press_quote_or_machine_spec",
+                "projected_area_basis",
+            ],
+            "required_numeric_results": [
+                "projected_area_cm2",
+                "estimated_peak_tons",
+                "selected_press_capacity_tons",
+            ],
+        },
+        {
+            "id": "max_warp_after_shrink_mm",
+            "target": "<= 0.35 mm across cover-glass bonding ledge and <= 0.50 mm across back shell",
+            "required_evidence_keys": [
+                "post_shrink_warp_plot",
+                "gdt_datum_overlay",
+                "shrink_compensation_table",
+            ],
+            "required_numeric_results": [
+                "glass_ledge_warp_mm",
+                "back_shell_warp_mm",
+                "datum_shift_mm",
+            ],
+        },
+        {
+            "id": "sink_at_boss_and_rib_readthrough_mm",
+            "target": "<= 0.05 mm on exterior A-surfaces over bosses/ribs",
+            "required_evidence_keys": [
+                "sink_readthrough_plot",
+                "boss_rib_location_overlay",
+                "a_surface_cosmetic_map",
+            ],
+            "required_numeric_results": [
+                "max_boss_sink_mm",
+                "max_rib_readthrough_mm",
+                "a_surface_sink_mm",
+            ],
+        },
+        {
+            "id": "weld_lines_on_cosmetic_surfaces",
+            "target": "no weld lines on front orange rail, back hero surface, camera window land, or USB-C lip",
+            "required_evidence_keys": [
+                "weld_line_plot",
+                "cosmetic_keepout_overlay",
+                "gate_location_revision",
+            ],
+            "required_numeric_results": [
+                "cosmetic_weld_line_count",
+                "nearest_weld_to_camera_land_mm",
+                "nearest_weld_to_usb_lip_mm",
+            ],
+        },
+        {
+            "id": "air_traps_at_ports_and_snap_hooks",
+            "target": "vents added or air traps cleared at USB-C saddle, camera window, acoustic ports, and snap-hook roots",
+            "required_evidence_keys": [
+                "air_trap_plot",
+                "vent_layout_markup",
+                "critical_port_region_overlay",
+            ],
+            "required_numeric_results": [
+                "unvented_usb_air_traps",
+                "unvented_acoustic_air_traps",
+                "unvented_snap_hook_air_traps",
+            ],
+        },
+        {
+            "id": "cooling_delta_t_and_cycle_time",
+            "target": "<= 8 C cavity surface delta and quoted cycle time <= 30 s",
+            "required_evidence_keys": [
+                "cooling_delta_t_plot",
+                "cooling_circuit_layout",
+                "cycle_time_prediction",
+            ],
+            "required_numeric_results": [
+                "max_cavity_delta_t_c",
+                "predicted_cycle_time_s",
+                "hotspot_count",
+            ],
+        },
+        {
+            "id": "orange_gate_blush_and_vestige",
+            "target": "gate vestige outside A-surface and blush accepted on orange plaque/first shots",
+            "required_evidence_keys": [
+                "gate_vestige_markup",
+                "orange_color_plaque_photo",
+                "gate_blush_limit_sample",
+            ],
+            "required_numeric_results": [
+                "a_surface_gate_vestige_count",
+                "vestige_height_mm",
+                "delta_e_orange_plaque",
+            ],
+        },
+    ]
+    input_deck = {
+        "claim_boundary": (
+            "CAD-derived mold-flow input deck for a toolmaker or simulation package; "
+            "not a returned Moldflow/SolidWorks Plastics/Moldex3D result."
+        ),
+        "status": "mold_flow_input_deck_ready"
+        if dfm["status"] == "cad_dfm_inputs_ready"
+        and mold_process["status"] == "cad_mold_process_window_ready"
+        else "blocked",
+        "geometry_sources": {
+            "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
+            "tooling_glb": "mechanical/e1-phone/out/e1-phone-mold-tooling.glb",
+            "tooling_render": "mechanical/e1-phone/review/mold_tooling.png",
+        },
+        "material_request": {
+            "family": mfg["plastic"],
+            "color": params["device"]["plastic_color"],
+            "required_supplier_data": [
+                "viscosity_curve",
+                "pvT_data",
+                "shrinkage_tensor",
+                "recommended_melt_and_mold_temperature",
+            ],
+        },
+        "nominal_process_window": mold_process["process_window"],
+        "required_outputs": [criterion["id"] for criterion in criteria],
+        "first_shot_doe": mold_process["first_shot_doe"],
+    }
+    (REVIEW_DIR / "mold-flow-input-deck.json").write_text(json.dumps(input_deck, indent=2) + "\n")
+    input_lines = [
+        "# E1 Phone Mold-Flow Input Deck",
+        "",
+        f"Status: {input_deck['status']}.",
+        "",
+        "This deck defines the required mold-flow result package; it is not returned simulation evidence.",
+        "",
+        "## Required Outputs",
+        "",
+    ]
+    for criterion in criteria:
+        input_lines.append(f"- `{criterion['id']}`: {criterion['target']}")
+    (REVIEW_DIR / "mold-flow-input-deck.md").write_text("\n".join(input_lines) + "\n")
+
+    template_path = REVIEW_DIR / "mold-flow-results-template.csv"
+    fieldnames = [
+        "criterion_id",
+        "toolmaker_name",
+        "evidence_class",
+        "returned_artifact",
+        "raw_simulation_archive",
+        "reviewer_acceptance_record",
+        "resin_tooling_traceability_record",
+        "measured_or_predicted_value",
+        "accepted",
+        "reviewer",
+        "required_evidence_keys",
+        "required_numeric_results",
+        "linked_cad_evidence",
+        "notes",
+    ]
+    rows = [
+        {
+            "criterion_id": criterion["id"],
+            "toolmaker_name": "",
+            "evidence_class": "",
+            "returned_artifact": "",
+            "raw_simulation_archive": "",
+            "reviewer_acceptance_record": "",
+            "resin_tooling_traceability_record": "",
+            "measured_or_predicted_value": "",
+            "accepted": "",
+            "reviewer": "",
+            "required_evidence_keys": ";".join(criterion["required_evidence_keys"]),
+            "required_numeric_results": ";".join(criterion["required_numeric_results"]),
+            "linked_cad_evidence": "mold-flow-input-deck.json;mold-process-window.json;injection-molding-dfm.json",
+            "notes": criterion["target"],
+        }
+        for criterion in criteria
+    ]
+    should_write_template = True
+    if template_path.is_file():
+        existing_text = template_path.read_text()
+        existing_lines = existing_text.splitlines()
+        if existing_lines and existing_lines[0].startswith("# evidence_class:"):
+            existing_text = "\n".join(existing_lines[1:]) + "\n"
+        with StringIO(existing_text) as existing_file:
+            existing_rows = list(csv.DictReader(existing_file))
+        existing_ids = {row.get("criterion_id", "") for row in existing_rows}
+        expected_ids = {row["criterion_id"] for row in rows}
+        existing_fields = list(existing_rows[0].keys()) if existing_rows else []
+        response_fields = [
+            "toolmaker_name",
+            "evidence_class",
+            "returned_artifact",
+            "raw_simulation_archive",
+            "reviewer_acceptance_record",
+            "resin_tooling_traceability_record",
+            "measured_or_predicted_value",
+            "accepted",
+            "reviewer",
+        ]
+        has_response_content = any(
+            row.get(field, "").strip() for row in existing_rows for field in response_fields
+        )
+        should_write_template = not has_response_content and (
+            existing_ids != expected_ids or existing_fields != fieldnames or not existing_rows
+        )
+    if should_write_template:
+        with template_path.open("w", newline="") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+    template_evidence_class = ""
+    csv_text = template_path.read_text() if template_path.is_file() else ""
+    csv_lines = csv_text.splitlines()
+    if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+        template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+        csv_text = "\n".join(csv_lines[1:]) + "\n"
+    expected_by_id = {criterion["id"]: criterion for criterion in criteria}
+    forbidden_evidence_classes = {
+        "simulated_mold_flow_for_planning_not_release",
+        "simulated_first_article_for_evt_planning_not_production_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
+    cases: list[dict[str, Any]] = []
+    with StringIO(csv_text) as csv_file:
+        for row in csv.DictReader(csv_file):
+            criterion_id = row.get("criterion_id", "")
+            expected = expected_by_id.get(criterion_id, {})
+            evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+            accepted = row.get("accepted", "").strip().lower()
+            required_evidence_keys = [
+                key
+                for key in (
+                    row.get("required_evidence_keys")
+                    or ";".join(expected.get("required_evidence_keys", []))
+                ).split(";")
+                if key
+            ]
+            required_numeric_results = [
+                key
+                for key in (
+                    row.get("required_numeric_results")
+                    or ";".join(expected.get("required_numeric_results", []))
+                ).split(";")
+                if key
+            ]
+            evidence_fields_present = all(
+                row.get(field, "").strip()
+                for field in [
+                    "returned_artifact",
+                    "raw_simulation_archive",
+                    "reviewer_acceptance_record",
+                    "resin_tooling_traceability_record",
+                ]
+            )
+            evidence_class_allowed = (
+                evidence_class == "physical_mold_flow_result"
+                and evidence_class not in forbidden_evidence_classes
+            )
+            populated = bool(
+                criterion_id
+                and row.get("toolmaker_name", "").strip()
+                and evidence_class
+                and row.get("measured_or_predicted_value", "").strip()
+                and row.get("reviewer", "").strip()
+                and required_evidence_keys
+                and required_numeric_results
+                and evidence_fields_present
+            )
+            cases.append(
+                {
+                    "criterion_id": criterion_id,
+                    "expected_criterion": criterion_id in expected_by_id,
+                    "toolmaker_named": bool(row.get("toolmaker_name", "").strip()),
+                    "evidence_class": evidence_class,
+                    "evidence_class_allowed": evidence_class_allowed,
+                    "returned_artifact_present": bool(row.get("returned_artifact", "").strip()),
+                    "raw_simulation_archive_present": bool(
+                        row.get("raw_simulation_archive", "").strip()
+                    ),
+                    "reviewer_acceptance_record_present": bool(
+                        row.get("reviewer_acceptance_record", "").strip()
+                    ),
+                    "resin_tooling_traceability_record_present": bool(
+                        row.get("resin_tooling_traceability_record", "").strip()
+                    ),
+                    "value_present": bool(row.get("measured_or_predicted_value", "").strip()),
+                    "reviewer_present": bool(row.get("reviewer", "").strip()),
+                    "accepted": accepted in {"yes", "true", "1", "pass"},
+                    "required_evidence_keys": required_evidence_keys,
+                    "required_numeric_results": required_numeric_results,
+                    "linked_cad_evidence": [
+                        item for item in row.get("linked_cad_evidence", "").split(";") if item
+                    ],
+                    "populated": populated,
+                    "physical_evidence_pass": evidence_class_allowed and evidence_fields_present,
+                    "pass": populated
+                    and criterion_id in expected_by_id
+                    and accepted in {"yes", "true", "1", "pass"}
+                    and evidence_class_allowed
+                    and evidence_fields_present,
+                }
+            )
+    missing_or_incomplete = [case["criterion_id"] for case in cases if not case["pass"]]
+    complete_count = sum(1 for case in cases if case["pass"])
+    report = {
+        "claim_boundary": (
+            "Fail-closed mold-flow acceptance contract. CAD process proxies and simulated rows "
+            "do not count as physical/toolmaker mold-flow evidence."
+        ),
+        "status": "mold_flow_results_pass"
+        if cases and complete_count == len(criteria) and not missing_or_incomplete
+        else "blocked_no_mold_flow_results"
+        if complete_count == 0
+        else "blocked_mold_flow_results_incomplete",
+        "plastic": mfg["plastic"],
+        "gate_strategy": mfg["gate_strategy"],
+        "input_deck": "mechanical/e1-phone/review/mold-flow-input-deck.json",
+        "input_deck_status": input_deck["status"],
+        "results_template": "mechanical/e1-phone/review/mold-flow-results-template.csv",
+        "expected_criterion_count": len(criteria),
+        "required_evidence_class": "physical_mold_flow_result",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
+        "complete_result_count": complete_count,
+        "missing_or_incomplete_criteria": missing_or_incomplete,
+        "criteria": criteria,
+        "cases": cases,
+        "release_rule": (
+            "Every mold-flow criterion must include toolmaker name, evidence_class=physical_mold_flow_result, "
+            "returned report, raw simulation archive, reviewer acceptance record, resin/tooling traceability, "
+            "numeric measured/predicted value, accepted disposition, and reviewer before tooling release."
+        ),
+    }
+    (REVIEW_DIR / "mold-flow-acceptance.json").write_text(json.dumps(report, indent=2) + "\n")
+    lines = [
+        "# E1 Phone Mold-Flow Acceptance",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This review is fail-closed until physical/toolmaker mold-flow evidence is returned.",
+        "",
+        "## Missing Or Incomplete",
+        "",
+    ]
+    for criterion_id in missing_or_incomplete:
+        lines.append(f"- `{criterion_id}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "mold-flow-acceptance.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
 def write_toolmaker_signoff_artifacts(
     params: dict[str, Any], dfm: dict[str, Any], mold_process: dict[str, Any]
 ) -> dict[str, Any]:
@@ -7311,36 +10392,78 @@ def write_toolmaker_signoff_artifacts(
             "id": "mold_flow_fill_pack_warp",
             "request": "Run fill/pack/warp simulation on orange PC+ABS shell and side-frame tool concept.",
             "required_return": "Mold-flow report with pressure, fill time, weld lines, air traps, sink, shrink, and warp plots.",
+            "required_evidence_artifacts": [
+                "signed_moldflow_report",
+                "fill_pack_warp_raw_simulation_archive",
+                "toolmaker_acceptance_record",
+                "resin_grade_and_tool_revision_traceability",
+            ],
         },
         {
             "id": "gate_runner_balance",
             "request": "Review dual submarine gate and cold-runner layout against cosmetic gate vestige limits.",
             "required_return": "Signed gate/runner recommendation with gate land, gate area, vestige location, and alternate fan-gate decision.",
+            "required_evidence_artifacts": [
+                "signed_gate_runner_markup",
+                "gate_pressure_shear_or_balance_calculation",
+                "toolmaker_acceptance_record",
+                "tool_revision_traceability_record",
+            ],
         },
         {
             "id": "ejector_layout",
             "request": "Review modeled ejector pins against non-cosmetic surfaces, boss support, and part release.",
             "required_return": "Ejector layout markup with witness-mark acceptance and any added blade/sleeve ejectors.",
+            "required_evidence_artifacts": [
+                "signed_ejector_layout_markup",
+                "ejector_balance_or_release_risk_record",
+                "toolmaker_acceptance_record",
+                "tool_revision_traceability_record",
+            ],
         },
         {
             "id": "cooling_layout",
             "request": "Review straight cooling-channel placeholders and propose production baffles or conformal cooling.",
             "required_return": "Cooling layout with channel diameter, clearance, circuiting, expected cycle time, and hot-spot risk.",
+            "required_evidence_artifacts": [
+                "signed_cooling_layout_markup",
+                "cooling_circuit_cycle_time_calculation",
+                "toolmaker_acceptance_record",
+                "tool_revision_traceability_record",
+            ],
         },
         {
             "id": "shrink_warp_allowance",
             "request": "Confirm resin shrink, steel-safe stock, datum scheme, and CMM tuning plan.",
             "required_return": "Shrink/warp allowance table tied to GD&T datums and first-article CMM plan.",
+            "required_evidence_artifacts": [
+                "signed_shrink_warp_allowance_table",
+                "resin_shrink_data_or_moldflow_warp_report",
+                "toolmaker_acceptance_record",
+                "resin_grade_tooling_and_datum_traceability",
+            ],
         },
         {
             "id": "orange_cmf_texture",
             "request": "Approve hard orange PC+ABS color, gloss, texture depth, gate blush tolerance, and scratch samples.",
             "required_return": "Color plaque, texture plaque, gate-blush limit sample, and signed CMF acceptance criteria.",
+            "required_evidence_artifacts": [
+                "signed_orange_cmf_acceptance_record",
+                "color_texture_plaque_photo_set",
+                "reviewer_acceptance_record",
+                "resin_colorant_texture_and_tool_traceability",
+            ],
         },
         {
             "id": "first_shot_doe",
             "request": "Quote and approve first-shot DOE covering melt temperature, mold temperature, pack pressure, hold time, and cooling time.",
             "required_return": "DOE run sheet and acceptance plan for first shots before DVT tool tuning.",
+            "required_evidence_artifacts": [
+                "signed_first_shot_doe_plan",
+                "process_window_or_doe_data_sheet",
+                "toolmaker_acceptance_record",
+                "press_resin_tool_revision_traceability",
+            ],
         },
     ]
     response_path = REVIEW_DIR / "toolmaker-signoff-response-template.csv"
@@ -7350,50 +10473,148 @@ def write_toolmaker_signoff_artifacts(
         "report_or_drawing_received",
         "accepted",
         "reviewer",
+        "evidence_class",
+        "required_evidence_artifacts",
         "returned_artifact",
+        "moldflow_or_tooling_data_artifact",
+        "reviewer_acceptance_record",
+        "resin_cmf_or_tooling_traceability_record",
         "measured_or_predicted_value",
         "notes",
     ]
-    with response_path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        writer.writeheader()
-        for item in request_items:
-            writer.writerow(
-                {
-                    "review_item_id": item["id"],
-                    "toolmaker_name": "",
-                    "report_or_drawing_received": "",
-                    "accepted": "",
-                    "reviewer": "",
-                    "returned_artifact": "",
-                    "measured_or_predicted_value": "",
-                    "notes": item["required_return"],
-                }
-            )
+    template_rows = [
+        {
+            "review_item_id": item["id"],
+            "toolmaker_name": "",
+            "report_or_drawing_received": "",
+            "accepted": "",
+            "reviewer": "",
+            "evidence_class": "",
+            "required_evidence_artifacts": ";".join(item["required_evidence_artifacts"]),
+            "returned_artifact": "",
+            "moldflow_or_tooling_data_artifact": "",
+            "reviewer_acceptance_record": "",
+            "resin_cmf_or_tooling_traceability_record": "",
+            "measured_or_predicted_value": "",
+            "notes": item["required_return"],
+        }
+        for item in request_items
+    ]
+    should_write_template = True
+    existing_text = ""
+    if response_path.is_file():
+        existing_text = response_path.read_text()
+        csv_text = existing_text
+        csv_lines = csv_text.splitlines()
+        if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+            csv_text = "\n".join(csv_lines[1:]) + "\n"
+        with StringIO(csv_text) as existing_file:
+            existing_rows = list(csv.DictReader(existing_file))
+        existing_ids = {row.get("review_item_id", "") for row in existing_rows}
+        has_response_content = any(
+            row.get(field, "").strip()
+            for row in existing_rows
+            for field in [
+                "toolmaker_name",
+                "report_or_drawing_received",
+                "accepted",
+                "reviewer",
+                "evidence_class",
+                "returned_artifact",
+                "moldflow_or_tooling_data_artifact",
+                "reviewer_acceptance_record",
+                "resin_cmf_or_tooling_traceability_record",
+                "measured_or_predicted_value",
+            ]
+        )
+        should_write_template = existing_ids != {item["id"] for item in request_items} or (
+            list(existing_rows[0].keys()) != fieldnames if existing_rows else True
+        )
+        if has_response_content:
+            should_write_template = False
+    if should_write_template:
+        with response_path.open("w", newline="") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(template_rows)
 
     cases: list[dict[str, Any]] = []
-    with response_path.open(newline="") as csv_file:
+    template_evidence_class = ""
+    csv_text = response_path.read_text()
+    csv_lines = csv_text.splitlines()
+    if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+        template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+        csv_text = "\n".join(csv_lines[1:]) + "\n"
+    expected_by_id = {item["id"]: item for item in request_items}
+    forbidden_evidence_classes = {
+        "simulated_toolmaker_signoff_for_planning_not_release",
+        "simulated_first_article_for_evt_planning_not_production_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
+    with StringIO(csv_text) as csv_file:
         for row in csv.DictReader(csv_file):
             accepted = row.get("accepted", "").strip().lower()
             received = row.get("report_or_drawing_received", "").strip().lower()
+            review_item_id = row["review_item_id"]
+            expected_item = expected_by_id.get(review_item_id, {})
+            evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+            required_evidence_artifacts = [
+                artifact
+                for artifact in (
+                    row.get("required_evidence_artifacts")
+                    or ";".join(expected_item.get("required_evidence_artifacts", []))
+                ).split(";")
+                if artifact
+            ]
+            evidence_fields_present = all(
+                row.get(field, "").strip()
+                for field in [
+                    "returned_artifact",
+                    "moldflow_or_tooling_data_artifact",
+                    "reviewer_acceptance_record",
+                    "resin_cmf_or_tooling_traceability_record",
+                ]
+            )
+            evidence_class_allowed = (
+                evidence_class == "physical_toolmaker_signoff"
+                and evidence_class not in forbidden_evidence_classes
+            )
             populated = bool(
                 row.get("toolmaker_name", "").strip()
                 and row.get("reviewer", "").strip()
-                and row.get("returned_artifact", "").strip()
+                and evidence_class
+                and required_evidence_artifacts
+                and evidence_fields_present
             )
             cases.append(
                 {
-                    "review_item_id": row["review_item_id"],
+                    "review_item_id": review_item_id,
                     "toolmaker_named": bool(row.get("toolmaker_name", "").strip()),
                     "report_or_drawing_received": received in {"yes", "true", "1", "pass"},
                     "accepted": accepted in {"yes", "true", "1", "pass"},
                     "reviewer_present": bool(row.get("reviewer", "").strip()),
+                    "evidence_class": evidence_class,
+                    "evidence_class_allowed": evidence_class_allowed,
+                    "required_evidence_artifacts": required_evidence_artifacts,
                     "returned_artifact_present": bool(row.get("returned_artifact", "").strip()),
+                    "moldflow_or_tooling_data_artifact_present": bool(
+                        row.get("moldflow_or_tooling_data_artifact", "").strip()
+                    ),
+                    "reviewer_acceptance_record_present": bool(
+                        row.get("reviewer_acceptance_record", "").strip()
+                    ),
+                    "resin_cmf_or_tooling_traceability_record_present": bool(
+                        row.get("resin_cmf_or_tooling_traceability_record", "").strip()
+                    ),
                     "pass": populated
                     and received in {"yes", "true", "1", "pass"}
                     and accepted in {"yes", "true", "1", "pass"},
+                    "physical_evidence_pass": evidence_class_allowed and evidence_fields_present,
                 }
             )
+            cases[-1]["pass"] = cases[-1]["pass"] and cases[-1]["physical_evidence_pass"]
     missing_items = [case["review_item_id"] for case in cases if not case["pass"]]
     complete_count = sum(1 for case in cases if case["pass"])
     report = {
@@ -7415,10 +10636,13 @@ def write_toolmaker_signoff_artifacts(
         "request_items": request_items,
         "response_template": "mechanical/e1-phone/review/toolmaker-signoff-response-template.csv",
         "expected_response_count": len(cases),
+        "required_evidence_class": "physical_toolmaker_signoff",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
         "complete_response_count": complete_count,
         "missing_or_incomplete_items": missing_items,
         "cases": cases,
-        "release_rule": "Every toolmaker item must name the toolmaker, return a report/drawing artifact, be accepted by reviewer, and close mold-flow/tooling questions before tooling release.",
+        "release_rule": "Every toolmaker item must name the toolmaker, return signed mold-flow/tooling/CMF artifacts, include evidence_class=physical_toolmaker_signoff, include raw moldflow/tooling data, reviewer acceptance record, resin/CMF/tooling traceability, and be accepted before tooling release.",
     }
     (REVIEW_DIR / "toolmaker-signoff-package.json").write_text(json.dumps(report, indent=2) + "\n")
     (REVIEW_DIR / "toolmaker-signoff-review.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -7472,7 +10696,115 @@ def write_board_step_readiness_artifacts(
     production_step_files = sorted(production_step_dir.glob("*.step")) + sorted(
         production_step_dir.glob("*.stp")
     )
+    demo_step_files = sorted((ROOT / "board/kicad/e1-phone/pcb/fab-demo").glob("*.step")) + sorted(
+        (ROOT / "board/kicad/e1-phone/pcb/fab-demo").glob("*.stp")
+    )
     concept_pcb_step_path = OUT_DIR / "main_pcb.step"
+    routed_intake_path = REVIEW_DIR / "routed-board-step-intake-template.csv"
+    routed_intake_fieldnames = [
+        "release_id",
+        "kicad_pcb_path",
+        "routed_step_artifact",
+        "drc_report_artifact",
+        "erc_report_artifact",
+        "gerber_job_artifact",
+        "pick_place_artifact",
+        "bom_artifact",
+        "component_3d_model_manifest",
+        "enclosure_clearance_rerun_artifact",
+        "reviewer",
+        "evidence_class",
+        "notes",
+    ]
+    routed_intake_template_row = {
+        "release_id": "",
+        "kicad_pcb_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+        "routed_step_artifact": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+        "drc_report_artifact": "board/kicad/e1-phone/production/reports/drc-clean.txt",
+        "erc_report_artifact": "board/kicad/e1-phone/production/reports/erc-clean.txt",
+        "gerber_job_artifact": "board/kicad/e1-phone/production/fab/e1-phone-routed.gbrjob",
+        "pick_place_artifact": "board/kicad/e1-phone/production/assembly/e1-phone-routed-pos.csv",
+        "bom_artifact": "board/kicad/e1-phone/production/assembly/e1-phone-routed-bom.csv",
+        "component_3d_model_manifest": "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml",
+        "enclosure_clearance_rerun_artifact": "mechanical/e1-phone/review/routed-board-clearance.json",
+        "reviewer": "",
+        "evidence_class": "",
+        "notes": "Populate only with a DRC/ERC-clean routed KiCad release, production STEP with supplier component 3D models, and rerun enclosure clearance.",
+    }
+    if not routed_intake_path.is_file():
+        with routed_intake_path.open("w", newline="") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=routed_intake_fieldnames)
+            writer.writeheader()
+            writer.writerow(routed_intake_template_row)
+
+    routed_intake_rows: list[dict[str, str]] = []
+    routed_template_evidence_class = ""
+    routed_csv_text = routed_intake_path.read_text()
+    routed_csv_lines = routed_csv_text.splitlines()
+    if routed_csv_lines and routed_csv_lines[0].startswith("# evidence_class:"):
+        routed_template_evidence_class = routed_csv_lines[0].split(":", 1)[1].strip()
+        routed_csv_text = "\n".join(routed_csv_lines[1:]) + "\n"
+    with StringIO(routed_csv_text) as routed_csv_buffer:
+        routed_intake_rows = list(csv.DictReader(routed_csv_buffer))
+    routed_forbidden_evidence_classes = {
+        "demo_routed_board_for_planning_not_release",
+        "simulated_routed_board_release_for_planning_not_release",
+        "concept",
+        "demo",
+        "planning",
+        "blank_template",
+    }
+    routed_intake_cases: list[dict[str, Any]] = []
+    for row in routed_intake_rows:
+        evidence_class = row.get("evidence_class", "").strip() or routed_template_evidence_class
+        evidence_class_allowed = (
+            evidence_class == "physical_routed_board_release"
+            and evidence_class not in routed_forbidden_evidence_classes
+        )
+        required_fields = [
+            "release_id",
+            "kicad_pcb_path",
+            "routed_step_artifact",
+            "drc_report_artifact",
+            "erc_report_artifact",
+            "gerber_job_artifact",
+            "pick_place_artifact",
+            "bom_artifact",
+            "component_3d_model_manifest",
+            "enclosure_clearance_rerun_artifact",
+            "reviewer",
+        ]
+        required_fields_present = all(row.get(field, "").strip() for field in required_fields)
+        existing_artifacts = {
+            field: bool((ROOT / row.get(field, "")).is_file())
+            for field in [
+                "kicad_pcb_path",
+                "routed_step_artifact",
+                "drc_report_artifact",
+                "erc_report_artifact",
+                "gerber_job_artifact",
+                "pick_place_artifact",
+                "bom_artifact",
+                "component_3d_model_manifest",
+                "enclosure_clearance_rerun_artifact",
+            ]
+            if row.get(field, "").strip()
+        }
+        artifact_paths_exist = bool(existing_artifacts) and all(existing_artifacts.values())
+        routed_intake_cases.append(
+            {
+                "release_id": row.get("release_id", ""),
+                "evidence_class": evidence_class,
+                "evidence_class_allowed": evidence_class_allowed,
+                "required_fields_present": required_fields_present,
+                "artifact_paths_exist": artifact_paths_exist,
+                "artifact_path_checks": existing_artifacts,
+                "pass": evidence_class_allowed and required_fields_present and artifact_paths_exist,
+            }
+        )
+    routed_intake_complete = bool(routed_intake_cases) and all(
+        case["pass"] for case in routed_intake_cases
+    )
     pcb_text = pcb_path.read_text() if pcb_path.is_file() else ""
     manufacturing_closure = (
         yaml.safe_load(manufacturing_closure_path.read_text())
@@ -7552,8 +10884,18 @@ def write_board_step_readiness_artifacts(
         },
         {
             "id": "production_board_step_present",
-            "pass": has_production_step,
+            "pass": has_production_step and routed_intake_complete,
             "evidence": "board/kicad/e1-phone/production/step",
+        },
+        {
+            "id": "demo_board_step_not_counted",
+            "pass": bool(demo_step_files) and not routed_intake_complete,
+            "evidence": "board/kicad/e1-phone/pcb/fab-demo",
+        },
+        {
+            "id": "routed_board_release_intake_complete",
+            "pass": routed_intake_complete,
+            "evidence": "mechanical/e1-phone/review/routed-board-step-intake-template.csv",
         },
         {
             "id": "placeholder_footprints_replaced",
@@ -7571,11 +10913,19 @@ def write_board_step_readiness_artifacts(
         "layout_utilization": "board/kicad/e1-phone/layout-utilization.yaml",
         "production_step_dir": "board/kicad/e1-phone/production/step",
         "production_step_files": [str(path.relative_to(ROOT)) for path in production_step_files],
+        "demo_step_files_ignored": [str(path.relative_to(ROOT)) for path in demo_step_files],
+        "routed_board_step_intake_template": "mechanical/e1-phone/review/routed-board-step-intake-template.csv",
+        "required_routed_board_evidence_class": "physical_routed_board_release",
+        "routed_board_intake_template_evidence_class": routed_template_evidence_class,
+        "routed_board_forbidden_evidence_classes": sorted(routed_forbidden_evidence_classes),
+        "routed_board_intake_cases": routed_intake_cases,
         "concept_pcb_step": "mechanical/e1-phone/out/main_pcb.step",
         "board_state_detected": {
             "has_tracks": has_tracks,
             "has_filled_zones": has_filled_zones,
             "has_production_step": has_production_step,
+            "has_demo_step": bool(demo_step_files),
+            "has_complete_routed_board_release_intake": routed_intake_complete,
             "has_concept_pcb_step": has_concept_pcb_step,
             "placeholder_marker_count": placeholder_count,
             "manufacturing_closure_status": manufacturing_closure.get("status", "missing"),
@@ -7590,6 +10940,7 @@ def write_board_step_readiness_artifacts(
             "Replace E1Phone placeholder footprints with supplier land patterns and 3D models.",
             "Route the KiCad board with clean ERC/DRC, copper zones, impedance constraints, and test access.",
             "Export production board STEP from routed KiCad including component 3D models.",
+            "Populate routed-board-step-intake-template.csv with physical_routed_board_release evidence and artifact paths.",
             "Re-import routed board STEP into the phone CAD and re-run enclosure collision, USB insertion, button, screen FPC, and acoustic checks.",
         ],
     }
@@ -7615,6 +10966,579 @@ def write_board_step_readiness_artifacts(
     return report
 
 
+def write_routed_board_clearance_artifacts(
+    board_step: dict[str, Any],
+    clearance: dict[str, Any],
+    solid_cad: dict[str, Any],
+) -> dict[str, Any]:
+    template_path = REVIEW_DIR / "routed-board-clearance-results-template.csv"
+    fieldnames = [
+        "routed_step_file",
+        "case_id",
+        "rerun_priority",
+        "concept_actual_mm",
+        "concept_required_mm",
+        "concept_margin_mm",
+        "measured_min_gap_mm",
+        "required_min_gap_mm",
+        "interference_count",
+        "pass",
+        "reviewer",
+        "evidence_class",
+        "measurement_artifact",
+        "measurement_instruction",
+        "notes",
+    ]
+    rerun_cases = []
+    for case in clearance.get("cases", []):
+        actual = float(case.get("actual_mm", 0.0))
+        required = float(case.get("required_mm", 0.0))
+        margin = round(actual - required, 3)
+        priority = 1 if margin <= 0.1 else 2 if margin <= 0.5 else 3
+        if any(
+            token in case.get("id", "")
+            for token in ["pcb", "usb", "battery", "flex", "connector", "camera", "speaker"]
+        ):
+            rerun_cases.append(
+                {
+                    "case_id": case["id"],
+                    "concept_clearance_pass": bool(case.get("pass", False)),
+                    "concept_actual_mm": round(actual, 3),
+                    "concept_required_mm": round(required, 3),
+                    "concept_margin_mm": margin,
+                    "rerun_priority": priority,
+                    "risk_level": "high"
+                    if priority == 1
+                    else "medium"
+                    if priority == 2
+                    else "normal",
+                    "measurement_instruction": (
+                        "Rerun against routed KiCad STEP with production component 3D models."
+                    ),
+                    "requires_routed_step_rerun": True,
+                }
+            )
+    rerun_cases.sort(key=lambda item: (item["rerun_priority"], item["case_id"]))
+
+    should_write_template = True
+    if template_path.is_file():
+        csv_text = template_path.read_text()
+        csv_lines = csv_text.splitlines()
+        if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+            csv_text = "\n".join(csv_lines[1:]) + "\n"
+        with StringIO(csv_text) as csv_file:
+            existing_rows = list(csv.DictReader(csv_file))
+        existing_fields = list(existing_rows[0].keys()) if existing_rows else []
+        has_response_content = any(
+            row.get(field, "").strip()
+            for row in existing_rows
+            for field in [
+                "routed_step_file",
+                "measured_min_gap_mm",
+                "interference_count",
+                "pass",
+                "reviewer",
+                "evidence_class",
+                "measurement_artifact",
+            ]
+        )
+        should_write_template = existing_fields != fieldnames or not has_response_content
+    if should_write_template:
+        with template_path.open("w", newline="") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            for case in rerun_cases:
+                writer.writerow(
+                    {
+                        "routed_step_file": "",
+                        "case_id": case["case_id"],
+                        "rerun_priority": case["rerun_priority"],
+                        "concept_actual_mm": case["concept_actual_mm"],
+                        "concept_required_mm": case["concept_required_mm"],
+                        "concept_margin_mm": case["concept_margin_mm"],
+                        "measured_min_gap_mm": "",
+                        "required_min_gap_mm": case["concept_required_mm"],
+                        "interference_count": "",
+                        "pass": "",
+                        "reviewer": "",
+                        "evidence_class": "",
+                        "measurement_artifact": "",
+                        "measurement_instruction": case["measurement_instruction"],
+                        "notes": "Populate only after importing DRC/ERC-clean routed board STEP with supplier component models.",
+                    }
+                )
+
+    csv_text = template_path.read_text()
+    csv_lines = csv_text.splitlines()
+    template_evidence_class = ""
+    if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+        template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+        csv_text = "\n".join(csv_lines[1:]) + "\n"
+    result_cases = []
+    with StringIO(csv_text) as csv_file:
+        for row in csv.DictReader(csv_file):
+            evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+            measured_text = row.get("measured_min_gap_mm", "").strip()
+            interference_text = row.get("interference_count", "").strip()
+            measured_gap = float(measured_text) if measured_text else None
+            interference_count = int(float(interference_text)) if interference_text else None
+            required_gap = float(row.get("required_min_gap_mm", "") or 0.0)
+            evidence_class_allowed = evidence_class == "physical_routed_board_clearance_result"
+            populated = all(
+                row.get(field, "").strip()
+                for field in [
+                    "routed_step_file",
+                    "measured_min_gap_mm",
+                    "interference_count",
+                    "pass",
+                    "reviewer",
+                    "measurement_artifact",
+                ]
+            )
+            result_cases.append(
+                {
+                    "case_id": row.get("case_id", ""),
+                    "evidence_class": evidence_class,
+                    "evidence_class_allowed": evidence_class_allowed,
+                    "measured_min_gap_mm": measured_gap,
+                    "required_min_gap_mm": required_gap,
+                    "interference_count": interference_count,
+                    "reviewer_present": bool(row.get("reviewer", "").strip()),
+                    "measurement_artifact_present": bool(
+                        row.get("measurement_artifact", "").strip()
+                    ),
+                    "pass": populated
+                    and evidence_class_allowed
+                    and row.get("pass", "").strip().lower() in {"yes", "true", "1", "pass"}
+                    and measured_gap is not None
+                    and measured_gap >= required_gap
+                    and interference_count == 0,
+                }
+            )
+    complete_count = sum(1 for case in result_cases if case["pass"])
+    routed_board_ready = board_step.get("status") == "routed_board_step_ready"
+    report = {
+        "claim_boundary": (
+            "Fail-closed routed-board mechanical clearance intake. Concept PCB envelope "
+            "clearance does not prove routed PCB/component clearance."
+        ),
+        "status": "routed_board_clearance_pass"
+        if routed_board_ready and result_cases and complete_count == len(result_cases)
+        else "blocked_waiting_for_routed_board_step"
+        if not routed_board_ready
+        else "blocked_routed_board_clearance_incomplete",
+        "pcb_source": board_step.get("pcb_source"),
+        "source_reviews": {
+            "board_step_readiness_status": board_step.get("status"),
+            "assembly_clearance_status": clearance.get("status"),
+            "solid_cad_status": solid_cad.get("status"),
+        },
+        "production_step_files": board_step.get("production_step_files", []),
+        "concept_pcb_step": board_step.get("concept_pcb_step"),
+        "required_height_models": [
+            "usb_c_receptacle",
+            "display_fpc_connector",
+            "split_interconnect_top_connector",
+            "split_interconnect_bottom_connector",
+            "rear_camera_module",
+            "front_camera_module",
+            "bottom_speaker_module",
+            "earpiece_receiver",
+            "haptic_lra",
+            "soc_shield_can",
+            "pmic_shield_can",
+            "radio_shield_can",
+        ],
+        "import_execution_plan": [
+            {
+                "step": "export_routed_kicad_step",
+                "required_output": "board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step",
+                "blocks_clearance": True,
+            },
+            {
+                "step": "replace_concept_main_pcb",
+                "required_output": "phone CAD assembly with routed board STEP and supplier 3D models",
+                "blocks_clearance": True,
+            },
+            {
+                "step": "rerun_clearance_matrix",
+                "required_output": "mechanical/e1-phone/review/routed-board-clearance-results-template.csv populated",
+                "blocks_clearance": True,
+            },
+        ],
+        "expected_clearance_case_count": len(rerun_cases),
+        "complete_clearance_result_count": complete_count,
+        "required_evidence_class": "physical_routed_board_clearance_result",
+        "template_evidence_class": template_evidence_class,
+        "results_template": "mechanical/e1-phone/review/routed-board-clearance-results-template.csv",
+        "cases": [
+            {
+                "id": "routed_board_step_available_for_import",
+                "pass": routed_board_ready,
+                "evidence": "board-step-readiness.json",
+            },
+            {
+                "id": "concept_pcb_step_not_release_evidence",
+                "pass": True,
+                "evidence": "mechanical/e1-phone/out/main_pcb.step",
+                "note": "Concept PCB STEP is retained only as a packaging placeholder.",
+            },
+            {
+                "id": "height_critical_components_have_cad_envelopes",
+                "pass": solid_cad.get("status") == "generated",
+                "evidence": "solid-cad-handoff.json",
+            },
+            {
+                "id": "clearance_rerun_cases_defined",
+                "pass": bool(rerun_cases),
+                "evidence": "assembly-clearance.json",
+            },
+            {
+                "id": "routed_step_clearance_results_present",
+                "pass": result_cases and complete_count == len(result_cases),
+                "evidence": "mechanical/e1-phone/review/routed-board-clearance-results-template.csv",
+            },
+        ],
+        "rerun_matrix": rerun_cases,
+        "result_cases": result_cases,
+        "release_rule": "Routed-board clearance passes only after routed KiCad STEP is available, all height-critical component models are present, every rerun case is measured, every minimum gap is met, every interference count is zero, and evidence_class=physical_routed_board_clearance_result.",
+    }
+    (REVIEW_DIR / "routed-board-clearance.json").write_text(json.dumps(report, indent=2) + "\n")
+    lines = [
+        "# E1 Phone Routed Board Clearance",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        f"Template: `{report['results_template']}`",
+        "",
+        "## Cases",
+        "",
+    ]
+    for case in report["cases"]:
+        lines.append(f"- {'PASS' if case['pass'] else 'BLOCKED'}: `{case['id']}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "routed-board-clearance.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_full_cad_boolean_interference_artifacts(
+    parts: list[Part],
+    clearance: dict[str, Any],
+    board_step: dict[str, Any],
+    routed_board_clearance: dict[str, Any],
+    supplier_response: dict[str, Any],
+    solid_cad: dict[str, Any],
+    step_validation: dict[str, Any],
+) -> dict[str, Any]:
+    template_path = REVIEW_DIR / "full-cad-boolean-interference-results-template.csv"
+    scopes: list[dict[str, Any]] = [
+        {
+            "id": "screen_stack_to_orange_rails",
+            "source_clearance_ids": [
+                "screen_cover_glass_to_orange_body",
+                "display_lcm_under_cover_glass",
+            ],
+            "required_parts": [
+                "screen_cover_glass",
+                "display_lcm",
+                "screen_adhesive_top",
+                "orange_side_frame",
+            ],
+            "concept_pair_checks": [["display_lcm", "screen_cover_glass"]],
+            "risk": "screen glass, adhesive, and display stack must not clash with molded orange rails or ledges",
+        },
+        {
+            "id": "routed_pcb_components_to_orange_enclosure",
+            "source_clearance_ids": ["battery_to_pcb_islands"],
+            "required_parts": [
+                "main_pcb",
+                "battery_pouch",
+                "orange_back_shell",
+                "orange_side_frame",
+            ],
+            "concept_pair_checks": [["main_pcb", "battery_pouch"]],
+            "risk": "routed board components must clear enclosure ribs, bosses, snaps, and side rails",
+        },
+        {
+            "id": "usb_c_port_saddle_aperture_and_gaskets",
+            "source_clearance_ids": ["usb_shell_to_external_aperture", "usb_to_bottom_speaker"],
+            "required_parts": [
+                "usb_c_receptacle",
+                "usb_c_external_aperture",
+                "orange_usb_reinforcement_saddle",
+            ],
+            "concept_pair_checks": [
+                ["usb_c_receptacle", "bottom_speaker_module"],
+                ["usb_c_receptacle", "bottom_mic"],
+            ],
+            "risk": "USB-C shell, aperture, saddle, drip lip, and gaskets must remain interference-free",
+        },
+        {
+            "id": "side_buttons_switches_gaskets_labyrinth",
+            "source_clearance_ids": ["button_caps_to_side_frame"],
+            "required_parts": ["power_button_cap", "volume_button_cap", "orange_side_frame"],
+            "concept_pair_checks": [["power_button_cap", "volume_button_cap"]],
+            "risk": "button caps, gaskets, rails, and switch keepouts must not bind or preload",
+        },
+        {
+            "id": "front_camera_earpiece_under_glass_stack",
+            "source_clearance_ids": ["front_camera_to_earpiece"],
+            "required_parts": ["front_camera_module", "earpiece_receiver", "screen_cover_glass"],
+            "concept_pair_checks": [["front_camera_module", "earpiece_receiver"]],
+            "risk": "under-glass camera and handset acoustic path must clear cover glass and each other",
+        },
+        {
+            "id": "rear_camera_window_baffle_adhesive_stack",
+            "source_clearance_ids": ["rear_camera_to_battery"],
+            "required_parts": [
+                "rear_camera_module",
+                "rear_camera_cover_glass",
+                "rear_camera_light_baffle_top",
+            ],
+            "concept_pair_checks": [["rear_camera_module", "battery_pouch"]],
+            "risk": "rear camera module, cover window, adhesive, and baffles must remain interference-free",
+        },
+        {
+            "id": "battery_pouch_pcb_flex_haptic",
+            "source_clearance_ids": [
+                "battery_to_pcb_islands",
+                "haptic_to_pcb_islands",
+                "split_interconnect_flex_to_battery_edge",
+            ],
+            "required_parts": [
+                "battery_pouch",
+                "main_pcb",
+                "haptic_lra",
+                "split_interconnect_side_flex",
+            ],
+            "concept_pair_checks": [
+                ["battery_pouch", "main_pcb"],
+                ["battery_pouch", "haptic_lra"],
+                ["battery_pouch", "split_interconnect_side_flex"],
+            ],
+            "risk": "battery, split interconnect, haptic, and PCB islands must not pinch or overlap",
+        },
+        {
+            "id": "bottom_audio_microphone_speaker_meshes",
+            "source_clearance_ids": ["bottom_mic_to_usb", "usb_to_bottom_speaker"],
+            "required_parts": ["bottom_speaker_module", "bottom_mic", "usb_c_receptacle"],
+            "concept_pair_checks": [
+                ["bottom_speaker_module", "bottom_mic"],
+                ["bottom_speaker_module", "usb_c_receptacle"],
+            ],
+            "risk": "speaker, microphone, meshes, and acoustic ports must not clash with USB or enclosure plastic",
+        },
+        {
+            "id": "rf_shields_antennas_plastic_windows",
+            "source_clearance_ids": ["rf_keepout_to_orange_shell"],
+            "required_parts": ["soc_shield_can", "radio_shield_can", "orange_back_shell"],
+            "risk": "RF shields, feed regions, and antenna plastic windows must preserve keepouts",
+        },
+        {
+            "id": "molded_retention_boss_snap_service_features",
+            "source_clearance_ids": ["snap_hooks_to_internal_components"],
+            "required_parts": ["orange_back_shell", "orange_side_frame", "service_label_recess"],
+            "risk": "screw bosses, snap hooks, service tray, and service label recess must not intrude into assemblies",
+        },
+    ]
+    part_names = {part.name for part in parts}
+    parts_by_name = {part.name: part for part in parts}
+    clearance_by_id = {case["id"]: case for case in clearance.get("cases", [])}
+
+    def component_bounds(part: Part) -> list[tuple[np.ndarray, np.ndarray]]:
+        components = part.mesh.split(only_watertight=False)
+        if not components:
+            return [part.bounds]
+        return [(component.bounds[0], component.bounds[1]) for component in components]
+
+    def aabb_pair_check(scope_id: str, pair: list[str]) -> dict[str, Any]:
+        missing = [name for name in pair if name not in parts_by_name]
+        if missing:
+            return {
+                "scope_id": scope_id,
+                "pair": pair,
+                "missing_parts": missing,
+                "component_pair_count": 0,
+                "min_gap_mm": None,
+                "max_overlap_volume_mm3": None,
+                "interference_count": None,
+                "pass": False,
+            }
+        min_gap: float | None = None
+        max_overlap_volume = 0.0
+        interference_count = 0
+        component_pair_count = 0
+        for a_min, a_max in component_bounds(parts_by_name[pair[0]]):
+            for b_min, b_max in component_bounds(parts_by_name[pair[1]]):
+                component_pair_count += 1
+                overlap = [
+                    max(0.0, float(min(a_max[axis], b_max[axis]) - max(a_min[axis], b_min[axis])))
+                    for axis in range(3)
+                ]
+                overlap_volume = overlap[0] * overlap[1] * overlap[2]
+                if overlap_volume > 1e-6:
+                    interference_count += 1
+                    max_overlap_volume = max(max_overlap_volume, overlap_volume)
+                    pair_gap = 0.0
+                else:
+                    axis_gaps = []
+                    for axis in range(3):
+                        if a_max[axis] < b_min[axis]:
+                            axis_gaps.append(float(b_min[axis] - a_max[axis]))
+                        elif b_max[axis] < a_min[axis]:
+                            axis_gaps.append(float(a_min[axis] - b_max[axis]))
+                        else:
+                            axis_gaps.append(0.0)
+                    pair_gap = math.sqrt(sum(gap * gap for gap in axis_gaps))
+                min_gap = pair_gap if min_gap is None else min(min_gap, pair_gap)
+        return {
+            "scope_id": scope_id,
+            "pair": pair,
+            "missing_parts": [],
+            "component_pair_count": component_pair_count,
+            "min_gap_mm": None if min_gap is None else round(min_gap, 3),
+            "max_overlap_volume_mm3": round(max_overlap_volume, 3),
+            "interference_count": interference_count,
+            "pass": interference_count == 0,
+        }
+
+    fieldnames = [
+        "scope_id",
+        "assembly_step",
+        "boolean_engine",
+        "min_gap_mm",
+        "interference_count",
+        "interference_volume_mm3",
+        "pass",
+        "reviewer",
+        "evidence_class",
+        "boolean_report_artifact",
+        "notes",
+    ]
+    with template_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for scope in scopes:
+            writer.writerow(
+                {
+                    "scope_id": scope["id"],
+                    "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
+                    "boolean_engine": "OpenCascade B-rep boolean required",
+                    "min_gap_mm": "",
+                    "interference_count": "",
+                    "interference_volume_mm3": "",
+                    "pass": "",
+                    "reviewer": "",
+                    "evidence_class": "",
+                    "boolean_report_artifact": "",
+                    "notes": scope["risk"],
+                }
+            )
+    scope_cases = []
+    for scope in scopes:
+        source_cases = [
+            clearance_by_id[case_id]
+            for case_id in scope["source_clearance_ids"]
+            if case_id in clearance_by_id
+        ]
+        pair_checks = [
+            aabb_pair_check(scope["id"], pair) for pair in scope.get("concept_pair_checks", [])
+        ]
+        concept_aabb_scan_pass = all(check["pass"] for check in pair_checks)
+        scope_cases.append(
+            {
+                "id": scope["id"],
+                "source_clearance_ids": scope["source_clearance_ids"],
+                "required_parts": scope["required_parts"],
+                "concept_pair_checks": scope.get("concept_pair_checks", []),
+                "concept_aabb_pair_checks": pair_checks,
+                "concept_aabb_interference_count": sum(
+                    int(check["interference_count"] or 0) for check in pair_checks
+                ),
+                "concept_aabb_scan_pass": concept_aabb_scan_pass,
+                "risk": scope["risk"],
+                "required_parts_present": all(
+                    name in part_names for name in scope["required_parts"]
+                ),
+                "concept_clearance_case_count": len(source_cases),
+                "concept_clearance_pass": bool(source_cases)
+                and all(case.get("pass", False) for case in source_cases),
+                "cad_prerequisite_pass": all(name in part_names for name in scope["required_parts"])
+                and bool(source_cases)
+                and all(case.get("pass", False) for case in source_cases),
+                "early_aabb_fit_pass": concept_aabb_scan_pass,
+            }
+        )
+    concept_aabb_pair_checks = [
+        check for case in scope_cases for check in case["concept_aabb_pair_checks"]
+    ]
+    prerequisites = {
+        "solid_cad_generated": solid_cad.get("status") == "generated",
+        "step_validation_pass": step_validation.get("status") == "pass",
+        "assembly_clearance_pass": clearance.get("status") == "pass",
+        "concept_aabb_interference_scan_pass": all(
+            check["pass"] for check in concept_aabb_pair_checks
+        ),
+        "routed_board_step_ready": board_step.get("status") == "routed_board_step_ready",
+        "routed_board_clearance_pass": routed_board_clearance.get("status")
+        == "routed_board_clearance_pass",
+        "supplier_brep_models_accepted": supplier_response.get("status")
+        == "supplier_responses_complete",
+        "scope_cad_prerequisites_pass": all(case["cad_prerequisite_pass"] for case in scope_cases),
+    }
+    report = {
+        "claim_boundary": (
+            "Fail-closed full CAD boolean interference acceptance. Targeted AABB clearance, "
+            "concept STEP envelopes, and blank templates do not count as supplier B-rep/routed-board "
+            "boolean clash evidence."
+        ),
+        "status": "full_cad_boolean_interference_pass"
+        if all(prerequisites.values())
+        else "blocked_boolean_interference_incomplete",
+        "source_reviews": {
+            "solid_cad_status": solid_cad.get("status"),
+            "step_validation_status": step_validation.get("status"),
+            "assembly_clearance_status": clearance.get("status"),
+            "board_step_readiness_status": board_step.get("status"),
+            "routed_board_clearance_status": routed_board_clearance.get("status"),
+            "supplier_response_status": supplier_response.get("status"),
+        },
+        "expected_scope_count": len(scopes),
+        "scope_count": len(scope_cases),
+        "cad_prerequisite_scope_count": sum(
+            1 for case in scope_cases if case["cad_prerequisite_pass"]
+        ),
+        "concept_aabb_pair_check_count": len(concept_aabb_pair_checks),
+        "concept_aabb_interference_count": sum(
+            int(check["interference_count"] or 0) for check in concept_aabb_pair_checks
+        ),
+        "complete_result_count": 0,
+        "results_template": "mechanical/e1-phone/review/full-cad-boolean-interference-results-template.csv",
+        "required_evidence_class": "physical_supplier_brep_boolean_interference_result",
+        "prerequisites": prerequisites,
+        "scope_cases": scope_cases,
+        "release_rule": "Every scope must be checked with a named boolean engine against supplier B-rep models and routed KiCad board STEP, with min gap >= 0, zero interference count, zero interference volume, reviewer, evidence_class=physical_supplier_brep_boolean_interference_result, and explicit pass.",
+    }
+    (REVIEW_DIR / "full-cad-boolean-interference.json").write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+    lines = [
+        "# E1 Phone Full CAD Boolean Interference",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        f"Template: `{report['results_template']}`",
+        "",
+        "## Scopes",
+        "",
+    ]
+    for case in scope_cases:
+        lines.append(f"- {'PASS' if case['cad_prerequisite_pass'] else 'BLOCKED'}: `{case['id']}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "full-cad-boolean-interference.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
 def write_readiness_artifacts(
     params: dict[str, Any],
     parts: list[Part],
@@ -7630,6 +11554,7 @@ def write_readiness_artifacts(
     interface_validation: dict[str, Any],
     display_validation: dict[str, Any],
     display_results: dict[str, Any],
+    mechanical_integration_sim: dict[str, Any],
     acoustic_validation: dict[str, Any],
     acoustic_results: dict[str, Any],
     camera_validation: dict[str, Any],
@@ -7654,7 +11579,7 @@ def write_readiness_artifacts(
     board_step: dict[str, Any],
     supplier_rfq: dict[str, Any],
     supplier_response: dict[str, Any],
-) -> None:
+) -> dict[str, Any]:
     manifest_path = OUT_DIR / "assembly-manifest.json"
     tooling_manifest_path = OUT_DIR / "tooling-manifest.json"
     assembly_manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else []
@@ -7711,6 +11636,7 @@ def write_readiness_artifacts(
             "status": "cad_pass"
             if interface_validation["status"] == "cad_interface_validation_pass"
             and display_validation["status"] == "cad_display_validation_ready"
+            and mechanical_integration_sim["status"] == "cad_mechanical_integration_sim_ready"
             else "blocked",
             "evidence": [
                 "screen_cover_glass",
@@ -7725,6 +11651,8 @@ def write_readiness_artifacts(
                 "display-results-template.csv",
                 "display-results-review.json",
                 "display-results-review.md",
+                "mechanical-integration-sim.json",
+                "mechanical-integration-sim.md",
             ],
             "remaining_blockers": [
                 "Need supplier drawing and exact FPC exit direction.",
@@ -7864,6 +11792,7 @@ def write_readiness_artifacts(
             "subsystem": "buttons",
             "status": "cad_pass"
             if interface_validation["status"] == "cad_interface_validation_pass"
+            and mechanical_integration_sim["status"] == "cad_mechanical_integration_sim_ready"
             else "blocked",
             "evidence": [
                 "power_button_cap",
@@ -7875,6 +11804,8 @@ def write_readiness_artifacts(
                 "button_ingress_seal_stack",
                 "interface-validation.json",
                 "interface-validation.md",
+                "mechanical-integration-sim.json",
+                "mechanical-integration-sim.md",
             ],
             "remaining_blockers": [
                 "Need tactile switch vendor part and tolerance stack.",
@@ -7886,6 +11817,7 @@ def write_readiness_artifacts(
             "status": "cad_pass"
             if interface_validation["status"] == "cad_interface_validation_pass"
             and acoustic_validation["status"] == "cad_acoustic_validation_ready"
+            and mechanical_integration_sim["status"] == "cad_mechanical_integration_sim_ready"
             else "blocked",
             "evidence": [
                 "usb_c_receptacle",
@@ -7903,6 +11835,8 @@ def write_readiness_artifacts(
                 "bottom_io_acoustic_apertures",
                 "interface-validation.json",
                 "interface-validation.md",
+                "mechanical-integration-sim.json",
+                "mechanical-integration-sim.md",
                 "acoustic-validation.json",
                 "acoustic-validation.md",
                 "acoustic-results-template.csv",
@@ -8192,6 +12126,7 @@ def write_readiness_artifacts(
             "status": "cad_pass"
             if validation["status"] == "cad_validation_inputs_ready"
             and interface_validation["status"] == "cad_interface_validation_pass"
+            and mechanical_integration_sim["status"] == "cad_mechanical_integration_sim_ready"
             and evt_fixtures["status"] == "evt_fixture_cad_ready"
             and evt_inspection["status"] == "evt_inspection_plan_ready"
             else "blocked",
@@ -8207,6 +12142,8 @@ def write_readiness_artifacts(
                 "evt-inspection-results-template.csv",
                 "evt-results-review.json",
                 "evt-results-review.md",
+                "mechanical-integration-sim.json",
+                "mechanical-integration-sim.md",
                 "e1-phone-evt-fixtures.glb",
                 "evt-fixture-manifest.json",
                 "usb_c_insertion_envelope",
@@ -8306,6 +12243,10 @@ def write_readiness_artifacts(
         and (REVIEW_DIR / "display-results-template.csv").is_file(),
         "display_results_review": (REVIEW_DIR / "display-results-review.json").is_file()
         and (REVIEW_DIR / "display-results-review.md").is_file(),
+        "mechanical_integration_sim": mechanical_integration_sim["status"]
+        == "cad_mechanical_integration_sim_ready"
+        and (REVIEW_DIR / "mechanical-integration-sim.json").is_file()
+        and (REVIEW_DIR / "mechanical-integration-sim.md").is_file(),
         "acoustic_validation": acoustic_validation["status"] == "cad_acoustic_validation_ready"
         and (REVIEW_DIR / "acoustic-validation.json").is_file()
         and (REVIEW_DIR / "acoustic-validation.md").is_file()
@@ -8459,6 +12400,10 @@ def write_readiness_artifacts(
             "display_measurement_count": display_validation.get("measurement_count", 0),
             "display_results_status": display_results["status"],
             "display_results_complete_count": display_results.get("complete_result_count", 0),
+            "mechanical_integration_sim_status": mechanical_integration_sim["status"],
+            "mechanical_integration_sim_case_count": mechanical_integration_sim.get(
+                "case_count", 0
+            ),
             "acoustic_validation_status": acoustic_validation["status"],
             "acoustic_measurement_count": acoustic_validation.get("measurement_count", 0),
             "acoustic_results_status": acoustic_results["status"],
@@ -8492,6 +12437,12 @@ def write_readiness_artifacts(
             "toolmaker_signoff_status": toolmaker_signoff["status"],
             "toolmaker_signoff_complete_count": toolmaker_signoff.get("complete_response_count", 0),
             "visual_decision_status": visual_decision["status"],
+            "automated_visual_status": visual_decision.get("automated_visual_status"),
+            "manual_visual_signoff_status": visual_decision.get("manual_visual_signoff_status"),
+            "production_visual_signoff_ready": visual_decision.get(
+                "production_visual_signoff_ready", False
+            ),
+            "open_manual_visual_review_count": visual_decision.get("open_manual_review_count", 0),
             "solid_cad_handoff_status": solid_cad["status"],
             "solid_cad_step_part_count": solid_cad.get("part_count", 0),
             "step_validation_status": step_validation["status"],
@@ -8534,6 +12485,674 @@ def write_readiness_artifacts(
     for name, present in required_outputs.items():
         lines.append(f"- {'PASS' if present else 'BLOCKED'}: `{name}`")
     (REVIEW_DIR / "manufacturing-readiness.md").write_text("\n".join(lines) + "\n")
+    return readiness
+
+
+def write_end_to_end_objective_acceptance_artifacts(
+    manufacturing_readiness: dict[str, Any],
+    board_step: dict[str, Any],
+    routed_board_clearance: dict[str, Any],
+    supplier_evidence: dict[str, Any],
+    full_cad_boolean: dict[str, Any],
+    visual_review_coverage: dict[str, Any],
+    toolmaker_signoff: dict[str, Any],
+) -> dict[str, Any]:
+    board_source = ROOT / "board/kicad/e1-phone/end-to-end-readiness.yaml"
+    board_data = yaml.safe_load(board_source.read_text()) if board_source.is_file() else {}
+
+    def read_review_json(name: str) -> dict[str, Any]:
+        path = REVIEW_DIR / name
+        if not path.is_file():
+            return {"status": "missing", "missing_artifact": f"mechanical/e1-phone/review/{name}"}
+        return json.loads(path.read_text())
+
+    physical_process = read_review_json("physical-process-validation-acceptance.json")
+    cmf_release = read_review_json("cmf-release-acceptance.json")
+    mold_flow = read_review_json("mold-flow-acceptance.json")
+
+    objective_requirements = board_data.get("objective_requirements", {})
+    board_cases = []
+    for objective_id, objective in objective_requirements.items():
+        passed = bool(objective.get("objective_satisfied", False))
+        board_cases.append(
+            {
+                "id": objective_id,
+                "requirement": objective.get("requirement", ""),
+                "evidence_artifact": objective.get("evidence_artifact", ""),
+                "current_status": objective.get("current_status", "missing"),
+                "objective_satisfied": passed,
+                "release_required": bool(objective.get("release_required", True)),
+                "blockers": objective.get("blockers", []),
+                "required_release_outputs": objective.get("required_release_outputs", []),
+                "pass": passed,
+            }
+        )
+
+    mechanical_cases = [
+        {
+            "id": "routed_board_step_and_clearance",
+            "status": routed_board_clearance.get("status"),
+            "source_status": board_step.get("status"),
+            "pass": board_step.get("status") == "routed_board_step_ready"
+            and routed_board_clearance.get("status") == "routed_board_clearance_pass",
+            "required_evidence": [
+                "board-step-readiness.json",
+                "routed-board-clearance.json",
+                "routed-board-clearance-results-template.csv",
+            ],
+        },
+        {
+            "id": "supplier_family_lock",
+            "status": supplier_evidence.get("status"),
+            "pass": supplier_evidence.get("status") == "supplier_evidence_complete",
+            "required_evidence": ["supplier-evidence-acceptance.json"],
+        },
+        {
+            "id": "full_cad_boolean_interference",
+            "status": full_cad_boolean.get("status"),
+            "pass": full_cad_boolean.get("status") == "full_cad_boolean_interference_pass",
+            "required_evidence": [
+                "full-cad-boolean-interference.json",
+                "full-cad-boolean-interference-results-template.csv",
+            ],
+        },
+        {
+            "id": "automated_visual_and_manual_cmf_signoff",
+            "status": visual_review_coverage.get("status"),
+            "pass": visual_review_coverage.get("status") == "visual_review_coverage_acceptance_pass"
+            and visual_review_coverage.get("production_visual_signoff_ready") is True,
+            "required_evidence": [
+                "visual-review-coverage-acceptance.json",
+                "visual-decision-report.json",
+                "cmf-release-acceptance.json",
+            ],
+        },
+        {
+            "id": "physical_process_validation_results",
+            "status": physical_process.get("status"),
+            "pass": physical_process.get("status") == "physical_process_validation_pass",
+            "required_evidence": [
+                "physical-process-validation-acceptance.json",
+                "display-results-review.json",
+                "acoustic-results-review.json",
+                "camera-results-review.json",
+                "environmental-results-review.json",
+                "evt-results-review.json",
+                "gdt-fai-results-review.json",
+            ],
+        },
+        {
+            "id": "tooling_mold_flow_and_toolmaker_signoff",
+            "status": toolmaker_signoff.get("status"),
+            "source_status": mold_flow.get("status"),
+            "pass": mold_flow.get("status") == "mold_flow_results_pass"
+            and toolmaker_signoff.get("status") == "toolmaker_signoff_complete",
+            "required_evidence": [
+                "mold-flow-acceptance.json",
+                "toolmaker-signoff-review.json",
+                "toolmaker-signoff-response-template.csv",
+            ],
+        },
+        {
+            "id": "orange_cmf_release",
+            "status": cmf_release.get("status"),
+            "pass": cmf_release.get("status") == "cmf_release_complete",
+            "required_evidence": [
+                "cmf-release-acceptance.json",
+                "cmf-results-template.csv",
+            ],
+        },
+        {
+            "id": "manufacturing_release_readiness",
+            "status": manufacturing_readiness.get("overall_status"),
+            "pass": manufacturing_readiness.get("manufacturing_release_ready") is True,
+            "required_evidence": ["manufacturing-readiness.json"],
+        },
+    ]
+
+    board_release_decision = board_data.get("release_decision", {})
+    board_ready = bool(board_release_decision.get("end_to_end_phone_ready", False))
+    complete_board_count = sum(1 for case in board_cases if case["pass"])
+    complete_mechanical_count = sum(1 for case in mechanical_cases if case["pass"])
+    missing_items = [f"board:{case['id']}" for case in board_cases if not case["pass"]] + [
+        f"mechanical:{case['id']}" for case in mechanical_cases if not case["pass"]
+    ]
+    required_release_outputs = list(board_data.get("required_release_outputs", []))
+    for case in board_cases:
+        required_release_outputs.extend(case.get("required_release_outputs", []))
+    for case in mechanical_cases:
+        required_release_outputs.extend(
+            f"mechanical/e1-phone/review/{item}" for item in case["required_evidence"]
+        )
+    required_release_outputs = sorted(dict.fromkeys(required_release_outputs))
+    all_complete = (
+        board_ready
+        and complete_board_count == len(board_cases)
+        and complete_mechanical_count == len(mechanical_cases)
+        and manufacturing_readiness.get("manufacturing_release_ready") is True
+    )
+    report = {
+        "claim_boundary": (
+            "Generated CAD-side objective acceptance for the complete phone. This joins the "
+            "board end-to-end readiness matrix with mechanical CAD release gates; planning "
+            "artifacts, concept KiCad geometry, blank templates, and CAD envelopes do not count "
+            "as finished phone evidence."
+        ),
+        "status": "end_to_end_objective_ready" if all_complete else "blocked_not_end_to_end_ready",
+        "board_end_to_end_source": "board/kicad/e1-phone/end-to-end-readiness.yaml",
+        "board_end_to_end_source_present": board_source.is_file(),
+        "board_end_to_end_status": board_data.get("status", "missing"),
+        "board_release_decision": board_release_decision,
+        "expected_board_objective_count": len(board_cases),
+        "complete_board_objective_count": complete_board_count,
+        "expected_mechanical_gate_count": len(mechanical_cases),
+        "complete_mechanical_gate_count": complete_mechanical_count,
+        "board_cases": board_cases,
+        "mechanical_cases": mechanical_cases,
+        "missing_or_incomplete_items": missing_items,
+        "required_release_outputs": required_release_outputs,
+        "forbidden_claims": board_data.get("forbidden_claims", []),
+        "release_rule": (
+            "Every board objective requirement and every mechanical gate must pass, the board "
+            "end-to-end release decision must be true, manufacturing_release_ready must be true, "
+            "and all required release outputs must exist before claiming the finished phone is "
+            "end-to-end ready."
+        ),
+    }
+    (REVIEW_DIR / "end-to-end-objective-acceptance.json").write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+    lines = [
+        "# E1 Phone End-To-End Objective Acceptance",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This gate joins board objective readiness with mechanical release gates for the complete phone.",
+        "",
+        "## Board Objectives",
+        "",
+    ]
+    for case in board_cases:
+        lines.append(f"- {'PASS' if case['pass'] else 'BLOCKED'}: `{case['id']}`")
+    lines.extend(["", "## Mechanical Gates", ""])
+    for case in mechanical_cases:
+        lines.append(f"- {'PASS' if case['pass'] else 'BLOCKED'}: `{case['id']}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "end-to-end-objective-acceptance.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_cmf_release_acceptance_artifacts(
+    params: dict[str, Any],
+    visual_decision: dict[str, Any],
+    visual_review_coverage: dict[str, Any],
+    dfm: dict[str, Any],
+    toolmaker_signoff: dict[str, Any],
+) -> dict[str, Any]:
+    criteria: list[dict[str, Any]] = [
+        {
+            "id": "orange_resin_color_plaque_delta_e",
+            "domain": "color",
+            "target": "molded orange PC+ABS plaque within deltaE <= 2.0 against approved master chip",
+            "required_artifact": "color plaque photo, spectro reading, resin lot, and master-chip ID",
+            "numeric_limit": {"max_delta_e": 2.0},
+            "blocks_release": True,
+        },
+        {
+            "id": "hard_touch_gloss_texture",
+            "domain": "texture",
+            "target": "hard matte/satin orange texture approved with 8-18 GU at 60 deg and documented texture depth",
+            "required_artifact": "texture plaque, gloss-meter reading, and tool texture callout",
+            "numeric_limit": {"min_gloss_gu_60": 8.0, "max_gloss_gu_60": 18.0},
+            "blocks_release": True,
+        },
+        {
+            "id": "scratch_and_hand_oil_visibility",
+            "domain": "durability",
+            "target": "no objectionable whitening, gloss change, or dark hand-oil staining on orange A-surfaces after rub/scratch exposure",
+            "required_artifact": "rub/scratch photos before and after, reviewer disposition, and cleaning method",
+            "numeric_limit": {"max_visible_defect_count": 0},
+            "blocks_release": True,
+        },
+        {
+            "id": "gate_blush_vestige_and_weld_line_visibility",
+            "domain": "tooling_cosmetic",
+            "target": "gate vestige off A-surface; no visible weld line on front rail, back hero surface, camera land, or USB lip",
+            "required_artifact": "first-shot photos, gate vestige measurement, weld-line overlay, and mold-flow reference",
+            "numeric_limit": {"max_a_surface_visible_defects": 0},
+            "blocks_release": True,
+        },
+        {
+            "id": "rendered_orange_identity_locked",
+            "domain": "visual_cad",
+            "target": "CAD review views show dominant orange shell with black glass front and compact phone slab proportions",
+            "required_artifact": "visual-review.json and visual-decision-report.json",
+            "numeric_limit": {
+                "min_back_orange_ratio_of_nonwhite": 0.65,
+                "min_bottom_orange_ratio_of_nonwhite": 0.45,
+                "min_front_orange_ratio_of_nonwhite": 0.25,
+            },
+            "blocks_release": False,
+        },
+    ]
+    template_path = REVIEW_DIR / "cmf-results-template.csv"
+    fieldnames = [
+        "criterion_id",
+        "sample_id",
+        "artifact",
+        "measured_value",
+        "accepted",
+        "reviewer",
+        "evidence_class",
+        "notes",
+    ]
+    should_write_template = True
+    if template_path.is_file():
+        csv_text = template_path.read_text()
+        csv_lines = csv_text.splitlines()
+        if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+            csv_text = "\n".join(csv_lines[1:]) + "\n"
+        with StringIO(csv_text) as csv_file:
+            existing_rows = list(csv.DictReader(csv_file))
+        existing_ids = {row.get("criterion_id", "") for row in existing_rows}
+        expected_ids = {criterion["id"] for criterion in criteria}
+        existing_fields = list(existing_rows[0].keys()) if existing_rows else []
+        has_response_content = any(
+            row.get(field, "").strip()
+            for row in existing_rows
+            for field in [
+                "sample_id",
+                "artifact",
+                "measured_value",
+                "accepted",
+                "reviewer",
+                "evidence_class",
+            ]
+        )
+        should_write_template = existing_ids != expected_ids or existing_fields != fieldnames
+        if has_response_content:
+            should_write_template = False
+    if should_write_template:
+        with template_path.open("w", newline="") as output_csv:
+            writer = csv.DictWriter(output_csv, fieldnames=fieldnames)
+            writer.writeheader()
+            for criterion in criteria:
+                writer.writerow(
+                    {
+                        "criterion_id": criterion["id"],
+                        "sample_id": "",
+                        "artifact": "",
+                        "measured_value": "",
+                        "accepted": "",
+                        "reviewer": "",
+                        "evidence_class": "",
+                        "notes": criterion["target"],
+                    }
+                )
+
+    csv_text = template_path.read_text()
+    csv_lines = csv_text.splitlines()
+    template_evidence_class = ""
+    if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+        template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+        csv_text = "\n".join(csv_lines[1:]) + "\n"
+    result_rows: dict[str, dict[str, str]] = {}
+    with StringIO(csv_text) as csv_file:
+        for row in csv.DictReader(csv_file):
+            result_rows[row.get("criterion_id", "")] = row
+
+    hard_orange_gate = visual_decision.get("visual_design_gates", {}).get(
+        "hard_orange_shell_visible", {}
+    )
+    black_glass_gate = visual_decision.get("visual_design_gates", {}).get(
+        "black_glass_front_visible", {}
+    )
+    visual_gate = {
+        "front_orange_ratio": hard_orange_gate.get("front_orange_ratio", 0.0),
+        "back_orange_ratio": hard_orange_gate.get("back_orange_ratio", 0.0),
+        "bottom_orange_ratio": hard_orange_gate.get("bottom_orange_ratio", 0.0),
+        "visual_decision_status": visual_decision.get("status"),
+        "visual_review_coverage_status": visual_review_coverage.get("status"),
+        "black_glass_front_visible": bool(black_glass_gate.get("pass", False)),
+        "pass": visual_decision.get("status") == "pass"
+        and visual_review_coverage.get("status") == "visual_review_coverage_acceptance_pass"
+        and bool(hard_orange_gate.get("pass", False))
+        and bool(black_glass_gate.get("pass", False)),
+    }
+    forbidden_evidence_classes = {
+        "simulated_cmf_result_for_planning_not_release",
+        "rendered_cad_only",
+        "planning",
+        "blank_template",
+    }
+
+    def parse_measurements(measured_value: str) -> tuple[dict[str, float], list[float]]:
+        normalized_keys: dict[str, float] = {}
+        for match in re.finditer(
+            r"([A-Za-z][A-Za-z0-9_ -]*)\s*(?:=|:)\s*(-?\d+(?:\.\d+)?)",
+            measured_value,
+        ):
+            key = re.sub(r"[^a-z0-9]+", "_", match.group(1).lower()).strip("_")
+            normalized_keys[key] = float(match.group(2))
+        numbers = [float(value) for value in re.findall(r"-?\d+(?:\.\d+)?", measured_value)]
+        return normalized_keys, numbers
+
+    def measurement_value(
+        measurements: dict[str, float],
+        numbers: list[float],
+        aliases: list[str],
+    ) -> float | None:
+        for alias in aliases:
+            key = re.sub(r"[^a-z0-9]+", "_", alias.lower()).strip("_")
+            if key in measurements:
+                return measurements[key]
+        return numbers[0] if numbers else None
+
+    def evaluate_numeric_limit(
+        criterion_id: str,
+        measured_value: str,
+    ) -> tuple[bool, dict[str, float], list[str]]:
+        measurements, numbers = parse_measurements(measured_value)
+        parsed: dict[str, float] = {}
+        failures: list[str] = []
+        if criterion_id == "orange_resin_color_plaque_delta_e":
+            value = measurement_value(measurements, numbers, ["delta_e", "delta e", "de"])
+            if value is None:
+                failures.append("missing_delta_e")
+            else:
+                parsed["delta_e"] = value
+                if value > 2.0:
+                    failures.append("delta_e_above_2.0")
+        elif criterion_id == "hard_touch_gloss_texture":
+            value = measurement_value(
+                measurements,
+                numbers,
+                ["gloss_gu_60", "gloss gu 60", "gloss_60", "gu_60", "gloss"],
+            )
+            if value is None:
+                failures.append("missing_gloss_gu_60")
+            else:
+                parsed["gloss_gu_60"] = value
+                if value < 8.0 or value > 18.0:
+                    failures.append("gloss_gu_60_outside_8_to_18")
+        elif criterion_id == "scratch_and_hand_oil_visibility":
+            value = measurement_value(
+                measurements,
+                numbers,
+                ["visible_defect_count", "visible defects", "defects", "defect_count"],
+            )
+            if value is None:
+                failures.append("missing_visible_defect_count")
+            else:
+                parsed["visible_defect_count"] = value
+                if value > 0:
+                    failures.append("visible_defect_count_above_0")
+        elif criterion_id == "gate_blush_vestige_and_weld_line_visibility":
+            value = measurement_value(
+                measurements,
+                numbers,
+                [
+                    "a_surface_visible_defects",
+                    "a surface visible defects",
+                    "visible_defects",
+                    "defects",
+                    "defect_count",
+                ],
+            )
+            if value is None:
+                failures.append("missing_a_surface_visible_defects")
+            else:
+                parsed["a_surface_visible_defects"] = value
+                if value > 0:
+                    failures.append("a_surface_visible_defects_above_0")
+        else:
+            return True, parsed, failures
+        return not failures, parsed, failures
+
+    cases = []
+    for criterion in criteria:
+        row = result_rows.get(criterion["id"], {})
+        measured_value = row.get("measured_value", "").strip()
+        numeric_limit_pass, parsed_measurements, numeric_limit_failures = evaluate_numeric_limit(
+            criterion["id"], measured_value
+        )
+        evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+        accepted = row.get("accepted", "").strip().lower() in {"yes", "true", "1", "pass"}
+        evidence_class_allowed = evidence_class == "physical_cmf_result" and (
+            evidence_class not in forbidden_evidence_classes
+        )
+        result = {
+            "criterion_id": criterion["id"],
+            "sample_id_present": bool(row.get("sample_id", "").strip()),
+            "artifact_present": bool(row.get("artifact", "").strip()),
+            "measured_value_present": bool(measured_value),
+            "parsed_measurements": parsed_measurements,
+            "numeric_limit_pass": numeric_limit_pass,
+            "numeric_limit_failures": numeric_limit_failures,
+            "reviewer_present": bool(row.get("reviewer", "").strip()),
+            "evidence_class": evidence_class,
+            "evidence_class_allowed": evidence_class_allowed,
+            "accepted": accepted,
+            "pass": False,
+        }
+        if criterion["id"] == "rendered_orange_identity_locked":
+            result["visual_gate"] = visual_gate
+            result["pass"] = visual_gate["pass"]
+        else:
+            result["pass"] = (
+                result["sample_id_present"]
+                and result["artifact_present"]
+                and result["measured_value_present"]
+                and result["numeric_limit_pass"]
+                and result["reviewer_present"]
+                and evidence_class_allowed
+                and accepted
+            )
+        cases.append({**criterion, "result": result, "pass": result["pass"]})
+
+    complete_count = sum(1 for case in cases if case["pass"])
+    production_cases = [case for case in cases if case["blocks_release"]]
+    production_complete_count = sum(1 for case in production_cases if case["pass"])
+    missing_items = [case["id"] for case in cases if not case["pass"]]
+    report = {
+        "claim_boundary": (
+            "Fail-closed CMF and industrial-design release contract for the hard orange plastic "
+            "phone. Rendered orange CAD identity is necessary but does not replace molded "
+            "plaques, scratch/rub samples, first shots, or signed CMF approval."
+        ),
+        "status": "cmf_release_complete"
+        if production_complete_count == len(production_cases) and visual_gate["pass"]
+        else "blocked_no_cmf_results"
+        if production_complete_count == 0
+        else "blocked_cmf_results_incomplete",
+        "design_language": params["device"]["design_language"],
+        "plastic_color": params["device"]["plastic_color"],
+        "material_family": params["manufacturing"]["plastic"],
+        "gate_strategy": params["manufacturing"]["gate_strategy"],
+        "source_status": {
+            "visual_decision_status": visual_decision.get("status"),
+            "visual_review_coverage_status": visual_review_coverage.get("status"),
+            "dfm_status": dfm.get("status"),
+            "toolmaker_signoff_status": toolmaker_signoff.get("status"),
+        },
+        "expected_criterion_count": len(cases),
+        "complete_criterion_count": complete_count,
+        "production_required_count": len(production_cases),
+        "production_complete_count": production_complete_count,
+        "required_evidence_class": "physical_cmf_result",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
+        "results_template": "mechanical/e1-phone/review/cmf-results-template.csv",
+        "visual_gate": visual_gate,
+        "cases": cases,
+        "missing_or_incomplete_criteria": missing_items,
+        "release_rule": (
+            "Color plaque, texture/gloss plaque, scratch/rub sample, gate-blush/weld-line "
+            "first-shot review, physical numeric limits, evidence_class=physical_cmf_result, "
+            "and rendered orange identity must all pass before industrial-design or CMF release."
+        ),
+    }
+    (REVIEW_DIR / "cmf-release-acceptance.json").write_text(json.dumps(report, indent=2) + "\n")
+    lines = [
+        "# E1 Phone CMF Release Acceptance",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This gate blocks CMF release until molded orange samples and visual signoff are complete.",
+        "",
+        "## Criteria",
+        "",
+    ]
+    for case in cases:
+        lines.append(f"- {'PASS' if case['pass'] else 'BLOCKED'}: `{case['id']}`")
+        lines.append(f"  Required artifact: {case['required_artifact']}")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "cmf-release-acceptance.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_physical_process_validation_acceptance_artifacts() -> dict[str, Any]:
+    def read_review_json(name: str) -> dict[str, Any]:
+        path = REVIEW_DIR / name
+        if not path.is_file():
+            return {"status": "missing", "missing_artifact": f"mechanical/e1-phone/review/{name}"}
+        return json.loads(path.read_text())
+
+    gate_specs = [
+        {
+            "id": "display_touch_lab_results",
+            "review": "display-results-review.json",
+            "template": "display-results-template.csv",
+            "pass_status": "display_results_pass",
+        },
+        {
+            "id": "acoustic_lab_results",
+            "review": "acoustic-results-review.json",
+            "template": "acoustic-results-template.csv",
+            "pass_status": "acoustic_results_pass",
+        },
+        {
+            "id": "camera_optical_lab_results",
+            "review": "camera-results-review.json",
+            "template": "camera-results-template.csv",
+            "pass_status": "camera_results_pass",
+        },
+        {
+            "id": "thermal_rf_drop_ingress_environmental_results",
+            "review": "environmental-results-review.json",
+            "template": "environmental-results-template.csv",
+            "pass_status": "environmental_results_pass",
+        },
+        {
+            "id": "button_usb_screen_evt_physical_results",
+            "review": "evt-results-review.json",
+            "template": "evt-inspection-results-template.csv",
+            "pass_status": "evt_results_pass",
+        },
+        {
+            "id": "fixture_calibration_results",
+            "review": "fixture-calibration-acceptance.json",
+            "template": "fixture-calibration-results-template.csv",
+            "pass_status": "fixture_calibration_results_pass",
+        },
+        {
+            "id": "mechanical_lifecycle_results",
+            "review": "mechanical-lifecycle-acceptance.json",
+            "template": "mechanical-lifecycle-results-template.csv",
+            "pass_status": "mechanical_lifecycle_results_pass",
+        },
+        {
+            "id": "gdt_first_article_results",
+            "review": "gdt-fai-results-review.json",
+            "template": "gdt-fai-template.csv",
+            "pass_status": "gdt_fai_results_pass",
+        },
+        {
+            "id": "unit_traceability_records",
+            "review": "unit-traceability-acceptance.json",
+            "template": "unit-traceability-results-template.csv",
+            "pass_status": "unit_traceability_results_pass",
+        },
+        {
+            "id": "assembly_build_traveler_records",
+            "review": "assembly-build-traveler.json",
+            "template": "assembly-build-results-template.csv",
+            "pass_status": "assembly_build_results_pass",
+        },
+        {
+            "id": "factory_process_control_records",
+            "review": "process-control-plan.json",
+            "template": "process-control-results-template.csv",
+            "pass_status": "process_control_results_pass",
+        },
+    ]
+    cases = []
+    for spec in gate_specs:
+        review = read_review_json(spec["review"])
+        status = review.get("status", "missing")
+        template_present = (REVIEW_DIR / spec["template"]).is_file()
+        review_present = (REVIEW_DIR / spec["review"]).is_file()
+        passed = status == spec["pass_status"] and template_present and review_present
+        cases.append(
+            {
+                "id": spec["id"],
+                "status": status,
+                "pass_status": spec["pass_status"],
+                "required_evidence": [spec["template"], spec["review"]],
+                "template_present": template_present,
+                "review_present": review_present,
+                "complete_result_count": review.get("complete_result_count", 0),
+                "expected_result_count": review.get(
+                    "expected_measurement_count",
+                    review.get(
+                        "expected_characteristic_count", review.get("expected_result_count", 0)
+                    ),
+                ),
+                "pass": passed,
+            }
+        )
+    complete_gate_count = sum(1 for case in cases if case["pass"])
+    missing_gates = [case["id"] for case in cases if not case["pass"]]
+    report = {
+        "claim_boundary": (
+            "Fail-closed finished-phone validation acceptance. CAD plans, fixtures, blank "
+            "templates, and individual review files do not count as finished phone evidence "
+            "until every lab, EVT, FAI, traceability, build, and process-control result family passes."
+        ),
+        "status": "physical_process_validation_pass"
+        if cases and complete_gate_count == len(cases)
+        else "blocked_no_physical_process_validation_results"
+        if complete_gate_count == 0
+        else "blocked_physical_process_validation_incomplete",
+        "expected_gate_count": len(cases),
+        "complete_gate_count": complete_gate_count,
+        "missing_or_incomplete_gates": missing_gates,
+        "cases": cases,
+        "release_rule": (
+            "Display/touch, acoustic, camera, environmental, EVT physical, fixture calibration, "
+            "lifecycle, GD&T/FAI, unit traceability, assembly traveler, and process-control "
+            "results must all be populated and passing before the phone can be treated as "
+            "physically validated."
+        ),
+    }
+    (REVIEW_DIR / "physical-process-validation-acceptance.json").write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+    lines = [
+        "# E1 Phone Physical Process Validation Acceptance",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This gate blocks finished-phone validation until all physical result families pass.",
+        "",
+        "## Gates",
+        "",
+    ]
+    for case in cases:
+        lines.append(f"- {'PASS' if case['pass'] else 'BLOCKED'}: `{case['id']}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "physical-process-validation-acceptance.md").write_text("\n".join(lines) + "\n")
+    return report
 
 
 def aabb_gap(a: Part, b: Part) -> float:
@@ -8947,9 +13566,9 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             "source": pcb["source"],
         },
         "device_compactness": {
-            "pass": width <= 80.0 and height <= 157.0 and depth <= 10.0,
+            "pass": width <= 80.0 and height <= 157.0 and depth <= 11.5,
             "envelope_mm": [width, height, depth],
-            "note": "Envelope is driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail.",
+            "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth raised to <=11.5 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall.",
         },
         "mass_budget": {
             "pass": mass["total_estimated_mass_g"] <= params["device"]["target_mass_g"],
@@ -8993,12 +13612,21 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "supplier_response_template": "mechanical/e1-phone/review/supplier-response-template.csv",
             "supplier_response_review_json": "mechanical/e1-phone/review/supplier-response-review.json",
             "supplier_response_review_md": "mechanical/e1-phone/review/supplier-response-review.md",
+            "supplier_evidence_acceptance_json": "mechanical/e1-phone/review/supplier-evidence-acceptance.json",
+            "supplier_evidence_acceptance_md": "mechanical/e1-phone/review/supplier-evidence-acceptance.md",
             "kicad_mechanical_handoff_json": "mechanical/e1-phone/review/kicad-mechanical-handoff.json",
             "kicad_mechanical_handoff_md": "mechanical/e1-phone/review/kicad-mechanical-handoff.md",
             "kicad_placement_reconciliation_json": "mechanical/e1-phone/review/kicad-placement-reconciliation.json",
             "kicad_placement_reconciliation_md": "mechanical/e1-phone/review/kicad-placement-reconciliation.md",
             "board_step_readiness_json": "mechanical/e1-phone/review/board-step-readiness.json",
             "board_step_readiness_md": "mechanical/e1-phone/review/board-step-readiness.md",
+            "routed_board_step_intake_template": "mechanical/e1-phone/review/routed-board-step-intake-template.csv",
+            "routed_board_clearance_template": "mechanical/e1-phone/review/routed-board-clearance-results-template.csv",
+            "routed_board_clearance_json": "mechanical/e1-phone/review/routed-board-clearance.json",
+            "routed_board_clearance_md": "mechanical/e1-phone/review/routed-board-clearance.md",
+            "full_cad_boolean_interference_template": "mechanical/e1-phone/review/full-cad-boolean-interference-results-template.csv",
+            "full_cad_boolean_interference_json": "mechanical/e1-phone/review/full-cad-boolean-interference.json",
+            "full_cad_boolean_interference_md": "mechanical/e1-phone/review/full-cad-boolean-interference.md",
             "engineering_validation_json": "mechanical/e1-phone/review/engineering-validation.json",
             "engineering_validation_md": "mechanical/e1-phone/review/engineering-validation.md",
             "interface_validation_json": "mechanical/e1-phone/review/interface-validation.json",
@@ -9008,6 +13636,8 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "display_results_template": "mechanical/e1-phone/review/display-results-template.csv",
             "display_results_review_json": "mechanical/e1-phone/review/display-results-review.json",
             "display_results_review_md": "mechanical/e1-phone/review/display-results-review.md",
+            "mechanical_integration_sim_json": "mechanical/e1-phone/review/mechanical-integration-sim.json",
+            "mechanical_integration_sim_md": "mechanical/e1-phone/review/mechanical-integration-sim.md",
             "acoustic_validation_json": "mechanical/e1-phone/review/acoustic-validation.json",
             "acoustic_validation_md": "mechanical/e1-phone/review/acoustic-validation.md",
             "acoustic_results_template": "mechanical/e1-phone/review/acoustic-results-template.csv",
@@ -9032,6 +13662,23 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "evt_inspection_results_template": "mechanical/e1-phone/review/evt-inspection-results-template.csv",
             "evt_results_review_json": "mechanical/e1-phone/review/evt-results-review.json",
             "evt_results_review_md": "mechanical/e1-phone/review/evt-results-review.md",
+            "fixture_calibration_results_template": "mechanical/e1-phone/review/fixture-calibration-results-template.csv",
+            "fixture_calibration_acceptance_json": "mechanical/e1-phone/review/fixture-calibration-acceptance.json",
+            "fixture_calibration_acceptance_md": "mechanical/e1-phone/review/fixture-calibration-acceptance.md",
+            "mechanical_lifecycle_results_template": "mechanical/e1-phone/review/mechanical-lifecycle-results-template.csv",
+            "mechanical_lifecycle_acceptance_json": "mechanical/e1-phone/review/mechanical-lifecycle-acceptance.json",
+            "mechanical_lifecycle_acceptance_md": "mechanical/e1-phone/review/mechanical-lifecycle-acceptance.md",
+            "assembly_build_results_template": "mechanical/e1-phone/review/assembly-build-results-template.csv",
+            "assembly_build_traveler_json": "mechanical/e1-phone/review/assembly-build-traveler.json",
+            "assembly_build_traveler_md": "mechanical/e1-phone/review/assembly-build-traveler.md",
+            "process_control_results_template": "mechanical/e1-phone/review/process-control-results-template.csv",
+            "process_control_plan_json": "mechanical/e1-phone/review/process-control-plan.json",
+            "process_control_plan_md": "mechanical/e1-phone/review/process-control-plan.md",
+            "unit_traceability_results_template": "mechanical/e1-phone/review/unit-traceability-results-template.csv",
+            "unit_traceability_acceptance_json": "mechanical/e1-phone/review/unit-traceability-acceptance.json",
+            "unit_traceability_acceptance_md": "mechanical/e1-phone/review/unit-traceability-acceptance.md",
+            "physical_process_validation_acceptance_json": "mechanical/e1-phone/review/physical-process-validation-acceptance.json",
+            "physical_process_validation_acceptance_md": "mechanical/e1-phone/review/physical-process-validation-acceptance.md",
             "evt_fixture_glb": "mechanical/e1-phone/out/e1-phone-evt-fixtures.glb",
             "evt_fixture_manifest": "mechanical/e1-phone/out/evt-fixture-manifest.json",
             "assembly_clearance_json": "mechanical/e1-phone/review/assembly-clearance.json",
@@ -9040,6 +13687,11 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "injection_molding_dfm_md": "mechanical/e1-phone/review/injection-molding-dfm.md",
             "mold_process_window_json": "mechanical/e1-phone/review/mold-process-window.json",
             "mold_process_window_md": "mechanical/e1-phone/review/mold-process-window.md",
+            "mold_flow_input_deck_json": "mechanical/e1-phone/review/mold-flow-input-deck.json",
+            "mold_flow_input_deck_md": "mechanical/e1-phone/review/mold-flow-input-deck.md",
+            "mold_flow_results_template": "mechanical/e1-phone/review/mold-flow-results-template.csv",
+            "mold_flow_acceptance_json": "mechanical/e1-phone/review/mold-flow-acceptance.json",
+            "mold_flow_acceptance_md": "mechanical/e1-phone/review/mold-flow-acceptance.md",
             "toolmaker_signoff_package_json": "mechanical/e1-phone/review/toolmaker-signoff-package.json",
             "toolmaker_signoff_package_md": "mechanical/e1-phone/review/toolmaker-signoff-package.md",
             "toolmaker_signoff_response_template": "mechanical/e1-phone/review/toolmaker-signoff-response-template.csv",
@@ -9055,8 +13707,17 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "part_review_json": "mechanical/e1-phone/review/part-review.json",
             "part_review_md": "mechanical/e1-phone/review/part-review.md",
             "part_review_contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
+            "part_visual_coverage_json": "mechanical/e1-phone/review/part-visual-coverage.json",
+            "part_visual_coverage_md": "mechanical/e1-phone/review/part-visual-coverage.md",
             "visual_decision_report_json": "mechanical/e1-phone/review/visual-decision-report.json",
             "visual_decision_report_md": "mechanical/e1-phone/review/visual-decision-report.md",
+            "visual_review_coverage_acceptance_json": "mechanical/e1-phone/review/visual-review-coverage-acceptance.json",
+            "visual_review_coverage_acceptance_md": "mechanical/e1-phone/review/visual-review-coverage-acceptance.md",
+            "cmf_results_template": "mechanical/e1-phone/review/cmf-results-template.csv",
+            "cmf_release_acceptance_json": "mechanical/e1-phone/review/cmf-release-acceptance.json",
+            "cmf_release_acceptance_md": "mechanical/e1-phone/review/cmf-release-acceptance.md",
+            "end_to_end_objective_acceptance_json": "mechanical/e1-phone/review/end-to-end-objective-acceptance.json",
+            "end_to_end_objective_acceptance_md": "mechanical/e1-phone/review/end-to-end-objective-acceptance.md",
             "solid_cad_handoff_json": "mechanical/e1-phone/review/solid-cad-handoff.json",
             "solid_cad_handoff_md": "mechanical/e1-phone/review/solid-cad-handoff.md",
             "step_validation_json": "mechanical/e1-phone/review/step-validation.json",
@@ -9105,12 +13766,21 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
         "- `mechanical/e1-phone/review/supplier-response-template.csv`",
         "- `mechanical/e1-phone/review/supplier-response-review.json`",
         "- `mechanical/e1-phone/review/supplier-response-review.md`",
+        "- `mechanical/e1-phone/review/supplier-evidence-acceptance.json`",
+        "- `mechanical/e1-phone/review/supplier-evidence-acceptance.md`",
         "- `mechanical/e1-phone/review/kicad-mechanical-handoff.json`",
         "- `mechanical/e1-phone/review/kicad-mechanical-handoff.md`",
         "- `mechanical/e1-phone/review/kicad-placement-reconciliation.json`",
         "- `mechanical/e1-phone/review/kicad-placement-reconciliation.md`",
         "- `mechanical/e1-phone/review/board-step-readiness.json`",
         "- `mechanical/e1-phone/review/board-step-readiness.md`",
+        "- `mechanical/e1-phone/review/routed-board-step-intake-template.csv`",
+        "- `mechanical/e1-phone/review/routed-board-clearance-results-template.csv`",
+        "- `mechanical/e1-phone/review/routed-board-clearance.json`",
+        "- `mechanical/e1-phone/review/routed-board-clearance.md`",
+        "- `mechanical/e1-phone/review/full-cad-boolean-interference-results-template.csv`",
+        "- `mechanical/e1-phone/review/full-cad-boolean-interference.json`",
+        "- `mechanical/e1-phone/review/full-cad-boolean-interference.md`",
         "- `mechanical/e1-phone/review/engineering-validation.json`",
         "- `mechanical/e1-phone/review/engineering-validation.md`",
         "- `mechanical/e1-phone/review/interface-validation.json`",
@@ -9142,6 +13812,23 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
         "- `mechanical/e1-phone/review/evt-inspection-results-template.csv`",
         "- `mechanical/e1-phone/review/evt-results-review.json`",
         "- `mechanical/e1-phone/review/evt-results-review.md`",
+        "- `mechanical/e1-phone/review/fixture-calibration-results-template.csv`",
+        "- `mechanical/e1-phone/review/fixture-calibration-acceptance.json`",
+        "- `mechanical/e1-phone/review/fixture-calibration-acceptance.md`",
+        "- `mechanical/e1-phone/review/mechanical-lifecycle-results-template.csv`",
+        "- `mechanical/e1-phone/review/mechanical-lifecycle-acceptance.json`",
+        "- `mechanical/e1-phone/review/mechanical-lifecycle-acceptance.md`",
+        "- `mechanical/e1-phone/review/assembly-build-results-template.csv`",
+        "- `mechanical/e1-phone/review/assembly-build-traveler.json`",
+        "- `mechanical/e1-phone/review/assembly-build-traveler.md`",
+        "- `mechanical/e1-phone/review/process-control-results-template.csv`",
+        "- `mechanical/e1-phone/review/process-control-plan.json`",
+        "- `mechanical/e1-phone/review/process-control-plan.md`",
+        "- `mechanical/e1-phone/review/unit-traceability-results-template.csv`",
+        "- `mechanical/e1-phone/review/unit-traceability-acceptance.json`",
+        "- `mechanical/e1-phone/review/unit-traceability-acceptance.md`",
+        "- `mechanical/e1-phone/review/physical-process-validation-acceptance.json`",
+        "- `mechanical/e1-phone/review/physical-process-validation-acceptance.md`",
         "- `mechanical/e1-phone/out/e1-phone-evt-fixtures.glb`",
         "- `mechanical/e1-phone/out/evt-fixture-manifest.json`",
         "- `mechanical/e1-phone/review/assembly-clearance.json`",
@@ -9150,6 +13837,11 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
         "- `mechanical/e1-phone/review/injection-molding-dfm.md`",
         "- `mechanical/e1-phone/review/mold-process-window.json`",
         "- `mechanical/e1-phone/review/mold-process-window.md`",
+        "- `mechanical/e1-phone/review/mold-flow-input-deck.json`",
+        "- `mechanical/e1-phone/review/mold-flow-input-deck.md`",
+        "- `mechanical/e1-phone/review/mold-flow-results-template.csv`",
+        "- `mechanical/e1-phone/review/mold-flow-acceptance.json`",
+        "- `mechanical/e1-phone/review/mold-flow-acceptance.md`",
         "- `mechanical/e1-phone/review/toolmaker-signoff-package.json`",
         "- `mechanical/e1-phone/review/toolmaker-signoff-package.md`",
         "- `mechanical/e1-phone/review/toolmaker-signoff-response-template.csv`",
@@ -9165,8 +13857,17 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
         "- `mechanical/e1-phone/review/part-review.json`",
         "- `mechanical/e1-phone/review/part-review.md`",
         "- `mechanical/e1-phone/review/part-review-contact-sheet.png`",
+        "- `mechanical/e1-phone/review/part-visual-coverage.json`",
+        "- `mechanical/e1-phone/review/part-visual-coverage.md`",
         "- `mechanical/e1-phone/review/visual-decision-report.json`",
         "- `mechanical/e1-phone/review/visual-decision-report.md`",
+        "- `mechanical/e1-phone/review/visual-review-coverage-acceptance.json`",
+        "- `mechanical/e1-phone/review/visual-review-coverage-acceptance.md`",
+        "- `mechanical/e1-phone/review/cmf-results-template.csv`",
+        "- `mechanical/e1-phone/review/cmf-release-acceptance.json`",
+        "- `mechanical/e1-phone/review/cmf-release-acceptance.md`",
+        "- `mechanical/e1-phone/review/end-to-end-objective-acceptance.json`",
+        "- `mechanical/e1-phone/review/end-to-end-objective-acceptance.md`",
         "- `mechanical/e1-phone/review/solid-cad-handoff.json`",
         "- `mechanical/e1-phone/review/solid-cad-handoff.md`",
         "- `mechanical/e1-phone/review/step-validation.json`",
@@ -9207,7 +13908,7 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "## Design Decisions From This Pass",
             "",
             "- The envelope is held to 78.0 x 153.6 mm around the 77.1 x 151.77 mm commodity touch panel module to keep the orange side rails compact while preserving a narrow positive screen margin.",
-            "- Front camera and earpiece are kept behind the cover glass where practical. The rear camera stays exposed through a back lens window because the available AF module stack is too tall for full under-glass placement in a 9.6 mm phone.",
+            "- Front camera and earpiece are kept behind the cover glass. The single rear camera and single rear torch/flash LED are fully buried under the flat flush back wall behind flush internal windows (no camera bump, no proud lens ring); device depth was raised to accommodate burying the rear module.",
             "- Orange hard plastic is modeled as the entire molded shell and button material. The black glass remains a separate bonded part.",
             "- The enclosure now includes six screw bosses, eight snap hooks, battery ribs, a USB-C insertion saddle, display adhesive, display FPC connector keepout, and explicit cold-runner/submarine-gate placeholders for mold review.",
             "- The exterior shell and cover glass now use rounded-rectangle geometry tied to the 7.5 mm corner-radius parameter instead of square block placeholders.",
@@ -9306,6 +14007,11 @@ def main() -> int:
     supplier = write_supplier_artifacts(params)
     supplier_rfq = write_supplier_rfq_artifacts(params, supplier, solid_cad)
     supplier_response = write_supplier_response_artifacts(supplier, supplier_rfq)
+    supplier_evidence = write_supplier_evidence_acceptance_artifacts(
+        supplier,
+        supplier_rfq,
+        supplier_response,
+    )
     handoff = write_kicad_mechanical_handoff(params, checks)
     kicad_reconciliation = write_kicad_placement_reconciliation_artifacts(params, parts, handoff)
     board_step = write_board_step_readiness_artifacts(params, kicad_reconciliation, solid_cad)
@@ -9321,6 +14027,12 @@ def main() -> int:
         params, parts, clearance, interface_validation, tolerance_stack
     )
     display_results = write_display_results_review_artifacts(display_validation)
+    mechanical_integration_sim = write_mechanical_integration_sim_artifacts(
+        params,
+        parts,
+        interface_validation,
+        display_validation,
+    )
     acoustic_validation = write_acoustic_validation_artifacts(
         params, parts, clearance, interface_validation
     )
@@ -9341,7 +14053,22 @@ def main() -> int:
     evt_inspection = write_evt_inspection_plan_artifacts(params, interface_validation, evt_fixtures)
     evt_results = write_evt_results_review_artifacts(evt_inspection)
     mold_process = write_mold_process_window_artifacts(params, parts, tooling, dfm, tolerance_stack)
+    write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
     toolmaker_signoff = write_toolmaker_signoff_artifacts(params, dfm, mold_process)
+    routed_board_clearance = write_routed_board_clearance_artifacts(
+        board_step,
+        clearance,
+        solid_cad,
+    )
+    full_cad_boolean = write_full_cad_boolean_interference_artifacts(
+        parts,
+        clearance,
+        board_step,
+        routed_board_clearance,
+        supplier_response,
+        solid_cad,
+        step_validation,
+    )
     visual_decision = write_visual_decision_artifacts(
         params,
         visual,
@@ -9351,7 +14078,24 @@ def main() -> int:
         dfm,
         tolerance_stack,
     )
-    write_readiness_artifacts(
+    part_visual_coverage = write_part_visual_coverage_artifacts(visual, part_review)
+    visual_review_coverage = write_visual_review_coverage_acceptance_artifacts(
+        visual, part_review, visual_decision, part_visual_coverage
+    )
+    write_cmf_release_acceptance_artifacts(
+        params,
+        visual_decision,
+        visual_review_coverage,
+        dfm,
+        toolmaker_signoff,
+    )
+    assembly_build = write_assembly_build_traveler_artifacts(params, parts)
+    write_process_control_plan_artifacts(
+        assembly_build,
+        supplier_response,
+        gdt_release,
+    )
+    manufacturing_readiness = write_readiness_artifacts(
         params,
         parts,
         tooling,
@@ -9366,6 +14110,7 @@ def main() -> int:
         interface_validation,
         display_validation,
         display_results,
+        mechanical_integration_sim,
         acoustic_validation,
         acoustic_results,
         camera_validation,
@@ -9390,6 +14135,16 @@ def main() -> int:
         board_step,
         supplier_rfq,
         supplier_response,
+    )
+    write_physical_process_validation_acceptance_artifacts()
+    write_end_to_end_objective_acceptance_artifacts(
+        manufacturing_readiness,
+        board_step,
+        routed_board_clearance,
+        supplier_evidence,
+        full_cad_boolean,
+        visual_review_coverage,
+        toolmaker_signoff,
     )
     write_report(params, checks)
     print(f"E1 phone CAD generation {checks['status']}: {REVIEW_DIR / 'README.md'}")

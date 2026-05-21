@@ -22,3 +22,20 @@ This review is fail-closed: blank rows do not count as physical validation.
 - `front_camera_under_glass_center_error`
 - `bottom_audio_leak_delta`
 - `handset_receiver_leak_delta`
+
+## Sample Count Shortage
+
+- `power_button_actuation_force` 0/10 passing samples
+- `power_button_travel` 0/10 passing samples
+- `volume_button_actuation_force` 0/10 passing samples
+- `usb_c_insertion_force_no_rub` 0/5 passing samples
+- `screen_adhesive_compression` 0/5 passing samples
+- `display_fpc_bend_radius` 0/5 passing samples
+- `rear_camera_lens_center_error` 0/5 passing samples
+- `front_camera_under_glass_center_error` 0/5 passing samples
+- `bottom_audio_leak_delta` 0/5 passing samples
+- `handset_receiver_leak_delta` 0/5 passing samples
+
+## Release Rule
+
+- Every planned button, USB-C insertion, screen bond/FPC, camera alignment, and acoustic leak sample must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_evt_result, raw measurement data, fixture calibration certificate, photo/log artifact, and unit/component lot traceability record. Each measurement must meet the planned sample count before physical interface validation can release.

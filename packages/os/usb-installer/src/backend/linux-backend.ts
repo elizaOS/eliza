@@ -487,7 +487,7 @@ export async function findPrivilegeEscalator(
     if (await sudoOk()) {
       return { command: "sudo", argsPrefix: ["-n"] };
     }
-    if (env.MILADY_USB_ALLOW_SUDO === "1") {
+    if (env.ELIZA_USB_ALLOW_SUDO === "1") {
       return { command: "sudo", argsPrefix: [] };
     }
   }
@@ -508,7 +508,7 @@ export async function findPrivilegeEscalator(
       "  - pkexec (GNOME):   sudo apt install policykit-1   |   sudo dnf install polkit",
       "  - kdesu  (KDE):     sudo apt install kde-cli-tools |   sudo dnf install kde-cli-tools",
       "  - doas:             sudo apt install doas          |   sudo pacman -S opendoas",
-      "  - sudo (cached):    run `sudo -v` first, or set MILADY_USB_ALLOW_SUDO=1",
+      "  - sudo (cached):    run `sudo -v` first, or set ELIZA_USB_ALLOW_SUDO=1",
     ].join("\n"),
   );
 }

@@ -21,8 +21,8 @@
  *   arm64-v8a/libstdc++.so.6.0.33
  *   arm64-v8a/libgcc_s.so.1
  *   riscv64/bun                     (cuttlefish riscv64; opt-in via
- *                                    MILADY_BUN_RISCV64_URL since upstream Bun
- *                                    has no riscv64-linux-musl release)
+ *                                    MILADY_BUN_RISCV64_FILE/URL since upstream
+ *                                    Bun has no riscv64-linux-musl release)
  *   riscv64/ld-musl-riscv64.so.1
  *   riscv64/libstdc++.so.6.0.33
  *   riscv64/libgcc_s.so.1
@@ -55,6 +55,7 @@ const BUN_VERSION = "1.3.13";
 // explicitly overridden; AOSP/CVD builds pass canary from run-mobile-build.
 const DEFAULT_BUN_CHANNEL = "canary";
 const ALPINE_BRANCH = "v3.21";
+const RISCV64_BUN_ARTIFACT_FILENAME = "bun-linux-riscv64-musl.zip";
 
 /**
  * Default cache dir for compile-shim.mjs's outputs. Mirrors the default
@@ -86,7 +87,7 @@ const ABI_TARGETS = [
   },
   {
     // Upstream Bun has no riscv64-linux-musl release as of this writing,
-    // so this ABI only succeeds when `MILADY_BUN_RISCV64_URL` is set
+    // so this ABI only succeeds when `ELIZA_BUN_RISCV64_URL` is set
     // (pointing at a self-built canary zip produced by
     // `packages/app-core/scripts/bun-riscv64/build.sh`). Without that
     // env var, ensureBunBinary() throws with explicit guidance; the
@@ -110,6 +111,89 @@ const APK_PACKAGES = [
   { pkg: "libstdc++", file: "libstdcxx.apk" },
   { pkg: "libgcc", file: "libgcc.apk" },
 ];
+
+const LLAMA_KERNEL_DIAGNOSTIC_SCRIPT = `#!/usr/bin/env bun
+/**
+ * Model-free llama.cpp kernel capability diagnostic for ElizaOS Android.
+ *
+ * This does not load a model or claim inference throughput. It verifies that
+ * the ABI-local llama.cpp payload advertises the kernel families expected by
+ * the E1/AOSP path, and optionally checks llama-server --help for CLI surface.
+ */
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import process from "node:process";
+
+const REQUIRED_KERNELS = ["dflash", "turbo3", "turbo4", "turbo3_tcq", "qjl_full", "polarquant"];
+const REQUIRED_HELP_NEEDLES = ["--spec-type", "dflash", "tbq3_0", "tbq4_0", "qjl1_256", "q4_polar"];
+const REQUIRED_FILES = [
+  "CAPABILITIES.json",
+  "libllama.so",
+  "libggml.so",
+  "libeliza-llama-shim.so",
+  "libeliza-llama-speculative-shim.so",
+  "llama-server",
+];
+
+function hasKernel(capabilities, name) {
+  const kernels = capabilities.kernels ?? capabilities.kernel_features ?? {};
+  if (Array.isArray(kernels)) return kernels.includes(name);
+  if (typeof kernels === "object" && kernels !== null) {
+    const value = kernels[name];
+    if (value === true) return true;
+    if (typeof value === "object" && value !== null) {
+      return value.enabled === true || value.publishable === true;
+    }
+  }
+  return capabilities[name] === true;
+}
+
+const abiDir = path.resolve(process.argv[2] ?? process.cwd());
+const staticOnly = process.argv.includes("--static-only");
+const missingFiles = REQUIRED_FILES.filter((name) => !fs.existsSync(path.join(abiDir, name)));
+const capabilitiesPath = path.join(abiDir, "CAPABILITIES.json");
+let capabilities = {};
+if (fs.existsSync(capabilitiesPath)) {
+  capabilities = JSON.parse(fs.readFileSync(capabilitiesPath, "utf8"));
+}
+const missingKernels = REQUIRED_KERNELS.filter((name) => !hasKernel(capabilities, name));
+const publishable = capabilities.publishable === true || capabilities.release_status === "publishable";
+
+let helpStatus = null;
+let missingHelpNeedles = [];
+if (!staticOnly && fs.existsSync(path.join(abiDir, "llama-server"))) {
+  const result = spawnSync(path.join(abiDir, "llama-server"), ["--help"], {
+    cwd: abiDir,
+    encoding: "utf8",
+  });
+  const text = (result.stdout ?? "") + "\\n" + (result.stderr ?? "");
+  helpStatus = result.status;
+  missingHelpNeedles = REQUIRED_HELP_NEEDLES.filter((needle) => !text.includes(needle));
+}
+
+const ok =
+  missingFiles.length === 0 &&
+  missingKernels.length === 0 &&
+  publishable &&
+  (staticOnly || (helpStatus === 0 && missingHelpNeedles.length === 0));
+
+console.log(JSON.stringify({
+  schema: "eliza.android_llama_kernel_diagnostic.v1",
+  claim_boundary: "model_free_llama_cpp_kernel_capability_check_only_not_model_inference_or_performance_evidence",
+  abi_dir: abiDir,
+  ok,
+  publishable,
+  static_only: staticOnly,
+  required_files: REQUIRED_FILES,
+  missing_files: missingFiles,
+  required_kernels: REQUIRED_KERNELS,
+  missing_kernels: missingKernels,
+  llama_server_help_status: helpStatus,
+  missing_help_needles: missingHelpNeedles,
+}, null, 2));
+process.exit(ok ? 0 : 1);
+`;
 
 function jniLoaderName(ldName) {
   if (ldName.includes("aarch64")) return "libeliza_ld_musl_aarch64.so";
@@ -246,6 +330,33 @@ function riscv64BunSha256() {
   );
 }
 
+function defaultRiscv64BunArtifactPath() {
+  return path.resolve(
+    __dirname,
+    "..",
+    "bun-riscv64",
+    "dist",
+    RISCV64_BUN_ARTIFACT_FILENAME,
+  );
+}
+
+function riscv64BunFilePath() {
+  const configured =
+    process.env.MILADY_BUN_RISCV64_FILE?.trim() ??
+    process.env.ELIZA_BUN_RISCV64_FILE?.trim();
+  if (configured) return path.resolve(configured);
+  const defaultPath = defaultRiscv64BunArtifactPath();
+  return fs.existsSync(defaultPath) ? defaultPath : null;
+}
+
+function riscv64BunUrl() {
+  return (
+    process.env.MILADY_BUN_RISCV64_URL?.trim() ??
+    process.env.ELIZA_BUN_RISCV64_URL?.trim() ??
+    null
+  );
+}
+
 function sha256File(filePath) {
   const hash = crypto.createHash("sha256");
   hash.update(fs.readFileSync(filePath));
@@ -318,17 +429,20 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
   fs.mkdirSync(archCache, { recursive: true });
   const zipPath = path.join(archCache, "bun.zip");
   // riscv64 has no upstream Bun release. Allow operators to point at a
-  // self-built canary artifact via `MILADY_BUN_RISCV64_URL`; otherwise
-  // refuse to download from a guessed URL and surface a clear pointer at
-  // the cross-build pipeline. We never invent a default URL.
+  // self-built canary artifact via a local file or URL; otherwise refuse to
+  // download from a guessed URL and surface a clear pointer at the cross-build
+  // pipeline. We never invent a default URL.
   let url;
+  let sourceFile;
   if (bunArch === "riscv64") {
-    const riscvUrl = process.env.MILADY_BUN_RISCV64_URL?.trim();
-    if (!riscvUrl) {
+    sourceFile = riscv64BunFilePath();
+    url = riscv64BunUrl();
+    if (!sourceFile && !url) {
       throw new Error(
         "Bun riscv64 artifact not available: upstream Bun has no riscv64-linux-musl release. " +
-          "Set MILADY_BUN_RISCV64_URL to a self-built canary zip URL " +
-          "(produced by packages/app-core/scripts/bun-riscv64/build.sh), " +
+          "Set MILADY_BUN_RISCV64_FILE (or ELIZA_BUN_RISCV64_FILE) to a local " +
+          "self-built zip, or set MILADY_BUN_RISCV64_URL (or ELIZA_BUN_RISCV64_URL) " +
+          "to a hosted zip produced by packages/app-core/scripts/bun-riscv64/build.sh, " +
           "or skip the riscv64 ABI for this build.",
       );
     }
@@ -338,7 +452,6 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
           "(or ELIZA_BUN_RISCV64_SHA256) to the SHA-256 of bun-linux-riscv64-musl.zip.",
       );
     }
-    url = riscvUrl;
   } else {
     url =
       bunChannel === "canary"
@@ -346,8 +459,16 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
         : `https://github.com/oven-sh/bun/releases/download/${channelTag}/bun-linux-${bunArch}-musl.zip`;
   }
   const channelLabel = bunChannelLabel(bunChannel);
-  log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
-  await downloadFile(url, zipPath);
+  if (sourceFile) {
+    if (!fs.existsSync(sourceFile)) {
+      throw new Error(`Bun riscv64 artifact file not found: ${sourceFile}`);
+    }
+    log(`Using local ${channelLabel} (${bunArch}-musl) artifact at ${sourceFile}`);
+    fs.copyFileSync(sourceFile, zipPath);
+  } else {
+    log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
+    await downloadFile(url, zipPath);
+  }
   if (expectedRiscv64Sha256) {
     const actualSha256 = sha256File(zipPath);
     if (actualSha256 !== expectedRiscv64Sha256) {
@@ -713,23 +834,25 @@ export async function stageAndroidAgentRuntime({
 
   for (const target of ABI_TARGETS) {
     const { androidAbi, bunArch, alpineArch, ldName } = target;
-    // Soft-skip the riscv64 lane when no MILADY_BUN_RISCV64_URL is set and
-    // MILADY_BUN_RISCV64_REQUIRED is not requested. Upstream Bun has no
-    // riscv64-linux-musl release, so by default riscv64 is opt-in (set
-    // MILADY_BUN_RISCV64_URL to a self-built canary zip from
+    // Soft-skip the riscv64 lane when no local file/URL is set and
+    // ELIZA_BUN_RISCV64_REQUIRED is not requested. Upstream Bun has no
+    // riscv64-linux-musl release, so by default riscv64 is opt-in (provide
+    // MILADY_BUN_RISCV64_FILE or MILADY_BUN_RISCV64_URL from
     // packages/app-core/scripts/bun-riscv64/build.sh). The libllama /
     // shim cross-compiles still land their per-ABI artifacts independently
     // — operators iterating on the native side don't have to build Bun
-    // first. Set MILADY_BUN_RISCV64_REQUIRED=1 to convert the soft-skip
+    // first. Set ELIZA_BUN_RISCV64_REQUIRED=1 to convert the soft-skip
     // into a hard error (the AOSP cuttlefish smoke gates use this).
     if (bunArch === "riscv64") {
-      const riscvUrl = process.env.MILADY_BUN_RISCV64_URL?.trim();
-      const required = process.env.MILADY_BUN_RISCV64_REQUIRED === "1";
-      if (!riscvUrl && !required) {
+      const riscvFile = riscv64BunFilePath();
+      const riscvUrl = riscv64BunUrl();
+      const required = process.env.ELIZA_BUN_RISCV64_REQUIRED === "1";
+      if (!riscvFile && !riscvUrl && !required) {
         tlog(
-          `Skipping ABI ${androidAbi}: MILADY_BUN_RISCV64_URL unset (upstream Bun has ` +
-            `no riscv64-linux-musl release). Build with packages/app-core/scripts/` +
-            `bun-riscv64/build.sh and re-run, or set MILADY_BUN_RISCV64_REQUIRED=1 to ` +
+          `Skipping ABI ${androidAbi}: no MILADY_BUN_RISCV64_FILE/URL is set ` +
+            `(upstream Bun has no riscv64-linux-musl release). Build with ` +
+            `packages/app-core/scripts/bun-riscv64/build.sh and re-run, or set ` +
+            `ELIZA_BUN_RISCV64_REQUIRED=1 to ` +
             `make this a hard error.`,
         );
         continue;
@@ -958,6 +1081,13 @@ export async function stageAndroidAgentRuntime({
 
   const launchTarget = path.join(assetsAgentDir, "launch.sh");
   if (writeIfChanged(launchTarget, LAUNCH_SCRIPT)) stagedCount += 1;
+  const llamaDiagnosticTarget = path.join(
+    assetsAgentDir,
+    "llama-kernel-diagnostic.mjs",
+  );
+  if (writeIfChanged(llamaDiagnosticTarget, LLAMA_KERNEL_DIAGNOSTIC_SCRIPT)) {
+    stagedCount += 1;
+  }
 
   tlog(
     `Staged on-device agent runtime in ${path.relative(androidDir, assetsAgentDir)} ` +
@@ -973,4 +1103,8 @@ export const __testables = {
   ABI_TARGETS,
   APK_PACKAGES,
   LAUNCH_SCRIPT,
+  LLAMA_KERNEL_DIAGNOSTIC_SCRIPT,
+  RISCV64_BUN_ARTIFACT_FILENAME,
+  defaultRiscv64BunArtifactPath,
+  riscv64BunFilePath,
 };

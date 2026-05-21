@@ -72,10 +72,10 @@ interface SharedPathsLike {
  * shared import chain is unreachable (the bench is at the edge of the
  * dep graph; some host environments don't have shared's transitive
  * `@elizaos/core` deps resolved). Same precedence as upstream:
- *   ELIZA_STATE_DIR > MILADY_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}
+ *   ELIZA_STATE_DIR > ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}
  */
 function benchElizaModelsDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.MILADY_STATE_DIR;
+  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
   const ns = process.env.ELIZA_NAMESPACE ?? "eliza";
   const stateDir = explicit ?? path.join(homedir(), `.${ns}`);
   return path.join(stateDir, "local-inference", "models");

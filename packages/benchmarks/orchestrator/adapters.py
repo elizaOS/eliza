@@ -398,7 +398,7 @@ def _voicebench_dir() -> Path:
 
 
 def _eliza_state_dir() -> Path:
-    explicit = os.environ.get("ELIZA_STATE_DIR") or os.environ.get("MILADY_STATE_DIR")
+    explicit = os.environ.get("ELIZA_STATE_DIR") or os.environ.get("ELIZA_STATE_DIR")
     if explicit:
         return Path(explicit).expanduser()
     namespace = os.environ.get("ELIZA_NAMESPACE") or "eliza"

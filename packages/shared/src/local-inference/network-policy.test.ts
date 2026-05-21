@@ -119,7 +119,7 @@ describe("applyNetworkPolicy", () => {
     expect(d.allow).toBe(false);
   });
 
-  it("headless override always denies (explicit milady models update only)", () => {
+  it("headless override always denies (explicit eliza models update only)", () => {
     const d = applyNetworkPolicy("ethernet-unmetered", prefsCellularToo, 1, {
       now: noon,
       isHeadless: true,

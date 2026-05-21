@@ -33,7 +33,7 @@ const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
 const workspaceVersions = collectWorkspaceVersions(repoRoot);
 const skipLocalUpstreams =
   process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1" ||
-  process.env.MILADY_SKIP_LOCAL_UPSTREAMS === "1";
+  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
 const OPTIONAL_PLUGIN_FALLBACK_VERSIONS = new Map([
   ["@elizaos/plugin-sql", "beta"],
   ["@elizaos/plugin-ollama", "beta"],
@@ -107,7 +107,12 @@ function collectWorkspaceVersions(rootDir) {
       if (path.basename(entryPath) !== "package.json") {
         return;
       }
-      const data = JSON.parse(readFileSync(entryPath, "utf8"));
+      let data;
+      try {
+        data = JSON.parse(readFileSync(entryPath, "utf8"));
+      } catch {
+        return;
+      }
       if (typeof data.name === "string" && typeof data.version === "string") {
         versions.set(data.name, data.version);
       }
@@ -138,6 +143,8 @@ function walk(dirPath, visit) {
           "__pycache__",
           "android",
           "ios",
+          "external",
+          "output",
         ].includes(entry.name)
       ) {
         continue;

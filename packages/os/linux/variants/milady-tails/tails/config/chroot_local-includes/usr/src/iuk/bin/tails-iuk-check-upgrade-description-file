@@ -1,0 +1,65 @@
+#!/usr/bin/perl
+
+=head1 NAME
+
+tails-iuk-check-upgrade-description-file - check correctness of upgrade-description files
+
+=cut
+
+use strictures 2;
+use 5.10.1;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
+use Carp;
+use Carp::Assert;
+use Carp::Assert::More;
+use Data::Dumper::Concise;
+use File::Temp qw{tempdir};
+use IPC::System::Simple qw{systemx};
+use Path::Tiny;
+use Tails::IUK::UpgradeDescriptionFile;
+use Tails::IUK::Utils;
+
+my @input_filenames = @ARGV;
+assert_nonempty(\@input_filenames);
+
+assert_exists(
+    \%ENV, 'TAILS_SIGNATURE_KEY', q{TAILS_SIGNATURE_KEY is in the environment}
+);
+assert_nonblank(
+    $ENV{TAILS_SIGNATURE_KEY}, q{TAILS_SIGNATURE_KEY variable is not empty}
+);
+my $signing_key = Path::Tiny->tempfile;
+unlink $signing_key;
+systemx(
+    qw{gpg --batch --quiet --armor}, '--output', $signing_key,
+    '--export',  $ENV{TAILS_SIGNATURE_KEY}
+);
+
+my @failed;
+for my $input_filename (@input_filenames) {
+    say STDERR "Checking '$input_filename'...";
+
+    my $upgrade_description = Tails::IUK::UpgradeDescriptionFile->new_from_file(
+        filename => $input_filename
+    );
+    assert_isa($upgrade_description, 'Tails::IUK::UpgradeDescriptionFile');
+
+    my $signature_file = path($input_filename . '.pgp');
+    assert(-e $signature_file, "Signature for '$input_filename' exists.");
+    my $description_txt = path($input_filename)->slurp;
+    my $signature_txt   = $signature_file->slurp;
+    if (! verify_signature($description_txt, $signature_txt, [$signing_key])) {
+        push @failed, "$signature_file";
+    }
+}
+
+if (@failed) {
+    croak "\nThe following signatures were invalid!:\n"
+          . Dumper(@failed) . "\nFAIL!";
+}
+else {
+    say STDERR "All input files are well-formed upgrade-description files.";
+}

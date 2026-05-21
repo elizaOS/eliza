@@ -353,7 +353,7 @@ function cleanAndroidLocalDirectChatReply(raw: unknown): string {
     .split("<|im_end|>")[0]
     .split("<|im_start|>")[0]
     .replace(/^\s*(assistant|eliza)\s*:\s*/i, "")
-    .replace(/\bMilady-1\b/gi, "Eliza-1")
+    .replace(/\bEliza-1\b/gi, "Eliza-1")
     .trim();
   text = truncateAndroidLocalReplyToFirstSentence(text);
   if (text.length <= 700) {

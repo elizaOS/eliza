@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-aosp-local-inference",
-  "version": "2.0.1-beta.0",
+  "version": "2.0.3",
   "description": "AOSP-only llama.cpp FFI bindings (via bun:ffi) and local-inference bootstrap for elizaOS mobile builds.",
   "type": "module",
   "main": "src/index.ts",

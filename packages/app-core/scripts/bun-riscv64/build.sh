@@ -38,10 +38,22 @@ set -euo pipefail
 # toolchain dirs explicitly so rustup/cargo/clang stay reachable.
 export PATH="/opt/cross/bin:/usr/local/cargo/bin:${PATH}"
 export RUSTUP_HOME="${RUSTUP_HOME:-/usr/local/rustup}"
-export CARGO_HOME="${CARGO_HOME:-/usr/local/cargo}"
+export CARGO_HOME="${CARGO_HOME:-/home/builder/.cargo}"
 
 log() { printf '[bun-riscv64] %s\n' "$*"; }
 die() { printf '[bun-riscv64][FATAL] %s\n' "$*" >&2; exit 1; }
+
+prepare_ninja_object_dirs() {
+    local ninja_file="$1"
+    local ninja_dir
+    ninja_dir="$(dirname "$ninja_file")"
+    [ -f "$ninja_file" ] || return 0
+    awk '/^build .*\.o: / { for (i = 2; i <= NF; i++) if ($i ~ /\.o$/) print $i }' "$ninja_file" \
+        | while IFS= read -r obj; do
+            [ -n "$obj" ] || continue
+            mkdir -p "$ninja_dir/$(dirname "$obj")"
+        done
+}
 
 # ──────────────────────────────────────────────────────────────────────────
 # Resolve pins from bun-version.json
@@ -130,7 +142,7 @@ fi
 if compgen -G "/opt/webkit-patches/*.patch" >/dev/null; then
     log "Applying webkit-patches/*.patch (in lexical order):"
     cd "$SRC_ROOT/WebKit"
-    git config user.email "bun-riscv64@milady.local"
+    git config user.email "bun-riscv64@eliza.local"
     git config user.name "bun-riscv64 build"
     for p in $(ls /opt/webkit-patches/*.patch | sort); do
         # In C_LOOP mode, the 0003-disable-dfg-ftl-on-riscv64 patch is
@@ -150,7 +162,7 @@ if compgen -G "/opt/webkit-patches/*.patch" >/dev/null; then
         log "  -> $p"
         # 3-way merge is tolerant of context drift; on hard conflict, fail
         # rather than silently skipping.
-        git am --3way "$p" || die "WebKit patch failed: $p — see webkit-patches/README.md for rebase guidance"
+        git apply --3way "$p" || die "WebKit patch failed: $p — see webkit-patches/README.md for rebase guidance"
     done
     cd "$SRC_ROOT"
 else
@@ -173,11 +185,11 @@ fi
 if compgen -G "/opt/bun-patches/*.patch" >/dev/null; then
     log "Applying bun-patches/*.patch (in lexical order):"
     cd "$SRC_ROOT/bun"
-    git config user.email "bun-riscv64@milady.local"
+    git config user.email "bun-riscv64@eliza.local"
     git config user.name "bun-riscv64 build"
     for p in $(ls /opt/bun-patches/*.patch | sort); do
         log "  -> $p"
-        git am --3way "$p" || die "Bun patch failed: $p"
+        git apply --3way "$p" || die "Bun patch failed: $p"
     done
     cd "$SRC_ROOT"
 else
@@ -265,6 +277,7 @@ cmake \
 
 ninja -j"$JOBS" jsc \
     || die "WebKit ninja build failed. See webkit-patches/README.md if the failure is in offlineasm or LLInt."
+prepare_ninja_object_dirs "$WEBKIT_BUILD_DIR/build.ninja"
 
 # ──────────────────────────────────────────────────────────────────────────
 # Stage 5: configure + build Bun.
@@ -276,23 +289,46 @@ cd "$SRC_ROOT/bun"
 # Bun's build entrypoint is `bun bd` (build driver). Force flags through
 # env so the bun-patches/ series can stay smaller — anything we can pass
 # at invocation time, we do.
-export BUN_WEBKIT_PATH="$WEBKIT_BUILD_DIR"
+export BUN_WEBKIT_PATH="$SRC_ROOT/WebKit"
 export BUN_RUST_TARGET=riscv64gc-unknown-linux-musl
 export BUN_CC=/opt/cross/bin/riscv64-linux-musl-clang
 export BUN_CXX=/opt/cross/bin/riscv64-linux-musl-clang++
 export BUN_AR=/usr/local/bin/llvm-ar
+export BUN_RANLIB=/usr/local/bin/llvm-ranlib
 export BUN_LD=/usr/local/bin/ld.lld
 export BUN_SYSROOT=/sysroot
 export BUN_DISABLE_TINYCC=1
 
-# Bun's CMake invocation is wrapped by scripts/build/bd.ts. The flag
-# pass-through is via `--cross-target=...` which our bun-patches/ series
-# teaches it. See bun-patches/README.md.
-bun run build:release \
-    --target=linux \
+BUN_BUILD_DIR="$SRC_ROOT/bun/build/release"
+rm -rf "$BUN_BUILD_DIR"
+mkdir -p "$BUN_BUILD_DIR/deps"
+ln -s "$WEBKIT_BUILD_DIR" "$BUN_BUILD_DIR/deps/WebKit"
+
+# Configure Bun without letting its dependency graph reconfigure WebKit. The
+# riscv64 patch series marks WebKit as an external, prebuilt dependency, so the
+# completed C_LOOP build above is consumed from build/release/deps/WebKit.
+bun scripts/build.ts \
+    --configure-only \
+    --profile=release \
     --arch=riscv64 \
     --abi=musl \
-    --webkit-path="$WEBKIT_BUILD_DIR" \
+    --webkit=local \
+    || die "Bun configure failed. See bun-patches/README.md."
+
+configure_targets="$(ninja -C "$BUN_BUILD_DIR" -t targets all | awk -F: '/^configure-/ && $1 != "configure-WebKit" {print $1}')"
+if [ -n "$configure_targets" ]; then
+    # shellcheck disable=SC2086
+    ninja -C "$BUN_BUILD_DIR" -j"$JOBS" $configure_targets \
+        || die "Bun dependency configure failed."
+fi
+
+prepare_ninja_object_dirs "$BUN_BUILD_DIR/build.ninja"
+find "$BUN_BUILD_DIR/deps" -name build.ninja -print \
+    | while IFS= read -r ninja_file; do
+        prepare_ninja_object_dirs "$ninja_file"
+    done
+
+ninja -C "$BUN_BUILD_DIR" -j"$JOBS" \
     || die "Bun build failed. See bun-patches/README.md."
 
 # ──────────────────────────────────────────────────────────────────────────

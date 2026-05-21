@@ -16,6 +16,8 @@ import { matchPath, useLocation } from "react-router-dom";
 const WALLET_ROUTE_PATTERNS = [
   "/login",
   "/login/*",
+  "/bsc",
+  "/bsc/*",
   "/dashboard/billing",
   "/dashboard/billing/*",
   "/dashboard/settings",

@@ -1,8 +1,8 @@
 {
-  "packageId": "com.milady.xr.quest",
+  "packageId": "com.eliza.xr.quest",
   "host": "facewear.elizaos.app",
-  "name": "Milady XR",
-  "launcherName": "MiladyXR",
+  "name": "Eliza XR",
+  "launcherName": "ElizaXR",
   "display": "fullscreen",
   "metaQuest": true,
   "orientation": "landscape",
@@ -18,7 +18,7 @@
   "versionCode": 1,
   "versionName": "1.0.0",
   "signingMode": "debug",
-  "androidPackage": "com.milady.xr.quest",
+  "androidPackage": "com.eliza.xr.quest",
   "features": {
     "metaQuest": true,
     "locationDelegation": {

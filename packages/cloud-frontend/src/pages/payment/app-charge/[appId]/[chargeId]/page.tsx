@@ -232,7 +232,7 @@ export default function AppChargePaymentPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-200/70" />
+        <Loader2 className="h-8 w-8 animate-spin text-white/60" />
       </div>
     );
   }
@@ -251,7 +251,7 @@ export default function AppChargePaymentPage() {
             </div>
           </div>
           <Link
-            className="mt-5 inline-flex text-sm text-blue-200 hover:text-white"
+            className="mt-5 inline-flex text-sm text-white/80 hover:text-white"
             to="/"
           >
             Return home
@@ -266,9 +266,9 @@ export default function AppChargePaymentPage() {
   ) : isExpired ? (
     <AlertCircle className="h-7 w-7 text-orange-200" />
   ) : returnedFromPayment ? (
-    <Loader2 className="h-7 w-7 animate-spin text-blue-200" />
+    <Loader2 className="h-7 w-7 animate-spin text-white/80" />
   ) : (
-    <CreditCard className="h-7 w-7 text-blue-200" />
+    <CreditCard className="h-7 w-7 text-white/80" />
   );
   const statusText = isPaid
     ? "Paid"
@@ -281,7 +281,7 @@ export default function AppChargePaymentPage() {
     ? "border-green-300/30 bg-green-400/10 text-green-100"
     : isExpired
       ? "border-orange-300/30 bg-orange-400/10 text-orange-100"
-      : "border-[#0B35F1]/30 bg-[#0B35F1]/10 text-white";
+      : "border-white/15 bg-white/[0.06] text-white";
   const shortId = charge.id.slice(0, 8);
 
   return (
@@ -354,8 +354,8 @@ export default function AppChargePaymentPage() {
           )}
 
           {returnedFromPayment && !isPaid && !isExpired && (
-            <div className="mt-7 flex items-center gap-3 border border-[#0B35F1]/25 bg-[#0B35F1]/10 p-3 text-sm text-white">
-              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-blue-200" />
+            <div className="mt-7 flex items-center gap-3 border border-white/15 bg-white/[0.06] p-3 text-sm text-white">
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-white/80" />
               <span>Waiting for confirmation.</span>
             </div>
           )}

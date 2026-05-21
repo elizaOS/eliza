@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-api",
-  "version": "2.0.1-beta.0",
+  "version": "2.0.3",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
@@ -23,6 +23,7 @@
     "@ai-sdk/openai": "^3.0.54",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/security": "workspace:*",
     "@fal-ai/client": "^1.10.1",
     "@fal-ai/server-proxy": "^1.2.1",
     "@neondatabase/serverless": "^1.1.0",

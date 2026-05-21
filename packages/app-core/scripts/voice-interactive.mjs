@@ -694,7 +694,7 @@ const PLATFORM_MATRIX = [
         runtime:
           "in-process FFI (@elizaos/llama-cpp-capacitor LlamaCpp.xcframework + @elizaos/plugin-aosp-local-inference aosp-llama/dflash adapters) — NOT llama-server-spawn",
         kernels:
-          "static .a + embedded default.metallib carry the 5 milady kernel symbols; runtime graph dispatch on-device same as macOS Metal once the xcframework is rebuilt with them",
+          "static .a + embedded default.metallib carry the 5 eliza kernel symbols; runtime graph dispatch on-device same as macOS Metal once the xcframework is rebuilt with them",
         mic: "Capacitor Microphone plugin → PushMicSource (no CLI recorder on iOS)",
         player:
           "Capacitor audio sink → PcmRingBuffer → native AudioQueue/AVAudioEngine",

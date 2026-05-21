@@ -140,22 +140,22 @@
     "low": [
       -40.55,
       -76.8,
-      -4.8
+      -5.6
     ],
     "high": [
       40.55,
       76.8,
-      4.8
+      5.6
     ],
     "span": [
       81.1,
       153.6,
-      9.6
+      11.2
     ],
     "nominal_envelope": [
       78.0,
       153.6,
-      9.6
+      11.2
     ]
   },
   "linked_fit_checks": {
@@ -175,5 +175,5 @@
     "rear_camera",
     "front_camera"
   ],
-  "estimated_mass_g": 143.39
+  "estimated_mass_g": 163.52
 }

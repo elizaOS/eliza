@@ -42,6 +42,8 @@ import hashlib
 import json
 import logging
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -95,10 +97,102 @@ class PublishConfig:
     public: bool
     dry_run: bool
     skip_marker_check: bool
+    skip_signing: bool = False
+    kms_purpose: str = "model-artifact"
+
+
+# ---------------------------------------------------------------------------
+# SOC2 CC6.8: Ed25519 signing of model artifacts via @elizaos/security KMS
+# ---------------------------------------------------------------------------
+
+
+def _resolve_kms_sign_shim() -> Path:
+    """Locate the kms-sign TS shim in @elizaos/security/scripts/.
+
+    The training package is downstream of @elizaos/security. We resolve the
+    shim relative to this file: ../../security/scripts/kms-sign.ts. The
+    shim is run via `bun` (preferred) or `node --import tsx`.
+    """
+    here = Path(__file__).resolve()
+    # packages/training/scripts/publish_eliza1_model.py
+    # -> packages/security/scripts/kms-sign.ts
+    candidate = here.parents[2] / "security" / "scripts" / "kms-sign.ts"
+    if not candidate.exists():
+        raise SystemExit(
+            f"kms-sign shim not found at {candidate}. The security package "
+            "must be present in the monorepo for signed publishes. Pass "
+            "--skip-signing only for offline dry-runs."
+        )
+    return candidate
+
+
+def _sign_artifact_with_kms(
+    artifact_path: Path,
+    *,
+    purpose: str,
+    out_path: Path,
+) -> dict[str, Any]:
+    """Invoke the kms-sign shim to produce an Ed25519 signature record.
+
+    Returns the parsed JSON record ({sig, key_id, key_version, algorithm,
+    public_key}). Writes the same JSON to ``out_path`` alongside the
+    artifact.
+    """
+    shim = _resolve_kms_sign_shim()
+    runner: list[str]
+    if shutil.which("bun"):
+        runner = ["bun", "run", str(shim)]
+    elif shutil.which("tsx"):
+        runner = ["tsx", str(shim)]
+    else:
+        raise SystemExit(
+            "neither `bun` nor `tsx` is on PATH — kms-sign cannot run. "
+            "Install bun (preferred) or pass --skip-signing for offline "
+            "dry-runs only."
+        )
+    cmd = [
+        *runner,
+        "--purpose",
+        purpose,
+        "--in",
+        str(artifact_path),
+        "--out",
+        str(out_path),
+    ]
+    log.info("signing %s via KMS shim (purpose=%s)", artifact_path.name, purpose)
+    proc = subprocess.run(
+        cmd,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(
+            f"kms-sign failed (exit {proc.returncode}): {proc.stderr.strip()}"
+        )
+    record = json.loads(out_path.read_text())
+    # The on-disk .sig file is the raw signature bytes for downstream
+    # verifiers that don't want to parse JSON.
+    sig_bytes_path = artifact_path.with_suffix(artifact_path.suffix + ".sig")
+    import base64
+
+    sig_bytes_path.write_bytes(base64.b64decode(record["sig"]))
+    log.info(
+        "wrote %s + %s (key_id=%s key_version=%s)",
+        out_path.name,
+        sig_bytes_path.name,
+        record.get("key_id"),
+        record.get("key_version"),
+    )
+    return record
 
 
 def hf_token() -> str | None:
-    return os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+    # Routed through _creds.py for SOC2 CC6.1 audit logging.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _creds import hf_token as _hf_token  # noqa: E402
+
+    return _hf_token()
 
 
 def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
@@ -330,6 +424,35 @@ def publish(config: PublishConfig) -> int:
     log.info("repo_id=%s", config.repo_id)
     log.info("gguf=%s (%.2f MB)", gguf.name, size / 1e6)
     log.info("sha256=%s", local_sha)
+
+    # SOC2 CC6.8 — Ed25519 sign the GGUF before pushing. The signature
+    # (and public key) is recorded in the manifest and a .sig sidecar is
+    # uploaded next to the GGUF. Downloaders run `verify_signature.py`
+    # against the published key.
+    sig_record: dict[str, Any] | None = None
+    sig_json_path = gguf.with_suffix(gguf.suffix + ".sig.json")
+    if config.skip_signing:
+        log.warning(
+            "--skip-signing active — uploading %s without an integrity "
+            "signature. This is a SOC2 CC6.8 violation in production; use "
+            "only for offline dry-runs.",
+            gguf.name,
+        )
+    else:
+        sig_record = _sign_artifact_with_kms(
+            gguf,
+            purpose=config.kms_purpose,
+            out_path=sig_json_path,
+        )
+        manifest["signature"] = {
+            "algorithm": sig_record["algorithm"],
+            "keyId": sig_record["key_id"],
+            "keyVersion": sig_record["key_version"],
+            "sig": sig_record["sig"],
+            "publicKey": sig_record["public_key"],
+            "sigFile": f"{gguf.name}.sig",
+            "sigJsonFile": sig_json_path.name,
+        }
     log.info(
         "manifest.kind=%s manifest.modelId=%s",
         manifest.get("kind"),
@@ -399,6 +522,20 @@ def publish(config: PublishConfig) -> int:
                 path_or_fileobj=str(gguf),
             ),
         ]
+        if sig_record is not None:
+            sig_bin = gguf.with_suffix(gguf.suffix + ".sig")
+            operations.append(
+                CommitOperationAdd(
+                    path_in_repo=sig_bin.name,
+                    path_or_fileobj=str(sig_bin),
+                )
+            )
+            operations.append(
+                CommitOperationAdd(
+                    path_in_repo=sig_json_path.name,
+                    path_or_fileobj=str(sig_json_path),
+                )
+            )
 
     api.create_commit(
         repo_id=config.repo_id,
@@ -461,6 +598,17 @@ def main(argv: list[str] | None = None) -> int:
         "you have independently verified the file is fused-kernel "
         "optimized. Logs a warning regardless.",
     )
+    ap.add_argument(
+        "--skip-signing",
+        action="store_true",
+        help="Skip KMS Ed25519 signing of the GGUF artifact. SOC2 CC6.8 "
+        "violation in production — only use for offline dry-runs.",
+    )
+    ap.add_argument(
+        "--kms-purpose",
+        default="model-artifact",
+        help="KMS system-key purpose used for signing (default: model-artifact).",
+    )
     args = ap.parse_args(argv)
 
     config = PublishConfig(
@@ -469,6 +617,8 @@ def main(argv: list[str] | None = None) -> int:
         public=args.public,
         dry_run=args.dry_run,
         skip_marker_check=args.skip_marker_check,
+        skip_signing=args.skip_signing,
+        kms_purpose=args.kms_purpose,
     )
     return publish(config)
 

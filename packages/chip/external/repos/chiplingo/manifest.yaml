@@ -1,0 +1,23 @@
+schema: eliza.ai_eda.external_intake_manifest.v1
+asset_id: chiplingo
+kind: paper
+source_url: https://arxiv.org/abs/2604.27415
+upstream_revision:
+  type: arxiv
+  value: "2604.27415v1"
+license:
+  status: paper_metadata_only_review_required
+  evidence:
+    - https://arxiv.org/abs/2604.27415
+  reviewed_at: 2026-05-21
+intake:
+  review_status: pending
+  allowed_use: metadata-only
+  release_use_allowed: false
+  deterministic_replay_required: true
+  next_action: track_public_release_of_EDA_Bench_or_training_corpus_before_any_model_training_claim
+local_payload:
+  downloaded: true
+  payload_path: external/repos/chiplingo/payload
+  checksum_status: verify_only_records_metadata_manifest
+claim_boundary: external_intake_metadata_only_no_payload_no_training_no_release_claim

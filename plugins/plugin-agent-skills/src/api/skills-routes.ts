@@ -68,7 +68,7 @@ function resolveDefaultAgentWorkspaceDir(): string {
 
   if (
     !process.env.ELIZA_STATE_DIR?.trim() &&
-    !process.env.MILADY_STATE_DIR?.trim()
+    !process.env.ELIZA_STATE_DIR?.trim()
   ) {
     const cwd = process.cwd();
     if (cwd.trim() && shouldUseRuntimeCwdWorkspace(cwd)) {
@@ -78,7 +78,7 @@ function resolveDefaultAgentWorkspaceDir(): string {
 
   const stateDir = resolveUserPath(
     process.env.ELIZA_STATE_DIR?.trim() ??
-      process.env.MILADY_STATE_DIR?.trim() ??
+      process.env.ELIZA_STATE_DIR?.trim() ??
       path.join(os.homedir(), ".eliza"),
   );
   const profile = process.env.ELIZA_PROFILE?.trim();

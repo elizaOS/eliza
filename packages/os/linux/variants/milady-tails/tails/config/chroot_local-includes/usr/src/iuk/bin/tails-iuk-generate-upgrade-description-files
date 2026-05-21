@@ -1,0 +1,16 @@
+#!/usr/bin/perl
+
+=head1 NAME
+
+tails-iuk-generate-upgrade-description-file - create and update upgrade-description files
+
+=cut
+
+use strictures 2;
+use 5.10.1;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
+use Tails::IUK::UpgradeDescriptionFile::Generate;
+Tails::IUK::UpgradeDescriptionFile::Generate->new_with_options()->run;

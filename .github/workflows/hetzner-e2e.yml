@@ -33,6 +33,10 @@ concurrency:
   group: hetzner-e2e
   cancel-in-progress: false
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: Provision + deploy + healthcheck

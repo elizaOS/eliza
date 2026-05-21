@@ -40,7 +40,7 @@ const SNAPSHOT_TYPE_LABELS: Record<BackupRecord["snapshotType"], string> = {
 };
 
 const SNAPSHOT_TYPE_STYLES: Record<BackupRecord["snapshotType"], string> = {
-  auto: "border-blue-500/40 bg-blue-500/10 text-blue-400",
+  auto: "border-white/20 bg-white/5 text-white/80",
   manual: "border-[#FF5800]/40 bg-[#FF5800]/10 text-[#FF9B66]",
   "pre-shutdown": "border-purple-500/40 bg-purple-500/10 text-purple-400",
 };
@@ -237,9 +237,9 @@ export function ElizaAgentBackupsPanel({
         )}
 
         {isBusy && (
-          <div className="flex items-start gap-3 border border-blue-500/30 bg-blue-950/20 p-4">
-            <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-blue-400" />
-            <p className="text-sm text-blue-200/90">
+          <div className="flex items-start gap-3 border border-white/15 bg-white/[0.04] p-4">
+            <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-white/70" />
+            <p className="text-sm text-white/80">
               Provisioning is in progress. Wait for the agent to finish starting
               before restoring.
             </p>

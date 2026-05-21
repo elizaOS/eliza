@@ -6,12 +6,10 @@
 "use client";
 
 import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
-import { Link } from "react-router-dom";
 import { useT } from "@/providers/I18nProvider";
 
 export default function Footer() {
   const t = useT();
-  const year = new Date().getFullYear();
 
   return (
     <footer className="relative bg-black" style={{ flexShrink: 0 }}>
@@ -31,46 +29,12 @@ export default function Footer() {
                 })}
               </p>
             </div>
-            <p className="text-sm text-white/70 whitespace-nowrap">
-              {t("cloud.footer.copyright", {
-                defaultValue: "© {{year}} Eliza Cloud · USA",
-                year,
-              })}
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-1 md:gap-2 items-end">
-            <div className="flex flex-col gap-1.5 text-right relative">
-              <a
-                href={EXTERNAL_URLS.app}
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
-              >
-                {t("cloud.footer.downloadApp", {
-                  defaultValue: "Download the app",
-                })}
-              </a>
-              <a
-                href={EXTERNAL_URLS.os}
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
-              >
-                {t("cloud.footer.installElizaOs", {
-                  defaultValue: "Install elizaOS",
-                })}
-              </a>
-            </div>
-
             <nav
-              aria-label={t("cloud.footer.ariaLabel", {
-                defaultValue: "Footer",
+              aria-label={t("cloud.footer.legalAriaLabel", {
+                defaultValue: "Legal",
               })}
-              className="mt-4 flex flex-col gap-1.5 md:gap-2.5 text-right relative"
+              className="flex flex-col gap-1.5"
             >
-              <Link
-                to="/docs"
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
-              >
-                {t("cloud.footer.docs", { defaultValue: "Docs" })}
-              </Link>
               <a
                 href="/privacy-policy"
                 className="text-base text-white transition-colors hover:text-[#FF5800]"
@@ -85,6 +49,30 @@ export default function Footer() {
               </a>
             </nav>
           </div>
+
+          <nav
+            aria-label={t("cloud.footer.ariaLabel", {
+              defaultValue: "Footer",
+            })}
+            className="flex flex-col gap-1.5 md:gap-2.5 text-right relative items-end"
+          >
+            <a
+              href="https://docs.elizaos.ai/cloud"
+              target="_blank"
+              rel="noreferrer"
+              className="text-base text-white transition-colors hover:text-[#FF5800]"
+            >
+              {t("cloud.footer.docs", { defaultValue: "Docs" })}
+            </a>
+            <a
+              href={EXTERNAL_URLS.github}
+              target="_blank"
+              rel="noreferrer"
+              className="text-base text-white transition-colors hover:text-[#FF5800]"
+            >
+              {t("cloud.footer.github", { defaultValue: "Github" })}
+            </a>
+          </nav>
         </div>
       </div>
     </footer>

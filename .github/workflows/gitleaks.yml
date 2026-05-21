@@ -1,0 +1,62 @@
+name: gitleaks
+
+# SOC2 CC7.1 — automated secret scanning on every PR and push to protected
+# branches. Fails the run on any finding. Configuration: .gitleaks.toml at
+# repo root.
+
+on:
+  pull_request:
+    branches: ["main", "develop"]
+  push:
+    branches: ["main", "develop"]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        # actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          # Full history so gitleaks can scan the diff range on PRs.
+          fetch-depth: 0
+
+      - name: Install gitleaks (OSS binary — no license required)
+        # gitleaks/gitleaks-action@v2 requires a paid license for org repos.
+        # We download the OSS CLI directly so the scan remains free and
+        # honors our .gitleaks.toml allowlist + custom rules.
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.21.2
+          curl -sSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Run gitleaks
+        # Scan the full working tree. Returns non-zero on any finding so the
+        # job fails the build the same way the wrapper action did.
+        run: |
+          gitleaks detect \
+            --config .gitleaks.toml \
+            --source . \
+            --verbose \
+            --redact \
+            --report-format sarif \
+            --report-path gitleaks.sarif \
+            --no-banner
+
+      - name: Upload SARIF
+        if: always()
+        # actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
+        with:
+          name: gitleaks-sarif
+          path: gitleaks.sarif
+          if-no-files-found: ignore
+          retention-days: 7

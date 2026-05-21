@@ -1,0 +1,272 @@
+schema: eliza.e1_phone_enclosure_fit_execution_package.v1
+status: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+date: '2026-05-21'
+claim_boundary: Execution package for proving the routed E1 phone PCB fits the selected enclosure. This is a gate
+  and work order, not evidence that the PCB is routed, fabricated, or ready for enclosure release.
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/enclosure-tolerance-stack-closure.yaml
+  - board/kicad/e1-phone/component-height-step-integration.yaml
+  - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
+  - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+  - board/kicad/e1-phone/routing-acceptance-checklist.yaml
+  - board/kicad/e1-phone/power-bringup-acceptance-checklist.yaml
+  - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
+  - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
+  - board/kicad/e1-phone/display-camera-acceptance-checklist.yaml
+  - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
+  - board/kicad/e1-phone/module-host-integration-acceptance-checklist.yaml
+  - board/kicad/e1-phone/manufacturing-closure.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - mechanical/e1-phone/review/board-step-readiness.json
+  - mechanical/e1-phone/review/routed-board-clearance.json
+upstream_status:
+  artifact_manifest_status: blocked_not_fabrication_ready
+  enclosure_tolerance_status: blocked_requires_supplier_geometry_routed_step_and_physical_tolerance_evidence
+  component_height_status: blocked_requires_supplier_step_models_routed_board_step_and_clearance_rerun
+  supplier_intake_status: blocked_supplier_drawing_intake_required_before_real_footprints_or_route
+  evt1_footprint_capture_status: blocked_evt1_footprint_capture_requires_supplier_intake_reviews_and_real_kicad_libraries
+  routing_acceptance_status: blocked_routing_acceptance_requires_supplier_footprints_trial_route_drc_and_outputs
+  power_bringup_acceptance_status: blocked_power_bringup_acceptance_requires_routed_schematic_first_power_charge_thermal_and_factory_evidence
+  manufacturing_status: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
+  board_step_readiness_status: blocked_concept_pcb_no_routed_step
+  routed_board_clearance_status: blocked_waiting_for_routed_board_step
+  module_host_acceptance_status: blocked_module_host_integration_requires_supplier_pinouts_routed_host_buses_firmware_identity_and_factory_evidence
+enclosure_fit_policy:
+  ready_for_enclosure_allowed: false
+  requires_routed_kicad_board: true
+  requires_supplier_3d_models: true
+  requires_all_clearance_cases_measured: true
+  requires_no_boolean_interference: true
+  requires_physical_fit_and_functional_logs: true
+  expected_clearance_case_count: 11
+  complete_clearance_result_count: 0
+current_blockers:
+  production_step_files: []
+  missing_or_incomplete_clearance_cases:
+    - battery_to_pcb_islands
+    - haptic_to_battery
+    - split_interconnect_connectors_on_pcb_islands
+    - usb_shell_to_external_aperture
+    - bottom_mic_to_usb
+    - front_camera_to_earpiece
+    - haptic_to_pcb_islands
+    - rear_camera_to_battery
+    - split_interconnect_flex_to_battery_edge
+    - split_interconnect_flex_within_side_rail
+    - usb_to_bottom_speaker
+  required_height_models:
+    - usb_c_receptacle
+    - display_fpc_connector
+    - split_interconnect_top_connector
+    - split_interconnect_bottom_connector
+    - rear_camera_module
+    - front_camera_module
+    - bottom_speaker_module
+    - earpiece_receiver
+    - haptic_lra
+    - soc_shield_can
+    - pmic_shield_can
+    - radio_shield_can
+  placeholder_marker_count: 116
+  has_tracks: false
+  has_filled_zones: false
+  has_production_step: false
+execution_domains:
+  - id: display_touch_stack
+    owners:
+      - mechanical
+      - display_ee
+      - layout
+    placement_refs:
+      - J_DISPLAY_TOUCH
+    active_regions_mm:
+      J_DISPLAY_TOUCH:
+        x: 45.0
+        y: 3.0
+        width: 17.0
+        height: 8.0
+    acceptance_status: blocked_display_camera_acceptance_requires_supplier_route_bringup_capture_and_clearance
+    must_preserve:
+      - 5.5 inch display datum and cover-lens adhesive stack
+      - display FPC bend radius, stiffener thickness, and connector mated height
+      - DSI, touch I2C, backlight, reset, and bias rail routing clearance
+    release_evidence_required:
+      - signed display/touch supplier STEP and 2D datum drawing
+      - routed board STEP with final display FPC connector model
+      - display FPC bend and cover-lens clearance report
+      - display bring-up and touch functional log
+  - id: front_rear_camera_stack
+    owners:
+      - mechanical
+      - camera_ee
+      - layout
+    placement_refs:
+      - J_CAM0_CAM1
+    active_regions_mm:
+      J_CAM0_CAM1:
+        x: 45.0
+        y: 12.0
+        width: 17.0
+        height: 13.0
+    acceptance_status: blocked_display_camera_acceptance_requires_supplier_route_bringup_capture_and_clearance
+    must_preserve:
+      - rear and front lens axis datums
+      - cover-glass, dust, bezel, and camera bump clearances
+      - CSI lane length, clock, reset, and power-sequence routing constraints
+    release_evidence_required:
+      - signed camera module drawings and STEP models
+      - routed board STEP optical-axis clearance report
+      - camera image capture, focus, and thermal drift logs
+      - camera module footprint and pinout review signoff
+  - id: usb_c_side_buttons_bottom_io
+    owners:
+      - mechanical
+      - power_usb_ee
+      - layout
+    placement_refs:
+      - J_USB_C
+      - SW_POWER_VOL
+    active_regions_mm:
+      J_USB_C:
+        x: 26.0
+        y: 126.0
+        width: 16.0
+        height: 6.0
+      SW_POWER_VOL:
+        x: 18.0
+        y: 26.0
+        width: 12.0
+        height: 3.0
+    acceptance_status: blocked_usb_c_sidekey_acceptance_requires_supplier_route_enclosure_and_measurements
+    must_preserve:
+      - USB-C shell saddle, aperture, plug overmold, and insertion force path
+      - power/volume actuator rib, force travel, recovery combo access, and ESD path
+      - VBUS, CC, USB2 differential pair, shield ground, and wake-key routing constraints
+    release_evidence_required:
+      - signed USB-C and side-key supplier drawings and STEP models
+      - routed board STEP USB plug sweep and button actuation clearance
+      - USB attach/charge/debug log and side-key force-travel log
+      - ESD/chassis-ground review and insertion-cycle result
+  - id: battery_power_thermal_stack
+    owners:
+      - mechanical
+      - power_ee
+      - layout
+    placement_refs:
+      - J_BATTERY
+      - U_PMIC_CHARGER
+    active_regions_mm:
+      J_BATTERY:
+        x: 31.0
+        y: 27.0
+        width: 12.0
+        height: 2.0
+      U_PMIC_CHARGER:
+        x: 18.0
+        y: 18.0
+        width: 13.0
+        height: 8.0
+    acceptance_status: blocked_power_bringup_acceptance_requires_routed_schematic_first_power_charge_thermal_and_factory_evidence
+    must_preserve:
+      - 64 x 87 mm battery cavity with swelling, pull-tab, and pack connector clearance
+      - short VBUS, SYS, VBAT, and RF_VBAT high-current loops
+      - thermal path to graphite/midframe and no rigid intrusion into the pack window
+    release_evidence_required:
+      - signed pack drawing with swelling envelope, NTC, PCM, and connector pinout
+      - routed board STEP battery cavity and pull-tab clearance report
+      - first-power rail scope, charger, load-step, and thermal soak logs
+      - battery safety and pack supplier compliance pack
+  - id: radios_antennas_modules
+    owners:
+      - rf
+      - wireless_ee
+      - layout
+    placement_refs:
+      - U_CELL
+      - U_WIFI_BT
+    active_regions_mm:
+      U_CELL:
+        x: 3.0
+        y: 3.0
+        width: 14.0
+        height: 14.0
+      U_WIFI_BT:
+        x: 3.0
+        y: 18.0
+        width: 14.0
+        height: 10.0
+    acceptance_status: blocked_radio_antenna_acceptance_requires_supplier_route_firmware_regulatory_and_measurements
+    must_preserve:
+      - cellular, Wi-Fi, Bluetooth, GNSS optional RF feed keepouts and matching access
+      - module shield can, antenna plastic, midframe, and SAR keepout clearances
+      - PCIe, USB2, SDIO fallback, UART, SIM/eSIM, reset, wake, and firmware routing constraints
+    release_evidence_required:
+      - module supplier reference layout, STEP, footprint, and firmware pack
+      - routed board STEP RF feed and shield-can clearance report
+      - VNA, conducted RF, coexistence, carrier, SAR pre-scan, and regulatory scope logs
+      - module host bring-up and identity provisioning evidence
+  - id: audio_haptics_split_interconnect
+    owners:
+      - mechanical
+      - audio_ee
+      - layout
+    placement_refs:
+      - U_AUDIO_SPK_MIC
+      - J_TOP_BOTTOM_FLEX_TOP
+      - J_TOP_BOTTOM_FLEX_BOTTOM
+    active_regions_mm:
+      U_AUDIO_SPK_MIC:
+        x: 3.0
+        y: 120.0
+        width: 22.0
+        height: 8.0
+      J_TOP_BOTTOM_FLEX_TOP:
+        x: 46.0
+        y: 26.0
+        width: 16.0
+        height: 3.0
+      J_TOP_BOTTOM_FLEX_BOTTOM:
+        x: 46.0
+        y: 117.0
+        width: 16.0
+        height: 3.0
+    acceptance_status: blocked_factory_production_acceptance_requires_routed_outputs_fixture_limits_quotes_and_first_article
+    must_preserve:
+      - speaker chamber, mic ports, receiver, haptic mass, and gasket compression clearances
+      - top/bottom interconnect mating height, bend radius, stiffener, and battery-edge clearance
+      - audio, haptic, VBUS, USB2, SYS, VBAT, and ground-return routing across the split interconnect
+    release_evidence_required:
+      - speaker, microphone, haptic, and interconnect supplier drawings and STEP models
+      - routed board STEP acoustic and split-interconnect clearance report
+      - audio functional, haptic current, interconnect continuity, and fixture logs
+      - assembly drawing for flex mating sequence, strain relief, and inspection
+required_release_outputs:
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step
+  - mechanical/e1-phone/review/routed-board-clearance.json
+  - mechanical/e1-phone/review/full-cad-boolean-interference.json
+  - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+  - board/kicad/e1-phone/production/pdf/assembly.pdf
+cross_checks:
+  all_execution_domains_fail_closed: true
+  routed_board_step_missing: true
+  all_clearance_cases_incomplete: true
+  current_board_not_routed: true
+  footprint_capture_blocks_enclosure_release: true
+  ready_for_enclosure_policy_is_false: true
+release_blockers:
+  - routed KiCad PCB and DRC report are missing
+  - supplier STEP or B-rep models for height-critical parts are missing
+  - routed board STEP has not been exported or imported into enclosure CAD
+  - routed-board clearance, boolean interference, and physical fit results are missing
+  - display, USB-C, side-key, camera, radio, battery, acoustic, and interconnect functional evidence is missing
+forbidden_claims:
+  - enclosure_ready
+  - routed_board_step_ready
+  - boolean_interference_clear
+  - physical_fit_verified
+  - fabrication_ready
+  - factory_test_ready
+  - end_to_end_phone_ready

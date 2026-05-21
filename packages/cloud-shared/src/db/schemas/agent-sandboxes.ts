@@ -133,6 +133,7 @@ export const agentSandboxes = pgTable(
     claimed_at: timestamp("claimed_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deleted_at: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => ({
     organization_idx: index("agent_sandboxes_organization_idx").on(table.organization_id),
@@ -141,6 +142,7 @@ export const agentSandboxes = pgTable(
     character_idx: index("agent_sandboxes_character_idx").on(table.character_id),
     sandbox_id_idx: index("agent_sandboxes_sandbox_id_idx").on(table.sandbox_id),
     billing_status_idx: index("agent_sandboxes_billing_status_idx").on(table.billing_status),
+    deleted_at_idx: index("agent_sandboxes_deleted_at_idx").on(table.deleted_at),
   }),
 );
 

@@ -114,20 +114,26 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
 
   const hasKeys = keys.length > 0;
 
-  useSetPageHeader({
-    title: "API Keys",
-    actions: (
-      <BrandButton
-        variant="primary"
-        size="sm"
-        className="gap-2"
-        onClick={() => setCreateDialogOpen(true)}
-      >
-        <Plus className="h-4 w-4" />
-        Create API Key
-      </BrandButton>
-    ),
-  });
+  useSetPageHeader(
+    {
+      title: "API Keys",
+      // Only surface the header CTA when there is at least one key — the
+      // empty state already renders a centred primary "Create API Key"
+      // button, and having both visible at once duplicates the action.
+      actions: hasKeys ? (
+        <BrandButton
+          variant="primary"
+          size="sm"
+          className="gap-2"
+          onClick={() => setCreateDialogOpen(true)}
+        >
+          <Plus className="h-4 w-4" />
+          Create API Key
+        </BrandButton>
+      ) : undefined,
+    },
+    [hasKeys],
+  );
 
   const handleCreateKey = async () => {
     setIsCreating(true);

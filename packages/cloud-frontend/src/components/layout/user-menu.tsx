@@ -492,10 +492,14 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
-            <Link to="/docs">
+            <a
+              href="https://docs.elizaos.ai/cloud"
+              target="_blank"
+              rel="noreferrer"
+            >
               <BookOpen className="mr-2 h-4 w-4" />
               <span>{t("cloud.nav.docs", { defaultValue: "Docs" })}</span>
-            </Link>
+            </a>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setFeedbackOpen(true)}>
             <MessageSquare className="mr-2 h-4 w-4" />

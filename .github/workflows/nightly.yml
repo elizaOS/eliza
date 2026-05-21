@@ -30,6 +30,7 @@ env:
 permissions:
   contents: write
   packages: write
+  id-token: write   # npm OIDC trusted publishing (SOC2 CC9.2)
 
 jobs:
   check-commits:
@@ -220,9 +221,13 @@ jobs:
         # --no-sort bypasses a lerna 9.0.7 topological queue bug triggered by
         # the @elizaos/agent <-> @elizaos/plugin-capacitor-bridge cycle, which
         # otherwise fails with "Not all tasks were run". See release.yaml.
+        # Auth: prefer npm OIDC (id-token: write); NPM_TOKEN is the transition
+        # fallback and can be removed once Trusted Publishers are configured
+        # on npmjs.com for the @elizaos/* packages.
         run: bunx lerna publish from-package --dist-tag nightly --force-publish --yes --no-verify-access --no-sort
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
 
   create-release:
     name: Create GitHub pre-release

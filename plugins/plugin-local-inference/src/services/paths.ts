@@ -12,7 +12,7 @@ function resolveUserPath(input: string): string {
 
 function resolveStateDir(): string {
 	const explicit =
-		process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
+		process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
 	if (explicit) return resolveUserPath(explicit);
 	const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
 	return path.join(homedir(), `.${namespace}`);

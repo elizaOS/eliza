@@ -10,7 +10,6 @@ export default function HeroSection() {
   const navigate = useNavigate();
   const t = useT();
   const launchEliza = () => navigate("/login?intent=launch");
-  const openDashboard = () => navigate("/login?intent=dashboard");
 
   return (
     <CloudVideoBackground
@@ -23,33 +22,27 @@ export default function HeroSection() {
     >
       <div className="relative mx-auto flex min-h-[100svh] w-full max-w-7xl flex-col items-start justify-center px-6 py-28 text-black sm:px-10 lg:px-16">
         <h1
-          className="max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
+          className="w-full whitespace-nowrap text-[clamp(1.75rem,6.8vw,6rem)] font-medium leading-[0.86] text-black"
           style={{ fontFamily: "Poppins, Arial, system-ui, sans-serif" }}
         >
-          {t("cloud.landing.heroTitle", { defaultValue: "Launch Eliza." })}
+          {t("cloud.landing.heroTitle", {
+            defaultValue: "Your Agent. Anywhere.",
+          })}
         </h1>
-        <p className="mt-6 max-w-xl text-xl font-light leading-snug text-black/80 sm:text-2xl">
+        <p className="mt-6 max-w-2xl text-xl font-medium leading-snug text-black/80 sm:text-2xl">
           {t("cloud.landing.heroSubtitle", {
-            defaultValue: "Your agent, always online.",
+            defaultValue:
+              "Hosting, APIs and commerce tools for agents.",
           })}
         </p>
         <div className="mt-10 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">
           <button
             type="button"
             onClick={launchEliza}
-            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-[3px] bg-black px-8 py-4 text-base font-medium text-white transition hover:bg-[#0B35F1] sm:text-lg"
+            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-[3px] border border-black bg-black px-8 py-4 text-base font-medium text-white transition-colors hover:bg-white hover:text-black sm:text-lg"
           >
             {t("cloud.landing.launchEliza", { defaultValue: "Launch Eliza" })}
             <ArrowRight className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={openDashboard}
-            className="inline-flex min-h-14 items-center justify-center rounded-[3px] bg-[#FF5800] px-7 py-4 text-base font-medium text-black transition hover:bg-black hover:text-white"
-          >
-            {t("cloud.landing.developerDashboard", {
-              defaultValue: "Developer Dashboard",
-            })}
           </button>
         </div>
       </div>

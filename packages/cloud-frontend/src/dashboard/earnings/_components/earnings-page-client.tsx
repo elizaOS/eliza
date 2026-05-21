@@ -132,8 +132,8 @@ const SOURCE_LABELS = {
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  approved: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  processing: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  approved: "bg-white/10 text-white/80 border-white/20",
+  processing: "bg-white/10 text-white/80 border-white/20",
   completed: "bg-green-500/20 text-green-400 border-green-500/30",
   failed: "bg-red-500/20 text-red-400 border-red-500/30",
   rejected: "bg-red-500/20 text-red-400 border-red-500/30",
@@ -406,8 +406,8 @@ export function EarningsPageClient() {
                 Converted to elizaOS tokens
               </p>
             </div>
-            <div className="p-2 rounded-sm bg-purple-500/20">
-              <CheckCircle className="h-6 w-6 text-purple-400" />
+            <div className="p-2 rounded-sm bg-white/10">
+              <CheckCircle className="h-6 w-6 text-white/80" />
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-white/10 space-y-2">

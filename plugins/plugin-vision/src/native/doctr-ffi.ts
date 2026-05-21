@@ -43,7 +43,7 @@ function defaultLibraryPath(): string {
 export function defaultDetWeightsPath(): string {
   const stateDir =
     process.env.ELIZA_STATE_DIR ??
-    path.join(process.env.HOME ?? "/tmp", ".milady");
+    path.join(process.env.HOME ?? "/tmp", ".eliza");
   return (
     process.env.ELIZA_DOCTR_DET_GGUF ??
     path.join(stateDir, "models", "vision", "doctr-det.gguf")
@@ -53,7 +53,7 @@ export function defaultDetWeightsPath(): string {
 export function defaultRecWeightsPath(): string {
   const stateDir =
     process.env.ELIZA_STATE_DIR ??
-    path.join(process.env.HOME ?? "/tmp", ".milady");
+    path.join(process.env.HOME ?? "/tmp", ".eliza");
   return (
     process.env.ELIZA_DOCTR_REC_GGUF ??
     path.join(stateDir, "models", "vision", "doctr-rec.gguf")

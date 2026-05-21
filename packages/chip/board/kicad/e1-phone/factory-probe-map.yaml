@@ -1,0 +1,164 @@
+schema: eliza.e1_phone_factory_probe_map.v1
+status: blocked_requires_routed_board_fixture_and_first_article_limits
+date: 2026-05-20
+claim_boundary: >
+  Factory probe and end-of-line coverage contract for the E1 phone mainboard.
+  This file defines required coverage before EVT1 release, but it is not a
+  released fixture drawing, ICT program, flying-probe program, RF calibration
+  plan, or first-article test limit set.
+
+source_artifacts:
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/production-readiness.yaml
+  - board/kicad/e1-phone/manufacturing-closure.yaml
+  - board/kicad/e1-phone/rf-connectivity-closure.yaml
+  - board/kicad/e1-phone/power-thermal-budget.yaml
+  - board/kicad/e1-phone/top-bottom-interconnect-plan.yaml
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+
+fixture_policy:
+  fixture_release_requires_routed_pcb: true
+  probe_coordinates_source: routed_kicad_pcb_after_DRC_clean
+  stop_on_fail_required: true
+  operator_visible_traceability_required:
+    - board_serial
+    - imei_or_modem_identifier
+    - wifi_mac
+    - bluetooth_mac
+    - secure_key_provisioning_result
+    - fixture_id
+    - test_software_revision
+  outputs_required_before_release:
+    - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    - board/kicad/e1-phone/production/test/probe-coordinates.csv
+    - board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+    - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+    - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+
+probe_domains:
+  - id: power_rails
+    nets: [VBUS, VBAT, SYS, AON_1V8, IO_1V8, RF_VBAT, CAM_AVDD_2V8, DISP_AVDD_5V5]
+    method: bed_of_nails_or_flying_probe_plus_current_limited_power_supply
+    expected_limits_source: board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    required_checks:
+      - no_short_to_ground_before_power
+      - current_limited_power_up_sequence
+      - rail_voltage_within_limit_at_idle
+      - load_step_or_margin_check_for_SYS_RF_camera_and_display_rails
+      - battery_NTC_and_ID_readback
+    release_status: blocked_no_routed_probe_coordinates_or_first_article_limits
+  - id: usb_c
+    nets: [USB_CC1, USB_CC2, USB_DP, USB_DN, VBUS, SHIELD_GND]
+    method: type_c_fixture_plus_usb2_eye_or_functional_host_test
+    expected_limits_source: routed_release_SI_and_factory_limits
+    required_checks:
+      - CC_orientation_attach_on_both_plug_flips
+      - VBUS_OVP_TVS_and_current_limit_smoke_test
+      - USB2_DP_DN_continuity_and_shorts
+      - ADB_or_fastboot_or_board_debug_enumeration
+      - shell_ground_continuity_and_insertion_force_signoff
+    release_status: blocked_no_PD_attach_log_or_USB_fixture
+  - id: display_touch
+    nets: [DSI_CLK_P, DSI_D0_P, TOUCH_I2C_SCL, TOUCH_I2C_SDA, DISP_RESET_N, DISP_BL_EN, DISP_BL_PWM]
+    method: functional_display_jig_with_camera_or_photodiode_and_touch_pattern
+    expected_limits_source: selected_display_supplier_sequence_and_factory_limits
+    required_checks:
+      - display_panel_id_or_DSI_readback
+      - backlight_current_and_pwm_response
+      - touch_controller_i2c_id_and_interrupt
+      - pattern_display_and_dead_pixel_screening_policy
+      - FPC_continuity_and_reset_line_test
+    release_status: blocked_no_selected_panel_pinout_or_display_jig
+  - id: cameras
+    nets: [CAM0_CSI_CLK_P, CAM1_CSI_CLK_P, CAM0_I2C_SCL, CAM1_I2C_SCL, CAM0_RESET_N, CAM1_RESET_N, CAM_AVDD_2V8, CAM_DVDD_1V2]
+    method: functional_camera_test_chart_and_MIPI_link_check
+    expected_limits_source: selected_camera_supplier_bringup_pack_and_factory_limits
+    required_checks:
+      - rear_camera_i2c_sensor_id
+      - front_camera_i2c_sensor_id
+      - MIPI_CSI_frame_start_and_crc_error_limit
+      - autofocus_or_focus_fixture_check_for_rear_camera
+      - lens_alignment_and_contamination_screening
+    release_status: blocked_no_camera_supplier_pinout_or_test_chart_limits
+  - id: radios
+    nets: [CELL_GNSS_RF, CELL_RF_DIV, CELL_RF_MAIN, WIFI_BT_RF0, WIFI_BT_RF1, USIM_IO, ESIM_IO]
+    method: conducted_RF_fixture_plus_SIM_eSIM_and_wireless_calibration_flow
+    expected_limits_source: RF_pre_scan_conducted_limits_and_module_vendor_procedure
+    required_checks:
+      - cellular_module_boot_and_IMEI_readback
+      - USIM_or_eSIM_interface_readback
+      - cellular_conducted_tx_rx_on_allowed_test_bands
+      - wifi_2g_5g_6g_conducted_or_shield_box_tx_rx
+      - bluetooth_LE_advertise_scan_and_RF_level
+      - GNSS_conducted_or_reradiated_acquisition_check
+    release_status: blocked_no_RF_fixture_or_carrier_regulatory_limits
+  - id: audio_haptics
+    nets: [I2S_BCLK, PDM_CLK, SPK_P, SPK_N, HAPTIC_OUT, VDD_AUDIO_3V3, VDD_AMP_3V3]
+    method: audio_loopback_microphone_speaker_fixture_and_haptic_accelerometer
+    expected_limits_source: acoustic_supplier_data_and_factory_limits
+    required_checks:
+      - codec_i2c_or_control_interface_readback
+      - speaker_impedance_and_output_level
+      - microphone_presence_noise_floor_and_polarity
+      - earpiece_receiver_output_level
+      - haptic_drive_current_and_acceleration_response
+    release_status: blocked_no_acoustic_fixture_or_supplier_limits
+  - id: split_board_interconnect
+    nets: [USB_DP, USB_DN, VBUS, SYS, I2S_BCLK, PDM_CLK, HAPTIC_OUT, AON_1V8, IO_1V8, VDD_AUDIO_3V3, VDD_AMP_3V3]
+    method: continuity_boundary_scan_and_functional_bottom_island_exerciser
+    expected_limits_source: interconnect_supplier_stackup_and_factory_limits
+    required_checks:
+      - all_cross_island_nets_continuity_and_no_adjacent_shorts
+      - connector_mated_detect_or_inspection_flag
+      - USB2_loop_through_bottom_island
+      - audio_and_haptic_bottom_island_function
+      - flex_strain_relief_visual_inspection
+    release_status: blocked_no_exact_connector_pair_or_fixture
+  - id: buttons_sensors_nfc
+    nets: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, NFC_I2C_SCL, SENSOR_I2C_SCL, IMU_INT, AON_1V8]
+    method: side_button_actuator_fixture_plus_i2c_sensor_scan
+    expected_limits_source: human_interface_supplier_data_and_factory_limits
+    required_checks:
+      - power_button_press_release_threshold_and_wake_event
+      - volume_up_down_press_release_thresholds
+      - side_key_ESD_path_and_pullup_readback
+      - sensor_hub_i2c_scan_and_interrupt_check
+      - NFC_controller_i2c_scan_and_loop_antenna_continuity
+    release_status: blocked_no_side_key_fixture_or_sensor_NFC_limits
+  - id: compute_storage_debug
+    nets: [LPDDR_CK_P, UFS_TX_P, UFS_RX_P, JTAG_TCK, BOOT_MODE0, SOC_RESET_N]
+    method: boot_rom_boundary_debug_and_memory_storage_smoke_test
+    expected_limits_source: EVT1_boot_and_memory_factory_limits
+    required_checks:
+      - JTAG_or_debug_unlock_policy_check
+      - boot_mode_strap_readback
+      - LPDDR_training_pass
+      - UFS_link_training_and_serial_readback
+      - secure_key_provisioning_and_debug_lock_result
+    release_status: blocked_no_routed_board_or_boot_fixture
+
+cross_checks:
+  mirrors_production_readiness_factory_coverage: true
+  power_rails_match_routing_required_test_points: true
+  split_interconnect_covers_usb_power_audio_haptic_and_low_voltage_controls: true
+  radios_include_cellular_wifi_bluetooth_gnss_and_SIM_eSIM: true
+  display_camera_usb_buttons_audio_and_compute_have_functional_tests: true
+  all_probe_domains_blocked_until_routed_fixture_limits_exist: true
+
+release_blockers:
+  - routed PCB probe coordinates missing
+  - fixture and pogo-pin accessibility not validated against enclosure and component heights
+  - factory-test limits not derived from first article measurements
+  - RF conducted and shield-box procedures not approved
+  - display, camera, audio, haptic, button, NFC, sensor, and split-interconnect fixtures not built
+  - secure provisioning and traceability flow not implemented
+
+forbidden_claims:
+  - factory_test_ready
+  - fixture_ready
+  - probe_map_released
+  - first_article_limits_ready
+  - RF_calibration_ready
+  - production_ready
+  - end_to_end_phone_ready

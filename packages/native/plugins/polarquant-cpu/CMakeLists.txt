@@ -80,13 +80,13 @@ endif()
 #
 # Zig 0.14+: gcc-style `-march=rv64gcv1p0` is accepted.  Zig 0.13 only
 # takes CPU names via `-mcpu`; we use `-mcpu=generic_rv64+v` there.
-# MILADY_RISCV_RVV_FLAG lets the caller override (e.g. `-march=rv64gcv`
+# ELIZA_RISCV_RVV_FLAG lets the caller override (e.g. `-march=rv64gcv`
 # for native GCC/Clang).
 if(POLARQUANT_RISCV)
     target_compile_definitions(polarquant PUBLIC POLARQUANT_HAVE_RVV=1)
     target_compile_definitions(polarquant PRIVATE POLARQUANT_ARCH_RISCV=1)
 
-    if(NOT DEFINED MILADY_RISCV_RVV_FLAGS)
+    if(NOT DEFINED ELIZA_RISCV_RVV_FLAGS)
         # Detect whether the active compiler accepts -march=rv64gcv1p0;
         # if not, fall back to Zig 0.13's `-mcpu=generic_rv64+v`.
         include(CheckCSourceCompiles)
@@ -94,9 +94,9 @@ if(POLARQUANT_RISCV)
         check_c_source_compiles("int main(void){return 0;}" POLARQUANT_RVV_MARCH_OK)
         unset(CMAKE_REQUIRED_FLAGS)
         if(POLARQUANT_RVV_MARCH_OK)
-            set(MILADY_RISCV_RVV_FLAGS "-march=rv64gcv1p0;-mabi=lp64d")
+            set(ELIZA_RISCV_RVV_FLAGS "-march=rv64gcv1p0;-mabi=lp64d")
         else()
-            set(MILADY_RISCV_RVV_FLAGS "-mcpu=generic_rv64+v")
+            set(ELIZA_RISCV_RVV_FLAGS "-mcpu=generic_rv64+v")
         endif()
     endif()
 
@@ -104,7 +104,7 @@ if(POLARQUANT_RISCV)
         src/polar_dequant_rvv.c
         src/polar_dot_rvv.c
         src/polar_dot_preht_rvv.c
-        PROPERTIES COMPILE_OPTIONS "${MILADY_RISCV_RVV_FLAGS}"
+        PROPERTIES COMPILE_OPTIONS "${ELIZA_RISCV_RVV_FLAGS}"
     )
 endif()
 

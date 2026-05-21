@@ -1,0 +1,120 @@
+---
+title: API Overview
+description: Complete REST API reference for elizaOS Cloud. OpenAI-compatible endpoints for chat, embeddings, and more.
+---
+
+# REST API Reference
+
+elizaOS Cloud provides a comprehensive REST API for all platform features.
+
+<Info>
+  Looking for a full, route-by-route explorer? Go to [API Explorer
+  →](/cloud/api/overview)
+</Info>
+
+## Base URL
+
+```
+https://elizacloud.ai/api/v1
+```
+
+## Authentication
+
+All API requests require authentication via API key or session token:
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/dashboard" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+<Info>
+  Get your API key from [Dashboard → API Keys](/dashboard/api-keys)
+</Info>
+
+### Authentication Methods
+
+| Method    | Header                         | Use Case             |
+| --------- | ------------------------------ | -------------------- |
+| API Key   | `Authorization: Bearer eliza_xxx` | Server-to-server     |
+| X-API-Key | `X-API-Key: eliza_xxx`            | Alternative header   |
+| Session   | Cookie-based                   | Browser applications |
+
+## API Categories
+
+<CardGroup>
+  <CardGroup.Card title="Chat Completions" href="/cloud/api/chat">
+    OpenAI-compatible chat API with streaming support
+  </Card>
+  <CardGroup.Card title="Messages" href="/cloud/api/messages">
+    Anthropic-compatible messages API for Claude Code and SDK clients
+  </Card>
+  <CardGroup.Card title="Embeddings" href="/cloud/api/embeddings">
+    Generate vector embeddings for text
+  </Card>
+  <CardGroup.Card title="Agents" href="/cloud/api/agents">
+    Manage AI agents and characters
+  </Card>
+  <CardGroup.Card title="API Keys" href="/cloud/api/api-keys">
+    Create and manage server credentials
+  </Card>
+  <CardGroup.Card title="Knowledge" href="/cloud/api/documents">
+    Upload and query documents
+  </Card>
+  <CardGroup.Card title="Apps" href="/cloud/api/apps">
+    Create and manage applications
+  </Card>
+  <CardGroup.Card title="Containers" href="/cloud/api/containers">
+    Deploy and monitor containers
+  </Card>
+  <CardGroup.Card title="Credits & Billing" href="/cloud/api/credits">
+    Check account credits and usage
+  </Card>
+</CardGroup>
+
+## Error Handling
+
+All errors follow a consistent format:
+
+```json
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "The request body is invalid",
+    "details": "Field 'model' is required"
+  }
+}
+```
+
+### Error Codes
+
+| Code                   | HTTP Status | Description                       |
+| ---------------------- | ----------- | --------------------------------- |
+| `UNAUTHORIZED`         | 401         | Invalid or missing authentication |
+| `FORBIDDEN`            | 403         | Insufficient permissions          |
+| `NOT_FOUND`            | 404         | Resource not found                |
+| `RATE_LIMITED`         | 429         | Too many requests                 |
+| `INSUFFICIENT_CREDITS` | 402         | Not enough credits                |
+| `INTERNAL_ERROR`       | 500         | Server error                      |
+
+## Rate Limits
+
+| Endpoint         | Rate Limit  |
+| ---------------- | ----------- |
+| Chat completions | 60 req/min  |
+| Embeddings       | 100 req/min |
+| Image generation | 20 req/min  |
+| Video generation | 5 req/min   |
+
+<Info>
+  Rate limits can be increased for enterprise plans. Contact sales for details.
+</Info>
+
+## OpenAPI Specification
+
+The full OpenAPI specification is available at:
+
+```
+https://elizacloud.ai/api/openapi.json
+```
+
+You can use this with tools like Swagger UI, Postman, or to generate client SDKs.

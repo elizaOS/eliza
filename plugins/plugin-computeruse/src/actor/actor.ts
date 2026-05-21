@@ -14,7 +14,7 @@
  * Optional secondary path — VLM:
  *   `OsAtlasProActor` is a typed adapter stub for a model-server endpoint
  *   (e.g. an OS-Atlas-Pro vLLM service). Until that endpoint exists in the
- *   Milady deployment it stays unregistered and the cascade falls back to
+ *   Eliza deployment it stays unregistered and the cascade falls back to
  *   the OCR/AX grounding above.
  *
  * Register the active Actor on the cascade via `setActor(actor)` (see

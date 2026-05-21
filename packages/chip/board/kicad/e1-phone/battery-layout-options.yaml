@@ -3,9 +3,9 @@ status: blocked_routed_split_board_and_supplier_pack_evidence_required
 date: 2026-05-20
 claim_boundary: >
   Battery/layout trade study only. This records the conflict between the
-  selected 17.33 Wh public battery pack class, the current board window, and
-  the regenerated CAD full-width battery cavity. It is not a battery approval, enclosure
-  release, or board-layout closure.
+  selected 22.45 Wh thick pouch planning class, the current board window, and
+  the regenerated CAD full-width battery cavity. It is not a battery approval,
+  enclosure release, or board-layout closure.
 
 source_artifacts:
   - package/battery/e1-phone-17p3wh-pack.yaml
@@ -16,18 +16,18 @@ source_artifacts:
   - board/kicad/e1-phone/preliminary-bom.yaml
 
 selected_energy_reference:
-  pack_class: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
+  pack_class: LiPol_LP576487_3p85V_5830mAh_22p45Wh_PCM_NTC_JST_SHR_03V_class
   nominal_voltage_v: 3.85
-  capacity_mah: 4500
-  energy_wh: 17.33
-  public_reference_dimensions_mm: {width: 64.0, height: 87.0, thickness: 4.4}
+  capacity_mah: 5830
+  energy_wh: 22.45
+  public_reference_dimensions_mm: {width: 64.0, height: 87.0, thickness: 5.7}
   required_board_signals: [VBAT, GND, BAT_NTC, BAT_ID]
 
 current_geometry:
-  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 9.6}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.2}
   board_bbox_mm: {width: 64.0, height: 132.0}
   board_battery_window_mm: {width: 64.0, height: 87.0}
-  cad_selected_battery_mm: {width: 64.0, height: 87.0, thickness: 4.4}
+  cad_selected_battery_mm: {width: 64.0, height: 87.0, thickness: 5.7}
   cad_topology: top_bottom_pcb_islands_with_full_width_battery_cavity
 
 fit_deltas_vs_selected_pack:
@@ -57,16 +57,16 @@ layout_options:
       - re-run battery safety and thermal charge limits
   - id: enlarge_cavity_for_64x87_pack
     summary: Revise board split and enclosure ribs around the selected 64 x 87 mm pack class.
-    estimated_capacity_class_mah: 4500
+    estimated_capacity_class_mah: 5830
     board_size_impact: high
-    runtime_impact: preserves_17p3wh_target
+    runtime_impact: improves_to_22p45wh_target
     enclosure_impact: requires_rib_speaker_haptic_and_pcb_island_repack
     status: preferred_if_cad_and_pcb_repack_pass
     required_actions:
       - move side_key_flex_clearances_outside_64mm_pack_width
       - shrink_or_relocate_bottom_audio_haptic_region
       - update KiCad battery keepout and mechanical overlay
-      - keep CAD generated with 64x87x4p4 battery envelope
+      - keep CAD generated with 64x87x5p7 battery envelope
       - rerun enclosure placement and board package checks
   - id: custom_narrow_17wh_pack
     summary: Keep phone envelope and ask suppliers for a custom narrow high-voltage pack.
@@ -83,8 +83,8 @@ layout_options:
 recommended_next_step:
   decision: run_evt0_repack_for_64x87_energy_reference_and_parallel_quote_custom_narrow_pack
   rationale: >
-    The 17.33 Wh reference pack is the strongest runtime anchor, and CAD plus
-    the KiCad concept keepout now carry the 64 x 87 x 4.4 mm cavity. The
+    The 22.45 Wh thick pouch planning class is the strongest runtime anchor,
+    and CAD plus the KiCad concept keepout now carry the 64 x 87 x 5.7 mm cavity. The
     remaining blockers are board implementation and evidence: the split-island
     concept is not routed or DRC clean, and the pack still lacks approved
     supplier drawings, PCM tail, NTC, connector, swelling, and safety data.

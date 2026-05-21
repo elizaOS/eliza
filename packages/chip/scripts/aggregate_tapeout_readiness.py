@@ -512,24 +512,23 @@ GATES: tuple[GateSpec, ...] = (
         subsystem="benchmarks",
         tier="spec",
     ),
-    # ---- OS RV64 (elizaOS Debian RISC-V 64 variant) ------------------------
-    # These two gates live in packages/os/linux/variants/elizaos-debian-riscv64
-    # and are invoked via chip-relative sibling-package paths so the chip aggregator can present a
+    # ---- OS RV64 (elizaOS unified Linux build, ARCH=riscv64) ----------------
+    # These two gates live in packages/os/linux/elizaos and are invoked via
+    # chip-relative sibling-package paths so the chip aggregator can present a
     # unified chip + OS bring-up view without duplicating their logic. The
     # OS-side scripts are stable; the aggregator only re-runs them and
     # classifies their PASS/FAIL/BLOCKED output with the same policy.
     GateSpec(
         name="os-rv64-release-check",
-        script="../os/linux/variants/elizaos-debian-riscv64/scripts/check_release_manifest.py",
+        script="../os/linux/elizaos/scripts/check_release_manifest.py",
         subsystem="os_rv64",
         tier="spec",
     ),
     GateSpec(
         name="os-rv64-qemu-virt-boot-test",
-        script="../os/linux/variants/elizaos-debian-riscv64/scripts/test_qemu_virt_smoke.py",
+        script="../os/linux/elizaos/scripts/qemu_virt_smoke.py",
         subsystem="os_rv64",
         tier="spec",
-        module="scripts.test_qemu_virt_smoke",
     ),
 )
 

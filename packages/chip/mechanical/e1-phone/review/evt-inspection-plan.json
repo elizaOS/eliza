@@ -14,7 +14,13 @@
       "nominal": 1.6,
       "min": 1.2,
       "max": 2.2,
-      "method": "Load-cell press normal to cap center until tactile event."
+      "method": "Load-cell press normal to cap center until tactile event.",
+      "required_evidence_artifacts": [
+        "power_button_force_raw_csv",
+        "load_cell_calibration_certificate",
+        "power_button_probe_photo_or_video",
+        "side_button_and_enclosure_lot_records"
+      ]
     },
     {
       "id": "power_button_travel",
@@ -26,7 +32,13 @@
       "nominal": 0.35,
       "min": 0.25,
       "max": 0.55,
-      "method": "Dial indicator travel from cap free height to tactile event."
+      "method": "Dial indicator travel from cap free height to tactile event.",
+      "required_evidence_artifacts": [
+        "power_button_travel_raw_csv",
+        "dial_indicator_calibration_certificate",
+        "power_button_travel_probe_photo",
+        "side_button_and_enclosure_lot_records"
+      ]
     },
     {
       "id": "volume_button_actuation_force",
@@ -38,7 +50,13 @@
       "nominal": 1.5,
       "min": 1.2,
       "max": 2.2,
-      "method": "Load-cell press at volume cap center and both cap ends."
+      "method": "Load-cell press at volume cap center and both cap ends.",
+      "required_evidence_artifacts": [
+        "volume_button_force_raw_csv",
+        "load_cell_calibration_certificate",
+        "volume_button_probe_photo_or_video",
+        "side_button_and_enclosure_lot_records"
+      ]
     },
     {
       "id": "usb_c_insertion_force_no_rub",
@@ -50,7 +68,13 @@
       "nominal": null,
       "min": 0.0,
       "max": 35.0,
-      "method": "Insert USB-C gauge/plug along port axis and record peak insertion force and aperture rub."
+      "method": "Insert USB-C gauge/plug along port axis and record peak insertion force and aperture rub.",
+      "required_evidence_artifacts": [
+        "usb_c_insertion_force_raw_csv",
+        "usb_insertion_fixture_calibration_certificate",
+        "usb_c_insertion_gauge_video_or_photo",
+        "usb_receptacle_and_enclosure_lot_records"
+      ]
     },
     {
       "id": "screen_adhesive_compression",
@@ -62,7 +86,13 @@
       "nominal": 0.045,
       "min": 0.03,
       "max": 0.08,
-      "method": "Measure bond-line compression witness after clamp cure cycle."
+      "method": "Measure bond-line compression witness after clamp cure cycle.",
+      "required_evidence_artifacts": [
+        "screen_compression_witness_raw_csv",
+        "screen_clamp_fixture_calibration_certificate",
+        "screen_bond_witness_photo",
+        "display_adhesive_and_enclosure_lot_records"
+      ]
     },
     {
       "id": "display_fpc_bend_radius",
@@ -74,7 +104,13 @@
       "nominal": 1.0,
       "min": 1.0,
       "max": null,
-      "method": "Inspect FPC bend path after screen placement and board connection."
+      "method": "Inspect FPC bend path after screen placement and board connection.",
+      "required_evidence_artifacts": [
+        "display_fpc_bend_radius_raw_csv",
+        "optical_measurement_fixture_calibration_certificate",
+        "connected_display_fpc_photo",
+        "display_module_and_connector_lot_records"
+      ]
     },
     {
       "id": "rear_camera_lens_center_error",
@@ -86,7 +122,13 @@
       "nominal": 0.0,
       "min": 0.0,
       "max": 0.25,
-      "method": "Insert rear lens datum pin and measure radial offset to camera cover window."
+      "method": "Insert rear lens datum pin and measure radial offset to camera cover window.",
+      "required_evidence_artifacts": [
+        "rear_camera_alignment_raw_csv",
+        "camera_alignment_fixture_calibration_certificate",
+        "rear_camera_alignment_pin_photo",
+        "rear_camera_module_and_cover_glass_lot_records"
+      ]
     },
     {
       "id": "front_camera_under_glass_center_error",
@@ -98,7 +140,13 @@
       "nominal": 0.0,
       "min": 0.0,
       "max": 0.3,
-      "method": "Inspect under-glass aperture alignment through cover glass."
+      "method": "Inspect under-glass aperture alignment through cover glass.",
+      "required_evidence_artifacts": [
+        "front_camera_alignment_raw_csv",
+        "camera_alignment_fixture_calibration_certificate",
+        "front_under_glass_alignment_pin_photo",
+        "front_camera_module_and_cover_glass_lot_records"
+      ]
     },
     {
       "id": "bottom_audio_leak_delta",
@@ -110,7 +158,13 @@
       "nominal": 0.0,
       "min": 0.0,
       "max": 3.0,
-      "method": "Compare masked/unmasked bottom speaker and mic path leakage at fixed tone."
+      "method": "Compare masked/unmasked bottom speaker and mic path leakage at fixed tone.",
+      "required_evidence_artifacts": [
+        "bottom_audio_leak_raw_sweep_csv",
+        "acoustic_leak_fixture_calibration_certificate",
+        "bottom_audio_leak_mask_photo",
+        "speaker_microphone_mesh_and_enclosure_lot_records"
+      ]
     },
     {
       "id": "handset_receiver_leak_delta",
@@ -122,7 +176,13 @@
       "nominal": 0.0,
       "min": 0.0,
       "max": 3.0,
-      "method": "Compare masked/unmasked receiver leakage around handset gasket."
+      "method": "Compare masked/unmasked receiver leakage around handset gasket.",
+      "required_evidence_artifacts": [
+        "handset_leak_raw_sweep_csv",
+        "acoustic_leak_fixture_calibration_certificate",
+        "earpiece_leak_mask_photo",
+        "receiver_gasket_and_enclosure_lot_records"
+      ]
     }
   ],
   "release_rule": "Every measurement row must be populated for each EVT sample and pass before claiming physical interface validation."

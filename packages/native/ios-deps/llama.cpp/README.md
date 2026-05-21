@@ -1,6 +1,6 @@
 # llama.cpp — iOS xcframework build
 
-This directory cross-builds the milady-controlled
+This directory cross-builds the elizaOS-controlled
 [elizaOS/llama.cpp](https://github.com/elizaOS/llama.cpp) fork into
 `LlamaCpp.xcframework` for iOS (device + simulator slices) with Metal
 acceleration baked in. The fork carries the elizaOS kernels (Q4_POLAR /
@@ -106,8 +106,8 @@ dist/
 | `GGML_ACCELERATE=ON`            | Use Apple's Accelerate.framework on the CPU path.    |
 | `BUILD_SHARED_LIBS=OFF`         | Static library — folds into xcframework.             |
 | `LLAMA_BUILD_EXAMPLES=OFF`      | Skip CLI/server/tests.                               |
-| `MILADY_LLAMA_SIM_METAL=ON`     | (env, default OFF) Enable Metal on simulator slice.  |
-| `MILADY_IOS_MIN_VERSION=15.0`   | (env) iOS deployment target.                         |
+| `ELIZA_LLAMA_SIM_METAL=ON`     | (env, default OFF) Enable Metal on simulator slice.  |
+| `ELIZA_IOS_MIN_VERSION=15.0`   | (env) iOS deployment target.                         |
 
 ## Consuming the build
 
@@ -135,8 +135,8 @@ ls dist/LlamaCpp.xcframework/
 # Confirm Metal symbols are present in the device slice:
 nm -gU dist/ios-arm64/libllama.a 2>/dev/null | grep ggml_backend_metal_init
 
-# Confirm Milady shim symbols:
-nm -gU dist/ios-arm64/libllama.a 2>/dev/null | grep milady_llama
+# Confirm Eliza shim symbols:
+nm -gU dist/ios-arm64/libllama.a 2>/dev/null | grep eliza_llama
 
 # Inspect platform metadata:
 otool -l dist/ios-arm64/libllama.a 2>/dev/null | grep -A 3 LC_BUILD_VERSION
@@ -145,7 +145,7 @@ otool -l dist/ios-arm64/libllama.a 2>/dev/null | grep -A 3 LC_BUILD_VERSION
 The first command should list two directories (`ios-arm64`,
 `ios-arm64-simulator`). The second should list at least one symbol
 (`_ggml_backend_metal_init`). The third should show the five
-`_milady_llama_*` symbols our Swift bridge calls via `@_silgen_name`.
+`_eliza_llama_*` symbols our Swift bridge calls via `@_silgen_name`.
 
 ## Updating
 

@@ -13,10 +13,9 @@ import {
   PhantomWalletAdapter,
   SolflareWalletAdapter,
 } from "@solana/wallet-adapter-wallets";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { http, WagmiProvider } from "wagmi";
-import { base, bsc, mainnet } from "wagmi/chains";
+import { base, bsc } from "wagmi/chains";
 
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const FALLBACK_WALLETCONNECT_PROJECT_ID = "YOUR_WC_PROJECT_ID";
@@ -50,14 +49,11 @@ export function StewardWalletProviders({
           "Sign in to chat with your Eliza Cloud agent and manage your account",
         appUrl,
         projectId: walletConnectProjectId,
-        chains: [mainnet, base, bsc],
+        chains: [base, bsc],
         transports: {
-          [mainnet.id]: alchemyKey
-            ? http(`https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`)
-            : http(),
           [base.id]: alchemyKey
             ? http(`https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`)
-            : http(),
+            : http("https://base-rpc.publicnode.com"),
           [bsc.id]: http("https://bsc-dataseed.binance.org"),
         },
         ssr: false,
@@ -65,7 +61,6 @@ export function StewardWalletProviders({
     [alchemyKey, appUrl, walletConnectProjectId],
   );
 
-  const queryClient = useMemo(() => new QueryClient(), []);
   const rainbowTheme = useMemo(
     () =>
       darkTheme({
@@ -83,15 +78,13 @@ export function StewardWalletProviders({
 
   return (
     <WagmiProvider config={evmConfig}>
-      <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider theme={rainbowTheme} modalSize="compact">
-          <ConnectionProvider endpoint={solanaEndpoint}>
-            <WalletProvider wallets={solanaWallets} autoConnect>
-              <WalletModalProvider>{children}</WalletModalProvider>
-            </WalletProvider>
-          </ConnectionProvider>
-        </RainbowKitProvider>
-      </QueryClientProvider>
+      <RainbowKitProvider theme={rainbowTheme} modalSize="compact">
+        <ConnectionProvider endpoint={solanaEndpoint}>
+          <WalletProvider wallets={solanaWallets} autoConnect>
+            <WalletModalProvider>{children}</WalletModalProvider>
+          </WalletProvider>
+        </ConnectionProvider>
+      </RainbowKitProvider>
     </WagmiProvider>
   );
 }

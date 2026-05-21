@@ -52,7 +52,7 @@ Each operation includes:
 
 ## Environment
 
-- `MILADY_REPO_DIR` sets the default cwd before `ELIZA_REPO_DIR`
+- `ELIZA_REPO_DIR` sets the default cwd before `ELIZA_REPO_DIR`
 - `ELIZA_REPO_DIR` sets the fallback default cwd
 - `ELIZA_GIT_COMMAND_TIMEOUT_MS` defaults to `120000`
 - `ELIZA_GIT_MAX_OPERATIONS` defaults to `200`

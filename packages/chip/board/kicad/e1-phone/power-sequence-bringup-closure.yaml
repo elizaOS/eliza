@@ -1,0 +1,165 @@
+schema: eliza.e1_phone_power_sequence_bringup_closure.v1
+status: blocked_requires_routed_schematic_first_power_and_scope_logs
+date: 2026-05-20
+claim_boundary: >
+  Board-level power sequencing and first-power bring-up closure contract only.
+  This cross-checks planned USB-C PD input, charger, PMIC, battery, module
+  rails, factory probe coverage, and release outputs. It is not measured
+  first-power evidence, not a rail-sequence firmware release, not a charging
+  safety signoff, and not a routed schematic or PCB review.
+
+source_artifacts:
+  - board/kicad/e1-phone/power-thermal-budget.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/module-host-integration-closure.yaml
+  - board/kicad/e1-phone/production-readiness.yaml
+  - board/kicad/e1-phone/routed-release-plan.yaml
+  - package/usb-pd/tps65987.yaml
+  - package/charger/max77860.yaml
+  - package/pmic/da9063.yaml
+  - package/battery/e1-phone-17p3wh-pack.yaml
+  - package/display/v0-dsi-720x1280.yaml
+  - package/camera/oem-mipi-csi-modules.yaml
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+  - package/audio/v0-codec.yaml
+
+first_power_policy:
+  bench_supply_current_limit_ma_initial: 100
+  usb_pd_input_profiles_allowed: [5v_3a, 9v_3a, 12v_2p25a]
+  battery_pack_required_before_charge_current_above_500ma: true
+  stop_on_overcurrent_or_unsequenced_rail: true
+  oscilloscope_required: true
+  thermal_camera_required_for_charge_and_modem_burst: true
+
+rail_sequence_steps:
+  - id: pre_power_shorts
+    current_status: blocked_no_routed_probe_coordinates_or_short_log
+    required_nets: [VBUS, VBAT, SYS, AON_1V8, IO_1V8, RF_VBAT, CAM_AVDD_2V8, DISP_AVDD_5V5]
+    source_artifacts:
+      - board/kicad/e1-phone/factory-probe-map.yaml
+      - board/kicad/e1-phone/routing-constraints.yaml
+    required_evidence:
+      - no_short_to_ground_before_power
+      - current_limited_power_up_sequence
+      - probe_coordinates_for_all_power_rails
+  - id: usb_pd_dead_battery_attach
+    current_status: blocked_no_pd_attach_or_dead_battery_log
+    required_nets: [VBUS, USB_CC1, USB_CC2, USBPD_I2C_SCL, USBPD_I2C_SDA, USBPD_IRQ_N, USBPD_RESET]
+    source_artifacts:
+      - package/usb-pd/tps65987.yaml
+      - board/kicad/e1-phone/power-thermal-budget.yaml
+    required_evidence:
+      - cc_orientation_attach_on_both_plug_flips
+      - pd_sink_profile_negotiation_log
+      - dead_battery_boot_current_limit_log
+  - id: charger_sys_precharge
+    current_status: blocked_no_charger_precharge_or_ntc_id_log
+    required_nets: [VBUS, VBAT, SYS, BAT_NTC, BAT_ID, CHG_TS, CHG_I2C_SCL, CHG_I2C_SDA, CHG_IRQ_N, CHG_OTG_EN, CHG_CE_N]
+    source_artifacts:
+      - package/charger/max77860.yaml
+      - package/battery/e1-phone-17p3wh-pack.yaml
+    required_evidence:
+      - charger_i2c_readback
+      - battery_ntc_and_id_readback
+      - cc_cv_charge_cycle_log
+  - id: pmic_aon_and_ap_rails
+    current_status: blocked_no_pmic_rail_scope_or_probe_transcript
+    required_nets: [SYS, VBAT, AON_1V8, AP_0V8, AP_1V1, IO_1V8, PMIC_I2C_SCL, PMIC_I2C_SDA, PMIC_IRQ_N, PMIC_RESET_N]
+    source_artifacts:
+      - package/pmic/da9063.yaml
+      - board/kicad/e1-phone/power-thermal-budget.yaml
+    required_evidence:
+      - regulator_enable_order_scope_capture
+      - pmic_fault_and_irq_probe_transcript
+      - suspend_resume_current_log
+  - id: display_touch_rails
+    current_status: blocked_no_display_bias_touch_or_backlight_log
+    required_nets: [IO_1V8, DISP_AVDD_5V5, DISP_AVEE_N5V5, DISP_RESET_N, DISP_BL_EN, DISP_BL_PWM, TOUCH_I2C_SCL, TOUCH_I2C_SDA]
+    source_artifacts:
+      - package/display/v0-dsi-720x1280.yaml
+      - board/kicad/e1-phone/module-host-integration-closure.yaml
+    required_evidence:
+      - display_bias_scope_capture
+      - backlight_current_pwm_log
+      - touch_controller_id_and_irq_log
+  - id: camera_rails
+    current_status: blocked_no_camera_power_sequence_or_frame_log
+    required_nets: [CAM_AVDD_2V8, CAM_DVDD_1V2, IO_1V8, CAM0_RESET_N, CAM1_RESET_N, CAM0_MCLK, CAM1_MCLK, CAM0_I2C_SCL, CAM1_I2C_SCL]
+    source_artifacts:
+      - package/camera/oem-mipi-csi-modules.yaml
+      - board/kicad/e1-phone/module-host-integration-closure.yaml
+    required_evidence:
+      - front_and_rear_sensor_id_logs
+      - camera_rail_enable_scope_capture
+      - mipi_csi_frame_start_log
+  - id: radio_rails
+    current_status: blocked_no_modem_wifi_bt_power_or_rf_burst_log
+    required_nets: [RF_VBAT, IO_1V8, CELL_RESET_N, CELL_W_DISABLE_N, WIFI_EN, BT_EN]
+    source_artifacts:
+      - package/cellular/quectel-5g-redcap.yaml
+      - package/wifi/murata-type-2ea-wifi6e.yaml
+      - board/kicad/e1-phone/module-host-integration-closure.yaml
+    required_evidence:
+      - modem_boot_imei_readback
+      - wifi_bluetooth_fw_boot_log
+      - rf_burst_current_and_thermal_log
+  - id: audio_haptic_rails
+    current_status: blocked_no_audio_haptic_enable_or_acoustic_log
+    required_nets: [VDD_AUDIO_3V3, VDD_AMP_3V3, IO_1V8, SYS, I2S_BCLK, PDM_CLK, HAPTIC_OUT]
+    source_artifacts:
+      - package/audio/v0-codec.yaml
+      - board/kicad/e1-phone/factory-probe-map.yaml
+    required_evidence:
+      - codec_amp_enable_log
+      - microphone_speaker_loopback_log
+      - haptic_drive_current_log
+
+package_power_sequence_status:
+  pmic: required_not_implemented
+  charger: required_not_implemented
+  usb_pd: required_not_implemented
+  display: required_not_implemented
+  camera: required_not_implemented
+  cellular: required_not_implemented
+  audio: required_not_implemented
+
+required_measurements:
+  - rail_boot_idle_suspend_scope_captures_for_each_power_domain
+  - usb_c_pd_attach_pps_and_current_limit_log
+  - charger_cc_cv_cycle_battery_ntc_and_pack_id_log
+  - pmic_regulator_summary_fault_irq_and_probe_transcript
+  - display_camera_radio_audio_functional_rail_enable_logs
+  - regulator_efficiency_and_load_step_report
+  - thirty_minute_thermal_soak_under_cpu_npu_camera_modem_and_charger
+
+required_release_outputs:
+  - board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+  - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+
+cross_checks:
+  rail_test_points_match_routing_and_factory_probe: true
+  pd_profiles_match_power_thermal_budget: true
+  package_power_sequences_all_blocked: true
+  required_module_power_rails_match_module_host_integration: true
+  release_outputs_fail_closed: true
+
+release_blockers:
+  - routed schematic and ERC evidence missing
+  - real PMIC, charger, USB-PD, battery, display, camera, radio, and audio footprints and pinouts missing
+  - first-power current-limit, oscilloscope, and thermal logs missing
+  - regulator efficiency, load-step, and charge-cycle logs missing
+  - rail sequencing firmware, device-tree, and probe transcripts missing
+
+forbidden_claims:
+  - first_power_ready
+  - rail_sequence_validated
+  - charging_ready
+  - power_thermal_ready
+  - battery_safe
+  - end_to_end_phone_ready

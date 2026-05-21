@@ -31,7 +31,7 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
   return (
     <div className="flex h-full w-full flex-col bg-bg text-xs">
       <header className="flex items-center justify-between gap-2 border-b border-border/24 px-3 py-2">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
@@ -43,6 +43,7 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
           <span className="text-sm font-semibold text-txt">
             Trajectory Logger
           </span>
+          <LoggingStatusBadge active={!!state.active} />
         </div>
         {state.error ? (
           <span className="text-2xs text-red-400">{state.error}</span>
@@ -187,5 +188,27 @@ function PhaseStrip({
         <span className="text-2xs text-muted/40">—</span>
       )}
     </div>
+  );
+}
+
+/**
+ * Compact privacy badge — surfaces "trajectory logging ON/OFF" prominently in
+ * the view header. `active` reflects whether there is currently a live
+ * trajectory being recorded; the badge stays informational either way (a user
+ * who has logging ON but no active turn still sees "ON · idle").
+ */
+function LoggingStatusBadge({ active }: { active: boolean }) {
+  const tone = active
+    ? "border-blue-500/40 bg-blue-500/10 text-blue-300"
+    : "border-border/30 bg-bg-elevated text-muted";
+  const label = active ? "Logging ON · recording" : "Logging ON · idle";
+  return (
+    <span
+      title="Trajectory logging is enabled. Disable in Cloud Dashboard → Security → Privacy."
+      className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-2xs uppercase tracking-wide ${tone}`}
+      data-testid="trajectory-logging-badge"
+    >
+      {label}
+    </span>
   );
 }

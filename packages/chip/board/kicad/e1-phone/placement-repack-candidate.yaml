@@ -1,0 +1,148 @@
+schema: eliza.e1_phone_placement_repack_candidate.v1
+status: active_matrix_matches_overlap_free_repack_candidate_not_routed
+date: '2026-05-21'
+claim_boundary: Generated placement/repack audit. These rectangles are an EVT1 schematic/layout target and may match
+  the active placement matrix, but they are not supplier footprints, not a routed board, and not enclosure-release
+  evidence.
+source_artifacts:
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/layout-utilization.yaml
+  - board/kicad/e1-phone/component-envelope-fit-audit.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+  - package/camera/oem-mipi-csi-modules.yaml
+  - package/human-interface/side-buttons.yaml
+optimization_target:
+  preserve_board_bbox_mm:
+    width: 64.0
+    height: 132.0
+  preserve_battery_window_mm:
+    x: 0.0
+    y: 29.5
+    width: 64.0
+    height: 87.0
+    area_mm2: 5568.0
+  top_island_y_max_mm: 29.0
+  bottom_island_y_min_mm: 117.0
+  primary_goal: remove concept placement overlaps while fitting the known Wi-Fi/Bluetooth module outline
+current_matrix_context:
+  current_overlap_count: 0
+  current_known_envelope_blockers_count: 1
+  current_overlaps: []
+candidate_regions_mm:
+  U_CELL:
+    x: 3.0
+    y: 3.0
+    width: 14.0
+    height: 14.0
+  U_WIFI_BT:
+    x: 3.0
+    y: 18.0
+    width: 14.0
+    height: 10.0
+  U_SOC_LPDDR_UFS:
+    x: 18.0
+    y: 3.0
+    width: 25.0
+    height: 14.0
+  U_PMIC_CHARGER:
+    x: 18.0
+    y: 18.0
+    width: 13.0
+    height: 8.0
+  SW_POWER_VOL:
+    x: 18.0
+    y: 26.0
+    width: 12.0
+    height: 3.0
+  J_BATTERY:
+    x: 31.0
+    y: 27.0
+    width: 12.0
+    height: 2.0
+  J_DISPLAY_TOUCH:
+    x: 45.0
+    y: 3.0
+    width: 17.0
+    height: 8.0
+  J_CAM0_CAM1:
+    x: 45.0
+    y: 12.0
+    width: 17.0
+    height: 13.0
+  J_TOP_BOTTOM_FLEX_TOP:
+    x: 46.0
+    y: 26.0
+    width: 16.0
+    height: 3.0
+  J_TOP_BOTTOM_FLEX_BOTTOM:
+    x: 46.0
+    y: 117.0
+    width: 16.0
+    height: 3.0
+  U_AUDIO_SPK_MIC:
+    x: 3.0
+    y: 120.0
+    width: 22.0
+    height: 8.0
+  J_USB_C:
+    x: 26.0
+    y: 126.0
+    width: 16.0
+    height: 6.0
+candidate_overlap_audit:
+  overlap_count: 0
+  overlaps: []
+known_envelope_fit:
+  wifi_bluetooth_module_fits_candidate_region: true
+  wifi_bluetooth_known_envelope_mm:
+    width: 12.5
+    height: 9.4
+    thickness: 1.2
+  wifi_bluetooth_candidate_region_mm:
+    x: 3.0
+    y: 18.0
+    width: 14.0
+    height: 10.0
+  side_button_single_switch_fits_candidate_region: true
+  front_camera_junde_alternate_fits_candidate_region: false
+  front_camera_junde_policy: reject_for_current_78x153p6_envelope_unless_camera_bump_or_display_connector_stack_changes
+battery_window_audit:
+  battery_window_mm:
+    x: 0.0
+    y: 29.5
+    width: 64.0
+    height: 87.0
+  candidate_intrusion_count: 0
+  candidate_intruding_regions: []
+region_semantics_changes_required:
+  - refdes_group: J_CAM0_CAM1
+    change: treat active PCB region as camera FPC connector/escape area, not full module body
+    reason: the current shared top-right area cannot fit the 25 x 24 mm Junde alternate plus display connector and
+      top flex
+  - refdes_group: U_AUDIO_SPK_MIC
+    change: split the current broad audio/acoustic strip into explicit bottom-left audio and separate USB/flex zones
+    reason: a single 57 x 8 mm strip overlaps USB-C and bottom split-interconnect regions
+  - refdes_group: SW_POWER_VOL
+    change: route side keys through a short side-key flex tail from the top island instead of consuming the left
+      RF edge
+    reason: the known Wi-Fi/Bluetooth module needs the lower-left top-island area without overlapping cellular or
+      buttons
+cross_checks:
+  candidate_removes_all_region_overlaps: true
+  candidate_reduces_overlap_count: true
+  candidate_wifi_region_fits_known_module: true
+  candidate_preserves_battery_window: true
+  candidate_rejects_oversized_junde_camera_alternate: true
+  active_matrix_matches_candidate: true
+required_before_routed_release:
+  - obtain primary front/rear camera XY and z-height drawings
+  - rerun RF antenna keepout and cellular/Wi-Fi coexistence placement with supplier reference layouts
+  - rerun routed STEP/enclosure clearance once supplier 3D models are available
+forbidden_claims:
+  - placement_release_ready
+  - supplier_footprints_ready
+  - camera_region_ready
+  - wifi_bt_region_ready
+  - routed_pcb_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

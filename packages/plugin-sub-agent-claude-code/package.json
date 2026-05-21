@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "@elizaos/plugin-remote-manifest": "workspace:*",
-    "@elizaos/plugin-worker-runtime": "workspace:*"
+    "@elizaos/plugin-worker-runtime": "workspace:*",
+    "@elizaos/security": "workspace:*"
   },
   "devDependencies": {
     "bun-types": "^1.3.12",

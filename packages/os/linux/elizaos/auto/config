@@ -1,0 +1,54 @@
+#!/bin/sh
+# elizaOS Linux — unified multi-arch live-build configuration.
+#
+# Single source of truth for all elizaOS Linux ISOs. Supersedes the
+# the earlier per-arch live-build variants.
+#
+# Architecture is selected via ELIZAOS_ARCH (default: amd64). Supported:
+#   amd64   — x86_64 desktops/laptops, EFI + BIOS via grub-efi + grub-pc
+#   arm64   — aarch64 SBCs and Apple Silicon (UTM), EFI via grub-efi
+#   riscv64 — TH1520 / SiFive boards + QEMU virt, EFI via grub-efi
+#
+# The elizaOS hardening profile (Tor routing, AppArmor enforcement, MAC
+# randomization, amnesic tmpfs home) lives under config/profiles/secure/
+# and is composed in via build.sh when ELIZAOS_PROFILE=secure. The default
+# profile is plain elizaOS desktop.
+set -eu
+
+ARCH="${ELIZAOS_ARCH:-amd64}"
+
+case "${ARCH}" in
+    amd64)
+        KERNEL_FLAVOUR="amd64"
+        BOOTLOADERS="grub-efi,grub-pc"
+        BOOTAPPEND="boot=live components quiet splash"
+        ;;
+    arm64)
+        KERNEL_FLAVOUR="arm64"
+        BOOTLOADERS="grub-efi"
+        BOOTAPPEND="boot=live components quiet splash console=tty0 console=ttyAMA0,115200n8"
+        ;;
+    riscv64)
+        KERNEL_FLAVOUR="riscv64"
+        BOOTLOADERS="grub-efi"
+        BOOTAPPEND="boot=live components earlycon=sbi loglevel=7 console=ttyS0,115200n8 console=tty0"
+        ;;
+    *)
+        echo "ERROR: unsupported ELIZAOS_ARCH=${ARCH}" >&2
+        echo "       expected one of: amd64, arm64, riscv64" >&2
+        exit 64
+        ;;
+esac
+
+lb config noauto \
+    --distribution trixie \
+    --architecture "${ARCH}" \
+    --linux-flavours "${KERNEL_FLAVOUR}" \
+    --archive-areas "main contrib non-free-firmware" \
+    --bootloaders "${BOOTLOADERS}" \
+    --uefi-secure-boot disable \
+    --binary-image iso-hybrid \
+    --apt-recommends false \
+    --debian-installer none \
+    --bootappend-live "${BOOTAPPEND}" \
+    "${@}"

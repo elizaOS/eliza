@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+import csv
 import importlib.util
 import json
 import unittest
+from io import StringIO
 from pathlib import Path
 
 _required_modules = ("matplotlib", "numpy", "trimesh", "yaml")
@@ -178,7 +180,7 @@ def test_evt0_phone_params_stay_under_compactness_limit() -> None:
 
     assert width <= 80.0
     assert height <= 157.0
-    assert depth <= 10.0
+    assert depth <= 11.5
     assert Path(cad.PARAMS).is_file()
 
 
@@ -197,7 +199,7 @@ def test_evt0_phone_compactness_optimization_audits_display_limited_envelope(
     assert {
         "display_driven_width",
         "display_driven_height",
-        "sub_10mm_molded_depth",
+        "flush_back_molded_depth",
         "side_controls_do_not_resize_molded_body",
         "pcb_battery_do_not_drive_outer_envelope",
     }.issubset(case_ids)
@@ -332,12 +334,430 @@ def test_evt0_phone_supplier_response_review_fails_closed_until_vendor_returns(
 
     assert review["status"] == "blocked_no_supplier_responses"
     assert review["expected_response_count"] == len(supplier["items"]) + 1
+    assert review["required_evidence_class"] == "physical_supplier_response"
     assert review["complete_response_count"] == 0
     assert "display_lcm_ctp" in review["missing_or_incomplete_items"]
     assert "orange_enclosure_tooling" in review["missing_or_incomplete_items"]
-    assert "supplier_item_id,rfq_package_id,candidate,vendor_name" in csv_text
+    assert "supplier_item_id,rfq_package_id,candidate,supplier_listing_or_portal_url" in csv_text
+    assert "moq_units" in csv_text
+    assert "mechanical_envelope_mm" in csv_text
+    assert "pinout_or_process_artifact" in csv_text
+    assert "evidence_class,required_evidence_artifacts" in csv_text
+    assert "quote_artifact;drawing_2d_artifact;step_artifact;pinout_or_process_artifact" in csv_text
+    assert "evidence_class=physical_supplier_response" in review["release_rule"]
+    assert "MOQ <= 50" in review["release_rule"]
+    assert review["cases"][0]["required_evidence_artifacts"]
+    assert review["cases"][0]["quote_artifact_present"] is False
+    assert review["cases"][0]["commercial_terms_pass"] is False
+    assert review["cases"][0]["mechanical_traceability_pass"] is False
     assert (tmp_path / "supplier-response-review.json").is_file()
     assert (tmp_path / "supplier-response-review.md").is_file()
+
+
+def test_evt0_phone_supplier_response_rejects_simulated_returns(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    supplier = cad.supplier_matrix(params)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+    supplier_rfq = {
+        "status": "rfq_ready",
+        "packages": [
+            {"id": "display_touch_stack", "supplier_item_ids": ["display_lcm_ctp"]},
+            {"id": "usb_c_and_bottom_audio", "supplier_item_ids": ["usb_c"]},
+            {"id": "camera_stack", "supplier_item_ids": ["rear_camera", "front_camera"]},
+            {"id": "buttons_haptics_service", "supplier_item_ids": ["side_buttons"]},
+            {"id": "orange_enclosure_tooling", "supplier_item_ids": []},
+        ],
+    }
+
+    cad.write_supplier_response_artifacts(supplier, supplier_rfq)
+    template_text = (tmp_path / "supplier-response-template.csv").read_text()
+    rows = list(csv.DictReader(StringIO(template_text)))
+    for row in rows:
+        row.update(
+            {
+                "vendor_name": "simulated vendor",
+                "vendor_part_number": "SIM-PN",
+                "supplier_listing_or_portal_url": "https://example.invalid/simulated",
+                "moq_units": "10",
+                "quote_returned": "yes",
+                "quote_artifact": "simulated-quote.pdf",
+                "drawing_2d_received": "yes",
+                "drawing_2d_artifact": "simulated-drawing.pdf",
+                "step_received": "yes",
+                "step_artifact": "simulated-step.step",
+                "mechanical_envelope_mm": "10 x 5 x 2",
+                "pinout_or_process_artifact": "simulated-pinout.pdf",
+                "footprint_or_tooling_artifact": "simulated-footprint.pdf",
+                "sample_ordered": "yes",
+                "sample_received": "yes",
+                "sample_photo_or_inspection_artifact": "simulated-sample.png",
+                "supplier_traceability_record": "simulated-trace.txt",
+                "lead_time_days": "7",
+                "unit_price_20": "1.23",
+                "reviewer": "simulation",
+                "evidence_class": "simulated_supplier_response_for_planning_not_release",
+            }
+        )
+    with (tmp_path / "supplier-response-template.csv").open("w", newline="") as csv_file:
+        csv_file.write("# evidence_class: simulated_supplier_response_for_planning_not_release\n")
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    review = cad.write_supplier_response_artifacts(supplier, supplier_rfq)
+
+    assert review["status"] == "blocked_no_supplier_responses"
+    assert (
+        review["template_evidence_class"] == "simulated_supplier_response_for_planning_not_release"
+    )
+    assert review["complete_response_count"] == 0
+    assert "display_lcm_ctp" in review["missing_or_incomplete_items"]
+    assert review["cases"][0]["evidence_class_allowed"] is False
+    assert review["cases"][0]["physical_evidence_pass"] is False
+    assert review["cases"][0]["commercial_terms_pass"] is True
+    assert review["cases"][0]["mechanical_traceability_pass"] is True
+
+
+def test_evt0_phone_supplier_response_requires_low_moq_and_mechanical_traceability(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    supplier = cad.supplier_matrix(params)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+    supplier_rfq = {
+        "status": "rfq_ready",
+        "packages": [
+            {"id": "display_touch_stack", "supplier_item_ids": ["display_lcm_ctp"]},
+            {"id": "usb_c_and_bottom_audio", "supplier_item_ids": ["usb_c"]},
+            {"id": "camera_stack", "supplier_item_ids": ["rear_camera", "front_camera"]},
+            {"id": "buttons_haptics_service", "supplier_item_ids": ["side_buttons"]},
+            {"id": "orange_enclosure_tooling", "supplier_item_ids": []},
+        ],
+    }
+    cad.write_supplier_response_artifacts(supplier, supplier_rfq)
+    template_text = (tmp_path / "supplier-response-template.csv").read_text()
+    rows = list(csv.DictReader(StringIO(template_text)))
+    for row in rows:
+        row.update(
+            {
+                "supplier_listing_or_portal_url": row["supplier_listing_or_portal_url"]
+                or "https://example.invalid/supplier-portal",
+                "vendor_name": "physical vendor",
+                "vendor_part_number": f"{row['supplier_item_id']}-PN",
+                "moq_units": "100",
+                "quote_returned": "yes",
+                "quote_artifact": "quote.pdf",
+                "drawing_2d_received": "yes",
+                "drawing_2d_artifact": "drawing.pdf",
+                "step_received": "yes",
+                "step_artifact": "model.step",
+                "mechanical_envelope_mm": "",
+                "pinout_or_process_artifact": "pinout-or-process.pdf",
+                "footprint_or_tooling_artifact": "footprint-or-tooling.pdf",
+                "sample_ordered": "yes",
+                "sample_received": "yes",
+                "sample_photo_or_inspection_artifact": "sample.png",
+                "supplier_traceability_record": "traceability.yaml",
+                "lead_time_days": "21",
+                "unit_price_20": "12.50",
+                "reviewer": "supplier-reviewer",
+                "evidence_class": "physical_supplier_response",
+            }
+        )
+    with (tmp_path / "supplier-response-template.csv").open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    review = cad.write_supplier_response_artifacts(supplier, supplier_rfq)
+
+    assert review["status"] == "blocked_no_supplier_responses"
+    assert review["cases"][0]["physical_evidence_pass"] is True
+    assert review["cases"][0]["commercial_terms_pass"] is False
+    assert review["cases"][0]["mechanical_traceability_pass"] is False
+
+    for row in rows:
+        row["moq_units"] = "20"
+        row["mechanical_envelope_mm"] = "12.0 x 8.0 x 3.0"
+    with (tmp_path / "supplier-response-template.csv").open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    review = cad.write_supplier_response_artifacts(supplier, supplier_rfq)
+
+    assert review["status"] == "supplier_responses_complete"
+    assert review["complete_response_count"] == review["expected_response_count"]
+    assert review["cases"][0]["moq_units"] == 20
+    assert review["cases"][0]["mechanical_envelope_mm"] == [12.0, 8.0, 3.0]
+
+
+def test_evt0_phone_supplier_evidence_acceptance_fails_closed_by_family(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    supplier = cad.supplier_matrix(params)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+    supplier_rfq = {
+        "status": "rfq_ready",
+        "packages": [
+            {"id": "display_touch_stack", "supplier_item_ids": ["display_lcm_ctp"]},
+            {"id": "usb_c_and_bottom_audio", "supplier_item_ids": ["usb_c"]},
+            {"id": "camera_stack", "supplier_item_ids": ["rear_camera", "front_camera"]},
+            {"id": "buttons_haptics_service", "supplier_item_ids": ["side_buttons"]},
+            {"id": "orange_enclosure_tooling", "supplier_item_ids": []},
+        ],
+    }
+    supplier_response = cad.write_supplier_response_artifacts(supplier, supplier_rfq)
+
+    report = cad.write_supplier_evidence_acceptance_artifacts(
+        supplier,
+        supplier_rfq,
+        supplier_response,
+    )
+
+    assert report["status"] == "blocked_no_supplier_evidence"
+    assert report["source_status"]["supplier_rfq_status"] == "rfq_ready"
+    assert report["source_status"]["supplier_response_status"] == ("blocked_no_supplier_responses")
+    assert report["expected_family_count"] == 6
+    assert report["complete_family_count"] == 0
+    assert "display_touch_stack" in report["missing_or_incomplete_families"]
+    assert "wireless_modules" in report["missing_or_incomplete_families"]
+    display = next(family for family in report["families"] if family["id"] == "display_touch_stack")
+    assert display["rfq_package_ready"] is True
+    assert "step_model" in display["missing_required_evidence_keys"]
+    assert display["items"][0]["response_case_present"] is True
+    assert display["items"][0]["response_pass"] is False
+    wireless = next(family for family in report["families"] if family["id"] == "wireless_modules")
+    assert wireless["rfq_package_ready"] is True
+    assert {"cellular_redcap", "wifi_bt"}.issubset(wireless["missing_supplier_items"])
+    assert "supplier-returned quote" in report["claim_boundary"]
+    assert "physical_supplier_response rows" in report["release_rule"]
+    assert (tmp_path / "supplier-evidence-acceptance.json").is_file()
+    assert (tmp_path / "supplier-evidence-acceptance.md").is_file()
+
+
+def test_evt0_phone_end_to_end_objective_acceptance_joins_board_and_mechanical_gates(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+    (tmp_path / "physical-process-validation-acceptance.json").write_text(
+        json.dumps({"status": "blocked_no_physical_process_validation_results"})
+    )
+    (tmp_path / "cmf-release-acceptance.json").write_text(
+        json.dumps({"status": "blocked_no_cmf_results"})
+    )
+    (tmp_path / "mold-flow-acceptance.json").write_text(
+        json.dumps({"status": "mold_flow_results_pass"})
+    )
+    manufacturing_readiness = {
+        "overall_status": "cad_package_pass",
+        "manufacturing_release_ready": False,
+    }
+    board_step = {"status": "blocked_concept_pcb_no_routed_step"}
+    routed_board_clearance = {"status": "blocked_waiting_for_routed_board_step"}
+    supplier_evidence = {"status": "blocked_no_supplier_evidence"}
+    full_cad_boolean = {"status": "blocked_boolean_interference_incomplete"}
+    visual_review_coverage = {
+        "status": "visual_review_coverage_acceptance_pass",
+        "production_visual_signoff_ready": False,
+    }
+    toolmaker_signoff = {"status": "blocked_no_toolmaker_signoff"}
+
+    report = cad.write_end_to_end_objective_acceptance_artifacts(
+        manufacturing_readiness,
+        board_step,
+        routed_board_clearance,
+        supplier_evidence,
+        full_cad_boolean,
+        visual_review_coverage,
+        toolmaker_signoff,
+    )
+
+    assert report["status"] == "blocked_not_end_to_end_ready"
+    assert report["board_end_to_end_source_present"] is True
+    assert report["expected_board_objective_count"] >= 9
+    assert report["complete_board_objective_count"] == 0
+    assert report["expected_mechanical_gate_count"] == 8
+    assert report["complete_mechanical_gate_count"] == 0
+    assert "board:schematic_and_pcb_routed_release" in report["missing_or_incomplete_items"]
+    assert "mechanical:supplier_family_lock" in report["missing_or_incomplete_items"]
+    assert "mechanical:manufacturing_release_readiness" in report["missing_or_incomplete_items"]
+    visual_case = next(
+        case
+        for case in report["mechanical_cases"]
+        if case["id"] == "automated_visual_and_manual_cmf_signoff"
+    )
+    assert visual_case["pass"] is False
+    assert "manufacturing_release_ready must be true" in report["release_rule"]
+    assert (tmp_path / "end-to-end-objective-acceptance.json").is_file()
+    assert (tmp_path / "end-to-end-objective-acceptance.md").is_file()
+
+
+def test_evt0_phone_physical_process_validation_acceptance_aggregates_result_gates(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+    gate_files = {
+        "display-results-review.json": "blocked_no_display_results",
+        "acoustic-results-review.json": "blocked_no_acoustic_results",
+        "camera-results-review.json": "blocked_no_camera_results",
+        "environmental-results-review.json": "blocked_no_environmental_results",
+        "evt-results-review.json": "blocked_no_physical_results",
+        "fixture-calibration-acceptance.json": "blocked_no_fixture_calibration_results",
+        "mechanical-lifecycle-acceptance.json": "blocked_no_lifecycle_results",
+        "gdt-fai-results-review.json": "blocked_no_fai_results",
+        "unit-traceability-acceptance.json": "blocked_no_unit_traceability_results",
+        "assembly-build-traveler.json": "blocked_no_assembly_build_results",
+        "process-control-plan.json": "blocked_no_process_control_results",
+    }
+    template_files = [
+        "display-results-template.csv",
+        "acoustic-results-template.csv",
+        "camera-results-template.csv",
+        "environmental-results-template.csv",
+        "evt-inspection-results-template.csv",
+        "fixture-calibration-results-template.csv",
+        "mechanical-lifecycle-results-template.csv",
+        "gdt-fai-template.csv",
+        "unit-traceability-results-template.csv",
+        "assembly-build-results-template.csv",
+        "process-control-results-template.csv",
+    ]
+    for name, status in gate_files.items():
+        (tmp_path / name).write_text(
+            json.dumps(
+                {
+                    "status": status,
+                    "complete_result_count": 0,
+                    "expected_measurement_count": 3,
+                }
+            )
+        )
+    for name in template_files:
+        (tmp_path / name).write_text("sample_id,result\n")
+
+    report = cad.write_physical_process_validation_acceptance_artifacts()
+
+    assert report["status"] == "blocked_no_physical_process_validation_results"
+    assert report["expected_gate_count"] == 11
+    assert report["complete_gate_count"] == 0
+    assert "display_touch_lab_results" in report["missing_or_incomplete_gates"]
+    display = next(case for case in report["cases"] if case["id"] == "display_touch_lab_results")
+    assert display["template_present"] is True
+    assert display["review_present"] is True
+    assert display["status"] == "blocked_no_display_results"
+    assert display["pass"] is False
+    assert "process-control results must all be populated" in report["release_rule"]
+    assert (tmp_path / "physical-process-validation-acceptance.json").is_file()
+    assert (tmp_path / "physical-process-validation-acceptance.md").is_file()
+
+
+def test_evt0_phone_assembly_build_traveler_requires_physical_records(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    report = cad.write_assembly_build_traveler_artifacts(params, parts)
+
+    assert report["status"] == "blocked_no_assembly_build_results"
+    assert report["expected_step_count"] == 7
+    assert report["cad_prerequisite_step_count"] == 7
+    assert report["complete_result_count"] == 0
+    assert report["required_evidence_class"] == "physical_assembly_build_record"
+    assert "raw data" in report["release_rule"]
+    csv_text = (tmp_path / "assembly-build-results-template.csv").read_text()
+    assert "evidence_class" in csv_text
+    assert "raw_data_artifact" in csv_text
+    assert "lot_traceability_record" in csv_text
+
+    with (tmp_path / "assembly-build-results-template.csv").open(newline="") as csv_file:
+        rows = list(csv.DictReader(csv_file))
+        fieldnames = list(rows[0].keys())
+    for row in rows:
+        row.update(
+            {
+                "build_id": "EVT0-BUILD-001",
+                "unit_serial": f"E1-EVT0-{row['step_id']}",
+                "operator": "first_article_operator",
+                "measured_or_observed_result": "all required station outputs pass",
+                "pass": "yes",
+                "evidence_class": "physical_assembly_build_record",
+                "raw_data_artifact": f"build/{row['step_id']}.csv",
+                "photo_or_log_artifact": f"build/{row['step_id']}.jpg",
+                "lot_traceability_record": f"lots/{row['step_id']}.yaml",
+            }
+        )
+    with (tmp_path / "assembly-build-results-template.csv").open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    passing = cad.write_assembly_build_traveler_artifacts(params, parts)
+
+    assert passing["status"] == "assembly_build_results_pass"
+    assert passing["complete_result_count"] == passing["expected_step_count"]
+    assert not passing["missing_or_incomplete_steps"]
+
+
+def test_evt0_phone_process_control_plan_requires_factory_records(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+    assembly = cad.write_assembly_build_traveler_artifacts(params, parts)
+    supplier_response = {"status": "blocked_no_supplier_responses"}
+    gdt_release = {"status": "gdt_release_package_ready"}
+
+    report = cad.write_process_control_plan_artifacts(
+        assembly,
+        supplier_response,
+        gdt_release,
+    )
+
+    assert report["status"] == "blocked_no_process_control_results"
+    assert report["expected_control_count"] == 7
+    assert report["cad_prerequisite_control_count"] == 7
+    assert report["complete_result_count"] == 0
+    assert report["required_evidence_class"] == "physical_process_control_record"
+    assert "gauge ID" in report["release_rule"]
+    csv_text = (tmp_path / "process-control-results-template.csv").read_text()
+    assert "evidence_class" in csv_text
+    assert "gauge_id" in csv_text
+    assert "lot_traceability_record" in csv_text
+
+    with (tmp_path / "process-control-results-template.csv").open(newline="") as csv_file:
+        rows = list(csv.DictReader(csv_file))
+        fieldnames = list(rows[0].keys())
+    for row in rows:
+        row.update(
+            {
+                "build_id": "EVT0-BUILD-001",
+                "operator": "line_quality_operator",
+                "gauge_id": f"GAUGE-{row['control_id']}",
+                "measured_or_observed_result": "control outputs in limit",
+                "pass": "yes",
+                "evidence_class": "physical_process_control_record",
+                "raw_data_artifact": f"process/{row['control_id']}.csv",
+                "photo_or_log_artifact": f"process/{row['control_id']}.jpg",
+                "lot_traceability_record": f"lots/{row['control_id']}.yaml",
+            }
+        )
+    with (tmp_path / "process-control-results-template.csv").open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    passing = cad.write_process_control_plan_artifacts(
+        assembly,
+        supplier_response,
+        gdt_release,
+    )
+
+    assert passing["status"] == "process_control_results_pass"
+    assert passing["complete_result_count"] == passing["expected_control_count"]
+    assert not passing["missing_or_incomplete_controls"]
 
 
 @pytest.mark.skipif(not _cadquery_available, reason="cadquery not installed")
@@ -489,14 +909,118 @@ def test_evt0_phone_display_validation_quantifies_bond_fpc_and_lab_template(
         "touch_grid_dead_zones",
         "display_dsi_bringup_logs",
     }.issubset(measurement_ids)
-    assert "sample_id,measurement_id,unit,min,max,measured_value,pass,operator,notes" in csv_text
+    assert (
+        "sample_id,measurement_id,unit,min,max,measured_value,pass,operator,evidence_class,required_evidence_artifacts,raw_data_artifact,fixture_calibration_certificate,photo_or_log_artifact,lot_traceability_record,notes"
+        in csv_text
+    )
+    peel = next(
+        item
+        for item in display["measurements"]
+        if item["measurement_id"] == "display_bond_peel_n_per_mm"
+    )
+    assert "display_peel_force_raw_csv" in peel["required_evidence_artifacts"]
+    fpc = next(
+        item
+        for item in display["measurements"]
+        if item["measurement_id"] == "display_fpc_bend_radius_mm"
+    )
+    assert "mated_fpc_bend_photo" in fpc["required_evidence_artifacts"]
+    assert "display_peel_force_raw_csv;peel_fixture_calibration_certificate" in csv_text
     assert review["status"] == "blocked_no_display_results"
     assert review["complete_result_count"] == 0
+    assert review["required_evidence_class"] == "physical_display_result"
     assert "display_bond_peel_n_per_mm" in review["blank_or_incomplete_measurements"]
+    first_case = review["cases"][0]
+    assert "display_peel_force_raw_csv" in first_case["required_evidence_artifacts"]
+    assert first_case["raw_data_artifact_present"] is False
+    assert "evidence_class=physical_display_result" in review["release_rule"]
     assert (tmp_path / "display-validation.json").is_file()
     assert (tmp_path / "display-validation.md").is_file()
     assert (tmp_path / "display-results-review.json").is_file()
     assert (tmp_path / "display-results-review.md").is_file()
+
+
+def test_evt0_phone_mechanical_integration_sim_covers_usb_screen_and_buttons(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    interface_validation = cad.write_interface_validation_artifacts(
+        params, parts, checks, clearance, tolerance_stack
+    )
+    display = cad.write_display_validation_artifacts(
+        params, parts, clearance, interface_validation, tolerance_stack
+    )
+    sim = cad.write_mechanical_integration_sim_artifacts(
+        params, parts, interface_validation, display
+    )
+    cases = {case["id"]: case for case in sim["cases"]}
+
+    assert sim["status"] == "cad_mechanical_integration_sim_ready"
+    assert sim["evidence_class"] == "deterministic_cad_simulation_not_physical_result"
+    assert {
+        "usb_c_insertion_load_planning",
+        "screen_bond_clamp_and_fpc_planning",
+        "side_button_force_pressure_planning",
+    }.issubset(cases)
+    assert cases["usb_c_insertion_load_planning"]["planning_pass"]
+    assert (
+        cases["usb_c_insertion_load_planning"]["actual"]["predicted_peak_insertion_force_n"] <= 35.0
+    )
+    assert cases["screen_bond_clamp_and_fpc_planning"]["planning_pass"]
+    assert cases["screen_bond_clamp_and_fpc_planning"]["actual"]["compression_mm"] == 0.045
+    assert cases["side_button_force_pressure_planning"]["planning_pass"]
+    assert "physical USB insertion/cycle data" in sim["release_rule"]
+    assert (tmp_path / "mechanical-integration-sim.json").is_file()
+    assert (tmp_path / "mechanical-integration-sim.md").is_file()
+
+
+def test_evt0_phone_display_results_reject_simulated_rows(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    interface_validation = cad.write_interface_validation_artifacts(
+        params, parts, checks, clearance, tolerance_stack
+    )
+    display = cad.write_display_validation_artifacts(
+        params, parts, clearance, interface_validation, tolerance_stack
+    )
+    csv_path = tmp_path / "display-results-template.csv"
+    rows = list(csv.DictReader(StringIO(csv_path.read_text())))
+    for row in rows:
+        row["sample_id"] = "SIM-DISPLAY-1"
+        row["measured_value"] = row["min"] or "1"
+        if row["max"] and row["min"] == row["max"]:
+            row["measured_value"] = row["min"]
+        row["pass"] = "true"
+        row["operator"] = "simulated display operator"
+        row["raw_data_artifact"] = "simulated-display.csv"
+        row["fixture_calibration_certificate"] = "simulated-display-cert.pdf"
+        row["photo_or_log_artifact"] = "simulated-display-photo.png"
+        row["lot_traceability_record"] = "simulated-display-lot.yaml"
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+    writer.writeheader()
+    writer.writerows(rows)
+    csv_path.write_text(
+        "# evidence_class: simulated_display_result_for_planning_not_release\n" + output.getvalue()
+    )
+
+    review = cad.write_display_results_review_artifacts(display)
+
+    assert review["status"] == "blocked_no_display_results"
+    assert review["template_evidence_class"] == "simulated_display_result_for_planning_not_release"
+    assert "display_bond_peel_n_per_mm" in review["failed_measurements"]
+    assert review["cases"][0]["evidence_class_allowed"] is False
 
 
 def test_evt0_phone_acoustic_validation_quantifies_ports_and_lab_template(
@@ -536,14 +1060,67 @@ def test_evt0_phone_acoustic_validation_quantifies_ports_and_lab_template(
         "earpiece_spl_1khz_db",
         "earpiece_leak_delta_db",
     }.issubset(measurement_ids)
-    assert "sample_id,measurement_id,unit,min,max,measured_value,pass,operator,notes" in csv_text
+    assert (
+        "sample_id,measurement_id,unit,min,max,measured_value,pass,operator,evidence_class,required_evidence_artifacts,raw_data_artifact,fixture_calibration_certificate,photo_or_log_artifact,lot_traceability_record,notes"
+        in csv_text
+    )
+    assert "speaker_spl_raw_sweep_csv" in csv_text
     assert review["status"] == "blocked_no_acoustic_results"
+    assert review["required_evidence_class"] == "physical_acoustic_result"
     assert review["complete_result_count"] == 0
     assert "bottom_speaker_spl_1khz_db" in review["blank_or_incomplete_measurements"]
+    assert "evidence_class=physical_acoustic_result" in review["release_rule"]
+    assert review["cases"][0]["required_evidence_artifacts"]
+    assert review["cases"][0]["raw_data_artifact_present"] is False
     assert (tmp_path / "acoustic-validation.json").is_file()
     assert (tmp_path / "acoustic-validation.md").is_file()
     assert (tmp_path / "acoustic-results-review.json").is_file()
     assert (tmp_path / "acoustic-results-review.md").is_file()
+
+
+def test_evt0_phone_acoustic_results_reject_simulated_rows(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    interface_validation = cad.write_interface_validation_artifacts(
+        params, parts, checks, clearance, tolerance_stack
+    )
+    acoustic = cad.write_acoustic_validation_artifacts(
+        params, parts, clearance, interface_validation
+    )
+    template_text = (tmp_path / "acoustic-results-template.csv").read_text()
+    rows = list(csv.DictReader(StringIO(template_text)))
+    for row in rows:
+        row.update(
+            {
+                "sample_id": "SIM-001",
+                "measured_value": row["min"] or row["max"],
+                "pass": "pass",
+                "operator": "simulation",
+                "evidence_class": "simulated_acoustic_result_for_planning_not_release",
+                "raw_data_artifact": "simulated-audio.csv",
+                "fixture_calibration_certificate": "simulated-cal.pdf",
+                "photo_or_log_artifact": "simulated-audio.log",
+                "lot_traceability_record": "simulated-lot.txt",
+            }
+        )
+    with (tmp_path / "acoustic-results-template.csv").open("w", newline="") as csv_file:
+        csv_file.write("# evidence_class: simulated_acoustic_result_for_planning_not_release\n")
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    review = cad.write_acoustic_results_review_artifacts(acoustic)
+
+    assert review["status"] == "blocked_no_acoustic_results"
+    assert review["template_evidence_class"] == "simulated_acoustic_result_for_planning_not_release"
+    assert review["complete_result_count"] == 0
+    assert "bottom_speaker_spl_1khz_db" in review["failed_measurements"]
+    assert review["cases"][0]["evidence_class_allowed"] is False
 
 
 def test_evt0_phone_camera_validation_quantifies_optical_stack_and_lab_template(
@@ -584,14 +1161,65 @@ def test_evt0_phone_camera_validation_quantifies_optical_stack_and_lab_template(
         "front_cover_glass_color_delta_e",
         "camera_streaming_bringup_logs",
     }.issubset(measurement_ids)
-    assert "sample_id,measurement_id,unit,min,max,measured_value,pass,operator,notes" in csv_text
+    assert (
+        "sample_id,measurement_id,unit,min,max,measured_value,pass,operator,evidence_class,required_evidence_artifacts,raw_data_artifact,fixture_calibration_certificate,photo_or_log_artifact,lot_traceability_record,notes"
+        in csv_text
+    )
+    assert "rear_camera_alignment_raw_csv" in csv_text
     assert review["status"] == "blocked_no_camera_results"
+    assert review["required_evidence_class"] == "physical_camera_result"
     assert review["complete_result_count"] == 0
     assert "rear_camera_lens_center_error_mm" in review["blank_or_incomplete_measurements"]
+    assert "evidence_class=physical_camera_result" in review["release_rule"]
+    assert review["cases"][0]["required_evidence_artifacts"]
+    assert review["cases"][0]["raw_data_artifact_present"] is False
     assert (tmp_path / "camera-validation.json").is_file()
     assert (tmp_path / "camera-validation.md").is_file()
     assert (tmp_path / "camera-results-review.json").is_file()
     assert (tmp_path / "camera-results-review.md").is_file()
+
+
+def test_evt0_phone_camera_results_reject_simulated_rows(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    interface_validation = cad.write_interface_validation_artifacts(
+        params, parts, checks, clearance, tolerance_stack
+    )
+    camera = cad.write_camera_validation_artifacts(params, parts, clearance, interface_validation)
+    template_text = (tmp_path / "camera-results-template.csv").read_text()
+    rows = list(csv.DictReader(StringIO(template_text)))
+    for row in rows:
+        row.update(
+            {
+                "sample_id": "SIM-001",
+                "measured_value": row["min"] or row["max"],
+                "pass": "pass",
+                "operator": "simulation",
+                "evidence_class": "simulated_camera_result_for_planning_not_release",
+                "raw_data_artifact": "simulated-camera.csv",
+                "fixture_calibration_certificate": "simulated-cal.pdf",
+                "photo_or_log_artifact": "simulated-camera.log",
+                "lot_traceability_record": "simulated-lot.txt",
+            }
+        )
+    with (tmp_path / "camera-results-template.csv").open("w", newline="") as csv_file:
+        csv_file.write("# evidence_class: simulated_camera_result_for_planning_not_release\n")
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    review = cad.write_camera_results_review_artifacts(camera)
+
+    assert review["status"] == "blocked_no_camera_results"
+    assert review["template_evidence_class"] == "simulated_camera_result_for_planning_not_release"
+    assert review["complete_result_count"] == 0
+    assert "rear_camera_lens_center_error_mm" in review["failed_measurements"]
+    assert review["cases"][0]["evidence_class_allowed"] is False
 
 
 def test_evt0_phone_environmental_validation_covers_thermal_rf_drop_ingress(
@@ -634,12 +1262,18 @@ def test_evt0_phone_environmental_validation_covers_thermal_rf_drop_ingress(
         "ip54_splash_ingress_functional_failures",
     }.issubset(measurement_ids)
     assert (
-        "sample_id,measurement_id,domain,unit,min,max,measured_value,pass,operator,notes"
+        "sample_id,measurement_id,domain,unit,min,max,measured_value,pass,operator,evidence_class,required_evidence_artifacts,raw_data_artifact,fixture_calibration_certificate,photo_or_log_artifact,lot_traceability_record,notes"
         in csv_text
     )
+    assert "skin_temperature_raw_log" in csv_text
+    assert "sar_prescan_raw_report" in csv_text
     assert review["status"] == "blocked_no_environmental_results"
+    assert review["required_evidence_class"] == "physical_environmental_result"
     assert review["complete_result_count"] == 0
     assert "sar_prescan_w_per_kg_1g" in review["blank_or_incomplete_measurements"]
+    assert "evidence_class=physical_environmental_result" in review["release_rule"]
+    assert review["cases"][0]["required_evidence_artifacts"]
+    assert review["cases"][0]["raw_data_artifact_present"] is False
     assert ingress["status"] == "cad_ingress_path_review_ready"
     assert ingress["path_count"] >= 8
     assert {
@@ -686,6 +1320,55 @@ def test_evt0_phone_environmental_validation_covers_thermal_rf_drop_ingress(
     assert (tmp_path / "ingress-path-review.md").is_file()
     assert (tmp_path / "environmental-results-review.json").is_file()
     assert (tmp_path / "environmental-results-review.md").is_file()
+
+
+def test_evt0_phone_environmental_results_reject_simulated_rows(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    mass = cad.mass_budget(parts)
+    supplier = cad.supplier_matrix(params)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    validation = cad.write_engineering_validation_artifacts(params, parts, checks, mass, supplier)
+    environmental = cad.write_environmental_validation_artifacts(
+        params, parts, checks, clearance, validation
+    )
+    template_text = (tmp_path / "environmental-results-template.csv").read_text()
+    rows = list(csv.DictReader(StringIO(template_text)))
+    for row in rows:
+        row.update(
+            {
+                "sample_id": "SIM-001",
+                "measured_value": row["min"] or row["max"],
+                "pass": "pass",
+                "operator": "simulation",
+                "evidence_class": "simulated_environmental_result_for_planning_not_release",
+                "raw_data_artifact": "simulated-environmental.csv",
+                "fixture_calibration_certificate": "simulated-cal.pdf",
+                "photo_or_log_artifact": "simulated-environmental.log",
+                "lot_traceability_record": "simulated-lot.txt",
+            }
+        )
+    with (tmp_path / "environmental-results-template.csv").open("w", newline="") as csv_file:
+        csv_file.write(
+            "# evidence_class: simulated_environmental_result_for_planning_not_release\n"
+        )
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    review = cad.write_environmental_results_review_artifacts(environmental)
+
+    assert review["status"] == "blocked_no_environmental_results"
+    assert (
+        review["template_evidence_class"]
+        == "simulated_environmental_result_for_planning_not_release"
+    )
+    assert review["complete_result_count"] == 0
+    assert "max_skin_temp_video_call_c" in review["failed_measurements"]
+    assert review["cases"][0]["evidence_class_allowed"] is False
 
 
 def test_evt0_phone_evt_fixture_cad_maps_to_interface_validation(tmp_path, monkeypatch) -> None:
@@ -770,10 +1453,12 @@ def test_evt0_phone_evt_inspection_plan_writes_results_template(tmp_path, monkey
     }.issubset(measurement_ids)
     assert plan["measurement_count"] >= 10
     assert (
-        "sample_id,measurement_id,fixture,units,min,max,nominal,measured,pass,operator,notes"
+        "sample_id,measurement_id,fixture,units,min,max,nominal,measured,pass,operator,evidence_class,required_evidence_artifacts,raw_data_artifact,fixture_calibration_certificate,photo_or_log_artifact,lot_traceability_record,notes"
         in csv_text
     )
     assert "USB-C" in csv_text
+    assert "usb_c_insertion_force_raw_csv" in csv_text
+    assert "screen_compression_witness_raw_csv" in csv_text
     assert (review / "evt-inspection-plan.json").is_file()
     assert (review / "evt-inspection-plan.md").is_file()
 
@@ -806,10 +1491,156 @@ def test_evt0_phone_evt_results_review_fails_closed_on_blank_template(
 
     assert review_report["status"] == "blocked_no_physical_results"
     assert review_report["expected_measurement_count"] >= 10
+    assert (
+        review_report["expected_sample_result_count"] > review_report["expected_measurement_count"]
+    )
+    assert review_report["required_evidence_class"] == "physical_evt_result"
     assert review_report["populated_result_count"] == 0
+    assert "power_button_actuation_force" in review_report["sample_shortage_measurements"]
     assert "power_button_actuation_force" in review_report["blank_or_incomplete_measurements"]
+    assert "evidence_class=physical_evt_result" in review_report["release_rule"]
+    assert review_report["cases"][0]["required_evidence_artifacts"]
+    assert review_report["cases"][0]["raw_data_artifact_present"] is False
     assert (review / "evt-results-review.json").is_file()
     assert (review / "evt-results-review.md").is_file()
+
+
+def test_evt0_phone_evt_results_reject_simulated_rows(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    out = tmp_path / "out"
+    review = tmp_path / "review"
+    out.mkdir()
+    review.mkdir()
+    monkeypatch.setattr(cad, "OUT_DIR", out)
+    monkeypatch.setattr(cad, "REVIEW_DIR", review)
+
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    interface_validation = cad.write_interface_validation_artifacts(
+        params, parts, checks, clearance, tolerance_stack
+    )
+    evt_fixtures = cad.write_evt_fixture_artifacts(
+        params, cad.evt_fixture_parts(params), interface_validation
+    )
+    evt_inspection = cad.write_evt_inspection_plan_artifacts(
+        params, interface_validation, evt_fixtures
+    )
+    template_text = (review / "evt-inspection-results-template.csv").read_text()
+    rows = list(csv.DictReader(StringIO(template_text)))
+    for row in rows:
+        row.update(
+            {
+                "sample_id": "SIM-001",
+                "measured": row["min"] or row["max"] or row["nominal"],
+                "pass": "pass",
+                "operator": "simulation",
+                "evidence_class": "simulated_evt_result_for_planning_not_release",
+                "raw_data_artifact": "simulated-evt.csv",
+                "fixture_calibration_certificate": "simulated-cal.pdf",
+                "photo_or_log_artifact": "simulated-evt.log",
+                "lot_traceability_record": "simulated-lot.txt",
+            }
+        )
+    with (review / "evt-inspection-results-template.csv").open("w", newline="") as csv_file:
+        csv_file.write("# evidence_class: simulated_evt_result_for_planning_not_release\n")
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    review_report = cad.write_evt_results_review_artifacts(evt_inspection)
+
+    assert review_report["status"] == "blocked_no_physical_results"
+    assert (
+        review_report["template_evidence_class"] == "simulated_evt_result_for_planning_not_release"
+    )
+    assert review_report["populated_result_count"] == len(rows)
+    assert "power_button_actuation_force" in review_report["failed_measurements"]
+    assert review_report["cases"][0]["evidence_class_allowed"] is False
+
+
+def test_evt0_phone_evt_results_require_planned_sample_counts(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    out = tmp_path / "out"
+    review = tmp_path / "review"
+    out.mkdir()
+    review.mkdir()
+    monkeypatch.setattr(cad, "OUT_DIR", out)
+    monkeypatch.setattr(cad, "REVIEW_DIR", review)
+
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    interface_validation = cad.write_interface_validation_artifacts(
+        params, parts, checks, clearance, tolerance_stack
+    )
+    evt_fixtures = cad.write_evt_fixture_artifacts(
+        params, cad.evt_fixture_parts(params), interface_validation
+    )
+    evt_inspection = cad.write_evt_inspection_plan_artifacts(
+        params, interface_validation, evt_fixtures
+    )
+    template_rows = list(
+        csv.DictReader(StringIO((review / "evt-inspection-results-template.csv").read_text()))
+    )
+
+    def passing_row(row: dict[str, str], sample_index: int) -> dict[str, str]:
+        expected = next(
+            item for item in evt_inspection["measurements"] if item["id"] == row["measurement_id"]
+        )
+        measured = expected["nominal"]
+        if measured is None:
+            measured = expected["min"] if expected["min"] is not None else expected["max"]
+        return {
+            **row,
+            "sample_id": f"EVT-{sample_index:03d}",
+            "measured": str(measured),
+            "pass": "pass",
+            "operator": "evt-operator",
+            "evidence_class": "physical_evt_result",
+            "raw_data_artifact": f"raw/{row['measurement_id']}-{sample_index}.csv",
+            "fixture_calibration_certificate": "cal/fixture-cert.pdf",
+            "photo_or_log_artifact": f"photos/{row['measurement_id']}-{sample_index}.jpg",
+            "lot_traceability_record": "lots/evt-unit-lots.yaml",
+        }
+
+    with (review / "evt-inspection-results-template.csv").open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(template_rows[0]))
+        writer.writeheader()
+        writer.writerows([passing_row(row, 1) for row in template_rows])
+
+    review_report = cad.write_evt_results_review_artifacts(evt_inspection)
+
+    assert review_report["status"] == "blocked_evt_results_incomplete_or_failed"
+    assert review_report["complete_result_count"] == review_report["expected_measurement_count"]
+    assert "power_button_actuation_force" in review_report["sample_shortage_measurements"]
+    power_coverage = next(
+        item
+        for item in review_report["sample_coverage"]
+        if item["measurement_id"] == "power_button_actuation_force"
+    )
+    assert power_coverage["passed_sample_count"] == 1
+    assert power_coverage["required_sample_count"] == 10
+
+    planned_rows: list[dict[str, str]] = []
+    for row in template_rows:
+        expected = next(
+            item for item in evt_inspection["measurements"] if item["id"] == row["measurement_id"]
+        )
+        for sample_index in range(1, int(expected["sample_count"]) + 1):
+            planned_rows.append(passing_row(row, sample_index))
+    with (review / "evt-inspection-results-template.csv").open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(template_rows[0]))
+        writer.writeheader()
+        writer.writerows(planned_rows)
+
+    review_report = cad.write_evt_results_review_artifacts(evt_inspection)
+
+    assert review_report["status"] == "evt_results_pass"
+    assert review_report["complete_result_count"] == review_report["expected_sample_result_count"]
+    assert review_report["sample_shortage_measurements"] == []
 
 
 def test_evt0_phone_clearance_and_part_review_cover_assembly(tmp_path, monkeypatch) -> None:
@@ -861,6 +1692,10 @@ def test_evt0_phone_visual_decision_report_tracks_render_reviews(tmp_path, monke
     )
 
     assert report["status"] == "pass"
+    assert report["automated_visual_status"] == "automated_visual_coverage_pass"
+    assert report["manual_visual_signoff_status"] == "blocked_manual_visual_review_open"
+    assert report["production_visual_signoff_ready"] is False
+    assert report["open_manual_review_count"] == len(report["manual_review_items"])
     assert {view["file"] for view in report["review_views"]} == set(visual)
     decision_ids = {decision["id"] for decision in report["decisions"]}
     assert "compact_orange_shell" in decision_ids
@@ -877,8 +1712,303 @@ def test_evt0_phone_visual_decision_report_tracks_render_reviews(tmp_path, monke
     assert report["technical_decisions"]
     assert report["visual_deltas"]["front_back_mean_rgb_sum_delta"] >= 8.0
     assert any("rear feature proportions" in item for item in report["manual_review_items"])
+    assert (
+        "production visual/CMF signoff requires zero open manual review items"
+        in report["release_rule"]
+    )
     assert (tmp_path / "visual-decision-report.json").is_file()
     assert (tmp_path / "visual-decision-report.md").is_file()
+
+
+def test_evt0_phone_render_verification_rejects_blank_or_sparse_images(
+    tmp_path, monkeypatch
+) -> None:
+    from PIL import Image, ImageDraw
+
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+    blank = tmp_path / "blank.png"
+    sparse = tmp_path / "sparse.png"
+    detailed = tmp_path / "detailed.png"
+
+    Image.new("RGB", (1200, 1200), "white").save(blank)
+    sparse_image = Image.new("RGB", (1200, 1200), "white")
+    sparse_draw = ImageDraw.Draw(sparse_image)
+    sparse_draw.line((0, 0, 1199, 1199), fill="black", width=2)
+    sparse_image.save(sparse)
+
+    detailed_image = Image.new("RGB", (1200, 1200), "white")
+    detailed_draw = ImageDraw.Draw(detailed_image)
+    for idx in range(80):
+        x = 180 + (idx % 10) * 78
+        y = 160 + (idx // 10) * 88
+        color = (
+            70 + (idx * 31) % 185,
+            25 + (idx * 17) % 170,
+            10 + (idx * 11) % 150,
+        )
+        detailed_draw.rectangle((x, y, x + 54, y + 44), fill=color, outline="black")
+    detailed_draw.rounded_rectangle(
+        (160, 130, 1010, 890), radius=70, outline=(255, 82, 5), width=18
+    )
+    detailed_image.save(detailed)
+
+    review = cad.verify_render_artifacts([blank, sparse, detailed])
+
+    assert review["blank.png"]["pass"] is False
+    assert review["blank.png"]["content_checks"]["nonwhite_coverage"] is False
+    assert review["sparse.png"]["pass"] is False
+    assert review["sparse.png"]["content_checks"]["nonwhite_coverage"] is False
+    assert review["detailed.png"]["pass"] is True
+    assert review["detailed.png"]["content_checks"]["occupied_bbox"] is True
+    assert (tmp_path / "visual-review.json").is_file()
+
+
+def test_evt0_phone_part_visual_coverage_maps_every_part_to_review_views(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    visual = passing_visual_review()
+    part_review = cad.write_part_review_artifacts(parts)
+    coverage = cad.write_part_visual_coverage_artifacts(visual, part_review)
+
+    assert coverage["status"] == "part_visual_coverage_pass"
+    assert coverage["expected_part_count"] == len(parts)
+    assert coverage["covered_part_count"] == len(parts)
+    assert coverage["missing_or_incomplete_parts"] == []
+    assert "part-review-contact-sheet.png" in coverage["required_review_artifacts"]
+    usb_case = next(case for case in coverage["cases"] if case["part"] == "usb_c_receptacle")
+    assert "full_bottom_port.png" in usb_case["required_views"]
+    button_case = next(case for case in coverage["cases"] if case["part"] == "power_button_cap")
+    assert "full_left_side.png" in button_case["required_views"]
+    assert (tmp_path / "part-visual-coverage.json").is_file()
+    assert (tmp_path / "part-visual-coverage.md").is_file()
+
+    blocked_visual = dict(visual)
+    blocked_visual["full_bottom_port.png"] = {
+        **blocked_visual["full_bottom_port.png"],
+        "pass": False,
+    }
+    blocked = cad.write_part_visual_coverage_artifacts(blocked_visual, part_review)
+
+    assert blocked["status"] == "blocked_part_visual_coverage_incomplete"
+    assert "usb_c_receptacle" in blocked["missing_or_incomplete_parts"]
+
+
+def test_evt0_phone_visual_review_coverage_acceptance_tracks_required_artifacts(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    tooling = cad.tooling_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    visual = passing_visual_review()
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    part_review = cad.write_part_review_artifacts(parts)
+    dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    visual_decision = cad.write_visual_decision_artifacts(
+        params,
+        visual,
+        checks,
+        clearance,
+        part_review,
+        dfm,
+        tolerance_stack,
+    )
+    part_visual_coverage = cad.write_part_visual_coverage_artifacts(visual, part_review)
+    acceptance = cad.write_visual_review_coverage_acceptance_artifacts(
+        visual, part_review, visual_decision, part_visual_coverage
+    )
+
+    assert acceptance["status"] == "visual_review_coverage_acceptance_pass"
+    assert acceptance["automated_visual_coverage_ready"] is True
+    assert acceptance["production_visual_signoff_ready"] is False
+    assert acceptance["expected_view_count"] == 9
+    assert acceptance["complete_view_count"] == 9
+    assert acceptance["part_review_case"]["part_count"] == len(parts)
+    assert acceptance["part_review_case"]["contact_sheet_pass"] is True
+    assert acceptance["part_visual_coverage_case"]["covered_part_count"] == len(parts)
+    assert acceptance["part_visual_coverage_case"]["pass"] is True
+    assert acceptance["visual_decision_case"]["decision_count"] >= 7
+    assert acceptance["visual_decision_case"]["open_manual_review_count"] > 0
+    assert acceptance["expected_visual_gate_count"] == len(visual_decision["visual_design_gates"])
+    assert "Production visual/CMF signoff remains blocked" in acceptance["release_rule"]
+    assert (tmp_path / "visual-review-coverage-acceptance.json").is_file()
+    assert (tmp_path / "visual-review-coverage-acceptance.md").is_file()
+
+
+def test_evt0_phone_cmf_release_acceptance_requires_physical_results(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    tooling = cad.tooling_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    visual = passing_visual_review()
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    part_review = cad.write_part_review_artifacts(parts)
+    dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    visual_decision = cad.write_visual_decision_artifacts(
+        params,
+        visual,
+        checks,
+        clearance,
+        part_review,
+        dfm,
+        tolerance_stack,
+    )
+    part_visual_coverage = cad.write_part_visual_coverage_artifacts(visual, part_review)
+    visual_coverage = cad.write_visual_review_coverage_acceptance_artifacts(
+        visual, part_review, visual_decision, part_visual_coverage
+    )
+    toolmaker_signoff = {"status": "blocked_no_toolmaker_signoff"}
+
+    report = cad.write_cmf_release_acceptance_artifacts(
+        params, visual_decision, visual_coverage, dfm, toolmaker_signoff
+    )
+
+    assert report["status"] == "blocked_no_cmf_results"
+    assert report["complete_criterion_count"] == 1
+    assert report["production_complete_count"] == 0
+    assert report["required_evidence_class"] == "physical_cmf_result"
+    assert report["visual_gate"]["pass"] is True
+    rendered_case = next(
+        case for case in report["cases"] if case["id"] == "rendered_orange_identity_locked"
+    )
+    assert rendered_case["pass"] is True
+    physical_cases = [case for case in report["cases"] if case["blocks_release"]]
+    assert all(not case["result"]["evidence_class_allowed"] for case in physical_cases)
+    assert all(not case["result"]["numeric_limit_pass"] for case in physical_cases)
+    assert "orange_resin_color_plaque_delta_e" in report["missing_or_incomplete_criteria"]
+    assert "Color plaque" in report["release_rule"]
+    assert (tmp_path / "cmf-release-acceptance.json").is_file()
+    assert (tmp_path / "cmf-release-acceptance.md").is_file()
+    template_rows = list(
+        csv.DictReader(StringIO((tmp_path / "cmf-results-template.csv").read_text()))
+    )
+    assert template_rows
+    assert "evidence_class" in template_rows[0]
+
+
+def test_evt0_phone_cmf_release_acceptance_enforces_numeric_limits(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    tooling = cad.tooling_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    visual = passing_visual_review()
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    part_review = cad.write_part_review_artifacts(parts)
+    dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    visual_decision = cad.write_visual_decision_artifacts(
+        params,
+        visual,
+        checks,
+        clearance,
+        part_review,
+        dfm,
+        tolerance_stack,
+    )
+    part_visual_coverage = cad.write_part_visual_coverage_artifacts(visual, part_review)
+    visual_coverage = cad.write_visual_review_coverage_acceptance_artifacts(
+        visual, part_review, visual_decision, part_visual_coverage
+    )
+    toolmaker_signoff = {"status": "blocked_no_toolmaker_signoff"}
+    cad.write_cmf_release_acceptance_artifacts(
+        params, visual_decision, visual_coverage, dfm, toolmaker_signoff
+    )
+    rows = [
+        {
+            "criterion_id": "orange_resin_color_plaque_delta_e",
+            "sample_id": "cmf-plaque-orange-001",
+            "artifact": "photos/cmf-plaque-orange-001.jpg",
+            "measured_value": "delta_e=1.4",
+            "accepted": "yes",
+            "reviewer": "cmf-reviewer",
+            "evidence_class": "physical_cmf_result",
+            "notes": "approved resin lot",
+        },
+        {
+            "criterion_id": "hard_touch_gloss_texture",
+            "sample_id": "texture-plaque-001",
+            "artifact": "photos/texture-plaque-001.jpg",
+            "measured_value": "gloss_gu_60=12",
+            "accepted": "yes",
+            "reviewer": "cmf-reviewer",
+            "evidence_class": "physical_cmf_result",
+            "notes": "VDI texture plaque",
+        },
+        {
+            "criterion_id": "scratch_and_hand_oil_visibility",
+            "sample_id": "rub-sample-001",
+            "artifact": "photos/rub-sample-001.jpg",
+            "measured_value": "visible_defect_count=0",
+            "accepted": "yes",
+            "reviewer": "cmf-reviewer",
+            "evidence_class": "physical_cmf_result",
+            "notes": "after rub exposure",
+        },
+        {
+            "criterion_id": "gate_blush_vestige_and_weld_line_visibility",
+            "sample_id": "first-shot-001",
+            "artifact": "photos/first-shot-001.jpg",
+            "measured_value": "a_surface_visible_defects=0",
+            "accepted": "yes",
+            "reviewer": "cmf-reviewer",
+            "evidence_class": "physical_cmf_result",
+            "notes": "first-shot cosmetic review",
+        },
+        {
+            "criterion_id": "rendered_orange_identity_locked",
+            "sample_id": "",
+            "artifact": "",
+            "measured_value": "",
+            "accepted": "",
+            "reviewer": "",
+            "evidence_class": "",
+            "notes": "covered by visual gate",
+        },
+    ]
+    template_path = tmp_path / "cmf-results-template.csv"
+    with template_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    report = cad.write_cmf_release_acceptance_artifacts(
+        params, visual_decision, visual_coverage, dfm, toolmaker_signoff
+    )
+    assert report["status"] == "cmf_release_complete"
+    assert report["production_complete_count"] == 4
+    color_case = next(
+        case for case in report["cases"] if case["id"] == "orange_resin_color_plaque_delta_e"
+    )
+    assert color_case["result"]["parsed_measurements"]["delta_e"] == 1.4
+    assert color_case["result"]["numeric_limit_pass"] is True
+
+    rows[0]["measured_value"] = "delta_e=3.1"
+    with template_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    report = cad.write_cmf_release_acceptance_artifacts(
+        params, visual_decision, visual_coverage, dfm, toolmaker_signoff
+    )
+    assert report["status"] == "blocked_cmf_results_incomplete"
+    color_case = next(
+        case for case in report["cases"] if case["id"] == "orange_resin_color_plaque_delta_e"
+    )
+    assert color_case["result"]["numeric_limit_pass"] is False
+    assert color_case["result"]["numeric_limit_failures"] == ["delta_e_above_2.0"]
 
 
 def test_evt0_phone_injection_molding_dfm_screen_tracks_tooling_risks(
@@ -957,6 +2087,89 @@ def test_evt0_phone_mold_process_window_quantifies_tooling_risks(tmp_path, monke
     assert (tmp_path / "mold-process-window.md").is_file()
 
 
+def test_evt0_phone_mold_flow_acceptance_fails_closed_without_physical_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    tooling = cad.tooling_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    mold_process = cad.write_mold_process_window_artifacts(
+        params,
+        parts,
+        tooling,
+        dfm,
+        tolerance_stack,
+    )
+    report = cad.write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
+    csv_text = (tmp_path / "mold-flow-results-template.csv").read_text()
+
+    assert report["status"] == "blocked_no_mold_flow_results"
+    assert report["input_deck_status"] == "mold_flow_input_deck_ready"
+    assert report["required_evidence_class"] == "physical_mold_flow_result"
+    assert report["complete_result_count"] == 0
+    assert "fill_pressure_at_vp_transfer_mpa" in report["missing_or_incomplete_criteria"]
+    assert "evidence_class" in csv_text
+    assert "raw_simulation_archive" in csv_text
+    assert "evidence_class=physical_mold_flow_result" in report["release_rule"]
+    assert (tmp_path / "mold-flow-input-deck.json").is_file()
+    assert (tmp_path / "mold-flow-input-deck.md").is_file()
+    assert (tmp_path / "mold-flow-acceptance.json").is_file()
+    assert (tmp_path / "mold-flow-acceptance.md").is_file()
+
+
+def test_evt0_phone_mold_flow_acceptance_rejects_simulated_rows(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    tooling = cad.tooling_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    mold_process = cad.write_mold_process_window_artifacts(
+        params,
+        parts,
+        tooling,
+        dfm,
+        tolerance_stack,
+    )
+    cad.write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
+    template_text = (tmp_path / "mold-flow-results-template.csv").read_text()
+    rows = list(csv.DictReader(StringIO(template_text)))
+    for row in rows:
+        row.update(
+            {
+                "toolmaker_name": "simulated mold-flow vendor",
+                "evidence_class": "simulated_mold_flow_for_planning_not_release",
+                "returned_artifact": "simulated-moldflow-report.pdf",
+                "raw_simulation_archive": "simulated-moldflow.zip",
+                "reviewer_acceptance_record": "simulated-acceptance.md",
+                "resin_tooling_traceability_record": "simulated-traceability.yaml",
+                "measured_or_predicted_value": "simulated pass",
+                "accepted": "true",
+                "reviewer": "simulation",
+            }
+        )
+    with (tmp_path / "mold-flow-results-template.csv").open("w", newline="") as csv_file:
+        csv_file.write("# evidence_class: simulated_mold_flow_for_planning_not_release\n")
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    report = cad.write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
+
+    assert report["status"] == "blocked_no_mold_flow_results"
+    assert report["template_evidence_class"] == "simulated_mold_flow_for_planning_not_release"
+    assert report["complete_result_count"] == 0
+    assert report["cases"][0]["evidence_class_allowed"] is False
+    assert report["cases"][0]["physical_evidence_pass"] is False
+
+
 def test_evt0_phone_toolmaker_signoff_package_fails_closed_without_returns(
     tmp_path, monkeypatch
 ) -> None:
@@ -981,13 +2194,71 @@ def test_evt0_phone_toolmaker_signoff_package_fails_closed_without_returns(
     assert signoff["package_status"] == "toolmaker_signoff_package_ready"
     assert signoff["status"] == "blocked_no_toolmaker_signoff"
     assert signoff["expected_response_count"] >= 7
+    assert signoff["required_evidence_class"] == "physical_toolmaker_signoff"
     assert signoff["complete_response_count"] == 0
     assert "mold_flow_fill_pack_warp" in signoff["missing_or_incomplete_items"]
     assert "review_item_id,toolmaker_name,report_or_drawing_received" in csv_text
+    assert "evidence_class,required_evidence_artifacts,returned_artifact" in csv_text
+    assert "signed_moldflow_report" in csv_text
+    assert "evidence_class=physical_toolmaker_signoff" in signoff["release_rule"]
+    assert signoff["cases"][0]["required_evidence_artifacts"]
+    assert signoff["cases"][0]["returned_artifact_present"] is False
     assert (tmp_path / "toolmaker-signoff-package.json").is_file()
     assert (tmp_path / "toolmaker-signoff-package.md").is_file()
     assert (tmp_path / "toolmaker-signoff-review.json").is_file()
     assert (tmp_path / "toolmaker-signoff-review.md").is_file()
+
+
+def test_evt0_phone_toolmaker_signoff_rejects_simulated_returns(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    tooling = cad.tooling_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    mold_process = cad.write_mold_process_window_artifacts(
+        params,
+        parts,
+        tooling,
+        dfm,
+        tolerance_stack,
+    )
+    cad.write_toolmaker_signoff_artifacts(params, dfm, mold_process)
+    template_text = (tmp_path / "toolmaker-signoff-response-template.csv").read_text()
+    rows = list(csv.DictReader(StringIO(template_text)))
+    for row in rows:
+        row.update(
+            {
+                "toolmaker_name": "simulated toolmaker",
+                "report_or_drawing_received": "yes",
+                "accepted": "yes",
+                "reviewer": "simulation",
+                "evidence_class": "simulated_toolmaker_signoff_for_planning_not_release",
+                "returned_artifact": "simulated-signed-report.pdf",
+                "moldflow_or_tooling_data_artifact": "simulated-moldflow.zip",
+                "reviewer_acceptance_record": "simulated-acceptance.md",
+                "resin_cmf_or_tooling_traceability_record": "simulated-trace.txt",
+                "measured_or_predicted_value": "simulated",
+            }
+        )
+    with (tmp_path / "toolmaker-signoff-response-template.csv").open("w", newline="") as csv_file:
+        csv_file.write("# evidence_class: simulated_toolmaker_signoff_for_planning_not_release\n")
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    signoff = cad.write_toolmaker_signoff_artifacts(params, dfm, mold_process)
+
+    assert signoff["status"] == "blocked_no_toolmaker_signoff"
+    assert (
+        signoff["template_evidence_class"] == "simulated_toolmaker_signoff_for_planning_not_release"
+    )
+    assert signoff["complete_response_count"] == 0
+    assert "mold_flow_fill_pack_warp" in signoff["missing_or_incomplete_items"]
+    assert signoff["cases"][0]["evidence_class_allowed"] is False
+    assert signoff["cases"][0]["physical_evidence_pass"] is False
 
 
 def test_evt0_phone_tolerance_stack_tracks_datums_and_release_controls(
@@ -1032,6 +2303,8 @@ def test_evt0_phone_gdt_release_package_writes_fai_characteristics(tmp_path, mon
     assert {"CRIT-001", "STACK-006"}.issubset(characteristic_ids)
     assert "rear_camera_cover_glass_window" in fai_text
     assert "part_revision,sample_id,characteristic_id" in fai_text
+    assert "evidence_class,required_evidence_artifacts,raw_measurement_artifact" in fai_text
+    assert "fai_cmm_or_optical_raw_report" in fai_text
     assert (tmp_path / "gdt-release-package.json").is_file()
     assert (tmp_path / "gdt-release-package.md").is_file()
 
@@ -1049,11 +2322,53 @@ def test_evt0_phone_gdt_fai_results_review_fails_closed_on_blank_template(
 
     assert review["status"] == "blocked_no_fai_results"
     assert review["expected_characteristic_count"] == gdt["characteristic_count"]
+    assert review["required_evidence_class"] == "physical_fai_result"
     assert review["observed_row_count"] == gdt["characteristic_count"]
     assert review["complete_result_count"] == 0
     assert "CRIT-001" in review["blank_or_incomplete_characteristics"]
+    assert "evidence_class=physical_fai_result" in review["release_rule"]
+    assert review["cases"][0]["required_evidence_artifacts"]
+    assert review["cases"][0]["raw_measurement_artifact_present"] is False
     assert (tmp_path / "gdt-fai-results-review.json").is_file()
     assert (tmp_path / "gdt-fai-results-review.md").is_file()
+
+
+def test_evt0_phone_gdt_fai_results_reject_simulated_rows(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    checks = cad.run_checks(params, cad.build_parts(params))
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    gdt = cad.write_gdt_release_package_artifacts(params, tolerance_stack)
+    template_text = (tmp_path / "gdt-fai-template.csv").read_text()
+    rows = list(csv.DictReader(StringIO(template_text)))
+    for row in rows:
+        row.update(
+            {
+                "sample_id": "SIM-001",
+                "measured_value": row["minimum_mm"] or "0.0",
+                "pass": "pass",
+                "inspector": "simulation",
+                "evidence_class": "simulated_fai_result_for_planning_not_release",
+                "raw_measurement_artifact": "simulated-fai.csv",
+                "inspection_equipment_calibration_certificate": "simulated-cal.pdf",
+                "inspection_photo_or_scan": "simulated-scan.png",
+                "lot_traceability_record": "simulated-lot.txt",
+            }
+        )
+    with (tmp_path / "gdt-fai-template.csv").open("w", newline="") as csv_file:
+        csv_file.write("# evidence_class: simulated_fai_result_for_planning_not_release\n")
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    review = cad.write_gdt_fai_results_review_artifacts(gdt)
+
+    assert review["status"] == "blocked_no_fai_results"
+    assert review["template_evidence_class"] == "simulated_fai_result_for_planning_not_release"
+    assert review["complete_result_count"] == 0
+    assert "CRIT-001" in review["blank_or_incomplete_characteristics"]
+    assert review["cases"][0]["evidence_class_allowed"] is False
 
 
 def test_evt0_phone_board_step_readiness_fails_closed_on_concept_pcb(tmp_path, monkeypatch) -> None:
@@ -1075,11 +2390,170 @@ def test_evt0_phone_board_step_readiness_fails_closed_on_concept_pcb(tmp_path, m
     assert report["status"] == "blocked_concept_pcb_no_routed_step"
     assert report["board_state_detected"]["has_tracks"] is False
     assert report["board_state_detected"]["has_production_step"] is False
+    assert report["board_state_detected"]["has_complete_routed_board_release_intake"] is False
     assert report["board_state_detected"]["placeholder_marker_count"] > 0
+    assert report["required_routed_board_evidence_class"] == "physical_routed_board_release"
+    assert report["routed_board_intake_cases"][0]["evidence_class_allowed"] is False
     assert case_map["kicad_placement_reconciled_to_cad"]["pass"]
     assert not case_map["production_board_step_present"]["pass"]
+    assert not case_map["routed_board_release_intake_complete"]["pass"]
+    assert (tmp_path / "routed-board-step-intake-template.csv").is_file()
     assert (tmp_path / "board-step-readiness.json").is_file()
     assert (tmp_path / "board-step-readiness.md").is_file()
+
+
+def test_evt0_phone_board_step_readiness_rejects_demo_routed_intake(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+    kicad_reconciliation = {
+        "status": "cad_kicad_placement_reconciled",
+        "footprint_cases": [{"id": "J_USB_C"}],
+        "cad_projection_cases": [{"id": "J_USB_C"}],
+    }
+    solid_cad = {
+        "status": "generated",
+        "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
+    }
+    cad.write_board_step_readiness_artifacts(params, kicad_reconciliation, solid_cad)
+    intake_path = tmp_path / "routed-board-step-intake-template.csv"
+    template_text = intake_path.read_text()
+    rows = list(csv.DictReader(StringIO(template_text)))
+    rows[0].update(
+        {
+            "release_id": "DEMO-ONLY",
+            "kicad_pcb_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-demo.kicad_pcb",
+            "routed_step_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo.step",
+            "drc_report_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-job.gbrjob",
+            "erc_report_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-job.gbrjob",
+            "gerber_job_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-job.gbrjob",
+            "pick_place_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-pos.csv",
+            "bom_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-bom.csv",
+            "component_3d_model_manifest": "board/kicad/e1-phone/artifact-manifest.yaml",
+            "enclosure_clearance_rerun_artifact": "mechanical/e1-phone/review/board-step-readiness.json",
+            "reviewer": "simulation",
+            "evidence_class": "demo_routed_board_for_planning_not_release",
+        }
+    )
+    with intake_path.open("w", newline="") as csv_file:
+        csv_file.write("# evidence_class: demo_routed_board_for_planning_not_release\n")
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    report = cad.write_board_step_readiness_artifacts(params, kicad_reconciliation, solid_cad)
+    case_map = {case["id"]: case for case in report["cases"]}
+
+    assert report["status"] == "blocked_concept_pcb_no_routed_step"
+    assert report["routed_board_intake_template_evidence_class"] == (
+        "demo_routed_board_for_planning_not_release"
+    )
+    assert report["routed_board_intake_cases"][0]["required_fields_present"] is True
+    assert report["routed_board_intake_cases"][0]["artifact_paths_exist"] is True
+    assert report["routed_board_intake_cases"][0]["evidence_class_allowed"] is False
+    assert report["routed_board_intake_cases"][0]["pass"] is False
+    assert case_map["routed_board_release_intake_complete"]["pass"] is False
+    assert case_map["production_board_step_present"]["pass"] is False
+
+
+def test_evt0_phone_routed_board_clearance_fails_closed_until_routed_step(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+    monkeypatch.setattr(cad, "OUT_DIR", tmp_path)
+    (tmp_path / "main_pcb.step").write_text("ISO-10303-21;" + ("x" * 1200))
+    kicad_reconciliation = {
+        "status": "cad_kicad_placement_reconciled",
+        "footprint_cases": [{"id": "J_USB_C"}],
+        "cad_projection_cases": [{"id": "J_USB_C"}],
+    }
+    solid_cad = {
+        "status": "generated",
+        "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
+    }
+    board_step = cad.write_board_step_readiness_artifacts(params, kicad_reconciliation, solid_cad)
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+
+    report = cad.write_routed_board_clearance_artifacts(board_step, clearance, solid_cad)
+
+    assert report["status"] == "blocked_waiting_for_routed_board_step"
+    assert report["source_reviews"]["board_step_readiness_status"] == (
+        "blocked_concept_pcb_no_routed_step"
+    )
+    assert report["expected_clearance_case_count"] >= 8
+    assert report["complete_clearance_result_count"] == 0
+    assert report["required_evidence_class"] == "physical_routed_board_clearance_result"
+    assert report["cases"][0]["id"] == "routed_board_step_available_for_import"
+    assert report["cases"][0]["pass"] is False
+    assert report["result_cases"][0]["evidence_class_allowed"] is False
+    assert "evidence_class=physical_routed_board_clearance_result" in report["release_rule"]
+    assert (tmp_path / "routed-board-clearance-results-template.csv").is_file()
+    assert (tmp_path / "routed-board-clearance.json").is_file()
+    assert (tmp_path / "routed-board-clearance.md").is_file()
+
+
+def test_evt0_phone_full_cad_boolean_interference_requires_physical_brep_inputs(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+    monkeypatch.setattr(cad, "OUT_DIR", tmp_path)
+    (tmp_path / "main_pcb.step").write_text("ISO-10303-21;" + ("x" * 1200))
+    kicad_reconciliation = {
+        "status": "cad_kicad_placement_reconciled",
+        "footprint_cases": [{"id": "J_USB_C"}],
+        "cad_projection_cases": [{"id": "J_USB_C"}],
+    }
+    solid_cad = {
+        "status": "generated",
+        "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
+    }
+    step_validation = {"status": "pass", "validated_count": 62}
+    supplier_response = {"status": "blocked_no_supplier_responses"}
+    board_step = cad.write_board_step_readiness_artifacts(params, kicad_reconciliation, solid_cad)
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    routed_clearance = cad.write_routed_board_clearance_artifacts(board_step, clearance, solid_cad)
+
+    report = cad.write_full_cad_boolean_interference_artifacts(
+        parts,
+        clearance,
+        board_step,
+        routed_clearance,
+        supplier_response,
+        solid_cad,
+        step_validation,
+    )
+
+    assert report["status"] == "blocked_boolean_interference_incomplete"
+    assert report["expected_scope_count"] == 10
+    assert report["cad_prerequisite_scope_count"] >= 7
+    assert report["concept_aabb_pair_check_count"] >= 12
+    assert report["concept_aabb_interference_count"] == 0
+    assert report["complete_result_count"] == 0
+    assert report["prerequisites"]["solid_cad_generated"] is True
+    assert report["prerequisites"]["concept_aabb_interference_scan_pass"] is True
+    assert report["prerequisites"]["routed_board_step_ready"] is False
+    assert report["prerequisites"]["supplier_brep_models_accepted"] is False
+    battery_scope = next(
+        case for case in report["scope_cases"] if case["id"] == "battery_pouch_pcb_flex_haptic"
+    )
+    assert battery_scope["required_parts_present"] is True
+    assert battery_scope["concept_aabb_scan_pass"] is True
+    assert all(
+        check["component_pair_count"] >= 1 for check in battery_scope["concept_aabb_pair_checks"]
+    )
+    assert report["required_evidence_class"] == (
+        "physical_supplier_brep_boolean_interference_result"
+    )
+    assert (
+        "evidence_class=physical_supplier_brep_boolean_interference_result"
+        in report["release_rule"]
+    )
+    assert (tmp_path / "full-cad-boolean-interference-results-template.csv").is_file()
+    assert (tmp_path / "full-cad-boolean-interference.json").is_file()
+    assert (tmp_path / "full-cad-boolean-interference.md").is_file()
 
 
 def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatch) -> None:
@@ -1270,6 +2744,12 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         params, parts, clearance, interface_validation, tolerance_stack
     )
     display_results = cad.write_display_results_review_artifacts(display_validation)
+    mechanical_integration_sim = cad.write_mechanical_integration_sim_artifacts(
+        params,
+        parts,
+        interface_validation,
+        display_validation,
+    )
     acoustic_validation = cad.write_acoustic_validation_artifacts(
         params, parts, clearance, interface_validation
     )
@@ -1340,6 +2820,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         interface_validation,
         display_validation,
         display_results,
+        mechanical_integration_sim,
         acoustic_validation,
         acoustic_results,
         camera_validation,
@@ -1377,6 +2858,11 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     assert readiness["parameters"]["compactness_height_excess_mm"] <= 1.5
     assert readiness["subsystem_evidence_present"]["rf_shielding_haptics_service"]
     assert readiness["required_outputs"]["kicad_placement_reconciliation"]
+    assert readiness["required_outputs"]["mechanical_integration_sim"]
+    assert (
+        readiness["parameters"]["mechanical_integration_sim_status"]
+        == "cad_mechanical_integration_sim_ready"
+    )
     assert readiness["required_outputs"]["board_step_readiness"]
     assert (
         readiness["parameters"]["kicad_placement_reconciliation_status"]
@@ -1472,6 +2958,13 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     assert readiness["parameters"]["gdt_fai_results_status"] == "blocked_no_fai_results"
     assert readiness["parameters"]["gdt_fai_results_complete_count"] == 0
     assert readiness["parameters"]["visual_decision_status"] == "pass"
+    assert readiness["parameters"]["automated_visual_status"] == "automated_visual_coverage_pass"
+    assert (
+        readiness["parameters"]["manual_visual_signoff_status"]
+        == "blocked_manual_visual_review_open"
+    )
+    assert readiness["parameters"]["production_visual_signoff_ready"] is False
+    assert readiness["parameters"]["open_manual_visual_review_count"] > 0
     assert readiness["parameters"]["solid_cad_handoff_status"] == "generated"
     assert readiness["parameters"]["solid_cad_step_part_count"] >= 50
     assert readiness["parameters"]["step_validation_status"] == "pass"
@@ -1493,3 +2986,24 @@ def test_evt0_phone_fit_report_writes_flat_check_schema(tmp_path, monkeypatch) -
     assert report["checks"]["rf_antenna_keepouts"]["pass"]
     assert report["checks"]["mold_ejector_cooling_model"]["pass"]
     assert "status" not in report["checks"]
+    assert (
+        report["artifacts"]["routed_board_step_intake_template"]
+        == "mechanical/e1-phone/review/routed-board-step-intake-template.csv"
+    )
+    assert (
+        report["artifacts"]["visual_review_coverage_acceptance_json"]
+        == "mechanical/e1-phone/review/visual-review-coverage-acceptance.json"
+    )
+    assert (
+        report["artifacts"]["physical_process_validation_acceptance_json"]
+        == "mechanical/e1-phone/review/physical-process-validation-acceptance.json"
+    )
+    assert (
+        report["artifacts"]["end_to_end_objective_acceptance_json"]
+        == "mechanical/e1-phone/review/end-to-end-objective-acceptance.json"
+    )
+    readme = (tmp_path / "README.md").read_text()
+    assert "routed-board-step-intake-template.csv" in readme
+    assert "visual-review-coverage-acceptance.json" in readme
+    assert "physical-process-validation-acceptance.json" in readme
+    assert "end-to-end-objective-acceptance.json" in readme

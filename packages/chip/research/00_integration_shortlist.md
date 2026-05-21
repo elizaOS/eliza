@@ -85,12 +85,12 @@ rows below describe scaffolding and gate plumbing that exists on
 `develop`. Nothing here asserts that the live ISO has actually been
 built, that a qemu-virt boot has been captured, or that any hardware
 RISC-V board has come up. The fail-closed gate
-(`make -C packages/os/linux/variants/elizaos-debian-riscv64 release-check-strict`)
-exists precisely so a future contributor cannot promote the variant
+(`make -C packages/os/linux/elizaos release-check-strict ARCH=riscv64`)
+exists precisely so a future contributor cannot promote the build
 past `planned` without producing the missing artifacts.
 
 The userspace bring-up of the RV64 stack lives outside `packages/chip/`,
-under `packages/os/linux/variants/elizaos-debian-riscv64/`. The four
+under `packages/os/linux/elizaos/` (`ARCH=riscv64`). The four
 commits below land the build config, the qemu-virt boot harness, the
 systemd userland bootstrap, and the e2e release-manifest gate. They are
 the OS-side mirror of the chip-side `aosp-simulator-completion-gate.yaml`
@@ -98,10 +98,10 @@ the OS-side mirror of the chip-side `aosp-simulator-completion-gate.yaml`
 
 | Item                                                          | Status  | Artifact                                                                                                                                                                                                                                                                                                                                                                | Validator                                                                                                                              |
 | ------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| OS-RV64-1 Wave 4 live-build config (`c4656f1810`)             | landed  | `packages/os/linux/variants/elizaos-debian-riscv64/{Dockerfile,build.sh,auto/config,config/package-lists/elizaos.list.chroot,config/hooks/normal/0010-elizaos-agent.hook.chroot,config/hooks/normal/0020-grub-efi-riscv64.hook.binary,config/includes.binary/extlinux/extlinux.conf,manifest.json.template}` | `docker build -t elizaos-debian-riscv64-builder .` (build still external; `lb build` BLOCKED on multi-hour run + Debian mirror)        |
-| OS-RV64-2 qemu-virt boot harness (`ebf816ea14`)               | landed  | `packages/os/linux/variants/elizaos-debian-riscv64/{Makefile,scripts/qemu_virt_boot.sh,scripts/qemu_virt_smoke.py,scripts/test_qemu_virt_smoke.py}`                                                                                                                                                                                                                      | `make -C packages/os/linux/variants/elizaos-debian-riscv64 qemu-virt-boot-test`                                                        |
-| OS-RV64-3 userland bootstrap Wave 2B (`31bd8f13ba`)           | landed  | `packages/os/linux/variants/elizaos-debian-riscv64/{config/hooks/normal/0030-elizaos-userland.hook.chroot,config/includes.chroot/etc/systemd/system/elizaos-agent.service,config/includes.chroot/etc/systemd/system/elizaos-first-boot.service,config/includes.chroot/usr/lib/elizaos/first-boot.sh,config/package-lists/elizaos-runtime.list.chroot,docs/userland-startup.md}` | systemd + `elizaos-first-boot.service` + first-boot script ship `elizaos-ready instance=<uuid>` on `/dev/ttyS0`; consumed by OS-RV64-2 |
-| OS-RV64-4 e2e runbook + release-manifest gate (`cc10b9f001`)  | landed  | `packages/os/linux/variants/elizaos-debian-riscv64/{Makefile,docs/e2e-qemu-virt.md,scripts/check_release_manifest.py,scripts/test_check_release_manifest.py}`                                                                                                                                                                                                            | `make -C packages/os/linux/variants/elizaos-debian-riscv64 release-check` (informational) / `release-check-strict` (release pipeline) + `release-check-test`                  |
+| OS-RV64-1 Wave 4 live-build config (`c4656f1810`)             | landed  | `packages/os/linux/elizaos/{Dockerfile,build.sh,auto/config,config/package-lists/elizaos.list.chroot,config/hooks/normal/0010-elizaos-agent.hook.chroot,config/hooks/normal/0020-grub-efi-riscv64.hook.binary,config/includes.binary/extlinux/extlinux.conf,manifest.json.template}` | `make -C packages/os/linux/elizaos builder` (build still external; `lb build` BLOCKED on multi-hour run + Debian mirror)        |
+| OS-RV64-2 qemu-virt boot harness (`ebf816ea14`)               | landed  | `packages/os/linux/elizaos/{Makefile,scripts/qemu_virt_boot_riscv64.sh,scripts/qemu_virt_smoke.py}`                                                                                                                                                                                                                      | `make -C packages/os/linux/elizaos qemu-boot ARCH=riscv64`                                                        |
+| OS-RV64-3 userland bootstrap Wave 2B (`31bd8f13ba`)           | landed  | `packages/os/linux/elizaos/{config/hooks/normal/0030-elizaos-userland.hook.chroot,config/includes.chroot/etc/systemd/system/elizaos-agent.service,config/includes.chroot/etc/systemd/system/elizaos-first-boot.service,config/includes.chroot/usr/lib/elizaos/first-boot.sh,config/package-lists/elizaos-runtime.list.chroot}` | systemd + `elizaos-first-boot.service` + first-boot script ship `elizaos-ready instance=<uuid>` on `/dev/ttyS0`; consumed by OS-RV64-2 |
+| OS-RV64-4 e2e runbook + release-manifest gate (`cc10b9f001`)  | landed  | `packages/os/linux/elizaos/{Makefile,README.md,scripts/check_release_manifest.py}`                                                                                                                                                                                                            | `make -C packages/os/linux/elizaos release-check ARCH=riscv64` (informational) / `release-check-strict ARCH=riscv64` (release pipeline)                  |
 
 ### Locally-runnable gates (OS side)
 
@@ -109,16 +109,15 @@ These three targets execute from a fresh checkout without external
 mirrors, ISOs, qemu state, or hardware:
 
 ```text
-make -C packages/os/linux/variants/elizaos-debian-riscv64 qemu-virt-boot-test     PASS  (qemu_virt_smoke unit tests)
-make -C packages/os/linux/variants/elizaos-debian-riscv64 release-check           BLOCKED (no real manifest.json with collected evidence; manifest.json.template is `provenance: scaffolding`)
-make -C packages/os/linux/variants/elizaos-debian-riscv64 release-check-test      PASS  (check_release_manifest unit + Hypothesis tests)
+python3 packages/os/linux/elizaos/scripts/qemu_virt_smoke.py                      PASS  (qemu_virt_smoke unit tests)
+make -C packages/os/linux/elizaos release-check ARCH=riscv64                       BLOCKED (no real manifest.json with collected evidence; manifest.json.template is `provenance: scaffolding`)
 ```
 
 ### What stays BLOCKED on the OS RV64 path (by design)
 
 1. **Actual `lb build` run.** 45-90 minute build, multi-GB Debian Trixie
    riscv64 mirror pull. Recipe in
-   `packages/os/linux/variants/elizaos-debian-riscv64/docs/e2e-qemu-virt.md`
+   `packages/os/linux/elizaos/README.md`
    step 2. No ISO is committed; no hash is fabricated.
 2. **qemu-virt boot transcript.** Requires the artifact from BLOCKED-1
    plus `qemu-system-riscv64` on the host. Step 3 of the e2e runbook;
@@ -148,7 +147,7 @@ make -C packages/os/linux/variants/elizaos-debian-riscv64 release-check-test    
   `release-check` view into a single status surface. Until it lands,
   run the two gates separately and read both outputs.
 - One-page OS-side status doc:
-  [`packages/os/linux/variants/elizaos-debian-riscv64/STATUS.md`](../../os/linux/variants/elizaos-debian-riscv64/STATUS.md).
+  [`packages/os/linux/elizaos/README.md`](../../os/linux/elizaos/README.md).
 - chip-side software dependencies the OS variant consumes:
   `packages/chip/docs/sw/opensbi/README.md`,
   `packages/chip/docs/sw/u-boot/README.md`,

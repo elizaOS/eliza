@@ -12,6 +12,10 @@ concurrency:
 env:
   CI: true
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   env-audit:
     name: env:audit:check

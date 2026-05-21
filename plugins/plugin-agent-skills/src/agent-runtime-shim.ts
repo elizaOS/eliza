@@ -60,7 +60,7 @@ export function resolveDefaultAgentWorkspaceDir(
 	}
 
 	const stateDir = resolveUserPath(env.ELIZA_STATE_DIR?.trim() || "~/.eliza", homeDir);
-	if (!env.ELIZA_STATE_DIR?.trim() && !env.MILADY_STATE_DIR?.trim()) {
+	if (!env.ELIZA_STATE_DIR?.trim() && !env.ELIZA_STATE_DIR?.trim()) {
 		const runtimeCwd = cwd().trim();
 		if (runtimeCwd && hasProjectWorkspaceMarker(runtimeCwd)) {
 			return resolveUserPath(runtimeCwd, homeDir);

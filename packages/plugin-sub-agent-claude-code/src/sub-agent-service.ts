@@ -2,18 +2,37 @@
  * ClaudeCodeSubAgentService — spawns `claude` CLI as a subprocess and
  * exposes session/prompt/output/terminate over host-RPC.
  *
- * Each session is a long-lived `Bun.spawn` of the claude-code binary
- * with stdin/stdout piped. Prompts are written to stdin; output is
- * line-streamed back. The service caches sessions by id and tears them
- * down on `terminate()` or worker shutdown.
- *
- * This is a *reference* implementation. The full real-world version
- * needs PTY (not raw stdin/stdout) so the CLI's interactive features
- * work; `Bun.spawn({ stdin: 'pipe', stdout: 'pipe' })` is good enough
- * for the prompt-and-collect pattern but not for editing tools.
+ * SOC2 hardening (A-2 / A-3 / O-8):
+ *   - Env passed to the child is a strict allowlist (`SAFE_ENV_KEYS`),
+ *     with a defensive credential/token regex blocklist on top.
+ *   - `cwd` is resolved via `realpath` and must live under the agent
+ *     workspace (or `/tmp`).
+ *   - `binary` is resolved via PATH-restricted lookup; only paths under
+ *     a static dir whitelist are accepted.
+ *   - Spawn is wrapped in `sandbox-exec` (macOS) or bwrap (Linux). When
+ *     the helper is missing we log a WARN and fall through to
+ *     allowlist-only spawn — dev boxes still work, prod deploys treat
+ *     the WARN as a P1 fix.
+ *   - A redacted transcript is recorded per session for audit; the
+ *     transcript hash + byte count are emitted to the audit pipeline.
  */
 
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { AuditDispatcher } from "@elizaos/security";
+import {
+  buildSandboxedCommand,
+  filterEnv,
+  locateBundledProfiles,
+  resolveSafeBinary,
+  resolveSafeCwd,
+  SAFE_ENV_KEYS,
+} from "./sandbox.js";
+import {
+  pruneOldSessions,
+  SessionRecorder,
+} from "./session-recorder.js";
 
 export interface ClaudeCodeSession {
   sessionId: string;
@@ -23,6 +42,8 @@ export interface ClaudeCodeSession {
   binary: string;
   proc: ReturnType<typeof Bun.spawn>;
   output: string[];
+  recorder: SessionRecorder;
+  sandbox: string;
 }
 
 export interface CreateSessionParams {
@@ -32,6 +53,8 @@ export interface CreateSessionParams {
   binary?: string;
   /** Initial prompt to send after the session boots. */
   initialPrompt?: string;
+  /** Explicit, pre-validated env overrides (must not contain sensitive keys). */
+  extraEnv?: Record<string, string>;
 }
 
 export interface SendPromptParams {
@@ -47,6 +70,24 @@ export interface GetOutputParams {
 
 export interface TerminateParams {
   sessionId: string;
+}
+
+export interface ServiceOptions {
+  /** Allowed workspace roots for `cwd` validation. */
+  workspaceRoots?: readonly string[];
+  /** Audit sink for spawn / session-record events. */
+  auditDispatcher?: AuditDispatcher;
+  /** Actor id captured on audit events. */
+  actorId?: string;
+}
+
+/**
+ * Compute the package root (parent of `src/` or `dist/`) so we can find
+ * the bundled sandbox profiles regardless of build vs source mode.
+ */
+function packageRoot(): string {
+  const here = fileURLToPath(import.meta.url);
+  return dirname(dirname(here));
 }
 
 export class ClaudeCodeSubAgentService {
@@ -67,9 +108,27 @@ export class ClaudeCodeSubAgentService {
   private readonly sessions = new Map<string, ClaudeCodeSession>();
   private readonly outputCursors = new Map<string, number>();
   private nextSessionId = 1;
+  private workspaceRoots: readonly string[];
+  private auditDispatcher: AuditDispatcher | undefined;
+  private actorId: string | undefined;
+  private bundledProfiles = locateBundledProfiles(packageRoot());
 
-  static async start(_runtime: unknown): Promise<ClaudeCodeSubAgentService> {
-    return new ClaudeCodeSubAgentService();
+  constructor(opts: ServiceOptions = {}) {
+    this.workspaceRoots = opts.workspaceRoots ?? defaultWorkspaceRoots();
+    this.auditDispatcher = opts.auditDispatcher;
+    this.actorId = opts.actorId;
+  }
+
+  static async start(runtime: unknown): Promise<ClaudeCodeSubAgentService> {
+    const opts = extractServiceOptions(runtime);
+    const svc = new ClaudeCodeSubAgentService(opts);
+    // Fire-and-forget retention sweep at boot.
+    try {
+      pruneOldSessions();
+    } catch {
+      // Non-critical.
+    }
+    return svc;
   }
 
   async stop(): Promise<void> {
@@ -79,6 +138,7 @@ export class ClaudeCodeSubAgentService {
       } catch {
         // already dead
       }
+      await session.recorder.finalize();
     }
     this.sessions.clear();
     this.outputCursors.clear();
@@ -86,26 +146,70 @@ export class ClaudeCodeSubAgentService {
 
   async createSession(params: CreateSessionParams): Promise<JsonValue> {
     const sessionId = `cc-${this.nextSessionId++}-${Date.now()}`;
-    const binary = params.binary ?? "claude";
+    const safeCwd = resolveSafeCwd(params.cwd, this.workspaceRoots);
+    const safeBinary = resolveSafeBinary(params.binary ?? "claude");
+
     const args = ["--print"];
     if (params.model) args.push("--model", params.model);
 
+    const sandboxPlan = buildSandboxedCommand([safeBinary, ...args], {
+      workspaceRoot: safeCwd,
+      sessionId,
+      ...this.bundledProfiles,
+    });
+    if (sandboxPlan.sandbox === "none") {
+      process.stderr.write(
+        `[sub-agent] WARN: no OS sandbox available on ${process.platform}; spawning with env-allowlist only.\n`,
+      );
+    }
+
+    const env = filterEnv(process.env, SAFE_ENV_KEYS, params.extraEnv ?? {});
+
+    const recorder = new SessionRecorder({
+      sessionId,
+      ...(this.auditDispatcher ? { auditDispatcher: this.auditDispatcher } : {}),
+      ...(this.actorId ? { actorId: this.actorId } : {}),
+    });
+
+    if (this.auditDispatcher) {
+      await this.auditDispatcher.emit({
+        actor: {
+          type: this.actorId ? "user" : "system",
+          id: this.actorId ?? "agent",
+        },
+        action: "agent.spawn",
+        result: "success",
+        resource: { type: "sub-agent.session", id: sessionId },
+        metadata: {
+          session_id: sessionId,
+          binary: safeBinary,
+          cwd: safeCwd,
+          sandbox: sandboxPlan.sandbox,
+        },
+      });
+    }
+
+    const [cmd0, ...cmdRest] = sandboxPlan.cmd;
+    if (!cmd0) throw new Error("Empty sandbox command");
     const proc = Bun.spawn({
-      cmd: [binary, ...args],
+      cmd: [cmd0, ...cmdRest],
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-      cwd: params.cwd,
+      cwd: safeCwd,
+      env,
     });
 
     const session: ClaudeCodeSession = {
       sessionId,
       createdAt: Date.now(),
-      cwd: params.cwd,
+      cwd: safeCwd,
       ...(params.model ? { model: params.model } : {}),
-      binary,
+      binary: safeBinary,
       proc,
       output: [],
+      recorder,
+      sandbox: sandboxPlan.sandbox,
     };
     this.sessions.set(sessionId, session);
     this.outputCursors.set(sessionId, 0);
@@ -117,11 +221,16 @@ export class ClaudeCodeSubAgentService {
       await this.sendPrompt({ sessionId, prompt: params.initialPrompt });
     }
 
-    return { sessionId, createdAt: session.createdAt };
+    return {
+      sessionId,
+      createdAt: session.createdAt,
+      sandbox: sandboxPlan.sandbox,
+    };
   }
 
   async sendPrompt(params: SendPromptParams): Promise<JsonValue> {
     const session = this.requireSession(params.sessionId);
+    session.recorder.record(`> ${params.prompt}`);
     const writer = session.proc.stdin as unknown as {
       write(data: string): void;
     };
@@ -149,6 +258,7 @@ export class ClaudeCodeSubAgentService {
     } catch {
       // already dead
     }
+    await session.recorder.finalize();
     this.sessions.delete(params.sessionId);
     this.outputCursors.delete(params.sessionId);
     return { terminated: true };
@@ -161,6 +271,7 @@ export class ClaudeCodeSubAgentService {
         createdAt: s.createdAt,
         cwd: s.cwd,
         model: s.model ?? null,
+        sandbox: s.sandbox,
       })),
     };
   }
@@ -190,12 +301,46 @@ export class ClaudeCodeSubAgentService {
           const line = buffer.slice(0, nl);
           buffer = buffer.slice(nl + 1);
           session.output.push(line);
+          session.recorder.record(line);
           nl = buffer.indexOf("\n");
         }
       }
-      if (buffer.length > 0) session.output.push(buffer);
+      if (buffer.length > 0) {
+        session.output.push(buffer);
+        session.recorder.record(buffer);
+      }
     } finally {
       reader.releaseLock?.();
     }
   }
+}
+
+function defaultWorkspaceRoots(): readonly string[] {
+  const roots: string[] = [];
+  const env = process.env;
+  for (const key of [
+    "MILADY_WORKSPACE_DIR",
+    "ELIZA_WORKSPACE_DIR",
+    "MILADY_STATE_DIR",
+    "ELIZA_STATE_DIR",
+  ]) {
+    const v = env[key];
+    if (v) roots.push(resolve(v));
+  }
+  // Fallback: process cwd.
+  roots.push(process.cwd());
+  return roots;
+}
+
+function extractServiceOptions(runtime: unknown): ServiceOptions {
+  if (!runtime || typeof runtime !== "object") return {};
+  const r = runtime as {
+    getSetting?: (key: string) => unknown;
+    auditDispatcher?: AuditDispatcher;
+    actorId?: string;
+  };
+  return {
+    ...(r.auditDispatcher ? { auditDispatcher: r.auditDispatcher } : {}),
+    ...(typeof r.actorId === "string" ? { actorId: r.actorId } : {}),
+  };
 }

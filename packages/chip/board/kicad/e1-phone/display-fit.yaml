@@ -20,7 +20,7 @@ selected_primary_display:
 current_device_envelope_mm:
   width: 78.0
   height: 153.6
-  max_thickness: 9.6
+  max_thickness: 11.2
 minimum_envelope_for_primary_with_margin_mm:
   width: 77.7
   height: 153.57
@@ -77,8 +77,8 @@ candidate_fit_summary:
 recommended_device_envelope_mm:
   width: 78.0
   height: 153.6
-  max_thickness: 9.6
-  basis: primary 5.5 inch Chenghao-class CTP module plus compact CAD rail margin
+  max_thickness: 11.2
+  basis: primary 5.5 inch Chenghao-class CTP module plus compact flush-back CAD rail margin
 required_next_evidence:
   - supplier 2D drawing with display FPC exit and connector datum
   - cover-lens/touch-stack decision if using CTP module wider than 72 mm

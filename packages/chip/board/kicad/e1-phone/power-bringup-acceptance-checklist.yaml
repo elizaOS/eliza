@@ -1,0 +1,158 @@
+schema: eliza.e1_phone_power_bringup_acceptance_checklist.v1
+status: blocked_power_bringup_acceptance_requires_routed_schematic_first_power_charge_thermal_and_factory_evidence
+date: '2026-05-21'
+claim_boundary: Acceptance checklist for USB-C PD input, charger, battery pack, PMIC rails, first-power sequencing,
+  module rail enables, thermal soak, and factory power tests. It is not a routed schematic, not first-power evidence,
+  not charging safety signoff, not PI/thermal simulation, not factory limits, and not enclosure or fabrication release.
+source_artifacts:
+  - board/kicad/e1-phone/power-thermal-budget.yaml
+  - board/kicad/e1-phone/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/battery-layout-options.yaml
+  - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
+  - board/kicad/e1-phone/routing-acceptance-checklist.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+  - package/usb-pd/tps65987.yaml
+  - package/charger/max77860.yaml
+  - package/pmic/da9063.yaml
+  - package/battery/e1-phone-17p3wh-pack.yaml
+power_summary:
+  battery_pack_class: LiPol_LP576487_3p85V_5830mAh_22p45Wh_PCM_NTC_JST_SHR_03V_class
+  battery_energy_wh: 22.45
+  battery_window_fit_status: sourced_22p45wh_pack_matches_64x87x5p7_concept_cavity_pending_supplier_and_routed_board_evidence
+  battery_layout_status: blocked_routed_split_board_and_supplier_pack_evidence_required
+  usb_pd_controller: TPS65987DDH
+  usb_pd_binding_status: planning_binding_no_bonded_pins_no_fabricated_board
+  charger: MAX77860
+  charger_binding_status: planning_binding_no_bonded_pins_no_fabricated_board
+  pmic: DA9063L
+  pmic_binding_status: planning_binding_no_bonded_pins_no_fabricated_board
+  pd_sink_profiles:
+    - 5v_3a
+    - 9v_3a
+    - 12v_2p25a
+  pd_power_margin_w: 13.3
+  max_charge_current_a: 3.0
+  runtime_video_call_hours_target: 7.02
+  skin_limit_c: 43
+  rail_test_points_required:
+    - VBUS
+    - VBAT
+    - SYS
+    - AON_1V8
+    - IO_1V8
+    - RF_VBAT
+    - CAM_AVDD_2V8
+    - DISP_AVDD_5V5
+  first_power_policy:
+    bench_supply_current_limit_ma_initial: 100
+    usb_pd_input_profiles_allowed:
+      - 5v_3a
+      - 9v_3a
+      - 12v_2p25a
+    battery_pack_required_before_charge_current_above_500ma: true
+    stop_on_overcurrent_or_unsequenced_rail: true
+    oscilloscope_required: true
+    thermal_camera_required_for_charge_and_modem_burst: true
+  package_power_sequence_status:
+    pmic: required_not_implemented
+    charger: required_not_implemented
+    usb_pd: required_not_implemented
+    display: required_not_implemented
+    camera: required_not_implemented
+    cellular: required_not_implemented
+    audio: required_not_implemented
+  routing_acceptance_status: blocked_routing_acceptance_requires_supplier_footprints_trial_route_drc_and_outputs
+  usb_sidekey_acceptance_status: blocked_usb_c_sidekey_acceptance_requires_supplier_route_enclosure_and_measurements
+  factory_probe_status: blocked_requires_routed_board_fixture_and_first_article_limits
+acceptance_items:
+  - id: routed_power_schematic_and_erc
+    owner: ee
+    status: blocked_missing_routed_schematic_layout_first_power_charge_thermal_or_factory_evidence
+    required_evidence:
+      - hierarchical power schematic with PD controller, charger, PMIC, battery connector, fuel gauge, rail enables,
+        and protection
+      - ERC clean report or signed waivers
+      - supplier pinouts and layout guides bound to reviewed KiCad symbols and footprints
+    blocker: Power schematic remains scaffold-level and supplier pinouts/footprints are not frozen.
+  - id: usb_pd_attach_dead_battery_and_policy
+    owner: validation
+    status: blocked_missing_routed_schematic_layout_first_power_charge_thermal_or_factory_evidence
+    required_evidence:
+      - CC attach logs for both plug orientations
+      - PD sink profile negotiation transcript for 5 V, 9 V, and 12 V profiles
+      - dead-battery boot current-limit log and TPS65987 firmware/policy archive
+    blocker: USB-C PD attach, policy provisioning, and dead-battery behavior are not measured.
+  - id: charger_battery_pack_ntc_id_and_safety
+    owner: validation
+    status: blocked_missing_routed_schematic_layout_first_power_charge_thermal_or_factory_evidence
+    required_evidence:
+      - MAX77860 I2C readback and fault/IRQ log
+      - battery NTC, pack ID, protection PCM, connector polarity, and sample inspection report
+      - CC/CV charge cycle, JEITA hot/cold, shipping/safety certification, and connector temperature logs
+    blocker: Battery pack and charger safety evidence is missing.
+  - id: pmic_regulator_sequence_suspend_resume
+    owner: firmware_validation
+    status: blocked_missing_routed_schematic_layout_first_power_charge_thermal_or_factory_evidence
+    required_evidence:
+      - DA9063 regulator_summary, dmesg, fault IRQ, watchdog, and on-key probe transcript
+      - rail enable order oscilloscope capture for AON, AP, IO, camera, display, RF, and audio rails
+      - suspend/resume current and wake-source log including power and volume keys
+    blocker: PMIC rail sequencing and suspend/resume behavior are not captured.
+  - id: high_current_layout_pi_and_load_step
+    owner: power_integrity
+    status: blocked_missing_routed_schematic_layout_first_power_charge_thermal_or_factory_evidence
+    required_evidence:
+      - post-route copper width, via-count, return path, and current density review for VBUS, VBAT, SYS, and RF_VBAT
+      - PI simulation or bench load-step report for AP, display, camera, RF, and IO rails
+      - fabricator stackup, copper weight, via current rating, and impedance table
+    blocker: High-current layout and PI/load-step evidence are missing because the PCB is not routed.
+  - id: display_camera_radio_audio_rail_enable_logs
+    owner: bringup
+    status: blocked_missing_routed_schematic_layout_first_power_charge_thermal_or_factory_evidence
+    required_evidence:
+      - display bias and backlight scope log plus touch-controller ID
+      - front/rear camera rail enable, sensor ID, and first-frame log
+      - modem, Wi-Fi/Bluetooth, audio codec, speaker, microphone, and haptic enable logs
+    blocker: Peripheral and module rail enable logs are absent.
+  - id: thermal_soak_charge_modem_and_skin_limit
+    owner: thermal_validation
+    status: blocked_missing_routed_schematic_layout_first_power_charge_thermal_or_factory_evidence
+    required_evidence:
+      - 30 minute thermal soak for CPU/NPU, camera, modem transmit, Wi-Fi/Bluetooth, display, and charging workloads
+      - thermal camera and onboard sensor logs proving <=43 C skin target
+      - charger plus modem burst interaction review in final enclosure stack
+    blocker: Thermal soak and skin-temperature validation are not measured.
+  - id: factory_power_limits_and_first_article_transcript
+    owner: manufacturing_test
+    status: blocked_missing_routed_schematic_layout_first_power_charge_thermal_or_factory_evidence
+    required_evidence:
+      - factory probe coordinates for all required power rails
+      - factory-test-limits.yaml with rail voltage/current limits and stop-on-fail thresholds
+      - first-article transcript covering shorts, current-limited bring-up, PD attach, charge, rail sequence, and
+        thermal checks
+    blocker: Factory power limits and first-article bring-up transcript are missing.
+cross_checks:
+  pd_margin_positive_and_profiles_match_sequence: true
+  rail_test_points_match_sequence_pre_power: true
+  package_power_sequences_all_blocked: true
+  battery_binding_matches_power_budget: true
+  battery_layout_remains_fail_closed: true
+  routing_acceptance_still_blocks_power_layout: true
+  factory_probe_contains_required_power_rails: true
+  all_acceptance_items_blocked: true
+release_blockers:
+  - routed power schematic, ERC, supplier pinouts, and PMIC/charger/fuel-gauge footprints missing
+  - PD attach, charger, battery pack, PMIC, rail sequence, and first-power logs missing
+  - post-route PI, load-step, current density, thermal soak, and skin-temperature evidence missing
+  - factory power limits, probe coordinates, and first-article transcript missing
+forbidden_claims:
+  - first_power_ready
+  - rail_sequence_validated
+  - charging_ready
+  - battery_safe
+  - pmic_ready
+  - power_thermal_ready
+  - factory_power_ready
+  - fabrication_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

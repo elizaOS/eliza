@@ -39,11 +39,26 @@ function SidebarComponent({
       className: linkClassName,
       style,
       children,
-    }: DashboardSidebarLinkRenderProps) => (
-      <Link to={href} className={linkClassName} style={style}>
-        {children}
-      </Link>
-    ),
+    }: DashboardSidebarLinkRenderProps) => {
+      if (href.startsWith("http://") || href.startsWith("https://")) {
+        return (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className={linkClassName}
+            style={style}
+          >
+            {children}
+          </a>
+        );
+      }
+      return (
+        <Link to={href} className={linkClassName} style={style}>
+          {children}
+        </Link>
+      );
+    },
     [],
   );
 
@@ -77,8 +92,8 @@ function SidebarComponent({
           className="relative z-10 flex items-center gap-2 hover:opacity-80"
         >
           <ElizaCloudLockup
-            logoClassName="h-4 md:h-5"
-            textClassName="text-[9px] md:text-[10px]"
+            logoClassName="h-6 md:h-7"
+            textClassName="text-lg md:text-xl"
           />
         </Link>
       }

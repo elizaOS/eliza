@@ -1,6 +1,6 @@
 # ElizaLaunch Runtime Remote
 
-ElizaLaunch is the desktop launcher direction for the existing elizaOS/Milady Electrobun app. It keeps the Bun, TypeScript, Electrobun, and elizaOS runtime stack intact while making desktop capabilities modular.
+ElizaLaunch is the desktop launcher direction for the existing elizaOS/Eliza Electrobun app. It keeps the Bun, TypeScript, Electrobun, and elizaOS runtime stack intact while making desktop capabilities modular.
 
 Eliza Orbit is the runtime environment that coordinates Remotes. Remotes are separately installable desktop capabilities with stable IDs.
 
@@ -25,7 +25,7 @@ When installed as a bundled first-party Remote inside `packages/app-core/platfor
 
 Default runtime settings:
 
-- `cwd`: `MILADY_REPO_DIR`, then `ELIZA_REPO_DIR`, then the detected repo root
+- `cwd`: `ELIZA_REPO_DIR`, then `ELIZA_REPO_DIR`, then the detected repo root
 - `command`: `ELIZA_RUNTIME_COMMAND`, otherwise `bun run dev`
 - `apiBase`: `ELIZA_RUNTIME_API_BASE`, otherwise `http://127.0.0.1:31337`
 
@@ -281,12 +281,12 @@ The dev page is in `src/web/index.html`. It exposes Start, Stop, Restart, Runtim
 
 ## Environment
 
-- `MILADY_REPO_DIR`: preferred runtime working directory
+- `ELIZA_REPO_DIR`: preferred runtime working directory
 - `ELIZA_REPO_DIR`: fallback runtime working directory
 - `ELIZA_RUNTIME_COMMAND`: runtime command string for development
 - `ELIZA_RUNTIME_API_BASE`: local API base for health probes and API bridge calls
 - `ELIZA_RUNTIME_API_TOKEN`: optional bearer token for local API requests
-- `MILADY_API_TOKEN`: optional bearer token fallback
+- `ELIZA_API_TOKEN`: optional bearer token fallback
 - `ELIZA_PHASE2_SEND_TEST_MESSAGE`: set to `1` to send a real message in `smoke:phase2`
 - `ELIZA_PHASE2_STOP_AFTER`: set to `1` to stop the supervised runtime after `smoke:phase2`
 - `ELIZA_PHASE3_SEND_STREAM_MESSAGE`: set to `1` to send a real streaming message in `smoke:phase3`

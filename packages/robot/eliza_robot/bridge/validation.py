@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import math
+
+from eliza_robot.asimov_1.constants import ASIMOV1_FIRMWARE_JOINT_ORDER
 from eliza_robot.bridge.protocol import CommandEnvelope
 
 
@@ -9,7 +12,10 @@ def _require_number(payload: dict[str, object], key: str) -> float:
     value = payload.get(key)
     if not isinstance(value, int | float):
         raise ValueError(f"payload.{key} must be a number")
-    return float(value)
+    value = float(value)
+    if not math.isfinite(value):
+        raise ValueError(f"payload.{key} must be finite")
+    return value
 
 
 def _require_string(payload: dict[str, object], key: str) -> str:
@@ -17,6 +23,36 @@ def _require_string(payload: dict[str, object], key: str) -> str:
     if not isinstance(value, str) or value == "":
         raise ValueError(f"payload.{key} must be a non-empty string")
     return value
+
+
+def _validate_asimov_positions(payload: dict[str, object]) -> None:
+    positions = payload.get("positions", payload.get("joint_positions"))
+    if isinstance(positions, dict):
+        unknown = set(positions) - set(ASIMOV1_FIRMWARE_JOINT_ORDER)
+        if unknown:
+            raise ValueError(f"unknown ASIMOV joints: {sorted(unknown)!r}")
+        values = positions.values()
+    elif isinstance(positions, list):
+        if len(positions) != len(ASIMOV1_FIRMWARE_JOINT_ORDER):
+            raise ValueError("payload.positions has wrong ASIMOV width")
+        values = positions
+    else:
+        raise ValueError("ASIMOV trajectory requires positions or joint_positions")
+    for value in values:
+        if not isinstance(value, int | float) or not math.isfinite(float(value)):
+            raise ValueError("ASIMOV trajectory positions must be finite numbers")
+
+
+def _validate_asimov_gains(payload: dict[str, object]) -> None:
+    for key, lo, hi in (("kp", 0.0, 500.0), ("kd", 0.0, 5.0)):
+        value = payload.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, list) or len(value) != len(ASIMOV1_FIRMWARE_JOINT_ORDER):
+            raise ValueError(f"payload.{key} must be a {len(ASIMOV1_FIRMWARE_JOINT_ORDER)}-element list")
+        for item in value:
+            if not isinstance(item, int | float) or not math.isfinite(float(item)) or not lo <= float(item) <= hi:
+                raise ValueError(f"payload.{key} values must be finite and in range {lo}..{hi}")
 
 
 def validate_command_payload(command: CommandEnvelope) -> None:
@@ -67,6 +103,14 @@ def validate_command_payload(command: CommandEnvelope) -> None:
         duration = _require_number(payload, "duration")
         if duration <= 0.0 or duration > 5.0:
             raise ValueError("payload.duration out of range (0..5]")
+        if "joint_positions" in payload:
+            joint_positions = payload["joint_positions"]
+            if not isinstance(joint_positions, dict):
+                raise ValueError("payload.joint_positions must be an object")
+            for value in joint_positions.values():
+                if not isinstance(value, int | float) or not math.isfinite(float(value)):
+                    raise ValueError("payload.joint_positions values must be finite numbers")
+            return
         positions_value = payload.get("positions")
         if not isinstance(positions_value, list):
             raise ValueError("payload.positions must be a list")
@@ -86,6 +130,27 @@ def validate_command_payload(command: CommandEnvelope) -> None:
                 raise ValueError(f"payload.positions[{i}].position must be a number")
             if int(item_pos) < 0 or int(item_pos) > 1000:
                 raise ValueError(f"payload.positions[{i}].position out of range 0..1000")
+        return
+
+    if command.command == "asimov.mode":
+        mode = _require_string(payload, "mode").upper()
+        if mode not in {"DAMP", "STAND"}:
+            raise ValueError("payload.mode must be DAMP or STAND")
+        return
+
+    if command.command == "asimov.velocity":
+        _require_number(payload, "vx_mps")
+        _require_number(payload, "vy_mps")
+        _require_number(payload, "yaw_rad_s")
+        return
+
+    if command.command == "asimov.trajectory":
+        if "duration" in payload:
+            duration = _require_number(payload, "duration")
+            if duration <= 0.0 or duration > 5.0:
+                raise ValueError("payload.duration out of range (0..5]")
+        _validate_asimov_positions(payload)
+        _validate_asimov_gains(payload)
         return
 
     if command.command == "policy.start":
@@ -128,4 +193,3 @@ def validate_command_payload(command: CommandEnvelope) -> None:
         return
 
     raise ValueError(f"unsupported command: {command.command}")
-

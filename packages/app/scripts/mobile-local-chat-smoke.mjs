@@ -92,7 +92,7 @@ const IOS_WAKE_POLL_DELAY_MS = 1000;
 const ANDROID_WAKE_POLL_ATTEMPTS = 30;
 const ANDROID_WAKE_POLL_DELAY_MS = 1000;
 const ANDROID_CONFLICTING_AGENT_PACKAGES = [
-  "ai.milady.milady",
+  "ai.eliza.eliza",
   "ai.elizaos.eliza",
 ];
 

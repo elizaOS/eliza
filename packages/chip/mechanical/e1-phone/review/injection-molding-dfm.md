@@ -28,7 +28,7 @@ Status: CAD-derived DFM inputs ready; mold-flow and toolmaker signoff still requ
 - PASS: `snap_hook_release` toolmaker_review_lifters_or_straight_pull_hook_redesign; Current snap hooks prove retention intent; toolmaker must approve lifter/slide strategy or revise hooks to straight-pull geometry.
 - PASS: `usb_c_bottom_aperture_shutoff` bottom_edge_shutoff_insert_or_local_side_core_with_gasket_seat_review; USB-C mouth needs steel-safe shutoff and gasket-seat review so insertion loads, splash management, and cosmetics survive first shots.
 - PASS: `side_button_openings` side_core_lifter_or_secondary_operation_decision; Button openings are side-wall features; choose a slide/lifter strategy or keep caps mounted through an insert before hard tooling.
-- PASS: `camera_window_and_acoustic_slots` steel_safe_inserts_and_vented_shutoffs; Camera and acoustic apertures need insert/shutoff, venting, and flash-control review before texture freeze.
+- PASS: `camera_window_and_acoustic_slots` steel_safe_inserts_and_vented_shutoffs; Camera and acoustic apertures need insert/shutoff, adhesive-seat, baffle, venting, and flash-control review before texture freeze.
 
 ## Toolmaker Requests
 

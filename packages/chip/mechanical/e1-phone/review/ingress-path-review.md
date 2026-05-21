@@ -12,7 +12,7 @@ Target: IP54 design intent only.
 - PASS: `top_microphone_port` seal stack top_microphone_mesh
 - PASS: `handset_earpiece_slot` seal stack earpiece_gasket, handset_acoustic_mesh
 - PASS: `usb_c_bottom_aperture` seal stack usb_c_external_aperture, usb_c_perimeter_gasket_top, usb_c_perimeter_gasket_bottom, usb_c_perimeter_gasket_left, usb_c_perimeter_gasket_right, usb_c_molded_drip_break_lip, usb_c_internal_drain_shelf, orange_usb_reinforcement_saddle
-- PASS: `rear_camera_window` seal stack rear_camera_cover_glass, rear_camera_lens_window
+- PASS: `rear_camera_window` seal stack rear_camera_cover_glass, rear_camera_lens_window, rear_camera_cover_adhesive_top, rear_camera_cover_adhesive_bottom, rear_camera_cover_adhesive_left, rear_camera_cover_adhesive_right, rear_camera_light_baffle_top, rear_camera_light_baffle_bottom
 - PASS: `side_button_rails` seal stack power_button_cap, power_button_elastomer_gasket, power_button_labyrinth_upper_rail, power_button_labyrinth_lower_rail, volume_button_cap, volume_button_elastomer_gasket, volume_button_labyrinth_upper_rail, volume_button_labyrinth_lower_rail
 
 ## Acoustic Mesh Overhang

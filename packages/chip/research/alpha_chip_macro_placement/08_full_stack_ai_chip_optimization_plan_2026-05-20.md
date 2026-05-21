@@ -270,6 +270,15 @@ Sources:
 - https://ojs.aaai.org/index.php/AAAI/article/view/39559
 - https://doi.org/10.1016/j.mejo.2026.107100
 
+NVIDIA C3PO is a 2026 ASP-DAC placement reference for coherent concurrent
+timing, routability, and wirelength optimization. It is useful as an objective
+design reference for future OpenROAD/OpenLane experiments, but it is paper-only
+for this repo until source, exact benchmark setup, and local E1 replay exist.
+
+Source:
+
+- https://research.nvidia.com/labs/electronic-design-automation/publication/lu2026aspdac/
+
 ### CommonCircuits
 
 CommonCircuits is a new 2026 public dataset effort for normalized PCB/circuit
@@ -330,7 +339,10 @@ The first reproducibility spine is now checked in:
   `setup-check` verifies reviewed payloads and rebuilds normalized corpora/E1
   cases, `local-smoke` adds converter/training/replay-plan checks, and
   `training-handoff` adds CUDA/MPS Torch inference/training plus payload
-  packaging. Explicit `--asset ... --execute-fetch` is required for downloads.
+  packaging. Readiness auditing is a post-bootstrap gate so it can reference the
+  completed setup and training-handoff reports instead of auditing a run that is
+  still in progress. Explicit `--asset ... --execute-fetch` is required for
+  downloads.
 - `scripts/ai_eda/preflight_cuda_training_stack.py` records Mac/CUDA/MPS
   readiness into `build/ai_eda/cuda_training_preflight/<run-id>/`.
 - `scripts/ai_eda/preflight_ai_eda_backends.py` records optional AI/EDA backend
@@ -351,6 +363,21 @@ The first reproducibility spine is now checked in:
   report, tarball, embedded run plan, selected asset list, critical fetch
   commands, referenced scripts, expected CUDA outputs, and no-dataset/no-weight
   payload boundary.
+- `scripts/ai_eda/capture_cuda_readiness_audit.py` and
+  `scripts/ai_eda/check_cuda_readiness_audit.py` are wired into
+  `make ai-eda-cuda-readiness-audit`, which reconciles CUDA preflight, payload,
+  the dry-run execution manifest for the embedded run plan, AlphaChip
+  checkpoint, current-research watchlist, setup-check/bootstrap evidence,
+  training-handoff bootstrap evidence, and E1 replay-preflight reports into one
+  blocked-or-ready handoff artifact without running training, inference,
+  OpenLane, downloads, or signoff. The audit accepts explicit setup/handoff
+  evidence run IDs when those reports are produced by separate host runs.
+- `scripts/ai_eda/capture_openroad_ml_snapshot.py` and
+  `scripts/ai_eda/check_openroad_ml_snapshot.py` are wired into
+  `make ai-eda-openroad-ml-snapshot`, recording the latest local
+  OpenLane/OpenROAD final-artifact inventory for future PD predictor labels
+  while staying advisory-only and blocked until repeated deterministic runs
+  and holdout splits exist.
 - `scripts/ai_eda/capture_logic_synthesis_targets.py`,
   `scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py`, and
   `scripts/ai_eda/capture_netlist_equivalence_targets.py` are wired into
@@ -366,6 +393,36 @@ The first reproducibility spine is now checked in:
   `scripts/ai_eda/check_physical_design_target_captures.py` validating that
   timing, routing, placement/legalization, and physical-verification automation
   targets remain dry-run, fail-closed, no-tool-execution artifacts.
+- `research/alpha_chip_macro_placement/01_sources/ai_eda_current_research_watchlist_2026.yaml`
+  and `scripts/ai_eda/capture_current_research_watchlist.py` are wired into
+  `make ai-eda-optimization-targets`, with
+  `scripts/ai_eda/check_current_research_watchlist.py` validating the YAML and
+  captured report. This keeps current public AI-EDA methods such as VeoPlace,
+  HMPlace, RSPlace, dynamic-tree-search RL placement, C3PO, AuDoPEDA, AiEDA,
+  and DreamerV3+FR PCB routing as checked metadata-only watchlist entries with
+  no import, training, inference, tool, source-change, release, or E1 design
+  claim.
+- `scripts/ai_eda/capture_circuit_foundation_model_targets.py`,
+  `scripts/ai_eda/capture_eda_tool_agent_interop_targets.py`,
+  `scripts/ai_eda/capture_dfm_yield_lithography_targets.py`,
+  `scripts/ai_eda/capture_low_power_intent_targets.py`,
+  `scripts/ai_eda/capture_post_silicon_validation_targets.py`, and
+  `scripts/ai_eda/capture_hardware_security_targets.py` are wired into
+  `make ai-eda-optimization-targets`, with
+  `scripts/ai_eda/check_ai_optimization_target_captures.py` validating broader
+  AI optimization targets as dry-run, fail-closed artifacts with no model,
+  tool, source-change, release, or signoff claims.
+- `make ai-eda-all-target-captures` now refreshes every
+  `scripts/ai_eda/capture_*_targets.py` report in a dependency-safe order
+  before source-inventory validation. This covers 36 dry-run capture lanes:
+  verification, physical design, EDA agents, circuit foundation models,
+  current-research watchlist, benchmark hygiene, external-model corpus intake,
+  HLS, analog/mixed-signal, clock tree, extraction/parasitics, floorplan/IO/PDN,
+  memory macros,
+  memory interconnect, DFT/ATPG, CDC/RDC, chiplet/3DIC/package, board/FPGA,
+  compiler autotuning, CPU microarchitecture, software/BSP/firmware,
+  simulator optimization, reliability/resilience, power/thermal, low-power
+  intent, post-silicon validation, hardware security, and DFM/yield/lithography.
 - `docs/spec-db/ai-eda/internal-dataset-schemas.yaml` defines the first
   internal normalized records: `eda.design_bundle.v1`,
   `eda.placement_case.v1`, `eda.graph_sample.v1`, `eda.flow_run.v1`, and
@@ -373,6 +430,24 @@ The first reproducibility spine is now checked in:
 - `docs/spec-db/ai-eda/internal-dataset-schemas.yaml` also defines
   `eda.text_instruction_sample.v1` for OpenROAD command-assistant, RAG, and
   log-triage training samples.
+- `scripts/ai_eda/convert_current_research_watchlist_to_internal_records.py`
+  converts the validated 2026 current-research watchlist into
+  `eda.text_instruction_sample.v1` RAG/training records, and
+  `scripts/ai_eda/check_current_research_watchlist_records.py` verifies exact
+  report-to-record inventory, source hashes, metadata-only policy flags, and
+  explicit replay/signoff evidence before those records enter any CUDA runbook.
+- `scripts/ai_eda/build_training_corpus_manifest.py` and
+  `scripts/ai_eda/check_training_corpus_manifest.py` are wired into
+  `make ai-eda-training-corpus-manifest`, producing one hashed manifest across
+  every normalized local training/RAG corpus so CUDA-host runs can prove which
+  records, schemas, lanes, reports, and claim boundaries were available before
+  training.
+- `scripts/ai_eda/build_training_corpus_manifest.py` and
+  `scripts/ai_eda/check_training_corpus_manifest.py` build and validate a
+  single run-scoped manifest over the normalized training/RAG corpus. The
+  manifest records every internal record path/hash, schema distribution,
+  dataset lane, source conversion report hash, and no-payload/no-weights
+  policy boundary for CUDA handoff.
 - `docs/spec-db/ai-eda/examples/*.yaml` provides tiny schema fixtures for the
   E1 softmacro smoke lane.
 - `scripts/ai_eda/check_internal_dataset_schemas.py` validates the schemas and
@@ -383,16 +458,19 @@ The first reproducibility spine is now checked in:
 
 Current local validation on the 128 GiB M4 host:
 
-- `make docs-check`: PASS.
-- `make ai-eda-external-assets-check`: PASS for 31 locked source/model/dataset
-  entries after adding RTL-MUL, LLM4DV, AssertLLM, and Fault DFT to the
-  metadata registry.
-- `make ai-eda-external-intake-check`: PASS for 12 metadata manifests:
-  `google-circuit-training`, `tilos-macroplacement`,
-  `openroad-eda-corpus`, `chipbench-d`, `circuitnet3`, `aieda-idata`,
-  `chipdiffusion`, `openabc-d`, `timeloop-accelergy`,
-  `openroad-flow-scripts`, plus pending metadata-only manifests for
-  `intel-floorset` and `macro-place-challenge-2026`.
+- `make PYTHON=/usr/bin/python3
+  AI_EDA_RUN_ID=codex-training-corpus-docs docs-check`: PASS. This run
+  validates the local RAG index, backend preflight, current-research watchlist,
+  the full all-domain target-capture gate, active-run source inventory,
+  external assets/intake, AlphaChip checkpoint blocker, internal schemas,
+  candidate/tool-action schemas, and cocotb stimulus dry run.
+- `make ai-eda-external-assets-check`: PASS for 41 locked source/model/dataset/
+  paper entries after adding the broader research-code, verification, DFT, MCP,
+  VLM, 3D-IC, and macro-placement benchmark metadata registry.
+- `make ai-eda-external-intake-check`: PASS for 21 metadata manifests covering
+  the P0 datasets/repos, research-code assets, verification/DFT references,
+  and pending metadata-only sources that require payload or access review
+  before conversion/training use.
 - `make ai-eda-backend-preflight`: PASS_WITH_BLOCKERS_RECORDED. On the current
   Mac, ignored payload candidates are present for ZigZag and
   Timeloop/Accelergy, while RTL-MUL, LLM4DV, AssertLLM, and Fault remain
@@ -472,10 +550,12 @@ Current local validation on the 128 GiB M4 host:
   and fail-closed status. The CUDA payload run plan includes 64-map iDATA
   conversion and checker commands for the remote host.
 - `make ai-eda-edalearn-convert`: PASS when the reviewed local EDALearn
-  payload is present. The bounded local sample converts 8 public RTL/config
+  payload is present. The current payload exposes 68 design directories with
+  configs/RTL, and the bounded local sample converts 8 public RTL/config
   designs into 24 internal `eda.design_bundle.v1`, `eda.graph_sample.v1`, and
   `eda.flow_run.v1` records with source hashes, config counts, bounded module
-  graph samples, and a training-only/no-E1-signoff claim boundary.
+  graph samples, and a training-only/no-E1-signoff claim boundary
+  (`AI_EDA_RUN_ID=codex-edalearn-20260521`).
 - `make ai-eda-macro-placement-replay-preflight`: PASS_BLOCKED. The guarded
   preflight consumes the combined replay-plan bundle, selects a candidate,
   verifies candidate/case/bundle hashes, records missing replay prerequisites,
@@ -490,6 +570,65 @@ Current local validation on the 128 GiB M4 host:
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset
   macro-place-challenge-2026 --dry-run --run-id validation`: PASS and emits a
   dry-run report.
+- `make ai-eda-macro-place-challenge-convert`: PASS after local payload
+  restore/fetch. The converter emits 12 internal records across four public
+  NG45 challenge baselines (`eda.design_bundle.v1`, `eda.graph_sample.v1`, and
+  `eda.flow_run.v1` per benchmark), with processed tensor SHA256 references,
+  proxy-cost labels, PPA baseline metadata, no hidden-benchmark payload, and no
+  E1 signoff claim.
+- `make ai-eda-mlcad-fpga-macro-convert`: PASS for the restored public MLCAD
+  2023 FPGA macro-placement payload. The current local payload contains the
+  global contest/spec files, clock-bucket key, UltraScalePlus site layout,
+  library cell catalog, and cascade-shape instances, but not per-design
+  Bookshelf/Vivado cases (`design.nodes`, `design.nets`, `sample.pl`, or
+  `Design_*` directories). The converter therefore emits 12 internal records
+  across 4 clock buckets covering 180 design IDs as FPGA transfer-learning
+  metadata only and records `BLOCKED_MISSING_DESIGN_CASE_PAYLOAD` before any
+  contest-score or E1 PPA claim (`AI_EDA_RUN_ID=codex-mlcad-20260521`).
+- `make AI_EDA_RUN_ID=codex-final-validate ai-eda-openlane-flow-labels
+  ai-eda-macro-place-challenge-convert ai-eda-mlcad-fpga-macro-convert
+  ai-eda-research-code-assets-convert`: PASS. OpenLane label parsing currently
+  records `fixture_metrics_parser_smoke_no_ppa_claim` and
+  `deterministic_run_artifacts_present=false` because no local
+  `pd/openlane/runs/RUN_*/final/metrics.json` exists in this checkout; the
+  same gate will switch to the latest real run metrics automatically after
+  deterministic replay.
+- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-proxy-baselines4
+  ai-eda-macro-placement-baseline`: PASS. The checked run inspects 20
+  normalized placement cases, emits 133 quarantined candidates across the
+  center/grid/repair plus CT/SA/Hier-RTLMP/ChipDiffusion proxy lanes, records
+  one no-movable-macro blocker, validates all seven policy lanes with
+  `scripts/ai_eda/check_macro_placement_baseline.py`, and leaves every
+  candidate replay-blocked before any OpenLane/OpenROAD or E1 PPA claim.
+- `make PYTHON=/usr/bin/python3
+  AI_EDA_RUN_ID=codex-training-corpus-docs docs-check`: PASS with all AI-EDA
+  domain target captures, current-research watchlist capture, source inventory
+  (`entries=587`), 41 external assets, 21 intake manifests,
+  candidate/tool-action checks, and docs skeleton checks.
+- `make PYTHON=/usr/bin/python3
+  AI_EDA_RUN_ID=codex-safety-readiness ai-eda-cuda-readiness-audit`: PASS.
+  The CUDA metadata payload contains 204 files, covers 41 external assets,
+  includes the current-research watchlist YAML plus capture/check/conversion
+  scripts, training-corpus manifest build/check scripts, dry-run run-plan
+  executor/checker scripts, the stage-selection/risky-stage safety-matrix
+  checker, a generated `cuda_handoff_README.md` checked against the run-plan
+  command anchors, OpenROAD ML snapshot capture/check scripts, Macro Placement
+  Challenge, MLCAD FPGA macro, research-code asset, and OpenLane flow-label
+  checkers. The generated execution manifest expands run-id placeholders for
+  173 run-plan commands, selects 169 directly runnable commands, skips two
+  generic template commands, and explicitly skips the two embedded run-plan
+  orchestration commands so the executor cannot recursively invoke itself. The
+  safety matrix validates 14 stage selections and 20 checks, including blocked
+  execute-mode attempts for asset downloads, training, inference, replay, and
+  AlphaChip stages unless their explicit allow flags are supplied. Dataset
+  payloads, tensor payloads, model weights, and build outputs remain outside
+  the tarball.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset <latest-asset>
+  --execute/--verify-only --run-id codex-latest-ai-eda-20260521`: PASS for
+  MCP4EDA, ORFS-Agent, OpenROAD Agent, OpenROAD MCP, Open3DBench, DREAMPlace,
+  ChipLingo, VeoPlace, AuDoPEDA, and the 2026 3D-IC PPA surrogate paper. Git
+  assets are checked out under ignored payload directories; paper assets emit
+  metadata-only payload records and do not download PDFs or model weights.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset tilos-macroplacement
   --execute --run-id validation`: PASS. The reviewed MacroPlacement corpus is
   checked out under `external/repos/tilos-macroplacement/payload`.
@@ -498,7 +637,7 @@ Current local validation on the 128 GiB M4 host:
   `20eddb6b35232e86e6008b9deec8da77633a2f07`; the payload manifest hashes
   3,765 files and 3,744,623,755 bytes.
 - `python3 scripts/ai_eda/fetch_external_asset.py --all --dry-run --run-id
-  validation-all`: PASS across 27 locked external assets.
+  codex-latest-ai-eda-20260521`: PASS across 41 locked external assets.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset
   google-circuit-training --verify-only --run-id validation`: PASS. The
   public Circuit Training checkout is retained as ignored payload under
@@ -523,13 +662,120 @@ Current local validation on the 128 GiB M4 host:
 - `make PYTHON=/opt/miniconda3/bin/python3 AI_EDA_RUN_ID=codex-isolated-20260521
   ai-eda-cuda-payload`:
   PASS and emits a tarball containing manifests, scripts, and a run plan only.
-- `make ai-eda-cuda-payload`: PASS. The payload checker validates the generated
+- `make PYTHON=/usr/bin/python3
+  AI_EDA_RUN_ID=codex-research-assets13 ai-eda-research-code-assets-convert`:
+  PASS. The converter emits 26 normalized `eda.text_instruction_sample.v1`
+  records across 13 fetched research-code assets: ChipDiffusion, ChiPFormer,
+  CORE, MapTune, ABC-RL, abcRL, RL4LS, MCP4EDA, ORFS-Agent, OpenROAD Agent,
+  OpenROAD MCP, Open3DBench, and DREAMPlace. These are structured research/RAG
+  and CUDA-runbook samples only; the checker requires source hashes, exact
+  report-to-record inventory, no execution/training/inference, no model-weight
+  claims, and deterministic E1 replay before any optimization claim.
+- `make PYTHON=/usr/bin/python3
+  AI_EDA_RUN_ID=codex-current-research-records2
+  ai-eda-current-research-watchlist-convert`: PASS. The converter emits 8
+  normalized `eda.text_instruction_sample.v1` records from the validated 2026
+  watchlist covering VeoPlace, HMPlace, dynamic-tree-search RL, RSPlace, C3PO,
+  AuDoPEDA, AiEDA, and DreamerV3+FR PCB routing. The checker requires source
+  hashes, one record per watchlist entry, metadata-only/no-execution policy
+  flags, and explicit replay/signoff evidence in every record.
+- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-openroad-corpus-manifest
+  ai-eda-training-corpus-manifest`: PASS. The manifest covers 16 normalized
+  record-producing datasets, including the OpenROAD EDA Corpus JSONL splits. It
+  records 242 sampled/schema records and 2,342 logical training/RAG samples,
+  including 2,116 OpenROAD instruction samples split as train=1,691,
+  validation=206, and test=219. The checker verifies record/report hashes,
+  JSONL split hashes and line counts, exact dataset inventory,
+  schema-count totals, no payload/model-weight policy flags, and
+  deterministic-replay-before-claim boundaries.
+- `make PYTHON=/usr/bin/python3
+  AI_EDA_RUN_ID=codex-openroad-ml-snapshot ai-eda-openroad-ml-snapshot`: PASS.
+  The snapshot checker records `NO_OPENLANE_RUN_FOUND` in this checkout and
+  validates the dry-run label report, advisory-only claim boundary, missing-run
+  blocker list, and holdout policy before any PD predictor training claim.
+- `make PYTHON=/usr/bin/python3
+  AI_EDA_RUN_ID=codex-openroad-corpus-manifest ai-eda-training-corpus-manifest`: PASS.
+  The manifest now covers 16 normalized datasets spanning schema fixtures,
+  OpenROAD EDA Corpus train/validation/test JSONL, TILOS/ChipBench-D/Macro
+  Placement Challenge macro placement, CircuitNet3, AiEDA/iDATA, EDALearn,
+  MLCAD FPGA transfer metadata, research-code/current-research RAG records,
+  OpenABC-D logic synthesis, E1 softmacro cases, E1 OpenLane conversion, and
+  fixture OpenLane flow labels.
+- `make PYTHON=/usr/bin/python3
+  AI_EDA_RUN_ID=codex-openroad-corpus-payload2 ai-eda-cuda-run-plan-dry-run`:
+  PASS with 41 asset groups, 206 included payload files, 174 run-plan commands,
+  and 170 selected dry-run commands after adding OpenROAD EDA Corpus JSONL
+  split outputs and run-plan safety metadata. The
+  payload checker validates the generated
   report and tarball, confirms the embedded `cuda_training_run_plan.json`
-  matches the reported run plan, checks critical fetch/verify commands for
-  CircuitNet3, ChiPBench-D, OpenABC-D, AiEDA/iDATA, RTL-MUL, LLM4DV, AssertLLM,
-  and Fault, checks referenced command scripts are present in the tarball, and
-  rejects ignored payload directories, build outputs, dataset archives, and
-  model-weight files.
+  matches the reported run plan, confirms the embedded
+  `cuda_handoff_README.md` matches the generated runbook and contains the
+  dry-run/readiness/training/inference/replay command anchors, requires
+  `capture_current_research_watchlist.py`,
+  `check_current_research_watchlist.py`,
+  `convert_current_research_watchlist_to_internal_records.py`,
+  `check_current_research_watchlist_records.py`,
+  `build_training_corpus_manifest.py`,
+  `check_training_corpus_manifest.py`,
+  `execute_cuda_run_plan.py`,
+  `check_cuda_run_plan_execution.py`,
+  `check_cuda_run_plan_safety_matrix.py`,
+  `capture_openroad_ml_snapshot.py`, `check_openroad_ml_snapshot.py`, and the
+  `current_research_watchlist/<run-id>/targets_report.json` plus
+  `cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json`,
+  `cuda_run_plan_safety_matrix/<run-id>/cuda_run_plan_safety_matrix.json`,
+  `openroad_eda_corpus/<run-id>/{train,val,test}.jsonl`,
+  `pd_predictor_dataset/<run-id>/{snapshot_manifest,label_report}.json` and
+  `training_corpus_manifest/<run-id>/training_corpus_manifest.json` outputs,
+  checks dependency order so all normalized record producers run before the
+  corpus manifest, the corpus manifest runs before supervised training, train
+  steps precede inference, and replay plans precede replay preflight, checks
+  execution-manifest safety so dry-run remains command-free, `--execute`
+  requires explicit stage selection, run-plan orchestration commands are
+  skipped, and risky stages require explicit allow flags, checks
+  critical fetch/verify commands for
+  CircuitNet3, ChiPBench-D, OpenABC-D, AiEDA/iDATA, EDALearn, Macro Placement
+  Challenge 2026, MLCAD 2023 FPGA Macro Placement, ChipDiffusion, ChiPFormer,
+  CORE, MapTune, ABC-RL, abcRL, RL4LS, MCP4EDA, ORFS-Agent, OpenROAD Agent,
+  OpenROAD MCP, Open3DBench, DREAMPlace, ChipLingo, VeoPlace, AuDoPEDA, the
+  2026 3D-IC PPA surrogate paper, RTL-MUL, LLM4DV, AssertLLM, and Fault,
+  checks referenced command scripts are present in the tarball, and rejects
+  ignored payload directories, build outputs, dataset
+  archives, and model-weight files.
+- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-current-safety
+  ai-eda-cuda-run-plan-safety-matrix`: PASS. The matrix uses the generated
+  run plan to validate 14 independent stage selections and 20 safety checks,
+  including execute-mode blocks for asset downloads, training, inference,
+  replay, and AlphaChip stages when their explicit allow flags are absent,
+  without executing commands or downloading assets.
+- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-current-readiness
+  ai-eda-cuda-readiness-audit`: PASS with `PASS_WITH_BLOCKERS_RECORDED`. The
+  audit now depends on `ai-eda-cuda-run-plan-dry-run` and
+  `ai-eda-cuda-run-plan-safety-matrix`, records both the expanded
+  `cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json` manifest and
+  `cuda_run_plan_safety_matrix/<run-id>/cuda_run_plan_safety_matrix.json` as
+  input artifacts, and exposes `run_plan_dry_run_validated=true` plus
+  `run_plan_safety_matrix_validated=true` before assessing CUDA-host readiness.
+  The checked Mac run still records five hard blockers: `cuda.available=false`
+  / `large_training_ready=false`, AlphaChip checkpoint access remains
+  `PASS_BLOCKED_CURRENT`, setup-check bootstrap evidence is missing for this
+  run ID, training-handoff bootstrap evidence is missing for this run ID, and
+  E1 OpenLane/OpenROAD replay remains
+  `BLOCKED_REPLAY_EXECUTION`.
+- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-readiness-args
+  AI_EDA_SETUP_RUN_ID=codex-cuda-ready-20260521
+  AI_EDA_TRAINING_HANDOFF_RUN_ID=codex-cuda-ready-conda-20260521-training-handoff
+  ai-eda-cuda-readiness-audit`: PASS with `PASS_WITH_BLOCKERS_RECORDED`. The
+  audit proves payload handoff is ready, run-plan dry-run and safety-matrix
+  validation are complete, setup-check evidence is complete, Torch training and
+  inference are validated through the conda/MPS handoff artifacts, the full
+  169-candidate replay plan is validated, and the training-handoff payload is
+  present. It records three hard blockers for full objective completion on this
+  host: `cuda.available=false` / `large_training_ready=false`, AlphaChip
+  checkpoint access remains `PASS_BLOCKED_CURRENT`, and E1 OpenLane/OpenROAD
+  replay remains `BLOCKED_REPLAY_EXECUTION`. It also records a soft blocker
+  that the monolithic training-handoff bootstrap report did not complete even
+  though the critical Torch/full-replay/payload artifacts validated separately.
 - `make ai-eda-verification-targets`: PASS. The local verification capture
   lane emits and validates dry-run target reports for logic synthesis, RTL
   rewrite equivalence, and netlist/LEC readiness. The checker enforces
@@ -545,19 +791,54 @@ Current local validation on the 128 GiB M4 host:
   artifacts, non-empty candidate gates, artifact hashes for present inputs,
   optional-tool status accounting, and explicit blockers before any
   OpenROAD/OpenLane or signoff automation can consume these targets.
+- `make ai-eda-optimization-targets`: PASS. The broad optimization capture
+  lane emits and validates dry-run target reports for circuit foundation
+  models, current public research watchlist, EDA tool-agent interoperability,
+  DFM/yield/lithography, low-power intent, post-silicon validation, and
+  hardware security. Current validation covers 7 reports and 61 candidate
+  tasks while enforcing non-empty acceptance gates, blocked-by lists, optional
+  backend accounting, input hashes where present, and no model/tool/source/
+  release claims. The current-research watchlist checker additionally enforces
+  2026 metadata scope, unique inventory-backed source IDs, HTTPS source URLs,
+  reviewed public-code status enums, explicit hash plus replay/signoff evidence
+  text, report source-ID parity, stale-hash detection, and false policy flags.
+- `make PYTHON=/opt/homebrew/opt/python@3.13/bin/python3.13
+  AI_EDA_RUN_ID=codex-current-research-20260521
+  ai-eda-source-inventory-check`: PASS with 587 source entries and 50 backlog
+  items after refreshing the active RAG index and all-domain target captures.
+  The generated-snapshot hash checks are scoped to the active `AI_EDA_RUN_ID`
+  so historical build directories do not masquerade as current evidence.
+- `make ai-eda-all-target-captures`: PASS. The full domain target lane now
+  regenerates 36 dry-run target reports before `check_ai_eda_source_inventory`
+  runs, including report-to-report hash dependencies such as external-model
+  corpus intake before benchmark-evaluation hygiene. `make docs-check` now
+  depends on this target, so source inventory validation no longer relies on
+  stale `build/ai_eda/**/targets_report.json` files left by earlier runs.
 - `make ai-eda-internal-schemas-check`: PASS for the current internal AI-EDA
   record schemas and example fixtures.
 - `make ai-eda-bootstrap-metadata`: PASS and emits
   `build/ai_eda/bootstrap/validation/bootstrap_report.json`.
-- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-idata-setup2
-  ai-eda-bootstrap-setup-check`: PASS and validates reviewed local payload
-  availability plus normalized dataset/case generation. The passing setup
-  profile covers OpenROAD EDA Corpus, TILOS MacroPlacement, CircuitNet 3.0,
-  ChiPBench-D, AiEDA/iDATA, OpenABC-D, E1 softmacro cases, E1 OpenLane labels,
-  and the supervised macro-placement dataset without running the longer
-  Torch/CUDA or synthesis stack. `AI_EDA_RUN_ID` isolates generated records so
-  concurrent machine setup jobs do not clobber `build/ai_eda/**/validation`
-  outputs.
+- `make PYTHON=/opt/homebrew/opt/python@3.13/bin/python3.13
+  AI_EDA_RUN_ID=codex-latest-setup-20260521 ai-eda-bootstrap-setup-check`:
+  PASS with `complete=true`, 55 recorded steps, no failed steps, and
+  `overall_returncode=0`. This is the first completed expanded setup wrapper
+  evidence for the current reviewed-asset set; it covers metadata, backend
+  preflight, verification/physical/optimization target captures, source
+  inventory, external assets/intake, AlphaChip blocker, fixtures, OpenROAD EDA
+  Corpus, TILOS MacroPlacement, CircuitNet3, ChiPBench-D, AiEDA/iDATA,
+  EDALearn, Macro Placement Challenge 2026, MLCAD FPGA macro, research-code
+  assets, CircuitNet3 surrogate, OpenABC-D, E1 softmacro cases, external
+  fixtures, E1 OpenLane conversion, OpenLane flow-label parsing, and supervised
+  macro-placement dataset generation.
+- `make PYTHON=/opt/miniconda3/bin/python3
+  AI_EDA_RUN_ID=codex-torch-full-20260521
+  ai-eda-macro-placement-full-replay-plan`: PASS on the M4 host with PyTorch
+  2.8.0 using MPS. The run trains the Torch macro-placement regressor for 25
+  epochs over the 2,340/200/240 train/validation/test split, emits 18
+  quarantined Torch inference candidates with 6 blocked placement cases, ranks
+  169 deterministic plus supervised plus Torch candidates across 22 placement
+  cases, and records every replay bundle fail-closed with ready=0 and
+  blocked=169 pending deterministic OpenLane/OpenROAD replay.
 
 ### P0: Create a reproducible external asset registry
 
@@ -844,9 +1125,14 @@ Implemented schema foundation:
   PD closure gates.
 - `scripts/ai_eda/parse_openlane_metrics_to_flow_run.py` normalizes OpenLane
   timing, area, wirelength, DRC, antenna, utilization, and power metrics into an
-  `eda.flow_run.v1` record. With the fixture metrics it reports
-  `fixture_metrics_parser_smoke_no_ppa_claim`; with a real run it must still
-  be reviewed for deterministic provenance and train/test split assignment.
+  `eda.flow_run.v1` record. It now auto-selects the latest local
+  `pd/openlane/runs/RUN_*/final/metrics.json` when deterministic run artifacts
+  exist and otherwise falls back to the checked-in fixture. With the fixture
+  metrics it reports `fixture_metrics_parser_smoke_no_ppa_claim`; with a real
+  run it must still be reviewed for deterministic provenance and train/test
+  split assignment. `scripts/ai_eda/check_openlane_flow_labels.py` validates
+  the source metrics path, selection policy, deterministic-run flag, normalized
+  required-label inventory, and no-signoff claim boundary.
 - `scripts/ai_eda/train_pd_surrogate_smoke.py` consumes normalized
   `eda.flow_run.v1` labels and emits a dependency-free constant-mean surrogate,
   eval report, and training-run manifest. This proves the PD surrogate artifact
@@ -888,9 +1174,13 @@ Implemented schema foundation:
   normalized placement cases, validates the inference report, and validates the
   emitted quarantined candidate manifests. Current local M4 validation with
   `PYTHON=/opt/miniconda3/bin/python3` and
-  `AI_EDA_RUN_ID=codex-isolated-20260521` runs on MPS, trains on 2,340 samples,
-  validates on 200, tests on 240, and emits 18 quarantined inference
-  candidates with 6 blocked placement cases.
+  `AI_EDA_RUN_ID=codex-torch-full-20260521` runs on MPS with PyTorch 2.8.0,
+  trains for 25 epochs over 2,340 train samples, validates on 200 samples,
+  tests on 240 samples, and emits 18 quarantined inference candidates with 6
+  blocked placement cases. The training loss drops from 0.30094084 at epoch 1
+  to 0.22631302 at epoch 25; final metrics record train/validation/test
+  normalized mean-L1 values of 0.24657689, 0.24189173, and 0.26462516, with
+  orientation accuracy of 0.35085469, 0.67500001, and 0.45416668.
   `make ai-eda-macro-placement-supervised-replay-plan` then creates replay
   bundles and dry-run tool-action manifests for those supervised candidates,
   preserving the same OpenLane/OpenROAD blocker accounting used by the
@@ -898,22 +1188,29 @@ Implemented schema foundation:
   `make ai-eda-macro-placement-baseline` runs the first normalized
   macro-placement baseline over the softmacro fixture, current E1 OpenLane
   conversion, the converted TILOS cases, and generated E1 4x4/8x8 softmacro
-  cases. Current result: twenty placement cases inspected, fifty-seven
-  quarantined candidates emitted across three deterministic policies
-  (`center_legal_baseline`, `target_aware_grid`, and `target_repair_search`),
-  and one E1 OpenLane case correctly blocked because the current SRAM macro is
-  fixed and there are no movable objects. The legal-grid packer chooses
-  row/column counts that fit the largest macro dimensions where possible; on
-  the original converted NanGate45 Ariane133 case it emits zero-overlap
-  candidates. The target-aware and target-repair policies now clamp
-  macro-specific assignments and fall back to legal grid placements when a
-  target permutation would create out-of-bounds or overlap geometry. The replay
-  planner currently reports zero geometry-invalid candidates across all
-  fifty-seven emitted candidate manifests. This is still a proxy/schema result
-  only, with no OpenROAD replay or E1 PPA claim.
-  `make ai-eda-macro-placement-candidate-eval` ranks those fifty-seven
-  quarantined candidates by placement case and writes
-  `build/ai_eda/macro_placement_candidate_eval/validation/macro_placement_candidate_eval_report.json`.
+  cases. Current result with `AI_EDA_RUN_ID=codex-proxy-baselines4`: twenty
+  placement cases inspected, 133 quarantined candidates emitted across seven
+  policies (`center_legal_baseline`, `target_aware_grid`,
+  `target_repair_search`, `circuit_training_proxy`,
+  `simulated_annealing_proxy`, `hier_rtlmp_proxy`, and
+  `chipdiffusion_proxy`), and one E1 OpenLane case correctly blocked because
+  the current SRAM macro is fixed and there are no movable objects. The
+  CT/SA/Hier-RTLMP/ChipDiffusion policies are deterministic local proxy
+  adapters that exercise the candidate, ranking, and replay-plan contracts
+  until the real external tools are fetched and wrapped. Large public
+  benchmark cases skip expensive exact local pairwise-overlap scoring and
+  remain replay-blocked, so OpenLane/OpenROAD remains the authority for any
+  geometry, congestion, timing, or PPA claim. The target-aware and
+  target-repair policies clamp macro-specific assignments and fall back to
+  legal grid placements when a target permutation would create out-of-bounds
+  or overlap geometry. This is still a proxy/schema result only, with no
+  OpenROAD replay or E1 PPA claim. The target now also runs
+  `scripts/ai_eda/check_macro_placement_baseline.py`, which validates the
+  seven required policies, per-candidate score shape, replay-blocked decision
+  status, required downstream gates, and the no-release claim boundary.
+  `make ai-eda-macro-placement-candidate-eval` ranks those 133 quarantined
+  candidates by placement case and writes
+  `build/ai_eda/macro_placement_candidate_eval/codex-proxy-baselines4/macro_placement_candidate_eval_report.json`.
   `make ai-eda-macro-placement-combined-candidate-eval` ranks both the
   deterministic baseline candidates and the supervised mean-prior candidates
   together for local non-PyTorch validation. Current combined validation ranks
@@ -934,14 +1231,16 @@ Implemented schema foundation:
   `make ai-eda-macro-placement-full-candidate-eval` and
   `make ai-eda-macro-placement-full-replay-plan` add the Torch-inference
   candidate directory to that queue when PyTorch is available. Current MPS
-  validation ranks 93 candidates across 22 placement cases and replay-plans all
-  93 fail-closed candidates, with 0 ready for execution.
+  validation with `AI_EDA_RUN_ID=codex-torch-full-20260521` ranks 169
+  candidates across 22 placement cases and replay-plans all 169 candidates
+  fail-closed, with 0 ready for execution. The replay-plan claim boundary is
+  `macro_placement_replay_plan_only_no_openroad_execution_or_release_claim`.
   Current blocker counts in
-  `build/ai_eda/macro_placement_full_replay/codex-isolated-20260521/replay_plan.json`: 72
-  external benchmark candidates require local MacroPlacement/OpenROAD tool
-  review, 10 abstract E1 softmacro candidates need real LEF/DEF/OpenLane macro
-  integration, 6 candidates lack deterministic OpenLane/OpenROAD replay
-  commands, and 5 fixture candidates are smoke-only. Geometry blockers are
+  `build/ai_eda/macro_placement_full_replay/codex-torch-full-20260521/replay_plan.json`:
+  136 external benchmark candidates require local MacroPlacement/OpenROAD tool
+  review, 18 abstract E1 softmacro candidates need real LEF/DEF/OpenLane macro
+  integration, 9 fixture candidates are smoke-only, and 6 candidates lack
+  deterministic OpenLane/OpenROAD replay commands. Geometry blockers are
   currently zero after candidate legalization.
   `make ai-eda-e1-softmacro-cases` proves generated E1 4x4/8x8 case
   materialization and schema validation locally.
@@ -994,6 +1293,17 @@ Implemented schema foundation:
   preflight only inspects local Python modules, commands, and ignored payload
   paths, then records present or blocked status for each backend so CUDA-host
   setup can distinguish missing install work from validated training artifacts.
+  `make ai-eda-macro-place-challenge-convert` converts the public Partcl/HRT
+  Macro Placement Challenge 2026 baseline metadata into normalized internal
+  records without exporting `.pt` tensor payloads into the CUDA tarball. The
+  companion checker requires tensor file hashes, proxy-cost labels, PPA
+  baseline accounting, no hidden-benchmark use, and deterministic replay
+  blockers before any E1 claim.
+  `make ai-eda-mlcad-fpga-macro-convert` converts the MLCAD 2023 FPGA macro
+  placement public spec payload into normalized clock-bucket records for
+  transfer-learning manifests. The checker requires non-empty FPGA site,
+  library, cascade, and clock-bucket metadata while preserving the missing
+  per-design Bookshelf/Vivado payload blocker and forbidding E1 signoff claims.
   `make ai-eda-verification-targets` captures logic-synthesis, RTL-rewrite
   equivalence, and netlist/LEC target reports in dry-run mode, then validates
   that the reports make no execution, generated-rewrite, equivalence, PPA,
@@ -1007,9 +1317,18 @@ Implemented schema foundation:
   false, no PPA/routability/DRC/LVS/signoff/release claim is allowed, candidate
   tasks have acceptance gates, optional tool status is recorded, and hashed
   input artifacts exist before downstream automation can consume the targets.
+  `make ai-eda-optimization-targets` captures circuit-foundation-model,
+  EDA-agent-interoperability, DFM/yield/lithography, low-power-intent,
+  post-silicon-validation, and hardware-security target reports in dry-run
+  mode, then validates no model/tool/source/release claims, candidate
+  acceptance gates, blocked-by lists, optional backend status, and input
+  artifact hashes for present files.
+  `make ai-eda-all-target-captures` refreshes all 36 AI-EDA target-capture
+  reports in dependency-safe order so source-inventory validation sees current
+  hashes for every domain target, not stale build artifacts.
   `make docs-check` depends on the local RAG index, source, external-asset,
   intake-manifest, schema, candidate, tool-action, backend-preflight, dry-run
-  stimulus, verification-target, and physical-design-target checkers.
+  stimulus, and the full all-domain target-capture gate.
 
 Converters to add or complete:
 
@@ -1228,9 +1547,16 @@ Implementation TODOs:
 - Replace the current `scripts/ai_eda/run_cocotb_stimulus_search.py` dry-run
   manifest validator with a real LLM4DV/CVDP-backed seed generator for the
   descriptor queue, DMA, IOMMU, interrupt, reset, and NPU command-buffer bins.
-- Add a candidate assertion schema:
-  module, signal scope, reset semantics, clock domain, antecedent,
-  consequent, bounded depth, generated-by, reviewer, bind status.
+- [x] Add a candidate assertion schema/check gate:
+  `verify/ai_eda/assertion_candidates/e1_npu_descriptor.yaml` now records
+  module, signal scope, reset semantics, clock domain, antecedent, consequent,
+  bounded depth, generated-by, reviewer, bind status, quarantine path, and
+  promotion gates for the first E1 NPU descriptor properties.
+  `scripts/ai_eda/check_assertion_candidate_manifests.py` validates that
+  generated or human-seeded assertions remain unbound to RTL, require review,
+  require formal/cocotb promotion gates, and write only under
+  `build/ai_eda/assertion_candidates/`. `make docs-check`, bootstrap metadata,
+  and the CUDA payload/runbook now carry this gate.
 - Add `scripts/ai_eda/replay_assertion_candidate.py` that runs only on
   quarantined copies until reviewed.
 - Add failure clustering for formal traces and cocotb logs.
@@ -1256,9 +1582,16 @@ Inputs:
 
 Implementation TODOs:
 
-- Add a model/workload manifest for every AI benchmark:
-  source, license, input shape, quantization, expected ops, fallback ops,
-  runtime path, and golden output tolerance.
+- [x] Add a model/workload manifest for AI benchmark lanes:
+  `docs/spec-db/ai-eda/e1-ai-workload-manifest.yaml` records source, license,
+  input shape, quantization, expected ops, fallback ops, runtime path, golden
+  output tolerance, artifacts, and blockers for TFLite CPU/NNAPI smoke,
+  NPU scale simulation, Timeloop mapping, StableHLO lowering, INT4, FP8, and
+  sparse 2:4 fixtures. `scripts/ai_eda/check_ai_workload_manifest.py` validates
+  the manifest, benchmark-plan references, SHA256 hashes for every local
+  referenced artifact, required
+  workload categories, and blocked zero-fallback lanes. `make docs-check`,
+  bootstrap metadata, and the CUDA payload/run plan now carry this gate.
 - Integrate Timeloop/Accelergy and ZigZag outputs into the same E1 candidate
   schema as PD models.
 - Add compiler autotuning experiments for:
@@ -1537,8 +1870,13 @@ fail closed until the checker can classify PASS/BLOCKED/FAIL.
   `python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id
   fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus
   --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset
-  aieda-idata --execute-fetch`; payloads land only in ignored `payload/`
-  directories.
+  aieda-idata --asset edalearn --asset macro-place-challenge-2026 --asset
+  mlcad-2023-fpga-macro --asset chipdiffusion --asset chipformer --asset
+  core-placement --asset maptune --asset abc-rl --asset abcrl --asset rl4ls
+  --asset mcp4eda --asset orfs-agent --asset openroad-agent --asset
+  openroad-mcp --asset open3dbench --asset dreamplace --asset chiplingo
+  --asset veoplace-vlm --asset audopeda --asset ppa-3dic-surrogate-2026
+  --execute-fetch`; payloads land only in ignored `payload/` directories.
 - Run `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=<host-or-date>
   ai-eda-bootstrap-setup-check` after payload restore/fetch to rebuild
   normalized corpora, local E1 softmacro cases, OpenLane labels, and supervised
@@ -1679,12 +2017,19 @@ not as:
 - [x] Add read-only local EDA RAG/log-triage manifest and citation checker.
 - [x] Add fail-closed physical-design target captures for timing closure,
   routing/congestion, placement/legalization, and physical verification.
+- [x] Add fail-closed broad optimization target captures for circuit foundation
+  models, EDA agents, DFM/yield/lithography, low-power intent, post-silicon
+  validation, and hardware security.
+- [x] Wire all 36 AI-EDA domain target-capture scripts into a single
+  dependency-safe Make/CUDA/docs-check gate.
 - [x] Legalize target-aware and target-repair macro-placement candidates so the
   replay planner reports zero out-of-bounds, overlap, or unknown-target
   candidates across the expanded candidate set.
 - [x] Convert sixteen real MacroPlacement cases after external fetch/pin.
 - [x] Validate expanded macro-placement candidate directory and replay-blocker
   plan.
+- [x] Add first replay-blocked proxy adapters for CT, SA, Hier-RTLMP, and
+  ChipDiffusion macro-placement lanes over normalized E1/TILOS placement cases.
 - [x] Generate and convert E1 4x4/8x8 softmacro placement cases.
 - [x] Convert real ChiPBench-D metadata and a bounded sample after
   license/storage review.
@@ -1693,10 +2038,35 @@ not as:
 - [x] Convert one real iDATA graph/flow sample after license/storage review.
 - [x] Convert real EDALearn RTL/config samples after local payload fetch and
   schema review.
+- [x] Convert public Partcl/HRT Macro Placement Challenge 2026 baseline
+  metadata into internal design, graph, and flow records with a CUDA handoff
+  checker while keeping `.pt` tensors out of the payload tarball.
+- [x] Convert public MLCAD 2023 FPGA macro-placement spec metadata into
+  internal graph/flow records while preserving the missing per-design
+  Bookshelf/Vivado payload blocker.
+- [x] Convert fetched ChipDiffusion, ChiPFormer, CORE, MapTune, ABC-RL, abcRL,
+  RL4LS, MCP4EDA, ORFS-Agent, OpenROAD Agent, OpenROAD MCP, Open3DBench, and
+  DREAMPlace research-code repos into normalized text-instruction records for
+  RAG/CUDA runbook training, with no execution or optimization claim.
+- [x] Add and validate the E1 AI workload/model manifest for TFLite, NPU scale,
+  Timeloop, StableHLO lowering, INT4, FP8, and sparse 2:4 benchmark lanes,
+  with SHA256 pins for every referenced local model, runner, config, proof
+  template, runtime, lowering, calibrator, and test artifact.
+- [x] Add and validate the E1 assertion-candidate manifest gate for
+  quarantined, unbound NPU descriptor SVA candidates.
+- [x] Add a fail-closed external-method wrapper readiness contract for
+  replacing CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters, including required
+  payloads, output contracts, blockers, and replay gates.
+- [x] Add a deterministic macro-placement replay queue that selects top-ranked
+  candidates per case, records candidate/config/tool-action hashes, and keeps
+  OpenLane/OpenROAD replay blocked until a pinned PD host can execute it.
+- [x] Extend the CUDA readiness audit to accept split evidence run IDs for
+  preflight, payload/run-plan, safety matrix, AlphaChip audit, current-research
+  watchlist, E1 replay preflight, setup, and training-handoff artifacts.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
-- [ ] Train/run first CT/SA/Hier-RTLMP/ChipDiffusion macro-placement baselines
-  on E1 4x4 after real benchmark conversion.
+- [ ] Replace CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters with the real
+  external-method inference wrappers after each payload is fetched and reviewed.
 - [ ] Replay baseline candidates through OpenLane/OpenROAD.
 - [x] Add model-card template for placement policies.
 - [x] Add dataset-card template for converted corpora.

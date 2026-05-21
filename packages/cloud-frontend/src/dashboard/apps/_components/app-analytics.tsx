@@ -90,7 +90,7 @@ interface Visitor {
 const SOURCE_COLORS: Record<string, string> = {
   api_key: BRAND_COLORS.orange,
   sandbox_preview: "#8b5cf6",
-  embed: "#3b82f6",
+  embed: "#FF5800",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -103,7 +103,7 @@ const TYPE_COLORS: Record<string, string> = {
   pageview: "#10b981",
   chat: BRAND_COLORS.orange,
   image: "#8b5cf6",
-  video: "#3b82f6",
+  video: "#FF5800",
   voice: "#f59e0b",
   agent: "#ec4899",
 };
@@ -364,7 +364,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <DashboardStatCard
                 label="Total Users"
                 value={totalStats.totalUsers?.toLocaleString() || "0"}
-                icon={<Users className="h-5 w-5 text-blue-400" />}
+                icon={<Users className="h-5 w-5 text-white/70" />}
               />
               <DashboardStatCard
                 label="Credits Used"
@@ -448,7 +448,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                     }}
                   />
                   <Bar dataKey="newUsers" fill="#8b5cf6" name="New Users" />
-                  <Bar dataKey="users" fill="#3b82f6" name="Total Users" />
+                  <Bar dataKey="users" fill="#FF5800" name="Total Users" />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -629,7 +629,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <DashboardStatCard
                     label="Unique Users"
                     value={requestStats.uniqueUsers.toLocaleString()}
-                    icon={<Users className="h-5 w-5 text-blue-400" />}
+                    icon={<Users className="h-5 w-5 text-white/70" />}
                   />
                   <DashboardStatCard
                     label="Avg Requests/IP"

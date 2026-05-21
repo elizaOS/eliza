@@ -119,8 +119,8 @@ export function AppPromote({ app }: AppPromoteProps) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-sm bg-blue-500/10">
-              <Share2 className="h-5 w-5 text-blue-400" />
+            <div className="p-2 rounded-sm bg-[#FF5800]/10">
+              <Share2 className="h-5 w-5 text-[#FF5800]" />
             </div>
             <div>
               <p className="text-xs text-neutral-500">Social Posts</p>

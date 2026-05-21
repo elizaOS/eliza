@@ -98,17 +98,26 @@
         "mechanical/e1-phone/out/rear_camera_module.step",
         "mechanical/e1-phone/out/rear_camera_cover_glass.step",
         "mechanical/e1-phone/out/rear_camera_lens_window.step",
+        "mechanical/e1-phone/out/rear_camera_cover_adhesive_top.step",
+        "mechanical/e1-phone/out/rear_camera_cover_adhesive_bottom.step",
+        "mechanical/e1-phone/out/rear_camera_cover_adhesive_left.step",
+        "mechanical/e1-phone/out/rear_camera_cover_adhesive_right.step",
+        "mechanical/e1-phone/out/rear_camera_light_baffle_top.step",
+        "mechanical/e1-phone/out/rear_camera_light_baffle_bottom.step",
         "mechanical/e1-phone/out/front_camera_module.step",
-        "mechanical/e1-phone/out/front_camera_under_glass.step"
+        "mechanical/e1-phone/out/front_camera_under_glass.step",
+        "mechanical/e1-phone/out/front_camera_black_mask_window.step"
       ],
       "questions": [
         "Confirm rear module total height, FPC exit side, lens keepout, and dust gasket stack.",
-        "Confirm front module can sit behind cover glass without visible notch or protrusion.",
+        "Confirm rear cover-window adhesive gasket material, baffle clearance, and dust-control process.",
+        "Confirm front module can sit behind cover glass and black mask without visible notch or protrusion.",
         "Quote matched rear/front MIPI modules with low-volume sample availability."
       ],
       "acceptance_criteria": [
-        "rear AF stack fits 9.6 mm phone depth with modeled cover window",
-        "front camera remains behind glass and clear of earpiece path",
+        "single rear AF module is fully buried under the flat back wall behind a flush internal window with modeled gasketed/baffled stack",
+        "front camera remains behind glass, black masked, and clear of earpiece path",
+        "camera window passes dust/vignette/flare inspection after cover-window bond",
         "supplier provides optical center datum in drawing and STEP"
       ],
       "requested_files": [

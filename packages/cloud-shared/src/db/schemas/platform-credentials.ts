@@ -16,6 +16,7 @@
 
 import {
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -132,6 +133,25 @@ export const platformCredentials = pgTable(
     // Raw profile data from OAuth provider
     profile_data: jsonb("profile_data").$type<Record<string, unknown>>(),
 
+    // Field-level encryption (D-3). AAD = "platform_credentials|<id>|<col>".
+    platform_user_id_ciphertext: text("platform_user_id_ciphertext"),
+    platform_user_id_nonce: text("platform_user_id_nonce"),
+    platform_user_id_auth_tag: text("platform_user_id_auth_tag"),
+    platform_user_id_kms_key_id: text("platform_user_id_kms_key_id"),
+    platform_user_id_kms_key_version: integer("platform_user_id_kms_key_version"),
+
+    platform_email_ciphertext: text("platform_email_ciphertext"),
+    platform_email_nonce: text("platform_email_nonce"),
+    platform_email_auth_tag: text("platform_email_auth_tag"),
+    platform_email_kms_key_id: text("platform_email_kms_key_id"),
+    platform_email_kms_key_version: integer("platform_email_kms_key_version"),
+
+    platform_display_name_ciphertext: text("platform_display_name_ciphertext"),
+    platform_display_name_nonce: text("platform_display_name_nonce"),
+    platform_display_name_auth_tag: text("platform_display_name_auth_tag"),
+    platform_display_name_kms_key_id: text("platform_display_name_kms_key_id"),
+    platform_display_name_kms_key_version: integer("platform_display_name_kms_key_version"),
+
     // Timestamps
     created_at: timestamp("created_at").notNull().defaultNow(),
     linked_at: timestamp("linked_at"),
@@ -140,6 +160,7 @@ export const platformCredentials = pgTable(
     expires_at: timestamp("expires_at"),
     revoked_at: timestamp("revoked_at"),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
+    deleted_at: timestamp("deleted_at"),
   },
   (table) => ({
     org_idx: index("platform_credentials_org_idx").on(table.organization_id),
@@ -151,6 +172,7 @@ export const platformCredentials = pgTable(
       table.platform_user_id,
     ),
     status_idx: index("platform_credentials_status_idx").on(table.status),
+    deleted_at_idx: index("platform_credentials_deleted_at_idx").on(table.deleted_at),
   }),
 );
 

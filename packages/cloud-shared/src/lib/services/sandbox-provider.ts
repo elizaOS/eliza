@@ -10,7 +10,7 @@ export type {
  * Pick the sandbox provider implementation.
  *
  * - `LocalDockerSandboxProvider` when:
- *   - `MILADY_LOCAL_DOCKER_PROVIDER=1`, OR
+ *   - `ELIZA_LOCAL_DOCKER_PROVIDER=1`, OR
  *   - `ENVIRONMENT=local` and no SSH key envs are configured
  *     (`CONTAINERS_SSH_KEY`, `CONTAINERS_SSH_KEY_PATH`, `AGENT_SSH_KEY`,
  *     `AGENT_SSH_KEY_PATH`).
@@ -40,7 +40,7 @@ function shouldUseMemoryTestProvider(): boolean {
 
 function shouldUseLocalDockerProvider(): boolean {
   const env = process.env;
-  if (env.MILADY_LOCAL_DOCKER_PROVIDER === "1") return true;
+  if (env.ELIZA_LOCAL_DOCKER_PROVIDER === "1") return true;
   if (env.ENVIRONMENT === "local") {
     const hasSshKey =
       hasValue(env.CONTAINERS_SSH_KEY) ||

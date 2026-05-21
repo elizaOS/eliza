@@ -53,9 +53,10 @@ type MetricsOverview = AdminMetricsOverviewDto;
 // ---------------------------------------------------------------------------
 
 const PLATFORM_COLORS: Record<string, string> = {
-  web: "#6366F1",
-  telegram: "#0088CC",
-  discord: "#5865F2",
+  web: "#FF5800",
+  // Brand rule: no blue. These were platform-brand blues; neutralized.
+  telegram: "#A1A1AA",
+  discord: "#71717A",
   imessage: "#34C759",
   sms: "#F97316",
 };
@@ -380,7 +381,7 @@ export function AdminMetricsClient() {
               ) : dailyTrendData.length > 0 ? (
                 <ChartContainer
                   config={{
-                    dau: { label: "DAU", color: "#6366F1" },
+                    dau: { label: "DAU", color: "#FF5800" },
                     messages: { label: "Messages", color: "#22C55E" },
                     signups: { label: "Signups", color: "#F97316" },
                   }}
@@ -391,12 +392,12 @@ export function AdminMetricsClient() {
                       <linearGradient id="fillDau" x1="0" y1="0" x2="0" y2="1">
                         <stop
                           offset="5%"
-                          stopColor="#6366F1"
+                          stopColor="#FF5800"
                           stopOpacity={0.3}
                         />
                         <stop
                           offset="95%"
-                          stopColor="#6366F1"
+                          stopColor="#FF5800"
                           stopOpacity={0.05}
                         />
                       </linearGradient>
@@ -436,7 +437,7 @@ export function AdminMetricsClient() {
                     <Area
                       type="monotone"
                       dataKey="dau"
-                      stroke="#6366F1"
+                      stroke="#FF5800"
                       fill="url(#fillDau)"
                       strokeWidth={2}
                       dot={false}
@@ -656,7 +657,7 @@ export function AdminMetricsClient() {
                 <ChartContainer
                   config={{
                     d1: { label: "D1", color: "#22C55E" },
-                    d7: { label: "D7", color: "#6366F1" },
+                    d7: { label: "D7", color: "#FF5800" },
                     d30: { label: "D30", color: "#F97316" },
                   }}
                   className="h-[340px] w-full border border-brand-surface bg-[rgba(10,10,10,0.5)] p-5 sm:p-6"
@@ -699,7 +700,7 @@ export function AdminMetricsClient() {
                     <Line
                       type="monotone"
                       dataKey="d7"
-                      stroke="#6366F1"
+                      stroke="#FF5800"
                       strokeWidth={2}
                       dot={false}
                       connectNulls
@@ -774,7 +775,7 @@ export function AdminMetricsClient() {
                 ) : oauthServiceData.length > 0 ? (
                   <ChartContainer
                     config={{
-                      count: { label: "Users", color: "#6366F1" },
+                      count: { label: "Users", color: "#FF5800" },
                     }}
                     className="h-[240px] w-full border border-brand-surface bg-[rgba(10,10,10,0.5)] p-5 sm:p-6"
                   >
@@ -791,7 +792,7 @@ export function AdminMetricsClient() {
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <Bar
                         dataKey="count"
-                        fill="#6366F1"
+                        fill="#FF5800"
                         radius={[0, 4, 4, 0]}
                       />
                     </BarChart>

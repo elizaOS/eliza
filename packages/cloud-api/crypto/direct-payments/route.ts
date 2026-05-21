@@ -23,6 +23,10 @@ const createSchema = z.object({
   amount: z.number().min(1).max(10000),
   network: z.enum(["base", "bsc", "solana"]),
   payerAddress: z.string().min(1),
+  // BSC supports multiple tokens (BNB native, USDT, U). Other networks ignore
+  // this field. Restricted to known symbols so the service does not see an
+  // unbounded string.
+  tokenSymbol: z.enum(["BNB", "USDT", "U"]).optional(),
   promoCode: z.literal("bsc").optional(),
 });
 
@@ -35,16 +39,10 @@ app.get("/config", rateLimit(RateLimitPresets.STANDARD), (c) => {
 app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    if (!user.wallet_address) {
-      return c.json(
-        {
-          error:
-            "Connect and verify a wallet on your account before paying with crypto.",
-          code: "wallet_required",
-        },
-        400,
-      );
-    }
+    // Wallet is NOT required on the account — OAuth-only users (Google /
+    // Discord / GitHub / Magic / Passkey) can still pay from any EVM wallet.
+    // Credits land on `organization_id` from the authenticated session; the
+    // actual paying wallet is recorded from the verified transaction.
 
     const body = await c.req.json();
     const validation = createSchema.safeParse(body);
@@ -61,10 +59,11 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     const result = await directWalletPaymentsService.createPayment(c.env, {
       organizationId: user.organization_id,
       userId: user.id,
-      accountWalletAddress: user.wallet_address,
+      accountWalletAddress: user.wallet_address ?? null,
       payerAddress: validation.data.payerAddress,
       amountUsd: validation.data.amount,
       network: validation.data.network as DirectWalletNetwork,
+      tokenSymbol: validation.data.tokenSymbol,
       promoCode: validation.data.promoCode,
     });
 

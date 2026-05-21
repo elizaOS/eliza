@@ -1,9 +1,8 @@
 /**
  * Canonical environment-variable reader with legacy-alias back-compat.
  *
- * The product runtime moved from the `MILADY_*` env-var convention to the
- * `ELIZA_*` convention. To avoid breaking existing installs, every read of a
- * renamed variable goes through {@link readEnv}, which:
+ * Every read of an environment variable that has historical aliases goes
+ * through {@link readEnv}, which:
  *
  *   1. Prefers the canonical (`ELIZA_*`) name.
  *   2. Falls back to each legacy alias in order, emitting a **one-time**

@@ -8,7 +8,7 @@ Status: CAD camera validation ready; supplier and optical measurements still req
 - PASS: `rear_camera_z_stack` target rear AF stack depth <=5.5 mm and >=2.0 mm battery gap
 - PASS: `front_under_glass_margin` target >=1.0 mm radial module margin and <=0.8 mm cover glass for front under-glass camera
 - PASS: `front_camera_earpiece_clearance` target >=1.0 mm front camera to earpiece receiver gap
-- PASS: `camera_interface_strategy` target front camera under glass, rear AF camera through dedicated cover window
+- PASS: `camera_interface_strategy` target front camera under glass with black mask; rear AF camera through gasketed/baffled cover window
 
 ## Lab Measurements
 

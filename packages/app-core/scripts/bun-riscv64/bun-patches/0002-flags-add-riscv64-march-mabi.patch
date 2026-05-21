@@ -1,5 +1,5 @@
 From e230919866ddbc93faa7ea4a91096899a60d29d2 Mon Sep 17 00:00:00 2001
-From: bun-riscv64 build <bun-riscv64@milady.local>
+From: bun-riscv64 build <bun-riscv64@eliza.local>
 Date: Tue, 19 May 2026 04:35:05 -0700
 Subject: [PATCH 2/7] flags: add riscv64 CPU target flags (rv64gc/lp64d)
 

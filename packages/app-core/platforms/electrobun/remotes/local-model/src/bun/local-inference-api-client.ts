@@ -14,12 +14,12 @@ export class LocalInferenceApiClient {
 		this.apiBase =
 			options.apiBase ??
 			process.env.ELIZA_RUNTIME_API_BASE ??
-			process.env.MILADY_DESKTOP_API_BASE ??
+			process.env.ELIZA_DESKTOP_API_BASE ??
 			"http://127.0.0.1:31337";
 		this.token =
 			options.token ??
 			process.env.ELIZA_RUNTIME_API_TOKEN ??
-			process.env.MILADY_API_TOKEN ??
+			process.env.ELIZA_API_TOKEN ??
 			null;
 	}
 

@@ -17,6 +17,10 @@ on:
         default: next
         type: string
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   sync:
     runs-on: ubuntu-latest

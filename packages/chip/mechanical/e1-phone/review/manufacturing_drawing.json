@@ -4,7 +4,7 @@
   "device_envelope_mm": [
     78.0,
     153.6,
-    9.6
+    11.2
   ],
   "corner_radius_mm": 7.5,
   "wall_thickness_mm": 1.15,
@@ -21,7 +21,7 @@
   "battery_envelope_mm": [
     64.0,
     87.0,
-    4.4
+    5.7
   ],
   "manufacturing": {
     "draft_deg": 2.0,

@@ -1,0 +1,399 @@
+schema: eliza.e1_phone_component_height_step_integration.v1
+status: blocked_requires_supplier_step_models_routed_board_step_and_clearance_rerun
+date: '2026-05-21'
+claim_boundary: Board-owned component-height and STEP integration gate. Concept STEP envelopes show packaging intent
+  only; they do not prove supplier geometry, routed KiCad board clearance, production stack height, or enclosure
+  readiness.
+source_artifacts:
+  - board/kicad/e1-phone/enclosure-placement-closure.yaml
+  - board/kicad/e1-phone/enclosure-tolerance-stack-closure.yaml
+  - board/kicad/e1-phone/route-feasibility-density.yaml
+  - board/kicad/e1-phone/evt1-routing-work-package.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
+  - mechanical/e1-phone/review/board-step-readiness.json
+  - mechanical/e1-phone/review/routed-board-clearance.json
+  - mechanical/e1-phone/review/supplier-evidence-acceptance.json
+  - mechanical/e1-phone/review/step-validation.json
+  - mechanical/e1-phone/review/compactness-optimization.json
+compactness_context:
+  status: cad_compactness_optimized
+  current_envelope_mm:
+    - 78.0
+    - 153.6
+    - 11.2
+  width_excess_over_bound_mm: 0.3
+  height_excess_over_bound_mm: 1.23
+  area_excess_over_bound_mm2: 141.7
+  decision: 'Keep 78.0 x 153.6 x 11.2 mm molded orange body: width/height stay display-driven; depth was deliberately raised to fully bury the rear camera and torch under a flat flush back wall (no camera bump, no proud lens ring).'
+concept_step_context:
+  enclosure_placement_status: enclosure_placement_cross_checked_not_release_ready
+  step_validation_status: pass
+  validated_step_count: 94
+  assembly_step: mechanical/e1-phone/out/e1-phone-solid-assembly.step
+  assembly_step_imported: true
+  assembly_step_bbox_span_mm:
+    - 81.1
+    - 154.24
+    - 11.63
+  concept_step_artifact_count: 25
+  missing_concept_step_artifacts: []
+  concept_is_release_evidence: false
+routed_board_step_context:
+  board_step_readiness_status: blocked_concept_pcb_no_routed_step
+  routed_board_clearance_status: blocked_waiting_for_routed_board_step
+  production_step_files: []
+  has_tracks: false
+  has_filled_zones: true
+  has_production_step: false
+  placeholder_marker_count: 116
+  concept_split_island_geometry_matches_kicad: true
+supplier_geometry_context:
+  supplier_evidence_status: blocked_no_supplier_evidence
+  expected_family_count: 6
+  complete_family_count: 0
+  supplier_cases:
+    - id: display_touch_stack
+      rfq_package_id: display_touch_stack
+      rfq_package_ready: true
+      cad_replacement_scope:
+        - display_lcm_ctp
+      required_evidence:
+        - quote
+        - 2d_drawing
+        - step_model
+        - sample
+        - fpc_pinout
+        - mating_connector
+        - touch_display_bringup_data
+      returned_basic_evidence: false
+      missing_supplier_items:
+        - display_lcm_ctp
+      pass: false
+    - id: usb_audio_bottom_io
+      rfq_package_id: usb_c_and_bottom_audio
+      rfq_package_ready: true
+      cad_replacement_scope:
+        - usb_c
+      required_evidence:
+        - quote
+        - 2d_drawing
+        - step_model
+        - sample
+        - usb_land_pattern
+        - insertion_force_data
+        - splash_gasket_review
+      returned_basic_evidence: false
+      missing_supplier_items:
+        - usb_c
+      pass: false
+    - id: power_volume_buttons
+      rfq_package_id: buttons_haptics_service
+      rfq_package_ready: true
+      cad_replacement_scope:
+        - side_buttons
+      required_evidence:
+        - quote
+        - 2d_drawing
+        - step_model
+        - sample
+        - force_travel_curve
+        - gasket_material_spec
+        - compression_set_data
+      returned_basic_evidence: false
+      missing_supplier_items:
+        - side_buttons
+      pass: false
+    - id: camera_modules
+      rfq_package_id: camera_stack
+      rfq_package_ready: true
+      cad_replacement_scope:
+        - rear_camera
+        - front_camera
+      required_evidence:
+        - quote
+        - 2d_drawing
+        - step_model
+        - sample
+        - fpc_pinout
+        - optical_center_datum
+        - sample_capture_evidence
+      returned_basic_evidence: false
+      missing_supplier_items:
+        - rear_camera
+        - front_camera
+      pass: false
+    - id: wireless_modules
+      rfq_package_id: ''
+      rfq_package_ready: true
+      cad_replacement_scope:
+        - cellular_redcap
+        - wifi_bt
+      required_evidence:
+        - quote
+        - 2d_drawing
+        - step_model
+        - sample
+        - pinout_reference_design
+        - antenna_keepout
+        - certification_path
+      returned_basic_evidence: false
+      missing_supplier_items:
+        - cellular_redcap
+        - wifi_bt
+      pass: false
+    - id: orange_enclosure_tooling
+      rfq_package_id: orange_enclosure_tooling
+      rfq_package_ready: true
+      cad_replacement_scope:
+        - orange_enclosure_tooling
+      required_evidence:
+        - toolmaker_quote
+        - tool_drawing
+        - mold_flow_plan
+        - orange_color_sample
+        - dfm_markup
+        - gate_runner_ejector_strategy
+        - texture_color_standard
+      returned_basic_evidence: false
+      missing_supplier_items:
+        - orange_enclosure_tooling
+      pass: false
+  supplier_to_kicad_status: blocked_supplier_evidence_not_ready_for_kicad_capture
+  schematic_symbol_footprint_status: blocked_requires_real_kicad_symbols_supplier_footprints_and_erc
+height_critical_models:
+  - model: usb_c_receptacle
+    concept_step_available: true
+    concept_step_path: mechanical/e1-phone/out/usb_c_receptacle.step
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+  - model: display_fpc_connector
+    concept_step_available: false
+    concept_step_path: null
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+  - model: split_interconnect_top_connector
+    concept_step_available: true
+    concept_step_path: mechanical/e1-phone/out/split_interconnect_top_connector.step
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+  - model: split_interconnect_bottom_connector
+    concept_step_available: true
+    concept_step_path: mechanical/e1-phone/out/split_interconnect_bottom_connector.step
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+  - model: rear_camera_module
+    concept_step_available: true
+    concept_step_path: mechanical/e1-phone/out/rear_camera_module.step
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+  - model: front_camera_module
+    concept_step_available: true
+    concept_step_path: mechanical/e1-phone/out/front_camera_module.step
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+  - model: bottom_speaker_module
+    concept_step_available: true
+    concept_step_path: mechanical/e1-phone/out/bottom_speaker_module.step
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+  - model: earpiece_receiver
+    concept_step_available: true
+    concept_step_path: mechanical/e1-phone/out/earpiece_receiver.step
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+  - model: haptic_lra
+    concept_step_available: true
+    concept_step_path: mechanical/e1-phone/out/haptic_lra.step
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+  - model: soc_shield_can
+    concept_step_available: false
+    concept_step_path: null
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+  - model: pmic_shield_can
+    concept_step_available: false
+    concept_step_path: null
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+  - model: radio_shield_can
+    concept_step_available: false
+    concept_step_path: null
+    supplier_step_required: true
+    routed_board_clearance_required: true
+    status: blocked_supplier_step_and_routed_clearance_required
+routed_clearance_rerun_matrix:
+  - case_id: battery_to_pcb_islands
+    concept_clearance_pass: true
+    concept_actual_mm: 0.5
+    concept_required_mm: 0.5
+    concept_margin_mm: 0.0
+    rerun_priority: 1
+    risk_level: high_less_than_0p1mm_margin
+    measurement_instruction: Tight concept margin leaves little room for routed footprint, tolerance, or supplier
+      STEP variation.
+    requires_routed_step_rerun: true
+  - case_id: haptic_to_battery
+    concept_clearance_pass: true
+    concept_actual_mm: 0.5
+    concept_required_mm: 0.5
+    concept_margin_mm: 0.0
+    rerun_priority: 1
+    risk_level: high_zero_nominal_clearance
+    measurement_instruction: Zero-clearance concept registration must be checked for routed component body and solder
+      fillet interference.
+    requires_routed_step_rerun: true
+  - case_id: split_interconnect_connectors_on_pcb_islands
+    concept_clearance_pass: true
+    concept_actual_mm: 0.0
+    concept_required_mm: 0.0
+    concept_margin_mm: 0.0
+    rerun_priority: 1
+    risk_level: high_zero_nominal_clearance
+    measurement_instruction: Zero-clearance concept registration must be checked for routed component body and solder
+      fillet interference.
+    requires_routed_step_rerun: true
+  - case_id: usb_shell_to_external_aperture
+    concept_clearance_pass: true
+    concept_actual_mm: 0.175
+    concept_required_mm: 0.15
+    concept_margin_mm: 0.025
+    rerun_priority: 1
+    risk_level: high_less_than_0p1mm_margin
+    measurement_instruction: Tight concept margin leaves little room for routed footprint, tolerance, or supplier
+      STEP variation.
+    requires_routed_step_rerun: true
+  - case_id: bottom_mic_to_usb
+    concept_clearance_pass: true
+    concept_actual_mm: 11.78
+    concept_required_mm: 1.0
+    concept_margin_mm: 10.78
+    rerun_priority: 3
+    risk_level: medium_functional_interface
+    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    requires_routed_step_rerun: true
+  - case_id: front_camera_to_earpiece
+    concept_clearance_pass: true
+    concept_actual_mm: 9.75
+    concept_required_mm: 1.0
+    concept_margin_mm: 8.75
+    rerun_priority: 3
+    risk_level: medium_functional_interface
+    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    requires_routed_step_rerun: true
+  - case_id: rear_camera_to_battery
+    concept_clearance_pass: true
+    concept_actual_mm: 16.3
+    concept_required_mm: 2.0
+    concept_margin_mm: 14.3
+    rerun_priority: 3
+    risk_level: medium_functional_interface
+    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    requires_routed_step_rerun: true
+  - case_id: split_interconnect_flex_to_battery_edge
+    concept_clearance_pass: true
+    concept_actual_mm: 1.3
+    concept_required_mm: 0.5
+    concept_margin_mm: 0.8
+    rerun_priority: 3
+    risk_level: medium_functional_interface
+    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    requires_routed_step_rerun: true
+  - case_id: split_interconnect_flex_within_side_rail
+    concept_clearance_pass: true
+    concept_actual_mm: 3.3
+    concept_required_mm: 1.5
+    concept_margin_mm: 1.8
+    rerun_priority: 3
+    risk_level: medium_functional_interface
+    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    requires_routed_step_rerun: true
+  - case_id: usb_to_bottom_speaker
+    concept_clearance_pass: true
+    concept_actual_mm: 6.53
+    concept_required_mm: 1.0
+    concept_margin_mm: 5.53
+    rerun_priority: 3
+    risk_level: medium_functional_interface
+    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    requires_routed_step_rerun: true
+  - case_id: haptic_to_pcb_islands
+    concept_clearance_pass: true
+    concept_actual_mm: 1.118
+    concept_required_mm: 0.5
+    concept_margin_mm: 0.618
+    rerun_priority: 3
+    risk_level: standard
+    measurement_instruction: Measure during the routed-board clearance rerun.
+    requires_routed_step_rerun: true
+route_dependency_context:
+  route_feasibility_status: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
+  evt1_routing_status: blocked_requires_supplier_pinouts_routed_pcb_and_post_route_evidence
+  trial_route_reports_required:
+    - post_route_length_skew_report
+    - routed_courtyard_utilization_report
+    - via_count_and_escape_density_report
+    - copper_area_and_return_path_review
+    - impedance_coupon_stackup_quote
+    - routed_step_clearance_report
+  evt1_required_release_outputs:
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/gerbers
+    - board/kicad/e1-phone/production/ipc-2581
+    - board/kicad/e1-phone/production/pos
+    - board/kicad/e1-phone/production/bom
+    - board/kicad/e1-phone/production/pdf/assembly.pdf
+    - board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+    - board/kicad/e1-phone/production/step
+    - board/kicad/e1-phone/production/reports/si-pi
+    - board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
+    - board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
+    - board/kicad/e1-phone/production/reports/enclosure-tolerance-stack-closure.yaml
+    - board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+    - board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
+    - board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
+    - board/kicad/e1-phone/production/reports/rf
+    - board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+    - board/kicad/e1-phone/production/reports/power-thermal
+    - board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
+    - board/kicad/e1-phone/production/test/probe-coordinates.csv
+    - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    - board/kicad/e1-phone/production/sourcing/rfq-response-index.yaml
+    - mechanical/e1-phone/review/routed-board-clearance.json
+required_release_outputs:
+  - board/kicad/e1-phone/production/reports/component-height-step-integration.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - mechanical/e1-phone/review/routed-board-clearance.json
+  - mechanical/e1-phone/review/supplier-evidence-acceptance.json
+  - mechanical/e1-phone/review/step-validation.json
+  - mechanical/e1-phone/review/full-cad-boolean-interference.json
+release_blockers:
+  - supplier STEP/B-rep models for display, USB-C, cameras, buttons, radios, audio, haptics, and enclosure tooling
+    are missing
+  - routed KiCad board STEP with component 3D models is missing
+  - routed-board clearance rerun has not passed
+  - concept STEP envelopes are not supplier-approved geometry
+  - full CAD boolean interference report using routed board and supplier models is missing
+  - component height and courtyard data are not bound to production KiCad footprints
+forbidden_claims:
+  - component_heights_closed
+  - supplier_step_models_loaded
+  - routed_board_step_ready
+  - routed_clearance_passed
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

@@ -9,6 +9,10 @@ on:
     types: [opened, ready_for_review, synchronize, reopened]
     paths: ['**/SKILL.md']
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   review:
     if: github.event.pull_request.draft != true

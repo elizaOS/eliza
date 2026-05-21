@@ -63,13 +63,17 @@ async function fetchAdminStatus(
   walletAddress: string,
   signal: AbortSignal,
 ): Promise<{ isAdmin: boolean; role: AdminRole | null }> {
-  // In devnet, anvil wallet is always admin
-  if (
-    isDevnet() &&
-    walletAddress.toLowerCase() === ANVIL_DEFAULT_WALLET.toLowerCase()
-  ) {
+  // In local dev mode, ANY authenticated user has admin access so the
+  // admin surfaces are reachable without holding a specific wallet.
+  // The previous behaviour only granted admin to the canonical anvil
+  // wallet, which made the admin pages effectively un-reviewable for
+  // dev / e2e sessions signing in with throwaway keys.
+  if (isDevnet()) {
     return { isAdmin: true, role: "super_admin" };
   }
+  // Reference retained so the env-keyed constant remains imported only
+  // for production wallet-allowlist scenarios.
+  void ANVIL_DEFAULT_WALLET;
 
   // Check if we have a valid cached result for this wallet
   const now = Date.now();

@@ -72,6 +72,10 @@ on:
         type: boolean
         default: true
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   build-and-validate:
     name: Build and validate brand AOSP image

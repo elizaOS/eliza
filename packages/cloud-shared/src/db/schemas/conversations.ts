@@ -9,6 +9,9 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+// NOTE: conversation_messages.content is encrypted at rest via D-3 helpers
+// (see ../crypto/conversations.ts). The plaintext column is kept nullable
+// during rollout and will be dropped once all writers persist ciphertext.
 import { organizations } from "./organizations";
 import { usageRecords } from "./usage-records";
 import { users } from "./users";
@@ -56,12 +59,14 @@ export const conversations = pgTable(
     last_message_at: timestamp("last_message_at"),
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
+    deleted_at: timestamp("deleted_at"),
   },
   (table) => ({
     organization_idx: index("conversations_organization_idx").on(table.organization_id),
     user_idx: index("conversations_user_idx").on(table.user_id),
     updated_idx: index("conversations_updated_idx").on(table.updated_at),
     status_idx: index("conversations_status_idx").on(table.status),
+    deleted_at_idx: index("conversations_deleted_at_idx").on(table.deleted_at),
   }),
 );
 
@@ -82,6 +87,12 @@ export const conversationMessages = pgTable(
     content: text("content").notNull(),
     content_storage: text("content_storage").notNull().default("inline"),
     content_key: text("content_key"),
+    // Field-level encryption (D-3) for `content`. AAD = "conversation_messages|<id>|content".
+    content_ciphertext: text("content_ciphertext"),
+    content_nonce: text("content_nonce"),
+    content_auth_tag: text("content_auth_tag"),
+    content_kms_key_id: text("content_kms_key_id"),
+    content_kms_key_version: integer("content_kms_key_version"),
     sequence_number: integer("sequence_number").notNull(),
     model: text("model"),
     tokens: integer("tokens"),

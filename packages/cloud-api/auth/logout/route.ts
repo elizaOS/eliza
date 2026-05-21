@@ -6,6 +6,7 @@
 
 import { Hono } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { invalidateSessionCaches } from "@/lib/auth";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
@@ -34,6 +35,24 @@ app.post("/", async (c) => {
 
     if (user) {
       await userSessionsService.endAllUserSessions(user.id);
+      await getAuditDispatcher()
+        .emit({
+          actor: { type: "user", id: user.id },
+          action: "auth.logout",
+          result: "success",
+          resource: null,
+          org_id: user.organization_id ?? undefined,
+          ip:
+            c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+          user_agent: c.req.header("user-agent") ?? undefined,
+          request_id: c.get("requestId"),
+          metadata: { method: "steward_cookie" },
+        })
+        .catch((err: unknown) => {
+          logger.warn("[Logout] audit emit failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
     }
 
     const domain = cookieDomainForHost(c.req.header("host"));
