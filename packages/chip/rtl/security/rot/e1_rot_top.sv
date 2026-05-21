@@ -28,11 +28,18 @@
 //   * e1_rot_mailbox         -- REAL: AP<->RoT TL-UL mailbox.
 //   * e1_rot_reset_seq       -- REAL: cold-boot reset sequencer (fail-closed).
 //   * OpenTitan crypto blocks -- rom_ctrl, keymgr, kmac, hmac, aes, csrng, edn,
-//                              entropy_src, alert_handler. SHIMMED: bound via
-//                              e1_rot_crypto_shim with the correct TL-UL port
-//                              and fail-closed behavior. check_rot_integration.py
-//                              reports each as BLOCKED with the named missing
-//                              dependency. See e1_rot_crypto_shim.sv.
+//                              entropy_src, alert_handler. REAL under each
+//                              E1_ROT_INSTANTIATE_<BLOCK> define: the vendored
+//                              OpenTitan IP is instantiated via the
+//                              e1_rot_ot_<block> harness (e1_rot_ot_blocks.sv)
+//                              with package-default sideband tie-offs and its
+//                              tlul_pkg TL-UL device port exposed. When a
+//                              define is absent the block falls back to the
+//                              fail-closed e1_rot_crypto_shim. The TL ports are
+//                              tied idle here; the crossbar adapter wiring the
+//                              real blocks into the Ibex data path lands with
+//                              the secure-boot data path. See e1_rot_ot_blocks.sv
+//                              and e1_rot_crypto_shim.sv.
 //
 // Synthesizable wrapper; lints/elaborates clean under Verilator for the
 // integrated scope.
@@ -216,16 +223,26 @@ module e1_rot_top
                          sel_mbox ? mbox_rot_rdata : 32'h0;
 
   // ================================================================
-  // OpenTitan crypto/security blocks -- SHIMMED (fail-closed).
-  // Each is bound through e1_rot_crypto_shim with the correct TL-UL signature.
-  // check_rot_integration.py enumerates these as BLOCKED with the named missing
-  // dependency. The shim TL-UL ports are driven idle here (the RoT crossbar
-  // adapter that routes Ibex accesses to these blocks lands when the real
-  // blocks replace the shims); the instances exist so the inventory is real and
-  // the area/port footprint is represented in the elaborated netlist.
+  // OpenTitan crypto/security blocks.
+  //
+  // Each block is instantiated REAL behind its own E1_ROT_INSTANTIATE_<BLOCK>
+  // define (via the e1_rot_ot_<block> harness in e1_rot_ot_blocks.sv, which
+  // wraps the vendored OpenTitan IP with package-default sideband tie-offs and
+  // exposes the tlul_pkg TL-UL device port). When the define is absent the
+  // block falls back to the fail-closed e1_rot_crypto_shim (correct
+  // e1_rot_tlul_pkg signature, error-tagged responses). check_rot_integration.py
+  // enumerates a block as REAL only when its harness elaborates clean in the
+  // gate's Verilator lint with the block's generated filelist; otherwise the
+  // block stays BLOCKED.
+  //
+  // The TL device ports are driven idle at this stage -- the RoT crossbar
+  // adapter that converts e1_rot_tlul_pkg <-> tlul_pkg and routes Ibex MMIO
+  // accesses into these blocks lands with the secure-boot data path. The
+  // instantiation here proves the real RTL elaborates inside the RoT flow and
+  // represents its area/port footprint in the elaborated netlist.
   // ================================================================
   localparam int unsigned NUM_CRYPTO = 9;
-  // Block-id order MUST match CRYPTO_BLOCKS in scripts/check_rot_integration.py.
+  // Block-id order MUST match BLOCKS (crypto) in scripts/check_rot_integration.py.
   localparam logic [31:0] CRYPTO_ID [NUM_CRYPTO] = '{
     32'h524F4D43, // "ROMC" rom_ctrl
     32'h4B45594D, // "KEYM" keymgr
@@ -238,26 +255,122 @@ module e1_rot_top
     32'h414C5254  // "ALRT" alert_handler
   };
 
-  logic [NUM_CRYPTO-1:0] crypto_result_valid;
-  for (genvar g = 0; g < NUM_CRYPTO; g++) begin : gen_crypto_shim
-    tl_d2h_t crypto_tl_o;
-    e1_rot_crypto_shim #(
-      .BLOCK_ID(CRYPTO_ID[g])
-    ) u_crypto_shim (
-      .clk_i         (clk_i),
-      .rst_ni        (rot_rst_n_int),
-      .tl_i          (TL_H2D_DEFAULT),
-      .tl_o          (crypto_tl_o),
-      .result_valid_o(crypto_result_valid[g])
-    );
-    /* verilator lint_off UNUSED */
-    wire _unused_crypto = ^{crypto_tl_o};
-    /* verilator lint_on UNUSED */
+  // Fail-closed shim for any block whose E1_ROT_INSTANTIATE_<BLOCK> is not set.
+  // crypto_block_tap aggregates each branch's TL response so neither the shim
+  // nor the real-harness device port is optimized away; it is consumed below.
+  logic [NUM_CRYPTO-1:0] crypto_shim_valid;
+  logic [NUM_CRYPTO-1:0] crypto_block_tap;
+`define E1_ROT_CRYPTO_SHIM(IDX) \
+    tl_d2h_t shim_tl_o; \
+    e1_rot_crypto_shim #(.BLOCK_ID(CRYPTO_ID[IDX])) u_crypto_shim ( \
+      .clk_i(clk_i), .rst_ni(rot_rst_n_int), .tl_i(TL_H2D_DEFAULT), \
+      .tl_o(shim_tl_o), .result_valid_o(crypto_shim_valid[IDX])); \
+    assign crypto_block_tap[IDX] = ^{shim_tl_o};
+
+  // Real OpenTitan block harnesses expose the tlul_pkg TL-UL port; tie idle.
+`ifdef E1_ROT_INSTANTIATE_ROM_CTRL
+  if (1) begin : gen_rom_ctrl
+    tlul_pkg::tl_d2h_t ot_tl_o;
+    e1_rot_ot_rom_ctrl u_rom_ctrl (.clk_i, .rst_ni(rot_rst_n_int),
+      .tl_i(tlul_pkg::TL_H2D_DEFAULT), .tl_o(ot_tl_o));
+    assign crypto_block_tap[0] = ^{ot_tl_o};
   end
+  assign crypto_shim_valid[0] = 1'b0;
+`else
+  if (1) begin : gen_rom_ctrl `E1_ROT_CRYPTO_SHIM(0) end
+`endif
+`ifdef E1_ROT_INSTANTIATE_KEYMGR
+  if (1) begin : gen_keymgr
+    tlul_pkg::tl_d2h_t ot_tl_o;
+    e1_rot_ot_keymgr u_keymgr (.clk_i, .rst_ni(rot_rst_n_int),
+      .tl_i(tlul_pkg::TL_H2D_DEFAULT), .tl_o(ot_tl_o));
+    assign crypto_block_tap[1] = ^{ot_tl_o};
+  end
+  assign crypto_shim_valid[1] = 1'b0;
+`else
+  if (1) begin : gen_keymgr `E1_ROT_CRYPTO_SHIM(1) end
+`endif
+`ifdef E1_ROT_INSTANTIATE_KMAC
+  if (1) begin : gen_kmac
+    tlul_pkg::tl_d2h_t ot_tl_o;
+    e1_rot_ot_kmac u_kmac (.clk_i, .rst_ni(rot_rst_n_int),
+      .tl_i(tlul_pkg::TL_H2D_DEFAULT), .tl_o(ot_tl_o));
+    assign crypto_block_tap[2] = ^{ot_tl_o};
+  end
+  assign crypto_shim_valid[2] = 1'b0;
+`else
+  if (1) begin : gen_kmac `E1_ROT_CRYPTO_SHIM(2) end
+`endif
+`ifdef E1_ROT_INSTANTIATE_HMAC
+  if (1) begin : gen_hmac
+    tlul_pkg::tl_d2h_t ot_tl_o;
+    e1_rot_ot_hmac u_hmac (.clk_i, .rst_ni(rot_rst_n_int),
+      .tl_i(tlul_pkg::TL_H2D_DEFAULT), .tl_o(ot_tl_o));
+    assign crypto_block_tap[3] = ^{ot_tl_o};
+  end
+  assign crypto_shim_valid[3] = 1'b0;
+`else
+  if (1) begin : gen_hmac `E1_ROT_CRYPTO_SHIM(3) end
+`endif
+`ifdef E1_ROT_INSTANTIATE_AES
+  if (1) begin : gen_aes
+    tlul_pkg::tl_d2h_t ot_tl_o;
+    e1_rot_ot_aes u_aes (.clk_i, .rst_ni(rot_rst_n_int),
+      .tl_i(tlul_pkg::TL_H2D_DEFAULT), .tl_o(ot_tl_o));
+    assign crypto_block_tap[4] = ^{ot_tl_o};
+  end
+  assign crypto_shim_valid[4] = 1'b0;
+`else
+  if (1) begin : gen_aes `E1_ROT_CRYPTO_SHIM(4) end
+`endif
+`ifdef E1_ROT_INSTANTIATE_CSRNG
+  if (1) begin : gen_csrng
+    tlul_pkg::tl_d2h_t ot_tl_o;
+    e1_rot_ot_csrng u_csrng (.clk_i, .rst_ni(rot_rst_n_int),
+      .tl_i(tlul_pkg::TL_H2D_DEFAULT), .tl_o(ot_tl_o));
+    assign crypto_block_tap[5] = ^{ot_tl_o};
+  end
+  assign crypto_shim_valid[5] = 1'b0;
+`else
+  if (1) begin : gen_csrng `E1_ROT_CRYPTO_SHIM(5) end
+`endif
+`ifdef E1_ROT_INSTANTIATE_EDN
+  if (1) begin : gen_edn
+    tlul_pkg::tl_d2h_t ot_tl_o;
+    e1_rot_ot_edn u_edn (.clk_i, .rst_ni(rot_rst_n_int),
+      .tl_i(tlul_pkg::TL_H2D_DEFAULT), .tl_o(ot_tl_o));
+    assign crypto_block_tap[6] = ^{ot_tl_o};
+  end
+  assign crypto_shim_valid[6] = 1'b0;
+`else
+  if (1) begin : gen_edn `E1_ROT_CRYPTO_SHIM(6) end
+`endif
+`ifdef E1_ROT_INSTANTIATE_ENTROPY_SRC
+  if (1) begin : gen_entropy_src
+    tlul_pkg::tl_d2h_t ot_tl_o;
+    e1_rot_ot_entropy_src u_entropy_src (.clk_i, .rst_ni(rot_rst_n_int),
+      .tl_i(tlul_pkg::TL_H2D_DEFAULT), .tl_o(ot_tl_o));
+    assign crypto_block_tap[7] = ^{ot_tl_o};
+  end
+  assign crypto_shim_valid[7] = 1'b0;
+`else
+  if (1) begin : gen_entropy_src `E1_ROT_CRYPTO_SHIM(7) end
+`endif
+`ifdef E1_ROT_INSTANTIATE_ALERT_HANDLER
+  if (1) begin : gen_alert_handler
+    tlul_pkg::tl_d2h_t ot_tl_o;
+    e1_rot_ot_alert_handler u_alert_handler (.clk_i, .rst_ni(rot_rst_n_int),
+      .tl_i(tlul_pkg::TL_H2D_DEFAULT), .tl_o(ot_tl_o));
+    assign crypto_block_tap[8] = ^{ot_tl_o};
+  end
+  assign crypto_shim_valid[8] = 1'b0;
+`else
+  if (1) begin : gen_alert_handler `E1_ROT_CRYPTO_SHIM(8) end
+`endif
 
   /* verilator lint_off UNUSED */
-  wire _unused_misc = ^{otp_tamper_event, crypto_result_valid, lc_scrap,
-                        mbox_req_cmd, rot_reg_addr[1:0],
+  wire _unused_misc = ^{otp_tamper_event, crypto_shim_valid, crypto_block_tap,
+                        lc_scrap, mbox_req_cmd, rot_reg_addr[1:0],
                         ROT_BOOT_ADDR, ROT_MMIO_BASE};
   /* verilator lint_on UNUSED */
 
