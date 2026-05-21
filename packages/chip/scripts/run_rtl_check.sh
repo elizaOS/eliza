@@ -11,7 +11,6 @@ if [ "$(uname -s)" = "Darwin" ] && [ -d "$repo_dir/external/oss-cad-suite/bin" ]
 fi
 
 rtl_sources="
-rtl/top/e1_topology_pkg.sv
 rtl/top/e1_soc_pkg.sv
 rtl/peripherals/e1_mmio_decode.sv
 rtl/peripherals/e1_clint.sv

@@ -19,6 +19,8 @@ package e1_soc_pkg;
 `else
     localparam int unsigned DRAM_WORDS = 1024;
 `endif
+    /* verilator lint_off UNUSEDPARAM */
     localparam int unsigned DRAM_INDEX_BITS = $clog2(DRAM_WORDS);
+    /* verilator lint_on UNUSEDPARAM */
 
 endpackage : e1_soc_pkg
