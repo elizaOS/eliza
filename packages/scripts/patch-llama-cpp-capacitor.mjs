@@ -127,7 +127,20 @@ function ensureGradleDflashContract(pkgDir) {
     `        System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'\n` +
     `}\n`;
 
-  if (!next.includes("def resolveElizaRepoRoot")) {
+  // Self-heal duplicate helper blocks. An older non-idempotent version of
+  // this patch appended a fresh helper copy on every install/build cycle, so
+  // the file accumulated many duplicate top-level `def`s — duplicate
+  // script-level closures crash Gradle's Groovy resolver with a
+  // GradleResolveVisitor NPE ("source is null") and break every Android
+  // build. If we see more than one copy, collapse the entire region between
+  // the ext{} block and `buildscript {` back to a single canonical block.
+  const repoRootCount = (next.match(/def resolveElizaRepoRoot\b/g) || []).length;
+  if (repoRootCount > 1) {
+    next = next.replace(
+      /(ext\s*\{[\s\S]*?\n\}\n)[\s\S]*?(\nbuildscript \{)/,
+      `$1\n${dflashHelpers}$2`,
+    );
+  } else if (!next.includes("def resolveElizaRepoRoot")) {
     next = next.replace(/(ext\s*\{[\s\S]*?\n\}\n)/, `$1\n${dflashHelpers}\n`);
   } else if (
     !next.includes("def resolveElizaDflashAndroidLibDir = { String abi ->") ||
