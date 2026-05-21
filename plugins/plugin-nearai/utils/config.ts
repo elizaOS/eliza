@@ -64,7 +64,7 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   }
 
   const raw = getRawSetting(runtime, "NEARAI_BASE_URL") ?? DEFAULT_BASE_URL;
-  return normalizeDirectApiBaseURL(raw);
+  return normalizeBaseURL(raw);
 }
 
 export function getSmallModel(runtime: IAgentRuntime): ModelName {
@@ -89,11 +89,11 @@ function normalizeBaseURL(raw: string): string {
   return raw.trim().replace(/\/+$/, "");
 }
 
-function normalizeDirectApiBaseURL(raw: string): string {
-  const normalized = normalizeBaseURL(raw);
-  return normalized;
-}
-
+/**
+ * Optional fail-fast validation for callers that require a configured API key.
+ * Plugin initialization uses getApiKeyOptional so discovery can proceed without
+ * throwing in browser builds or partially configured environments.
+ */
 export function validateConfiguration(runtime: IAgentRuntime): void {
   if (!isBrowser()) {
     getApiKey(runtime);

@@ -533,7 +533,7 @@ export async function fetchVercelGatewayModels(
   }
 }
 
-/** Fetch NEAR AI Cloud models from its public catalog endpoint. */
+/** Fetch NEAR AI Cloud models from its catalog endpoint. */
 export async function fetchNearAIModels(
   apiKey: string,
   baseUrl: string,
@@ -675,7 +675,6 @@ export async function getOrFetchProvider(
   const keylessProviders = new Set([
     "ollama",
     "openrouter",
-    "nearai",
     "vercel-ai-gateway",
   ]);
   if (!keyValue && !keylessProviders.has(providerId)) return [];

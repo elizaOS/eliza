@@ -10,17 +10,7 @@ export interface PluginConfig {
   readonly NEARAI_BROWSER_BASE_URL?: string;
 }
 
-function disableAiSdkWarningsForNearAI(): void {
-  const mutableGlobalThis = globalThis as typeof globalThis & {
-    AI_SDK_LOG_WARNINGS?: boolean;
-  };
-  if (mutableGlobalThis.AI_SDK_LOG_WARNINGS === undefined) {
-    mutableGlobalThis.AI_SDK_LOG_WARNINGS = false;
-  }
-}
-
 export function initializeNearAI(_config: PluginConfig, runtime: IAgentRuntime): void {
-  disableAiSdkWarningsForNearAI();
   const apiKey = getApiKeyOptional(runtime);
 
   if (!apiKey && !isBrowser()) {
