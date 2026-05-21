@@ -21,7 +21,10 @@ import {
   type World,
 } from "@elizaos/core";
 import { App, LogLevel } from "@slack/bolt";
-import { WebClient as SlackWebClient, type WebAPICallResult } from "@slack/web-api";
+import {
+  WebClient as SlackWebClient,
+  type WebAPICallResult,
+} from "@slack/web-api";
 
 type WebClient = App["client"];
 type AccountScopedTargetInfo = TargetInfo & { accountId?: string };

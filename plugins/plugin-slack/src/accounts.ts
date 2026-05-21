@@ -209,9 +209,7 @@ export function resolveSlackUserToken(raw?: string | null): string | undefined {
  * Unknown values fall back to AGENT — the default for legacy single
  * bot-token deployments where the agent IS the bot.
  */
-export function normalizeSlackAccountRole(
-  raw: unknown,
-): ConnectorAccountRole {
+export function normalizeSlackAccountRole(raw: unknown): ConnectorAccountRole {
   if (typeof raw !== "string") return "AGENT";
   const upper = raw.trim().toUpperCase();
   if (upper === "OWNER" || upper === "AGENT" || upper === "TEAM") {
