@@ -6,8 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import urllib.error
-import urllib.request
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -46,6 +44,9 @@ def month_key(value: str) -> str:
 
 
 def head_status(url: str, timeout: int) -> dict[str, Any]:
+    import urllib.error
+    import urllib.request
+
     request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "eliza-ai-eda-audit/1"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
