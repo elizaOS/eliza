@@ -39,7 +39,51 @@ interfaces:
           - Linux
           - Android
           - Windows
+      public_2026_brochure_fields:
+        url: https://www.quectel.com/content/uploads/2026/01/Quectel_Product_Brochure_V8.5_2026.pdf
+        rg255c_lga_dimensions_mm:
+          width: 29.0
+          height: 32.0
+          thickness: 2.4
+        rg255c_m2_dimensions_mm:
+          width: 30.0
+          height: 42.0
+          thickness: 3.25
+        rm255c_gl_m2_dimensions_mm:
+          width: 42.0
+          height: 30.0
+          thickness: 2.3
+        rg255c_lga_weight_g: 5.2
+        rm255c_gl_weight_g: 6.0
+        extended_temperature_c:
+          min: -40
+          max: 85
+        region_sku_families:
+          - RG255C_NA
+          - RG255C_EU
+          - RG255C_GL
       sourcing_url: https://www.quectel.com/product/5g-redcap-rg255c-series/
+      public_source_revalidation:
+        checked_date: 2026-05-21
+        source_type: direct_quectel_vendor_page_opened
+        observed_public_fields:
+          - RG255C series 5G RedCap module
+          - LGA form factor and small size
+          - 223 Mbps downlink and 123 Mbps uplink maximum data-rate signal
+          - LTE Cat 4 fallback and 5G Sub-6 SA support
+          - optional multi-constellation GNSS
+          - USB 2.0, PCIe 2.0, PCM, UART, SGMII, and SPI interfaces
+          - Windows, Linux, and Android USB driver resources
+          - region variants RG255C-CN, RG255C-GL, RG255C-NA, and RG255C-EU
+        board_use: primary_cellular_lga_module_top_left_rf_region
+        still_missing_before_use:
+          - selected region SKU, band matrix, and orderable MPN
+          - hardware design guide, reference layout, LGA pad map, and reserved-pin
+            rules
+          - module STEP model, shield height, RF feed rules, and antenna matching
+            recommendations
+          - modem firmware, Linux/Android driver package, carrier test mode, and certification
+            scope
     placement:
       refdes_group: U_CELL
       function: cellular_5g_redcap_module

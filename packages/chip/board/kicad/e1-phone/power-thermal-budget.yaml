@@ -28,7 +28,7 @@ battery_target:
     width: 64.0
     height: 87.0
     thickness: 5.7
-  battery_window_fit_status: sourced_22p45wh_pack_matches_64x87x5p7_concept_cavity_pending_supplier_and_routed_board_evidence
+  battery_window_fit_status: sourced_17p3wh_pack_matches_64x87_concept_cavity_pending_supplier_and_routed_board_evidence
   required_missing_parts:
     - supplier_quote_and_sample_for_selected_pack_class
     - fuel_gauge_schematic_and_layout
@@ -199,7 +199,7 @@ voltage_domains_present:
   - VBUS
   - VDD_AMP_3V3
   - VDD_AUDIO_3V3
-runtime_estimates_from_22p45wh_target:
+runtime_estimates_from_17p3wh_target:
   video_call_hours_at_target: 7.02
   sustained_ai_hours_at_skin_limited_budget: 5.61
   idle_display_on_hours_at_target: 24.94
