@@ -2,6 +2,7 @@
 Description=elizaOS AI desktop home
 ConditionUser=1000
 ConditionPathExists=!/run/elizaos/persistence-maintenance
+ConditionPathExists=!%t/elizaos-persistence-setup
 After=elizaos-renderer.service graphical-session.target tails-dump-user-env.service
 Wants=elizaos-renderer.service tails-dump-user-env.service
 RefuseManualStop=yes
