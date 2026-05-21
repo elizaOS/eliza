@@ -15,8 +15,8 @@ Active providers:
 | Provider | Runner | Use |
 | --- | --- | --- |
 | `e2b` | E2B SDK sandbox | Hosted coding sandbox when E2B credentials are configured. |
-| `eliza-cloud` | Eliza Cloud Satellite HTTP runner | Managed cloud runner and coding-agent container path. |
-| `home` | Home Satellite HTTP runner | User-owned machine reachable directly, through Eliza Cloud routing, or through SSH tunnel. |
+| `eliza-cloud` | Eliza Cloud remote runner HTTP runner | Managed cloud runner and coding-agent container path. |
+| `home` | Home remote runner HTTP runner | User-owned machine reachable directly, through Eliza Cloud routing, or through SSH tunnel. |
 
 Direct `vercel`, `cloudflare`, and `rivet` providers are intentionally disabled
 until they are exposed through Eliza Cloud or another reviewed product option.
@@ -26,16 +26,16 @@ until they are exposed through Eliza Cloud or another reviewed product option.
 Select the provider:
 
 ```text
-ELIZA_CODING_SATELLITE_RUNNER=e2b
-ELIZA_CODING_SATELLITE_RUNNER=eliza-cloud
-ELIZA_CODING_SATELLITE_RUNNER=home
+ELIZA_CODING_REMOTE_RUNNER=e2b
+ELIZA_CODING_REMOTE_RUNNER=eliza-cloud
+ELIZA_CODING_REMOTE_RUNNER=home
 ```
 
-`ELIZA_SATELLITE_RUNNER` is also accepted. E2B additionally accepts the legacy
+`ELIZA_REMOTE_RUNNER` is also accepted. E2B additionally accepts the legacy
 flag:
 
 ```text
-ELIZA_E2B_SATELLITE_RUNNER=1
+ELIZA_E2B_REMOTE_RUNNER=1
 ```
 
 If no provider is selected, the router auto-selects `eliza-cloud` when a direct
@@ -64,7 +64,7 @@ ELIZA_E2B_REQUEST_TIMEOUT_MS
 ```text
 ELIZA_CLOUD_SANDBOX_API_BASE_URL
 ELIZA_CLOUD_SANDBOX_BASE_URL
-ELIZA_CLOUD_SATELLITE_RUNNER_URL
+ELIZA_CLOUD_REMOTE_RUNNER_URL
 ELIZA_CLOUD_RUNNER_URL
 ELIZA_CLOUD_SANDBOX_TOKEN
 ELIZA_CLOUD_API_KEY
@@ -73,8 +73,8 @@ ELIZAOS_CLOUD_API_KEY
 ELIZACLOUD_API_KEY
 ELIZA_CLOUD_SANDBOX_ACCESS_URL
 ELIZA_CLOUD_SANDBOX_IMAGE
-ELIZA_CLOUD_SATELLITE_IMAGE
-ELIZA_CLOUD_CODING_SATELLITE_IMAGE
+ELIZA_CLOUD_REMOTE_RUNNER_IMAGE
+ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE
 ELIZA_CLOUD_SANDBOX_WORKDIR
 ELIZA_CLOUD_SANDBOX_HOST_WORKSPACE_ROOT
 ELIZA_CLOUD_SANDBOX_BOOTSTRAP_GIT_URL
@@ -83,48 +83,48 @@ ELIZA_CLOUD_SANDBOX_TIMEOUT_MS
 ELIZA_CLOUD_SANDBOX_REQUEST_TIMEOUT_MS
 ```
 
-`ELIZA_CLOUD_SANDBOX_BASE_URL`, `ELIZA_CLOUD_SATELLITE_RUNNER_URL`, and
-`ELIZA_CLOUD_RUNNER_URL` are direct Satellite HTTP URLs and must expose
+`ELIZA_CLOUD_SANDBOX_BASE_URL`, `ELIZA_CLOUD_REMOTE_RUNNER_URL`, and
+`ELIZA_CLOUD_RUNNER_URL` are direct remote runner HTTP URLs and must expose
 `/v1/health`, `/v1/fs/entries`, `/v1/fs/file`, and `/v1/processes/run`.
 
-If no direct Satellite URL is set, `eliza-cloud` uses the Cloud API at
+If no direct remote runner URL is set, `eliza-cloud` uses the Cloud API at
 `ELIZA_CLOUD_SANDBOX_API_BASE_URL` or the default
 `https://api.elizacloud.ai/api/v1`, then posts to
 `/coding-containers` with `ELIZA_CLOUD_SANDBOX_TOKEN`, `ELIZA_CLOUD_API_KEY`,
 `ELIZAOS_CLOUD_API_KEY`, or `ELIZACLOUD_API_KEY`. The returned container URL is
-then treated as the Satellite HTTP runner URL.
+then treated as the remote runner HTTP runner URL.
 
-The Cloud control plane should use the coding Satellite image from
-`packages/cloud-services/coding-satellite`. Publish it and set:
+The Cloud control plane should use the coding remote runner image from
+`packages/cloud-services/coding-remote-runner`. Publish it and set:
 
 ```text
-ELIZA_CLOUD_CODING_SATELLITE_IMAGE=ghcr.io/elizaos/coding-satellite:<tag>
+ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE=ghcr.io/elizaos/coding-remote-runner:<tag>
 ```
 
 ## Home
 
 ```text
-ELIZA_HOME_SATELLITE_URL
+ELIZA_HOME_REMOTE_RUNNER_URL
 ELIZA_HOME_RUNNER_URL
-ELIZA_HOME_SATELLITE_TOKEN
-ELIZA_HOME_SATELLITE_ACCESS_URL
+ELIZA_HOME_REMOTE_RUNNER_TOKEN
+ELIZA_HOME_REMOTE_RUNNER_ACCESS_URL
 ELIZA_HOME_ACCESS_URL
-ELIZA_HOME_SATELLITE_WORKDIR
-ELIZA_HOME_SATELLITE_HOST_WORKSPACE_ROOT
-ELIZA_HOME_SATELLITE_BOOTSTRAP_GIT_URL
-ELIZA_HOME_SATELLITE_BOOTSTRAP_GIT_REF
-ELIZA_HOME_SATELLITE_TIMEOUT_MS
-ELIZA_HOME_SATELLITE_REQUEST_TIMEOUT_MS
+ELIZA_HOME_REMOTE_RUNNER_WORKDIR
+ELIZA_HOME_REMOTE_RUNNER_HOST_WORKSPACE_ROOT
+ELIZA_HOME_REMOTE_RUNNER_BOOTSTRAP_GIT_URL
+ELIZA_HOME_REMOTE_RUNNER_BOOTSTRAP_GIT_REF
+ELIZA_HOME_REMOTE_RUNNER_TIMEOUT_MS
+ELIZA_HOME_REMOTE_RUNNER_REQUEST_TIMEOUT_MS
 ```
 
 Optional SSH tunnel metadata for Settings:
 
 ```text
-ELIZA_HOME_SATELLITE_SSH_TARGET=user@home.example
+ELIZA_HOME_REMOTE_RUNNER_SSH_TARGET=user@home.example
 ELIZA_HOME_SSH_TARGET=user@home.example
-ELIZA_HOME_SATELLITE_SSH_IDENTITY=/path/to/key
+ELIZA_HOME_REMOTE_RUNNER_SSH_IDENTITY=/path/to/key
 ELIZA_HOME_SSH_IDENTITY=/path/to/key
-ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT=32468
+ELIZA_HOME_REMOTE_RUNNER_SSH_LOCAL_PORT=32468
 ```
 
 The app only renders a copyable SSH tunnel command. It does not spawn or manage
@@ -208,10 +208,10 @@ The opencode server provides:
 | `/find`, `/find/file`, `/file`, `/file/content`, `/file/status` | Workspace search and file reads. |
 | `/vcs` and `/session/:id/diff` | VCS status and session diff. |
 
-The Satellite HTTP runner remains the outer capability boundary. opencode is an
+The remote runner HTTP runner remains the outer capability boundary. opencode is an
 agent runner inside E2B, Eliza Cloud, or Home, not a fourth sandbox provider.
 
-## Satellite HTTP Contract
+## remote runner HTTP Contract
 
 Eliza Cloud and Home use the same HTTP runner shape:
 
@@ -284,7 +284,7 @@ Mobile does not need Electrobun. It talks to the same Eliza agent runtime, and
 the runtime routes coding capabilities to a reachable provider:
 
 - E2B for hosted sandbox execution.
-- Eliza Cloud for managed cloud Satellite execution.
+- Eliza Cloud for managed cloud remote runner execution.
 - Home for a user-owned machine reachable by direct URL, cloud routing, or SSH tunnel.
 
 Results return through normal chat, trace, and dynamic-view channels.
