@@ -5,8 +5,8 @@ set -eu
 run_dir=/run/elizaos
 flag="${run_dir}/persistence-maintenance"
 runtime_dir=/run/user/1000
+user_persistence_flag="${runtime_dir}/elizaos-persistence-setup"
 bus="unix:path=${runtime_dir}/bus"
-units="elizaos-agent.service elizaos-renderer.service milady.service"
 
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -25,13 +25,22 @@ user_systemctl() {
 }
 
 kill_elizaos_processes() {
-    user_systemctl kill --kill-whom=all --signal=TERM ${units}
+    user_systemctl kill --kill-whom=all --signal=TERM \
+        elizaos-agent.service \
+        elizaos-renderer.service \
+        milady.service
     sleep 2
-    user_systemctl kill --kill-whom=all --signal=KILL ${units}
+    user_systemctl kill --kill-whom=all --signal=KILL \
+        elizaos-agent.service \
+        elizaos-renderer.service \
+        milady.service
 }
 
 start_elizaos_units() {
-    user_systemctl reset-failed ${units}
+    user_systemctl reset-failed \
+        elizaos-agent.service \
+        elizaos-renderer.service \
+        milady.service
     user_systemctl start --no-block elizaos-agent.service
     user_systemctl start --no-block elizaos-renderer.service
     user_systemctl start --no-block milady.service
@@ -52,7 +61,7 @@ case "${1:-}" in
         start_elizaos_units
         ;;
     wait)
-        while [ -e "${flag}" ]; do
+        while [ -e "${flag}" ] || [ -e "${user_persistence_flag}" ]; do
             sleep 1
         done
         ;;

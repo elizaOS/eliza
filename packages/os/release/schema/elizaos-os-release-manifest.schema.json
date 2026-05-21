@@ -124,7 +124,7 @@
             }
           },
           "filename": { "type": "string", "minLength": 1 },
-          "downloadUrl": { "type": "string", "minLength": 1 },
+          "downloadUrl": { "type": ["string", "null"], "minLength": 1 },
           "status": {
             "enum": ["planned", "candidate", "published", "withdrawn"]
           },
@@ -172,7 +172,22 @@
             }
           },
           "notes": { "type": "string" }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": { "const": "published" }
+              },
+              "required": ["status"]
+            },
+            "then": {
+              "properties": {
+                "downloadUrl": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        ]
       }
     },
     "validation": {

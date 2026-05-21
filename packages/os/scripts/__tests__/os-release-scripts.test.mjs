@@ -80,6 +80,9 @@ test("publishable validation requires concrete checksums and sizes", async () =>
 
   assert.equal(result.ok, false);
   assert.ok(
+    result.errors.some((error) => error.includes("downloadUrl is required")),
+  );
+  assert.ok(
     result.errors.some((error) => error.includes("sha256 is required")),
   );
   assert.ok(

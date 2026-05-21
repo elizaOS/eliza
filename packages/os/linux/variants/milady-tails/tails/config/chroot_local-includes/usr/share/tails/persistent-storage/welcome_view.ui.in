@@ -10,7 +10,7 @@
     <property name="margin-start">20</property>
     <property name="margin-top">20</property>
     <property name="orientation">vertical</property>
-    <property name="spacing">50</property>
+    <property name="spacing">24</property>
     <property name="visible">True</property>
     <child>
       <object class="GtkScrolledWindow">
@@ -29,17 +29,17 @@
             <child>
               <!-- n-columns=2 n-rows=2 -->
               <object class="GtkGrid" id="description_box">
-                <property name="column-spacing">40</property>
+                <property name="column-spacing">28</property>
                 <property name="halign">center</property>
                 <property name="orientation">vertical</property>
-                <property name="row-spacing">50</property>
-                <property name="valign">center</property>
+                <property name="row-spacing">24</property>
+                <property name="valign">start</property>
                 <property name="vexpand">True</property>
                 <property name="visible">True</property>
                 <child>
                   <object class="GtkImage" id="image">
                     <property name="halign">end</property>
-                    <property name="pixbuf">/usr/share/pixmaps/elizaos.svg</property>
+                    <property name="pixbuf">/usr/share/pixmaps/elizaos-persistent-storage.svg</property>
                     <property name="valign">start</property>
                     <property name="visible">True</property>
                   </object>

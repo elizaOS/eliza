@@ -211,6 +211,8 @@ require_fixed 'run_dir=/run/elizaos' "${persistence_helper}" \
     "persistence maintenance must use a root-owned runtime guard directory"
 require_fixed 'flag="${run_dir}/persistence-maintenance"' "${persistence_helper}" \
     "persistence maintenance must expose an activation/deactivation guard"
+require_fixed 'user_persistence_flag="${runtime_dir}/elizaos-persistence-setup"' "${persistence_helper}" \
+    "persistence maintenance must also honor the user-session wizard guard"
 require_fixed 'kill --kill-whom=all --signal=TERM' "${persistence_helper}" \
     "persistence maintenance must quiesce user services before bind changes"
 require_fixed 'kill --kill-whom=all --signal=KILL' "${persistence_helper}" \
@@ -218,6 +220,12 @@ require_fixed 'kill --kill-whom=all --signal=KILL' "${persistence_helper}" \
 if grep -Eq 'pkill .* -u amnesia|rm -rf -- /home/amnesia($|/")|chown .* /home/amnesia' "${persistence_helper}"; then
     fail "persistence-maintenance must not mutate the whole live-user home"
 fi
+require_fixed 'args = ["enter"]' \
+    tails/config/chroot_local-includes/etc/generate-sudoers.d/elizaos-persistence-maintenance.toml \
+    "live user may only enter the narrow elizaOS persistence-maintenance helper"
+require_fixed 'args = ["leave"]' \
+    tails/config/chroot_local-includes/etc/generate-sudoers.d/elizaos-persistence-maintenance.toml \
+    "live user may only leave the narrow elizaOS persistence-maintenance helper"
 
 cache_hook=tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks/MiladyData/10-clean-runtime-state
 require_file "${cache_hook}"
@@ -248,6 +256,8 @@ for unit in \
 do
     require_fixed 'ConditionUser=1000' "${unit}" \
         "user service must be pinned to the live user"
+    require_fixed 'ConditionPathExists=!/run/elizaos/persistence-maintenance' "${unit}" \
+        "user service must stay down while Persistent Storage setup is active"
     require_fixed 'NoNewPrivileges=yes' "${unit}" \
         "user service must disable privilege escalation"
     if grep -q 'After=.*desktop.target' "${unit}"; then

@@ -229,7 +229,17 @@ export function validateManifest(manifest, options = {}) {
       errors.push(`${prefix}.filename duplicates ${artifact.filename}`);
     }
     seenFilenames.add(artifact?.filename);
-    requireString(errors, artifact?.downloadUrl, `${prefix}.downloadUrl`);
+    const hasDownloadUrl =
+      typeof artifact?.downloadUrl === "string" &&
+      artifact.downloadUrl.length > 0;
+    if (artifact?.downloadUrl !== null && !hasDownloadUrl) {
+      errors.push(`${prefix}.downloadUrl must be null or a non-empty string`);
+    }
+    if (artifact?.status === "published" && !hasDownloadUrl) {
+      errors.push(`${prefix}.downloadUrl is required for published artifacts`);
+    } else if (!hasDownloadUrl) {
+      warnings.push(`${artifact.id} is awaiting download URL`);
+    }
 
     if (
       artifact?.sha256 !== null &&
@@ -251,6 +261,11 @@ export function validateManifest(manifest, options = {}) {
       errors.push(`${prefix}.sizeBytes must be null or a positive integer`);
     }
     if (requirePublishableChecksums && artifact?.status !== "withdrawn") {
+      if (!hasDownloadUrl) {
+        errors.push(
+          `${prefix}.downloadUrl is required for publishable validation`,
+        );
+      }
       if (
         !sha256Pattern.test(artifact?.sha256 ?? "") ||
         isPlaceholderSha256(artifact?.sha256)

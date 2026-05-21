@@ -268,16 +268,6 @@ for (const viewport of VIEWPORTS) {
             const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
             return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
           }
-          function _close(
-            a: [number, number, number],
-            b: [number, number, number],
-          ) {
-            return (
-              Math.abs(a[0] - b[0]) < 8 &&
-              Math.abs(a[1] - b[1]) < 8 &&
-              Math.abs(a[2] - b[2]) < 8
-            );
-          }
           // Sample the brand-orange + brand-blue from CSS vars on body.
           const cs = getComputedStyle(document.body);
           const orange = parse(

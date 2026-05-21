@@ -105,10 +105,14 @@ if grep -s -F 'CREATE_PERSISTENT_STORAGE=true' /var/lib/gdm3/settings/transient/
     # relevant.
     # This style will give better systemd integration, allowing the use of ConditionPathExists=
     touch /var/lib/live/config/tails.create-persistence
+    if [ -x /usr/local/lib/elizaos/persistence-maintenance ]; then
+        /usr/local/lib/elizaos/persistence-maintenance enter || true
+    fi
 else
     # You might wonder why should the file be there at all:
     # if you are debugging, you might want to run systemctl restart gdm
     rm -f /var/lib/live/config/tails.create-persistence
+    rm -f /run/elizaos/persistence-maintenance
 fi
 
 ### Gather general configuration
