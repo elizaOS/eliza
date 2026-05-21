@@ -121,3 +121,34 @@ records:
       decision:
         - status
         - reason
+  eda.tool_action.v1:
+    description: Typed, allowlisted EDA tool action proposed before any write-capable agent execution.
+    required_fields:
+      - schema
+      - id
+      - action_type
+      - tool
+      - mode
+      - command
+      - read_scope
+      - write_scope
+      - input_artifacts
+      - generated_artifacts
+      - approval
+      - execution
+      - status
+      - claim_boundary
+    required_nested:
+      command:
+        - argv
+        - cwd
+      approval:
+        - required
+        - status
+      execution:
+        - dry_run_only
+        - archived_stdout
+        - archived_stderr
+      status:
+        - result
+        - blockers

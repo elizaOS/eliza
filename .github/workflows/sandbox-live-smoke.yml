@@ -86,12 +86,12 @@ jobs:
       TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'all' }}
       STRICT_ARG: ${{ github.event_name == 'workflow_dispatch' && inputs.strict && '--strict' || '' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 

@@ -1,0 +1,95 @@
+{
+  "reportSchema": "eliza.mtp-runtime-smoke.v1",
+  "generatedAt": "2026-05-20T19:26:20.352Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+  "tier": "0_8b",
+  "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-0.8B-MTP-GGUF/snapshots/cf8a611f6ed2c2060046219a19f12cd3d5ecd67c/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "metadataStatus": "pass",
+  "mtp": {
+    "pass": true,
+    "nextnPredictLayers": 1,
+    "keys": [
+      "qwen35.nextn_predict_layers"
+    ]
+  },
+  "cli": {
+    "available": true,
+    "status": 0,
+    "supportsDraftMtp": true,
+    "outputTail": "                                        llama2, llama2-sys, llama2-sys-bos, llama2-sys-strip, llama3, llama4,\n                                        megrez, minicpm, mistral-v1, mistral-v3, mistral-v3-tekken,\n                                        mistral-v7, mistral-v7-tekken, monarch, openchat, orion,\n                                        pangu-embedded, phi3, phi4, rwkv-world, seed_oss, smolvlm, solar-open,\n                                        vicuna, vicuna-orca, yandex, zephyr\n                                        (env: LLAMA_ARG_CHAT_TEMPLATE_FILE)\n--skip-chat-parsing, --no-skip-chat-parsing\n                                        force a pure content parser, even if a Jinja template is specified;\n                                        model will output everything in the content section, including any\n                                        reasoning and/or tool calls (default: disabled)\n                                        (env: LLAMA_ARG_SKIP_CHAT_PARSING)\n--simple-io                             use basic IO for better compatibility in subprocesses and limited\n                                        consoles\n--spec-replace TARGET DRAFT             translate the string in TARGET into DRAFT if the draft model and main\n                                        model are not compatible\n--gpt-oss-20b-default                   use gpt-oss-20b (note: can download weights from the internet)\n--gpt-oss-120b-default                  use gpt-oss-120b (note: can download weights from the internet)\n--vision-gemma-4b-default               use Gemma 3 4B QAT (note: can download weights from the internet)\n--vision-gemma-12b-default              use Gemma 3 12B QAT (note: can download weights from the internet)\n--spec-default                          enable default speculative decoding config"
+  },
+  "runtime": [
+    {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 10674,
+      "failure": null,
+      "outputTail": "██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : Qwen3.5-0.8B-UD-Q4_K_XL.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\nSpeculative decoding is the process of attempting to reverse-engineer the exact sequence of a previously unknown language or code by analyzing its phonetic structure, statistical patterns, and linguistic features, often relying on the assumption that the underlying grammar is identical to the original. This method frequently yields results that are either nonsensical or nonspecific, as the decoding process often fails to account for the specific nuances of the source language's grammar, leading to a \"hallucinated\" output that appears to be the original but is actually a random string of letters.\n\n[ Prompt: 111.3 t/s | Generation: 12.9 t/s ]\n[ Draft: 31 accepted / 78 generated | Acceptance: 0.3974 ]\n\nExiting...",
+      "tokensPerSecond": 12.9,
+      "accepted": 31,
+      "drafted": 78,
+      "acceptanceRate": 0.3974358974358974
+    }
+  ],
+  "bench": {
+    "reportSchema": "eliza.speculative-benchmark.v1",
+    "generatedAt": "2026-05-20T19:26:45.237Z",
+    "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+    "speculator": "mtp",
+    "tier": "0_8b",
+    "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-0.8B-MTP-GGUF/snapshots/cf8a611f6ed2c2060046219a19f12cd3d5ecd67c/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+    "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "benchTokens": 512,
+    "available": true,
+    "status": "pass",
+    "failure": null,
+    "backend": "unknown",
+    "binary": {
+      "path": ".tmp/llama-mtp-build/bin/llama-cli",
+      "exists": true,
+      "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+    },
+    "drafted": 78,
+    "accepted": 31,
+    "acceptanceRate": 0.3974358974358974,
+    "speedup": 1.2403846153846154,
+    "withDrafter": {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 10674,
+      "failure": null,
+      "outputTail": "██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : Qwen3.5-0.8B-UD-Q4_K_XL.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\nSpeculative decoding is the process of attempting to reverse-engineer the exact sequence of a previously unknown language or code by analyzing its phonetic structure, statistical patterns, and linguistic features, often relying on the assumption that the underlying grammar is identical to the original. This method frequently yields results that are either nonsensical or nonspecific, as the decoding process often fails to account for the specific nuances of the source language's grammar, leading to a \"hallucinated\" output that appears to be the original but is actually a random string of letters.\n\n[ Prompt: 111.3 t/s | Generation: 12.9 t/s ]\n[ Draft: 31 accepted / 78 generated | Acceptance: 0.3974 ]\n\nExiting...",
+      "tokensPerSecond": 12.9,
+      "accepted": 31,
+      "drafted": 78,
+      "acceptanceRate": 0.3974358974358974
+    },
+    "withoutDrafter": {
+      "available": true,
+      "withMtp": false,
+      "status": 0,
+      "wallMs": 14210,
+      "failure": null,
+      "outputTail": "██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : Qwen3.5-0.8B-UD-Q4_K_XL.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\nSpeculative decoding is the process of attempting to reverse-engineer the exact sequence of a previously unknown language or code by analyzing its phonetic structure, statistical patterns, and linguistic rules, often relying on the assumption that the underlying grammar is identical to that of a known language. This method, pioneered by linguists like Stephen Krashen and later formalized by Stephen Krashen's \"Comprehensive Syllabary,\" aims to reconstruct the original language's syntax and vocabulary by mapping the observed sounds and word formations to a known dictionary, effectively treating the unknown as a \"black box\" that can be decoded if the rules of the language are understood.\n\n[ Prompt: 65.8 t/s | Generation: 10.4 t/s ]\n\nExiting...",
+      "tokensPerSecond": 10.4,
+      "accepted": null,
+      "drafted": null,
+      "acceptanceRate": null
+    },
+    "summary": {
+      "speculator": "mtp",
+      "tier": "0_8b",
+      "backend": "unknown",
+      "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+      "drafted": 78,
+      "accepted": 31,
+      "acceptanceRate": 0.3974358974358974,
+      "speedup": 1.2403846153846154,
+      "status": "pass",
+      "failure": null
+    }
+  }
+}
