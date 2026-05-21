@@ -141,9 +141,24 @@ export function DirectCryptoCreditCard({
     setTokenSymbol(null);
   }, [selected?.network]);
 
-  const bscPromo =
-    promoCode === "bsc" && network === "bsc" && amount !== null && amount >= 10;
-  const expectedCredits = amount === null ? 0 : amount + (bscPromo ? 5 : 0);
+  // Promo is data-driven from /api/crypto/status so the BSC bonus shows
+  // anywhere this card renders (dashboard billing tab, /bsc promo page, etc.)
+  // — not only when the host page passes promoCode="bsc". The `promoCode`
+  // prop is still respected as an explicit opt-out target if a host wanted to
+  // disable promos (omit it), but if it's set we require it to match the
+  // network in the promotion payload.
+  const activePromo = useMemo(() => {
+    const p = status?.directWallet?.promotion;
+    if (!p) return null;
+    if (selected?.network !== p.network) return null;
+    if (promoCode && promoCode !== p.code) return null;
+    if (amount === null || amount < p.minimumUsd) return null;
+    return p;
+  }, [status?.directWallet?.promotion, selected?.network, promoCode, amount]);
+
+  const bscPromo = activePromo !== null && activePromo.code === "bsc";
+  const expectedCredits =
+    amount === null ? 0 : amount + (activePromo?.bonusCredits ?? 0);
   const canPay = Boolean(amount && amount > 0 && selected);
 
   const connectedAddress = useMemo(() => {
@@ -455,16 +470,21 @@ export function DirectCryptoCreditCard({
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           {selected?.network === "solana" ? (
-            <Button
-              type="button"
-              variant="surface"
-              onClick={() => setSolanaModalVisible(true)}
-              className={surfaceButtonClassName}
-              style={cloudButtonStyle}
-            >
-              {solana.publicKey ? "Solana connected" : "Connect Solana"}
-            </Button>
-          ) : (
+            walletMatches ? null : (
+              <Button
+                type="button"
+                variant="surface"
+                onClick={() => setSolanaModalVisible(true)}
+                className={surfaceButtonClassName}
+                style={cloudButtonStyle}
+              >
+                {solana.publicKey ? "Solana connected" : "Connect Solana"}
+              </Button>
+            )
+          ) : walletMatches ? null : (
+            // Hide the wagmi Connect button when the connected wallet already
+            // matches the user's account wallet — they "signed in with their
+            // wallet" so there's no second connection step to do.
             <ConnectButton.Custom>
               {({ account, chain, openAccountModal, openConnectModal }) => (
                 <Button
