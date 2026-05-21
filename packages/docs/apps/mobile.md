@@ -85,6 +85,9 @@ AVF probe, but the Microdroid payload/RPC lifecycle is still AOSP-only follow-up
 work. AOSP terminal and toolchain behavior is outside the app-store mobile
 target and remains limited to privileged system builds.
 
+Android cloud builds do not run a local Bun backend; they route all agent
+inference through Eliza Cloud instead.
+
 Use `bun run build:android:cloud` from the repository root for a Play-store
 style release AAB thin client; `android-cloud-debug` is only for debug APK
 iteration. Use `bun run build:android:system` for the privileged AOSP APK. The
