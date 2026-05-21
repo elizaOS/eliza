@@ -1,0 +1,18 @@
+#!/bin/sh
+# Enable elizaOS user units for every new user via /etc/skel.
+set -eu
+
+SKEL=/etc/skel/.config/systemd/user
+mkdir -p "${SKEL}/graphical-session.target.wants"
+
+ln -sf /etc/systemd/user/elizaos-launcher.service \
+       "${SKEL}/graphical-session.target.wants/elizaos-launcher.service"
+ln -sf /etc/systemd/user/elizaos-chat-overlay.service \
+       "${SKEL}/graphical-session.target.wants/elizaos-chat-overlay.service"
+
+# Mark binaries executable inside the chroot.
+chmod 0755 /usr/local/lib/elizaos/first-boot.sh \
+           /usr/lib/elizaos/wait-agent-health.sh \
+           /usr/lib/elizaos/run-terminal-tui-smoke.sh \
+           /usr/local/lib/elizaos/start-launcher \
+           /usr/local/lib/elizaos/start-chat-overlay

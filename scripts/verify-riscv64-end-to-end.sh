@@ -171,10 +171,10 @@ else
     record "aosp:bun-riscv64/bun-version-json-parse" "FAIL" "$(tail -1 "$tmp_log")"
 fi
 # Actual Bun riscv64 artifact availability (SKIP — upstream-blocked).
-if [ -n "${MILADY_BUN_RISCV64_URL:-}" ]; then
-    record "aosp:bun-riscv64-artifact" "PASS" "MILADY_BUN_RISCV64_URL set: ${MILADY_BUN_RISCV64_URL}"
+if [ -n "${ELIZA_BUN_RISCV64_URL:-}" ]; then
+    record "aosp:bun-riscv64-artifact" "PASS" "ELIZA_BUN_RISCV64_URL set: ${ELIZA_BUN_RISCV64_URL}"
 else
-    record "aosp:bun-riscv64-artifact" "SKIP" "MILADY_BUN_RISCV64_URL unset (upstream oven-sh/bun#6266)"
+    record "aosp:bun-riscv64-artifact" "SKIP" "ELIZA_BUN_RISCV64_URL unset (upstream oven-sh/bun#6266)"
 fi
 
 # Cuttlefish boot smoke status. The log file may exist locally without
@@ -198,9 +198,9 @@ fi
 # Real Pixel hardware (SKIP — needs an attached device).
 record "aosp:pixel-arm64-attached" "SKIP" "no \`adb devices\` in sandbox; deploy-pixel.mjs path is unit-tested at script-syntax + test-suite level above"
 
-# ── Debian fork — variant skeleton + manifest ────────────────────────
+# ── Debian fork — unified build skeleton + manifest ──────────────────
 echo "── Debian fork (Linux ISO, riscv64) ──"
-deb_dir="$repo_root/packages/os/linux/variants/elizaos-debian-riscv64"
+deb_dir="$repo_root/packages/os/linux/elizaos"
 if [ -d "$deb_dir" ]; then
     for f in Dockerfile build.sh manifest.json.template README.md auto/config; do
         if [ -f "$deb_dir/$f" ]; then

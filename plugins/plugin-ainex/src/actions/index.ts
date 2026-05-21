@@ -12,7 +12,7 @@
 //                   for a custom mode.
 //
 // The `selectActions(runtime)` helper resolves the surface from
-// `MILADY_AINEX_MODE` ("programmatic" | "rl" | "both"; default
+// `ELIZA_AINEX_MODE` ("programmatic" | "rl" | "both"; default
 // "programmatic").
 
 import type { Action, IAgentRuntime } from "@elizaos/core";
@@ -73,14 +73,14 @@ const PROGRAMMATIC_ACTIONS: readonly Action[] = [
 export const actions: Action[] = [...PROGRAMMATIC_ACTIONS];
 
 /**
- * Resolve the action surface from `MILADY_AINEX_MODE` setting.
+ * Resolve the action surface from `ELIZA_AINEX_MODE` setting.
  *   "programmatic" (default) → 15 actions
  *   "rl"                      → [runRlAction]
  *   "both"                    → 15 + runRl = 16
  */
 export function selectActions(runtime: IAgentRuntime): Action[] {
   const mode = String(
-    runtime.getSetting("MILADY_AINEX_MODE") ?? "programmatic",
+    runtime.getSetting("ELIZA_AINEX_MODE") ?? "programmatic",
   ).toLowerCase();
   if (mode === "rl") return [runRlAction];
   if (mode === "both") return [...PROGRAMMATIC_ACTIONS, runRlAction];

@@ -1,5 +1,5 @@
 From e5e0c29ba3a3ee7e7a16794ce2d2b58b78dd6a80 Mon Sep 17 00:00:00 2001
-From: bun-riscv64 build <bun-riscv64@milady.local>
+From: bun-riscv64 build <bun-riscv64@eliza.local>
 Date: Tue, 19 May 2026 04:35:28 -0700
 Subject: [PATCH 3/7] zig: emit riscv64 target triple and generic_rv64 CPU
 

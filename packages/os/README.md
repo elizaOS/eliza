@@ -17,7 +17,7 @@ docs/              Internal engineering notes
 
 ## Variants
 
-The active Linux variant ships under `linux/variants/milady-tails/`. It inherits the Tails security model (RAM-only by default, MAC randomization, optional Tor routing) and adds the elizaOS desktop app pinned as the home surface.
+The active Linux variant ships under `linux/variants/eliza-tails/`. It inherits the Tails security model (RAM-only by default, MAC randomization, optional Tor routing) and adds the elizaOS desktop app pinned as the home surface.
 
 The Android side targets a curated list of devices where AOSP can be flashed safely. Manifests in `release/` enumerate supported devices, channels (alpha / beta / stable), and signing keys.
 

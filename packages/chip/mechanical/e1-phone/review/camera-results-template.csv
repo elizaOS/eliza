@@ -1,8 +1,8 @@
-sample_id,measurement_id,unit,min,max,measured_value,pass,operator,notes
-,rear_camera_lens_center_error_mm,mm,0.0,0.25,,,,Rear lens optical center to rear cover-window datum.
-,front_camera_under_glass_center_error_mm,mm,0.0,0.3,,,,Front camera optical center to under-glass aperture datum.
-,rear_camera_focus_mtf50_lp_per_mm,lp/mm,35.0,,,,,AF rear module focus and cover-window optical quality check.
-,front_camera_mtf50_lp_per_mm,lp/mm,25.0,,,,,Front fixed-focus module through cover-glass image sharpness.
-,front_cover_glass_color_delta_e,deltaE,0.0,3.0,,,,Color shift from cover-glass/black mask stack over front camera.
-,rear_camera_dust_or_vignette_defects,count,0.0,0.0,,,,"Dust, vignette, or gasket intrusion defects in rear cover window."
-,camera_streaming_bringup_logs,pass_flag,1.0,1.0,,,,Both front and rear cameras enumerate and stream with selected module pinout.
+sample_id,measurement_id,unit,min,max,measured_value,pass,operator,evidence_class,required_evidence_artifacts,raw_data_artifact,fixture_calibration_certificate,photo_or_log_artifact,lot_traceability_record,notes
+,rear_camera_lens_center_error_mm,mm,0.0,0.25,,,,,rear_camera_alignment_raw_csv;camera_alignment_fixture_calibration_certificate;rear_camera_window_alignment_photo;rear_camera_module_and_cover_glass_lot_records,,,,,Rear lens optical center to rear cover-window datum.
+,front_camera_under_glass_center_error_mm,mm,0.0,0.3,,,,,front_camera_alignment_raw_csv;camera_alignment_fixture_calibration_certificate;front_under_glass_alignment_photo;front_camera_module_and_cover_glass_lot_records,,,,,Front camera optical center to under-glass aperture datum.
+,rear_camera_focus_mtf50_lp_per_mm,lp/mm,35.0,,,,,,rear_iso12233_mtf_raw_csv;camera_chart_and_lightbox_calibration_certificate;rear_camera_focus_capture;rear_camera_module_lot_record,,,,,AF rear module focus and cover-window optical quality check.
+,front_camera_mtf50_lp_per_mm,lp/mm,25.0,,,,,,front_iso12233_mtf_raw_csv;camera_chart_and_lightbox_calibration_certificate;front_camera_through_glass_capture;front_camera_module_and_cover_glass_lot_records,,,,,Front fixed-focus module through cover-glass image sharpness.
+,front_cover_glass_color_delta_e,deltaE,0.0,3.0,,,,,front_color_chart_delta_e_raw_csv;color_lightbox_calibration_certificate;front_camera_color_chart_capture;front_cover_glass_lot_record,,,,,Color shift from cover-glass/black mask stack over front camera.
+,rear_camera_dust_or_vignette_defects,count,0.0,0.0,,,,,rear_flat_field_defect_raw_log;flat_field_lightbox_calibration_certificate;rear_camera_flat_field_capture;rear_camera_cover_glass_and_gasket_lot_records,,,,,"Dust, vignette, or gasket intrusion defects in rear cover window."
+,camera_streaming_bringup_logs,pass_flag,1.0,1.0,,,,,v4l2_or_camera_hal_streaming_log;camera_driver_revision_record;front_and_rear_camera_capture_artifacts;camera_module_lot_records,,,,,Both front and rear cameras enumerate and stream with selected module pinout.

@@ -1,0 +1,35 @@
+# evidence_class: simulated_first_article_for_evt_planning_not_production_release
+# companion_to: evt-inspection-results-template.csv
+# note: scaffold template is regenerated blank by generate_e1_phone_cad.py; this companion file holds simulated EVT1 first-article data
+sample_id,measurement_id,fixture,units,min,max,nominal,measured,pass,operator,notes
+EVT1-2026-05-12-0001,power_button_actuation_force,evt_fixture_button_force_probe,N,1.2,2.2,1.6,1.58,true,Lin Wei (IQC-04),Panasonic EVQ-P7 cap; load cell at cap center.
+EVT1-2026-05-12-0001,power_button_travel,evt_fixture_button_force_probe,mm,0.25,0.55,0.35,0.34,true,Lin Wei (IQC-04),Dial indicator at tactile event.
+EVT1-2026-05-12-0001,volume_button_actuation_force,evt_fixture_button_force_probe,N,1.2,2.2,1.5,1.49,true,Lin Wei (IQC-04),EVQ-P7 21mm cap centered.
+EVT1-2026-05-12-0001,usb_c_insertion_force_no_rub,evt_fixture_usb_c_insertion_gauge,N,0.0,35.0,,12.4,true,Chen Min (S2-OP-07),GCT USB4105 plug-class gauge.
+EVT1-2026-05-12-0001,screen_adhesive_compression,evt_fixture_screen_bond_clamp_frame,mm,0.03,0.08,0.045,0.046,true,Chen Min (S2-OP-07),0.18mm tape -> 0.135mm (25% target).
+EVT1-2026-05-12-0001,display_fpc_bend_radius,evt_fixture_screen_bond_clamp_frame,mm,1.0,,1.0,1.05,true,Chen Min (S2-OP-07),
+EVT1-2026-05-12-0001,rear_camera_lens_center_error,evt_fixture_rear_camera_alignment_pin,mm,0.0,0.25,0.0,0.06,true,Zhao Qiang (S4-OP-03),OV13855 to cover window datum.
+EVT1-2026-05-12-0001,front_camera_under_glass_center_error,evt_fixture_front_camera_alignment_pin,mm,0.0,0.3,0.0,0.04,true,Zhao Qiang (S4-OP-03),
+EVT1-2026-05-12-0001,bottom_audio_leak_delta,evt_fixture_bottom_acoustic_leak_mask,dB,0.0,3.0,0.0,0.8,true,Sun Min (QC-FA-02),
+EVT1-2026-05-12-0001,handset_receiver_leak_delta,evt_fixture_earpiece_leak_mask,dB,0.0,3.0,0.0,1.2,true,Sun Min (QC-FA-02),
+EVT1-2026-05-12-0001,enclosure_length_mm,cmm_zeiss_contura,mm,153.45,153.75,153.6,153.61,true,Lin Wei (IQC-04),Zeiss Contura CMM.
+EVT1-2026-05-12-0001,enclosure_width_mm,cmm_zeiss_contura,mm,77.85,78.15,78.0,78.02,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0001,enclosure_thickness_mm,cmm_zeiss_contura,mm,9.50,9.70,9.6,9.605,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0001,display_gap_mm,evt_fixture_screen_bond_clamp_frame,mm,0.05,0.25,0.15,0.151,true,Chen Min (S2-OP-07),
+EVT1-2026-05-12-0001,corner_radius_mm,cmm_zeiss_contura,mm,7.45,7.55,7.5,7.502,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0001,usb_c_aperture_width_mm,evt_fixture_usb_c_insertion_gauge,mm,8.94,9.09,8.94,9.01,true,Liu Yan (S5-OP-09),GCT USB4105 spec aperture.
+EVT1-2026-05-12-0002,power_button_actuation_force,evt_fixture_button_force_probe,N,1.2,2.2,1.6,1.62,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0002,power_button_travel,evt_fixture_button_force_probe,mm,0.25,0.55,0.35,0.36,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0002,usb_c_insertion_force_no_rub,evt_fixture_usb_c_insertion_gauge,N,0.0,35.0,,11.9,true,Chen Min (S2-OP-07),
+EVT1-2026-05-12-0002,enclosure_length_mm,cmm_zeiss_contura,mm,153.45,153.75,153.6,153.59,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0002,enclosure_thickness_mm,cmm_zeiss_contura,mm,9.50,9.70,9.6,9.611,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0003,power_button_actuation_force,evt_fixture_button_force_probe,N,1.2,2.2,1.6,1.55,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0003,rear_camera_lens_center_error,evt_fixture_rear_camera_alignment_pin,mm,0.0,0.25,0.0,0.07,true,Zhao Qiang (S4-OP-03),
+EVT1-2026-05-12-0003,enclosure_length_mm,cmm_zeiss_contura,mm,153.45,153.75,153.6,153.62,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0004,enclosure_length_mm,cmm_zeiss_contura,mm,153.45,153.75,153.6,153.60,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0005,enclosure_length_mm,cmm_zeiss_contura,mm,153.45,153.75,153.6,153.63,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0006,enclosure_length_mm,cmm_zeiss_contura,mm,153.45,153.75,153.6,153.58,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0007,enclosure_length_mm,cmm_zeiss_contura,mm,153.45,153.75,153.6,153.61,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0008,enclosure_length_mm,cmm_zeiss_contura,mm,153.45,153.75,153.6,153.60,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0009,enclosure_length_mm,cmm_zeiss_contura,mm,153.45,153.75,153.6,153.62,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0010,enclosure_length_mm,cmm_zeiss_contura,mm,153.45,153.75,153.6,153.61,true,Lin Wei (IQC-04),

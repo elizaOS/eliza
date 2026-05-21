@@ -19,4 +19,4 @@ Template: `mechanical/e1-phone/review/supplier-response-template.csv`
 
 ## Release Rule
 
-- Every supplier row must name the vendor/part/reviewer and confirm quote, 2D drawing, STEP, and sample receipt before supplier lock.
+- Every supplier row must name the vendor/part/reviewer, identify a supplier listing or portal, prove low-quantity commercial terms with MOQ <= 50, lead time <= 90 days, and positive unit price, confirm quote, 2D drawing, STEP, and sample receipt, provide three-axis mechanical envelope dimensions, include evidence_class=physical_supplier_response, and attach quote, drawing, STEP, pinout/process, footprint/tooling, sample inspection/photo, and supplier traceability artifacts before supplier lock.

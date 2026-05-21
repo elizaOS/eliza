@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * End-to-end smoke test for the whisper.cpp ASR adapter inside Milady's
+ * End-to-end smoke test for the whisper.cpp ASR adapter inside Eliza's
  * transcriber chain. Loads a WAV/FLAC, drives it through
  * `createStreamingTranscriber({ prefer: "whisper-cpp" })`, waits for the
  * final transcript, prints timing.

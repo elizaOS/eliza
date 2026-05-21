@@ -72,23 +72,23 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/usbeliza-build/models
-          key: elizaos-model-cache-${{ hashFiles('packages/os/linux/variants/milady-tails/Justfile') }}
+          key: elizaos-model-cache-${{ hashFiles('packages/os/linux/variants/eliza-tails/Justfile') }}
           restore-keys: elizaos-model-cache-
 
       - name: Restore CLI cache
         uses: actions/cache@v5
         with:
           path: ~/.cache/usbeliza-build/cli
-          key: elizaos-cli-cache-${{ hashFiles('packages/os/linux/variants/milady-tails/Justfile') }}
+          key: elizaos-cli-cache-${{ hashFiles('packages/os/linux/variants/eliza-tails/Justfile') }}
           restore-keys: elizaos-cli-cache-
 
       - name: Restore live-build chroot/debs cache
         uses: actions/cache@v5
         with:
           path: |
-            packages/os/linux/variants/milady-tails/tails/cache
-            packages/os/linux/variants/milady-tails/tails/.build
-          key: elizaos-iso-livebuild-${{ runner.os }}-${{ hashFiles('packages/os/linux/variants/milady-tails/tails/**/package-lists/**', 'packages/os/linux/variants/milady-tails/tails/**/*.list.chroot', 'packages/os/linux/variants/milady-tails/build-iso.sh', 'packages/os/linux/variants/milady-tails/Dockerfile') }}
+            packages/os/linux/variants/eliza-tails/tails/cache
+            packages/os/linux/variants/eliza-tails/tails/.build
+          key: elizaos-iso-livebuild-${{ runner.os }}-${{ hashFiles('packages/os/linux/variants/eliza-tails/tails/**/package-lists/**', 'packages/os/linux/variants/eliza-tails/tails/**/*.list.chroot', 'packages/os/linux/variants/eliza-tails/build-iso.sh', 'packages/os/linux/variants/eliza-tails/Dockerfile') }}
           restore-keys: elizaos-iso-livebuild-${{ runner.os }}-
 
       - name: Install Rust toolchain
@@ -118,39 +118,39 @@ jobs:
           fi
 
       - name: Stage ISO build
-        working-directory: packages/os/linux/variants/milady-tails
+        working-directory: packages/os/linux/variants/eliza-tails
         env:
-          ELIZAOS_BUILD_MILADY_APP: "1"
+          ELIZAOS_BUILD_ELIZA_APP: "1"
         run: just iso-stage
 
-      # Model/CLI caching is not implemented for the milady-tails variant —
+      # Model/CLI caching is not implemented for the eliza-tails variant —
       # the chroot resolves them inline during live-build. The targets exist
       # as documented no-ops so the workflow contract stays uniform.
       - name: Cache pre-downloaded models (variant no-op)
-        working-directory: packages/os/linux/variants/milady-tails
+        working-directory: packages/os/linux/variants/eliza-tails
         run: just iso-cache-model
 
       - name: Cache pre-downloaded CLIs (variant no-op)
-        working-directory: packages/os/linux/variants/milady-tails
+        working-directory: packages/os/linux/variants/eliza-tails
         run: just iso-cache-cli
 
       - name: Configure live-build
-        working-directory: packages/os/linux/variants/milady-tails
+        working-directory: packages/os/linux/variants/eliza-tails
         run: just iso-config
 
       - name: Validate ISO config
-        working-directory: packages/os/linux/variants/milady-tails
+        working-directory: packages/os/linux/variants/eliza-tails
         run: just iso-check
 
       - name: Build ISO
-        working-directory: packages/os/linux/variants/milady-tails
-        run: sudo --preserve-env=ELIZAOS_BUILD_MILADY_APP just iso-build
+        working-directory: packages/os/linux/variants/eliza-tails
+        run: sudo --preserve-env=ELIZAOS_BUILD_ELIZA_APP just iso-build
         timeout-minutes: 90
 
       - name: Locate and rename ISO
         id: iso
         run: |
-          ISO=$(find packages/os/linux/variants/milady-tails -name "*.iso" | head -1)
+          ISO=$(find packages/os/linux/variants/eliza-tails -name "*.iso" | head -1)
           if [ -z "$ISO" ]; then
             echo "ERROR: ISO not found after build"
             exit 1

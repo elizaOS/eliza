@@ -75,16 +75,16 @@ describe("ensureStoreBuildWorkspaceFolder", () => {
   it("prompts the picker on first run and persists the result", async () => {
     (pickDesktopWorkspaceFolder as ReturnType<typeof vi.fn>).mockResolvedValue({
       canceled: false,
-      path: "/Users/x/Milady",
+      path: "/Users/x/Eliza",
       bookmark: "base64Bookmark",
     });
     const result = await ensureStoreBuildWorkspaceFolder();
     expect(result.kind).toBe("stored");
     if (result.kind !== "stored") return;
     expect(result.freshlyPicked).toBe(true);
-    expect(result.folder.path).toBe("/Users/x/Milady");
+    expect(result.folder.path).toBe("/Users/x/Eliza");
     expect(result.folder.bookmark).toBe("base64Bookmark");
-    expect(readStoredWorkspaceFolder()?.path).toBe("/Users/x/Milady");
+    expect(readStoredWorkspaceFolder()?.path).toBe("/Users/x/Eliza");
   });
 
   it("returns canceled when the user dismisses the picker", async () => {
@@ -98,24 +98,24 @@ describe("ensureStoreBuildWorkspaceFolder", () => {
   });
 
   it("replays stored value without re-resolving when there is no bookmark", async () => {
-    persistStoredWorkspaceFolder({ path: "/home/x/Milady", bookmark: null });
+    persistStoredWorkspaceFolder({ path: "/home/x/Eliza", bookmark: null });
     const result = await ensureStoreBuildWorkspaceFolder();
     expect(result.kind).toBe("stored");
     if (result.kind !== "stored") return;
     expect(result.freshlyPicked).toBe(false);
-    expect(result.folder.path).toBe("/home/x/Milady");
+    expect(result.folder.path).toBe("/home/x/Eliza");
     expect(pickDesktopWorkspaceFolder).not.toHaveBeenCalled();
     expect(resolveDesktopWorkspaceFolderBookmark).not.toHaveBeenCalled();
   });
 
   it("re-resolves a stored macOS bookmark and returns the fresh path", async () => {
     persistStoredWorkspaceFolder({
-      path: "/Users/x/Milady",
+      path: "/Users/x/Eliza",
       bookmark: "base64Bookmark",
     });
     (
       resolveDesktopWorkspaceFolderBookmark as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ ok: true, path: "/Users/x/Milady" });
+    ).mockResolvedValue({ ok: true, path: "/Users/x/Eliza" });
     const result = await ensureStoreBuildWorkspaceFolder();
     expect(result.kind).toBe("stored");
     if (result.kind !== "stored") return;
@@ -127,7 +127,7 @@ describe("ensureStoreBuildWorkspaceFolder", () => {
 
   it("clears stored value + reports stale-bookmark on resolve failure", async () => {
     persistStoredWorkspaceFolder({
-      path: "/Users/x/Milady",
+      path: "/Users/x/Eliza",
       bookmark: "expiredBookmark",
     });
     (
@@ -136,7 +136,7 @@ describe("ensureStoreBuildWorkspaceFolder", () => {
     const result = await ensureStoreBuildWorkspaceFolder();
     expect(result).toEqual({
       kind: "stale-bookmark",
-      oldPath: "/Users/x/Milady",
+      oldPath: "/Users/x/Eliza",
     });
     expect(readStoredWorkspaceFolder()).toBeNull();
   });

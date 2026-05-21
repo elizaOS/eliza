@@ -7,7 +7,7 @@
 # step is idempotent: if the output already exists and is rv64 ELF, the
 # step is skipped (so callers can re-run cheaply).
 #
-# Gated on MILADY_RISCV64_SMOKE=1 by default (same posture as the smoke
+# Gated on ELIZA_RISCV64_SMOKE=1 by default (same posture as the smoke
 # harness). Unset = no-op.
 #
 # Tooling requirements (caller's job to install):
@@ -18,9 +18,9 @@
 #   - node 20+         (drives compile-libllama.mjs / build-omnivoice.mjs / build-whisper.mjs)
 #
 # Usage:
-#   MILADY_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh
-#   MILADY_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh --skip-android  # CPU-side only
-#   MILADY_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh --force         # rebuild even if present
+#   ELIZA_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh
+#   ELIZA_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh --skip-android  # CPU-side only
+#   ELIZA_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh --force         # rebuild even if present
 #
 # Exit code:
 #   0 — every reachable build succeeded (or already present)
@@ -48,9 +48,9 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ "${MILADY_RISCV64_SMOKE:-0}" != "1" ]; then
-    echo "[build-riscv64-artifacts] MILADY_RISCV64_SMOKE not set; nothing to do."
-    echo "[build-riscv64-artifacts] To run: MILADY_RISCV64_SMOKE=1 bun run build:riscv64-artifacts"
+if [ "${ELIZA_RISCV64_SMOKE:-0}" != "1" ]; then
+    echo "[build-riscv64-artifacts] ELIZA_RISCV64_SMOKE not set; nothing to do."
+    echo "[build-riscv64-artifacts] To run: ELIZA_RISCV64_SMOKE=1 bun run build:riscv64-artifacts"
     exit 0
 fi
 

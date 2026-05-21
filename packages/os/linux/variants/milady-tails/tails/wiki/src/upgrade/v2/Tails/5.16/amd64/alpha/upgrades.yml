@@ -1,5 +1,0 @@
----
-build-target: amd64
-channel: alpha
-initial-install-version: '5.16'
-product-name: Tails

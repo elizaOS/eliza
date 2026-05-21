@@ -1,4 +1,4 @@
-From: Milady chip team <chip-team@elizaos.invalid>
+From: elizaOS chip team <chip-team@elizaos.invalid>
 Subject: [PATCH] cva6: btb.sv work around V3Delayed whole-array NBA limitation
 
 The simulator 5.049 (devel rev v5.048-46-g7c5069c7d) aborts with

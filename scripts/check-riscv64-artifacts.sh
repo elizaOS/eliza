@@ -9,17 +9,17 @@
 # under qemu-riscv64-static. Shared libraries are dlopen-verified via a
 # tiny C harness (also run under QEMU).
 #
-# Default posture: this is *gated* on MILADY_RISCV64_SMOKE=1 because
+# Default posture: this is *gated* on ELIZA_RISCV64_SMOKE=1 because
 # the toolchain dependencies (qemu-user-static, the actual riscv64
 # artifacts) are heavy and may not be available on every CI box. With
 # the env-var unset the script no-ops and exits 0 with a clean
 # "skip" marker, so wiring it into a default-CI step is safe.
 #
 # Usage:
-#   bash scripts/check-riscv64-artifacts.sh                  # honor MILADY_RISCV64_SMOKE
-#   MILADY_RISCV64_SMOKE=1 bash scripts/check-riscv64-artifacts.sh
-#   MILADY_RISCV64_SMOKE=1 bash scripts/check-riscv64-artifacts.sh --out build/reports/foo.json
-#   MILADY_RISCV64_SMOKE=1 bash scripts/check-riscv64-artifacts.sh --no-qemu  # ELF-tag check only
+#   bash scripts/check-riscv64-artifacts.sh                  # honor ELIZA_RISCV64_SMOKE
+#   ELIZA_RISCV64_SMOKE=1 bash scripts/check-riscv64-artifacts.sh
+#   ELIZA_RISCV64_SMOKE=1 bash scripts/check-riscv64-artifacts.sh --out build/reports/foo.json
+#   ELIZA_RISCV64_SMOKE=1 bash scripts/check-riscv64-artifacts.sh --no-qemu  # ELF-tag check only
 #
 # Exit code:
 #   0 — every artifact is PASS or a documented SKIP
@@ -32,7 +32,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
 OUT="$repo_root/build/reports/riscv64_artifacts.json"
-QEMU_TIMEOUT="${MILADY_RISCV64_QEMU_TIMEOUT:-60}"
+QEMU_TIMEOUT="${ELIZA_RISCV64_QEMU_TIMEOUT:-60}"
 RUN_QEMU=1
 
 while [ $# -gt 0 ]; do
@@ -87,7 +87,7 @@ write_final_report() {
         printf '{\n'
         printf '  "generated_at": "%s",\n' "$(iso_now)"
         printf '  "repo_root": "%s",\n' "$repo_root"
-        printf '  "milady_riscv64_smoke": "%s",\n' "${MILADY_RISCV64_SMOKE:-}"
+        printf '  "eliza_riscv64_smoke": "%s",\n' "${ELIZA_RISCV64_SMOKE:-}"
         printf '  "qemu_bin": "%s",\n' "${QEMU_BIN:-}"
         printf '  "qemu_run": %s,\n' "$([ "$RUN_QEMU" = "1" ] && echo true || echo false)"
         printf '  "qemu_timeout_seconds": %s,\n' "$QEMU_TIMEOUT"
@@ -111,10 +111,10 @@ write_final_report() {
 }
 
 # ── Gate ─────────────────────────────────────────────────────────────
-if [ "${MILADY_RISCV64_SMOKE:-0}" != "1" ]; then
-    echo "[check-riscv64-artifacts] MILADY_RISCV64_SMOKE not set; skipping."
-    echo "[check-riscv64-artifacts] To run: MILADY_RISCV64_SMOKE=1 bun run check:riscv64-artifacts"
-    write_final_report "SKIP" "MILADY_RISCV64_SMOKE!=1 (default-CI gate)"
+if [ "${ELIZA_RISCV64_SMOKE:-0}" != "1" ]; then
+    echo "[check-riscv64-artifacts] ELIZA_RISCV64_SMOKE not set; skipping."
+    echo "[check-riscv64-artifacts] To run: ELIZA_RISCV64_SMOKE=1 bun run check:riscv64-artifacts"
+    write_final_report "SKIP" "ELIZA_RISCV64_SMOKE!=1 (default-CI gate)"
     exit 0
 fi
 

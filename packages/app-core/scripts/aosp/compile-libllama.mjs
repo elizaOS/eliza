@@ -525,7 +525,7 @@ export function probeZig({
  *     RVV-capable hardware at runtime; SIGILLs on a scalar core.
  *
  *   { rvv: true, allVariants: true, zigVersion, reason: "all-variants-opt-in" }
- *     — Zig >= MIN_ZIG_RVV_VERSION AND env MILADY_GGML_CPU_ALL_VARIANTS=1.
+ *     — Zig >= MIN_ZIG_RVV_VERSION AND env ELIZA_GGML_CPU_ALL_VARIANTS=1.
  *     Builds GGML_BACKEND_DL + GGML_CPU_ALL_VARIANTS so two
  *     libggml-cpu-riscv64_{0,v}.so variants ship; runtime picks via
  *     riscv_hwprobe (`ggml-cpu/arch/riscv/cpu-feats.cpp`). Opt-in until the
@@ -571,7 +571,7 @@ export function resolveRiscv64BuildPlan({
       reason: "zig-too-old",
     };
   }
-  const allVariantsOptIn = env.MILADY_GGML_CPU_ALL_VARIANTS === "1";
+  const allVariantsOptIn = env.ELIZA_GGML_CPU_ALL_VARIANTS === "1";
   return {
     rvv: true,
     allVariants: allVariantsOptIn,
@@ -1034,7 +1034,7 @@ export function buildLibllamaForAbi({
   //     `-march=rv64gcv_zfh_zvfh_zicbop_zihintpause -mabi=lp64d` string
   //     passes straight through to Zig 0.14's LLVM; quants.c's intrinsic
   //     codepaths light up.
-  //   - allVariants (env MILADY_GGML_CPU_ALL_VARIANTS=1) -> additionally
+  //   - allVariants (env ELIZA_GGML_CPU_ALL_VARIANTS=1) -> additionally
   //     enable GGML_BACKEND_DL + GGML_CPU_ALL_VARIANTS so the build emits
   //     libggml-cpu-riscv64_{0,v}.so siblings and the loader picks via
   //     riscv_hwprobe at runtime. Opt-in until the Android DL-loader

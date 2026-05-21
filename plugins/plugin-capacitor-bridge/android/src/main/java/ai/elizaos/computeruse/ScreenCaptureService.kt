@@ -49,7 +49,7 @@ class ScreenCaptureService : Service() {
         const val EXTRA_RESULT_DATA = "resultData"
         const val EXTRA_FPS = "fps"
 
-        private const val CHANNEL_ID = "milady_screen_capture"
+        private const val CHANNEL_ID = "eliza_screen_capture"
         private const val NOTIFICATION_ID = 0x4d43 // 'MC'
 
         // Frame ring-buffer shared with the Capacitor plugin bridge thread.
@@ -135,7 +135,7 @@ class ScreenCaptureService : Service() {
 
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "MiladyCapture",
+            "ElizaCapture",
             width, height, density,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             imageReader?.surface,
@@ -144,7 +144,7 @@ class ScreenCaptureService : Service() {
 
         val intervalMs = (1000.0 / maxOf(1, fps)).toLong()
         scheduler = Executors.newSingleThreadScheduledExecutor { r ->
-            Thread(r, "milady-capture").also { it.isDaemon = true }
+            Thread(r, "eliza-capture").also { it.isDaemon = true }
         }
         captureTask = scheduler?.scheduleWithFixedDelay(
             { readLatestFrame() },
@@ -213,7 +213,7 @@ class ScreenCaptureService : Service() {
                 "Screen Capture",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Milady screen capture — required for computer-use"
+                description = "Eliza screen capture — required for computer-use"
             }
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
                 .createNotificationChannel(channel)
@@ -228,8 +228,8 @@ class ScreenCaptureService : Service() {
             Notification.Builder(this)
         }
         return builder
-            .setContentTitle("Milady Screen Capture")
-            .setContentText("Screen is being captured by Milady")
+            .setContentTitle("Eliza Screen Capture")
+            .setContentText("Screen is being captured by Eliza")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .build()
     }

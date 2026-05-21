@@ -1,15 +1,19 @@
 {
   "claim_boundary": "Automated EVT0 visual/design decision log; it records CAD review acceptance and open manual checks, not CMF lock, tooling release, or production validation.",
   "status": "pass",
+  "automated_visual_status": "automated_visual_coverage_pass",
+  "manual_visual_signoff_status": "blocked_manual_visual_review_open",
+  "production_visual_signoff_ready": false,
+  "open_manual_review_count": 5,
   "device_envelope_mm": [
     78.0,
     153.6,
-    9.6
+    11.2
   ],
   "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
   "screen_margin_mm": 0.45,
   "visual_deltas": {
-    "front_back_mean_rgb_sum_delta": 8.827,
+    "front_back_mean_rgb_sum_delta": 8.055,
     "front_back_minimum_sum_delta": 8.0
   },
   "review_views": [
@@ -20,9 +24,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.07952,
-      "orange_pixel_ratio_of_nonwhite": 0.01139,
-      "dark_pixel_ratio_of_nonwhite": 0.67433,
+      "nonwhite_pixel_ratio": 0.07942,
+      "orange_pixel_ratio_of_nonwhite": 0.01136,
+      "dark_pixel_ratio_of_nonwhite": 0.67439,
       "purpose": "PCB, battery, camera, audio, haptic, and I/O placement"
     },
     {
@@ -32,9 +36,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.07599,
-      "orange_pixel_ratio_of_nonwhite": 0.45795,
-      "dark_pixel_ratio_of_nonwhite": 0.52474,
+      "nonwhite_pixel_ratio": 0.07773,
+      "orange_pixel_ratio_of_nonwhite": 0.46694,
+      "dark_pixel_ratio_of_nonwhite": 0.51766,
       "purpose": "glass, display, shell, and component stack separation"
     },
     {
@@ -44,9 +48,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.05702,
-      "orange_pixel_ratio_of_nonwhite": 0.97389,
-      "dark_pixel_ratio_of_nonwhite": 0.01315,
+      "nonwhite_pixel_ratio": 0.05885,
+      "orange_pixel_ratio_of_nonwhite": 0.97535,
+      "dark_pixel_ratio_of_nonwhite": 0.01214,
       "purpose": "rear-side orange shell, camera window, and service-feature review"
     },
     {
@@ -68,9 +72,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.05366,
-      "orange_pixel_ratio_of_nonwhite": 0.43302,
-      "dark_pixel_ratio_of_nonwhite": 0.5465,
+      "nonwhite_pixel_ratio": 0.05561,
+      "orange_pixel_ratio_of_nonwhite": 0.50414,
+      "dark_pixel_ratio_of_nonwhite": 0.48084,
       "purpose": "front silhouette, orange side rail, black glass stack"
     },
     {
@@ -80,9 +84,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.02973,
-      "orange_pixel_ratio_of_nonwhite": 0.92483,
-      "dark_pixel_ratio_of_nonwhite": 0.06132,
+      "nonwhite_pixel_ratio": 0.03224,
+      "orange_pixel_ratio_of_nonwhite": 0.95824,
+      "dark_pixel_ratio_of_nonwhite": 0.0202,
       "purpose": "left-side button protrusion and shell depth"
     },
     {
@@ -92,9 +96,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.11026,
-      "orange_pixel_ratio_of_nonwhite": 0.068,
-      "dark_pixel_ratio_of_nonwhite": 0.92223,
+      "nonwhite_pixel_ratio": 0.11015,
+      "orange_pixel_ratio_of_nonwhite": 0.07162,
+      "dark_pixel_ratio_of_nonwhite": 0.91816,
       "purpose": "compact footprint, screen margin, buttons, and front features"
     },
     {
@@ -104,9 +108,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.04052,
-      "orange_pixel_ratio_of_nonwhite": 0.13278,
-      "dark_pixel_ratio_of_nonwhite": 0.02522,
+      "nonwhite_pixel_ratio": 0.04165,
+      "orange_pixel_ratio_of_nonwhite": 0.1561,
+      "dark_pixel_ratio_of_nonwhite": 0.02452,
       "purpose": "parting plane, runner, gate, ejector, and cooling placeholders"
     },
     {
@@ -116,8 +120,8 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.11003,
-      "orange_pixel_ratio_of_nonwhite": 0.00173,
+      "nonwhite_pixel_ratio": 0.11025,
+      "orange_pixel_ratio_of_nonwhite": 0.00168,
       "dark_pixel_ratio_of_nonwhite": 0.00943,
       "purpose": "translucent rear shell review of camera window, SIM edge, and service-label recess"
     }
@@ -140,18 +144,18 @@
     },
     "hard_orange_shell_visible": {
       "pass": true,
-      "front_orange_ratio": 0.43302,
-      "back_orange_ratio": 0.97389,
+      "front_orange_ratio": 0.50414,
+      "back_orange_ratio": 0.97535,
       "bottom_orange_ratio": 0.77781
     },
     "black_glass_front_visible": {
       "pass": true,
-      "front_dark_ratio": 0.5465,
-      "top_down_dark_ratio": 0.92223
+      "front_dark_ratio": 0.48084,
+      "top_down_dark_ratio": 0.91816
     },
     "component_stack_visible": {
       "pass": true,
-      "component_stack_nonwhite_ratio": 0.07952
+      "component_stack_nonwhite_ratio": 0.07942
     },
     "compact_screen_margin": {
       "pass": true,
@@ -194,7 +198,7 @@
     {
       "id": "rear_camera_cover_window",
       "decision": "keep_for_evt0",
-      "basis": "Rear AF camera stack remains in a back lens window because full under-glass packaging is too tall.",
+      "basis": "Single rear AF camera is buried under the flat back wall behind a flush internal window (no bump, no proud ring); device depth was raised to fully bury the module.",
       "evidence": [
         "rear_feature_detail.png",
         "rear_camera_module",
@@ -236,7 +240,7 @@
     {
       "id": "compact_orange_shell",
       "decision": "keep",
-      "basis": "Hold 78.0 x 153.6 x 9.6 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
+      "basis": "Hold 78.0 x 153.6 x 11.2 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
       "evidence": [
         "full_front_iso.png",
         "full_top_down.png",
@@ -258,7 +262,7 @@
     {
       "id": "compact_orange_shell",
       "decision": "keep",
-      "basis": "Hold 78.0 x 153.6 x 9.6 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
+      "basis": "Hold 78.0 x 153.6 x 11.2 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.",
       "evidence": [
         "full_front_iso.png",
         "full_top_down.png",
@@ -288,7 +292,7 @@
     {
       "id": "rear_camera_cover_window",
       "decision": "keep_for_evt0",
-      "basis": "Rear AF camera stack remains in a back lens window because full under-glass packaging is too tall.",
+      "basis": "Single rear AF camera is buried under the flat back wall behind a flush internal window (no bump, no proud ring); device depth was raised to fully bury the module.",
       "evidence": [
         "rear_feature_detail.png",
         "rear_camera_module",
@@ -347,6 +351,7 @@
     "Run tactile reviews for button travel, rattle, switch force, and snap-hook fatigue on physical samples.",
     "Replace mesh-derived review with real supplier STEP/B-rep data and routed KiCad board STEP before tooling release."
   ],
+  "release_rule": "Automated render coverage may pass with generated nonblank views, but production visual/CMF signoff requires zero open manual review items, supplier STEP/B-rep review, molded orange resin CMF samples, and physical tactile/aesthetic review.",
   "evidence_files": [
     "mechanical/e1-phone/review/visual-review.json",
     "mechanical/e1-phone/review/part-review.json",

@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
-      MILADY_RISCV64_SMOKE: "1"
+      ELIZA_RISCV64_SMOKE: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -33,13 +33,13 @@ import type { LlmStreamHandle, LlmStreamStep } from "../voice/ffi-bindings";
  * when the fixture is absent — we never download in tests (CI resource
  * limits, plus user policy on the local Mac).
  *
- * Override path with `MILADY_SMALL_TEST_MODEL_PATH`. Default looks for a
+ * Override path with `ELIZA_SMALL_TEST_MODEL_PATH`. Default looks for a
  * Qwen3 0.8B Q4 GGUF under the workspace fixtures dir.
  */
 const SMALL_MODEL_PATH =
-	process.env.MILADY_SMALL_TEST_MODEL_PATH ??
+	process.env.ELIZA_SMALL_TEST_MODEL_PATH ??
 	path.join(
-		process.env.MILADY_STATE_DIR ?? `${process.env.HOME}/.milady`,
+		process.env.ELIZA_STATE_DIR ?? `${process.env.HOME}/.eliza`,
 		"models",
 		"fixtures",
 		"qwen3.5-0.8b-q4.gguf",

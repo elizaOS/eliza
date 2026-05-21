@@ -16,4 +16,4 @@ This review is fail-closed until camera optical and bring-up rows are populated.
 
 ## Release Rule
 
-- Every camera alignment, image-quality, dust, color, and streaming row must include sample, operator, numeric passing result, and explicit pass disposition.
+- Every camera alignment, image-quality, dust, color, and streaming row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_camera_result, raw image/log data, fixture calibration certificate, photo/log artifact, and camera module/glass/gasket lot traceability record.

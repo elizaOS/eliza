@@ -1,1 +1,0 @@
-/etc/apparmor.d/usr.bin.man

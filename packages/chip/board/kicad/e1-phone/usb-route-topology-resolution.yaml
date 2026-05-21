@@ -1,0 +1,171 @@
+schema: eliza.e1_phone_usb_route_topology_resolution.v1
+status: blocked_usb2_route_topology_requires_controlled_impedance_flex_or_topology_change
+date: '2026-05-21'
+claim_boundary: USB2 topology resolution package for the bottom USB-C port, split interconnect, and top-island SoC.
+  It is not a routed USB layout, not USB SI evidence, not PD attach evidence, and not enclosure or fabrication release.
+source_artifacts:
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/route-corridor-execution-package.yaml
+  - board/kicad/e1-phone/usb-sidekey-integration.yaml
+  - board/kicad/e1-phone/top-bottom-interconnect-plan.yaml
+  - board/kicad/e1-phone/pcb-implementation-audit.yaml
+current_problem:
+  constraint_pair: USB_DP_DN
+  usb_c_region_mm:
+    x: 26.0
+    y: 126.0
+    width: 16.0
+    height: 6.0
+  soc_region_mm:
+    x: 18.0
+    y: 3.0
+    width: 25.0
+    height: 14.0
+  max_length_mm: 90
+  concept_manhattan_length_mm: 122.5
+  over_by_mm: 32.5
+  route_corridor_status: blocked_requires_supplier_footprints_escape_route_and_drc
+  usb_sidekey_status: blocked_requires_usb_c_pd_charger_sidekey_routed_and_measured_evidence
+  interconnect_status: blocked_interconnect_requires_connector_stackup_and_si
+topology_options:
+  - id: keep_usb_bottom_and_top_soc_direct_or_flex
+    status: rejected_for_evt1_until_usb_si_waiver_or_topology_change
+    summary: Keep USB-C at bottom and SoC on top with USB2 crossing the split-board interconnect.
+    evidence:
+      direct_concept_manhattan_length_mm: 122.5
+      max_length_mm: 90
+      over_by_mm: 32.5
+      split_rigid_segments:
+        usb_c_to_bottom_flex_mm: 30.5
+        top_flex_to_soc_mm: 41.0
+        rigid_segments_total_mm: 71.5
+        requires_flex_length_supplier_stackup: true
+    why_not_ready:
+      - direct concept path exceeds USB2 length target before supplier footprints or flex stackup
+      - flex impedance, connector assignment, and return-pin allocation are not signed
+      - no post-route USB2 length/skew/eye or functional attach evidence exists
+  - id: move_usb_c_or_soc_to_same_rigid_island
+    status: mechanically_disfavored_but_route_cleanest
+    summary: Move the USB-C port or AP/USB PHY endpoint onto the same rigid island.
+    evidence:
+      would_remove_full_height_battery_crossing: true
+      impacts:
+        - top USB-C changes user-visible port and enclosure aperture
+        - moving SoC below battery conflicts with battery cavity, acoustics, and thermal stack
+    why_not_ready:
+      - violates current bottom-center USB-C industrial-design lock
+      - requires new enclosure aperture, board outline, and battery/topology review
+  - id: add_bottom_usb2_bridge_or_debug_controller
+    status: candidate_for_evt0_debug_only_not_phone_release
+    summary: Terminate the bottom USB-C locally for debug/charging and bridge to the AP over a different interface.
+    evidence:
+      keeps_connector_local_esd_and_pd_short: true
+      phone_release_risk: AP native USB device mode, boot ROM, charging policy, and Android accessory behavior may
+        not match
+    why_not_ready:
+      - adds silicon/BOM and firmware scope
+      - does not prove final phone USB data path or boot/debug behavior
+  - id: controlled_impedance_side_flex_with_signed_usb_si
+    status: recommended_resolution_path_but_blocked_until_supplier_stackup_and_trial_route
+    summary: Keep the user-facing bottom USB-C, but require a controlled-impedance side/flex route with signed connector
+      pinout, return allocation, and USB2 SI evidence.
+    evidence:
+      preserves_bottom_center_port: true
+      preserves_selected_screen_and_battery_geometry: true
+      must_replace_current_direct_corridor: corridor_diff_USB_DP_DN
+      must_update_top_bottom_interconnect_pinout: USB_DP_USB_DN_flanked_by_ground_or_return
+    why_not_ready:
+      - exact flex/connector stackup and impedance coupon are missing
+      - KiCad still has no routed USB2 copper or post-route report
+      - USB2 attach/ADB/fastboot evidence must be measured on first article
+recommended_resolution:
+  selected_option: controlled_impedance_side_flex_with_signed_usb_si
+  decision_status: blocked_waiting_supplier_flex_connector_stackup_trial_route_and_usb_si
+  required_design_updates:
+    - replace current direct USB_DP_DN corridor with routed side/flex corridor geometry
+    - freeze split-interconnect pinout with USB_DP/USB_DN adjacent to ground returns
+    - place USB2 ESD, CC ESD, VBUS TVS, and PD controller around bottom USB-C without long stubs
+    - generate post-route length/skew/impedance report and USB2 attach/ADB/fastboot bring-up logs
+usb2_si_acceptance:
+  evidence_template: board/kicad/e1-phone/usb-route-si-results-template.csv
+  required_evidence_class: physical_usb2_route_si_result
+  expected_measurement_count: 8
+  pass_status: blocked_no_usb2_route_si_results
+  measurements:
+    - id: routed_usb2_total_length_mm
+      domain: route_length
+      unit: mm
+      min: 0
+      max: 90
+      required_artifact: KiCad post-route length/skew report for USB_DP/USB_DN
+      release_blocker: true
+    - id: routed_usb2_intra_pair_skew_mm
+      domain: route_length
+      unit: mm
+      min: 0
+      max: 0.5
+      required_artifact: KiCad post-route length/skew report for USB_DP/USB_DN
+      release_blocker: true
+    - id: flex_or_pcb_diff_impedance_ohm
+      domain: impedance
+      unit: ohm
+      min: 81
+      max: 99
+      required_artifact: supplier stackup, impedance coupon, or TDR report for the selected rigid/flex path
+      release_blocker: true
+    - id: return_via_or_ground_contact_spacing_mm
+      domain: return_path
+      unit: mm
+      min: 0
+      max: 3.0
+      required_artifact: routed USB2 return-path screenshot with GND contacts flanking the split interconnect
+      release_blocker: true
+    - id: usb2_insertion_loss_240mhz_db
+      domain: signal_integrity
+      unit: dB
+      min: -6.0
+      max: 0
+      required_artifact: USB2 channel S-parameter or simulator report through connector/flex/PCB path
+      release_blocker: true
+    - id: usb2_eye_height_mv
+      domain: signal_integrity
+      unit: mV
+      min: 100
+      max: ''
+      required_artifact: USB2 high-speed eye or equivalent compliance prescan capture
+      release_blocker: true
+    - id: usb_attach_adb_fastboot_pass_count
+      domain: bringup
+      unit: count
+      min: 5
+      max: ''
+      required_artifact: repeated attach, ADB, and fastboot log set on EVT units
+      release_blocker: true
+    - id: routed_usb_enclosure_clearance_interference_count
+      domain: mechanical_clearance
+      unit: count
+      min: 0
+      max: 0
+      required_artifact: routed-board STEP reimport and enclosure clearance report for USB/flex geometry
+      release_blocker: true
+cross_checks:
+  current_length_violation_matches_route_corridor: true
+  usb_pair_constraint_matches_routing_constraints: true
+  bottom_usb_c_region_matches_usb_sidekey_integration: true
+  split_interconnect_carries_usb2: true
+  pcb_still_has_no_routed_usb_copper: true
+  recommended_path_remains_fail_closed: true
+release_blockers:
+  - USB2 direct concept path exceeds length target
+  - controlled-impedance flex/connector stackup and pinout are not signed
+  - USB2 route, DRC, length/skew report, and attach/fastboot evidence are missing
+  - enclosure routed-board clearance has not been rerun with the final USB/flex geometry
+forbidden_claims:
+  - usb_route_ready
+  - usb_si_closed
+  - usb_debug_ready
+  - routing_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

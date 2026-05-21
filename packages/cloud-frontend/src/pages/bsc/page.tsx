@@ -217,6 +217,7 @@ export default function BscPromoPage() {
                     </Card>
                   }
                 >
+<<<<<<< HEAD
                   {/* Any logged-in user can pay — OAuth signups (Google /
                       Discord / GitHub / Magic Link / Passkey) connect any
                       EVM wallet via the ConnectButton inside the card; SIWE
@@ -224,6 +225,8 @@ export default function BscPromoPage() {
                       attach to the organization_id from the session, not to
                       the paying wallet, so the previous wallet-attach gate
                       was just blocking legitimate flows. */}
+=======
+>>>>>>> origin/develop
                   <LazyDirectCryptoCreditCard
                     amount={amountValue}
                     promoCode="bsc"
@@ -233,6 +236,15 @@ export default function BscPromoPage() {
                     lockedNetwork="bsc"
                     onSuccess={() => undefined}
                   />
+<<<<<<< HEAD
+=======
+                  {/* OAuth users (Google / Discord / GitHub / Magic Link /
+                      Passkey) no longer need to attach a wallet to their
+                      account before paying — DirectCryptoCreditCard's Connect
+                      button drives a one-off wallet connect for the payment.
+                      Credits land on the org_id from the session, not on the
+                      paying wallet. */}
+>>>>>>> origin/develop
                 </Suspense>
               )}
             </div>

@@ -15,8 +15,8 @@
  * Env (all optional with defaults):
  *   CEREBRAS_API_KEY           Required. Cerebras API key.
  *   OPENAI_LARGE_MODEL         Override model (default: gpt-oss-120b).
- *   MILADY_TRAJECTORY_DIR      Where to write trajectory JSON (default: ./trajectories-eliza-cerebras).
- *   MILADY_TRAJECTORY_RECORDING  Set to 0 to disable recording.
+ *   ELIZA_TRAJECTORY_DIR      Where to write trajectory JSON (default: ./trajectories-eliza-cerebras).
+ *   ELIZA_TRAJECTORY_RECORDING  Set to 0 to disable recording.
  */
 
 import fs from "node:fs/promises";
@@ -57,7 +57,7 @@ const CEREBRAS_MODEL =
   process.env.OPENAI_LARGE_MODEL?.trim() ??
   "gpt-oss-120b";
 const TRAJECTORY_DIR =
-  process.env.MILADY_TRAJECTORY_DIR?.trim() ?? "./trajectories-eliza-cerebras";
+  process.env.ELIZA_TRAJECTORY_DIR?.trim() ?? "./trajectories-eliza-cerebras";
 
 process.env.OPENAI_BASE_URL = CEREBRAS_BASE_URL;
 process.env.OPENAI_LARGE_MODEL = CEREBRAS_MODEL;
@@ -65,8 +65,8 @@ process.env.OPENAI_SMALL_MODEL = CEREBRAS_MODEL;
 process.env.OPENAI_NANO_MODEL = CEREBRAS_MODEL;
 process.env.OPENAI_RESPONSE_HANDLER_MODEL = CEREBRAS_MODEL;
 process.env.OPENAI_ACTION_PLANNER_MODEL = CEREBRAS_MODEL;
-process.env.MILADY_TRAJECTORY_DIR = path.resolve(TRAJECTORY_DIR);
-process.env.MILADY_TRAJECTORY_RECORDING = "1";
+process.env.ELIZA_TRAJECTORY_DIR = path.resolve(TRAJECTORY_DIR);
+process.env.ELIZA_TRAJECTORY_RECORDING = "1";
 process.env.ALLOW_NO_DATABASE = "true";
 
 // ---------------------------------------------------------------------------

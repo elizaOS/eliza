@@ -26,9 +26,9 @@
 #
 # Override knob
 # -------------
-# Set MILADY_RISCV_MARCH at the cmake command line to pin a specific
-# Zig-accepted march/mcpu (e.g. `-DMILADY_RISCV_MARCH=-mcpu=generic_rv64`
-# on Zig 0.13, or `-DMILADY_RISCV_MARCH=-march=rv64gcv` on Zig 0.14+).
+# Set ELIZA_RISCV_MARCH at the cmake command line to pin a specific
+# Zig-accepted march/mcpu (e.g. `-DELIZA_RISCV_MARCH=-mcpu=generic_rv64`
+# on Zig 0.13, or `-DELIZA_RISCV_MARCH=-march=rv64gcv` on Zig 0.14+).
 # Leave it unset to use Zig's triple-derived default (rv64gc/lp64d).
 #
 # GGML_CPU_ALL_VARIANTS
@@ -38,7 +38,7 @@
 # variants (scalar + RVV) and the loader picks one via riscv_hwprobe at
 # runtime (ggml/src/ggml-cpu/arch/riscv/cpu-feats.cpp). Enabling it requires
 # GGML_BACKEND_DL=ON, which changes the artifact layout. The Android build
-# script keeps this opt-in via MILADY_GGML_CPU_ALL_VARIANTS=1 until the
+# script keeps this opt-in via ELIZA_GGML_CPU_ALL_VARIANTS=1 until the
 # arm64/x86_64 loader plumbing for the DL-backend dispatch is verified too.
 set(CMAKE_SYSTEM_NAME      Linux)
 set(CMAKE_SYSTEM_PROCESSOR riscv64)
@@ -47,7 +47,7 @@ if(NOT DEFINED ENV{ZIG_BIN})
     message(FATAL_ERROR
         "Set ZIG_BIN to a Zig 0.14+ binary path before invoking cmake "
         "(e.g. `ZIG_BIN=$(command -v zig)`). Zig 0.13 builds a scalar-only "
-        "binary; pass -DMILADY_RISCV_MARCH=-mcpu=generic_rv64 there.")
+        "binary; pass -DELIZA_RISCV_MARCH=-mcpu=generic_rv64 there.")
 endif()
 
 # `zig cc` and `zig c++` are full cross-compilers; the target triple
@@ -55,14 +55,14 @@ endif()
 # We leave -march/-mcpu unset by default so Zig uses its triple-default
 # (rv64gc, lp64d) — that matches MIN_ZIG_VERSION=0.13 scalar parity.
 # For an RVV build on Zig 0.14+, pass
-# `-DMILADY_RISCV_MARCH=-march=rv64gcv_zfh_zvfh_zicbop_zihintpause`
+# `-DELIZA_RISCV_MARCH=-march=rv64gcv_zfh_zvfh_zicbop_zihintpause`
 # at the cmake command line (the Android wrapper sets this automatically
 # via the per-ABI zig-cc driver script).
-if(NOT DEFINED MILADY_RISCV_MARCH)
-    set(MILADY_RISCV_MARCH "")
+if(NOT DEFINED ELIZA_RISCV_MARCH)
+    set(ELIZA_RISCV_MARCH "")
 endif()
-set(CMAKE_C_COMPILER   $ENV{ZIG_BIN} cc  -target riscv64-linux-musl ${MILADY_RISCV_MARCH})
-set(CMAKE_CXX_COMPILER $ENV{ZIG_BIN} c++ -target riscv64-linux-musl ${MILADY_RISCV_MARCH})
+set(CMAKE_C_COMPILER   $ENV{ZIG_BIN} cc  -target riscv64-linux-musl ${ELIZA_RISCV_MARCH})
+set(CMAKE_CXX_COMPILER $ENV{ZIG_BIN} c++ -target riscv64-linux-musl ${ELIZA_RISCV_MARCH})
 
 # Standard CMake cross-compile root-path rules: host programs are still
 # usable (so cmake's own utilities run), but libraries / headers are

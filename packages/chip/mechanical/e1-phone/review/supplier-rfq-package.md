@@ -24,10 +24,11 @@ Status: generated RFQ package from EVT0 CAD evidence; not supplier lock.
 ## camera_stack
 
 - Candidate: rear OV13855-class AF plus front 5-8 MP FF module
-- Attached STEP evidence: mechanical/e1-phone/out/rear_camera_module.step, mechanical/e1-phone/out/rear_camera_cover_glass.step, mechanical/e1-phone/out/rear_camera_lens_window.step, mechanical/e1-phone/out/front_camera_module.step, mechanical/e1-phone/out/front_camera_under_glass.step
+- Attached STEP evidence: mechanical/e1-phone/out/rear_camera_module.step, mechanical/e1-phone/out/rear_camera_cover_glass.step, mechanical/e1-phone/out/rear_camera_lens_window.step, mechanical/e1-phone/out/rear_camera_cover_adhesive_top.step, mechanical/e1-phone/out/rear_camera_cover_adhesive_bottom.step, mechanical/e1-phone/out/rear_camera_cover_adhesive_left.step, mechanical/e1-phone/out/rear_camera_cover_adhesive_right.step, mechanical/e1-phone/out/rear_camera_light_baffle_top.step, mechanical/e1-phone/out/rear_camera_light_baffle_bottom.step, mechanical/e1-phone/out/front_camera_module.step, mechanical/e1-phone/out/front_camera_under_glass.step, mechanical/e1-phone/out/front_camera_black_mask_window.step
 - Questions:
   - Confirm rear module total height, FPC exit side, lens keepout, and dust gasket stack.
-  - Confirm front module can sit behind cover glass without visible notch or protrusion.
+  - Confirm rear cover-window adhesive gasket material, baffle clearance, and dust-control process.
+  - Confirm front module can sit behind cover glass and black mask without visible notch or protrusion.
   - Quote matched rear/front MIPI modules with low-volume sample availability.
 
 ## buttons_haptics_service
@@ -48,3 +49,4 @@ Status: generated RFQ package from EVT0 CAD evidence; not supplier lock.
   - Quote CNC prototype, soft-tool injection, and hard-tool injection options in safety orange PC+ABS.
   - Review draft, rib/boss ratios, snap hooks, gate vestige, ejector marks, texture, and color matching.
   - Return mold-flow/fill balance recommendation for the long thin back cover and side frame.
+

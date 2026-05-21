@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/cuda_readiness_audit"
 CLAIM_BOUNDARY = "cuda_readiness_audit_only_no_training_inference_signoff_or_release_claim"
 RUN_PLAN_EXECUTION_SCHEMA = "eliza.ai_eda.cuda_run_plan_execution.v1"
+RUN_PLAN_SAFETY_MATRIX_SCHEMA = "eliza.ai_eda.cuda_run_plan_safety_matrix.v1"
 
 
 def rel(path: Path) -> str:
@@ -78,6 +79,25 @@ def run_plan_execution_ready(report: dict[str, Any] | None, run_id: str) -> tupl
     return True, "validated dry-run execution manifest"
 
 
+def run_plan_safety_matrix_ready(report: dict[str, Any] | None) -> tuple[bool, str]:
+    if report is None:
+        return False, "missing safety matrix report"
+    if report.get("schema") != RUN_PLAN_SAFETY_MATRIX_SCHEMA:
+        return False, "schema mismatch"
+    if report.get("failures") not in ([], None):
+        return False, f"failures={report.get('failures')}"
+    checks = report.get("checks")
+    if not isinstance(checks, list) or not checks:
+        return False, "no safety checks recorded"
+    failed = [check for check in checks if isinstance(check, dict) and check.get("status") != "PASS"]
+    if failed:
+        return False, f"failed_checks={len(failed)}"
+    risky = report.get("risky_stages")
+    if not isinstance(risky, dict) or not risky:
+        return False, "risky stages not recorded"
+    return True, "validated stage-selection and risky-stage blocking matrix"
+
+
 def blocker(blocker_id: str, severity: str, detail: str, evidence: str | None = None) -> dict[str, str]:
     item = {"id": blocker_id, "severity": severity, "detail": detail}
     if evidence:
@@ -111,6 +131,7 @@ def main() -> int:
     payload_report_path = ROOT / f"build/ai_eda/cuda_training_payloads/{run_id}/cuda_training_payload_report.json"
     run_plan_path = ROOT / f"build/ai_eda/cuda_training_payloads/{run_id}/cuda_training_run_plan.json"
     run_plan_execution_path = ROOT / f"build/ai_eda/cuda_run_plan_execution/{run_id}/cuda_run_plan_execution.json"
+    run_plan_safety_matrix_path = ROOT / f"build/ai_eda/cuda_run_plan_safety_matrix/{run_id}/cuda_run_plan_safety_matrix.json"
     alphachip_path = ROOT / f"build/ai_eda/alphachip_checkpoint_blocker/{run_id}/alphachip_checkpoint_blocker_audit.json"
     watchlist_path = ROOT / f"build/ai_eda/current_research_watchlist/{run_id}/targets_report.json"
     replay_path = ROOT / f"build/ai_eda/macro_placement_replay_preflight/{run_id}/replay_preflight_report.json"
@@ -121,6 +142,7 @@ def main() -> int:
     payload_report = load_json(payload_report_path)
     run_plan = load_json(run_plan_path)
     run_plan_execution = load_json(run_plan_execution_path)
+    run_plan_safety_matrix = load_json(run_plan_safety_matrix_path)
     alphachip = load_json(alphachip_path)
     watchlist = load_json(watchlist_path)
     replay = load_json(replay_path)
@@ -159,8 +181,12 @@ def main() -> int:
             blockers.append(blocker("run_plan_missing_dry_run_executor", "hard", "Run plan lacks its dry-run executor command"))
         if not has_command(run_plan, "check_cuda_run_plan_execution.py"):
             blockers.append(blocker("run_plan_missing_dry_run_checker", "hard", "Run plan lacks its dry-run checker command"))
+        if not has_command(run_plan, "check_cuda_run_plan_safety_matrix.py"):
+            blockers.append(blocker("run_plan_missing_safety_matrix_checker", "hard", "Run plan lacks its safety-matrix checker command"))
         if not has_output(run_plan, "build/ai_eda/cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json"):
             blockers.append(blocker("run_plan_missing_dry_run_output", "hard", "Run plan lacks dry-run execution expected output"))
+        if not has_output(run_plan, "build/ai_eda/cuda_run_plan_safety_matrix/<run-id>/cuda_run_plan_safety_matrix.json"):
+            blockers.append(blocker("run_plan_missing_safety_matrix_output", "hard", "Run plan lacks safety-matrix expected output"))
 
     run_plan_dry_run_validated, run_plan_dry_run_detail = run_plan_execution_ready(run_plan_execution, run_id)
     if not run_plan_dry_run_validated:
@@ -170,6 +196,17 @@ def main() -> int:
                 "hard",
                 "CUDA run plan has not been expanded and validated in dry-run mode",
                 f"{rel(run_plan_execution_path)}: {run_plan_dry_run_detail}",
+            )
+        )
+
+    run_plan_safety_matrix_validated, run_plan_safety_matrix_detail = run_plan_safety_matrix_ready(run_plan_safety_matrix)
+    if not run_plan_safety_matrix_validated:
+        blockers.append(
+            blocker(
+                "run_plan_safety_matrix_not_validated",
+                "hard",
+                "CUDA run plan stage selection and risky-stage blocking matrix is not validated",
+                f"{rel(run_plan_safety_matrix_path)}: {run_plan_safety_matrix_detail}",
             )
         )
 
@@ -257,6 +294,7 @@ def main() -> int:
         "capabilities": {
             "payload_handoff_ready": payload_ready,
             "run_plan_dry_run_validated": run_plan_dry_run_validated,
+            "run_plan_safety_matrix_validated": run_plan_safety_matrix_validated,
             "large_cuda_training_ready": large_cuda_ready,
             "alphachip_checkpoint_available": alphachip_available,
             "current_research_watchlist_captured": watchlist is not None,
@@ -269,6 +307,7 @@ def main() -> int:
             artifact(payload_report_path),
             artifact(run_plan_path),
             artifact(run_plan_execution_path),
+            artifact(run_plan_safety_matrix_path),
             artifact(alphachip_path),
             artifact(watchlist_path),
             artifact(replay_path),
@@ -278,6 +317,7 @@ def main() -> int:
         "blockers": blockers,
         "next_required_actions": [
             "run the embedded cuda_training_run_plan.json through execute_cuda_run_plan.py in dry-run mode on the CUDA host",
+            "validate stage selection and risky-stage blocking with check_cuda_run_plan_safety_matrix.py on the CUDA host",
             "run this audit on the CUDA host after executing the selected stages from the embedded cuda_training_run_plan.json",
             "finish or explicitly record setup-check/training-handoff bootstrap reports for the CUDA host",
             "run deterministic E1 OpenLane/OpenROAD replay before accepting any candidate optimization",

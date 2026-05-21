@@ -51,7 +51,7 @@ function findRepoRoot(start: string): string | null {
 
 function defaultCwd(): string {
 	const configured = firstNonEmpty([
-		process.env.MILADY_REPO_DIR,
+		process.env.ELIZA_REPO_DIR,
 		process.env.ELIZA_REPO_DIR,
 	]);
 	if (configured !== null) return configured;

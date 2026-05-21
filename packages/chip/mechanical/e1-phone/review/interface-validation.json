@@ -99,9 +99,17 @@
       "evidence": [
         "front_camera_module",
         "front_camera_under_glass",
+        "front_camera_black_mask_window",
         "rear_camera_module",
         "rear_camera_cover_glass",
-        "camera_speaker_behind_glass"
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_cover_adhesive_bottom",
+        "rear_camera_cover_adhesive_left",
+        "rear_camera_cover_adhesive_right",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom",
+        "camera_speaker_behind_glass",
+        "camera_optical_seal_stack"
       ]
     },
     {

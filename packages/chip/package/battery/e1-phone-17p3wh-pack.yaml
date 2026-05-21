@@ -2,57 +2,62 @@ schema: eliza.e1_phone_battery_pack_binding.v1
 as_of: 2026-05-20
 status: planning_binding_pack_class_selected_no_safety_docs
 claim_boundary: >
-  Planning binding only. A public 3.85 V 4500 mAh pack class has been selected
-  as the first mechanical and electrical target, but no lithium pack sample,
-  quote, connector, shipping document, or enclosure compression stack has been
-  approved. Promotion requires supplier drawings, UN38.3/MSDS, pack PCM data,
-  thermistor curve, connector pinout, and charge/discharge validation.
+  Planning binding only. A 3.85 V 5830 mAh thick pouch class has been selected
+  as the current mechanical and electrical target by scaling the public 64 x
+  87 mm baseline pack into the regenerated 5.7 mm CAD cavity. No lithium pack
+  sample, quote, connector, shipping document, or enclosure compression stack
+  has been approved. Promotion requires supplier drawings, UN38.3/MSDS, pack
+  PCM data, thermistor curve, connector pinout, and charge/discharge validation.
 
 target_pack:
-  primary_candidate: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
-  energy_wh_target: 17.3
+  primary_candidate: LiPol_LP576487_3p85V_5830mAh_22p45Wh_PCM_NTC_JST_SHR_03V_class
+  energy_wh_target: 22.45
   nominal_voltage_v: 3.85
   chemistry: single_cell_lithium_polymer_high_voltage
-  approximate_capacity_mah_at_nominal: 4500
-  public_reference_dimensions_mm: {width: 64.0, height: 87.0, thickness: 4.4}
+  approximate_capacity_mah_at_nominal: 5830
+  public_reference_dimensions_mm: {width: 64.0, height: 87.0, thickness: 5.7}
   current_board_battery_window_mm: {width: 64.0, height: 87.0}
-  fit_status: concept_split_island_cavity_matches_public_64x87_pack_outline_pending_supplier_swelling_pcm_tail_and_tolerance_stack
-  max_thickness_budget_mm: 4.7
+  fit_status: concept_split_island_cavity_matches_current_64x87x5p7_pack_outline_pending_supplier_swelling_pcm_tail_and_tolerance_stack
+  max_thickness_budget_mm: 5.7
   design_action: >
-    The sourced LP446487 class proves a realistic 17.3 Wh phone pack exists.
-    The EVT0 split-island board concept now reserves a 64 x 87 mm full-width
-    battery cavity matching the public outline. Release still requires the
-    supplier drawing, swelling allowance, PCM/tail location, NTC curve,
-    connector pinout, and tolerance-stack signoff before enclosure release.
+    The sourced LP446487 class proves a realistic 64 x 87 mm phone-pack
+    outline exists. The current CAD target uses the same footprint with a
+    5.7 mm pouch thickness for a 5830 mAh / 22.45 Wh planning class. The EVT0
+    split-island board concept reserves the full-width battery cavity. Release
+    still requires the supplier drawing, swelling allowance, PCM/tail location,
+    NTC curve, connector pinout, and tolerance-stack signoff before enclosure
+    release.
 
 public_sourcing_evidence:
   - supplier: LiPol_Battery
-    candidate: LP446487_high_voltage_lithium_polymer_battery
+    candidate: LP446487_high_voltage_lithium_polymer_battery_baseline_for_LP576487_thick_pouch_target
     url: https://www.lithium-polymer-battery.net/high-voltage-lithium-polymer-battery-3-85v-lp446487-4500mah-17-33wh-with-pcm-and-ntc-and-jst-shr-03v-s-b/
     observed_public_specs:
       - 3.85 V nominal
-      - 4500 mAh
-      - 17.33 Wh
+      - 4500 mAh baseline public listing
+      - 17.33 Wh baseline public listing
       - PCM and NTC
       - JST SHR-03V-S-B connector
       - 4.4 x 64 x 87 mm class package
-    procurement_role: primary_energy_reference_not_mechanically_closed
+      - current CAD target scales same 64 x 87 mm outline to 5.7 mm thickness
+    procurement_role: baseline_outline_reference_for_5830mah_thick_pouch_rfq_not_supplier_locked
   - supplier: Made_in_China_listing_family
-    candidate: 736072_4500mAh_3p7V_lithium_polymer_battery
+    candidate: custom_64x87x5p7mm_5830mAh_3p85V_lithium_polymer_battery_family
     url: https://www.made-in-china.com/showroom/jasonlai1989/product-detailcmbRXrtjYVka/China-Lithium-Polymer-Battery-4500mAh.html
     observed_public_specs:
-      - 4500 mAh lithium polymer battery
+      - 4500 mAh lithium polymer battery baseline family
       - China OEM/ODM manufacturer listing
-      - 736072 size-class evidence for alternate capacity sourcing
-    procurement_role: alternate_supplier_family_requires_3p85V_and_connector_confirmation
+      - custom pouch dimensions and capacity require supplier quote
+    procurement_role: alternate_supplier_family_requires_3p85V_5830mah_5p7mm_and_connector_confirmation
   - supplier: Alibaba_marketplace_listing_family
-    candidate: 3p7V_to_3p85V_4500mAh_lithium_polymer_pack_family
+    candidate: 3p7V_to_3p85V_custom_5830mAh_lithium_polymer_pack_family
     url: https://www.alibaba.com/showroom/li-polymer-battery-3.7v-4500mah.html
     observed_public_specs:
-      - 4500 mAh lithium-polymer marketplace family
+      - 4500 mAh lithium-polymer marketplace baseline family
       - NTC and connector variants listed across pack families
       - custom rechargeable pack supplier pool
-    procurement_role: marketplace_quote_pool_for_custom_narrow_pack
+      - 5830 mAh 64 x 87 x 5.7 mm target requires RFQ confirmation
+    procurement_role: marketplace_quote_pool_for_custom_thick_pouch_pack
 
 connector_requirements:
   preferred_pin_count: 4

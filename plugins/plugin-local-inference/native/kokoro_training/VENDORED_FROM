@@ -32,7 +32,7 @@ local additions on top of upstream:
   - VENDORED_FROM       this file.
   - LICENSE.upstream    license interpretation + caveats.
   - AGENTS.md           contract for downstream agents working in this dir.
-  - milady_adapter/     thin layer that bridges this trainer to the
+  - eliza_adapter/     thin layer that bridges this trainer to the
                         elizaOS-style finetune entry point at
                         packages/training/scripts/kokoro/finetune_kokoro.py
                         (--mode=full-finetune). The adapter does the

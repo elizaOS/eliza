@@ -909,12 +909,12 @@ const manager = new ElizaRuntimeManager({
 const apiClient = new ElizaRuntimeApiClient({
   getApiBase: currentApiBase,
   getAuthToken: () =>
-    process.env.ELIZA_RUNTIME_API_TOKEN ?? process.env.MILADY_API_TOKEN ?? null,
+    process.env.ELIZA_RUNTIME_API_TOKEN ?? process.env.ELIZA_API_TOKEN ?? null,
 });
 const streamManager = new AgentStreamManager({
   getApiBase: currentApiBase,
   getAuthToken: () =>
-    process.env.ELIZA_RUNTIME_API_TOKEN ?? process.env.MILADY_API_TOKEN ?? null,
+    process.env.ELIZA_RUNTIME_API_TOKEN ?? process.env.ELIZA_API_TOKEN ?? null,
   emit: (name, payload) => {
     post({
       type: "event",

@@ -148,7 +148,7 @@ def _load_results_store_class():
     """
     import importlib.util
 
-    module_name = "_milady_eval_results_store"
+    module_name = "_eliza_eval_results_store"
     if module_name in sys.modules:
         return sys.modules[module_name].ResultsStore
     rs_path = ROOT.parent / "benchmarks" / "lib" / "results_store.py"

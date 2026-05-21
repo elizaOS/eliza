@@ -7,18 +7,18 @@ claim_boundary: >
 
 industrial_design_assumptions:
   device_class: handheld_phone
-  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 9.6}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.2}
   display_class: 5.5_in_fhd_1080x1920_mipi_oem_module
   display_active_area_mm: {width: 68.04, height: 120.96}
   display_reference_outline_mm: {width: 70.78, height: 129.17, thickness: 1.7}
   touch_lens_reference_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
-  battery_pack_keepout_mm: {width: 64.0, height: 87.0, thickness_target: 4.7}
-  selected_battery_reference_pack_mm: {width: 64.0, height: 87.0, thickness: 4.4}
+  battery_pack_keepout_mm: {width: 64.0, height: 87.0, thickness_target: 5.7}
+  selected_battery_reference_pack_mm: {width: 64.0, height: 87.0, thickness: 5.7}
   selected_battery_reference_fit: >
-    The LiPol LP446487 3.85 V 4500 mAh public pack class matches the 17.3 Wh
-    energy target and now matches the CAD 64 x 87 x 4.4 mm cavity. The next
-    layout pass must turn the concept keepout into a routed top/bottom island
-    or rigid-flex implementation before release.
+    The LiPol LP576487 3.85 V 5830 mAh thick pouch planning class matches the
+    22.45 Wh energy target and the CAD 64 x 87 x 5.7 mm cavity. The next layout
+    pass must turn the concept keepout into a routed top/bottom island or
+    rigid-flex implementation before release.
   camera_bump_keepout_mm: {width: 26.0, height: 22.0, z_stack_requires_me_review: true}
   speaker_boxes:
     earpiece_top_mm: {width: 26.0, height: 4.5}
@@ -100,10 +100,10 @@ derived_concept_geometry:
 power_efficiency_targets:
   battery:
     chemistry: 1s_li_ion_polymer
-    selected_pack_class: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
-    target_capacity_mah: 4500
+    selected_pack_class: LiPol_LP576487_3p85V_5830mAh_22p45Wh_PCM_NTC_JST_SHR_03V_class
+    target_capacity_mah: 5830
     nominal_voltage_v: 3.85
-    nominal_energy_wh: 17.3
+    nominal_energy_wh: 22.45
     required_missing_parts:
       - supplier_quote_and_sample_for_selected_pack_class
       - fuel_gauge_schematic_and_layout

@@ -1,0 +1,119 @@
+schema: eliza.e1_phone_usb_sidekey_acceptance_checklist.v1
+status: blocked_usb_c_sidekey_acceptance_requires_supplier_route_enclosure_and_measurements
+date: '2026-05-21'
+claim_boundary: Acceptance checklist for the single USB-C port, charging path, power button, and volume buttons.
+  It is not a passed validation report, not a sent RFQ, not a supplier drawing pack, not DRC/ERC evidence, and not
+  enclosure release.
+source_artifacts:
+  - board/kicad/e1-phone/usb-sidekey-integration.yaml
+  - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
+  - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
+  - package/usb-c/e1-phone-usb-c-port.yaml
+  - package/human-interface/side-buttons.yaml
+interface_summary:
+  usb_c_port_count: 1
+  usb_c_region_mm:
+    x: 26.0
+    y: 126.0
+    width: 16.0
+    height: 6.0
+  side_buttons:
+    - power
+    - volume_up
+    - volume_down
+  side_key_connector_region_mm:
+    x: 18.0
+    y: 26.0
+    width: 12.0
+    height: 3.0
+  side_key_actuator_spine_region_mm:
+    x: 4.0
+    y: 50.0
+    width: 7.0
+    height: 46.0
+  side_key_required_nets:
+    - PWR_KEY_N
+    - VOL_UP_N
+    - VOL_DOWN_N
+    - AON_1V8
+    - GND
+  side_key_recommended_min_contacts: 8
+  pd_controller: TPS65987DDH
+  charger: MAX77860
+supplier_draft_links:
+  usb_c_receptacle_evt0: board/kicad/e1-phone/sourcing-drafts/usb_c_receptacle_evt0/rfq-transmittal.yaml
+  side_buttons: board/kicad/e1-phone/sourcing-drafts/side_buttons/rfq-transmittal.yaml
+acceptance_items:
+  - id: usb_c_connector_shell_load_path
+    owner: mechanical
+    status: blocked_missing_routed_supplier_or_measured_evidence
+    required_evidence:
+      - signed USB-C connector drawing with shell stake and board-edge datum
+      - enclosure saddle/rib load path review
+      - insertion/extraction force test report after first article
+    blocker: USB-C shell capture and plug load path are not proven
+  - id: usb_c_cutout_and_plug_keepout
+    owner: mechanical
+    status: blocked_missing_routed_supplier_or_measured_evidence
+    required_evidence:
+      - routed board STEP with selected connector model
+      - plug overmold clearance sweep
+      - port chamfer/radius tolerance report
+    blocker: USB-C aperture and cable overmold clearance are not validated
+  - id: usb2_cc_vbus_route_and_esd
+    owner: layout
+    status: blocked_missing_routed_supplier_or_measured_evidence
+    required_evidence:
+      - routed USB2 90 ohm pair report
+      - CC and USB2 ESD placement review
+      - VBUS TVS/current-sense layout review
+      - KiCad DRC clean report
+    blocker: USB-C electrical route, ESD, and VBUS protection are not routed
+  - id: pd_attach_and_charger_safety
+    owner: validation
+    status: blocked_missing_routed_supplier_or_measured_evidence
+    required_evidence:
+      - CC attach log for both plug flips
+      - PD sink profile negotiation transcript
+      - dead-battery boot current-limit log
+      - CC/CV charge cycle and JEITA hot/cold logs
+    blocker: PD attach and charger safety evidence are missing
+  - id: side_key_force_travel_and_solder_load
+    owner: mechanical
+    status: blocked_missing_routed_supplier_or_measured_evidence
+    required_evidence:
+      - side-key switch or flex drawing
+      - button cap tolerance stack
+      - force/travel CSV from sample lot
+      - enclosure rib or elastomer load path review
+    blocker: Power/volume actuator force path is not validated
+  - id: side_key_recovery_and_wake
+    owner: firmware_validation
+    status: blocked_missing_routed_supplier_or_measured_evidence
+    required_evidence:
+      - PWR_KEY_N wake transcript
+      - volume-up/down bootloader recovery combo log
+      - AON_1V8 debounce leakage review
+      - pogo fixture access report
+    blocker: Power/volume key wake and recovery behavior is not measured
+cross_checks:
+  single_usb_c_port_only: true
+  side_key_has_three_buttons: true
+  side_key_contact_budget_at_least_8: true
+  usb_c_matches_active_matrix: true
+  side_key_connector_matches_active_matrix: true
+  usb_and_sidekey_rfq_drafts_exist: true
+  all_acceptance_items_blocked: true
+release_blockers:
+  - USB-C and side-button supplier drawings, pinouts, land patterns, and STEP files missing
+  - routed PCB, DRC/ERC, SI/PI, VBUS/CC/USB2 validation, and PD logs missing
+  - button force/travel, wake/recovery, and enclosure load-path evidence missing
+forbidden_claims:
+  - usb_c_ready
+  - charging_ready
+  - side_buttons_ready
+  - power_key_wake_ready
+  - recovery_key_combo_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

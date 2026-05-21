@@ -106,7 +106,7 @@ export interface RemotePluginHostOptions {
 }
 
 const REMOTE_PLUGIN_STORE_ENV_KEYS = [
-  "MILADY_CARROT_STORE_DIR",
+  "ELIZA_CARROT_STORE_DIR",
   "ELIZA_CARROT_STORE_DIR",
 ] as const;
 
@@ -932,7 +932,7 @@ export class RemotePluginHost {
    * Auth-token model (MVP): each remote plugin worker has its own
    * `context.authToken` stored in-process on the host. `get-auth-token` is
    * lazy — the first call seeds the slot from `resolveApiToken()` so a
-   * remote plugin can call Milady's HTTP API as the user without seeing the
+   * remote plugin can call Eliza's HTTP API as the user without seeing the
    * underlying env var. `set-auth-token` lets a remote plugin REPLACE ITS OWN
    * token (Farm-login style flows); cross-remote plugin exfiltration is prevented
    * by keying read/write off the calling worker's id. The MVP forwards the

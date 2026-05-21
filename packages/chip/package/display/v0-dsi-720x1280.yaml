@@ -23,8 +23,13 @@ panel_candidates:
     tft_outline_mm: {width: 70.78, height: 129.17, thickness: 1.7}
     module_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
     touch: capacitive
+    tft_driver_ic_public_pdf: HX8399C
+    touch_controller_public_pdf: GT911
+    ctp_interface_public_pdf: I2C
+    luminance_public_pdf_cd_m2: 650
     linux_driver: vendor_init_sequence_required
-    datasheet_status: supplier_request_required
+    datasheet_status: public_pdf_cross_checked_not_signed_supplier_pack
+    public_pdf_url: https://www.chenghaolcd.com/doc/14495745/5-5-inch-tft-capacitive-touchscreen-1080x1920-pixel-ltps-transmissive.pdf
   - vendor: META Display / OEM 055WU01 class
     part: 055WU01
     interface: MIPI-DSI 4-lane, 40-pin

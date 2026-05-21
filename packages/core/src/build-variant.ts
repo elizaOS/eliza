@@ -7,9 +7,8 @@
  *
  * `direct` builds are the unrestricted user-download artifacts.
  *
- * Resolution: `ELIZA_BUILD_VARIANT` (legacy `MILADY_BUILD_VARIANT` honored) →
- * default `direct`. The variant is decided at process start; we do not refresh
- * it mid-run.
+ * Resolution: `ELIZA_BUILD_VARIANT` → default `direct`. The variant is
+ * decided at process start; we do not refresh it mid-run.
  */
 
 import { readEnv } from "./utils/read-env.ts";
@@ -27,7 +26,7 @@ let resolvedVariant: BuildVariant | null = null;
 
 function readVariantFromEnv(): BuildVariant {
 	if (typeof process === "undefined") return "direct";
-	const raw = readEnv("ELIZA_BUILD_VARIANT", ["MILADY_BUILD_VARIANT"]) ?? "";
+	const raw = readEnv("ELIZA_BUILD_VARIANT", []) ?? "";
 	const normalized = raw.trim().toLowerCase();
 	if (VARIANT_VALUES.has(normalized as BuildVariant)) {
 		return normalized as BuildVariant;

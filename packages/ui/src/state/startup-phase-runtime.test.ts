@@ -115,7 +115,7 @@ describe("runStartingRuntime", () => {
       pluginsLoaded: 22,
       pluginsFailed: 0,
       database: "ok",
-      agentName: "Milady",
+      agentName: "Eliza",
       port: 31337,
       startedAt: Date.now() - 1_000,
       updatedAt: new Date().toISOString(),
@@ -137,7 +137,7 @@ describe("runStartingRuntime", () => {
     expect(deps.setAgentStatus).toHaveBeenCalledWith(
       expect.objectContaining({
         state: "running",
-        agentName: "Milady",
+        agentName: "Eliza",
         port: 31337,
         startup: expect.objectContaining({ phase: "running", attempt: 0 }),
       }),

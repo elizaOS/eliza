@@ -68,7 +68,7 @@ baseline WAV is missing the test skips cleanly instead.
 
 "Pre-merge" means before `elizaOS/llama.cpp@78c4fb190`. The eliza
 fork's known-good reference tag is `v1.2.0-eliza`; alternatively any
-commit before `79079c25e` ("merge: upstream/master into milady/main")
+commit before `79079c25e` ("merge: upstream/master into eliza/main")
 works. The exact SHA goes into the fixture's `baseline_build_sha`.
 
 ```sh

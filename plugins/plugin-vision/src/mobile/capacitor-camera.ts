@@ -4,7 +4,7 @@
 // CameraX via plugin-aosp, iOS AVFoundation via plugin-ios) wire up matching
 // implementations. Once those native plugins land, swap the
 // `CapacitorCameraStub` for a real `CapacitorCamera` impl that calls into
-// the registered Capacitor plugin via `Capacitor.Plugins.MiladyVision` or
+// the registered Capacitor plugin via `Capacitor.Plugins.ElizaVision` or
 // equivalent.
 //
 // Why we ship the stub now: the JS surface needs to be stable before the

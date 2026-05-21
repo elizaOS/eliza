@@ -21,7 +21,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
-IMAGE_TAG="milady/bun-riscv64-builder"
+IMAGE_TAG="eliza/bun-riscv64-builder"
 NO_CACHE=""
 FORCE_CLOOP="1"
 JOBS=""
@@ -126,7 +126,7 @@ if [ -f "$ARTIFACT" ]; then
     echo "  Log      : $HERE/dist/build-log.txt"
     echo ""
     echo "Next: upload to a hosting target reachable from CI/dev hosts, then"
-    echo "      export MILADY_BUN_RISCV64_URL='https://.../bun-linux-riscv64-musl.zip'"
+    echo "      export ELIZA_BUN_RISCV64_URL='https://.../bun-linux-riscv64-musl.zip'"
     echo "      before running the Android assemble step."
 else
     echo "[run-build] FAILED — no artifact at $ARTIFACT"

@@ -1,5 +1,6 @@
 import type { Terminal } from "@elizaos/tui";
 import { describe, expect, it, vi } from "vitest";
+import { runAutonomousCli } from "../cli/index.ts";
 import { startAgentTerminalTui } from "../tui/agent-terminal-tui.ts";
 
 class TestTerminal implements Terminal {
@@ -149,5 +150,48 @@ describe("agent terminal tui", () => {
     });
 
     handle?.stop();
+  });
+
+  it("has a CLI smoke mode that starts the TUI and emits a boot marker", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalLog = console.log;
+    const logs: string[] = [];
+    globalThis.fetch = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/api/views?viewType=tui")) {
+        return response({
+          views: [
+            {
+              id: "messages",
+              label: "Messages TUI",
+              path: "/messages/tui",
+              viewType: "tui",
+            },
+          ],
+        });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+    console.log = vi.fn((message?: unknown) => {
+      logs.push(String(message ?? ""));
+    });
+
+    try {
+      await runAutonomousCli([
+        "node",
+        "eliza-autonomous",
+        "tui-smoke",
+        "--api",
+        "http://127.0.0.1:31337",
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.log = originalLog;
+    }
+
+    expect(logs.join("\n")).toContain("elizaOS terminal tui");
+    expect(logs.join("\n")).toContain(
+      "elizaos-tui-ready api=http://127.0.0.1:31337",
+    );
   });
 });

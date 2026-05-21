@@ -1,0 +1,158 @@
+schema: eliza.e1_phone_rf_antenna_coexistence_closure.v1
+status: blocked_requires_vendor_rf_review_routed_layout_and_measured_antenna_data
+date: 2026-05-20
+claim_boundary: >
+  RF antenna, coexistence, regulatory, and factory-calibration closure contract
+  for the E1 phone mainboard. This ties the selected cellular RedCap module,
+  Wi-Fi/Bluetooth module, antenna feeds, keepouts, conducted access, firmware
+  artifacts, and factory RF outputs together. It is not a tuned antenna design,
+  VNA report, radiated pre-scan, SAR result, carrier approval, modular-grant
+  signoff, or routed PCB release.
+
+source_artifacts:
+  - board/kicad/e1-phone/rf-connectivity-closure.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/mechanical-overlay.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/module-host-integration-closure.yaml
+  - board/kicad/e1-phone/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/production-readiness.yaml
+  - board/kicad/e1-phone/routed-release-plan.yaml
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+  - docs/board/e1-phone-enclosure-interface.yaml
+
+public_source_refresh:
+  cellular:
+    vendor: Quectel
+    primary: RG255C_series_LGA
+    lab_fallback: RM255C-GL_M2
+    observed_public_fields:
+      technology: 3GPP_Rel_17_5G_RedCap_Sub6
+      peak_downlink_mbps: 223
+      peak_uplink_mbps: 123
+      fallback: LTE_Cat_4
+      form_factors: [LGA, M2]
+      host_interfaces_seen: [USB_2_0, PCIe_2_0, UART, PCM, SPI, SGMII]
+      gnss: optional_multi_constellation
+    urls:
+      - https://www.quectel.com/product/5g-redcap-rg255c-series/
+      - https://www.quectel.com/product/5g-redcap-rm255c-gl/
+  wifi_bluetooth:
+    vendor: Murata
+    primary: LBEE5XV2EA-802
+    observed_public_fields:
+      chipset: Infineon_CYW55573
+      wifi: WiFi_6E_2x2_MIMO
+      bluetooth: Bluetooth_5p3
+      wlan_interfaces: [PCIe, SDIO]
+      bluetooth_interface: UART
+      dimensions_mm: {width: 12.5, height: 9.4, thickness: 1.2}
+      interface_voltage_v: 1.8
+      status: in_production
+    urls:
+      - https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+
+antenna_feed_plan:
+  - net: CELL_RF_MAIN
+    owner_module: cellular_5g_redcap
+    role: cellular_main
+    candidate_zone: top_antenna
+    keepout_ref: top_antenna_keepout
+    matching_network_required: true
+    conducted_access_required: true
+    factory_calibration_required: true
+    status: blocked_no_vendor_antenna_review_or_vna_data
+  - net: CELL_RF_DIV
+    owner_module: cellular_5g_redcap
+    role: cellular_diversity
+    candidate_zone: bottom_antenna
+    keepout_ref: bottom_antenna_keepout
+    matching_network_required: true
+    conducted_access_required: true
+    factory_calibration_required: true
+    status: blocked_no_vendor_antenna_review_or_vna_data
+  - net: CELL_GNSS_RF
+    owner_module: cellular_5g_redcap
+    role: gnss_optional
+    candidate_zone: top_antenna_or_dedicated_lna
+    keepout_ref: top_antenna_keepout
+    matching_network_required: true
+    conducted_access_required: true
+    factory_calibration_required: true
+    status: blocked_no_gnss_desense_or_lna_review
+  - net: WIFI_BT_RF0
+    owner_module: wifi6e_bluetooth_5p3
+    role: wifi_bt_chain0
+    candidate_zone: wifi_bt_side_antenna
+    keepout_ref: wifi_bt_side_antenna_keepout
+    matching_network_required: true
+    conducted_access_required: true
+    factory_calibration_required: true
+    status: blocked_no_murata_reference_layout_or_vna_data
+  - net: WIFI_BT_RF1
+    owner_module: wifi6e_bluetooth_5p3
+    role: wifi_bt_chain1
+    candidate_zone: bottom_antenna
+    keepout_ref: bottom_antenna_keepout
+    matching_network_required: true
+    conducted_access_required: true
+    factory_calibration_required: true
+    status: blocked_no_murata_reference_layout_or_vna_data
+
+required_isolation_and_tuning_evidence:
+  - vna_s11_each_feed_with_open_short_load_calibration
+  - vna_s21_isolation_matrix_cell_main_div_gnss_wifi0_wifi1
+  - antenna_efficiency_and_total_radiated_power_pre_scan
+  - conducted_cellular_tx_rx_calibration_by_band_for_selected_region_sku
+  - conducted_wifi_2p4_5_6_ghz_tx_rx_and_bluetooth_le_br_edr_check
+  - gnss_cn0_desense_sweep_against_cellular_wifi_display_and_charger_states
+  - sar_and_rf_exposure_pre_scan_with_final_enclosure_plastics_and_thermal_state
+
+firmware_regulatory_artifacts_required:
+  - selected_quectel_region_sku_band_matrix_and_modular_grant_scope
+  - cellular_usb_or_pcie_driver_stack_and_android_radio_interface_layer_plan
+  - sim_esim_profile_provisioning_and_emergency_call_policy
+  - murata_cyw55573_firmware_nvram_clm_regulatory_database_and_license_pack
+  - country_code_and_antenna_gain_limits_for_wifi_bluetooth_modular_approval
+  - coexistence_configuration_for_cellular_wifi_bluetooth_gnss_display_and_charger
+
+factory_rf_outputs_required:
+  - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+  - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  - board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  - board/kicad/e1-phone/production/reports/rf/sar-prescan-summary.pdf
+  - board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+
+cross_checks:
+  antenna_feeds_match_rf_connectivity_required_nets: true
+  antenna_keepouts_match_mechanical_overlay: true
+  matching_networks_match_routing_constraints: true
+  conducted_access_required_for_every_rf_feed: true
+  factory_probe_rf_domain_covers_all_radio_feeds: true
+  firmware_and_regulatory_artifacts_are_release_blockers: true
+  release_outputs_fail_closed: true
+
+release_blockers:
+  - antenna vendor review and tuned matching values are missing
+  - routed 50 ohm RF feed geometry, via fence, return path, and conducted access are missing
+  - VNA S11/S21, conducted RF, coexistence, GNSS desense, and SAR pre-scan evidence are missing
+  - selected cellular region SKU, carrier/PTCRB/GCF plan, SIM/eSIM plan, and emergency-call policy are missing
+  - Murata firmware, NVRAM/CLM, regulatory database, country-code handling, and antenna gain limits are missing
+  - factory RF calibration procedure, test limits, and first-article transcript are missing
+
+forbidden_claims:
+  - rf_ready
+  - antenna_tuned
+  - cellular_ready
+  - wifi_ready
+  - bluetooth_ready
+  - gnss_ready
+  - carrier_ready
+  - sar_ready
+  - regulatory_ready
+  - end_to_end_phone_ready

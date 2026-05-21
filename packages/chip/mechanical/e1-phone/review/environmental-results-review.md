@@ -18,4 +18,4 @@ This review is fail-closed until thermal, RF, drop, and ingress lab rows are pop
 
 ## Release Rule
 
-- Every thermal, RF, SAR pre-scan, drop, dust, and splash row must include sample, operator, numeric passing result, and explicit pass disposition.
+- Every thermal, RF, SAR pre-scan, drop, dust, and splash row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_environmental_result, raw chamber/test data, fixture calibration certificate, photo/log artifact, and unit/material/module lot traceability record.

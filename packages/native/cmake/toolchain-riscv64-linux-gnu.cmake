@@ -15,7 +15,7 @@
 #
 # Zig 0.14+ is the recommended floor (same reasoning as the musl variant:
 # `-march=rv64gc` accepted directly, LLVM ships RVV 1.0 codegen). Override
-# MILADY_RISCV_MARCH on the command line to pin a specific ISA string;
+# ELIZA_RISCV_MARCH on the command line to pin a specific ISA string;
 # Wave 1 leaves it empty so Zig's triple-default rv64gc/lp64d wins.
 set(CMAKE_SYSTEM_NAME      Linux)
 set(CMAKE_SYSTEM_PROCESSOR riscv64)
@@ -26,11 +26,11 @@ if(NOT DEFINED ENV{ZIG_BIN})
         "(e.g. `ZIG_BIN=$(command -v zig)`).")
 endif()
 
-if(NOT DEFINED MILADY_RISCV_MARCH)
-    set(MILADY_RISCV_MARCH "")
+if(NOT DEFINED ELIZA_RISCV_MARCH)
+    set(ELIZA_RISCV_MARCH "")
 endif()
-set(CMAKE_C_COMPILER   $ENV{ZIG_BIN} cc  -target riscv64-linux-gnu ${MILADY_RISCV_MARCH})
-set(CMAKE_CXX_COMPILER $ENV{ZIG_BIN} c++ -target riscv64-linux-gnu ${MILADY_RISCV_MARCH})
+set(CMAKE_C_COMPILER   $ENV{ZIG_BIN} cc  -target riscv64-linux-gnu ${ELIZA_RISCV_MARCH})
+set(CMAKE_CXX_COMPILER $ENV{ZIG_BIN} c++ -target riscv64-linux-gnu ${ELIZA_RISCV_MARCH})
 
 # Zig bundles a glibc sysroot internally — same root-path policy as the
 # musl variant: host programs callable, target libraries / headers only.

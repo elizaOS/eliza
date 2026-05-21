@@ -34,6 +34,12 @@
       "plus_tolerance_mm": 0.25,
       "minus_tolerance_mm": 0.25,
       "inspection_method": "CMM or optical comparator against released STEP/drawing",
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "100% first article; Cpk after DVT tool tuning"
     },
     {
@@ -45,6 +51,12 @@
       "plus_tolerance_mm": 0.15,
       "minus_tolerance_mm": 0.15,
       "inspection_method": "CMM or optical comparator against released STEP/drawing",
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "100% first article; Cpk after DVT tool tuning"
     },
     {
@@ -56,6 +68,12 @@
       "plus_tolerance_mm": 0.2,
       "minus_tolerance_mm": 0.2,
       "inspection_method": "CMM or optical comparator against released STEP/drawing",
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "100% first article; Cpk after DVT tool tuning"
     },
     {
@@ -67,6 +85,12 @@
       "plus_tolerance_mm": 0.15,
       "minus_tolerance_mm": 0.15,
       "inspection_method": "CMM or optical comparator against released STEP/drawing",
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "100% first article; Cpk after DVT tool tuning"
     },
     {
@@ -78,6 +102,12 @@
       "plus_tolerance_mm": 0.2,
       "minus_tolerance_mm": 0.2,
       "inspection_method": "CMM or optical comparator against released STEP/drawing",
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "100% first article; Cpk after DVT tool tuning"
     },
     {
@@ -90,6 +120,12 @@
       "minus_tolerance_mm": "",
       "minimum_mm": 0.3,
       "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "all EVT first articles"
     },
     {
@@ -102,6 +138,12 @@
       "minus_tolerance_mm": "",
       "minimum_mm": 0.3,
       "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "all EVT first articles"
     },
     {
@@ -114,6 +156,12 @@
       "minus_tolerance_mm": "",
       "minimum_mm": 0.5,
       "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "all EVT first articles"
     },
     {
@@ -126,6 +174,12 @@
       "minus_tolerance_mm": "",
       "minimum_mm": 1.0,
       "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "all EVT first articles"
     },
     {
@@ -138,6 +192,12 @@
       "minus_tolerance_mm": "",
       "minimum_mm": 0.15,
       "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "all EVT first articles"
     },
     {
@@ -150,6 +210,12 @@
       "minus_tolerance_mm": "",
       "minimum_mm": 2.5,
       "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "all EVT first articles"
     },
     {
@@ -162,6 +228,12 @@
       "minus_tolerance_mm": "",
       "minimum_mm": 0.8,
       "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "all EVT first articles"
     },
     {
@@ -169,11 +241,17 @@
       "feature": "nominal_z_stack_margin",
       "control": "minimum clearance to datum A",
       "datum_reference": "A",
-      "nominal": 2.32,
+      "nominal": 2.62,
       "plus_tolerance_mm": "",
       "minus_tolerance_mm": "",
       "minimum_mm": 1.0,
       "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
       "sample_requirement": "all EVT first articles"
     }
   ],

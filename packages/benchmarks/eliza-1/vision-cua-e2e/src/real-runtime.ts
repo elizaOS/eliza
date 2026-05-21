@@ -99,7 +99,7 @@ export async function discoverRuntimeAdapter(
     "OPENAI_API_KEY (for cloud OpenAI IMAGE_DESCRIPTION — not yet wired)",
   );
   missing.push(
-    "eliza-1 local bundle under ~/.milady/local-inference/ with IMAGE_DESCRIPTION-capable mmproj",
+    "eliza-1 local bundle under ~/.eliza/local-inference/ with IMAGE_DESCRIPTION-capable mmproj",
   );
 
   throw new NoVisionProviderError(missing);

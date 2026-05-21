@@ -1,0 +1,25 @@
+[Unit]
+Description=elizaOS local agent runtime (system-wide)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=elizaos
+Group=elizaos
+WorkingDirectory=/var/lib/elizaos
+Environment=ELIZA_STATE_DIR=/var/lib/elizaos
+Environment=ELIZA_API_PORT=31337
+ExecStart=/opt/elizaos/bin/bun /opt/elizaos/app/server.js --headless --port=31337
+Restart=on-failure
+RestartSec=2
+SyslogIdentifier=elizaos-agent
+StandardOutput=journal+console
+StandardError=journal+console
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/elizaos /var/log/elizaos
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

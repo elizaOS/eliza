@@ -17,9 +17,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// scripts/cloud/admin/dev -> back up to packages, then up to eliza root, then milady root
+// scripts/cloud/admin/dev -> back up to packages, then up to eliza root, then eliza root
 const elizaRoot = path.resolve(__dirname, "../../../..");
-const miladyRoot = path.resolve(elizaRoot, "..");
+const elizaRoot = path.resolve(elizaRoot, "..");
 
 const dockerfile = path.resolve(
   elizaRoot,
@@ -36,10 +36,10 @@ const platform =
   process.env.ELIZA_AGENT_IMAGE_PLATFORM ??
   (process.arch === "arm64" ? "linux/arm64" : "linux/amd64");
 
-const dockerfileRelToContext = path.relative(miladyRoot, dockerfile);
+const dockerfileRelToContext = path.relative(elizaRoot, dockerfile);
 
 console.log(`[agent:build] tag=${tag} platform=${platform}`);
-console.log(`[agent:build] context=${miladyRoot}`);
+console.log(`[agent:build] context=${elizaRoot}`);
 console.log(`[agent:build] dockerfile=${dockerfileRelToContext}`);
 
 const result = spawnSync(
@@ -55,7 +55,7 @@ const result = spawnSync(
     ".",
   ],
   {
-    cwd: miladyRoot,
+    cwd: elizaRoot,
     stdio: "inherit",
   },
 );

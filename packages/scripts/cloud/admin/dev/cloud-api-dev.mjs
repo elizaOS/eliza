@@ -182,7 +182,7 @@ async function main() {
       // Control-plane reads DATABASE_URL directly (not through dev-vars).
       DATABASE_URL:
         env.DATABASE_URL || `postgresql://postgres@${host}:${port}/postgres`,
-      MILADY_LOCAL_DOCKER_PROVIDER: env.MILADY_LOCAL_DOCKER_PROVIDER || "1",
+      ELIZA_LOCAL_DOCKER_PROVIDER: env.ELIZA_LOCAL_DOCKER_PROVIDER || "1",
       ENVIRONMENT: env.ENVIRONMENT || "local",
       ELIZA_AGENT_IMAGE: env.ELIZA_AGENT_IMAGE || "eliza-cloud-agent:local",
       ELIZA_AGENT_PORT: env.ELIZA_AGENT_PORT || "2138",

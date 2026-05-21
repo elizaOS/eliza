@@ -1,0 +1,150 @@
+schema: eliza.e1_phone_route_feasibility_density.v1
+status: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
+date: 2026-05-20
+claim_boundary: >
+  Concept route-density and escape-feasibility gate for the compact E1 phone
+  board. This estimates pressure from the 64 x 132 mm split-board geometry and
+  required phone interfaces. It is not routed copper, not DRC, not a field
+  solver result, not real footprint/courtyard utilization, and not evidence
+  that the PCB is ready for fabrication or enclosure release.
+
+source_artifacts:
+  - docs/board/e1-phone-mainboard-metrics.yaml
+  - board/kicad/e1-phone/layout-utilization.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/top-bottom-interconnect-plan.yaml
+  - board/kicad/e1-phone/evt1-routing-work-package.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+
+geometry_pressure:
+  board_bbox_mm: {width: 64.0, height: 132.0, area_mm2: 8448.0}
+  physical_pcb_island_area_mm2: 2816.0
+  battery_window_mm: {x: 0.0, y: 29.5, width: 64.0, height: 87.0, area_mm2: 5568.0}
+  pcb_area_of_bbox_pct: 33.3
+  antenna_keepout_area_mm2: 844.0
+  placement_area_after_battery_and_antenna_keepouts_mm2: 1972.0
+  concept_fab_region_total_area_mm2: 1763.0
+  concept_route_shield_test_reserve_area_mm2: 209.0
+  concept_route_shield_test_reserve_pct: 10.6
+  post_footprint_reserve_target_pct_range: {min: 35.0, max: 50.0}
+  interpretation: >
+    The split-board geometry is compact enough to fit the selected display and
+    battery target, but current concept reserve is far below the reserve band
+    expected after real component courtyards, shields, no-route zones, test
+    access, and RF keepouts are modeled. EVT1 must prove routability with exact
+    supplier footprints or relax the topology.
+
+island_pressure_model:
+  top_island:
+    area_mm2: 1856.0
+    assigned_major_functions:
+      - compute_memory_storage
+      - pmic_charger_usb_pd
+      - cellular_5g_redcap
+      - wifi_bluetooth
+      - display_touch_fpc
+      - front_rear_camera_fpcs
+      - battery_tail_connector
+      - top_split_interconnect
+      - side_key_flex_connector
+    high_risk_escape_reasons:
+      - SoC_LPDDR_UFS_escape_density
+      - MIPI_DSI_and_CSI_fanout_competes_with_camera_display_FPCs
+      - cellular_and_wifi_RF_keepouts_compete_with_top_antenna_zone
+      - PMIC_charger_high_current_paths_compete_with_thermal_spreader
+      - side_key_and_battery_tail_must_not_intrude_into_full_width_battery_cavity
+    status: blocked_top_island_trial_route_required
+  bottom_island:
+    area_mm2: 960.0
+    assigned_major_functions:
+      - USB_C_receptacle
+      - bottom_audio_codec_amp_speaker_microphones
+      - haptic_drive_and_service_test
+      - bottom_split_interconnect
+      - factory_probe_edge
+    high_risk_escape_reasons:
+      - USB_C_shell_capture_and_ESD_leave_limited_bottom_edge_space
+      - speaker_chamber_microphone_ports_and_gaskets_constrain_component_height
+      - split_interconnect_must_carry_USB2_power_audio_haptic_and_test_nets
+      - factory_probe_pads_must_clear_enclosure_and acoustic paths
+    status: blocked_bottom_island_trial_route_required
+
+interface_complexity_counts:
+  differential_pair_count_required: 24
+  high_speed_domains:
+    usb2_pairs: 2
+    mipi_dsi_pairs: 5
+    mipi_csi_clock_pairs: 2
+    mipi_csi_data_pairs: 6
+    pcie_pairs: 4
+    lpddr_clock_or_strobe_pairs: 2
+    ufs_pairs: 3
+  single_ended_bus_count_required: 11
+  rf_feed_count_required: 5
+  factory_power_test_points_required: 8
+  split_interconnect_min_contacts: 49
+  declared_concept_net_count: 180
+  assigned_concept_pad_net_count: 519
+
+trial_route_exit_criteria:
+  required_before_evt1_route_ready:
+    - exact supplier footprints, courtyards, and component heights replace every placeholder footprint
+    - KiCad net classes implement routing-constraints.yaml impedance and length/skew groups
+    - DSI, CSI, USB2, PCIe, LPDDR, UFS, RF, power, audio, and split-interconnect trial routes complete without DRC blockers
+    - top and bottom islands preserve the 64 x 87 mm battery cavity and side-key flex path
+    - RF feed matching and conducted access fit without violating top/bottom antenna keepouts
+    - factory-probe-map.yaml test pads or fixture alternatives remain accessible
+    - routed board STEP imports into mechanical CAD and passes routed-board clearance rerun
+  required_measurements_or_reports:
+    - post_route_length_skew_report
+    - routed_courtyard_utilization_report
+    - via_count_and_escape_density_report
+    - copper_area_and_return_path_review
+    - impedance_coupon_stackup_quote
+    - routed_step_clearance_report
+  current_status: blocked_no_supplier_footprints_or_trial_route
+
+fallback_decisions_if_trial_route_fails:
+  - id: increase_top_island_height
+    effect: reduces battery height or increases device height
+    trigger: SoC_LPDDR_UFS_escape_or_PM_RF_route_fails
+  - id: convert_to_rigid_flex_with_side_key_or_RF_subflex
+    effect: increases flex fabrication complexity but preserves battery cavity
+    trigger: side_key_RF_or_interconnect_escape_conflicts_with_battery_window
+  - id: move_cellular_to_M2_lab_variant_for_EVT0_only
+    effect: enables bring-up but cannot be final phone layout
+    trigger: LGA_RedCap_reference_layout_or_RF_keepout_cannot_fit_top_island
+  - id: reduce_display_or_battery_target
+    effect: violates current popular_screen_or_17p3Wh optimization target
+    trigger: enclosure_routed_step_clearance_or_thermal_margin_fails
+  - id: split_audio_usb_bottom_board_into_service_daughtercard
+    effect: adds assembly/interconnect cost but relieves bottom island pressure
+    trigger: USB_C_audio_haptic_factory_probe_cannot_fit_bottom_island
+
+cross_checks:
+  geometry_matches_layout_utilization: true
+  reserve_matches_metrics_and_evt1_work_package: true
+  top_bottom_islands_match_evt1_fixed_geometry: true
+  complexity_counts_cover_routing_constraints: true
+  split_interconnect_contact_budget_matches_plan: true
+  trial_route_exit_criteria_remain_fail_closed: true
+
+release_blockers:
+  - exact supplier footprints and courtyards missing
+  - no routed copper, vias, zones, or DRC report
+  - no post-route length, skew, via-count, or escape-density report
+  - no real routed-courtyard utilization replacing concept rectangles
+  - no impedance stackup/coupon quote from fabricator
+  - no routed board STEP imported into enclosure CAD
+
+forbidden_claims:
+  - route_feasible
+  - evt1_route_ready
+  - routed_pcb_ready
+  - board_size_optimized_final
+  - fabrication_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

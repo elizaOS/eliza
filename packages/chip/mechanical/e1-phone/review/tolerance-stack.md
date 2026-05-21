@@ -18,7 +18,7 @@ Status: CAD-derived EVT0 tolerance stack pass; not a controlled release drawing.
 - PASS: `usb_shell_to_aperture` nominal 0.175 mm, minimum 0.15 mm
 - PASS: `pcb_edge_to_enclosure` nominal 7.0 mm, minimum 2.5 mm
 - PASS: `rear_camera_lens_to_cover_glass` nominal 1.2 mm, minimum 0.8 mm
-- PASS: `nominal_z_stack_margin` nominal 2.32 mm, minimum 1.0 mm
+- PASS: `nominal_z_stack_margin` nominal 2.62 mm, minimum 1.0 mm
 
 ## Drawing Controls To Add Before Release
 

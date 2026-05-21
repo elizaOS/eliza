@@ -1,5 +1,5 @@
 From 8f14a1ecf08daa6d52ac2566db8d014536909af9 Mon Sep 17 00:00:00 2001
-From: bun-riscv64 build <bun-riscv64@milady.local>
+From: bun-riscv64 build <bun-riscv64@eliza.local>
 Date: Tue, 19 May 2026 04:35:50 -0700
 Subject: [PATCH 4/7] deps/webkit: force local mode on riscv64
 

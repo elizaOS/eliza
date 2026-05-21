@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Accessibility service configuration for MiladyAccessibilityService (WS8).
+    Accessibility service configuration for ElizaAccessibilityService (WS8).
 
     android:accessibilityFeatureType="featureAccessibility" (not featureGeneric)
     is required to survive Advanced Protection Mode on Pixel 9+ and some OEM ROMs.

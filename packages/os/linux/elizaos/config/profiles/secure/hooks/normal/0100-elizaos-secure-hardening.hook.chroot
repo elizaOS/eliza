@@ -1,0 +1,35 @@
+#!/bin/sh
+# elizaOS secure profile — system hardening (chroot hook).
+# Enables AppArmor enforcement, Tor + nftables services, and a set of
+# kernel hardening sysctls. Idempotent: safe to run more than once.
+set -e
+
+# Hardening sysctls. kptr/dmesg restrict hide kernel addresses from
+# unprivileged users; syncookies blunt SYN floods; disabling
+# unprivileged BPF removes a common kernel attack surface.
+mkdir -p /etc/sysctl.d
+cat > /etc/sysctl.d/99-elizaos-secure.conf <<'EOF'
+kernel.kptr_restrict=2
+kernel.dmesg_restrict=1
+net.ipv4.tcp_syncookies=1
+kernel.unprivileged_bpf_disabled=1
+EOF
+
+# AppArmor: enforce at boot via the kernel cmdline, and switch any
+# loaded profiles to enforce mode now where the chroot allows it.
+mkdir -p /etc/default/grub.d
+cat > /etc/default/grub.d/99-elizaos-apparmor.cfg <<'EOF'
+GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT apparmor=1 security=apparmor"
+EOF
+if command -v aa-enforce >/dev/null 2>&1 && [ -d /etc/apparmor.d ]; then
+    aa-enforce /etc/apparmor.d/* >/dev/null 2>&1 || true
+fi
+
+# Enable services for next boot. systemctl enable only writes the
+# wants/ symlinks here; the units start under the live system's init.
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable apparmor.service >/dev/null 2>&1 || true
+    systemctl enable tor.service >/dev/null 2>&1 || true
+    systemctl enable nftables.service >/dev/null 2>&1 || true
+    systemctl enable unattended-upgrades.service >/dev/null 2>&1 || true
+fi

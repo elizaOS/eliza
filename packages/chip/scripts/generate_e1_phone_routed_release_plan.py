@@ -21,6 +21,7 @@ PROCUREMENT = ROOT / "board/kicad/e1-phone/procurement-readiness.yaml"
 ENCLOSURE = ROOT / "board/kicad/e1-phone/enclosure-placement-closure.yaml"
 POWER_THERMAL = ROOT / "board/kicad/e1-phone/power-thermal-budget.yaml"
 RF = ROOT / "board/kicad/e1-phone/rf-connectivity-closure.yaml"
+MODULE_RF_PINOUT_EXECUTION = ROOT / "board/kicad/e1-phone/module-rf-pinout-execution.yaml"
 PCB = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
 
 
@@ -61,6 +62,7 @@ def main() -> int:
     enclosure = load_yaml(ENCLOSURE)
     power_thermal = load_yaml(POWER_THERMAL)
     rf = load_yaml(RF)
+    module_rf_pinout = load_yaml(MODULE_RF_PINOUT_EXECUTION)
     pcb_text = PCB.read_text()
 
     current_state = manufacturing["board_state_detected"]
@@ -309,6 +311,7 @@ def main() -> int:
                 ENCLOSURE,
                 POWER_THERMAL,
                 RF,
+                MODULE_RF_PINOUT_EXECUTION,
                 PCB,
             ]
         ],
@@ -350,6 +353,19 @@ def main() -> int:
             "current_status": rf["status"],
             "required_rf_nets": rf["required_rf_nets"],
             "requires_measurements": rf["required_measurements_before_release"],
+        },
+        "module_rf_pinout_execution_release_dependency": {
+            "execution_status": module_rf_pinout["status"],
+            "selected_cellular": module_rf_pinout["selected_module_context"]["cellular"]["family"],
+            "selected_wifi_bluetooth": module_rf_pinout["selected_module_context"]["wifi_bluetooth"][
+                "order_number"
+            ],
+            "rf_feed_count": len(module_rf_pinout["rf_feed_execution"]),
+            "module_execution_record_ids": [
+                item["id"] for item in module_rf_pinout["module_pinout_execution"]
+            ],
+            "required_rf_nets": [item["net"] for item in module_rf_pinout["rf_feed_execution"]],
+            "release_blockers": module_rf_pinout["release_blockers"],
         },
         "ready_to_fabricate": False,
         "ready_for_enclosure": False,

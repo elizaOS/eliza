@@ -2,7 +2,7 @@
 # Eliza ↔ MuJoCo AiNex demo launcher.
 #
 # Starts the MuJoCo bridge in the background, waits for it to listen, then
-# launches `bun run dev` from the repo root with MILADY_AINEX_BRIDGE_URL
+# launches `bun run dev` from the repo root with ELIZA_AINEX_BRIDGE_URL
 # set so plugin-ainex auto-enables.
 set -euo pipefail
 
@@ -10,10 +10,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROBOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 REPO_ROOT="$(cd "${ROBOT_DIR}/../.." && pwd)"
 
-BRIDGE_PORT="${MILADY_AINEX_BRIDGE_PORT:-9100}"
-TARGET_X="${MILADY_AINEX_TARGET_X:-2.0}"
-TARGET_Y="${MILADY_AINEX_TARGET_Y:-0.0}"
-TARGET_Z="${MILADY_AINEX_TARGET_Z:-0.05}"
+BRIDGE_PORT="${ELIZA_AINEX_BRIDGE_PORT:-9100}"
+TARGET_X="${ELIZA_AINEX_TARGET_X:-2.0}"
+TARGET_Y="${ELIZA_AINEX_TARGET_Y:-0.0}"
+TARGET_Z="${ELIZA_AINEX_TARGET_Z:-0.05}"
 
 cd "${ROBOT_DIR}"
 
@@ -38,4 +38,4 @@ for i in $(seq 1 50); do
 done
 
 cd "${REPO_ROOT}"
-MILADY_AINEX_BRIDGE_URL="ws://localhost:${BRIDGE_PORT}" exec bun run dev
+ELIZA_AINEX_BRIDGE_URL="ws://localhost:${BRIDGE_PORT}" exec bun run dev

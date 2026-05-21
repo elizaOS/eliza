@@ -1,13 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { logger } from "../logger.ts";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetReadEnvWarnings } from "./read-env.ts";
 import {
 	getElizaNamespace,
-	migrateLegacyStateDir,
 	migrateStateDir,
 	resolveOAuthDir,
 	resolveStateDir,
@@ -20,32 +17,10 @@ const fakeHomedir = () => FAKE_HOME;
 describe("resolveStateDir", () => {
 	beforeEach(() => __resetReadEnvWarnings());
 
-	it("honors ELIZA_STATE_DIR over the legacy MILADY_STATE_DIR", () => {
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+	it("honors ELIZA_STATE_DIR", () => {
 		expect(
-			resolveStateDir(
-				{
-					MILADY_STATE_DIR: "/tmp/legacy",
-					ELIZA_STATE_DIR: "/tmp/canonical",
-				},
-				fakeHomedir,
-			),
+			resolveStateDir({ ELIZA_STATE_DIR: "/tmp/canonical" }, fakeHomedir),
 		).toBe("/tmp/canonical");
-		// Canonical wins → legacy alias never consulted → no deprecation warning.
-		expect(warn).not.toHaveBeenCalled();
-		warn.mockRestore();
-	});
-
-	it("still honors the legacy MILADY_STATE_DIR (with a one-time deprecation warning)", () => {
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-		expect(
-			resolveStateDir({ MILADY_STATE_DIR: "/tmp/legacy" }, fakeHomedir),
-		).toBe("/tmp/legacy");
-		// And a second read does not re-warn.
-		resolveStateDir({ MILADY_STATE_DIR: "/tmp/legacy" }, fakeHomedir);
-		expect(warn).toHaveBeenCalledTimes(1);
-		expect(String(warn.mock.calls[0]?.[0])).toContain("MILADY_STATE_DIR");
-		warn.mockRestore();
 	});
 
 	it("uses the namespace default when ELIZA_STATE_DIR is unset", () => {
@@ -64,15 +39,7 @@ describe("resolveStateDir", () => {
 		expect(resolveStateDir({}, fakeHomedir)).toBe(join(FAKE_HOME, ".eliza"));
 	});
 
-	it("treats whitespace-only env values as unset, falling through to aliases", () => {
-		// ELIZA_STATE_DIR is whitespace-only (treated as unset) → alias consulted.
-		expect(
-			resolveStateDir(
-				{ ELIZA_STATE_DIR: "   ", MILADY_STATE_DIR: "/tmp/bar" },
-				fakeHomedir,
-			),
-		).toBe("/tmp/bar");
-		// When neither canonical nor alias is set the default applies.
+	it("treats whitespace-only env values as unset, falling through to the default", () => {
 		expect(resolveStateDir({ ELIZA_STATE_DIR: "   " }, fakeHomedir)).toBe(
 			join(FAKE_HOME, ".eliza"),
 		);
@@ -128,67 +95,6 @@ describe("resolveUserPath", () => {
 	});
 });
 
-describe("migrateLegacyStateDir", () => {
-	let tempHome: string;
-
-	beforeEach(async () => {
-		tempHome = await mkdtemp(join(tmpdir(), "legacy-state-home-"));
-		__resetReadEnvWarnings();
-	});
-
-	afterEach(async () => {
-		const { rm } = await import("node:fs/promises");
-		try {
-			await rm(tempHome, { recursive: true, force: true });
-		} catch {}
-	});
-
-	const getHome = () => tempHome;
-
-	it("no-ops when an explicit ELIZA_STATE_DIR is set", () => {
-		expect(
-			migrateLegacyStateDir({ ELIZA_STATE_DIR: "/tmp/x" }, getHome),
-		).toEqual({ migrated: false });
-	});
-
-	it("no-ops when an explicit (legacy) MILADY_STATE_DIR is set", () => {
-		expect(
-			migrateLegacyStateDir({ MILADY_STATE_DIR: "/tmp/x" }, getHome),
-		).toEqual({ migrated: false });
-	});
-
-	it("no-ops when ~/.eliza already exists", async () => {
-		await mkdir(join(tempHome, ".eliza"), { recursive: true });
-		await mkdir(join(tempHome, ".milady"), { recursive: true });
-		expect(migrateLegacyStateDir({}, getHome)).toEqual({ migrated: false });
-	});
-
-	it("no-ops when ~/.milady does not exist", () => {
-		expect(migrateLegacyStateDir({}, getHome)).toEqual({ migrated: false });
-	});
-
-	it("migrates ~/.milady → ~/.eliza on first run and logs once", async () => {
-		const legacyDir = join(tempHome, ".milady");
-		await mkdir(join(legacyDir, "skills"), { recursive: true });
-		await writeFile(join(legacyDir, "milady.json"), '{"a":1}');
-		await writeFile(join(legacyDir, "skills", "x.md"), "skill");
-
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-		const result = migrateLegacyStateDir({}, getHome);
-		expect(result.migrated).toBe(true);
-		expect(result.from).toBe(legacyDir);
-		expect(result.to).toBe(join(tempHome, ".eliza"));
-		expect(existsSync(join(tempHome, ".eliza", "milady.json"))).toBe(true);
-		expect(
-			readFileSync(join(tempHome, ".eliza", "skills", "x.md"), "utf8"),
-		).toBe("skill");
-		// Legacy dir left in place.
-		expect(existsSync(legacyDir)).toBe(true);
-		expect(warn).toHaveBeenCalledTimes(1);
-		warn.mockRestore();
-	});
-});
-
 describe("migrateStateDir", () => {
 	let tempRoot: string;
 
@@ -197,7 +103,6 @@ describe("migrateStateDir", () => {
 	});
 
 	afterEach(async () => {
-		// Best-effort cleanup; ignore failures so a stuck FS doesn't fail the suite
 		const { rm } = await import("node:fs/promises");
 		try {
 			await rm(tempRoot, { recursive: true, force: true });
@@ -233,7 +138,6 @@ describe("migrateStateDir", () => {
 			"world",
 		);
 
-		// Idempotent: running again must not throw and must keep contents.
 		const second = await migrateStateDir(src, dst);
 		expect(second).toEqual({ migrated: true });
 		expect(await readFile(join(dst, "top.txt"), "utf8")).toBe("hello");

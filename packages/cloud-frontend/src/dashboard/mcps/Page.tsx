@@ -49,7 +49,7 @@ const demoMcpServers = [
     x402Enabled: false,
     toolCount: 5,
     icon: "clock",
-    color: "#3B82F6",
+    color: "#FF5800",
     features: [
       "Current Time",
       "Timezone Conversion",

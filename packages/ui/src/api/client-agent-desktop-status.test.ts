@@ -51,12 +51,12 @@ describe("ElizaClient desktop status RPC fallback", () => {
       getAgentStatus: vi.fn(() => new Promise(() => undefined)),
     });
     const { client, request } = makeClientWithTransport({
-      "/api/status": { state: "running", agentName: "Milady" },
+      "/api/status": { state: "running", agentName: "Eliza" },
     });
 
     await expect(client.getStatus()).resolves.toEqual({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
     });
 
     expect(request).toHaveBeenCalledWith(
@@ -70,14 +70,14 @@ describe("ElizaClient desktop status RPC fallback", () => {
     installDesktopRpc({
       getAgentStatus: vi.fn(async () => ({
         state: "running",
-        agentName: "Milady",
+        agentName: "Eliza",
       })),
     });
     const { client, request } = makeClientWithTransport({});
 
     await expect(client.getStatus()).resolves.toEqual({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
     });
 
     expect(request).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ describe("ElizaClient desktop status RPC fallback", () => {
       pluginsLoaded: 22,
       pluginsFailed: 0,
       database: "ok",
-      agentName: "Milady",
+      agentName: "Eliza",
       port: 31337,
       startedAt: 1234,
       updatedAt: "2026-05-17T00:00:00.000Z",

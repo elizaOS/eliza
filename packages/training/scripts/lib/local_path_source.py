@@ -39,7 +39,7 @@ from typing import Any
 log = logging.getLogger("local_path_source")
 
 # ${VAR} or ${VAR:-default}.  We deliberately accept exactly one token; the
-# nightly-export schema only ever needs ELIZA_STATE_DIR or MILADY_STATE_DIR.
+# nightly-export schema only ever needs ELIZA_STATE_DIR or ELIZA_STATE_DIR.
 _ENV_VAR_RE = re.compile(r"\$\{(?P<name>[A-Z_][A-Z0-9_]*)(?::-(?P<default>[^}]*))?\}")
 
 

@@ -1,0 +1,74 @@
+schema: eliza.e1_phone_supplier_pinout.v1
+part: MAX77860EWG+
+manufacturer: Analog Devices (formerly Maxim Integrated)
+package: WLP-81 (9 x 9 array, 0.4 mm pitch, 3.9 x 4.0 mm), USB Type-C switch-mode buck charger with CC detection and reverse boost
+source_doc: https://www.analog.com/en/products/max77860.html
+source_doc_alt:
+  - https://www.analog.com/en/products/online-datasheet/MAX77860.html
+  - https://www.digikey.com/en/product-highlight/m/maxim-integrated/max77860-usb-type-c-switch-mode-buck-charger
+  - https://il.farnell.com/maxim-integrated-products/max77860ewg/battery-charger-li-ion-pol-wlp/dp/3014905RL
+source_doc_revision: MAX77860 datasheet rev. as of 2024
+captured_date: 2026-05-21
+captured_by: agent
+evidence_class: public_supplier_datasheet
+notes: |
+  MAX77860 is a Li-ion/Li-Po USB Type-C switch-mode buck charger with
+  integrated CC detection, reverse boost (5V OTG), SafeOut LDO, and ADC. The
+  81-bump WLP grid is A1..J9 (rows A-J, columns 1-9). Per-bump assignment
+  table is published in the datasheet PDF (pp. 5-7, not extractable via
+  WebFetch). Verified-public facts and interface group set captured below;
+  per-bump entries marked fetch_required against the ADI datasheet portal.
+mechanical:
+  package: WLP
+  bump_count: 81
+  array: [9, 9]
+  rows: [A, B, C, D, E, F, G, H, J]
+  cols: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  pitch_mm: 0.4
+  body_mm: [3.9, 4.0]
+  operating_temperature_c: [-40, 85]
+electrical:
+  input_voltage_v: [4.0, 13.5]
+  input_ovp_v: 14.0
+  charge_current_a_max: 3.0
+  battery_voltage_v: [2.5, 4.5]
+  switching_freq_mhz_typ: 1.5
+  i2c_spec: 3.0
+  reverse_boost_v: 5.0
+interface_pin_groups:
+  power_in:
+    - CHGIN (Type-C VBUS input / reverse-boost output)
+    - VIO (host-IO reference, 1.8 V typical)
+    - VL (internal 5 V LDO bypass cap)
+  switch_node:
+    - LX (inductor switching node, multiple bumps)
+    - BST (boot-strap cap to LX)
+  output:
+    - SYS (system rail, post-switch)
+    - BATT (battery sense and charge-current source, multiple bumps)
+    - SAFEOUT (LDO output)
+  cc_detection:
+    - CC1
+    - CC2
+  control_i2c:
+    - SDA
+    - SCL
+    - INTB (open-drain interrupt to host)
+    - CHGINEN (active-low charger input enable)
+  protection:
+    - THM (battery thermistor, NTC sense)
+    - OTG (5V OTG enable)
+  ground:
+    - PGND (power ground, multiple bumps)
+    - AGND (analog ground)
+pins:
+  - pin: ALL
+    name: fetch_required
+    function: full_81bump_table
+    direction: unknown
+    voltage_v: null
+    notes: |
+      Pull per-bump pinout table from MAX77860 datasheet pp. 5-7 at
+      https://www.analog.com/en/products/max77860.html (free public download).
+      Interface groups above are verified from datasheet abstract, ADI product
+      page, and DigiKey/Farnell distributor specifications.

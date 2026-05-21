@@ -4,7 +4,7 @@
   "device_envelope_mm": [
     78.0,
     153.6,
-    9.6
+    11.2
   ],
   "kicad_outline_check": {
     "pass": true,
@@ -41,7 +41,7 @@
     },
     {
       "id": "battery_window",
-      "action": "Keep the 64 x 87 x 4.4 mm full-width battery cavity clear and do not route rigid PCB under the modeled pouch.",
+      "action": "Keep the 64 x 87 x 5.7 mm full-width battery cavity clear and do not route rigid PCB under the modeled pouch.",
       "why": "CAD non-overlap check uses segmented rigid board islands around this window."
     },
     {

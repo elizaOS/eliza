@@ -21,13 +21,13 @@
             android:foregroundServiceType="mediaProjection|dataSync" />
 
         <!--
-            MiladyAccessibilityService — cross-app view tree + gesture dispatch.
-            The user must manually enable this in Settings > Accessibility > Milady.
+            ElizaAccessibilityService — cross-app view tree + gesture dispatch.
+            The user must manually enable this in Settings > Accessibility > Eliza.
             featureAccessibility (not featureGeneric) is required to survive
             Advanced Protection Mode on Pixel 9+ and some OEM ROMs.
         -->
         <service
-            android:name="ai.elizaos.computeruse.MiladyAccessibilityService"
+            android:name="ai.elizaos.computeruse.ElizaAccessibilityService"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>

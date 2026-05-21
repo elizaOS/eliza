@@ -38,7 +38,7 @@ export const ainexPlugin: Plugin = {
   actions,
   autoEnable: {
     shouldEnable: (env, config) => {
-      if (env?.MILADY_AINEX_BRIDGE_URL) return true;
+      if (env?.ELIZA_AINEX_BRIDGE_URL) return true;
       const features = config?.features as
         | Record<string, unknown>
         | undefined;

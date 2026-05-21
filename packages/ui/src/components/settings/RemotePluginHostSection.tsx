@@ -386,7 +386,7 @@ export function RemotePluginHostSection() {
         </p>
         <p className="text-xs text-muted">
           <span className="text-warn">Auth token:</span> a remote plugin can
-          request your API token via the host bridge and call Milady's HTTP API
+          request your API token via the host bridge and call Eliza's HTTP API
           as you. Future versions will issue per-plugin scoped tokens; the
           current bridge forwards the host token verbatim. Only install remote
           plugins from sources you trust.

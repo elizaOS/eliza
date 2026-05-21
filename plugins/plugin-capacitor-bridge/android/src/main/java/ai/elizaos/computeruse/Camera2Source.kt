@@ -226,7 +226,7 @@ class Camera2Source(private val context: Context) {
     // ── Background thread ─────────────────────────────────────────────────────
 
     private fun startBackgroundThread() {
-        backgroundThread = HandlerThread("milady-camera").also { it.start() }
+        backgroundThread = HandlerThread("eliza-camera").also { it.start() }
         backgroundHandler = Handler(backgroundThread!!.looper)
     }
 

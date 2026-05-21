@@ -10,7 +10,7 @@
  *           computer/interface/base.py
  *   License: MIT, Copyright (c) 2025 trycua
  *
- * This is NOT a verbatim re-implementation — Milady's underlying drivers
+ * This is NOT a verbatim re-implementation — Eliza's underlying drivers
  * (`platform/driver.ts`, `platform/capture.ts`) already cover most of the same
  * surface. We give the cascade one well-typed seam so tests can swap in a
  * fake driver, and so the Brain doesn't need to know about display-id

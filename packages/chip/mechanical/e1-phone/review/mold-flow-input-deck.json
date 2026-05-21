@@ -1,0 +1,90 @@
+{
+  "claim_boundary": "CAD-derived mold-flow input deck for a toolmaker or simulation package; not a returned Moldflow/SolidWorks Plastics/Moldex3D result.",
+  "status": "mold_flow_input_deck_ready",
+  "geometry_sources": {
+    "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
+    "tooling_glb": "mechanical/e1-phone/out/e1-phone-mold-tooling.glb",
+    "tooling_render": "mechanical/e1-phone/review/mold_tooling.png"
+  },
+  "material_request": {
+    "family": "PC+ABS or glass-filled PC/ABS, molded orange",
+    "color": "hard safety orange",
+    "required_supplier_data": [
+      "viscosity_curve",
+      "pvT_data",
+      "shrinkage_tensor",
+      "recommended_melt_and_mold_temperature"
+    ]
+  },
+  "nominal_process_window": {
+    "material_family": "PC+ABS or glass-filled PC/ABS, molded orange",
+    "melt_temp_c": [
+      245,
+      275
+    ],
+    "mold_temp_c": [
+      70,
+      95
+    ],
+    "drying": "Dry PC+ABS per resin datasheet before molding; record dryer dew point and residence time.",
+    "pack_hold": "Start with 95-99% fill transfer, stepped pack/hold DOE, and gate-freeze study.",
+    "venting": "Add vents at end-of-fill around top corners, camera window, USB saddle, and snap-hook roots.",
+    "cosmetic_controls": [
+      "Orange color plaque approval before tool texture freeze.",
+      "Gate vestige and blush review on first shots under production lighting.",
+      "Texture-depth/draft review before any hard-tool steel commitment."
+    ]
+  },
+  "required_outputs": [
+    "fill_pressure_at_vp_transfer_mpa",
+    "clamp_tonnage_margin",
+    "max_warp_after_shrink_mm",
+    "sink_at_boss_and_rib_readthrough_mm",
+    "weld_lines_on_cosmetic_surfaces",
+    "air_traps_at_ports_and_snap_hooks",
+    "cooling_delta_t_and_cycle_time",
+    "orange_gate_blush_and_vestige"
+  ],
+  "first_shot_doe": [
+    {
+      "factor": "melt_temperature_c",
+      "levels": [
+        245,
+        260,
+        275
+      ]
+    },
+    {
+      "factor": "mold_temperature_c",
+      "levels": [
+        70,
+        82,
+        95
+      ]
+    },
+    {
+      "factor": "pack_pressure_percent",
+      "levels": [
+        60,
+        75,
+        90
+      ]
+    },
+    {
+      "factor": "hold_time_s",
+      "levels": [
+        2.0,
+        4.0,
+        6.0
+      ]
+    },
+    {
+      "factor": "cooling_time_s",
+      "levels": [
+        12.0,
+        18.0,
+        24.0
+      ]
+    }
+  ]
+}

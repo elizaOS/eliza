@@ -1,0 +1,18 @@
+[Unit]
+Description=elizaOS terminal TUI boot smoke
+After=elizaos-agent.service
+Requires=elizaos-agent.service
+
+[Service]
+Type=oneshot
+User=elizaos
+Group=elizaos
+WorkingDirectory=/var/lib/elizaos
+Environment=ELIZA_API_PORT=31337
+ExecStart=/usr/lib/elizaos/run-terminal-tui-smoke.sh http://127.0.0.1:31337
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

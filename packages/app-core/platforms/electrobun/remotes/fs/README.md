@@ -14,7 +14,7 @@ The Surface Remote does not call this Remote directly.
 
 Allowed roots come from `ELIZA_FS_ROOTS`, a comma-separated list of absolute paths. If it is unset, the File Remote uses:
 
-1. `MILADY_REPO_DIR`
+1. `ELIZA_REPO_DIR`
 2. `ELIZA_REPO_DIR`
 3. Current working directory
 

@@ -1,0 +1,281 @@
+schema: eliza.e1_phone_supplier_source_verification.v1
+status: public_sources_verified_not_supplier_approved_or_procurement_ready
+date: 2026-05-20
+claim_boundary: >
+  Current public-source verification for the phone-board sourcing shortlist.
+  This records that the selected display, camera, cellular, and Wi-Fi/Bluetooth
+  candidates still have public marketplace or vendor evidence as of the date
+  above. It is not a supplier approval, AVL, quote, purchase order, signed
+  drawing pack, NDA datasheet pack, sample receipt, incoming inspection record,
+  or permission to freeze KiCad symbols, footprints, FPC pinouts, antennas, or
+  enclosure datums.
+
+source_artifacts:
+  - board/kicad/e1-phone/supplier-sourcing-audit.yaml
+  - board/kicad/e1-phone/supplier-rfq-intake.yaml
+  - board/kicad/e1-phone/procurement-readiness.yaml
+  - board/kicad/e1-phone/display-fit.yaml
+  - package/display/v0-dsi-720x1280.yaml
+  - package/camera/oem-mipi-csi-modules.yaml
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+
+verification_policy:
+  evidence_type: public_listing_or_vendor_product_page
+  source_use_limit: sourcing_shortlist_and_rfq_seed_only
+  quote_quantities_required_next: [10, 100, 1000]
+  samples_required_before_pinout_or_footprint_freeze: true
+  signed_supplier_pack_required_before_evt1_route: true
+  required_next_artifacts:
+    - supplier_quote_with_orderable_mpn_moq_lead_time_and_lifecycle_status
+    - signed_2d_drawing_with_datums_tolerances_fpc_or_package_orientation
+    - connector_pinout_or_module_pad_map_and_mating_connector_mpn
+    - recommended_land_pattern_or_footprint_source_revision
+    - 3d_step_or_brep_model_with_max_height_keepouts
+    - reference_schematic_or_reference_layout
+    - compliance_regulatory_safety_and_material_documents
+    - sample_receipt_and_incoming_inspection_record
+
+verified_sources:
+  - id: display_primary_chenghao_ch550fh01a_ct
+    group: display
+    supplier: Shenzhen Chenghao Optoelectronic
+    marketplace_or_vendor: Made-in-China
+    url: https://chenghaolcd.en.made-in-china.com/product/pmFUBTZDnXVH/China-LCD-Manufacturer-1080-1920-Pixels-5-5inch-Pcap-Capacitive-Touch-Display-TFT-Module.html
+    public_page_status: public_listing_observed_2026_05_20
+    candidate: CH550FH01A-CT
+    observed_public_fields:
+      model: CH550FH01A-CT
+      type: 5p5_in_tft_ctp
+      resolution: 1080x1920
+      interface: MIPI
+      module_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
+      tft_outline_mm: {width: 70.78, height: 129.17, thickness: 1.7}
+      active_area_mm: {width: 68.04, height: 120.96}
+      price_signal_usd: {qty_2_to_299: 17.40, qty_300_to_999: 16.50, qty_1000_plus: 15.40}
+      production_capacity_signal: 500000_pcs_per_month
+    board_use: primary_display_mechanical_anchor_for_78p0_x_153p6_mm_enclosure
+    still_missing_before_use:
+      - signed_display_drawing_with_fpc_exit_pin1_and_cover_lens_datums
+      - exact_display_touch_fpc_pinout_and_mating_connector_mpn
+      - panel_init_sequence_touch_controller_data_and_bias_current
+      - display_stack_step_model_and_sample_inspection
+
+  - id: rear_camera_primary_sincere_first_ov13855
+    group: camera
+    supplier: Guangzhou Sincere Information Technology / Sincere First
+    marketplace_or_vendor: Made-in-China
+    url: https://sincerefirst.en.made-in-china.com/product/WACpUrRYOVkc/China-Ov13855-Ov13850-CMOS-Sensor-Autofocus-13MP-Mipi-Camera-Module.html
+    public_page_status: public_listing_observed_2026_05_20
+    candidate: SF-XR3855A-A0
+    observed_public_fields:
+      sensor_class: OV13855_or_OV13850
+      resolution_mp: 13
+      interface: MIPI
+      pinout: 24_pin
+      focus: autofocus
+      sensor_size_in: "1/3.06"
+      f_number: 2.0
+      view_angle_deg: 78.4
+      price_signal_usd: {qty_5_to_999: 16.35, qty_1000_to_9999: 11.65, qty_10000_plus: 8.35}
+    board_use: rear_camera_primary_fpc_z_stack_and_csi_lane_class
+    still_missing_before_use:
+      - exact_selected_module_2d_drawing_lens_axis_z_height_and_fpc_exit
+      - exact_fpc_pinout_lane_order_power_sequence_and_mating_connector_mpn
+      - module_step_model_register_pack_driver_plan_and_otp_calibration_flow
+      - sample_image_quality_and_incoming_dimension_report
+
+  - id: front_camera_primary_sincere_first_gc5035
+    group: camera
+    supplier: Guangzhou Sincere Information Technology / Sincere First
+    marketplace_or_vendor: Made-in-China
+    url: https://sincerefirst.en.made-in-china.com/product/stzRqCgufMVy/China-5MP-Gc5035-CMOS-Image-Sensor-Small-Size-Fixed-Focus-Mipi-Camera-Module.html
+    public_page_status: public_listing_observed_2026_05_20
+    candidate: SF-G5035S60FY
+    observed_public_fields:
+      sensor: GC5035
+      resolution_px: 2592x1944
+      interface: MIPI_2_lane
+      pinout: 30pin
+      focus: fixed_focus
+      sensor_size_in: "1/5"
+      module_type: fixed_focus
+      production_capacity_signal: 10kk_pcs_per_month
+    board_use: front_camera_primary_fpc_z_stack_and_two_lane_csi_class
+    still_missing_before_use:
+      - exact_variant_confirmation_and_front_camera_2d_drawing
+      - exact_fpc_pinout_lane_order_power_sequence_and_mating_connector_mpn
+      - lens_height_cover_glass_clearance_step_model_and_driver_notes
+      - sample_capture_and_incoming_dimension_report
+
+  - id: display_alternate_made_in_china_5p5_1080p_mipi_ctp
+    group: display
+    supplier: Suzhou Chaoxian Technology or equivalent Made-in-China OEM/ODM TFT supplier
+    marketplace_or_vendor: Made-in-China
+    url: https://www.made-in-china.com/price/prodetail_LCD-Display_qAZpedQGXIRK.html
+    public_page_status: public_listing_observed_2026_05_20
+    candidate: 5p5_1080x1920_MIPI_CTP_OEM_ODM_class
+    observed_public_fields:
+      type: 5p5_in_ips_tft_lcm_ctp
+      resolution: 1080x1920
+      interface: MIPI
+      application: mobile_phone_or_mobile_equipment
+      touch: capacitive_touch_or_touch_display
+      price_signal_usd: {qty_1000_plus: 18_to_19}
+      customization: available
+    board_use: display_supply_diversity_check_for_same_5p5_1080p_mipi_class
+    still_missing_before_use:
+      - exact_model_number_signed_display_drawing_and_lifecycle_statement
+      - exact_fpc_pinout_mipi_lane_order_touch_pinout_and_mating_connector
+      - module_outline_step_model_fpc_exit_and_cover_lens_stack
+      - sample_inspection_and_panel_init_sequence
+
+  - id: display_alternate_alibaba_youritech_5p5_1080p_40pin
+    group: display
+    supplier: Youritech or equivalent Alibaba display OEM
+    marketplace_or_vendor: Alibaba
+    url: https://www.alibaba.com/product-detail/Youritech-OEM-5-5-Inch-TFT_1600495349630.html
+    public_page_status: public_listing_observed_2026_05_20
+    candidate: 5p5_1080x1920_MIPI_40pin_CTP_class
+    observed_public_fields:
+      type: 5p5_in_tft_lcd_ctp
+      resolution: 1080x1920
+      interface: MIPI
+      pin_count: 40_pin
+      touch: PCAP
+      supplier_region: Guangdong_China
+    board_use: display_pin_count_and_alibaba_procurement_alternate
+    still_missing_before_use:
+      - signed_2d_drawing_with_module_outline_fpc_exit_and_pin1_datum
+      - exact_40_pin_fpc_pinout_mating_connector_and_land_pattern
+      - step_model_cover_lens_stack_and_touch_controller_data
+      - sample_lot_and_panel_init_sequence
+
+  - id: rear_camera_alternate_alibaba_ov13855_mipi
+    group: camera
+    supplier: Alibaba OV13855 module supplier
+    marketplace_or_vendor: Alibaba
+    url: https://www.alibaba.com/product-introduction/Wholesale-Cheap-RK3588-OV13855-Sensor-13mp_1600288027905.html
+    public_page_status: public_listing_observed_2026_05_20
+    candidate: OV13855_13MP_MIPI_camera_module_class
+    observed_public_fields:
+      sensor_class: OV13855
+      resolution_mp: 13
+      interface: MIPI
+      video_class: 4k_30fps
+      module_class: mini_camera_module
+      sourcing_role: rear_camera_marketplace_alternate
+    board_use: rear_camera_supply_diversity_and_bringup_alternate_for_13mp_mipi_class
+    still_missing_before_use:
+      - exact_module_mpn_2d_drawing_lens_axis_z_height_and_fpc_exit
+      - exact_fpc_pinout_lane_order_power_sequence_and_mating_connector
+      - step_model_register_pack_driver_notes_and_otp_calibration_flow
+      - sample_capture_and_incoming_dimension_report
+
+  - id: front_camera_alternate_made_in_china_gc5035_mipi
+    group: camera
+    supplier: Newmoshine or equivalent Made-in-China camera OEM
+    marketplace_or_vendor: Made-in-China
+    url: https://newmoshine.en.made-in-china.com/product/BJYUCxwcAoWv/China-Factory-Customized-Gc5035-Auto-Focus-Full-HD-5MP-30fps-Mipi-Camera-Module.html
+    public_page_status: public_listing_observed_2026_05_20
+    candidate: GC5035_5MP_30fps_MIPI_camera_module_class
+    observed_public_fields:
+      sensor: GC5035
+      resolution_mp: 5
+      frame_rate: 30fps
+      interface: MIPI
+      customization: factory_customized
+      sourcing_role: front_camera_marketplace_alternate
+    board_use: front_camera_supply_diversity_and_gc5035_pinout_risk_cross_check
+    still_missing_before_use:
+      - exact_fixed_or_auto_focus_variant_2d_drawing_and_lens_height
+      - exact_fpc_pinout_lane_order_power_sequence_and_mating_connector
+      - step_model_driver_notes_and_front_cover_glass_clearance_data
+      - sample_capture_and_incoming_dimension_report
+
+  - id: cellular_primary_quectel_rg255c
+    group: cellular
+    supplier: Quectel
+    marketplace_or_vendor: Quectel vendor page
+    url: https://www.quectel.com/product/5g-redcap-rg255c-series/
+    public_page_status: vendor_page_observed_2026_05_20
+    candidate: RG255C_series
+    observed_public_fields:
+      class: 5g_redcap_sub6_lga_module
+      form_factor: LGA
+      peak_downlink_mbps: 223
+      peak_uplink_mbps: 123
+      cellular_modes: [5G_Sub6_SA, LTE_Cat_4]
+      gnss: optional_multi_constellation
+      interfaces: [USB_2_0, PCIe_2_0, PCM, UART, SGMII, SPI]
+      variant_examples: [RG255C_CN, RG255C_GL, RG255C_NA, RG255C_EU]
+    board_use: primary_cellular_lga_module_and_top_left_rf_region
+    still_missing_before_use:
+      - selected_region_sku_band_matrix_and_orderable_mpn
+      - module_2d_drawing_with_pinout_orientation_shield_height_and_package_datums
+      - hardware_design_guide_reference_layout_lga_pad_map_and_step_model
+      - burst_current_profile_sim_esim_reference_and_antenna_matching_rules
+      - carrier_ptcrb_gcf_modular_grant_and_android_linux_driver_scope
+
+  - id: wifi_bluetooth_primary_murata_type_2ea
+    group: wifi_bluetooth
+    supplier: Murata
+    marketplace_or_vendor: Murata vendor page
+    url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+    public_page_status: vendor_page_observed_2026_05_20
+    candidate: LBEE5XV2EA-802
+    observed_public_fields:
+      order_number: LBEE5XV2EA-802
+      product_status: in_production_recommended_new
+      chipset: Infineon_CYW55573
+      wifi: WiFi_6E_2x2_MIMO
+      bluetooth: Bluetooth_5p3
+      host_interfaces: {wifi: [PCIe, SDIO], bluetooth: UART}
+      dimensions_mm: {width: 12.5, height: 9.4, thickness: 1.2}
+      interface_voltage: 1.8V
+      package: SMT_shielded_resin
+    board_use: primary_wifi6e_bt53_smt_module_and_rf_feed_class
+    still_missing_before_use:
+      - module_2d_drawing_pinout_package_datums_and_reserved_pin_rules
+      - Murata_datasheet_hardware_application_note_and_reference_layout_pack
+      - footprint_dxf_paste_mask_keepout_and_step_model_review
+      - firmware_regulatory_database_driver_license_and_country_code_flow
+      - certified_antenna_rules_conducted_rf_test_and_coexistence_plan
+
+supplier_contact_plan:
+  owner: sourcing
+  sequence:
+    - send_display_camera_rfq_to_chenghao_and_sincere_first_with_10_100_1000_qty_breaks
+    - request_murata_sales_and_quectel_fae_access_for_design_guides_and_reference_layouts
+    - require_all_candidates_to_return_signed_drawings_pinouts_footprints_step_and_sample_commit
+    - reject_any_candidate_that_cannot_provide_orderable_mpn_and_incoming_inspection_dimensions
+
+cross_checks:
+  has_primary_display_public_dimensions: true
+  has_display_alibaba_and_made_in_china_alternates: true
+  has_rear_camera_public_pin_count_and_sensor_class: true
+  has_front_camera_public_pin_count_and_sensor_class: true
+  has_camera_alibaba_and_made_in_china_alternates: true
+  has_cellular_vendor_page_with_lga_region_variants_and_host_interfaces: true
+  has_wifi_bt_vendor_page_with_in_production_status_dimensions_and_interfaces: true
+  all_records_have_https_urls: true
+  all_records_remain_blocked_for_supplier_pack_before_use: true
+  source_count: 9
+
+release_blockers:
+  - public pages are not supplier quote packs or approved AVL records
+  - signed 2D drawings, FPC pinouts, land patterns, and STEP models are missing
+  - physical samples and incoming inspection records are missing
+  - module design guides, reference layouts, firmware or driver licenses, and regulatory scope are missing
+  - no orderable MPN has been approved for production BOM or KiCad footprint freeze
+
+forbidden_claims:
+  - supplier_approved
+  - public_sources_are_avl
+  - quote_ready
+  - samples_received
+  - pinouts_frozen
+  - footprints_frozen
+  - production_bom_ready
+  - fabrication_ready
+  - enclosure_ready

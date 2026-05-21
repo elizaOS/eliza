@@ -282,7 +282,7 @@ export function resolveDesktopBinDir(
 ): string {
 	const stateDir =
 		env.ELIZA_STATE_DIR ??
-		env.MILADY_STATE_DIR ??
+		env.ELIZA_STATE_DIR ??
 		path.join(os.homedir(), ".eliza");
 	const platform =
 		process.platform === "darwin"

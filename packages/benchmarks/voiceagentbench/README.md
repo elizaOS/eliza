@@ -82,4 +82,4 @@ VoiceAgentBench is described in [arXiv:2510.07978](https://arxiv.org/html/2510.0
 }
 ```
 
-This vendored harness is licensed under Milady's repository license; the upstream dataset retains its own license at the canonical Hugging Face repo.
+This vendored harness is licensed under Eliza's repository license; the upstream dataset retains its own license at the canonical Hugging Face repo.

@@ -21,6 +21,8 @@
       "@elizaos/cloud-shared/*": ["../../cloud-shared/src/*"],
       "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
+      "@elizaos/security": ["../../../packages/security/src/index.ts"],
+      "@elizaos/security/*": ["../../../packages/security/src/*"],
       "drizzle-orm": ["../../node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../node_modules/drizzle-orm/*"],
       "@/*": ["../../*"]

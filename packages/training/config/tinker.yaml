@@ -10,7 +10,7 @@
 #
 # Environment variables (required):
 #   TINKER_API_KEY     - Your Tinker API key
-#   ELIZA_STATE_DIR    - Trajectory source (defaults to ~/.milady/state)
+#   ELIZA_STATE_DIR    - Trajectory source (defaults to ~/.eliza/state)
 
 # =============================================================================
 # Tinker Model Settings
@@ -34,7 +34,7 @@ training:
 environment:
   # Continuous RL data source: on-disk JSONL exports from eliza native.
   trajectory_source: "jsonl"
-  trajectory_dir: "${ELIZA_STATE_DIR:-${HOME}/.milady/state}/trajectories"
+  trajectory_dir: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/trajectories"
 
   lookback_hours: 72
   min_actions_per_trajectory: 3
@@ -81,7 +81,7 @@ inference:
 # =============================================================================
 logging:
   log_to_file: true
-  log_file: "${ELIZA_STATE_DIR:-${HOME}/.milady/state}/training/tinker_metrics.jsonl"
+  log_file: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/training/tinker_metrics.jsonl"
   log_level: "INFO"
 
 # =============================================================================
@@ -94,4 +94,4 @@ advanced:
   checkpoint_prefix: "eliza-1"
 
 # Curriculum state — written to user state dir, NOT the repo.
-curriculum_state_path: "${ELIZA_STATE_DIR:-${HOME}/.milady/state}/training/curriculum_state.json"
+curriculum_state_path: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/training/curriculum_state.json"
