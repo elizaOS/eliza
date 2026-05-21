@@ -41,10 +41,14 @@ BRAND_arm64   := brand.eliza-arm64.json
 BRAND_riscv64 := brand.eliza-riscv64.json
 BRAND_CONFIG  := $(DISTRO)/$(BRAND_$(ARCH))
 
-# ARCH -> Cuttlefish out/target/product/<deviceDir>.
+# ARCH -> Cuttlefish out/target/product/<deviceDir>. Must match
+# PRODUCT_DEVICE in vendor/eliza/products/eliza_cf_<arch>_phone.mk: x86_64
+# builds the single-ABI vsoc_x86_64_only device; arm64/riscv64 build the
+# plain vsoc_<arch> devices (the *_only variants don't exist upstream for
+# those arches).
 DEVICE_DIR_x86_64  := vsoc_x86_64_only
-DEVICE_DIR_arm64   := vsoc_arm64_only
-DEVICE_DIR_riscv64 := vsoc_riscv64_only
+DEVICE_DIR_arm64   := vsoc_arm64
+DEVICE_DIR_riscv64 := vsoc_riscv64
 DEVICE_DIR := $(DEVICE_DIR_$(ARCH))
 
 .PHONY: help build sim splash bootanimation check-arch
