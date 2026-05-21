@@ -26,12 +26,23 @@ deterministic E1 gates named in the research plan.
 Fresh-machine setup:
 
 ```sh
-make ai-eda-bootstrap-metadata
-python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --execute-fetch
-make ai-eda-bootstrap-setup-check
-make ai-eda-bootstrap-local-smoke
+make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=fresh-host ai-eda-bootstrap-metadata
+make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=fresh-host ai-eda-backend-preflight
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --execute-fetch
+make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=fresh-host ai-eda-bootstrap-setup-check
+make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=fresh-host ai-eda-bootstrap-local-smoke
 ```
 
 Only explicit `--asset` values are fetched. Metadata manifests are tracked;
 payload contents stay ignored under `external/repos/*/payload`,
 `external/datasets/*/payload`, or `external/models/*/payload`.
+Use a unique `AI_EDA_RUN_ID` for each machine or CI job to keep generated
+records and reports isolated under `build/ai_eda/`.
+`ai-eda-backend-preflight` checks optional local backends such as ZigZag,
+Timeloop/Accelergy, RTL-MUL, LLM4DV, AssertLLM, and Fault without installing
+packages, cloning repositories, downloading model weights, or making release
+claims.
+Paper and method-reference entries use metadata-only payloads. For example,
+`python3 scripts/ai_eda/fetch_external_asset.py --asset assertllm --execute`
+writes an ignored provenance record and file hash manifest, not a downloaded
+paper, model, generated assertion, or release artifact.

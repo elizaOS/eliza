@@ -11,6 +11,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
+  UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -148,6 +149,7 @@ function makeGitRouter(
         throw new Error("model unavailable");
       },
     },
+    plugin: new UnavailableCapabilityRouter("desktop").plugin,
   };
 }
 

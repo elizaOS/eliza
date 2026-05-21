@@ -5,7 +5,7 @@
 # Validates Wave 1 + Wave 3 RVV cross-compilation of the four CPU-side
 # native plugins (qjl-cpu, polarquant-cpu, turboquant-cpu, silero-vad-cpp)
 # against the repo-root Zig toolchain at
-# `cmake/toolchain-riscv64-linux-musl.cmake`. Inspects every produced
+# `packages/native/cmake/toolchain-riscv64-linux-musl.cmake`. Inspects every produced
 # artifact with `file(1)` to confirm `ELF 64-bit LSB ... UCB RISC-V`.
 # Optionally runs the shipped smokes under `qemu-riscv64-static` when
 # present; logs a clean SKIP otherwise.
@@ -116,14 +116,14 @@ build_package() {
 
     if [ -n "$extra_flag" ]; then
         cmake -S "$pkgdir" -B "$builddir" \
-            -DCMAKE_TOOLCHAIN_FILE="$repo_root/cmake/toolchain-riscv64-linux-musl.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$repo_root/packages/native/cmake/toolchain-riscv64-linux-musl.cmake" \
             "$extra_flag" > "$config_log" 2>&1 || {
             echo "fail: cmake configure (see $config_log)"
             return 1
         }
     else
         cmake -S "$pkgdir" -B "$builddir" \
-            -DCMAKE_TOOLCHAIN_FILE="$repo_root/cmake/toolchain-riscv64-linux-musl.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$repo_root/packages/native/cmake/toolchain-riscv64-linux-musl.cmake" \
             > "$config_log" 2>&1 || {
             echo "fail: cmake configure (see $config_log)"
             return 1
@@ -278,7 +278,7 @@ done
     echo "- Generated: \`$run_started_iso\` → \`$(now_iso)\`"
     echo "- Repo root: \`$repo_root\`"
     echo "- Zig: \`$ZIG_VERSION\` ($RVV_OVERRIDE_REASON)"
-    echo "- Toolchain: \`cmake/toolchain-riscv64-linux-musl.cmake\`"
+    echo "- Toolchain: \`packages/native/cmake/toolchain-riscv64-linux-musl.cmake\`"
     echo "- QEMU: \`${QEMU_BIN:-not installed}\`"
     echo
     echo "## Wave 1 + Wave 3 RVV native-plugin cross-build matrix"

@@ -243,8 +243,6 @@ const SUPPORTED_TARGETS = [
   // packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch consumes.
   "ios-arm64-metal",
   "ios-arm64-simulator-metal",
-  "ios-arm64-metal-fused",
-  "ios-arm64-simulator-metal-fused",
   "windows-x64-cpu",
   "windows-x64-cuda",
   // windows-x64-vulkan: generic-GPU path on x64 Windows. NVIDIA/AMD/Intel
@@ -281,8 +279,6 @@ const FUSED_TARGETS = new Set([
   "linux-x64-vulkan-fused",
   "linux-aarch64-cuda-fused",
   "darwin-arm64-metal-fused",
-  "ios-arm64-metal-fused",
-  "ios-arm64-simulator-metal-fused",
   "windows-x64-cuda-fused",
 ]);
 
@@ -305,6 +301,14 @@ const UNSUPPORTED_FUSED_TARGET_REASONS = new Map([
   [
     "android-x86_64-vulkan-fused",
     "Android x86_64 fused FFI is not a dflash target in this script; packages/app-core/scripts/aosp/compile-libllama.mjs owns emulator/system-agent fused artifacts.",
+  ],
+  [
+    "ios-arm64-metal-fused",
+    "iOS fused FFI is not wired or verifier-covered in build-llama-cpp-dflash.mjs; ios-arm64-metal-fused is not a supported dflash target.",
+  ],
+  [
+    "ios-arm64-simulator-metal-fused",
+    "iOS fused FFI is not wired or verifier-covered in build-llama-cpp-dflash.mjs; ios-arm64-simulator-metal-fused is not a supported dflash target.",
   ],
 ]);
 

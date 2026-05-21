@@ -2,6 +2,7 @@ import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
+  UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runShell } from "./run-shell.js";
@@ -65,6 +66,7 @@ function remoteRouter(): {
     model: {
       status: vi.fn(),
     },
+    plugin: new UnavailableCapabilityRouter("server").plugin,
   } satisfies ElizaCapabilityRouter;
   return { router, runCommand };
 }
@@ -103,14 +105,11 @@ describe("plugin-coding-tools runShell mobile routing", () => {
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
 
     await expect(
-      runShell(
-        { getService: () => null } as IAgentRuntime,
-        {
-          command: "codex exec 'touch changed.txt'",
-          cwd: "/workspace",
-          timeoutMs: 10_000,
-        },
-      ),
+      runShell({ getService: () => null } as IAgentRuntime, {
+        command: "codex exec 'touch changed.txt'",
+        cwd: "/workspace",
+        timeoutMs: 10_000,
+      }),
     ).rejects.toThrow(
       "Local coding tools are unavailable on iOS because the runtime does not expose shell, coding, or orchestrator subprocess capabilities.",
     );

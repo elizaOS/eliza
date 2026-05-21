@@ -25,7 +25,7 @@ BACKENDS = (
         "kind": "accelerator_dse",
         "python_modules": ("zigzag",),
         "commands": (),
-        "local_paths": ("external/zigzag",),
+        "local_paths": ("external/repos/zigzag/payload",),
         "required_for": ("p1-zigzag-npu-dse",),
     },
     {
@@ -34,7 +34,7 @@ BACKENDS = (
         "kind": "accelerator_modeling",
         "python_modules": ("accelergy",),
         "commands": ("timeloop-model", "timeloop-mapper", "accelergy"),
-        "local_paths": ("external/timeloop", "external/accelergy"),
+        "local_paths": ("external/repos/timeloop-accelergy/payload",),
         "required_for": ("p1-zigzag-npu-dse", "p1-simulator-benchmark-optimization"),
     },
     {
@@ -43,7 +43,7 @@ BACKENDS = (
         "kind": "ppa_reward_model",
         "python_modules": ("transformers", "torch"),
         "commands": (),
-        "local_paths": ("external/rtlmul",),
+        "local_paths": ("external/models/rtlmul/payload",),
         "required_for": ("p1-simulator-benchmark-optimization", "p2-power-thermal-ai-watch"),
     },
     {
@@ -52,7 +52,7 @@ BACKENDS = (
         "kind": "verification_stimulus",
         "python_modules": (),
         "commands": (),
-        "local_paths": ("external/ml4dv",),
+        "local_paths": ("external/repos/llm4dv/payload",),
         "required_for": ("p1-llm4dv-cocotb-stimulus-loop",),
     },
     {
@@ -61,7 +61,7 @@ BACKENDS = (
         "kind": "assertion_generation",
         "python_modules": (),
         "commands": (),
-        "local_paths": ("external/AssertLLM",),
+        "local_paths": ("external/repos/assertllm/payload",),
         "required_for": ("p1-assertion-candidate-review",),
     },
     {
@@ -70,7 +70,7 @@ BACKENDS = (
         "kind": "dft_atpg",
         "python_modules": (),
         "commands": ("fault",),
-        "local_paths": ("external/Fault",),
+        "local_paths": ("external/repos/fault-dft/payload",),
         "required_for": ("p2-dft-atpg-watch",),
     },
 )

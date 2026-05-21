@@ -256,6 +256,76 @@ export default plugin;
 
 const optionalStubPackages = new Map(
   Object.entries({
+    "@elizaos/app-model-tester": `
+export const modelTesterPlugin = {
+  name: "model-tester",
+  description: "Model tester routes are not bundled in elizaOS Live.",
+  routes: [],
+};
+export default modelTesterPlugin;
+`,
+    "@elizaos/plugin-companion": `
+export const appCompanionPlugin = {
+  name: "companion",
+  description: "Companion overlay placeholder for elizaOS Live. The full 3D companion bundle can be installed through app updates.",
+  actions: [],
+  providers: [],
+  services: [],
+  routes: [],
+};
+export const companionPlugin = appCompanionPlugin;
+export const registerCompanionApp = () => undefined;
+export default appCompanionPlugin;
+`,
+    "@elizaos/plugin-lifeops": `
+export const appLifeOpsPlugin = {
+  name: "lifeops",
+  description: "LifeOps placeholder for elizaOS Live. Cloud connectors and proactive workflows become available after provider setup.",
+  actions: [],
+  providers: [],
+  services: [],
+  routes: [],
+};
+export const lifeopsPlugin = {
+  name: "lifeops-routes",
+  routes: [],
+};
+export const BrowserBridgePluginService = undefined;
+export const browserBridgeProvider = undefined;
+export const detectHealthBackend = () => ({ available: false, backend: "none" });
+export const handleLifeOpsRoutes = async () => false;
+export const handleWebsiteBlockerRoutes = async () => false;
+export default appLifeOpsPlugin;
+`,
+    "@elizaos/plugin-shopify-ui": `
+export const shopifyPlugin = {
+  name: "shopify",
+  routes: [],
+};
+export default shopifyPlugin;
+`,
+    "@elizaos/plugin-steward-app": `
+export const stewardPlugin = {
+  name: "steward",
+  routes: [],
+};
+export default stewardPlugin;
+`,
+    "@elizaos/plugin-training": `
+export const trainingPlugin = {
+  name: "training",
+  routes: [],
+};
+export const registerTrainingRuntimeHooks = async () => undefined;
+export default trainingPlugin;
+`,
+    "@elizaos/plugin-vincent": `
+export const vincentPlugin = {
+  name: "vincent",
+  routes: [],
+};
+export default vincentPlugin;
+`,
     "@elizaos/plugin-whatsapp": `
 const noop = () => undefined;
 const falseRoute = async () => false;
@@ -591,7 +661,12 @@ function optionalStubPackageWrites() {
           private: true,
           type: "module",
           main: "./index.js",
-          exports: "./index.js",
+          exports: {
+            ".": "./index.js",
+            "./plugin": "./index.js",
+            "./routes/plugin": "./index.js",
+            "./setup-routes": "./index.js",
+          },
         },
         null,
         2,
@@ -669,11 +744,8 @@ function syncDirectoryContents(
 
 const sourceRuntimePackages = [
   ["@elizaos/plugin-app-control", "plugins/plugin-app-control"],
-  ["@elizaos/plugin-companion", "plugins/plugin-companion"],
   ["@elizaos/plugin-computeruse", "plugins/plugin-computeruse"],
   ["@elizaos/plugin-device-filesystem", "plugins/plugin-device-filesystem"],
-  ["@elizaos/plugin-google", "plugins/plugin-google"],
-  ["@elizaos/plugin-lifeops", "plugins/plugin-lifeops"],
   ["@elizaos/plugin-workflow", "plugins/plugin-workflow"],
 ];
 

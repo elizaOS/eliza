@@ -123,10 +123,11 @@ async function settle(page: Page) {
   await page
     .waitForLoadState("networkidle", { timeout: 10_000 })
     .catch(() => {});
-  // Leaderboard's hero animation can take an extra beat after networkidle
-  // before the interactive figure is positioned. A brief extra settle here
-  // catches that without slowing the rest of the suite measurably.
-  await page.waitForTimeout(600);
+  // The /leaderboard route runs a ~1800ms intro animation before the
+  // primary UI (BlobButton, tab bar, model figure) is positioned. Wait
+  // long enough that the screenshot captures the settled state on every
+  // route.
+  await page.waitForTimeout(2200);
 }
 
 function dynamicMask(page: Page) {

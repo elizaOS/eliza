@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "raw-image",
+  "name": "elizaos-linux",
+  "platform": "linux",
+  "architecture": "@ARCH@",
+  "profile": "@PROFILE@",
+  "artifact": "@ARTIFACT@",
+  "buildTimestamp": "@BUILD_TS@",
+  "sha256": "@SHA256@",
+  "sizeBytes": @SIZE@,
+  "validation": {
+    "qemuBoot": { "status": "missing", "evidence": null },
+    "agentHealth": { "status": "missing", "evidence": null },
+    "appLauncherAutostart": { "status": "missing", "evidence": null },
+    "chatOverlayAutostart": { "status": "missing", "evidence": null }
+  }
+}

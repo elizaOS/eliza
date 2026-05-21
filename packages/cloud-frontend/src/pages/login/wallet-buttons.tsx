@@ -19,10 +19,22 @@ function isEthereumProvider(value: unknown): value is EthereumProvider {
   );
 }
 
+// Phantom injects itself as an Ethereum provider but must never be used for
+// SIWE — it is Solana-first and the user's intent for SIWE is a real EVM wallet.
+function isPhantomProvider(value: unknown): boolean {
+  if (value === null || typeof value !== "object") return false;
+  if (Reflect.get(value, "isPhantom") === true) return true;
+  // window.phantom is also set when Phantom is installed
+  if (typeof window !== "undefined" && Reflect.get(window, "phantom") !== undefined) {
+    const phantomEth = Reflect.get(Reflect.get(window, "phantom") as object, "ethereum");
+    if (phantomEth === value) return true;
+  }
+  return false;
+}
+
 function getInjectedEthereumProvider(): EthereumProvider | null {
   if (typeof window === "undefined") return null;
   const ethereum = Reflect.get(window, "ethereum") as unknown;
-  if (isEthereumProvider(ethereum)) return ethereum;
   const providers =
     ethereum !== null &&
     typeof ethereum === "object" &&
@@ -30,7 +42,12 @@ function getInjectedEthereumProvider(): EthereumProvider | null {
     Array.isArray(ethereum.providers)
       ? ethereum.providers
       : undefined;
-  return providers?.find(isEthereumProvider) ?? null;
+  // Prefer the providers[] array (EIP-6963 multi-wallet) so we can skip Phantom.
+  if (providers) {
+    return providers.find((p) => isEthereumProvider(p) && !isPhantomProvider(p)) ?? null;
+  }
+  if (isEthereumProvider(ethereum) && !isPhantomProvider(ethereum)) return ethereum;
+  return null;
 }
 
 function toPersonalSignHex(message: string): `0x${string}` {

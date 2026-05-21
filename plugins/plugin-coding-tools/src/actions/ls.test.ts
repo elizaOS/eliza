@@ -9,6 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
+  UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -68,6 +69,7 @@ function makeListRouter(
     model: {
       status: async () => unavailableCapability("model", "model.status"),
     },
+    plugin: new UnavailableCapabilityRouter("desktop").plugin,
   };
 }
 

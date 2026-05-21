@@ -1,0 +1,16 @@
+#!/bin/sh
+# Start the elizaOS chat overlay — a floating, always-on, global chat
+# surface bound to the local agent. Same Electrobun bundle as the
+# launcher, dispatched via --shell-mode=chat-overlay.
+set -eu
+
+AGENT_URL="${ELIZAOS_AGENT_URL:-http://127.0.0.1:31337}"
+
+for _ in $(seq 1 60); do
+    if curl -fsS "${AGENT_URL}/api/health" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+exec /opt/elizaos/app/elizaos --shell-mode=chat-overlay

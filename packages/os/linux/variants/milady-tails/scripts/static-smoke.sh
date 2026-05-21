@@ -877,6 +877,18 @@ for unit in \
     tails/config/chroot_local-includes/etc/systemd/user/milady.service
 do
     grep -q '^ConditionPathExists=!/run/elizaos/persistence-maintenance$' "${unit}"
+    grep -q '^ConditionPathExists=!%t/elizaos-persistence-setup$' "${unit}"
+done
+for hook in \
+    tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks/MiladyData/20-restart-milady \
+    tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-deactivated-hooks/MiladyData/20-restart-milady
+do
+    grep -q 'session_flag="${runtime_dir}/elizaos-persistence-setup"' "${hook}"
+    grep -q 'maintenance_helper=/usr/local/lib/elizaos/persistence-maintenance' "${hook}"
+    if grep -Eq 'systemctl (try-)?restart|systemctl --user restart' "${hook}"; then
+        echo "MiladyData persistence hooks must use the elizaOS maintenance helper, not direct restarts." >&2
+        exit 1
+    fi
 done
 if grep -q 'systemctl --global enable elizaos-pill.service' \
     tails/config/chroot_local-hooks/52-update-systemd-units; then

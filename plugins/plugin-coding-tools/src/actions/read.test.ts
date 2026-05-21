@@ -5,6 +5,7 @@ import {
   CapabilityError,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
+  UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
@@ -175,6 +176,7 @@ describe("READ", () => {
           });
         },
       },
+      plugin: new UnavailableCapabilityRouter("desktop").plugin,
     };
     const runtime = {
       ...env.runtime,
