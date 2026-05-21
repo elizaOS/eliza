@@ -397,7 +397,11 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     // Slack identity (authed_user.access_token, `xoxp-...`) can act on
     // the user's behalf — read their channels, write as them, search
     // their messages, and read files they have access to.
-    userScopes: ["chat:write", "search:read", "users:read", "files:read"],
+    // `identity.basic` is required by Slack's `users.identity` endpoint
+    // (the userInfo URL above) — without it the OWNER callback's
+    // userInfo fetch fails with `missing_scope` and `extractUserInfo`
+    // cannot resolve `user_id`.
+    userScopes: ["identity.basic", "chat:write", "search:read", "users:read", "files:read"],
     userInfoMapping: {
       id: "user_id",
       displayName: "user",
