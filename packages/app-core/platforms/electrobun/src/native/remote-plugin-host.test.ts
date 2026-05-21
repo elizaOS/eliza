@@ -776,7 +776,7 @@ describe("RemotePluginHost", () => {
         events: [
           {
             remotePluginId: "bunny.search",
-            satelliteId: "bunny.search",
+            remotePluginId: "bunny.search",
             sequence: 1,
             name: "first",
             payload: { count: 1 },

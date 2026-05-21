@@ -1,8 +1,8 @@
 {
-  "id": "hello-carrot",
-  "name": "Hello Carrot",
+  "id": "hello-remote-plugin",
+  "name": "Hello Remote Plugin",
   "version": "0.1.0",
-  "description": "Minimal background-mode reference carrot used to validate the host bootstrap, statePath/logsPath wiring, and the log host-action loop end-to-end.",
+  "description": "Minimal background-mode reference remotePlugin used to validate the host bootstrap, statePath/logsPath wiring, and the log host-action loop end-to-end.",
   "mode": "background",
   "permissions": {
     "host": {},
@@ -11,7 +11,7 @@
   },
   "view": {
     "relativePath": "view/index.html",
-    "title": "Hello Carrot",
+    "title": "Hello Remote Plugin",
     "width": 480,
     "height": 320
   },

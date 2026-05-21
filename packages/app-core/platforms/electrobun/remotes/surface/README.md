@@ -126,7 +126,7 @@ It also mocks model calls through `eliza.runtime` and verifies Eliza-1 catalog, 
 
 ## Module Manager Compatibility
 
-The current upstream module system still uses packaging names such as `plugin.json`, `build.carrot`, and `carrotOnly`. Those names remain only at the packaging boundary.
+The current upstream module system still uses packaging names such as `plugin.json`, `build.remote plugin`, and `remote pluginOnly`. Those names remain only at the packaging boundary.
 
 The Surface manifest uses:
 

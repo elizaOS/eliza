@@ -842,7 +842,6 @@ export interface RemotePluginTailWorkerEventsRequest {
 
 export interface RemotePluginWorkerEventRecord {
   remotePluginId: string;
-  satelliteId: string;
   sequence: number;
   name: string;
   payload: JsonValue | null;

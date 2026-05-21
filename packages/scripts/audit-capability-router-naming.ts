@@ -17,64 +17,30 @@ const auditedRoots =
     .map((root) => root.trim())
     .filter(Boolean) ?? defaultAuditedRoots;
 
-const allowedSatelliteMentions = new Map<string, RegExp[]>([
+// Migration is complete: the codebase uses the remote-plugin vocabulary.
+// This audit guards against the old satellite/carrot vocabulary creeping
+// back into source/docs/workflows. A few historical-analysis docs are
+// allowlisted because they intentionally discuss the old terminology.
+const allowedLegacyMentions = new Map<string, RegExp[]>([
   [
     "packages/agent/docs/capability-router-remote-plugins.md",
-    [
-      /A satellite is one possible/,
-      /## Why Not "Satellite" As The Abstraction/,
-      /PR #7779 uses the word "satellite"/,
-      /non-satellite cases/,
-      /whether or not the provider is called a satellite/,
-      /Keep `satellite` for a concrete deployment target/,
-      /It only allows `satellite` in this historical naming analysis/,
-      /"Satellite" is overloaded/,
-      /E2B\/Satellite/,
-      /defines a Satellite HTTP/,
-      /coding-satellite/,
-      /plugins mean things, satellites/,
-      /Electrobun satellites as one deployment backend/,
-      /There is no current E2B, home-machine, mobile-companion, or coding-satellite/,
-      /source\/docs\/workflow roots reintroduce `satellite`/,
-      /without reintroducing satellite-specific runtime code/,
-      /do not use `satellite` as canonical runtime/,
-      /ELIZA_SATELLITE_RUNNER_\*/,
-      /Canonical abstraction is not `satellite`/,
-      /The old satellite-specific names/,
-    ],
+    [/satellite/i, /carrot/i],
   ],
 ]);
 
-const satellitePattern = /satellite/i;
+const legacyPattern = /\b(?:satellite|carrot)\b/i;
 const failures: string[] = [];
 
 for (const root of auditedRoots) {
   for (const file of walk(root)) {
     const source = readFileSync(file, "utf8");
-    const allowlist = allowedSatelliteMentions.get(file) ?? [];
+    const allowlist = allowedLegacyMentions.get(file) ?? [];
     for (const [lineIndex, line] of source.split(/\r?\n/).entries()) {
-      if (!satellitePattern.test(line)) continue;
+      if (!legacyPattern.test(line)) continue;
       if (allowlist.some((pattern) => pattern.test(line))) continue;
       failures.push(
-        `${file}:${lineIndex + 1}: use capability-router/remote-capability vocabulary; satellite is only allowed for historical naming analysis.`,
+        `${file}:${lineIndex + 1}: legacy "satellite"/"carrot" vocabulary is forbidden; use remote-plugin / capability-router terminology.`,
       );
-    }
-  }
-}
-
-if (!process.env.CAPABILITY_ROUTER_NAMING_AUDIT_ROOTS) {
-  for (const [file, patterns] of allowedSatelliteMentions.entries()) {
-    if (!statExists(file)) {
-      failures.push(`Allowlisted satellite file is missing: ${file}`);
-      continue;
-    }
-    const source = readFileSync(file, "utf8");
-    for (const pattern of patterns) {
-      if (!pattern.test(source)) {
-        failures.push(
-          `Allowlisted satellite pattern no longer matches ${file}: ${pattern}`,
-        );
-      }
     }
   }
 }
@@ -90,7 +56,7 @@ console.log(
     {
       ok: true,
       auditedRoots,
-      allowedSatelliteMentionFiles: [...allowedSatelliteMentions.keys()],
+      allowedLegacyMentionFiles: [...allowedLegacyMentions.keys()],
     },
     null,
     2,

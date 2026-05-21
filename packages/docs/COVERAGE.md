@@ -40,7 +40,7 @@ These packages exist in the monorepo but should NOT appear in the docs site:
 | `packages/contracts/`                  | Pure type definitions extracted from core; internal.                |
 | `packages/native/`                     | Internal runtime + plugin implementations.                          |
 | `packages/bun-ios-runtime/`            | Internal iOS runtime detail; surfaced via mobile docs only.         |
-| `packages/electrobun-carrots/`         | Private. Internal carrot primitives for desktop shells.             |
+| `packages/electrobun-remote-plugins/`         | Private. Internal remote plugin primitives for desktop shells.             |
 | `packages/browser-bridge-extension/`   | Private. Internal browser extension.                                |
 | `packages/swe-bench-workspace/`        | Test infrastructure artifact.                                       |
 | `packages/shared/`                     | Internal shared utilities.                                          |

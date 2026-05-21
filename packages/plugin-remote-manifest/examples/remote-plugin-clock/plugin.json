@@ -1,8 +1,8 @@
 {
-  "id": "carrot-clock",
-  "name": "Carrot Clock",
+  "id": "remote-plugin-clock",
+  "name": "Remote Plugin Clock",
   "version": "0.1.0",
-  "description": "Window-mode reference carrot — opens its own webview with a tiny live clock. Validates BrowserView + viewsRoot scheme resolution and window-close → stopWorker.",
+  "description": "Window-mode reference remotePlugin — opens its own webview with a tiny live clock. Validates BrowserView + viewsRoot scheme resolution and window-close → stopWorker.",
   "mode": "window",
   "permissions": {
     "host": {},
@@ -11,7 +11,7 @@
   },
   "view": {
     "relativePath": "view/index.html",
-    "title": "Carrot Clock",
+    "title": "Remote Plugin Clock",
     "width": 320,
     "height": 200,
     "titleBarStyle": "default"

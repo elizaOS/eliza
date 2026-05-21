@@ -330,10 +330,10 @@
       "notes": "Hard no-migration item. Runtime semantics stay here."
     },
     {
-      "id": "packages/electrobun-carrots",
-      "path": "packages/electrobun-carrots",
+      "id": "packages/electrobun-remote-plugins",
+      "path": "packages/electrobun-remote-plugins",
       "category": "desktop-shell",
-      "currentPurpose": "Eliza-flavored carrot runtime primitives for Electrobun desktop shells.",
+      "currentPurpose": "Eliza-flavored remote plugin runtime primitives for Electrobun desktop shells.",
       "keepAs": "core",
       "shouldBecomeRemote": false,
       "shouldRegisterDynamicViews": false,
@@ -2886,7 +2886,7 @@
       "packages/agent",
       "packages/app-core",
       "packages/app-core/platforms/electrobun core shell",
-      "packages/electrobun-carrots",
+      "packages/electrobun-remote-plugins",
       "connector plugins",
       "provider plugins",
       "app plugins",

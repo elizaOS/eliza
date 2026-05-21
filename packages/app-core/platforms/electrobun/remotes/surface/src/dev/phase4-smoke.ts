@@ -2,10 +2,10 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { AgentMessageStreamEvent } from "../protocol/event-types.ts";
 import {
-  RuntimeSatelliteClient,
+  RuntimeRemotePluginClient,
   type RuntimeEventHandler,
   type RuntimeEventTailResult,
-  type RuntimeSatelliteBridge,
+  type RuntimeRemotePluginBridge,
 } from "../protocol/runtime-client.ts";
 import {
   addAssistantStreamMessage,
@@ -283,7 +283,7 @@ function mockInvokeResponse(method: string, params?: unknown): unknown {
   );
 }
 
-class MockRuntimeBridge implements RuntimeSatelliteBridge {
+class MockRuntimeBridge implements RuntimeRemotePluginBridge {
   private readonly handlers = new Map<string, Set<RuntimeEventHandler>>();
 
   async invoke(
@@ -332,7 +332,7 @@ class TailRuntimeBridge extends MockRuntimeBridge {
       events: [
         {
           remotePluginId: targetId,
-          satelliteId: targetId,
+          remotePluginId: targetId,
           sequence: 1,
           name: "agent.message.stream.delta",
           payload: {
@@ -366,7 +366,7 @@ for (const relativePath of [
 }
 
 const bridge = new MockRuntimeBridge();
-const client = new RuntimeSatelliteClient({ bridge });
+const client = new RuntimeRemotePluginClient({ bridge });
 const state = createInitialState();
 
 for (const eventName of [
@@ -493,7 +493,7 @@ bridge.emit(
 bridge.emit("agent.message.stream.done", streamEvent("done"));
 
 const tailBridge = new TailRuntimeBridge();
-const tailClient = new RuntimeSatelliteClient({ bridge: tailBridge });
+const tailClient = new RuntimeRemotePluginClient({ bridge: tailBridge });
 let tailedDelta = "";
 const unsubscribeTail = tailClient.on(
   "agent.message.stream.delta",

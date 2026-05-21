@@ -82,7 +82,6 @@ export interface RemotePluginLogsSnapshot {
 
 export interface RemotePluginWorkerEventRecord {
   remotePluginId: string;
-  satelliteId: string;
   sequence: number;
   name: string;
   payload: JsonValue | null;
@@ -132,6 +131,10 @@ export interface RemotePluginHostOptions {
 }
 
 const REMOTE_PLUGIN_STORE_ENV_KEYS = [
+  "MILADY_REMOTE_PLUGIN_STORE_DIR",
+  "ELIZA_REMOTE_PLUGIN_STORE_DIR",
+  // Deprecated: kept for backward compatibility with operators using the
+  // old "carrot" vocabulary; remove after one release cycle.
   "MILADY_CARROT_STORE_DIR",
   "ELIZA_CARROT_STORE_DIR",
 ] as const;
@@ -432,13 +435,14 @@ const MAX_WORKER_EVENT_TAIL_LIMIT = 500;
 function resolveWorkerEventBufferLimit(
   env: NodeJS.ProcessEnv = process.env,
 ): number {
-  const raw = env.ELIZA_CARROT_MAX_WORKER_EVENTS;
+  const raw =
+    env.ELIZA_REMOTE_PLUGIN_MAX_WORKER_EVENTS ?? env.ELIZA_CARROT_MAX_WORKER_EVENTS;
   if (raw === undefined || raw.trim().length === 0) {
     return DEFAULT_WORKER_EVENT_BUFFER_LIMIT;
   }
   const value = Number(raw);
   if (!Number.isFinite(value) || value < 1) {
-    throw new Error("ELIZA_CARROT_MAX_WORKER_EVENTS must be positive.");
+    throw new Error("ELIZA_REMOTE_PLUGIN_MAX_WORKER_EVENTS must be positive.");
   }
   return Math.floor(value);
 }
@@ -964,7 +968,6 @@ export class RemotePluginHost {
     this.workerEventSequences.set(id, sequence);
     const event: RemotePluginWorkerEventRecord = {
       remotePluginId: id,
-      satelliteId: id,
       sequence,
       name: message.name,
       payload: cloneEventPayload(message.payload),

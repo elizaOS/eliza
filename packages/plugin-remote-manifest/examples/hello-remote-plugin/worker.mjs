@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 const bootstrap = globalThis.__remotePluginBootstrap;
 if (!bootstrap) {
   throw new Error(
-    "hello-carrot: __remotePluginBootstrap missing — not running inside Bunny Ears",
+    "hello-remote-plugin: __remotePluginBootstrap missing — not running inside Bunny Ears",
   );
 }
 
@@ -21,7 +21,7 @@ writeFileSync(
 
 appendFileSync(
   context.logsPath,
-  `[${bootStamp}] hello-carrot booted (channel=${context.channel})\n`,
+  `[${bootStamp}] hello-remote-plugin booted (channel=${context.channel})\n`,
   "utf8",
 );
 
@@ -30,7 +30,7 @@ self.postMessage({
   action: "log",
   payload: {
     level: "info",
-    message: `hello-carrot ready, permissions=${context.permissions.join(",")}`,
+    message: `hello-remote-plugin ready, permissions=${context.permissions.join(",")}`,
   },
 });
 

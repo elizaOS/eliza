@@ -21,7 +21,7 @@ bun install --cwd eliza --no-frozen-lockfile --ignore-scripts
 # 2. relink all @elizaos/* into consistent local-source mode
 MILADY_ELIZA_SOURCE=local node scripts/setup-upstreams.mjs
 # 3. build a package setup-upstreams skips (its empty dist/ breaks the bundle)
-( cd eliza/packages/electrobun-carrots && bun run build )
+( cd eliza/packages/electrobun-remote-plugins && bun run build )
 # 4. build the desktop app — MILADY_ELIZA_SOURCE=local is MANDATORY
 MILADY_ELIZA_SOURCE=local bun run build:desktop
 ```

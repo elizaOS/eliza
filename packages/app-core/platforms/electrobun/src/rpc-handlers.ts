@@ -75,9 +75,9 @@ import {
 } from "./inbox-rpc";
 import { logger } from "./logger";
 import {
-  getFirstPartySatelliteDefinitions,
-  setFirstPartySatelliteDisabled,
-} from "./first-party-satellites";
+  getFirstPartyRemotePluginDefinitions,
+  setFirstPartyRemotePluginDisabled,
+} from "./first-party-remotes";
 import { LaunchOrchestrator } from "./launch";
 import {
   getAgentManager,
@@ -353,8 +353,8 @@ export function buildBunRpcHandlers({
     readDiagnostics: getStartupDiagnosticsSnapshot,
     readDatabaseStatus: () => agent.getDatabaseSnapshot(),
     readDiagnosticLogTail: getStartupDiagnosticLogTail,
-    listSatelliteStatuses: () =>
-      getFirstPartySatelliteDefinitions({ includeDev: true }).map(
+    listRemotePluginStatuses: () =>
+      getFirstPartyRemotePluginDefinitions({ includeDev: true }).map(
         (definition) => {
           const status = remotePluginHost.getWorkerStatus(definition.id);
           return {
@@ -887,11 +887,11 @@ export function buildBunRpcHandlers({
     remotePluginUninstall: async (params: { id: string }) =>
       remotePluginHost.uninstall(params.id),
     remotePluginStartWorker: async (params: { id: string }) => {
-      setFirstPartySatelliteDisabled(params.id, false, remotePluginHost);
+      setFirstPartyRemotePluginDisabled(params.id, false, remotePluginHost);
       return remotePluginHost.startWorker(params.id);
     },
     remotePluginStopWorker: async (params: { id: string }) => {
-      setFirstPartySatelliteDisabled(params.id, true, remotePluginHost);
+      setFirstPartyRemotePluginDisabled(params.id, true, remotePluginHost);
       return remotePluginHost.stopWorker(params.id);
     },
     remotePluginGetWorkerStatus: async (params: { id: string }) =>

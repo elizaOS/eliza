@@ -26,7 +26,7 @@ export type BunPermission = (typeof BUN_PERMISSIONS)[number];
 export type RemotePluginIsolation = (typeof REMOTE_PLUGIN_ISOLATIONS)[number];
 
 export type JsonPrimitive = string | number | boolean | null;
-export type JsonObject = { [key: string]: JsonValue };
+export type JsonObject = { readonly [key: string]: JsonValue };
 export type JsonArray = readonly JsonValue[];
 export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
 

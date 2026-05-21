@@ -72,7 +72,7 @@ export type RuntimeEventHandler = (payload: unknown) => void;
 
 export type RuntimeEventRecord = {
 	remotePluginId?: string;
-	satelliteId?: string;
+	remotePluginId?: string;
 	sequence: number;
 	name: string;
 	payload: JsonValue | null;
@@ -85,7 +85,7 @@ export type RuntimeEventTailResult = {
 	nextSequence: number;
 };
 
-export type RuntimeSatelliteBridge = {
+export type RuntimeRemotePluginBridge = {
 	invoke: (
 		targetId: string,
 		method: string,
@@ -100,7 +100,7 @@ export type RuntimeSatelliteBridge = {
 };
 
 type RuntimeGlobal = typeof globalThis & {
-	__ELIZA_SURFACE_RUNTIME_BRIDGE__?: RuntimeSatelliteBridge;
+	__ELIZA_SURFACE_RUNTIME_BRIDGE__?: RuntimeRemotePluginBridge;
 	__ELIZA_ELECTROBUN_RPC__?: {
 		request?: {
 			remotePluginInvokeWorker?: (params: {
@@ -126,16 +126,16 @@ export type SurfaceBridgeError = {
 	details?: unknown;
 };
 
-export class RuntimeSatelliteClient {
+export class RuntimeRemotePluginClient {
 	private readonly targetId: string;
-	private readonly bridge: RuntimeSatelliteBridge | null;
+	private readonly bridge: RuntimeRemotePluginBridge | null;
 	private readonly localHandlers = new Map<string, Set<RuntimeEventHandler>>();
 	private tailTimer: ReturnType<typeof setInterval> | null = null;
 	private tailNextSequence = 0;
 	private tailInFlight = false;
 
 	constructor(
-		options: { bridge?: RuntimeSatelliteBridge; targetId?: string } = {},
+		options: { bridge?: RuntimeRemotePluginBridge; targetId?: string } = {},
 	) {
 		this.targetId = options.targetId ?? "eliza.runtime";
 		this.bridge = options.bridge ?? createDefaultBridge();
@@ -582,7 +582,7 @@ export class RuntimeSatelliteClient {
 	}
 }
 
-function createDefaultBridge(): RuntimeSatelliteBridge | null {
+function createDefaultBridge(): RuntimeRemotePluginBridge | null {
 	const runtimeGlobal = globalThis as RuntimeGlobal;
 	if (runtimeGlobal.__ELIZA_SURFACE_RUNTIME_BRIDGE__) {
 		return runtimeGlobal.__ELIZA_SURFACE_RUNTIME_BRIDGE__;
@@ -651,7 +651,7 @@ function isJsonValue(value: unknown): value is JsonValue {
 function toJsonValue(value: unknown): JsonValue | undefined {
 	if (value === undefined) return undefined;
 	if (isJsonValue(value)) return value;
-	throw new Error("Runtime Satellite bridge params must be JSON-serializable.");
+	throw new Error("Runtime RemotePlugin bridge params must be JSON-serializable.");
 }
 
 function createBridgeError(
@@ -664,8 +664,8 @@ function createBridgeError(
 		method,
 		message:
 			code === "BRIDGE_UNAVAILABLE"
-				? "Runtime Satellite bridge is not available."
-				: "Runtime Satellite request failed.",
+				? "Runtime RemotePlugin bridge is not available."
+				: "Runtime RemotePlugin request failed.",
 		details,
 	};
 }

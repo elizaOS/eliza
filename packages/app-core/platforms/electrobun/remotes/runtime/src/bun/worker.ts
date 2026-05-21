@@ -18,10 +18,10 @@ import type {
   RuntimeWorkerRequestMessage,
 } from "./protocol.ts";
 import {
-  FILE_SATELLITE_ID,
-  GIT_SATELLITE_ID,
-  MODEL_SATELLITE_ID,
-  TERMINAL_SATELLITE_ID,
+  FILE_REMOTE_PLUGIN_ID,
+  GIT_REMOTE_PLUGIN_ID,
+  MODEL_REMOTE_PLUGIN_ID,
+  TERMINAL_REMOTE_PLUGIN_ID,
 } from "./protocol.ts";
 import { ElizaRuntimeManager } from "./runtime-manager.ts";
 import { AgentStreamManager } from "./stream-manager.ts";
@@ -215,7 +215,7 @@ function completeHostRequest(message: HostResponseMessage): void {
       code: "CAPABILITY_UNAVAILABLE",
       message: pending.unavailableMessage,
       method: pending.method,
-      details: message.error ?? "Satellite request failed.",
+      details: message.error ?? "RemotePlugin request failed.",
     }),
   );
 }
@@ -568,7 +568,7 @@ function requestHost(
           code: "CAPABILITY_UNAVAILABLE",
           message: unavailableMessage,
           method: runtimeMethod,
-          details: "Timed out waiting for Satellite response.",
+          details: "Timed out waiting for RemotePlugin response.",
         }),
       );
     }, 30_000);
@@ -629,8 +629,8 @@ function traceEventKindForStream(
   return `agent.message.stream.${kind}`;
 }
 
-function invokeSatellite(
-  satelliteId: string,
+function invokeRemotePlugin(
+  remotePluginId: string,
   unavailableMessage: string,
   method: RuntimeMethod,
   params?: JsonValue,
@@ -638,7 +638,7 @@ function invokeSatellite(
   return requestHost(
     "invoke-remote-plugin",
     {
-      remotePluginId: satelliteId,
+      remotePluginId: remotePluginId,
       method,
       ...(params === undefined ? {} : { params }),
     },
@@ -739,8 +739,8 @@ async function recordTraceForStreamEvent(
   });
 }
 
-async function invokeTracedSatellite(
-  satelliteId: string,
+async function invokeTracedRemotePlugin(
+  remotePluginId: string,
   unavailableMessage: string,
   method: RuntimeMethod,
   params?: JsonValue,
@@ -748,8 +748,8 @@ async function invokeTracedSatellite(
   const traceSessionId = traceSessionIdFromParams(params);
   const forwardedParams = paramsWithoutTraceFields(params);
   if (traceSessionId === null) {
-    return invokeSatellite(
-      satelliteId,
+    return invokeRemotePlugin(
+      remotePluginId,
       unavailableMessage,
       method,
       forwardedParams,
@@ -759,15 +759,15 @@ async function invokeTracedSatellite(
     sessionId: traceSessionId,
     kind: "capability.invoke.started",
     source: "capability",
-    capabilityId: satelliteId,
+    capabilityId: remotePluginId,
     payload: {
       method,
       params: forwardedParams ?? null,
     },
   });
   try {
-    const result = await invokeSatellite(
-      satelliteId,
+    const result = await invokeRemotePlugin(
+      remotePluginId,
       unavailableMessage,
       method,
       forwardedParams,
@@ -776,7 +776,7 @@ async function invokeTracedSatellite(
       sessionId: traceSessionId,
       kind: "capability.invoke.completed",
       source: "capability",
-      capabilityId: satelliteId,
+      capabilityId: remotePluginId,
       payload: {
         method,
         result: result ?? null,
@@ -788,7 +788,7 @@ async function invokeTracedSatellite(
       sessionId: traceSessionId,
       kind: "capability.invoke.error",
       source: "capability",
-      capabilityId: satelliteId,
+      capabilityId: remotePluginId,
       text: error instanceof Error ? error.message : String(error),
       payload: {
         method,
@@ -1017,40 +1017,40 @@ const API_METHODS_REQUIRING_RUNTIME_STATE = new Set<RuntimeMethod>([
   "agent.message.stream",
 ]);
 
-type SatelliteRoute = {
-  satelliteId: string;
+type RemotePluginRoute = {
+  remotePluginId: string;
   unavailableMessage: string;
   params?: JsonValue;
 };
 
-function satelliteRouteFor(
+function remotePluginRouteFor(
   request: RuntimeWorkerRequestMessage,
-): SatelliteRoute | null {
+): RemotePluginRoute | null {
   if (FILE_METHODS.has(request.method)) {
     return {
-      satelliteId: FILE_SATELLITE_ID,
-      unavailableMessage: "File Satellite eliza.fs is not available",
+      remotePluginId: FILE_REMOTE_PLUGIN_ID,
+      unavailableMessage: "File RemotePlugin eliza.fs is not available",
       params: request.params,
     };
   }
   if (PTY_METHODS.has(request.method)) {
     return {
-      satelliteId: TERMINAL_SATELLITE_ID,
-      unavailableMessage: "Terminal Satellite eliza.pty is not available",
+      remotePluginId: TERMINAL_REMOTE_PLUGIN_ID,
+      unavailableMessage: "Terminal RemotePlugin eliza.pty is not available",
       params: request.params,
     };
   }
   if (GIT_METHODS.has(request.method)) {
     return {
-      satelliteId: GIT_SATELLITE_ID,
-      unavailableMessage: "Git Satellite eliza.git is not available",
+      remotePluginId: GIT_REMOTE_PLUGIN_ID,
+      unavailableMessage: "Git RemotePlugin eliza.git is not available",
       params: request.params,
     };
   }
   if (!MODEL_METHODS.has(request.method)) return null;
   return {
-    satelliteId: MODEL_SATELLITE_ID,
-    unavailableMessage: "Model Satellite eliza.local-model is not available",
+    remotePluginId: MODEL_REMOTE_PLUGIN_ID,
+    unavailableMessage: "Model RemotePlugin eliza.local-model is not available",
     params: withRuntimeApiBase(request.params),
   };
 }
@@ -1172,10 +1172,10 @@ async function dispatch(
   if (runtimeResponse !== null) return runtimeResponse;
   const apiResponse = await dispatchApiRequest(request);
   if (apiResponse !== null) return apiResponse;
-  const route = satelliteRouteFor(request);
+  const route = remotePluginRouteFor(request);
   if (route !== null) {
-    return invokeTracedSatellite(
-      route.satelliteId,
+    return invokeTracedRemotePlugin(
+      route.remotePluginId,
       route.unavailableMessage,
       request.method,
       route.params,

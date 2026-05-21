@@ -9,21 +9,21 @@ import {
   getRemotePluginHost,
 } from "./native/remote-plugin-host";
 
-export type FirstPartySatelliteKind = "required" | "recommended" | "dev";
+export type FirstPartyRemotePluginKind = "required" | "recommended" | "dev";
 
-export interface FirstPartySatelliteDefinition {
+export interface FirstPartyRemotePluginDefinition {
   id: string;
   displayName: string;
   sourceDir: string;
-  kind: FirstPartySatelliteKind;
+  kind: FirstPartyRemotePluginKind;
   autoStart: boolean;
 }
 
-export interface FirstPartySatelliteSeedResult {
+export interface FirstPartyRemotePluginSeedResult {
   id: string;
   displayName: string;
   sourceDir: string;
-  kind: FirstPartySatelliteKind;
+  kind: FirstPartyRemotePluginKind;
   autoStart: boolean;
   disabled: boolean;
   hash: string;
@@ -31,7 +31,7 @@ export interface FirstPartySatelliteSeedResult {
   autoStarted: boolean;
 }
 
-interface FirstPartySatelliteState {
+interface FirstPartyRemotePluginState {
   version: 1;
   disabled: Record<string, boolean>;
 }
@@ -40,8 +40,8 @@ const platformRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const satellitesRoot = path.join(platformRoot, "satellites");
-const stateFileName = "first-party-satellites.json";
+const remotePluginsRoot = path.join(platformRoot, "remotePlugins");
+const stateFileName = "first-party-remotes.json";
 const skippedHashEntries = new Set([
   ".DS_Store",
   ".git",
@@ -49,104 +49,104 @@ const skippedHashEntries = new Set([
   "node_modules",
 ]);
 
-export const FIRST_PARTY_SATELLITES: FirstPartySatelliteDefinition[] = [
+export const FIRST_PARTY_REMOTE_PLUGINS: FirstPartyRemotePluginDefinition[] = [
   {
     id: "eliza.runtime",
-    displayName: "Eliza Runtime Satellite",
-    sourceDir: path.join(satellitesRoot, "runtime"),
+    displayName: "Eliza Runtime RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "runtime"),
     kind: "required",
     autoStart: true,
   },
   {
     id: "eliza.fs",
-    displayName: "Eliza File Satellite",
-    sourceDir: path.join(satellitesRoot, "fs"),
+    displayName: "Eliza File RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "fs"),
     kind: "recommended",
     autoStart: true,
   },
   {
     id: "eliza.local-model",
-    displayName: "Eliza Model Satellite",
-    sourceDir: path.join(satellitesRoot, "local-model"),
+    displayName: "Eliza Model RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "local-model"),
     kind: "recommended",
     autoStart: true,
   },
   {
     id: "eliza.pty",
-    displayName: "Eliza Terminal Satellite",
-    sourceDir: path.join(satellitesRoot, "pty"),
+    displayName: "Eliza Terminal RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "pty"),
     kind: "recommended",
     autoStart: false,
   },
   {
     id: "eliza.git",
-    displayName: "Eliza Git Satellite",
-    sourceDir: path.join(satellitesRoot, "git"),
+    displayName: "Eliza Git RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "git"),
     kind: "recommended",
     autoStart: false,
   },
   {
     id: "eliza.surface",
-    displayName: "Eliza Surface Satellite",
-    sourceDir: path.join(satellitesRoot, "surface"),
+    displayName: "Eliza Surface RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "surface"),
     kind: "dev",
     autoStart: false,
   },
 ];
 
-export function getFirstPartySatelliteDefinitions(options?: {
+export function getFirstPartyRemotePluginDefinitions(options?: {
   includeDev?: boolean;
-}): FirstPartySatelliteDefinition[] {
+}): FirstPartyRemotePluginDefinition[] {
   const includeDev =
-    options?.includeDev ?? process.env.ELIZA_ENABLE_DEV_SATELLITES === "1";
-  return FIRST_PARTY_SATELLITES.filter(
+    options?.includeDev ?? process.env.ELIZA_ENABLE_DEV_REMOTE_PLUGINS === "1";
+  return FIRST_PARTY_REMOTE_PLUGINS.filter(
     (definition) => includeDev || definition.kind !== "dev",
   );
 }
 
-export function setFirstPartySatelliteDisabled(
+export function setFirstPartyRemotePluginDisabled(
   id: string,
   disabled: boolean,
   manager: RemotePluginHost = getRemotePluginHost(),
 ): void {
-  const state = readFirstPartySatelliteState(manager);
+  const state = readFirstPartyRemotePluginState(manager);
   if (disabled) {
     state.disabled[id] = true;
   } else {
     delete state.disabled[id];
   }
-  writeFirstPartySatelliteState(manager, state);
+  writeFirstPartyRemotePluginState(manager, state);
 }
 
-export function isFirstPartySatelliteDisabled(
+export function isFirstPartyRemotePluginDisabled(
   id: string,
   manager: RemotePluginHost = getRemotePluginHost(),
 ): boolean {
-  return readFirstPartySatelliteState(manager).disabled[id] === true;
+  return readFirstPartyRemotePluginState(manager).disabled[id] === true;
 }
 
-export function seedFirstPartySatellites(options?: {
+export function seedFirstPartyRemotePlugins(options?: {
   manager?: RemotePluginHost;
   includeDev?: boolean;
   startAutoStart?: boolean;
-}): FirstPartySatelliteSeedResult[] {
+}): FirstPartyRemotePluginSeedResult[] {
   const manager = options?.manager ?? getRemotePluginHost();
   const startAutoStart = options?.startAutoStart ?? true;
-  const results: FirstPartySatelliteSeedResult[] = [];
+  const results: FirstPartyRemotePluginSeedResult[] = [];
 
-  for (const definition of getFirstPartySatelliteDefinitions({
+  for (const definition of getFirstPartyRemotePluginDefinitions({
     includeDev: options?.includeDev,
   })) {
     const manifest = assertRemotePluginPayload(definition.sourceDir);
     if (manifest.id !== definition.id) {
       throw new Error(
-        `First-party Satellite id mismatch: registry=${definition.id} manifest=${manifest.id}`,
+        `First-party RemotePlugin id mismatch: registry=${definition.id} manifest=${manifest.id}`,
       );
     }
 
     const hash = hashDirectory(definition.sourceDir);
     const existing = manager.getRemotePlugin(definition.id);
-    let action: FirstPartySatelliteSeedResult["action"] = "unchanged";
+    let action: FirstPartyRemotePluginSeedResult["action"] = "unchanged";
     if (!existing) {
       manager.installFromDirectory({
         sourceDir: definition.sourceDir,
@@ -163,7 +163,7 @@ export function seedFirstPartySatellites(options?: {
       action = "updated";
     }
 
-    const disabled = isFirstPartySatelliteDisabled(definition.id, manager);
+    const disabled = isFirstPartyRemotePluginDisabled(definition.id, manager);
     let autoStarted = false;
     if (definition.autoStart && startAutoStart && !disabled) {
       manager.startWorker(definition.id);
@@ -182,10 +182,10 @@ export function seedFirstPartySatellites(options?: {
   return results;
 }
 
-export function seedFirstPartySatellitesForStartup(): void {
+export function seedFirstPartyRemotePluginsForStartup(): void {
   try {
-    const results = seedFirstPartySatellites();
-    logger.info("[FirstPartySatellites] seed complete", {
+    const results = seedFirstPartyRemotePlugins();
+    logger.info("[FirstPartyRemotePlugins] seed complete", {
       results: results.map((result) => ({
         id: result.id,
         action: result.action,
@@ -195,7 +195,7 @@ export function seedFirstPartySatellitesForStartup(): void {
     });
   } catch (error) {
     logger.warn(
-      "[FirstPartySatellites] seed failed",
+      "[FirstPartyRemotePlugins] seed failed",
       error instanceof Error
         ? { message: error.message, stack: error.stack }
         : { error: String(error) },
@@ -203,34 +203,34 @@ export function seedFirstPartySatellitesForStartup(): void {
   }
 }
 
-function readFirstPartySatelliteState(
+function readFirstPartyRemotePluginState(
   manager: RemotePluginHost,
-): FirstPartySatelliteState {
-  const statePath = firstPartySatelliteStatePath(manager);
+): FirstPartyRemotePluginState {
+  const statePath = firstPartyRemotePluginStatePath(manager);
   if (!fs.existsSync(statePath)) return { version: 1, disabled: {} };
   const parsed = JSON.parse(fs.readFileSync(statePath, "utf8")) as unknown;
-  if (!isFirstPartySatelliteState(parsed)) {
+  if (!isFirstPartyRemotePluginState(parsed)) {
     return { version: 1, disabled: {} };
   }
   return parsed;
 }
 
-function writeFirstPartySatelliteState(
+function writeFirstPartyRemotePluginState(
   manager: RemotePluginHost,
-  state: FirstPartySatelliteState,
+  state: FirstPartyRemotePluginState,
 ): void {
-  const statePath = firstPartySatelliteStatePath(manager);
+  const statePath = firstPartyRemotePluginStatePath(manager);
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
   fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
-function firstPartySatelliteStatePath(manager: RemotePluginHost): string {
+function firstPartyRemotePluginStatePath(manager: RemotePluginHost): string {
   return path.join(manager.getStoreRoot(), stateFileName);
 }
 
-function isFirstPartySatelliteState(
+function isFirstPartyRemotePluginState(
   value: unknown,
-): value is FirstPartySatelliteState {
+): value is FirstPartyRemotePluginState {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
   }

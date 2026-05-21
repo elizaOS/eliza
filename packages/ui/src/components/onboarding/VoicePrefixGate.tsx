@@ -534,7 +534,7 @@ export function VoicePrefixGate({
       alive = false;
       window.clearInterval(interval);
     };
-  }, [refreshVoiceBundleReadiness]);
+  }, []);
 
   const handleAdvance = React.useCallback(
     (next: VoicePrefixStep | null) => {

@@ -24,7 +24,7 @@ type PendingHostRequest = {
 	reject: (error: Error) => void;
 };
 
-const RUNTIME_SATELLITE_ID = "eliza.runtime";
+const RUNTIME_REMOTE_PLUGIN_ID = "eliza.runtime";
 const pending = new Map<number, PendingHostRequest>();
 let nextHostRequestId = 1;
 
@@ -70,7 +70,7 @@ function invokeRuntime(
 		requestId,
 		method: "invoke-remote-plugin",
 		params: {
-			remotePluginId: RUNTIME_SATELLITE_ID,
+			remotePluginId: RUNTIME_REMOTE_PLUGIN_ID,
 			method,
 			params,
 		},
@@ -79,7 +79,7 @@ function invokeRuntime(
 	return new Promise((resolve, reject) => {
 		const timeout = setTimeout(() => {
 			pending.delete(requestId);
-			reject(new Error(`Runtime Satellite request timed out: ${method}`));
+			reject(new Error(`Runtime RemotePlugin request timed out: ${method}`));
 		}, 30_000);
 		pending.set(requestId, {
 			resolve: (payload) => {
@@ -102,7 +102,7 @@ function completeHostRequest(message: HostResponse): void {
 		request.resolve(message.payload);
 		return;
 	}
-	request.reject(new Error(message.error ?? "Runtime Satellite request failed."));
+	request.reject(new Error(message.error ?? "Runtime RemotePlugin request failed."));
 }
 
 function isWorkerRequest(value: unknown): value is WorkerRequest {

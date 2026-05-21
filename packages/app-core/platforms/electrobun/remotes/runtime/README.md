@@ -318,7 +318,7 @@ After install, start `eliza.runtime` from the existing module manager. If the cu
 
 ## Current Upstream Packaging Notes
 
-The existing Electrobun module system in this repo still uses upstream packaging names such as `plugin.json`, `build.carrot`, and `carrotOnly`. Those names are kept only where the upstream API requires them.
+The existing Electrobun module system in this repo still uses upstream packaging names such as `plugin.json`, `build.remote plugin`, and `remote pluginOnly`. Those names are kept only where the upstream API requires them.
 
 The current host manifest shape supports `host.storage`, `bun.read`, `bun.write`, `bun.env`, `bun.run`, and `bun.worker` through nested `host` and `bun` permission maps. The requested flat permission keys are not the shape used by the current `@elizaos/plugin-remote-manifest` types, so the Runtime Remote uses the existing nested format.
 

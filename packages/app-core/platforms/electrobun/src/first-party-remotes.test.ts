@@ -7,11 +7,11 @@ import {
 } from "@elizaos/plugin-remote-manifest";
 import { describe, expect, it } from "vitest";
 import {
-  getFirstPartySatelliteDefinitions,
-  isFirstPartySatelliteDisabled,
-  seedFirstPartySatellites,
-  setFirstPartySatelliteDisabled,
-} from "./first-party-satellites";
+  getFirstPartyRemotePluginDefinitions,
+  isFirstPartyRemotePluginDisabled,
+  seedFirstPartyRemotePlugins,
+  setFirstPartyRemotePluginDisabled,
+} from "./first-party-remotes";
 import {
   RemotePluginHost,
   type RemotePluginWorkerHandle,
@@ -71,9 +71,9 @@ function withTempManager<T>(fn: (manager: RemotePluginHost) => T): T {
   }
 }
 
-describe("first-party Satellites", () => {
+describe("first-party RemotePlugins", () => {
   it("validates bundled manifests", () => {
-    const manifests = getFirstPartySatelliteDefinitions({
+    const manifests = getFirstPartyRemotePluginDefinitions({
       includeDev: true,
     }).map((definition) => assertRemotePluginPayload(definition.sourceDir));
 
@@ -87,10 +87,10 @@ describe("first-party Satellites", () => {
     ]);
   });
 
-  it("seeds first-party Satellites idempotently and starts auto-start entries", () =>
+  it("seeds first-party RemotePlugins idempotently and starts auto-start entries", () =>
     withTempManager((manager) => {
-      const first = seedFirstPartySatellites({ manager, includeDev: true });
-      const second = seedFirstPartySatellites({ manager, includeDev: true });
+      const first = seedFirstPartyRemotePlugins({ manager, includeDev: true });
+      const second = seedFirstPartyRemotePlugins({ manager, includeDev: true });
 
       expect(first.map((result) => result.action)).toEqual([
         "installed",
@@ -121,12 +121,12 @@ describe("first-party Satellites", () => {
 
   it("preserves explicit disabled state for auto-start entries", () =>
     withTempManager((manager) => {
-      setFirstPartySatelliteDisabled("eliza.runtime", true, manager);
+      setFirstPartyRemotePluginDisabled("eliza.runtime", true, manager);
 
-      const results = seedFirstPartySatellites({ manager, includeDev: false });
+      const results = seedFirstPartyRemotePlugins({ manager, includeDev: false });
       const runtime = results.find((result) => result.id === "eliza.runtime");
 
-      expect(isFirstPartySatelliteDisabled("eliza.runtime", manager)).toBe(
+      expect(isFirstPartyRemotePluginDisabled("eliza.runtime", manager)).toBe(
         true,
       );
       expect(runtime).toMatchObject({

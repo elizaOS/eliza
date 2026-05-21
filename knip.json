@@ -511,7 +511,7 @@
         "src/**/*.ts",
         "examples/**/*.test.ts",
         "examples/**/worker.mjs",
-        "examples/**/carrot.json"
+        "examples/**/plugin.json"
       ],
       "ignore": ["dist/**"]
     },

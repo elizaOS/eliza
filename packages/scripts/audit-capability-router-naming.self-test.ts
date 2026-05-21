@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     }
     if (
       !bad.output.includes(
-        "satellite is only allowed for historical naming analysis or legacy env aliases",
+        'legacy "satellite"/"carrot" vocabulary is forbidden',
       )
     ) {
       throw new Error(`bad naming fixture failed incorrectly: ${bad.output}`);
@@ -64,8 +64,8 @@ async function main(): Promise<void> {
       );
     }
     if (
-      !Array.isArray(productionReport.allowedSatelliteMentionFiles) ||
-      !productionReport.allowedSatelliteMentionFiles.includes(
+      !Array.isArray(productionReport.allowedLegacyMentionFiles) ||
+      !productionReport.allowedLegacyMentionFiles.includes(
         "packages/agent/docs/capability-router-remote-plugins.md",
       )
     ) {
