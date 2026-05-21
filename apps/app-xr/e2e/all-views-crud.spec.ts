@@ -1,11 +1,11 @@
 /**
  * all-views-crud.spec.ts
  *
- * Playwright e2e test: verifies that all 24 registered XR view panels can be
+ * Playwright e2e test: verifies that all 25 registered XR view panels can be
  * opened, rendered, and closed via the agent view-host route.
  */
 
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 const BASE_URL = process.env.XR_BASE_URL ?? "http://localhost:31337";
 
@@ -34,10 +34,10 @@ const ALL_VIEW_IDS = [
   "trajectory-logger",
   "model-tester",
   "smartglasses",
-  "facewear",
+  "hearwear",
 ] as const;
 
-test.describe("XR view CRUD — all 24 views", () => {
+test.describe("XR view CRUD — all 25 views", () => {
   for (const viewId of ALL_VIEW_IDS) {
     test(`view "${viewId}" — load, render, close`, async ({ page }) => {
       const url = `${BASE_URL}/api/xr/view-host/${viewId}`;
@@ -63,7 +63,7 @@ test.describe("XR view CRUD — all 24 views", () => {
     });
   }
 
-  test("all 24 view ids are unique", () => {
+  test("all 25 view ids are unique", () => {
     const ids = [...ALL_VIEW_IDS];
     const unique = new Set(ids);
     expect(unique.size).toBe(ids.length);

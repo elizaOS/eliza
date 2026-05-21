@@ -3,7 +3,7 @@
  *
  * These tests call the real route handler directly — no mock server,
  * no Playwright — proving that the elizaOS plugin infrastructure
- * produces correct, complete HTML for every one of the 24 registered
+ * produces correct, complete HTML for every one of the 25 registered
  * XR view IDs.  This is the "real elizaOS plugin infrastructure at scale"
  * validation layer that complements the Playwright simulator tests.
  */
@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { viewHostRoute } from "../routes/view-host.ts";
 
-// All 24 registered XR view IDs — mirrors ALL_VIEW_IDS in all-views-crud.spec.ts
+// All 25 registered XR view IDs — mirrors ALL_VIEW_IDS in all-views-crud.spec.ts
 // and the VIEW_MANIFESTS list in plugin-tui-view-coverage.test.ts.
 const ALL_VIEW_IDS = [
   "wallet",
@@ -38,7 +38,7 @@ const ALL_VIEW_IDS = [
   "trajectory-logger",
   "model-tester",
   "smartglasses",
-  "facewear",
+  "hearwear",
 ] as const;
 
 function makeCtx(viewId: string) {
@@ -185,7 +185,7 @@ describe("viewHostRoute — real route handler", () => {
     }
   });
 
-  it("all 24 view-host pages are distinct (each embeds its own VIEW_ID)", async () => {
+  it("all 25 view-host pages are distinct (each embeds its own VIEW_ID)", async () => {
     const htmlMap = new Map<string, string>();
     for (const id of ALL_VIEW_IDS) {
       htmlMap.set(id, await fetchHtml(id));
