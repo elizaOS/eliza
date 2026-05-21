@@ -266,4 +266,75 @@ describe("Discord message connector adapter", () => {
 			},
 		});
 	});
+
+	it("uses an external message id as a Discord reply reference when sending through connector targets", async () => {
+		const runtime = Object.assign(createRuntime(), {
+			getRoom: vi.fn().mockResolvedValue({
+				channelId: "222222222222222222",
+			}),
+			ensureConnection: vi.fn().mockResolvedValue(undefined),
+			createMemory: vi.fn().mockResolvedValue(undefined),
+		});
+		const send = vi.fn(async (options: unknown) => ({
+			id: "444444444444444444",
+			content:
+				typeof options === "object" && options
+					? String((options as { content?: string }).content ?? "")
+					: String(options ?? ""),
+			attachments: { size: 0 },
+			url: "https://discord.com/channels/111/222/444",
+			createdTimestamp: 123,
+		}));
+		const channel = {
+			id: "222222222222222222",
+			name: "general",
+			guild: { id: "111111111111111111", name: "Eliza" },
+			isTextBased: () => true,
+			isVoiceBased: () => false,
+			send,
+		};
+		const client = {
+			isReady: () => true,
+			channels: { fetch: vi.fn().mockResolvedValue(channel) },
+			user: {
+				id: "999999999999999999",
+				username: "bot",
+				displayName: "Bot",
+			},
+		};
+		const accountPool = new DiscordAccountClientPool();
+		accountPool.set({
+			accountId: DEFAULT_ACCOUNT_ID,
+			account: { id: DEFAULT_ACCOUNT_ID, token: "token", enabled: true },
+			client,
+			settings: {},
+			dynamicChannelIds: new Set<string>(),
+			clientReadyPromise: null,
+			loginFailed: false,
+		} as never);
+		const service = createDiscordConnectorTestService({
+			runtime,
+			accountPool,
+			defaultAccountId: DEFAULT_ACCOUNT_ID,
+			getChannelType: vi.fn().mockResolvedValue("GROUP"),
+		});
+
+		await service.handleSendMessage(
+			runtime,
+			{
+				source: "discord",
+				roomId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+			},
+			{
+				text: "done",
+				inReplyTo: "1506947499212935208",
+			},
+		);
+
+		expect(send).toHaveBeenCalledWith({
+			content: "done",
+			reply: { messageReference: "1506947499212935208" },
+			files: undefined,
+		});
+	});
 });
