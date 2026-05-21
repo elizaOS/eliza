@@ -122,6 +122,20 @@ export interface OAuthProviderConfig {
   allowedScopes?: string[];
 
   /**
+   * Default user-level OAuth scopes for providers that distinguish between
+   * bot and user scopes (e.g. Slack passes user scopes via the `user_scope`
+   * query parameter alongside the regular `scope` parameter). When set,
+   * `initiateOAuth2` adds a `user_scope` URL param so the OAuth screen
+   * prompts the user for both bot-level and user-level permissions.
+   *
+   * This is what lets the user's `authed_user.access_token` (Slack's user
+   * token, `xoxp-...`) carry meaningful permissions for OWNER-role flows
+   * — without it, the user token is functionally a bot-context token with
+   * no user-level scopes granted.
+   */
+  userScopes?: string[];
+
+  /**
    * How to extract user info from the userInfo endpoint response.
    * If not provided, uses standard OAuth2 claims.
    */
@@ -379,6 +393,15 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       revoke: "https://slack.com/api/auth.revoke",
     },
     defaultScopes: ["identity.basic", "users:read", "chat:write", "channels:read"],
+    // User-level scopes requested for the OWNER role so the user's own
+    // Slack identity (authed_user.access_token, `xoxp-...`) can act on
+    // the user's behalf — read their channels, write as them, search
+    // their messages, and read files they have access to.
+    // `identity.basic` is required by Slack's `users.identity` endpoint
+    // (the userInfo URL above) — without it the OWNER callback's
+    // userInfo fetch fails with `missing_scope` and `extractUserInfo`
+    // cannot resolve `user_id`.
+    userScopes: ["identity.basic", "chat:write", "search:read", "users:read", "files:read"],
     userInfoMapping: {
       id: "user_id",
       displayName: "user",

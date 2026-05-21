@@ -84,5 +84,19 @@
   "auth": {
     "kind": "oauth",
     "credentialKeys": ["SLACK_APP_TOKEN"]
+  },
+  "accounts": {
+    "owner": {
+      "supported": true,
+      "authKind": "oauth-cloud",
+      "credentialKeys": [],
+      "notes": "The user's own Slack identity (xoxp-... user token), connected via Eliza Cloud OAuth so the agent can read the user's channels, write messages as them, search their conversations, and read files they have access to."
+    },
+    "agent": {
+      "supported": true,
+      "authKind": "oauth-cloud",
+      "credentialKeys": [],
+      "notes": "The agent's own Slack bot identity (xoxb-... bot token), installed into the workspace via Eliza Cloud OAuth. Posts, mentions, replies, and DMs flow through the bot user."
+    }
   }
 }

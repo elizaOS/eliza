@@ -142,10 +142,10 @@ function buildRoleButtonLabel(
 const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
   slack: {
     platform: "slack",
-    connectionRoles: ["agent"],
+    connectionRoles: ["agent", "owner"],
     buttonLabel: "Use Slack OAuth",
     connectedHint:
-      "Connect Slack with Eliza Cloud OAuth. Cloud stores the workspace token and the Slack plugin remains the runtime surface for messages and actions.",
+      "Connect Slack with Eliza Cloud OAuth. Use 'agent' to install the agent's own Slack bot (xoxb-... bot token) into the workspace; use 'your account' to grant the agent permission to act on your own Slack identity (xoxp-... user token) — read your channels, write as you, search your messages.",
     disconnectedHint:
       "Connect Eliza Cloud first to use Slack OAuth instead of local Socket Mode tokens.",
     successNotice: "Finish Slack OAuth in your browser, then return here.",

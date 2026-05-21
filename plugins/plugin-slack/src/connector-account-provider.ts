@@ -16,6 +16,7 @@ import {
   type ConnectorAccountPatch,
   type ConnectorAccountProvider,
   type ConnectorAccountPurpose,
+  type ConnectorAccountRole,
   type ConnectorOAuthCallbackRequest,
   type ConnectorOAuthCallbackResult,
   type ConnectorOAuthStartRequest,
@@ -98,6 +99,28 @@ function nonEmptyString(value: unknown): string | undefined {
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
   return nonEmptyString(runtime.getSetting(key));
+}
+
+function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
+  const record =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : {};
+  // Cloud OAuth writes `connectionRole` (uppercase canonical); local UI
+  // flows pass `role`/`accountRole`/`requestedRole`. Accept all four so the
+  // role survives whichever path the OAuth start metadata came through.
+  const raw = nonEmptyString(
+    record.connectionRole ??
+      record.role ??
+      record.accountRole ??
+      record.requestedRole,
+  );
+  if (!raw) return "OWNER";
+  const normalized = raw.toUpperCase();
+  if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {
+    return normalized;
+  }
+  return "OWNER";
 }
 
 function readClientConfig(runtime: IAgentRuntime): {
@@ -361,7 +384,7 @@ export function createSlackConnectorAccountProvider(
         SLACK_SERVICE_NAME,
         {
           provider: SLACK_SERVICE_NAME,
-          role: "OWNER",
+          role: roleFromMetadata(request.flow.metadata),
           purpose: DEFAULT_PURPOSES,
           accessGate: "open",
           status: "pending",
