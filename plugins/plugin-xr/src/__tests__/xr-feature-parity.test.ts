@@ -27,6 +27,10 @@ const repoRoot = resolve(
   "../../../..",
 );
 const appXrRoot = resolve(repoRoot, "apps/app-xr");
+const hearwearAndroidRoot = resolve(
+  repoRoot,
+  "plugins/plugin-hearwear/native/android",
+);
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -40,6 +44,14 @@ function appXrFileExists(relPath: string): boolean {
 
 function readAppXr(relPath: string): string {
   return readFileSync(resolve(appXrRoot, relPath), "utf8");
+}
+
+function hearwearAndroidFileExists(relPath: string): boolean {
+  return existsSync(resolve(hearwearAndroidRoot, relPath));
+}
+
+function readHearwearAndroid(relPath: string): string {
+  return readFileSync(resolve(hearwearAndroidRoot, relPath), "utf8");
 }
 
 function hasAppXr(): boolean {
@@ -115,6 +127,7 @@ const ALL_XR_VIEW_IDS = [
   "trajectory-logger",
   "model-tester",
   "smartglasses",
+  "facewear",
 ] as const;
 
 // The 24 plugin manifest paths (same as plugin-tui-view-coverage.test.ts)
@@ -293,8 +306,8 @@ describe("XR feature parity audit", () => {
 
   it("axis 6 — Quest 3 Bubblewrap APK configuration is present and complete", () => {
     if (!hasAppXr()) return;
-    expect(appXrFileExists("android/quest/bubblewrap.json")).toBe(true);
-    const config = JSON.parse(readAppXr("android/quest/bubblewrap.json"));
+    expect(hearwearAndroidFileExists("quest/bubblewrap.json")).toBe(true);
+    const config = JSON.parse(readHearwearAndroid("quest/bubblewrap.json"));
     expect(config.packageId).toBe("com.milady.xr.quest");
     expect(config.metaQuest).toBe(true);
     expect(config.permissions).toContain("android.permission.CAMERA");
@@ -304,30 +317,32 @@ describe("XR feature parity audit", () => {
 
   it("axis 6 — XReal Android project has complete Gradle project structure", () => {
     if (!hasAppXr()) return;
-    expect(appXrFileExists("android/xreal/build.gradle.kts")).toBe(true);
-    expect(appXrFileExists("android/xreal/settings.gradle.kts")).toBe(true);
-    expect(appXrFileExists("android/xreal/gradlew")).toBe(true);
+    expect(hearwearAndroidFileExists("xreal/build.gradle.kts")).toBe(true);
+    expect(hearwearAndroidFileExists("xreal/settings.gradle.kts")).toBe(true);
+    expect(hearwearAndroidFileExists("xreal/gradlew")).toBe(true);
     expect(
-      appXrFileExists("android/xreal/gradle/wrapper/gradle-wrapper.properties"),
+      hearwearAndroidFileExists(
+        "xreal/gradle/wrapper/gradle-wrapper.properties",
+      ),
     ).toBe(true);
-    expect(appXrFileExists("android/xreal/app/build.gradle.kts")).toBe(true);
+    expect(hearwearAndroidFileExists("xreal/app/build.gradle.kts")).toBe(true);
     expect(
-      appXrFileExists("android/xreal/app/src/main/AndroidManifest.xml"),
+      hearwearAndroidFileExists("xreal/app/src/main/AndroidManifest.xml"),
     ).toBe(true);
   });
 
   it("axis 6 — XReal Kotlin source files are present", () => {
     if (!hasAppXr()) return;
-    const base = "android/xreal/app/src/main/java/com/milady/xr/xreal";
-    expect(appXrFileExists(`${base}/MainActivity.kt`)).toBe(true);
-    expect(appXrFileExists(`${base}/CameraService.kt`)).toBe(true);
-    expect(appXrFileExists(`${base}/XRealBridge.kt`)).toBe(true);
+    const base = "xreal/app/src/main/java/com/elizaos/facewear/xreal";
+    expect(hearwearAndroidFileExists(`${base}/MainActivity.kt`)).toBe(true);
+    expect(hearwearAndroidFileExists(`${base}/CameraService.kt`)).toBe(true);
+    expect(hearwearAndroidFileExists(`${base}/XrealBridgeJs.kt`)).toBe(true);
   });
 
   it("axis 6 — XReal AndroidManifest declares camera, audio, and XREAL tracking permissions", () => {
     if (!hasAppXr()) return;
-    const manifest = readAppXr(
-      "android/xreal/app/src/main/AndroidManifest.xml",
+    const manifest = readHearwearAndroid(
+      "xreal/app/src/main/AndroidManifest.xml",
     );
     expect(manifest).toContain("android.permission.CAMERA");
     expect(manifest).toContain("android.permission.RECORD_AUDIO");

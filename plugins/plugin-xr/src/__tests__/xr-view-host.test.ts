@@ -38,6 +38,7 @@ const ALL_VIEW_IDS = [
   "trajectory-logger",
   "model-tester",
   "smartglasses",
+  "facewear",
 ] as const;
 
 function makeCtx(viewId: string) {
