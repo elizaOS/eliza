@@ -31,16 +31,24 @@ def _run(name: str, argv: list[str], *, cwd: Path = ROOT) -> dict:
 
 
 def run_asimov1_e2e(out_dir: Path, *, steps: int, seed: int, require_real: bool = False) -> dict:
+    out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     ckpt = out_dir / "checkpoint"
     full_job = out_dir / "full_training_job"
+    tiny_brax_job = out_dir / "tiny_brax_training_job"
     gate = out_dir / "sim_validation_gate"
     py = sys.executable
     steps_run = [
         _run("source_inventory", [py, "scripts/check_asimov1_source_inventory.py"]),
         _run(
             "released_model_audit",
-            [py, "scripts/audit_asimov1_released_models.py", "--check-github-releases", "--require-none"],
+            [
+                py,
+                "scripts/audit_asimov1_released_models.py",
+                "--check-github-releases",
+                "--require-none",
+                "--require-complete",
+            ],
         ),
         _run("cad_mujoco_training_pipeline", [py, "scripts/validate_asimov1_pipeline.py"]),
         _run("cad_edit_loop", [py, "scripts/validate_asimov1_cad_edit_loop.py"]),
@@ -50,7 +58,11 @@ def run_asimov1_e2e(out_dir: Path, *, steps: int, seed: int, require_real: bool 
         ),
         _run("full_training_job", [py, "scripts/validate_asimov1_full_training_job.py", "--job-dir", str(full_job), "--create"]),
         _run("full_training_readiness", [py, "scripts/run_asimov1_full_training.py", "--job-dir", str(full_job), "--check-only", "--require-ready"]),
+        _run("full_training_runner_check", [str(full_job / "run_full_training.sh"), "--check"], cwd=out_dir),
+        _run("tiny_brax_training_job", [py, "scripts/validate_asimov1_tiny_brax_training.py", "--job-dir", str(tiny_brax_job), "--create"]),
         _run("asimov_sim_gate", [py, "scripts/sim_validation_gate.py", "--profile", "asimov-1", "--checkpoint", str(ckpt), "--out", str(gate)]),
+        _run("asimov_server_command_surface", [py, "scripts/validate_asimov1_server_command_surface.py"]),
+        _run("asimov_real_bridge_dry_run", [py, "scripts/validate_asimov1_real_bridge_dry_run.py"]),
         _run("asimov_real_prereqs", [py, "scripts/check_asimov1_real_prereqs.py"] + (["--require-credentials", "--require-modules"] if require_real else [])),
         _run("bridge_targets", [py, "-m", "eliza_robot.bridge.launch", "--list-targets"]),
     ]
@@ -69,6 +81,7 @@ def run_asimov1_e2e(out_dir: Path, *, steps: int, seed: int, require_real: bool 
         "require_real": require_real,
         "out_dir": str(out_dir),
         "checkpoint_dir": str(ckpt),
+        "tiny_brax_training_job_dir": str(tiny_brax_job),
         "gate_dir": str(gate),
         "launch_checks": launch_checks,
         "parsed": parsed,

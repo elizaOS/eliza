@@ -49,6 +49,33 @@ const teeProviders = new Set([
   "eliza-vault",
 ]);
 
+// Measurement names always required in a TEE-capable measurement set.
+export const requiredTeeMeasurementNames = ["boot", "os", "agent", "policy"];
+
+// Optional OS-side measurement names. These mirror the agent's canonical
+// `TeeMeasurementName` union (packages/agent/src/services/tee-evidence.ts) plus
+// the OS-only `modelWeights` and `monitor` measurements. The agent type accepts
+// arbitrary names via its `(string & {})` fallback, so all of these round-trip
+// through normalizeTeeEvidence without an agent-side change.
+export const optionalTeeMeasurementNames = [
+  "device",
+  "container",
+  "compose",
+  "gpuFirmware",
+  "npuFirmware",
+  "modelWeights",
+  "monitor",
+];
+
+// Conditionally-required claims for on-device confidential inference: when the
+// manifest declares an inference-bearing measurement, npuProtected and
+// ioProtected must be asserted (plan §6, OS-2/OS-3).
+const inferenceMeasurementNames = [
+  "gpuFirmware",
+  "npuFirmware",
+  "modelWeights",
+];
+
 function isValidIsoDate(value) {
   if (typeof value !== "string" || !isoDatePattern.test(value)) {
     return false;
@@ -343,12 +370,20 @@ export function validateTeeMeasurements(document) {
     errors.push("measurements must be an object");
     return { ok: false, errors };
   }
-  for (const field of ["boot", "os", "agent", "policy"]) {
+  const knownNames = new Set([
+    ...requiredTeeMeasurementNames,
+    ...optionalTeeMeasurementNames,
+  ]);
+  for (const field of requiredTeeMeasurementNames) {
     if (!sha256DigestString(measurements[field])) {
       errors.push(`measurements.${field} must be sha256:<64 lowercase hex>`);
     }
   }
   for (const [field, digest] of Object.entries(measurements)) {
+    if (!knownNames.has(field)) {
+      errors.push(`measurements.${field} is not a known measurement name`);
+      continue;
+    }
     if (!sha256DigestString(digest)) {
       errors.push(`measurements.${field} must be sha256:<64 lowercase hex>`);
     }
@@ -379,13 +414,36 @@ function validateTeePolicy(errors, tee) {
     }
   }
   const measurements = tee.measurements;
-  if (!measurements || typeof measurements !== "object") {
+  if (
+    !measurements ||
+    typeof measurements !== "object" ||
+    Array.isArray(measurements)
+  ) {
     errors.push("tee.measurements must be an object when enabled");
     return;
   }
-  for (const field of ["boot", "os", "agent", "policy"]) {
+  const knownNames = new Set([
+    ...requiredTeeMeasurementNames,
+    ...optionalTeeMeasurementNames,
+  ]);
+  // Fail closed: a declared TEE-capable manifest missing any required digest is
+  // rejected, never silently accepted.
+  for (const field of requiredTeeMeasurementNames) {
     if (!sha256DigestString(measurements[field])) {
-      errors.push(`tee.measurements.${field} must be sha256:<64 lowercase hex>`);
+      errors.push(
+        `tee.measurements.${field} must be sha256:<64 lowercase hex>`,
+      );
+    }
+  }
+  for (const [field, digest] of Object.entries(measurements)) {
+    if (!knownNames.has(field)) {
+      errors.push(`tee.measurements.${field} is not a known measurement name`);
+      continue;
+    }
+    if (!sha256DigestString(digest)) {
+      errors.push(
+        `tee.measurements.${field} must be sha256:<64 lowercase hex>`,
+      );
     }
   }
   const requiredClaims = tee.requiredClaims;
@@ -403,13 +461,24 @@ function validateTeePolicy(errors, tee) {
       errors.push(`tee.requiredClaims.${claim} must be true when enabled`);
     }
   }
+  // On-device confidential inference: any inference-bearing measurement requires
+  // npuProtected + ioProtected to be asserted (plan §6 / OS-2 / OS-3).
+  const declaresInference = inferenceMeasurementNames.some((name) =>
+    sha256DigestString(measurements[name]),
+  );
+  if (declaresInference) {
+    for (const claim of ["npuProtected", "ioProtected"]) {
+      if (requiredClaims[claim] !== true) {
+        errors.push(
+          `tee.requiredClaims.${claim} must be true when an inference measurement (gpuFirmware/npuFirmware/modelWeights) is declared`,
+        );
+      }
+    }
+  }
 }
 
 function sha256DigestString(value) {
-  return (
-    typeof value === "string" &&
-    /^sha256:[a-f0-9]{64}$/.test(value)
-  );
+  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
 }
 
 export function formatCheckEntry(record) {

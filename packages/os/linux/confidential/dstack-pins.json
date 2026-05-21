@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "packages/os/docs/tee-os-implementation-plan.md §2.3 (OS-4)",
+  "summary": "dstack hardening / pin-set. dstack is packaging + transport + an optional KMS, never the sole root of trust. These pins MUST hold before any high-value key is rooted in a dstack-managed CVM.",
+  "pinnedRelease": {
+    "minReleaseDate": "2026-02-01",
+    "note": "Pin to the post-Feb-2026 'Secure-by-Default' attestation-pipeline hardening release. Exact tag is an OPEN owner decision (plan §8.3) — until confirmed, treat any release as unpinned and FAIL CLOSED.",
+    "tag": null,
+    "confirmed": false
+  },
+  "forbid": {
+    "devMode": true,
+    "devKms": true,
+    "clientControlledPccsUrl": true,
+    "tlsVerifyDisabled": true,
+    "unverifiedEvidenceUrl": true
+  },
+  "require": {
+    "qeIdentityEnforcement": true,
+    "tcbStatusEnforcement": true,
+    "tlsVerify": true,
+    "appAuthCodeHashAllowlist": true,
+    "onChainKmsAuth": true
+  },
+  "requiredClaims": {
+    "debugDisabled": true,
+    "productionLifecycle": true,
+    "secureBoot": true,
+    "memoryEncrypted": true
+  },
+  "appAuthAllowlist": {
+    "codeHashes": [],
+    "note": "On-chain AppAuth allowlist of accepted agent/container code hashes. Empty until golden measurements are signed; an empty allowlist FAILS CLOSED (no code hash is trusted)."
+  },
+  "revokedMeasurements": [],
+  "rootOfTrust": {
+    "anchor": "platform-rot-plus-golden-measurements",
+    "note": "TDX module / E1 RoT plus our signed golden tee-measurements.json. dstack-KMS is never the sole anchor; on-device verifier (eliza-local-verifier) is the default, Eliza Cloud KMS optional.",
+    "defaultVerifier": "eliza-local-verifier"
+  },
+  "openIssues": [
+    {
+      "id": "608",
+      "status": "OPEN",
+      "summary": "dstack upstream hardening tracking issue — see tee-measured-boot-contract.md 'dstack Hardening Pins'."
+    },
+    {
+      "id": "609",
+      "status": "OPEN",
+      "summary": "dstack upstream hardening tracking issue — see tee-measured-boot-contract.md 'dstack Hardening Pins'."
+    }
+  ],
+  "gate": {
+    "name": "dstack-pins-check",
+    "blockedOn": "Confirm exact post-Feb-2026 dstack release tag + DevMode-ban (plan §8.3) and populate appAuthAllowlist.codeHashes from signed golden measurements.",
+    "provingCommand": "node packages/os/scripts/validate-tee-measurements.mjs --input packages/os/release/confidential-2026-05-21/manifest.json"
+  }
+}

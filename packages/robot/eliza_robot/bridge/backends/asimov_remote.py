@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import time
+from typing import Any
 
 from eliza_robot.asimov_1.constants import ASIMOV1_FIRMWARE_JOINT_ORDER
 from eliza_robot.asimov_1.controller import AsimovController
@@ -48,11 +49,14 @@ class AsimovRemoteBackend(BridgeBackend):
         mock: bool = True,
         livekit_url: str = "",
         livekit_token: str = "",
+        transport: Any | None = None,
     ) -> None:
         self.profile_id = profile_id
         self.mock = mock
         self.controller = AsimovController()
-        self.transport = None if mock else LiveKitAsimovTransport(url=livekit_url, token=livekit_token)
+        self.transport = transport if transport is not None else (
+            None if mock else LiveKitAsimovTransport(url=livekit_url, token=livekit_token)
+        )
         self._events: list[EventEnvelope] = []
 
     @property
@@ -76,6 +80,13 @@ class AsimovRemoteBackend(BridgeBackend):
                 if self.transport:
                     await self.transport.send_mode(mode)
                 data = {"mode": self.controller.mode.value}
+            elif cmd.command == "walk.command" and "action" in cmd.payload:
+                action = str(cmd.payload.get("action", "")).lower()
+                mode = "DAMP" if action in {"stop", "disable", "disable_control"} else "STAND"
+                self.controller.set_mode(mode)
+                if self.transport:
+                    await self.transport.send_mode(mode)
+                data = {"action": action, "mode": self.controller.mode.value}
             elif cmd.command in {"asimov.velocity", "walk.command", "walk.set"}:
                 vx = float(cmd.payload.get("vx_mps", cmd.payload.get("x", 0.0)))
                 vy = float(cmd.payload.get("vy_mps", cmd.payload.get("y", 0.0)))
@@ -98,6 +109,8 @@ class AsimovRemoteBackend(BridgeBackend):
             elif cmd.command == "action.play":
                 if cmd.payload.get("name") == "stand":
                     self.controller.set_mode("STAND")
+                    if self.transport:
+                        await self.transport.send_mode("STAND")
                 data = {"action": cmd.payload.get("name", "")}
             else:
                 data = {}
@@ -109,6 +122,8 @@ class AsimovRemoteBackend(BridgeBackend):
     async def poll_events(self) -> list[EventEnvelope]:
         if self.controller.watchdog_expired():
             self.controller.set_mode("DAMP")
+            if self.transport:
+                await self.transport.send_mode("DAMP")
             self._events.append(
                 EventEnvelope(
                     "safety.deadman_triggered",
@@ -117,6 +132,9 @@ class AsimovRemoteBackend(BridgeBackend):
                     {"reason": "asimov_trajectory_watchdog"},
                 )
             )
+        if self.transport is not None and hasattr(self.transport, "read_telemetry"):
+            frame = await self.transport.read_telemetry()
+            self._events.append(self._telemetry_frame_event(frame))
         events, self._events = self._events, []
         return events
 
@@ -126,6 +144,9 @@ class AsimovRemoteBackend(BridgeBackend):
             "connected": self.mock or bool(self.transport and self.transport.connected),
             "mock": self.mock,
             "dof": len(ASIMOV1_FIRMWARE_JOINT_ORDER),
+            "transport": "mock" if self.mock else "livekit",
+            "command_topic": "commands" if not self.mock else None,
+            "telemetry_track": "telemetry" if not self.mock else None,
             "commands": [
                 "asimov.mode",
                 "asimov.velocity",
@@ -147,4 +168,27 @@ class AsimovRemoteBackend(BridgeBackend):
                 "time_s": time.time(),
             }
         )
+        return EventEnvelope("telemetry.basic", utc_now_iso(), self.backend_name, data)
+
+    def _telemetry_frame_event(self, frame: Any) -> EventEnvelope:
+        joint_positions = dict(getattr(frame, "joint_positions", {}) or {})
+        joint_velocities = dict(getattr(frame, "joint_velocities", {}) or {})
+        data = {
+            "profile_id": self.profile_id,
+            "mode": str(getattr(frame, "mode", self.controller.mode.value)),
+            "joint_order": list(ASIMOV1_FIRMWARE_JOINT_ORDER),
+            "joint_positions": joint_positions,
+            "joint_velocities": joint_velocities,
+            "joint_current": list(getattr(frame, "joint_current", []) or []),
+            "joint_temp": list(getattr(frame, "joint_temp", []) or []),
+            "imu_quat": list(getattr(frame, "imu_quat", []) or []),
+            "imu_gyro": list(getattr(frame, "imu_gyro", []) or []),
+            "imu_gravity": list(getattr(frame, "imu_gravity", []) or []),
+            "sequence": int(getattr(frame, "sequence", 0)),
+            "timestamp_us": int(getattr(frame, "timestamp_us", 0)),
+            "fw_timestamp_us": int(getattr(frame, "fw_timestamp_us", 0)),
+            "error_flags": int(getattr(frame, "error_flags", 0)),
+            "fw_age_ms": int(getattr(frame, "fw_age_ms", 0)),
+            "time_s": time.time(),
+        }
         return EventEnvelope("telemetry.basic", utc_now_iso(), self.backend_name, data)

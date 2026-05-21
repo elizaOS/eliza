@@ -29,7 +29,7 @@ public class ElizaCalendarActivity extends Activity {
         String action = source != null ? source.getAction() : null;
         Uri data = source != null ? source.getData() : null;
 
-        Uri.Builder route = Uri.parse("ai.elizaos.app://calendar").buildUpon()
+        Uri.Builder route = Uri.parse("elizaos://calendar").buildUpon()
                 .appendQueryParameter("source", "android-calendar");
         if (action != null) {
             route.appendQueryParameter("action", action);

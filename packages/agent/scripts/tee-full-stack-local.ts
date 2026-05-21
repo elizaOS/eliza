@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { unsealModelWeights } from "../src/services/tee-confidential-inference.ts";
 import type { TeeEvidence } from "../src/services/tee-evidence.ts";
 import { HttpTeeKeyReleaseClient } from "../src/services/tee-key-release.ts";
 import { evaluateTeeEvidencePolicy } from "../src/services/tee-policy.ts";
@@ -109,6 +110,7 @@ const keyRelease = await new HttpTeeKeyReleaseClient({
   fetch: async (_url, init) => {
     const body = JSON.parse(String(init?.body)) as {
       keyId: string;
+      nonce: string;
       evidence: TeeEvidence;
       policy: typeof policy;
     };
@@ -118,6 +120,8 @@ const keyRelease = await new HttpTeeKeyReleaseClient({
     }
     return Response.json({
       keyId: body.keyId,
+      // Echo the client-issued nonce so the replay check passes.
+      nonce: body.nonce,
       keyMaterialHex: createHash("sha256")
         .update("full-stack-local-kms")
         .update(body.keyId)
@@ -127,15 +131,114 @@ const keyRelease = await new HttpTeeKeyReleaseClient({
       decision,
     });
   },
+  // report_data-aware provider: bind the issued reportData onto the evidence
+  // so the client's nonce/epk binding check is satisfied.
   evidenceProvider: {
     id: "full-stack-local",
     collectEvidence: async () => evidence,
+    collectEvidenceWithReportData: async ({ nonce: bound, reportDataHex }) => ({
+      ...evidence,
+      reportData: reportDataHex,
+      freshness: { ...evidence.freshness, nonce: bound },
+    }),
   },
 }).releaseKey({
   keyId: "full-stack-agent-session",
   context: "full-stack-local",
   policy,
 });
+
+// Confidential-inference unseal path end-to-end against the mock KMS:
+// seal a weights blob at rest, release model-key (gated on agent/policy/
+// container/os/npuFirmware/modelWeights), decrypt in memory, assert no
+// plaintext touched disk. Real quote verification is BLOCKED on hardware.
+const plaintextWeights = Buffer.from("eliza-1 full-stack weights fixture\n");
+const weightsSha256 = createHash("sha256")
+  .update(plaintextWeights)
+  .digest("hex");
+const modelKey = randomBytes(32);
+const iv = randomBytes(12);
+const cipher = createCipheriv("aes-256-gcm", modelKey, iv);
+const ciphertext = Buffer.concat([
+  cipher.update(plaintextWeights),
+  cipher.final(),
+]);
+const sealedWeights = {
+  algorithm: "aes-256-gcm" as const,
+  ivBase64: iv.toString("base64"),
+  authTagBase64: cipher.getAuthTag().toString("base64"),
+  ciphertextBase64: ciphertext.toString("base64"),
+  weightsSha256,
+};
+const modelKeyEvidence: TeeEvidence = {
+  ...evidence,
+  measurements: { ...measurements, modelWeights: `sha256:${weightsSha256}` },
+};
+const unsealPolicy = {
+  ...policy,
+  requiredMeasurements: {
+    ...(policy.requiredMeasurements ?? {}),
+    modelWeights: `sha256:${weightsSha256}`,
+  },
+};
+const unseal = await unsealModelWeights({
+  keyReleaseClient: {
+    releaseKey: async (req) => {
+      const decision = evaluateTeeEvidencePolicy(modelKeyEvidence, req.policy);
+      if (!decision.trusted) {
+        return { keyId: req.keyId, keyMaterialHex: "", decision };
+      }
+      return {
+        keyId: req.keyId,
+        keyMaterialHex: modelKey.toString("hex"),
+        decision,
+      };
+    },
+  },
+  policy: unsealPolicy,
+  sealedWeights,
+  requiredMeasurements: [
+    "agent",
+    "policy",
+    "container",
+    "os",
+    "npuFirmware",
+    "modelWeights",
+  ],
+  context: "full-stack-local-inference",
+});
+const unsealOk =
+  unseal.weights.equals(plaintextWeights) &&
+  unseal.weightsSha256 === weightsSha256 &&
+  unseal.decision.trusted === true;
+const unsealDenied = await unsealModelWeights({
+  keyReleaseClient: {
+    releaseKey: async (req) => {
+      const decision = evaluateTeeEvidencePolicy(
+        {
+          ...modelKeyEvidence,
+          measurements: { ...measurements, agent: `sha256:${"0".repeat(64)}` },
+        },
+        req.policy,
+      );
+      return { keyId: req.keyId, keyMaterialHex: "", decision };
+    },
+  },
+  policy: unsealPolicy,
+  sealedWeights,
+  requiredMeasurements: [
+    "agent",
+    "policy",
+    "container",
+    "os",
+    "npuFirmware",
+    "modelWeights",
+  ],
+}).then(
+  () => false,
+  (error: unknown) =>
+    error instanceof Error && /model-key release denied/.test(error.message),
+);
 
 const chipEvidence = JSON.parse(
   await readFile(
@@ -167,8 +270,15 @@ const output = {
     !rejected.trusted &&
     !revoked.trusted &&
     /^[a-f0-9]{64}$/.test(keyRelease.keyMaterialHex) &&
-    chipEvidenceDecision.trusted,
+    chipEvidenceDecision.trusted &&
+    unsealOk &&
+    unsealDenied,
   releaseManifestPath,
+  modelKeyUnseal: {
+    happyPath: unsealOk,
+    deniedPath: unsealDenied,
+    weightsSha256,
+  },
   accepted: summarize(accepted),
   runtimeAccepted: summarize(runtimeAccepted),
   rejected: summarize(rejected),

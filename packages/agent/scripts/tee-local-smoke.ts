@@ -190,6 +190,7 @@ async function handleKeyReleaseRequest(
   const payload = JSON.parse(body) as {
     keyId: string;
     context?: string;
+    nonce: string;
     policy: Parameters<typeof evaluateTeeEvidencePolicy>[1];
     evidence: TeeEvidence;
   };
@@ -211,6 +212,8 @@ async function handleKeyReleaseRequest(
     JSON.stringify({
       keyId: payload.keyId,
       keyMaterialHex,
+      // Echo the client-issued nonce for the replay-binding check.
+      nonce: payload.nonce,
       decision,
     }),
   );

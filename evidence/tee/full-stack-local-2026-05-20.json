@@ -1,0 +1,161 @@
+{
+  "ok": true,
+  "releaseManifestPath": "/tmp/eliza-tee-full-stack-dnM3kn/release-manifest.json",
+  "modelKeyUnseal": {
+    "happyPath": true,
+    "deniedPath": true,
+    "weightsSha256": "296354e866c2ffa4fc2243c3fdb4e760b4c6acd61855c0ec705b373c4ed4a2e8"
+  },
+  "accepted": {
+    "trusted": true,
+    "reason": "allowed",
+    "evidence": {
+      "kind": "dstack",
+      "provider": "dstack",
+      "securityVersion": 1,
+      "measurements": {
+        "boot": "sha256:6725dfba4689bd5633aeb6375b9cba89633867184648d22bf27d958c7e72c41c",
+        "os": "sha256:22e759db3b2dac8abc8ba803311b6763923de4d5d481632eda727015ec1cc078",
+        "agent": "sha256:64c94605e3257b191c6097bbc748f79bdad91fb7a202365d0f1407b7c89c2e92",
+        "policy": "sha256:5d6d7b27593dfe45b82d46fbab45cae3a1f99ece54818924d0c438db04a7ba39",
+        "container": "sha256:b0fdc98b0397c1e9198c4fb7006651f14f6fe3f28b5f869cd4f51bf2aff38aef",
+        "npuFirmware": "sha256:8581dcdc8015615a83f27cbd253ab184931097aecddebbccbb500f1d80983fc4"
+      },
+      "claims": {
+        "debugDisabled": true,
+        "secureBoot": true,
+        "memoryEncrypted": true,
+        "ioProtected": true,
+        "npuProtected": true
+      }
+    }
+  },
+  "runtimeAccepted": {
+    "trusted": true,
+    "reason": "allowed",
+    "evidence": {
+      "kind": "dstack",
+      "provider": "dstack",
+      "securityVersion": 1,
+      "measurements": {
+        "boot": "sha256:6725dfba4689bd5633aeb6375b9cba89633867184648d22bf27d958c7e72c41c",
+        "os": "sha256:22e759db3b2dac8abc8ba803311b6763923de4d5d481632eda727015ec1cc078",
+        "agent": "sha256:64c94605e3257b191c6097bbc748f79bdad91fb7a202365d0f1407b7c89c2e92",
+        "policy": "sha256:5d6d7b27593dfe45b82d46fbab45cae3a1f99ece54818924d0c438db04a7ba39",
+        "container": "sha256:b0fdc98b0397c1e9198c4fb7006651f14f6fe3f28b5f869cd4f51bf2aff38aef",
+        "npuFirmware": "sha256:8581dcdc8015615a83f27cbd253ab184931097aecddebbccbb500f1d80983fc4"
+      },
+      "claims": {
+        "debugDisabled": true,
+        "secureBoot": true,
+        "memoryEncrypted": true,
+        "ioProtected": true,
+        "npuProtected": true
+      }
+    }
+  },
+  "rejected": {
+    "trusted": false,
+    "reason": "measurement-mismatch",
+    "detail": "TEE measurement \"agent\" does not match policy.",
+    "evidence": {
+      "kind": "dstack",
+      "provider": "dstack",
+      "securityVersion": 1,
+      "measurements": {
+        "boot": "sha256:6725dfba4689bd5633aeb6375b9cba89633867184648d22bf27d958c7e72c41c",
+        "os": "sha256:22e759db3b2dac8abc8ba803311b6763923de4d5d481632eda727015ec1cc078",
+        "agent": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "policy": "sha256:5d6d7b27593dfe45b82d46fbab45cae3a1f99ece54818924d0c438db04a7ba39",
+        "container": "sha256:b0fdc98b0397c1e9198c4fb7006651f14f6fe3f28b5f869cd4f51bf2aff38aef",
+        "npuFirmware": "sha256:8581dcdc8015615a83f27cbd253ab184931097aecddebbccbb500f1d80983fc4"
+      },
+      "claims": {
+        "debugDisabled": true,
+        "secureBoot": true,
+        "memoryEncrypted": true,
+        "ioProtected": true,
+        "npuProtected": true
+      }
+    }
+  },
+  "revoked": {
+    "trusted": false,
+    "reason": "measurement-revoked",
+    "detail": "TEE measurement \"agent\" has been revoked by policy.",
+    "evidence": {
+      "kind": "dstack",
+      "provider": "dstack",
+      "securityVersion": 1,
+      "measurements": {
+        "boot": "sha256:6725dfba4689bd5633aeb6375b9cba89633867184648d22bf27d958c7e72c41c",
+        "os": "sha256:22e759db3b2dac8abc8ba803311b6763923de4d5d481632eda727015ec1cc078",
+        "agent": "sha256:64c94605e3257b191c6097bbc748f79bdad91fb7a202365d0f1407b7c89c2e92",
+        "policy": "sha256:5d6d7b27593dfe45b82d46fbab45cae3a1f99ece54818924d0c438db04a7ba39",
+        "container": "sha256:b0fdc98b0397c1e9198c4fb7006651f14f6fe3f28b5f869cd4f51bf2aff38aef",
+        "npuFirmware": "sha256:8581dcdc8015615a83f27cbd253ab184931097aecddebbccbb500f1d80983fc4"
+      },
+      "claims": {
+        "debugDisabled": true,
+        "secureBoot": true,
+        "memoryEncrypted": true,
+        "ioProtected": true,
+        "npuProtected": true
+      }
+    }
+  },
+  "keyRelease": {
+    "keyId": "full-stack-agent-session",
+    "keyMaterialSha256": "aaf8783ef1d8045237fb878927262e9d787c945f9d677f16ba7f9d0203c88718",
+    "decision": {
+      "trusted": true,
+      "reason": "allowed",
+      "evidence": {
+        "kind": "dstack",
+        "provider": "dstack",
+        "securityVersion": 1,
+        "measurements": {
+          "boot": "sha256:6725dfba4689bd5633aeb6375b9cba89633867184648d22bf27d958c7e72c41c",
+          "os": "sha256:22e759db3b2dac8abc8ba803311b6763923de4d5d481632eda727015ec1cc078",
+          "agent": "sha256:64c94605e3257b191c6097bbc748f79bdad91fb7a202365d0f1407b7c89c2e92",
+          "policy": "sha256:5d6d7b27593dfe45b82d46fbab45cae3a1f99ece54818924d0c438db04a7ba39",
+          "container": "sha256:b0fdc98b0397c1e9198c4fb7006651f14f6fe3f28b5f869cd4f51bf2aff38aef",
+          "npuFirmware": "sha256:8581dcdc8015615a83f27cbd253ab184931097aecddebbccbb500f1d80983fc4"
+        },
+        "claims": {
+          "debugDisabled": true,
+          "secureBoot": true,
+          "memoryEncrypted": true,
+          "ioProtected": true,
+          "npuProtected": true
+        }
+      }
+    }
+  },
+  "chipEvidenceDecision": {
+    "trusted": true,
+    "reason": "allowed",
+    "evidence": {
+      "kind": "cove",
+      "provider": "eliza-riscv",
+      "securityVersion": 1,
+      "measurements": {
+        "boot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "monitor": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+        "os": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "agent": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "policy": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "device": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "npuFirmware": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "claims": {
+        "debugDisabled": true,
+        "productionLifecycle": true,
+        "secureBoot": true,
+        "memoryEncrypted": true,
+        "ioProtected": true,
+        "npuProtected": true
+      }
+    }
+  }
+}

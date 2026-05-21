@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from eliza_robot.asimov_1.constants import ASIMOV1_FIRMWARE_JOINT_ORDER
+from eliza_robot.asimov_1.constants import ASIMOV1_FIRMWARE_JOINT_ORDER, ASIMOV1_VELOCITY_LIMITS
 from eliza_robot.bridge.protocol import CommandEnvelope
 
 
@@ -55,11 +55,28 @@ def _validate_asimov_gains(payload: dict[str, object]) -> None:
                 raise ValueError(f"payload.{key} values must be finite and in range {lo}..{hi}")
 
 
+def _validate_asimov_velocity(payload: dict[str, object]) -> None:
+    keys = {
+        "vx_mps": ("vx_mps", "x"),
+        "vy_mps": ("vy_mps", "y"),
+        "yaw_rad_s": ("yaw_rad_s", "yaw"),
+    }
+    for canonical, aliases in keys.items():
+        raw_key = next((key for key in aliases if key in payload), aliases[0])
+        value = _require_number(payload, raw_key)
+        limit = ASIMOV1_VELOCITY_LIMITS[canonical]
+        if value < -limit or value > limit:
+            raise ValueError(f"payload.{raw_key} out of ASIMOV range {-limit}..{limit}")
+
+
 def validate_command_payload(command: CommandEnvelope) -> None:
     """Validate command payload shape and range."""
     payload = command.payload
 
     if command.command == "walk.set":
+        if "speed" not in payload and "height" not in payload:
+            _validate_asimov_velocity(payload)
+            return
         speed = _require_number(payload, "speed")
         if int(speed) not in {1, 2, 3, 4}:
             raise ValueError("payload.speed must be one of 1,2,3,4")
@@ -78,6 +95,9 @@ def validate_command_payload(command: CommandEnvelope) -> None:
         return
 
     if command.command == "walk.command":
+        if "action" not in payload:
+            _validate_asimov_velocity(payload)
+            return
         action = _require_string(payload, "action")
         if action not in {"start", "stop", "enable", "disable", "enable_control", "disable_control"}:
             raise ValueError("payload.action is not a supported walk command")
@@ -139,9 +159,7 @@ def validate_command_payload(command: CommandEnvelope) -> None:
         return
 
     if command.command == "asimov.velocity":
-        _require_number(payload, "vx_mps")
-        _require_number(payload, "vy_mps")
-        _require_number(payload, "yaw_rad_s")
+        _validate_asimov_velocity(payload)
         return
 
     if command.command == "asimov.trajectory":

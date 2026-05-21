@@ -1,7 +1,7 @@
-$(call inherit-product, device/google/cuttlefish/vsoc_riscv64_only/phone/aosp_cf.mk)
+$(call inherit-product, device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk)
 
 PRODUCT_NAME := eliza_cf_riscv64_phone
-PRODUCT_DEVICE := vsoc_riscv64_only
+PRODUCT_DEVICE := vsoc_riscv64
 PRODUCT_MODEL := ElizaOS Cuttlefish Phone (RISC-V 64)
 
 # Set before inheriting eliza_common.mk so the brand property can pin

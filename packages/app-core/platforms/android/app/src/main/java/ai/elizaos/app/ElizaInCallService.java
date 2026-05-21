@@ -65,7 +65,7 @@ public class ElizaInCallService extends InCallService {
         Call.Details details = call.getDetails();
         Uri handle = details != null ? details.getHandle() : null;
         String displayName = details != null ? details.getCallerDisplayName() : null;
-        Uri.Builder route = Uri.parse("ai.elizaos.app://phone/call").buildUpon()
+        Uri.Builder route = Uri.parse("elizaos://phone/call").buildUpon()
                 .appendQueryParameter("event", event)
                 .appendQueryParameter("state", String.valueOf(call.getState()));
         if (callId != null) {

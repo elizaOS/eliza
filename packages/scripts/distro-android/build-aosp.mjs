@@ -197,6 +197,7 @@ function launchCuttlefish(aospRoot, brand) {
 function rebuildPrivilegedApk(brand) {
   const env = {
     ...process.env,
+    [`${brand.envPrefix}_APP_ID`]: brand.packageName,
     [`${brand.envPrefix}_AOSP_BUILD`]: "1",
     [`${brand.envPrefix}_GRADLE_AOSP_BUILD`]: "true",
   };

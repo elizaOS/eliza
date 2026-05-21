@@ -38,6 +38,11 @@ def validate_full_training_job(job_dir: Path, *, create: bool = False) -> dict:
 
     model = mujoco.MjModel.from_xml_path(str(job.get("mjcf_xml"))) if job.get("mjcf_xml") else None
     commands = job.get("validation_commands", [])
+    run_script_text = (
+        (job_dir / "run_full_training.sh").read_text(encoding="utf-8")
+        if (job_dir / "run_full_training.sh").is_file()
+        else ""
+    )
     expected = set(job.get("expected_artifacts", []))
     layout_dim = sum(int(item["dim"]) for item in job.get("actor_observation_layout", []))
     checks = {
@@ -46,6 +51,10 @@ def validate_full_training_job(job_dir: Path, *, create: bool = False) -> dict:
         "run_script": (job_dir / "run_full_training.sh").is_file(),
         "run_script_executable": (job_dir / "run_full_training.sh").is_file()
         and bool((job_dir / "run_full_training.sh").stat().st_mode & 0o111),
+        "run_script_train_mode": "--train" in run_script_text
+        and "verify_brax_text_policy.py" in run_script_text
+        and "eval_text_policy.py --profile asimov-1 --backend mjx" in run_script_text
+        and "sim_validation_gate.py --profile asimov-1" in run_script_text,
         "readme": (job_dir / "README.full_training.md").is_file(),
         "profile_id": job.get("profile_id") == "asimov-1",
         "job_name": job.get("job") == "asimov-1-text-conditioned-mjx-brax",
@@ -70,7 +79,12 @@ def validate_full_training_job(job_dir: Path, *, create: bool = False) -> dict:
         "expected_artifacts": {"policy_brax.pkl", "manifest.json", "metrics.json", "config.json"}.issubset(expected),
         "validation_commands": any("run_asimov1_full_training.py" in c for c in commands)
         and any("verify_brax_text_policy.py" in c and "--profile asimov-1" in c for c in commands)
-        and any("eval_text_policy.py" in c and "--profile asimov-1" in c for c in commands)
+        and any(
+            "eval_text_policy.py" in c
+            and "--profile asimov-1" in c
+            and "--backend mjx" in c
+            for c in commands
+        )
         and any("sim_validation_gate.py --profile asimov-1" in c for c in commands),
     }
     return {

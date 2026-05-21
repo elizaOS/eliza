@@ -249,9 +249,10 @@ function launchCuttlefish(aospRoot, lunchTarget) {
  * should set the mirror in their own wrapper before invoking this
  * script.
  */
-function rebuildPrivilegedApk() {
+function rebuildPrivilegedApk(variant) {
   const env = {
     ...process.env,
+    ELIZA_APP_ID: variant.packageName,
     ELIZA_AOSP_BUILD: "1",
     ELIZA_GRADLE_AOSP_BUILD: "true",
   };
@@ -388,7 +389,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   if (args.rebuildPrivilegedApk) {
-    rebuildPrivilegedApk();
+    rebuildPrivilegedApk(variant);
     if (args.buildFormat === "aab") {
       // AOSP path keeps the APK that's already staged; this is an
       // additional Play-Store-bound AAB that lives next to it. We

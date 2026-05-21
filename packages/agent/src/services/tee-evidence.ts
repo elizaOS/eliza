@@ -18,6 +18,8 @@ export type TeeMeasurementName =
   | "device"
   | "container"
   | "compose"
+  | "monitor"
+  | "modelWeights"
   | "npuFirmware"
   | "gpuFirmware"
   | (string & {});

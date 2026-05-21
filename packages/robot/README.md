@@ -34,6 +34,11 @@ checkpoints/         (gitignored) RL checkpoints
 data/                (gitignored) datasets, captures, calibration
 ```
 
+ASIMOV-1 integration details live in
+[`docs/asimov-1.md`](./docs/asimov-1.md), covering the pinned upstream
+submodule, generated MuJoCo assets, CAD edit loop, text-conditioned training,
+bridge targets, and validation gates.
+
 ## Commands
 
 ```bash

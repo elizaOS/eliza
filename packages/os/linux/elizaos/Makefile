@@ -16,6 +16,7 @@ PROFILE ?= default
 DEBIAN_MIRROR ?= https://mirrors.kernel.org/debian
 HERE    := $(shell pwd)
 OUT     := $(HERE)/out
+CONTAINER_BUILD_DIR := /work/elizaos-linux
 
 SUPPORTED_ARCHES := amd64 arm64 riscv64
 
@@ -45,9 +46,26 @@ build: builder check-arch
 	        -e ELIZAOS_ARCH=$(ARCH) \
 	        -e ELIZAOS_PROFILE=$(PROFILE) \
 	        -e ELIZAOS_DEBIAN_MIRROR="$(DEBIAN_MIRROR)" \
-	        -v "$(HERE):/build" \
+	        -v "$(HERE):/src:ro" \
 	        -v "$(OUT):/out" \
-	        elizaos-linux-builder
+	        --entrypoint bash \
+	        elizaos-linux-builder -lc '\
+	            rm -rf "$(CONTAINER_BUILD_DIR)" && \
+	            mkdir -p "$(CONTAINER_BUILD_DIR)" && \
+	            rsync -a \
+	                --exclude .build \
+	                --exclude .build.lock \
+	                --exclude .lock \
+	                --exclude binary \
+	                --exclude "binary.*" \
+	                --exclude cache \
+	                --exclude chroot \
+	                --exclude "chroot.*" \
+	                --exclude "live-image-*" \
+	                --exclude out \
+	                /src/ "$(CONTAINER_BUILD_DIR)/" && \
+	            cd "$(CONTAINER_BUILD_DIR)" && \
+	            ELIZAOS_OUT_DIR=/out bash ./build.sh'
 
 qemu-boot: check-arch
 	scripts/boot-qemu.sh $(ARCH)

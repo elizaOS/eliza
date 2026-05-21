@@ -254,8 +254,9 @@ patch_debootstrap_foreign_dpkg_io() {
     fi
 
     SCRIPT="/usr/share/debootstrap/scripts/debian-common"
-    if [ ! -w "${SCRIPT}" ]; then
-        echo "ERROR: cannot patch ${SCRIPT}; builder image is not writable." >&2
+    FUNCTIONS="/usr/share/debootstrap/functions"
+    if [ ! -w "${SCRIPT}" ] || [ ! -w "${FUNCTIONS}" ]; then
+        echo "ERROR: cannot patch debootstrap scripts; builder image is not writable." >&2
         exit 68
     fi
     if grep -q 'elizaOS foreign dpkg unsafe-io patch' "${SCRIPT}"; then
@@ -279,12 +280,31 @@ text = text.replace(
     "dpkg --status-fd 8 --force-overwrite --force-confold --force-unsafe-io --skip-same-version --unpack $(debfor $base)",
     1,
 )
+text = text.replace(
+    "in_target dpkg --force-overwrite --force-confold --skip-same-version --install $(debfor $predep)",
+    "in_target dpkg --force-overwrite --force-confold --force-unsafe-io --skip-same-version --install $(debfor $predep)",
+    1,
+)
 if "--force-depends --force-unsafe-io --unpack" not in text:
     raise SystemExit("debootstrap required dpkg unsafe-io patch anchor missing")
 if "--force-confold --force-unsafe-io --skip-same-version --unpack" not in text:
     raise SystemExit("debootstrap base dpkg unsafe-io patch anchor missing")
+if "--force-confold --force-unsafe-io --skip-same-version --install" not in text:
+    raise SystemExit("debootstrap predep dpkg unsafe-io patch anchor missing")
 text += "\n# elizaOS foreign dpkg unsafe-io patch\n"
 path.write_text(text)
+PY
+    python3 - "${FUNCTIONS}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = "if [ $ARCH_ALL_SUPPORTED -eq 1 ]; then"
+new = 'if [ "${ARCH_ALL_SUPPORTED:-0}" -eq 1 ]; then'
+if old not in text:
+    raise SystemExit("debootstrap ARCH_ALL_SUPPORTED patch anchor missing")
+path.write_text(text.replace(old, new))
 PY
 }
 

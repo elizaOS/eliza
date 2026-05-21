@@ -207,7 +207,10 @@ function readAppIdentity() {
   }
   const src = fs.readFileSync(cfgPath, "utf8");
   const configAppId = src.match(/appId:\s*["']([^"']+)["']/)?.[1];
-  const appId = process.env.ELIZA_IOS_APP_ID?.trim() || configAppId;
+  const appId =
+    process.env.ELIZA_APP_ID?.trim() ||
+    process.env.ELIZA_IOS_APP_ID?.trim() ||
+    configAppId;
   const appName = src.match(/appName:\s*["']([^"']+)["']/)?.[1];
   const urlScheme = src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ?? appId;
   if (!appId || !appName) {

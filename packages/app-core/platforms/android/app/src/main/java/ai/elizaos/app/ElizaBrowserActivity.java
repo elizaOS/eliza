@@ -23,7 +23,7 @@ public class ElizaBrowserActivity extends Activity {
 
         Intent source = getIntent();
         Uri data = source != null ? source.getData() : null;
-        Uri.Builder route = Uri.parse("ai.elizaos.app://browse").buildUpon()
+        Uri.Builder route = Uri.parse("elizaos://browse").buildUpon()
                 .appendQueryParameter("source", "android-view");
         if (data != null && !TextUtils.isEmpty(data.toString())) {
             route.appendQueryParameter("url", data.toString());

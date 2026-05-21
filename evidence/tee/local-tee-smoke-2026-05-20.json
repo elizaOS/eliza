@@ -1,0 +1,133 @@
+{
+  "ok": true,
+  "endpoint": "local-http-evidence-endpoint",
+  "accepted": {
+    "trusted": true,
+    "reason": "allowed",
+    "evidence": {
+      "kind": "dstack",
+      "provider": "dstack",
+      "hardwareVendor": "mock-macos",
+      "platformVersion": "local-smoke",
+      "securityVersion": 1,
+      "measurements": {
+        "boot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "os": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "agent": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "policy": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "container": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "freshness": {
+        "nonce": "local-tee-smoke-nonce",
+        "timestamp": "2026-05-20T00:00:00.000Z",
+        "verifier": "local-smoke"
+      },
+      "claims": {
+        "debugDisabled": true,
+        "productionLifecycle": true,
+        "secureBoot": true,
+        "memoryEncrypted": true,
+        "ioProtected": true
+      }
+    }
+  },
+  "rejected": {
+    "trusted": false,
+    "reason": "measurement-mismatch",
+    "detail": "TEE measurement \"agent\" does not match policy.",
+    "evidence": {
+      "kind": "dstack",
+      "provider": "dstack",
+      "hardwareVendor": "mock-macos",
+      "platformVersion": "local-smoke",
+      "securityVersion": 1,
+      "measurements": {
+        "boot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "os": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "agent": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "policy": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "container": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "freshness": {
+        "nonce": "local-tee-smoke-nonce",
+        "timestamp": "2026-05-20T00:00:00.000Z",
+        "verifier": "local-smoke"
+      },
+      "claims": {
+        "debugDisabled": true,
+        "productionLifecycle": true,
+        "secureBoot": true,
+        "memoryEncrypted": true,
+        "ioProtected": true
+      }
+    }
+  },
+  "keyRelease": {
+    "keyId": "local-agent-session",
+    "keyMaterialSha256": "a65dfeafbcf74c620249492cd71a8089bd767ba3ce744a0f9690bf41f0072c55",
+    "decision": {
+      "trusted": true,
+      "reason": "allowed",
+      "evidence": {
+        "kind": "dstack",
+        "provider": "dstack",
+        "hardwareVendor": "mock-macos",
+        "platformVersion": "local-smoke",
+        "securityVersion": 1,
+        "measurements": {
+          "boot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "os": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "agent": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "policy": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "container": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "freshness": {
+          "nonce": "local-tee-smoke-nonce",
+          "timestamp": "2026-05-20T00:00:00.000Z",
+          "verifier": "local-smoke"
+        },
+        "claims": {
+          "debugDisabled": true,
+          "productionLifecycle": true,
+          "secureBoot": true,
+          "memoryEncrypted": true,
+          "ioProtected": true
+        }
+      }
+    }
+  },
+  "httpKeyRelease": {
+    "keyId": "remote-agent-session",
+    "keyMaterialSha256": "d0797a7d7db21a8158712d47b89753f74f549dca98c33a69511e2f3eb79297c1",
+    "decision": {
+      "trusted": true,
+      "reason": "allowed",
+      "evidence": {
+        "kind": "dstack",
+        "provider": "dstack",
+        "hardwareVendor": "mock-macos",
+        "platformVersion": "local-smoke",
+        "securityVersion": 1,
+        "measurements": {
+          "boot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "os": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "agent": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "policy": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "container": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "freshness": {
+          "nonce": "03a7c9d9daa4e8f23a6a77c9ec7e159d12b1e08ed89167b2ecbc37bbc325aae0",
+          "timestamp": "2026-05-20T00:00:00.000Z",
+          "verifier": "local-smoke"
+        },
+        "claims": {
+          "debugDisabled": true,
+          "productionLifecycle": true,
+          "secureBoot": true,
+          "memoryEncrypted": true,
+          "ioProtected": true
+        }
+      }
+    }
+  }
+}

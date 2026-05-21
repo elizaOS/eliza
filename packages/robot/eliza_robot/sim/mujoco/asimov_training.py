@@ -144,7 +144,7 @@ def asimov_full_training_job_spec(
         "validation_commands": [
             f"python3 scripts/run_asimov1_full_training.py --job-dir {output_dir} --check-only",
             f"python3 scripts/verify_brax_text_policy.py --ckpt {output_dir} --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25",
-            f"python3 scripts/eval_text_policy.py --profile asimov-1 --ckpt {output_dir} --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200",
+            f"python3 scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt {output_dir} --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200",
             f"python3 scripts/sim_validation_gate.py --profile asimov-1 --checkpoint {output_dir}",
         ],
     }

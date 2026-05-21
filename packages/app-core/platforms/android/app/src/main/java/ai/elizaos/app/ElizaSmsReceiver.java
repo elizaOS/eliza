@@ -47,7 +47,7 @@ public class ElizaSmsReceiver extends BroadcastReceiver {
             return;
         }
 
-        Uri.Builder route = Uri.parse("ai.elizaos.app://messages").buildUpon()
+        Uri.Builder route = Uri.parse("elizaos://messages").buildUpon()
                 .appendQueryParameter("event", "sms-deliver");
         if (!TextUtils.isEmpty(sender)) {
             route.appendQueryParameter("sender", sender);

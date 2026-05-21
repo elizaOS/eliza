@@ -1,0 +1,37 @@
+{
+  "kind": "dstack",
+  "provider": "dstack",
+  "hardwareVendor": "intel",
+  "platformVersion": "tdx-module-1.5.05-mock",
+  "securityVersion": 7,
+  "measurements": {
+    "boot": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "os": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "agent": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "policy": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "monitor": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "compose": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "container": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "device": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "gpuFirmware": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "npuFirmware": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "modelWeights": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "freshness": {
+    "nonce": "mock-nonce-0123456789abcdef",
+    "timestamp": "2026-05-21T00:00:00Z",
+    "verifier": "eliza-local-verifier"
+  },
+  "claims": {
+    "debugDisabled": true,
+    "productionLifecycle": true,
+    "secureBoot": true,
+    "memoryEncrypted": true,
+    "ioProtected": true,
+    "gpuProtected": true,
+    "npuProtected": true
+  },
+  "quote": "bW9jay10ZHgtcXVvdGUtbm90LXJlYWwtaGFyZHdhcmU=",
+  "certificatePem": "-----BEGIN CERTIFICATE-----\nMOCK-QE-CHAIN-NOT-A-REAL-CERTIFICATE\n-----END CERTIFICATE-----\n",
+  "reportData": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+}

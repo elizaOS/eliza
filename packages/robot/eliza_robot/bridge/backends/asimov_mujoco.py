@@ -65,6 +65,11 @@ class AsimovMujocoBackend(BridgeBackend):
             if cmd.command == "asimov.mode":
                 self.controller.set_mode(str(cmd.payload.get("mode", "")))
                 data = {"mode": self.controller.mode.value}
+            elif cmd.command == "walk.command" and "action" in cmd.payload:
+                action = str(cmd.payload.get("action", "")).lower()
+                mode = "DAMP" if action in {"stop", "disable", "disable_control"} else "STAND"
+                self.controller.set_mode(mode)
+                data = {"action": action, "mode": self.controller.mode.value}
             elif cmd.command in {"asimov.velocity", "walk.command", "walk.set"}:
                 self.controller.set_velocity(
                     float(cmd.payload.get("vx_mps", cmd.payload.get("x", 0.0))),
