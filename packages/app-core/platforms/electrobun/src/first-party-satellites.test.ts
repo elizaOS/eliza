@@ -10,13 +10,17 @@ import {
   seedFirstPartySatellites,
   setFirstPartySatelliteDisabled,
 } from "./first-party-satellites";
-import { RemotePluginHost, type CarrotWorkerHandle } from "./native/remote-plugin-host";
+import {
+  RemotePluginHost,
+  type RemotePluginWorkerHandle,
+} from "./native/remote-plugin-host";
 
-class FakeWorkerHandle implements CarrotWorkerHandle {
+class FakeWorkerHandle implements RemotePluginWorkerHandle {
   readonly messages: RemotePluginWorkerMessage[] = [];
   terminated = false;
-  private messageListener: ((message: RemotePluginWorkerMessage) => void) | null =
-    null;
+  private messageListener:
+    | ((message: RemotePluginWorkerMessage) => void)
+    | null = null;
   private errorListener: ((error: Error) => void) | null = null;
 
   postMessage(message: RemotePluginWorkerMessage): void {
@@ -108,7 +112,7 @@ describe("first-party Satellites", () => {
           .map((result) => result.id)
           .sort(),
       ).toEqual(["eliza.fs", "eliza.local-model", "eliza.runtime"]);
-      expect(manager.getCarrot("eliza.runtime")?.currentHash).toBe(
+      expect(manager.getRemotePlugin("eliza.runtime")?.currentHash).toBe(
         second.find((result) => result.id === "eliza.runtime")?.hash,
       );
     }));

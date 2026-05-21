@@ -96,6 +96,11 @@ def module_status(module: str) -> dict[str, Any]:
             item["cuda_device_count"] = int(torch.cuda.device_count())
             if torch.cuda.is_available():
                 item["cuda_device_name"] = torch.cuda.get_device_name(0)
+            item["mps_available"] = bool(
+                hasattr(torch.backends, "mps")
+                and torch.backends.mps.is_available()
+                and torch.backends.mps.is_built()
+            )
         except Exception as exc:  # pragma: no cover - diagnostic path
             item["status"] = "PRESENT_BUT_IMPORT_FAILED"
             item["error"] = str(exc)

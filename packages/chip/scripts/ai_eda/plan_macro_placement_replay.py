@@ -72,12 +72,15 @@ def load_placement_cases(record_dirs: list[Path]) -> dict[str, tuple[Path, dict[
     return cases
 
 
-def candidate_paths(candidate_dir: Path, explicit: list[Path]) -> list[Path]:
+def candidate_paths(candidate_dirs: list[Path], explicit: list[Path]) -> list[Path]:
     if explicit:
         return sorted(explicit)
-    if not candidate_dir.exists():
-        return []
-    return sorted(candidate_dir.glob("*.json"))
+    paths: list[Path] = []
+    for candidate_dir in candidate_dirs:
+        if not candidate_dir.exists():
+            continue
+        paths.extend(sorted(candidate_dir.glob("*.json")))
+    return sorted(paths)
 
 
 def object_sizes(case: dict[str, Any]) -> dict[str, tuple[float, float]]:
@@ -253,7 +256,7 @@ def write_tool_action_manifest(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", default="validation")
-    parser.add_argument("--candidate-dir", type=Path, default=DEFAULT_CANDIDATE_DIR)
+    parser.add_argument("--candidate-dir", action="append", type=Path, default=[])
     parser.add_argument("--candidate", action="append", type=Path, default=[])
     parser.add_argument("--record-dir", action="append", type=Path, default=[])
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
@@ -264,7 +267,8 @@ def main() -> int:
     args = parse_args()
     record_dirs = args.record_dir or list(DEFAULT_RECORD_DIRS)
     cases = load_placement_cases(record_dirs)
-    candidates = candidate_paths(args.candidate_dir, args.candidate)
+    candidate_dirs = args.candidate_dir or [DEFAULT_CANDIDATE_DIR]
+    candidates = candidate_paths(candidate_dirs, args.candidate)
     out_dir = args.out_root / args.run_id
     bundles_dir = out_dir / "bundles"
     tool_actions_dir = out_dir / "tool_actions"
@@ -344,7 +348,7 @@ def main() -> int:
         "ready_count": ready_count,
         "blocked_count": blocked_count,
         "record_dirs": [rel(path) for path in record_dirs],
-        "candidate_dir": rel(args.candidate_dir),
+        "candidate_dirs": [rel(path) for path in candidate_dirs],
         "tool_actions_dir": rel(tool_actions_dir),
         "plans": plans,
         "errors": errors,

@@ -104,19 +104,11 @@ function pickUserInfoToken(
   tokens: TokenResponse,
   connectionRole: OAuthStandardConnectionRole,
 ): string {
-  if (
-    connectionRole !== "OWNER" ||
-    !provider.userScopes ||
-    provider.userScopes.length === 0
-  ) {
+  if (connectionRole !== "OWNER" || !provider.userScopes || provider.userScopes.length === 0) {
     return tokens.access_token;
   }
   const authedUser = tokens.authed_user;
-  if (
-    authedUser &&
-    typeof authedUser === "object" &&
-    !Array.isArray(authedUser)
-  ) {
+  if (authedUser && typeof authedUser === "object" && !Array.isArray(authedUser)) {
     const userToken = (authedUser as Record<string, unknown>).access_token;
     if (typeof userToken === "string" && userToken.length > 0) {
       return userToken;
@@ -260,11 +252,7 @@ export async function initiateOAuth2(
   // the `storeConnection` dedup guard rejects with
   // `OAUTH_ACCOUNT_ALREADY_LINKED_TO_DIFFERENT_ROLE` on the second click.
   const normalizedRole = normalizeOAuthConnectionRole(params.connectionRole);
-  if (
-    provider.userScopes &&
-    provider.userScopes.length > 0 &&
-    normalizedRole !== "AGENT"
-  ) {
+  if (provider.userScopes && provider.userScopes.length > 0 && normalizedRole !== "AGENT") {
     authUrl.searchParams.set("user_scope", provider.userScopes.join(" "));
   }
 
@@ -333,11 +321,7 @@ export async function handleOAuth2Callback(
   // workspace admin who clicked Authorize on both buttons), and the
   // `storeConnection` dedup guard rejects the second connection with
   // `OAUTH_ACCOUNT_ALREADY_LINKED_TO_DIFFERENT_ROLE`.
-  const userInfoToken = pickUserInfoToken(
-    provider,
-    tokens,
-    connectionRole,
-  );
+  const userInfoToken = pickUserInfoToken(provider, tokens, connectionRole);
 
   // Fetch user info: userInfo endpoint, token metadata endpoint, or from token response
   let userInfo: ExtractedUserInfo;

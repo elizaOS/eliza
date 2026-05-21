@@ -1357,7 +1357,7 @@ software-bsp-test:
 evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
-.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-external-assets-dry-run ai-eda-alphachip-checkpoint-blocker-check ai-eda-alphachip-checkpoint-blocker-network-check ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train ai-eda-macro-placement-supervised-dataset ai-eda-macro-placement-supervised-train ai-eda-macro-placement-torch-train ai-eda-macro-placement-supervised-replay-plan ai-eda-macro-placement-baseline ai-eda-macro-placement-candidate-eval ai-eda-macro-placement-combined-candidate-eval ai-eda-macro-placement-replay-plan ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
+.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-external-assets-dry-run ai-eda-alphachip-checkpoint-blocker-check ai-eda-alphachip-checkpoint-blocker-network-check ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train ai-eda-macro-placement-supervised-dataset ai-eda-macro-placement-supervised-train ai-eda-macro-placement-torch-train ai-eda-macro-placement-torch-infer ai-eda-macro-placement-supervised-replay-plan ai-eda-macro-placement-baseline ai-eda-macro-placement-candidate-eval ai-eda-macro-placement-combined-candidate-eval ai-eda-macro-placement-replay-plan ai-eda-macro-placement-combined-replay-plan ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
 ai-eda-source-inventory-check:
 	@$(PYTHON) scripts/check_ai_eda_source_inventory.py
 
@@ -1423,6 +1423,11 @@ ai-eda-macro-placement-supervised-train: ai-eda-macro-placement-supervised-datas
 
 ai-eda-macro-placement-torch-train: ai-eda-macro-placement-supervised-dataset
 	@$(PYTHON) scripts/ai_eda/train_macro_placement_torch_regressor.py --run-id validation --device auto --epochs 25
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_torch_regressor.py --report build/ai_eda/macro_placement_torch_regressor/validation/torch_training_run.json
+
+ai-eda-macro-placement-torch-infer: ai-eda-macro-placement-torch-train
+	@$(PYTHON) scripts/ai_eda/infer_macro_placement_torch_regressor.py --run-id validation --device auto
+	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py --candidate-dir build/ai_eda/macro_placement_torch_inference/validation/candidates
 
 ai-eda-macro-placement-supervised-replay-plan: ai-eda-macro-placement-supervised-train
 	@$(PYTHON) scripts/ai_eda/plan_macro_placement_replay.py --run-id validation --candidate-dir build/ai_eda/macro_placement_supervised_model/validation/candidates --out-root build/ai_eda/macro_placement_supervised_replay
@@ -1443,6 +1448,11 @@ ai-eda-macro-placement-replay-plan: ai-eda-macro-placement-candidate-eval
 	@$(PYTHON) scripts/ai_eda/plan_macro_placement_replay.py --run-id validation
 	@$(PYTHON) scripts/ai_eda/check_macro_placement_replay_plan.py --report build/ai_eda/macro_placement_replay/validation/replay_plan.json
 	@$(PYTHON) scripts/ai_eda/check_tool_action_manifests.py --manifests-dir build/ai_eda/macro_placement_replay/validation/tool_actions
+
+ai-eda-macro-placement-combined-replay-plan: ai-eda-macro-placement-combined-candidate-eval
+	@$(PYTHON) scripts/ai_eda/plan_macro_placement_replay.py --run-id validation --candidate-dir build/ai_eda/macro_placement_policy/validation/candidates --candidate-dir build/ai_eda/macro_placement_supervised_model/validation/candidates --out-root build/ai_eda/macro_placement_combined_replay
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_replay_plan.py --report build/ai_eda/macro_placement_combined_replay/validation/replay_plan.json
+	@$(PYTHON) scripts/ai_eda/check_tool_action_manifests.py --manifests-dir build/ai_eda/macro_placement_combined_replay/validation/tool_actions
 
 ai-eda-candidate-manifests-check: ai-eda-fixture-placement-train
 	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py

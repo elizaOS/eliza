@@ -131,7 +131,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", default="validation")
     parser.add_argument("--dataset-root", type=Path, default=DEFAULT_DATASET_ROOT)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda", "mps"), default="auto")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--seed", type=int, default=20260520)
@@ -145,7 +145,20 @@ def main() -> int:
     if args.device == "cuda" and not torch.cuda.is_available():
         print("STATUS: FAIL ai_eda.macro_placement_torch_regressor cuda requested but unavailable")
         return 1
-    device_name = "cuda" if args.device == "auto" and torch.cuda.is_available() else args.device
+    mps_available = bool(
+        hasattr(torch.backends, "mps")
+        and torch.backends.mps.is_available()
+        and torch.backends.mps.is_built()
+    )
+    if args.device == "mps" and not mps_available:
+        print("STATUS: FAIL ai_eda.macro_placement_torch_regressor mps requested but unavailable")
+        return 1
+    if args.device == "auto" and torch.cuda.is_available():
+        device_name = "cuda"
+    elif args.device == "auto" and mps_available:
+        device_name = "mps"
+    else:
+        device_name = args.device
     if device_name == "auto":
         device_name = "cpu"
     device = torch.device(device_name)
@@ -229,6 +242,7 @@ def main() -> int:
         "val_sample_count": len(val_samples),
         "test_sample_count": len(test_samples),
         "device": str(device),
+        "epochs": args.epochs,
         "next_required_gates": [
             "add graph connectivity and netlist-aware features",
             "emit quarantined candidates through the existing candidate manifest contract",

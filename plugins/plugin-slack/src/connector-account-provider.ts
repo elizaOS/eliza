@@ -117,7 +117,11 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
   );
   if (!raw) return "OWNER";
   const normalized = raw.toUpperCase();
-  if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {
+  if (
+    normalized === "OWNER" ||
+    normalized === "AGENT" ||
+    normalized === "TEAM"
+  ) {
     return normalized;
   }
   return "OWNER";

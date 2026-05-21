@@ -317,8 +317,8 @@ The first reproducibility spine is now checked in:
   metadata manifest exists at `external/{datasets,repos,models}/<asset>/`,
   fetched payloads go under the ignored `payload/` subdirectory so committed
   metadata cannot block a future fetch.
-- `scripts/ai_eda/preflight_cuda_training_stack.py` records Mac/CUDA readiness
-  into `build/ai_eda/cuda_training_preflight/<run-id>/`.
+- `scripts/ai_eda/preflight_cuda_training_stack.py` records Mac/CUDA/MPS
+  readiness into `build/ai_eda/cuda_training_preflight/<run-id>/`.
 - `scripts/ai_eda/package_cuda_training_payload.py` emits a metadata-only
   payload and run plan for a remote CUDA host.
 - `docs/spec-db/ai-eda/internal-dataset-schemas.yaml` defines the first
@@ -378,7 +378,7 @@ Current local validation on the 128 GiB M4 host:
   counts: 1,691 train, 206 validation, and 219 test.
 - `python3 scripts/ai_eda/preflight_cuda_training_stack.py --run-id validation`:
   PASS_WITH_BLOCKERS_RECORDED. The host has 128 GiB RAM and no CUDA; missing
-  training/CUDA tools are recorded in the JSON report.
+  PyTorch, training/CUDA tools, and OpenROAD are recorded in the JSON report.
 - `python3 scripts/ai_eda/package_cuda_training_payload.py --run-id validation`:
   PASS and emits a tarball containing manifests, scripts, and a run plan only.
 - `make ai-eda-internal-schemas-check`: PASS for five record schemas and five
@@ -567,6 +567,19 @@ Implemented schema foundation:
   `build/ai_eda/macro_placement_torch_regressor/<run-id>/`. It is explicitly a
   training artifact only: candidate generation still flows through the
   quarantined candidate-manifest and replay-plan contracts.
+- `scripts/ai_eda/check_macro_placement_torch_regressor.py` validates those
+  PyTorch-regressor artifacts without importing PyTorch: report schema,
+  claim-boundary, dataset split counts, metric ranges, loss-history monotonic
+  epochs, device recording (`cpu`, `cuda`, or `mps`), and non-empty serialized
+  model file. This lets CUDA-host runs be verified from copied artifacts even
+  on machines that do not have a matching PyTorch runtime installed.
+- `scripts/ai_eda/infer_macro_placement_torch_regressor.py` is the
+  CUDA-host inference lane for that trained PyTorch model. It loads
+  `torch_regressor.pt`, predicts normalized macro placement and orientation for
+  internal placement cases, legalizes predictions onto deterministic grid
+  slots, rejects pre-replay geometry-invalid outputs, and emits quarantined
+  `eda.e1_candidate.v1` manifests under
+  `build/ai_eda/macro_placement_torch_inference/<run-id>/candidates/`.
 - `scripts/ai_eda/train_macro_placement_policy.py` runs the first deterministic
   macro-placement baseline over normalized placement cases. It emits
   quarantined candidate manifests for cases with movable macros and records
@@ -582,7 +595,9 @@ Implemented schema foundation:
   checker-compatible `eda.tool_action.v1` dry-run manifests. It does not
   execute OpenLane/OpenROAD; it records exact blockers such as abstract E1
   softmacro cases, fixture-only cases, external benchmark replay review,
-  out-of-bounds placements, and macro overlaps.
+  out-of-bounds placements, and macro overlaps. It accepts multiple candidate
+  directories so the deterministic and supervised candidate lanes can be
+  replay-planned together without changing the candidate manifest contract.
 - `scripts/ai_eda/check_macro_placement_replay_plan.py` validates replay-plan
   reports, candidate and placement-case hashes, override counts,
   `macro_placement.cfg` line counts, tool-action links, and fail-closed
@@ -639,8 +654,14 @@ Implemented schema foundation:
   only pre-replay-geometry-clean quarantined candidates. The target also runs
   the supervised-model validator before candidate-manifest validation.
   `make ai-eda-macro-placement-torch-train` runs the PyTorch regressor when
-  PyTorch is installed, using CUDA automatically on a CUDA host and CPU
-  otherwise.
+  PyTorch is installed, using CUDA automatically on a CUDA host, MPS on a
+  supported Apple Silicon host, and CPU otherwise. The target validates the
+  emitted training report, metrics, model file, and dataset split counts with
+  the dependency-free torch-regressor checker.
+  `make ai-eda-macro-placement-torch-infer` runs the trained PyTorch model over
+  normalized placement cases and validates the emitted quarantined candidate
+  manifests. This target is expected to run on a CUDA/MPS/CPU host with PyTorch
+  installed; the current Mac validation host records `torch` as missing.
   `make ai-eda-macro-placement-supervised-replay-plan` then creates replay
   bundles and dry-run tool-action manifests for those supervised candidates,
   preserving the same OpenLane/OpenROAD blocker accounting used by the
@@ -666,13 +687,21 @@ Implemented schema foundation:
   `build/ai_eda/macro_placement_candidate_eval/validation/macro_placement_candidate_eval_report.json`.
   `make ai-eda-macro-placement-combined-candidate-eval` ranks both the
   deterministic baseline candidates and the supervised mean-prior candidates
-  together. Current combined validation ranks 72 candidates across 19 placement
-  cases with no candidate-schema errors, giving one proxy-ordered replay queue
-  across the local non-CUDA and supervised training lanes.
+  together for local non-PyTorch validation. Current combined validation ranks
+  72 candidates across 19 placement cases with no candidate-schema errors. The
+  CUDA payload extends the same combined ranking and replay-plan commands with
+  the PyTorch-regressor inference candidate directory after
+  `infer_macro_placement_torch_regressor.py` runs on the CUDA host.
   `make ai-eda-macro-placement-replay-plan` records all fifty-seven candidates
   as blocked for deterministic replay until an OpenLane/OpenROAD handoff exists
   and validates both the replay-plan bundles and the generated replay
   tool-action manifests.
+  `make ai-eda-macro-placement-combined-replay-plan` applies the same
+  fail-closed replay-plan and tool-action validation to the combined
+  deterministic plus supervised candidate set. Current combined replay planning
+  covers all 72 ranked candidates, with 0 ready for execution and 72 blocked
+  until external benchmark review, real E1 softmacro LEF/DEF/OpenLane
+  integration, and fixture-only barriers are resolved.
   Current blocker counts in
   `build/ai_eda/macro_placement_replay/validation/replay_plan.json`: 48
   external benchmark candidates require local MacroPlacement/OpenROAD tool
@@ -1323,6 +1352,11 @@ not as:
   candidate inventory, blocked cases, and pre-replay geometry.
 - [x] Add CUDA-capable PyTorch macro-placement regressor entrypoint over the
   supervised JSONL splits.
+- [x] Add dependency-free PyTorch-regressor artifact validator for CUDA-host
+  training reports, metrics, split counts, and model-file presence.
+- [x] Add PyTorch-regressor inference candidate generator for CUDA-host model
+  outputs, including deterministic legalization and pre-replay geometry
+  quarantine.
 - [x] Add fail-closed replay plans for supervised macro-placement candidates.
 - [x] Add target-aware legal-grid comparison metrics for converted TILOS
   Ariane133 and generated E1 softmacro cases.
@@ -1330,6 +1364,8 @@ not as:
   and generated E1 softmacro cases.
 - [x] Add macro-placement candidate ranking/evaluation report for quarantined
   candidates.
+- [x] Add combined deterministic plus supervised macro-placement replay-plan
+  target with fail-closed bundle and tool-action validation.
 - [x] Add combined macro-placement candidate ranking across deterministic
   baseline and supervised-model candidate directories.
 - [x] Add macro-placement replay-plan bundles for quarantined candidates without

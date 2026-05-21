@@ -5,7 +5,15 @@
   "npmName": "@elizaos/plugin-google",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["connector", "productivity", "google", "gmail", "calendar", "drive", "meet"],
+  "tags": [
+    "connector",
+    "productivity",
+    "google",
+    "gmail",
+    "calendar",
+    "drive",
+    "meet"
+  ],
   "config": {
     "GOOGLE_CLIENT_ID": {
       "type": "string",

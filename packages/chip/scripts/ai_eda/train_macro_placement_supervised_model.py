@@ -18,8 +18,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET_ROOT = ROOT / "build/ai_eda/macro_placement_supervised_dataset"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/macro_placement_supervised_model"
@@ -43,6 +41,8 @@ def load_record(path: Path) -> dict[str, Any]:
     if path.suffix == ".json":
         data = json.loads(path.read_text(encoding="utf-8"))
     else:
+        import yaml
+
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"{path}: expected mapping")

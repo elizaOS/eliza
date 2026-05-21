@@ -292,7 +292,7 @@ export class LaunchOrchestrator {
 
     try {
       boot = await this.readBootProgress();
-    } catch (error) {
+    } catch {
       boot = null;
     }
 

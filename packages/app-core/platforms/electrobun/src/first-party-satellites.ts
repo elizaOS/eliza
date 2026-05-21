@@ -4,7 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertRemotePluginPayload } from "@elizaos/plugin-remote-manifest";
 import { logger } from "./logger";
-import { type RemotePluginHost, getRemotePluginHost } from "./native/remote-plugin-host";
+import {
+  getRemotePluginHost,
+  type RemotePluginHost,
+} from "./native/remote-plugin-host";
 
 export type FirstPartySatelliteKind = "required" | "recommended" | "dev";
 
@@ -142,7 +145,7 @@ export function seedFirstPartySatellites(options?: {
     }
 
     const hash = hashDirectory(definition.sourceDir);
-    const existing = manager.getCarrot(definition.id);
+    const existing = manager.getRemotePlugin(definition.id);
     let action: FirstPartySatelliteSeedResult["action"] = "unchanged";
     if (!existing) {
       manager.installFromDirectory({

@@ -106,6 +106,7 @@ def case_id_from_candidate(record: dict[str, Any]) -> str:
         "target_aware_grid": "macro-placement-target-aware-grid-",
         "target_repair_search": "macro-placement-target-repair-search-",
         "supervised_mean_legalized_grid": "macro-placement-supervised-mean-",
+        "torch_regressor_legalized_grid": "macro-placement-torch-regressor-",
     }
     prefix = prefixes.get(policy)
     if prefix and record_id.startswith(prefix) and record_id.endswith("-validation"):

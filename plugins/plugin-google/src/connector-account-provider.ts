@@ -179,7 +179,7 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
       record.role ??
       record.accountRole ??
       record.requestedRole ??
-      record.agentGoogleSide,
+      record.agentGoogleSide
   );
   if (!raw) return "OWNER";
   const normalized = raw.toUpperCase();
