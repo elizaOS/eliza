@@ -37,11 +37,13 @@ interface UsageChartProps {
 export function UsageChart({ data, granularity }: UsageChartProps) {
   const t = useT();
   const chartConfig = {
+    // Brand palette: orange + black + white + green (success). No blue,
+    // no indigo. Each metric gets a distinct hue but all stay on-palette.
     requests: {
       label: t("cloud.analytics.usageChart.requests", {
         defaultValue: "Requests",
       }),
-      color: "#6366F1",
+      color: "#FF5800",
     },
     cost: {
       label: t("cloud.analytics.usageChart.costUsd", {
@@ -53,7 +55,7 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
       label: t("cloud.analytics.usageChart.successRatePct", {
         defaultValue: "Success rate (%)",
       }),
-      color: "#F97316",
+      color: "#FBBF24",
     },
   } as const;
   const [activeMetric, setActiveMetric] = useState<MetricKey>("requests");

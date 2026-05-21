@@ -66,6 +66,7 @@ def validate(report: dict[str, Any]) -> list[str]:
         for field in (
             "payload_handoff_ready",
             "run_plan_dry_run_validated",
+            "run_plan_safety_matrix_validated",
             "large_cuda_training_ready",
             "alphachip_checkpoint_available",
             "current_research_watchlist_captured",

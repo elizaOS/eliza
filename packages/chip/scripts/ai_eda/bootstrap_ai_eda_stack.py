@@ -29,6 +29,7 @@ METADATA_TARGETS = (
     "ai-eda-physical-design-targets",
     "ai-eda-optimization-targets",
     "ai-eda-source-inventory-check",
+    "ai-eda-ai-workload-manifest-check",
     "ai-eda-external-assets-check",
     "ai-eda-external-intake-check",
     "ai-eda-alphachip-checkpoint-blocker-check",

@@ -167,13 +167,6 @@ export function DirectCryptoCreditCard({
     return evm.isConnected ? (evm.address ?? null) : null;
   }, [evm.address, evm.isConnected, selected?.network, solana.publicKey]);
 
-  const walletMatches =
-    connectedAddress &&
-    accountWalletAddress &&
-    (selected?.network === "solana"
-      ? connectedAddress === accountWalletAddress
-      : connectedAddress.toLowerCase() === accountWalletAddress.toLowerCase());
-
   async function sendEvmPayment(
     cfg: DirectNetworkConfig,
     payment: Awaited<ReturnType<typeof createDirectPayment>>,
@@ -253,22 +246,10 @@ export function DirectCryptoCreditCard({
 
   async function handlePay() {
     if (!amount || !selected) return;
-    if (!accountWalletAddress) {
-      toast.error(
-        "Sign in with, or verify, the wallet attached to your account first.",
-      );
-      return;
-    }
     if (!connectedAddress) {
       if (selected.network === "solana") setSolanaModalVisible(true);
       toast.error(
         `Connect your ${NETWORK_LABELS[selected.network]} wallet first.`,
-      );
-      return;
-    }
-    if (!walletMatches) {
-      toast.error(
-        "The connected wallet must match the wallet on your account.",
       );
       return;
     }
@@ -391,36 +372,21 @@ export function DirectCryptoCreditCard({
         ) : null}
 
         {showTokenSelector ? (
-          <div className="space-y-1">
-            <div className={`text-xs ${mutedTextClassName}`}>Pay with</div>
-            <div
+          <label className="block space-y-1">
+            <span className={`text-xs ${mutedTextClassName}`}>Pay with</span>
+            <select
               aria-label="Token"
-              role="radiogroup"
-              className={`grid grid-cols-4 gap-2 rounded-xs border p-1 text-xs sm:gap-3 ${segmentClassName}`}
+              value={selectedToken?.symbol ?? ""}
+              onChange={(event) => setTokenSymbol(event.target.value)}
+              className={`block w-full min-h-10 rounded-xs border px-3 py-2 text-sm font-medium ${segmentClassName} ${infoValueClassName}`}
             >
-              {tokenOptions.map((option) => {
-                const active =
-                  selectedToken?.symbol.toUpperCase() ===
-                  option.symbol.toUpperCase();
-                return (
-                  <button
-                    key={option.symbol}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => setTokenSymbol(option.symbol)}
-                    className={`min-h-10 rounded-xs px-3 py-2 font-medium transition-colors ${
-                      active
-                        ? selectedSegmentClassName
-                        : unselectedSegmentClassName
-                    }`}
-                  >
-                    {option.symbol === "U" ? "$U" : option.symbol}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+              {tokenOptions.map((option) => (
+                <option key={option.symbol} value={option.symbol}>
+                  {option.symbol === "U" ? "$U" : option.symbol}
+                </option>
+              ))}
+            </select>
+          </label>
         ) : null}
 
         <div
@@ -459,32 +425,22 @@ export function DirectCryptoCreditCard({
           </div>
         )}
 
-        {!walletMatches && connectedAddress && accountWalletAddress && (
-          <div
-            className={`rounded-xs border px-3 py-2 text-xs ${promoClassName}`}
-          >
-            Connected wallet must match your account wallet (
-            {formatAddress(accountWalletAddress)}).
-          </div>
-        )}
-
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           {selected?.network === "solana" ? (
-            walletMatches ? null : (
-              <Button
-                type="button"
-                variant="surface"
-                onClick={() => setSolanaModalVisible(true)}
-                className={surfaceButtonClassName}
-                style={cloudButtonStyle}
-              >
-                {solana.publicKey ? "Solana connected" : "Connect Solana"}
-              </Button>
-            )
-          ) : walletMatches ? null : (
-            // Hide the wagmi Connect button when the connected wallet already
-            // matches the user's account wallet — they "signed in with their
-            // wallet" so there's no second connection step to do.
+            <Button
+              type="button"
+              variant="surface"
+              onClick={() => setSolanaModalVisible(true)}
+              className={surfaceButtonClassName}
+              style={cloudButtonStyle}
+            >
+              {solana.publicKey ? "Solana connected" : "Connect Solana"}
+            </Button>
+          ) : (
+            // Always render the connect button. If the user signed in with a
+            // wallet (SIWE) it'll already show that wallet connected; OAuth
+            // users get a "Connect Wallet" prompt. Any wallet works — credits
+            // attach to the logged-in org, not to the paying wallet.
             <ConnectButton.Custom>
               {({ account, chain, openAccountModal, openConnectModal }) => (
                 <Button
