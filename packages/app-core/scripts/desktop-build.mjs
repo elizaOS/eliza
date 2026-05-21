@@ -58,10 +58,28 @@ function resolveWorkspacePackageDir(packageDirName) {
   );
 }
 
+function resolveWorkspacePluginDir(pluginDirName) {
+  const candidates = [
+    path.join(ROOT, "plugins", pluginDirName),
+    path.join(ROOT, "eliza", "plugins", pluginDirName),
+  ];
+  return (
+    candidates.find((candidate) =>
+      fs.existsSync(path.join(candidate, "package.json")),
+    ) ?? candidates[0]
+  );
+}
+
 const APP_CORE_PACKAGE_DIR = resolveWorkspacePackageDir("app-core");
 const CORE_PACKAGE_DIR = resolveWorkspacePackageDir("core");
+const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
+  "plugin-agent-orchestrator",
+);
 const PLUGIN_REMOTE_MANIFEST_PACKAGE_DIR =
   resolveWorkspacePackageDir("plugin-remote-manifest");
+const PLUGIN_WORKER_RUNTIME_PACKAGE_DIR = resolveWorkspacePackageDir(
+  "plugin-worker-runtime",
+);
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
 const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
 const VAULT_PACKAGE_DIR = resolveWorkspacePackageDir("vault");
@@ -639,6 +657,14 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-remote-manifest",
     PLUGIN_REMOTE_MANIFEST_PACKAGE_DIR,
+  );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/plugin-agent-orchestrator",
+    PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,
+  );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/plugin-worker-runtime",
+    PLUGIN_WORKER_RUNTIME_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);
 }
