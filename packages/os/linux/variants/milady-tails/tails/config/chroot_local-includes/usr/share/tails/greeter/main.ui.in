@@ -79,12 +79,12 @@
       <object class="GtkBox" id="box_inner">
         <property name="visible">True</property>
         <property name="can-focus">False</property>
-        <property name="margin-left">18</property>
-        <property name="margin-right">18</property>
-        <property name="margin-top">18</property>
-        <property name="margin-bottom">18</property>
+        <property name="margin-left">12</property>
+        <property name="margin-right">12</property>
+        <property name="margin-top">12</property>
+        <property name="margin-bottom">12</property>
         <property name="orientation">vertical</property>
-        <property name="spacing">18</property>
+        <property name="spacing">10</property>
         <child>
           <object class="GtkBox" id="box_header">
             <property name="visible">True</property>
@@ -96,7 +96,7 @@
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
                 <property name="file">/usr/share/tails/greeter/icons/elizaos-logo.png</property>
-                <property name="pixel-size">96</property>
+                <property name="pixel-size">72</property>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -111,7 +111,7 @@
                 <property name="label" translatable="yes">Welcome to elizaOS!</property>
                 <attributes>
                   <attribute name="weight" value="semibold"/>
-                  <attribute name="scale" value="1.5"/>
+                  <attribute name="scale" value="1.35"/>
                 </attributes>
               </object>
               <packing>
@@ -271,7 +271,7 @@
           <object class="GtkBox" id="box_storagecreate">
             <property name="can-focus">False</property>
             <property name="orientation">vertical</property>
-            <property name="spacing">12</property>
+            <property name="spacing">8</property>
             <child>
               <object class="GtkLabel" id="create_tps_label">
                 <property name="visible">True</property>
@@ -297,7 +297,7 @@
               <object class="GtkLabel" id="label_storagecreate_explain">
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
-                <property name="label" translatable="yes">You can save some of your files and configuration in an encrypted Persistent Storage on your elizaOS USB stick: your documents, browser bookmarks, Wi-Fi passwords, and so on.</property>
+                <property name="label" translatable="yes">Save documents, browser bookmarks, Wi-Fi passwords, and elizaOS settings in encrypted Persistent Storage.</property>
                 <property name="wrap">True</property>
                 <property name="track-visited-links">False</property>
                 <property name="xalign">0</property>
@@ -324,7 +324,7 @@
                         <property name="can-focus">False</property>
                         <property name="title" translatable="yes">Create Persistent Storage</property>
                         <property name="icon-name">elizaos</property>
-                        <property name="subtitle" translatable="yes">Create and configure a Persistent Storage after starting elizaOS</property>
+                        <property name="subtitle" translatable="yes">Create encrypted storage after starting elizaOS</property>
                         <child>
                           <object class="GtkBox" id="create_tps_row_box">
                             <property name="visible">True</property>
@@ -847,14 +847,14 @@ Try reinstalling elizaOS. If the error persists, reinstall on a new USB stick.</
   <object class="GtkLabel" id="label_settings_default">
     <property name="visible">True</property>
     <property name="can-focus">False</property>
-    <property name="margin-left">6</property>
-    <property name="margin-right">6</property>
-    <property name="margin-top">6</property>
-    <property name="margin-bottom">6</property>
-    <property name="label" translatable="yes">The default settings are safe in most situations. To add a custom setting, press the "+" button below.</property>
+    <property name="margin-left">4</property>
+    <property name="margin-right">4</property>
+    <property name="margin-top">4</property>
+    <property name="margin-bottom">4</property>
+    <property name="label" translatable="yes">Defaults are safe. Use "+" to add settings.</property>
     <property name="justify">fill</property>
     <property name="wrap">True</property>
-    <property name="lines">2</property>
+    <property name="lines">1</property>
     <property name="xalign">0</property>
     <property name="yalign">0</property>
   </object>

@@ -43,7 +43,7 @@ describe("VoicePrefixSteps", () => {
     );
     expect(screen.getByTestId("voice-prefix-welcome")).toBeTruthy();
     expect(screen.getByTestId("voice-prefix-steps").className).toContain(
-      "text-[#06133F]",
+      "text-[#0B35F1]",
     );
     expect(container.querySelector("main")?.className).toContain(
       "bg-[#FFFFFF]",

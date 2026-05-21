@@ -29,17 +29,17 @@
                 <property name="margin-start">20</property>
                 <property name="margin-top">20</property>
                 <property name="orientation">vertical</property>
-                <property name="spacing">50</property>
-                <property name="valign">center</property>
+                <property name="spacing">24</property>
+                <property name="valign">start</property>
                 <property name="vexpand">True</property>
                 <property name="visible">True</property>
                 <child>
                   <object class="GtkBox">
-                    <property name="spacing">50</property>
+                    <property name="spacing">24</property>
                     <property name="visible">True</property>
                     <child>
                       <object class="GtkImage" id="image1">
-                        <property name="pixbuf">/usr/share/pixmaps/elizaos.svg</property>
+                        <property name="pixbuf">/usr/share/pixmaps/elizaos-persistent-storage.svg</property>
                         <property name="visible">True</property>
                       </object>
                       <packing>

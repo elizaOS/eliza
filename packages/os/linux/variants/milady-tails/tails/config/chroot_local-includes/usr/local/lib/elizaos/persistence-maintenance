@@ -5,6 +5,7 @@ set -eu
 run_dir=/run/elizaos
 flag="${run_dir}/persistence-maintenance"
 runtime_dir=/run/user/1000
+user_persistence_flag="${runtime_dir}/elizaos-persistence-setup"
 bus="unix:path=${runtime_dir}/bus"
 units="elizaos-agent.service elizaos-renderer.service milady.service"
 
@@ -52,7 +53,7 @@ case "${1:-}" in
         start_elizaos_units
         ;;
     wait)
-        while [ -e "${flag}" ]; do
+        while [ -e "${flag}" ] || [ -e "${user_persistence_flag}" ]; do
             sleep 1
         done
         ;;

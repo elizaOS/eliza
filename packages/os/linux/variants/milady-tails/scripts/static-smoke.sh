@@ -112,6 +112,7 @@ sh -n \
     tails/config/chroot_local-includes/etc/NetworkManager/dispatcher.d/00-resolv-over-clearnet \
     tails/config/chroot_local-includes/etc/NetworkManager/dispatcher.d/10-tor.sh \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/capability-runner \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/create-persistent-storage-session \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env \
@@ -183,6 +184,7 @@ for executable in \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-browser-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/create-persistent-storage-session \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-renderer-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-milady-user \
@@ -502,6 +504,12 @@ grep -q '^Icon=elizaos$' \
     tails/config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in
 grep -q '<property name="icon-name">elizaos</property>' \
     tails/config/chroot_local-includes/usr/share/tails/greeter/main.ui.in
+grep -q '<property name="pixel-size">72</property>' \
+    tails/config/chroot_local-includes/usr/share/tails/greeter/main.ui.in
+grep -Fq 'Save documents, browser bookmarks, Wi-Fi passwords, and elizaOS settings in encrypted Persistent Storage.' \
+    tails/config/chroot_local-includes/usr/share/tails/greeter/main.ui.in
+grep -Fq 'Defaults are safe. Use "+" to add settings.' \
+    tails/config/chroot_local-includes/usr/share/tails/greeter/main.ui.in
 grep -q '<property name="icon-name">elizaos</property>' \
     tails/config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in
 for persistent_storage_view in \
@@ -509,8 +517,14 @@ for persistent_storage_view in \
     tails/config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in \
     tails/config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in
 do
-    grep -q '/usr/share/pixmaps/elizaos.svg' "${persistent_storage_view}"
+    grep -q '/usr/share/pixmaps/elizaos-persistent-storage.svg' "${persistent_storage_view}"
 done
+grep -q '<svg width="128" height="149"' \
+    tails/config/chroot_local-includes/usr/share/pixmaps/elizaos-persistent-storage.svg
+grep -q '<property name="spacing">24</property>' \
+    tails/config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in
+grep -q '<property name="row-spacing">24</property>' \
+    tails/config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in
 grep -q '^Exec=/usr/local/bin/milady$' \
     tails/config/chroot_local-includes/usr/share/applications/milady.desktop
 
@@ -666,9 +680,38 @@ for launcher in \
 do
     grep -q 'persistence-maintenance wait' "${launcher}"
 done
+grep -q '^ExecStart=/usr/local/lib/elizaos/create-persistent-storage-session$' \
+    tails/config/chroot_local-includes/usr/lib/systemd/user/tails-create-persistent-storage.service
+grep -q 'session_flag="${runtime_dir}/elizaos-persistence-setup"' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/create-persistent-storage-session
+grep -q 'maintenance_helper=/usr/local/lib/elizaos/persistence-maintenance' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/create-persistent-storage-session
+grep -q 'sudo "${maintenance_helper}" enter' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/create-persistent-storage-session
+grep -q 'sudo "${maintenance_helper}" leave' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/create-persistent-storage-session
+grep -q 'systemctl --user start --no-block milady.service' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/create-persistent-storage-session
+grep -Fq 'args = ["enter"]' \
+    tails/config/chroot_local-includes/etc/generate-sudoers.d/elizaos-persistence-maintenance.toml
+grep -Fq 'args = ["leave"]' \
+    tails/config/chroot_local-includes/etc/generate-sudoers.d/elizaos-persistence-maintenance.toml
+grep -q '/etc/generate-sudoers.d/elizaos-persistence-maintenance.toml' \
+    tails/config/chroot_local-hooks/99-zzzzzz_permissions
+grep -q '/usr/local/lib/elizaos/persistence-maintenance enter' \
+    tails/config/chroot_local-includes/etc/gdm3/PostLogin/Default
+grep -q 'rm -f /run/elizaos/persistence-maintenance' \
+    tails/config/chroot_local-includes/etc/gdm3/PostLogin/Default
+session_helper_mode="$(stat_mode tails/config/chroot_local-includes/usr/local/lib/elizaos/create-persistent-storage-session)"
+if [ "${session_helper_mode}" != "755" ]; then
+    echo "create-persistent-storage-session must be mode 755, got ${session_helper_mode}" >&2
+    exit 1
+fi
 grep -q 'run_dir=/run/elizaos' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
 grep -Fq 'flag="${run_dir}/persistence-maintenance"' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
+grep -q 'user_persistence_flag="${runtime_dir}/elizaos-persistence-setup"' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
 grep -q 'systemctl --user "$@"' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
@@ -732,6 +775,8 @@ if [ -e tails/chroot/etc/systemd/system/display-manager.service ]; then
     esac
 fi
 grep -q 'clear_user_unit_override' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
+grep -q 'user_persistence_flag="${runtime_dir}/elizaos-persistence-setup"' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -q 'runuser -u amnesia -- env HOME=/home/amnesia sh -eu' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
@@ -825,6 +870,14 @@ grep -q 'ELIZAOS_RENDERER_PORT.*:-5174' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
 grep -q '^ExecStart=/usr/local/lib/elizaos/start-elizaos-pill-user$' \
     tails/config/chroot_local-includes/etc/systemd/user/elizaos-pill.service
+for unit in \
+    tails/config/chroot_local-includes/etc/systemd/user/elizaos-agent.service \
+    tails/config/chroot_local-includes/etc/systemd/user/elizaos-renderer.service \
+    tails/config/chroot_local-includes/etc/systemd/user/elizaos-pill.service \
+    tails/config/chroot_local-includes/etc/systemd/user/milady.service
+do
+    grep -q '^ConditionPathExists=!/run/elizaos/persistence-maintenance$' "${unit}"
+done
 if grep -q 'systemctl --global enable elizaos-pill.service' \
     tails/config/chroot_local-hooks/52-update-systemd-units; then
     echo "Voice pill must stay installed but opt-in until the pill renderer is production-ready." >&2
@@ -952,6 +1005,10 @@ grep -q 'sgdisk --move-second-header' scripts/usb-write.sh
 grep -q 'prepare a cloned USB image for Persistent Storage' scripts/usb-write.sh
 grep -q 'PARTITION_LABEL = "Tails"' tails/auto/scripts/create-usb-image-from-iso
 grep -q 'FILESYSTEM_LABEL = "ELIZAOS"' tails/auto/scripts/create-usb-image-from-iso
+grep -q 'FILESYSTEM_LABEL.ljust(11)' tails/auto/scripts/create-usb-image-from-iso
+grep -q 'chroot_image = CHROOT_DIR / "tmp" / Path(self.image).name' tails/auto/scripts/create-usb-image-from-iso
+grep -q 'yield chroot_image_arg' tails/auto/scripts/create-usb-image-from-iso
+grep -q 'for mountpoint in reversed(mounted)' tails/auto/scripts/create-usb-image-from-iso
 grep -q '::ELIZAOS' tails/config/chroot_local-includes/usr/share/initramfs-tools/scripts/lib/first_boot_repartition
 if grep -q '::Tails' tails/config/chroot_local-includes/usr/share/initramfs-tools/scripts/lib/first_boot_repartition; then
     echo "first boot repartition must keep ELIZAOS filesystem label" >&2

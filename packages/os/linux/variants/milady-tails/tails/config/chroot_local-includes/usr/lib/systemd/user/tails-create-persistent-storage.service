@@ -8,7 +8,7 @@ Type=oneshot
 Restart=no
 
 StandardError=journal
-ExecStart=/usr/local/bin/tails-persistent-storage
+ExecStart=/usr/local/lib/elizaos/create-persistent-storage-session
 
 [Install]
 WantedBy=desktop.target

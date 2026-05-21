@@ -6,6 +6,7 @@ interval="${MILADY_KEEPER_INTERVAL:-5}"
 runtime_dir=/run/user/1000
 bus="unix:path=${runtime_dir}/bus"
 maintenance_flag=/run/elizaos/persistence-maintenance
+user_persistence_flag="${runtime_dir}/elizaos-persistence-setup"
 
 clear_user_unit_override() {
     runuser -u amnesia -- env HOME=/home/amnesia sh -eu <<'EOF'
@@ -38,7 +39,7 @@ EOF
 }
 
 while :; do
-    if [ -e "${maintenance_flag}" ]; then
+    if [ -e "${maintenance_flag}" ] || [ -e "${user_persistence_flag}" ]; then
         :
     elif [ -S "${runtime_dir}/bus" ]; then
         clear_user_unit_override || true

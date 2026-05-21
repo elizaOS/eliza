@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -eu
+
+runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+session_flag="${runtime_dir}/elizaos-persistence-setup"
+maintenance_helper=/usr/local/lib/elizaos/persistence-maintenance
+units="elizaos-agent.service elizaos-renderer.service milady.service"
+
+start_elizaos_units() {
+    systemctl --user reset-failed ${units} >/dev/null 2>&1 || true
+    systemctl --user start --no-block elizaos-agent.service >/dev/null 2>&1 || true
+    systemctl --user start --no-block elizaos-renderer.service >/dev/null 2>&1 || true
+    systemctl --user start --no-block milady.service >/dev/null 2>&1 || true
+}
+
+cleanup() {
+    rm -f -- "${session_flag}"
+    sudo "${maintenance_helper}" leave >/dev/null 2>&1 || true
+    start_elizaos_units
+}
+
+mkdir -p -- "${runtime_dir}"
+printf 'persistent-storage\n' > "${session_flag}"
+chmod 0644 "${session_flag}"
+sudo "${maintenance_helper}" enter >/dev/null 2>&1 || true
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+/usr/local/bin/tails-persistent-storage "$@"
