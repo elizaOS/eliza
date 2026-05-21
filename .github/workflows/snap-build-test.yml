@@ -52,7 +52,7 @@ jobs:
           df -h /
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           # Skip submodules entirely. The snap build uses
           # `bun install --ignore-scripts` (see snapcraft.yaml) and
@@ -126,7 +126,7 @@ jobs:
           elizaos-app --help 2>&1 | head -20 || echo "Help check completed (exit $?)"
 
       - name: Upload snap artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: snap-${{ matrix.arch }}
           path: ${{ steps.snapcraft.outputs.snap }}

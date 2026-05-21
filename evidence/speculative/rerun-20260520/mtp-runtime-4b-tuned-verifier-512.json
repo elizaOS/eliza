@@ -1,0 +1,95 @@
+{
+  "reportSchema": "eliza.mtp-runtime-smoke.v1",
+  "generatedAt": "2026-05-20T19:25:30.441Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+  "tier": "4b",
+  "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-4B-MTP-GGUF/snapshots/86835bf9949e4d14d6860f7910b1340ad4f271a9/Qwen3.5-4B-UD-Q4_K_XL.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "metadataStatus": "pass",
+  "mtp": {
+    "pass": true,
+    "nextnPredictLayers": 1,
+    "keys": [
+      "qwen35.nextn_predict_layers"
+    ]
+  },
+  "cli": {
+    "available": true,
+    "status": 0,
+    "supportsDraftMtp": true,
+    "outputTail": "                                        llama2, llama2-sys, llama2-sys-bos, llama2-sys-strip, llama3, llama4,\n                                        megrez, minicpm, mistral-v1, mistral-v3, mistral-v3-tekken,\n                                        mistral-v7, mistral-v7-tekken, monarch, openchat, orion,\n                                        pangu-embedded, phi3, phi4, rwkv-world, seed_oss, smolvlm, solar-open,\n                                        vicuna, vicuna-orca, yandex, zephyr\n                                        (env: LLAMA_ARG_CHAT_TEMPLATE_FILE)\n--skip-chat-parsing, --no-skip-chat-parsing\n                                        force a pure content parser, even if a Jinja template is specified;\n                                        model will output everything in the content section, including any\n                                        reasoning and/or tool calls (default: disabled)\n                                        (env: LLAMA_ARG_SKIP_CHAT_PARSING)\n--simple-io                             use basic IO for better compatibility in subprocesses and limited\n                                        consoles\n--spec-replace TARGET DRAFT             translate the string in TARGET into DRAFT if the draft model and main\n                                        model are not compatible\n--gpt-oss-20b-default                   use gpt-oss-20b (note: can download weights from the internet)\n--gpt-oss-120b-default                  use gpt-oss-120b (note: can download weights from the internet)\n--vision-gemma-4b-default               use Gemma 3 4B QAT (note: can download weights from the internet)\n--vision-gemma-12b-default              use Gemma 3 12B QAT (note: can download weights from the internet)\n--spec-default                          enable default speculative decoding config"
+  },
+  "runtime": [
+    {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 7625,
+      "failure": null,
+      "outputTail": "██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : Qwen3.5-4B-UD-Q4_K_XL.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\nSpeculative decoding is an advanced inference technique designed to significantly accelerate large language models by generating multiple candidate tokens in parallel before verifying them against the model's actual predictions. Instead of generating tokens one by one, the system uses a smaller, faster \"speculative model\" to propose a sequence of tokens, which are then validated in batches by the larger, more accurate \"target model.\" If the speculative tokens are correct, the target model accepts them immediately, effectively skipping the intermediate generation steps; if any token is incorrect, the process backtracks and regenerates from that point. This approach leverages the speed of smaller models to reduce the overall latency of text generation, making high-quality reasoning and long-context responses more efficient and responsive.\n\n[ Prompt: 81.9 t/s | Generation: 24.3 t/s ]\n[ Draft: 49 accepted / 96 generated | Acceptance: 0.5104 ]\n\nExiting...",
+      "tokensPerSecond": 24.3,
+      "accepted": 49,
+      "drafted": 96,
+      "acceptanceRate": 0.5104166666666666
+    }
+  ],
+  "bench": {
+    "reportSchema": "eliza.speculative-benchmark.v1",
+    "generatedAt": "2026-05-20T19:25:57.373Z",
+    "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+    "speculator": "mtp",
+    "tier": "4b",
+    "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-4B-MTP-GGUF/snapshots/86835bf9949e4d14d6860f7910b1340ad4f271a9/Qwen3.5-4B-UD-Q4_K_XL.gguf",
+    "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "benchTokens": 512,
+    "available": true,
+    "status": "pass",
+    "failure": null,
+    "backend": "unknown",
+    "binary": {
+      "path": ".tmp/llama-mtp-build/bin/llama-cli",
+      "exists": true,
+      "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+    },
+    "drafted": 96,
+    "accepted": 49,
+    "acceptanceRate": 0.5104166666666666,
+    "speedup": 2.963414634146342,
+    "withDrafter": {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 7625,
+      "failure": null,
+      "outputTail": "██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : Qwen3.5-4B-UD-Q4_K_XL.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\nSpeculative decoding is an advanced inference technique designed to significantly accelerate large language models by generating multiple candidate tokens in parallel before verifying them against the model's actual predictions. Instead of generating tokens one by one, the system uses a smaller, faster \"speculative model\" to propose a sequence of tokens, which are then validated in batches by the larger, more accurate \"target model.\" If the speculative tokens are correct, the target model accepts them immediately, effectively skipping the intermediate generation steps; if any token is incorrect, the process backtracks and regenerates from that point. This approach leverages the speed of smaller models to reduce the overall latency of text generation, making high-quality reasoning and long-context responses more efficient and responsive.\n\n[ Prompt: 81.9 t/s | Generation: 24.3 t/s ]\n[ Draft: 49 accepted / 96 generated | Acceptance: 0.5104 ]\n\nExiting...",
+      "tokensPerSecond": 24.3,
+      "accepted": 49,
+      "drafted": 96,
+      "acceptanceRate": 0.5104166666666666
+    },
+    "withoutDrafter": {
+      "available": true,
+      "withMtp": false,
+      "status": 0,
+      "wallMs": 19307,
+      "failure": null,
+      "outputTail": "██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : Qwen3.5-4B-UD-Q4_K_XL.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\nSpeculative decoding is an advanced inference technique designed to significantly accelerate large language models by generating multiple candidate tokens in parallel before verifying them against the model's actual predictions. Instead of generating tokens one by one, the system uses a smaller, faster \"speculative model\" to propose a sequence of tokens, which are then validated in batches by the larger, more accurate \"target model.\" If the speculative tokens are correct, the target model accepts them immediately, effectively skipping the intermediate generation steps; if any token is incorrect, the process backtracks and regenerates from that point. This approach leverages the speed of smaller models to reduce the overall latency of text generation, making high-quality reasoning and long-context responses more efficient and responsive.\n\n[ Prompt: 98.3 t/s | Generation: 8.2 t/s ]\n\nExiting...",
+      "tokensPerSecond": 8.2,
+      "accepted": null,
+      "drafted": null,
+      "acceptanceRate": null
+    },
+    "summary": {
+      "speculator": "mtp",
+      "tier": "4b",
+      "backend": "unknown",
+      "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+      "drafted": 96,
+      "accepted": 49,
+      "acceptanceRate": 0.5104166666666666,
+      "speedup": 2.963414634146342,
+      "status": "pass",
+      "failure": null
+    }
+  }
+}

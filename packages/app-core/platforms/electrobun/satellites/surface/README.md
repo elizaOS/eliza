@@ -126,16 +126,16 @@ It also mocks model calls through `eliza.runtime` and verifies Eliza-1 catalog, 
 
 ## Module Manager Compatibility
 
-The current upstream module system still uses packaging names such as `carrot.json`, `build.carrot`, and `carrotOnly`. Those names remain only at the packaging boundary.
+The current upstream module system still uses packaging names such as `plugin.json`, `build.carrot`, and `carrotOnly`. Those names remain only at the packaging boundary.
 
 The Surface manifest uses:
 
 - ID: `eliza.surface`
 - Dependency: `eliza.runtime`
 - Mode: `window`
-- Permission: `host:manage-carrots`
+- Permission: `host:manage-remote-plugins`
 
-`host:manage-carrots` is required by the existing module host for cross-Satellite calls through the upstream `invoke-carrot` host request. No filesystem, shell, Git, model-download, or child-process permission is requested by Surface.
+`host:manage-remote-plugins` is required by the existing module host for cross-Satellite calls through the upstream `invoke-remote-plugin` host request. No filesystem, shell, Git, model-download, or child-process permission is requested by Surface.
 
 The Surface worker implements that module call path. The current host does not expose a completed public view-to-Satellite-worker RPC for window-mode Satellites, so the browser UI uses `RuntimeSatelliteClient` and can run against a host-provided bridge when available or the smoke-test mock bridge in Phase 4.
 

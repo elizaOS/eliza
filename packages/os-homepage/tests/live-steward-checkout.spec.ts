@@ -73,6 +73,7 @@ async function installLiveCloudForwarders(page: Page) {
     sessionSync: false,
     checkoutSession: null as {
       body: unknown;
+      responseBody: unknown;
       status: number;
       url?: string;
     } | null,
@@ -101,11 +102,17 @@ async function installLiveCloudForwarders(page: Page) {
         signal: AbortSignal.timeout(30_000),
       });
       const bodyText = await response.text();
-      const body = bodyText ? (JSON.parse(bodyText) as { url?: string }) : {};
+      let body: { url?: string } | { raw: string } = {};
+      try {
+        body = bodyText ? (JSON.parse(bodyText) as { url?: string }) : {};
+      } catch {
+        body = { raw: bodyText.slice(0, 500) };
+      }
       observed.checkoutSession = {
         body: request.postDataJSON(),
+        responseBody: body,
         status: response.status,
-        url: body.url,
+        url: "url" in body ? body.url : undefined,
       };
       await route.fulfill({
         status: response.status,
@@ -157,14 +164,16 @@ test.describe("live Steward checkout", () => {
 
     await expect
       .poll(() => observed.checkoutSession, { timeout: 30_000 })
-      .toMatchObject({
-        status: 200,
-        body: {
-          hardwareSku: "elizaos-phone",
-          hardwareColor: "Blue glass",
-          returnUrl: "billing",
-        },
-      });
+      .not.toBeNull();
+    expect(observed.checkoutSession?.body).toMatchObject({
+      hardwareSku: "elizaos-phone",
+      hardwareColor: "Blue glass",
+      returnUrl: "billing",
+    });
+    expect(
+      observed.checkoutSession?.status,
+      JSON.stringify(observed.checkoutSession?.responseBody, null, 2),
+    ).toBe(200);
     expect(observed.checkoutSession?.url).toMatch(
       /^https:\/\/checkout\.stripe\.com\//,
     );

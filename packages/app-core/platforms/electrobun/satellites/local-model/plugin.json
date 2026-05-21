@@ -1,14 +1,13 @@
 {
-  "id": "eliza.pty",
-  "name": "Eliza Terminal",
+  "id": "eliza.local-model",
+  "name": "Eliza Model",
   "version": "0.1.0",
-  "description": "Terminal Satellite for ElizaLaunch. Provides trusted local terminal sessions for Eliza Orbit.",
+  "description": "Model Satellite for ElizaLaunch. Provides Eliza-1 local model catalog, status, download, and routing controls for Eliza Orbit.",
   "mode": "background",
   "permissions": {
     "host": {
       "storage": true,
-      "notifications": true,
-      "manage-carrots": true
+      "manage-remote-plugins": true
     },
     "bun": {
       "read": true,
@@ -23,7 +22,7 @@
   },
   "view": {
     "relativePath": "src/web/index.html",
-    "title": "Eliza Terminal Satellite",
+    "title": "Eliza Model Satellite",
     "width": 480,
     "height": 320,
     "hidden": true

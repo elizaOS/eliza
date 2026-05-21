@@ -1,0 +1,99 @@
+{
+  "rows": [
+    {
+      "tier": "0_8b",
+      "baseline": 13.6,
+      "mtp": 14.9,
+      "speedup": 1.0955882352941178,
+      "accepted": 31,
+      "drafted": 78,
+      "acceptance": 0.3974358974358974,
+      "baselineStatus": 0,
+      "mtpStatus": 0
+    },
+    {
+      "tier": "2b",
+      "baseline": 27.3,
+      "mtp": 40.1,
+      "speedup": 1.468864468864469,
+      "accepted": 62,
+      "drafted": 122,
+      "acceptance": 0.5081967213114754,
+      "baselineStatus": 0,
+      "mtpStatus": 0
+    },
+    {
+      "tier": "4b",
+      "baseline": 13.8,
+      "mtp": 17.9,
+      "speedup": 1.297101449275362,
+      "accepted": 49,
+      "drafted": 96,
+      "acceptance": 0.5104166666666666,
+      "baselineStatus": 0,
+      "mtpStatus": 0
+    }
+  ],
+  "raw": [
+    {
+      "tier": "0_8b",
+      "spec": false,
+      "status": 0,
+      "wall": 11.182468891143799,
+      "tps": 13.6,
+      "accepted": null,
+      "drafted": null,
+      "tail": ""
+    },
+    {
+      "tier": "0_8b",
+      "spec": true,
+      "status": 0,
+      "wall": 8.161064863204956,
+      "tps": 14.9,
+      "accepted": 31,
+      "drafted": 78,
+      "tail": ""
+    },
+    {
+      "tier": "2b",
+      "spec": false,
+      "status": 0,
+      "wall": 8.143526077270508,
+      "tps": 27.3,
+      "accepted": null,
+      "drafted": null,
+      "tail": ""
+    },
+    {
+      "tier": "2b",
+      "spec": true,
+      "status": 0,
+      "wall": 5.6003570556640625,
+      "tps": 40.1,
+      "accepted": 62,
+      "drafted": 122,
+      "tail": ""
+    },
+    {
+      "tier": "4b",
+      "spec": false,
+      "status": 0,
+      "wall": 12.696409940719604,
+      "tps": 13.8,
+      "accepted": null,
+      "drafted": null,
+      "tail": ""
+    },
+    {
+      "tier": "4b",
+      "spec": true,
+      "status": 0,
+      "wall": 9.714797019958496,
+      "tps": 17.9,
+      "accepted": 49,
+      "drafted": 96,
+      "tail": ""
+    }
+  ]
+}

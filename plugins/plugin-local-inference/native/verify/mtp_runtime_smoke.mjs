@@ -41,6 +41,18 @@ function parseArgs(argv) {
       "Write a short paragraph about speculative decoding.",
     benchDraftMax: process.env.ELIZA_MTP_BENCH_DRAFT_MAX || "2",
     benchLogDisable: process.env.ELIZA_MTP_BENCH_LOG_DISABLE !== "0",
+    benchDraftMin: process.env.ELIZA_MTP_BENCH_DRAFT_MIN || "",
+    benchDraftPMin: process.env.ELIZA_MTP_BENCH_DRAFT_P_MIN || "",
+    temperature: process.env.ELIZA_MTP_TEMP || "",
+    topK: process.env.ELIZA_MTP_TOP_K || "",
+    topP: process.env.ELIZA_MTP_TOP_P || "",
+    minP: process.env.ELIZA_MTP_MIN_P || "",
+    flashAttn: process.env.ELIZA_MTP_FLASH_ATTN || "",
+    batchSize: process.env.ELIZA_MTP_BATCH_SIZE || "",
+    ubatchSize: process.env.ELIZA_MTP_UBATCH_SIZE || "",
+    cacheTypeK: process.env.ELIZA_MTP_CACHE_TYPE_K || "",
+    cacheTypeV: process.env.ELIZA_MTP_CACHE_TYPE_V || "",
+    reasoning: process.env.ELIZA_MTP_REASONING || "",
     benchTimeoutMs: Number.parseInt(
       process.env.ELIZA_MTP_BENCH_TIMEOUT_MS || "600000",
       10,
@@ -68,8 +80,20 @@ function parseArgs(argv) {
     else if (arg === "--bench-context") args.benchContext = Number.parseInt(next(), 10);
     else if (arg === "--bench-prompt") args.benchPrompt = next();
     else if (arg === "--bench-draft-n-max") args.benchDraftMax = next();
+    else if (arg === "--bench-draft-n-min") args.benchDraftMin = next();
+    else if (arg === "--bench-draft-p-min") args.benchDraftPMin = next();
     else if (arg === "--bench-log-disable") args.benchLogDisable = true;
     else if (arg === "--bench-keep-logs") args.benchLogDisable = false;
+    else if (arg === "--temp") args.temperature = next();
+    else if (arg === "--top-k") args.topK = next();
+    else if (arg === "--top-p") args.topP = next();
+    else if (arg === "--min-p") args.minP = next();
+    else if (arg === "--flash-attn") args.flashAttn = next();
+    else if (arg === "--batch-size") args.batchSize = next();
+    else if (arg === "--ubatch-size") args.ubatchSize = next();
+    else if (arg === "--cache-type-k") args.cacheTypeK = next();
+    else if (arg === "--cache-type-v") args.cacheTypeV = next();
+    else if (arg === "--reasoning") args.reasoning = next();
     else if (arg === "--bench-timeout-ms")
       args.benchTimeoutMs = Number.parseInt(next(), 10);
     else if (arg === "--bench-report") args.benchReport = next();
@@ -89,7 +113,16 @@ function parseArgs(argv) {
           "  --bench-tokens <N>          Tokens to generate per run",
           "  --bench-context <N>         Context size",
           "  --bench-draft-n-max <N>     Max MTP draft tokens",
+          "  --bench-draft-n-min <N>     Min MTP draft tokens",
+          "  --bench-draft-p-min <N>     MTP draft probability floor",
           "  --bench-keep-logs           Preserve llama.cpp logs so draft counters can be parsed",
+          "  --temp/--top-k/--top-p/--min-p <N>   Sampler controls for comparable tuned benches",
+          "  --flash-attn <on|off|auto>  Forward -fa setting",
+          "  --batch-size <N>            Forward -b setting",
+          "  --ubatch-size <N>           Forward -ub setting",
+          "  --cache-type-k <TYPE>       Forward -ctk setting",
+          "  --cache-type-v <TYPE>       Forward -ctv setting",
+          "  --reasoning <on|off|auto>   Forward --reasoning setting",
           "  --bench-report <path>       Speculative speedup report path",
         ].join("\n"),
       );
@@ -281,8 +314,29 @@ function runBench(binary, args, withMtp) {
   if (args.benchLogDisable) {
     cliArgs.push("--log-disable");
   }
+  const optionalFlags = [
+    ["--temp", args.temperature],
+    ["--top-k", args.topK],
+    ["--top-p", args.topP],
+    ["--min-p", args.minP],
+    ["-fa", args.flashAttn],
+    ["-b", args.batchSize],
+    ["-ub", args.ubatchSize],
+    ["-ctk", args.cacheTypeK],
+    ["-ctv", args.cacheTypeV],
+    ["--reasoning", args.reasoning],
+  ];
+  for (const [flag, value] of optionalFlags) {
+    if (value !== "") cliArgs.push(flag, String(value));
+  }
   if (withMtp) {
     cliArgs.push("--spec-type", "draft-mtp", "--spec-draft-n-max", String(args.benchDraftMax));
+    if (args.benchDraftMin !== "") {
+      cliArgs.push("--spec-draft-n-min", String(args.benchDraftMin));
+    }
+    if (args.benchDraftPMin !== "") {
+      cliArgs.push("--spec-draft-p-min", String(args.benchDraftPMin));
+    }
   }
   const started = Date.now();
   const result = spawnSync(binary, cliArgs, {
