@@ -262,6 +262,45 @@ def score_candidate(case: dict[str, Any], changes: list[dict[str, Any]]) -> dict
     }
 
 
+def geometry_metrics(case: dict[str, Any], changes: list[dict[str, Any]]) -> dict[str, int]:
+    movable_by_id = {
+        str(obj["id"]): obj
+        for obj in case.get("movable_objects", [])
+        if isinstance(obj, dict) and obj.get("id")
+    }
+    core = [float(value) for value in case["floorplan"]["core_area_um"]]
+    min_x, min_y, max_x, max_y = core
+    boxes = []
+    unknown = 0
+    out_of_bounds = 0
+    for change in changes:
+        object_id = str(change["target"]).removeprefix("placement.")
+        obj = movable_by_id.get(object_id)
+        if obj is None:
+            unknown += 1
+            continue
+        value = change["value"]
+        x_um = float(value["x_um"])
+        y_um = float(value["y_um"])
+        width, height = object_size_um(obj)
+        box = (x_um, y_um, x_um + width, y_um + height)
+        boxes.append(box)
+        if box[0] < min_x or box[1] < min_y or box[2] > max_x or box[3] > max_y:
+            out_of_bounds += 1
+    overlaps = 0
+    for left_index, left in enumerate(boxes):
+        for right in boxes[left_index + 1 :]:
+            overlap_w = max(0.0, min(left[2], right[2]) - max(left[0], right[0]))
+            overlap_h = max(0.0, min(left[3], right[3]) - max(left[1], right[1]))
+            if overlap_w * overlap_h > 0.0:
+                overlaps += 1
+    return {
+        "unknown_target_count": unknown,
+        "out_of_bounds_count": out_of_bounds,
+        "overlap_count": overlaps,
+    }
+
+
 def candidate_for_case(
     case: dict[str, Any],
     run_id: str,
@@ -322,6 +361,7 @@ def candidate_for_case(
         "claim_boundary": CLAIM_BOUNDARY,
     }
     candidate["generated_by"]["score"] = score_candidate(case, changes)
+    candidate["generated_by"]["geometry"] = geometry_metrics(case, changes)
     return candidate
 
 
@@ -383,6 +423,21 @@ def main() -> int:
                     "case_id": case.get("id"),
                     "source": rel(path),
                     "reason": "no movable_objects in placement case",
+                }
+            )
+            continue
+        geometry = candidate["generated_by"]["geometry"]
+        if (
+            geometry["unknown_target_count"] > 0
+            or geometry["out_of_bounds_count"] > 0
+            or geometry["overlap_count"] > 0
+        ):
+            blocked.append(
+                {
+                    "case_id": case.get("id"),
+                    "source": rel(path),
+                    "reason": "supervised model candidate failed pre-replay geometry checks",
+                    "geometry": geometry,
                 }
             )
             continue

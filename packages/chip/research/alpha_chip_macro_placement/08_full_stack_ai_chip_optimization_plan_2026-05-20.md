@@ -540,10 +540,27 @@ Implemented schema foundation:
   train/validation/test splits, and emits quarantined supervised-imitation E1
   generated-softmacro candidates. Current validation uses 1,979 train, 200
   validation, and 240 test samples; the simple mean-prior model records
-  validation `mae_l2_over_core=0.36796352` and test
-  `mae_l2_over_core=0.40037822`, and emits two E1 softmacro candidate
-  manifests. This proves train/eval/infer artifacts only; it has no graph,
-  timing, routing, congestion, or PPA claim.
+  validation `mean_l1_over_core=0.2395623` and test
+  `mean_l1_over_core=0.26163664`, emits 15 pre-replay-geometry-clean
+  quarantined candidate manifests across TILOS, fixture, and generated E1
+  softmacro cases, and blocks 5 cases: the fixed-only real E1 OpenLane case
+  plus 4 supervised predictions with out-of-bounds or overlap geometry. This
+  proves train/eval/infer artifacts only; it has no graph, timing, routing,
+  congestion, or PPA claim.
+  `make ai-eda-macro-placement-supervised-replay-plan` applies the same
+  fail-closed replay planner and tool-action validation to those supervised
+  candidates. Current supervised replay result: 15 candidates, 0 ready for
+  replay, and 15 blocked, with blockers split across 12 external benchmark
+  review requirements, 2 abstract E1 softmacro real-LEF/DEF requirements, and
+  1 fixture-only smoke case.
+- `scripts/ai_eda/train_macro_placement_torch_regressor.py` is the
+  CUDA-capable training entrypoint over the same supervised JSONL contract. It
+  trains a small PyTorch regressor for normalized macro `(x, y)` and
+  orientation, writing `torch_regressor.pt`, `metrics.json`, and
+  `torch_training_run.json` under
+  `build/ai_eda/macro_placement_torch_regressor/<run-id>/`. It is explicitly a
+  training artifact only: candidate generation still flows through the
+  quarantined candidate-manifest and replay-plan contracts.
 - `scripts/ai_eda/train_macro_placement_policy.py` runs the first deterministic
   macro-placement baseline over normalized placement cases. It emits
   quarantined candidate manifests for cases with movable macros and records
@@ -611,6 +628,16 @@ Implemented schema foundation:
   supervised macro-placement JSONL splits and validates sample counts, case
   splits, no case leakage across train/validation/test, and fallback-size
   accounting.
+  `make ai-eda-macro-placement-supervised-train` trains the dependency-free
+  supervised mean-prior model, writes train/validation/test metrics, and emits
+  only pre-replay-geometry-clean quarantined candidates.
+  `make ai-eda-macro-placement-torch-train` runs the PyTorch regressor when
+  PyTorch is installed, using CUDA automatically on a CUDA host and CPU
+  otherwise.
+  `make ai-eda-macro-placement-supervised-replay-plan` then creates replay
+  bundles and dry-run tool-action manifests for those supervised candidates,
+  preserving the same OpenLane/OpenROAD blocker accounting used by the
+  deterministic baselines.
   `make ai-eda-macro-placement-baseline` runs the first normalized
   macro-placement baseline over the softmacro fixture, current E1 OpenLane
   conversion, the converted TILOS cases, and generated E1 4x4/8x8 softmacro
@@ -630,6 +657,11 @@ Implemented schema foundation:
   `make ai-eda-macro-placement-candidate-eval` ranks those fifty-seven
   quarantined candidates by placement case and writes
   `build/ai_eda/macro_placement_candidate_eval/validation/macro_placement_candidate_eval_report.json`.
+  `make ai-eda-macro-placement-combined-candidate-eval` ranks both the
+  deterministic baseline candidates and the supervised mean-prior candidates
+  together. Current combined validation ranks 72 candidates across 19 placement
+  cases with no candidate-schema errors, giving one proxy-ordered replay queue
+  across the local non-CUDA and supervised training lanes.
   `make ai-eda-macro-placement-replay-plan` records all fifty-seven candidates
   as blocked for deterministic replay until an OpenLane/OpenROAD handoff exists
   and validates both the replay-plan bundles and the generated replay
@@ -1280,12 +1312,17 @@ not as:
   counts, split leakage, and fallback-size accounting.
 - [x] Train/evaluate first dependency-free supervised macro-placement imitation
   model over the JSONL splits and emit quarantined E1 softmacro candidates.
+- [x] Add CUDA-capable PyTorch macro-placement regressor entrypoint over the
+  supervised JSONL splits.
+- [x] Add fail-closed replay plans for supervised macro-placement candidates.
 - [x] Add target-aware legal-grid comparison metrics for converted TILOS
   Ariane133 and generated E1 softmacro cases.
 - [x] Add legal target-repair search candidates for converted TILOS Ariane133
   and generated E1 softmacro cases.
 - [x] Add macro-placement candidate ranking/evaluation report for quarantined
   candidates.
+- [x] Add combined macro-placement candidate ranking across deterministic
+  baseline and supervised-model candidate directories.
 - [x] Add macro-placement replay-plan bundles for quarantined candidates without
   executing or promoting OpenLane/OpenROAD changes.
 - [x] Add macro-placement replay-plan validator for bundle hashes, override

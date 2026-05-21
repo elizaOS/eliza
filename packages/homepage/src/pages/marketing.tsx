@@ -302,7 +302,7 @@ export default function MarketingPage() {
               ))}
             </ul>
 
-            <div
+            <section
               className="app-os-downloads"
               aria-label={t("homepage_eliza.marketing.osDownloadsAria", {
                 defaultValue: "elizaOS distributions",
@@ -367,7 +367,7 @@ export default function MarketingPage() {
                   );
                 })}
               </ul>
-            </div>
+            </section>
 
             <div className="app-checksum-row">
               {releaseData.release.checksum ? (

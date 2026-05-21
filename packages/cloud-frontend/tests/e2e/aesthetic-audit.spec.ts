@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { test, type Page } from "@playwright/test";
+import { type Page, test } from "@playwright/test";
 
 test.skip(
   Boolean(process.env.CLOUD_E2E_LIVE_URL),
@@ -43,7 +43,11 @@ const ROUTES: { path: string; slug: string; auth?: boolean }[] = [
   { path: "/dashboard/settings", slug: "dashboard-settings", auth: true },
   { path: "/dashboard/billing", slug: "dashboard-billing", auth: true },
   { path: "/dashboard/api-keys", slug: "dashboard-api-keys", auth: true },
-  { path: "/dashboard/api-explorer", slug: "dashboard-api-explorer", auth: true },
+  {
+    path: "/dashboard/api-explorer",
+    slug: "dashboard-api-explorer",
+    auth: true,
+  },
   { path: "/dashboard/agents", slug: "dashboard-agents", auth: true },
   { path: "/dashboard/my-agents", slug: "dashboard-my-agents", auth: true },
   { path: "/dashboard/apps", slug: "dashboard-apps", auth: true },
@@ -55,9 +59,21 @@ const ROUTES: { path: string; slug: string; auth?: boolean }[] = [
   { path: "/dashboard/earnings", slug: "dashboard-earnings", auth: true },
   { path: "/dashboard/affiliates", slug: "dashboard-affiliates", auth: true },
   { path: "/dashboard/admin", slug: "dashboard-admin", auth: true },
-  { path: "/dashboard/admin/infrastructure", slug: "dashboard-admin-infra", auth: true },
-  { path: "/dashboard/admin/metrics", slug: "dashboard-admin-metrics", auth: true },
-  { path: "/dashboard/admin/redemptions", slug: "dashboard-admin-redemptions", auth: true },
+  {
+    path: "/dashboard/admin/infrastructure",
+    slug: "dashboard-admin-infra",
+    auth: true,
+  },
+  {
+    path: "/dashboard/admin/metrics",
+    slug: "dashboard-admin-metrics",
+    auth: true,
+  },
+  {
+    path: "/dashboard/admin/redemptions",
+    slug: "dashboard-admin-redemptions",
+    auth: true,
+  },
 ];
 
 const VIEWPORTS = [
@@ -104,7 +120,10 @@ test.beforeAll(() => {
 });
 
 function persistReport(report: PageReport) {
-  const file = path.join(FRAGMENT_DIR, `${report.viewport}-${report.slug}.json`);
+  const file = path.join(
+    FRAGMENT_DIR,
+    `${report.viewport}-${report.slug}.json`,
+  );
   fs.writeFileSync(file, JSON.stringify(report, null, 2));
 }
 
@@ -117,15 +136,21 @@ test.afterAll(() => {
     } catch {}
   }
   all.sort((a, b) => (a.viewport + a.slug).localeCompare(b.viewport + b.slug));
-  fs.writeFileSync(path.join(OUT_ROOT, "report.json"), JSON.stringify(all, null, 2));
-  fs.writeFileSync(path.join(OUT_ROOT, "contact-sheet.html"), buildContactSheet(all));
+  fs.writeFileSync(
+    path.join(OUT_ROOT, "report.json"),
+    JSON.stringify(all, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(OUT_ROOT, "contact-sheet.html"),
+    buildContactSheet(all),
+  );
 });
 
 function buildContactSheet(reports: PageReport[]): string {
   const groups = new Map<string, PageReport[]>();
   for (const r of reports) {
     if (!groups.has(r.viewport)) groups.set(r.viewport, []);
-    groups.get(r.viewport)!.push(r);
+    groups.get(r.viewport)?.push(r);
   }
   const sections: string[] = [];
   for (const [vp, list] of groups) {
@@ -133,9 +158,12 @@ function buildContactSheet(reports: PageReport[]): string {
       .map((r) => {
         const issues: string[] = [];
         if (!r.loadOk) issues.push(`LOAD FAIL: ${r.loadError ?? "unknown"}`);
-        if (r.consoleErrors.length) issues.push(`${r.consoleErrors.length} console errors`);
-        if (r.failedRequests.length) issues.push(`${r.failedRequests.length} failed requests`);
-        if (r.radiusViolations.length) issues.push(`${r.radiusViolations.length} radius violations`);
+        if (r.consoleErrors.length)
+          issues.push(`${r.consoleErrors.length} console errors`);
+        if (r.failedRequests.length)
+          issues.push(`${r.failedRequests.length} failed requests`);
+        if (r.radiusViolations.length)
+          issues.push(`${r.radiusViolations.length} radius violations`);
         const issueHtml = issues.length
           ? `<div class="issues">${issues.map((i) => `<div>⚠ ${i}</div>`).join("")}</div>`
           : `<div class="ok">✓ clean</div>`;
@@ -151,7 +179,9 @@ function buildContactSheet(reports: PageReport[]): string {
           </figure>`;
       })
       .join("");
-    sections.push(`<section><h2>${vp}</h2><div class="grid">${cards}</div></section>`);
+    sections.push(
+      `<section><h2>${vp}</h2><div class="grid">${cards}</div></section>`,
+    );
   }
   return `<!doctype html><meta charset="utf-8"><title>cloud aesthetic contact sheet</title>
 <style>
@@ -170,7 +200,10 @@ function buildContactSheet(reports: PageReport[]): string {
 ${sections.join("\n")}`;
 }
 
-async function auditPage(page: Page, route: string): Promise<{
+async function auditPage(
+  page: Page,
+  _route: string,
+): Promise<{
   logo: PageReport["logo"];
   navPaddingLeft: string | null;
   navPaddingRight: string | null;
@@ -182,16 +215,17 @@ async function auditPage(page: Page, route: string): Promise<{
       (document.querySelector(
         'a[href="/"] img, a[href="/dashboard"] img, header img[alt*="liza" i], [aria-label="eliza cloud" i], [aria-label*="eliza" i][role="img"], img[alt*="eliza" i]',
       ) as HTMLElement | null) ??
-      (document.querySelector('a[href="/"], a[href="/dashboard"]')?.querySelector(
-        '[role="img"], img, svg',
-      ) as HTMLElement | null);
+      (document
+        .querySelector('a[href="/"], a[href="/dashboard"]')
+        ?.querySelector('[role="img"], img, svg') as HTMLElement | null);
     const logo = logoEl
       ? (() => {
           const rect = logoEl.getBoundingClientRect();
           const src =
             (logoEl as HTMLImageElement).src ??
             logoEl.getAttribute("src") ??
-            (logoEl.getAttribute("aria-label") ?? "text-lockup");
+            logoEl.getAttribute("aria-label") ??
+            "text-lockup";
           return { width: rect.width, height: rect.height, src };
         })()
       : null;
@@ -224,12 +258,17 @@ async function auditPage(page: Page, route: string): Promise<{
         selector: el.tagName.toLowerCase(),
         tag: el.tagName,
         borderRadius: r,
-        classes: typeof el.className === "string" ? el.className.slice(0, 200) : "",
+        classes:
+          typeof el.className === "string" ? el.className.slice(0, 200) : "",
       });
       if (violations.length >= 25) break;
     }
 
-    const buttons = Array.from(document.querySelectorAll<HTMLElement>("button, a[role=button], [data-slot=button]")).slice(0, 8);
+    const buttons = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        "button, a[role=button], [data-slot=button]",
+      ),
+    ).slice(0, 8);
     const buttonHovers: ButtonHover[] = buttons.map((b) => {
       const rest = getComputedStyle(b).backgroundColor;
       // Simulate :hover by adding a marker class + reading the matched
@@ -240,7 +279,11 @@ async function auditPage(page: Page, route: string): Promise<{
       try {
         for (const sheet of Array.from(document.styleSheets)) {
           let rules: CSSRuleList | null = null;
-          try { rules = sheet.cssRules; } catch { continue; }
+          try {
+            rules = sheet.cssRules;
+          } catch {
+            continue;
+          }
           if (!rules) continue;
           for (const rule of Array.from(rules)) {
             if (!(rule instanceof CSSStyleRule)) continue;
@@ -309,10 +352,17 @@ for (const viewport of VIEWPORTS) {
           if (text.includes("[CreditsProvider] Failed to fetch")) return;
           consoleErrors.push(text.slice(0, 400));
         });
-        page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
+        page.on("pageerror", (err) =>
+          consoleErrors.push(`pageerror: ${err.message}`),
+        );
         page.on("response", (resp) => {
           const status = resp.status();
-          if (status >= 400 && status !== 401 && status !== 403 && status !== 404) {
+          if (
+            status >= 400 &&
+            status !== 401 &&
+            status !== 403 &&
+            status !== 404
+          ) {
             failedRequests.push({ url: resp.url(), status });
           }
         });
@@ -333,7 +383,10 @@ for (const viewport of VIEWPORTS) {
         };
 
         try {
-          await page.goto(route.path, { waitUntil: "domcontentloaded", timeout: 30_000 });
+          await page.goto(route.path, {
+            waitUntil: "domcontentloaded",
+            timeout: 30_000,
+          });
           await page.evaluate(() => document.fonts.ready).catch(() => {});
           await page.waitForTimeout(600);
           const audit = await auditPage(page, route.path);

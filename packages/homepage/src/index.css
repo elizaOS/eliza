@@ -1016,7 +1016,9 @@ article {
   background: rgba(8, 9, 12, 0.025);
   color: var(--brand-black);
   text-decoration: none;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .app-os-card[data-status="available"]:hover {

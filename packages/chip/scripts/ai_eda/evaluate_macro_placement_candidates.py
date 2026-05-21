@@ -20,7 +20,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RUN_ID = "validation"
-DEFAULT_CANDIDATE_ROOT = ROOT / "build/ai_eda/macro_placement_policy"
+DEFAULT_CANDIDATE_DIR = ROOT / "build/ai_eda/macro_placement_policy/validation/candidates"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/macro_placement_candidate_eval"
 CLAIM_BOUNDARY = "macro_placement_candidate_ranking_only_no_openroad_replay_or_release_claim"
 REQUIRED_REPLAY_GATES = {
@@ -51,8 +51,20 @@ def load_record(path: Path) -> dict[str, Any]:
     return data
 
 
-def default_candidate_paths(run_id: str) -> list[Path]:
-    return sorted((DEFAULT_CANDIDATE_ROOT / run_id / "candidates").glob("*.json"))
+def candidate_paths(explicit_candidates: list[Path], candidate_dirs: list[Path]) -> list[Path]:
+    paths = list(explicit_candidates)
+    for directory in candidate_dirs:
+        if directory.exists():
+            paths.extend(sorted(directory.glob("*.json")))
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        deduped.append(path)
+    return sorted(deduped)
 
 
 def validate_candidate(record: dict[str, Any], path: Path) -> list[str]:
@@ -93,6 +105,7 @@ def case_id_from_candidate(record: dict[str, Any]) -> str:
         "center_legal_baseline": "macro-placement-center-baseline-",
         "target_aware_grid": "macro-placement-target-aware-grid-",
         "target_repair_search": "macro-placement-target-repair-search-",
+        "supervised_mean_legalized_grid": "macro-placement-supervised-mean-",
     }
     prefix = prefixes.get(policy)
     if prefix and record_id.startswith(prefix) and record_id.endswith("-validation"):
@@ -133,16 +146,20 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", default=DEFAULT_RUN_ID)
     parser.add_argument("--candidate", action="append", type=Path, default=[])
+    parser.add_argument("--candidate-dir", action="append", type=Path, default=[])
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    candidate_paths = args.candidate or default_candidate_paths(args.run_id)
+    candidate_dirs = args.candidate_dir or [
+        DEFAULT_CANDIDATE_DIR if args.run_id == DEFAULT_RUN_ID else ROOT / "build/ai_eda/macro_placement_policy" / args.run_id / "candidates"
+    ]
+    selected_candidate_paths = candidate_paths(args.candidate, candidate_dirs)
     errors: list[str] = []
     candidates: list[dict[str, Any]] = []
-    for path in candidate_paths:
+    for path in selected_candidate_paths:
         if not path.exists():
             errors.append(f"{path}: missing candidate")
             continue
@@ -180,6 +197,8 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        "candidate_dirs": [rel(path) for path in candidate_dirs],
+        "candidate_paths": [rel(path) for path in selected_candidate_paths],
         "candidate_count": len(candidates),
         "error_count": len(errors),
         "errors": errors,
