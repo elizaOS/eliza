@@ -19,6 +19,7 @@ SOURCES = {
     "wifi_bt": ROOT / "package/wifi/murata-type-2ea-wifi6e.yaml",
     "enclosure": ROOT / "docs/board/e1-phone-enclosure-interface.yaml",
     "mechanical_overlay": ROOT / "board/kicad/e1-phone/mechanical-overlay.yaml",
+    "cad_params": ROOT / "mechanical/e1-phone/cad/e1_phone_params.yaml",
 }
 
 
@@ -40,6 +41,165 @@ def flatten_net_groups(groups: dict[str, Any]) -> set[str]:
     return nets
 
 
+def keepout_audit(overlay_keepouts: dict[str, Any], cad_radio: dict[str, Any], board_bbox: dict[str, float]) -> dict[str, Any]:
+    """Geometric cad-estimate cross-check of routed antenna keepouts against the
+    board outline and the CAD per-radio keepout envelopes. Not an EM solver."""
+    board_w = float(board_bbox["width"])
+    board_h = float(board_bbox["height"])
+    cell_cad = cad_radio["cellular"]["antenna_keepout_mm"]
+    wifi_cad = cad_radio["wifi_bt"]["antenna_keepout_mm"]
+    audit: list[dict[str, Any]] = []
+    for keepout_id, cad_len_w in (
+        ("top_antenna_keepout", float(cell_cad[0])),
+        ("bottom_antenna_keepout", float(cell_cad[0])),
+        ("wifi_bt_side_antenna_keepout", float(wifi_cad[0])),
+    ):
+        rect = overlay_keepouts[keepout_id]["rect_mm"]
+        x, y, w, h = float(rect["x"]), float(rect["y"]), float(rect["width"]), float(rect["height"])
+        within_board = (x >= 0.0) and (y >= 0.0) and (x + w <= board_w) and (y + h <= board_h)
+        # The CAD per-radio keepout is defined in the 78 mm device envelope; the
+        # routed board is only 64 mm wide, so the clear edge length is bounded by
+        # the board outline. A routed length shorter than the CAD width is the
+        # expected coordinate-space difference, not a layout error: the antenna
+        # plastic can extend past the board edge into the enclosure wall.
+        audit.append(
+            {
+                "keepout_id": keepout_id,
+                "routed_rect_mm": {"x": x, "y": y, "width": w, "height": h},
+                "routed_clear_length_mm": round(w, 3),
+                "routed_clear_area_mm2": round(w * h, 3),
+                "cad_envelope_keepout_width_mm": round(cad_len_w, 3),
+                "routed_within_64x132_board_outline": within_board,
+                "board_edge_limits_routed_length_below_cad_envelope": w < cad_len_w,
+                "max_board_clear_length_mm": round(board_w - 2.0 * x, 3),
+            }
+        )
+    return {
+        "evidence_class": "cad_estimate_geometric_cross_check_not_em_solver",
+        "coordinate_note": (
+            "Routed keepouts are in the 64x132 mm board frame; CAD per-radio "
+            "antenna_keepout_mm is in the 78x153.6x11.8 mm device envelope. "
+            "Routed clear length is bounded by the board outline and the antenna "
+            "plastic edge extends past the board into the enclosure wall."
+        ),
+        "board_bbox_mm": {"width": board_w, "height": board_h},
+        "device_envelope_mm": [78.0, 153.6, 11.8],
+        "results": audit,
+        "all_keepouts_within_board_outline": all(item["routed_within_64x132_board_outline"] for item in audit),
+        "all_routed_lengths_bounded_by_board_edge": all(item["routed_clear_length_mm"] <= board_w for item in audit),
+    }
+
+
+# Band plan grounded in the selected module public specs: Quectel RG255C is a
+# 3GPP Rel-17 5G RedCap Sub-6 module with LTE Cat-4 fallback and optional
+# multi-constellation GNSS; Murata Type 2EA / Infineon CYW55573 is Wi-Fi 6E
+# (2.4/5/6 GHz) 2x2 MIMO plus Bluetooth 5.3. Frequencies are public band-edge
+# values; S11/efficiency numbers are pre-layout planning targets, not measured.
+RF_BAND_PLAN = [
+    {
+        "net": "CELL_RF_MAIN",
+        "role": "cellular_main_tx_rx",
+        "bands": "LTE/NR Sub-6 low+mid band; exact matrix follows region SKU",
+        "freq_range_mhz": [617, 3800],
+        "target_s11_db_max": -6.0,
+        "target_total_efficiency_pct_min": 35.0,
+        "rationale": "Compact 64 mm-wide board with a 58 mm clear edge slot; low-band efficiency is limited by the small ground clearance, so a -6 dB worst-case S11 and 35% total-efficiency floor are realistic pre-tune planning targets.",
+    },
+    {
+        "net": "CELL_RF_DIV",
+        "role": "cellular_diversity_rx",
+        "bands": "LTE/NR Sub-6 diversity, mirror of main band matrix",
+        "freq_range_mhz": [617, 3800],
+        "target_s11_db_max": -6.0,
+        "target_total_efficiency_pct_min": 30.0,
+        "rationale": "Diversity feed on the opposite plastic edge accepts lower efficiency than main; primary requirement is envelope-correlation and isolation from main, proven by VNA S21.",
+    },
+    {
+        "net": "CELL_GNSS_RF",
+        "role": "gnss_l1_rx",
+        "bands": "GNSS L1 (GPS L1 / GLONASS L1 / Galileo E1)",
+        "freq_range_mhz": [1559, 1610],
+        "target_s11_db_max": -10.0,
+        "target_total_efficiency_pct_min": 40.0,
+        "rationale": "Narrow passive L1 band tunes tighter than the wideband cellular feeds; receive-only LNA path tolerates a -10 dB match, but desense from Wi-Fi 2.4 GHz 2nd harmonic and cellular harmonics is the dominant risk.",
+    },
+    {
+        "net": "WIFI_BT_RF0",
+        "role": "wifi6e_bt_chain0",
+        "bands": "Wi-Fi 2.4/5/6 GHz + Bluetooth 5.3 (2.4 GHz)",
+        "freq_range_mhz": [2400, 7125],
+        "target_s11_db_max": -8.0,
+        "target_total_efficiency_pct_min": 45.0,
+        "rationale": "Tri-band 2x2 chain shares one feed across 2.4/5/6 GHz; a -8 dB band-worst-case S11 and 45% efficiency floor are achievable with a side-edge PIFA and pi matching network.",
+    },
+    {
+        "net": "WIFI_BT_RF1",
+        "role": "wifi6e_bt_chain1",
+        "bands": "Wi-Fi 2.4/5/6 GHz 2x2 MIMO second chain",
+        "freq_range_mhz": [2400, 7125],
+        "target_s11_db_max": -8.0,
+        "target_total_efficiency_pct_min": 45.0,
+        "rationale": "Second MIMO chain must be spatially separated from chain0; envelope-correlation-coefficient and chain-to-chain isolation are supplier_defined and require measurement.",
+    },
+]
+
+
+def _placement_center(placement: dict[str, Any]) -> tuple[float, float]:
+    region = placement["region_mm"]
+    return (
+        float(region["x"]) + float(region["width"]) / 2.0,
+        float(region["y"]) + float(region["height"]) / 2.0,
+    )
+
+
+def build_plan_estimates(placements: dict[str, Any], cad_params: dict[str, Any]) -> dict[str, Any]:
+    """Pre-layout planning estimates: S11/efficiency targets, feed spatial
+    separation derived from the placement matrix and 11.8 mm envelope, and a
+    SAR pre-scan planning estimate. All values are planning targets that a real
+    EM/VNA/SAR-lab measurement must replace before any RF claim."""
+    cell_center = _placement_center(placements["U_CELL"])
+    wifi_center = _placement_center(placements["U_WIFI_BT"])
+    module_center_separation_mm = round(
+        ((cell_center[0] - wifi_center[0]) ** 2 + (cell_center[1] - wifi_center[1]) ** 2) ** 0.5, 2
+    )
+    thickness_mm = float(cad_params["device"]["envelope_mm"][2])
+    wall_mm = float(cad_params["manufacturing"].get("rib_thickness_mm", 0.75))
+    max_skin_temp_c = cad_params["tolerances"]["environmental_targets"]["max_skin_temp_c"]
+
+    return {
+        "s11_and_efficiency": {
+            "evidence_class": "planning_estimate_not_vna_measured",
+            "method": "pre-layout antenna budget keyed to module public band plan and board ground clearance",
+            "per_feed": RF_BAND_PLAN,
+            "residual_measurement": "VNA S11 per feed and chamber total-efficiency/realized-gain sweep on a routed EVT0 board with conducted access; planning targets are not pass criteria.",
+        },
+        "feed_isolation_plan": {
+            "evidence_class": "planning_estimate_not_vna_measured",
+            "module_center_separation_mm": module_center_separation_mm,
+            "device_width_mm": float(cad_params["device"]["envelope_mm"][0]),
+            "targets": [
+                {"pair": "cellular_main_to_cellular_diversity", "target_isolation_db_min": 10.0, "basis": "opposite-edge feeds in a 78 mm-wide enclosure"},
+                {"pair": "wifi_chain0_to_wifi_chain1", "target_isolation_db_min": 10.0, "basis": "2x2 MIMO chains, supplier-defined ECC requirement"},
+                {"pair": "wifi_to_cellular_main", "target_isolation_db_min": 12.0, "basis": "cross-radio coexistence in compact midframe"},
+            ],
+            "residual_measurement": "VNA S21 isolation matrix across all feed pairs on a routed board.",
+        },
+        "sar_prescan_plan": {
+            "evidence_class": "planning_estimate_not_sar_lab_measured",
+            "device_thickness_mm": thickness_mm,
+            "back_wall_thickness_mm": wall_mm,
+            "body_separation_basis": "flush-back 11.8 mm slab held against torso; no metal midframe over antenna keepouts keeps the radiating edges closest to the plastic wall",
+            "exposure_states": [
+                {"state": "cellular_tx_max_against_body", "limit_standard": "FCC 1.6 W/kg 1g / CE 2.0 W/kg 10g", "status": "planning_estimate_requires_sar_lab"},
+                {"state": "cellular_tx_plus_wifi_tx", "limit_standard": "simultaneous-transmission SAR aggregation", "status": "planning_estimate_requires_sar_lab"},
+                {"state": "cellular_tx_plus_usb_c_charging", "limit_standard": "SAR with charging/thermal interaction", "status": "planning_estimate_requires_sar_lab"},
+            ],
+            "skin_temperature_coupling_c_max": max_skin_temp_c,
+            "residual_measurement": "Near-field SAR scan in the final orange PC/ABS enclosure plastics with production antenna gains and modem transmit power; no SAR claim is permitted until measured.",
+        },
+    }
+
+
 def main() -> int:
     routing = load_yaml(SOURCES["routing"])
     netlist = load_yaml(SOURCES["netlist"])
@@ -48,6 +208,7 @@ def main() -> int:
     wifi_bt = load_yaml(SOURCES["wifi_bt"])
     enclosure = load_yaml(SOURCES["enclosure"])
     overlay = load_yaml(SOURCES["mechanical_overlay"])
+    cad_params = load_yaml(SOURCES["cad_params"])
 
     all_nets: set[str] = set()
     for block in netlist["blocks"]:
@@ -181,6 +342,9 @@ def main() -> int:
     )
     top_edge_constraints = enclosure["edge_interfaces"]["top_edge"]["constraints"]
     bottom_edge_constraints = enclosure["edge_interfaces"]["bottom_edge"]["constraints"]
+
+    audit = keepout_audit(overlay_keepouts, cad_params["radio"], matrix["board"]["bbox_mm"])
+    plan_estimates = build_plan_estimates(placements, cad_params)
     status = (
         "blocked_rf_requires_antenna_vendor_and_measurements"
         if missing or missing_matching or missing_keepouts or missing_overlay_keepouts
@@ -228,11 +392,18 @@ def main() -> int:
             {
                 "case": "cellular_tx_vs_wifi_bt",
                 "radios_active": ["cellular_tx", "wifi_2p4_or_5_or_6_ghz", "bluetooth"],
+                "aggressor_victim": [
+                    {"aggressor": "cellular_tx_n7_n38_2500_2700_mhz", "victim": "wifi_bt_2p4_ghz", "mechanism": "adjacent-band blocking and intermod near the 2.4 GHz edge"},
+                    {"aggressor": "wifi_5_6_ghz_tx", "victim": "cellular_n77_n78_3300_3800_mhz", "mechanism": "out-of-band emission into NR mid-band"},
+                ],
                 "evidence_required": "conducted sensitivity/output-power delta and firmware coexistence log",
             },
             {
                 "case": "cellular_tx_vs_gnss",
                 "radios_active": ["cellular_tx", "gnss_optional"],
+                "aggressor_victim": [
+                    {"aggressor": "cellular_tx_harmonics", "victim": "gnss_l1_1575_mhz", "mechanism": "modem TX harmonic/spur landing in the L1 receive band"},
+                ],
                 "evidence_required": "GNSS C/N0 degradation and cellular harmonic/desense sweep",
             },
             {
@@ -242,6 +413,10 @@ def main() -> int:
                     "wifi_mimo_rf1",
                     "cellular_main",
                     "cellular_diversity",
+                ],
+                "aggressor_victim": [
+                    {"aggressor": "wifi_2p4_ghz_2nd_harmonic_~4800_5000_mhz", "victim": "wifi_5_ghz_rx", "mechanism": "self-desense across MIMO chains"},
+                    {"aggressor": "wifi_2p4_ghz_2nd_harmonic", "victim": "gnss_l1_1575_mhz", "mechanism": "classic 2.4 GHz harmonic vs GNSS L1 desense path"},
                 ],
                 "evidence_required": "VNA S21 isolation matrix and antenna efficiency report",
             },
@@ -253,9 +428,16 @@ def main() -> int:
                     "cellular_idle_or_rx",
                     "wifi_rx",
                 ],
+                "aggressor_victim": [
+                    {"aggressor": "usb_c_charging_switching_and_display_bias_boost", "victim": "gnss_l1_and_cellular_low_band_rx", "mechanism": "broadband conducted/radiated switching noise raising the receive noise floor"},
+                ],
                 "evidence_required": "noise-floor and packet-error-rate comparison with charger/display states toggled",
             },
         ],
+        "antenna_keepout_audit": audit,
+        "s11_and_efficiency_plan": plan_estimates["s11_and_efficiency"],
+        "feed_isolation_plan": plan_estimates["feed_isolation_plan"],
+        "sar_prescan_plan": plan_estimates["sar_prescan_plan"],
         "antenna_feed_assignments": [
             {
                 "net": "CELL_RF_MAIN",
@@ -296,6 +478,15 @@ def main() -> int:
             "SAR and RF exposure pre-scan in final enclosure plastics",
             "carrier/PTCRB/GCF plan for selected region SKU",
         ],
+        "residual_physical_measurements": {
+            "note": "Every quantitative number in s11_and_efficiency_plan, feed_isolation_plan, and sar_prescan_plan is a pre-layout planning estimate. None is measured. The following physical/lab inputs remain blocking residuals and cannot be satisfied by this script.",
+            "items": [
+                "EM solver (HFSS/CST) antenna model on the routed 11.8 mm enclosure stack to convert efficiency/S11 targets into design values",
+                "VNA S11 per feed and S21 isolation matrix on a fabricated EVT0 board with conducted access",
+                "anechoic-chamber total-efficiency, realized-gain, and ECC measurement",
+                "SAR-lab near-field scan in production orange PC/ABS plastics at module max transmit power",
+            ],
+        },
         "forbidden_claims": [
             "rf_ready",
             "cellular_ready",

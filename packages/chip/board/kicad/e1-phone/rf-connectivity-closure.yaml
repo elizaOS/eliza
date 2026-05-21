@@ -11,6 +11,7 @@ source_files:
   - package/wifi/murata-type-2ea-wifi6e.yaml
   - docs/board/e1-phone-enclosure-interface.yaml
   - board/kicad/e1-phone/mechanical-overlay.yaml
+  - mechanical/e1-phone/cad/e1_phone_params.yaml
 interfaces:
   - name: cellular_5g_redcap
     module:
@@ -358,12 +359,23 @@ coexistence_test_matrix:
       - cellular_tx
       - wifi_2p4_or_5_or_6_ghz
       - bluetooth
+    aggressor_victim:
+      - aggressor: cellular_tx_n7_n38_2500_2700_mhz
+        victim: wifi_bt_2p4_ghz
+        mechanism: adjacent-band blocking and intermod near the 2.4 GHz edge
+      - aggressor: wifi_5_6_ghz_tx
+        victim: cellular_n77_n78_3300_3800_mhz
+        mechanism: out-of-band emission into NR mid-band
     evidence_required: conducted sensitivity/output-power delta and firmware coexistence
       log
   - case: cellular_tx_vs_gnss
     radios_active:
       - cellular_tx
       - gnss_optional
+    aggressor_victim:
+      - aggressor: cellular_tx_harmonics
+        victim: gnss_l1_1575_mhz
+        mechanism: modem TX harmonic/spur landing in the L1 receive band
     evidence_required: GNSS C/N0 degradation and cellular harmonic/desense sweep
   - case: wifi_2x2_vs_cellular_antennas
     radios_active:
@@ -371,6 +383,13 @@ coexistence_test_matrix:
       - wifi_mimo_rf1
       - cellular_main
       - cellular_diversity
+    aggressor_victim:
+      - aggressor: wifi_2p4_ghz_2nd_harmonic_~4800_5000_mhz
+        victim: wifi_5_ghz_rx
+        mechanism: self-desense across MIMO chains
+      - aggressor: wifi_2p4_ghz_2nd_harmonic
+        victim: gnss_l1_1575_mhz
+        mechanism: classic 2.4 GHz harmonic vs GNSS L1 desense path
     evidence_required: VNA S21 isolation matrix and antenna efficiency report
   - case: charger_display_noise_vs_radios
     radios_active:
@@ -378,8 +397,163 @@ coexistence_test_matrix:
       - display_bias_on
       - cellular_idle_or_rx
       - wifi_rx
+    aggressor_victim:
+      - aggressor: usb_c_charging_switching_and_display_bias_boost
+        victim: gnss_l1_and_cellular_low_band_rx
+        mechanism: broadband conducted/radiated switching noise raising the receive
+          noise floor
     evidence_required: noise-floor and packet-error-rate comparison with charger/display
       states toggled
+antenna_keepout_audit:
+  evidence_class: cad_estimate_geometric_cross_check_not_em_solver
+  coordinate_note: Routed keepouts are in the 64x132 mm board frame; CAD per-radio
+    antenna_keepout_mm is in the 78x153.6x11.8 mm device envelope. Routed clear length
+    is bounded by the board outline and the antenna plastic edge extends past the
+    board into the enclosure wall.
+  board_bbox_mm:
+    width: 64.0
+    height: 132.0
+  device_envelope_mm:
+    - 78.0
+    - 153.6
+    - 11.8
+  results:
+    - keepout_id: top_antenna_keepout
+      routed_rect_mm:
+        x: 3.0
+        y: 3.0
+        width: 58.0
+        height: 5.0
+      routed_clear_length_mm: 58.0
+      routed_clear_area_mm2: 290.0
+      cad_envelope_keepout_width_mm: 62.0
+      routed_within_64x132_board_outline: true
+      board_edge_limits_routed_length_below_cad_envelope: true
+      max_board_clear_length_mm: 58.0
+    - keepout_id: bottom_antenna_keepout
+      routed_rect_mm:
+        x: 3.0
+        y: 124.0
+        width: 58.0
+        height: 5.0
+      routed_clear_length_mm: 58.0
+      routed_clear_area_mm2: 290.0
+      cad_envelope_keepout_width_mm: 62.0
+      routed_within_64x132_board_outline: true
+      board_edge_limits_routed_length_below_cad_envelope: true
+      max_board_clear_length_mm: 58.0
+    - keepout_id: wifi_bt_side_antenna_keepout
+      routed_rect_mm:
+        x: 41.0
+        y: 33.0
+        width: 20.0
+        height: 5.0
+      routed_clear_length_mm: 20.0
+      routed_clear_area_mm2: 100.0
+      cad_envelope_keepout_width_mm: 34.0
+      routed_within_64x132_board_outline: true
+      board_edge_limits_routed_length_below_cad_envelope: true
+      max_board_clear_length_mm: -18.0
+  all_keepouts_within_board_outline: true
+  all_routed_lengths_bounded_by_board_edge: true
+s11_and_efficiency_plan:
+  evidence_class: planning_estimate_not_vna_measured
+  method: pre-layout antenna budget keyed to module public band plan and board ground
+    clearance
+  per_feed:
+    - net: CELL_RF_MAIN
+      role: cellular_main_tx_rx
+      bands: LTE/NR Sub-6 low+mid band; exact matrix follows region SKU
+      freq_range_mhz:
+        - 617
+        - 3800
+      target_s11_db_max: -6.0
+      target_total_efficiency_pct_min: 35.0
+      rationale: Compact 64 mm-wide board with a 58 mm clear edge slot; low-band efficiency
+        is limited by the small ground clearance, so a -6 dB worst-case S11 and 35%
+        total-efficiency floor are realistic pre-tune planning targets.
+    - net: CELL_RF_DIV
+      role: cellular_diversity_rx
+      bands: LTE/NR Sub-6 diversity, mirror of main band matrix
+      freq_range_mhz:
+        - 617
+        - 3800
+      target_s11_db_max: -6.0
+      target_total_efficiency_pct_min: 30.0
+      rationale: Diversity feed on the opposite plastic edge accepts lower efficiency
+        than main; primary requirement is envelope-correlation and isolation from
+        main, proven by VNA S21.
+    - net: CELL_GNSS_RF
+      role: gnss_l1_rx
+      bands: GNSS L1 (GPS L1 / GLONASS L1 / Galileo E1)
+      freq_range_mhz:
+        - 1559
+        - 1610
+      target_s11_db_max: -10.0
+      target_total_efficiency_pct_min: 40.0
+      rationale: Narrow passive L1 band tunes tighter than the wideband cellular feeds;
+        receive-only LNA path tolerates a -10 dB match, but desense from Wi-Fi 2.4
+        GHz 2nd harmonic and cellular harmonics is the dominant risk.
+    - net: WIFI_BT_RF0
+      role: wifi6e_bt_chain0
+      bands: Wi-Fi 2.4/5/6 GHz + Bluetooth 5.3 (2.4 GHz)
+      freq_range_mhz:
+        - 2400
+        - 7125
+      target_s11_db_max: -8.0
+      target_total_efficiency_pct_min: 45.0
+      rationale: Tri-band 2x2 chain shares one feed across 2.4/5/6 GHz; a -8 dB band-worst-case
+        S11 and 45% efficiency floor are achievable with a side-edge PIFA and pi matching
+        network.
+    - net: WIFI_BT_RF1
+      role: wifi6e_bt_chain1
+      bands: Wi-Fi 2.4/5/6 GHz 2x2 MIMO second chain
+      freq_range_mhz:
+        - 2400
+        - 7125
+      target_s11_db_max: -8.0
+      target_total_efficiency_pct_min: 45.0
+      rationale: Second MIMO chain must be spatially separated from chain0; envelope-correlation-coefficient
+        and chain-to-chain isolation are supplier_defined and require measurement.
+  residual_measurement: VNA S11 per feed and chamber total-efficiency/realized-gain
+    sweep on a routed EVT0 board with conducted access; planning targets are not pass
+    criteria.
+feed_isolation_plan:
+  evidence_class: planning_estimate_not_vna_measured
+  module_center_separation_mm: 13.0
+  device_width_mm: 78.0
+  targets:
+    - pair: cellular_main_to_cellular_diversity
+      target_isolation_db_min: 10.0
+      basis: opposite-edge feeds in a 78 mm-wide enclosure
+    - pair: wifi_chain0_to_wifi_chain1
+      target_isolation_db_min: 10.0
+      basis: 2x2 MIMO chains, supplier-defined ECC requirement
+    - pair: wifi_to_cellular_main
+      target_isolation_db_min: 12.0
+      basis: cross-radio coexistence in compact midframe
+  residual_measurement: VNA S21 isolation matrix across all feed pairs on a routed
+    board.
+sar_prescan_plan:
+  evidence_class: planning_estimate_not_sar_lab_measured
+  device_thickness_mm: 11.8
+  back_wall_thickness_mm: 0.75
+  body_separation_basis: flush-back 11.8 mm slab held against torso; no metal midframe
+    over antenna keepouts keeps the radiating edges closest to the plastic wall
+  exposure_states:
+    - state: cellular_tx_max_against_body
+      limit_standard: FCC 1.6 W/kg 1g / CE 2.0 W/kg 10g
+      status: planning_estimate_requires_sar_lab
+    - state: cellular_tx_plus_wifi_tx
+      limit_standard: simultaneous-transmission SAR aggregation
+      status: planning_estimate_requires_sar_lab
+    - state: cellular_tx_plus_usb_c_charging
+      limit_standard: SAR with charging/thermal interaction
+      status: planning_estimate_requires_sar_lab
+  skin_temperature_coupling_c_max: 43
+  residual_measurement: Near-field SAR scan in the final orange PC/ABS enclosure plastics
+    with production antenna gains and modem transmit power; no SAR claim is permitted
+    until measured.
 antenna_feed_assignments:
   - net: CELL_RF_MAIN
     role: cellular_main
@@ -408,6 +582,19 @@ required_measurements_before_release:
   - coexistence test for Wi-Fi/Bluetooth/cellular/GNSS
   - SAR and RF exposure pre-scan in final enclosure plastics
   - carrier/PTCRB/GCF plan for selected region SKU
+residual_physical_measurements:
+  note: Every quantitative number in s11_and_efficiency_plan, feed_isolation_plan,
+    and sar_prescan_plan is a pre-layout planning estimate. None is measured. The
+    following physical/lab inputs remain blocking residuals and cannot be satisfied
+    by this script.
+  items:
+    - EM solver (HFSS/CST) antenna model on the routed 11.8 mm enclosure stack to
+      convert efficiency/S11 targets into design values
+    - VNA S11 per feed and S21 isolation matrix on a fabricated EVT0 board with conducted
+      access
+    - anechoic-chamber total-efficiency, realized-gain, and ECC measurement
+    - SAR-lab near-field scan in production orange PC/ABS plastics at module max transmit
+      power
 forbidden_claims:
   - rf_ready
   - cellular_ready
