@@ -814,6 +814,17 @@ def fail(errors: list[str], message: str) -> None:
     errors.append(message)
 
 
+CHECKED_BUILD_RUN_IDS = {
+    run_id
+    for run_id in ("validation", os.environ.get("AI_EDA_RUN_ID"))
+    if isinstance(run_id, str) and run_id
+}
+
+
+def should_check_build_run(path: Path) -> bool:
+    return path.name in CHECKED_BUILD_RUN_IDS and path.is_dir()
+
+
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -1107,7 +1118,7 @@ def check_rtl_eval(errors: list[str]) -> None:
             fail(errors, f"missing RTL model eval deliverable {path.relative_to(ROOT)}")
     if not RTL_EVAL_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in RTL_EVAL_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in RTL_EVAL_BUILD.iterdir() if should_check_build_run(path)):
         report_path = run_dir / "eval_report.json"
         label = str(run_dir.relative_to(ROOT))
         if not report_path.is_file():
@@ -1142,7 +1153,7 @@ def check_pd_predictor(errors: list[str]) -> None:
         fail(errors, f"missing {PD_PREDICTOR_SCRIPT.relative_to(ROOT)}")
     if not PD_PREDICTOR_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in PD_PREDICTOR_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in PD_PREDICTOR_BUILD.iterdir() if should_check_build_run(path)):
         snapshot = load_json(run_dir / "snapshot_manifest.json", errors)
         labels = load_json(run_dir / "label_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -1201,7 +1212,7 @@ def check_cocotb_stimulus(errors: list[str]) -> None:
             fail(errors, "cocotb seed manifest must contain seeds")
     if not COCOTB_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in COCOTB_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in COCOTB_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "coverage_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1225,7 +1236,7 @@ def check_zigzag(errors: list[str]) -> None:
                 fail(errors, f"{path.relative_to(ROOT)}: missing architecture")
     if not ZIGZAG_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in ZIGZAG_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in ZIGZAG_BUILD.iterdir() if should_check_build_run(path)):
         report_path = run_dir / "dse_report.yaml"
         label = str(run_dir.relative_to(ROOT))
         if not report_path.is_file():
@@ -1260,7 +1271,7 @@ def check_openroad_autotune(errors: list[str]) -> None:
             )
     if not OPENROAD_AUTOTUNE_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in OPENROAD_AUTOTUNE_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in OPENROAD_AUTOTUNE_BUILD.iterdir() if should_check_build_run(path)):
         manifest = load_json(run_dir / "autotune_manifest.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(manifest, dict):
@@ -1327,7 +1338,7 @@ def check_simulator_optimization(source_ids: set[str], errors: list[str]) -> Non
         fail(errors, f"missing {SIM_OPT_SCRIPT.relative_to(ROOT)}")
     if not SIM_OPT_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in SIM_OPT_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in SIM_OPT_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1357,7 +1368,7 @@ def check_external_source_probe(source_ids: set[str], errors: list[str]) -> None
         fail(errors, f"missing {EXTERNAL_PROBE_SCRIPT.relative_to(ROOT)}")
     if not EXTERNAL_PROBE_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in EXTERNAL_PROBE_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in EXTERNAL_PROBE_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "source_probe_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1400,7 +1411,7 @@ def check_backend_preflight(source_ids: set[str], errors: list[str]) -> None:
         fail(errors, f"missing {BACKEND_PREFLIGHT_SCRIPT.relative_to(ROOT)}")
     if not BACKEND_PREFLIGHT_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in BACKEND_PREFLIGHT_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in BACKEND_PREFLIGHT_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "backend_preflight_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1458,7 +1469,7 @@ def check_rtlmul_ppa(source_ids: set[str], errors: list[str]) -> None:
         fail(errors, f"missing {RTLMUL_PPA_SCRIPT.relative_to(ROOT)}")
     if not RTLMUL_PPA_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in RTLMUL_PPA_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in RTLMUL_PPA_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "ppa_advisory_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1512,7 +1523,7 @@ def check_hls_accelerator_targets(source_ids: set[str], errors: list[str]) -> No
         fail(errors, f"missing {HLS_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not HLS_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in HLS_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in HLS_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1561,7 +1572,7 @@ def check_timing_closure_targets(source_ids: set[str], errors: list[str]) -> Non
         fail(errors, f"missing {TIMING_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not TIMING_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in TIMING_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in TIMING_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1641,7 +1652,7 @@ def check_routing_congestion_targets(source_ids: set[str], errors: list[str]) ->
     if not ROUTING_CONGESTION_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in ROUTING_CONGESTION_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in ROUTING_CONGESTION_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -1730,7 +1741,7 @@ def check_clock_tree_targets(source_ids: set[str], errors: list[str]) -> None:
         fail(errors, f"missing {CLOCK_TREE_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not CLOCK_TREE_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in CLOCK_TREE_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in CLOCK_TREE_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1818,7 +1829,7 @@ def check_extraction_parasitic_targets(source_ids: set[str], errors: list[str]) 
     if not EXTRACTION_PARASITIC_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in EXTRACTION_PARASITIC_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in EXTRACTION_PARASITIC_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -1911,7 +1922,7 @@ def check_analog_mixed_signal_targets(source_ids: set[str], errors: list[str]) -
         fail(errors, f"missing {ANALOG_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not ANALOG_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in ANALOG_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in ANALOG_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1962,7 +1973,7 @@ def check_memory_interconnect_targets(source_ids: set[str], errors: list[str]) -
         fail(errors, f"missing {MEMORY_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not MEMORY_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in MEMORY_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in MEMORY_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -2014,7 +2025,7 @@ def check_dft_atpg_targets(source_ids: set[str], errors: list[str]) -> None:
         fail(errors, f"missing {DFT_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not DFT_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in DFT_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in DFT_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -2070,7 +2081,7 @@ def check_power_thermal_targets(source_ids: set[str], errors: list[str]) -> None
         fail(errors, f"missing {POWER_THERMAL_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not POWER_THERMAL_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in POWER_THERMAL_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in POWER_THERMAL_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -2129,7 +2140,7 @@ def check_hardware_security_targets(source_ids: set[str], errors: list[str]) -> 
         fail(errors, f"missing {SECURITY_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not SECURITY_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in SECURITY_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in SECURITY_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -2190,7 +2201,7 @@ def check_cdc_rdc_targets(source_ids: set[str], errors: list[str]) -> None:
         fail(errors, f"missing {CDC_RDC_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not CDC_RDC_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in CDC_RDC_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in CDC_RDC_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -2250,7 +2261,7 @@ def check_software_bsp_firmware_targets(source_ids: set[str], errors: list[str])
         fail(errors, f"missing {SOFTWARE_BSP_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not SOFTWARE_BSP_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in SOFTWARE_BSP_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in SOFTWARE_BSP_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -2313,7 +2324,7 @@ def check_rtl_rewrite_equivalence_targets(source_ids: set[str], errors: list[str
         fail(errors, f"missing {RTL_REWRITE_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not RTL_REWRITE_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in RTL_REWRITE_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in RTL_REWRITE_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -2375,7 +2386,7 @@ def check_board_package_fpga_targets(source_ids: set[str], errors: list[str]) ->
     if not BOARD_PACKAGE_FPGA_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in BOARD_PACKAGE_FPGA_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in BOARD_PACKAGE_FPGA_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -2450,7 +2461,7 @@ def check_low_power_intent_targets(source_ids: set[str], errors: list[str]) -> N
     if not LOW_POWER_INTENT_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in LOW_POWER_INTENT_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in LOW_POWER_INTENT_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -2523,7 +2534,7 @@ def check_verification_debug_targets(source_ids: set[str], errors: list[str]) ->
     if not VERIFICATION_DEBUG_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in VERIFICATION_DEBUG_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in VERIFICATION_DEBUG_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -2593,7 +2604,7 @@ def check_post_silicon_validation_targets(source_ids: set[str], errors: list[str
         fail(errors, f"missing {POST_SILICON_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not POST_SILICON_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in POST_SILICON_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(path for path in POST_SILICON_TARGETS_BUILD.iterdir() if should_check_build_run(path)):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -2668,7 +2679,7 @@ def check_circuit_foundation_model_targets(source_ids: set[str], errors: list[st
     if not CIRCUIT_FOUNDATION_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in CIRCUIT_FOUNDATION_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in CIRCUIT_FOUNDATION_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -2745,7 +2756,7 @@ def check_dfm_yield_lithography_targets(source_ids: set[str], errors: list[str])
     if not DFM_YIELD_LITHOGRAPHY_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in DFM_YIELD_LITHOGRAPHY_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in DFM_YIELD_LITHOGRAPHY_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -2825,7 +2836,7 @@ def check_cpu_microarchitecture_targets(source_ids: set[str], errors: list[str])
     if not CPU_MICROARCHITECTURE_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in CPU_MICROARCHITECTURE_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in CPU_MICROARCHITECTURE_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -2909,7 +2920,7 @@ def check_compiler_autotuning_targets(source_ids: set[str], errors: list[str]) -
     if not COMPILER_AUTOTUNING_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in COMPILER_AUTOTUNING_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in COMPILER_AUTOTUNING_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -2992,7 +3003,7 @@ def check_reliability_resilience_targets(source_ids: set[str], errors: list[str]
     if not RELIABILITY_RESILIENCE_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in RELIABILITY_RESILIENCE_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in RELIABILITY_RESILIENCE_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -3079,7 +3090,7 @@ def check_external_model_corpus_intake_targets(source_ids: set[str], errors: lis
     if not EXTERNAL_MODEL_CORPUS_INTAKE_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in EXTERNAL_MODEL_CORPUS_INTAKE_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in EXTERNAL_MODEL_CORPUS_INTAKE_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -3158,7 +3169,7 @@ def check_benchmark_evaluation_hygiene_targets(source_ids: set[str], errors: lis
     if not BENCHMARK_EVALUATION_HYGIENE_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in BENCHMARK_EVALUATION_HYGIENE_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in BENCHMARK_EVALUATION_HYGIENE_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -3235,7 +3246,7 @@ def check_eda_tool_agent_interop_targets(source_ids: set[str], errors: list[str]
     if not EDA_TOOL_AGENT_INTEROP_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in EDA_TOOL_AGENT_INTEROP_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in EDA_TOOL_AGENT_INTEROP_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -3320,7 +3331,7 @@ def check_spec_traceability_targets(source_ids: set[str], errors: list[str]) -> 
     if not SPEC_TRACEABILITY_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in SPEC_TRACEABILITY_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in SPEC_TRACEABILITY_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -3406,7 +3417,7 @@ def check_ip_register_contract_targets(source_ids: set[str], errors: list[str]) 
     if not IP_REGISTER_CONTRACT_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in IP_REGISTER_CONTRACT_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in IP_REGISTER_CONTRACT_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -3490,7 +3501,7 @@ def check_memory_macro_library_targets(source_ids: set[str], errors: list[str]) 
     if not MEMORY_MACRO_LIBRARY_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in MEMORY_MACRO_LIBRARY_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in MEMORY_MACRO_LIBRARY_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -3573,7 +3584,7 @@ def check_chiplet_3dic_package_targets(source_ids: set[str], errors: list[str]) 
     if not CHIPLET_3DIC_PACKAGE_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in CHIPLET_3DIC_PACKAGE_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in CHIPLET_3DIC_PACKAGE_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -3656,7 +3667,7 @@ def check_logic_synthesis_targets(source_ids: set[str], errors: list[str]) -> No
     if not LOGIC_SYNTHESIS_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in LOGIC_SYNTHESIS_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in LOGIC_SYNTHESIS_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -3735,7 +3746,7 @@ def check_netlist_equivalence_targets(source_ids: set[str], errors: list[str]) -
     if not NETLIST_EQUIVALENCE_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in NETLIST_EQUIVALENCE_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in NETLIST_EQUIVALENCE_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -3830,7 +3841,7 @@ def check_physical_verification_targets(source_ids: set[str], errors: list[str])
     if not PHYSICAL_VERIFICATION_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in PHYSICAL_VERIFICATION_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in PHYSICAL_VERIFICATION_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -3932,7 +3943,7 @@ def check_placement_legalization_targets(source_ids: set[str], errors: list[str]
     if not PLACEMENT_LEGALIZATION_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in PLACEMENT_LEGALIZATION_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in PLACEMENT_LEGALIZATION_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
@@ -4035,7 +4046,7 @@ def check_floorplan_io_pdn_targets(source_ids: set[str], errors: list[str]) -> N
     if not FLOORPLAN_IO_PDN_TARGETS_BUILD.is_dir():
         return
     for run_dir in sorted(
-        path for path in FLOORPLAN_IO_PDN_TARGETS_BUILD.iterdir() if path.is_dir()
+        path for path in FLOORPLAN_IO_PDN_TARGETS_BUILD.iterdir() if should_check_build_run(path)
     ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
