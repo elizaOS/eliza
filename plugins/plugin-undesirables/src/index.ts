@@ -49,7 +49,7 @@ const ORACLE_BASE_URL = "https://oracle.the-undesirables.com";
 const ORACLE_SEARCH_ENDPOINT = `${ORACLE_BASE_URL}/api/v1/search`;
 const ORACLE_MARKET_ENDPOINT = `${ORACLE_BASE_URL}/api/v1/market`;
 const SCATTER_MINT_URL = "https://scatter.art/the-undesirables";
-const PLUGIN_VERSION = "2.4.3";
+const PLUGIN_VERSION = "2.4.4";
 const COLLECTION_TOTAL = 4444;
 const MINTED_COUNT = 273;
 
@@ -216,8 +216,10 @@ async function loadWorkspace(workspacePath: string): Promise<SoulWorkspace> {
   if (fs.existsSync(skillsDir)) {
     const files = await fs.promises.readdir(skillsDir);
     for (const file of files.filter((f) => f.endsWith(".md"))) {
+      // Validate each skill file through getSafePath to prevent symlink escape
+      const skillPath = getSafePath(skillsDir, file);
       workspace.skills[file.replace(".md", "")] = await fs.promises.readFile(
-        path.join(skillsDir, file),
+        skillPath,
         "utf-8"
       );
     }
@@ -1026,7 +1028,7 @@ Archetype: ${workspace.meta.archetype || "Unknown"}
 Strategy: ${workspace.meta.strategy || "Unknown"}
 Token ID: ${workspace.meta.token_id || "?"}
 Mode: ${isDemo ? "DEMO (community soul)" : "FULL (NFT holder)"}
-Skills loaded: ${skillCount}${isDemo ? "/5 (demo)" : "/24 (full)"}
+Skills loaded: ${skillCount}${isDemo ? " (demo)" : " (full)"}
 Memory entries: ${workspace.memory.split("\n").filter((l) => l.trim()).length}
 Predictions: ${workspace.predictions.length}
 
