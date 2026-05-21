@@ -1552,9 +1552,9 @@ async function handleRequest(
     pathname === "/api/onboarding/status" &&
     isCloudProvisioned;
   const isWhatsAppWebhookEndpoint = pathname === "/api/whatsapp/webhook";
-  const isBlueBubblesWebhookEndpoint =
-    pathname ===
-    resolveBlueBubblesWebhookPath({
+  const blueBubblesWebhookPath =
+    typeof resolveBlueBubblesWebhookPath === "function"
+      ? resolveBlueBubblesWebhookPath({
       runtime: state.runtime
         ? {
             getService: (type: string) =>
@@ -1563,7 +1563,10 @@ async function handleRequest(
               ).getService(type),
           }
         : undefined,
-    });
+        })
+      : null;
+  const isBlueBubblesWebhookEndpoint =
+    blueBubblesWebhookPath != null && pathname === blueBubblesWebhookPath;
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
 
   const canonicalizeRestartReason = (reason: string): string => {
@@ -1700,8 +1703,12 @@ async function handleRequest(
   }
 
   const localInferenceServerApi = await getLocalInferenceServerApi();
-  if (await localInferenceServerApi.handleLocalInferenceRoutes(req, res))
+  if (
+    typeof localInferenceServerApi.handleLocalInferenceRoutes === "function" &&
+    (await localInferenceServerApi.handleLocalInferenceRoutes(req, res))
+  ) {
     return;
+  }
   if (
     localInferenceServerApi.handleLocalInferenceTtsRoute &&
     (await localInferenceServerApi.handleLocalInferenceTtsRoute(req, res, {
@@ -4422,6 +4429,12 @@ export async function startApiServer(opts?: {
         agentId,
       },
     );
+    if (!result || typeof result !== "object") {
+      logger.warn(
+        "[x402] startup validator returned no result; skipping x402 route validation",
+      );
+      return;
+    }
     if (!result.valid) {
       throw new Error(
         `x402 configuration invalid:\n${result.errors.map((e) => `  • ${e}`).join("\n")}`,

@@ -72,10 +72,22 @@ fi
 export PATH="$OPENRAM_CONDA/bin:$PATH"
 PY="$OPENRAM_CONDA/bin/python3"
 
+# OpenRAM imports the config as a Python module, so the basename (minus .py)
+# must be a valid identifier (globals.py read_config -> isidentifier check).
+# The canonical config name <macro_dir>/<name>.openram.config.py contains dots
+# and is therefore rejected. Copy it to a valid-identifier name inside build/
+# and feed OpenRAM that copy; the canonical dotted file remains the tracked
+# source of record (referenced by scripts/ai_eda/capture_*).
+BUILD_DIR="$MACRO_DIR/build"
+mkdir -p "$BUILD_DIR"
+RUN_CONFIG="$BUILD_DIR/openram_config.py"
+cp "$CONFIG" "$RUN_CONFIG"
+
 echo "[build_openram_macro] macro_dir=$MACRO_DIR"
 echo "[build_openram_macro] config=$CONFIG"
+echo "[build_openram_macro] run_config=$RUN_CONFIG"
 echo "[build_openram_macro] PDK_ROOT=$PDK_ROOT"
 echo "[build_openram_macro] OPENRAM_HOME=$OPENRAM_HOME"
 echo "[build_openram_macro] python=$($PY --version 2>&1)"
 
-exec "$PY" "$REPO_ROOT/external/OpenRAM/sram_compiler.py" "$CONFIG"
+exec "$PY" "$REPO_ROOT/external/OpenRAM/sram_compiler.py" "$RUN_CONFIG"

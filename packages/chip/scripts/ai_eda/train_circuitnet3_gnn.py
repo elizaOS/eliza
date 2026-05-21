@@ -80,7 +80,8 @@ def train_gnn(
     epochs: int,
     lr: float,
     seed: int,
-) -> CircuitNetGNN:
+    patience: int,
+) -> tuple[CircuitNetGNN, int]:
     torch.manual_seed(seed)
     model = CircuitNetGNN()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
@@ -88,13 +89,16 @@ def train_gnn(
     train_targets = [(sample.targets - stats.target_mean) / stats.target_std for sample in train]
     best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
     best_val = float("inf")
+    best_epoch = 0
+    stale = 0
     val_pairs = [
         (standardize_nodes(sample, stats), (sample.targets - stats.target_mean) / stats.target_std)
         for sample in val
     ]
-    for _ in range(epochs):
+    for epoch in range(1, epochs + 1):
         model.train()
         order = torch.randperm(len(train))
+        train_loss = 0.0
         for idx in order.tolist():
             sample = train[idx]
             optimizer.zero_grad()
@@ -103,7 +107,12 @@ def train_gnn(
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
             optimizer.step()
+            train_loss += loss.item()
+        train_loss /= max(len(train), 1)
         if not val_pairs:
+            best_epoch = epoch
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            print(f"[gnn] epoch={epoch} train_loss={train_loss:.5f}", flush=True)
             continue
         model.eval()
         with torch.no_grad():
@@ -115,11 +124,24 @@ def train_gnn(
                 ).item()
                 for (nodes, target), sample in zip(val_pairs, val, strict=True)
             ) / len(val_pairs)
-        if val_loss < best_val:
+        improved = val_loss < best_val
+        if improved:
             best_val = val_loss
+            best_epoch = epoch
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            stale = 0
+        else:
+            stale += 1
+        print(
+            f"[gnn] epoch={epoch} train_loss={train_loss:.5f} val_loss={val_loss:.5f} "
+            f"best={best_val:.5f}@{best_epoch}",
+            flush=True,
+        )
+        if stale >= patience:
+            print(f"[gnn] early stop at epoch={epoch} (patience={patience})", flush=True)
+            break
     model.load_state_dict(best_state)
-    return model
+    return model, best_epoch
 
 
 def mean_baseline(train: list[GraphSample]) -> dict[str, float]:
@@ -186,6 +208,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--lr", type=float, default=5e-3)
     parser.add_argument("--seed", type=int, default=17)
+    parser.add_argument("--patience", type=int, default=20)
+    parser.add_argument(
+        "--max-cases",
+        type=int,
+        default=0,
+        help="Cap the number of (sorted) cases used; 0 = use all converted cases.",
+    )
     return parser.parse_args()
 
 
@@ -204,15 +233,18 @@ def main() -> int:
             "run: make ai-eda-circuitnet3-convert"
         )
         return 2
+    if args.max_cases > 0:
+        samples = sorted(samples, key=lambda item: item.case_id)[: args.max_cases]
     splits = split_samples(samples)
     stats = compute_feature_stats(splits["train"])
-    model = train_gnn(
+    model, best_epoch = train_gnn(
         splits["train"],
         splits["val"],
         stats,
         epochs=args.epochs,
         lr=args.lr,
         seed=args.seed,
+        patience=args.patience,
     )
     baseline = mean_baseline(splits["train"])
     evaluations = {
@@ -266,6 +298,8 @@ def main() -> int:
         "split_policy": "deterministic_sorted_case_id_80_10_10_for_n_ge_10_else_holdout",
         "hyperparameters": {
             "epochs": args.epochs,
+            "patience": args.patience,
+            "best_epoch": best_epoch,
             "lr": args.lr,
             "seed": args.seed,
             "hidden_dim": 64,

@@ -17,6 +17,10 @@ source_artifacts:
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/manufacturing-closure.yaml
   - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
 
 board_revision_policy:
   current_revision: EVT0-concept
@@ -94,6 +98,61 @@ production_output_requirements:
   - DFM/DFA report from selected fab and assembler
   - first-article traveler, current-limit table, and stop-on-fail instructions
 
+selected_hardware_production_constraints:
+  status: blocked_until_selected_hardware_stackup_coupon_factory_and_avl_evidence_exist
+  function_count: 5
+  functions:
+    - function: display_touch
+      selected_hardware: CH550FH01A-CT
+      source_artifact: board/kicad/e1-phone/display-envelope-downselect.yaml
+      required_coupon_groups: [mipi_dphy_100_ohm]
+      required_factory_coverage: [display_touch, power_rails]
+      required_production_outputs:
+        - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+        - board STEP exported from routed KiCad with supplier 3D models
+        - first-article traveler, current-limit table, and stop-on-fail instructions
+      status: blocked_missing_display_supplier_avl_mipi_coupon_factory_and_step_evidence
+    - function: rear_front_cameras
+      selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+      source_artifact: board/kicad/e1-phone/camera-module-fit-downselect.yaml
+      required_coupon_groups: [mipi_dphy_100_ohm]
+      required_factory_coverage: [cameras, power_rails]
+      required_production_outputs:
+        - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+        - board STEP exported from routed KiCad with supplier 3D models
+        - first-article traveler, current-limit table, and stop-on-fail instructions
+      status: blocked_missing_camera_supplier_avl_mipi_coupon_factory_and_step_evidence
+    - function: usb_c_power_sidekeys
+      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      source_artifact: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+      required_coupon_groups: [usb2_90_ohm]
+      required_factory_coverage: [usb_c, buttons_sensors_nfc, power_rails]
+      required_production_outputs:
+        - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+        - assembly drawing with polarity, shield, keepout, do-not-populate, and inspection notes
+        - first-article traveler, current-limit table, and stop-on-fail instructions
+      status: blocked_missing_usb_power_sidekey_avl_usb_coupon_factory_and_step_evidence
+    - function: cellular
+      selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      required_coupon_groups: [usb2_90_ohm, pcie_85_ohm, rf_50_ohm]
+      required_factory_coverage: [radios, power_rails]
+      required_production_outputs:
+        - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+        - board STEP exported from routed KiCad with supplier 3D models
+        - first-article traveler, current-limit table, and stop-on-fail instructions
+      status: blocked_missing_cellular_sku_avl_usb_pcie_rf_coupon_factory_and_step_evidence
+    - function: wifi_bluetooth
+      selected_hardware: Murata_LBEE5XV2EA-802
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      required_coupon_groups: [pcie_85_ohm, rf_50_ohm]
+      required_factory_coverage: [radios, power_rails]
+      required_production_outputs:
+        - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+        - board STEP exported from routed KiCad with supplier 3D models
+        - first-article traveler, current-limit table, and stop-on-fail instructions
+      status: blocked_missing_wifi_bt_avl_pcie_rf_coupon_factory_and_step_evidence
+
 release_blockers:
   - real supplier footprints and pinouts missing
   - routed copper and filled zones missing
@@ -101,6 +160,7 @@ release_blockers:
   - stackup and impedance coupon quote missing
   - assembly DFM/DFA missing
   - factory test fixture and probe map missing
+  - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth production constraints are not evidenced
   - first article and measurement evidence missing
 
 forbidden_claims:

@@ -37,7 +37,7 @@ BUILD := build
 .PHONY: ci-release-evidence evidence-regression-test formal-fast formal-strict openlane-orchestration-test physical-gates-test pipeline-check-strict strict-release-gate-test
 .PHONY: rail-plan-check upf-check pdn-workload-signoff pmic-procurement-gate cocotb-droop cocotb-clock-stretcher cocotb-avfs cocotb-pmc cocotb-power fw-pmc-build
 .PHONY: chipyard-external-generation-plan chipyard-generated-path-check chipyard-generated-path-repair chipyard-import-preflight chipyard-linux-payload-check chipyard-payload-path-check chipyard-generated-ap-boot chipyard-verilator-linux-smoke-test chipyard-verilator-preflight chipyard-verilator-stale-path-repair cpu-ap-capture-plan-shell cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-dts-audit linux-boot-artifacts-check cpu-ap-boot-readiness-check minimum-linux-target-check minimum-linux-target-strict mvp-npu-ml-evidence-check minimum-linux-npu-target-check minimum-linux-npu-target-strict hello-npu-linux-smoke-check
-.PHONY: tapeout-readiness tapeout-readiness-strict tapeout-readiness-test manufacturing-tapeout-scope-check manufacturing-tapeout-scope-test chip-os-bring-up-status chip-os-boot-gap-inventory chip-os-boot-gap-inventory-test
+.PHONY: tapeout-readiness tapeout-readiness-strict tapeout-readiness-test manufacturing-tapeout-scope-check manufacturing-tapeout-scope-test chip-os-bring-up-status chip-os-boot-gap-inventory chip-os-boot-gap-inventory-test chip-os-gap-keyword-inventory chip-os-gap-keyword-inventory-test chip-os-objective-evidence-matrix chip-os-objective-evidence-matrix-test chip-os-closure-plan chip-os-closure-plan-test chip-os-environment-preflight chip-os-environment-preflight-test chip-os-report-freshness chip-os-report-freshness-test
 .PHONY: sota-parity-audit sota-parity-audit-strict sota-parity-audit-test
 .PHONY: software-bsp-external-preflight software-bsp-evidence-check
 .PHONY: e1-phone-display-fit
@@ -260,6 +260,36 @@ chip-os-boot-gap-inventory:
 
 chip-os-boot-gap-inventory-test:
 	@$(PYTHON) scripts/test_chip_os_boot_gap_inventory.py
+
+chip-os-gap-keyword-inventory:
+	@$(PYTHON) scripts/check_chip_os_gap_keyword_inventory.py
+
+chip-os-gap-keyword-inventory-test:
+	@$(PYTHON) scripts/test_chip_os_gap_keyword_inventory.py
+
+chip-os-objective-evidence-matrix:
+	@$(PYTHON) scripts/check_chip_os_objective_evidence_matrix.py
+
+chip-os-objective-evidence-matrix-test:
+	@$(PYTHON) scripts/test_chip_os_objective_evidence_matrix.py
+
+chip-os-closure-plan:
+	@$(PYTHON) scripts/check_chip_os_closure_plan.py
+
+chip-os-closure-plan-test:
+	@$(PYTHON) scripts/test_chip_os_closure_plan.py
+
+chip-os-environment-preflight:
+	@$(PYTHON) scripts/check_chip_os_environment_preflight.py
+
+chip-os-environment-preflight-test:
+	@$(PYTHON) scripts/test_chip_os_environment_preflight.py
+
+chip-os-report-freshness:
+	@$(PYTHON) scripts/check_chip_os_report_freshness.py
+
+chip-os-report-freshness-test:
+	@$(PYTHON) scripts/test_chip_os_report_freshness.py
 
 manufacturing-tapeout-scope-check:
 	@$(PYTHON) scripts/check_manufacturing_tapeout_scope.py
@@ -1066,7 +1096,7 @@ cocotb-cpu:
 cocotb-coverage: cocotb cocotb-npu
 	@$(PYTHON) scripts/check_cocotb_coverage.py --require-blocks
 
-.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval mpki-eval-rtl mpki-eval-model bpu-lint bpu-workload-trace bpu-workload-trace-decode bpu-sweep bpu-model-test
+.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval mpki-eval-rtl mpki-eval-model bpu-lint bpu-workload-trace bpu-workload-trace-decode bpu-sweep bpu-model-test bpu-vs-cva6-mpki
 
 cocotb-bpu: cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_bpu_top COCOTB_TOPLEVEL=bpu_top_tb scripts/run_cocotb_bpu.sh
@@ -1122,7 +1152,9 @@ bpu-workload-trace:
 
 # Behavioural-model unit tests for the BPU (TAGE-SC-L+ITTAGE) model.
 bpu-model-test:
-	@$(PYTHON) -m pytest benchmarks/cpu/branch/test_bpu_model.py -q
+	@$(PYTHON) -m pytest \
+	  benchmarks/cpu/branch/test_bpu_model.py \
+	  benchmarks/cpu/branch/test_baseline_predictors.py -q
 
 # Geometry/tuning sweep: rank bpu_pkg.sv geometries by workload-weighted MPKI
 # over the E1 trace set; writes the leaderboard + evidence envelope. Tuning
@@ -1130,6 +1162,12 @@ bpu-model-test:
 bpu-sweep:
 	@$(PYTHON) -m benchmarks.cpu.branch.sweep \
 	  --max-branches $(or $(MAXBR),800000) --jobs $(or $(JOBS),8)
+
+# Behavioural apples-to-apples MPKI comparison against a CVA6/Ariane-class
+# BHT+BTB+RAS front-end baseline over synthetic, QEMU RV64, and CBP-5 traces.
+bpu-vs-cva6-mpki:
+	@$(PYTHON) -m benchmarks.cpu.branch.compare_mpki \
+	  --trace external/workload-traces --trace external/cbp5-traces
 
 .PHONY: cache-hierarchy-claim-gate cocotb-cache cocotb-cache-coherence \
 	cocotb-cache-l1d cocotb-cache-l1i cocotb-cache-drrip \

@@ -227,6 +227,10 @@ import {
   type TeeBootGate,
 } from "../services/tee-boot-gate.ts";
 import {
+  setTeeBootGateState,
+  teeBootGateBlocksSecrets,
+} from "../services/tee-boot-gate-state.ts";
+import {
   resolveDefaultAgentWorkspaceDir,
   shouldBootstrapWorkspaceInitFiles,
 } from "../shared/workspace-resolution.ts";
@@ -4007,9 +4011,8 @@ export async function startEliza(
   // gate fails closed and high-value capabilities (remote plugin sync; future
   // model-key/signing consumers) are withheld. Boot still proceeds in a
   // degraded, secret-less mode — it never silently continues with secrets.
-  let teeBootGate: TeeBootGate | undefined;
-
   const runTeeBootGate = async (): Promise<void> => {
+    let teeBootGate: TeeBootGate;
     try {
       teeBootGate = await evaluateTeeBootGate({
         env: process.env,
@@ -4029,10 +4032,11 @@ export async function startEliza(
         `[TeeBootGate] TEE evidence evaluation failed; secrets disabled (fail-closed): ${formatError(err)}`,
       );
     }
+    // Publish the one-time decision so secret-path modules (agent-wallet key
+    // reveal/bridge, remote plugin sync) can consult it via the shared
+    // singleton. Inert when no TEE: the gate's `required` is false.
+    setTeeBootGateState(teeBootGate);
   };
-
-  const teeBootGateBlocksSecrets = (): boolean =>
-    teeBootGate?.required === true && teeBootGate.secretsEnabled === false;
 
   const syncRemoteCapabilityPluginsIfAvailable = async (): Promise<void> => {
     if (teeBootGateBlocksSecrets()) {

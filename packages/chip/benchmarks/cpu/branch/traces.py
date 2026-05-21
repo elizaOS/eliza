@@ -376,7 +376,7 @@ def synthetic_indirect_dispatch(
                 pc=0x8000_9000 + site * 0x40,
                 target=target,
                 taken=True,
-                kind=BR_CALL,
+                kind=BR_IND,
             )
 
 
@@ -430,7 +430,7 @@ def synthetic_jit_dispatch_warmup(
                 pc=sticky + site * 0x40,
                 target=sticky + 0x1000 + c * 0x100,
                 taken=True,
-                kind=BR_CALL,
+                kind=BR_IND,
             )
         # Steady-state phase on one chosen target.
         steady_target = sticky + 0x1000 + site * 0x100
@@ -439,8 +439,90 @@ def synthetic_jit_dispatch_warmup(
                 pc=sticky + site * 0x40,
                 target=steady_target,
                 taken=True,
-                kind=BR_CALL,
+                kind=BR_IND,
             )
+
+
+def synthetic_gpu_tile_kernel(blocks: int = 96, tile_iters: int = 32) -> Iterator[BranchEvent]:
+    """GPU shader / compute-kernel shape: deeply regular tile loops plus a
+    boundary guard that is almost always not taken. This rewards loop and
+    TAGE stability without letting GPU weighting overfit to indirects."""
+    loop_pc = 0x8006_0000
+    edge_pc = 0x8006_0040
+    for block in range(blocks):
+        for i in range(tile_iters):
+            yield BranchEvent(
+                pc=loop_pc,
+                target=loop_pc - 0x80,
+                taken=i < tile_iters - 1,
+                kind=BR_COND,
+            )
+        edge = (block % 16) == 15
+        yield BranchEvent(
+            pc=edge_pc,
+            target=edge_pc + 0x180,
+            taken=edge,
+            kind=BR_COND,
+        )
+
+
+def synthetic_gpu_warp_divergence(warps: int = 256) -> Iterator[BranchEvent]:
+    """SIMT divergence/reconvergence proxy: a handful of PCs see masks that
+    alternate by warp id, then reconverge through a fixed backedge."""
+    branch_base = 0x8006_2000
+    reconv_pc = 0x8006_2400
+    for warp in range(warps):
+        yield BranchEvent(
+            pc=branch_base,
+            target=branch_base + 0x100,
+            taken=(warp & 1) == 0,
+            kind=BR_COND,
+        )
+        yield BranchEvent(
+            pc=branch_base + 0x40,
+            target=branch_base + 0x180,
+            taken=(warp % 3) == 0,
+            kind=BR_COND,
+        )
+        yield BranchEvent(
+            pc=branch_base + 0x80,
+            target=branch_base + 0x200,
+            taken=(warp % 5) in (0, 1),
+            kind=BR_COND,
+        )
+        yield BranchEvent(
+            pc=reconv_pc,
+            target=reconv_pc - 0x200,
+            taken=(warp % 8) != 7,
+            kind=BR_COND,
+        )
+
+
+def synthetic_gpu_command_processor(
+    queues: int = 6, kernels: int = 9, repeats: int = 160
+) -> Iterator[BranchEvent]:
+    """GPU driver / firmware scheduler proxy: command-ring conditionals plus
+    indirect kernel dispatch with a small hot target set."""
+    ring_pc = 0x8006_4000
+    dispatch_base = 0x8006_5000
+    target_base = 0x8006_8000
+    for r in range(repeats):
+        for q in range(queues):
+            empty = ((r + q) % 11) == 0
+            yield BranchEvent(
+                pc=ring_pc + q * 0x40,
+                target=ring_pc + 0x600 + q * 0x40,
+                taken=empty,
+                kind=BR_COND,
+            )
+            if not empty:
+                target = target_base + ((r * 3 + q) % kernels) * 0x100
+                yield BranchEvent(
+                    pc=dispatch_base + q * 0x40,
+                    target=target,
+                    taken=True,
+                    kind=BR_IND,
+                )
 
 
 SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
@@ -452,6 +534,9 @@ SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
     "v8_indirect_dispatch": synthetic_indirect_dispatch,
     "mixed_workload": synthetic_mixed_workload,
     "jit_dispatch_warmup": synthetic_jit_dispatch_warmup,
+    "gpu_tile_kernel": synthetic_gpu_tile_kernel,
+    "gpu_warp_divergence": synthetic_gpu_warp_divergence,
+    "gpu_command_processor": synthetic_gpu_command_processor,
 }
 
 # Stress test on RAS overflow — kept available for direct invocation by the

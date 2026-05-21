@@ -1,0 +1,24 @@
+// HIDL interface v0 for the e1_npu HAL.
+//
+// Backing contract: sw/platform/e1_platform_contract.json
+// Status: stub. Only one RPC is defined: a fixed-vector smoke that returns
+// the device-side identity word produced by the e1 NPU kernel driver. No
+// model load, no inference, no DMA, no power state.
+
+package vendor.eliza.e1_npu@1.0;
+
+interface IE1Npu {
+    /**
+     * Fixed-vector smoke RPC.
+     *
+     * Returns the 32-bit identity word read from E1_NPU_RESULT_OFFSET
+     * of the backing /dev/e1-npu node. The HAL service MUST return
+     * status NOT_SUPPORTED when the node is absent or open() fails.
+     *
+     * @return status    OK on success, NOT_SUPPORTED on missing node,
+     *                   IO_ERROR on any other failure.
+     * @return identity  Driver-reported identity word; meaningful only
+     *                   when status == OK.
+     */
+    smoke() generates (Status status, uint32_t identity);
+};

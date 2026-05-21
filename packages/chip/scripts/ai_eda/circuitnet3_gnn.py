@@ -189,6 +189,10 @@ def compute_feature_stats(samples: list[GraphSample]) -> FeatureStats:
     centered = node_stack - node_mean
     node_var = torch.nanmean(centered * centered, dim=0)
     node_std = torch.sqrt(node_var).clamp_min(1e-6)
+    # A column that is entirely missing in train yields NaN mean/std; standardize
+    # it to a constant 0 rather than poisoning every downstream activation.
+    node_mean = torch.nan_to_num(node_mean, nan=0.0)
+    node_std = torch.nan_to_num(node_std, nan=1.0)
 
     target_sum = torch.zeros(len(TARGETS))
     target_sq = torch.zeros(len(TARGETS))

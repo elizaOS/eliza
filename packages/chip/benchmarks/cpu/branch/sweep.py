@@ -41,7 +41,7 @@ from benchmarks.cpu.branch.bpu_model import (  # noqa: E402
     BPUSimulator,
     BranchEvent,
 )
-from benchmarks.cpu.branch.traces import read_cbp5_with_count  # noqa: E402
+from benchmarks.cpu.branch.traces import SYNTHETIC_GENERATORS, read_cbp5_with_count  # noqa: E402
 from benchmarks.cpu.branch.workload_trace import read_workload_trace  # noqa: E402
 
 EVIDENCE_DIR = ROOT / "docs/evidence/cpu_ap"
@@ -67,6 +67,20 @@ WORKLOAD_NAMES = (
     "audio_frames",
 )
 
+SYNTHETIC_SWEEP_WORKLOADS = (
+    "always_taken",
+    "always_not_taken",
+    "alternating",
+    "loop_with_known_trip",
+    "deep_recursion",
+    "v8_indirect_dispatch",
+    "mixed_workload",
+    "jit_dispatch_warmup",
+    "gpu_tile_kernel",
+    "gpu_warp_divergence",
+    "gpu_command_processor",
+)
+
 # Default per-trace weights for the aggregate objective: the E1's own workloads
 # are the optimisation target, so they outweigh the championship references.
 DEFAULT_WEIGHTS = {
@@ -77,6 +91,20 @@ DEFAULT_WEIGHTS = {
     "file_tlv": 1.5,
     "video_blocks": 1.5,
     "audio_frames": 1.5,
+    # Synthetic traces keep the objective honest around known hard shapes.
+    # GPU-oriented traces get enough weight to steer tie-breaks without
+    # overpowering the real RV64 and CBP-5 references.
+    "synthetic:always_taken": 0.25,
+    "synthetic:always_not_taken": 0.25,
+    "synthetic:alternating": 0.35,
+    "synthetic:loop_with_known_trip": 0.5,
+    "synthetic:deep_recursion": 0.35,
+    "synthetic:v8_indirect_dispatch": 0.5,
+    "synthetic:mixed_workload": 0.75,
+    "synthetic:jit_dispatch_warmup": 0.75,
+    "synthetic:gpu_tile_kernel": 1.0,
+    "synthetic:gpu_warp_divergence": 1.0,
+    "synthetic:gpu_command_processor": 1.0,
     "cbp5:sample_int_trace": 1.0,
     "cbp5:sample_fp_trace": 1.0,
 }
@@ -88,10 +116,20 @@ def _geo(**overrides) -> dict:
     return g
 
 
+PRE_OPT_R8_GEOMETRY = _geo(
+    TAGE_ALLOC_DECREMENT=False,
+    TAGE_UBIT_RESET_PERIOD=262_144,
+    TAGE_HIST_LEN=(8, 13, 32, 64, 119),
+    TAGE_ENTRIES_TABLE=4096,
+    SC_ADAPTIVE=False,
+)
+
+
 # Candidate configurations. Each knob is a real bpu_pkg.sv parameter; lists
 # that change a table count carry a matching-length history schedule.
 CONFIGS: dict[str, dict] = {
     "baseline": _geo(),
+    "pre_opt_r8": PRE_OPT_R8_GEOMETRY,
     # ---- TAGE direction: history reach + capacity ----
     "tage_reach_long": _geo(TAGE_HIST_LEN=(8, 16, 44, 90, 195)),
     "tage_reach_xlong": _geo(TAGE_HIST_LEN=(10, 20, 50, 120, 260)),
@@ -114,7 +152,9 @@ CONFIGS: dict[str, dict] = {
     "tage_alloc_decr": _geo(TAGE_ALLOC_DECREMENT=True),
     "tage_ubit_reset": _geo(TAGE_UBIT_RESET_PERIOD=100_000),
     "tage_ubit_reset_fast": _geo(TAGE_UBIT_RESET_PERIOD=20_000),
+    "tage_ubit_reset_slow": _geo(TAGE_UBIT_RESET_PERIOD=500_000),
     "tage_alloc_aging": _geo(TAGE_ALLOC_DECREMENT=True, TAGE_UBIT_RESET_PERIOD=100_000),
+    "tage_alloc_rtl_aging": _geo(TAGE_ALLOC_DECREMENT=True),
     # ---- Promising combination (TAGE reach + adaptive SC + bigger tables) ----
     "combo_a": _geo(
         TAGE_HIST_LEN=(8, 16, 44, 90, 195),
@@ -169,6 +209,11 @@ def load_traces(max_branches: int, weights: dict[str, float]) -> list[LoadedTrac
         events, inst = read_workload_trace(p)
         events, inst = _cap(events, inst, max_branches)
         traces.append(LoadedTrace(name, events, inst, weights.get(name, 1.0)))
+    for name in SYNTHETIC_SWEEP_WORKLOADS:
+        events = list(SYNTHETIC_GENERATORS[name]())
+        events, inst = _cap(events, len(events) * 5, max_branches)
+        key = f"synthetic:{name}"
+        traces.append(LoadedTrace(key, events, inst, weights.get(key, 0.5)))
     for p in sorted(CBP5_DIR.glob("*.gz")):
         events, stats = read_cbp5_with_count(p)
         events, inst = _cap(events, stats.instruction_count, max_branches)

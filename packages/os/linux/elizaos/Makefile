@@ -17,6 +17,9 @@ DEBIAN_MIRROR ?= https://mirrors.kernel.org/debian
 HERE    := $(shell pwd)
 OUT     := $(HERE)/out
 CONTAINER_BUILD_DIR := /work/elizaos-linux
+AGENT_ARTIFACTS ?= $(HERE)/artifacts/$(ARCH)
+REQUIRE_AGENT_ARTIFACTS ?= 0
+AGENT_ARTIFACTS_MOUNT := $(if $(wildcard $(AGENT_ARTIFACTS)),-v "$(AGENT_ARTIFACTS):/opt/elizaos-artifacts:ro",)
 
 SUPPORTED_ARCHES := amd64 arm64 riscv64
 
@@ -46,8 +49,10 @@ build: builder check-arch
 	        -e ELIZAOS_ARCH=$(ARCH) \
 	        -e ELIZAOS_PROFILE=$(PROFILE) \
 	        -e ELIZAOS_DEBIAN_MIRROR="$(DEBIAN_MIRROR)" \
+	        -e ELIZAOS_REQUIRE_AGENT_ARTIFACTS=$(REQUIRE_AGENT_ARTIFACTS) \
 	        -v "$(HERE):/src:ro" \
 	        -v "$(OUT):/out" \
+	        $(AGENT_ARTIFACTS_MOUNT) \
 	        --entrypoint bash \
 	        elizaos-linux-builder -lc '\
 	            rm -rf "$(CONTAINER_BUILD_DIR)" && \

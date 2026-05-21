@@ -24,6 +24,7 @@ def _write_minimal_job(job_dir: Path, *, eval_command: str) -> None:
     job["validation_commands"] = [
         f"python3 scripts/run_asimov1_full_training.py --job-dir {job_dir} --check-only",
         f"python3 scripts/verify_brax_text_policy.py --ckpt {job_dir} --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25",
+        f"python3 scripts/validate_asimov1_production_checkpoint.py {job_dir} --min-steps 8",
         eval_command,
         f"python3 scripts/sim_validation_gate.py --profile asimov-1 --checkpoint {job_dir}",
     ]
@@ -40,6 +41,7 @@ def _write_minimal_job(job_dir: Path, *, eval_command: str) -> None:
         "  --train)\n"
         "    python3 scripts/run_asimov1_full_training.py --job-dir \"$JOB_DIR\"\n"
         "    python3 scripts/verify_brax_text_policy.py --ckpt \"$JOB_DIR\" --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25\n"
+        "    python3 scripts/validate_asimov1_production_checkpoint.py \"$JOB_DIR\" --min-steps 8\n"
         "    python3 scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt \"$JOB_DIR\" --tasks stand_up --episodes 1 --max-steps 1\n"
         "    python3 scripts/sim_validation_gate.py --profile asimov-1 --checkpoint \"$JOB_DIR\"\n"
         "    ;;\n"
@@ -87,5 +89,7 @@ def test_full_training_job_export_writes_trainable_runner(tmp_path: Path) -> Non
     assert "ELIZA_ROBOT_PACKAGE_ROOT" in script
     assert "--train" in script
     assert "verify_brax_text_policy.py" in script
+    assert "validate_asimov1_production_checkpoint.py" in script
+    assert "--min-steps 150000000" in script
     assert "eval_text_policy.py --profile asimov-1 --backend mjx" in script
     assert "sim_validation_gate.py --profile asimov-1" in script

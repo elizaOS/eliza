@@ -1,0 +1,88 @@
+{
+  "baseline_variant": "baseline_4x2",
+  "candidate_measured_ppa_reuse": {
+    "note": "AI candidates approximate but do not reproduce the routed cfgs (nearest mean displacement 57-806 um >> legalizer tolerance 5 um), so none inherits measured PPA. Each distinct candidate needs its own OpenLane MACRO_PLACEMENT_CFG route to claim post-route PPA.",
+    "replay_plan": "build/ai_eda/macro_placement_full_replay/validation/replay_plan.json"
+  },
+  "claim_boundary": "e1_macro_array_post_route_ppa_comparison_archival_only_no_release_claim",
+  "deltas_vs_baseline": {
+    "compact_4x2": {
+      "route_drc_iter1_pct_vs_baseline": 58.756,
+      "route_wirelength_est_pct_vs_baseline": -22.724,
+      "setup_tns_ns_pct_vs_baseline": 42.954
+    },
+    "stack_2x4": {
+      "route_drc_iter1_pct_vs_baseline": -1.152,
+      "route_wirelength_est_pct_vs_baseline": -21.464,
+      "setup_tns_ns_pct_vs_baseline": 89.875
+    }
+  },
+  "design": "e1_npu_weight_buffer_array",
+  "false_dawn_discipline": {
+    "best_proxy_and_timing_variant": "stack_2x4",
+    "improvement_count": 56,
+    "note": "Headline wirelength/TNS proxy winner is NOT a post-route signoff winner.",
+    "optimization_claim_allowed": false,
+    "replay_comparison_gate": "build/ai_eda/openlane_replay_comparison/validation/openlane_replay_comparison.json",
+    "representative_signoff_regressions": [
+      {
+        "baseline": 3.0,
+        "candidate": 7.0,
+        "delta": 4.0,
+        "metric": "antenna__violating__nets"
+      },
+      {
+        "baseline": 44.0,
+        "candidate": 45.0,
+        "delta": 1.0,
+        "metric": "design__max_fanout_violation__count"
+      },
+      {
+        "baseline": 973.0,
+        "candidate": 1129.0,
+        "delta": 156.0,
+        "metric": "design__max_slew_violation__count"
+      },
+      {
+        "baseline": 3.0,
+        "candidate": 7.0,
+        "delta": 4.0,
+        "metric": "route__antenna_violation__count"
+      }
+    ],
+    "signoff_regression_count": 23,
+    "verdict": "stack_2x4 wins wirelength (-21.5%) and setup TNS (-90%) versus baseline, but REGRESSES post-route signoff (+4 antenna nets, +156 max-slew violations, +1 max-fanout). The post-route validator rejects it as a PPA/optimization win. No macro-array placement is promotable yet: all three have negative setup slack at 15 ns and the timing-best one trades signoff cleanliness."
+  },
+  "measured_variants": [
+    "baseline_4x2",
+    "compact_4x2",
+    "stack_2x4"
+  ],
+  "per_variant_ppa": "see macro_array_<variant>.json in this directory",
+  "placement_case_id": "e1-macro-array-weight-buffer-placement-case",
+  "post_route_ranking": [
+    {
+      "antenna_violating_nets": 7,
+      "rank": 1,
+      "route_wirelength_est": 531709,
+      "setup_tns_ns": -1.0122241109583567,
+      "variant": "stack_2x4"
+    },
+    {
+      "antenna_violating_nets": 2,
+      "rank": 2,
+      "route_wirelength_est": 523180,
+      "setup_tns_ns": -5.703066624818659,
+      "variant": "compact_4x2"
+    },
+    {
+      "antenna_violating_nets": 3,
+      "rank": 3,
+      "route_wirelength_est": 677027,
+      "setup_tns_ns": -9.997384536524617,
+      "variant": "baseline_4x2"
+    }
+  ],
+  "release_use_allowed": false,
+  "schema": "eliza.pd_post_route_ppa_comparison.v1"
+}

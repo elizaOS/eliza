@@ -18,6 +18,7 @@ LOG_EVIDENCE_MANIFEST = ROOT / "docs/android/bsp-log-evidence-manifest.json"
 BOOT_TRANSCRIPT_SCHEMA = ROOT / "docs/android/boot-transcript.schema.json"
 EVIDENCE_MANIFEST = ROOT / "docs/evidence/software-bsp-evidence-manifest.json"
 LOCAL_EXTERNAL_PREFLIGHT_REPORT = ROOT / "docs/evidence/software-bsp-external-preflight-status.json"
+REPORT = ROOT / "build/reports/software_bsp.json"
 AOSP_EVIDENCE_MANIFEST = ROOT / "sw/aosp-device/evidence_manifest.json"
 NNAPI_PROOF_TEMPLATE = ROOT / "docs/benchmarks/capabilities/e1_npu_nnapi.proof.template.json"
 ANDROID_PROOF_TEMPLATE = (
@@ -31,6 +32,7 @@ AOSP_REFERENCE_ONLY_PATHS = [
     "docs/evidence/android/qemu_riscv64_smoke.log",
     "docs/evidence/android/renode_e1_soc_smoke.log",
 ]
+CLAIM_BOUNDARY = "scaffold_and_evidence_inventory_only_not_linux_or_aosp_boot_evidence"
 DEFAULT_EVIDENCE_METADATA = ["EXTERNAL_TREE=", "COMMAND=", "START_UTC=", "END_UTC=", "RESULT="]
 ANDROID_COMPAT_METADATA = [
     "EXTERNAL_TREE=",
@@ -713,6 +715,74 @@ def target_report(name: str) -> dict:
     }
 
 
+def blocker_code(text: str, fallback: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:12]) or fallback
+
+
+def build_scaffold_report(
+    *,
+    target: str,
+    scaffold_only: bool,
+    require_evidence: bool,
+    results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    findings: list[dict[str, Any]] = []
+    for result in results:
+        name = str(result["target"])
+        for error in result["errors"]:
+            findings.append(
+                {
+                    "code": blocker_code(f"{name} {error}", "software_bsp_scaffold_error"),
+                    "severity": "fail",
+                    "target": name,
+                    "message": error,
+                    "evidence": f"python3 scripts/check_software_bsp.py {name}",
+                    "next_step": "Fix the missing or stale repo-local BSP scaffold artifact.",
+                }
+            )
+        for blocker in result["blockers"]:
+            findings.append(
+                {
+                    "code": blocker_code(f"{name} {blocker}", "software_bsp_external_evidence_blocked"),
+                    "severity": "blocker",
+                    "target": name,
+                    "message": blocker,
+                    "evidence": f"python3 scripts/check_software_bsp.py {name} --require-evidence",
+                    "next_step": "Capture and validate the external BSP build or boot evidence named by the checker.",
+                }
+            )
+    if any(finding["severity"] == "fail" for finding in findings):
+        status = "fail"
+    elif findings:
+        status = "blocked"
+    else:
+        status = "pass"
+    return {
+        "schema": "eliza.software_bsp.v1",
+        "status": status,
+        "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "target": target,
+        "scaffold_only": scaffold_only,
+        "require_evidence": require_evidence,
+        "summary": {
+            "targets_checked": len(results),
+            "targets_with_errors": sum(1 for result in results if result["errors"]),
+            "targets_with_blockers": sum(1 for result in results if result["blockers"]),
+            "findings": len(findings),
+        },
+        "targets": results,
+        "findings": findings,
+    }
+
+
+def write_scaffold_report(report: dict[str, Any], output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def print_status(name: str) -> int:
     report = target_report(name)
     print(f"{name}: software BSP evidence status")
@@ -1320,6 +1390,11 @@ def main() -> int:
         action="store_true",
         help="Emit machine-readable scaffold/evidence status and blockers.",
     )
+    parser.add_argument(
+        "--report",
+        default=str(REPORT),
+        help="Write the structured BSP scaffold/evidence report to this path.",
+    )
     args = parser.parse_args()
 
     names = TARGETS.keys() if args.target == "all" else [args.target]
@@ -1351,6 +1426,7 @@ def main() -> int:
         return 0
 
     failed = False
+    results: list[dict[str, Any]] = []
     for name in names:
         errors, blockers = check_target(name)
         scaffold = subprocess.run(
@@ -1365,6 +1441,15 @@ def main() -> int:
             print(scaffold.stderr, end="", file=sys.stderr)
         if scaffold.returncode:
             errors.append(f"{name} scaffold audit failed")
+        results.append(
+            {
+                "target": name,
+                "scaffold_status": "FAIL" if errors else "PASS",
+                "evidence_status": "BLOCKED" if blockers else "PASS",
+                "errors": errors,
+                "blockers": blockers,
+            }
+        )
         evidence_required = args.require_evidence and not args.scaffold_only
         if errors or (blockers and evidence_required):
             failed = True
@@ -1395,6 +1480,15 @@ def main() -> int:
                         )
                     )
 
+    write_scaffold_report(
+        build_scaffold_report(
+            target=args.target,
+            scaffold_only=args.scaffold_only,
+            require_evidence=args.require_evidence,
+            results=results,
+        ),
+        Path(args.report),
+    )
     return 1 if failed else 0
 
 

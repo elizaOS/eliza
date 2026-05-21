@@ -62,6 +62,8 @@ lb config noauto \
     --uefi-secure-boot disable \
     --binary-image iso-hybrid \
     --apt-recommends false \
+    --apt-indices false \
+    --apt-source-archives false \
     ${QEMU_BOOTSTRAP_OPTIONS} \
     ${FIRMWARE_OPTIONS} \
     --debian-installer none \
