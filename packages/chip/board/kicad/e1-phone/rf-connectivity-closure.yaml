@@ -518,6 +518,64 @@ s11_and_efficiency_plan:
   residual_measurement: VNA S11 per feed and chamber total-efficiency/realized-gain
     sweep on a routed EVT0 board with conducted access; planning targets are not pass
     criteria.
+em_simulation:
+  evidence_class: em_simulation_blocked_missing_solver
+  status: blocked
+  rung_above: planning_estimate_not_vna_measured
+  rung_below: vna_and_anechoic_chamber_measured
+  reason: No full-wave EM solver (FDTD or MoM) is installed in this toolchain. The
+    S11/total-efficiency planning targets in s11_and_efficiency_plan cannot be promoted
+    to em_simulated_not_chamber_measured without one. No S-parameters are fabricated.
+  solver_probe:
+    checked_binaries:
+      - openEMS
+      - AppCSXCAD
+      - nec2c
+      - necpp
+      - meep
+    checked_python_modules:
+      - openEMS
+      - CSXCAD
+      - PyNEC
+      - meep
+      - skrf
+      - pyems
+    found_binaries: []
+    found_python_modules: []
+  tooling_required_to_unblock:
+    - openEMS (FDTD) + CSXCAD/python-openEMS bindings, or
+    - an MoM solver (PyNEC/necpp) for the wire/PIFA approximation, or
+    - MEEP (FDTD) with the python bindings
+    - scikit-rf (skrf) to post-process the resulting Touchstone S-parameters
+  unblock_command: add openEMS + python-openEMS to external/ and tools/env.sh, then
+    re-run make e1-phone-rf-connectivity
+  intended_model_when_solver_present:
+    structure: side-fed planar inverted-F (PIFA) / monopole on a finite ground plane
+    ground_plane_width_mm: 64.0
+    substrate_thickness_mm: 12.7
+    enclosure_wall_thickness_mm: 1.15
+    feeds_to_model:
+      - net: CELL_RF_MAIN
+        bands_ghz:
+          - 0.617
+          - 3.8
+        geometry: edge-slot PIFA in the cellular keepout
+      - net: WIFI_BT_RF0
+        bands_ghz:
+          - 2.4
+          - 7.125
+        geometry: side-edge PIFA in the wifi_bt keepout
+      - net: CELL_GNSS_RF
+        bands_ghz:
+          - 1.559
+          - 1.61
+        geometry: narrow L1 monopole/PIFA
+    outputs: simulated S11 (return loss) and total efficiency vs the module band plans,
+      tagged em_simulated_not_chamber_measured with solver name+version and mesh/boundary
+      assumptions
+  residual_measurement: An EM simulation, when added, is still below a physical measurement.
+    VNA S11/S21 and anechoic-chamber total-efficiency on a fabricated EVT0 board remain
+    the binding evidence and are unchanged by this tier.
 feed_isolation_plan:
   evidence_class: planning_estimate_not_vna_measured
   module_center_separation_mm: 13.0
@@ -536,7 +594,7 @@ feed_isolation_plan:
     board.
 sar_prescan_plan:
   evidence_class: planning_estimate_not_sar_lab_measured
-  device_thickness_mm: 11.8
+  device_thickness_mm: 12.7
   back_wall_thickness_mm: 0.75
   body_separation_basis: flush-back 11.8 mm slab held against torso; no metal midframe
     over antenna keepouts keeps the radiating edges closest to the plastic wall

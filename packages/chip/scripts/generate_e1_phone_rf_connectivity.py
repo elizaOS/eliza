@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,11 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "board/kicad/e1-phone/rf-connectivity-closure.yaml"
+
+# Full-wave EM solvers that could turn the S11/efficiency planning targets into
+# em_simulated_not_chamber_measured values. None ships in this toolchain today.
+EM_SOLVER_BINARIES = ("openEMS", "AppCSXCAD", "nec2c", "necpp", "meep")
+EM_SOLVER_PY_MODULES = ("openEMS", "CSXCAD", "PyNEC", "meep", "skrf", "pyems")
 
 SOURCES = {
     "routing": ROOT / "board/kicad/e1-phone/routing-constraints.yaml",
@@ -142,6 +149,94 @@ RF_BAND_PLAN = [
         "rationale": "Second MIMO chain must be spatially separated from chain0; envelope-correlation-coefficient and chain-to-chain isolation are supplier_defined and require measurement.",
     },
 ]
+
+
+def probe_em_solvers() -> dict[str, Any]:
+    """Detect a real full-wave EM solver in the local toolchain.
+
+    The S11/total-efficiency numbers in RF_BAND_PLAN are pre-layout planning
+    targets. The next honest rung up the evidence ladder (still below a physical
+    VNA/chamber measurement) is a full-wave EM simulation of the antenna feeds.
+    That requires an FDTD/MoM solver. This probe records which solvers are
+    present so the artifact either carries an em_simulated tier or fails closed
+    with a named tooling blocker -- it never fabricates S-parameters."""
+    binaries = {name: shutil.which(name) for name in EM_SOLVER_BINARIES}
+    modules = {
+        name: bool(importlib.util.find_spec(name)) for name in EM_SOLVER_PY_MODULES
+    }
+    found_binaries = sorted(name for name, path in binaries.items() if path)
+    found_modules = sorted(name for name, present in modules.items() if present)
+    return {
+        "available": bool(found_binaries) or bool(found_modules),
+        "binaries": binaries,
+        "found_binaries": found_binaries,
+        "python_modules": modules,
+        "found_python_modules": found_modules,
+    }
+
+
+def build_em_simulation(probe: dict[str, Any], cad_params: dict[str, Any]) -> dict[str, Any]:
+    """Record the EM-simulation evidence tier.
+
+    When no solver is available the block fails closed: it states the missing
+    dependency, the exact tooling that would unblock it, and the model that
+    would be run -- without emitting any simulated S-parameter. No EM solver is
+    bundled in this toolchain today, so this is the path taken. If a solver is
+    later added to tools/env.sh, this block is where the real
+    em_simulated_not_chamber_measured sweep is wired in."""
+    thickness_mm = float(cad_params["device"]["envelope_mm"][2])
+    wall_mm = float(cad_params["device"].get("wall_thickness_mm", 0.0))
+    board_w_mm = 64.0
+    if probe["available"]:
+        raise RuntimeError(
+            "An EM solver is present on PATH/in the venv "
+            f"(binaries={probe['found_binaries']}, modules={probe['found_python_modules']}), "
+            "but the simulated S11/efficiency sweep wiring has not been implemented. "
+            "Implement the openEMS/PyNEC model here rather than falling through to the "
+            "blocked tier, so the artifact does not understate available evidence."
+        )
+    return {
+        "evidence_class": "em_simulation_blocked_missing_solver",
+        "status": "blocked",
+        "rung_above": "planning_estimate_not_vna_measured",
+        "rung_below": "vna_and_anechoic_chamber_measured",
+        "reason": (
+            "No full-wave EM solver (FDTD or MoM) is installed in this toolchain. "
+            "The S11/total-efficiency planning targets in s11_and_efficiency_plan "
+            "cannot be promoted to em_simulated_not_chamber_measured without one. "
+            "No S-parameters are fabricated."
+        ),
+        "solver_probe": {
+            "checked_binaries": list(EM_SOLVER_BINARIES),
+            "checked_python_modules": list(EM_SOLVER_PY_MODULES),
+            "found_binaries": probe["found_binaries"],
+            "found_python_modules": probe["found_python_modules"],
+        },
+        "tooling_required_to_unblock": [
+            "openEMS (FDTD) + CSXCAD/python-openEMS bindings, or",
+            "an MoM solver (PyNEC/necpp) for the wire/PIFA approximation, or",
+            "MEEP (FDTD) with the python bindings",
+            "scikit-rf (skrf) to post-process the resulting Touchstone S-parameters",
+        ],
+        "unblock_command": "add openEMS + python-openEMS to external/ and tools/env.sh, then re-run make e1-phone-rf-connectivity",
+        "intended_model_when_solver_present": {
+            "structure": "side-fed planar inverted-F (PIFA) / monopole on a finite ground plane",
+            "ground_plane_width_mm": board_w_mm,
+            "substrate_thickness_mm": thickness_mm,
+            "enclosure_wall_thickness_mm": wall_mm,
+            "feeds_to_model": [
+                {"net": "CELL_RF_MAIN", "bands_ghz": [0.617, 3.8], "geometry": "edge-slot PIFA in the cellular keepout"},
+                {"net": "WIFI_BT_RF0", "bands_ghz": [2.4, 7.125], "geometry": "side-edge PIFA in the wifi_bt keepout"},
+                {"net": "CELL_GNSS_RF", "bands_ghz": [1.559, 1.61], "geometry": "narrow L1 monopole/PIFA"},
+            ],
+            "outputs": "simulated S11 (return loss) and total efficiency vs the module band plans, tagged em_simulated_not_chamber_measured with solver name+version and mesh/boundary assumptions",
+        },
+        "residual_measurement": (
+            "An EM simulation, when added, is still below a physical measurement. "
+            "VNA S11/S21 and anechoic-chamber total-efficiency on a fabricated EVT0 "
+            "board remain the binding evidence and are unchanged by this tier."
+        ),
+    }
 
 
 def _placement_center(placement: dict[str, Any]) -> tuple[float, float]:
@@ -345,6 +440,7 @@ def main() -> int:
 
     audit = keepout_audit(overlay_keepouts, cad_params["radio"], matrix["board"]["bbox_mm"])
     plan_estimates = build_plan_estimates(placements, cad_params)
+    em_simulation = build_em_simulation(probe_em_solvers(), cad_params)
     status = (
         "blocked_rf_requires_antenna_vendor_and_measurements"
         if missing or missing_matching or missing_keepouts or missing_overlay_keepouts
@@ -436,6 +532,7 @@ def main() -> int:
         ],
         "antenna_keepout_audit": audit,
         "s11_and_efficiency_plan": plan_estimates["s11_and_efficiency"],
+        "em_simulation": em_simulation,
         "feed_isolation_plan": plan_estimates["feed_isolation_plan"],
         "sar_prescan_plan": plan_estimates["sar_prescan_plan"],
         "antenna_feed_assignments": [
