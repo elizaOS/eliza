@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-device-settings",
-  "version": "2.0.1-beta.0",
+  "version": "2.0.3",
   "type": "module",
   "description": "Android Device Settings overlay app for ElizaOS — brightness, volume, Android roles, and system settings shortcuts.",
   "main": "./dist/index.js",

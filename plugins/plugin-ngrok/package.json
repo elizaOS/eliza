@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-ngrok",
-  "version": "2.0.1-beta.0",
+  "version": "2.0.3",
   "description": "Ngrok tunnel plugin for elizaOS — third-party backend implementing the @elizaos/plugin-tunnel ITunnelService contract.",
   "type": "module",
   "main": "dist/index.js",
