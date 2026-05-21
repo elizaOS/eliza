@@ -243,7 +243,6 @@ const PAYER_SOL = "So11111111111111111111111111111111111111112";
 
 // Loaded after env is set
 let dbWrite: typeof import("../../../db/client").dbWrite;
-let cryptoPayments: typeof import("../../../db/schemas/crypto-payments").cryptoPayments;
 let service: typeof import("../direct-wallet-payments").directWalletPaymentsService;
 let closeDb: () => Promise<void>;
 let pgliteAvailable = true;
@@ -257,7 +256,7 @@ beforeAll(async () => {
     const svc = await import("../direct-wallet-payments");
     dbWrite = dbClient.dbWrite;
     closeDb = dbClient.closeDatabaseConnectionsForTests;
-    cryptoPayments = schemas.cryptoPayments;
+    void schemas.cryptoPayments;
     service = svc.directWalletPaymentsService;
 
     // Create only the table we need. uuid_generate_v4 isn't available in PGlite
