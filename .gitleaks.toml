@@ -1,11 +1,11 @@
-# gitleaks configuration — Milady workspace
+# gitleaks configuration — elizaOS workspace
 # SOC2 CC7.1 (monitoring) — automated secret-detection at the SCM boundary.
 #
 # Uses the upstream default ruleset and layers on workspace-specific allowlist
 # entries. To rebuild the embedded default rules, see:
 #   https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
 
-title = "Milady gitleaks config"
+title = "elizaOS gitleaks config"
 
 [extend]
 # Pull in upstream default ruleset.

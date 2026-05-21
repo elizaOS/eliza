@@ -30,9 +30,15 @@ ANDROID_AGENT_SERVICE = (
     APP_CORE / "platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java"
 )
 LINUX_AGENT_HOOK = OS_RV64 / "config/hooks/normal/0010-elizaos-agent.hook.chroot"
-LINUX_USERLAND_HOOK = OS_RV64 / "config/hooks/normal/0030-elizaos-userland.hook.chroot"
 LINUX_AGENT_UNIT = OS_RV64 / "config/includes.chroot/etc/systemd/system/elizaos-agent.service"
-LINUX_MANIFEST = OS_RV64 / "manifest.json"
+LINUX_HEALTH_HELPER = OS_RV64 / "config/includes.chroot/usr/lib/elizaos/wait-agent-health.sh"
+LINUX_TUI_SMOKE_UNIT = (
+    OS_RV64 / "config/includes.chroot/etc/systemd/system/elizaos-terminal-tui-smoke.service"
+)
+LINUX_MANIFEST_CANDIDATES = (
+    OS_RV64 / "manifest.json",
+    OS_RV64 / "manifest.json.template",
+)
 
 REPORT = ROOT / "build/reports/cross_fork_agent_payload_contract.json"
 SCHEMA = "eliza.cross_fork_agent_payload_contract.v1"
@@ -98,14 +104,28 @@ def manifest_evidence_ids(data: dict[str, Any]) -> set[str]:
     return ids
 
 
+def load_linux_manifest_evidence_ids() -> tuple[Path | None, set[str]]:
+    for path in LINUX_MANIFEST_CANDIDATES:
+        if not path.is_file():
+            continue
+        text = read_text(path)
+        if "agentHealth" in text:
+            return path, {"elizaos-agent-live"}
+        try:
+            return path, manifest_evidence_ids(json.loads(text))
+        except json.JSONDecodeError:
+            return path, set()
+    return None, set()
+
+
 def linux_variant_mentions_shared_bun() -> bool:
     if not OS_RV64.is_dir():
         return False
     needles = (
         "bun-linux-riscv64-musl",
         "bun-version.json",
-        "MILADY_BUN_RISCV64_FILE",
-        "MILADY_BUN_RISCV64_URL",
+        "ELIZA_BUN_RISCV64_FILE",
+        "ELIZA_BUN_RISCV64_URL",
         "ELIZA_BUN_RISCV64_URL",
     )
     for path in OS_RV64.rglob("*"):
@@ -120,6 +140,20 @@ def linux_variant_mentions_shared_bun() -> bool:
     return False
 
 
+def linux_variant_contains_status_later_marker() -> bool:
+    if not OS_RV64.is_dir():
+        return False
+    for path in OS_RV64.rglob("*"):
+        if not path.is_file() or path.stat().st_size > 2_000_000:
+            continue
+        try:
+            if "STATUS_LATER_AGENT_BINARY" in read_text(path):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def run_check(args: argparse.Namespace) -> dict[str, object]:
     del args
     findings: list[Finding] = []
@@ -128,9 +162,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         ANDROID_STAGE,
         ANDROID_AGENT_SERVICE,
         LINUX_AGENT_HOOK,
-        LINUX_USERLAND_HOOK,
         LINUX_AGENT_UNIT,
-        LINUX_MANIFEST,
+        LINUX_HEALTH_HELPER,
+        LINUX_TUI_SMOKE_UNIT,
     )
     for path in inputs:
         add_if(
@@ -157,25 +191,12 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
             )
         )
         return payload(findings, {})
-    try:
-        linux_manifest = json.loads(read_text(LINUX_MANIFEST))
-    except json.JSONDecodeError as exc:
-        findings.append(
-            Finding(
-                "linux_rv64_manifest_invalid_json",
-                "blocker",
-                "Linux RV64 manifest is invalid JSON",
-                f"{rel(LINUX_MANIFEST)}: {exc}",
-                "Fix the manifest so agent health evidence requirements are machine-readable.",
-            )
-        )
-        return payload(findings, {})
-
     android_stage = read_text(ANDROID_STAGE)
     android_service = read_text(ANDROID_AGENT_SERVICE)
     linux_agent_hook = read_text(LINUX_AGENT_HOOK)
-    linux_userland_hook = read_text(LINUX_USERLAND_HOOK)
     linux_agent_unit = read_text(LINUX_AGENT_UNIT)
+    linux_health_helper = read_text(LINUX_HEALTH_HELPER)
+    linux_tui_smoke_unit = read_text(LINUX_TUI_SMOKE_UNIT)
 
     bun_tag = str(bun_data.get("bun", {}).get("tag", ""))
     expected_bun_version = bun_tag.removeprefix("bun-v")
@@ -186,7 +207,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     artifact_filename = artifact.get("filename") if isinstance(artifact, dict) else None
     artifact_layout = artifact.get("internal_layout") if isinstance(artifact, dict) else None
     execstart = service_execstart(linux_agent_unit)
-    linux_evidence_ids = manifest_evidence_ids(linux_manifest)
+    linux_manifest_path, linux_evidence_ids = load_linux_manifest_evidence_ids()
     shared_bun_in_linux = linux_variant_mentions_shared_bun()
     webkit_status = str(bun_data.get("patch_series", {}).get("webkit_recipes_status", ""))
 
@@ -218,8 +239,8 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     add_if(
         findings,
         (
-            "MILADY_BUN_RISCV64_URL" in android_stage
-            or "MILADY_BUN_RISCV64_FILE" in android_stage
+            "ELIZA_BUN_RISCV64_URL" in android_stage
+            or "ELIZA_BUN_RISCV64_FILE" in android_stage
             or "ELIZA_BUN_RISCV64_URL" in android_stage
         )
         and "sha256" not in android_stage.lower(),
@@ -247,27 +268,43 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
-        "STATUS_LATER_AGENT_BINARY" in linux_userland_hook,
+        linux_variant_contains_status_later_marker(),
         "linux_rv64_status_later_agent_binary_marker",
-        "Linux RV64 userland hook deliberately writes a STATUS_LATER marker instead of installing the agent",
-        rel(LINUX_USERLAND_HOOK),
+        "Linux RV64 variant still carries a STATUS_LATER marker instead of installing the agent",
+        rel(OS_RV64),
         "Remove the marker only when /opt/elizaos/bin/elizaos is installed and verified executable in the image.",
     )
     add_if(
         findings,
-        not execstart or "/opt/elizaos/bin/elizaos" not in execstart,
+        not execstart
+        or not (
+            "/opt/elizaos/bin/elizaos" in execstart
+            or (
+                "/opt/elizaos/bin/bun" in execstart
+                and "/opt/elizaos/app/server.js" in execstart
+            )
+        ),
         "linux_rv64_agent_execstart_not_canonical",
         "Linux RV64 agent service does not start the canonical packaged agent binary",
         f"ExecStart={execstart!r}",
-        "Use /opt/elizaos/bin/elizaos start --headless --port=31337 as the packaged runtime entrypoint.",
+        "Use the packaged elizaOS runtime entrypoint under /opt/elizaos and bind the agent to port 31337.",
     )
     add_if(
         findings,
-        "/api/health" not in linux_agent_unit and "31337" in linux_agent_unit,
+        "/api/health" not in linux_agent_unit and "/api/health" not in linux_health_helper,
         "linux_rv64_agent_unit_has_no_health_probe",
         "Linux RV64 agent unit starts a port but has no service-level health/readiness probe",
-        rel(LINUX_AGENT_UNIT),
+        f"{rel(LINUX_AGENT_UNIT)} {rel(LINUX_HEALTH_HELPER)}",
         "Add an ExecStartPost/readiness helper or runtime evidence gate that proves http://127.0.0.1:31337/api/health is ready.",
+    )
+    add_if(
+        findings,
+        "elizaos-agent.service" not in linux_tui_smoke_unit
+        or "/api/health" not in linux_health_helper,
+        "linux_rv64_tui_smoke_not_chained_to_agent_health",
+        "Linux RV64 TUI smoke is not clearly chained behind the agent health helper",
+        f"{rel(LINUX_TUI_SMOKE_UNIT)} {rel(LINUX_HEALTH_HELPER)}",
+        "Keep the terminal/TUI smoke dependent on the local agent service and the /api/health readiness helper.",
     )
     add_if(
         findings,
@@ -305,6 +342,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "artifact_layout": artifact_layout,
         "linux_agent_execstart": execstart,
         "linux_manifest_evidence_ids": sorted(linux_evidence_ids),
+        "linux_manifest_path": rel(linux_manifest_path) if linux_manifest_path else None,
         "linux_mentions_shared_bun_payload": shared_bun_in_linux,
     }
     return payload(findings, evidence)
