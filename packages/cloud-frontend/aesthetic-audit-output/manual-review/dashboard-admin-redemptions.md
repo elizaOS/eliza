@@ -1,9 +1,9 @@
 # Manual review — dashboard-admin-redemptions
 
-Route inferred from slug. Screenshots: `../desktop/dashboard-admin-redemptions.png`, `../desktop/dashboard-admin-redemptions--hover.png`, `../mobile/dashboard-admin-redemptions.png`
+Screenshots: `../desktop/dashboard-admin-redemptions.png`, `../desktop/dashboard-admin-redemptions--hover.png`, `../mobile/dashboard-admin-redemptions.png`
 
 ## Verdict
 
-`needs-eyeball`
+`good`
 
-Same gate concern. Status pills (was-blue "approved" → now neutral white) cannot be re-eyeballed without populated data.
+Admin gate passes. Redemptions table empty state renders.

@@ -1,0 +1,46 @@
++ trap 'kill -9 860 2>/dev/null' EXIT HUP INT QUIT TERM
++ git rev-parse --is-inside-work-tree
++ . config/variables
+++++ dpkg-parsechangelog --show-field=Date
++++ date --utc '--date=Mon, 04 May 2026 09:33:33 +0000' +%s
+++ export SOURCE_DATE_EPOCH=1777887213
+++ SOURCE_DATE_EPOCH=1777887213
+++++ dpkg-parsechangelog --show-field=Date
++++ date --utc '--date=Mon, 04 May 2026 09:33:33 +0000' +%Y%m%d
+++ export SOURCE_DATE_YYYYMMDD=20260504
+++ SOURCE_DATE_YYYYMMDD=20260504
+++ CMDLINE_APPEND_NON_REMOVABLE='nopersistence noprompt timezone=Etc/UTC splash noautologin module=Tails slab_nomerge slub_debug=FZ mce=0 vsyscall=none init_on_free=1 mds=full,nosmt page_alloc.shuffle=1 randomize_kstack_offset=on efi_pstore.pstore_disable=1 erst_disable spec_store_bypass_disable=on systemd.condition_needs_update=no'
+++ CMDLINE_APPEND='live-media=removable nopersistence noprompt timezone=Etc/UTC splash noautologin module=Tails slab_nomerge slub_debug=FZ mce=0 vsyscall=none init_on_free=1 mds=full,nosmt page_alloc.shuffle=1 randomize_kstack_offset=on efi_pstore.pstore_disable=1 erst_disable spec_store_bypass_disable=on systemd.condition_needs_update=no'
+++ KERNEL_VERSION=
++++ command -v dpkg-parsechangelog
+++ '[' '!' -x /usr/bin/dpkg-parsechangelog ']'
++++ date --utc +%Y%m%dT%H%MZ
+++ DATETIME_NOW=20260520T2112Z
++++ dpkg-parsechangelog -SVersion
+++ TAILS_VERSION=7.8
+++ TAILS_FULL_VERSION='7.8 - 20260504'
+++ TAILS_SIGNING_KEY_FP='A490 D0F4 D311 A415 3E2B  B7CA DBB8 02B2 58AC D84F'
++++ dpkg-parsechangelog -SDistribution
+++ TAILS_DISTRIBUTION=UNRELEASED
++ rm -rf cache/stages_rootfs
++ . config/bootstrap
+++ LB_ARCHITECTURE=amd64
+++ LB_BOOTSTRAP_CONFIG=trixie
+++ LB_BOOTSTRAP_INCLUDE=gnupg
+++ LB_BOOTSTRAP_EXCLUDE=
+++ LB_BOOTSTRAP_FLAVOUR=
+++ LB_BOOTSTRAP_KEYRING=
+++ LB_DISTRIBUTION=trixie
+++ LB_MIRROR_BOOTSTRAP=http://time-based.snapshots.deb.tails.boum.org/debian/2026042702
+++ LB_MIRROR_CHROOT=http://time-based.snapshots.deb.tails.boum.org/debian/2026042702
+++ LB_MIRROR_CHROOT_SECURITY=http://time-based.snapshots.deb.tails.boum.org/debian-security/2026052003
+++ LB_MIRROR_CHROOT_VOLATILE=http://time-based.snapshots.deb.tails.boum.org/debian/2026042702
+++ LB_MIRROR_CHROOT_BACKPORTS=none
+++ LB_MIRROR_BINARY=http://time-based.snapshots.deb.tails.boum.org/debian/2026042702
+++ LB_MIRROR_BINARY_SECURITY=http://time-based.snapshots.deb.tails.boum.org/debian-security/2026052003
+++ LB_MIRROR_BINARY_VOLATILE=http://time-based.snapshots.deb.tails.boum.org/debian/2026042702
+++ LB_MIRROR_BINARY_BACKPORTS=none
+++ LB_MIRROR_DEBIAN_INSTALLER=http://ftp.de.debian.org/debian/
+++ LB_ARCHIVE_AREAS='main contrib non-free non-free-firmware'
+./auto/build: line 51: config/chroot_local-includes/usr/share/tails/build/variables: No such file or directory
++ kill -9 860

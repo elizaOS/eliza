@@ -4,6 +4,31 @@ This is the contributor charter for the elizaOS repository. The
 companion `CLAUDE.md` covers tooling and review conventions; this file
 covers what the codebase enforces.
 
+## Cloud frontend visual review (REQUIRED for any UI change in `packages/cloud-frontend/`)
+
+Any change in `packages/cloud-frontend/` MUST go through the screenshot +
+manual-review loop before being declared done. Run:
+
+```bash
+bun run --cwd packages/cloud-frontend audit:cloud
+```
+
+This walks every route in `src/App.tsx` (53 routes × desktop + mobile × rest +
+hover), logs in with the synthetic injected-ethereum JWT, captures the populated
+UI, and auto-stubs `aesthetic-audit-output/manual-review/<slug>.md` for any new
+route. You then fill in the verdict for every page you touched (and every page
+your change can reach via shared layout/theme/components).
+
+- Verdicts: `good` · `needs-work` · `needs-eyeball` · `broken`.
+- No page can stay at `needs-work` or `broken` when a UI task is declared done.
+- Iterate the loop at least 5 times for any meaningful redesign — screenshot,
+  evaluate, fix, re-audit, repeat.
+- Hover transitions to black-from-orange, or any blue at all, are banned.
+- Full protocol + checklist template: `packages/cloud-frontend/AGENTS.md`.
+- E2E coverage gap list per page: `packages/cloud-frontend/docs/E2E_COVERAGE_GAPS.md`.
+- Hover/color rules: `packages/cloud-frontend/docs/HOVER_SYSTEM.md`.
+- Dashboard IA: `packages/cloud-frontend/docs/DASHBOARD_REDESIGN.md`.
+
 ## LifeOps app + plugin-health
 
 LifeOps (`@elizaos/plugin-lifeops`) and the health plugin

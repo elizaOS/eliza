@@ -748,7 +748,7 @@ Current local validation on the 128 GiB M4 host:
   including execute-mode blocks for asset downloads, training, inference,
   replay, and AlphaChip stages when their explicit allow flags are absent,
   without executing commands or downloading assets.
-- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-readiness-dryrun
+- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-current-readiness
   ai-eda-cuda-readiness-audit`: PASS with `PASS_WITH_BLOCKERS_RECORDED`. The
   audit now depends on `ai-eda-cuda-run-plan-dry-run` and
   `ai-eda-cuda-run-plan-safety-matrix`, records both the expanded
@@ -764,14 +764,18 @@ Current local validation on the 128 GiB M4 host:
   `BLOCKED_REPLAY_EXECUTION`.
 - `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-readiness-args
   AI_EDA_SETUP_RUN_ID=codex-cuda-ready-20260521
-  AI_EDA_TRAINING_HANDOFF_RUN_ID=codex-cuda-ready-20260521-training-handoff
+  AI_EDA_TRAINING_HANDOFF_RUN_ID=codex-cuda-ready-conda-20260521-training-handoff
   ai-eda-cuda-readiness-audit`: PASS with `PASS_WITH_BLOCKERS_RECORDED`. The
-  audit proves payload handoff is ready, the current-research watchlist is
-  captured, and setup-check evidence is complete, while recording four hard
-  blockers for full objective completion on this host: `cuda.available=false`
-  / `large_training_ready=false`, AlphaChip checkpoint access remains
-  `PASS_BLOCKED_CURRENT`, the training-handoff bootstrap evidence is not yet
-  complete, and E1 OpenLane/OpenROAD replay remains `BLOCKED_REPLAY_EXECUTION`.
+  audit proves payload handoff is ready, run-plan dry-run and safety-matrix
+  validation are complete, setup-check evidence is complete, Torch training and
+  inference are validated through the conda/MPS handoff artifacts, the full
+  169-candidate replay plan is validated, and the training-handoff payload is
+  present. It records three hard blockers for full objective completion on this
+  host: `cuda.available=false` / `large_training_ready=false`, AlphaChip
+  checkpoint access remains `PASS_BLOCKED_CURRENT`, and E1 OpenLane/OpenROAD
+  replay remains `BLOCKED_REPLAY_EXECUTION`. It also records a soft blocker
+  that the monolithic training-handoff bootstrap report did not complete even
+  though the critical Torch/full-replay/payload artifacts validated separately.
 - `make ai-eda-verification-targets`: PASS. The local verification capture
   lane emits and validates dry-run target reports for logic synthesis, RTL
   rewrite equivalence, and netlist/LEC readiness. The checker enforces
@@ -1543,9 +1547,16 @@ Implementation TODOs:
 - Replace the current `scripts/ai_eda/run_cocotb_stimulus_search.py` dry-run
   manifest validator with a real LLM4DV/CVDP-backed seed generator for the
   descriptor queue, DMA, IOMMU, interrupt, reset, and NPU command-buffer bins.
-- Add a candidate assertion schema:
-  module, signal scope, reset semantics, clock domain, antecedent,
-  consequent, bounded depth, generated-by, reviewer, bind status.
+- [x] Add a candidate assertion schema/check gate:
+  `verify/ai_eda/assertion_candidates/e1_npu_descriptor.yaml` now records
+  module, signal scope, reset semantics, clock domain, antecedent, consequent,
+  bounded depth, generated-by, reviewer, bind status, quarantine path, and
+  promotion gates for the first E1 NPU descriptor properties.
+  `scripts/ai_eda/check_assertion_candidate_manifests.py` validates that
+  generated or human-seeded assertions remain unbound to RTL, require review,
+  require formal/cocotb promotion gates, and write only under
+  `build/ai_eda/assertion_candidates/`. `make docs-check`, bootstrap metadata,
+  and the CUDA payload/runbook now carry this gate.
 - Add `scripts/ai_eda/replay_assertion_candidate.py` that runs only on
   quarantined copies until reviewed.
 - Add failure clustering for formal traces and cocotb logs.
@@ -1577,7 +1588,8 @@ Implementation TODOs:
   output tolerance, artifacts, and blockers for TFLite CPU/NNAPI smoke,
   NPU scale simulation, Timeloop mapping, StableHLO lowering, INT4, FP8, and
   sparse 2:4 fixtures. `scripts/ai_eda/check_ai_workload_manifest.py` validates
-  the manifest, benchmark-plan references, local artifact hashes, required
+  the manifest, benchmark-plan references, SHA256 hashes for every local
+  referenced artifact, required
   workload categories, and blocked zero-fallback lanes. `make docs-check`,
   bootstrap metadata, and the CUDA payload/run plan now carry this gate.
 - Integrate Timeloop/Accelergy and ZigZag outputs into the same E1 candidate
@@ -2037,7 +2049,14 @@ not as:
   DREAMPlace research-code repos into normalized text-instruction records for
   RAG/CUDA runbook training, with no execution or optimization claim.
 - [x] Add and validate the E1 AI workload/model manifest for TFLite, NPU scale,
-  Timeloop, StableHLO lowering, INT4, FP8, and sparse 2:4 benchmark lanes.
+  Timeloop, StableHLO lowering, INT4, FP8, and sparse 2:4 benchmark lanes,
+  with SHA256 pins for every referenced local model, runner, config, proof
+  template, runtime, lowering, calibrator, and test artifact.
+- [x] Add and validate the E1 assertion-candidate manifest gate for
+  quarantined, unbound NPU descriptor SVA candidates.
+- [x] Add a fail-closed external-method wrapper readiness contract for
+  replacing CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters, including required
+  payloads, output contracts, blockers, and replay gates.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Replace CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters with the real

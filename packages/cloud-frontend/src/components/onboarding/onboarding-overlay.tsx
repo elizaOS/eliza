@@ -183,24 +183,22 @@ export function OnboardingOverlay() {
         onKeyDown={(e) => e.key === "Escape" && skipTour()}
       />
 
-      {/* Clickable highlight area - clicking advances the tour */}
+      {/* Visual-only highlight ring. Pointer events pass through so the
+          user can still interact with the highlighted CTA — clicking the
+          underlying element naturally advances them to that surface, and
+          the tooltip's Next button advances the tour itself. The previous
+          implementation rendered an opaque button on top of the CTA that
+          blocked the very action the tour was pointing at. */}
       {targetRect && (
-        <button
-          type="button"
-          className="pointer-events-auto absolute cursor-pointer rounded-lg border-2 border-accent transition-all duration-300 hover:bg-accent/10 bg-transparent"
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute rounded-lg border border-accent/40 ring-1 ring-accent/20 transition-all duration-300"
           style={{
-            top: targetRect.top,
-            left: targetRect.left,
-            width: targetRect.width,
-            height: targetRect.height,
+            top: targetRect.top - 2,
+            left: targetRect.left - 2,
+            width: targetRect.width + 4,
+            height: targetRect.height + 4,
           }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            nextStep();
-          }}
-          title="Click to continue"
-          aria-label="Click to continue tour"
         />
       )}
 

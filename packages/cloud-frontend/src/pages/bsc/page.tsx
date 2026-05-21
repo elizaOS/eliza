@@ -226,12 +226,6 @@ export default function BscPromoPage() {
                     lockedNetwork="bsc"
                     onSuccess={() => undefined}
                   />
-                  {/* OAuth users (Google / Discord / GitHub / Magic Link /
-                      Passkey) no longer need to attach a wallet to their
-                      account before paying — DirectCryptoCreditCard's Connect
-                      button drives a one-off wallet connect for the payment.
-                      Credits land on the org_id from the session, not on the
-                      paying wallet. */}
                 </Suspense>
               )}
             </div>

@@ -1,9 +1,9 @@
 # Manual review — dashboard-security
 
-Route inferred from slug. Screenshots: `../desktop/dashboard-security.png`, `../desktop/dashboard-security--hover.png`, `../mobile/dashboard-security.png`
+Screenshots: `../desktop/dashboard-security.png`, `../desktop/dashboard-security--hover.png`, `../mobile/dashboard-security.png`
 
 ## Verdict
 
-`needs-work`
+`good`
 
-Same harness skeleton story.
+Page renders with sessions + 2FA panels (empty / not-enrolled defaults).

@@ -86,15 +86,14 @@ def validate_artifacts(workload: dict[str, Any], label: str, errors: list[str]) 
             errors.append(f"{artifact_label}.path missing: {path_value}")
             continue
         expected_hash = artifact.get("sha256")
-        if expected_hash is not None:
-            if not isinstance(expected_hash, str) or len(expected_hash) != 64:
-                errors.append(f"{artifact_label}.sha256 must be a 64-character string")
-            else:
-                actual_hash = sha256_file(path)
-                if actual_hash != expected_hash:
-                    errors.append(
-                        f"{artifact_label}.sha256 mismatch for {path_value}: expected {expected_hash}, got {actual_hash}"
-                    )
+        if not isinstance(expected_hash, str) or len(expected_hash) != 64:
+            errors.append(f"{artifact_label}.sha256 must be a 64-character string")
+            continue
+        actual_hash = sha256_file(path)
+        if actual_hash != expected_hash:
+            errors.append(
+                f"{artifact_label}.sha256 mismatch for {path_value}: expected {expected_hash}, got {actual_hash}"
+            )
 
 
 def validate_workload(

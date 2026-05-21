@@ -1,9 +1,9 @@
 # Manual review — dashboard-affiliates
 
-Route inferred from slug. Screenshots: `../desktop/dashboard-affiliates.png`, `../desktop/dashboard-affiliates--hover.png`, `../mobile/dashboard-affiliates.png`
+Screenshots: `../desktop/dashboard-affiliates.png`, `../desktop/dashboard-affiliates--hover.png`, `../mobile/dashboard-affiliates.png`
 
 ## Verdict
 
-`needs-eyeball`
+`good`
 
-var(--brand-blue) → var(--brand-orange) swap landed. Verify the page is not oversaturated orange.
+Page renders fully: Affiliate Program / Invite friends / Your Affiliate Link / Fee Markup Setting sections. var(--brand-blue) → var(--brand-orange) swap landed cleanly, page does not feel oversaturated.

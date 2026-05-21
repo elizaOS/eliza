@@ -42,6 +42,7 @@ workloads:
         sha256: 6bb01f97e01d782b139eecf32fecada42c08a8edc8d2148da4dcf63b22dd972a
         role: model
       - path: docs/benchmarks/capabilities/e1_npu_nnapi.proof.template.json
+        sha256: bbf4bc897a0ca5b7129d6491556cb908ca441e8131f0050d357274966e1994d4
         role: proof_template
     input_shape:
       input: [1, 32]
@@ -67,8 +68,10 @@ workloads:
     license_status: local_project_fixture
     artifacts:
       - path: benchmarks/sim/run_npu_scale_sim.py
+        sha256: 66d6d477de83407ca364c06f58e19ab4f560b3fd86f5af4ba47182fbc27244f2
         role: simulator
       - path: docs/spec-db/npu-2028-target.yaml
+        sha256: cd379e2914d4ca089270d1a82ae9e6e69fdb850d4656d42ffa395f8e6e78077c
         role: target_contract
     input_shape:
       sweep: deterministic_gemm_conv_attention
@@ -92,8 +95,10 @@ workloads:
     license_status: local_project_fixture
     artifacts:
       - path: benchmarks/sim/run_npu_scale_sim.py
+        sha256: 66d6d477de83407ca364c06f58e19ab4f560b3fd86f5af4ba47182fbc27244f2
         role: simulator
       - path: docs/spec-db/competitor-2028-target.md
+        sha256: 0efd5b23ee19f908fbce1d2a2015e1a8f296c64c275d810bcbfb9b953529bef5
         role: comparison_target
     input_shape:
       sweep: deterministic_gemm_conv_attention
@@ -116,8 +121,10 @@ workloads:
     license_status: local_project_fixture_plus_optional_external_tool
     artifacts:
       - path: benchmarks/sim/run_npu_timeloop.py
+        sha256: 037a2e2fde7aa441bbce429e64526525ebfb9c57245beacd0f130ab4b2626244
         role: runner
       - path: benchmarks/sim/configs/e1_npu_timeloop_arch.yaml
+        sha256: 76cc65b07e2fbc112969f8851b5cdb63df7f340c0f671128bf0fc3019230ff47
         role: architecture_config
     input_shape:
       mapping: local_architecture_config
@@ -140,10 +147,13 @@ workloads:
     license_status: local_project_fixture
     artifacts:
       - path: compiler/runtime/test_e1_npu_tiny_mlp_e2e.py
+        sha256: ab4ef28f289ec6bd64c892f7e5faf336fbd8d291bce75e408669c989c0654c31
         role: e2e_test
       - path: compiler/runtime/e1_npu_stablehlo.py
+        sha256: ee8980e961e4efd58a88d82de918d5d402563efd526f3fb0dc92b887e99808f4
         role: lowering
       - path: compiler/runtime/e1_npu_runtime.py
+        sha256: 831154a8bcbf76329cc9d76256c4f9019e2791dd4b0ce95d734f1edd09dc7eb9
         role: runtime
     input_shape:
       input: tiny_mlp_test_fixture
@@ -166,10 +176,13 @@ workloads:
     license_status: local_project_fixture
     artifacts:
       - path: compiler/quantization/awq_int4.py
+        sha256: 312b66ff5ddbb8c2407937ac0d0f94c9e0afb73c2afac671df98378b6070d44c
         role: awq_calibrator
       - path: compiler/quantization/gptq_int4.py
+        sha256: 01e4ec07f6082fda5aee031d8b1eecc6753783556c47341e9c63caf11756d41d
         role: gptq_calibrator
       - path: compiler/quantization/tests/test_awq_int4_mlp_e2e.py
+        sha256: 3a70d4cf8b50632b6e8f50d47b44446c2b1c0bfa321253859d7de215e707ee5f
         role: e2e_test
     input_shape:
       input: local_mlp_calibration_fixture
@@ -192,10 +205,13 @@ workloads:
     license_status: local_project_fixture
     artifacts:
       - path: compiler/quantization/fp8_e4m3_calibration.py
+        sha256: c698e8ff50edec75ba43a9067a60edd1de279b79d940857def41fa8954f3fd65
         role: fp8_calibrator
       - path: compiler/quantization/sparse_2_4.py
+        sha256: 48dcd91cec078462a134f297a9be6253509c8a4d3729a676b50424a6d657b042
         role: sparse_calibrator
       - path: compiler/quantization/tests/test_calibrators.py
+        sha256: a704b76b14a5729c30b852611ede697cf67881f50752bd6b773c0996d2125dcc
         role: calibrator_tests
     input_shape:
       input: local_calibration_fixture

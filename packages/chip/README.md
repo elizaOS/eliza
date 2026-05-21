@@ -95,7 +95,7 @@ managed virtualenv interpreter.
 On a CUDA host, run the generated payload flow with:
 
 ```sh
-python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id cuda-host --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --asset edalearn --asset macro-place-challenge-2026 --asset mlcad-2023-fpga-macro --asset chipdiffusion --asset chipformer --asset core-placement --asset maptune --asset abc-rl --asset abcrl --asset rl4ls --asset mcp4eda --asset orfs-agent --asset openroad-agent --asset openroad-mcp --asset open3dbench --asset dreamplace --asset chiplingo --asset veoplace-vlm --asset audopeda --asset ppa-3dic-surrogate-2026 --include-torch
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id cuda-host-training-handoff --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --asset edalearn --asset macro-place-challenge-2026 --asset mlcad-2023-fpga-macro --asset chipdiffusion --asset chipformer --asset core-placement --asset maptune --asset abc-rl --asset abcrl --asset rl4ls --asset mcp4eda --asset orfs-agent --asset openroad-agent --asset openroad-mcp --asset open3dbench --asset dreamplace --asset chiplingo --asset veoplace-vlm --asset audopeda --asset ppa-3dic-surrogate-2026 --include-torch
 ```
 
 To intentionally pull reviewed assets into ignored local payload directories,
@@ -112,7 +112,9 @@ paper PDF, model weights, or generated assertions are treated as chip evidence.
 tarball, embedded run plan, generated `cuda_handoff_README.md`, selected
 assets, critical fetch commands, expected CUDA outputs, the current-research
 watchlist capture handoff, OpenROAD ML snapshot handoff, the E1 AI workload
-manifest/checker, and the no-datasets/no-weights payload boundary.
+manifest/checker, the fail-closed CT/SA/Hier-RTLMP/ChipDiffusion real-wrapper
+readiness contract, the quarantined assertion-candidate manifest checker, and
+the no-datasets/no-weights payload boundary.
 `make ai-eda-cuda-run-plan-dry-run`
 expands the embedded CUDA run plan into a reviewed execution manifest without
 running commands. `make ai-eda-cuda-run-plan-safety-matrix` then proves each

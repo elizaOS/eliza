@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  
+  <requires version="3.24" lib="gtk+"/>
+  <object id="box" class="GtkBox">
+    <property name="margin-bottom">20</property>
+    <property name="margin-end">20</property>
+    <property name="margin-start">20</property>
+    <property name="margin-top">20</property>
+    <property name="orientation">vertical</property>
+    <property name="spacing">50</property>
+    <property name="visible">True</property>
+    <child>
+      <object class="GtkScrolledWindow">
+        <property name="can-focus">True</property>
+        <property name="hexpand">True</property>
+        <property name="hscrollbar-policy">never</property>
+        <property name="kinetic-scrolling">False</property>
+        <property name="overlay-scrolling">False</property>
+        <property name="vexpand">True</property>
+        <property name="visible">True</property>
+        <property name="window-placement-set">False</property>
+        <child>
+          <object class="GtkViewport">
+            <property name="shadow-type">none</property>
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">5</property>
+                <property name="valign">center</property>
+                <property name="visible">True</property>
+                <child>
+                  <object class="GtkBox">
+                    <property name="spacing">5</property>
+                    <property name="visible">True</property>
+                    <child>
+                      <object id="creation_spinner" class="GtkSpinner">
+                        <property name="active">True</property>
+                        <property name="visible">True</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object id="creation_status_label" class="GtkLabel">
+                        <property name="visible">True</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object id="creation_progress_bar" class="GtkProgressBar">
+                    <property name="visible">True</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">True</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+  </object>
+</interface>

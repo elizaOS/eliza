@@ -809,7 +809,15 @@ for (const viewport of VIEWPORTS) {
                 recentEarnings: [],
               });
             if (/\/redemptions\/status/.test(url))
-              return empty({ enabled: true });
+              return empty({
+                enabled: true,
+                operational: true,
+                networks: {
+                  ethereum: { available: "available" },
+                  base: { available: "available" },
+                  solana: { available: "available" },
+                },
+              });
             if (/\/redemptions/.test(url))
               return empty({ redemptions: [], total: 0 });
             if (/\/affiliates|\/referrals/.test(url))
@@ -1058,6 +1066,19 @@ for (const viewport of VIEWPORTS) {
                 },
                 json: { isAdmin: true, role: "super_admin" },
               });
+            if (/\/admin\/metrics/.test(url))
+              return empty({
+                dailyTrend: [],
+                platformBreakdown: {},
+                retentionCohorts: [],
+                retentionRates: [],
+                oauthMetrics: { granted: 0, revoked: 0, providers: [] },
+                summary: {
+                  totalUsers: 0,
+                  totalMessages: 0,
+                  averageMessagesPerUser: "0",
+                },
+              });
             if (/\/admin\//.test(url)) return empty({ items: [], metrics: {} });
 
             // Permissive default — empty array works for most list endpoints.
@@ -1121,10 +1142,24 @@ for (const viewport of VIEWPORTS) {
           // in-flight requests for 500ms; cap so a streaming endpoint
           // doesn't hang the audit forever.
           await page
-            .waitForLoadState("networkidle", { timeout: 6_000 })
+            .waitForLoadState("networkidle", { timeout: 12_000 })
+            .catch(() => {});
+          // Wait for any skeleton placeholders to disappear so we capture
+          // the populated UI, not the loader. Bounded so dynamic pages
+          // (websocket / SSE) that legitimately keep a "live" indicator
+          // don't hang the audit.
+          await page
+            .waitForFunction(
+              () =>
+                !document.querySelector(
+                  '[data-state="loading"], [aria-busy="true"], .animate-pulse',
+                ),
+              null,
+              { timeout: 8_000 },
+            )
             .catch(() => {});
           // Final settle — allows post-data layout shift to complete.
-          await page.waitForTimeout(400);
+          await page.waitForTimeout(600);
           const audit = await auditPage(page, route.path);
           Object.assign(report, audit, { loadOk: true });
           await page.screenshot({
