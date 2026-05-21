@@ -1,5 +1,5 @@
 module.exports = {
-  registerE2BSatelliteCapabilityRouterIfEnabled: async () => ({
+  registerE2BRemoteCapabilityRouterIfEnabled: async () => ({
     registered: false,
     reason: "mobile-bundle",
   }),
