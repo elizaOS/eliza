@@ -5,7 +5,7 @@ Status: CAD camera validation ready; supplier and optical measurements still req
 ## CAD Camera Cases
 
 - PASS: `rear_camera_cover_window_margin` target >=0.8 mm radial margin around rear AF lens
-- PASS: `rear_camera_back_shell_aperture` target explicit molded back-shell opening larger than the flush cover window with four orange bevel lands
+- PASS: `rear_camera_back_shell_aperture` target explicit molded back-shell opening larger than the flush cover window with a clear camera sight tunnel and four orange bevel lands
 - PASS: `rear_flash_back_shell_aperture` target explicit molded back-shell opening larger than the flush flash light-pipe window with four orange bevel lands
 - PASS: `rear_camera_z_stack` target rear AF stack depth <=5.5 mm and >=2.0 mm battery gap
 - PASS: `front_under_glass_margin` target >=1.0 mm radial module margin and <=0.8 mm cover glass for front under-glass camera

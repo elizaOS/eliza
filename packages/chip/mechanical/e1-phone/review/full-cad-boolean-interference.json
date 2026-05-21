@@ -6,10 +6,10 @@
   "reviewer": "automated_boolean_check",
   "aabb_prefilter_mm": 1.0,
   "min_target_gap_mm": 0.15,
-  "parts_loaded": 123,
+  "parts_loaded": 132,
   "parts_missing": [],
-  "pair_count_total": 7503,
-  "pair_count_brep_evaluated": 465,
+  "pair_count_total": 8646,
+  "pair_count_brep_evaluated": 535,
   "unintentional_clashes": [],
   "scope_results": [
     {
@@ -5147,6 +5147,50 @@
     ],
     "risk": "rear camera/window stack must pass through a real back-shell hole without colliding with orange plastic"
   },
+  "rear_camera_optical_sightline_check": {
+    "id": "rear_camera_optical_sightline_clear",
+    "status": "pass",
+    "missing_parts": [],
+    "orange_shell_interference_volume_mm3": 0.0,
+    "orange_shell_min_gap_mm": 1.75,
+    "aperture_bbox_mm": [
+      15.7,
+      52.5,
+      -5.955,
+      26.3,
+      63.1,
+      -5.875
+    ],
+    "sight_tunnel_bbox_mm": [
+      17.45,
+      54.25,
+      -5.9,
+      24.55,
+      61.35,
+      -4.3
+    ],
+    "aperture_contains_tunnel_xy": true,
+    "transparent_stack_overlaps_tunnel": true,
+    "transparent_pairs": [
+      {
+        "parts": [
+          "rear_camera_optical_sight_tunnel",
+          "rear_camera_lens_window"
+        ],
+        "overlap_volume_mm3": 21.324371,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "rear_camera_optical_sight_tunnel",
+          "rear_camera_cover_glass"
+        ],
+        "overlap_volume_mm3": 21.775557,
+        "status": "pass"
+      }
+    ],
+    "risk": "rear camera must have a real optical line of sight through the back-shell opening"
+  },
   "rear_flash_back_shell_hole_check": {
     "id": "rear_flash_back_shell_hole_collision",
     "status": "pass",
@@ -5456,5 +5500,5 @@
     ]
   },
   "overall_status": "pass",
-  "wall_seconds": 12.4
+  "wall_seconds": 26.81
 }

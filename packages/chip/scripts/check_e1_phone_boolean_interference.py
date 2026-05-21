@@ -70,6 +70,7 @@ CONTACT_KEYWORDS = (
     "grille_slot",
     "aperture",
     "lens_window",
+    "sight_tunnel",
     "screw_boss",
     "snap_hook",
     "shield_can",
@@ -559,6 +560,7 @@ FLUSH_BACK_ENVELOPE_TOKENS = (
     "mold_",
     "ejector",
     "cooling_channel",
+    "sight_tunnel",
 )
 
 
@@ -676,6 +678,73 @@ def evaluate_rear_camera_back_shell_hole(parts: Dict[str, Part]) -> Dict:
         "aperture_clears_cover_glass_xy": aperture_clears_cover,
         "pairs": pairs,
         "risk": "rear camera/window stack must pass through a real back-shell hole without colliding with orange plastic",
+    }
+
+
+def evaluate_rear_camera_optical_sightline(parts: Dict[str, Part]) -> Dict:
+    """Strict proof that a camera-radius optical tunnel is open through orange back plastic."""
+    required = [
+        "orange_back_shell",
+        "rear_camera_shell_aperture",
+        "rear_camera_optical_sight_tunnel",
+        "rear_camera_lens_window",
+        "rear_camera_cover_glass",
+        "rear_camera_module",
+    ]
+    missing = [name for name in required if name not in parts]
+    if missing:
+        return {
+            "id": "rear_camera_optical_sightline_clear",
+            "status": "fail",
+            "missing_parts": missing,
+            "orange_shell_interference_volume_mm3": None,
+            "aperture_contains_tunnel_xy": False,
+            "transparent_stack_overlaps_tunnel": False,
+            "risk": "rear camera must have a real optical line of sight through the back-shell opening",
+        }
+
+    back = parts["orange_back_shell"]
+    aperture = parts["rear_camera_shell_aperture"]
+    tunnel = parts["rear_camera_optical_sight_tunnel"]
+    axmn, aymn, _azmn, axmx, aymx, _azmx = aperture.bbox
+    txmn, tymn, _tzmn, txmx, tymx, _tzmx = tunnel.bbox
+    aperture_contains_tunnel = (
+        axmn <= txmn + 1e-6
+        and axmx >= txmx - 1e-6
+        and aymn <= tymn + 1e-6
+        and aymx >= tymx - 1e-6
+    )
+    orange_inter = brep_intersection_volume(back.shape, tunnel.shape)
+    orange_gap = 0.0 if orange_inter > 1e-6 else brep_min_distance(back.shape, tunnel.shape)
+    transparent_pairs: list[dict] = []
+    for target in ["rear_camera_lens_window", "rear_camera_cover_glass"]:
+        target_part = parts[target]
+        inter = brep_intersection_volume(tunnel.shape, target_part.shape)
+        transparent_pairs.append(
+            {
+                "parts": ["rear_camera_optical_sight_tunnel", target],
+                "overlap_volume_mm3": round(inter, 6),
+                "status": "pass" if inter > 1e-6 else "fail",
+            }
+        )
+    transparent_stack_overlaps = all(p["status"] == "pass" for p in transparent_pairs)
+    status = (
+        "pass"
+        if aperture_contains_tunnel and orange_inter <= 1e-6 and transparent_stack_overlaps
+        else "fail"
+    )
+    return {
+        "id": "rear_camera_optical_sightline_clear",
+        "status": status,
+        "missing_parts": [],
+        "orange_shell_interference_volume_mm3": round(orange_inter, 6),
+        "orange_shell_min_gap_mm": round(orange_gap, 6) if orange_gap == orange_gap else None,
+        "aperture_bbox_mm": [round(v, 4) for v in aperture.bbox],
+        "sight_tunnel_bbox_mm": [round(v, 4) for v in tunnel.bbox],
+        "aperture_contains_tunnel_xy": aperture_contains_tunnel,
+        "transparent_stack_overlaps_tunnel": transparent_stack_overlaps,
+        "transparent_pairs": transparent_pairs,
+        "risk": "rear camera must have a real optical line of sight through the back-shell opening",
     }
 
 
@@ -985,6 +1054,7 @@ def main() -> int:
     burial = evaluate_burial(parts, back_inner_z,
                              ["rear_camera_module", "rear_flash_led"])
     rear_camera_hole = evaluate_rear_camera_back_shell_hole(parts)
+    rear_camera_sightline = evaluate_rear_camera_optical_sightline(parts)
     rear_flash_hole = evaluate_rear_flash_back_shell_hole(parts)
     handset_glass_slot = evaluate_handset_cover_glass_slot(parts)
     screen_glass_collision = evaluate_screen_cover_glass_collisions(parts)
@@ -1037,6 +1107,7 @@ def main() -> int:
                     and len(interferences) == 0
                     and flush_back["status"] == "pass"
                     and rear_camera_hole["status"] == "pass"
+                    and rear_camera_sightline["status"] == "pass"
                     and rear_flash_hole["status"] == "pass"
                     and handset_glass_slot["status"] == "pass"
                     and screen_glass_collision["status"] == "pass"
@@ -1068,6 +1139,7 @@ def main() -> int:
         "scope_results_full": scope_results,
         "flush_back_check": flush_back,
         "rear_camera_back_shell_hole_check": rear_camera_hole,
+        "rear_camera_optical_sightline_check": rear_camera_sightline,
         "rear_flash_back_shell_hole_check": rear_flash_hole,
         "handset_cover_glass_slot_check": handset_glass_slot,
         "screen_cover_glass_collision_check": screen_glass_collision,
@@ -1136,6 +1208,21 @@ def main() -> int:
             f"- `{pair['parts'][0]}` vs `{pair['parts'][1]}`: "
             f"intersection {pair['interference_volume_mm3']} mm3, "
             f"min gap {pair['min_gap_mm']} mm ({pair['status'].upper()})"
+        )
+    md_lines += [
+        "",
+        "## Rear Camera Optical Sightline",
+        "",
+        f"Status: {rear_camera_sightline['status'].upper()}. "
+        f"Orange-shell intersection: "
+        f"{rear_camera_sightline.get('orange_shell_interference_volume_mm3')} mm3. "
+        f"Aperture contains tunnel XY: "
+        f"{rear_camera_sightline.get('aperture_contains_tunnel_xy')}.",
+    ]
+    for pair in rear_camera_sightline.get("transparent_pairs", []):
+        md_lines.append(
+            f"- `{pair['parts'][0]}` overlaps `{pair['parts'][1]}` by "
+            f"{pair['overlap_volume_mm3']} mm3 ({pair['status'].upper()})"
         )
     md_lines += [
         "",

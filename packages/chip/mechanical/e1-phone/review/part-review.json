@@ -1,17 +1,17 @@
 {
   "claim_boundary": "Automated part-by-part CAD review index; thumbnails are top-view bounding-box and exploded-context projection proxies, not human industrial-design signoff.",
   "status": "pass",
-  "part_count": 123,
+  "part_count": 132,
   "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
   "contact_sheet_check": {
     "size": [
       1871,
-      5460
+      5720
     ],
     "mean_rgb": [
-      241.719,
-      235.157,
-      232.032
+      241.679,
+      235.436,
+      232.568
     ],
     "channel_spans": [
       255,
@@ -24,12 +24,12 @@
   "exploded_contact_sheet_check": {
     "size": [
       1871,
-      5460
+      5720
     ],
     "mean_rgb": [
-      24.962,
-      26.872,
-      31.058
+      25.238,
+      27.16,
+      31.36
     ],
     "channel_spans": [
       252,
@@ -46,7 +46,7 @@
     {
       "name": "orange_back_shell",
       "role": "molded enclosure",
-      "material": "PC+ABS orange rounded back shell",
+      "material": "PC+ABS orange rounded back shell with real rear camera and flash holes",
       "bounds_mm": [
         [
           -39.0,
@@ -64,7 +64,7 @@
         153.6,
         1.2
       ],
-      "volume_mm3": 14302.89,
+      "volume_mm3": 14178.292,
       "mass_placeholder": false,
       "obj": "mechanical/e1-phone/out/orange_back_shell.obj",
       "stl": "mechanical/e1-phone/out/orange_back_shell.stl"
@@ -850,6 +850,32 @@
       "stl": "mechanical/e1-phone/out/rear_camera_lens_window.stl"
     },
     {
+      "name": "rear_camera_optical_sight_tunnel",
+      "role": "camera optical clearance",
+      "material": "clear rear-camera sight tunnel from exterior through the back-shell aperture to the module",
+      "bounds_mm": [
+        [
+          17.45,
+          54.25,
+          -5.9
+        ],
+        [
+          24.55,
+          61.35,
+          -4.3
+        ]
+      ],
+      "span_mm": [
+        7.1,
+        7.1,
+        1.6
+      ],
+      "volume_mm3": 62.941,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.obj",
+      "stl": "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.stl"
+    },
+    {
       "name": "rear_flash_led",
       "role": "camera",
       "material": "single rear torch/flash LED, buried",
@@ -1134,6 +1160,214 @@
       "mass_placeholder": false,
       "obj": "mechanical/e1-phone/out/front_camera_black_mask_window.obj",
       "stl": "mechanical/e1-phone/out/front_camera_black_mask_window.stl"
+    },
+    {
+      "name": "rear_flash_window_adhesive_top",
+      "role": "camera seal",
+      "material": "black PSA gasket above rear flash light-pipe window",
+      "bounds_mm": [
+        [
+          11.65,
+          58.65,
+          -5.35
+        ],
+        [
+          14.15,
+          59.1,
+          -5.19
+        ]
+      ],
+      "span_mm": [
+        2.5,
+        0.45,
+        0.16
+      ],
+      "volume_mm3": 0.18,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/rear_flash_window_adhesive_top.obj",
+      "stl": "mechanical/e1-phone/out/rear_flash_window_adhesive_top.stl"
+    },
+    {
+      "name": "rear_flash_window_adhesive_bottom",
+      "role": "camera seal",
+      "material": "black PSA gasket below rear flash light-pipe window",
+      "bounds_mm": [
+        [
+          11.65,
+          56.5,
+          -5.35
+        ],
+        [
+          14.15,
+          56.95,
+          -5.19
+        ]
+      ],
+      "span_mm": [
+        2.5,
+        0.45,
+        0.16
+      ],
+      "volume_mm3": 0.18,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/rear_flash_window_adhesive_bottom.obj",
+      "stl": "mechanical/e1-phone/out/rear_flash_window_adhesive_bottom.stl"
+    },
+    {
+      "name": "rear_flash_window_adhesive_left",
+      "role": "camera seal",
+      "material": "black PSA gasket left of rear flash light-pipe window",
+      "bounds_mm": [
+        [
+          11.6,
+          57.0,
+          -5.35
+        ],
+        [
+          12.05,
+          58.6,
+          -5.19
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        1.6,
+        0.16
+      ],
+      "volume_mm3": 0.115,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/rear_flash_window_adhesive_left.obj",
+      "stl": "mechanical/e1-phone/out/rear_flash_window_adhesive_left.stl"
+    },
+    {
+      "name": "rear_flash_window_adhesive_right",
+      "role": "camera seal",
+      "material": "black PSA gasket right of rear flash light-pipe window",
+      "bounds_mm": [
+        [
+          13.75,
+          57.0,
+          -5.35
+        ],
+        [
+          14.2,
+          58.6,
+          -5.19
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        1.6,
+        0.16
+      ],
+      "volume_mm3": 0.115,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/rear_flash_window_adhesive_right.obj",
+      "stl": "mechanical/e1-phone/out/rear_flash_window_adhesive_right.stl"
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_top",
+      "role": "camera seal",
+      "material": "optically-black PSA bond ring above front under-glass camera window",
+      "bounds_mm": [
+        [
+          -21.1,
+          69.55,
+          5.08
+        ],
+        [
+          -16.9,
+          69.95,
+          5.16
+        ]
+      ],
+      "span_mm": [
+        4.2,
+        0.4,
+        0.08
+      ],
+      "volume_mm3": 0.134,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_top.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_top.stl"
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_bottom",
+      "role": "camera seal",
+      "material": "optically-black PSA bond ring below front under-glass camera window",
+      "bounds_mm": [
+        [
+          -21.1,
+          65.65,
+          5.08
+        ],
+        [
+          -16.9,
+          66.05,
+          5.16
+        ]
+      ],
+      "span_mm": [
+        4.2,
+        0.4,
+        0.08
+      ],
+      "volume_mm3": 0.134,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_bottom.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_bottom.stl"
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_left",
+      "role": "camera seal",
+      "material": "optically-black PSA bond ring left of front under-glass camera window",
+      "bounds_mm": [
+        [
+          -21.15,
+          66.1,
+          5.08
+        ],
+        [
+          -20.75,
+          69.5,
+          5.16
+        ]
+      ],
+      "span_mm": [
+        0.4,
+        3.4,
+        0.08
+      ],
+      "volume_mm3": 0.109,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_left.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_left.stl"
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_right",
+      "role": "camera seal",
+      "material": "optically-black PSA bond ring right of front under-glass camera window",
+      "bounds_mm": [
+        [
+          -17.25,
+          66.1,
+          5.08
+        ],
+        [
+          -16.85,
+          69.5,
+          5.16
+        ]
+      ],
+      "span_mm": [
+        0.4,
+        3.4,
+        0.08
+      ],
+      "volume_mm3": 0.109,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_right.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_right.stl"
     },
     {
       "name": "rear_flash_camera_septum",

@@ -4,7 +4,7 @@ Status: PASS.
 
 Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`.
 Date: 2026-05-20. Reviewer: `automated_boolean_check`.
-Parts loaded: 123/123. Pair count: 7503 (BRep-evaluated: 465).
+Parts loaded: 132/132. Pair count: 8646 (BRep-evaluated: 535).
 Unintentional clash pairs: 0.
 
 ## Scope Cases
@@ -34,6 +34,12 @@ Status: PASS. Aperture clears cover glass XY: True.
 - `orange_back_shell` vs `rear_camera_cover_glass`: intersection 0.0 mm3, min gap 0.7 mm (PASS)
 - `orange_back_shell` vs `rear_camera_lens_window`: intersection 0.0 mm3, min gap 1.9 mm (PASS)
 - `orange_back_shell` vs `rear_camera_module`: intersection 0.0 mm3, min gap 0.5 mm (PASS)
+
+## Rear Camera Optical Sightline
+
+Status: PASS. Orange-shell intersection: 0.0 mm3. Aperture contains tunnel XY: True.
+- `rear_camera_optical_sight_tunnel` overlaps `rear_camera_lens_window` by 21.324371 mm3 (PASS)
+- `rear_camera_optical_sight_tunnel` overlaps `rear_camera_cover_glass` by 21.775557 mm3 (PASS)
 
 ## Rear Flash Back-Shell Hole
 

@@ -612,6 +612,7 @@
         "top_mic": true,
         "rear_camera_module": true,
         "rear_camera_shell_aperture": true,
+        "rear_camera_optical_sight_tunnel": true,
         "orange_rear_camera_bezel_top": true,
         "orange_rear_camera_bezel_bottom": true,
         "orange_rear_camera_bezel_left": true,
@@ -685,12 +686,12 @@
       "pass": true,
       "corner_radius_mm": 7.5,
       "wall_thickness_mm": 1.15,
-      "back_shell_vertices": 98,
+      "back_shell_vertices": 280,
       "side_frame_vertices": 192
     },
     "mesh_integrity": {
       "pass": true,
-      "checked_parts": 123,
+      "checked_parts": 132,
       "failures": []
     },
     "usb_c_insertion_envelope": {
@@ -916,7 +917,7 @@
     },
     "mass_budget": {
       "pass": true,
-      "estimated_mass_g": 183.29,
+      "estimated_mass_g": 183.28,
       "target_mass_g": 185,
       "note": "Rough CAD estimate; placeholder void markers excluded."
     }

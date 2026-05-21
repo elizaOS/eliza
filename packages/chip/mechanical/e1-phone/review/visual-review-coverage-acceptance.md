@@ -21,8 +21,8 @@ Production visual signoff ready: False.
 
 ## Supporting Cases
 
-- Part review: PASS (123 parts).
-- Part-to-view coverage: PASS (123/123 parts).
+- Part review: PASS (132 parts).
+- Part-to-view coverage: PASS (132/132 parts).
 - Visual decisions: PASS (7 decisions, 5 open manual review items).
 
 ## Release Rule
