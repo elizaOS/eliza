@@ -152,10 +152,38 @@ async function main() {
     env,
   );
 
+  // When the e2e harness runs (NODE_ENV=test), force the KMS backend to
+  // the in-memory adapter via `--var`. wrangler's `[vars] NODE_ENV =
+  // "production"` block in wrangler.toml takes precedence over the shell
+  // NODE_ENV, which would otherwise cause `resolveKmsBackend()` in
+  // `@elizaos/security/kms` to default to the Steward backend and throw
+  // `KmsError("ELIZA_KMS_BACKEND=steward requires steward.{baseUrl, tokenProvider}")`
+  // for any route that touches encrypted fields (e.g. /api/v1/api-keys/*,
+  // /api/v1/api-keys/explorer). The integration suite expects these
+  // routes to return 2xx with a working in-memory key store.
+  const isE2eTestMode =
+    process.env.NODE_ENV === "test" || process.env.CLOUD_E2E === "1";
+  const testModeVars = isE2eTestMode
+    ? [
+        "--var",
+        "NODE_ENV:test",
+        "--var",
+        "ELIZA_KMS_BACKEND:memory",
+      ]
+    : [];
+
   const wranglerArgs =
     args.length > 0
       ? args
-      : ["dev", "--ip", "127.0.0.1", "--port", apiPort, "--local"];
+      : [
+          "dev",
+          "--ip",
+          "127.0.0.1",
+          "--port",
+          apiPort,
+          "--local",
+          ...testModeVars,
+        ];
 
   // Cloud-e2e harness (NODE_ENV=test + CLOUD_E2E=1) runs wrangler under Node
   // to avoid bun-runtime incompatibilities (wrangler's InspectorProxyWorker

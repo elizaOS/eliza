@@ -44,6 +44,15 @@ const e2eEnv = {
     process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE || "1",
   CRON_SECRET: process.env.CRON_SECRET || "test-cron-secret",
   INTERNAL_SECRET: process.env.INTERNAL_SECRET || "test-internal-secret",
+  // Force the in-memory KMS adapter for e2e. wrangler.toml's [vars] block
+  // hard-codes NODE_ENV=production which would otherwise win over the
+  // workflow-level NODE_ENV=test and cause routes that touch encrypted
+  // fields to throw KmsError. The cloud-api-dev wrapper also passes this
+  // via `wrangler --var`, but mirror it here so any harness that bypasses
+  // the wrapper still gets a working KMS.
+  NODE_ENV: process.env.NODE_ENV || "test",
+  CLOUD_E2E: process.env.CLOUD_E2E || "1",
+  ELIZA_KMS_BACKEND: process.env.ELIZA_KMS_BACKEND || "memory",
 };
 
 async function isHealthy() {
