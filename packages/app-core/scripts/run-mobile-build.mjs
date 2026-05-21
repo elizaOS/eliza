@@ -1764,9 +1764,21 @@ function removeXmlCommentsContaining(xml, markers) {
 
 function ensureManifestApplicationClosedBeforeTopLevelEntries(xml) {
   if (xml.includes("</application>")) return xml;
+  const appStart = xml.indexOf("<application");
+  if (appStart === -1) return xml;
+  const afterApplicationStart = xml.indexOf(">", appStart);
+  if (afterApplicationStart === -1) return xml;
+  const afterApplication = xml.slice(afterApplicationStart + 1);
+  const topLevelEntry = afterApplication.search(
+    /\n\s*<(?:uses-permission|uses-feature)\b/,
+  );
+  if (topLevelEntry !== -1) {
+    const insertAt = afterApplicationStart + 1 + topLevelEntry;
+    return `${xml.slice(0, insertAt)}\n    </application>\n${xml.slice(insertAt)}`;
+  }
   return xml.replace(
-    /\n\s*(<(?:uses-permission|uses-feature)\b)/,
-    "\n    </application>\n\n    $1",
+    "</manifest>",
+    "    </application>\n</manifest>",
   );
 }
 

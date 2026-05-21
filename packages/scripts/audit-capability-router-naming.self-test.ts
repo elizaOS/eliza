@@ -73,6 +73,18 @@ async function main(): Promise<void> {
         `production naming audit must report the architecture doc allowlist: ${production.output}`,
       );
     }
+    if (
+      productionReport.allowedSatelliteMentionFiles.some(
+        (file) =>
+          typeof file === "string" &&
+          file.startsWith("packages/agent/src/services/"),
+      )
+    ) {
+      throw new Error(
+        `production naming audit must not allowlist service implementation files: ${production.output}`,
+      );
+    }
+
     console.log("Capability-router naming audit self-test passed.");
   } finally {
     await rm(workspace, { force: true, recursive: true });
