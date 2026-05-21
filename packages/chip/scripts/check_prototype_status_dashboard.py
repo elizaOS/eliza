@@ -107,6 +107,15 @@ def conservative_snapshot_allowed(
     ):
         return True
 
+    if (
+        subsystem == "benchmarks"
+        and current_status == "BLOCK"
+        and dashboard_status == "BLOCK"
+        and current_evidence == "regen_required"
+        and dashboard_evidence == "scaffold_only"
+    ):
+        return True
+
     return (
         subsystem == "formal"
         and current_status == "BLOCK"

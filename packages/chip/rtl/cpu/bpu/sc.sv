@@ -67,8 +67,11 @@ module sc
     always_comb begin
         sum = '0;
         for (int unsigned t = 0; t < SC_TABLES; t++) begin
-            sum = sum + $signed({{3{storage_q[t][sc_idx(t, lkp_pc, lkp_hist)][SC_CTR_W-1]}},
-                                  storage_q[t][sc_idx(t, lkp_pc, lkp_hist)]});
+            automatic logic [SC_IDX_W-1:0] idx;
+            automatic sc_ctr_t ctr;
+            idx = sc_idx(t, lkp_pc, lkp_hist);
+            ctr = storage_q[t][idx];
+            sum = sum + $signed({{3{ctr[SC_CTR_W-1]}}, ctr});
         end
         abs_sum = sum < 0 ? -sum : sum;
         // Override TAGE only when TAGE was low confidence and SC has a
@@ -81,11 +84,7 @@ module sc
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int unsigned t = 0; t < SC_TABLES; t++) begin
-                for (int unsigned e = 0; e < SC_ENTRIES_TABLE; e++) begin
-                    storage_q[t][e] <= '0;
-                end
-            end
+            storage_q <= '{default: '{default: '0}};
             threshold_q <= $signed(SC_THRESH_INIT[7:0]);
         end else if (upd_valid && upd_tage_lowconf) begin
             for (int unsigned t = 0; t < SC_TABLES; t++) begin

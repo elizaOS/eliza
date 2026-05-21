@@ -74,6 +74,19 @@ class PrototypeStatusDashboardTest(unittest.TestCase):
         }
         self.assertTrue(conservative_snapshot_allowed("synthesis", status, row))
 
+    def test_allows_benchmark_regen_to_remain_scaffold_only(self) -> None:
+        status = {
+            "status": "block",
+            "evidence_class": "regen_required",
+            "next_step": "make benchmarks-dry-run",
+        }
+        row = {
+            "Status": "`BLOCK`",
+            "Evidence class": "`scaffold_only`",
+            "Next action": "`python3 benchmarks/run_benchmarks.py run --metadata benchmarks/metadata/strict-blocked-template.json --strict-missing`",
+        }
+        self.assertTrue(conservative_snapshot_allowed("benchmarks", status, row))
+
 
 if __name__ == "__main__":
     unittest.main()

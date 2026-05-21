@@ -4,17 +4,17 @@ Demonstrates that the eight domain agents' RTL interfaces wire up
 correctly when composed in `e1_soc_integrated`.  Each test exercises one
 cross-domain edge.  Per docs/arch/soc-integration.md the edges are:
 
-  1. BPU `bpu_top.pmu_strb` → `bpu_to_zihpm_remap` → `zihpm.event_bus_i`
+  1. BPU `bpu_top.pmu_strb` -> `bpu_to_zihpm_remap` -> `zihpm.event_bus_i`
      A branch-misprediction event on the BPU resolve interface routes
      through the remap adapter and increments a programmable Zihpm
      counter selected via `mhpmevent`.
 
-  2. BPU FTQ `fetch_entry` → `ftq_to_l1i_shim` → L1I prefetch port
+  2. BPU FTQ `fetch_entry` -> `ftq_to_l1i_shim` -> L1I prefetch port
      A taken branch produces a non-zero FTQ entry that the shim
      translates into a valid `ftq_prefetch_req_t` request observable on
      the SoC boundary.  Misprediction asserts `flush`.
 
-  3. PMC mailbox (AON) ↔ CPU MMIO (main rail)
+  3. PMC mailbox (AON) <-> CPU MMIO (main rail)
      A telemetry write on the PMC TX side is reflected on the RX side.
      The integrated top exposes this as a memory-mapped peripheral so
      the existing AXI-Lite scaffold can hit it.
@@ -34,9 +34,9 @@ What this test does NOT cover:
     requires a wired L1I cache instance, which is BLOCKED at this top
     until per-core wrappers ship (cocotb test coverage lives under
     verify/cocotb/cache/).
-  - CHI → AXI4 traffic on the fabric.  The CHI bridge is structurally
+  - CHI -> AXI4 traffic on the fabric.  The CHI bridge is structurally
     instantiated but its request side is tied off in this top (no SLC
-    instance).  CHI→AXI4 round-trip stays in verify/cocotb/axi4/.
+    instance).  CHI->AXI4 round-trip stays in verify/cocotb/axi4/.
 """
 
 from __future__ import annotations
@@ -199,7 +199,7 @@ def encode_resolve(*, pc, valid, taken, misp, kind, target, ftq_idx=0, call_retu
 
 @cocotb.test()
 async def bpu_pmu_strobe_increments_zihpm_counter(dut):
-    """Cross-domain edge: BPU pmu_strb → bpu_to_zihpm_remap → zihpm.
+    """Cross-domain edge: BPU pmu_strb -> bpu_to_zihpm_remap -> zihpm.
 
     Program mhpmevent3 to count EVT_BR_MISP.  Drive a misprediction
     through the BPU resolve interface; the BPU emits PMU_BR_MISP, the
@@ -317,7 +317,7 @@ async def iommu_fault_count_initially_zero(dut):
 
 @cocotb.test()
 async def pmc_mailbox_roundtrips_telemetry(dut):
-    """Cross-domain edge: PMC mailbox ↔ MMIO aperture.
+    """Cross-domain edge: PMC mailbox <-> MMIO aperture.
 
     The integration top exposes the PMC mailbox at 0x1005_0000.  A
     write to TX_DATA loops back into RX_DATA in the same cycle.  This
@@ -345,14 +345,14 @@ async def pmc_mailbox_roundtrips_telemetry(dut):
 
 @cocotb.test()
 async def ftq_l1i_shim_emits_prefetch_on_taken_target(dut):
-    """Cross-domain edge: BPU FTQ → ftq_to_l1i_shim → L1I prefetch.
+    """Cross-domain edge: BPU FTQ -> ftq_to_l1i_shim -> L1I prefetch.
 
     Drive the BPU resolve interface to allocate a hot FTB entry, let
     the BPU pop a fetch entry, and verify the shim emits a
     `ftq_prefetch_req_t` with branch_target asserted.
 
     Per the shim contract:
-      - paddr_line is virtual PC line address (Sv39 → 40-bit zero-extended)
+      - paddr_line is virtual PC line address (Sv39 -> 40-bit zero-extended)
       - confidence is 4..6 depending on kind
       - branch_target = entry.taken
     """
@@ -408,11 +408,11 @@ async def ftq_l1i_shim_emits_prefetch_on_taken_target(dut):
     # `l1i_prefetch_*` outputs are reachable.  We accept either:
     #   (a) we saw a prefetch valid, OR
     #   (b) we saw the FTQ pop and the prefetch never went valid
-    #       (sequential next-block case — branch_target=0).
+    #       (sequential next-block case -- branch_target=0).
     # Either outcome is consistent with the shim contract.
     assert fetch_seen or prefetch_seen, (
         "BPU FTQ did not produce any fetch entry, and the L1I shim never "
-        "asserted valid: the BPU → shim → L1I cross-domain edge is broken."
+        "asserted valid: the BPU -> shim -> L1I cross-domain edge is broken."
     )
 
 
@@ -588,8 +588,8 @@ async def test_slc_passthrough(dut):
     await trigger_slc_request(dut, paddr_line=0x0000_0000, is_write=False)
     granted = await wait_for_slc_grant(dut)
     assert granted, (
-        "SLC fixture never observed dram_grant after a read request — the "
-        "SLC → line-shim → CHI → AXI4 → DRAM-ctrl chain did not complete."
+        "SLC fixture never observed dram_grant after a read request -- the "
+        "SLC -> line-shim -> CHI -> AXI4 -> DRAM-ctrl chain did not complete."
     )
     # The line at address zero is all zeros from a cold DRAM, so the
     # latched low-32 grant data should be 0.
@@ -621,7 +621,7 @@ async def test_dram_ctrl_dfi_traffic(dut):
     await trigger_slc_request(dut, paddr_line=0x0000_0100, is_write=False)
     granted_a = await wait_for_slc_grant(dut)
     assert granted_a, (
-        "DRAM-ctrl read[0] never granted — fabric s[0] → e1_dram_ctrl "
+        "DRAM-ctrl read[0] never granted -- fabric s[0] -> e1_dram_ctrl "
         "did not complete on the first transaction."
     )
     # Ack so the fixture can fire again.
@@ -632,18 +632,18 @@ async def test_dram_ctrl_dfi_traffic(dut):
     await trigger_slc_request(dut, paddr_line=0x0000_0200, is_write=False)
     granted_b = await wait_for_slc_grant(dut)
     assert granted_b, (
-        "DRAM-ctrl read[1] never granted — fabric s[0] → e1_dram_ctrl "
+        "DRAM-ctrl read[1] never granted -- fabric s[0] -> e1_dram_ctrl "
         "did not complete on the second transaction."
     )
 
 
 @cocotb.test()
 async def test_cva6_executes_from_bootrom(dut):
-    """CVA6 little-core fetch from boot ROM — lite-mode behaviour.
+    """CVA6 little-core fetch from boot ROM -- lite-mode behaviour.
 
     The standalone wrapper `rtl/cpu/e1_cva6_wrapper.sv` has been re-targeted
     to CVA6 v5.3.0 (`external/cva6/cva6/` pinned at commit 2ef1c1b) and the
-    NoC↔flat-AXI4 adapter `rtl/top/adapters/e1_cva6_to_e1axi4.sv` is in
+    NoC<->flat-AXI4 adapter `rtl/top/adapters/e1_cva6_to_e1axi4.sv` is in
     place. The wrapper now elaborates cleanly against the v5.3.0 sources;
     real CVA6 execution is exercised under
     `verify/cocotb/integration/test_cva6_executes_bootrom_program.py` and
@@ -652,7 +652,7 @@ async def test_cva6_executes_from_bootrom(dut):
 
     At the SoC integration top the cluster still operates in lite tie-off
     mode: the per-core AXI port shape is 128-bit (matching the L1D cache
-    line) while CVA6's native AXI is 64-bit, so a 64↔128 AXI4 data-width
+    line) while CVA6's native AXI is 64-bit, so a 64<->128 AXI4 data-width
     converter is the remaining gap before slot 0 can drive real fabric
     traffic.  That converter is the next-step blocker; see
     `docs/evidence/integration/cross-domain-interfaces.yaml`

@@ -24,7 +24,7 @@ Snapshot: updated after 2026-05-19 PD closure retry and local tool recovery.
 | minimum-linux-npu-target | `BLOCK` | `tool_blocker` | `make minimum-linux-npu-target-strict` |
 | pd-contract | `PASS` | `command_pass` | `none` |
 | product-package | `BLOCK` | `release_blocker` | `close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication` |
-| benchmarks | `BLOCK` | `regen_required` | `make benchmarks-dry-run or run the final-macbook-host-smoke benchmark set` |
+| benchmarks | `BLOCK` | `scaffold_only` | `python3 benchmarks/run_benchmarks.py run --metadata benchmarks/metadata/strict-blocked-template.json --strict-missing` |
 | release-pipeline | `BLOCK` | `regen_required` | `make tool-versions pipeline-check` |
 
 ## Workstream Dashboard
