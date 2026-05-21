@@ -64,9 +64,19 @@ def test_evt0_phone_cad_checks_pass() -> None:
     assert rear_aperture["aperture_present"]
     assert rear_aperture["aperture_mm"][0] > rear_aperture["cover_glass_mm"][0]
     assert len(rear_aperture["bezel_parts"]) == 4
+    assert report["checks"]["rear_flash_back_shell_aperture"]["pass"]
+    flash_aperture = report["checks"]["rear_flash_back_shell_aperture"]
+    assert flash_aperture["aperture_present"]
+    assert flash_aperture["aperture_mm"][0] > flash_aperture["window_mm"][0]
+    assert len(flash_aperture["bezel_parts"]) == 4
     assert report["checks"]["usb_saddle_to_speaker_chamber_wall"]["pass"]
     assert report["checks"]["usb_saddle_to_speaker_chamber_wall"]["actual_gap_mm"] >= 1.0
-    assert params["device"]["envelope_mm"][2] == 12.7
+    # Device depth thinned from 12.7 to 11.8 mm: the prior model placed only the
+    # 1.7 mm bare TFT cell and left a 2.8 mm false air band below the cover
+    # glass. The display is now modeled as the full 3.39 mm bonded LCD+CTP module
+    # (module_outline_mm) seated one OCA layer under the glass, closing that gap
+    # and removing the reclaimed depth while keeping flush back + swell + burial.
+    assert params["device"]["envelope_mm"][2] == 11.8
     assert params["battery"]["envelope_mm"][2] == 5.6
     assert params["battery"]["capacity_mah"] == 5727
     optical = report["checks"]["camera_optical_seal_stack"]
@@ -120,6 +130,11 @@ def test_evt0_phone_cad_required_parts_are_named() -> None:
         "orange_rear_camera_bezel_bottom",
         "orange_rear_camera_bezel_left",
         "orange_rear_camera_bezel_right",
+        "rear_flash_shell_aperture",
+        "orange_rear_flash_bezel_top",
+        "orange_rear_flash_bezel_bottom",
+        "orange_rear_flash_bezel_left",
+        "orange_rear_flash_bezel_right",
         "front_camera_module",
         "rear_camera_cover_adhesive_top",
         "rear_camera_cover_adhesive_bottom",
@@ -824,6 +839,11 @@ def test_evt0_phone_step_validation_reimports_step_files(tmp_path, monkeypatch) 
         "power_button_side_frame_cutout",
         "volume_button_side_frame_cutout",
     }.issubset({cutout["name"] for cutout in side_frame_cutouts["cutouts"]})
+    cover_glass_cutouts = solid_cad["cover_glass_external_cutouts"]
+    assert cover_glass_cutouts["status"] == "pass"
+    assert cover_glass_cutouts["cutout_count"] == 1
+    assert cover_glass_cutouts["removed_volume_mm3"] > 0
+    assert cover_glass_cutouts["cutouts"][0]["source_aperture"] == "handset_acoustic_slot"
     validation = cad.write_step_validation_artifacts(solid_cad)
 
     assert validation["status"] == "pass"
@@ -1236,6 +1256,7 @@ def test_evt0_phone_camera_validation_quantifies_optical_stack_and_lab_template(
     assert {
         "rear_camera_cover_window_margin",
         "rear_camera_back_shell_aperture",
+        "rear_flash_back_shell_aperture",
         "rear_camera_z_stack",
         "front_under_glass_margin",
         "front_camera_earpiece_clearance",
@@ -1904,6 +1925,10 @@ def test_evt0_phone_component_selection_review_reconciles_current_params(
     assert cases["side_buttons_single_sku"]["selected_component"] == "XKB TS-1187A-B-A-B"
     assert cases["usb_c_receptacle"]["pass"] is True
     assert cases["rear_flash_and_stray_light_septum"]["pass"] is True
+    assert any(
+        check["id"] == "rear_flash_back_shell_aperture"
+        for check in cases["rear_flash_and_stray_light_septum"]["critical_checks"]
+    )
     assert any(
         check["id"] == "camera_optical_seal_stack"
         for check in cases["rear_camera_and_flush_window"]["critical_checks"]
@@ -2731,6 +2756,25 @@ def test_evt0_phone_full_cad_boolean_interference_requires_physical_brep_inputs(
     assert (tmp_path / "full-cad-boolean-interference.md").is_file()
 
 
+def test_evt0_phone_cad_make_target_runs_strict_boolean_checker() -> None:
+    makefile = Path("Makefile").read_text()
+    phone_cad_target = makefile.split("\nphone-cad-test:", 1)[0].rsplit("\nphone-cad:", 1)[1]
+    assert "scripts/generate_e1_phone_cad.py" in phone_cad_target
+    assert "scripts/check_e1_phone_boolean_interference.py" in phone_cad_target
+
+    checker = Path("scripts/check_e1_phone_boolean_interference.py").read_text()
+    assert "rear_camera_back_shell_hole_check" in checker
+    assert "rear_flash_back_shell_hole_check" in checker
+    assert "handset_cover_glass_slot_check" in checker
+    assert '"rear_camera_cover_glass"' in checker
+    assert '"rear_camera_lens_window"' in checker
+    assert '"rear_camera_module"' in checker
+    assert '"rear_flash_shell_aperture"' in checker
+    assert '"rear_flash_led_window"' in checker
+    assert '"handset_acoustic_slot"' in checker
+    assert '"handset_acoustic_mesh"' in checker
+
+
 def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
@@ -2780,6 +2824,11 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "orange_rear_camera_bezel_bottom.step",
         "orange_rear_camera_bezel_left.step",
         "orange_rear_camera_bezel_right.step",
+        "rear_flash_shell_aperture.step",
+        "orange_rear_flash_bezel_top.step",
+        "orange_rear_flash_bezel_bottom.step",
+        "orange_rear_flash_bezel_left.step",
+        "orange_rear_flash_bezel_right.step",
         "rear_camera_cover_glass.step",
         "rear_camera_cover_adhesive_top.step",
         "rear_camera_cover_adhesive_bottom.step",

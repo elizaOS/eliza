@@ -422,6 +422,54 @@ def rear_camera_buried_center_z(params: dict[str, Any]) -> float:
     return back_face_z + module_depth / 2.0
 
 
+def display_module_size_mm(params: dict[str, Any]) -> list[float]:
+    """Full bonded LCD+CTP module footprint and thickness.
+
+    Uses the TFT XY outline (the mechanical body that sits inside the bezel)
+    with the full module Z height (cover lens + touch + polarizers + TFT cell +
+    backlight unit), not the bare TFT cell thickness.
+    """
+    disp = params["display"]
+    w, h, _t = disp["tft_outline_mm"]
+    module_t = float(disp["module_outline_mm"][2])
+    return [float(w), float(h), module_t]
+
+
+def display_module_center_z(params: dict[str, Any]) -> float:
+    """Z center of the bonded display module.
+
+    The module top face sits one bonding-adhesive (OCA) thickness below the
+    cover-glass inner face, so the module is bonded directly under the glass
+    with no false air gap.
+    """
+    disp = params["display"]
+    depth = float(params["device"]["envelope_mm"][2])
+    cover_glass_t = float(disp["cover_glass_mm"][2])
+    oca = float(disp["adhesive_thickness_mm"])
+    module_t = float(disp["module_outline_mm"][2])
+    front_z = depth / 2.0 - 0.35
+    cover_inner_z = front_z - cover_glass_t / 2.0
+    module_top_z = cover_inner_z - oca
+    return module_top_z - module_t / 2.0
+
+
+def battery_center_z(params: dict[str, Any]) -> float:
+    """Battery Z center derived from the back inner wall + required swell void.
+
+    Back face sits one swell-gap above the back inner wall; the rest of the
+    cell extends toward the display. Keeps the swell void on the BACK face.
+    """
+    dev = params["device"]
+    battery = params["battery"]
+    depth = float(dev["envelope_mm"][2])
+    wall = float(dev["wall_thickness_mm"])
+    swell = float(battery["battery_swell_gap_mm"])
+    cell_t = float(battery["envelope_mm"][2])
+    back_inner_z = -depth / 2.0 + wall
+    back_face_z = back_inner_z + swell
+    return back_face_z + cell_t / 2.0
+
+
 def rear_camera_center_xy(params: dict[str, Any]) -> tuple[float, float]:
     _width, height, _depth = params["device"]["envelope_mm"]
     return 21.0, height / 2 - 19.0
@@ -430,6 +478,39 @@ def rear_camera_center_xy(params: dict[str, Any]) -> tuple[float, float]:
 def rear_camera_shell_aperture_mm(params: dict[str, Any]) -> list[float]:
     glass_w, glass_h, _glass_t = params["components"]["rear_camera_glass"]["envelope_mm"]
     return [round(float(glass_w) + 1.4, 3), round(float(glass_h) + 1.4, 3)]
+
+
+def rear_flash_center_xy(params: dict[str, Any]) -> tuple[float, float]:
+    rear_camera_x, rear_camera_y = rear_camera_center_xy(params)
+    module_w = float(params["components"]["rear_camera"]["module_mm"][0])
+    # Keep enough molded orange land between camera and flash apertures so the
+    # separate bevel frames do not overlap after the shell is boolean-cut.
+    return rear_camera_x - (module_w / 2.0 + 3.1), rear_camera_y
+
+
+def rear_flash_shell_aperture_mm(params: dict[str, Any]) -> list[float]:
+    window_w, window_h, _window_t = params["components"]["rear_flash_led"]["window_mm"]
+    return [round(float(window_w) + 0.6, 3), round(float(window_h) + 0.6, 3)]
+
+
+def handset_acoustic_slot_center(params: dict[str, Any]) -> list[float]:
+    _width, height, depth = params["device"]["envelope_mm"]
+    return [0.0, height / 2 - 7.6, depth / 2 + 0.08]
+
+
+def handset_acoustic_slot_mm(_params: dict[str, Any]) -> list[float]:
+    return [16.0, 1.0, 0.25]
+
+
+def handset_cover_glass_cutout_mm(params: dict[str, Any]) -> list[float]:
+    slot_w, slot_h, _slot_t = handset_acoustic_slot_mm(params)
+    glass_t = float(params["display"]["cover_glass_mm"][2])
+    return [slot_w + 0.4, slot_h + 0.3, glass_t + 0.6]
+
+
+def handset_acoustic_mesh_center(params: dict[str, Any]) -> list[float]:
+    _width, height, depth = params["device"]["envelope_mm"]
+    return [0.0, height / 2 - 7.6, depth / 2 - 0.95]
 
 
 def side_frame_external_cutout_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1117,7 +1198,10 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
     # or inside the flat back outer plane (Zmin >= -depth/2), keeping flush back.
     rear_bezel_z = -depth / 2.0 + 0.14 / 2.0
     rear_bezel_border_mm = 1.0
-    flash_offset_x = comp["rear_camera"]["module_mm"][0] / 2.0 + 1.6
+    rear_flash_x, rear_flash_y = rear_flash_center_xy(params)
+    rear_flash_aperture_w, rear_flash_aperture_h = rear_flash_shell_aperture_mm(params)
+    rear_flash_bezel_z = -depth / 2.0 + 0.12 / 2.0
+    rear_flash_bezel_border_mm = 0.45
 
     parts: list[Part] = [
         rounded_box(
@@ -1150,11 +1234,11 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
         ),
         box(
             "display_lcm",
-            [*disp["tft_outline_mm"][:2], disp["tft_outline_mm"][2]],
-            [0, -5.5, 2.0],
+            display_module_size_mm(params),
+            [0, -5.5, display_module_center_z(params)],
             DARK,
             "screen",
-            "LCM",
+            "bonded LCD+CTP module (cover lens, touch, polarizers, TFT cell, BLU)",
         ),
         composite_box_part(
             "main_pcb",
@@ -1166,7 +1250,7 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
         box(
             "battery_pouch",
             battery["envelope_mm"],
-            [0, -7.0, battery["z_center_mm"]],
+            [0, -7.0, battery_center_z(params)],
             [0.16, 0.16, 0.17, 1],
             "battery",
             "LiPo pouch",
@@ -1320,6 +1404,70 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 "molded enclosure",
                 "integral orange camera aperture bevel/right land",
             ),
+            box(
+                "rear_flash_shell_aperture",
+                [rear_flash_aperture_w, rear_flash_aperture_h, 0.08],
+                [rear_flash_x, rear_flash_y, -depth / 2.0 - 0.015],
+                [0.01, 0.008, 0.006, 1.0],
+                "camera aperture",
+                "open molded back-shell flash hole exposing the flush light-pipe window",
+            ),
+            box(
+                "orange_rear_flash_bezel_top",
+                [
+                    rear_flash_aperture_w + 2.0 * rear_flash_bezel_border_mm,
+                    rear_flash_bezel_border_mm,
+                    0.12,
+                ],
+                [
+                    rear_flash_x,
+                    rear_flash_y + rear_flash_aperture_h / 2.0 + rear_flash_bezel_border_mm / 2.0,
+                    rear_flash_bezel_z,
+                ],
+                ORANGE,
+                "molded enclosure",
+                "integral orange flash aperture bevel/top land",
+            ),
+            box(
+                "orange_rear_flash_bezel_bottom",
+                [
+                    rear_flash_aperture_w + 2.0 * rear_flash_bezel_border_mm,
+                    rear_flash_bezel_border_mm,
+                    0.12,
+                ],
+                [
+                    rear_flash_x,
+                    rear_flash_y - rear_flash_aperture_h / 2.0 - rear_flash_bezel_border_mm / 2.0,
+                    rear_flash_bezel_z,
+                ],
+                ORANGE,
+                "molded enclosure",
+                "integral orange flash aperture bevel/bottom land",
+            ),
+            box(
+                "orange_rear_flash_bezel_left",
+                [rear_flash_bezel_border_mm, rear_flash_aperture_h, 0.12],
+                [
+                    rear_flash_x - rear_flash_aperture_w / 2.0 - rear_flash_bezel_border_mm / 2.0,
+                    rear_flash_y,
+                    rear_flash_bezel_z,
+                ],
+                ORANGE,
+                "molded enclosure",
+                "integral orange flash aperture bevel/left land",
+            ),
+            box(
+                "orange_rear_flash_bezel_right",
+                [rear_flash_bezel_border_mm, rear_flash_aperture_h, 0.12],
+                [
+                    rear_flash_x + rear_flash_aperture_w / 2.0 + rear_flash_bezel_border_mm / 2.0,
+                    rear_flash_y,
+                    rear_flash_bezel_z,
+                ],
+                ORANGE,
+                "molded enclosure",
+                "integral orange flash aperture bevel/right land",
+            ),
             cyl_z(
                 "rear_camera_lens_window",
                 comp["rear_camera"]["lens_diameter_mm"] / 2,
@@ -1333,8 +1481,8 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 "rear_flash_led",
                 comp["rear_flash_led"]["envelope_mm"],
                 [
-                    rear_camera_x - flash_offset_x,
-                    rear_camera_y,
+                    rear_flash_x,
+                    rear_flash_y,
                     -depth / 2 + wall + FLASH_BURIAL_CLEARANCE_MM
                     + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
                 ],
@@ -1347,8 +1495,8 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 comp["rear_flash_led"]["window_mm"][0] / 2.0,
                 rear_camera_glass_t,
                 [
-                    rear_camera_x - flash_offset_x,
-                    rear_camera_y,
+                    rear_flash_x,
+                    rear_flash_y,
                     -depth / 2 + rear_camera_glass_t / 2.0,
                 ],
                 CAMERA,
@@ -1402,8 +1550,8 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
             ),
             box(
                 "handset_acoustic_slot",
-                [16.0, 1.0, 0.25],
-                [0, height / 2 - 7.6, depth / 2 + 0.08],
+                handset_acoustic_slot_mm(params),
+                handset_acoustic_slot_center(params),
                 DARK,
                 "audio",
                 "gasketed handset slot",
@@ -1411,7 +1559,7 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
             box(
                 "handset_acoustic_mesh",
                 [17.5, 0.12, 0.4],
-                [0, height / 2 - 7.6, depth / 2 - 0.28],
+                handset_acoustic_mesh_center(params),
                 ADHESIVE,
                 "audio",
                 "hydrophobic acoustic mesh behind handset slot",
@@ -1655,15 +1803,24 @@ def write_solid_cad_handoff_artifacts(
     rear_camera_x, rear_camera_y = rear_camera_center_xy(params)
     rear_aperture_w, rear_aperture_h = rear_camera_shell_aperture_mm(params)
     rear_bezel_border_mm = 1.0
-    flash_offset_x = comp["rear_camera"]["module_mm"][0] / 2.0 + 1.6
+    rear_flash_x, rear_flash_y = rear_flash_center_xy(params)
+    rear_flash_aperture_w, rear_flash_aperture_h = rear_flash_shell_aperture_mm(params)
+    rear_flash_bezel_border_mm = 0.45
 
     def artifact_path(path: Path) -> str:
         return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix()
 
-    back_shell = cq_box([width, height, 1.2], [0, 0, -depth / 2 + 0.6], radius).cut(
+    back_shell = cq_box([width, height, 1.2], [0, 0, -depth / 2 + 0.6], radius)
+    back_shell = back_shell.cut(
         cq_box(
             [rear_aperture_w, rear_aperture_h, 2.4],
             [rear_camera_x, rear_camera_y, -depth / 2 + 0.6],
+        )
+    )
+    back_shell = back_shell.cut(
+        cq_box(
+            [rear_flash_aperture_w, rear_flash_aperture_h, 2.4],
+            [rear_flash_x, rear_flash_y, -depth / 2 + 0.6],
         )
     )
     side_outer = cq_box([width, height, depth], [0, 0, 0], radius)
@@ -1679,6 +1836,16 @@ def write_solid_cad_handoff_artifacts(
         side_frame = side_frame.cut(cq_box(cutout["size"], cutout["center"]))
     side_frame_uncut_volume_mm3 = round(float(side_frame_uncut.val().Volume()), 3)
     side_frame_cut_volume_mm3 = round(float(side_frame.val().Volume()), 3)
+    cover_glass_uncut = cq_box(
+        display["cover_glass_mm"],
+        [0, -0.2, depth / 2 - 0.35],
+        radius=max(radius - 1.2, 0.5),
+    )
+    cover_glass = cover_glass_uncut.cut(
+        cq_box(handset_cover_glass_cutout_mm(params), handset_acoustic_slot_center(params))
+    )
+    cover_glass_uncut_volume_mm3 = round(float(cover_glass_uncut.val().Volume()), 3)
+    cover_glass_cut_volume_mm3 = round(float(cover_glass.val().Volume()), 3)
     solids: list[dict[str, Any]] = [
         {
             "name": "orange_back_shell",
@@ -1696,24 +1863,20 @@ def write_solid_cad_handoff_artifacts(
         },
         {
             "name": "screen_cover_glass",
-            "shape": cq_box(
-                display["cover_glass_mm"],
-                [0, -0.2, depth / 2 - 0.35],
-                radius=max(radius - 1.2, 0.5),
-            ),
+            "shape": cover_glass,
             "color": black,
             "role": "screen",
-            "material": "black cover glass B-rep envelope",
+            "material": "black cover glass B-rep envelope with handset acoustic slot cut",
         },
         {
             "name": "display_lcm",
             "shape": cq_box(
-                [*display["tft_outline_mm"][:2], display["tft_outline_mm"][2]],
-                [0, -5.5, 2.0],
+                display_module_size_mm(params),
+                [0, -5.5, display_module_center_z(params)],
             ),
             "color": black,
             "role": "screen",
-            "material": "LCM supplier envelope",
+            "material": "bonded LCD+CTP module supplier envelope",
         },
         {
             "name": "main_pcb",
@@ -1724,7 +1887,7 @@ def write_solid_cad_handoff_artifacts(
         },
         {
             "name": "battery_pouch",
-            "shape": cq_box(battery["envelope_mm"], [0, -7.0, battery["z_center_mm"]]),
+            "shape": cq_box(battery["envelope_mm"], [0, -7.0, battery_center_z(params)]),
             "color": black,
             "role": "battery",
             "material": "LiPo pouch envelope",
@@ -1829,12 +1992,94 @@ def write_solid_cad_handoff_artifacts(
             "material": "integral orange camera aperture bevel/right land",
         },
         {
+            "name": "rear_flash_shell_aperture",
+            "shape": cq_box(
+                [rear_flash_aperture_w, rear_flash_aperture_h, 0.08],
+                [rear_flash_x, rear_flash_y, -depth / 2.0 - 0.015],
+            ),
+            "color": black,
+            "role": "camera aperture",
+            "material": "open molded back-shell flash hole envelope",
+        },
+        {
+            "name": "orange_rear_flash_bezel_top",
+            "shape": cq_box(
+                [
+                    rear_flash_aperture_w + 2.0 * rear_flash_bezel_border_mm,
+                    rear_flash_bezel_border_mm,
+                    0.12,
+                ],
+                [
+                    rear_flash_x,
+                    rear_flash_y
+                    + rear_flash_aperture_h / 2.0
+                    + rear_flash_bezel_border_mm / 2.0,
+                    -depth / 2.0 + 0.06,
+                ],
+            ),
+            "color": orange,
+            "role": "molded enclosure",
+            "material": "integral orange flash aperture bevel/top land",
+        },
+        {
+            "name": "orange_rear_flash_bezel_bottom",
+            "shape": cq_box(
+                [
+                    rear_flash_aperture_w + 2.0 * rear_flash_bezel_border_mm,
+                    rear_flash_bezel_border_mm,
+                    0.12,
+                ],
+                [
+                    rear_flash_x,
+                    rear_flash_y
+                    - rear_flash_aperture_h / 2.0
+                    - rear_flash_bezel_border_mm / 2.0,
+                    -depth / 2.0 + 0.06,
+                ],
+            ),
+            "color": orange,
+            "role": "molded enclosure",
+            "material": "integral orange flash aperture bevel/bottom land",
+        },
+        {
+            "name": "orange_rear_flash_bezel_left",
+            "shape": cq_box(
+                [rear_flash_bezel_border_mm, rear_flash_aperture_h, 0.12],
+                [
+                    rear_flash_x
+                    - rear_flash_aperture_w / 2.0
+                    - rear_flash_bezel_border_mm / 2.0,
+                    rear_flash_y,
+                    -depth / 2.0 + 0.06,
+                ],
+            ),
+            "color": orange,
+            "role": "molded enclosure",
+            "material": "integral orange flash aperture bevel/left land",
+        },
+        {
+            "name": "orange_rear_flash_bezel_right",
+            "shape": cq_box(
+                [rear_flash_bezel_border_mm, rear_flash_aperture_h, 0.12],
+                [
+                    rear_flash_x
+                    + rear_flash_aperture_w / 2.0
+                    + rear_flash_bezel_border_mm / 2.0,
+                    rear_flash_y,
+                    -depth / 2.0 + 0.06,
+                ],
+            ),
+            "color": orange,
+            "role": "molded enclosure",
+            "material": "integral orange flash aperture bevel/right land",
+        },
+        {
             "name": "rear_flash_led",
             "shape": cq_box(
                 comp["rear_flash_led"]["envelope_mm"],
                 [
-                    rear_camera_x - flash_offset_x,
-                    rear_camera_y,
+                    rear_flash_x,
+                    rear_flash_y,
                     -depth / 2 + wall + FLASH_BURIAL_CLEARANCE_MM
                     + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
                 ],
@@ -1848,8 +2093,8 @@ def write_solid_cad_handoff_artifacts(
             "shape": cq_box(
                 comp["rear_flash_led"]["window_mm"],
                 [
-                    rear_camera_x - flash_offset_x,
-                    rear_camera_y,
+                    rear_flash_x,
+                    rear_flash_y,
                     -depth / 2 + comp["rear_flash_led"]["window_mm"][2] / 2.0,
                 ],
             ),
@@ -1992,14 +2237,17 @@ def write_solid_cad_handoff_artifacts(
             ],
             {
                 "name": "handset_acoustic_slot",
-                "shape": cq_box([16.0, 1.0, 0.25], [0, height / 2 - 7.6, depth / 2 + 0.08]),
+                "shape": cq_box(
+                    handset_acoustic_slot_mm(params),
+                    handset_acoustic_slot_center(params),
+                ),
                 "color": black,
                 "role": "audio",
                 "material": "gasketed handset acoustic slot",
             },
             {
                 "name": "handset_acoustic_mesh",
-                "shape": cq_box([17.5, 0.12, 0.4], [0, height / 2 - 7.6, depth / 2 - 0.28]),
+                "shape": cq_box([17.5, 0.12, 0.4], handset_acoustic_mesh_center(params)),
                 "color": adhesive_color,
                 "role": "audio",
                 "material": "hydrophobic acoustic mesh behind handset slot",
@@ -2405,6 +2653,11 @@ def write_solid_cad_handoff_artifacts(
         "rear_camera_cover_glass",
         "rear_camera_lens_window",
         "rear_flash_led",
+        "rear_flash_shell_aperture",
+        "orange_rear_flash_bezel_top",
+        "orange_rear_flash_bezel_bottom",
+        "orange_rear_flash_bezel_left",
+        "orange_rear_flash_bezel_right",
         "rear_flash_led_window",
         "rear_camera_cover_adhesive_top",
         "rear_camera_cover_adhesive_bottom",
@@ -2482,6 +2735,24 @@ def write_solid_cad_handoff_artifacts(
                 "only on separate black aperture markers."
             ),
         },
+        "cover_glass_external_cutouts": {
+            "status": "pass" if cover_glass_cut_volume_mm3 < cover_glass_uncut_volume_mm3 else "blocked",
+            "cutout_count": 1,
+            "cutouts": [
+                {
+                    "name": "handset_cover_glass_slot_cutout",
+                    "source_aperture": "handset_acoustic_slot",
+                    "size_mm": handset_cover_glass_cutout_mm(params),
+                    "center_mm": handset_acoustic_slot_center(params),
+                }
+            ],
+            "uncut_cover_glass_volume_mm3": cover_glass_uncut_volume_mm3,
+            "cut_cover_glass_volume_mm3": cover_glass_cut_volume_mm3,
+            "removed_volume_mm3": round(
+                cover_glass_uncut_volume_mm3 - cover_glass_cut_volume_mm3, 3
+            ),
+            "note": "Cover-glass STEP is boolean-cut for the handset acoustic slot instead of relying only on a separate black slot marker.",
+        },
         "linked_fit_status": checks["status"],
         "remaining_blockers": [
             "Solids are parametric envelopes, not final supplier STEP models.",
@@ -2499,11 +2770,19 @@ def write_solid_cad_handoff_artifacts(
         f"- Part STEP count: {report['part_count']}",
         f"- Side-frame external cutouts: {report['side_frame_external_cutouts']['cutout_count']} "
         f"({report['side_frame_external_cutouts']['removed_volume_mm3']} mm^3 removed)",
+        f"- Cover-glass external cutouts: {report['cover_glass_external_cutouts']['cutout_count']} "
+        f"({report['cover_glass_external_cutouts']['removed_volume_mm3']} mm^3 removed)",
         "",
         "## Side-Frame Cutouts",
         "",
     ]
     for cutout in report["side_frame_external_cutouts"]["cutouts"]:
+        lines.append(
+            f"- `{cutout['name']}` from `{cutout['source_aperture']}`: "
+            f"{cutout['size_mm']} mm at {cutout['center_mm']} mm"
+        )
+    lines.extend(["", "## Cover-Glass Cutouts", ""])
+    for cutout in report["cover_glass_external_cutouts"]["cutouts"]:
         lines.append(
             f"- `{cutout['name']}` from `{cutout['source_aperture']}`: "
             f"{cutout['size_mm']} mm at {cutout['center_mm']} mm"
@@ -3622,10 +3901,11 @@ def write_component_selection_review_artifacts(
             "camera",
             components["rear_flash_led"]["candidate"],
             components["rear_flash_led"]["envelope_mm"],
-            ["camera_optical_seal_stack"],
+            ["camera_optical_seal_stack", "rear_flash_back_shell_aperture"],
             second_source=components["rear_flash_led"].get("second_source"),
             notes=[
                 components["rear_flash_led"].get("seat_match_note", ""),
+                "Flush flash light-pipe now has its own molded orange shell aperture and bevel lands.",
                 components["rear_flash_camera_septum"].get("purpose", ""),
             ],
         ),
@@ -5442,7 +5722,7 @@ def write_engineering_validation_artifacts(
         (10.2 - comp["usb_c"]["envelope_mm"][0]) / 2.0,
         (3.6 - comp["usb_c"]["envelope_mm"][2]) / 2.0,
     )
-    battery_center = [0.0, -7.0, battery["z_center_mm"]]
+    battery_center = [0.0, -7.0, battery_center_z(params)]
     battery_to_pcb_gaps = [
         box_gap(size, center, battery["envelope_mm"], battery_center)
         for size, center, _name in pcb_island_segments(params)
@@ -6400,6 +6680,8 @@ def write_camera_validation_artifacts(
     ) / 2.0
     aperture_w, aperture_h = rear_camera_shell_aperture_mm(params)
     rear_glass_w, rear_glass_h, _rear_glass_t = comp["rear_camera_glass"]["envelope_mm"]
+    flash_aperture_w, flash_aperture_h = rear_flash_shell_aperture_mm(params)
+    flash_window_w, flash_window_h, _flash_window_t = comp["rear_flash_led"]["window_mm"]
     front_under_glass_margin_mm = (
         comp["front_camera"]["module_mm"][0] - comp["front_camera"]["lens_diameter_mm"]
     ) / 2.0
@@ -6432,6 +6714,21 @@ def write_camera_validation_artifacts(
             and aperture_w > rear_glass_w
             and aperture_h > rear_glass_h
             and sum(1 for name in part_names if name.startswith("orange_rear_camera_bezel_")) == 4,
+        },
+        {
+            "id": "rear_flash_back_shell_aperture",
+            "actual": {
+                "aperture_mm": [flash_aperture_w, flash_aperture_h],
+                "window_mm": [flash_window_w, flash_window_h],
+                "bezel_part_count": sum(
+                    1 for name in part_names if name.startswith("orange_rear_flash_bezel_")
+                ),
+            },
+            "target": "explicit molded back-shell opening larger than the flush flash light-pipe window with four orange bevel lands",
+            "pass": "rear_flash_shell_aperture" in part_names
+            and flash_aperture_w > flash_window_w
+            and flash_aperture_h > flash_window_h
+            and sum(1 for name in part_names if name.startswith("orange_rear_flash_bezel_")) == 4,
         },
         {
             "id": "rear_camera_z_stack",
@@ -10302,7 +10599,7 @@ def write_assembly_clearance_artifacts(params: dict[str, Any], parts: list[Part]
         high_b = np.asarray(center) + np.asarray(size) / 2.0
         return bounds_gap(low_a, high_a, low_b, high_b)
 
-    battery_center = [0.0, -7.0, battery["z_center_mm"]]
+    battery_center = [0.0, -7.0, battery_center_z(params)]
     pcb_segments = pcb_island_segments(params)
     battery_to_pcb = [
         box_gap(size, center, battery["envelope_mm"], battery_center)
@@ -14410,6 +14707,11 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
         "rear_camera_light_baffle_top",
         "rear_camera_light_baffle_bottom",
         "rear_flash_camera_septum",
+        "rear_flash_shell_aperture",
+        "orange_rear_flash_bezel_top",
+        "orange_rear_flash_bezel_bottom",
+        "orange_rear_flash_bezel_left",
+        "orange_rear_flash_bezel_right",
         "front_camera_black_mask_window",
         "power_button_cap",
         "volume_button_cap",
@@ -14462,7 +14764,7 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
     usb_h = comp["usb_c"]["envelope_mm"][1]
     usb_port_center_y = -height / 2 + 4.1
     usb_insertion_clearance = usb_port_center_y - (-height / 2) + usb_h / 2.0
-    battery_center = [0.0, -7.0, battery["z_center_mm"]]
+    battery_center = [0.0, -7.0, battery_center_z(params)]
     pcb_segment_gaps = [
         box_gap(size, center, battery["envelope_mm"], battery_center)
         for size, center, _name in pcb_island_segments(params)
@@ -14567,6 +14869,16 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
         "orange_rear_camera_bezel_bottom",
         "orange_rear_camera_bezel_left",
         "orange_rear_camera_bezel_right",
+    ]
+    rear_flash_aperture_w, rear_flash_aperture_h = rear_flash_shell_aperture_mm(params)
+    rear_flash_window_w, rear_flash_window_h, _rear_flash_window_t = comp["rear_flash_led"][
+        "window_mm"
+    ]
+    rear_flash_aperture_bezel_parts = [
+        "orange_rear_flash_bezel_top",
+        "orange_rear_flash_bezel_bottom",
+        "orange_rear_flash_bezel_left",
+        "orange_rear_flash_bezel_right",
     ]
 
     battery_swell_gap_required_mm = float(battery.get("battery_swell_gap_mm", 0.6))
@@ -14795,6 +15107,21 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             ],
             "aperture_present": "rear_camera_shell_aperture" in by_name,
             "note": "Back shell now carries an explicit through-aperture and four orange bevel lands around the flush camera cover window instead of relying on an internal black window hidden under an unbroken shell.",
+        },
+        "rear_flash_back_shell_aperture": {
+            "pass": "rear_flash_shell_aperture" in by_name
+            and "rear_flash_led_window" in by_name
+            and "rear_flash_led" in by_name
+            and all(name in by_name for name in rear_flash_aperture_bezel_parts)
+            and rear_flash_aperture_w > rear_flash_window_w
+            and rear_flash_aperture_h > rear_flash_window_h,
+            "aperture_mm": [rear_flash_aperture_w, rear_flash_aperture_h],
+            "window_mm": [rear_flash_window_w, rear_flash_window_h],
+            "bezel_parts": [
+                name for name in rear_flash_aperture_bezel_parts if name in by_name
+            ],
+            "aperture_present": "rear_flash_shell_aperture" in by_name,
+            "note": "Back shell now carries an explicit through-aperture and four orange bevel lands around the flush flash light-pipe window instead of treating the window/back-shell overlap as intentional contact.",
         },
         "camera_optical_seal_stack": {
             "pass": {
@@ -15356,9 +15683,16 @@ def main() -> int:
                 "orange_rear_camera_bezel_bottom",
                 "orange_rear_camera_bezel_left",
                 "orange_rear_camera_bezel_right",
+                "rear_flash_shell_aperture",
+                "orange_rear_flash_bezel_top",
+                "orange_rear_flash_bezel_bottom",
+                "orange_rear_flash_bezel_left",
+                "orange_rear_flash_bezel_right",
                 "rear_camera_module",
                 "rear_camera_lens_window",
                 "rear_camera_cover_glass",
+                "rear_flash_led_window",
+                "rear_flash_led",
                 "service_label_recess",
                 "sim_tray_outline",
             ]
@@ -15461,6 +15795,7 @@ def main() -> int:
         for p in parts
         if p.role in {"camera", "camera seal", "camera aperture"}
         or p.name.startswith("orange_rear_camera_bezel_")
+        or p.name.startswith("orange_rear_flash_bezel_")
         or p.name in {"handset_acoustic_slot", "camera_flash_led"}
     ]
     render(

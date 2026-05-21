@@ -268,3 +268,68 @@ regenerating CAD and re-running every gate. `evidence_class` tags preserved
 - `simulate_e1_phone_drop_acoustic.py`: **0 FAILs** — glass SF 1.93 (>= 1.5), corner boss SF 2.11 (>= 1.0), leak 2.39 dB (<= 3).
 - `check_e1_phone_boolean_interference.py`: **PASS**, 11/11 scopes, **0 unintentional clashes**, flush-back **0.0 mm**.
 - `test_generate_e1_phone_cad.py`: **62/62 pass** (boss-count check is `>=` param, so 10 bosses pass without expectation edits).
+
+## Thickness-optimization + void rev
+
+evidence_class: `cad_estimate_for_evt_planning, not_measured_hardware`
+
+### Front-gap verdict: MISSING DETAIL (not real void)
+
+The 2.8 mm air band between `display_lcm` top (Z=+2.85) and the cover-glass
+inner face (Z=+5.65) was a modeling artifact. The model placed only the bare
+**1.7 mm TFT cell** (`tft_outline_mm` Z) as the display, but the supplier
+footprint driver and the component review use the full **3.39 mm LCD+CTP
+module** (`ctp_outline_mm` Z = cover lens + OCA + capacitive touch + polarizers
++ 1.7 mm TFT cell + backlight unit). A phone bonds that module directly under
+the cover glass through a thin OCA layer; there is no 2.8 mm of free air. Fixed
+by modeling the display at full `module_outline_mm` (3.39 mm) seated one
+`adhesive_thickness_mm` (0.18 mm OCA) below the cover-glass inner face. This
+closed the false gap and the reclaimed depth was removed from the device,
+rather than left as void.
+
+### Limiting Z-column
+
+The device thickness is governed by the **display + battery** centerline, not
+the rear camera. At 11.8 mm (front face +5.90, back face -5.90):
+
+| element | thickness mm | Z |
+|---|---|---|
+| cover glass | 0.70 | +5.90..+5.20 |
+| OCA bond | 0.18 | +5.20..+5.02 |
+| bonded LCD+CTP module | 3.39 | +5.02..+1.63 |
+| static clearance | 0.18 | +1.63..+1.45 |
+| battery pouch | 5.60 | +1.45..-4.15 |
+| battery swell void (back face) | 0.60 | -4.15..-4.75 |
+| back wall | 1.15 | -4.75..-5.90 |
+
+The rear camera column (back wall 1.15 + burial 0.45 + module 5.10 = 6.70 from
+the back face, top at +0.80) is shorter than the battery column, so the camera
+is **not** the limiting element and needs no PCB cutout — the PCB top island
+already clears it in Z (camera top +0.80 vs PCB bottom -2.50). Burying the
+camera deeper would not thin the device; the battery+display stack sets the floor.
+
+### Old vs new
+
+| metric | before | after |
+|---|---|---|
+| device thickness | 12.7 mm | **11.8 mm** (-0.9 mm) |
+| front display gap (air) | 2.80 mm (31.8 cm3 void) | 0.18 mm OCA (2.0 cm3) |
+| internal void volume | 67.1 cm3 (54.4% of cavity) | **41.4 cm3 (36.6%)** |
+| battery swell void | 0.6 mm | 0.6 mm (held) |
+| rear camera burial | 0.45 mm (clearance 0.4) | 0.45 mm (clearance 0.4, held) |
+| flush-back protrusion | 0.0 mm | 0.0 mm (held) |
+
+Void by region after: front_display_gap 2.0 cm3, mid_pcb_band 25.5 cm3,
+back_band 14.2 cm3 (see `void-volume.{json,md}`). The remaining void is
+distributed small-component margins around the PCB islands and battery
+perimeter, not a single closeable band.
+
+### Verification
+
+- `generate_e1_phone_cad.py`: **pass**.
+- `check_e1_phone_boolean_interference.py`: **PASS**, 11/11 scopes, **0 clashes**,
+  flush-back **0.0 mm**, camera buried 0.4 mm, flash buried 0.15 mm.
+- `check_e1_phone_button_orientation.py`: **pass**.
+- `check_e1_phone_assemblability.py`: assemblable=True, 19 steps, 0 trapped.
+- `test_generate_e1_phone_cad.py`: **63/63 pass** (depth expectation updated
+  12.7 -> 11.8 deliberately).

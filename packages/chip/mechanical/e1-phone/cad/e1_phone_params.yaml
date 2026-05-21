@@ -1,7 +1,7 @@
 device:
   name: E1 phone EVT0 mechanical concept
-  revision: evt0-mechanical-cad-swell-camera-seal
-  envelope_mm: [78.0, 153.6, 12.7]
+  revision: evt0-mechanical-cad-bonded-display-thinned
+  envelope_mm: [78.0, 153.6, 11.8]
   corner_radius_mm: 7.5
   plastic_color: hard safety orange
   wall_thickness_mm: 1.15
@@ -14,6 +14,19 @@ display:
   candidate: Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP
   ctp_outline_mm: [77.1, 151.77, 3.39]
   tft_outline_mm: [70.78, 129.17, 1.7]
+  module_outline_mm: [70.78, 129.17, 3.39]
+  module_stack_basis: >-
+    The display part modeled in CAD is the full bonded LCD+CTP module, not the
+    bare 1.7 mm TFT cell. The Chenghao CH550FH01A-CT datasheet module height is
+    3.39 mm (ctp_outline_mm Z): cover lens + OCA + capacitive touch sensor +
+    upper polarizer + 1.7 mm TFT cell + lower polarizer + backlight unit. The
+    earlier model placed only the 1.7 mm TFT cell and left a 2.8 mm air band
+    between the cell top (Z=+2.85) and the device cover-glass inner face
+    (Z=+5.65). That band was a missing-detail modeling artifact, not real air:
+    a phone bonds the module directly under the cover glass through the
+    adhesive (OCA) layer. The module is now modeled at full 3.39 mm height
+    bonded one adhesive_thickness_mm below the cover-glass inner face, which
+    closes the false gap and reclaims that thickness.
   active_area_mm: [68.04, 120.96]
   cover_glass_mm: [77.1, 151.77, 0.7]
   cover_glass_inset_below_rim_mm: 0.3
@@ -47,7 +60,7 @@ pcb:
 battery:
   candidate: LiPol LP566487 class 3.85 V 5727 mAh 22.05 Wh thick pouch
   envelope_mm: [64.0, 87.0, 5.6]
-  z_center_mm: -1.8
+  z_center_mm: -1.35
   capacity_mah: 5727
   energy_wh: 22.05
   nominal_voltage_v: 3.85
@@ -57,17 +70,23 @@ battery:
   back_void_foam_material: PORON-style low-compression-set polyurethane foam, low-preload battery back pad
   swell_gap_basis: >-
     LiPo pouch cells swell ~8-10 percent in thickness over life; for a 5.6 mm
-    cell that is ~0.45-0.56 mm. The device thickness was raised from 11.8 to
-    12.7 mm purely to open a defined >=0.6 mm swell void on the battery BACK
-    face (toward the back shell, away from the display) so swell never pushes
-    the display. The void is a real air gap between the battery back face
-    (Z=-4.6 mm) and the back inner wall (Z=-5.2 mm); a compressible foam pad
-    occupies the back-shell side of the void with 0.18 mm documented compression
-    allowance, absorbing the arithmetic worst-case tolerance overage without
-    preloading the cell. The display-side gap stays the static 0.15 mm minimum
-    so the cell cannot crack the panel under swell.
-  capacity_basis: 4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.6/4.4); cell thickness unchanged at 5.6 mm so capacity stays 5727 mAh while the added device depth becomes swell void plus camera-burial clearance
-  clearance_basis: front face at Z=+1.0 mm keeps 0.15 mm static gap below display_lcm back face (+1.15 mm); back face at Z=-4.6 mm keeps 0.6 mm swell gap to back inner wall (-5.2 mm) at the 12.7 mm device thickness
+    cell that is ~0.45-0.56 mm. A defined >=0.6 mm swell void is opened on the
+    battery BACK face (toward the back shell, away from the display) so swell
+    never pushes the display. The void is a real air gap between the battery
+    back face and the back inner wall; a compressible foam pad occupies the
+    back-shell side of the void with 0.18 mm documented compression allowance,
+    absorbing the arithmetic worst-case tolerance overage without preloading
+    the cell. battery_center_z derives the cell position from the back inner
+    wall plus this swell gap, so the void holds at any device thickness.
+  capacity_basis: 4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.6/4.4); cell thickness unchanged at 5.6 mm so capacity stays 5727 mAh; device depth carries swell void plus camera-burial clearance, not idle air
+  clearance_basis: >-
+    At the 11.8 mm device depth (back outer Z=-5.90, back inner wall Z=-4.75),
+    battery back face Z=-4.15 keeps the 0.6 mm swell gap to the back inner wall;
+    battery front face Z=+1.45 keeps a 0.18 mm static gap below the bonded
+    display module back face (Z=+1.63). The bonded LCD+CTP module (3.39 mm) sits one
+    adhesive_thickness_mm (0.18 mm OCA) below the cover-glass inner face, so the
+    former 2.8 mm front air band is closed and the saved depth is removed from
+    the device thickness rather than left as void.
 
 components:
   usb_c:
@@ -109,10 +128,11 @@ components:
     array: single
     burial_clearance_mm: 0.45
     burial_basis: >-
-      Module back face sits 0.45 mm inside the back inner wall (was a marginal
-      0.25-0.30 mm). The 12.7 mm device depth gives the 5.1 mm module a healthy
-      >=0.4 mm burial under the flush flat back with the lens window coplanar
-      with the back outer plane.
+      Module back face sits 0.45 mm inside the back inner wall. The 5.1 mm
+      module plus 0.45 mm burial plus 1.15 mm back wall is a shorter Z column
+      than the battery+swell stack, so the rear camera burial is not the
+      thickness-limiting column; it keeps a healthy >=0.4 mm burial under the
+      flush flat back with the lens window coplanar with the back outer plane.
   rear_flash_led:
     candidate: OSRAM CEYW class 1.0x1.0x0.6 white flash LED
     driver: Awinic AW36515 I2C flash driver
