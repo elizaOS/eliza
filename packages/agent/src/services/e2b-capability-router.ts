@@ -273,7 +273,9 @@ class DefaultSandboxFactory implements E2BSandboxFactory {
 class RemoteRunnerHttpFactory implements E2BSandboxFactory {
   async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
     if (!config.remoteHttpBaseUrl) {
-      throw new Error(`${config.provider} runner requires a remote runner URL.`);
+      throw new Error(
+        `${config.provider} runner requires a remote runner URL.`,
+      );
     }
     const apiBase = config.remoteHttpBaseUrl.replace(/\/+$/, "");
     const headers = authHeaders(config.remoteHttpToken);
@@ -613,13 +615,10 @@ export class E2BRemoteCapabilityRouterService
     private readonly factory: E2BSandboxFactory = new DefaultSandboxFactory(),
   ) {
     if (!runtime) {
-      throw new Error(
-        "E2BRemoteCapabilityRouterService requires a runtime.",
-      );
+      throw new Error("E2BRemoteCapabilityRouterService requires a runtime.");
     }
     super(runtime);
-    this.routerConfig =
-      routerConfig ?? resolveE2BRemoteRunnerConfig(runtime);
+    this.routerConfig = routerConfig ?? resolveE2BRemoteRunnerConfig(runtime);
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {

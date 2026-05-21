@@ -3981,8 +3981,7 @@ export async function startEliza(
     try {
       const { registerE2BRemoteCapabilityRouterIfEnabled } =
         await loadE2BCapabilityRouterModule();
-      const result =
-        await registerE2BRemoteCapabilityRouterIfEnabled(runtime);
+      const result = await registerE2BRemoteCapabilityRouterIfEnabled(runtime);
       if (result.registered) {
         logger.info("[eliza] Remote coding runner registered");
       }
