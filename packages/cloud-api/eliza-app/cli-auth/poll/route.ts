@@ -35,12 +35,22 @@ app.get("/", async (c) => {
       return c.json({ success: true, status: "expired" });
     }
     if (session.status === "authenticated") {
-      const token = session.api_key_plain;
+      // D-6: plaintext is no longer stored on the session row. Decrypt the
+      // associated api_keys row in-memory, mark this session consumed +
+      // expired so the plaintext is single-use, and return the token.
+      const { cliAuthSessionsService } = await import(
+        "@elizaos/cloud-shared/lib/services/cli-auth-sessions"
+      );
+      const retrieved = await cliAuthSessionsService.getAndClearApiKey(sessionId);
       await db
         .update(cliAuthSessions)
-        .set({ api_key_plain: null, status: "expired" })
+        .set({ status: "expired" })
         .where(eq(cliAuthSessions.session_id, sessionId));
-      return c.json({ success: true, status: "authenticated", token });
+      return c.json({
+        success: true,
+        status: "authenticated",
+        token: retrieved?.apiKey ?? null,
+      });
     }
 
     return c.json({ success: true, status: "pending" });

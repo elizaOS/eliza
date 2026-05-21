@@ -5,6 +5,7 @@
  */
 
 import crypto from "crypto";
+import { encryptApiKey } from "../../db/crypto/api-keys";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -169,17 +170,37 @@ export class ApiKeysService {
     return await apiKeysRepository.listByOrganization(organizationId);
   }
 
-  async create(data: Omit<NewApiKey, "key" | "key_hash" | "key_prefix">): Promise<{
+  async create(
+    data: Omit<
+      NewApiKey,
+      | "key_hash"
+      | "key_prefix"
+      | "key_ciphertext"
+      | "key_nonce"
+      | "key_auth_tag"
+      | "key_kms_key_id"
+      | "key_kms_key_version"
+    >,
+  ): Promise<{
     apiKey: ApiKey;
     plainKey: string;
   }> {
     const { key, hash, prefix } = this.generateApiKey();
 
+    // Pre-allocate the row id so the encryption AAD can bind to it.
+    const rowId = crypto.randomUUID();
+    const encrypted = await encryptApiKey(data.organization_id, rowId, key);
+
     const apiKey = await apiKeysRepository.create({
       ...data,
-      key,
+      id: rowId,
       key_hash: hash,
       key_prefix: prefix,
+      key_ciphertext: encrypted.ciphertext,
+      key_nonce: encrypted.nonce,
+      key_auth_tag: encrypted.auth_tag,
+      key_kms_key_id: encrypted.kms_key_id,
+      key_kms_key_version: encrypted.kms_key_version,
     });
 
     return {

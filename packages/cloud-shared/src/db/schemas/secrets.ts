@@ -1,4 +1,5 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -99,6 +100,7 @@ export const secrets = pgTable(
     access_count: integer("access_count").default(0).notNull(),
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
+    deleted_at: timestamp("deleted_at"),
   },
   (table) => ({
     org_name_project_env_idx: uniqueIndex("secrets_org_name_project_env_idx").on(
@@ -114,6 +116,7 @@ export const secrets = pgTable(
     name_idx: index("secrets_name_idx").on(table.name),
     expires_idx: index("secrets_expires_idx").on(table.expires_at),
     provider_idx: index("secrets_provider_idx").on(table.provider),
+    deleted_at_idx: index("secrets_deleted_at_idx").on(table.deleted_at),
   }),
 );
 
@@ -248,6 +251,14 @@ export const secretAuditLog = pgTable(
     endpoint: text("endpoint"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
     created_at: timestamp("created_at").notNull().defaultNow(),
+    // Retention horizon (D-4). Default 7 years from creation for SOC2
+    // security-relevant audit. Configurable per row by writers that need
+    // shorter retention (e.g. dev events). Purge job at
+    // packages/cloud-api/src/jobs/audit-log-purge.ts removes rows where
+    // expires_at < now().
+    expires_at: timestamp("expires_at")
+      .notNull()
+      .default(sql`now() + interval '7 years'`),
   },
   (table) => ({
     secret_idx: index("secret_audit_log_secret_idx").on(table.secret_id),
@@ -261,6 +272,7 @@ export const secretAuditLog = pgTable(
       table.action,
       table.created_at,
     ),
+    expires_at_idx: index("secret_audit_log_expires_at_idx").on(table.expires_at),
   }),
 );
 

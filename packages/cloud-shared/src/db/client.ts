@@ -124,11 +124,55 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+/**
+ * Enforce TLS on remote Postgres connections (D-2 / SOC2 CC6.7).
+ *
+ * Local (127.0.0.1 / localhost) connections may run without TLS for dev.
+ * Anything else must use sslmode=require — both via URL parameter (so it
+ * survives external connection-pool configs) AND via the `ssl` option on
+ * the pg driver (so the handshake is enforced even if the parameter is
+ * dropped by a proxy). We fail closed by setting `rejectUnauthorized: true`.
+ */
+function enforceTlsForRemote(url: string): {
+  url: string;
+  ssl: PoolConfig["ssl"];
+} {
+  if (isLocalTcpPostgresUrl(url)) {
+    return { url, ssl: undefined };
+  }
+  let normalized = url;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has("sslmode")) {
+      parsed.searchParams.set("sslmode", "require");
+      normalized = parsed.toString();
+    } else if (
+      parsed.searchParams.get("sslmode") === "disable" ||
+      parsed.searchParams.get("sslmode") === "allow"
+    ) {
+      throw new Error(
+        `Refusing to connect: remote DATABASE_URL has sslmode=${parsed.searchParams.get("sslmode")}. Remote Postgres connections must use sslmode=require (SOC2 CC6.7).`,
+      );
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("Refusing to connect")) {
+      throw err;
+    }
+    // URL parse failure — fall through with original string; pg will reject.
+  }
+  return {
+    url: normalized,
+    ssl: { rejectUnauthorized: true },
+  };
+}
+
 function createPgPool(url: string): PgPool {
-  const options: PoolConfig = { connectionString: url };
   const env = getCloudAwareEnv();
   const inWorkerRuntime = isCloudflareWorkerRuntime();
   const isLocalTcp = isLocalTcpPostgresUrl(url);
+  const tls = enforceTlsForRemote(url);
+  const options: PoolConfig = { connectionString: tls.url };
+  if (tls.ssl) options.ssl = tls.ssl;
 
   if (inWorkerRuntime) {
     options.max = parsePositiveInteger(env.LOCAL_PG_POOL_MAX, 1);
