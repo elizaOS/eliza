@@ -33,10 +33,12 @@ const VIEWPORTS = [
   { name: "mobile", width: 390, height: 844 },
 ] as const;
 
-const ARTIFACT_DIR = path.resolve(
-  process.cwd(),
-  "test-results/contact-sheet",
-);
+// Write into the aesthetic artifact directory so the unchanged
+// generate-contact-sheet.mjs script picks these up. This spec is sequenced
+// to run *after* aesthetic-audit.spec.ts in `test:audit`, so its faithful
+// renders overwrite the asserter's snapshots before the contact sheet is
+// composed.
+const ARTIFACT_DIR = path.resolve(process.cwd(), "test-results/aesthetic");
 
 const mockUser = {
   id: "user_contact_sheet",
