@@ -140,6 +140,13 @@ export function getSidebarSections(t: SidebarTranslator): SidebarSection[] {
           icon: UserCircle,
           freeAllowed: false,
         },
+        {
+          id: "security",
+          label: t("cloud.nav.security", { defaultValue: "Security" }),
+          href: "/dashboard/security",
+          icon: Shield,
+          freeAllowed: false,
+        },
       ],
     },
     {

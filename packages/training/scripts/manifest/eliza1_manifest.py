@@ -18,9 +18,11 @@ Source of truth:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import struct
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO, Final, Iterable, Mapping, Sequence
@@ -1809,3 +1811,186 @@ def file_entries_from_records(
             )
         )
     return entries
+
+
+# ---------------------------------------------------------------------------
+# Training-data manifest lineage (SOC2 CC8.1, CC6.8 — M-2)
+# ---------------------------------------------------------------------------
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _sha256_path(path: Path, chunk: int = 1024 * 1024) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(chunk), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def compute_training_data_manifest_sha256(
+    *,
+    datasets_yaml_path: Path,
+    dataset_content_hashes: Mapping[str, str],
+) -> str:
+    """Single sha256 that pins a training run to its inputs.
+
+    Computes ``sha256( datasets_yaml_bytes || sorted_per_source_hashes )``.
+
+    - ``datasets_yaml_path`` is the on-disk ``datasets.yaml`` *at the time of
+      the run*. The loader contract guarantees the consent gate has already
+      validated it.
+    - ``dataset_content_hashes`` maps source slug -> sha256-hex of that
+      source's normalized JSONL. The mapping is sorted by slug for a stable
+      output; missing slugs simply don't contribute (a downstream verify can
+      compare slug sets, not just the hash).
+
+    The resulting hex digest is recorded on the model artifact manifest as
+    ``provenance.trainingDataManifestSha256`` so an auditor can reproduce it
+    deterministically.
+    """
+
+    if not datasets_yaml_path.exists():
+        raise Eliza1ManifestError(
+            [f"datasets.yaml missing at {datasets_yaml_path}"]
+        )
+
+    h = hashlib.sha256()
+    h.update(b"eliza1.training-data-manifest.v1\n")
+    h.update(datasets_yaml_path.read_bytes())
+    h.update(b"\n--per-source--\n")
+    for slug in sorted(dataset_content_hashes):
+        digest = dataset_content_hashes[slug]
+        if not isinstance(digest, str) or len(digest) != 64:
+            raise Eliza1ManifestError(
+                [f"dataset_content_hashes[{slug!r}] must be a 64-char sha256 hex"]
+            )
+        h.update(slug.encode("utf-8"))
+        h.update(b":")
+        h.update(digest.encode("ascii"))
+        h.update(b"\n")
+    return h.hexdigest()
+
+
+def build_training_data_manifest(
+    *,
+    datasets_yaml_path: Path,
+    dataset_content_hashes: Mapping[str, str],
+    consent_records: Sequence[Mapping[str, Any]],
+    run_id: str,
+    started_at: str,
+    privacy_filter_strict: bool,
+    privacy_filter_override_reason: str | None = None,
+) -> dict[str, Any]:
+    """Assemble the full training-data lineage manifest for the run.
+
+    The hash returned by ``compute_training_data_manifest_sha256`` is
+    embedded as ``trainingDataManifestSha256`` so callers can drop a single
+    file alongside the model artifact and let auditors reconstruct lineage.
+    """
+
+    sha = compute_training_data_manifest_sha256(
+        datasets_yaml_path=datasets_yaml_path,
+        dataset_content_hashes=dataset_content_hashes,
+    )
+    return {
+        "schema": "eliza1.training-data-manifest.v1",
+        "runId": run_id,
+        "startedAt": started_at,
+        "datasetsYaml": {
+            "path": str(datasets_yaml_path),
+            "sha256": _sha256_path(datasets_yaml_path),
+        },
+        "perSourceContentHashes": {
+            slug: dataset_content_hashes[slug]
+            for slug in sorted(dataset_content_hashes)
+        },
+        "consentRecords": list(consent_records),
+        "trainingDataManifestSha256": sha,
+        "privacyFilter": {
+            "strict": privacy_filter_strict,
+            "overrideReason": privacy_filter_override_reason or None,
+        },
+    }
+
+
+def verify_training_data_manifest(
+    manifest_path: Path,
+    *,
+    datasets_yaml_path: Path,
+) -> None:
+    """Recompute trainingDataManifestSha256 and reject on mismatch.
+
+    Raises ``Eliza1ManifestError`` when the on-disk manifest's
+    ``trainingDataManifestSha256`` does not equal a fresh recomputation
+    from the same per-source hashes + the current ``datasets.yaml``.
+    """
+
+    data = json.loads(manifest_path.read_text())
+    declared = data.get("trainingDataManifestSha256")
+    if not isinstance(declared, str):
+        raise Eliza1ManifestError(
+            ["trainingDataManifestSha256 missing from manifest"]
+        )
+    hashes = data.get("perSourceContentHashes") or {}
+    if not isinstance(hashes, Mapping):
+        raise Eliza1ManifestError(
+            ["perSourceContentHashes must be an object"]
+        )
+    recomputed = compute_training_data_manifest_sha256(
+        datasets_yaml_path=datasets_yaml_path,
+        dataset_content_hashes=dict(hashes),
+    )
+    if recomputed != declared:
+        raise Eliza1ManifestError(
+            [
+                "trainingDataManifestSha256 mismatch: "
+                f"declared={declared} recomputed={recomputed}"
+            ]
+        )
+
+
+# ---------------------------------------------------------------------------
+# CLI: `python -m manifest.eliza1_manifest --verify ...`
+# ---------------------------------------------------------------------------
+
+
+def _cli(argv: list[str] | None = None) -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        description=(
+            "Eliza-1 manifest CLI. Currently exposes --verify, which "
+            "recomputes the training-data manifest sha256 against the "
+            "on-disk datasets.yaml + per-source hashes."
+        )
+    )
+    ap.add_argument(
+        "--verify",
+        type=Path,
+        required=True,
+        help="Path to training-data-manifest.json to verify.",
+    )
+    ap.add_argument(
+        "--datasets-yaml",
+        type=Path,
+        required=True,
+        help="Path to datasets.yaml used during the training run.",
+    )
+    args = ap.parse_args(argv)
+    try:
+        verify_training_data_manifest(
+            args.verify,
+            datasets_yaml_path=args.datasets_yaml,
+        )
+    except Eliza1ManifestError as exc:
+        print(f"verify FAILED: {exc.errors}", file=sys.stderr)
+        return 2
+    print("verify OK")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())

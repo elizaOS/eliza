@@ -33,11 +33,17 @@ export const AUDIT_ACTIONS = [
   "plugin.grant",
   "plugin.revoke",
   "plugin.execute",
+  "plugin.denied",
 
   // agents
   "agent.spawn",
   "agent.terminate",
   "agent.config.update",
+  "agent.session_record",
+
+  // vision / screen capture (opt-in capability)
+  "vision.allowed",
+  "vision.denied",
 
   // payments
   "payment.charge",

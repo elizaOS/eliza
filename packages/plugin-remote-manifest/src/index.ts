@@ -109,3 +109,19 @@ export type {
   RemotePluginManifestValidationResult,
 } from "./validation.js";
 export { validateRemotePluginManifest } from "./validation.js";
+export {
+  canonicalRpcBytes,
+  hexDecode,
+  hexEncode,
+  pluginRpcKeyId,
+} from "./rpc-mac.js";
+export {
+  PLUGIN_MANIFEST_KEY,
+  PluginSignatureError,
+  sha256File,
+  verifyPluginArtifact,
+} from "./signature.js";
+export type {
+  PluginSignaturePayload,
+  VerifyPluginArtifactInput,
+} from "./signature.js";

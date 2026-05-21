@@ -18,6 +18,7 @@ import argparse
 import copy
 import hashlib
 import json
+import logging
 import os
 import re
 import shlex
@@ -147,6 +148,7 @@ class FilterStats:
         input_paths: list[str],
         strict: bool,
         source_kind: str,
+        strict_override_reason: str | None = None,
     ) -> dict[str, Any]:
         categories = _counter_json(self.redactions_by_category, include=KNOWN_CATEGORIES)
         input_path_refs = [_safe_ref(path) for path in input_paths]
@@ -166,6 +168,7 @@ class FilterStats:
             "input_paths": input_path_refs,
             "input_path_refs": input_path_refs,
             "strict": strict,
+            "strict_override_reason": strict_override_reason,
             "input_count": self.records_read,
             "output_count": self.records_written,
             "redaction_count": self.redactions_total,
@@ -1244,12 +1247,13 @@ def filter_paths(
     ledger_jsonl: Path,
     stats_json: Path,
     attestation_json: Path | None = None,
-    strict: bool = False,
+    strict: bool = True,
     source_kind: str = "user_export",
     on_invalid_json: str = "error",
     max_records: int = 0,
     suffixes: set[str] | None = None,
     config: RuntimeConfig | None = None,
+    strict_override_reason: str | None = None,
 ) -> FilterStats:
     if source_kind not in ALLOWED_SOURCE_KINDS:
         raise PrivacyFilterError(
@@ -1325,6 +1329,7 @@ def filter_paths(
         input_paths=input_paths,
         strict=strict,
         source_kind=source_kind,
+        strict_override_reason=strict_override_reason,
     )
     stats_json.write_text(
         json.dumps(stats_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -1393,10 +1398,31 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "dataset publishing gates."
         ),
     )
-    ap.add_argument(
+    # SOC2 PI1.1 / C1.1 (M-5): --strict is ON by default. The only escape
+    # hatch is --allow-non-strict, which itself requires
+    # ELIZA_TRAINING_PRIVACY_OVERRIDE_REASON to be set in the environment
+    # so the operator records WHY the gate was relaxed. The reason is
+    # written into the stats/attestation manifest.
+    strict_group = ap.add_mutually_exclusive_group()
+    strict_group.add_argument(
         "--strict",
+        dest="strict",
         action="store_true",
-        help="Exit non-zero if residual high-risk patterns remain after filtering.",
+        default=True,
+        help=(
+            "(default ON) Exit non-zero if residual high-risk patterns remain "
+            "after filtering."
+        ),
+    )
+    strict_group.add_argument(
+        "--allow-non-strict",
+        dest="strict",
+        action="store_false",
+        help=(
+            "Disable --strict. Requires "
+            "ELIZA_TRAINING_PRIVACY_OVERRIDE_REASON=<reason> in the env. "
+            "The reason is recorded on the run manifest as a SOC2 incident."
+        ),
     )
     ap.add_argument(
         "--source-kind",
@@ -1471,6 +1497,24 @@ def main(argv: list[str] | None = None) -> int:
     ap = build_arg_parser()
     args = ap.parse_args(argv)
 
+    override_reason = os.environ.get(
+        "ELIZA_TRAINING_PRIVACY_OVERRIDE_REASON", ""
+    ).strip()
+    if not args.strict:
+        if not override_reason:
+            print(
+                "privacy filter: --allow-non-strict requires "
+                "ELIZA_TRAINING_PRIVACY_OVERRIDE_REASON=<non-empty reason> in "
+                "the environment. Refusing to run.",
+                file=sys.stderr,
+            )
+            return 2
+        # Structured logger surfacing — picked up by the audit pipeline.
+        logging.getLogger("privacy_filter").warning(
+            "privacy filter --strict disabled by operator; reason=%r",
+            override_reason,
+        )
+
     output_jsonl = Path(args.output_jsonl)
     ledger_jsonl = (
         Path(args.ledger_jsonl)
@@ -1513,6 +1557,7 @@ def main(argv: list[str] | None = None) -> int:
             max_records=args.max_records,
             suffixes=suffixes,
             config=config,
+            strict_override_reason=override_reason or None,
         )
     except PrivacyFilterError as exc:
         print(f"privacy filter failed: {exc}", file=sys.stderr)

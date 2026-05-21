@@ -122,6 +122,10 @@ const DashboardIndex = lazyWithPreload(() => import("./dashboard/Page"));
 
 const AccountPage = lazyWithPreload(() => import("./dashboard/account/Page"));
 const SettingsPage = lazyWithPreload(() => import("./dashboard/settings/Page"));
+const SecurityPage = lazyWithPreload(() => import("./dashboard/security/Page"));
+const SecurityPermissionsPage = lazyWithPreload(
+  () => import("./dashboard/security/permissions/Page"),
+);
 const BillingPage = lazyWithPreload(() => import("./dashboard/billing/Page"));
 const BillingSuccessPage = lazyWithPreload(
   () => import("./dashboard/billing/success/Page"),
@@ -319,6 +323,17 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
   {
     path: "/dashboard/settings",
     preload: preloadAll(DashboardLayout.preload, SettingsPage.preload),
+  },
+  {
+    path: "/dashboard/security/permissions",
+    preload: preloadAll(
+      DashboardLayout.preload,
+      SecurityPermissionsPage.preload,
+    ),
+  },
+  {
+    path: "/dashboard/security",
+    preload: preloadAll(DashboardLayout.preload, SecurityPage.preload),
   },
   {
     path: "/dashboard/account",
@@ -672,6 +687,11 @@ function App() {
 
           <Route path="account" element={<AccountPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="security" element={<SecurityPage />} />
+          <Route
+            path="security/permissions"
+            element={<SecurityPermissionsPage />}
+          />
           <Route path="billing" element={<BillingPage />} />
           <Route path="billing/success" element={<BillingSuccessPage />} />
 

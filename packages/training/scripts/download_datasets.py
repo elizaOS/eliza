@@ -39,6 +39,10 @@ DOWNLOAD_MANIFEST = RAW_DIR / "download_manifest.json"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.local_path_source import LocalPathSource  # noqa: E402
+from lib.dataset_loader import (  # noqa: E402
+    DatasetConsentError,
+    load_registry,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -223,8 +227,13 @@ def main() -> int:
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
-    with args.registry.open() as f:
-        registry = yaml.safe_load(f)
+    # SOC2 PI1.1-PI1.5, C1.1: enforce consent gate on every source before
+    # we pull a byte from anywhere. See lib/dataset_loader.py.
+    try:
+        registry, _consent_records = load_registry(args.registry)
+    except DatasetConsentError as exc:
+        log.error("dataset consent gate failed: %s", exc)
+        return 2
 
     entries: list[dict] = registry.get("datasets") or []
     only = {s.strip() for s in args.only.split(",") if s.strip()}

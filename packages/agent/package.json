@@ -287,6 +287,7 @@
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/plugin-remote-manifest": "workspace:*",
+    "@elizaos/security": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",
     "@elizaos/plugin-worker-runtime": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",

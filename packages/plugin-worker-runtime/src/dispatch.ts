@@ -12,9 +12,16 @@
 
 import type {
   JsonValue,
+  PluginSurfaceKind,
+  RemotePluginPermissionGrant,
   WorkerRpcMessage,
   WorkerRpcResultMessage,
 } from "@elizaos/plugin-remote-manifest";
+import {
+  canonicalRpcBytes,
+  hexDecode,
+} from "@elizaos/plugin-remote-manifest/rpc-mac";
+import type { AuditDispatcher, KmsClient } from "@elizaos/security";
 import type { HandlerEntry, HandlerRegistry } from "./descriptor";
 import type { WorkerChannel } from "./envelope";
 import { toWireError } from "./error";
@@ -24,6 +31,30 @@ import type { RuntimeProxyApi } from "./runtime-proxy";
 export interface DispatchContext {
   runtime: RuntimeProxyApi;
   channel: WorkerChannel;
+  /**
+   * SOC2 A-4: when set, every incoming `WorkerRpcMessage` MUST carry a
+   * valid `mac` over `canonicalRpcBytes`. Messages without a MAC or
+   * with a bad MAC are rejected.
+   */
+  rpcAuth?: {
+    kms: KmsClient;
+    keyId: string;
+    /**
+     * When `false` (legacy installs awaiting re-key), bad/missing macs
+     * log a WARN but do not reject. New installs always set this true.
+     */
+    enforce?: boolean;
+  };
+  /**
+   * SOC2 A-5: permission grants for this plugin install. When set, the
+   * dispatcher checks the requested surface against the grant before
+   * invoking and rejects with `plugin.denied` audit otherwise.
+   */
+  permissions?: {
+    granted: RemotePluginPermissionGrant;
+    pluginId: string;
+    auditDispatcher?: AuditDispatcher;
+  };
 }
 
 /**
@@ -38,6 +69,70 @@ export function createWorkerRpcDispatcher(
     const reply = (result: WorkerRpcResultMessage): void => {
       context.channel.send(result);
     };
+
+    // SOC2 A-4: HMAC verification.
+    if (context.rpcAuth) {
+      const enforce = context.rpcAuth.enforce !== false;
+      const macOk = await verifyMac(message, context.rpcAuth);
+      if (!macOk) {
+        if (enforce) {
+          reply({
+            type: "worker-rpc-result",
+            requestId: message.requestId,
+            ok: false,
+            error: {
+              name: "RpcAuthError",
+              message: "Worker RPC message MAC missing or invalid",
+              code: "RPC_AUTH_FAILED",
+            },
+          });
+          return;
+        }
+        process.stderr.write(
+          "[worker-rpc] WARN: legacy unsigned RPC accepted; re-key plugin to enforce MAC.\n",
+        );
+      }
+    }
+
+    // SOC2 A-5: permission enforcement.
+    if (context.permissions) {
+      const denial = checkPermission(message.surface, context.permissions.granted);
+      if (denial) {
+        if (context.permissions.auditDispatcher) {
+          try {
+            await context.permissions.auditDispatcher.emit({
+              actor: { type: "system", id: "agent" },
+              action: "plugin.denied",
+              result: "denied",
+              resource: {
+                type: "plugin",
+                id: context.permissions.pluginId,
+              },
+              metadata: {
+                plugin_id: context.permissions.pluginId,
+                surface: message.surface,
+                target: message.target,
+                permission: denial,
+                reason: "permission_not_granted",
+              },
+            });
+          } catch {
+            // Audit must not break dispatch.
+          }
+        }
+        reply({
+          type: "worker-rpc-result",
+          requestId: message.requestId,
+          ok: false,
+          error: {
+            name: "PermissionDeniedError",
+            message: `Plugin ${context.permissions.pluginId} not granted permission for surface ${message.surface}`,
+            code: "PERMISSION_DENIED",
+          },
+        });
+        return;
+      }
+    }
 
     const entry = registry.get(message.target);
     if (!entry) {
@@ -199,6 +294,66 @@ type ServiceHandler = (
   runtime: RuntimeProxyApi,
   ...args: unknown[]
 ) => Promise<JsonValue> | JsonValue;
+
+async function verifyMac(
+  message: WorkerRpcMessage,
+  auth: NonNullable<DispatchContext["rpcAuth"]>,
+): Promise<boolean> {
+  if (!message.mac) return false;
+  let tag: Uint8Array;
+  try {
+    tag = hexDecode(message.mac);
+  } catch {
+    return false;
+  }
+  const data = canonicalRpcBytes(message);
+  try {
+    return await auth.kms.hmacVerify(auth.keyId, data, tag);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Map a surface kind to the host-permission gate that must be granted.
+ * Returns the missing permission label when denied, or null when allowed.
+ *
+ * This is intentionally coarse — finer per-action permission gates can
+ * layer on top once the action surface contract is stable.
+ */
+function checkPermission(
+  surface: PluginSurfaceKind,
+  granted: RemotePluginPermissionGrant,
+): string | null {
+  // `tests` is never host-RPC reachable; the surface switch will reject.
+  if (surface === "tests") return null;
+  // Treat any surface as allowed when the grant is empty/absent. The
+  // tighter mapping below applies once any grants are set.
+  if (!granted || (Object.keys(granted.bun ?? {}).length === 0 && Object.keys(granted.host ?? {}).length === 0)) {
+    return null;
+  }
+  // Surfaces that touch host services need bun:run OR a host:* grant.
+  const bun = granted.bun ?? {};
+  const host = granted.host ?? {};
+  const hasAnyHost = Object.values(host).some(Boolean);
+  switch (surface) {
+    case "action":
+    case "service":
+    case "route":
+      // Mutating surfaces require some host or run permission.
+      if (bun.run || hasAnyHost) return null;
+      return "bun:run | host:*";
+    case "provider":
+    case "evaluator":
+    case "model":
+    case "event":
+      // Read-only-ish surfaces: allow when any permission is granted.
+      if (bun.read || bun.run || hasAnyHost) return null;
+      return "bun:read | host:*";
+    default:
+      return null;
+  }
+}
 
 function makeNoopCallback(): (data: JsonValue) => Promise<void> {
   return async () => {
