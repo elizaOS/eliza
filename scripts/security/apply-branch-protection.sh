@@ -2,7 +2,7 @@
 # apply-branch-protection.sh
 #
 # Idempotently applies branch-protection rules to `main` and `develop` on the
-# Milady (elizaOS) repositories. Required for SOC2 CC8.1 (change management)
+# elizaOS repositories. Required for SOC2 CC8.1 (change management)
 # and CC6.1 (logical access).
 #
 # Required token scopes:
