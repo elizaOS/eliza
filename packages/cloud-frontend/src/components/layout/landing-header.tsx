@@ -21,9 +21,6 @@ export default function LandingHeader() {
   const devDashboardLabel = t("cloud.landing.developerDashboard", {
     defaultValue: "Developer Dashboard",
   });
-  const signInLabel = t("cloud.landing.signIn", {
-    defaultValue: "Sign in",
-  });
 
   return (
     <motion.header className="pointer-events-auto fixed top-9 left-0 z-[100] w-full bg-transparent sm:top-10">
@@ -42,7 +39,7 @@ export default function LandingHeader() {
             <>
               <Link
                 to="/dashboard"
-                className="inline-flex min-h-10 items-center justify-center rounded-[3px] border border-black bg-white px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white sm:min-h-11"
+                className="inline-flex min-h-10 items-center justify-center rounded-[3px] bg-white px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white sm:min-h-11"
               >
                 {devDashboardLabel}
               </Link>
@@ -51,12 +48,12 @@ export default function LandingHeader() {
           ) : (
             <button
               aria-disabled={!ready}
-              className="inline-flex min-h-10 items-center justify-center rounded-[3px] border border-black bg-white px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white disabled:opacity-50 sm:min-h-11"
+              className="inline-flex min-h-10 items-center justify-center rounded-[3px] bg-white px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white disabled:opacity-50 sm:min-h-11"
               onClick={openDashboard}
               disabled={!ready}
               type="button"
             >
-              {signInLabel}
+              {devDashboardLabel}
             </button>
           )}
         </div>
