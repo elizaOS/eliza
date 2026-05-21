@@ -36,6 +36,8 @@ const remoteSupported = new Map<string, string>([
 ]);
 
 const localOnly = new Set([
+  "mode",
+  "remote",
   "adapter",
   "tests",
   "dependencies",
