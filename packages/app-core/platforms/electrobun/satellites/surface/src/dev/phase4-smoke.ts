@@ -331,7 +331,7 @@ class TailRuntimeBridge extends MockRuntimeBridge {
       id: targetId,
       events: [
         {
-          carrotId: targetId,
+          remotePluginId: targetId,
           satelliteId: targetId,
           sequence: 1,
           name: "agent.message.stream.delta",
@@ -355,7 +355,7 @@ const root = process.cwd();
 for (const relativePath of [
   "package.json",
   "electrobun.config.ts",
-  "carrot.json",
+  "plugin.json",
   "src/protocol/runtime-client.ts",
   "src/web/index.html",
 ]) {

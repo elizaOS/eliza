@@ -71,7 +71,7 @@ export type JsonValue =
 export type RuntimeEventHandler = (payload: unknown) => void;
 
 export type RuntimeEventRecord = {
-	carrotId?: string;
+	remotePluginId?: string;
 	satelliteId?: string;
 	sequence: number;
 	name: string;
@@ -103,12 +103,12 @@ type RuntimeGlobal = typeof globalThis & {
 	__ELIZA_SURFACE_RUNTIME_BRIDGE__?: RuntimeSatelliteBridge;
 	__ELIZA_ELECTROBUN_RPC__?: {
 		request?: {
-			carrotInvokeWorker?: (params: {
+			remotePluginInvokeWorker?: (params: {
 				id: string;
 				method: string;
 				params?: JsonValue;
 			}) => Promise<JsonValue | null>;
-			carrotTailWorkerEvents?: (params: {
+			remotePluginTailWorkerEvents?: (params: {
 				id: string;
 				afterSequence?: number;
 				limit?: number;
@@ -116,14 +116,6 @@ type RuntimeGlobal = typeof globalThis & {
 		};
 		onMessage?: (eventName: string, handler: RuntimeEventHandler) => void;
 		offMessage?: (eventName: string, handler: RuntimeEventHandler) => void;
-	};
-	Carrots?: {
-		invoke?: (
-			targetId: string,
-			method: string,
-			params?: unknown,
-		) => Promise<unknown>;
-		on?: (eventName: string, handler: RuntimeEventHandler) => () => void;
 	};
 };
 
@@ -597,9 +589,9 @@ function createDefaultBridge(): RuntimeSatelliteBridge | null {
 	}
 
 	const electrobunRpc = runtimeGlobal.__ELIZA_ELECTROBUN_RPC__;
-	const invokeWorker = electrobunRpc?.request?.carrotInvokeWorker;
+	const invokeWorker = electrobunRpc?.request?.remotePluginInvokeWorker;
 	if (invokeWorker) {
-		const tailEvents = electrobunRpc.request?.carrotTailWorkerEvents;
+		const tailEvents = electrobunRpc.request?.remotePluginTailWorkerEvents;
 		return {
 			invoke: (targetId, method, params) => {
 				const jsonParams = toJsonValue(params);
@@ -624,16 +616,6 @@ function createDefaultBridge(): RuntimeSatelliteBridge | null {
 							return () => electrobunRpc.offMessage?.(eventName, handler);
 						}
 					: undefined,
-		};
-	}
-
-	const upstream = runtimeGlobal.Carrots;
-	if (upstream?.invoke) {
-		return {
-			invoke: (targetId, method, params) =>
-				upstream.invoke?.(targetId, method, params) ??
-				Promise.reject(new Error("Module invoke bridge is unavailable.")),
-			on: upstream.on,
 		};
 	}
 

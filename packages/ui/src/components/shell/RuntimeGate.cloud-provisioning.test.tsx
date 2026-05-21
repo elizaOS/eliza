@@ -21,6 +21,7 @@ const {
   clearPersistedActiveServerMock,
   clientMock,
   completeOnboardingMock,
+  ElizaClientMock,
   platformState,
   persistMobileRuntimeModeForServerTargetMock,
   savePersistedActiveServerMock,
@@ -53,6 +54,9 @@ const {
     setBaseUrl: vi.fn(),
     setToken: vi.fn(),
   },
+  ElizaClientMock: vi.fn(function () {
+    return clientMock;
+  }),
   completeOnboardingMock: vi.fn(),
   platformState: {
     isAndroid: false,
@@ -82,6 +86,7 @@ vi.mock("react/jsx-runtime", async () => {
 
 vi.mock("../../api", () => ({
   client: clientMock,
+  ElizaClient: ElizaClientMock,
 }));
 
 vi.mock("../../state", () => ({

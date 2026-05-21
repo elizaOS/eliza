@@ -29,7 +29,8 @@ jobs:
     if: |
       github.event.pull_request.draft != true &&
       !contains(github.event.pull_request.title, '[skip-security]') &&
-      github.actor != 'cursor[bot]'
+      github.actor != 'cursor[bot]' &&
+      github.actor != 'dependabot[bot]'
 
     runs-on: ubuntu-latest
     timeout-minutes: 15
