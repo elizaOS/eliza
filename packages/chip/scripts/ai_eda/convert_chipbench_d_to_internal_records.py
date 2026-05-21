@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -295,7 +295,7 @@ def convert_case(case_dir: Path, out_dir: Path, payload: Path) -> list[dict[str,
             "macro_count": len(movable),
             "target_count": flow_run["metrics"]["macro_target_count"],
         }
-        for record, path in zip((design_bundle, placement_case, flow_run), paths, strict=False)
+        for record, path in zip((design_bundle, placement_case, flow_run), paths)
     ]
 
 
@@ -334,7 +334,7 @@ def main() -> int:
         converted.extend(convert_case(case_dir, out_dir, args.payload))
     report = {
         "schema": "eliza.ai_eda.chipbench_d_conversion_report.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "payload": rel(args.payload),

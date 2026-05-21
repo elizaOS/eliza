@@ -8,7 +8,7 @@ import hashlib
 import json
 import math
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -132,7 +132,7 @@ def parse_demand_map(path: Path) -> dict[str, Any]:
             )
     if not edge_features and len(nonzero_cells) > 1:
         for (row, col, demand), (next_row, next_col, other_demand) in zip(
-            nonzero_cells, nonzero_cells[1:], strict=False
+            nonzero_cells, nonzero_cells[1:]
         ):
             edge_features.append(
                 {
@@ -249,7 +249,7 @@ def convert_map(path: Path, out_dir: Path) -> list[dict[str, Any]]:
             "nonzero_count": stats["nonzero_count"],
             "edge_count": stats["edge_count"],
         }
-        for record, out_path in zip(records, paths, strict=False)
+        for record, out_path in zip(records, paths)
     ]
 
 
@@ -257,7 +257,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--map-dir", type=Path, default=DEFAULT_MAP_DIR)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=3)
     return parser.parse_args()
 
@@ -285,7 +285,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.aieda_idata_conversion_report.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "map_dir": rel(args.map_dir),

@@ -2993,6 +2993,75 @@ entries:
     risk:
       - Competition proxy metrics and public/private splits can create
         overfitting or contamination risks for E1 evaluation.
+  - id: floorset-iccad-2026
+    name: FloorSet / ICCAD 2026 Data-Driven SoC Floorplanning Challenge
+    kind: constrained_soc_floorplanning_dataset
+    stage:
+      - floorplanning
+      - placement_benchmark
+      - training_corpus
+      - physical_design
+    priority: P1
+    source_url: https://github.com/IntelLabs/FloorSet
+    code_url: https://github.com/IntelLabs/FloorSet
+    model_url: null
+    dataset_url: https://github.com/IntelLabs/FloorSet
+    license_status: review_required
+    code_status: available_to_review
+    model_status: benchmark_framework
+    e1_fit: >
+      Highly relevant 2026 floorplanning corpus because it exposes constrained
+      synthetic SoC floorplans and an ICCAD contest harness that could broaden
+      E1 floorplanning pretraining beyond macro-placement-only datasets.
+    integration_action: >
+      Track as a P1 dataset candidate. Do not auto-download or train on it
+      until repository revision, dataset artifacts, license, tensor schema,
+      and contamination policy are reviewed.
+    evidence_gate: >
+      Use requires exact repository and dataset revisions, license review,
+      file/hash manifest, tensor-to-internal-record converter, split manifest,
+      non-overlap review, generated floorplan quarantine, deterministic E1
+      OpenLane/OpenROAD replay, signoff checks, and PD reviewer disposition.
+    risk:
+      - Synthetic fixed-outline floorplans may teach useful constraints while
+        missing E1-specific macro LEF, power-grid, clock, IO, package, and
+        routability constraints.
+      - Contest scoring can reward benchmark objectives that do not correlate
+        with E1 routed PPA or signoff closure.
+  - id: r-zoo-rectilinear-floorplan
+    name: R-Zoo Rectilinear Floorplan Benchmark Dataset
+    kind: rectilinear_floorplanning_dataset
+    stage:
+      - floorplanning
+      - rectilinear_geometry
+      - training_corpus
+      - physical_design
+    priority: P2
+    source_url: https://github.com/iCAS-SJTU/Chip-Like-A-House
+    code_url: https://github.com/iCAS-SJTU/Chip-Like-A-House
+    model_url: null
+    dataset_url: https://github.com/iCAS-SJTU/Chip-Like-A-House
+    license_status: review_required
+    code_status: available_to_review
+    model_status: dataset_only
+    e1_fit: >
+      Relevant 2026 dataset for geometry-aware and rectilinear floorplanning,
+      especially future E1 macro-shape, whitespace, and non-rectangular
+      planning experiments.
+    integration_action: >
+      Track as metadata-only until the dataset paper, repository revision,
+      license, geometry format, legality checks, and E1 replay compatibility
+      are reviewed.
+    evidence_gate: >
+      Use requires paper/repository hashes, license review, rectilinear geometry
+      converter, legality checker logs, split manifest, generated floorplan
+      quarantine, deterministic E1 OpenLane/OpenROAD replay, routed timing,
+      DRC/LVS, antenna, power checks, and PD reviewer disposition.
+    risk:
+      - Rectilinear floorplan legality does not imply E1 macro placement,
+        routing, timing, power, or manufacturability quality.
+      - LLM-assisted dataset generation must be reviewed for reproducibility
+        and contamination before training use.
   - id: veoplace-vlm-macro-placement
     name: VeoPlace / See it to Place it
     kind: vlm_guided_macro_placement_method

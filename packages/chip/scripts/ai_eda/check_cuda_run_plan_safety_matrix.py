@@ -7,7 +7,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -215,7 +215,7 @@ def main() -> int:
 
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "plan": rel(args.plan),
         "claim_boundary": CLAIM_BOUNDARY,

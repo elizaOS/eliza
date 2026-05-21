@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +56,18 @@ def artifact_entry(path_value: str, role: str) -> dict[str, Any]:
     }
 
 
+def dedupe_artifacts(artifacts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in artifacts:
+        path = item.get("path")
+        if not isinstance(path, str) or path in seen:
+            continue
+        seen.add(path)
+        deduped.append(item)
+    return deduped
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", required=True)
@@ -92,6 +104,7 @@ def main() -> int:
             continue
         role = Path(item["path"]).parent.parent.name if "/" in item["path"] else "input_artifact"
         artifacts.append(artifact_entry(item["path"], role))
+    artifacts = dedupe_artifacts(artifacts)
 
     present = [item for item in artifacts if item["status"] == "PRESENT"]
     missing = [item for item in artifacts if item["status"] == "MISSING"]
@@ -103,7 +116,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.cuda_evidence_bundle.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "source_readiness_audit": rel(audit_path),

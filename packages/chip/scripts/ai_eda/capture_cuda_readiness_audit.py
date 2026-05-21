@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,10 @@ RUN_PLAN_EXECUTION_SCHEMA = "eliza.ai_eda.cuda_run_plan_execution.v1"
 RUN_PLAN_SAFETY_MATRIX_SCHEMA = "eliza.ai_eda.cuda_run_plan_safety_matrix.v1"
 REPLAY_QUEUE_SCHEMA = "eliza.ai_eda.macro_placement_replay_queue.v1"
 REPLAY_PREREQUISITES_SCHEMA = "eliza.ai_eda.openlane_replay_prerequisites.v1"
+REPLAY_EXECUTION_SCHEMA = "eliza.ai_eda.openlane_replay_execution.v1"
+REPLAY_COMPARISON_SCHEMA = "eliza.ai_eda.openlane_replay_comparison.v1"
+FULL_TRAINING_MATRIX_SCHEMA = "eliza.ai_eda.cuda_full_training_matrix.v1"
+ALPHACHIP_SUCCESSOR_SCHEMA = "eliza.ai_eda.alphachip_successor_plan.v1"
 
 
 def rel(path: Path) -> str:
@@ -145,6 +149,85 @@ def replay_prerequisites_valid(report: dict[str, Any] | None) -> tuple[bool, boo
     return True, status == "READY_FOR_REPLAY_PREREQUISITES", f"status={status}"
 
 
+def alphachip_successor_plan_valid(report: dict[str, Any] | None) -> tuple[bool, bool, str]:
+    if report is None:
+        return False, False, "missing AlphaChip successor plan"
+    if report.get("schema") != ALPHACHIP_SUCCESSOR_SCHEMA:
+        return False, False, "schema mismatch"
+    if report.get("release_use_allowed") is not False:
+        return False, False, "release_use_allowed must be false"
+    successor = report.get("available_successor")
+    if not isinstance(successor, dict):
+        return False, False, "available_successor missing"
+    status = successor.get("status")
+    if status not in {"READY_FOR_CUDA_SCALE_TRAINING", "PARTIAL"}:
+        return False, False, f"unsupported successor status={status}"
+    blockers = report.get("blockers")
+    if not isinstance(blockers, list) or not blockers:
+        return False, False, "successor plan must retain AlphaChip/checkpoint blockers"
+    return True, status == "READY_FOR_CUDA_SCALE_TRAINING", f"status={status}"
+
+
+def replay_execution_ready(report: dict[str, Any] | None) -> tuple[bool, str]:
+    if report is None:
+        return False, "missing replay execution report"
+    if report.get("schema") != REPLAY_EXECUTION_SCHEMA:
+        return False, "schema mismatch"
+    if report.get("release_use_allowed") is not False:
+        return False, "release_use_allowed must be false"
+    if report.get("status") != "EXECUTED_REPLAY_EVIDENCE_READY":
+        return False, f"status={report.get('status')}"
+    artifacts = report.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return False, "artifacts missing"
+    for name in ("metrics", "openlane_log", "openroad_log", "def", "gds"):
+        item = artifacts.get(name)
+        if not isinstance(item, dict) or item.get("status") != "PRESENT":
+            return False, f"required execution artifact missing: {name}"
+    return True, "validated OpenLane/OpenROAD replay execution evidence"
+
+
+def replay_comparison_ready(report: dict[str, Any] | None) -> tuple[bool, str]:
+    if report is None:
+        return False, "missing replay comparison report"
+    if report.get("schema") != REPLAY_COMPARISON_SCHEMA:
+        return False, "schema mismatch"
+    if report.get("release_use_allowed") is not False:
+        return False, "release_use_allowed must be false"
+    if report.get("status") != "COMPARISON_READY":
+        return False, f"status={report.get('status')}"
+    if report.get("optimization_claim_allowed") is not True:
+        return False, "optimization_claim_allowed must be true"
+    if int(report.get("improvement_count", 0)) <= 0:
+        return False, "no objective metric improvement recorded"
+    if int(report.get("signoff_regression_count", 0)) != 0:
+        return False, "signoff regressions recorded"
+    return True, "validated baseline-vs-candidate replay comparison"
+
+
+def full_training_matrix_valid(report: dict[str, Any] | None) -> tuple[bool, bool, str]:
+    if report is None:
+        return False, False, "missing full training matrix"
+    if report.get("schema") != FULL_TRAINING_MATRIX_SCHEMA:
+        return False, False, "schema mismatch"
+    if report.get("release_use_allowed") is not False:
+        return False, False, "release_use_allowed must be false"
+    if report.get("large_training_claim_allowed") is not False:
+        return False, False, "large_training_claim_allowed must remain false"
+    jobs = report.get("jobs")
+    if not isinstance(jobs, list) or len(jobs) < 10:
+        return False, False, "job matrix is too small"
+    status = report.get("status")
+    if status not in {"MATRIX_READY_FOR_CUDA_HOST", "MATRIX_RECORDED_WITH_BLOCKERS"}:
+        return False, False, f"unsupported status={status}"
+    blockers = report.get("blockers")
+    if status == "MATRIX_RECORDED_WITH_BLOCKERS" and not blockers:
+        return False, False, "blocked matrix lacks blockers"
+    if status == "MATRIX_READY_FOR_CUDA_HOST" and blockers:
+        return False, False, "ready matrix has blockers"
+    return True, status == "MATRIX_READY_FOR_CUDA_HOST", f"status={status}"
+
+
 def blocker(
     blocker_id: str, severity: str, detail: str, evidence: str | None = None
 ) -> dict[str, str]:
@@ -156,7 +239,7 @@ def blocker(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument(
         "--preflight-run-id",
         default=None,
@@ -183,6 +266,11 @@ def parse_args() -> argparse.Namespace:
         help="Run id for AlphaChip checkpoint blocker evidence; defaults to --run-id.",
     )
     parser.add_argument(
+        "--alphachip-successor-run-id",
+        default=None,
+        help="Run id for AlphaChip successor/fallback plan evidence; defaults to --run-id.",
+    )
+    parser.add_argument(
         "--watchlist-run-id",
         default=None,
         help="Run id for current-research watchlist evidence; defaults to --run-id.",
@@ -196,6 +284,21 @@ def parse_args() -> argparse.Namespace:
         "--replay-prerequisites-run-id",
         default=None,
         help="Run id for OpenLane replay prerequisite evidence; defaults to --replay-preflight-run-id.",
+    )
+    parser.add_argument(
+        "--replay-execution-run-id",
+        default=None,
+        help="Run id for OpenLane replay execution evidence; defaults to --replay-preflight-run-id.",
+    )
+    parser.add_argument(
+        "--replay-comparison-run-id",
+        default=None,
+        help="Run id for OpenLane replay comparison evidence; defaults to --replay-execution-run-id.",
+    )
+    parser.add_argument(
+        "--full-training-matrix-run-id",
+        default=None,
+        help="Run id for full CUDA training matrix evidence; defaults to --run-id.",
     )
     parser.add_argument(
         "--setup-run-id",
@@ -219,9 +322,13 @@ def main() -> int:
     run_plan_execution_run_id = args.run_plan_execution_run_id or payload_run_id
     run_plan_safety_run_id = args.run_plan_safety_run_id or payload_run_id
     alphachip_run_id = args.alphachip_run_id or run_id
+    alphachip_successor_run_id = args.alphachip_successor_run_id or run_id
     watchlist_run_id = args.watchlist_run_id or run_id
     replay_preflight_run_id = args.replay_preflight_run_id or run_id
     replay_prerequisites_run_id = args.replay_prerequisites_run_id or replay_preflight_run_id
+    replay_execution_run_id = args.replay_execution_run_id or replay_preflight_run_id
+    replay_comparison_run_id = args.replay_comparison_run_id or replay_execution_run_id
+    full_training_matrix_run_id = args.full_training_matrix_run_id or run_id
     setup_run_id = args.setup_run_id or run_id
     training_handoff_run_id = args.training_handoff_run_id or f"{run_id}-training-handoff"
     preflight_path = (
@@ -247,6 +354,10 @@ def main() -> int:
         ROOT
         / f"build/ai_eda/alphachip_checkpoint_blocker/{alphachip_run_id}/alphachip_checkpoint_blocker_audit.json"
     )
+    alphachip_successor_path = (
+        ROOT
+        / f"build/ai_eda/alphachip_successor_plan/{alphachip_successor_run_id}/alphachip_successor_plan.json"
+    )
     watchlist_path = (
         ROOT / f"build/ai_eda/current_research_watchlist/{watchlist_run_id}/targets_report.json"
     )
@@ -257,6 +368,18 @@ def main() -> int:
     replay_prerequisites_path = (
         ROOT
         / f"build/ai_eda/openlane_replay_prerequisites/{replay_prerequisites_run_id}/openlane_replay_prerequisites.json"
+    )
+    replay_execution_path = (
+        ROOT
+        / f"build/ai_eda/openlane_replay_execution/{replay_execution_run_id}/openlane_replay_execution.json"
+    )
+    replay_comparison_path = (
+        ROOT
+        / f"build/ai_eda/openlane_replay_comparison/{replay_comparison_run_id}/openlane_replay_comparison.json"
+    )
+    full_training_matrix_path = (
+        ROOT
+        / f"build/ai_eda/cuda_full_training_matrix/{full_training_matrix_run_id}/cuda_full_training_matrix.json"
     )
     setup_bootstrap_path = ROOT / f"build/ai_eda/bootstrap/{setup_run_id}/bootstrap_report.json"
     training_handoff_bootstrap_path = (
@@ -289,9 +412,13 @@ def main() -> int:
     run_plan_execution = load_json(run_plan_execution_path)
     run_plan_safety_matrix = load_json(run_plan_safety_matrix_path)
     alphachip = load_json(alphachip_path)
+    alphachip_successor = load_json(alphachip_successor_path)
     watchlist = load_json(watchlist_path)
     replay = load_json(replay_path)
     replay_prerequisites = load_json(replay_prerequisites_path)
+    replay_execution = load_json(replay_execution_path)
+    replay_comparison = load_json(replay_comparison_path)
+    full_training_matrix = load_json(full_training_matrix_path)
     setup_bootstrap = load_json(setup_bootstrap_path)
     training_handoff_bootstrap = load_json(training_handoff_bootstrap_path)
     torch_training = load_json(torch_training_path)
@@ -395,6 +522,22 @@ def main() -> int:
                     "Run plan lacks its safety-matrix checker command",
                 )
             )
+        if not has_command(run_plan, "capture_cuda_full_training_matrix.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_full_training_matrix",
+                    "hard",
+                    "Run plan lacks full CUDA training matrix capture",
+                )
+            )
+        if not has_command(run_plan, "check_cuda_full_training_matrix.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_full_training_matrix_checker",
+                    "hard",
+                    "Run plan lacks full CUDA training matrix checker",
+                )
+            )
         if not has_output(
             run_plan, "build/ai_eda/cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json"
         ):
@@ -416,6 +559,17 @@ def main() -> int:
                     "Run plan lacks safety-matrix expected output",
                 )
             )
+        if not has_output(
+            run_plan,
+            "build/ai_eda/cuda_full_training_matrix/<run-id>/cuda_full_training_matrix.json",
+        ):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_full_training_matrix_output",
+                    "hard",
+                    "Run plan lacks full CUDA training matrix expected output",
+                )
+            )
         if not has_command(run_plan, "select_macro_placement_replay_queue.py"):
             blockers.append(
                 blocker(
@@ -432,6 +586,22 @@ def main() -> int:
                     "Run plan lacks macro-placement replay queue checker",
                 )
             )
+        if not has_command(run_plan, "capture_alphachip_successor_plan.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_alphachip_successor_plan",
+                    "hard",
+                    "Run plan lacks AlphaChip successor/fallback plan capture",
+                )
+            )
+        if not has_command(run_plan, "check_alphachip_successor_plan.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_alphachip_successor_plan_checker",
+                    "hard",
+                    "Run plan lacks AlphaChip successor/fallback plan checker",
+                )
+            )
         if not has_command(run_plan, "capture_openlane_replay_prerequisites.py"):
             blockers.append(
                 blocker(
@@ -446,6 +616,38 @@ def main() -> int:
                     "run_plan_missing_openlane_replay_prerequisite_checker",
                     "hard",
                     "Run plan lacks OpenLane/OpenROAD replay prerequisite checker",
+                )
+            )
+        if not has_command(run_plan, "capture_openlane_replay_execution.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_openlane_replay_execution_evidence",
+                    "hard",
+                    "Run plan lacks OpenLane/OpenROAD replay execution evidence capture",
+                )
+            )
+        if not has_command(run_plan, "check_openlane_replay_execution.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_openlane_replay_execution_checker",
+                    "hard",
+                    "Run plan lacks OpenLane/OpenROAD replay execution evidence checker",
+                )
+            )
+        if not has_command(run_plan, "capture_openlane_replay_comparison.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_openlane_replay_comparison_evidence",
+                    "hard",
+                    "Run plan lacks baseline-vs-candidate replay comparison capture",
+                )
+            )
+        if not has_command(run_plan, "check_openlane_replay_comparison.py"):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_openlane_replay_comparison_checker",
+                    "hard",
+                    "Run plan lacks baseline-vs-candidate replay comparison checker",
                 )
             )
         if not has_output(
@@ -467,6 +669,39 @@ def main() -> int:
                     "run_plan_missing_openlane_replay_prerequisites_output",
                     "hard",
                     "Run plan lacks OpenLane/OpenROAD replay prerequisite expected output",
+                )
+            )
+        if not has_output(
+            run_plan,
+            "build/ai_eda/openlane_replay_execution/<run-id>/openlane_replay_execution.json",
+        ):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_openlane_replay_execution_output",
+                    "hard",
+                    "Run plan lacks OpenLane/OpenROAD replay execution expected output",
+                )
+            )
+        if not has_output(
+            run_plan,
+            "build/ai_eda/openlane_replay_comparison/<run-id>/openlane_replay_comparison.json",
+        ):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_openlane_replay_comparison_output",
+                    "hard",
+                    "Run plan lacks baseline-vs-candidate replay comparison expected output",
+                )
+            )
+        if not has_output(
+            run_plan,
+            "build/ai_eda/alphachip_successor_plan/<run-id>/alphachip_successor_plan.json",
+        ):
+            blockers.append(
+                blocker(
+                    "run_plan_missing_alphachip_successor_plan_output",
+                    "hard",
+                    "Run plan lacks AlphaChip successor/fallback plan expected output",
                 )
             )
 
@@ -518,6 +753,19 @@ def main() -> int:
                 )
             )
 
+    alphachip_successor_validated, alphachip_successor_cuda_ready, alphachip_successor_detail = (
+        alphachip_successor_plan_valid(alphachip_successor)
+    )
+    if not alphachip_successor_validated:
+        blockers.append(
+            blocker(
+                "alphachip_successor_plan_not_validated",
+                "hard",
+                "AlphaChip successor/fallback training plan is missing or invalid",
+                f"{rel(alphachip_successor_path)}: {alphachip_successor_detail}",
+            )
+        )
+
     if watchlist is None:
         blockers.append(
             blocker(
@@ -568,6 +816,13 @@ def main() -> int:
     replay_queue_validated, replay_queue_detail = replay_queue_ready(replay_queue)
     replay_prerequisites_validated, openlane_replay_host_ready, replay_prerequisites_detail = (
         replay_prerequisites_valid(replay_prerequisites)
+    )
+    replay_execution_validated, replay_execution_detail = replay_execution_ready(replay_execution)
+    replay_comparison_validated, replay_comparison_detail = replay_comparison_ready(
+        replay_comparison
+    )
+    full_training_matrix_validated, full_training_matrix_ready, full_training_matrix_detail = (
+        full_training_matrix_valid(full_training_matrix)
     )
     training_handoff_payload_ready = bool(
         training_handoff_payload and training_handoff_payload.get("included_file_count", 0) > 0
@@ -652,6 +907,24 @@ def main() -> int:
                 rel(training_handoff_payload_path),
             )
         )
+    if not full_training_matrix_validated:
+        blockers.append(
+            blocker(
+                "full_training_matrix_not_validated",
+                "hard",
+                "Full CUDA training/evaluation matrix is missing or invalid",
+                f"{rel(full_training_matrix_path)}: {full_training_matrix_detail}",
+            )
+        )
+    elif not full_training_matrix_ready:
+        blockers.append(
+            blocker(
+                "full_training_matrix_blocked",
+                "hard",
+                "Full CUDA training/evaluation matrix is recorded but blocked",
+                f"{rel(full_training_matrix_path)}: {full_training_matrix_detail}",
+            )
+        )
 
     replay_ready = False
     if replay is None:
@@ -676,12 +949,30 @@ def main() -> int:
                     str(replay.get("status")),
                 )
             )
+    if not replay_execution_validated:
+        blockers.append(
+            blocker(
+                "openlane_replay_execution_not_validated",
+                "hard",
+                "OpenLane/OpenROAD replay execution evidence is missing or incomplete",
+                f"{rel(replay_execution_path)}: {replay_execution_detail}",
+            )
+        )
+    if not replay_comparison_validated:
+        blockers.append(
+            blocker(
+                "openlane_replay_comparison_not_validated",
+                "hard",
+                "Baseline-vs-candidate OpenLane/OpenROAD replay comparison is missing or incomplete",
+                f"{rel(replay_comparison_path)}: {replay_comparison_detail}",
+            )
+        )
 
     large_cuda_ready = bool(preflight and preflight.get("cuda", {}).get("large_training_ready"))
     hard_blockers = [item for item in blockers if item["severity"] == "hard"]
     report = {
         "schema": "eliza.ai_eda.cuda_readiness_audit.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": run_id,
         "evidence_run_ids": {
             "preflight": preflight_run_id,
@@ -689,9 +980,13 @@ def main() -> int:
             "run_plan_execution": run_plan_execution_run_id,
             "run_plan_safety_matrix": run_plan_safety_run_id,
             "alphachip_checkpoint": alphachip_run_id,
+            "alphachip_successor_plan": alphachip_successor_run_id,
             "current_research_watchlist": watchlist_run_id,
             "replay_preflight": replay_preflight_run_id,
             "replay_prerequisites": replay_prerequisites_run_id,
+            "replay_execution": replay_execution_run_id,
+            "replay_comparison": replay_comparison_run_id,
+            "full_training_matrix": full_training_matrix_run_id,
             "setup_check": setup_run_id,
             "training_handoff": training_handoff_run_id,
         },
@@ -713,10 +1008,16 @@ def main() -> int:
             "payload_handoff_ready": payload_ready,
             "run_plan_dry_run_validated": run_plan_dry_run_validated,
             "run_plan_safety_matrix_validated": run_plan_safety_matrix_validated,
+            "full_training_matrix_validated": full_training_matrix_validated,
+            "full_training_matrix_ready": full_training_matrix_ready,
             "large_cuda_training_ready": large_cuda_ready,
             "alphachip_checkpoint_available": alphachip_available,
+            "alphachip_successor_plan_validated": alphachip_successor_validated,
+            "alphachip_successor_cuda_scale_ready": alphachip_successor_cuda_ready,
             "current_research_watchlist_captured": watchlist is not None,
             "e1_openlane_replay_ready": replay_ready,
+            "openlane_replay_execution_validated": replay_execution_validated,
+            "openlane_replay_comparison_validated": replay_comparison_validated,
             "setup_check_bootstrap_complete": setup_complete,
             "training_handoff_bootstrap_complete": training_handoff_complete,
             "torch_training_validated": torch_training_complete,
@@ -733,10 +1034,14 @@ def main() -> int:
             artifact(run_plan_path),
             artifact(run_plan_execution_path),
             artifact(run_plan_safety_matrix_path),
+            artifact(full_training_matrix_path),
             artifact(alphachip_path),
+            artifact(alphachip_successor_path),
             artifact(watchlist_path),
             artifact(replay_path),
             artifact(replay_prerequisites_path),
+            artifact(replay_execution_path),
+            artifact(replay_comparison_path),
             artifact(setup_bootstrap_path),
             artifact(training_handoff_bootstrap_path),
             artifact(torch_training_path),
@@ -750,9 +1055,11 @@ def main() -> int:
             "run the embedded cuda_training_run_plan.json through execute_cuda_run_plan.py in dry-run mode on the CUDA host",
             "validate stage selection and risky-stage blocking with check_cuda_run_plan_safety_matrix.py on the CUDA host",
             "run this audit on the CUDA host after executing the selected stages from the embedded cuda_training_run_plan.json",
+            "complete the full CUDA training matrix and resolve bounded-conversion blockers",
             "finish or explicitly record setup-check/training-handoff bootstrap reports for the CUDA host",
             "resolve OpenLane/OpenROAD replay prerequisite blockers on the PD host before replay execution",
             "run deterministic E1 OpenLane/OpenROAD replay before accepting any candidate optimization",
+            "compare baseline and candidate replay metrics before accepting any optimization claim",
             "resolve AlphaChip checkpoint/binary access or continue with from-scratch/non-AlphaChip training only",
         ],
     }

@@ -14,7 +14,7 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -250,7 +250,7 @@ def main() -> int:
 
         report = {
             "schema": "eliza.ai_eda.macro_placement_replay_preflight.v1",
-            "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+            "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             "run_id": args.run_id,
             "claim_boundary": CLAIM_BOUNDARY,
             "release_use_allowed": False,
@@ -274,7 +274,7 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         report = {
             "schema": "eliza.ai_eda.macro_placement_replay_preflight.v1",
-            "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+            "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             "run_id": args.run_id,
             "claim_boundary": CLAIM_BOUNDARY,
             "release_use_allowed": False,

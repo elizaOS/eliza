@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -119,7 +119,7 @@ def predicted_locations(
     predicted = []
     source_counts: Counter[str] = Counter()
     for index, (obj, xy, orientation_id) in enumerate(
-        zip(movable, xy_values, orientation_ids, strict=False)
+        zip(movable, xy_values, orientation_ids)
     ):
         width, height = object_size_um(obj)
         x_um = min_x + float(xy[0]) * core_w
@@ -144,7 +144,6 @@ def predicted_locations(
     for (obj_index, _px, _py, orientation, source), (_slot_index, slot) in zip(
         indexed_predictions,
         indexed_slots,
-        strict=False,
     ):
         locations_by_object[obj_index] = (slot[0], slot[1], orientation, source)
     return [
@@ -201,7 +200,7 @@ def candidate_for_case(
         return None
     locations, source_counts = predicted_locations(torch, model, device, case, movable)
     changes = []
-    for obj, (x_um, y_um, orientation, _source) in zip(movable, locations, strict=False):
+    for obj, (x_um, y_um, orientation, _source) in zip(movable, locations):
         if not isinstance(obj, dict) or not obj.get("id"):
             continue
         changes.append(
@@ -320,7 +319,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.macro_placement_torch_inference_run.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "model": rel(model_path),

@@ -14,7 +14,7 @@ import argparse
 import hashlib
 import json
 import math
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -162,7 +162,7 @@ def location_boxes(
     movable: list[dict[str, Any]],
 ) -> list[tuple[float, float, float, float]]:
     boxes = []
-    for (x_um, y_um), obj in zip(locations, movable, strict=False):
+    for (x_um, y_um), obj in zip(locations, movable):
         width, height = object_size_um(obj)
         boxes.append((x_um, y_um, x_um + width, y_um + height))
     return boxes
@@ -180,7 +180,7 @@ def legal_locations(
     locations: list[tuple[float, float]],
 ) -> bool:
     min_x, min_y, max_x, max_y = [float(value) for value in core]
-    for (x_um, y_um), obj in zip(locations, movable, strict=False):
+    for (x_um, y_um), obj in zip(locations, movable):
         width, height = object_size_um(obj)
         if x_um < min_x or y_um < min_y or x_um + width > max_x or y_um + height > max_y:
             return False
@@ -393,7 +393,7 @@ def mean_target_distance(
     movable: list[dict[str, Any]],
 ) -> float:
     distances = []
-    for (x_um, y_um), obj in zip(locations, movable, strict=False):
+    for (x_um, y_um), obj in zip(locations, movable):
         target = obj.get("target_placement")
         if not isinstance(target, dict):
             continue
@@ -538,7 +538,7 @@ def candidate_for_case(
         candidate_prefix = "macro-placement-center-baseline"
     else:
         raise ValueError(f"unsupported policy {policy!r}")
-    for obj, (x_um, y_um) in zip(movable, locations, strict=False):
+    for obj, (x_um, y_um) in zip(movable, locations):
         if not isinstance(obj, dict) or not obj.get("id"):
             continue
         changes.append(
@@ -607,7 +607,7 @@ def main() -> int:
 
     model = {
         "schema": "eliza.ai_eda.macro_placement_policy.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "policies": [
             "center_legal_baseline",
@@ -707,7 +707,7 @@ def main() -> int:
     report_status = "PASS_WITH_BLOCKED_CASES" if blocked else "PASS"
     report = {
         "schema": "eliza.ai_eda.macro_placement_baseline_report.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "status": report_status,
         "claim_boundary": CLAIM_BOUNDARY,

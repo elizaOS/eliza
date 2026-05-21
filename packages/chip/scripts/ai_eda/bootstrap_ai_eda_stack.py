@@ -14,7 +14,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,7 @@ METADATA_TARGETS = (
     "ai-eda-external-assets-check",
     "ai-eda-external-intake-check",
     "ai-eda-alphachip-checkpoint-blocker-check",
+    "ai-eda-external-method-wrapper-readiness-check",
     "ai-eda-internal-schemas-check",
     "ai-eda-external-assets-dry-run",
 )
@@ -99,7 +100,7 @@ HANDOFF_TARGETS = (
 
 
 def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
-    started = datetime.now(UTC).replace(microsecond=0).isoformat()
+    started = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     try:
         result = subprocess.run(
             command,
@@ -112,7 +113,7 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
         return {
             "command": command,
             "started_at_utc": started,
-            "finished_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+            "finished_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             "returncode": result.returncode,
             "stdout_tail": result.stdout[-8000:],
             "stderr_tail": result.stderr[-8000:],
@@ -121,7 +122,7 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
         return {
             "command": command,
             "started_at_utc": started,
-            "finished_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+            "finished_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             "returncode": 124,
             "stdout_tail": (exc.stdout or "")[-8000:] if isinstance(exc.stdout, str) else "",
             "stderr_tail": (exc.stderr or "")[-8000:] if isinstance(exc.stderr, str) else "",
@@ -143,6 +144,52 @@ def print_step_status(kind: str, item: dict[str, Any], target: str | None = None
     )
 
 
+def step_key(step: dict[str, Any]) -> tuple[Any, ...]:
+    if step.get("kind") == "make_target":
+        return ("make_target", step.get("target"))
+    return (step.get("kind"), tuple(step.get("command") or []))
+
+
+def load_resume_steps(report_path: Path) -> tuple[dict[tuple[Any, ...], dict[str, Any]], list[dict[str, Any]]]:
+    if not report_path.is_file():
+        return {}, []
+    data = json.loads(report_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return {}, []
+    successful: dict[tuple[Any, ...], dict[str, Any]] = {}
+    superseded_failures: list[dict[str, Any]] = []
+    for step in data.get("steps", []):
+        if not isinstance(step, dict):
+            continue
+        key = step_key(step)
+        if step.get("returncode") == 0:
+            resumed = dict(step)
+            resumed["resumed_from_previous_report"] = True
+            successful[key] = resumed
+        else:
+            superseded_failures.append(
+                {
+                    "kind": step.get("kind"),
+                    "target": step.get("target"),
+                    "command": step.get("command"),
+                    "returncode": step.get("returncode"),
+                }
+            )
+    return successful, superseded_failures
+
+
+def use_resumed_step(
+    key: tuple[Any, ...],
+    successful: dict[tuple[Any, ...], dict[str, Any]],
+    steps: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    item = successful.get(key)
+    if item is None:
+        return None
+    steps.append(item)
+    return item
+
+
 def build_report(
     args: argparse.Namespace,
     steps: list[dict[str, Any]],
@@ -151,7 +198,7 @@ def build_report(
 ) -> dict[str, Any]:
     return {
         "schema": "eliza.ai_eda.bootstrap_report.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "profile": args.profile,
         "status": status,
@@ -166,6 +213,8 @@ def build_report(
         "assets": args.asset,
         "execute_fetch": bool(args.execute_fetch),
         "include_torch": bool(args.include_torch),
+        "resume": bool(args.resume),
+        "superseded_failed_steps": getattr(args, "superseded_failed_steps", []),
         "step_count": len(steps),
         "failed_steps": [
             {
@@ -258,6 +307,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--include-torch", action="store_true")
     parser.add_argument("--continue-on-error", action="store_true")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="reuse successful steps from an existing report and rerun failed or missing steps",
+    )
     parser.add_argument("--timeout-seconds", type=int, default=24 * 3600)
     return parser.parse_args()
 
@@ -266,22 +320,28 @@ def main() -> int:
     args = parse_args()
     out_dir = args.report_root / args.run_id
     out_dir.mkdir(parents=True, exist_ok=True)
+    report_path = out_dir / "bootstrap_report.json"
 
     steps: list[dict[str, Any]] = []
     overall_rc = 0
+    resume_successes, superseded_failures = load_resume_steps(report_path) if args.resume else ({}, [])
+    args.superseded_failed_steps = superseded_failures
 
-    preflight = run(
-        [
-            sys.executable,
-            "scripts/ai_eda/preflight_cuda_training_stack.py",
-            "--run-id",
-            args.run_id,
-        ],
-        args.timeout_seconds,
-    )
-    steps.append({"kind": "preflight", **preflight})
+    preflight_command = [
+        sys.executable,
+        "scripts/ai_eda/preflight_cuda_training_stack.py",
+        "--run-id",
+        args.run_id,
+    ]
+    preflight = use_resumed_step(("preflight", tuple(preflight_command)), resume_successes, steps)
+    if preflight is None:
+        preflight = run(preflight_command, args.timeout_seconds)
+        steps.append({"kind": "preflight", **preflight})
+    else:
+        print_step_status("preflight", preflight)
     write_report(args, out_dir, steps, overall_rc, "RUNNING")
-    print_step_status("preflight", preflight)
+    if not preflight.get("resumed_from_previous_report"):
+        print_step_status("preflight", preflight)
     if preflight["returncode"] != 0:
         overall_rc = max(overall_rc, preflight["returncode"])
         if not args.continue_on_error:
@@ -292,8 +352,10 @@ def main() -> int:
         targets = selected_targets(args.profile, args.include_torch)
 
     for command in fetch_commands(args):
-        item = run(command, args.timeout_seconds)
-        steps.append({"kind": "external_asset", **item})
+        item = use_resumed_step(("external_asset", tuple(command)), resume_successes, steps)
+        if item is None:
+            item = run(command, args.timeout_seconds)
+            steps.append({"kind": "external_asset", **item})
         write_report(args, out_dir, steps, overall_rc, "RUNNING")
         print_step_status("external_asset", item)
         if item["returncode"] != 0:
@@ -303,8 +365,10 @@ def main() -> int:
                 break
 
     for target in targets:
-        item = make_target(target, args.timeout_seconds, args.run_id)
-        steps.append({"kind": "make_target", "target": target, **item})
+        item = use_resumed_step(("make_target", target), resume_successes, steps)
+        if item is None:
+            item = make_target(target, args.timeout_seconds, args.run_id)
+            steps.append({"kind": "make_target", "target": target, **item})
         write_report(args, out_dir, steps, overall_rc, "RUNNING")
         print_step_status("make_target", item, target)
         if item["returncode"] != 0:

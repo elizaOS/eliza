@@ -98,6 +98,15 @@ On a CUDA host, run the generated payload flow with:
 python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id cuda-host-training-handoff --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --asset edalearn --asset macro-place-challenge-2026 --asset mlcad-2023-fpga-macro --asset chipdiffusion --asset chipformer --asset core-placement --asset maptune --asset abc-rl --asset abcrl --asset rl4ls --asset mcp4eda --asset orfs-agent --asset openroad-agent --asset openroad-mcp --asset open3dbench --asset dreamplace --asset chiplingo --asset veoplace-vlm --asset audopeda --asset ppa-3dic-surrogate-2026 --include-torch
 ```
 
+If a bootstrap run is interrupted or a transient make failure is fixed, rerun
+the same command with `--resume`. The resumed report reuses successful prior
+steps, reruns failed or missing steps, and records old failures under
+`superseded_failed_steps` rather than current `failed_steps`.
+The setup-check bootstrap has been validated with
+`AI_EDA_RUN_ID=codex-bootstrap-setup5`; this run confirms target captures are
+generated before local RAG/source-inventory checks so stale target hashes do not
+poison setup evidence.
+
 To intentionally pull reviewed assets into ignored local payload directories,
 use explicit asset IDs:
 
@@ -129,8 +138,9 @@ cannot recursively invoke itself. `make ai-eda-cuda-readiness-audit`
 first validates that dry-run execution manifest and safety matrix, then
 summarizes the preflight, payload, AlphaChip checkpoint blocker,
 current-research watchlist, setup-check/bootstrap evidence, training-handoff
-bootstrap evidence, and E1 replay-preflight state into one machine-readable
-blocked-or-ready report for the CUDA host. For evidence produced under
+bootstrap evidence, OpenLane/OpenROAD replay prerequisites, and E1
+replay-preflight state into one machine-readable blocked-or-ready report for
+the CUDA host. For evidence produced under
 different run IDs, pass `AI_EDA_SETUP_RUN_ID=<setup-run>` and
 `AI_EDA_TRAINING_HANDOFF_RUN_ID=<handoff-run>` when invoking the audit. For
 manual audits assembled from reviewed artifacts generated under separate run
@@ -140,9 +150,41 @@ IDs, `capture_cuda_readiness_audit.py` also accepts explicit
 `--replay-preflight-run-id` arguments. `make
 ai-eda-openlane-replay-prerequisites` records the OpenLane/OpenROAD binary,
 PDK, config, run-tree, and replay-queue gates required before deterministic
-replay execution. `make ai-eda-cuda-evidence-bundle` then packages the
-readiness audit and every referenced handoff artifact path, SHA256, size,
-capability flag, and blocker count into a replayable manifest.
+replay execution. `capture_openlane_replay_execution.py` and
+`check_openlane_replay_execution.py` define the post-execution evidence
+contract for PD hosts: metrics, OpenLane/OpenROAD logs, final DEF/GDS, and
+hashes must be present before replay can count as optimization evidence.
+`capture_openlane_replay_comparison.py` and
+`check_openlane_replay_comparison.py` then compare a replayed baseline against
+the candidate, require no timing/DRC/LVS/antenna regression, and require at
+least one objective metric improvement before the optimization-claim gate can
+open.
+`make ai-eda-cuda-evidence-bundle` then packages the readiness audit and every
+referenced handoff artifact path, SHA256, size, capability flag, and blocker
+count into a replayable manifest. `make ai-eda-objective-readiness-audit`
+consumes those artifacts plus the research doc, training handoff, replay queue,
+AlphaChip blocker, OpenLane replay prerequisites, replay execution evidence,
+and replay comparison evidence to report which parts of the full AI-EDA
+objective are proven, incomplete, or blocked. `make
+ai-eda-alphachip-successor-plan` records the checked fallback
+route for AlphaChip-unavailable hosts: public-corpus PyTorch macro-placement
+training/inference/replay now, and Circuit Training scratch only if
+`plc_wrapper_main` is legally supplied and hash-pinned.
+
+Current local validation uses `/usr/bin/python3` for non-Torch checks and
+`/opt/miniconda3/bin/python` for Torch training/inference. The latest split
+evidence refresh is `AI_EDA_RUN_ID=codex-replay-comparison-readiness`, with
+the payload/run-plan from `codex-replay-comparison-payload`, setup evidence
+from `codex-latest-setup-20260521`, training handoff from
+`codex-cuda-ready-conda-20260521-training-handoff`, replay execution from
+`codex-replay-execution-contract`, and replay comparison from
+`codex-replay-comparison-contract`. That audit validates the payload, dry-run,
+safety matrix, setup evidence, MPS Torch training/inference, full replay plan,
+replay queue, OpenLane prerequisite report, AlphaChip successor plan, and
+blocked replay comparison contract. It remains blocked by local CUDA absence,
+public AlphaChip checkpoint access, incomplete training-handoff bootstrap
+status, OpenLane/OpenROAD host prerequisites, E1 deterministic replay
+execution, and missing real baseline-vs-candidate replay comparison evidence.
 
 ## Docker Setup
 

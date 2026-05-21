@@ -14,7 +14,7 @@ import hashlib
 import json
 import shutil
 import subprocess
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -266,7 +266,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--lockfile", type=Path, default=LOCKFILE)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--verify-only", action="store_true")
@@ -329,7 +329,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.external_asset_fetch_report.v1",
-        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "mode": mode,
         "claim_boundary": CLAIM_BOUNDARY,
