@@ -227,12 +227,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if not args.report.exists():
-        print(f"STATUS: FAIL ai_eda.chipbench_d_conversion missing_report {args.report}")
+    report_path = repo_path(str(args.report))
+    if not report_path.exists():
+        print(f"STATUS: FAIL ai_eda.chipbench_d_conversion missing_report {report_path}")
         return 1
     try:
-        report = load_json(args.report)
-        errors = validate_report(report, args.report)
+        report = load_json(report_path)
+        errors = validate_report(report, report_path)
     except Exception as exc:  # noqa: BLE001
         print(f"STATUS: FAIL ai_eda.chipbench_d_conversion {exc}")
         return 1

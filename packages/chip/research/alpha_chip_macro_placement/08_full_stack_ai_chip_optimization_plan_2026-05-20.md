@@ -381,8 +381,8 @@ Current local validation on the 128 GiB M4 host:
   `total_power=8.52562112`; current test MAE values include
   `min_slack=1.752` and `total_power=88.45308526`. These are smoke metrics
   only, not an E1 timing or power claim.
-- `make ai-eda-chipbench-d-convert`: PASS. The bounded local sample converts 8
-  restored ChiPBench-D payload cases into 24 internal placement/design/flow
+- `make ai-eda-chipbench-d-convert`: PASS. The bounded local sample converts 4
+  restored ChiPBench-D payload cases into 12 internal placement/design/flow
   records from 20 available cases, then validates exact report-to-record
   inventory, file hashes, floorplans, macro sizes, target placements, and the
   training-only/no-E1-signoff claim boundary.
