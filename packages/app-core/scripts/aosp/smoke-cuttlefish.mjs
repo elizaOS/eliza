@@ -6,7 +6,7 @@
 // token is readable, chat round-trip works, and response generation
 // stayed local.
 //
-// Designed to run after `node eliza/packages/app-core/scripts/aosp/build-aosp.mjs --launch`
+// Designed to run after `node eliza/packages/scripts/distro-android/build-aosp.mjs --launch`
 // finishes. Idempotent: re-running on the same cvd is fine; the service
 // is restartable. Exit code 0 on full pass, 1 on any failure.
 //

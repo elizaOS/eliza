@@ -143,12 +143,12 @@ emit() {
 	if [ "$result" -eq 0 ]; then
 		# Arch triad. The canonical implementation of these three assertions
 		# is validateExpectedAbi() in
-		# eliza/packages/app-core/scripts/aosp/boot-validate.mjs (reachable
-		# as `boot-validate.mjs --expected-abi <abi>`); the variant-driven
-		# mjs validator owns the x86_64/arm64/variant-riscv64 path. This gate
+		# eliza/packages/scripts/distro-android/boot-validate.mjs (reachable
+		# as `boot-validate.mjs --expected-abi <abi>`); the brand-config
+		# mjs validator owns the x86_64/arm64/riscv64 image path. This gate
 		# keeps its own host-side copy because it targets the chip
-		# ai.elizaos.app product, which has no `app.config.ts > aosp:` variant
-		# block, and pairs the triad with the kernel.log / manifest /
+		# ai.elizaos.app product without going through a distro-android brand
+		# config, and pairs the triad with the kernel.log / manifest /
 		# evidence-emission assertions the mjs validator does not perform.
 		# Keep the two in sync.
 		abi=$(adb_cvd shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r' || true)

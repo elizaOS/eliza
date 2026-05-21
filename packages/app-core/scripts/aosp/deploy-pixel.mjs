@@ -104,7 +104,7 @@ function parseArgs(argv) {
     throw new Error(
       `[deploy-pixel] --abi riscv64 needs an explicit --device <serial> (Pixel is arm64; ` +
         `there is no shipping Google riscv64 phone). For Cuttlefish cf_riscv64_phone, ` +
-        `use \`node packages/app-core/scripts/aosp/sim.mjs --device-dir vsoc_riscv64_only\` instead.`,
+        `use \`make -C packages/os/android sim ARCH=riscv64\` instead.`,
     );
   }
   return args;
