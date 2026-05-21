@@ -25,11 +25,6 @@ const LazyDirectCryptoCreditCard = lazy(async () => {
   return { default: mod.DirectCryptoCreditCard };
 });
 
-const LazyAttachWalletCard = lazy(async () => {
-  const mod = await import("./_components/attach-wallet-card");
-  return { default: mod.AttachWalletCard };
-});
-
 export default function BscPromoPage() {
   const { user, isReady, isAuthenticated, isLoading, isError, error } =
     useUserProfile();
@@ -222,26 +217,22 @@ export default function BscPromoPage() {
                     </Card>
                   }
                 >
-                  {user.wallet_address ? (
-                    <LazyDirectCryptoCreditCard
-                      amount={amountValue}
-                      promoCode="bsc"
-                      status={status}
-                      accountWalletAddress={user.wallet_address}
-                      surface="cloud"
-                      lockedNetwork="bsc"
-                      onSuccess={() => undefined}
-                    />
-                  ) : (
-                    // OAuth signups (Google / Discord / GitHub / Magic
-                    // Link / Passkey) land here. The direct-crypto-payments
-                    // endpoint requires `user.wallet_address`, so until
-                    // they verify a wallet against their account the pay
-                    // button is a dead-end. AttachWalletCard drives the
-                    // SIWE flow that fixes that, then `useUserProfile`
-                    // refetches and this branch swaps to the purchase UI.
-                    <LazyAttachWalletCard chainId={56} />
-                  )}
+                  {/* Any logged-in user can pay — OAuth signups (Google /
+                      Discord / GitHub / Magic Link / Passkey) connect any
+                      EVM wallet via the ConnectButton inside the card; SIWE
+                      users already see their wallet pre-connected. Credits
+                      attach to the organization_id from the session, not to
+                      the paying wallet, so the previous wallet-attach gate
+                      was just blocking legitimate flows. */}
+                  <LazyDirectCryptoCreditCard
+                    amount={amountValue}
+                    promoCode="bsc"
+                    status={status}
+                    accountWalletAddress={user.wallet_address ?? null}
+                    surface="cloud"
+                    lockedNetwork="bsc"
+                    onSuccess={() => undefined}
+                  />
                 </Suspense>
               )}
             </div>

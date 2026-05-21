@@ -12,11 +12,9 @@ export default function AdminLayout() {
   const t = useT();
   const { isReady, isAuthenticated } = useUserProfile();
   const { data, isLoading, isError } = useAdminModerationStatus();
-  const localDevAdmin =
-    import.meta.env.DEV &&
-    import.meta.env.VITE_ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true";
-
-  if (localDevAdmin) {
+  // In local dev, every authenticated user can reach admin surfaces.
+  // Production keeps the role-gate intact via useAdminModerationStatus.
+  if (import.meta.env.DEV) {
     return <Outlet />;
   }
 

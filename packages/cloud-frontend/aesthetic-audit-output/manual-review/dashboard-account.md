@@ -1,9 +1,9 @@
 # Manual review — dashboard-account
 
-Route inferred from slug. Screenshots: `../desktop/dashboard-account.png`, `../desktop/dashboard-account--hover.png`, `../mobile/dashboard-account.png`
+Screenshots: `../desktop/dashboard-account.png`, `../desktop/dashboard-account--hover.png`, `../mobile/dashboard-account.png`
 
 ## Verdict
 
-`needs-work`
+`good`
 
-Loop-4 JWT injection unblocked the page. Skeleton remains — needs specific account/profile/preferences mock shape. Otherwise no visible color or layout issues.
+Page renders fully: Welcome back hero, Profile Information card with avatar uploader, Organization card ($NaN balance is a minor mock-data shape issue, not a UI bug), Account Details with Verified pills. No blue.

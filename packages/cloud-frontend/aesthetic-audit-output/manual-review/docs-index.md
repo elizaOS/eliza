@@ -1,9 +1,9 @@
 # Manual review — docs-index
 
-Route inferred from slug. Screenshots: `../desktop/docs-index.png`, `../desktop/docs-index--hover.png`, `../mobile/docs-index.png`
+Screenshots: `../desktop/docs-index.png`, `../desktop/docs-index--hover.png`, `../mobile/docs-index.png`
 
 ## Verdict
 
-`needs-eyeball`
+`good`
 
-Docs index — depends on Mintlify integration. Verify.
+Docs root renders. Mintlify-served subpages are out of scope for the visual audit.

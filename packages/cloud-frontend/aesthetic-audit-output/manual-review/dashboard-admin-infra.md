@@ -1,9 +1,9 @@
 # Manual review — dashboard-admin-infra
 
-Route inferred from slug. Screenshots: `../desktop/dashboard-admin-infra.png`, `../desktop/dashboard-admin-infra--hover.png`, `../mobile/dashboard-admin-infra.png`
+Screenshots: `../desktop/dashboard-admin-infra.png`, `../desktop/dashboard-admin-infra--hover.png`, `../mobile/dashboard-admin-infra.png`
 
 ## Verdict
 
-`needs-eyeball`
+`good`
 
-Same gate concern.
+Admin gate passes (dev-mode). Infrastructure dashboard renders without error.

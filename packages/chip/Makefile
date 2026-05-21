@@ -1360,7 +1360,8 @@ software-bsp-test:
 evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
-.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check \
+.PHONY: ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check \
+	ai-eda-external-assets-check ai-eda-external-intake-check \
 	ai-eda-external-assets-dry-run ai-eda-local-rag-index ai-eda-backend-preflight \
 	ai-eda-bootstrap-metadata ai-eda-bootstrap-setup-check ai-eda-bootstrap-local-smoke \
 	ai-eda-bootstrap-training-handoff ai-eda-alphachip-checkpoint-blocker-check \
@@ -1385,6 +1386,12 @@ evidence-regression-test: no-hardware-action-check software-bsp-test physical-ga
 	ai-eda-cuda-payload-check ai-eda-cuda-run-plan-dry-run ai-eda-cuda-readiness-audit
 ai-eda-source-inventory-check:
 	@AI_EDA_RUN_ID=$(AI_EDA_RUN_ID) $(PYTHON) scripts/check_ai_eda_source_inventory.py
+
+ai-eda-ai-workload-manifest-check:
+	@$(PYTHON) scripts/ai_eda/check_ai_workload_manifest.py
+
+ai-eda-assertion-candidate-manifests-check:
+	@$(PYTHON) scripts/ai_eda/check_assertion_candidate_manifests.py
 
 ai-eda-external-assets-check:
 	@$(PYTHON) scripts/ai_eda/check_external_asset_manifests.py
@@ -1671,7 +1678,7 @@ ai-eda-cuda-readiness-audit: ai-eda-cuda-preflight ai-eda-cuda-run-plan-dry-run 
 	@$(PYTHON) scripts/ai_eda/capture_cuda_readiness_audit.py --run-id $(AI_EDA_RUN_ID) --setup-run-id $(AI_EDA_SETUP_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_cuda_readiness_audit.py --report build/ai_eda/cuda_readiness_audit/$(AI_EDA_RUN_ID)/cuda_readiness_audit.json
 
-docs-check: ai-eda-local-rag-index ai-eda-backend-preflight ai-eda-all-target-captures ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-alphachip-checkpoint-blocker-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
+docs-check: ai-eda-local-rag-index ai-eda-backend-preflight ai-eda-all-target-captures ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-alphachip-checkpoint-blocker-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
 	@$(PYTHON) scripts/docs_check.py
 
 tool-versions:

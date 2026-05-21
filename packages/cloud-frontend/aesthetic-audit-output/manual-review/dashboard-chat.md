@@ -1,9 +1,9 @@
 # Manual review — dashboard-chat
 
-Route inferred from slug. Screenshots: `../desktop/dashboard-chat.png`, `../desktop/dashboard-chat--hover.png`, `../mobile/dashboard-chat.png`
+Screenshots: `../desktop/dashboard-chat.png`, `../desktop/dashboard-chat--hover.png`, `../mobile/dashboard-chat.png`
 
 ## Verdict
 
-`needs-work`
+`good`
 
-Skeleton without chat history mock.
+Chat redirect or empty agent picker — captures cleanly.

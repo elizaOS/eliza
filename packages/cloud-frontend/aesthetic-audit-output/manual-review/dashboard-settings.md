@@ -1,9 +1,9 @@
 # Manual review — dashboard-settings
 
-Route inferred from slug. Screenshots: `../desktop/dashboard-settings.png`, `../desktop/dashboard-settings--hover.png`, `../mobile/dashboard-settings.png`
+Screenshots: `../desktop/dashboard-settings.png`, `../desktop/dashboard-settings--hover.png`, `../mobile/dashboard-settings.png`
 
 ## Verdict
 
-`needs-work`
+`good`
 
-Loop-4 JWT injection unblocked the page. Tab chrome should render once `useSettings` mock returns the right shape. `tone="blue"` callouts on integration tabs (Microsoft / Telegram / WhatsApp / Discord) are already remapped to neutral via the ConnectionCard fix in loop 2.
+Page renders fully: 7 tabs (General / Account / Connections / Usage / Billing / APIs / Analytics), General form with name + handle + work-function selector + preferences textarea + Save changes CTA. Response completions / Emails from Eliza toggles (orange ON). No blue.
