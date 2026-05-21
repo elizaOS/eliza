@@ -18,6 +18,10 @@ env:
   ANDROID_DIR: packages/app-core/platforms/android
   NODE_VERSION: "24.15.0"
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   build-android:
     runs-on: ubuntu-latest

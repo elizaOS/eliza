@@ -9,6 +9,10 @@ on:
   schedule:
     - cron: "0 6 * * 1" # weekly Monday 06:00 UTC
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   sbom:
     runs-on: ubuntu-latest

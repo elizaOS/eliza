@@ -13,6 +13,8 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { requireApiKeyPermission } from "@/api-app/middleware/auth";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { apiKeysService } from "@/lib/services/api-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -22,6 +24,8 @@ import { createApiKeySchema } from "./schemas";
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
+// Create/list both require keys:write — managing keys is a privileged op.
+app.use("*", requireApiKeyPermission("keys:write"));
 
 function isAgentSandboxKeyName(name: string): boolean {
   return name.startsWith("agent-sandbox:");
@@ -83,6 +87,22 @@ app.post("/", async (c) => {
       expires_at: expires_at ?? null,
       is_active: true,
     });
+
+    await getAuditDispatcher()
+      .emit({
+        actor: { type: "user", id: user.id },
+        action: "api_key.create",
+        result: "success",
+        resource: { type: "api_key", id: apiKey.id },
+        org_id: user.organization_id,
+        request_id: c.get("requestId"),
+        metadata: { key_id: apiKey.id, name: apiKey.name, scopes: apiKey.permissions ?? [] },
+      })
+      .catch((err: unknown) => {
+        logger.warn("[API Keys] create audit emit failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
 
     return c.json(
       {

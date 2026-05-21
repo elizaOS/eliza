@@ -19,9 +19,15 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
 import { mountRoutes } from "./_router.generated";
 import { authMiddleware } from "./middleware/auth";
+import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
 
 export function createApp(): Hono<AppEnv> {
+  // Initialise the global audit dispatcher (auth_events sink + optional
+  // console sink) before any route handlers run. Idempotent — safe to
+  // call from tests too.
+  initAuditDispatcher();
+
   const app = new Hono<AppEnv>({ strict: false });
 
   app.use("*", async (c, next) => {

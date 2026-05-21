@@ -16,58 +16,20 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const EXPLORER_KEY_NAME = "API Explorer Key";
 
-function isUsableExplorerKey(key: {
-  key: string;
-  is_active: boolean;
-  expires_at: Date | null;
-}) {
-  const isValidFormat =
-    key.key.startsWith("eliza_") || key.key.startsWith("sk-");
-  const isExpired = key.expires_at ? key.expires_at < new Date() : false;
-  return key.is_active && isValidFormat && !isExpired;
-}
-
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
+// D-1: api_keys plaintext is encrypted at rest and only revealed at creation
+// time. The previous "find existing usable key and return its plaintext on
+// every GET" behavior is no longer possible — we'd have to decrypt on every
+// request, defeating the one-time-reveal model. We now always rotate: any
+// prior explorer key for the user is deactivated and a fresh one is minted.
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const existingKeys = await apiKeysService.listByOrganization(
-      user.organization_id,
-    );
-    const explorerKeys = existingKeys
-      .filter(
-        (key) => key.name === EXPLORER_KEY_NAME && key.user_id === user.id,
-      )
-      .sort(
-        (left, right) => right.created_at.getTime() - left.created_at.getTime(),
-      );
-
-    const explorerKey = explorerKeys.find(isUsableExplorerKey);
-
-    if (explorerKey) {
-      return c.json({
-        apiKey: {
-          id: explorerKey.id,
-          name: explorerKey.name,
-          description: explorerKey.description,
-          key_prefix: explorerKey.key_prefix,
-          key: explorerKey.key,
-          created_at: explorerKey.created_at,
-          is_active: explorerKey.is_active,
-          usage_count: explorerKey.usage_count,
-          last_used_at: explorerKey.last_used_at,
-        },
-        isNew: false,
-      });
-    }
-
-    if (explorerKeys.length > 0) {
-      await apiKeysService.deactivateUserKeysByName(user.id, EXPLORER_KEY_NAME);
-    }
+    await apiKeysService.deactivateUserKeysByName(user.id, EXPLORER_KEY_NAME);
 
     const { apiKey, plainKey } = await apiKeysService.create({
       name: EXPLORER_KEY_NAME,

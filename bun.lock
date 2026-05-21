@@ -126,6 +126,7 @@
         "@elizaos/plugin-worker-runtime": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
         "@elizaos/plugin-x402": "workspace:*",
+        "@elizaos/security": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/skills": "workspace:*",
         "@elizaos/tui": "workspace:*",
@@ -528,6 +529,7 @@
         "@ai-sdk/openai": "^3.0.54",
         "@cloudflare/workers-types": "^4.20260429.1",
         "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/security": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@fal-ai/client": "^1.10.1",
         "@fal-ai/server-proxy": "^1.2.1",
@@ -797,6 +799,7 @@
         "@elizaos/plugin-elevenlabs": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/security": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.29.0",
         "@neondatabase/serverless": "^1.1.0",
@@ -2497,6 +2500,9 @@
     "packages/plugin-remote-manifest": {
       "name": "@elizaos/plugin-remote-manifest",
       "version": "0.0.1",
+      "dependencies": {
+        "@elizaos/security": "workspace:*",
+      },
       "devDependencies": {
         "bun-types": "^1.3.12",
         "typescript": "^6.0.3",
@@ -2508,6 +2514,7 @@
       "dependencies": {
         "@elizaos/plugin-remote-manifest": "workspace:*",
         "@elizaos/plugin-worker-runtime": "workspace:*",
+        "@elizaos/security": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "^1.3.12",
@@ -2520,6 +2527,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-remote-manifest": "workspace:*",
+        "@elizaos/security": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "^1.3.12",
@@ -2564,6 +2572,18 @@
         "vitest": "^4.0.0",
       },
     },
+    "packages/security": {
+      "name": "@elizaos/security",
+      "version": "2.0.1-beta.0",
+      "dependencies": {
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+    },
     "packages/shared": {
       "name": "@elizaos/shared",
       "version": "2.0.1-beta.0",
@@ -2598,6 +2618,18 @@
       "devDependencies": {
         "@types/node": "^25.0.0",
         "typescript": "^6.0.3",
+      },
+    },
+    "packages/soc2-verify": {
+      "name": "@elizaos/soc2-verify",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/security": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
     },
     "packages/test/cloud-e2e": {
@@ -6329,11 +6361,15 @@
 
     "@elizaos/scenario-runner": ["@elizaos/scenario-runner@workspace:packages/scenario-runner"],
 
+    "@elizaos/security": ["@elizaos/security@workspace:packages/security"],
+
     "@elizaos/setup": ["@elizaos/setup@workspace:packages/os/setup"],
 
     "@elizaos/shared": ["@elizaos/shared@workspace:packages/shared"],
 
     "@elizaos/skills": ["@elizaos/skills@workspace:packages/skills"],
+
+    "@elizaos/soc2-verify": ["@elizaos/soc2-verify@workspace:packages/soc2-verify"],
 
     "@elizaos/three-agent-dialogue": ["@elizaos/three-agent-dialogue@workspace:packages/benchmarks/three-agent-dialogue"],
 

@@ -27,6 +27,10 @@ concurrency:
   group: update-homebrew-${{ github.ref }}
   cancel-in-progress: true
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   update-tap:
     name: Trigger Homebrew tap update

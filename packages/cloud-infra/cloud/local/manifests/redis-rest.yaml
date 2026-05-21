@@ -15,15 +15,37 @@ spec:
       labels:
         app: redis-rest
     spec:
+      # SOC2 CC6.3 / A1.2 — pod-level hardening defaults.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: redis-rest
+          # TODO(soc2): pin to digest, e.g. hiett/serverless-redis-http@sha256:<digest>
           image: hiett/serverless-redis-http:latest
           ports:
             - containerPort: 80
+          # SOC2 CC6.3 — container-level hardening.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           env:
             - name: SRH_MODE
               value: env
             - name: SRH_TOKEN
+              # Local dev only. Production loads via ESO -> Steward.
+              # TODO(soc2): replace literal with secretKeyRef once ESO is wired.
               value: local_dev_token
             - name: SRH_CONNECTION_STRING
               value: redis://redis-master.eliza-infra.svc:6379
@@ -33,6 +55,19 @@ spec:
               cpu: 50m
             limits:
               memory: 128Mi
+          volumeMounts:
+            # readOnlyRootFilesystem demands explicit writable mounts.
+            - name: tmp
+              mountPath: /tmp
+            - name: var-cache
+              mountPath: /var/cache
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: var-cache
+          emptyDir:
+            sizeLimit: 64Mi
 ---
 apiVersion: v1
 kind: Service

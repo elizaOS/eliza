@@ -37,6 +37,7 @@
  * `@elizaos/plugin-training` and adding the dependency would invert the layering.
  */
 
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import {
 	readFile,
@@ -140,6 +141,86 @@ export interface OptimizedPromptMetadata {
 
 function defaultStoreRoot(): string {
 	return join(resolveStateDir(), "optimized-prompts");
+}
+
+// -----------------------------------------------------------------------------
+// SOC2 CC6.8 — HMAC integrity tags on optimized-prompt artifacts.
+//
+// Every artifact written via setPrompt() gets a sibling `.mac` file containing
+// HMAC-SHA256(payload_bytes, key). On load, the MAC is recomputed and a
+// mismatch triggers AUDIT_ACTIONS.optimized_prompt.integrity_failed (emitted
+// via the runtime's structured logger; the audit dispatcher in
+// @elizaos/security picks up the entry through the logger sink).
+//
+// Key source: in this single-user-desktop context the HMAC key is derived
+// from `ELIZA_OPTIMIZED_PROMPT_HMAC_KEY` (a 32-byte hex/base64 secret set at
+// install time). The contract mirrors `KmsClient.hmac(orgKey(orgId,
+// "optimized-prompt-integrity"), bytes)` from `@elizaos/security`; once core
+// can depend on security in the build graph this is swapped for the real KMS
+// adapter without changing the on-disk format.
+// -----------------------------------------------------------------------------
+
+const OPTIMIZED_PROMPT_MAC_SUFFIX = ".mac";
+const OPTIMIZED_PROMPT_HMAC_DEFAULT_KEY_TAG =
+	"elizaos.optimized-prompt.integrity.v1";
+
+function resolveHmacKey(): Buffer {
+	const fromEnv = process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+	if (fromEnv && fromEnv.trim()) {
+		// Accept hex (64 chars) or base64; fall back to raw utf-8 bytes.
+		const trimmed = fromEnv.trim();
+		if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+			return Buffer.from(trimmed, "hex");
+		}
+		try {
+			const buf = Buffer.from(trimmed, "base64");
+			if (buf.length >= 16) return buf;
+		} catch {
+			// fall through
+		}
+		return Buffer.from(trimmed, "utf-8");
+	}
+	// Deterministic fallback: HMAC key tag itself. This is NOT secret-grade
+	// but it does protect against accidental tampering by an unrelated
+	// process and it lets local-dev installs run without explicit setup.
+	// Production deployments must set ELIZA_OPTIMIZED_PROMPT_HMAC_KEY.
+	return Buffer.from(OPTIMIZED_PROMPT_HMAC_DEFAULT_KEY_TAG, "utf-8");
+}
+
+function computeArtifactMac(payload: Buffer | string): string {
+	const key = resolveHmacKey();
+	const data = typeof payload === "string" ? Buffer.from(payload, "utf-8") : payload;
+	return createHmac("sha256", key).update(data).digest("hex");
+}
+
+function verifyArtifactMac(payload: Buffer | string, expectedHex: string): boolean {
+	if (!/^[0-9a-fA-F]{64}$/.test(expectedHex.trim())) return false;
+	const expected = Buffer.from(expectedHex.trim(), "hex");
+	const actual = Buffer.from(computeArtifactMac(payload), "hex");
+	if (expected.length !== actual.length) return false;
+	return timingSafeEqual(expected, actual);
+}
+
+function macPathFor(artifactPath: string): string {
+	return `${artifactPath}${OPTIMIZED_PROMPT_MAC_SUFFIX}`;
+}
+
+/**
+ * Audit-event tag emitted when an optimized-prompt artifact's HMAC fails
+ * verification. Mirrors the contract surface
+ * `AUDIT_ACTIONS.optimized_prompt.integrity_failed` from
+ * `@elizaos/security`; the dispatcher is loaded by the runtime, which
+ * means logging this tag from core is sufficient for the audit pipeline
+ * to pick it up.
+ */
+export const OPTIMIZED_PROMPT_INTEGRITY_FAILED_AUDIT_ACTION =
+	"optimized_prompt.integrity_failed";
+
+/** Test/diagnostic helper: compute the MAC the service would write. */
+export function _computeOptimizedPromptMacForTest(
+	payload: string,
+): string {
+	return computeArtifactMac(payload);
 }
 
 function isStringRecord(value: unknown): value is Record<string, unknown> {
@@ -395,6 +476,14 @@ export class OptimizedPromptService extends Service {
 		await writeFile(tempPath, payload, "utf-8");
 		await rename(tempPath, finalPath);
 
+		// SOC2 CC6.8: persist HMAC sidecar so getPrompt() can detect
+		// tampering. The MAC covers the on-disk payload bytes verbatim.
+		const macHex = computeArtifactMac(payload);
+		const macPath = macPathFor(finalPath);
+		const macTemp = `${macPath}.tmp-${process.pid}-${Date.now()}`;
+		await writeFile(macTemp, `${macHex}\n`, "utf-8");
+		await rename(macTemp, macPath);
+
 		// Repoint symlinks: current → vN, previous → vN-1, previous2 → vN-2.
 		const allVersions = [...existingVersions, nextVersion];
 		await repointVersionLinks(dir, allVersions);
@@ -618,11 +707,27 @@ async function removeIfExists(path: string): Promise<void> {
 	}
 }
 
+/**
+ * Resolve the `.mac` sidecar path for a given artifact path. When `path` is
+ * a symlink (e.g. `current` -> `v3.json`), the MAC lives next to the
+ * concrete file (`v3.json.mac`), not next to the symlink itself.
+ */
+async function resolveMacPath(artifactPath: string): Promise<string> {
+	const linkTarget = await readLinkOrNull(artifactPath);
+	if (linkTarget !== null) {
+		return macPathFor(join(dirname(artifactPath), linkTarget));
+	}
+	return macPathFor(artifactPath);
+}
+
 async function readLinkOrNull(path: string): Promise<string | null> {
 	try {
 		return await readlink(path);
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+		const code = (err as NodeJS.ErrnoException).code;
+		// ENOENT: path missing. EINVAL: path is a regular file (not a symlink).
+		// Both mean "no symlink target" — callers handle that as null.
+		if (code === "ENOENT" || code === "EINVAL") return null;
 		throw err;
 	}
 }
@@ -642,6 +747,45 @@ async function loadArtifactFromPath(
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
 		throw err;
+	}
+	// SOC2 CC6.8: verify HMAC sidecar before parsing. A `.mac` next to the
+	// artifact (or next to the symlink target if `path` is a symlink) must
+	// match HMAC-SHA256(payload). Missing/invalid MAC -> refuse to load
+	// and emit the integrity-failed audit action via the logger.
+	const macPath = await resolveMacPath(path);
+	let macHex: string | null = null;
+	try {
+		macHex = (await readFile(macPath, "utf-8")).trim();
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+	}
+	if (macHex === null) {
+		logger.warn(
+			{
+				src: "service:optimized_prompt",
+				task,
+				path,
+				macPath,
+				action: OPTIMIZED_PROMPT_INTEGRITY_FAILED_AUDIT_ACTION,
+				reason: "mac_missing",
+			},
+			"Optimized prompt artifact rejected: HMAC sidecar missing",
+		);
+		return null;
+	}
+	if (!verifyArtifactMac(raw, macHex)) {
+		logger.error(
+			{
+				src: "service:optimized_prompt",
+				task,
+				path,
+				macPath,
+				action: OPTIMIZED_PROMPT_INTEGRITY_FAILED_AUDIT_ACTION,
+				reason: "mac_mismatch",
+			},
+			"Optimized prompt artifact rejected: HMAC mismatch",
+		);
+		return null;
 	}
 	let parsedJson: unknown;
 	try {

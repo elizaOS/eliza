@@ -88,25 +88,25 @@ export class CliAuthSessionsRepository {
     sessionId: string,
     userId: string,
     apiKeyId: string,
-    apiKeyPlain: string,
   ): Promise<CliAuthSession | undefined> {
     return await this.update(sessionId, {
       status: "authenticated",
       user_id: userId,
       api_key_id: apiKeyId,
-      api_key_plain: apiKeyPlain,
       authenticated_at: new Date(),
     });
   }
 
   /**
-   * Clears the plain API key from a session (for security after retrieval).
+   * Marks a session's API key as consumed (single-use token flow, D-6).
+   * The actual decrypted plaintext is returned directly by the route
+   * handler from the encrypted api_keys row — it is never persisted here.
    */
-  async clearPlainKey(sessionId: string): Promise<void> {
+  async markConsumed(sessionId: string): Promise<void> {
     await dbWrite
       .update(cliAuthSessions)
       .set({
-        api_key_plain: null,
+        consumed_at: new Date(),
         updated_at: new Date(),
       })
       .where(eq(cliAuthSessions.session_id, sessionId));

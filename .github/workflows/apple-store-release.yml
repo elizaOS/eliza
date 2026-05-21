@@ -80,6 +80,10 @@ env:
   LANG: en_US.UTF-8
   LC_ALL: en_US.UTF-8
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   prepare:
     name: Prepare

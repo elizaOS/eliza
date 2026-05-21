@@ -6,6 +6,10 @@ on:
       - "packages/os/setup/**"
       - ".github/workflows/test-elizaos-setup.yml"
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

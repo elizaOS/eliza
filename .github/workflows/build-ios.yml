@@ -17,6 +17,10 @@ env:
   APP_DIR: packages/app
   NODE_VERSION: "24.15.0"
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   build-ios:
     runs-on: macos-15

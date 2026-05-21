@@ -54,13 +54,18 @@ app.post("/", async (c) => {
 
     const tokenToPass = authHeader.split(" ")[1];
 
+    // D-6: api_key_plain column removed. Plaintext is no longer persisted
+    // here — the polling endpoint decrypts the api_keys row in-memory on
+    // single-use retrieval. The `tokenToPass` plaintext from the OAuth
+    // header is the api-key itself, which is already stored encrypted on
+    // the api_keys row by ApiKeysService.create().
+    void tokenToPass;
     await db
       .update(cliAuthSessions)
       .set({
         user_id: userSession.userId,
         status: "authenticated",
         authenticated_at: new Date(),
-        api_key_plain: tokenToPass,
       })
       .where(eq(cliAuthSessions.session_id, sessionId));
 

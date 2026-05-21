@@ -13,7 +13,6 @@ import {
   PhantomWalletAdapter,
   SolflareWalletAdapter,
 } from "@solana/wallet-adapter-wallets";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { http, WagmiProvider } from "wagmi";
 import { base, bsc, mainnet } from "wagmi/chains";
@@ -65,7 +64,6 @@ export function StewardWalletProviders({
     [alchemyKey, appUrl, walletConnectProjectId],
   );
 
-  const queryClient = useMemo(() => new QueryClient(), []);
   const rainbowTheme = useMemo(
     () =>
       darkTheme({
@@ -83,15 +81,13 @@ export function StewardWalletProviders({
 
   return (
     <WagmiProvider config={evmConfig}>
-      <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider theme={rainbowTheme} modalSize="compact">
-          <ConnectionProvider endpoint={solanaEndpoint}>
-            <WalletProvider wallets={solanaWallets} autoConnect>
-              <WalletModalProvider>{children}</WalletModalProvider>
-            </WalletProvider>
-          </ConnectionProvider>
-        </RainbowKitProvider>
-      </QueryClientProvider>
+      <RainbowKitProvider theme={rainbowTheme} modalSize="compact">
+        <ConnectionProvider endpoint={solanaEndpoint}>
+          <WalletProvider wallets={solanaWallets} autoConnect>
+            <WalletModalProvider>{children}</WalletModalProvider>
+          </WalletProvider>
+        </ConnectionProvider>
+      </RainbowKitProvider>
     </WagmiProvider>
   );
 }

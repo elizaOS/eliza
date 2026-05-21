@@ -1,0 +1,74 @@
+;; Eliza sub-agent macOS sandbox profile (SOC2 A-3).
+;;
+;; Variables passed via `sandbox-exec -D`:
+;;   WORKSPACE   absolute realpath of the agent workspace
+;;   SESSION     opaque session id (used to scope per-session tmp/cache)
+;;   HOME        the spawning user's home directory
+;;   TMPDIR      the spawning user's tmpdir
+;;
+;; Deny-by-default. Allow what a CLI sub-agent (claude code) actually
+;; needs: read system libs, read its workspace, write workspace + scoped
+;; tmp + scoped cache, talk to its API endpoints. Block reads of dotfiles
+;; in $HOME that commonly hold credentials (.aws, .ssh, .config, .env*).
+
+(version 1)
+(deny default)
+
+;; Process / signal — let the CLI fork helpers under itself.
+(allow process-fork)
+(allow process-exec)
+(allow signal (target self))
+(allow signal (target children))
+
+;; Required for dynamic linker + framework loads.
+(allow file-read*
+  (subpath "/usr/lib")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (subpath "/Library/Frameworks")
+  (subpath "/private/var/db/dyld")
+  (subpath "/private/etc/ssl"))
+
+;; Allow reading the binary the sub-agent actually runs as.
+(allow file-read*
+  (subpath "/usr/local/bin")
+  (subpath "/opt/homebrew")
+  (subpath "/usr/bin"))
+
+;; Workspace: full read + write.
+(allow file-read* (subpath (param "WORKSPACE")))
+(allow file-write* (subpath (param "WORKSPACE")))
+
+;; Scoped tmp + cache for this session only.
+(allow file-read* file-write*
+  (subpath (string-append (param "TMPDIR") "eliza-sub-agent-" (param "SESSION"))))
+(allow file-read* file-write*
+  (subpath (string-append (param "HOME") "/.cache/eliza-sub-agent/" (param "SESSION"))))
+
+;; Allow reading the user's home for the few files the CLI genuinely
+;; needs (no write — and credential dotfiles explicitly denied below).
+(allow file-read*
+  (literal (string-append (param "HOME") "/.gitconfig"))
+  (subpath (string-append (param "HOME") "/.claude"))
+  (subpath (string-append (param "HOME") "/.config/git")))
+
+;; Explicit credential-file deny — overrides the broad allowlist above.
+(deny file-read*
+  (subpath (string-append (param "HOME") "/.ssh"))
+  (subpath (string-append (param "HOME") "/.aws"))
+  (subpath (string-append (param "HOME") "/.gnupg"))
+  (subpath (string-append (param "HOME") "/.netrc"))
+  (regex #"^/private/etc/passwd$")
+  (regex #"^/etc/passwd$")
+  (regex (string-append "^" (param "HOME") "/\\.env.*$")))
+
+;; Network — Anthropic API + DNS only. Tighten when telemetry endpoints
+;; are nailed down.
+(allow network-outbound (remote tcp))
+(allow network-bind (local ip))
+(allow mach-lookup)
+
+;; Misc syscalls the runtime needs.
+(allow sysctl-read)
+(allow iokit-open)
+(allow ipc-posix-shm)

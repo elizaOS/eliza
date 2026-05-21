@@ -77,6 +77,10 @@ env:
   CODEX_APP_SERVER_WS_TOKEN_FILE: ${{ vars.CODEX_APP_SERVER_WS_TOKEN_FILE }}
   CODEX_APP_SERVER_WS_SHARED_SECRET_FILE: ${{ vars.CODEX_APP_SERVER_WS_SHARED_SECRET_FILE }}
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   smoke:
     name: Sandbox live smoke

@@ -69,6 +69,7 @@ export const vendorConnections = pgTable(
 
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    deleted_at: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     index("vendor_connections_organization_id_idx").on(table.organization_id),
@@ -79,6 +80,7 @@ export const vendorConnections = pgTable(
       table.vendor,
       table.label,
     ),
+    index("vendor_connections_deleted_at_idx").on(table.deleted_at),
   ],
 );
 

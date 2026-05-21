@@ -326,6 +326,18 @@ export interface WorkerRpcMessage {
   args: JsonValue;
   /** When true, reply is delivered as a stream of {@link StreamChunkMessage}. */
   streamReply?: boolean;
+  /**
+   * HMAC-SHA256 (hex) over the canonical encoding
+   *   `${requestId}\n${surface}\n${target}\n${stable(args)}`
+   * keyed by the plugin's per-install RPC key (SOC2 A-4). The host
+   * dispatcher rejects messages whose MAC fails to verify.
+   *
+   * Optional in the type for staged rollout — runtime enforcement is
+   * controlled by the dispatcher's `requireMac` flag. New installs
+   * should always carry it; legacy installs without the field log a
+   * WARN until they are re-keyed.
+   */
+  mac?: string;
 }
 
 /** Worker → host: result for a {@link WorkerRpcMessage}. */

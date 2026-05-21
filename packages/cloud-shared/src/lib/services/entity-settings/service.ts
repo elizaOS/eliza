@@ -283,7 +283,27 @@ export class EntitySettingsService {
       return null;
     }
 
-    return keys[0].key;
+    const row = keys[0];
+    if (
+      !row.key_ciphertext ||
+      !row.key_nonce ||
+      !row.key_auth_tag ||
+      !row.key_kms_key_id ||
+      row.key_kms_key_version == null
+    ) {
+      // Pre-D-1 row that hasn't been backfilled yet; surface null so the
+      // caller falls back to its existing no-key path rather than handing
+      // out a half-broken record.
+      return null;
+    }
+    const { decryptApiKey } = await import("../../../db/crypto/api-keys");
+    return await decryptApiKey(row.id, {
+      ciphertext: row.key_ciphertext,
+      nonce: row.key_nonce,
+      auth_tag: row.key_auth_tag,
+      kms_key_id: row.key_kms_key_id,
+      kms_key_version: row.key_kms_key_version,
+    });
   }
 
   /**

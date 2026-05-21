@@ -1,0 +1,51 @@
+# gitleaks configuration — Milady workspace
+# SOC2 CC7.1 (monitoring) — automated secret-detection at the SCM boundary.
+#
+# Uses the upstream default ruleset and layers on workspace-specific allowlist
+# entries. To rebuild the embedded default rules, see:
+#   https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
+
+title = "Milady gitleaks config"
+
+[extend]
+# Pull in upstream default ruleset.
+useDefault = true
+
+# Allowlists for known false positives only. Entries here MUST be reviewed —
+# never add a real secret pattern. Prefer narrow path scopes over broad regexes.
+[[allowlists]]
+description = "Test fixtures and example placeholders"
+paths = [
+  '''(^|/)__fixtures__/''',
+  '''(^|/)__mocks__/''',
+  '''(^|/)test/fixtures/''',
+  '''(^|/)tests/fixtures/''',
+  '''.*\.example$''',
+  '''\.env\.example$''',
+  '''\.env\.sample$''',
+  '''docs/.*\.mdx?$''',
+]
+
+[[allowlists]]
+description = "Documented placeholder strings"
+regexTarget = "match"
+regexes = [
+  '''example\.com''',
+  '''0x0000000000000000000000000000000000000000''',
+  '''sk-XXXX''',
+  '''sk-test_''',
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY''',
+]
+
+[[allowlists]]
+description = "Generated lockfiles — hash output, not secrets"
+paths = [
+  '''(^|/)bun\.lock$''',
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)yarn\.lock$''',
+  '''(^|/)pnpm-lock\.yaml$''',
+  '''(^|/)Cargo\.lock$''',
+  '''(^|/)poetry\.lock$''',
+  '''(^|/)uv\.lock$''',
+]

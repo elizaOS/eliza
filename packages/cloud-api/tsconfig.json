@@ -38,6 +38,8 @@
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/security": ["../security/src/index.ts"],
+      "@elizaos/security/*": ["../security/src/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],

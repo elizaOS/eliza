@@ -2,6 +2,7 @@
  * Service for managing CLI authentication sessions.
  */
 
+import { decryptApiKey } from "../../db/crypto/api-keys";
 import { apiKeysRepository, cliAuthSessionsRepository } from "../../db/repositories";
 import type { CliAuthSession } from "../../db/schemas/cli-auth-sessions";
 import { apiKeysService } from "./api-keys";
@@ -89,12 +90,11 @@ export class CliAuthSessionsService {
       expires_at: null, // Never expires by default
     });
 
-    // Update session with authentication details and temporarily store plain key
+    // Update session with authentication details (no plaintext stored — D-6).
     const updatedSession = await cliAuthSessionsRepository.markAuthenticated(
       sessionId,
       userId,
       apiKey.id,
-      plainKey, // Store temporarily for CLI retrieval
     );
 
     if (!updatedSession) {
@@ -110,8 +110,14 @@ export class CliAuthSessionsService {
   }
 
   /**
-   * Get API key from authenticated session and clear it
-   * This ensures the plain key is only retrieved once
+   * Single-use plaintext retrieval (D-6).
+   *
+   * Returns the decrypted plaintext API key for an authenticated session
+   * exactly once. The session is marked `consumed_at` in the same call,
+   * after which further attempts return null.
+   *
+   * The plaintext is decrypted in-memory from the encrypted api_keys row
+   * and never persisted on the cli_auth_sessions row.
    */
   async getAndClearApiKey(sessionId: string): Promise<{
     apiKey: string;
@@ -120,21 +126,41 @@ export class CliAuthSessionsService {
   } | null> {
     const session = await this.getActiveSession(sessionId);
 
-    if (!session || session.status !== "authenticated" || !session.api_key_plain) {
+    if (
+      !session ||
+      session.status !== "authenticated" ||
+      !session.api_key_id ||
+      session.consumed_at
+    ) {
       return null;
     }
 
-    // Get API key details
-    const apiKey = session.api_key_plain;
-    const apiKeyRecord = await apiKeysRepository.findById(session.api_key_id!);
+    const apiKeyRecord = await apiKeysRepository.findById(session.api_key_id);
+    if (
+      !apiKeyRecord ||
+      !apiKeyRecord.key_ciphertext ||
+      !apiKeyRecord.key_nonce ||
+      !apiKeyRecord.key_auth_tag ||
+      !apiKeyRecord.key_kms_key_id ||
+      apiKeyRecord.key_kms_key_version == null
+    ) {
+      return null;
+    }
 
-    // Clear the plain key from the session for security
-    await cliAuthSessionsRepository.clearPlainKey(sessionId);
+    const plaintext = await decryptApiKey(apiKeyRecord.id, {
+      ciphertext: apiKeyRecord.key_ciphertext,
+      nonce: apiKeyRecord.key_nonce,
+      auth_tag: apiKeyRecord.key_auth_tag,
+      kms_key_id: apiKeyRecord.key_kms_key_id,
+      kms_key_version: apiKeyRecord.key_kms_key_version,
+    });
+
+    await cliAuthSessionsRepository.markConsumed(sessionId);
 
     return {
-      apiKey,
-      keyPrefix: apiKeyRecord?.key_prefix || "",
-      expiresAt: apiKeyRecord?.expires_at || null,
+      apiKey: plaintext,
+      keyPrefix: apiKeyRecord.key_prefix,
+      expiresAt: apiKeyRecord.expires_at,
     };
   }
 

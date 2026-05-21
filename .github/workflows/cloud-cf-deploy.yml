@@ -43,6 +43,10 @@ concurrency:
   group: cloud-cf-deploy-${{ github.ref }}
   cancel-in-progress: true
 
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
 jobs:
   # ---------------------------------------------------------------------------
   # API Worker

@@ -1,16 +1,22 @@
 # Source datasets to download and normalize.
 #
 # Fields:
-#   slug:         short filesystem-safe name (used as data/raw/<slug>/ dir)
-#   repo_id:      HF dataset repo id
-#   normalizer:   adapter family in scripts/normalize.py
-#   weight:       relative sampling weight in pack_dataset.py (1.0 = baseline)
-#   est_size_gb:  rough on-disk estimate so the downloader can budget
-#   priority:     "core" | "extra" — core is required for a useful run
-#   notes:        free text
+#   slug:               short filesystem-safe name (used as data/raw/<slug>/ dir)
+#   repo_id:            HF dataset repo id
+#   normalizer:         adapter family in scripts/normalize.py
+#   weight:             relative sampling weight in pack_dataset.py
+#   est_size_gb:        rough on-disk estimate so the downloader can budget
+#   priority:           "core" | "extra"
+#   license:            SPDX-like license tag (required when consent_basis: licensed)
+#   consent_basis:      REQUIRED. One of:
+#                         synthetic | public_domain | licensed |
+#                         opt_in_user_consent | internal_dogfood
+#   consent_proof_uri:  REQUIRED when consent_basis is opt_in_user_consent
+#                         or internal_dogfood. URI/URL of consent record.
+#   notes:              free text
 #
-# License field is documented for traceability; downloader does NOT enforce.
-# pack_dataset.py emits a manifest.json with per-source counts and licenses.
+# The dataset_loader.py SOC2 consent gate enforces these fields at load time
+# (SOC2 PI1.1-PI1.5, C1.1). Sources without consent_basis are rejected.
 
 datasets:
   # =================== CANONICAL TARGET FORMAT ===================
@@ -22,6 +28,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: cc-by-sa-4.0
+    consent_basis: licensed
     notes: |
       Canonical eliza format already published as a config. We pull the
       `eliza` config splits directly: formats/eliza-{train,test,validation}.jsonl
@@ -43,6 +50,7 @@ datasets:
     est_size_gb: 1.0
     priority: core
     license: mit
+    consent_basis: licensed
     notes: |
       `claude_distill.jsonl` is the clean unified split (~129k records,
       messages = [{role:system,content:""}, {role:user,...}, {role:assistant,
@@ -63,6 +71,8 @@ datasets:
     est_size_gb: 0.3
     priority: core
     license: proprietary
+    consent_basis: internal_dogfood
+    consent_proof_uri: https://github.com/elizaOS/eliza/blob/main/packages/training/SECURITY.md#nubilio-internal-dogfood
     notes: |
       Cron snapshots from the self-hosted eliza bot at eliza.nubs.site
       (date range 2026-04-19 → 2026-05-02, ~6.3k examples spanning
@@ -87,6 +97,8 @@ datasets:
     est_size_gb: 0.1
     priority: core
     license: proprietary
+    consent_basis: opt_in_user_consent
+    consent_proof_uri: https://github.com/elizaOS/eliza/blob/main/packages/training/SECURITY.md#nightly-trajectory-opt-in
     notes: |
       Nightly action_planner_trajectories.jsonl exports from the TS
       trajectory-export cron. One file per UTC date under
@@ -103,6 +115,8 @@ datasets:
     est_size_gb: 0.05
     priority: core
     license: proprietary
+    consent_basis: opt_in_user_consent
+    consent_proof_uri: https://github.com/elizaOS/eliza/blob/main/packages/training/SECURITY.md#nightly-trajectory-opt-in
     notes: |
       Nightly should_respond_trajectories.jsonl exports from the TS
       trajectory-export cron.
@@ -118,6 +132,8 @@ datasets:
     est_size_gb: 0.05
     priority: core
     license: proprietary
+    consent_basis: opt_in_user_consent
+    consent_proof_uri: https://github.com/elizaOS/eliza/blob/main/packages/training/SECURITY.md#nightly-trajectory-opt-in
     notes: |
       Nightly context_routing_trajectories.jsonl exports from the TS
       trajectory-export cron.
@@ -133,6 +149,8 @@ datasets:
     est_size_gb: 0.1
     priority: core
     license: proprietary
+    consent_basis: opt_in_user_consent
+    consent_proof_uri: https://github.com/elizaOS/eliza/blob/main/packages/training/SECURITY.md#nightly-trajectory-opt-in
     notes: |
       Nightly response_trajectories.jsonl exports from the TS
       trajectory-export cron.
@@ -148,6 +166,8 @@ datasets:
     est_size_gb: 0.05
     priority: core
     license: proprietary
+    consent_basis: opt_in_user_consent
+    consent_proof_uri: https://github.com/elizaOS/eliza/blob/main/packages/training/SECURITY.md#nightly-trajectory-opt-in
     notes: |
       Nightly media_description_trajectories.jsonl exports from the TS
       trajectory-export cron.
@@ -162,6 +182,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: cc-by-sa-4.0
+    consent_basis: licensed
     notes: |
       Public ScamBench training release used for the scam-defense corpus
       slot. Pulls the canonical `formats/eliza-{train,test,validation}.jsonl`
@@ -175,6 +196,7 @@ datasets:
     est_size_gb: 0.2
     priority: core
     license: mit
+    consent_basis: licensed
     notes: |
       Multi-party text-adventure dialogues from Facebook LIGHT
       (https://github.com/facebookresearch/LIGHT). Source tarball
@@ -196,6 +218,7 @@ datasets:
     est_size_gb: 0.3
     priority: core
     license: apache-2.0
+    consent_basis: licensed
 
   - slug: hermes-fc-thinking-v1
     repo_id: Jofthomas/hermes-function-calling-thinking-V1
@@ -204,6 +227,7 @@ datasets:
     est_size_gb: 0.4
     priority: core
     license: apache-2.0
+    consent_basis: licensed
 
   - slug: glaive-fc-v2
     repo_id: glaiveai/glaive-function-calling-v2
@@ -212,6 +236,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: apache-2.0
+    consent_basis: licensed
 
   - slug: glaive-fc-v2-reasoning
     repo_id: Magneto/glaive-function-calling-v2-reasoning-nemotron49b
@@ -220,6 +245,7 @@ datasets:
     est_size_gb: 1.5
     priority: core
     license: apache-2.0
+    consent_basis: licensed
 
   - slug: openhermes-2.5
     repo_id: teknium/OpenHermes-2.5
@@ -228,6 +254,7 @@ datasets:
     est_size_gb: 4.0
     priority: extra
     license: apache-2.0
+    consent_basis: licensed
 
   - slug: hermes-fc-v2
     repo_id: NousResearch/Hermes-Function-Calling-V2
@@ -236,6 +263,7 @@ datasets:
     est_size_gb: 0.8
     priority: core
     license: apache-2.0
+    consent_basis: licensed
 
   - slug: openclaw-operator
     repo_id: CyberAGI/openclaw-operator-data
@@ -244,6 +272,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: apache-2.0
+    consent_basis: licensed
 
   # xlam-fc-60k: gated repo (CC-BY-4.0 + APIGen citation) — requires HF token
   # with access grant. Use convert_xlam_to_eliza.py with --hf-token when available.
@@ -256,6 +285,7 @@ datasets:
     est_size_gb: 0.2
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: functions-53k
     repo_id: crumb/Functions-53K
@@ -264,6 +294,7 @@ datasets:
     est_size_gb: 0.1
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: bitagent-tool-calling
     repo_id: BitAgent/tool_calling
@@ -272,6 +303,7 @@ datasets:
     est_size_gb: 0.3
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: toolhop
     repo_id: bytedance-research/ToolHop
@@ -280,6 +312,7 @@ datasets:
     est_size_gb: 0.2
     priority: core
     license: cc-by-4.0
+    consent_basis: licensed
 
   # =================== AGENTIC / OPERATOR / MOBILE ================
   - slug: mobile-actions
@@ -289,6 +322,7 @@ datasets:
     est_size_gb: 1.5
     priority: core
     license: cc-by-4.0
+    consent_basis: licensed
 
   - slug: nemotron-rl-tool-use
     repo_id: nvidia/Nemotron-RL-Agentic-Conversational-Tool-Use-Pivot-v1
@@ -297,6 +331,7 @@ datasets:
     est_size_gb: 1.0
     priority: core
     license: nvidia
+    consent_basis: licensed
 
   - slug: qwen36-trajectory
     repo_id: zake7749/Qwen-3.6-plus-agent-tool-calling-trajectory
@@ -305,6 +340,7 @@ datasets:
     est_size_gb: 1.0
     priority: core
     license: unknown
+    consent_basis: licensed
 
   # =================== HERMES REASONING / TRACES =================
   - slug: hermes-reasoning-tool-use
@@ -314,6 +350,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: apache-2.0
+    consent_basis: licensed
 
   - slug: dolci-instruct-tool-use
     repo_id: allenai/Dolci-Instruct-SFT-Tool-Use
@@ -322,6 +359,7 @@ datasets:
     est_size_gb: 1.0
     priority: core
     license: odc-by
+    consent_basis: licensed
 
   - slug: tool-reasoning-coding-nemotron
     repo_id: AmanPriyanshu/tool-reasoning-sft-CODING-nvidia-Nemotron-Agentic-v1
@@ -330,6 +368,7 @@ datasets:
     est_size_gb: 0.7
     priority: extra
     license: nvidia
+    consent_basis: licensed
 
   - slug: hf-coding-tools-traces
     repo_id: clem/hf-coding-tools-traces
@@ -338,6 +377,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: hermes-agent-reasoning-traces
     repo_id: lambda/hermes-agent-reasoning-traces
@@ -346,6 +386,7 @@ datasets:
     est_size_gb: 0.7
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: nemotron-nano-hermes-traces
     repo_id: ning423/nemotron-nano-hermes-traces
@@ -354,6 +395,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: hermes-omniforge-qwen36
     repo_id: ning423/Hermes-OmniForge-Qwen36-27B-full-v0.3.0-unsloth
@@ -362,6 +404,7 @@ datasets:
     est_size_gb: 2.0
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: hermes-agent-traces-filtered
     repo_id: DJLougen/hermes-agent-traces-filtered
@@ -370,6 +413,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: aureth-corpus-hermes
     repo_id: OusiaResearch/Aureth-Corpus-Hermes4.3-Generated
@@ -378,6 +422,7 @@ datasets:
     est_size_gb: 1.0
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: hermes-3
     repo_id: NousResearch/Hermes-3-Dataset
@@ -386,6 +431,7 @@ datasets:
     est_size_gb: 2.0
     priority: extra
     license: apache-2.0
+    consent_basis: licensed
 
   - slug: carnice-glm5-hermes
     repo_id: kai-os/carnice-glm5-hermes-traces
@@ -394,6 +440,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: talos-kimi-hermes
     repo_id: DJLougen/Talos-kimi-k2.6-Hermes-synthetic
@@ -402,6 +449,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   # =================== MCP TOOL CALLING ===========================
   - slug: mcp-flow
@@ -411,6 +459,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: |
       function_call/<provider>/<tool>.json files; each is a per-tool spec
       with examples. Custom adapter unrolls examples into ElizaRecords.
@@ -422,6 +471,7 @@ datasets:
     est_size_gb: 0.3
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: mcp-agent-training-data
     repo_id: muhammadtlha944/mcp-agent-training-data
@@ -430,6 +480,7 @@ datasets:
     est_size_gb: 0.3
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: limbic-eval-tool-use-mcp
     repo_id: quotientai/limbic-eval-tool-use-mcp
@@ -438,6 +489,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: eval-only, single test split
 
   - slug: deepfabric-github-mcp
@@ -447,6 +499,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: playwright-mcp-toolcalling
     repo_id: jdaddyalbs/playwright-mcp-toolcalling
@@ -455,6 +508,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: mcp-routing-dataset
     repo_id: dranganath76/mcp-routing-dataset
@@ -463,6 +517,7 @@ datasets:
     est_size_gb: 0.1
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: ha-mcp-dataset
     repo_id: jones2748/ha-mcp-dataset
@@ -471,6 +526,7 @@ datasets:
     est_size_gb: 0.2
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: phi3-mcp
     repo_id: emrecandan0/phi3_mcp_dataset
@@ -479,6 +535,7 @@ datasets:
     est_size_gb: 0.1
     priority: core
     license: unknown
+    consent_basis: licensed
 
   # =================== AGENT TRAJECTORIES / SHELL ====================
   - slug: agent-trove
@@ -488,6 +545,7 @@ datasets:
     est_size_gb: 1.5
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: nemotron-terminal-corpus
     repo_id: laion/nemotron-terminal-corpus-unified
@@ -496,6 +554,7 @@ datasets:
     est_size_gb: 1.5
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: SHELL_COMMAND training corpus.
 
   # =================== REASONING / CoT (Jackrong) ====================
@@ -506,6 +565,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: glm-51-reasoning-1m
     repo_id: Jackrong/GLM-5.1-Reasoning-1M-Cleaned
@@ -514,6 +574,7 @@ datasets:
     est_size_gb: 3.0
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: kimi-k25-reasoning-1m
     repo_id: Jackrong/Kimi-K2.5-Reasoning-1M-Cleaned
@@ -522,6 +583,7 @@ datasets:
     est_size_gb: 3.0
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: qwen35-reasoning-700x
     repo_id: Jackrong/Qwen3.5-reasoning-700x
@@ -530,6 +592,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: glm-47-multiturn-cot
     repo_id: Jackrong/glm-4.7-multiturn-CoT
@@ -538,6 +601,7 @@ datasets:
     est_size_gb: 1.0
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   # =================== TOOL USE EXTRAS ===============================
   - slug: open-paws-tool-use
@@ -547,6 +611,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: tool-reasoning-toucan
     repo_id: AmanPriyanshu/tool-reasoning-sft-TOOLS-toucan-1.5m-sft-tool-use-data-cleaned-rectified-333k
@@ -555,6 +620,7 @@ datasets:
     est_size_gb: 2.0
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: tool-reasoning-jupyter
     repo_id: AmanPriyanshu/tool-reasoning-sft-CODING-jupyter-agent-dataset-sft-tool-use-agent-data-cleaned-rectified
@@ -563,6 +629,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: akicou-merged-tool-use
     repo_id: Akicou/merged-tool-use
@@ -571,6 +638,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: hermes-reasoning-mlx-goekdeniz
     repo_id: Goekdeniz-Guelmez/Hermes-Reasoning-Tool-Use-MLX
@@ -579,6 +647,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: hermes-reasoning-mlx-community
     repo_id: mlx-community/hermes-reasoning-tool-use
@@ -587,6 +656,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: hermes-reasoning-cursing
     repo_id: patrickleenyc/hermes_reasoning_tool_use_with_cursing
@@ -595,6 +665,7 @@ datasets:
     est_size_gb: 0.3
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: tool-use-multiturn-thinking
     repo_id: AIGym/tool-use-multiturn-thinking
@@ -603,6 +674,7 @@ datasets:
     est_size_gb: 1.0
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: easyr1-pc-agent-omniparser
     repo_id: mlfoundations-cua-dev/easyr1-pc-agent-e-only-4k9-omniparser-qwen-tool-call-4MP
@@ -611,6 +683,7 @@ datasets:
     est_size_gb: 1.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: sage-agent-tools
     repo_id: intellistream/sage-agent-tools
@@ -619,6 +692,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: tool-call-ack-agent
     repo_id: ChandraAdhikarla/tool-call-ack-dataset-agent
@@ -627,6 +701,7 @@ datasets:
     est_size_gb: 0.3
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: agent-conversations-retrieval
     repo_id: jamescalam/agent-conversations-retrieval-tool
@@ -635,6 +710,7 @@ datasets:
     est_size_gb: 0.3
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: agent-tool-use-dialogue-mgmgrand
     repo_id: Mgmgrand420/Agent-Tool-Use-Dialogue-Open-Dataset
@@ -643,6 +719,7 @@ datasets:
     est_size_gb: 0.3
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: agent-tool-use-dialogue-deepnlp
     repo_id: DeepNLP/Agent-Tool-Use-Dialogue-Open-Dataset
@@ -651,6 +728,7 @@ datasets:
     est_size_gb: 0.3
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   # =================== RAW DIALOGUE (consumed by synthesize_routing.py)
   # These do NOT yield supervised records during normalize; the routing
@@ -662,6 +740,7 @@ datasets:
     est_size_gb: 1.0
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: raw — used by synthesize_routing.py
 
   - slug: telegram-filtered-messages
@@ -671,6 +750,7 @@ datasets:
     est_size_gb: 1.0
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: raw — used by synthesize_routing.py
 
   - slug: discord-dialogues
@@ -680,6 +760,7 @@ datasets:
     est_size_gb: 1.0
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: raw — used by synthesize_routing.py
 
   # ============== AGENT/TOOL-USE EXTRAS (not yet in registry) ==============
@@ -690,6 +771,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: monodox-agent-tool-use
     repo_id: monodox/agent-conversations-and-tool-use
@@ -698,6 +780,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   # ============== OPUS / FRONTIER REASONING DISTILLATIONS ==================
   # Many of these are the same source data re-uploaded by different users; the
@@ -710,6 +793,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: swebench-verified-opus-47
     repo_id: SWE-Router/swebench-verified-claude-opus-4.7
@@ -718,6 +802,7 @@ datasets:
     est_size_gb: 1.5
     priority: core
     license: mit
+    consent_basis: licensed
     notes: SWE-bench verified solved with Opus 4.7 — strong coding signal.
 
   - slug: opus-47-max-sft-labs
@@ -727,6 +812,7 @@ datasets:
     est_size_gb: 1.5
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-47-max-bas95
     repo_id: Bas95/reasoning-distill-claude-opus-4-7-max
@@ -735,6 +821,7 @@ datasets:
     est_size_gb: 1.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-46-10kx-bas95
     repo_id: Bas95/claude-opus-4.6-10000x
@@ -743,6 +830,7 @@ datasets:
     est_size_gb: 1.5
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-47-reachy-app-clem
     repo_id: clem/opus_4.7_buildmyfirstreachyminiapp
@@ -751,6 +839,7 @@ datasets:
     est_size_gb: 0.3
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-46-10kx-knowurknottty
     repo_id: knowurknottty/claude-opus-4.6-10000x
@@ -759,6 +848,7 @@ datasets:
     est_size_gb: 1.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-47-reachy-mini-clem
     repo_id: clem/opus4.7_reachy_mini_app_building
@@ -767,6 +857,7 @@ datasets:
     est_size_gb: 0.3
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-46-reasoning-12k-senaro
     repo_id: senaro/opus-4.6-reasoning-sft-12k
@@ -775,6 +866,7 @@ datasets:
     est_size_gb: 0.3
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-47-thinking-25k-ansulev
     repo_id: ansulev/Opus4.7_thinking_max_distill_god_seed_25k
@@ -783,6 +875,7 @@ datasets:
     est_size_gb: 1.5
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: zomi-opus-tatoeba
     repo_id: zomi-language-corpora/English-Zomi-OPUS_Tatoeba_v20230412
@@ -791,6 +884,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: |
       Helsinki OPUS translation corpus (English↔Zomi) — NOT Claude Opus.
       Low weight; pack will mostly drop these unless we add a translation
@@ -803,6 +897,7 @@ datasets:
     est_size_gb: 1.0
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-47-huihui
     repo_id: huihui-ai/opus-4-7
@@ -811,6 +906,7 @@ datasets:
     est_size_gb: 1.0
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: noesis-1m-multimodel
     repo_id: AMAImedia/NOESIS-1M-reasoning-router-code-math-psych-opus47-deepseek4-qwen36-gemini31-r1-gpt54
@@ -819,6 +915,7 @@ datasets:
     est_size_gb: 5.0
     priority: core
     license: apache-2.0
+    consent_basis: licensed
     notes: "1M-row mixed reasoning/router/code/math from many frontier models. Flat User/Assistant text dump."
 
   - slug: opus-46-quyanh
@@ -828,6 +925,7 @@ datasets:
     est_size_gb: 1.0
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-46-ptbr-3kx
     repo_id: traderpedroso/PTBR-Opus-4.6-Reasoning-3000x-filtered
@@ -836,6 +934,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: Portuguese-BR variant.
 
   - slug: opus-47-max-sft-snow257
@@ -845,6 +944,7 @@ datasets:
     est_size_gb: 1.0
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: loomstack-opus-distill-prompted
     repo_id: Itachi-42/loomstack-opus-distill-prompted
@@ -853,6 +953,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-46-10kx-skipharlow
     repo_id: skipharlow/claude-opus-4.6-10000x
@@ -861,6 +962,7 @@ datasets:
     est_size_gb: 1.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: loomstack-opus-distill
     repo_id: mohit-1710/loomstack-opus-distill
@@ -869,6 +971,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-46-10kx-edawking
     repo_id: Edawking/claude-opus-4.6-10000x
@@ -877,6 +980,7 @@ datasets:
     est_size_gb: 1.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-47-reasoning-cot-ansulev
     repo_id: ansulev/opus-4.7-reasoning-cot
@@ -885,6 +989,7 @@ datasets:
     est_size_gb: 1.0
     priority: core
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-47-max-sft-ansulev
     repo_id: ansulev/reasoning-distill-opus-4-7-max-sft
@@ -893,6 +998,7 @@ datasets:
     est_size_gb: 1.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-46-3kx-youssef
     repo_id: Youssef001122/Opus-4.6-Reasoning-3000x-filtered
@@ -901,6 +1007,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-reasoning-filtered-octomed
     repo_id: OctoMed/Opus-Reasoning-Filtered
@@ -909,6 +1016,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-47-max-sft-trilogix
     repo_id: Trilogix1/reasoning-distill-opus-4-7-max-sft
@@ -917,6 +1025,7 @@ datasets:
     est_size_gb: 1.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-47-thinking-25k-trilogix
     repo_id: Trilogix1/Opus4.7_thinking_max_distill_god_seed_25k
@@ -925,6 +1034,7 @@ datasets:
     est_size_gb: 1.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-47-thinking-25k-withinus
     repo_id: WithinUsAI/Opus4.7_thinking_max_distill_god_seed_25k
@@ -933,6 +1043,7 @@ datasets:
     est_size_gb: 1.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-46-10kx-jeremydh
     repo_id: Jeremydh911/claude-opus-4.6-10000x
@@ -941,6 +1052,7 @@ datasets:
     est_size_gb: 1.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-translation-en-de-cs
     repo_id: davidmeikle/opus-translation-train-en-de-cs
@@ -949,6 +1061,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: |
       Helsinki OPUS translation (en→de/cs) — NOT Claude Opus. Low weight.
 
@@ -959,6 +1072,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: opus-46-2kx-compactai
     repo_id: CompactAI-O/Opus-4.6-Reasoning-2160x
@@ -967,6 +1081,7 @@ datasets:
     est_size_gb: 0.5
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   # =================== MULTI-PARTY → should_respond ================
   # These corpora are NOT consumed by normalize.py. They are read by
@@ -985,6 +1100,7 @@ datasets:
     est_size_gb: 0.4
     priority: core
     license: apache-2.0
+    consent_basis: licensed
     notes: |
       Pre-labeled SPEAK/SILENT decision points across AMI meetings,
       Friends scripts, and SPGI calls. ~50/50 split out of the box.
@@ -997,6 +1113,7 @@ datasets:
     est_size_gb: 0.05
     priority: core
     license: apache-2.0
+    consent_basis: licensed
     notes: |
       Multi-character ShareGPT roleplay. Synthesizer chunks each
       conversation and picks a real character as the agent.
@@ -1008,6 +1125,7 @@ datasets:
     est_size_gb: 0.05
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: |
       CSV of `<s>[INST]>>{user1} : msg>>{user2} : msg...` strings;
       synthesizer parses the >>{name} : pattern.
@@ -1019,6 +1137,7 @@ datasets:
     est_size_gb: 0.05
     priority: core
     license: cc-by-nd-4.0
+    consent_basis: licensed
     notes: |
       Japanese multi-party dialogues. The HF entry is a script-loader
       that snapshot_download skips; synthesizer fetches the upstream
@@ -1038,6 +1157,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: 131k alpaca-style {instruction,input,output} with category + complexity.
 
   - slug: n8n-toolkit-davidrpatton
@@ -1047,6 +1167,7 @@ datasets:
     est_size_gb: 0.6
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: 56k messages-shape with scraped readme + screenshot metadata.
 
   - slug: n8n-workflows-templates-0xarchit
@@ -1056,6 +1177,7 @@ datasets:
     est_size_gb: 0.8
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: 49k {key,value} parquet — synthetic prompt → workflow JSON.
 
   - slug: n8n-master-corpus
@@ -1065,6 +1187,7 @@ datasets:
     est_size_gb: 0.1
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: 36k raw workflow_json + integrations/category. Synthetic prompt.
 
   - slug: n8n-workflows-sft-eclaude
@@ -1074,6 +1197,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: messages-shape with train/eval splits.
 
   - slug: n8n-workflow-dataset-ruh-ai
@@ -1083,6 +1207,7 @@ datasets:
     est_size_gb: 0.2
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: prompt+json+thinking — thinking stashed in metadata.
 
   - slug: n8n-workflows-v2-4k-arkelai
@@ -1092,6 +1217,7 @@ datasets:
     est_size_gb: 0.1
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: prompt+answer pairs.
 
   - slug: n8n-workflows-yagnik
@@ -1101,6 +1227,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: n8n-grpo-4k-aks729
     repo_id: AKS729/grpo_n8n_dataset_4k
@@ -1109,6 +1236,7 @@ datasets:
     est_size_gb: 0.1
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: same prompt+json+thinking shape as ruh-ai filtered set; dedupe handles overlap.
 
   - slug: n8n-workflow-template-rubenz
@@ -1118,6 +1246,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: n8n-workflow-npv2k1
     repo_id: npv2k1/n8n-workflow
@@ -1126,6 +1255,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: small input+output pair set; high overlap with mzw2004/Di12/tahakk/fmd053131.
 
   - slug: n8n-workflow-yonibabi
@@ -1135,6 +1265,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: n8n-workflow-di12
     repo_id: Di12/n8n_workflow
@@ -1143,6 +1274,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: n8n-workflow-mzw2004
     repo_id: mzw2004/n8n-workflow
@@ -1151,6 +1283,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: n8n-workflow-tahakk
     repo_id: tahakk/n8n-workflow
@@ -1159,6 +1292,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: n8n-workflow-fmd053131
     repo_id: fmd053131/n8n-workflow
@@ -1167,6 +1301,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: n8n-workflows-batuhanilgarr
     repo_id: batuhanilgarr/n8n-workflows-dataset
@@ -1175,6 +1310,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: 525 raw workflows with name/nodes/connections.
 
   - slug: n8n-grpo-2k-aks729
@@ -1184,6 +1320,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: n8n-preped-heriman
     repo_id: Heriman/n8n_preped
@@ -1192,6 +1329,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
 
   - slug: n8n-workflow-ruh-ai
     repo_id: ruh-ai/n8n-workflow
@@ -1200,6 +1338,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: 2.1k prompt+json pairs.
 
   - slug: n8n-training-mustaphal
@@ -1209,6 +1348,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: ships alpaca, simple {prompt,completion}, and openai messages variants.
 
   - slug: n8n-testset-ruh-ai
@@ -1218,6 +1358,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: small eval-only split.
 
   - slug: n8n-workflows-thinking-stmasson
@@ -1227,6 +1368,7 @@ datasets:
     est_size_gb: 0.5
     priority: core
     license: unknown
+    consent_basis: licensed
     notes: |
       Multi-format SFT/DPO/ORPO/GRPO splits with explicit <thinking> traces.
       Adapter takes the SFT 'messages' rows directly and the DPO 'chosen'
@@ -1239,6 +1381,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: ships both alpaca train.jsonl and openai train_openai.jsonl.
 
   - slug: n8nbuilder-velixar
@@ -1248,6 +1391,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: republish of n8nbuilder corpus; dedupe collapses overlap.
 
   - slug: n8nbuilder-webman
@@ -1257,6 +1401,7 @@ datasets:
     est_size_gb: 0.1
     priority: extra
     license: unknown
+    consent_basis: licensed
     notes: republish of n8nbuilder corpus; dedupe collapses overlap.
 
   # =================== ABLITERATION CALIBRATION (NOT IN TRAIN MIX) ===================
@@ -1277,6 +1422,7 @@ datasets:
     est_size_gb: 0.01
     priority: extra
     license: mit
+    consent_basis: licensed
     notes: |
       Canonical harmful-prompt corpus referenced by
       scripts/quantization/abliteration_apply.py (line ~68 comment).
@@ -1292,6 +1438,7 @@ datasets:
     est_size_gb: 0.05
     priority: extra
     license: mit
+    consent_basis: licensed
     notes: |
       Paired benign-instruction corpus for orthogonal-projection
       abliteration. ~1.4k benign prompts (Alpaca-derived). Calibration
