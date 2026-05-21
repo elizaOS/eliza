@@ -10,8 +10,16 @@ import { enqueue } from "@/lib/queue/redis-queue";
 import { isStripeConfigured, requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 
 const STRIPE_QUEUE_KEY = "stripe-events";
+
+/**
+ * Maximum age (seconds) the Stripe `t=` timestamp may be relative to
+ * server time. Stripe's SDK defaults to 300s; we keep the same window so
+ * audit-emitted rejections match the SDK's verification window.
+ */
+const STRIPE_WEBHOOK_TOLERANCE_SECONDS = 300;
 
 /**
  * Best-effort extraction of the Stripe payment_intent ID from any event we
@@ -101,13 +109,31 @@ async function handleStripeWebhook(c: AppContext): Promise<Response> {
   try {
     // constructEventAsync uses WebCrypto and works on Workers; the sync
     // variant calls into node:crypto which is not available here.
+    // Tolerance passed explicitly so out-of-window webhooks raise here and
+    // we can emit a dedicated audit event for them.
     event = await stripe.webhooks.constructEventAsync(
       body,
       signature,
       webhookSecret,
+      STRIPE_WEBHOOK_TOLERANCE_SECONDS,
     );
-  } catch {
-    logger.error("[Stripe Webhook] Signature verification failed");
+  } catch (err) {
+    const reason =
+      err instanceof Error && /timestamp/i.test(err.message)
+        ? "stale_timestamp"
+        : "invalid_signature";
+    logger.error("[Stripe Webhook] Signature verification failed", { reason });
+    await getAuditDispatcher()
+      .emit({
+        actor: { type: "system", id: "stripe-webhook" },
+        action: "payment.charge",
+        result: "denied",
+        resource: { type: "webhook", id: "stripe" },
+        ip: getClientIp(c),
+        request_id: c.get("requestId"),
+        metadata: { provider: "stripe", reason },
+      })
+      .catch(() => undefined);
     return c.json({ error: "Webhook signature verification failed" }, 400);
   }
 

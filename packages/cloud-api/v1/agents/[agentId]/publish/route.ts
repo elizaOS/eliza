@@ -13,12 +13,16 @@ import {
   failureResponse,
   NotFoundError,
 } from "@/lib/api/cloud-worker-errors";
+import { requireApiKeyPermission } from "@/api-app/middleware/auth";
+import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
+
+app.use("*", requireApiKeyPermission("agents:write"));
 
 const PublishSchema = z.object({
   enableMonetization: z.boolean().optional().default(false),
@@ -35,6 +39,11 @@ app.post("/", async (c) => {
 
     const agent = await charactersService.getById(agentId);
     if (!agent) throw NotFoundError("Agent not found");
+    await assertOrgMembership(user, agent.organization_id, {
+      resourceType: "agent",
+      resourceId: agentId,
+      c,
+    });
     if (agent.user_id !== user.id) {
       throw ForbiddenError("Not authorized to publish this agent");
     }

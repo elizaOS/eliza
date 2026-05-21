@@ -16,7 +16,9 @@ import type { MiddlewareHandler } from "hono";
 
 import { jsonError } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
 const publicPathPrefixes = [
   "/api/health",
@@ -110,14 +112,47 @@ function isLoopbackHostname(hostname: string): boolean {
 function isLocalDevAdminRequest(
   c: Parameters<MiddlewareHandler<AppEnv>>[0],
 ): boolean {
+  // Hard fail in production: NEVER grant the dev-admin bypass regardless of
+  // env vars. SOC2 CC6.1 — production privileged access must require a real
+  // session + admin role check.
+  if (c.env.NODE_ENV === "production") {
+    if (c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true" || c.env.LOCAL_DEV === "true") {
+      logger.error(
+        "[Auth] Refusing dev-admin bypass in production — env var ignored",
+        {
+          path: new URL(c.req.url).pathname,
+        },
+      );
+    }
+    return false;
+  }
   const explicit = c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true";
   const devMode = c.env.NODE_ENV !== "production" && c.env.LOCAL_DEV === "true";
   if (!explicit && !devMode) return false;
   const url = new URL(c.req.url);
-  return (
+  const matches =
     url.pathname.startsWith("/api/v1/admin/") &&
-    isLoopbackHostname(url.hostname)
-  );
+    isLoopbackHostname(url.hostname);
+  if (matches) {
+    // Best-effort audit emit; do not block request on audit failure.
+    void getAuditDispatcher()
+      .emit({
+        actor: { type: "system", id: "local-dev-admin" },
+        action: "admin.action",
+        result: "success",
+        resource: { type: "endpoint", id: url.pathname },
+        ip: c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+        user_agent: c.req.header("user-agent") ?? undefined,
+        request_id: c.get("requestId"),
+        metadata: { reason: "local_dev_admin_bypass" },
+      })
+      .catch((err) => {
+        logger.warn("[Auth] dev-admin audit emit failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+  }
+  return matches;
 }
 
 export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
@@ -156,3 +191,9 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
   await next();
 };
+
+// Re-export `requireApiKeyPermission` from its dedicated module so existing
+// route imports (`@/api-app/middleware/auth`) continue to work, while tests
+// and new code can import from the standalone file without pulling in the
+// full auth-gate transitive deps.
+export { requireApiKeyPermission } from "./api-key-permission";

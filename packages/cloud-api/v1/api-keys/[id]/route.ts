@@ -11,6 +11,9 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { assertOrgMembership } from "@/api-app/middleware/org-membership";
+import { requireApiKeyPermission } from "@/api-app/middleware/auth";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { apiKeysService } from "@/lib/services/api-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -20,6 +23,7 @@ import { updateApiKeySchema } from "../schemas";
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
+app.use("*", requireApiKeyPermission("keys:write"));
 
 function isAgentSandboxKeyName(name: string): boolean {
   return name.startsWith("agent-sandbox:");
@@ -33,11 +37,28 @@ app.delete("/", async (c) => {
 
     const existingKey = await apiKeysService.getById(id);
     if (!existingKey) return c.json({ error: "API key not found" }, 404);
-    if (existingKey.organization_id !== user.organization_id) {
-      return c.json({ error: "Forbidden" }, 403);
-    }
+    await assertOrgMembership(user, existingKey.organization_id, {
+      resourceType: "api_key",
+      resourceId: id,
+      c,
+    });
 
     await apiKeysService.delete(id);
+    await getAuditDispatcher()
+      .emit({
+        actor: { type: "user", id: user.id },
+        action: "api_key.revoke",
+        result: "success",
+        resource: { type: "api_key", id },
+        org_id: user.organization_id,
+        request_id: c.get("requestId"),
+        metadata: { key_id: id, reason: "user_delete" },
+      })
+      .catch((err: unknown) => {
+        logger.warn("[API Keys] revoke audit emit failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
     return c.json({ success: true });
   } catch (error) {
     logger.error("[API Keys] Error deleting API key", { error });
@@ -53,9 +74,11 @@ app.patch("/", async (c) => {
 
     const existingKey = await apiKeysService.getById(id);
     if (!existingKey) return c.json({ error: "API key not found" }, 404);
-    if (existingKey.organization_id !== user.organization_id) {
-      return c.json({ error: "Forbidden" }, 403);
-    }
+    await assertOrgMembership(user, existingKey.organization_id, {
+      resourceType: "api_key",
+      resourceId: id,
+      c,
+    });
 
     const body = await c.req.json();
     const {
