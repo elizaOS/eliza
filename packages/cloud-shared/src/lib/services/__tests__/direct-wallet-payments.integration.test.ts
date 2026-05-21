@@ -28,6 +28,7 @@ process.env.CRYPTO_DIRECT_SOLANA_RECEIVE_ADDRESS = "1111111111111111111111111111
 process.env.CRYPTO_DIRECT_BASE_RPC_URL = "http://mocked-base";
 process.env.CRYPTO_DIRECT_BSC_RPC_URL = "http://mocked-bsc";
 process.env.CRYPTO_DIRECT_SOLANA_RPC_URL = "http://mocked-solana";
+process.env.CRYPTO_DIRECT_QUOTE_SIGNING_KEY = "test-signing-key-deadbeef";
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -143,13 +144,40 @@ vi.mock("../bnb-price-oracle", async () => {
 // Solana — we don't test the Solana confirm path through verify (would need a
 // huge mock of getParsedTransaction + ATA owner check). The Solana createPayment
 // is exercised separately though, so we still need these imports to resolve.
+// Mutable state read by the spl-token / Connection mocks to flip behavior per
+// test. Hoisted so `vi.mock(...)` factories — which run before module init —
+// can capture a reference.
+const solanaTestState = vi.hoisted(() => ({
+  ataOwnerOverride: null as Uint8Array | null,
+  parsedTxOverride: null as unknown,
+}));
+
+vi.mock("@solana/spl-token", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@solana/spl-token")>();
+  return {
+    ...actual,
+    getAccount: vi.fn(async (_connection: unknown, ata: { toBase58(): string }) => {
+      if (solanaTestState.ataOwnerOverride) {
+        const { PublicKey } = await import("@solana/web3.js");
+        return {
+          address: ata,
+          owner: new PublicKey(solanaTestState.ataOwnerOverride),
+          mint: ata,
+          amount: 0n,
+        } as unknown as Awaited<ReturnType<typeof actual.getAccount>>;
+      }
+      return actual.getAccount(_connection as never, ata as never);
+    }),
+  };
+});
+
 vi.mock("@solana/web3.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@solana/web3.js")>();
   return {
     ...actual,
     Connection: class FakeConnection {
       async getParsedTransaction() {
-        return null;
+        return solanaTestState.parsedTxOverride;
       }
       async getAccountInfo() {
         return null;
@@ -528,11 +556,7 @@ describe.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       ).rejects.toThrow(/below the expected floor/);
     });
 
-    test("BNB native verify accepts overpayment at 1.5x (no ceiling enforced today)", async () => {
-      // NOTE: the task spec mentions an overpayment ceiling, but the current
-      // implementation only enforces a floor — there is no ceiling check.
-      // Document the existing behavior so a future change to add a ceiling
-      // breaks this test loudly.
+    test("BNB native verify rejects above the slippage ceiling (gross overpayment)", async () => {
       await resetTable();
       const { payment } = await service.createPayment(env, {
         organizationId: ORG_ID,
@@ -550,16 +574,134 @@ describe.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       chainTxs.set(overHash, {
         from: PAYER_EVM,
         to: receive,
-        value: (expectedUnits * 3n) / 2n,
+        value: (expectedUnits * 3n) / 2n, // +50% — way above 200bps ceiling
         status: "success",
         receiveAddress: receive,
       });
-      await service.confirmPayment(env, {
-        paymentId: payment.id,
-        txHash: overHash,
+      await expect(
+        service.confirmPayment(env, {
+          paymentId: payment.id,
+          txHash: overHash,
+          userId: USER_ID,
+        }),
+      ).rejects.toThrow(/above the expected ceiling/);
+      expect(creditsLedger).toHaveLength(0);
+    });
+
+    test("confirmPayment rejects a tampered quote_signature without touching the chain", async () => {
+      await resetTable();
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
         userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
       });
-      expect(creditsLedger).toHaveLength(1);
+      const meta = payment.metadata as Record<string, unknown>;
+      const tokenAddress = meta.token_address as string;
+      const receive = env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS;
+      const hash = `0x${"7".repeat(64)}`;
+      // Provide a perfectly-valid on-chain tx — the failure must come from the
+      // HMAC check, not from anything on chain.
+      chainTxs.set(hash, {
+        from: PAYER_EVM,
+        to: tokenAddress,
+        value: 0n,
+        status: "success",
+        receiveAddress: receive,
+        erc20: {
+          tokenAddress,
+          from: PAYER_EVM,
+          to: receive,
+          value: BigInt(meta.expected_token_units as string),
+        },
+      });
+      // Tamper with the persisted signature directly in the DB.
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET metadata = metadata || '{"quote_signature":"deadbeef"}'::jsonb WHERE id = '${payment.id}'`,
+      );
+      await expect(
+        service.confirmPayment(env, { paymentId: payment.id, txHash: hash, userId: USER_ID }),
+      ).rejects.toThrow(/Quote signature/);
+      expect(creditsLedger).toHaveLength(0);
+    });
+
+    test("processBroadcastBatch bumps verify_attempts and gives up at MAX_VERIFY_ATTEMPTS", async () => {
+      await resetTable();
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
+      });
+      const hash = `0x${"8".repeat(64)}`;
+      await service.attachTransaction({ paymentId: payment.id, txHash: hash, userId: USER_ID });
+      // No entry in chainTxs => transient "not found". One pass bumps verify_attempts.
+      await service.processBroadcastBatch(env);
+      const row1 = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row1?.status).toBe("broadcast");
+      const attempts1 = Number(
+        (row1?.metadata as Record<string, unknown>).verify_attempts ?? 0,
+      );
+      expect(attempts1).toBeGreaterThanOrEqual(1);
+
+      // Jump straight to MAX-1 to keep the test fast, then one more pass should
+      // give up.
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET metadata = metadata || '{"verify_attempts":60}'::jsonb WHERE id = '${payment.id}'`,
+      );
+      const stats = await service.processBroadcastBatch(env);
+      expect(stats.failed).toBe(1);
+      const row2 = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row2?.status).toBe("failed_chain");
+    });
+
+    test("Solana confirmPayment rejects when receiving ATA owner mismatches treasury", async () => {
+      await resetTable();
+      // Configure the parsed-tx + ATA-owner overrides for this test only.
+      solanaTestState.parsedTxOverride = {
+        slot: 1,
+        meta: {
+          err: null,
+          preTokenBalances: [],
+          postTokenBalances: [],
+          fee: 0,
+          preBalances: [],
+          postBalances: [],
+        },
+        transaction: { message: { accountKeys: [], instructions: [] }, signatures: [] },
+      };
+      // 32-byte pubkey distinct from the configured treasury (all-1s default).
+      solanaTestState.ataOwnerOverride = new Uint8Array(32).fill(2);
+
+      try {
+        const { payment } = await service.createPayment(env, {
+          organizationId: ORG_ID,
+          userId: USER_ID,
+          accountWalletAddress: null,
+          payerAddress: PAYER_SOL,
+          amountUsd: 10,
+          network: "solana",
+          tokenSymbol: "USDC",
+        });
+        const solHash = "S".repeat(64);
+        await expect(
+          service.confirmPayment(env, {
+            paymentId: payment.id,
+            txHash: solHash,
+            userId: USER_ID,
+          }),
+        ).rejects.toThrow(/Receiving ATA owner does not match/);
+        expect(creditsLedger).toHaveLength(0);
+      } finally {
+        solanaTestState.parsedTxOverride = null;
+        solanaTestState.ataOwnerOverride = null;
+      }
     });
 
     test("processBroadcastBatch confirms a broadcast row when verify succeeds", async () => {
