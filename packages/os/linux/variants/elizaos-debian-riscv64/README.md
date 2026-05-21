@@ -73,7 +73,7 @@ The live-build chroot must contain these files before
 
 `bun-linux-riscv64-musl.zip` is the same artifact described by
 `packages/app-core/scripts/bun-riscv64/bun-version.json` and consumed by
-Android when `MILADY_BUN_RISCV64_URL` is set. Its internal Bun binary
+Android when `ELIZA_BUN_RISCV64_URL` is set. Its internal Bun binary
 must be at `bun-linux-riscv64-musl/bun`. The SHA-256 file contains the
 expected digest for the zip. The `elizaos` binary must be executable and
 must support:
