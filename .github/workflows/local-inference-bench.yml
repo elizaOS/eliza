@@ -194,7 +194,7 @@ jobs:
 
       - name: Upload report artifact
         if: ${{ always() && env.REPORT_DIR != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: profile-nightly-${{ github.run_id }}
           path: ${{ env.REPORT_DIR }}
@@ -203,7 +203,7 @@ jobs:
 
       - name: Upload dev server log
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dev-log-nightly-${{ github.run_id }}
           path: .ci-logs/dev.log
@@ -310,7 +310,7 @@ jobs:
             --out "$OUT_DIR"
 
       - name: Upload cuttlefish report artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: profile-cuttlefish-${{ github.run_id }}
           path: reports/porting/
@@ -463,7 +463,7 @@ jobs:
           }
 
       - name: Upload windows-x64-cpu artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dflash-windows-x64-cpu-${{ github.run_id }}
           path: build-output/windows-x64-cpu

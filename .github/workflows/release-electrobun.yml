@@ -205,7 +205,7 @@ jobs:
           cp "$HOME/.cache/eliza/whisper/ggml-base.en.bin" .artifacts/whisper-model/ggml-base.en.bin
 
       - name: Upload Whisper model artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: whisper-model-base-en
           path: .artifacts/whisper-model/ggml-base.en.bin
@@ -364,7 +364,7 @@ jobs:
 
       - name: Upload Agent Browser Bridge release artifacts
         if: steps.package-browser-bridge.outputs.packaged == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-bridge-store-bundles
           path: |
@@ -827,7 +827,7 @@ jobs:
 
       - name: Upload Electrobun build diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-build-diagnostics
           path: |
@@ -1123,7 +1123,7 @@ jobs:
 
       - name: Upload Windows installer proof artifact
         if: always() && matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-windows-installer-proof
           path: packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**
@@ -1132,7 +1132,7 @@ jobs:
 
       - name: Upload Windows installer .exe + Inno log on smoke failure
         if: failure() && matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-windows-installer-debug
           path: |
@@ -1147,7 +1147,7 @@ jobs:
 
       - name: Upload Windows Playwright UI diagnostics
         if: failure() && matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-windows-ui-playwright-diagnostics
           # TODO: confirm packaged-app Playwright result location in eliza
@@ -1490,7 +1490,7 @@ jobs:
 
       - name: Upload Windows smoke diagnostics
         if: failure() && matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-smoke-diagnostics
           path: packages/app-core/platforms/electrobun/artifacts/windows-smoke-diagnostics/**
@@ -1499,7 +1499,7 @@ jobs:
 
       - name: Upload macOS smoke diagnostics
         if: failure() && matrix.platform.os == 'macos'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-smoke-diagnostics
           path: |
@@ -1601,7 +1601,7 @@ jobs:
 
       - name: Upload public canary installer artifact
         if: matrix.platform.os == 'windows' && needs.prepare.outputs.env == 'canary' && steps.build-electrobun-app.outputs.fallback != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-public-installer
           path: packages/app-core/platforms/electrobun/artifacts/public-canary-installer/ElizaOSApp-Setup-*.exe
@@ -1610,7 +1610,7 @@ jobs:
           compression-level: 0
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}
           path: |
@@ -1630,7 +1630,7 @@ jobs:
 
       - name: Upload MSIX artifact
         if: matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-msix
           path: packages/app-core/platforms/electrobun/artifacts/*.msix

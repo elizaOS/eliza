@@ -140,7 +140,7 @@ jobs:
 
       - name: Upload AOSP build logs and vendor image
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openagent-e1-aosp-build-logs
           path: |
@@ -151,7 +151,7 @@ jobs:
 
       - name: Upload chip evidence logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openagent-e1-chip-evidence
           path: packages/chip/docs/evidence/android/*.log

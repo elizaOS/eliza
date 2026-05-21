@@ -99,7 +99,7 @@ jobs:
           kill "$(cat /tmp/os-homepage-preview.pid)" 2>/dev/null || true
 
       - name: Upload release evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: elizaos-os-release-validation

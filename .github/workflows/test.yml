@@ -351,7 +351,7 @@ jobs:
 
       - name: Upload remote capability cloud live report
         if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: remote-capability-cloud-live-report
           path: reports/remote-capabilities/cloud/*.json
@@ -476,7 +476,7 @@ jobs:
 
       - name: Upload remote capability provider live report
         if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: remote-capability-provider-live-report
           path: reports/remote-capabilities/providers/*.json
