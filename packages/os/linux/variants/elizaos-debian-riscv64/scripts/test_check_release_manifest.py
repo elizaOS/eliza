@@ -18,8 +18,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hypothesis import HealthCheck, given, settings
-from hypothesis import strategies as st
+try:
+    from hypothesis import HealthCheck, given, settings
+    from hypothesis import strategies as st
+
+    HAS_HYPOTHESIS = True
+except ModuleNotFoundError:
+    HAS_HYPOTHESIS = False
 
 THIS_DIR = Path(__file__).resolve().parent
 if str(THIS_DIR) not in sys.path:
@@ -156,7 +161,9 @@ class _Sandbox:
         self.evidence_path = self.tmpdir / "evidence" / "qemu_virt_boot.json"
         self.evidence_payload = _good_evidence(self.iso_path, self.transcript_path)
         self.evidence_path.write_text(json.dumps(self.evidence_payload))
-        self.grub_evidence_path = self.tmpdir / "evidence" / "grub_efi_riscv64_boot.json"
+        self.grub_evidence_path = (
+            self.tmpdir / "evidence" / "grub_efi_riscv64_boot.json"
+        )
         self.grub_evidence_payload = _good_grub_evidence(
             self.iso_path, self.transcript_path
         )
@@ -192,6 +199,22 @@ def _run(sandbox: _Sandbox) -> tuple[gate.Status, list[gate.GateResult]]:
     return status, results
 
 
+class DependencyTests(unittest.TestCase):
+    def test_missing_jsonschema_blocks_instead_of_crashing(self) -> None:
+        original = gate.jsonschema
+        try:
+            gate.jsonschema = None
+            results = gate.check_schema({}, {})
+        finally:
+            gate.jsonschema = original
+        self.assertEqual(results[0].status, "BLOCKED")
+        self.assertIn("jsonschema", results[0].message)
+
+
+@unittest.skipUnless(
+    gate.jsonschema is not None,
+    "jsonschema is required for full release-manifest validation; install requirements.txt",
+)
 class FixedPathTests(unittest.TestCase):
     def setUp(self) -> None:
         self.sandbox = _Sandbox()
@@ -265,7 +288,9 @@ class FixedPathTests(unittest.TestCase):
         status, results = _run(self.sandbox)
         self.assertEqual(status, "FAIL")
         self.assertTrue(
-            any("GRUB transcript missing required marker" in r.message for r in results),
+            any(
+                "GRUB transcript missing required marker" in r.message for r in results
+            ),
             msg=[(r.status, r.message) for r in results],
         )
 
@@ -334,76 +359,88 @@ class FixedPathTests(unittest.TestCase):
         self.assertEqual(status, "FAIL")
 
 
-class MutationFuzz(unittest.TestCase):
-    """Hypothesis-driven mutations covering every top-level required field."""
+if HAS_HYPOTHESIS:
 
-    # Top-level required fields per the umbrella schema's artifacts[] items.
-    _REQUIRED_TOP_LEVEL = (
-        "id",
-        "kind",
-        "target",
-        "filename",
-        "downloadUrl",
-        "status",
-        "sizeBytes",
-        "sha256",
-        "validation",
-    )
+    class MutationFuzz(unittest.TestCase):
+        """Hypothesis-driven mutations covering every top-level required field."""
 
-    def setUp(self) -> None:
-        self.sandbox = _Sandbox()
-
-    def tearDown(self) -> None:
-        self.sandbox.cleanup()
-
-    @settings(
-        deadline=None,
-        max_examples=25,
-        suppress_health_check=[HealthCheck.function_scoped_fixture],
-    )
-    @given(field=st.sampled_from(_REQUIRED_TOP_LEVEL))
-    def test_dropping_required_field_fails(self, field: str) -> None:
-        payload = json.loads(json.dumps(self.sandbox.manifest_payload))
-        payload.pop(field, None)
-        self.sandbox.write_manifest(payload)
-        status, results = _run(self.sandbox)
-        self.assertIn(
-            status,
-            ("FAIL", "BLOCKED"),
-            msg=f"dropping {field} produced {status} {[(r.status, r.message) for r in results]}",
+        # Top-level required fields per the umbrella schema's artifacts[] items.
+        _REQUIRED_TOP_LEVEL = (
+            "id",
+            "kind",
+            "target",
+            "filename",
+            "downloadUrl",
+            "status",
+            "sizeBytes",
+            "sha256",
+            "validation",
         )
-        # Dropping a structural field must surface as FAIL, never silently PASS.
-        self.assertNotEqual(status, "PASS")
 
-    @settings(
-        deadline=None,
-        max_examples=25,
-        suppress_health_check=[HealthCheck.function_scoped_fixture],
-    )
-    @given(garbage=st.text(min_size=1, max_size=16))
-    def test_garbage_sha256_fails(self, garbage: str) -> None:
-        payload = json.loads(json.dumps(self.sandbox.manifest_payload))
-        payload["sha256"] = garbage
-        self.sandbox.write_manifest(payload)
-        status, _results = _run(self.sandbox)
-        # Either the schema (regex) or the cross-check catches it; PASS is illegal.
-        self.assertNotEqual(status, "PASS")
+        def setUp(self) -> None:
+            self.sandbox = _Sandbox()
 
-    @settings(
-        deadline=None,
-        max_examples=10,
-        suppress_health_check=[HealthCheck.function_scoped_fixture],
-    )
-    @given(
-        bad_status=st.sampled_from(["missing", "waived", "not-required"]),
-    )
-    def test_promoted_with_uncollected_row_fails(self, bad_status: str) -> None:
-        payload = json.loads(json.dumps(self.sandbox.manifest_payload))
-        payload["status"] = "candidate"
-        payload["validation"]["evidence"][1]["status"] = bad_status
-        self.sandbox.write_manifest(payload)
-        status, results = _run(self.sandbox)
-        self.assertEqual(status, "FAIL", msg=[(r.status, r.message) for r in results])
+        def tearDown(self) -> None:
+            self.sandbox.cleanup()
+
+        @settings(
+            deadline=None,
+            max_examples=25,
+            suppress_health_check=[HealthCheck.function_scoped_fixture],
+        )
+        @given(field=st.sampled_from(_REQUIRED_TOP_LEVEL))
+        def test_dropping_required_field_fails(self, field: str) -> None:
+            payload = json.loads(json.dumps(self.sandbox.manifest_payload))
+            payload.pop(field, None)
+            self.sandbox.write_manifest(payload)
+            status, results = _run(self.sandbox)
+            self.assertIn(
+                status,
+                ("FAIL", "BLOCKED"),
+                msg=f"dropping {field} produced {status} {[(r.status, r.message) for r in results]}",
+            )
+            # Dropping a structural field must surface as FAIL, never silently PASS.
+            self.assertNotEqual(status, "PASS")
+
+        @settings(
+            deadline=None,
+            max_examples=25,
+            suppress_health_check=[HealthCheck.function_scoped_fixture],
+        )
+        @given(garbage=st.text(min_size=1, max_size=16))
+        def test_garbage_sha256_fails(self, garbage: str) -> None:
+            payload = json.loads(json.dumps(self.sandbox.manifest_payload))
+            payload["sha256"] = garbage
+            self.sandbox.write_manifest(payload)
+            status, _results = _run(self.sandbox)
+            # Either the schema (regex) or the cross-check catches it; PASS is illegal.
+            self.assertNotEqual(status, "PASS")
+
+        @settings(
+            deadline=None,
+            max_examples=10,
+            suppress_health_check=[HealthCheck.function_scoped_fixture],
+        )
+        @given(
+            bad_status=st.sampled_from(["missing", "waived", "not-required"]),
+        )
+        def test_promoted_with_uncollected_row_fails(self, bad_status: str) -> None:
+            payload = json.loads(json.dumps(self.sandbox.manifest_payload))
+            payload["status"] = "candidate"
+            payload["validation"]["evidence"][1]["status"] = bad_status
+            self.sandbox.write_manifest(payload)
+            status, results = _run(self.sandbox)
+            self.assertEqual(
+                status, "FAIL", msg=[(r.status, r.message) for r in results]
+            )
+
+else:
+
+    class MutationFuzz(unittest.TestCase):
+        def test_hypothesis_dependency_missing(self) -> None:
+            self.skipTest(
+                "hypothesis is required for mutation fuzz tests; install requirements.txt"
+            )
 
 
 class AggregationTests(unittest.TestCase):
