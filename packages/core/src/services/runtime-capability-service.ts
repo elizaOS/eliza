@@ -11,7 +11,7 @@
  *   RuntimeBrokerCapabilityRouter})
  * - `RemoteCapabilityRouterService` (the `Service` subclass in
  *   `packages/agent/src/services/remote-capability-router.ts`)
- * - the parallel `E2BSatelliteCapabilityRouterService` from PR #7779
+ * - the parallel `E2BRemoteCapabilityRouterService` from PR #7779
  *
  * Each registered against the same {@link CAPABILITY_ROUTER_SERVICE_TYPE}
  * slot, and the routing strategy (local vs. remote vs. cloud-sandbox) was
