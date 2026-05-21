@@ -1,0 +1,138 @@
+{
+  "schema": "eliza.pd_corner_expansion.v1",
+  "errors": [],
+  "nodes": {
+    "asap7": {
+      "node_id": "asap7",
+      "pdk": "ASAP7",
+      "status": "predictive_pdk_shape_only_not_signoff",
+      "corner_manifest": "pd/corner-manifests/asap7.yaml",
+      "total_effective_corners_min": null,
+      "meets_minimum": null,
+      "shape": "open_enumerated_product",
+      "axis_sizes": {
+        "pvt_corners": 3,
+        "rc_corners": 3,
+        "vt": 4
+      },
+      "effective_corners": 36
+    },
+    "gf180": {
+      "node_id": "gf180",
+      "pdk": "gf180mcuC",
+      "status": "open_pdk_corners_available",
+      "corner_manifest": "pd/corner-manifests/gf180.yaml",
+      "total_effective_corners_min": null,
+      "meets_minimum": null,
+      "shape": "open_enumerated_product",
+      "axis_sizes": {
+        "pvt_corners": 3,
+        "rc_corners": 3,
+        "vt": 1
+      },
+      "effective_corners": 9
+    },
+    "ihp-sg13g2": {
+      "node_id": "ihp-sg13g2",
+      "pdk": "ihp-sg13g2",
+      "status": "open_pdk_corners_available",
+      "corner_manifest": "pd/corner-manifests/ihp-sg13g2.yaml",
+      "total_effective_corners_min": null,
+      "meets_minimum": null,
+      "shape": "open_enumerated_product",
+      "axis_sizes": {
+        "pvt_corners": 3,
+        "rc_corners": 3,
+        "vt": 1
+      },
+      "effective_corners": 9
+    },
+    "intel-14a": {
+      "node_id": "intel-14a",
+      "pdk": "Intel_14A",
+      "status": "blocked_until_foundry_agreement",
+      "corner_manifest": "pd/corner-manifests/intel-14a.yaml",
+      "total_effective_corners_min": 32,
+      "meets_minimum": true,
+      "shape": "blocked_axis_cross_product",
+      "axis_sizes": {
+        "process": 8,
+        "voltage_v": 3,
+        "temperature_c": 6,
+        "aging": 3,
+        "rc": 5,
+        "vt": 4
+      },
+      "effective_corners": 8640
+    },
+    "samsung-sf2p": {
+      "node_id": "samsung-sf2p",
+      "pdk": "Samsung_SF2P",
+      "status": "blocked_until_foundry_agreement",
+      "corner_manifest": "pd/corner-manifests/samsung-sf2p.yaml",
+      "total_effective_corners_min": 32,
+      "meets_minimum": true,
+      "shape": "blocked_axis_cross_product",
+      "axis_sizes": {
+        "process": 5,
+        "voltage_v": 3,
+        "temperature_c": 6,
+        "aging": 3,
+        "rc": 5,
+        "vt": 4
+      },
+      "effective_corners": 5400
+    },
+    "sky130": {
+      "node_id": "sky130",
+      "pdk": "sky130A",
+      "status": "open_pdk_corners_available",
+      "corner_manifest": "pd/corner-manifests/sky130.yaml",
+      "total_effective_corners_min": null,
+      "meets_minimum": null,
+      "shape": "open_enumerated_product",
+      "axis_sizes": {
+        "pvt_corners": 3,
+        "rc_corners": 3,
+        "vt": 1
+      },
+      "effective_corners": 9
+    },
+    "tsmc-a14": {
+      "node_id": "tsmc-a14",
+      "pdk": "TSMC_A14",
+      "status": "blocked_until_foundry_agreement",
+      "corner_manifest": "pd/corner-manifests/tsmc-a14.yaml",
+      "total_effective_corners_min": 32,
+      "meets_minimum": true,
+      "shape": "blocked_axis_cross_product",
+      "axis_sizes": {
+        "process": 7,
+        "voltage_v": 3,
+        "temperature_c": 6,
+        "aging": 3,
+        "rc": 5,
+        "vt": 5
+      },
+      "effective_corners": 9450
+    },
+    "tsmc-n2p": {
+      "node_id": "tsmc-n2p",
+      "pdk": "TSMC_N2P",
+      "status": "blocked_until_foundry_agreement",
+      "corner_manifest": "pd/corner-manifests/tsmc-n2p.yaml",
+      "total_effective_corners_min": 32,
+      "meets_minimum": true,
+      "shape": "blocked_axis_cross_product",
+      "axis_sizes": {
+        "process": 5,
+        "voltage_v": 3,
+        "temperature_c": 6,
+        "aging": 2,
+        "rc": 5,
+        "vt": 5
+      },
+      "effective_corners": 4500
+    }
+  }
+}

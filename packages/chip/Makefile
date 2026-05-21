@@ -1860,3 +1860,12 @@ boot-pipeline-status:
 	else \
 		echo "tier2:       MISSING  kernel=$(TIER2_KERNEL) initrd=$(TIER2_INITRD) (run 'make tier2-build')"; \
 	fi
+
+# --- node-profile / PDK abstraction (advanced-node readiness) ---
+.PHONY: node-profile-check corner-expand-check
+node-profile-check:
+	@$(PYTHON) scripts/build_node_profile.py
+	@$(PYTHON) scripts/check_node_profile.py
+
+corner-expand-check:
+	@$(PYTHON) scripts/expand_corners.py

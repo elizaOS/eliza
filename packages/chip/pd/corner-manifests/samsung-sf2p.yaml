@@ -35,6 +35,37 @@ required_after_unblock:
   ocv_model: LVF_or_SOCV
   bspdn_corners: not_applicable_for_SF2P_frontside
 
+# BSPDN awareness — SF2P is frontside-PDN, so BSPDN corners are NOT required
+# for the 2028 backup target. They are documented here for the SF2Z BSPDN
+# variant, which arrives 2027 and is tracked as a separate corner-set if
+# selected. This mirrors the A14-baseline / A14P split exactly.
+bspdn_planning_notes:
+  sf2p_baseline_2028:
+    pdn_topology: frontside_only
+    top_side_ir_corner_required: true
+    backside_ir_corner_required: false
+    combined_two_sided_ir_corner_required: false
+    thermal_corner_uplift_for_bspdn_c: 0
+    notes: >
+      SF2P baseline does not introduce a backside metal stack. STA/IR signoff
+      uses the same single-side methodology the project drives on Sky130
+      today, scaled to the SF2P PVT envelope.
+  sf2z_bspdn_2027_variant:
+    pdn_topology: backside_plus_frontside_signal
+    top_side_ir_corner_required: true
+    backside_ir_corner_required: true
+    combined_two_sided_ir_corner_required: true
+    thermal_corner_uplift_for_bspdn_c: blocked_until_foundry_agreement
+    thermal_uplift_basis: samsung_sf2z_bspdn_data_blocked_until_foundry_agreement
+    bspdn_warpage_corner_required: true
+    notes: >
+      SF2Z layers BSPDN on top of SF2P. If that target is selected, this corner
+      set needs to grow with two-sided PDN extraction, a Tj uplift in the active
+      region, and a backside-thinned-silicon warpage corner for HPA. The
+      numeric uplift stays blocked until a Samsung Foundry agreement publishes
+      it; no value is invented here. None of this affects the 2028 SF2P
+      frontside backup target.
+
 forbidden_claims_until_unblocked:
   - sf2p_corner_clean
   - sf2p_release_evidence
