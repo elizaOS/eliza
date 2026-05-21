@@ -1372,7 +1372,8 @@ software-bsp-test:
 evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
-.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check \
+.PHONY: ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check \
+	ai-eda-external-assets-check ai-eda-external-intake-check \
 	ai-eda-external-assets-dry-run ai-eda-local-rag-index ai-eda-backend-preflight \
 	ai-eda-bootstrap-metadata ai-eda-bootstrap-setup-check ai-eda-bootstrap-local-smoke \
 	ai-eda-bootstrap-training-handoff ai-eda-alphachip-checkpoint-blocker-check \
@@ -1400,6 +1401,9 @@ ai-eda-source-inventory-check:
 
 ai-eda-ai-workload-manifest-check:
 	@$(PYTHON) scripts/ai_eda/check_ai_workload_manifest.py
+
+ai-eda-assertion-candidate-manifests-check:
+	@$(PYTHON) scripts/ai_eda/check_assertion_candidate_manifests.py
 
 ai-eda-external-assets-check:
 	@$(PYTHON) scripts/ai_eda/check_external_asset_manifests.py
