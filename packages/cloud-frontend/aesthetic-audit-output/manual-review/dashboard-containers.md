@@ -1,13 +1,9 @@
 # Manual review — dashboard-containers
 
-Route: `/dashboard/containers`
-
-Screenshots: `../desktop/dashboard-containers.png`, `../desktop/dashboard-containers--hover.png`, `../mobile/dashboard-containers.png`
+Route inferred from slug. Screenshots: `../desktop/dashboard-containers.png`, `../desktop/dashboard-containers--hover.png`, `../mobile/dashboard-containers.png`
 
 ## Verdict
 
-`broken` — captures the "Something went wrong" error boundary. Same harness limitation.
+`needs-work`
 
-## Loop-2 wins to preserve
-
-- Previous run showed blue "deploying" status pill in containers-table. Subagent B remapped to neutral. Confirm once populated.
+Loop-4 JWT injection unblocked the page. `containers/auth/{uuid}` mock pattern now matches and returns `[]`. Skeleton remains because additional queries (cost summary, billing band) need their own mocks. Subagent B's earlier loop-2 work on the `deploying` status pill (now neutral, not blue) cannot be eyeballed without a populated list.

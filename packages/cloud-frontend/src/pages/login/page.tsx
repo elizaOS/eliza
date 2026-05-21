@@ -2,7 +2,6 @@ import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
-import LandingHeader from "../../components/layout/landing-header";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
 
@@ -21,8 +20,7 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
       className="theme-cloud min-h-screen bg-black text-white"
     >
       <div className="flex min-h-screen w-full flex-col">
-        <LandingHeader />
-        <div className="relative z-10 flex flex-1 items-center justify-center p-4 pt-24">
+        <div className="relative z-10 flex flex-1 items-center justify-center p-4">
           <div className="w-full max-w-md border border-white/14 bg-black/86 p-6 text-white md:p-8">
             {children}
           </div>

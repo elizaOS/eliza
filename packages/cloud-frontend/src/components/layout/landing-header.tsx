@@ -21,6 +21,9 @@ export default function LandingHeader() {
   const devDashboardLabel = t("cloud.landing.developerDashboard", {
     defaultValue: "Developer Dashboard",
   });
+  const signInLabel = t("cloud.landing.signIn", {
+    defaultValue: "Sign in",
+  });
 
   return (
     <motion.header className="pointer-events-auto fixed top-0 left-0 z-[100] w-full bg-transparent">
@@ -53,7 +56,7 @@ export default function LandingHeader() {
               disabled={!ready}
               type="button"
             >
-              {devDashboardLabel}
+              {signInLabel}
             </button>
           )}
         </div>

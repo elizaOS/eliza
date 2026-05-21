@@ -1,14 +1,9 @@
 # Manual review — dashboard-settings
 
-Route: `/dashboard/settings`
-
-Screenshots: `../desktop/dashboard-settings.png`, `../desktop/dashboard-settings--hover.png`, `../mobile/dashboard-settings.png`
+Route inferred from slug. Screenshots: `../desktop/dashboard-settings.png`, `../desktop/dashboard-settings--hover.png`, `../mobile/dashboard-settings.png`
 
 ## Verdict
 
-`broken` — captures the loading skeleton only. Same harness limitation.
+`needs-work`
 
-## When populated (verified outside audit)
-
-- Settings tabs (General / Notifications / Integrations / API) render fine on real load.
-- The tone="blue" callouts in Microsoft / Telegram / WhatsApp / Discord connections now render as neutral after the ConnectionCard fix.
+Loop-4 JWT injection unblocked the page. Tab chrome should render once `useSettings` mock returns the right shape. `tone="blue"` callouts on integration tabs (Microsoft / Telegram / WhatsApp / Discord) are already remapped to neutral via the ConnectionCard fix in loop 2.

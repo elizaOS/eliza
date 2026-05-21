@@ -713,6 +713,40 @@ for (const viewport of VIEWPORTS) {
               sameSite: "Lax",
             },
           ]);
+          // Inject a synthetic JWT into localStorage so the api-fetch
+          // bridge sees a token and attaches the Bearer header. The
+          // route mocks below catch every request so the token never
+          // hits a real server; it just needs to exist for the auth
+          // wrapper to proceed past its "no token → fetch fails" branch.
+          const header = Buffer.from(
+            JSON.stringify({ alg: "HS256", typ: "JWT" }),
+            "utf8",
+          )
+            .toString("base64")
+            .replace(/=+$/, "")
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_");
+          const payload = Buffer.from(
+            JSON.stringify({
+              sub: "22222222-2222-4222-8222-222222222222",
+              userId: "22222222-2222-4222-8222-222222222222",
+              address: "0xE2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2",
+              email: "audit@example.com",
+              exp: Math.floor(Date.now() / 1000) + 3600,
+              iat: Math.floor(Date.now() / 1000),
+            }),
+            "utf8",
+          )
+            .toString("base64")
+            .replace(/=+$/, "")
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_");
+          const token = `${header}.${payload}.audit-fake-signature`;
+          await context.addInitScript((t: string) => {
+            try {
+              window.localStorage.setItem("steward_session_token", t);
+            } catch {}
+          }, token);
         } else {
           await context.clearCookies();
         }

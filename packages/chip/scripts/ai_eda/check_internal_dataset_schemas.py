@@ -38,17 +38,16 @@ def validate_nested(
     return errors
 
 
-def validate_example(path: Path, records: dict[str, Any]) -> list[str]:
+def validate_document(label: str, document: Any, records: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    document = load_yaml(path)
     if not isinstance(document, dict):
-        return [f"{path}: example must be a mapping"]
+        return [f"{label}: example must be a mapping"]
     schema_id = document.get("schema")
     if not isinstance(schema_id, str) or schema_id not in records:
-        return [f"{path}: unknown schema {schema_id!r}"]
+        return [f"{label}: unknown schema {schema_id!r}"]
 
     record = records[schema_id]
-    record_id = document.get("id", str(path))
+    record_id = document.get("id", label)
     for field in record.get("required_fields", []):
         if field not in document:
             errors.append(f"{record_id}: missing required field {field}")
@@ -61,6 +60,10 @@ def validate_example(path: Path, records: dict[str, Any]) -> list[str]:
         errors.append(f"{record_id}: claim_boundary must explicitly forbid release claims")
 
     return errors
+
+
+def validate_example(path: Path, records: dict[str, Any]) -> list[str]:
+    return validate_document(str(path), load_yaml(path), records)
 
 
 def parse_args() -> argparse.Namespace:
@@ -160,7 +163,7 @@ def main() -> int:
             if not isinstance(schema_id, str) or schema_id not in records:
                 errors.append(f"{path}: unknown schema {schema_id!r}")
                 continue
-            errors.extend(validate_example(path, records))
+            errors.extend(validate_document(str(path), document, records))
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{path}: {exc}")
 

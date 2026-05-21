@@ -1,13 +1,9 @@
 # Manual review — dashboard-account
 
-Route: `/dashboard/account`
-
-Screenshots: `../desktop/dashboard-account.png`, `../desktop/dashboard-account--hover.png`, `../mobile/dashboard-account.png`
+Route inferred from slug. Screenshots: `../desktop/dashboard-account.png`, `../desktop/dashboard-account--hover.png`, `../mobile/dashboard-account.png`
 
 ## Verdict
 
-`broken` — captures the "Something went wrong" error boundary. Same harness limitation.
+`needs-work`
 
-## Notes
-
-- UserMenu component logs "Failed to fetch user profile" — this is the upstream cause of the error boundary. Once the audit uses real auth this error will not occur.
+Loop-4 JWT injection unblocked the page. Skeleton remains — needs specific account/profile/preferences mock shape. Otherwise no visible color or layout issues.

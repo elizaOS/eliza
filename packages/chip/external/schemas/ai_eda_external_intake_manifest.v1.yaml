@@ -14,6 +14,7 @@ allowed_kind:
   - repo
   - dataset
   - model
+  - paper
 allowed_review_status:
   - metadata_reviewed
   - pending
