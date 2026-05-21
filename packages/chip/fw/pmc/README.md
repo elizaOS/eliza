@@ -19,7 +19,7 @@ fw/pmc/
     i2c.c               - I2C-FM-plus fallback
     thermal_policy.c    - DTS throttle ladder
     droop_telemetry.c   - droop counter aggregation
-    secure_boot.c       - HMAC/ECDSA placeholder
+    secure_boot.c       - OPNPHN01 Ed25519 + SHA-256 image verification
 ```
 
 ## Build
@@ -33,11 +33,20 @@ compiled and linted independently of the Ibex sources.
 make -C fw/pmc        # planning_only target; release_blocked
 ```
 
+## Secure boot
+
+`secure_boot.c` links the OPNPHN01 verifier (`fw/boot-rom/secure/`) and rejects
+any image that fails magic, header-version, payload-hash, key-ladder,
+revocation, Ed25519-signature, rollback, or lifecycle checks. The expected root
+key hash and security state are delivered by the RoT over the mailbox
+(`pmc_rot_read_security_state`), which fails closed until that binding lands.
+
 ## Release blockers
 
 - Ibex source pin not committed to repo `external/` manifest.
 - Linker script for AON SRAM not authored.
-- Secure-boot key provisioning not closed.
+- RoT mailbox security-state binding (`pmc_rot_read_security_state`) not landed;
+  verification fails closed until it is.
 - DVFS tables (`docs/pd/dvfs-tables/`) are placeholders only.
 
 ## Cross-references

@@ -2,14 +2,17 @@
     .section .text.reset, "ax", @progbits
     .globl _start
     .globl e1_bootrom_trap
-    .globl e1_bootrom_handoff
 
 /*
- * Minimal RV64 reset ROM scaffold.
+ * RV64 mask-ROM reset vector.
  *
- * This only establishes an executable reset vector and jumps to the configured
- * next-stage address. It does not authenticate payloads, initialize DRAM,
- * provide SBI services, or prove an OpenSBI/Linux handoff.
+ * Establishes the trap vector and stack, masks interrupts, then calls the C
+ * secure-boot entrypoint. That entrypoint authenticates the first-stage image
+ * (OPNPHN01 container, Ed25519 + SHA-256, key ladder, rollback, lifecycle) and
+ * returns the authenticated next-stage entry address in a0, or 0 on any
+ * reject. A zero return is a hard fail-closed trap: there is no fixed handoff
+ * address and no unsigned fallback. The handoff target is decided only after
+ * authentication succeeds.
  */
 _start:
     la      t0, e1_bootrom_trap
@@ -17,15 +20,10 @@ _start:
     csrci   mstatus, 0x8
     la      sp, __bootrom_stack_top
 
-    ld      t1, e1_bootrom_handoff
-    beqz    t1, e1_bootrom_trap
-    jr      t1
+    call    e1_secure_boot_main
+    beqz    a0, e1_bootrom_trap
+    jr      a0
 
 e1_bootrom_trap:
     wfi
     j       e1_bootrom_trap
-
-    .section .rodata.handoff, "a", @progbits
-    .balign 8
-e1_bootrom_handoff:
-    .dword  0x0000000080000000
