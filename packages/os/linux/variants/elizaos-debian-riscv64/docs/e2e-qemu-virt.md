@@ -42,7 +42,18 @@ The build is containerised; the qemu boot is not. You need:
 The validator script (`scripts/check_release_manifest.py`) only depends
 on `jsonschema` from the Python standard ecosystem and on the standard
 library. The unit-test file additionally uses `hypothesis`; both are
-already pinned in the repo's Python tooling.
+pinned in this variant's `requirements.txt`.
+
+Install those optional validation dependencies when you want full schema
+validation and property tests:
+
+```sh
+make -C packages/os/linux/variants/elizaos-debian-riscv64 deps
+```
+
+Without those dependencies, the release gate does not crash: missing
+`jsonschema` is reported as `BLOCKED` evidence infrastructure, and the
+Hypothesis mutation tests are skipped with an explicit message.
 
 ## Step 0 — sanity check
 

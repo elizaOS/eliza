@@ -36,7 +36,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-import jsonschema
+try:
+    import jsonschema
+except ModuleNotFoundError:
+    jsonschema = None
 
 VARIANT_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = VARIANT_DIR.parents[4]
@@ -184,6 +187,15 @@ def _select_manifest(variant_dir: Path) -> tuple[Path, dict, bool]:
 
 def check_schema(manifest: dict, schema: dict) -> list[GateResult]:
     """Validate the variant manifest as a single ``artifacts[]`` entry."""
+    if jsonschema is None:
+        return [
+            GateResult(
+                "BLOCKED",
+                "python dependency missing: jsonschema; run "
+                "`python3 -m pip install -r packages/os/linux/variants/"
+                "elizaos-debian-riscv64/requirements.txt`",
+            )
+        ]
     artifact_schema = _artifact_schema(schema)
     validator = jsonschema.Draft202012Validator(artifact_schema)
     errors = sorted(validator.iter_errors(manifest), key=lambda err: list(err.path))

@@ -30,8 +30,9 @@ IMAGE_TAG ?= elizaos-debian-riscv64-builder
 
 CHECK_SCRIPT := $(SCRIPTS)/check_release_manifest.py
 BRING_UP_STATUS_SCRIPT := $(SCRIPTS)/bring_up_status.py
+REQUIREMENTS := $(HERE)requirements.txt
 
-.PHONY: help build-image build \
+.PHONY: help deps build-image build \
         qemu-boot qemu-virt-boot qemu-virt-boot-docker qemu-virt-boot-evidence qemu-virt-boot-test \
         release-check release-check-strict release-check-test \
         bring-up-status
@@ -39,6 +40,7 @@ BRING_UP_STATUS_SCRIPT := $(SCRIPTS)/bring_up_status.py
 help:
 	@echo "elizaOS Debian RISC-V 64 — make targets"
 	@echo
+	@echo "  deps                   Install variant Python validation dependencies."
 	@echo "  build-image            Build the Docker builder image ($(IMAGE_TAG))."
 	@echo "  build                  Run the builder to produce out/elizaos-debian-riscv64-<ts>.iso."
 	@echo "  qemu-boot              Boot the newest ISO under qemu-system-riscv64 -M virt."
@@ -57,6 +59,9 @@ help:
 	@echo "  IMAGE_TAG=$(IMAGE_TAG)"
 	@echo "  OUT_DIR=$(OUT_DIR)"
 	@echo "  EVIDENCE_DIR=$(EVIDENCE_DIR)"
+
+deps:
+	$(PYTHON) -m pip install -r $(REQUIREMENTS)
 
 build-image:
 	$(DOCKER) build -t $(IMAGE_TAG) $(HERE)
