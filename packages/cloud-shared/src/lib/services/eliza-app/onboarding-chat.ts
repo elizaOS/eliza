@@ -396,9 +396,7 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
 }
 
 function controlPanelUrl(agentId?: string | null): string {
-  return onboardingAppPath(
-    agentId ? `/dashboard/agents/${agentId}` : "/dashboard/agents",
-  );
+  return onboardingAppPath(agentId ? `/dashboard/agents/${agentId}` : "/dashboard/agents");
 }
 
 export async function runOnboardingChat(input: OnboardingChatInput): Promise<OnboardingChatResult> {

@@ -356,15 +356,11 @@ describe("runOnboardingChat", () => {
       });
 
       expect(result.handoffComplete).toBe(true);
-      expect(result.launchUrl).toBe(
-        "https://app.elizacloud.ai/dashboard/agents/agent-1",
-      );
+      expect(result.launchUrl).toBe("https://app.elizacloud.ai/dashboard/agents/agent-1");
       expect(result.session.userId).toBe("user-1");
       expect(result.session.organizationId).toBe("org-1");
       expect(result.session.agentId).toBe("agent-1");
-      expect(result.session.launchUrl).toBe(
-        "https://app.elizacloud.ai/dashboard/agents/agent-1",
-      );
+      expect(result.session.launchUrl).toBe("https://app.elizacloud.ai/dashboard/agents/agent-1");
       expect(result.session.handoffCopiedAt).toBeTruthy();
       expect(result.reply).toContain("copied this onboarding chat into its memory");
       expect(launchManagedElizaAgent).toHaveBeenCalledWith({
@@ -399,9 +395,7 @@ describe("runOnboardingChat", () => {
       expect(continued.handoffComplete).toBe(true);
       expect(continued.session.agentId).toBe("agent-1");
       expect(continued.session.handoffCopiedAt).toBe(result.session.handoffCopiedAt);
-      expect(continued.launchUrl).toBe(
-        "https://app.elizacloud.ai/dashboard/agents/agent-1",
-      );
+      expect(continued.launchUrl).toBe("https://app.elizacloud.ai/dashboard/agents/agent-1");
       expect(launchManagedElizaAgent).not.toHaveBeenCalled();
       expect(rememberRequests).toHaveLength(1);
     } finally {
