@@ -602,6 +602,7 @@ def main() -> int:
     # cross-entropy + fused RMSNorm/SwiGLU/RoPE replace the HF defaults.
     # This is what makes the longer training seq_lens (8k–16k locally,
     # 16k+ on cloud) actually fit in VRAM.
+    from training.model_registry import get as _registry_get  # noqa: E402
     use_liger = args.use_liger == "on" or (
         args.use_liger == "auto"
         and (args.registry_key is None
