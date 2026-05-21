@@ -11,8 +11,8 @@
  * gracefully when the server endpoints aren't live (I2 may not have landed).
  */
 
-import * as React from "react";
 import { Capacitor } from "@capacitor/core";
+import * as React from "react";
 import type {
   CatalogModel,
   DownloadJob,
@@ -28,11 +28,11 @@ import { IOS_LOCAL_AGENT_IPC_BASE } from "../../onboarding/mobile-runtime-mode";
 import type { VoicePrefixStep } from "../../onboarding/voice-prefix";
 import { selectRecommendedModelForSlot } from "../../services/local-inference/recommendation";
 import { toArrayBuffer } from "../../voice/voice-chat-types";
-import {
-  VoicePrefixSteps,
-  type VoiceBundleReadiness,
-} from "./VoicePrefixSteps";
 import { Button } from "../ui/button";
+import {
+  type VoiceBundleReadiness,
+  VoicePrefixSteps,
+} from "./VoicePrefixSteps";
 
 export interface VoicePrefixGateProps {
   /** Called when the user completes or skips the voice prefix flow. */
@@ -694,7 +694,7 @@ export function VoicePrefixGate({
   return (
     <div
       data-testid="voice-prefix-gate"
-      className="relative flex h-full max-h-full min-h-0 w-full items-start justify-center overflow-hidden bg-bg px-3 text-[var(--onboarding-text-primary)]"
+      className="relative flex h-full max-h-full min-h-0 w-full items-start justify-center overflow-hidden bg-[#F7F9FF] px-3 text-[#0B35F1]"
       style={{
         display: "flex",
         alignItems: "flex-start",
@@ -703,7 +703,7 @@ export function VoicePrefixGate({
         height: "100%",
         paddingTop: "max(0.75rem, var(--safe-area-top, 0px))",
         paddingBottom: "max(0.75rem, var(--safe-area-bottom, 0px))",
-        background: "transparent",
+        background: "#F7F9FF",
       }}
     >
       <div
@@ -906,7 +906,7 @@ function VoiceBundleStatusStrip({
           data-testid="voice-prefix-persistent-bundle-progress"
         >
           <div
-            className="h-full rounded-sm bg-accent transition-[width] duration-500"
+            className="h-full rounded-sm bg-[#0B35F1] transition-[width] duration-500"
             style={{
               width: progressWidth,
               opacity: percent === null ? 0.72 : 1,
