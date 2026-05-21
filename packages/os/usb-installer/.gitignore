@@ -6,3 +6,4 @@ node_modules/
 # tests/**/*-snapshots/ are tracked as the source of truth.
 test-results/
 playwright-report/
+build/

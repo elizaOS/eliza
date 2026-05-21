@@ -1357,21 +1357,42 @@ software-bsp-test:
 evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
-.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-assets-dry-run ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
+.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-external-assets-dry-run ai-eda-alphachip-checkpoint-blocker-check ai-eda-alphachip-checkpoint-blocker-network-check ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train ai-eda-macro-placement-supervised-dataset ai-eda-macro-placement-supervised-train ai-eda-macro-placement-baseline ai-eda-macro-placement-candidate-eval ai-eda-macro-placement-replay-plan ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
 ai-eda-source-inventory-check:
 	@$(PYTHON) scripts/check_ai_eda_source_inventory.py
 
 ai-eda-external-assets-check:
 	@$(PYTHON) scripts/ai_eda/check_external_asset_manifests.py
 
+ai-eda-external-intake-check: ai-eda-external-assets-check
+	@$(PYTHON) scripts/ai_eda/check_external_intake_manifests.py --run-id validation
+
 ai-eda-external-assets-dry-run:
 	@$(PYTHON) scripts/ai_eda/fetch_external_asset.py --all --dry-run --run-id validation
+
+ai-eda-alphachip-checkpoint-blocker-check:
+	@$(PYTHON) scripts/ai_eda/check_alphachip_checkpoint_blocker.py --run-id validation
+
+ai-eda-alphachip-checkpoint-blocker-network-check:
+	@$(PYTHON) scripts/ai_eda/check_alphachip_checkpoint_blocker.py --run-id validation --network
 
 ai-eda-internal-schemas-check:
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py
 
 ai-eda-internal-fixtures: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/materialize_internal_dataset_fixtures.py --run-id validation
+
+ai-eda-openroad-eda-corpus-convert: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/convert_openroad_eda_corpus.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/openroad_eda_corpus/validation/records
+
+ai-eda-tilos-macroplacement-convert: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/convert_tilos_macroplacement.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/tilos_macroplacement/validation/records
+
+ai-eda-e1-softmacro-cases: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/materialize_e1_softmacro_cases.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/e1_softmacro_cases/validation/records
 
 ai-eda-external-fixture-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/convert_external_fixture_corpora.py --run-id validation
@@ -1390,6 +1411,26 @@ ai-eda-pd-surrogate-smoke: ai-eda-openlane-flow-labels
 
 ai-eda-fixture-placement-train: ai-eda-internal-fixtures
 	@$(PYTHON) scripts/ai_eda/train_fixture_placement_smoke.py --run-id validation --device cpu
+
+ai-eda-macro-placement-supervised-dataset: ai-eda-internal-fixtures ai-eda-tilos-macroplacement-convert ai-eda-e1-softmacro-cases
+	@$(PYTHON) scripts/ai_eda/build_macro_placement_supervised_dataset.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_supervised_dataset.py --report build/ai_eda/macro_placement_supervised_dataset/validation/macro_placement_supervised_dataset_report.json
+
+ai-eda-macro-placement-supervised-train: ai-eda-macro-placement-supervised-dataset
+	@$(PYTHON) scripts/ai_eda/train_macro_placement_supervised_model.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py --candidate-dir build/ai_eda/macro_placement_supervised_model/validation/candidates
+
+ai-eda-macro-placement-baseline: ai-eda-internal-fixtures ai-eda-e1-openlane-convert ai-eda-tilos-macroplacement-convert ai-eda-e1-softmacro-cases
+	@$(PYTHON) scripts/ai_eda/train_macro_placement_policy.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py --candidate-dir build/ai_eda/macro_placement_policy/validation/candidates
+
+ai-eda-macro-placement-candidate-eval: ai-eda-macro-placement-baseline
+	@$(PYTHON) scripts/ai_eda/evaluate_macro_placement_candidates.py --run-id validation
+
+ai-eda-macro-placement-replay-plan: ai-eda-macro-placement-candidate-eval
+	@$(PYTHON) scripts/ai_eda/plan_macro_placement_replay.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_replay_plan.py --report build/ai_eda/macro_placement_replay/validation/replay_plan.json
+	@$(PYTHON) scripts/ai_eda/check_tool_action_manifests.py --manifests-dir build/ai_eda/macro_placement_replay/validation/tool_actions
 
 ai-eda-candidate-manifests-check: ai-eda-fixture-placement-train
 	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py
@@ -1412,7 +1453,7 @@ ai-eda-cuda-preflight:
 ai-eda-cuda-payload:
 	@$(PYTHON) scripts/ai_eda/package_cuda_training_payload.py --run-id validation
 
-docs-check: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
+docs-check: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-alphachip-checkpoint-blocker-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
 	@$(PYTHON) scripts/docs_check.py
 
 tool-versions:

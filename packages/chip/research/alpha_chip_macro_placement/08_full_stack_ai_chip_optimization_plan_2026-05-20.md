@@ -219,6 +219,57 @@ Use it as a non-RL macro-placement baseline and candidate generator. The
 checkpoint should be treated like any other model artifact: pinned URL,
 checksum, license/provenance review, and deterministic E1 replay.
 
+### 2026 macro-placement and floorplanning additions
+
+The Partcl/HRT Macro Placement Challenge repository is a live 2026 benchmark
+lane with Apache-2.0 repository licensing metadata and OpenROAD-oriented
+scoring. Its README states a May 21, 2026 submission deadline, a one-hour
+per-benchmark runtime limit, and final evaluation of top submissions through
+OpenROAD on NG45 designs including hidden designs.
+
+Source: https://github.com/partcleda/macro-place-challenge-2026
+
+Use it as a benchmark-hygiene and scoring-policy reference, not as an E1
+release gate. If imported, it must stay behind exact revision pinning,
+challenge-term review, public/hidden split handling, non-overlap checks,
+candidate quarantine, and downstream E1 OpenLane/OpenROAD replay.
+
+Intel FloorSet is now directly relevant because it is the basis for the ICCAD
+2026 FloorSet Challenge. The public README reports 2M synthetic fixed-outline
+floorplan layouts, 1M training samples per dataset family, 100 local validation
+samples, hidden final test samples, and about 35 GB of storage for the public
+dataset workflow.
+
+Source: https://github.com/IntelLabs/FloorSet
+
+Use it for floorplanning pretraining and constraint handling only after license
+review and split manifests. It is synthetic and cannot prove E1 macro, IO, PDN,
+package, or timing quality.
+
+VeoPlace / "See it to Place it" is a 2026 VLM-guided evolutionary macro
+placement method. The public abstract reports using a VLM without fine-tuning
+to constrain a base placer to subregions, outperforming prior learning-based
+approaches on 9 of 10 open benchmarks and improving DREAMPlace in all 8
+evaluated benchmarks.
+
+Source: https://arxiv.org/abs/2603.28733
+
+Use it as a high-priority experimental search policy once E1 placement cases
+can be rendered as deterministic floorplan images. Hosted VLM inference is
+blocked until data-handling terms, prompt/image hashes, model/version IDs,
+subregion proposals, legalizer outputs, OpenROAD replay, and PD review exist.
+
+Recent 2026 RL/search placement papers also add useful ideas: HMPlace for
+hierarchical mask-guided RL, RSPlace for rotation-aware bidirectional tree
+expansion, and dynamic tree-search guided RL for MCTS-style exploration. These
+are method references until code, licenses, and local replay evidence exist.
+
+Sources:
+
+- https://www.sciencedirect.com/science/article/pii/S1879239126001797
+- https://ojs.aaai.org/index.php/AAAI/article/view/39559
+- https://doi.org/10.1016/j.mejo.2026.107100
+
 ### CommonCircuits
 
 CommonCircuits is a new 2026 public dataset effort for normalized PCB/circuit
@@ -241,9 +292,31 @@ The first reproducibility spine is now checked in:
   records without downloading or vendoring payloads.
 - `external/schemas/ai_eda_external_asset_manifest.v1.yaml` defines the
   required fields and fail-closed policy for asset records.
+- `external/schemas/ai_eda_external_intake_manifest.v1.yaml` defines the
+  per-asset reviewed metadata manifest shape for sources that have a pinned
+  upstream revision or license/provenance evidence but no committed payload.
+- `external/datasets/openroad-eda-corpus/manifest.yaml` pins the OpenROAD EDA
+  Corpus metadata lane to upstream `main` commit
+  `473daeb20677758b612e1a9e30246231c02d133c` with CC-BY-4.0 README/LICENSE
+  evidence, while keeping the actual dataset payload path ignored.
+- `external/datasets/chipbench-d/manifest.yaml`,
+  `external/datasets/circuitnet3/manifest.yaml`,
+  `external/datasets/intel-floorset/manifest.yaml`, and
+  `external/repos/macro-place-challenge-2026/manifest.yaml` now add
+  metadata-only intake lanes for the highest-value 2026 placement,
+  floorplanning, and PD-prediction corpora without downloading payloads.
+- `external/repos/tilos-macroplacement/manifest.yaml` pins the TILOS
+  MacroPlacement corpus to commit
+  `20eddb6b35232e86e6008b9deec8da77633a2f07` with BSD-3-Clause license
+  evidence, while keeping the large payload path ignored.
 - `scripts/ai_eda/check_external_asset_manifests.py` validates the lockfile.
+- `scripts/ai_eda/check_external_intake_manifests.py` validates tracked
+  per-asset intake manifests against `external/SOURCES.lock.yaml`.
 - `scripts/ai_eda/fetch_external_asset.py` emits dry-run, verify-only, or
-  execute reports into `build/ai_eda/external_assets/<run-id>/`.
+  execute reports into `build/ai_eda/external_assets/<run-id>/`. When a tracked
+  metadata manifest exists at `external/{datasets,repos,models}/<asset>/`,
+  fetched payloads go under the ignored `payload/` subdirectory so committed
+  metadata cannot block a future fetch.
 - `scripts/ai_eda/preflight_cuda_training_stack.py` records Mac/CUDA readiness
   into `build/ai_eda/cuda_training_preflight/<run-id>/`.
 - `scripts/ai_eda/package_cuda_training_payload.py` emits a metadata-only
@@ -252,6 +325,9 @@ The first reproducibility spine is now checked in:
   internal normalized records: `eda.design_bundle.v1`,
   `eda.placement_case.v1`, `eda.graph_sample.v1`, `eda.flow_run.v1`, and
   `eda.e1_candidate.v1`.
+- `docs/spec-db/ai-eda/internal-dataset-schemas.yaml` also defines
+  `eda.text_instruction_sample.v1` for OpenROAD command-assistant, RAG, and
+  log-triage training samples.
 - `docs/spec-db/ai-eda/examples/*.yaml` provides tiny schema fixtures for the
   E1 softmacro smoke lane.
 - `scripts/ai_eda/check_internal_dataset_schemas.py` validates the schemas and
@@ -263,11 +339,43 @@ The first reproducibility spine is now checked in:
 Current local validation on the 128 GiB M4 host:
 
 - `make docs-check`: PASS.
+- `make ai-eda-external-intake-check`: PASS for the first reviewed metadata
+  manifest plus pending metadata-only manifests for `chipbench-d`,
+  `circuitnet3`, `intel-floorset`, and `macro-place-challenge-2026`.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset openroad-eda-corpus
+  --dry-run --run-id intake-validation`: PASS and points the future download to
+  `external/datasets/openroad-eda-corpus/payload`.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset chipbench-d --dry-run
   --run-id validation`: PASS and emits a dry-run report.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset circuitnet3
+  --dry-run --run-id validation`: PASS and emits a dry-run report.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset intel-floorset
+  --dry-run --run-id validation`: PASS and emits a dry-run report.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset
+  macro-place-challenge-2026 --dry-run --run-id validation`: PASS and emits a
+  dry-run report.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset tilos-macroplacement
+  --execute --run-id validation`: PASS. The reviewed MacroPlacement corpus is
+  checked out under `external/repos/tilos-macroplacement/payload`.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset tilos-macroplacement
+  --verify-only --run-id validation`: PASS. The verified revision is
+  `20eddb6b35232e86e6008b9deec8da77633a2f07`; the payload manifest hashes
+  3,765 files and 3,744,623,755 bytes.
+- `python3 scripts/ai_eda/fetch_external_asset.py --all --dry-run --run-id
+  validation-all`: PASS across 27 locked external assets.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset
   google-circuit-training --verify-only --run-id validation`: BLOCKED because
   the local external checkout is not present yet.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset openroad-eda-corpus
+  --execute --run-id validation`: PASS. The reviewed small corpus is checked
+  out under `external/datasets/openroad-eda-corpus/payload`.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset openroad-eda-corpus
+  --verify-only --run-id validation`: PASS. The verified revision is
+  `473daeb20677758b612e1a9e30246231c02d133c`; the payload manifest hashes 25
+  files and 7,929,988 bytes.
+- `make ai-eda-openroad-eda-corpus-convert`: PASS. The converter emits 2,116
+  normalized `eda.text_instruction_sample.v1` records with deterministic split
+  counts: 1,691 train, 206 validation, and 219 test.
 - `python3 scripts/ai_eda/preflight_cuda_training_stack.py --run-id validation`:
   PASS_WITH_BLOCKERS_RECORDED. The host has 128 GiB RAM and no CUDA; missing
   training/CUDA tools are recorded in the JSON report.
@@ -317,6 +425,8 @@ P0 assets to pin first:
 - `OpenROAD-Assistant/EDA-Corpus`
 - `AiEDA/iDATA`
 - `vint-1/chipdiffusion`
+- `partcleda/macro-place-challenge-2026`
+- `IntelLabs/FloorSet`
 - `laiyao1/ChiPFormer`
 - `yeshenpy/CORE`
 - `Yu-Maryland/MapTune`
@@ -333,7 +443,10 @@ Acceptance:
 - `scripts/ai_eda/check_external_asset_manifests.py` rejects missing source
   URLs, license status, revision records, allowed-use policy, replay policy, and
   fetch/verify commands.
-- `make docs-check` includes the manifest checker.
+- `scripts/ai_eda/check_external_intake_manifests.py` rejects committed
+  per-asset metadata that drifts from the lockfile or claims release use before
+  deterministic replay.
+- `make docs-check` includes the lockfile and intake manifest checkers.
 
 ### P0: Implement download-only, no-import asset fetchers
 
@@ -388,10 +501,69 @@ Implemented schema foundation:
 - `scripts/ai_eda/materialize_internal_dataset_fixtures.py` converts the tiny
   YAML examples into JSON fixtures under
   `build/ai_eda/internal_dataset_fixtures/<run-id>/records/`.
+- `scripts/ai_eda/convert_openroad_eda_corpus.py` converts the fetched,
+  reviewed OpenROAD EDA Corpus CSV files into normalized train/val/test JSONL
+  files for OpenROAD QA and prompt-script training, with source file SHA256,
+  row index, pinned source revision, and sample schema-validation records.
+- `scripts/ai_eda/convert_tilos_macroplacement.py` converts the fetched,
+  reviewed TILOS MacroPlacement corpus into normalized `eda.design_bundle.v1`,
+  `eda.placement_case.v1`, and blocked `eda.flow_run.v1` records. The current
+  validation converts 16 TILOS cases across NanGate45, ASAP7, and SKY130HD,
+  including Ariane, BlackParrot, MemPool, and NVDLA families. Together these
+  expose 2,339 placed-macro labels, with 224 components missing LEF-derived
+  macro dimensions and therefore using downstream fallback sizing in proxy
+  baselines. Replay remains blocked until local MacroPlacement/OpenROAD tool
+  review.
+- `scripts/ai_eda/materialize_e1_softmacro_cases.py` generates E1-owned
+  abstract NPU softmacro placement cases for 4x4 and 8x8 tile grids. These are
+  training/evaluation cases only until converted to real macro LEF/DEF and
+  replayed through OpenLane/OpenROAD.
 - `scripts/ai_eda/train_fixture_placement_smoke.py` runs a dependency-free CPU
   training/inference smoke over the placement fixture and emits
   `training_run.json`, `metrics.json`, `fixture_placement_model.json`, and
   `candidate_manifest.json`.
+- `scripts/ai_eda/build_macro_placement_supervised_dataset.py` converts
+  normalized placement cases with target labels into CUDA-host-ready supervised
+  JSONL splits. Current validation emits 2,419 labeled macro samples across 18
+  labeled cases: 1,979 train samples from 14 cases, 200 validation samples from
+  2 cases, and 240 test samples from 2 cases. It records 224 samples with
+  fallback macro sizing because the public LEF metadata did not provide a
+  parsed macro size.
+- `scripts/ai_eda/check_macro_placement_supervised_dataset.py` validates those
+  supervised JSONL splits and report counts, including sample schema,
+  claim-boundary, positive macro/floorplan dimensions, split counts, case-level
+  train/validation/test leakage, skipped-case accounting, and fallback-size
+  counts.
+- `scripts/ai_eda/train_macro_placement_supervised_model.py` runs the first
+  dependency-free supervised imitation smoke over those JSONL splits. It learns
+  macro-key mean normalized placement priors from the train split, evaluates
+  train/validation/test splits, and emits quarantined supervised-imitation E1
+  generated-softmacro candidates. Current validation uses 1,979 train, 200
+  validation, and 240 test samples; the simple mean-prior model records
+  validation `mae_l2_over_core=0.36796352` and test
+  `mae_l2_over_core=0.40037822`, and emits two E1 softmacro candidate
+  manifests. This proves train/eval/infer artifacts only; it has no graph,
+  timing, routing, congestion, or PPA claim.
+- `scripts/ai_eda/train_macro_placement_policy.py` runs the first deterministic
+  macro-placement baseline over normalized placement cases. It emits
+  quarantined candidate manifests for cases with movable macros and records
+  fixed-only cases as blocked instead of fabricating a placement candidate.
+- `scripts/ai_eda/evaluate_macro_placement_candidates.py` validates and ranks
+  quarantined macro-placement candidates by deterministic proxy score, grouped
+  by placement case. It records the best candidate to replay first while
+  preserving the OpenLane/OpenROAD replay and human-review barrier.
+- `scripts/ai_eda/plan_macro_placement_replay.py` turns ranked quarantined
+  macro-placement candidates into per-candidate replay bundles under
+  `build/ai_eda/macro_placement_replay/<run-id>/bundles/`, including
+  OpenLane-style `macro_placement.cfg` files, JSON override manifests, and
+  checker-compatible `eda.tool_action.v1` dry-run manifests. It does not
+  execute OpenLane/OpenROAD; it records exact blockers such as abstract E1
+  softmacro cases, fixture-only cases, external benchmark replay review,
+  out-of-bounds placements, and macro overlaps.
+- `scripts/ai_eda/check_macro_placement_replay_plan.py` validates replay-plan
+  reports, candidate and placement-case hashes, override counts,
+  `macro_placement.cfg` line counts, tool-action links, and fail-closed
+  ready/blocked counts without executing OpenLane/OpenROAD.
 - `docs/spec-db/ai-eda/external-fixtures/` contains tiny external-shape fixtures
   for MacroPlacement/Bookshelf, ChiPBench-D, and CircuitNet.
 - `scripts/ai_eda/convert_external_fixture_corpora.py` converts those fixtures
@@ -418,6 +590,12 @@ Implemented schema foundation:
 - `scripts/ai_eda/check_candidate_manifests.py` validates generated
   `eda.e1_candidate.v1` manifests and refuses accepted candidates unless every
   required gate is completed.
+- `external/circuit_training/pin-manifest.json` and
+  `scripts/ai_eda/check_alphachip_checkpoint_blocker.py` make the AlphaChip
+  pretrained checkpoint blocker explicit and auditable. The default gate
+  checks monthly audit freshness, source-lock status, and doc/pin consistency
+  without downloading closed artifacts; the network gate re-probes the canonical
+  GCS URLs and fails if they no longer match the documented 403 state.
 - `docs/spec-db/ai-eda/internal-dataset-schemas.yaml` now also defines
   `eda.tool_action.v1` for typed EDA tool actions before any write-capable
   agent. The schema requires command argv/cwd, read scope, write scope, input
@@ -429,6 +607,45 @@ Implemented schema foundation:
 - `make ai-eda-internal-schemas-check` and `make ai-eda-internal-fixtures`
   provide local schema/materialization gates. `make ai-eda-fixture-placement-train`
   proves the train -> infer -> candidate-manifest plumbing locally.
+  `make ai-eda-macro-placement-supervised-dataset` generates the current
+  supervised macro-placement JSONL splits and validates sample counts, case
+  splits, no case leakage across train/validation/test, and fallback-size
+  accounting.
+  `make ai-eda-macro-placement-baseline` runs the first normalized
+  macro-placement baseline over the softmacro fixture, current E1 OpenLane
+  conversion, the converted TILOS cases, and generated E1 4x4/8x8 softmacro
+  cases. Current result: twenty placement cases inspected, fifty-seven
+  quarantined candidates emitted across three deterministic policies
+  (`center_legal_baseline`, `target_aware_grid`, and `target_repair_search`),
+  and one E1 OpenLane case correctly blocked because the current SRAM macro is
+  fixed and there are no movable objects. The legal-grid packer chooses
+  row/column counts that fit the largest macro dimensions where possible; on
+  the original converted NanGate45 Ariane133 case it emits zero-overlap
+  candidates. The target-aware and target-repair policies now clamp
+  macro-specific assignments and fall back to legal grid placements when a
+  target permutation would create out-of-bounds or overlap geometry. The replay
+  planner currently reports zero geometry-invalid candidates across all
+  fifty-seven emitted candidate manifests. This is still a proxy/schema result
+  only, with no OpenROAD replay or E1 PPA claim.
+  `make ai-eda-macro-placement-candidate-eval` ranks those fifty-seven
+  quarantined candidates by placement case and writes
+  `build/ai_eda/macro_placement_candidate_eval/validation/macro_placement_candidate_eval_report.json`.
+  `make ai-eda-macro-placement-replay-plan` records all fifty-seven candidates
+  as blocked for deterministic replay until an OpenLane/OpenROAD handoff exists
+  and validates both the replay-plan bundles and the generated replay
+  tool-action manifests.
+  Current blocker counts in
+  `build/ai_eda/macro_placement_replay/validation/replay_plan.json`: 48
+  external benchmark candidates require local MacroPlacement/OpenROAD tool
+  review, 6 abstract E1 softmacro candidates need real LEF/DEF/OpenLane macro
+  integration, and 3 fixture candidates are smoke-only. Geometry blockers are
+  currently zero after candidate legalization.
+  `make ai-eda-e1-softmacro-cases` proves generated E1 4x4/8x8 case
+  materialization and schema validation locally.
+  `make ai-eda-tilos-macroplacement-convert` proves the first real fetched
+  macro-placement corpus -> internal-schema conversion locally.
+  `make ai-eda-openroad-eda-corpus-convert` proves the reviewed fetched
+  OpenROAD EDA Corpus -> normalized instruction JSONL conversion locally.
   `make ai-eda-external-fixture-convert` proves the external-format fixture ->
   internal-schema conversion plumbing locally.
   `make ai-eda-e1-openlane-convert` proves checked-in E1 OpenLane conversion
@@ -444,6 +661,10 @@ Implemented schema foundation:
   model/eval artifacts locally.
   `make ai-eda-candidate-manifests-check` validates the fixture-generated
   candidate manifest.
+  `make ai-eda-alphachip-checkpoint-blocker-check` keeps the AlphaChip
+  checkpoint blocker doc, pin manifest, and external source lock aligned;
+  `make ai-eda-alphachip-checkpoint-blocker-network-check` additionally probes
+  the canonical GCS URLs.
   `make ai-eda-tool-actions-check` validates the initial dry-run
   `eda.tool_action.v1` fixture and command governance policy.
   `make ai-eda-cocotb-stimulus-dry-run` now covers five dry-run stimulus
@@ -452,7 +673,8 @@ Implemented schema foundation:
   behavior. The report contains 27 total coverage bins and 26 existing seed
   references, but still records no generated stimulus as evidence until
   deterministic cocotb regressions pass.
-  `make docs-check` depends on the schema checker.
+  `make docs-check` depends on the source, external-asset, intake-manifest,
+  schema, candidate, tool-action, and dry-run stimulus checkers.
 
 Converters to add or complete:
 
@@ -504,10 +726,19 @@ Models/baselines:
 
 Implementation TODOs:
 
-- Add `scripts/ai_eda/train_macro_placement_policy.py` as an orchestrator over
-  CT, ChipDiffusion, ChiPFormer, CORE, and SA baselines.
-- Add `scripts/ai_eda/evaluate_macro_placement_candidates.py` to emit a ranked
-  candidate manifest, not source edits.
+- Extend `scripts/ai_eda/train_macro_placement_policy.py` from deterministic
+  legal-grid, target-aware-grid, and target-repair-search baselines into an
+  orchestrator over CT, ChipDiffusion, ChiPFormer, CORE, and SA baselines.
+- Replace the dependency-free supervised mean-prior smoke with CUDA-capable
+  graph/layout models that consume
+  `build/ai_eda/macro_placement_supervised_dataset/<run-id>/{train,val,test}.jsonl`
+  and emit quarantined candidate manifests.
+- Extend `scripts/ai_eda/evaluate_macro_placement_candidates.py` from proxy
+  ranking into replay-aware ranking once deterministic OpenLane/OpenROAD replay
+  reports exist.
+- Extend `scripts/ai_eda/plan_macro_placement_replay.py` into an execute-capable
+  replay harness only after real E1 macro LEF/DEF cases and isolated OpenLane
+  run directories are available.
 - Add `scripts/ai_eda/replay_macro_placement_on_e1.sh` to import one candidate
   into OpenLane/OpenROAD and run the chosen deterministic gates.
 - Add `research/alpha_chip_macro_placement/09_runs/` for run reports and
@@ -711,6 +942,9 @@ Acceptance:
 ### Macro placement experiments
 
 - E1-PL-001: OpenROAD Hier-RTLMP baseline on latest E1 OpenLane run.
+- E1-PL-001a: Deterministic legal-grid, target-aware-grid, and
+  target-repair-search baselines on normalized fixture, TILOS Ariane133, and E1
+  generated 4x4/8x8 softmacro cases.
 - E1-PL-002: MacroPlacement SA baseline on E1 softmacro 4x4/5x5/8x8/16x16.
 - E1-PL-003: Circuit Training scratch PPO on E1 4x4, then 8x8.
 - E1-PL-004: Circuit Training imitation/bootstrap from MacroPlacement cases.
@@ -930,7 +1164,9 @@ fail closed until the checker can classify PASS/BLOCKED/FAIL.
 
 - Run or refresh OpenROAD/OpenLane E1 baseline.
 - Run OpenROAD Hier-RTLMP, SA, coordinate descent, and random/legalized
-  baselines on E1 softmacro cases.
+  baselines on E1 softmacro cases. **Initial deterministic legal-grid and
+  target-aware-grid plus target-repair-search baselines are implemented and
+  quarantined; replay remains blocked.**
 - Emit candidate manifests for each method.
 - Replay top candidates through OpenLane/OpenROAD.
 - Archive proxy-vs-post-route deltas.
@@ -1016,7 +1252,14 @@ not as:
 ## Immediate TODO checklist
 
 - [x] Add external asset manifest schema and checker.
+- [x] Add per-asset external intake manifest schema/checker and pin the first
+  reviewed OpenROAD EDA Corpus metadata manifest.
+- [x] Add pending metadata manifests for ChiPBench-D, CircuitNet 3.0,
+  FloorSet, and the Partcl/HRT Macro Placement Challenge.
+- [x] Pin, fetch, and verify the reviewed TILOS MacroPlacement corpus.
 - [x] Add dry-run/verify-only fetchers for P0 datasets and repos.
+- [x] Execute and verify the reviewed small OpenROAD EDA Corpus fetch.
+- [x] Convert OpenROAD EDA Corpus into normalized text-instruction train/val/test JSONL.
 - [x] Add Mac/CUDA training-stack preflight report.
 - [x] Add metadata-only CUDA training payload packager.
 - [x] Add tiny conversion fixtures.
@@ -1029,12 +1272,37 @@ not as:
   `eda.design_bundle.v1`, `eda.placement_case.v1`, and blocked
   `eda.flow_run.v1` records.
 - [x] Add OpenLane final metrics parser and fixture label smoke.
-- [ ] Convert real MacroPlacement Ariane and one generated E1 softmacro case after external fetch/pin.
+- [x] Train/run first deterministic macro-placement baseline on normalized
+  fixture and E1 placement cases.
+- [x] Build CUDA-host-ready supervised macro-placement JSONL splits from
+  normalized TILOS and E1 softmacro placement labels.
+- [x] Add supervised macro-placement dataset validator for JSONL sample schema,
+  counts, split leakage, and fallback-size accounting.
+- [x] Train/evaluate first dependency-free supervised macro-placement imitation
+  model over the JSONL splits and emit quarantined E1 softmacro candidates.
+- [x] Add target-aware legal-grid comparison metrics for converted TILOS
+  Ariane133 and generated E1 softmacro cases.
+- [x] Add legal target-repair search candidates for converted TILOS Ariane133
+  and generated E1 softmacro cases.
+- [x] Add macro-placement candidate ranking/evaluation report for quarantined
+  candidates.
+- [x] Add macro-placement replay-plan bundles for quarantined candidates without
+  executing or promoting OpenLane/OpenROAD changes.
+- [x] Add macro-placement replay-plan validator for bundle hashes, override
+  counts, tool-action links, and fail-closed replay status.
+- [x] Legalize target-aware and target-repair macro-placement candidates so the
+  replay planner reports zero out-of-bounds, overlap, or unknown-target
+  candidates across the expanded candidate set.
+- [x] Convert sixteen real MacroPlacement cases after external fetch/pin.
+- [x] Validate expanded macro-placement candidate directory and replay-blocker
+  plan.
+- [x] Generate and convert E1 4x4/8x8 softmacro placement cases.
 - [ ] Convert real ChiPBench-D metadata and one sample case after license/storage review.
 - [ ] Convert one real CircuitNet/iDATA graph sample after license/storage review.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
-- [ ] Train/run first macro-placement baselines on E1 4x4.
+- [ ] Train/run first CT/SA/Hier-RTLMP/ChipDiffusion macro-placement baselines
+  on E1 4x4 after real benchmark conversion.
 - [ ] Replay baseline candidates through OpenLane/OpenROAD.
 - [x] Add model-card template for placement policies.
 - [x] Add dataset-card template for converted corpora.
@@ -1044,7 +1312,7 @@ not as:
 - [x] Add PD surrogate training/eval smoke.
 - [x] Extend cocotb stimulus search beyond NPU descriptor queue.
 - [x] Define typed EDA tool-action schema before any write-capable agent.
-- [ ] Keep `alphachip-checkpoint-blocker.md` monthly re-audits.
+- [x] Keep `alphachip-checkpoint-blocker.md` monthly re-audits.
 
 ## Bottom line
 

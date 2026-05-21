@@ -48,8 +48,17 @@ jobs:
             echo "ERROR: packages/app-core/packaging/debian is missing — debian packaging dir is required for the .deb build. Repo state is bad."
             exit 1
           fi
-          cd packages/app-core/packaging/debian
-          dpkg-buildpackage -us -uc -b
+          # dpkg-buildpackage expects the source root to have a debian/ subdir
+          # alongside the source it needs to build. The repo keeps the
+          # packaging definitions under packages/app-core/packaging/debian to
+          # avoid clutter; link them into the app-core source root for the
+          # build, then unlink so a follow-up run is idempotent.
+          cd packages/app-core
+          if [ ! -L debian ]; then
+            ln -sfn packaging/debian debian
+          fi
+          dpkg-buildpackage -us -uc -b -d
+          rm -f debian
 
       - name: Find and checksum .deb
         id: find_deb

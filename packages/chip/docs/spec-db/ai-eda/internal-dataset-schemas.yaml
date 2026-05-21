@@ -152,3 +152,31 @@ records:
       status:
         - result
         - blockers
+  eda.text_instruction_sample.v1:
+    description: Normalized text/code instruction sample for EDA RAG, command assistance, and log-triage training.
+    required_fields:
+      - schema
+      - id
+      - asset_id
+      - source
+      - split
+      - task_type
+      - prompt
+      - response
+      - provenance
+      - replay
+      - claim_boundary
+    required_nested:
+      source:
+        - path
+        - sha256
+        - row_index
+      response:
+        - kind
+        - content
+      provenance:
+        - generated_by
+        - source_revision
+      replay:
+        - deterministic_command
+        - expected_report

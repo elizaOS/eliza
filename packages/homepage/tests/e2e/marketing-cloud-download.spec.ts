@@ -124,7 +124,12 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     );
   }
 
-  await expect(page.locator('[aria-disabled="true"]')).toHaveCount(0);
+  // The primary app-download-grid must not contain disabled cards. The
+  // separate osArtifact grid may contain pending entries (rendered with
+  // aria-disabled="true") for distributions still in build.
+  await expect(
+    page.locator('.app-download-grid [aria-disabled="true"]'),
+  ).toHaveCount(0);
 
   await expect(
     page.getByRole("heading", { name: /^Install elizaOS\.$/ }),
@@ -193,12 +198,22 @@ test("homepage live marketing links resolve for cloud, os, release, and download
     effectiveRelease.downloads.length > 0
       ? effectiveRelease.downloads.map((download) => download.url)
       : ["https://github.com/elizaOS/eliza/releases"];
-  const expectedNonCloudTargets = [
-    "https://elizaos.ai/",
-    releaseData.release.url,
-    releaseData.release.checksum?.url,
-    ...downloadTargets,
-  ].filter((href): href is string => Boolean(href));
+  // osArtifacts with a downloadUrl render as anchor tags too, so include them.
+  const osArtifactUrls = releaseData.osArtifacts
+    .map((artifact) => artifact.downloadUrl)
+    .filter((url): url is string => Boolean(url));
+
+  const expectedNonCloudTargets = Array.from(
+    new Set(
+      [
+        "https://elizaos.ai/",
+        releaseData.release.url,
+        releaseData.release.checksum?.url,
+        ...downloadTargets,
+        ...osArtifactUrls,
+      ].filter((href): href is string => Boolean(href)),
+    ),
+  );
 
   const nonCloudHrefs = [...uniqueHrefs.keys()].filter(
     (href) => !new URL(href).hostname.endsWith("elizacloud.ai"),

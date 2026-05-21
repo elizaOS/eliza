@@ -10,6 +10,7 @@ outside this script. Downloaded payloads remain under ignored `external/` paths.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -23,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 LOCKFILE = ROOT / "external/SOURCES.lock.yaml"
 DEFAULT_REPORT_ROOT = ROOT / "build/ai_eda/external_assets"
 CLAIM_BOUNDARY = "external_asset_fetch_report_only_no_training_inference_or_release_claim"
+MAX_HASHED_FILES = 20000
 
 
 def load_lockfile(path: Path) -> dict[str, Any]:
@@ -49,6 +51,13 @@ def repo_dir(asset: dict[str, Any]) -> Path:
     return ROOT / "external/repos" / asset["id"]
 
 
+def payload_dir(asset: dict[str, Any]) -> Path:
+    root = repo_dir(asset)
+    if (root / "manifest.yaml").exists():
+        return root / "payload"
+    return root
+
+
 def command_exists(command: str) -> bool:
     return shutil.which(command) is not None
 
@@ -70,17 +79,85 @@ def run_command(command: list[str], cwd: Path | None = None) -> dict[str, Any]:
     }
 
 
-def verify_existing(path: Path) -> dict[str, Any]:
+def rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def payload_file_manifest(path: Path) -> dict[str, Any]:
+    files: list[dict[str, Any]] = []
+    total_bytes = 0
+    skipped = 0
+    for child in sorted(path.rglob("*")):
+        if child.is_dir():
+            continue
+        if ".git" in child.parts:
+            continue
+        if len(files) >= MAX_HASHED_FILES:
+            skipped += 1
+            continue
+        size = child.stat().st_size
+        total_bytes += size
+        files.append(
+            {
+                "path": rel(child),
+                "bytes": size,
+                "sha256": sha256_file(child),
+            }
+        )
+    return {
+        "file_count": len(files),
+        "skipped_after_limit": skipped,
+        "total_hashed_bytes": total_bytes,
+        "max_hashed_files": MAX_HASHED_FILES,
+        "files": files,
+    }
+
+
+def expected_revision(asset: dict[str, Any]) -> str | None:
+    revision = asset.get("revision")
+    if not isinstance(revision, dict):
+        return None
+    value = revision.get("value")
+    if not isinstance(value, str) or value in {"PIN_AFTER_FETCH", "BLOCKED_HTTP_403_REAUDIT_REQUIRED"}:
+        return None
+    if revision.get("type") not in {"commit", "tag", "hf_revision"}:
+        return None
+    return value
+
+
+def verify_existing(path: Path, asset: dict[str, Any]) -> dict[str, Any]:
     if not path.exists():
         return {"status": "BLOCKED_MISSING_LOCAL_ASSET", "path": str(path)}
     if (path / ".git").exists() and command_exists("git"):
         rev = run_command(["git", "rev-parse", "HEAD"], cwd=path)
+        actual_revision = rev["stdout_tail"].strip()
+        expected = expected_revision(asset)
+        status = "PRESENT_GIT_REPO" if rev["returncode"] == 0 else "PRESENT_GIT_REPO_UNREADABLE"
+        if expected and actual_revision != expected:
+            status = "BLOCKED_REVISION_MISMATCH"
         return {
-            "status": "PRESENT_GIT_REPO" if rev["returncode"] == 0 else "PRESENT_GIT_REPO_UNREADABLE",
+            "status": status,
             "path": str(path),
-            "revision": rev["stdout_tail"].strip(),
+            "revision": actual_revision,
+            "expected_revision": expected,
+            "file_manifest": payload_file_manifest(path),
         }
-    return {"status": "PRESENT_UNPINNED_PAYLOAD", "path": str(path)}
+    return {
+        "status": "PRESENT_UNPINNED_PAYLOAD",
+        "path": str(path),
+        "file_manifest": payload_file_manifest(path),
+    }
 
 
 def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
@@ -92,7 +169,18 @@ def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
     if mode == "git":
         if not command_exists("git"):
             return {"status": "BLOCKED_MISSING_TOOL", "tool": "git"}
-        return run_command(["git", "clone", "--depth", "1", source_url, str(dest)])
+        clone_command = ["git", "clone", "--depth", "1", source_url, str(dest)]
+        result = run_command(clone_command)
+        expected = expected_revision(asset)
+        if result.get("returncode") == 0 and expected:
+            checkout = run_command(["git", "checkout", "--detach", expected], cwd=dest)
+            result["checkout"] = checkout
+            rev = run_command(["git", "rev-parse", "HEAD"], cwd=dest)
+            if rev.get("stdout_tail", "").strip() != expected:
+                result["status"] = "BLOCKED_REVISION_MISMATCH"
+                result["expected_revision"] = expected
+                result["actual_revision"] = rev.get("stdout_tail", "").strip()
+        return result
     if mode == "huggingface":
         if not command_exists("huggingface-cli"):
             return {"status": "BLOCKED_MISSING_TOOL", "tool": "huggingface-cli"}
@@ -141,11 +229,11 @@ def main() -> int:
     for asset in assets:
         if not isinstance(asset, dict):
             continue
-        dest = repo_dir(asset)
+        dest = payload_dir(asset)
         action: dict[str, Any]
         if args.verify_only:
             mode = "verify-only"
-            action = verify_existing(dest)
+            action = verify_existing(dest, asset)
         elif args.execute:
             mode = "execute"
             action = execute_fetch(asset, dest)

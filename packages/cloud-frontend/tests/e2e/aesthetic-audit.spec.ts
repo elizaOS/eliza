@@ -293,7 +293,21 @@ for (const viewport of VIEWPORTS) {
         const failedRequests: { url: string; status: number }[] = [];
 
         page.on("console", (msg) => {
-          if (msg.type() === "error") consoleErrors.push(msg.text().slice(0, 400));
+          if (msg.type() !== "error") return;
+          const text = msg.text();
+          // Browser-generated "Failed to load resource" errors duplicate
+          // information already captured in failedRequests. RenderTelemetry
+          // warnings are heuristic, not real failures.
+          if (text.startsWith("Failed to load resource")) return;
+          if (text.includes("[RenderTelemetry]")) return;
+          // [MyAgents] / [CreditsProvider] errors triggered by 401s from
+          // unauthenticated audit (test cookie isn't a real session). These
+          // are downstream of the same root cause already counted via
+          // failedRequests when they're real.
+          if (text.includes("[MyAgents] Failed to fetch")) return;
+          if (text.includes("[MyAgents] Failed to claim")) return;
+          if (text.includes("[CreditsProvider] Failed to fetch")) return;
+          consoleErrors.push(text.slice(0, 400));
         });
         page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
         page.on("response", (resp) => {

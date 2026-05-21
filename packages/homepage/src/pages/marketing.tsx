@@ -23,6 +23,7 @@ const primaryDownloadIds = [
   "macos-x64",
   "windows-x64",
   "linux-x64",
+  "linux-deb",
   "android-apk",
 ] as const;
 
@@ -33,6 +34,7 @@ const platformIcon: Record<DownloadId, typeof Package> = {
   "macos-x64": MonitorDown,
   "windows-x64": MonitorDown,
   "linux-x64": Package,
+  "linux-deb": Package,
   "android-apk": Smartphone,
 };
 
@@ -41,6 +43,7 @@ const FALLBACK_LABEL_KEYS: Record<DownloadId, string> = {
   "macos-x64": "homepage_eliza.marketing.fallbackMacosX64",
   "windows-x64": "homepage_eliza.marketing.fallbackWindowsX64",
   "linux-x64": "homepage_eliza.marketing.fallbackLinuxX64",
+  "linux-deb": "homepage_eliza.marketing.fallbackLinuxDeb",
   "android-apk": "homepage_eliza.marketing.fallbackAndroidApk",
 };
 
@@ -49,6 +52,7 @@ const FALLBACK_LABEL_DEFAULTS: Record<DownloadId, string> = {
   "macos-x64": "macOS (Intel)",
   "windows-x64": "Windows",
   "linux-x64": "Linux",
+  "linux-deb": "Ubuntu / Debian",
   "android-apk": "Android APK",
 };
 
@@ -57,6 +61,7 @@ const PLATFORM_DESCRIPTION_KEYS: Record<DownloadId, string> = {
   "macos-x64": "homepage_eliza.marketing.descMacosX64",
   "windows-x64": "homepage_eliza.marketing.descWindowsX64",
   "linux-x64": "homepage_eliza.marketing.descLinuxX64",
+  "linux-deb": "homepage_eliza.marketing.descLinuxDeb",
   "android-apk": "homepage_eliza.marketing.descAndroidApk",
 };
 
@@ -65,6 +70,7 @@ const PLATFORM_DESCRIPTION_DEFAULTS: Record<DownloadId, string> = {
   "macos-x64": "For Intel Macs.",
   "windows-x64": "For 64-bit Windows PCs.",
   "linux-x64": "For 64-bit Linux desktops.",
+  "linux-deb": "Ubuntu, Debian, Pop_OS, and derivatives — apt-installable.",
   "android-apk": "Direct APK sideload while Play Store review is pending.",
 };
 

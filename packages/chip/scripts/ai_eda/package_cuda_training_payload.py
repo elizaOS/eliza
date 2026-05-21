@@ -27,6 +27,9 @@ BASE_INCLUDE = (
     "external/README.md",
     "external/SOURCES.lock.yaml",
     "external/schemas/ai_eda_external_asset_manifest.v1.yaml",
+    "external/schemas/ai_eda_external_intake_manifest.v1.yaml",
+    "external/circuit_training/pin-manifest.json",
+    "docs/toolchain/alphachip-checkpoint-blocker.md",
     "docs/spec-db/ai-eda/internal-dataset-schemas.yaml",
     "docs/spec-db/ai-eda/examples/e1-candidate.example.yaml",
     "docs/spec-db/ai-eda/examples/e1-design-bundle.example.yaml",
@@ -34,6 +37,7 @@ BASE_INCLUDE = (
     "docs/spec-db/ai-eda/examples/e1-graph-sample.example.yaml",
     "docs/spec-db/ai-eda/examples/e1-placement-case.example.yaml",
     "docs/spec-db/ai-eda/examples/e1-tool-action.example.yaml",
+    "docs/spec-db/ai-eda/examples/text_instruction_sample.yaml",
     "docs/spec-db/ai-eda/tool-action-schemas.yaml",
     "docs/spec-db/ai-eda/tool-action-examples/blocked-rtl-patch.example.yaml",
     "docs/spec-db/ai-eda/tool-action-examples/cocotb-seed-search.example.yaml",
@@ -43,17 +47,29 @@ BASE_INCLUDE = (
     "research/alpha_chip_macro_placement/08_full_stack_ai_chip_optimization_plan_2026-05-20.md",
     "research/alpha_chip_macro_placement/03_datasets/training_and_reference_inputs_2026-05-19.md",
     "scripts/ai_eda/check_external_asset_manifests.py",
+    "scripts/ai_eda/check_external_intake_manifests.py",
+    "scripts/ai_eda/check_alphachip_checkpoint_blocker.py",
     "scripts/ai_eda/check_candidate_manifests.py",
+    "scripts/ai_eda/check_macro_placement_replay_plan.py",
+    "scripts/ai_eda/check_macro_placement_supervised_dataset.py",
     "scripts/ai_eda/check_internal_dataset_schemas.py",
     "scripts/ai_eda/check_tool_action_manifests.py",
     "scripts/ai_eda/check_tool_action_schemas.py",
     "scripts/ai_eda/convert_e1_openlane_to_internal_records.py",
     "scripts/ai_eda/convert_external_fixture_corpora.py",
+    "scripts/ai_eda/convert_openroad_eda_corpus.py",
+    "scripts/ai_eda/convert_tilos_macroplacement.py",
+    "scripts/ai_eda/build_macro_placement_supervised_dataset.py",
+    "scripts/ai_eda/train_macro_placement_supervised_model.py",
     "scripts/ai_eda/fetch_external_asset.py",
     "scripts/ai_eda/materialize_internal_dataset_fixtures.py",
+    "scripts/ai_eda/materialize_e1_softmacro_cases.py",
     "scripts/ai_eda/parse_openlane_metrics_to_flow_run.py",
+    "scripts/ai_eda/evaluate_macro_placement_candidates.py",
+    "scripts/ai_eda/plan_macro_placement_replay.py",
     "scripts/ai_eda/preflight_cuda_training_stack.py",
     "scripts/ai_eda/package_cuda_training_payload.py",
+    "scripts/ai_eda/train_macro_placement_policy.py",
     "scripts/ai_eda/train_fixture_placement_smoke.py",
     "scripts/ai_eda/train_pd_surrogate_smoke.py",
     "scripts/ai_eda/run_cocotb_stimulus_search.py",
@@ -82,6 +98,12 @@ BASE_INCLUDE = (
     "compiler/runtime/ai_eda/zigzag/e1_npu_target.yaml",
 )
 
+METADATA_GLOBS = (
+    "external/repos/*/manifest.yaml",
+    "external/datasets/*/manifest.yaml",
+    "external/models/*/manifest.yaml",
+)
+
 
 def git_output(args: list[str]) -> str:
     result = subprocess.run(
@@ -101,6 +123,22 @@ def load_lock() -> dict[str, Any]:
     if not isinstance(data, dict):
         raise SystemExit("external/SOURCES.lock.yaml must be a YAML mapping")
     return data
+
+
+def include_files() -> list[Path]:
+    paths = [ROOT / rel for rel in BASE_INCLUDE if (ROOT / rel).exists()]
+    for pattern in METADATA_GLOBS:
+        paths.extend(sorted(ROOT.glob(pattern)))
+
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        deduped.append(path)
+    return deduped
 
 
 def select_assets(lock: dict[str, Any], requested: list[str]) -> list[dict[str, Any]]:
@@ -148,9 +186,22 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
         "required_remote_commands": [
             "python3 scripts/ai_eda/preflight_cuda_training_stack.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/check_external_asset_manifests.py",
+            "python3 scripts/ai_eda/check_external_intake_manifests.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/fetch_external_asset.py --all --dry-run --run-id <cuda-host>",
             "python3 scripts/ai_eda/fetch_external_asset.py --asset <asset-id> --execute --run-id <cuda-host>",
             "python3 scripts/ai_eda/fetch_external_asset.py --asset <asset-id> --verify-only --run-id <cuda-host>",
+            "python3 scripts/ai_eda/convert_openroad_eda_corpus.py --run-id <cuda-host>",
+            "python3 scripts/ai_eda/convert_tilos_macroplacement.py --run-id <cuda-host>",
+            "python3 scripts/ai_eda/build_macro_placement_supervised_dataset.py --run-id <cuda-host>",
+            "python3 scripts/ai_eda/check_macro_placement_supervised_dataset.py --report build/ai_eda/macro_placement_supervised_dataset/<cuda-host>/macro_placement_supervised_dataset_report.json",
+            "python3 scripts/ai_eda/train_macro_placement_supervised_model.py --run-id <cuda-host>",
+            "python3 scripts/ai_eda/check_candidate_manifests.py --candidate-dir build/ai_eda/macro_placement_supervised_model/<cuda-host>/candidates",
+            "python3 scripts/ai_eda/materialize_e1_softmacro_cases.py --run-id <cuda-host>",
+            "python3 scripts/ai_eda/train_macro_placement_policy.py --run-id <cuda-host>",
+            "python3 scripts/ai_eda/check_candidate_manifests.py --candidate build/ai_eda/macro_placement_policy/<cuda-host>/candidates/<candidate>.json",
+            "python3 scripts/ai_eda/evaluate_macro_placement_candidates.py --run-id <cuda-host>",
+            "python3 scripts/ai_eda/plan_macro_placement_replay.py --run-id <cuda-host>",
+            "python3 scripts/ai_eda/check_macro_placement_replay_plan.py --report build/ai_eda/macro_placement_replay/<cuda-host>/replay_plan.json",
             "scripts/alphachip/check_setup.sh",
             "scripts/alphachip/run_toy_training.sh",
             "scripts/alphachip/run_e1_softmacro_training.sh",
@@ -158,6 +209,21 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
         "expected_outputs": [
             "build/ai_eda/cuda_training_preflight/<run-id>/cuda_training_preflight.json",
             "build/ai_eda/external_assets/<run-id>/*.json",
+            "build/ai_eda/openroad_eda_corpus/<run-id>/conversion_report.json",
+            "build/ai_eda/tilos_macroplacement/<run-id>/conversion_report.json",
+            "build/ai_eda/macro_placement_supervised_dataset/<run-id>/macro_placement_supervised_dataset_report.json",
+            "build/ai_eda/macro_placement_supervised_dataset/<run-id>/{train,val,test}.jsonl",
+            "build/ai_eda/macro_placement_supervised_model/<run-id>/macro_placement_supervised_training_run.json",
+            "build/ai_eda/macro_placement_supervised_model/<run-id>/macro_placement_supervised_eval.json",
+            "build/ai_eda/macro_placement_supervised_model/<run-id>/macro_placement_supervised_model.json",
+            "build/ai_eda/macro_placement_supervised_model/<run-id>/candidates/*.json",
+            "build/ai_eda/e1_softmacro_cases/<run-id>/materialization_report.json",
+            "build/ai_eda/macro_placement_policy/<run-id>/macro_placement_baseline_report.json",
+            "build/ai_eda/macro_placement_policy/<run-id>/candidates/*.json",
+            "build/ai_eda/macro_placement_candidate_eval/<run-id>/macro_placement_candidate_eval_report.json",
+            "build/ai_eda/macro_placement_replay/<run-id>/replay_plan.json",
+            "build/ai_eda/macro_placement_replay/<run-id>/tool_actions/*.tool-action.json",
+            "build/ai_eda/macro_placement_replay/<run-id>/bundles/*/macro_placement.cfg",
             "build/ai_eda/training_runs/<run-id>/training_run.json",
             "build/ai_eda/training_runs/<run-id>/metrics.json",
             "build/ai_eda/inference_runs/<run-id>/candidate_manifest.json",
@@ -185,7 +251,7 @@ def main() -> int:
     selected = select_assets(lock, args.asset)
     plan_path = write_run_plan(out_dir, selected, args)
     tar_path = out_dir / "cuda_training_payload.tar.gz"
-    include_paths = [ROOT / rel for rel in BASE_INCLUDE if (ROOT / rel).exists()]
+    include_paths = include_files()
     with tarfile.open(tar_path, "w:gz") as archive:
         for path in include_paths:
             archive.add(path, arcname=str(path.relative_to(ROOT)))
