@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload to GitHub Release
         if: (github.event_name == 'release') && steps.find_deb.outputs.deb_path != ''
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             **/*.deb
