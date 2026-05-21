@@ -3976,19 +3976,19 @@ export async function startEliza(
     }
   };
 
-  const registerCloudSandboxRunner = async (): Promise<void> => {
+  const registerRemoteCodingRunner = async (): Promise<void> => {
     if (isBundledMobileRuntime()) return;
     try {
-      const { registerE2BSatelliteCapabilityRouterIfEnabled } =
+      const { registerE2BRemoteCapabilityRouterIfEnabled } =
         await loadE2BCapabilityRouterModule();
       const result =
-        await registerE2BSatelliteCapabilityRouterIfEnabled(runtime);
+        await registerE2BRemoteCapabilityRouterIfEnabled(runtime);
       if (result.registered) {
-        logger.info("[eliza] Cloud sandbox runner registered");
+        logger.info("[eliza] Remote coding runner registered");
       }
     } catch (err) {
       logger.warn(
-        `[eliza] Cloud sandbox runner registration failed: ${formatError(err)}`,
+        `[eliza] Remote coding runner registration failed: ${formatError(err)}`,
       );
     }
   };
@@ -4142,7 +4142,7 @@ export async function startEliza(
   const initializeRuntimeServices = async (): Promise<void> => {
     await runStewardEvmPreBoot();
     await registerConnectorSetupService();
-    await registerCloudSandboxRunner();
+    await registerRemoteCodingRunner();
     await initializeCoreRuntime();
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
@@ -4477,9 +4477,9 @@ export async function startEliza(
           }
           if (!isBundledMobileRuntime()) {
             try {
-              const { registerE2BSatelliteCapabilityRouterIfEnabled } =
+              const { registerE2BRemoteCapabilityRouterIfEnabled } =
                 await loadE2BCapabilityRouterModule();
-              await registerE2BSatelliteCapabilityRouterIfEnabled(newRuntime);
+              await registerE2BRemoteCapabilityRouterIfEnabled(newRuntime);
             } catch {
               // non-fatal
             }
