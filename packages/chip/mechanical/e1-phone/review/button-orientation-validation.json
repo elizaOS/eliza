@@ -1,14 +1,15 @@
 {
   "schema": "eliza.e1_phone_button_orientation.v1",
+  "evidence_class": "concept_envelope_bbox_orientation_result",
   "date": "2026-05-20",
   "reviewer": "automated_orientation_check",
   "enclosure_bbox_mm": [
     -39.0,
     -76.8,
-    -4.8,
+    -5.6,
     39.0,
     76.8,
-    4.8
+    5.6
   ],
   "feature_orientation": [
     {
@@ -109,15 +110,15 @@
       "centroid_mm": [
         0.0,
         69.2,
-        4.88
+        5.68
       ],
       "bbox_mm": [
         -8.0,
         68.7,
-        4.755,
+        5.555,
         8.0,
         69.7,
-        5.005
+        5.805
       ],
       "pass": true
     },
@@ -241,15 +242,15 @@
       "centroid_mm": [
         21.0,
         57.8,
-        -4.9
+        -5.325
       ],
       "bbox_mm": [
         17.6,
-        57.4,
-        -8.3,
+        54.4,
+        -5.6,
         24.4,
-        58.2,
-        -1.5
+        61.2,
+        -5.05
       ],
       "pass": true
     },
@@ -263,15 +264,37 @@
       "centroid_mm": [
         21.0,
         57.8,
-        -1.05
+        -1.6
       ],
       "bbox_mm": [
         16.0,
         52.8,
-        -3.6,
+        -4.15,
         26.0,
         62.8,
-        1.5
+        0.95
+      ],
+      "pass": true
+    },
+    {
+      "part": "rear_flash_led_window",
+      "kind": "flash_window",
+      "expected_normal": "-Z",
+      "measured_normal": "-Z",
+      "expected_side": null,
+      "measured_side": "+Y",
+      "centroid_mm": [
+        14.4,
+        57.8,
+        -5.35
+      ],
+      "bbox_mm": [
+        13.6,
+        57.0,
+        -5.6,
+        15.2,
+        58.6,
+        -5.1
       ],
       "pass": true
     },
@@ -285,15 +308,15 @@
       "centroid_mm": [
         -19.0,
         67.8,
-        4.85
+        5.65
       ],
       "bbox_mm": [
         -20.7,
         66.1,
-        4.675,
+        5.475,
         -17.3,
         69.5,
-        5.025
+        5.825
       ],
       "pass": true
     },

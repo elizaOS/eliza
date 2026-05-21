@@ -22,5 +22,5 @@ lb config noauto \
     --binary-image iso-hybrid \
     --apt-recommends false \
     --debian-installer none \
-    --bootappend-live "boot=live components quiet earlycon=sbi console=ttyS0,115200n8" \
+    --bootappend-live "boot=live components earlycon=sbi console=ttyS0,115200n8 loglevel=7" \
     "${@}"

@@ -7,7 +7,10 @@ FIRST_BOOT_UNIT="${UNIT_DIR}/elizaos-first-boot.service"
 FIRST_BOOT_SCRIPT="/usr/lib/elizaos/first-boot.sh"
 HEALTH_SCRIPT="/usr/lib/elizaos/wait-agent-health.sh"
 AGENT_BIN="/opt/elizaos/bin/elizaos"
-BUN_BIN="/opt/elizaos/runtime/bun-linux-riscv64-musl/bun"
+APP_JS="/opt/elizaos/app/eliza.js"
+APP_PACKAGE="/opt/elizaos/package.json"
+NODE_BIN="/usr/bin/node"
+CURL_BIN="/usr/bin/curl"
 
 echo "[0030-elizaos-userland] validating systemd units and runtime payload"
 
@@ -34,10 +37,12 @@ if [ ! -x "${AGENT_BIN}" ]; then
     exit 1
 fi
 
-if [ ! -x "${BUN_BIN}" ]; then
-    echo "[0030-elizaos-userland] ERROR: missing executable ${BUN_BIN}" >&2
-    exit 1
-fi
+for required in "${APP_JS}" "${APP_PACKAGE}" "${NODE_BIN}" "${CURL_BIN}"; do
+    if [ ! -e "${required}" ]; then
+        echo "[0030-elizaos-userland] ERROR: missing ${required}" >&2
+        exit 1
+    fi
+done
 
 echo "[0030-elizaos-userland] enabling elizaos-first-boot.service in live root"
 systemctl enable elizaos-first-boot.service

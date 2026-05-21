@@ -38,7 +38,7 @@ ARCH="riscv64"
 KERNEL_FLAVOUR="riscv64"
 BOOTLOADER="grub-efi"
 BUILD_TS="$(date -u +%Y%m%dT%H%M%SZ)"
-ARTIFACT_BASENAME="elizaos-debian-riscv64-${BUILD_TS}"
+ARTIFACT_BASENAME="elizaos-riscv64-${BUILD_TS}"
 MIN_ISO_BYTES="${ELIZAOS_MIN_ISO_BYTES:-209715200}"  # 200 MiB
 
 mkdir -p "${OUT}"

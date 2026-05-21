@@ -17,9 +17,9 @@ Classification policy (matches ``packages/chip/scripts/aggregate_tapeout_readine
                  by the manifest is not yet on disk. ``BLOCKED`` exits 0
                  in the default mode and exit 1 under ``--strict``.
 * ``FAIL``     — release blocker: schema mismatch, ``iso_sha256``
-                 mismatch, ``boot_completed=false``, or a missing
-                 ``elizaos-firstboot-ready`` marker in the transcript. Always
-                 exit 1 regardless of ``--strict``.
+                 mismatch, ``boot_completed=false``, or a missing required
+                 boot / agent marker in the transcript. Always exit 1
+                 regardless of ``--strict``.
 
 The validator deliberately uses the same vocabulary as the chip readiness
 aggregator so the release pipeline can compose multiple gates without
@@ -61,10 +61,13 @@ REQUIRED_EVIDENCE_IDS: tuple[str, ...] = (
 # ``missing`` rows stay informational BLOCKED.
 PROMOTED_STATUSES: frozenset[str] = frozenset({"candidate", "published"})
 
-# Marker the elizaOS first-boot unit prints once OS userland initialization
-# completes. Agent liveness is intentionally tracked by a separate
-# ``elizaos-agent-ready`` marker and is outside this qemu-virt release gate.
-REQUIRED_TRANSCRIPT_MARKER = "elizaos-firstboot-ready"
+# Markers required before qemu-virt boot evidence can be promoted. The agent
+# marker is emitted only after a target-side health check has succeeded.
+REQUIRED_TRANSCRIPT_MARKERS: tuple[str, ...] = (
+    "elizaos-firstboot-ready",
+    "elizaos-agent-ready",
+)
+REQUIRED_TRANSCRIPT_MARKER = REQUIRED_TRANSCRIPT_MARKERS[0]
 GRUB_TRANSCRIPT_MARKERS: tuple[str, ...] = (
     "GNU GRUB",
     "Booting `elizaOS Live (RISC-V 64)'",
@@ -401,16 +404,15 @@ def check_qemu_virt_evidence(
             )
         )
 
-    if (
-        transcript_text is not None
-        and REQUIRED_TRANSCRIPT_MARKER not in transcript_text
-    ):
-        out.append(
-            GateResult(
-                "FAIL",
-                f"transcript missing required marker: {REQUIRED_TRANSCRIPT_MARKER}",
-            )
-        )
+    if transcript_text is not None:
+        for marker in REQUIRED_TRANSCRIPT_MARKERS:
+            if marker not in transcript_text:
+                out.append(
+                    GateResult(
+                        "FAIL",
+                        f"transcript missing required marker: {marker}",
+                    )
+                )
 
     if not out:
         out.append(GateResult("PASS", "qemu-virt evidence verified"))

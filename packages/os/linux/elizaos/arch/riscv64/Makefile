@@ -26,7 +26,7 @@ TRANSCRIPT ?= $(EVIDENCE_DIR)/qemu_virt_boot.transcript.log
 MEMORY ?= 4096
 CPUS ?= 4
 TIMEOUT ?= 600
-IMAGE_TAG ?= elizaos-debian-riscv64-builder
+IMAGE_TAG ?= elizaos-riscv64-builder
 
 CHECK_SCRIPT := $(SCRIPTS)/check_release_manifest.py
 BRING_UP_STATUS_SCRIPT := $(SCRIPTS)/bring_up_status.py
@@ -42,7 +42,7 @@ help:
 	@echo
 	@echo "  deps                   Install variant Python validation dependencies."
 	@echo "  build-image            Build the Docker builder image ($(IMAGE_TAG))."
-	@echo "  build                  Run the builder to produce out/elizaos-debian-riscv64-<ts>.iso."
+	@echo "  build                  Run the builder to produce out/elizaos-riscv64-<ts>.iso."
 	@echo "  qemu-boot              Boot the newest ISO under qemu-system-riscv64 -M virt."
 	@echo "  qemu-virt-boot         Same as qemu-boot but with explicit ISO=<path>."
 	@echo "  qemu-virt-boot-docker  Run qemu-virt-boot inside the builder image."
@@ -119,7 +119,7 @@ qemu-virt-boot-docker: build-image
 qemu-boot:
 	@iso="$(ISO)"; \
 	if [ -z "$$iso" ]; then \
-	    iso=$$(ls -t $(OUT_DIR)/elizaos-debian-riscv64-*.iso 2>/dev/null | head -n 1); \
+	    iso=$$(ls -t $(OUT_DIR)/elizaos-riscv64-*.iso 2>/dev/null | head -n 1); \
 	fi; \
 	if [ -z "$$iso" ]; then \
 	    echo "qemu-boot: no ISO found; set ISO=<path> or run 'make build' first" >&2; \
