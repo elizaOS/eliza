@@ -165,7 +165,22 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
     metadata && typeof metadata === "object" && !Array.isArray(metadata)
       ? (metadata as Record<string, unknown>)
       : {};
-  const raw = nonEmptyString(record.role ?? record.accountRole ?? record.requestedRole);
+  // Cloud OAuth writes `connectionRole` (uppercase canonical) and a legacy
+  // lowercase `agentGoogleSide`. Local UI flows pass `role`/`accountRole`/
+  // `requestedRole`. Accept all five shapes so the role survives whichever
+  // path the OAuth start metadata came through.
+  //
+  // Precedence: most-explicit cloud field first, then the original local
+  // fields in their original order (`role` first, `requestedRole` last so a
+  // stale earlier-step value can't override a later correction), then the
+  // legacy `agentGoogleSide` as the final fallback.
+  const raw = nonEmptyString(
+    record.connectionRole ??
+      record.role ??
+      record.accountRole ??
+      record.requestedRole ??
+      record.agentGoogleSide,
+  );
   if (!raw) return "OWNER";
   const normalized = raw.toUpperCase();
   if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {

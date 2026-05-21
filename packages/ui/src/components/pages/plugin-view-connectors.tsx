@@ -107,7 +107,7 @@ interface ConnectorPluginCardProps
 }
 
 type CloudOAuthConnectorCopy = {
-  platform: "slack" | "twitter";
+  platform: "slack" | "twitter" | "google";
   /**
    * Roles the user can connect for this platform. A single-entry array
    * renders one button (legacy behavior); a two-entry array (e.g.
@@ -159,6 +159,16 @@ const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
     disconnectedHint:
       "Connect Eliza Cloud first to use X/Twitter OAuth instead of local developer tokens.",
     successNotice: "Finish X/Twitter OAuth in your browser, then return here.",
+  },
+  google: {
+    platform: "google",
+    connectionRoles: ["agent", "owner"],
+    buttonLabel: "Use Google OAuth",
+    connectedHint:
+      "Connect Google with Eliza Cloud OAuth. Use 'agent' to link the agent's own Google account for autonomous Gmail / Calendar / Drive / Meet activity; use 'your account' to grant the agent permission to act on your own Google account.",
+    disconnectedHint:
+      "Connect Eliza Cloud first to use Google OAuth instead of local OAuth2 credentials.",
+    successNotice: "Finish Google OAuth in your browser, then return here.",
   },
 };
 
