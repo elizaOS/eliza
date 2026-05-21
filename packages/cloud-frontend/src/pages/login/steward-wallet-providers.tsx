@@ -53,10 +53,10 @@ export function StewardWalletProviders({
         transports: {
           [mainnet.id]: alchemyKey
             ? http(`https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`)
-            : http(),
+            : http("https://eth.publicnode.com"),
           [base.id]: alchemyKey
             ? http(`https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`)
-            : http(),
+            : http("https://base-rpc.publicnode.com"),
           [bsc.id]: http("https://bsc-dataseed.binance.org"),
         },
         ssr: false,
