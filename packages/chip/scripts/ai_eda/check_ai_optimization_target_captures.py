@@ -11,6 +11,12 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 
 EXPECTED_REPORTS = {
+    "current_research_watchlist": {
+        "path": "build/ai_eda/current_research_watchlist/{run_id}/targets_report.json",
+        "schema": "eliza.ai_eda.current_research_watchlist.v1",
+        "claim_boundary": "current_research_watchlist_capture_only_no_import_training_inference_or_e1_claim",
+        "status_prefix": "TARGET_CAPTURE_ONLY_",
+    },
     "circuit_foundation_model": {
         "path": "build/ai_eda/circuit_foundation_model_targets/{run_id}/targets_report.json",
         "schema": "eliza.ai_eda.circuit_foundation_model_targets.v1",

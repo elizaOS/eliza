@@ -232,7 +232,7 @@ export default function ApprovalPage() {
       {head}
       <div className="mx-auto max-w-xl p-6">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="h-6 w-6 text-blue-500" />
+          <ShieldCheck className="h-6 w-6 text-[#FF5800]" />
           <h1 className="text-xl font-semibold">Approval request</h1>
         </div>
 
@@ -324,7 +324,7 @@ export default function ApprovalPage() {
                 type="button"
                 onClick={handleApprove}
                 disabled={submitting || signature.trim().length === 0}
-                className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded bg-[#FF5800] hover:bg-[#FF5800]/85 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
                 {submitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

@@ -1,0 +1,131 @@
+schema: eliza.ai_eda_current_research_watchlist.v1
+updated: 2026-05-21
+scope: >
+  Current public AI-EDA research watchlist for methods that are relevant to
+  E1 optimization but are not accepted as E1 design evidence without local
+  deterministic replay, signoff, and review.
+policy:
+  metadata_only: true
+  imports_code: false
+  downloads_assets: false
+  calls_external_api: false
+  runs_model: false
+  generated_design_claim_allowed: false
+  deterministic_e1_replay_required: true
+entries:
+  - id: veoplace-vlm-macro-placement
+    name: VeoPlace / See it to Place it
+    year: 2026
+    lane: macro_placement
+    priority: P1
+    source_url: https://arxiv.org/abs/2603.28733
+    public_code_status: no_reference_implementation_selected
+    e1_action: >
+      Render E1 placement cases as deterministic images and evaluate VLM-guided
+      subregion proposals only after prompt/image/model logs and OpenROAD replay
+      gates exist.
+    required_evidence: >
+      Prompt and image hashes, model/version IDs, candidate DEF hashes,
+      legalization logs, OpenLane/OpenROAD replay, routed timing, DRC/LVS,
+      antenna, power, and PD review.
+  - id: hmplace-hierarchical-mask-rl
+    name: HMPlace Hierarchical Mask-Guided Macro Placement
+    year: 2026
+    lane: macro_placement
+    priority: P2
+    source_url: https://www.sciencedirect.com/science/article/pii/S1879239126001797
+    public_code_status: no_reference_implementation_selected
+    e1_action: >
+      Keep as an RL action-masking method reference until E1 has enough
+      macro-placement cases and routed labels to justify a reimplementation.
+    required_evidence: >
+      Exact objective, masks, seeds, split manifests, legalizer outputs,
+      case hashes, deterministic OpenLane/OpenROAD replay, routed OpenROAD
+      labels, signoff checks, and comparison against deterministic baselines.
+  - id: dynamic-tree-search-rl-macro-placement
+    name: Dynamic Tree Search Guided RL Macro Placement
+    year: 2026
+    lane: macro_placement
+    priority: P2
+    source_url: https://doi.org/10.1016/j.mejo.2026.107100
+    public_code_status: no_reference_implementation_selected
+    e1_action: >
+      Track as an MCTS/RL hybrid search idea for future placement exploration
+      after cheaper SA, coordinate-descent, CT, and supervised candidates have
+      deterministic E1 replay results.
+    required_evidence: >
+      Search policy revision, seed, expansion budget, proxy-cost definition,
+      candidate hashes, runtime, and downstream replay/signoff evidence.
+  - id: rsplace-rotation-sensing-tree-expansion
+    name: RSPlace Rotation Sensing Macro Placement
+    year: 2026
+    lane: macro_placement
+    priority: P2
+    source_url: https://ojs.aaai.org/index.php/AAAI/article/view/39559
+    public_code_status: no_reference_implementation_selected
+    e1_action: >
+      Track for orientation-aware macro placement once E1 has release-ready
+      SRAM, NPU, IO, and analog macro LEF/DEF/pin-access inputs.
+    required_evidence: >
+      Macro orientation hashes, LEF symmetry review, pin-access checks,
+      deterministic OpenLane/OpenROAD replay, routed timing, DRC/LVS, antenna,
+      power, signoff checks, and PD review.
+  - id: c3po-concurrent-placement
+    name: C3PO Concurrent Timing, Routability, and Wirelength Placement
+    year: 2026
+    lane: global_placement
+    priority: P2
+    source_url: https://research.nvidia.com/labs/electronic-design-automation/publication/lu2026aspdac/
+    public_code_status: paper_only
+    e1_action: >
+      Track as a commercial-quality placement objective reference for future
+      OpenROAD parameter and algorithm comparisons, not as directly runnable E1
+      code.
+    required_evidence: >
+      Reproducible implementation, objective definitions, tool versions,
+      before/after DEF/ODB/GDS hashes, deterministic OpenLane/OpenROAD replay,
+      route, STA, congestion, DRC/LVS, power, signoff checks, and reviewer
+      disposition.
+  - id: audopeda-openroad
+    name: AuDoPEDA OpenROAD Coding Agent
+    year: 2026
+    lane: openroad_tool_improvement
+    priority: P2
+    source_url: https://arxiv.org/abs/2601.06268
+    public_code_status: no_reference_implementation_selected
+    e1_action: >
+      Use as a method reference for quarantined OpenROAD/OpenLane patch
+      experiments only after branch, diff, benchmark, and before/after E1 replay
+      gates exist.
+    required_evidence: >
+      Tool patch hashes, build logs, regression logs, benchmark manifests,
+      before/after E1 flow reports, deterministic OpenLane/OpenROAD replay,
+      signoff checks, rollback plan, and maintainer review.
+  - id: aieda
+    name: AiEDA Design-to-Vector Library
+    year: 2025
+    lane: design_to_vector
+    priority: P2
+    source_url: https://arxiv.org/abs/2511.05823
+    public_code_status: available_to_review
+    e1_action: >
+      Use as a feature-extraction reference for future E1 timing, power,
+      congestion, and routability vectorization after schema and license review.
+    required_evidence: >
+      Source revision, license review, feature schema hashes, label provenance,
+      split manifests, local checker coverage, deterministic E1 replay, and
+      signoff review before any feature-derived optimization claim.
+  - id: dreamerv3-fr-pcb
+    name: DreamerV3+FR PCB Autorouting
+    year: 2026
+    lane: board_package_pcb
+    priority: P3
+    source_url: https://www.sciencedirect.com/science/article/abs/pii/S0957417426003374
+    public_code_status: no_reference_implementation_selected
+    e1_action: >
+      Track for E1 board-routing experimentation only; ASIC RTL-to-GDS work
+      must not depend on PCB routing claims.
+    required_evidence: >
+      KiCad board hashes, freerouting version, design-rule manifest,
+      routed-board diff hashes, deterministic board replay, DRC/ERC, SI/PI
+      review, signoff checks, and manufacturing review.

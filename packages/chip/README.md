@@ -48,9 +48,14 @@ under `build/ai_eda/`.
 ```sh
 make ai-eda-bootstrap-metadata
 make ai-eda-backend-preflight
+make ai-eda-optimization-targets
+make ai-eda-all-target-captures
 make ai-eda-bootstrap-setup-check
 make ai-eda-bootstrap-local-smoke
+make ai-eda-training-corpus-manifest
 make ai-eda-cuda-payload
+make ai-eda-cuda-run-plan-dry-run
+make ai-eda-cuda-readiness-audit
 ```
 
 Use `make ai-eda-bootstrap-metadata` on a fresh machine first. It downloads
@@ -60,11 +65,27 @@ when preparing a CUDA/Linux host for optional ZigZag, Timeloop/Accelergy,
 RTL-MUL, LLM4DV, AssertLLM, or Fault lanes. Use
 `make ai-eda-bootstrap-setup-check` after reviewed payloads such as TILOS
 MacroPlacement, OpenROAD EDA Corpus, CircuitNet 3.0, ChiPBench-D, OpenABC-D,
-and AiEDA/iDATA have been fetched or restored; it rebuilds normalized corpora,
-bounded surrogate baselines, and E1 cases without CUDA training. Use
+AiEDA/iDATA, EDALearn, Macro Placement Challenge 2026, MLCAD 2023 FPGA macro
+placement, and research-code assets such as ChipDiffusion, ChiPFormer, CORE,
+MapTune, ABC-RL, abcRL, RL4LS, MCP4EDA, ORFS-Agent, OpenROAD Agent,
+OpenROAD MCP, Open3DBench, and DREAMPlace have been fetched or restored. It rebuilds
+normalized corpora, bounded surrogate baselines, and E1 cases without CUDA
+training. Use
+`make ai-eda-optimization-targets` to validate the dry-run, fail-closed target
+captures for the current public research watchlist, circuit foundation models,
+EDA agents, DFM/yield/lithography, low-power intent, post-silicon validation,
+and hardware security. Use
+`make ai-eda-all-target-captures` to refresh all 36 dry-run AI-EDA domain
+target reports before source-inventory validation, including HLS,
+analog/mixed-signal, clock tree, extraction/parasitics, floorplan/IO/PDN,
+memory, DFT/ATPG, CDC/RDC, board/package/FPGA, chiplet, compiler,
+post-silicon, security, current-research watchlist, and benchmark-hygiene
+lanes. Use
 `make ai-eda-bootstrap-local-smoke` for the broader local evidence stack,
 including candidate ranking, replay-plan generation, and guarded
-macro-placement replay preflight without OpenLane/OpenROAD execution. For
+macro-placement replay preflight without OpenLane/OpenROAD execution. Use
+`make ai-eda-training-corpus-manifest` to hash and summarize the normalized
+training/RAG records available for a run before model training. For
 concurrent or repeated setup runs, pass a unique
 `AI_EDA_RUN_ID=<machine-or-date>` so generated records do not share the default
 `build/ai_eda/**/validation` directories. If the default `python3` points at a
@@ -74,22 +95,37 @@ managed virtualenv interpreter.
 On a CUDA host, run the generated payload flow with:
 
 ```sh
-python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id cuda-host --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --include-torch
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id cuda-host --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --asset edalearn --asset macro-place-challenge-2026 --asset mlcad-2023-fpga-macro --asset chipdiffusion --asset chipformer --asset core-placement --asset maptune --asset abc-rl --asset abcrl --asset rl4ls --asset mcp4eda --asset orfs-agent --asset openroad-agent --asset openroad-mcp --asset open3dbench --asset dreamplace --asset chiplingo --asset veoplace-vlm --asset audopeda --asset ppa-3dic-surrogate-2026 --include-torch
 ```
 
 To intentionally pull reviewed assets into ignored local payload directories,
 use explicit asset IDs:
 
 ```sh
-python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --execute-fetch
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --asset edalearn --asset macro-place-challenge-2026 --asset mlcad-2023-fpga-macro --asset chipdiffusion --asset chipformer --asset core-placement --asset maptune --asset abc-rl --asset abcrl --asset rl4ls --asset mcp4eda --asset orfs-agent --asset openroad-agent --asset openroad-mcp --asset open3dbench --asset dreamplace --asset chiplingo --asset veoplace-vlm --asset audopeda --asset ppa-3dic-surrogate-2026 --execute-fetch
 ```
 
 Paper/method-only assets such as AssertLLM are recorded as metadata-only
 payloads with hashes under ignored `external/repos/<asset>/payload` paths; no
 paper PDF, model weights, or generated assertions are treated as chip evidence.
 `make ai-eda-cuda-payload` also runs the payload checker, which validates the
-tarball, embedded run plan, selected assets, critical fetch commands, expected
-CUDA outputs, and the no-datasets/no-weights payload boundary.
+tarball, embedded run plan, generated `cuda_handoff_README.md`, selected
+assets, critical fetch commands, expected CUDA outputs, the current-research
+watchlist capture handoff, OpenROAD ML snapshot handoff, and the
+no-datasets/no-weights payload boundary. `make ai-eda-cuda-run-plan-dry-run`
+expands the embedded CUDA run plan into a reviewed execution manifest without
+running commands; real execution through `execute_cuda_run_plan.py --execute`
+must name one or more `--stage` values and uses explicit allow flags for
+download, training, inference, replay, and AlphaChip stages. The executor also
+skips run-plan orchestration commands inside the plan so it cannot recursively
+invoke itself. `make ai-eda-cuda-readiness-audit`
+first validates that dry-run execution manifest, then summarizes the preflight,
+payload, AlphaChip checkpoint blocker, current-research watchlist,
+setup-check/bootstrap evidence, training-handoff bootstrap evidence, and E1
+replay-preflight state into one machine-readable blocked-or-ready report for
+the CUDA host. For evidence produced under
+different run IDs, pass `AI_EDA_SETUP_RUN_ID=<setup-run>` and
+`AI_EDA_TRAINING_HANDOFF_RUN_ID=<handoff-run>` when invoking the audit.
 
 ## Docker Setup
 

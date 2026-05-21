@@ -219,7 +219,7 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
             "graph_node_count": metrics["graph_node_count"],
             "graph_edge_count": metrics["graph_edge_count"],
         }
-        for record, path in zip(records, paths, strict=True)
+        for record, path in zip(records, paths)
     ]
 
 

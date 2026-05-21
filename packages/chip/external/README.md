@@ -28,7 +28,7 @@ Fresh-machine setup:
 ```sh
 make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=fresh-host ai-eda-bootstrap-metadata
 make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=fresh-host ai-eda-backend-preflight
-python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --execute-fetch
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --asset chipbench-d --asset openabc-d --asset aieda-idata --asset edalearn --asset macro-place-challenge-2026 --asset mlcad-2023-fpga-macro --asset chipdiffusion --asset chipformer --asset core-placement --asset maptune --asset abc-rl --asset abcrl --asset rl4ls --asset mcp4eda --asset orfs-agent --asset openroad-agent --asset openroad-mcp --asset open3dbench --asset dreamplace --asset chiplingo --asset veoplace-vlm --asset audopeda --asset ppa-3dic-surrogate-2026 --execute-fetch
 make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=fresh-host ai-eda-bootstrap-setup-check
 make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=fresh-host ai-eda-bootstrap-local-smoke
 ```

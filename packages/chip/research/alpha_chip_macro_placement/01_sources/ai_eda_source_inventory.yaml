@@ -3116,6 +3116,39 @@ entries:
     risk:
       - Search can overfit proxy costs and consume large compute without
         improving routed timing, power, or manufacturability.
+  - id: c3po-concurrent-placement
+    name: C3PO Concurrent Timing, Routability, and Wirelength Placement
+    kind: concurrent_global_placement_method
+    stage:
+      - global_placement
+      - timing_optimization
+      - routability_optimization
+      - physical_design
+    priority: P2
+    source_url: https://research.nvidia.com/labs/electronic-design-automation/publication/lu2026aspdac/
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_public_model
+    e1_fit: >
+      Relevant current placement research because it targets commercial-quality
+      concurrent optimization of timing, routability, and wirelength instead of
+      a single placement proxy objective.
+    integration_action: >
+      Track as method context for future OpenROAD/OpenLane global-placement
+      objective comparisons. Do not treat reported paper results as runnable
+      E1 evidence until a reproducible implementation and local replay exist.
+    evidence_gate: >
+      Any C3PO-style experiment requires implementation revision, objective
+      definitions, tool versions, before/after DEF/ODB/GDS, route, STA,
+      congestion, DRC/LVS, power, and reviewer disposition.
+    risk:
+      - Paper-only commercial-quality placement results may not be reproducible
+        in the open E1 flow without source code and exact benchmark setup.
+      - Concurrent objectives can improve aggregate QoR while still regressing
+        E1-specific PDN, package, clocking, or signoff constraints.
   - id: openroad-fastroute
     name: OpenROAD FastRoute
     kind: global_routing_tool
