@@ -1,8 +1,8 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import nodePath from "node:path";
-import { type IAgentRuntime, type UUID } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createHandler,
   ensureWorkspace,
@@ -25,7 +25,9 @@ function replaceGlobalFetch(fetchImpl: typeof fetch): void {
 }
 
 beforeEach(async () => {
-  workspaceRoot = await mkdtemp(nodePath.join(tmpdir(), "agent-remote-runner-"));
+  workspaceRoot = await mkdtemp(
+    nodePath.join(tmpdir(), "agent-remote-runner-"),
+  );
   originalFetch = globalThis.fetch;
 });
 

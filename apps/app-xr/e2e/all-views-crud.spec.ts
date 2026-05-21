@@ -5,7 +5,7 @@
  * opened, rendered, and closed via the agent view-host route.
  */
 
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 const BASE_URL = process.env.XR_BASE_URL ?? "http://localhost:31337";
 

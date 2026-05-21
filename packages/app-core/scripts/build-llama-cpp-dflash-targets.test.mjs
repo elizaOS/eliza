@@ -27,11 +27,14 @@ test("unsupported Android fused targets fail closed with explicit diagnostics", 
   ];
 
   for (const [target, pattern] of cases) {
-    assert.throws(() => parseArgs(["--target", target, "--dry-run"]), (err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      assert.match(message, pattern, message);
-      assert.match(message, new RegExp(target), message);
-      return true;
-    });
+    assert.throws(
+      () => parseArgs(["--target", target, "--dry-run"]),
+      (err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        assert.match(message, pattern, message);
+        assert.match(message, new RegExp(target), message);
+        return true;
+      },
+    );
   }
 });

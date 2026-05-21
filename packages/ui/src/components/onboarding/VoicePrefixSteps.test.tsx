@@ -45,9 +45,7 @@ describe("VoicePrefixSteps", () => {
     expect(screen.getByTestId("voice-prefix-steps").className).toContain(
       "text-[var(--onboarding-text-primary)]",
     );
-    expect(container.querySelector("main")?.className).toContain(
-      "bg-white/28",
-    );
+    expect(container.querySelector("main")?.className).toContain("bg-white/28");
     expect(
       screen.getByTestId("voice-prefix-welcome-request-mic").className,
     ).toContain("bg-accent");

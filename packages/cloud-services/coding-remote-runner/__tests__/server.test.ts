@@ -10,16 +10,18 @@ import {
 import { tmpdir } from "node:os";
 import nodePath from "node:path";
 import {
+  type CodingRemoteRunnerCommandRunner,
   createHandler,
   ensureWorkspace,
   loadConfig,
-  type CodingRemoteRunnerCommandRunner,
 } from "../src/index";
 
 let workspaceRoot = "";
 
 beforeEach(async () => {
-  workspaceRoot = await mkdtemp(nodePath.join(tmpdir(), "coding-remote-runner-"));
+  workspaceRoot = await mkdtemp(
+    nodePath.join(tmpdir(), "coding-remote-runner-"),
+  );
 });
 
 afterEach(() => {
@@ -110,8 +112,11 @@ describe("coding remote runner HTTP runner", () => {
         ELIZA_REMOTE_RUNNER_HTTP_TOKEN: "token",
       }),
     );
-    const commandCalls: Array<{ command: string; args: string[]; cwd: string }> =
-      [];
+    const commandCalls: Array<{
+      command: string;
+      args: string[];
+      cwd: string;
+    }> = [];
     const workspaceRealPath = await realpath(workspaceRoot);
     const response = await handler(async (payload) => {
       commandCalls.push({

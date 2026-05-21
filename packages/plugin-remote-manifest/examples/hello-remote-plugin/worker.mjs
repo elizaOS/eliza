@@ -46,7 +46,11 @@ self.addEventListener("message", (event) => {
     const summary = data.success
       ? `ok ${Array.isArray(data.payload) ? data.payload.length : "?"} remote plugins`
       : `err ${data.error ?? "unknown"}`;
-    appendFileSync(context.logsPath, `[list-remote-plugins] ${summary}\n`, "utf8");
+    appendFileSync(
+      context.logsPath,
+      `[list-remote-plugins] ${summary}\n`,
+      "utf8",
+    );
   }
 });
 

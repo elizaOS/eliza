@@ -54,9 +54,7 @@ const {
     setBaseUrl: vi.fn(),
     setToken: vi.fn(),
   },
-  ElizaClientMock: vi.fn(function () {
-    return clientMock;
-  }),
+  ElizaClientMock: vi.fn(() => clientMock),
   completeOnboardingMock: vi.fn(),
   platformState: {
     isAndroid: false,

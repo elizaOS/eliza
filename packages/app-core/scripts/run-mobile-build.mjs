@@ -1776,10 +1776,7 @@ function ensureManifestApplicationClosedBeforeTopLevelEntries(xml) {
     const insertAt = afterApplicationStart + 1 + topLevelEntry;
     return `${xml.slice(0, insertAt)}\n    </application>\n${xml.slice(insertAt)}`;
   }
-  return xml.replace(
-    "</manifest>",
-    "    </application>\n</manifest>",
-  );
+  return xml.replace("</manifest>", "    </application>\n</manifest>");
 }
 
 function removeStaleAndroidJavaSourceRoots(dstJava) {

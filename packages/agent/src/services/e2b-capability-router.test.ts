@@ -1,10 +1,10 @@
 import { CapabilityError, type IAgentRuntime, type UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
-  type E2BSandboxClient,
-  type E2BSandboxFactory,
   E2BRemoteCapabilityRouterService,
   type E2BRemoteRunnerConfig,
+  type E2BSandboxClient,
+  type E2BSandboxFactory,
   resolveE2BRemoteRunnerConfig,
   type SandboxCommandResult,
   type SandboxEntryInfo,
@@ -398,7 +398,9 @@ describe("E2BRemoteCapabilityRouterService", () => {
 
     expect(config.enabled).toBe(true);
     expect(config.provider).toBe("eliza-cloud");
-    expect(config.remoteHttpBaseUrl).toBe("https://cloud.example/remote-runner");
+    expect(config.remoteHttpBaseUrl).toBe(
+      "https://cloud.example/remote-runner",
+    );
     expect(config.remoteHttpToken).toBe("token");
     expect(config.agentRunners).toEqual(["codex", "claude-code", "opencode"]);
   });

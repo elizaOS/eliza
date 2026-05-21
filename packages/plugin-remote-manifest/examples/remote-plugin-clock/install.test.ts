@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { installPrebuiltRemotePlugin, loadInstalledRemotePlugin } from "../../src/store.js";
+import {
+  installPrebuiltRemotePlugin,
+  loadInstalledRemotePlugin,
+} from "../../src/store.js";
 
 const REMOTE_PLUGIN_CLOCK_DIR = resolve(import.meta.dir);
 
@@ -10,9 +13,13 @@ describe("remote-plugin-clock example", () => {
   it("installs as a window-mode remotePlugin with the expected view metadata", () => {
     const storeRoot = mkdtempSync(join(tmpdir(), "remote-plugin-clock-"));
     try {
-      const installed = installPrebuiltRemotePlugin(storeRoot, REMOTE_PLUGIN_CLOCK_DIR, {
-        devMode: false,
-      });
+      const installed = installPrebuiltRemotePlugin(
+        storeRoot,
+        REMOTE_PLUGIN_CLOCK_DIR,
+        {
+          devMode: false,
+        },
+      );
 
       expect(installed.manifest.id).toBe("remote-plugin-clock");
       expect(installed.manifest.mode).toBe("window");
@@ -25,7 +32,10 @@ describe("remote-plugin-clock example", () => {
       expect(bootstrap).toContain('"id":"remote-plugin-clock"');
       expect(bootstrap).toContain('"mode":"window"');
 
-      const reloaded = loadInstalledRemotePlugin(storeRoot, "remote-plugin-clock");
+      const reloaded = loadInstalledRemotePlugin(
+        storeRoot,
+        "remote-plugin-clock",
+      );
       expect(reloaded).not.toBeNull();
       expect(reloaded?.viewUrl).toBe("views://view/index.html");
       if (!reloaded) throw new Error("Expected remote-plugin-clock to reload.");

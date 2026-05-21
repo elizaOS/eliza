@@ -2,10 +2,10 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { AgentMessageStreamEvent } from "../protocol/event-types.ts";
 import {
-  RuntimeRemotePluginClient,
   type RuntimeEventHandler,
   type RuntimeEventTailResult,
   type RuntimeRemotePluginBridge,
+  RuntimeRemotePluginClient,
 } from "../protocol/runtime-client.ts";
 import {
   addAssistantStreamMessage,
@@ -331,7 +331,6 @@ class TailRuntimeBridge extends MockRuntimeBridge {
       id: targetId,
       events: [
         {
-          remotePluginId: targetId,
           remotePluginId: targetId,
           sequence: 1,
           name: "agent.message.stream.delta",

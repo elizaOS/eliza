@@ -99,19 +99,11 @@ const pluginRemoteManifestSrc = path.join(
   monorepoRoot,
   "packages/plugin-remote-manifest/src",
 );
-const pluginWorkerRuntimeSrc = path.join(
-  monorepoRoot,
-  "packages/plugin-worker-runtime/src",
-);
 const pluginWorkflowSrc = path.join(
   monorepoRoot,
   "plugins/plugin-workflow/src",
 );
 const pluginX402Src = path.join(monorepoRoot, "plugins/plugin-x402/src");
-const pluginWorkerRuntimeSrc = path.join(
-  monorepoRoot,
-  "packages/plugin-worker-runtime/src",
-);
 // Resolve react/react-dom from the location of this config file so the alias
 // works whether react is hoisted to the monorepo root or installed locally.
 // createRequire resolves through the normal Node resolution algorithm (walks up

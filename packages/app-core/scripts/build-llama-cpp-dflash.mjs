@@ -1033,7 +1033,7 @@ function patchOmnivoiceVoiceFilePicker(cacheDir, { dryRun = false } = {}) {
   if (!fs.existsSync(ffiPath)) {
     return;
   }
-  let source = fs.readFileSync(ffiPath, "utf8");
+  const source = fs.readFileSync(ffiPath, "utf8");
   let patched = source;
   if (!patched.includes("std::vector<std::string> tts_candidates;")) {
     const oldPicker = `    if (tts.empty()) return false;
@@ -1105,12 +1105,7 @@ function patchOmnivoiceVoiceFilePicker(cacheDir, { dryRun = false } = {}) {
 }
 
 function patchOmnivoiceStaticFfi(cacheDir, { dryRun = false } = {}) {
-  const cmakePath = path.join(
-    cacheDir,
-    "tools",
-    "omnivoice",
-    "CMakeLists.txt",
-  );
+  const cmakePath = path.join(cacheDir, "tools", "omnivoice", "CMakeLists.txt");
   if (!fs.existsSync(cmakePath)) {
     return;
   }
@@ -1137,7 +1132,8 @@ endif()`;
       `[dflash-build] patchOmnivoiceStaticFfi: elizainference add_library anchor not found in ${cmakePath}`,
     );
   }
-  const linkAnchor = "if(APPLE)\n    target_link_options(elizainference PRIVATE";
+  const linkAnchor =
+    "if(APPLE)\n    target_link_options(elizainference PRIVATE";
   if (!original.includes(linkAnchor)) {
     throw new Error(
       `[dflash-build] patchOmnivoiceStaticFfi: Apple reexport anchor not found in ${cmakePath}`,
@@ -1182,12 +1178,16 @@ function patchMobileKokoroTts(cacheDir, { dryRun = false } = {}) {
     "llama-mobile-kokoro-tts.patch",
   );
   if (!fs.existsSync(patchPath)) {
-    throw new Error(`[dflash-build] missing mobile Kokoro TTS patch ${patchPath}`);
+    throw new Error(
+      `[dflash-build] missing mobile Kokoro TTS patch ${patchPath}`,
+    );
   }
   if (!dryRun) {
     run("git", ["apply", "--whitespace=nowarn", patchPath], { cwd: cacheDir });
   }
-  console.log("[dflash-build] patched mobile Kokoro TTS and allocation preflight");
+  console.log(
+    "[dflash-build] patched mobile Kokoro TTS and allocation preflight",
+  );
 }
 
 function patchKokoroNativeIstftGuard(cacheDir, { dryRun = false } = {}) {
@@ -4605,8 +4605,10 @@ function isCliEntrypoint(argvPath) {
   const resolvedArgvPath = path.resolve(argvPath);
   if (resolvedArgvPath === __filename) return true;
   try {
-    return fs.realpathSync.native(resolvedArgvPath) ===
-      fs.realpathSync.native(__filename);
+    return (
+      fs.realpathSync.native(resolvedArgvPath) ===
+      fs.realpathSync.native(__filename)
+    );
   } catch {
     return false;
   }

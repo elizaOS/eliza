@@ -912,11 +912,9 @@ async function buildEntries(): Promise<ConvergenceAuditEntry[]> {
       path.basename(directory).startsWith("app-"),
   );
   const pluginEntries = await Promise.all(pluginDirectories.map(pluginEntry));
-  return [
-    ...manualEntries,
-    ...(await remoteEntries()),
-    ...pluginEntries,
-  ].sort((left, right) => left.id.localeCompare(right.id));
+  return [...manualEntries, ...(await remoteEntries()), ...pluginEntries].sort(
+    (left, right) => left.id.localeCompare(right.id),
+  );
 }
 
 function list(
@@ -954,10 +952,7 @@ function buildSummaries(
       "core runtime plugins",
     ],
     currentRemotes: list(entries, (entry) => entry.keepAs === "remote"),
-    futureRemoteCandidates: list(
-      entries,
-      (entry) => entry.shouldBecomeRemote,
-    ),
+    futureRemoteCandidates: list(entries, (entry) => entry.shouldBecomeRemote),
     traceFirstCandidates: list(
       entries,
       (entry) => entry.shouldEmitTraceEvents && entry.keepAs !== "remote",

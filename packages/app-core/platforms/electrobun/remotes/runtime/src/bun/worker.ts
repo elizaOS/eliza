@@ -3,8 +3,8 @@ import { createApiBridgeError, serializeError } from "./errors.ts";
 import { RuntimeLogBuffer } from "./log-buffer.ts";
 import type {
   AgentMessageParams,
-  AgentMessageStreamEvent,
   AgentMessageStreamCancelParams,
+  AgentMessageStreamEvent,
   AgentMessageStreamParams,
   JsonValue,
   RuntimeLogEntry,
@@ -12,10 +12,10 @@ import type {
   RuntimeMethod,
   RuntimeResponsePayload,
   RuntimeStartParams,
-  StreamEventKind,
   RuntimeState,
   RuntimeWorkerOutboundMessage,
   RuntimeWorkerRequestMessage,
+  StreamEventKind,
 } from "./protocol.ts";
 import {
   FILE_REMOTE_PLUGIN_ID,

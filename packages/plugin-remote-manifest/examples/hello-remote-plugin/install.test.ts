@@ -3,7 +3,10 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { installPrebuiltRemotePlugin, loadInstalledRemotePlugin } from "../../src/store.js";
+import {
+  installPrebuiltRemotePlugin,
+  loadInstalledRemotePlugin,
+} from "../../src/store.js";
 
 const HELLO_REMOTE_PLUGIN_DIR = resolve(import.meta.dir);
 
@@ -23,9 +26,13 @@ describe("hello-remote-plugin example", () => {
   it("manifest validates, installs, and wires bootstrap end-to-end", () => {
     const storeRoot = mkdtempSync(join(tmpdir(), "hello-remote-plugin-"));
     try {
-      const installed = installPrebuiltRemotePlugin(storeRoot, HELLO_REMOTE_PLUGIN_DIR, {
-        devMode: true,
-      });
+      const installed = installPrebuiltRemotePlugin(
+        storeRoot,
+        HELLO_REMOTE_PLUGIN_DIR,
+        {
+          devMode: true,
+        },
+      );
 
       expect(installed.manifest.id).toBe("hello-remote-plugin");
       expect(installed.manifest.mode).toBe("background");
@@ -37,10 +44,15 @@ describe("hello-remote-plugin example", () => {
       const bootstrap = readFileSync(installed.workerPath, "utf8");
       expect(bootstrap).toContain("__remotePluginBootstrap");
       expect(bootstrap).toContain('"id":"hello-remote-plugin"');
-      expect(bootstrap).toContain('"channel":"remote-plugin:hello-remote-plugin"');
+      expect(bootstrap).toContain(
+        '"channel":"remote-plugin:hello-remote-plugin"',
+      );
       expect(bootstrap).toContain("await import");
 
-      const reloaded = loadInstalledRemotePlugin(storeRoot, "hello-remote-plugin");
+      const reloaded = loadInstalledRemotePlugin(
+        storeRoot,
+        "hello-remote-plugin",
+      );
       expect(reloaded).not.toBeNull();
       expect(reloaded?.viewUrl).toBe("views://view/index.html");
       if (!reloaded) throw new Error("Expected hello-remote-plugin to reload.");
@@ -53,9 +65,13 @@ describe("hello-remote-plugin example", () => {
   it("boots in a real Bun Worker and writes the expected side effects", async () => {
     const storeRoot = mkdtempSync(join(tmpdir(), "hello-remote-plugin-boot-"));
     try {
-      const installed = installPrebuiltRemotePlugin(storeRoot, HELLO_REMOTE_PLUGIN_DIR, {
-        devMode: true,
-      });
+      const installed = installPrebuiltRemotePlugin(
+        storeRoot,
+        HELLO_REMOTE_PLUGIN_DIR,
+        {
+          devMode: true,
+        },
+      );
 
       const workerUrl = pathToFileURL(installed.workerPath).href;
       const worker = new Worker(workerUrl, { type: "module" });
@@ -64,7 +80,9 @@ describe("hello-remote-plugin example", () => {
       await new Promise<void>((resolveReady, rejectFailed) => {
         const timeout = setTimeout(() => {
           worker.terminate();
-          rejectFailed(new Error("hello-remote-plugin did not emit ready within 2s"));
+          rejectFailed(
+            new Error("hello-remote-plugin did not emit ready within 2s"),
+          );
         }, 2000);
         worker.addEventListener("message", (event: MessageEvent) => {
           const data = event.data as WorkerLifeMessage;
@@ -103,7 +121,9 @@ describe("hello-remote-plugin example", () => {
       );
       expect(actionLogs).toHaveLength(1);
       expect(actionLogs[0].payload?.level).toBe("info");
-      expect(actionLogs[0].payload?.message).toContain("hello-remote-plugin ready");
+      expect(actionLogs[0].payload?.message).toContain(
+        "hello-remote-plugin ready",
+      );
 
       const readyMessages = messages.filter((m) => m.type === "ready");
       expect(readyMessages).toHaveLength(1);
