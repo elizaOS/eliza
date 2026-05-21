@@ -167,8 +167,8 @@ export default function ContainerDetailsPage() {
           >
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2 rounded-sm bg-blue-500/10 border border-blue-500/20">
-                  <Server className="h-5 w-5 text-blue-500" />
+                <div className="p-2 rounded-sm bg-[#FF5800]/10 border border-[#FF5800]/20">
+                  <Server className="h-5 w-5 text-[#FF5800]" />
                 </div>
                 <Badge className={`${statusColor} text-white rounded-sm`}>
                   {container.status}

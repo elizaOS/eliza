@@ -95,7 +95,7 @@ export function getSidebarSections(t: SidebarTranslator): SidebarSection[] {
         {
           id: "docs",
           label: t("cloud.nav.docs", { defaultValue: "Docs" }),
-          href: "/docs",
+          href: "https://docs.elizaos.ai/cloud",
           icon: BookOpen,
           freeAllowed: true,
         },

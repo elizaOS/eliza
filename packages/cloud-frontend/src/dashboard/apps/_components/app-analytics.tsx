@@ -364,7 +364,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <DashboardStatCard
                 label="Total Users"
                 value={totalStats.totalUsers?.toLocaleString() || "0"}
-                icon={<Users className="h-5 w-5 text-blue-400" />}
+                icon={<Users className="h-5 w-5 text-white/70" />}
               />
               <DashboardStatCard
                 label="Credits Used"
@@ -629,7 +629,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <DashboardStatCard
                     label="Unique Users"
                     value={requestStats.uniqueUsers.toLocaleString()}
-                    icon={<Users className="h-5 w-5 text-blue-400" />}
+                    icon={<Users className="h-5 w-5 text-white/70" />}
                   />
                   <DashboardStatCard
                     label="Avg Requests/IP"

@@ -16,12 +16,8 @@ export default function LandingHeader() {
   const navigate = useNavigate();
   const t = useT();
 
-  const launchEliza = () => navigate("/login?intent=launch");
   const openDashboard = () => navigate("/login?intent=dashboard");
 
-  const launchLabel = t("cloud.landing.launchEliza", {
-    defaultValue: "Launch Eliza",
-  });
   const devDashboardLabel = t("cloud.landing.developerDashboard", {
     defaultValue: "Developer Dashboard",
   });
@@ -42,39 +38,23 @@ export default function LandingHeader() {
           {authenticated ? (
             <>
               <Link
-                to="/dashboard/agents"
-                className="inline-flex min-h-10 items-center justify-center rounded-sm bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] sm:min-h-11 sm:px-5"
-              >
-                {launchLabel}
-              </Link>
-              <Link
                 to="/dashboard"
-                className="hidden min-h-11 items-center justify-center rounded-sm border border-[var(--accent)] bg-transparent px-5 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-subtle)] sm:inline-flex"
+                className="inline-flex min-h-10 items-center justify-center rounded-[3px] border border-black bg-white px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white sm:min-h-11"
               >
                 {devDashboardLabel}
               </Link>
               <UserMenu />
             </>
           ) : (
-            <>
-              <button
-                aria-disabled={!ready}
-                className="inline-flex min-h-10 items-center justify-center rounded-sm bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50 sm:min-h-11 sm:px-5"
-                onClick={launchEliza}
-                disabled={!ready}
-                type="button"
-              >
-                {launchLabel}
-              </button>
-              <button
-                className="hidden min-h-11 items-center justify-center rounded-sm border border-[var(--accent)] bg-transparent px-5 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-subtle)] disabled:opacity-50 sm:inline-flex"
-                onClick={openDashboard}
-                disabled={!ready}
-                type="button"
-              >
-                {devDashboardLabel}
-              </button>
-            </>
+            <button
+              aria-disabled={!ready}
+              className="inline-flex min-h-10 items-center justify-center rounded-[3px] border border-black bg-white px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white disabled:opacity-50 sm:min-h-11"
+              onClick={openDashboard}
+              disabled={!ready}
+              type="button"
+            >
+              {devDashboardLabel}
+            </button>
           )}
         </div>
       </div>

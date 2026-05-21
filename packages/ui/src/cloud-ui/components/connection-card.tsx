@@ -144,7 +144,9 @@ const calloutToneClassName: Record<
   NonNullable<ConnectionCalloutProps["tone"]>,
   string
 > = {
-  blue: "bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-400",
+  // Brand rule: blue is banned. Existing `tone="blue"` call sites now
+  // render as a neutral informational callout instead.
+  blue: "bg-white/5 border-white/15 text-foreground dark:text-white/80",
   green:
     "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400",
   red: "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400",

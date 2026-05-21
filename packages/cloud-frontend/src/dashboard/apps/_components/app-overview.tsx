@@ -307,7 +307,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             (app.deployment_status || "draft").slice(1)
           }
           icon={<Rocket className="h-5 w-5" />}
-          accent="blue"
+          accent="white"
         />
         <DashboardStatCard
           label={t("cloud.apps.overview.stat.totalUsers", {
@@ -532,7 +532,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       <div className="bg-neutral-900 rounded-sm p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Shield className="h-4 w-4 text-blue-400" />
+            <Shield className="h-4 w-4 text-white/70" />
             Allowed Origins
           </h3>
           <button

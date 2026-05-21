@@ -82,13 +82,13 @@ function getMethodColor(method: string) {
     case "GET":
       return "bg-green-500/20 text-green-400";
     case "POST":
-      return "bg-blue-500/20 text-blue-400";
+      return "bg-white/10 text-white/80";
     case "PUT":
       return "bg-orange-500/20 text-orange-400";
     case "DELETE":
       return "bg-red-500/20 text-red-400";
     case "PATCH":
-      return "bg-blue-500/20 text-blue-400";
+      return "bg-white/10 text-white/80";
     default:
       return "bg-white/10 text-white/60";
   }

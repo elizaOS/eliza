@@ -113,8 +113,6 @@ const BallotPage = lazyWithPreload(
   () => import("./pages/ballot/[ballotId]/page"),
 );
 
-const DocsRouter = lazyWithPreload(() => import("./docs/DocsRouter"));
-
 const DashboardLayout = lazyWithPreload(
   () => import("./dashboard/DashboardLayout"),
 );
@@ -191,6 +189,9 @@ const AdminMetricsPage = lazyWithPreload(
 );
 const AdminRedemptionsPage = lazyWithPreload(
   () => import("./dashboard/admin/redemptions/Page"),
+);
+const AdminRpcStatusPage = lazyWithPreload(
+  () => import("./dashboard/admin/rpc-status/Page"),
 );
 
 /**
@@ -343,8 +344,6 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     path: "/dashboard",
     preload: preloadAll(DashboardLayout.preload, DashboardIndex.preload),
   },
-  { path: "/docs", preload: DocsRouter.preload },
-  { path: "/docs/*", preload: DocsRouter.preload },
   {
     path: "/login",
     preload: preloadAll(LoginLayout.preload, LoginPage.preload),
@@ -670,10 +669,6 @@ function App() {
           element={<SuspenseRoute component={BallotPage} />}
         />
 
-        <Route
-          path="docs/*"
-          element={<SuspenseRoute component={DocsRouter} />}
-        />
         {/*
          * Dashboard subtree. Suspense for the layout itself stays here, but
          * the inner per-page `<Outlet />` gets its own Suspense inside
@@ -753,6 +748,7 @@ function App() {
             />
             <Route path="metrics" element={<AdminMetricsPage />} />
             <Route path="redemptions" element={<AdminRedemptionsPage />} />
+            <Route path="rpc-status" element={<AdminRpcStatusPage />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

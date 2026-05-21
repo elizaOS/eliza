@@ -15,7 +15,7 @@ import {
 } from "@solana/wallet-adapter-wallets";
 import { useMemo } from "react";
 import { http, WagmiProvider } from "wagmi";
-import { base, bsc, mainnet } from "wagmi/chains";
+import { base, bsc } from "wagmi/chains";
 
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const FALLBACK_WALLETCONNECT_PROJECT_ID = "YOUR_WC_PROJECT_ID";
@@ -49,14 +49,11 @@ export function StewardWalletProviders({
           "Sign in to chat with your Eliza Cloud agent and manage your account",
         appUrl,
         projectId: walletConnectProjectId,
-        chains: [mainnet, base, bsc],
+        chains: [base, bsc],
         transports: {
-          [mainnet.id]: alchemyKey
-            ? http(`https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`)
-            : http(),
           [base.id]: alchemyKey
             ? http(`https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`)
-            : http(),
+            : http("https://base-rpc.publicnode.com"),
           [bsc.id]: http("https://bsc-dataseed.binance.org"),
         },
         ssr: false,

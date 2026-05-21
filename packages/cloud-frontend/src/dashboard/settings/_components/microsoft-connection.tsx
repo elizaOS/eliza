@@ -192,8 +192,8 @@ export function MicrosoftConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Mail className="h-6 w-6 text-blue-600" />}
-            iconClassName="bg-blue-100"
+            icon={<Mail className="h-6 w-6 text-[#FF5800]" />}
+            iconClassName="bg-[#FF5800]/10"
             title={status?.email}
             subtitle="Microsoft Account Connected"
           />
@@ -239,14 +239,14 @@ export function MicrosoftConnection() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 bg-muted rounded-sm text-center">
-              <Mail className="h-6 w-6 mx-auto mb-2 text-blue-500" />
+              <Mail className="h-6 w-6 mx-auto mb-2 text-[#FF5800]" />
               <p className="text-sm font-medium">Outlook</p>
               <p className="text-xs text-muted-foreground">
                 Send & read emails
               </p>
             </div>
             <div className="p-3 bg-muted rounded-sm text-center">
-              <Calendar className="h-6 w-6 mx-auto mb-2 text-blue-500" />
+              <Calendar className="h-6 w-6 mx-auto mb-2 text-[#FF5800]" />
               <p className="text-sm font-medium">Calendar</p>
               <p className="text-xs text-muted-foreground">Manage events</p>
             </div>

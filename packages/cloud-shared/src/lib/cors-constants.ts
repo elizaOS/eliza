@@ -30,6 +30,7 @@ export const CORS_ALLOW_HEADER_NAMES = [
   "X-PAYMENT",
   "X-PAYMENT-RESPONSE",
   "X-PAYMENT-STATUS",
+  "X-Steward-Tenant",
 ] as const;
 
 export const CORS_ALLOW_HEADERS = CORS_ALLOW_HEADER_NAMES.join(", ");

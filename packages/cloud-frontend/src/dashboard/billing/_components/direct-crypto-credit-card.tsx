@@ -11,12 +11,15 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { Coins, Loader2, ShieldCheck, Wallet } from "lucide-react";
-import { type CSSProperties, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { erc20Abi } from "viem";
 import { useAccount, useConfig, useSwitchChain } from "wagmi";
-import { waitForTransactionReceipt, writeContract } from "wagmi/actions";
-import type { CryptoStatusResponse } from "@/lib/types/crypto-status";
+import { sendTransaction, waitForTransactionReceipt, writeContract } from "wagmi/actions";
+import type {
+  CryptoStatusResponse,
+  CryptoStatusTokenOption,
+} from "@/lib/types/crypto-status";
 
 type DirectNetwork = "base" | "bsc" | "solana";
 
@@ -49,6 +52,7 @@ async function createDirectPayment(params: {
   amount: number;
   network: DirectNetwork;
   payerAddress: string;
+  tokenSymbol?: string;
   promoCode?: "bsc";
 }) {
   const res = await fetch("/api/crypto/direct-payments", {
@@ -62,6 +66,8 @@ async function createDirectPayment(params: {
     paymentId: string;
     instructions: {
       chainId?: number;
+      tokenSymbol: string;
+      tokenKind: "native" | "bep20" | "erc20" | "spl";
       tokenAddress?: `0x${string}`;
       tokenMint?: string;
       tokenDecimals: number;
@@ -101,6 +107,7 @@ export function DirectCryptoCreditCard({
   const [network, setNetwork] = useState<DirectNetwork>(
     lockedNetwork ?? (promoCode === "bsc" ? "bsc" : "base"),
   );
+  const [tokenSymbol, setTokenSymbol] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const evm = useAccount();
   const wagmiConfig = useConfig();
@@ -117,6 +124,23 @@ export function DirectCryptoCreditCard({
   const selected =
     enabledNetworks.find((item) => item.network === network) ??
     enabledNetworks[0];
+
+  const tokenOptions: CryptoStatusTokenOption[] = selected?.tokens ?? [];
+  const selectedToken: CryptoStatusTokenOption | undefined = useMemo(() => {
+    if (tokenOptions.length === 0) return undefined;
+    const match = tokenOptions.find(
+      (t) => t.symbol.toUpperCase() === (tokenSymbol ?? "").toUpperCase(),
+    );
+    return match ?? tokenOptions[0];
+  }, [tokenOptions, tokenSymbol]);
+
+  // When the network changes (or the underlying token list does), reset the
+  // selected token to the network's default so we don't carry a stale BSC
+  // selection into Base/Solana.
+  useEffect(() => {
+    setTokenSymbol(null);
+  }, [selected?.network]);
+
   const bscPromo =
     promoCode === "bsc" && network === "bsc" && amount !== null && amount >= 10;
   const expectedCredits = amount === null ? 0 : amount + (bscPromo ? 5 : 0);
@@ -140,11 +164,23 @@ export function DirectCryptoCreditCard({
     payment: Awaited<ReturnType<typeof createDirectPayment>>,
   ) {
     if (!evm.address) throw new Error("Connect your EVM wallet first");
-    if (!cfg.chainId || !payment.instructions.tokenAddress) {
-      throw new Error("Payment network is missing token configuration");
+    if (!cfg.chainId) {
+      throw new Error("Payment network is missing chain configuration");
     }
     if (evm.chainId !== cfg.chainId) {
       await switchChainAsync({ chainId: cfg.chainId });
+    }
+    if (payment.instructions.tokenKind === "native") {
+      const hash = await sendTransaction(wagmiConfig, {
+        to: payment.instructions.receiveAddress as `0x${string}`,
+        value: BigInt(payment.instructions.amountUnits),
+        chainId: cfg.chainId,
+      });
+      await waitForTransactionReceipt(wagmiConfig, { hash, chainId: cfg.chainId });
+      return hash;
+    }
+    if (!payment.instructions.tokenAddress) {
+      throw new Error("Payment network is missing token configuration");
     }
     const hash = await writeContract(wagmiConfig, {
       address: payment.instructions.tokenAddress,
@@ -228,6 +264,7 @@ export function DirectCryptoCreditCard({
         amount,
         network: selected.network,
         payerAddress: connectedAddress,
+        tokenSymbol: selectedToken?.symbol,
         promoCode,
       });
       const hash =
@@ -285,6 +322,7 @@ export function DirectCryptoCreditCard({
     ? { backgroundColor: "#000", borderColor: "#000", color: "#fff" }
     : undefined;
   const showNetworkSelector = !lockedNetwork && enabledNetworks.length > 1;
+  const showTokenSelector = tokenOptions.length > 1;
 
   if (!status?.directWallet?.enabled) {
     return (
@@ -337,13 +375,50 @@ export function DirectCryptoCreditCard({
           </div>
         ) : null}
 
+        {showTokenSelector ? (
+          <div className="space-y-1">
+            <div className={`text-xs ${mutedTextClassName}`}>Pay with</div>
+            <div
+              aria-label="Token"
+              role="radiogroup"
+              className={`grid grid-cols-4 gap-2 rounded-xs border p-1 text-xs sm:gap-3 ${segmentClassName}`}
+            >
+              {tokenOptions.map((option) => {
+                const active =
+                  selectedToken?.symbol.toUpperCase() ===
+                  option.symbol.toUpperCase();
+                return (
+                  <button
+                    key={option.symbol}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setTokenSymbol(option.symbol)}
+                    className={`min-h-10 rounded-xs px-3 py-2 font-medium transition-colors ${
+                      active
+                        ? selectedSegmentClassName
+                        : unselectedSegmentClassName
+                    }`}
+                  >
+                    {option.symbol === "U" ? "$U" : option.symbol}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
         <div
           className={`grid grid-cols-1 gap-2 text-xs sm:grid-cols-3 sm:gap-3 ${mutedTextClassName}`}
         >
           <div className={`rounded-xs border p-3 ${infoTileClassName}`}>
             <div>Token</div>
             <div className={`mt-1 ${infoValueClassName}`}>
-              {selected?.tokenSymbol ?? "-"}
+              {selectedToken
+                ? selectedToken.symbol === "U"
+                  ? "$U"
+                  : selectedToken.symbol
+                : (selected?.tokenSymbol ?? "-")}
             </div>
           </div>
           <div className={`rounded-xs border p-3 ${infoTileClassName}`}>

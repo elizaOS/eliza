@@ -10,7 +10,6 @@ export default function HeroSection() {
   const navigate = useNavigate();
   const t = useT();
   const launchEliza = () => navigate("/login?intent=launch");
-  const openDashboard = () => navigate("/login?intent=dashboard");
 
   return (
     <CloudVideoBackground
@@ -37,19 +36,10 @@ export default function HeroSection() {
           <button
             type="button"
             onClick={launchEliza}
-            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-[3px] bg-black px-8 py-4 text-base font-medium text-white transition hover:bg-[#0B35F1] sm:text-lg"
+            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-[3px] border border-black bg-black px-8 py-4 text-base font-medium text-white transition-colors hover:bg-white hover:text-black sm:text-lg"
           >
             {t("cloud.landing.launchEliza", { defaultValue: "Launch Eliza" })}
             <ArrowRight className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={openDashboard}
-            className="inline-flex min-h-14 items-center justify-center rounded-[3px] bg-[#FF5800] px-7 py-4 text-base font-medium text-black transition hover:bg-black hover:text-white"
-          >
-            {t("cloud.landing.developerDashboard", {
-              defaultValue: "Developer Dashboard",
-            })}
           </button>
         </div>
       </div>

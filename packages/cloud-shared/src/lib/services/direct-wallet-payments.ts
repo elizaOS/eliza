@@ -39,14 +39,28 @@ import { invoicesService } from "./invoices";
 
 export type DirectWalletNetwork = "base" | "bsc" | "solana";
 
+export type DirectWalletTokenKind = "native" | "bep20" | "erc20" | "spl";
+
+export interface DirectWalletTokenOption {
+  symbol: string;
+  kind: DirectWalletTokenKind;
+  tokenAddress?: Hex;
+  tokenMint?: string;
+  decimals: number;
+}
+
 export interface DirectWalletNetworkConfig {
   network: DirectWalletNetwork;
   displayName: string;
   chainId?: number;
-  tokenSymbol: "USDC" | "USDT";
+  // Default token for the network — kept for backward-compat with consumers
+  // that read a single token per network. The `tokens` field is the
+  // multi-token source of truth for networks that support more than one.
+  tokenSymbol: string;
   tokenAddress?: Hex;
   tokenMint?: string;
   tokenDecimals: number;
+  tokens: DirectWalletTokenOption[];
   receiveAddress: string | null;
   secureAddress: string | null;
   rpcUrl: string;
@@ -65,6 +79,9 @@ interface CreateDirectPaymentParams {
   payerAddress: string;
   amountUsd: number;
   network: DirectWalletNetwork;
+  // Optional token symbol for networks with multiple options (currently BSC:
+  // BNB / USDT / USDC / U). Defaults to the network's primary token.
+  tokenSymbol?: string;
   promoCode?: "bsc";
 }
 
@@ -74,7 +91,44 @@ const TRANSFER_EVENT = parseAbiItem(
 
 const BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BSC_USDT_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";
+const BSC_USDC_ADDRESS = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
+// United Stables ($U) — BEP-20, 18 decimals. Verified via BscScan.
+const BSC_U_ADDRESS = "0xcE24439F2D9C6a2289F741120FE202248B666666";
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+const BSC_TOKEN_OPTIONS: DirectWalletTokenOption[] = [
+  { symbol: "BNB", kind: "native", decimals: 18 },
+  {
+    symbol: "USDT",
+    kind: "bep20",
+    tokenAddress: getAddress(BSC_USDT_ADDRESS),
+    decimals: 18,
+  },
+  {
+    symbol: "USDC",
+    kind: "bep20",
+    tokenAddress: getAddress(BSC_USDC_ADDRESS),
+    decimals: 18,
+  },
+  {
+    symbol: "U",
+    kind: "bep20",
+    tokenAddress: getAddress(BSC_U_ADDRESS),
+    decimals: 18,
+  },
+];
+
+function resolveBscToken(symbol: string | undefined): DirectWalletTokenOption {
+  if (!symbol) return BSC_TOKEN_OPTIONS[1]; // default USDT
+  const match = BSC_TOKEN_OPTIONS.find(
+    (t) => t.symbol.toUpperCase() === symbol.toUpperCase(),
+  );
+  if (!match) {
+    throw new Error(`Unsupported BSC token: ${symbol}`);
+  }
+  return match;
+}
+
 
 function envString(env: Bindings, key: string): string | null {
   const value = env[key];
@@ -103,13 +157,22 @@ function directPaymentConfig(
     const receiveAddress = envString(env, "CRYPTO_DIRECT_BASE_RECEIVE_ADDRESS");
     const secureAddress = envString(env, "CRYPTO_DIRECT_BASE_SECURE_ADDRESS");
     const tokenAddress = envString(env, "CRYPTO_DIRECT_BASE_TOKEN_ADDRESS") ?? BASE_USDC_ADDRESS;
+    const decimals = Number(envString(env, "CRYPTO_DIRECT_BASE_TOKEN_DECIMALS") ?? 6);
     return {
       network,
       displayName: "Base",
       chainId: base.id,
       tokenSymbol: "USDC",
       tokenAddress: getAddress(tokenAddress),
-      tokenDecimals: Number(envString(env, "CRYPTO_DIRECT_BASE_TOKEN_DECIMALS") ?? 6),
+      tokenDecimals: decimals,
+      tokens: [
+        {
+          symbol: "USDC",
+          kind: "erc20",
+          tokenAddress: getAddress(tokenAddress),
+          decimals,
+        },
+      ],
       receiveAddress,
       secureAddress,
       rpcUrl:
@@ -124,14 +187,26 @@ function directPaymentConfig(
   if (network === "bsc") {
     const receiveAddress = envString(env, "CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS");
     const secureAddress = envString(env, "CRYPTO_DIRECT_BSC_SECURE_ADDRESS");
-    const tokenAddress = envString(env, "CRYPTO_DIRECT_BSC_TOKEN_ADDRESS") ?? BSC_USDT_ADDRESS;
+    // Backward-compat: legacy CRYPTO_DIRECT_BSC_TOKEN_ADDRESS overrides the
+    // default USDT contract in the tokens list, in case an env has been
+    // pointed at a non-standard contract.
+    const usdtOverride = envString(env, "CRYPTO_DIRECT_BSC_TOKEN_ADDRESS");
+    const tokens: DirectWalletTokenOption[] = usdtOverride
+      ? BSC_TOKEN_OPTIONS.map((t) =>
+          t.symbol === "USDT"
+            ? { ...t, tokenAddress: getAddress(usdtOverride) }
+            : t,
+        )
+      : BSC_TOKEN_OPTIONS;
+    const defaultToken = tokens.find((t) => t.symbol === "USDT") ?? tokens[0];
     return {
       network,
       displayName: "BNB Smart Chain",
       chainId: bsc.id,
-      tokenSymbol: "USDT",
-      tokenAddress: getAddress(tokenAddress),
-      tokenDecimals: Number(envString(env, "CRYPTO_DIRECT_BSC_TOKEN_DECIMALS") ?? 18),
+      tokenSymbol: defaultToken.symbol,
+      tokenAddress: defaultToken.tokenAddress,
+      tokenDecimals: defaultToken.decimals,
+      tokens,
       receiveAddress,
       secureAddress,
       rpcUrl:
@@ -145,12 +220,15 @@ function directPaymentConfig(
 
   const receiveAddress = envString(env, "CRYPTO_DIRECT_SOLANA_RECEIVE_ADDRESS");
   const secureAddress = envString(env, "CRYPTO_DIRECT_SOLANA_SECURE_ADDRESS");
+  const mint = envString(env, "CRYPTO_DIRECT_SOLANA_TOKEN_MINT") ?? SOLANA_USDC_MINT;
+  const decimals = Number(envString(env, "CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS") ?? 6);
   return {
     network,
     displayName: "Solana",
     tokenSymbol: "USDC",
-    tokenMint: envString(env, "CRYPTO_DIRECT_SOLANA_TOKEN_MINT") ?? SOLANA_USDC_MINT,
-    tokenDecimals: Number(envString(env, "CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS") ?? 6),
+    tokenMint: mint,
+    tokenDecimals: decimals,
+    tokens: [{ symbol: "USDC", kind: "spl", tokenMint: mint, decimals }],
     receiveAddress,
     secureAddress,
     rpcUrl: solanaRpcUrl(env),
@@ -173,6 +251,7 @@ function disabledDirectPaymentConfig(
       tokenSymbol: "USDC",
       tokenMint: SOLANA_USDC_MINT,
       tokenDecimals: 6,
+      tokens: [{ symbol: "USDC", kind: "spl", tokenMint: SOLANA_USDC_MINT, decimals: 6 }],
       receiveAddress: null,
       secureAddress: null,
       rpcUrl: "https://api.mainnet-beta.solana.com",
@@ -187,6 +266,16 @@ function disabledDirectPaymentConfig(
     tokenSymbol: isBase ? "USDC" : "USDT",
     tokenAddress: getAddress(isBase ? BASE_USDC_ADDRESS : BSC_USDT_ADDRESS),
     tokenDecimals: isBase ? 6 : 18,
+    tokens: isBase
+      ? [
+          {
+            symbol: "USDC",
+            kind: "erc20",
+            tokenAddress: getAddress(BASE_USDC_ADDRESS),
+            decimals: 6,
+          },
+        ]
+      : BSC_TOKEN_OPTIONS,
     receiveAddress: null,
     secureAddress: null,
     rpcUrl: isBase ? "https://mainnet.base.org" : "https://bsc-dataseed.binance.org",
@@ -260,6 +349,10 @@ function directMetadata(payment: CryptoPayment): {
   metadata: Record<string, unknown>;
   network: DirectWalletNetwork;
   payerAddress: string;
+  tokenSymbol: string;
+  tokenKind: DirectWalletTokenKind;
+  tokenAddress: Hex | null;
+  tokenMint: string | null;
   tokenDecimals: number;
   expectedTokenUnits: bigint;
   bonusCredits: number;
@@ -272,10 +365,31 @@ function directMetadata(payment: CryptoPayment): {
   if (network !== "base" && network !== "bsc" && network !== "solana") {
     throw new Error("Payment has invalid direct network metadata");
   }
+  const rawTokenKind = String(metadata.token_kind ?? "");
+  const tokenKind: DirectWalletTokenKind =
+    rawTokenKind === "native" ||
+    rawTokenKind === "bep20" ||
+    rawTokenKind === "erc20" ||
+    rawTokenKind === "spl"
+      ? rawTokenKind
+      : network === "solana"
+        ? "spl"
+        : network === "base"
+          ? "erc20"
+          : "bep20";
+  const rawTokenAddress = metadata.token_address;
   return {
     metadata,
     network,
     payerAddress: String(metadata.payer_wallet_address ?? ""),
+    tokenSymbol: String(metadata.token_symbol ?? ""),
+    tokenKind,
+    tokenAddress:
+      typeof rawTokenAddress === "string" && rawTokenAddress.startsWith("0x")
+        ? (rawTokenAddress as Hex)
+        : null,
+    tokenMint:
+      typeof metadata.token_mint === "string" ? metadata.token_mint : null,
     tokenDecimals: Number(metadata.token_decimals ?? 0),
     expectedTokenUnits: BigInt(String(metadata.expected_token_units ?? "0")),
     bonusCredits: Number(metadata.bonus_credits ?? 0),
@@ -284,11 +398,12 @@ function directMetadata(payment: CryptoPayment): {
 
 async function verifyEvmTokenPayment(params: {
   cfg: DirectWalletNetworkConfig;
+  tokenAddress: Hex;
   payerAddress: string;
   txHash: string;
   expectedUnits: bigint;
 }): Promise<{ blockNumber: string; receivedUnits: bigint }> {
-  if (!params.cfg.chainId || !params.cfg.tokenAddress || !params.cfg.receiveAddress) {
+  if (!params.cfg.chainId || !params.cfg.receiveAddress) {
     throw new Error("Invalid EVM direct payment configuration");
   }
 
@@ -305,12 +420,13 @@ async function verifyEvmTokenPayment(params: {
   if (tx.from.toLowerCase() !== normalizeEvmAddress(params.payerAddress)) {
     throw new Error("Transaction sender does not match account wallet");
   }
-  if (tx.to?.toLowerCase() !== params.cfg.tokenAddress.toLowerCase()) {
+  if (tx.to?.toLowerCase() !== params.tokenAddress.toLowerCase()) {
     throw new Error("Transaction is not a transfer of the expected token");
   }
 
   const receiveAddress = normalizeEvmAddress(params.cfg.receiveAddress);
   const payerAddress = normalizeEvmAddress(params.payerAddress);
+  const tokenAddressLc = params.tokenAddress.toLowerCase();
   const events = parseEventLogs({
     abi: [TRANSFER_EVENT],
     logs: receipt.logs,
@@ -321,7 +437,7 @@ async function verifyEvmTokenPayment(params: {
       return total;
     }
     if (
-      event.address.toLowerCase() === params.cfg.tokenAddress?.toLowerCase() &&
+      event.address.toLowerCase() === tokenAddressLc &&
       event.args.from.toLowerCase() === payerAddress &&
       event.args.to.toLowerCase() === receiveAddress
     ) {
@@ -335,6 +451,43 @@ async function verifyEvmTokenPayment(params: {
   }
 
   return { blockNumber: receipt.blockNumber.toString(), receivedUnits };
+}
+
+async function verifyEvmNativePayment(params: {
+  cfg: DirectWalletNetworkConfig;
+  payerAddress: string;
+  txHash: string;
+  expectedUnits: bigint;
+}): Promise<{ blockNumber: string; receivedUnits: bigint }> {
+  if (!params.cfg.chainId || !params.cfg.receiveAddress) {
+    throw new Error("Invalid EVM direct payment configuration");
+  }
+  const client = createPublicClient({
+    chain: params.cfg.network === "base" ? base : bsc,
+    transport: http(params.cfg.rpcUrl),
+  });
+  const receipt = await client.getTransactionReceipt({
+    hash: params.txHash as Hex,
+  });
+  if (receipt.status !== "success") throw new Error("Transaction failed");
+
+  const tx = await client.getTransaction({ hash: params.txHash as Hex });
+  if (tx.from.toLowerCase() !== normalizeEvmAddress(params.payerAddress)) {
+    throw new Error("Transaction sender does not match account wallet");
+  }
+  if (
+    !tx.to ||
+    tx.to.toLowerCase() !== normalizeEvmAddress(params.cfg.receiveAddress)
+  ) {
+    throw new Error("Transaction recipient does not match the receive address");
+  }
+  if (tx.value < params.expectedUnits) {
+    throw new Error("Transaction amount is lower than the expected payment");
+  }
+  return {
+    blockNumber: receipt.blockNumber.toString(),
+    receivedUnits: tx.value,
+  };
 }
 
 async function verifySolanaTokenPayment(params: {
@@ -401,9 +554,11 @@ function evmPrivateKey(env: Bindings, network: DirectWalletNetwork): Hex | null 
 async function sweepEvmIfConfigured(params: {
   env: Bindings;
   cfg: DirectWalletNetworkConfig;
+  tokenAddress: Hex | null;
+  tokenDecimals: number;
   units: bigint;
 }): Promise<Record<string, unknown> | null> {
-  if (!params.cfg.tokenAddress || !params.cfg.secureAddress) return null;
+  if (!params.tokenAddress || !params.cfg.secureAddress) return null;
   const privateKey = evmPrivateKey(params.env, params.cfg.network);
   if (!privateKey) return null;
 
@@ -420,7 +575,7 @@ async function sweepEvmIfConfigured(params: {
     transport: http(params.cfg.rpcUrl),
   });
   const hash = await wallet.sendTransaction({
-    to: params.cfg.tokenAddress,
+    to: params.tokenAddress,
     data: encodeFunctionData({
       abi: erc20Abi,
       functionName: "transfer",
@@ -506,6 +661,13 @@ export class DirectWalletPaymentsService {
       payerAddress: params.payerAddress,
     });
 
+    // Resolve which token on the network this purchase is using. Networks
+    // with a single token (Base USDC, Solana USDC) ignore the param.
+    const selectedToken: DirectWalletTokenOption =
+      params.network === "bsc"
+        ? resolveBscToken(params.tokenSymbol)
+        : cfg.tokens[0];
+
     const amount = new Decimal(params.amountUsd);
     const validation = validatePaymentAmount(amount);
     if (!validation.valid) throw new Error(validation.error ?? "Invalid amount");
@@ -515,7 +677,7 @@ export class DirectWalletPaymentsService {
     const promoApplies = promoRequested;
     const bonusCredits = promoApplies ? 5 : 0;
     const creditsToAdd = amount.plus(bonusCredits);
-    const expectedTokenUnits = unitsForUsd(amount, cfg.tokenDecimals);
+    const expectedTokenUnits = unitsForUsd(amount, selectedToken.decimals);
     const now = new Date();
 
     const payment = await dbWrite.transaction(async (tx) => {
@@ -544,8 +706,8 @@ export class DirectWalletPaymentsService {
           organization_id: params.organizationId,
           user_id: params.userId,
           payment_address: cfg.receiveAddress ?? "",
-          token_address: cfg.tokenAddress ?? cfg.tokenMint ?? null,
-          token: cfg.tokenSymbol,
+          token_address: selectedToken.tokenAddress ?? selectedToken.tokenMint ?? null,
+          token: selectedToken.symbol,
           network: cfg.displayName,
           expected_amount: amount.toFixed(2),
           credits_to_add: creditsToAdd.toFixed(2),
@@ -561,12 +723,16 @@ export class DirectWalletPaymentsService {
             payer_wallet_address: normalizePayer(params.network, params.payerAddress),
             receive_address: cfg.receiveAddress,
             secure_address_configured: Boolean(cfg.secureAddress),
-            token_symbol: cfg.tokenSymbol,
-            token_address: cfg.tokenAddress,
-            token_mint: cfg.tokenMint,
-            token_decimals: cfg.tokenDecimals,
+            token_symbol: selectedToken.symbol,
+            token_kind: selectedToken.kind,
+            token_address: selectedToken.tokenAddress ?? null,
+            token_mint: selectedToken.tokenMint ?? null,
+            token_decimals: selectedToken.decimals,
             expected_token_units: expectedTokenUnits.toString(),
-            expected_token_amount: formatUnitsAsTokenAmount(expectedTokenUnits, cfg.tokenDecimals),
+            expected_token_amount: formatUnitsAsTokenAmount(
+              expectedTokenUnits,
+              selectedToken.decimals,
+            ),
             paid_amount_usd: amount.toFixed(2),
             bonus_credits: bonusCredits,
             promo_code: promoApplies ? "bsc" : null,
@@ -582,13 +748,14 @@ export class DirectWalletPaymentsService {
       paymentInstructions: {
         network: params.network,
         chainId: cfg.chainId,
-        tokenSymbol: cfg.tokenSymbol,
-        tokenAddress: cfg.tokenAddress,
-        tokenMint: cfg.tokenMint,
-        tokenDecimals: cfg.tokenDecimals,
+        tokenSymbol: selectedToken.symbol,
+        tokenKind: selectedToken.kind,
+        tokenAddress: selectedToken.tokenAddress,
+        tokenMint: selectedToken.tokenMint,
+        tokenDecimals: selectedToken.decimals,
         receiveAddress: cfg.receiveAddress,
         amountUnits: expectedTokenUnits.toString(),
-        amountToken: formatUnitsAsTokenAmount(expectedTokenUnits, cfg.tokenDecimals),
+        amountToken: formatUnitsAsTokenAmount(expectedTokenUnits, selectedToken.decimals),
         amountUsd: amount.toFixed(2),
         creditsToAdd: creditsToAdd.toFixed(2),
         bonusCredits,
@@ -639,20 +806,33 @@ export class DirectWalletPaymentsService {
         throw new Error("Transaction already processed for another payment");
       }
 
-      const verification =
-        direct.network === "solana"
-          ? await verifySolanaTokenPayment({
-              cfg,
-              payerAddress: direct.payerAddress,
-              txHash: params.txHash,
-              expectedUnits: direct.expectedTokenUnits,
-            })
-          : await verifyEvmTokenPayment({
-              cfg,
-              payerAddress: direct.payerAddress,
-              txHash: params.txHash,
-              expectedUnits: direct.expectedTokenUnits,
-            });
+      let verification: { blockNumber: string; receivedUnits: bigint };
+      if (direct.network === "solana") {
+        verification = await verifySolanaTokenPayment({
+          cfg,
+          payerAddress: direct.payerAddress,
+          txHash: params.txHash,
+          expectedUnits: direct.expectedTokenUnits,
+        });
+      } else if (direct.tokenKind === "native") {
+        verification = await verifyEvmNativePayment({
+          cfg,
+          payerAddress: direct.payerAddress,
+          txHash: params.txHash,
+          expectedUnits: direct.expectedTokenUnits,
+        });
+      } else {
+        if (!direct.tokenAddress) {
+          throw new Error("Payment metadata is missing token address");
+        }
+        verification = await verifyEvmTokenPayment({
+          cfg,
+          tokenAddress: direct.tokenAddress,
+          payerAddress: direct.payerAddress,
+          txHash: params.txHash,
+          expectedUnits: direct.expectedTokenUnits,
+        });
+      }
 
       const amountPaid = new Decimal(payment.expected_amount);
       const creditsToAdd = new Decimal(payment.credits_to_add);
@@ -662,9 +842,17 @@ export class DirectWalletPaymentsService {
           ? await sweepSolanaIfConfigured({ env, cfg, units: verification.receivedUnits }).catch(
               (error) => ({ sweep_error: error instanceof Error ? error.message : String(error) }),
             )
-          : await sweepEvmIfConfigured({ env, cfg, units: verification.receivedUnits }).catch(
-              (error) => ({ sweep_error: error instanceof Error ? error.message : String(error) }),
-            );
+          : direct.tokenKind === "native"
+            ? null
+            : await sweepEvmIfConfigured({
+                env,
+                cfg,
+                tokenAddress: direct.tokenAddress,
+                tokenDecimals: direct.tokenDecimals,
+                units: verification.receivedUnits,
+              }).catch((error) => ({
+                sweep_error: error instanceof Error ? error.message : String(error),
+              }));
 
       await tx
         .update(cryptoPayments)
@@ -706,8 +894,8 @@ export class DirectWalletPaymentsService {
       amount: Number(creditsToAdd),
       description:
         direct.bonusCredits > 0
-          ? `Direct crypto payment (${cfg.tokenSymbol} on ${cfg.displayName}) + BSC promotion`
-          : `Direct crypto payment (${cfg.tokenSymbol} on ${cfg.displayName})`,
+          ? `Direct crypto payment (${direct.tokenSymbol} on ${cfg.displayName}) + BSC promotion`
+          : `Direct crypto payment (${direct.tokenSymbol} on ${cfg.displayName})`,
       stripePaymentIntentId: `wallet_native:${result.payment.id}`,
       metadata: {
         crypto_payment_id: result.payment.id,
@@ -715,7 +903,7 @@ export class DirectWalletPaymentsService {
         provider: "wallet_native",
         transaction_hash: params.txHash,
         network: direct.network,
-        token: cfg.tokenSymbol,
+        token: direct.tokenSymbol,
         paid_amount_usd: amountPaid,
         bonus_credits: direct.bonusCredits,
         credits_added: creditsToAdd,
@@ -741,7 +929,7 @@ export class DirectWalletPaymentsService {
           payment_method: "crypto",
           provider: "wallet_native",
           network: direct.network,
-          token: cfg.tokenSymbol,
+          token: direct.tokenSymbol,
           transaction_hash: params.txHash,
           bonus_credits: direct.bonusCredits,
           sweep,

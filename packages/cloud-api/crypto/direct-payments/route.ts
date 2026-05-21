@@ -23,6 +23,10 @@ const createSchema = z.object({
   amount: z.number().min(1).max(10000),
   network: z.enum(["base", "bsc", "solana"]),
   payerAddress: z.string().min(1),
+  // BSC supports multiple tokens (BNB native, USDT, USDC, U). Other networks
+  // ignore this field. Restricted to known symbols so the service does not
+  // see an unbounded string.
+  tokenSymbol: z.enum(["BNB", "USDT", "USDC", "U"]).optional(),
   promoCode: z.literal("bsc").optional(),
 });
 
@@ -65,6 +69,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       payerAddress: validation.data.payerAddress,
       amountUsd: validation.data.amount,
       network: validation.data.network as DirectWalletNetwork,
+      tokenSymbol: validation.data.tokenSymbol,
       promoCode: validation.data.promoCode,
     });
 
