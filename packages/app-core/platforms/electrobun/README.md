@@ -35,13 +35,13 @@ Produces `src/libMacWindowEffects.dylib` (consumed via Bun FFI at runtime).
 | `bun run test` | Vitest (`src/__tests__`, etc.) |
 | `bun run build:native-effects` | Compile macOS `window-effects.mm` → dylib |
 
-## First-party Satellites
+## First-party Remotes
 
-Prototype ElizaLaunch Satellites are folded into this shell under `satellites/` and seeded on desktop startup by `src/first-party-satellites.ts`. They use the existing `@elizaos/electrobun-carrots` install/start/log runtime instead of a parallel module system.
+Prototype ElizaLaunch Remotes are folded into this shell under `remotes/` and seeded on desktop startup by `src/first-party-remotes.ts`. They use the existing `@elizaos/electrobun-carrots` install/start/log runtime instead of a parallel module system.
 
-- `eliza.runtime` is required and runs as a Runtime Satellite adapter over the existing Electrobun `AgentManager`; production mode must not start a second elizaOS runtime process.
-- `eliza.fs`, `eliza.local-model`, `eliza.pty`, and `eliza.git` are first-party capability Satellites.
-- `eliza.surface` is a dev/admin surface and is only included when `ELIZA_ENABLE_DEV_SATELLITES=1`.
+- `eliza.runtime` is required and runs as a Runtime Remote adapter over the existing Electrobun `AgentManager`; production mode must not start a second elizaOS runtime process.
+- `eliza.fs`, `eliza.local-model`, `eliza.pty`, and `eliza.git` are first-party capability Remotes.
+- `eliza.surface` is a dev/admin surface and is only included when `ELIZA_ENABLE_DEV_REMOTES=1`.
 
 The current worker-to-worker bridge supports the upstream `invoke-carrot` host request, and renderer/dev views can call workers through the typed `carrot:invokeWorker` RPC. Broad automatic event broadcast is still a host-level follow-up, so dev surfaces should use explicit invokes plus polling where needed.
 

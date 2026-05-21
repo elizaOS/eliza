@@ -24,6 +24,9 @@ DEFAULT_OUT = ROOT / "build/ai_eda/cuda_training_payloads"
 CLAIM_BOUNDARY = "cuda_training_payload_metadata_only_no_dataset_weights_or_training_claim"
 
 BASE_INCLUDE = (
+    "README.md",
+    "Makefile",
+    "requirements.txt",
     "external/README.md",
     "external/SOURCES.lock.yaml",
     "external/schemas/ai_eda_external_asset_manifest.v1.yaml",
@@ -57,17 +60,20 @@ BASE_INCLUDE = (
     "scripts/ai_eda/check_macro_placement_torch_regressor.py",
     "scripts/ai_eda/check_macro_placement_torch_inference.py",
     "scripts/ai_eda/check_logic_synthesis_policy_baseline.py",
+    "scripts/ai_eda/check_circuitnet3_surrogate.py",
     "scripts/ai_eda/check_internal_dataset_schemas.py",
     "scripts/ai_eda/check_tool_action_manifests.py",
     "scripts/ai_eda/check_tool_action_schemas.py",
     "scripts/ai_eda/convert_e1_openlane_to_internal_records.py",
     "scripts/ai_eda/convert_external_fixture_corpora.py",
     "scripts/ai_eda/convert_openroad_eda_corpus.py",
+    "scripts/ai_eda/convert_circuitnet3_to_internal_records.py",
     "scripts/ai_eda/convert_tilos_macroplacement.py",
     "scripts/ai_eda/build_macro_placement_supervised_dataset.py",
     "scripts/ai_eda/train_macro_placement_supervised_model.py",
     "scripts/ai_eda/train_macro_placement_torch_regressor.py",
     "scripts/ai_eda/infer_macro_placement_torch_regressor.py",
+    "scripts/ai_eda/train_circuitnet3_timing_power_baseline.py",
     "scripts/ai_eda/fetch_external_asset.py",
     "scripts/ai_eda/materialize_internal_dataset_fixtures.py",
     "scripts/ai_eda/materialize_e1_softmacro_cases.py",
@@ -113,6 +119,14 @@ METADATA_GLOBS = (
     "external/models/*/manifest.yaml",
 )
 
+RECURSIVE_INCLUDE_GLOBS = (
+    "docs/spec-db/ai-eda/external-fixtures/**/*",
+    "docs/spec-db/ai-eda/templates/**/*",
+    "research/alpha_chip_macro_placement/06_e1_notes/**/*",
+    "rtl/npu/e1_npu.sv",
+    "sw/platform/e1_platform_contract.json",
+)
+
 
 def git_output(args: list[str]) -> str:
     result = subprocess.run(
@@ -138,6 +152,8 @@ def include_files() -> list[Path]:
     paths = [ROOT / rel for rel in BASE_INCLUDE if (ROOT / rel).exists()]
     for pattern in METADATA_GLOBS:
         paths.extend(sorted(ROOT.glob(pattern)))
+    for pattern in RECURSIVE_INCLUDE_GLOBS:
+        paths.extend(path for path in sorted(ROOT.glob(pattern)) if path.is_file())
 
     deduped: list[Path] = []
     seen: set[Path] = set()
@@ -194,16 +210,23 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
         ],
         "required_remote_commands": [
             "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id <cuda-host>",
-            "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile local-smoke --run-id <cuda-host> --asset tilos-macroplacement --asset openroad-eda-corpus",
-            "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id <cuda-host> --asset tilos-macroplacement --asset openroad-eda-corpus --include-torch",
+            "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile setup-check --run-id <cuda-host> --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3",
+            "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile local-smoke --run-id <cuda-host> --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3",
+            "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id <cuda-host> --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --include-torch",
             "python3 scripts/ai_eda/preflight_cuda_training_stack.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/check_external_asset_manifests.py",
             "python3 scripts/ai_eda/check_external_intake_manifests.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/fetch_external_asset.py --all --dry-run --run-id <cuda-host>",
             "python3 scripts/ai_eda/fetch_external_asset.py --asset <asset-id> --execute --run-id <cuda-host>",
             "python3 scripts/ai_eda/fetch_external_asset.py --asset <asset-id> --verify-only --run-id <cuda-host>",
+            "python3 scripts/ai_eda/fetch_external_asset.py --asset circuitnet3 --execute --run-id <cuda-host>",
+            "python3 scripts/ai_eda/fetch_external_asset.py --asset circuitnet3 --verify-only --run-id <cuda-host>",
             "python3 scripts/ai_eda/convert_openroad_eda_corpus.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/convert_tilos_macroplacement.py --run-id <cuda-host>",
+            "python3 scripts/ai_eda/convert_circuitnet3_to_internal_records.py --run-id <cuda-host> --sample-limit 32",
+            "python3 scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/circuitnet3/<cuda-host>/records",
+            "python3 scripts/ai_eda/train_circuitnet3_timing_power_baseline.py --run-id <cuda-host> --record-dir build/ai_eda/circuitnet3/<cuda-host>/records",
+            "python3 scripts/ai_eda/check_circuitnet3_surrogate.py --report build/ai_eda/circuitnet3_surrogate/<cuda-host>/training_run.json",
             "python3 scripts/ai_eda/materialize_e1_softmacro_cases.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/build_macro_placement_supervised_dataset.py --run-id <cuda-host>",
             "python3 scripts/ai_eda/check_macro_placement_supervised_dataset.py --report build/ai_eda/macro_placement_supervised_dataset/<cuda-host>/macro_placement_supervised_dataset_report.json",
@@ -241,6 +264,11 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
             "build/ai_eda/external_assets/<run-id>/*.json",
             "build/ai_eda/openroad_eda_corpus/<run-id>/conversion_report.json",
             "build/ai_eda/tilos_macroplacement/<run-id>/conversion_report.json",
+            "build/ai_eda/circuitnet3/<run-id>/conversion_report.json",
+            "build/ai_eda/circuitnet3/<run-id>/records/*.json",
+            "build/ai_eda/circuitnet3_surrogate/<run-id>/training_run.json",
+            "build/ai_eda/circuitnet3_surrogate/<run-id>/metrics.json",
+            "build/ai_eda/circuitnet3_surrogate/<run-id>/circuitnet3_surrogate_model.json",
             "build/ai_eda/macro_placement_supervised_dataset/<run-id>/macro_placement_supervised_dataset_report.json",
             "build/ai_eda/macro_placement_supervised_dataset/<run-id>/{train,val,test}.jsonl",
             "build/ai_eda/macro_placement_supervised_model/<run-id>/supervised_training_run.json",

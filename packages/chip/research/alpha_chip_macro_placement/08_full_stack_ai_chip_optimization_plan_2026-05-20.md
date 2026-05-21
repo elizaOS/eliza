@@ -319,7 +319,8 @@ The first reproducibility spine is now checked in:
   metadata cannot block a future fetch.
 - `scripts/ai_eda/bootstrap_ai_eda_stack.py` is the fresh-machine orchestration
   entrypoint. The `metadata` profile validates manifests and dry-runs fetches,
-  `local-smoke` adds converter/training/replay-plan checks, and
+  `setup-check` verifies reviewed payloads and rebuilds normalized corpora/E1
+  cases, `local-smoke` adds converter/training/replay-plan checks, and
   `training-handoff` adds CUDA/MPS Torch inference/training plus payload
   packaging. Explicit `--asset ... --execute-fetch` is required for downloads.
 - `scripts/ai_eda/preflight_cuda_training_stack.py` records Mac/CUDA/MPS
@@ -344,9 +345,11 @@ The first reproducibility spine is now checked in:
 Current local validation on the 128 GiB M4 host:
 
 - `make docs-check`: PASS.
-- `make ai-eda-external-intake-check`: PASS for the first reviewed metadata
-  manifest plus pending metadata-only manifests for `chipbench-d`,
-  `circuitnet3`, `intel-floorset`, and `macro-place-challenge-2026`.
+- `make ai-eda-external-intake-check`: PASS for 7 metadata manifests:
+  `google-circuit-training`, `tilos-macroplacement`,
+  `openroad-eda-corpus`, plus pending metadata-only manifests for
+  `chipbench-d`, `circuitnet3`, `intel-floorset`, and
+  `macro-place-challenge-2026`.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset openroad-eda-corpus
   --dry-run --run-id intake-validation`: PASS and points the future download to
   `external/datasets/openroad-eda-corpus/payload`.
@@ -354,6 +357,28 @@ Current local validation on the 128 GiB M4 host:
   --run-id validation`: PASS and emits a dry-run report.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset circuitnet3
   --dry-run --run-id validation`: PASS and emits a dry-run report.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset circuitnet3
+  --execute --run-id download-20260520`: PASS. The public CircuitNet 3.0
+  payload is present under `external/datasets/circuitnet3/payload` with
+  `circuitNetv3.zip` at 1,032,704,519 bytes. The archive contains 57,975 zip
+  entries and 2,004 `dataset/Final/*/feature.json` cases in the current public
+  release. This is training/pretraining data only, not E1 signoff evidence.
+- `make ai-eda-circuitnet3-convert`: PASS when the reviewed local
+  CircuitNet3 payload archive is present. The bounded validation sample
+  converts 3 public CircuitNet3 final cases into 9 internal
+  `eda.design_bundle.v1`, `eda.graph_sample.v1`, and `eda.flow_run.v1`
+  records, with labels explicitly quarantined as pretraining-only and not E1
+  signoff.
+- `make ai-eda-circuitnet3-surrogate`: PASS. The current dependency-free
+  baseline trains over those 3 converted CircuitNet3 flow-run records with
+  train/validation/test split counts of 1/1/1. It writes
+  `build/ai_eda/circuitnet3_surrogate/validation/training_run.json`,
+  `metrics.json`, and `circuitnet3_surrogate_model.json`, then validates split
+  counts, model targets, finite metrics, and the pretraining-only claim
+  boundary. Current held-out one-sample MAE values are validation
+  `min_slack=0.044`, `total_power=2.99838384`; test `min_slack=0.291`,
+  `total_power=2.27140204`. These are smoke metrics only, not an E1 timing or
+  power claim.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset intel-floorset
   --dry-run --run-id validation`: PASS and emits a dry-run report.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset
@@ -369,8 +394,11 @@ Current local validation on the 128 GiB M4 host:
 - `python3 scripts/ai_eda/fetch_external_asset.py --all --dry-run --run-id
   validation-all`: PASS across 27 locked external assets.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset
-  google-circuit-training --verify-only --run-id validation`: BLOCKED because
-  the local external checkout is not present yet.
+  google-circuit-training --verify-only --run-id validation`: PASS. The
+  public Circuit Training checkout is retained as ignored payload under
+  `external/repos/google-circuit-training/payload`, pinned at
+  `c417a3a13f40867b649c719c03daaf1b39a909bc`; public checkpoint/binary access
+  remains blocked separately by the AlphaChip checkpoint blocker.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset openroad-eda-corpus
   --execute --run-id validation`: PASS. The reviewed small corpus is checked
   out under `external/datasets/openroad-eda-corpus/payload`.
@@ -387,10 +415,18 @@ Current local validation on the 128 GiB M4 host:
   tools, OpenROAD, TensorFlow, DGL, and PyG are recorded in the JSON report.
 - `python3 scripts/ai_eda/package_cuda_training_payload.py --run-id validation`:
   PASS and emits a tarball containing manifests, scripts, and a run plan only.
+- `make ai-eda-bootstrap-metadata`: PASS and writes
+  `build/ai_eda/bootstrap/validation/bootstrap_report.json`.
+- `make ai-eda-bootstrap-setup-check`: PASS and verifies the restored reviewed
+  payload setup path before long training or synthesis targets.
 - `make ai-eda-internal-schemas-check`: PASS for five record schemas and five
   example fixtures.
 - `make ai-eda-bootstrap-metadata`: PASS and emits
   `build/ai_eda/bootstrap/validation/bootstrap_report.json`.
+- `make ai-eda-bootstrap-setup-check`: validates reviewed local payload
+  availability and normalized dataset/case generation, including bounded
+  CircuitNet 3.0 sample conversion, without running the longer
+  training/synthesis stack.
 
 ### P0: Create a reproducible external asset registry
 
@@ -620,6 +656,24 @@ Implemented schema foundation:
 - `scripts/ai_eda/convert_external_fixture_corpora.py` converts those fixtures
   into internal `eda.*.v1` records and revalidates them through
   `check_internal_dataset_schemas.py --records-dir`.
+- `scripts/ai_eda/convert_circuitnet3_to_internal_records.py` converts a
+  bounded sample directly from
+  `external/datasets/circuitnet3/payload/circuitNetv3.zip` without extracting
+  the full archive. Current local validation converts 3 real CircuitNet 3.0
+  final cases into 9 internal records: `eda.design_bundle.v1`,
+  `eda.graph_sample.v1`, and `eda.flow_run.v1` per case. The converter records
+  2,004 available final cases, 57,975 zip entries, per-instance timing-arc
+  features, power summaries, and explicit blockers that labels are public
+  dataset labels for training/pretraining only and cannot stand in for local E1
+  OpenLane/OpenROAD signoff.
+- `scripts/ai_eda/train_circuitnet3_timing_power_baseline.py` and
+  `scripts/ai_eda/check_circuitnet3_surrogate.py` provide the first train/eval
+  path over real CircuitNet3-derived `eda.flow_run.v1` records. The baseline is
+  intentionally dependency-free and mean-based so it can run on the Mac and on a
+  fresh CUDA host before graph neural predictors are installed. It validates
+  JSONL split counts, finite target predictions, and per-split MAE fields; the
+  next real step is scaling conversion beyond the 3-case local smoke and using
+  source-level split metadata before training neural timing/power predictors.
 - `scripts/ai_eda/convert_e1_openlane_to_internal_records.py` converts the
   checked-in E1 SKY130 OpenLane config into real local `eda.design_bundle.v1`,
   `eda.placement_case.v1`, and blocked `eda.flow_run.v1` records. The current
@@ -740,11 +794,10 @@ Implemented schema foundation:
   and schema validation locally.
   `make ai-eda-logic-synthesis-baseline` generates the first E1 Yosys/ABC
   recipe corpus and local baseline report. On this Mac, DMA passes four Yosys
-  recipes, NPU passes two generic Yosys recipes plus the fast generic ABC
-  recipe, NPU standard generic ABC mapping times out under the interactive 20
-  second limit, and OpenABC-D remains blocked until external assets are fetched
-  and reviewed. Current validation records 7 passed recipes, 3 blocked recipes,
-  and 0 failed recipes.
+  recipes, NPU passes two generic Yosys recipes, both NPU ABC mapping recipes
+  time out under the interactive 20 second limit, and OpenABC-D remains blocked
+  until external assets are fetched and reviewed. Current validation records 6
+  passed recipes, 4 blocked recipes, and 0 failed recipes.
   `scripts/ai_eda/check_logic_synthesis_policy_baseline.py` validates the
   recipe corpus and baseline report: source-modification and equivalence
   policies, target RTL existence, recipe/blocker shape, Yosys artifact paths,
@@ -1294,9 +1347,12 @@ fail closed until the checker can classify PASS/BLOCKED/FAIL.
 - To pull reviewed small assets, run
   `python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id
   fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus
-  --execute-fetch`; payloads land only in ignored `payload/` directories.
-- Run `make ai-eda-bootstrap-local-smoke` after payload restore/fetch to rebuild
-  normalized corpora, local E1 softmacro cases, dependency-free placement
+  --asset circuitnet3 --execute-fetch`; payloads land only in ignored
+  `payload/` directories.
+- Run `make ai-eda-bootstrap-setup-check` after payload restore/fetch to rebuild
+  normalized corpora, local E1 softmacro cases, OpenLane labels, and supervised
+  placement dataset splits.
+- Run `make ai-eda-bootstrap-local-smoke` for dependency-free placement
   training, candidate ranking, replay plans, logic-synthesis baselines, and
   cocotb/tool-action dry-run evidence.
 - Run `scripts/ai_eda/preflight_cuda_training_stack.py --run-id <host>` on the
@@ -1365,6 +1421,8 @@ not as:
 - [x] Add pending metadata manifests for ChiPBench-D, CircuitNet 3.0,
   FloorSet, and the Partcl/HRT Macro Placement Challenge.
 - [x] Pin, fetch, and verify the reviewed TILOS MacroPlacement corpus.
+- [x] Pin and verify the public Google Circuit Training checkout as ignored
+  payload while keeping checkpoint/binary access separately blocked.
 - [x] Add dry-run/verify-only fetchers for P0 datasets and repos.
 - [x] Execute and verify the reviewed small OpenROAD EDA Corpus fetch.
 - [x] Convert OpenROAD EDA Corpus into normalized text-instruction train/val/test JSONL.
@@ -1372,12 +1430,18 @@ not as:
 - [x] Add metadata-only CUDA training payload packager.
 - [x] Add fresh-machine AI-EDA bootstrap profiles for metadata validation,
   local smoke setup, explicit reviewed-asset fetch, and CUDA training handoff.
+- [x] Add a bounded CircuitNet3 converter/check target for timing/power graph
+  pretraining records from a restored local payload archive.
+- [x] Add dependency-free CircuitNet3 timing/power surrogate train/eval/check
+  path over real converted flow-run records.
 - [x] Add tiny conversion fixtures.
 - [x] Add common internal AI-EDA schemas.
 - [x] Add dependency-free local fixture training/inference smoke.
 - [x] Convert tiny MacroPlacement/Bookshelf fixture and one E1-style softmacro case.
 - [x] Convert tiny ChiPBench-D-style metadata and one sample case.
 - [x] Convert tiny CircuitNet-style graph sample.
+- [x] Fetch and convert the first real CircuitNet 3.0 zip sample into internal
+  design-bundle, graph-sample, and flow-run records.
 - [x] Convert checked-in E1 OpenLane SKY130 config into internal
   `eda.design_bundle.v1`, `eda.placement_case.v1`, and blocked
   `eda.flow_run.v1` records.
@@ -1426,7 +1490,9 @@ not as:
   plan.
 - [x] Generate and convert E1 4x4/8x8 softmacro placement cases.
 - [ ] Convert real ChiPBench-D metadata and one sample case after license/storage review.
-- [ ] Convert one real CircuitNet/iDATA graph sample after license/storage review.
+- [x] Convert one real CircuitNet 3.0 graph sample after local payload fetch
+  and schema review.
+- [ ] Convert one real iDATA graph/flow sample after license/storage review.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Train/run first CT/SA/Hier-RTLMP/ChipDiffusion macro-placement baselines

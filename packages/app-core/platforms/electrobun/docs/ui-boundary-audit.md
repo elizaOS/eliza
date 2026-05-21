@@ -17,7 +17,7 @@ Inspected:
 
 ## Executive Summary
 
-`packages/ui` is not an app, runtime, plugin, Satellite, or capability executor. It is the shared rendering kit for production app surfaces, dynamic views, trace renderers, voice renderers, model status renderers, tool timelines, and plugin/app surfaces.
+`packages/ui` is not an app, runtime, plugin, Remote, or capability executor. It is the shared rendering kit for production app surfaces, dynamic views, trace renderers, voice renderers, model status renderers, tool timelines, and plugin/app surfaces.
 
 The audit found three hidden UI boundaries outside the obvious package:
 
@@ -36,8 +36,8 @@ Reason: trace rendering is valuable, but it is a renderer extraction. The curren
 Review order:
 
 1. Decide and document `plugin-coding-tools` list parity against `eliza.fs` list.
-2. Decide and document search/glob/grep parity against `eliza.fs` search or add explicit Satellite methods before routing.
-3. Decide and document edit parity against an explicit edit/patch Satellite method before routing.
+2. Decide and document search/glob/grep parity against `eliza.fs` search or add explicit Remote methods before routing.
+3. Decide and document edit parity against an explicit edit/patch Remote method before routing.
 4. Add reusable trace rendering components to `packages/ui`.
 
 ## Codebase UI Sweep Result
@@ -49,7 +49,7 @@ Findings:
 - `packages/app` has three renderer entry files and correctly remains production app composition.
 - `packages/app-core/src/runtime/desktop` has four `.tsx` renderer roots. These are Electrobun desktop shell composition, not a second production app, but they should stay thin and compose `@elizaos/ui`.
 - `packages/agent/src` has no React `.tsx` surfaces. Its UI-adjacent code is view registry/routes, static bundle serving, and LLM UI vocabulary, so it should remain a broker/spec layer rather than a renderer.
-- 23 plugin packages depend on `@elizaos/ui`; 19 plugin files declare `views`. These are legitimate app/plugin surface bundles, not hidden Satellites.
+- 23 plugin packages depend on `@elizaos/ui`; 19 plugin files declare `views`. These are legitimate app/plugin surface bundles, not hidden Remotes.
 - `packages/ui/src/services/local-inference` is the largest wrong-layer risk because it contains Node fs, downloader, device bridge, and service implementation code inside the rendering package.
 - Browser microphone/playback helpers in `packages/ui` are acceptable browser adapters, but they must not own VAD, ASR, TTS, host playback policy, or `eliza.voice`.
 - `packages/ui` already has good seeds for trace rendering: `ToolCallEventLog`, trajectory timeline components, LLM call cards, context diff lists, and pipeline graph components.
@@ -94,7 +94,7 @@ The key limit is that these modules should receive data, clients, and event stre
 - Local model download/runtime control.
 - AgentManager lifecycle.
 - Electrobun main-process code.
-- Satellite invocation or worker ownership.
+- Remote invocation or worker ownership.
 - TraceStore or TraceService.
 - VoiceService, VAD, ASR, TTS, or host playback policy.
 - Plugin semantic actions, providers, services, or connectors.
@@ -253,5 +253,5 @@ No files should be deleted as part of this audit.
 Do not migrate UI ownership next. The next reviewable slice should be:
 
 1. Complete the `plugin-coding-tools` edit/search/list parity decision against `eliza.fs`.
-2. Route only methods with explicit Satellite parity.
+2. Route only methods with explicit Remote parity.
 3. Then add reusable trace rendering components to `packages/ui` using `ToolCallEventLog`, trajectory renderers, and `agent-run-trace.html` as source material.

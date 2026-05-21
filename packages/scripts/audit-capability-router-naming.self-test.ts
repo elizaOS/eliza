@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     }
     if (
       !bad.output.includes(
-        "satellite is only allowed for historical naming analysis or legacy env aliases",
+        "satellite is only allowed for historical naming analysis",
       )
     ) {
       throw new Error(`bad naming fixture failed incorrectly: ${bad.output}`);
@@ -73,20 +73,6 @@ async function main(): Promise<void> {
         `production naming audit must report the architecture doc allowlist: ${production.output}`,
       );
     }
-    if (
-      !Array.isArray(productionReport.legacySatelliteVocabularyFiles) ||
-      !productionReport.legacySatelliteVocabularyFiles.includes(
-        "packages/agent/src/services/e2b-capability-router.ts",
-      ) ||
-      !productionReport.legacySatelliteVocabularyFiles.includes(
-        "packages/agent/src/services/e2b-capability-router.test.ts",
-      )
-    ) {
-      throw new Error(
-        `production naming audit must report legacy satellite vocabulary files: ${production.output}`,
-      );
-    }
-
     console.log("Capability-router naming audit self-test passed.");
   } finally {
     await rm(workspace, { force: true, recursive: true });

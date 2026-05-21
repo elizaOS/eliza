@@ -1,0 +1,19 @@
+{
+  "name": "@elizaos/coding-remote-runner",
+  "version": "0.1.0",
+  "description": "Bun-based coding Remote HTTP runner for Eliza Cloud and home machines.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "docker:build": "docker build -t eliza-coding-remote-runner:local ."
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "bun-types": "1.3.14",
+    "typescript": "^6.0.3"
+  }
+}

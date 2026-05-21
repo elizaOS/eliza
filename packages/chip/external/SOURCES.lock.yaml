@@ -77,7 +77,7 @@ entries:
       type: hf_revision
       value: PIN_AFTER_FETCH
     expected_size: approximately_2_68_gb_public_card
-    checksum_status: blocked_until_fetch
+    checksum_status: verify_only_records_file_manifest
     allowed_use: training-only
     e1_lane:
       - macro_placement_policy
@@ -103,7 +103,7 @@ entries:
       type: hf_revision
       value: PIN_AFTER_FETCH
     expected_size: unknown_until_fetch
-    checksum_status: blocked_until_fetch
+    checksum_status: verify_only_records_file_manifest
     allowed_use: training-only
     e1_lane:
       - pd_surrogate_models
@@ -155,7 +155,7 @@ entries:
       type: hf_revision
       value: PIN_AFTER_FETCH
     expected_size: approximately_600_gb_reported_by_public_paper
-    checksum_status: blocked_until_fetch
+    checksum_status: verify_only_records_file_manifest
     allowed_use: training-only
     e1_lane:
       - pd_surrogate_models
@@ -179,9 +179,9 @@ entries:
     license_status: review_required
     revision:
       type: commit
-      value: PIN_AFTER_FETCH
-    expected_size: unknown_until_fetch
-    checksum_status: blocked_until_fetch
+      value: c6fb7e3b1f7ef94f5087239cfdcc84df6840e170
+    expected_size: fetched_payload_metadata_recorded
+    checksum_status: verify_only_records_file_manifest
     allowed_use: advisory-inference-only
     e1_lane:
       - macro_placement_policy
@@ -204,9 +204,9 @@ entries:
     license_status: review_required
     revision:
       type: commit
-      value: PIN_AFTER_FETCH
-    expected_size: unknown_until_fetch
-    checksum_status: blocked_until_fetch
+      value: ecd7dde67740556eaf842ccab4dc941c348ad8f6
+    expected_size: fetched_payload_metadata_recorded
+    checksum_status: verify_only_records_file_manifest
     allowed_use: training-only
     e1_lane:
       - logic_synthesis_policy
@@ -255,9 +255,9 @@ entries:
     license_status: review_required
     revision:
       type: commit
-      value: PIN_AFTER_FETCH
-    expected_size: unknown_until_fetch
-    checksum_status: blocked_until_fetch
+      value: 32370826fdf1aa3c8deb0c93e6b2a2fc7cf053aa
+    expected_size: fetched_payload_metadata_recorded
+    checksum_status: verify_only_records_file_manifest
     allowed_use: advisory-inference-only
     e1_lane:
       - npu_dse

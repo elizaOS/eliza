@@ -52,10 +52,7 @@ def repo_dir(asset: dict[str, Any]) -> Path:
 
 
 def payload_dir(asset: dict[str, Any]) -> Path:
-    root = repo_dir(asset)
-    if (root / "manifest.yaml").exists():
-        return root / "payload"
-    return root
+    return repo_dir(asset) / "payload"
 
 
 def command_exists(command: str) -> bool:
@@ -103,6 +100,9 @@ def payload_file_manifest(path: Path) -> dict[str, Any]:
             continue
         if ".git" in child.parts:
             continue
+        if child.is_symlink():
+            skipped += 1
+            continue
         if len(files) >= MAX_HASHED_FILES:
             skipped += 1
             continue
@@ -143,7 +143,7 @@ def verify_existing(path: Path, asset: dict[str, Any]) -> dict[str, Any]:
         rev = run_command(["git", "rev-parse", "HEAD"], cwd=path)
         actual_revision = rev["stdout_tail"].strip()
         expected = expected_revision(asset)
-        status = "PRESENT_GIT_REPO" if rev["returncode"] == 0 else "PRESENT_GIT_REPO_UNREADABLE"
+        status = "PRESENT_GIT_REPO" if rev["returncode"] == 0 else "BLOCKED_UNREADABLE_GIT_REPO"
         if expected and actual_revision != expected:
             status = "BLOCKED_REVISION_MISMATCH"
         return {

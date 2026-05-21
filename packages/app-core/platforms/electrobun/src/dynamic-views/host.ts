@@ -165,7 +165,7 @@ function readSubscriptions(
   return value.map((entry) => {
     const subscription = requireRecord(entry, method);
     return {
-      satelliteId: readString(subscription, "satelliteId", method),
+      remoteId: readString(subscription, "remoteId", method),
       events: readStringList(subscription, "events", method),
     };
   });
@@ -207,9 +207,9 @@ function readManifest(params: JsonValue | undefined): {
         "permissions",
         "dynamic-view-register",
       ),
-      requiredSatellites: readStringList(
+      requiredRemotes: readStringList(
         manifestRecord,
-        "requiredSatellites",
+        "requiredRemotes",
         "dynamic-view-register",
       ),
       eventSubscriptions: readSubscriptions(
@@ -240,10 +240,10 @@ function manifestToJson(manifest: DynamicViewManifest): JsonValue {
     placement: manifest.placement,
     description: manifest.description ?? null,
     permissions: manifest.permissions ?? [],
-    requiredSatellites: manifest.requiredSatellites ?? [],
+    requiredRemotes: manifest.requiredRemotes ?? [],
     eventSubscriptions: (manifest.eventSubscriptions ?? []).map(
       (subscription) => ({
-        satelliteId: subscription.satelliteId,
+        remoteId: subscription.remoteId,
         events: subscription.events ?? [],
       }),
     ),

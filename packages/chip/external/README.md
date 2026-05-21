@@ -27,7 +27,8 @@ Fresh-machine setup:
 
 ```sh
 make ai-eda-bootstrap-metadata
-python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --execute-fetch
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --execute-fetch
+make ai-eda-bootstrap-setup-check
 make ai-eda-bootstrap-local-smoke
 ```
 

@@ -47,24 +47,28 @@ under `build/ai_eda/`.
 
 ```sh
 make ai-eda-bootstrap-metadata
+make ai-eda-bootstrap-setup-check
 make ai-eda-bootstrap-local-smoke
 make ai-eda-cuda-payload
 ```
 
 Use `make ai-eda-bootstrap-metadata` on a fresh machine first. It downloads
-nothing. Use `make ai-eda-bootstrap-local-smoke` after reviewed payloads such as
-TILOS MacroPlacement and OpenROAD EDA Corpus have been fetched or restored. On a
-CUDA host, run the generated payload flow with:
+nothing. Use `make ai-eda-bootstrap-setup-check` after reviewed payloads such as
+TILOS MacroPlacement, OpenROAD EDA Corpus, and CircuitNet 3.0 have been fetched
+or restored; it rebuilds normalized corpora and E1 cases without long
+training/synthesis steps. Use `make ai-eda-bootstrap-local-smoke` for the
+broader local evidence stack. On a CUDA host, run the generated payload flow
+with:
 
 ```sh
-python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id cuda-host --asset tilos-macroplacement --asset openroad-eda-corpus --include-torch
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile training-handoff --run-id cuda-host --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --include-torch
 ```
 
 To intentionally pull reviewed assets into ignored local payload directories,
 use explicit asset IDs:
 
 ```sh
-python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --execute-fetch
+python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id fetch-reviewed --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3 --execute-fetch
 ```
 
 ## Docker Setup

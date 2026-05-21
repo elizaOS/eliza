@@ -78,14 +78,14 @@ function validateSubscriptions(
     );
   }
   return subscriptions.map((subscription) => {
-    if (!isNonEmptyString(subscription.satelliteId)) {
+    if (!isNonEmptyString(subscription.remoteId)) {
       throw new DynamicViewError(
         "DYNAMIC_VIEW_INVALID_MANIFEST",
-        "eventSubscriptions[].satelliteId must be a non-empty string.",
+        "eventSubscriptions[].remoteId must be a non-empty string.",
       );
     }
     return {
-      satelliteId: subscription.satelliteId,
+      remoteId: subscription.remoteId,
       events: validateStringList(
         subscription.events,
         "eventSubscriptions.events",
@@ -139,9 +139,9 @@ export function normalizeDynamicViewManifest(
   };
   const description = optionalString(manifest.description, "description");
   const permissions = validateStringList(manifest.permissions, "permissions");
-  const requiredSatellites = validateStringList(
-    manifest.requiredSatellites,
-    "requiredSatellites",
+  const requiredRemotes = validateStringList(
+    manifest.requiredRemotes,
+    "requiredRemotes",
   );
   const eventSubscriptions = validateSubscriptions(manifest.eventSubscriptions);
   const invokeTargets = validateStringList(
@@ -152,8 +152,8 @@ export function normalizeDynamicViewManifest(
 
   if (description !== undefined) normalized.description = description;
   if (permissions !== undefined) normalized.permissions = permissions;
-  if (requiredSatellites !== undefined) {
-    normalized.requiredSatellites = requiredSatellites;
+  if (requiredRemotes !== undefined) {
+    normalized.requiredRemotes = requiredRemotes;
   }
   if (eventSubscriptions !== undefined) {
     normalized.eventSubscriptions = eventSubscriptions;

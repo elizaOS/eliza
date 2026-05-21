@@ -216,7 +216,7 @@ const DOMAIN_KEYWORDS: Record<string, string[]> = {
   ],
   health: ["medical", "vaccine", "disease", "healthcare", "pharmaceutical"],
   climate: ["environment", "carbon", "renewable", "energy", "sustainability"],
-  space: ["rocket", "satellite", "mars", "orbit", "launch"],
+  space: ["rocket", "remote", "mars", "orbit", "launch"],
   culture: ["art", "music", "fashion", "entertainment", "media"],
   safety: ["alignment", "risk", "responsible", "constitutional"],
   research: ["study", "paper", "science", "academic"],

@@ -166,7 +166,7 @@ export type LaunchPhase =
   | "onboarding-checking"
   | "runtime-gate-required"
   | "cloud-bootstrap-required"
-  | "satellite-seeding"
+  | "remote-seeding"
   | "model-background-queue"
   | "ready"
   | "error";
@@ -199,7 +199,7 @@ export interface LaunchSnapshot {
     requiredGate?: "runtime" | "bootstrap" | "pairing" | null;
     error?: string | null;
   };
-  satellites: {
+  remotes: {
     seeded: boolean;
     requiredStarted: boolean;
     errors: Array<{ id: string; error: string }>;

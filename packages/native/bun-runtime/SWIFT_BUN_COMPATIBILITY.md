@@ -60,7 +60,7 @@ SwiftBun does not replace:
 - `packages/agent/dist-mobile-ios/agent-bundle.js`
 - `ios-bridge --stdio`
 - the Capacitor `ElizaBunRuntime` public contract
-- cloud/home/sandbox Satellites for coding agents
+- cloud/home/sandbox Remotes for coding agents
 - the TypeScript plugin system
 
 ## Mobile Coding Agents

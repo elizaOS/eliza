@@ -47,8 +47,8 @@ function manifest(entrypoint: string): DynamicViewManifest {
     source: "agent",
     entrypoint,
     placement: "floating",
-    requiredSatellites: ["eliza.runtime"],
-    eventSubscriptions: [{ satelliteId: "eliza.runtime" }],
+    requiredRemotes: ["eliza.runtime"],
+    eventSubscriptions: [{ remoteId: "eliza.runtime" }],
     invokeTargets: ["eliza.runtime"],
   };
 }
@@ -99,7 +99,7 @@ describe("DynamicViewSessionManager", () => {
       });
     }));
 
-  it("rejects missing required Satellites", () =>
+  it("rejects missing required Remotes", () =>
     withTempView(async (dir) => {
       const registry = new DynamicViewRegistry();
       registry.register(manifest("trace.html"));
@@ -115,7 +115,7 @@ describe("DynamicViewSessionManager", () => {
       await expect(
         sessions.open({ viewId: "agent.run.trace" }),
       ).rejects.toMatchObject({
-        code: "DYNAMIC_VIEW_REQUIRED_SATELLITE_UNAVAILABLE",
+        code: "DYNAMIC_VIEW_REQUIRED_REMOTE_UNAVAILABLE",
       });
     }));
 

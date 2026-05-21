@@ -2,14 +2,14 @@
   "version": 1,
   "generatedAt": "2026-05-17",
   "scope": "packages/ui boundary audit with packages/app, packages/app-core, Electrobun, and packages/agent source inspection",
-  "principle": "packages/ui renders state; plugins provide meaning; Satellites execute desktop/system capabilities; Electrobun brokers shell/runtime boundaries; packages/app composes the production product.",
+  "principle": "packages/ui renders state; plugins provide meaning; Remotes execute desktop/system capabilities; Electrobun brokers shell/runtime boundaries; packages/app composes the production product.",
   "expertDecision": {
     "nextAction": "plugin-coding-tools edit/search/list parity before reusable trace rendering components",
     "rationale": "Trace rendering is a reusable renderer extraction. The higher-priority architecture risk is execution drift because plugin-coding-tools already routes FILE read/write, SHELL, and WORKTREE through the capability router while edit/search/list still own direct local filesystem mechanics.",
     "reviewOrder": [
       "Decide list parity against eliza.fs list.",
-      "Decide grep/glob/search parity against eliza.fs search or add explicit Satellite methods.",
-      "Decide edit parity against an explicit edit/patch Satellite method.",
+      "Decide grep/glob/search parity against eliza.fs search or add explicit Remote methods.",
+      "Decide edit parity against an explicit edit/patch Remote method.",
       "Add reusable trace rendering components to packages/ui."
     ]
   },
@@ -23,7 +23,7 @@
       "packages/app remains the production composition root.",
       "packages/app-core/src/runtime/desktop owns Electrobun shell renderer roots that should stay thin and compose packages/ui.",
       "packages/agent has view registry/routes and UI vocabulary but no React renderer surface.",
-      "Plugin UI dependencies and view manifests are legitimate app/plugin surfaces, not hidden Satellites.",
+      "Plugin UI dependencies and view manifests are legitimate app/plugin surfaces, not hidden Remotes.",
       "packages/ui/src/services/local-inference is the largest wrong-layer risk because it contains Node fs, downloader, device bridge, and LocalInferenceService implementation code.",
       "Browser media helpers in packages/ui are acceptable browser adapters but must not own host voice semantics.",
       "ToolCallEventLog and trajectory components are good seeds for later trace renderer extraction."
@@ -210,7 +210,7 @@
       "relatedLayer": "electrobun-shell",
       "recommendedNextAction": "make-interface-only",
       "risk": "medium",
-      "notes": "Renderer-safe Electrobun RPC wrappers are acceptable as bridge adapters. They should stay thin and typed; capability execution remains behind Electrobun/app-core and Satellites."
+      "notes": "Renderer-safe Electrobun RPC wrappers are acceptable as bridge adapters. They should stay thin and typed; capability execution remains behind Electrobun/app-core and Remotes."
     },
     {
       "id": "ui-browser-workspace-client",
@@ -529,7 +529,7 @@
     "packages/ui/src/voice/local-asr-capture.ts and audio hooks own browser mic/playback helpers that overlap with host voice semantics",
     "packages/app-core/src/runtime/desktop owns hidden renderer roots outside packages/app",
     "packages/agent/src/shared/ui-catalog-prompt.ts owns hidden LLM UI vocabulary outside packages/ui",
-    "plugin-coding-tools edit/search/list still need fs Satellite parity decisions before additional routing"
+    "plugin-coding-tools edit/search/list still need fs Remote parity decisions before additional routing"
   ],
   "deletionDeprecationCandidates": [
     {

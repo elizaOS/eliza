@@ -15,9 +15,9 @@
 import type http from "node:http";
 import type { RouteHelpers } from "@elizaos/core";
 import {
-  buildHomeSatelliteAccessUrl,
-  buildHomeSatelliteSshTunnel,
-} from "./home-satellite-access-url";
+  buildHomeRemoteRunnerAccessUrl,
+  buildHomeRemoteRunnerSshTunnel,
+} from "./home-remote-runner-access-url";
 
 interface RelayServiceLike {
   getSessionInfo(): {
@@ -81,36 +81,36 @@ export async function handleCloudRelayRoute(
     helpers.json(res, {
       available: true,
       ...info,
-      accessUrl: buildHomeSatelliteAccessUrl({
+      accessUrl: buildHomeRemoteRunnerAccessUrl({
         sessionId: info.sessionId,
       }),
-      ssh: buildHomeSatelliteSshTunnel({
-        satelliteBaseUrl:
-          readRuntimeSetting(state.runtime, "ELIZA_HOME_SATELLITE_URL") ??
-          process.env.ELIZA_HOME_SATELLITE_URL ??
+      ssh: buildHomeRemoteRunnerSshTunnel({
+        remoteBaseUrl:
+          readRuntimeSetting(state.runtime, "ELIZA_HOME_REMOTE_RUNNER_URL") ??
+          process.env.ELIZA_HOME_REMOTE_RUNNER_URL ??
           readRuntimeSetting(state.runtime, "ELIZA_HOME_RUNNER_URL") ??
           process.env.ELIZA_HOME_RUNNER_URL,
         sshTarget:
           readRuntimeSetting(
             state.runtime,
-            "ELIZA_HOME_SATELLITE_SSH_TARGET",
+            "ELIZA_HOME_REMOTE_RUNNER_SSH_TARGET",
           ) ??
-          process.env.ELIZA_HOME_SATELLITE_SSH_TARGET ??
+          process.env.ELIZA_HOME_REMOTE_RUNNER_SSH_TARGET ??
           readRuntimeSetting(state.runtime, "ELIZA_HOME_SSH_TARGET") ??
           process.env.ELIZA_HOME_SSH_TARGET,
         sshIdentity:
           readRuntimeSetting(
             state.runtime,
-            "ELIZA_HOME_SATELLITE_SSH_IDENTITY",
+            "ELIZA_HOME_REMOTE_RUNNER_SSH_IDENTITY",
           ) ??
-          process.env.ELIZA_HOME_SATELLITE_SSH_IDENTITY ??
+          process.env.ELIZA_HOME_REMOTE_RUNNER_SSH_IDENTITY ??
           readRuntimeSetting(state.runtime, "ELIZA_HOME_SSH_IDENTITY") ??
           process.env.ELIZA_HOME_SSH_IDENTITY,
         localPort:
           readRuntimeSetting(
             state.runtime,
-            "ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT",
-          ) ?? process.env.ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT,
+            "ELIZA_HOME_REMOTE_RUNNER_SSH_LOCAL_PORT",
+          ) ?? process.env.ELIZA_HOME_REMOTE_RUNNER_SSH_LOCAL_PORT,
       }),
     });
   } catch (err) {

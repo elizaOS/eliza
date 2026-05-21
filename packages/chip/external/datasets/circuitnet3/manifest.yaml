@@ -17,7 +17,7 @@ intake:
   deterministic_replay_required: true
   next_action: fetch_to_ignored_payload_then_hash_rtl_netlist_feature_power_and_available_layout_archives
 local_payload:
-  downloaded: false
+  downloaded: true
   payload_path: external/datasets/circuitnet3/payload
-  checksum_status: blocked_until_fetch
+  checksum_status: verify_only_records_file_manifest
 claim_boundary: external_intake_metadata_only_no_payload_no_training_no_release_claim

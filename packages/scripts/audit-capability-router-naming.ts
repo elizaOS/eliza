@@ -45,50 +45,24 @@ const allowedSatelliteMentions = new Map<string, RegExp[]>([
   ],
 ]);
 
-// These files already carry the historical E2B/Satellite vocabulary. Keep the
-// exception explicit so new files cannot reintroduce the term silently.
-const legacySatelliteVocabularyFiles = new Set([
-  ".github/workflows/sandbox-live-smoke.yml",
-  "packages/agent/docs/e2b-capability-routing.md",
-  "packages/agent/src/runtime/eliza.ts",
-  "packages/agent/src/services/e2b-capability-router.coding-satellite.test.ts",
-  "packages/agent/src/services/e2b-capability-router.test.ts",
-  "packages/agent/src/services/e2b-capability-router.ts",
-  "packages/core/src/services/runtime-capability-service.ts",
-]);
-
 const satellitePattern = /satellite/i;
 const failures: string[] = [];
 
 for (const root of auditedRoots) {
   for (const file of walk(root)) {
     const source = readFileSync(file, "utf8");
-    if (legacySatelliteVocabularyFiles.has(file)) continue;
     const allowlist = allowedSatelliteMentions.get(file) ?? [];
     for (const [lineIndex, line] of source.split(/\r?\n/).entries()) {
       if (!satellitePattern.test(line)) continue;
       if (allowlist.some((pattern) => pattern.test(line))) continue;
       failures.push(
-        `${file}:${lineIndex + 1}: use capability-router/remote-capability vocabulary; satellite is only allowed for historical naming analysis or legacy env aliases.`,
+        `${file}:${lineIndex + 1}: use capability-router/remote-capability vocabulary; satellite is only allowed for historical naming analysis.`,
       );
     }
   }
 }
 
 if (!process.env.CAPABILITY_ROUTER_NAMING_AUDIT_ROOTS) {
-  for (const file of legacySatelliteVocabularyFiles) {
-    if (!statExists(file)) {
-      failures.push(`Legacy satellite vocabulary file is missing: ${file}`);
-      continue;
-    }
-    const source = readFileSync(file, "utf8");
-    if (!satellitePattern.test(source)) {
-      failures.push(
-        `Legacy satellite vocabulary file no longer needs audit exemption: ${file}`,
-      );
-    }
-  }
-
   for (const [file, patterns] of allowedSatelliteMentions.entries()) {
     if (!statExists(file)) {
       failures.push(`Allowlisted satellite file is missing: ${file}`);
@@ -117,7 +91,6 @@ console.log(
       ok: true,
       auditedRoots,
       allowedSatelliteMentionFiles: [...allowedSatelliteMentions.keys()],
-      legacySatelliteVocabularyFiles: [...legacySatelliteVocabularyFiles],
     },
     null,
     2,

@@ -896,7 +896,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
 
   private generateQuestion(): string {
     const questions = [
-      "Will Project Omega's satellite launch succeed?",
+      "Will Project Omega's remote launch succeed?",
       "Will the scandal force President Stump to resign?",
       "Will TechCorp announce the AI breakthrough?",
       "Will the climate summit reach an agreement?",

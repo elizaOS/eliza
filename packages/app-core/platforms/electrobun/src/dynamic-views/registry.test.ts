@@ -10,8 +10,8 @@ function manifest(id = "agent.run.trace"): DynamicViewManifest {
     source: "agent",
     entrypoint: "./trace.html",
     placement: "floating",
-    requiredSatellites: ["eliza.runtime"],
-    eventSubscriptions: [{ satelliteId: "eliza.runtime" }],
+    requiredRemotes: ["eliza.runtime"],
+    eventSubscriptions: [{ remoteId: "eliza.runtime" }],
     invokeTargets: ["eliza.runtime"],
   };
 }

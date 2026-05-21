@@ -7,10 +7,10 @@ Agent
   -> plugin action/provider/service
   -> capability-router runtime service
   -> eliza.runtime broker method
-  -> first-party Satellite
+  -> first-party Remote
 ```
 
-Plugins do not import Electrobun main-process modules and do not call individual Satellites directly. The desktop router calls runtime methods such as `fs.list`, `fs.readText`, `fs.writeText`, `pty.command.run`, `git.status`, `git.diff`, `git.command.run`, and `model.status`. In Electrobun, `eliza.runtime` forwards those methods to `eliza.fs`, `eliza.pty`, `eliza.git`, or `eliza.local-model`.
+Plugins do not import Electrobun main-process modules and do not call individual Remotes directly. The desktop router calls runtime methods such as `fs.list`, `fs.readText`, `fs.writeText`, `pty.command.run`, `git.status`, `git.diff`, `git.command.run`, and `model.status`. In Electrobun, `eliza.runtime` forwards those methods to `eliza.fs`, `eliza.pty`, `eliza.git`, or `eliza.local-model`.
 
 ## Plugin Layer
 
@@ -24,16 +24,16 @@ Plugins keep meaning:
 
 Implementation-only desktop paths can collapse behind the router without deleting the plugin action.
 
-## Satellite Layer
+## Remote Layer
 
-Satellites keep desktop/system implementation:
+Remotes keep desktop/system implementation:
 
 - `eliza.fs`: local filesystem roots, lists, reads, writes, and search
 - `eliza.pty`: terminal sessions and command execution
 - `eliza.git`: local repository status, diff, log, and commands
 - `eliza.local-model`: desktop model status, catalog, activation, routing, and downloads
 
-`eliza.runtime` remains the broker. Plugins target the router, the router targets `eliza.runtime`, and `eliza.runtime` invokes the concrete Satellite.
+`eliza.runtime` remains the broker. Plugins target the router, the router targets `eliza.runtime`, and `eliza.runtime` invokes the concrete Remote.
 
 ## Fallback Behavior
 
@@ -67,7 +67,7 @@ Search remains plugin-owned until `eliza.fs` has method parity:
 
 ## Remaining Work
 
-- Route remaining `plugin-coding-tools` edit/search file operations through `eliza.fs` only where the Satellite has matching primitives.
+- Route remaining `plugin-coding-tools` edit/search file operations through `eliza.fs` only where the Remote has matching primitives.
 - Route local file reads/search in documents/browser-adjacent plugins through `eliza.fs` where desktop-only.
 - Keep GitHub API, provider APIs, app semantics, and voice semantics plugin-owned.
 - Decide whether `eliza.computer` is justified before changing computer-use, browser, or native screen/camera/canvas implementation.

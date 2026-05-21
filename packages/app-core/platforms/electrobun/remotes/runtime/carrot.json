@@ -1,0 +1,30 @@
+{
+  "id": "eliza.runtime",
+  "name": "Eliza Runtime",
+  "version": "0.1.0",
+  "description": "Runtime Remote that supervises the local elizaOS runtime.",
+  "mode": "background",
+	"permissions": {
+		"host": {
+			"storage": true,
+			"manage-carrots": true
+		},
+    "bun": {
+      "read": true,
+      "write": true,
+      "env": true,
+      "run": true,
+      "worker": true
+    },
+    "isolation": "isolated-process"
+  },
+  "view": {
+    "relativePath": "src/web/index.html",
+    "title": "Eliza Runtime Remote",
+    "width": 720,
+    "height": 520
+  },
+  "worker": {
+    "relativePath": "src/bun/worker.ts"
+  }
+}

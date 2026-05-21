@@ -1,0 +1,24 @@
+schema: eliza.ai_eda.external_intake_manifest.v1
+asset_id: aieda-idata
+kind: dataset
+source_url: https://huggingface.co/datasets/AiEDA/iDATA
+upstream_revision:
+  type: hf_revision
+  value: PIN_AFTER_FETCH
+license:
+  status: review_required
+  evidence:
+    - https://huggingface.co/datasets/AiEDA/iDATA
+    - external/datasets/aieda-idata/payload/.gitattributes
+  reviewed_at: 2026-05-20
+intake:
+  review_status: pending
+  allowed_use: training-only
+  release_use_allowed: false
+  deterministic_replay_required: true
+  next_action: hash_restored_ppu_routing_demand_sample_then_add_bounded_converter_for_pd_surrogate_pretraining
+local_payload:
+  downloaded: true
+  payload_path: external/datasets/aieda-idata/payload
+  checksum_status: verify_only_records_file_manifest
+claim_boundary: external_intake_metadata_only_no_payload_no_training_no_release_claim

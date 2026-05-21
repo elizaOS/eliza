@@ -29,8 +29,8 @@ export function createTraceDynamicViewManifest(): DynamicViewManifest {
     source: "system",
     entrypoint: resolveTraceViewEntrypoint(),
     placement: "floating",
-    requiredSatellites: ["eliza.runtime"],
-    eventSubscriptions: [{ satelliteId: "eliza.runtime" }],
+    requiredRemotes: ["eliza.runtime"],
+    eventSubscriptions: [{ remoteId: "eliza.runtime" }],
     invokeTargets: ["eliza.runtime"],
     metadata: {
       trace: true,

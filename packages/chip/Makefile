@@ -1357,7 +1357,7 @@ software-bsp-test:
 evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
-.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-external-assets-dry-run ai-eda-bootstrap-metadata ai-eda-bootstrap-local-smoke ai-eda-bootstrap-training-handoff ai-eda-alphachip-checkpoint-blocker-check ai-eda-alphachip-checkpoint-blocker-network-check ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train ai-eda-macro-placement-supervised-dataset ai-eda-macro-placement-supervised-train ai-eda-macro-placement-torch-train ai-eda-macro-placement-torch-infer ai-eda-macro-placement-supervised-replay-plan ai-eda-macro-placement-baseline ai-eda-macro-placement-candidate-eval ai-eda-macro-placement-combined-candidate-eval ai-eda-macro-placement-full-candidate-eval ai-eda-macro-placement-replay-plan ai-eda-macro-placement-combined-replay-plan ai-eda-macro-placement-full-replay-plan ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
+.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-external-assets-dry-run ai-eda-bootstrap-metadata ai-eda-bootstrap-setup-check ai-eda-bootstrap-local-smoke ai-eda-bootstrap-training-handoff ai-eda-alphachip-checkpoint-blocker-check ai-eda-alphachip-checkpoint-blocker-network-check ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert ai-eda-circuitnet3-convert ai-eda-circuitnet3-surrogate ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train ai-eda-macro-placement-supervised-dataset ai-eda-macro-placement-supervised-train ai-eda-macro-placement-torch-train ai-eda-macro-placement-torch-infer ai-eda-macro-placement-supervised-replay-plan ai-eda-macro-placement-baseline ai-eda-macro-placement-candidate-eval ai-eda-macro-placement-combined-candidate-eval ai-eda-macro-placement-full-candidate-eval ai-eda-macro-placement-replay-plan ai-eda-macro-placement-combined-replay-plan ai-eda-macro-placement-full-replay-plan ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
 ai-eda-source-inventory-check:
 	@$(PYTHON) scripts/check_ai_eda_source_inventory.py
 
@@ -1372,6 +1372,9 @@ ai-eda-external-assets-dry-run:
 
 ai-eda-bootstrap-metadata:
 	@$(PYTHON) scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id validation
+
+ai-eda-bootstrap-setup-check:
+	@$(PYTHON) scripts/ai_eda/bootstrap_ai_eda_stack.py --profile setup-check --run-id validation --asset tilos-macroplacement --asset openroad-eda-corpus --asset circuitnet3
 
 ai-eda-bootstrap-local-smoke:
 	@$(PYTHON) scripts/ai_eda/bootstrap_ai_eda_stack.py --profile local-smoke --run-id validation
@@ -1398,6 +1401,14 @@ ai-eda-openroad-eda-corpus-convert: ai-eda-internal-schemas-check
 ai-eda-tilos-macroplacement-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/convert_tilos_macroplacement.py --run-id validation
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/tilos_macroplacement/validation/records
+
+ai-eda-circuitnet3-convert: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/convert_circuitnet3_to_internal_records.py --run-id validation --sample-limit 3
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/circuitnet3/validation/records
+
+ai-eda-circuitnet3-surrogate: ai-eda-circuitnet3-convert
+	@$(PYTHON) scripts/ai_eda/train_circuitnet3_timing_power_baseline.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/check_circuitnet3_surrogate.py --report build/ai_eda/circuitnet3_surrogate/validation/training_run.json
 
 ai-eda-e1-softmacro-cases: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/materialize_e1_softmacro_cases.py --run-id validation

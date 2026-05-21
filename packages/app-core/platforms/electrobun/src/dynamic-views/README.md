@@ -1,6 +1,6 @@
 # Dynamic Views
 
-Dynamic views are temporary, contextual views opened by trusted agent, plugin, Satellite, or developer code. They sit on top of the existing Electrobun canvas/A2UI window primitives and do not replace the production app UI.
+Dynamic views are temporary, contextual views opened by trusted agent, plugin, Remote, or developer code. They sit on top of the existing Electrobun canvas/A2UI window primitives and do not replace the production app UI.
 
 The platform contract is:
 
@@ -8,7 +8,7 @@ The platform contract is:
 agent/plugin/runtime event
   -> register or open a DynamicViewManifest
   -> canvas/A2UI hosts the view session
-  -> the view calls Satellites through eliza.runtime with carrotInvokeWorker
+  -> the view calls Remotes through eliza.runtime with carrotInvokeWorker
   -> the view tails worker events with carrotTailWorkerEvents
   -> the view is closed when the task no longer needs it
 ```

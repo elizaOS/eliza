@@ -38,8 +38,8 @@ export function registerBuiltInDynamicViews(): DynamicViewManifest[] {
     source: "developer",
     entrypoint: "./demo/agent-run-trace.html",
     placement: "floating",
-    requiredSatellites: ["eliza.runtime"],
-    eventSubscriptions: [{ satelliteId: "eliza.runtime" }],
+    requiredRemotes: ["eliza.runtime"],
+    eventSubscriptions: [{ remoteId: "eliza.runtime" }],
     invokeTargets: ["eliza.runtime"],
     metadata: {
       demo: true,

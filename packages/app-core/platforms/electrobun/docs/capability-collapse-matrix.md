@@ -6,7 +6,7 @@ This matrix tightens the convergence audit by separating semantic plugin interfa
 
 Plugins remain the elizaOS runtime extension layer. They own agent-facing actions, providers, services, routes, events, model handlers, connector semantics, and app/product semantics.
 
-Satellites own desktop/system implementation behind the Electrobun host boundary. A plugin should use a shared capability router when it needs local filesystem, terminal, local Git, or local model host coordination in the desktop shell. The router targets `eliza.runtime`, and `eliza.runtime` brokers to the concrete Satellite.
+Remotes own desktop/system implementation behind the Electrobun host boundary. A plugin should use a shared capability router when it needs local filesystem, terminal, local Git, or local model host coordination in the desktop shell. The router targets `eliza.runtime`, and `eliza.runtime` brokers to the concrete Remote.
 
 The first implemented routes are narrow `plugin-coding-tools` paths: FILE ls/read/write prefers `eliza.fs`, SHELL command execution prefers `eliza.pty`, and WORKTREE local Git helpers prefer `eliza.git` through the shared capability router. If the router is absent or explicitly unavailable, the existing local implementation remains the fallback.
 
@@ -14,13 +14,13 @@ The first implemented routes are narrow `plugin-coding-tools` paths: FILE ls/rea
 
 | Plugin | Capability | Route | Mode | Risk |
 | --- | --- | --- | --- | --- |
-| `plugin-coding-tools` | filesystem list/read/write | `eliza.fs` | facade-over-satellite | low |
-| `plugin-coding-tools` | terminal | `eliza.pty` | facade-over-satellite | medium |
-| `plugin-coding-tools` | local Git | `eliza.git` | facade-over-satellite | medium |
+| `plugin-coding-tools` | filesystem list/read/write | `eliza.fs` | facade-over-remote | low |
+| `plugin-coding-tools` | terminal | `eliza.pty` | facade-over-remote | medium |
+| `plugin-coding-tools` | local Git | `eliza.git` | facade-over-remote | medium |
 
-These implementation paths are intentionally narrow. The FILE, SHELL, and WORKTREE actions still own agent-facing semantics, policy, output formatting, history/session state, secret rejection, and worktree stack behavior. Host filesystem, terminal, and local Git execution can come from Satellites through the capability router.
+These implementation paths are intentionally narrow. The FILE, SHELL, and WORKTREE actions still own agent-facing semantics, policy, output formatting, history/session state, secret rejection, and worktree stack behavior. Host filesystem, terminal, and local Git execution can come from Remotes through the capability router.
 
-## Facade-Over-Satellite Candidates
+## Facade-Over-Remote Candidates
 
 | Plugin | Capability | Route | Notes |
 | --- | --- | --- | --- |
@@ -29,7 +29,7 @@ These implementation paths are intentionally narrow. The FILE, SHELL, and WORKTR
 | `plugin-commands` | terminal | `eliza.pty` | Command semantics remain plugin-owned. |
 | `plugin-github` | local Git | `eliza.git` | GitHub API remains plugin-owned; local repo work routes to Git. |
 | `plugin-documents` | local files | `eliza.fs` | RAG/document semantics remain plugin-owned. |
-| `plugin-local-inference` | desktop model control | `eliza.local-model` | Provider runtime remains plugin-owned; desktop control routes through the Satellite. |
+| `plugin-local-inference` | desktop model control | `eliza.local-model` | Provider runtime remains plugin-owned; desktop control routes through the Remote. |
 | `plugin-browser` | packaging/artifact filesystem | `eliza.fs` | Browser bridge semantics remain plugin-owned. |
 
 ## Keep Plugin-Owned Candidates
@@ -46,7 +46,7 @@ These implementation paths are intentionally narrow. The FILE, SHELL, and WORKTR
 
 ## Future eliza.computer Candidates
 
-These are not Phase 19 implementation targets. They need overlap review before a new Satellite exists.
+These are not Phase 19 implementation targets. They need overlap review before a new Remote exists.
 
 | Plugin | Capability | Decision |
 | --- | --- | --- |
@@ -105,7 +105,7 @@ The shared fallback router returns structured `CAPABILITY_UNAVAILABLE` errors. P
 
 ## Remaining Conflicts
 
-- `plugin-coding-tools` still has direct local edit/search paths that need per-operation Satellite parity before routing.
+- `plugin-coding-tools` still has direct local edit/search paths that need per-operation Remote parity before routing.
 - `plugin-browser` and `plugin-computeruse` overlap with possible future `eliza.computer` scope.
 - `plugin-local-inference` must keep provider ownership while `eliza.local-model` controls desktop status/routing.
 - `plugin-native-system` needs owner review before any implementation collapse.
@@ -124,6 +124,6 @@ Do not route the remaining edit/search paths through `eliza.fs` as a batch. Rout
 Safe routing order:
 
 1. `grep` and `glob`, only after search/glob semantics are explicit rather than approximated.
-2. `edit`, only after the Satellite has a first-class edit/patch operation with stale-read or expected-content protection.
+2. `edit`, only after the Remote has a first-class edit/patch operation with stale-read or expected-content protection.
 
 The review boundary stays small: each method should land as its own commit with focused tests.

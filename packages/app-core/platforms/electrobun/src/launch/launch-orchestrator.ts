@@ -36,7 +36,7 @@ export interface LaunchDiagnosticsSnapshot {
   statusPath: string;
 }
 
-interface SatelliteStatus {
+interface RemoteStatus {
   id: string;
   state: string;
   error: string | null;
@@ -59,7 +59,7 @@ export interface LaunchOrchestratorOptions {
   readDiagnostics: () => LaunchDiagnosticsSnapshot;
   readDatabaseStatus?: () => DatabaseSnapshot;
   readDiagnosticLogTail: (maxChars?: number) => string;
-  listSatelliteStatuses: () => SatelliteStatus[];
+  listRemoteStatuses: () => RemoteStatus[];
   createBugReportBundle: (options: {
     reportMarkdown: string;
     reportJson: Record<string, JsonValue>;
@@ -153,9 +153,9 @@ function databaseBlocksLaunch(database: DatabaseSnapshot): boolean {
   );
 }
 
-function satelliteSnapshot(
-  statuses: SatelliteStatus[],
-): LaunchSnapshot["satellites"] {
+function remoteSnapshot(
+  statuses: RemoteStatus[],
+): LaunchSnapshot["remotes"] {
   const required = statuses.filter((status) => status.required);
   return {
     seeded: statuses.length > 0,
@@ -166,7 +166,7 @@ function satelliteSnapshot(
       .filter((status) => status.error)
       .map((status) => ({
         id: status.id,
-        error: status.error ?? "Satellite failed.",
+        error: status.error ?? "Remote failed.",
       })),
   };
 }
@@ -189,8 +189,8 @@ function suggestedAction(snapshot: LaunchSnapshot): string | undefined {
     return "Choose Cloud, Local, or Remote in RuntimeGate.";
   if (snapshot.phase === "cloud-bootstrap-required")
     return "Complete cloud bootstrap before entering chat.";
-  if (!snapshot.satellites.requiredStarted) {
-    return "Runtime can continue while Satellite readiness is inspected.";
+  if (!snapshot.remotes.requiredStarted) {
+    return "Runtime can continue while Remote readiness is inspected.";
   }
   return undefined;
 }
@@ -236,7 +236,7 @@ function snapshotJson(snapshot: LaunchSnapshot): Record<string, JsonValue> {
     database: databaseSnapshotJson(snapshot.database),
     auth: snapshot.auth,
     onboarding: snapshot.onboarding,
-    satellites: snapshot.satellites,
+    remotes: snapshot.remotes,
     localModel: snapshot.localModel,
     diagnostics: snapshot.diagnostics,
     recovery: snapshot.recovery,
@@ -256,7 +256,7 @@ export class LaunchOrchestrator {
   private readonly readDiagnostics: () => LaunchDiagnosticsSnapshot;
   private readonly readDatabaseStatus: () => DatabaseSnapshot;
   private readonly readDiagnosticLogTail: (maxChars?: number) => string;
-  private readonly listSatelliteStatuses: () => SatelliteStatus[];
+  private readonly listRemoteStatuses: () => RemoteStatus[];
   private readonly createBugReportBundle: LaunchOrchestratorOptions["createBugReportBundle"];
   private readonly dynamicViewRegistry: DynamicViewRegistry | null;
   private readonly dynamicViewSessions: DynamicViewSessionManager | null;
@@ -272,7 +272,7 @@ export class LaunchOrchestrator {
     this.readDatabaseStatus =
       options.readDatabaseStatus ?? (() => createUnknownDatabaseSnapshot());
     this.readDiagnosticLogTail = options.readDiagnosticLogTail;
-    this.listSatelliteStatuses = options.listSatelliteStatuses;
+    this.listRemoteStatuses = options.listRemoteStatuses;
     this.createBugReportBundle = options.createBugReportBundle;
     this.dynamicViewRegistry = options.dynamicViewRegistry ?? null;
     this.dynamicViewSessions = options.dynamicViewSessions ?? null;
@@ -311,7 +311,7 @@ export class LaunchOrchestrator {
       }
     }
 
-    const satellites = satelliteSnapshot(this.listSatelliteStatuses());
+    const remotes = remoteSnapshot(this.listRemoteStatuses());
     const phase = databaseBlocksLaunch(database)
       ? "error"
       : classifyPhase({
@@ -351,7 +351,7 @@ export class LaunchOrchestrator {
         requiredGate: requiredGate(auth, onboarding),
         error: onboardingError,
       },
-      satellites,
+      remotes,
       localModel: {
         backgroundDownloadQueued: false,
         blocking: false,

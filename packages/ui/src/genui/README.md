@@ -17,7 +17,7 @@ Eliza GenUI spec
   -> controlled action handler
 ```
 
-No generated UI can import a component, execute code, call a Satellite, or reach Electrobun main-process internals directly.
+No generated UI can import a component, execute code, call a Remote, or reach Electrobun main-process internals directly.
 
 ## Existing elizaOS A2UI Seams
 
@@ -114,7 +114,7 @@ trace.*
 voice.*
 ```
 
-Handlers are injected by the host view. A generated spec never chooses arbitrary methods and never calls Satellites directly.
+Handlers are injected by the host view. A generated spec never chooses arbitrary methods and never calls Remotes directly.
 
 ## Streaming
 

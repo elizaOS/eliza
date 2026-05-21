@@ -92,13 +92,13 @@ export const containersEnv = {
     return this.defaultAgentImageOverride() ?? "ghcr.io/elizaos/eliza:stable";
   },
 
-  /** Image used by coding-container requests that need the Satellite HTTP contract. */
-  codingSatelliteImage(): string | undefined {
+  /** Image used by coding-container requests that need the Remote HTTP contract. */
+  codingRemoteRunnerImage(): string | undefined {
     const env = getCloudAwareEnv();
     return pick(
-      env.ELIZA_CLOUD_CODING_SATELLITE_IMAGE,
-      env.ELIZA_CODING_SATELLITE_IMAGE,
-      env.CONTAINERS_CODING_SATELLITE_IMAGE,
+      env.ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE,
+      env.ELIZA_CODING_REMOTE_RUNNER_IMAGE,
+      env.CONTAINERS_CODING_REMOTE_RUNNER_IMAGE,
     );
   },
 

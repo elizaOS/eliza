@@ -2,7 +2,8 @@
 """Bootstrap the E1 AI-EDA stack on a fresh machine.
 
 The default profile is metadata-only and does not download external payloads.
-Use --profile local-smoke for the CPU/MPS-safe local validation stack, and
+Use --profile setup-check after restoring or fetching reviewed payloads, use
+--profile local-smoke for the broader CPU/MPS-safe validation stack, and use
 --execute-fetch with an explicit --asset allowlist when intentionally pulling
 reviewed external assets into ignored payload directories.
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -33,6 +35,8 @@ LOCAL_SMOKE_TARGETS = (
     "ai-eda-internal-fixtures",
     "ai-eda-openroad-eda-corpus-convert",
     "ai-eda-tilos-macroplacement-convert",
+    "ai-eda-circuitnet3-convert",
+    "ai-eda-circuitnet3-surrogate",
     "ai-eda-e1-softmacro-cases",
     "ai-eda-external-fixture-convert",
     "ai-eda-e1-openlane-convert",
@@ -47,6 +51,19 @@ LOCAL_SMOKE_TARGETS = (
     "ai-eda-logic-synthesis-baseline",
     "ai-eda-tool-actions-check",
     "ai-eda-cocotb-stimulus-dry-run",
+)
+
+SETUP_CHECK_TARGETS = (
+    "ai-eda-internal-fixtures",
+    "ai-eda-openroad-eda-corpus-convert",
+    "ai-eda-tilos-macroplacement-convert",
+    "ai-eda-circuitnet3-convert",
+    "ai-eda-circuitnet3-surrogate",
+    "ai-eda-e1-softmacro-cases",
+    "ai-eda-external-fixture-convert",
+    "ai-eda-e1-openlane-convert",
+    "ai-eda-openlane-flow-labels",
+    "ai-eda-macro-placement-supervised-dataset",
 )
 
 TORCH_TARGETS = (
@@ -94,11 +111,13 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
 
 
 def make_target(target: str, timeout_seconds: int) -> dict[str, Any]:
-    return run(["make", target], timeout_seconds)
+    return run(["make", f"PYTHON={sys.executable}", target], timeout_seconds)
 
 
 def selected_targets(profile: str, include_torch: bool) -> list[str]:
     targets = list(METADATA_TARGETS)
+    if profile in {"setup-check", "local-smoke", "training-handoff"}:
+        targets.extend(SETUP_CHECK_TARGETS)
     if profile in {"local-smoke", "training-handoff"}:
         targets.extend(LOCAL_SMOKE_TARGETS)
     if include_torch or profile == "training-handoff":
@@ -116,7 +135,7 @@ def fetch_commands(args: argparse.Namespace) -> list[list[str]]:
     for asset in args.asset:
         commands.append(
             [
-                "python3",
+                sys.executable,
                 "scripts/ai_eda/fetch_external_asset.py",
                 "--asset",
                 asset,
@@ -134,7 +153,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
     parser.add_argument(
         "--profile",
-        choices=("metadata", "local-smoke", "training-handoff"),
+        choices=("metadata", "setup-check", "local-smoke", "training-handoff"),
         default="metadata",
     )
     parser.add_argument(
@@ -163,7 +182,7 @@ def main() -> int:
     overall_rc = 0
 
     preflight = run(
-        ["python3", "scripts/ai_eda/preflight_cuda_training_stack.py", "--run-id", args.run_id],
+        [sys.executable, "scripts/ai_eda/preflight_cuda_training_stack.py", "--run-id", args.run_id],
         args.timeout_seconds,
     )
     steps.append({"kind": "preflight", **preflight})
@@ -204,6 +223,7 @@ def main() -> int:
             "execute_fetch_requires_explicit_asset": True,
             "external_payloads_remain_ignored": True,
         },
+        "python_executable": sys.executable,
         "assets": args.asset,
         "execute_fetch": bool(args.execute_fetch),
         "include_torch": bool(args.include_torch),

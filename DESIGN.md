@@ -166,4 +166,4 @@ Do not ask the user to understand deployment mechanics before the agent works.
 
 Do not hide failed capability or backend states behind onboarding copy.
 
-Do not let visual components call filesystem, terminal, Git, model, sandbox, or Satellite APIs directly.
+Do not let visual components call filesystem, terminal, Git, model, sandbox, or Remote APIs directly.
