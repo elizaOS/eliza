@@ -31,8 +31,7 @@ export default function HeroSection() {
         </h1>
         <p className="mt-6 max-w-2xl text-xl font-medium leading-snug text-black/80 sm:text-2xl">
           {t("cloud.landing.heroSubtitle", {
-            defaultValue:
-              "Hosting, APIs and commerce tools for agents.",
+            defaultValue: "Hosting, APIs and commerce tools for agents.",
           })}
         </p>
         <div className="mt-10 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">

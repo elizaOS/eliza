@@ -116,7 +116,9 @@ export function PaymentWaitingOverlay({
           <p className="mt-2 text-sm text-white/65">
             {isConfirmed
               ? `Added $${data?.creditsToAdd ?? "—"} in cloud credit${
-                  data?.bonusCredits ? ` (incl. $${data.bonusCredits} bonus)` : ""
+                  data?.bonusCredits
+                    ? ` (incl. $${data.bonusCredits} bonus)`
+                    : ""
                 }.`
               : isFailed
                 ? (data?.error ??

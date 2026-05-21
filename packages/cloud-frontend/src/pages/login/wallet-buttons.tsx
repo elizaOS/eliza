@@ -3,12 +3,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { StewardAuth, StewardAuthResult } from "@stwd/sdk";
 import { useCallback, useEffect, useRef } from "react";
-import {
-  type Connector,
-  useAccount,
-  useConnect,
-  useSignMessage,
-} from "wagmi";
+import { type Connector, useAccount, useConnect, useSignMessage } from "wagmi";
 import { useT } from "@/providers/I18nProvider";
 
 // Phantom injects itself as an Ethereum provider but must never be used for

@@ -19,6 +19,15 @@
   X-XSS-Protection: 1; mode=block
   Permissions-Policy: camera=(), microphone=(self), geolocation=()
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  Cache-Control: no-cache
+
+# Hashed assets under /assets/* are content-addressed and immutable. Pin
+# them to a long cache so they survive the no-cache rule on /* above. This
+# pair (no-cache HTML + immutable assets) is the standard cache discipline
+# for hashed-bundle SPAs: deploys propagate instantly without re-fetching
+# unchanged JS/CSS.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
 
 # OAuth/popup callback pages need a relaxed COOP so window.closed works
 /app-auth/*

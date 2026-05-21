@@ -17,6 +17,16 @@
 /docs                 https://docs.elizaos.ai/cloud              301
 /docs/*               https://docs.elizaos.ai/cloud/:splat       301
 
+# Hashed-asset 404s must NOT fall through to the SPA index.html. When a
+# stale browser HTML references an asset hash that no longer exists, the
+# catch-all below would otherwise return index.html with status 200 for
+# the missing .js, and the browser would fail strict MIME checking with
+# "Expected a JavaScript-or-Wasm module script but the server responded
+# with a MIME type of text/html". Returning a real 404 lets the chunk-load
+# error boundary in src/providers/ConditionalWalletProviders.tsx catch it
+# and self-heal via a single hard reload.
+/assets/*  /index.html  404
+
 # SPA fallback — every other path falls through to index.html so React
 # Router can resolve client-side routes.
 /*  /index.html  200

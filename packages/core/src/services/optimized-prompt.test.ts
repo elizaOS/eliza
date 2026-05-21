@@ -212,8 +212,14 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		v1.prompt = "v1 (newer by generatedAt)";
 		const v2 = makeArtifact(2);
 		v2.prompt = "v2 (older by generatedAt but symlink target)";
-		writeArtifactWithMac(join(dir, "v1.json"), `${JSON.stringify(v1, null, 2)}\n`);
-		writeArtifactWithMac(join(dir, "v2.json"), `${JSON.stringify(v2, null, 2)}\n`);
+		writeArtifactWithMac(
+			join(dir, "v1.json"),
+			`${JSON.stringify(v1, null, 2)}\n`,
+		);
+		writeArtifactWithMac(
+			join(dir, "v2.json"),
+			`${JSON.stringify(v2, null, 2)}\n`,
+		);
 		// Manually set up symlinks so we don't go through setPrompt.
 		const { symlinkSync } = await import("node:fs");
 		symlinkSync("v2.json", join(dir, OPTIMIZED_PROMPT_CURRENT_LINK));
