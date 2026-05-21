@@ -91,7 +91,11 @@ export default function RootLayout() {
         <meta name="twitter:title" content={twitterTitle} />
         <meta name="twitter:description" content={description} />
         <meta name="twitter:image" content={ogImage} />
-        <link rel="icon" type="image/svg+xml" href={BRAND_FAVICONS.svg} />
+        <link
+          rel="icon"
+          type="image/svg+xml"
+          href="/brand/logos/logo_white_blackbg.svg"
+        />
         <link rel="alternate icon" href={BRAND_FAVICONS.ico} />
         <link rel="shortcut icon" href={BRAND_FAVICONS.ico} />
         <link rel="apple-touch-icon" href={BRAND_FAVICONS.appleTouchIcon} />
