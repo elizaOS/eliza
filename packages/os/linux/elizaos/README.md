@@ -23,6 +23,15 @@ config/package-lists/
 
 All three arches boot via GRUB EFI; amd64 also gets BIOS via `grub-pc`.
 
+`make qemu-boot ARCH=<arch>` opens an interactive GNOME desktop window for
+every arch via `scripts/boot-qemu.sh`. riscv64 reaches GUI parity with
+amd64/arm64 by adding `-device virtio-gpu-pci` plus USB input to the
+`qemu-system-riscv64 -M virt` invocation (riscv64 `virt` has no default
+GPU). Headless, fail-closed boot-marker evidence for riscv64 is a separate
+path: `scripts/qemu_virt_boot_riscv64.sh` (driven by
+`scripts/qemu_virt_smoke.py`), which runs `-nographic` and emits the
+`eliza.os.linux.qemu_virt_boot.v1` evidence JSON.
+
 ## Profiles
 
 `ELIZAOS_PROFILE` selects a hardening profile:
