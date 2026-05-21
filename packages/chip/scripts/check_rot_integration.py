@@ -43,6 +43,9 @@ OT_MANIFEST = ROOT / "external/opentitan/pin-manifest.json"
 OT_CHECKOUT = ROOT / "external/opentitan/opentitan"
 IBEX_FLIST = ROOT / "verify/cocotb/integration/ibex_pmc_min.f"
 COCOTB_RESULTS = ROOT / "verify/cocotb/rot/results.xml"
+KAT_RESULTS = ROOT / "verify/cocotb/rot/results_kat.xml"
+KAT_MAKEFILE = "Makefile.kat"
+KAT_TEST = "hmac_sha256_kat_through_xbar"
 GEN_FLIST = ROOT / "scripts/gen_ot_flist.py"
 OT_BLOCKS_RTL = ROOT / "rtl/security/rot/e1_rot_ot_blocks.sv"
 FLIST_DIR = ROOT / "build/rot_ot/flists"
@@ -467,6 +470,13 @@ def _integrated_top_check(verilator: str, defines: list[str]) -> dict:
             (incdirs if ln.startswith("+incdir+") else srcs).append(ln)
     incdirs = list(dict.fromkeys(incdirs))
     srcs = list(dict.fromkeys(srcs))
+    # The crossbar (e1_rot_xbar) wires the now-real block TL device ports into a
+    # single Ibex-style host via the vendored tlul_adapter_host + tlul_socket_1n.
+    # tlul_adapter_host is the only TL-UL fabric file no block closure pulls in
+    # on its own; tlul_socket_1n already comes in via the block flists.
+    adapter_host = str(
+        ROOT / "external/opentitan/opentitan/hw/ip/tlul/rtl/tlul_adapter_host.sv"
+    )
     cmd = [
         verilator,
         "--lint-only",
@@ -476,6 +486,8 @@ def _integrated_top_check(verilator: str, defines: list[str]) -> dict:
         "-sv",
         *incdirs,
         *srcs,
+        adapter_host,
+        str(ROOT / "rtl/security/rot/e1_rot_xbar.sv"),
         str(OT_BLOCKS_RTL),
         *[str(ROOT / s) for s in SPINE_SOURCES],
         "--top-module",
@@ -531,15 +543,74 @@ def check_cocotb() -> dict:
     }
 
 
-# The remaining blocker after all crypto blocks elaborate as real RTL: their
-# TL-UL device ports are tied idle, not yet wired to the Ibex register crossbar.
-# No functional crypto / secure-boot data path exists until that adapter lands.
+def check_datapath_kat() -> dict:
+    """Functional crypto-datapath KAT: SHA-256("abc") through the real crossbar.
+
+    Builds e1_rot_xbar (tlul_adapter_host + tlul_socket_1n) with the real
+    OpenTitan HMAC block on a device window and drives the crossbar host port
+    from cocotb, exactly as the RoT Ibex data port would. The test asserts the
+    digest equals the FIPS 180-4 known answer; only the real hmac/sha2 RTL,
+    reached through the real TL-UL fabric with command/response integrity, can
+    produce it. This is the functional crypto result that advances the gate past
+    rot_crypto_datapath_unwired for the HMAC datapath.
+    """
+    rc = subprocess.run(
+        ["make", "-C", str(ROOT / "verify/cocotb/rot"), "-f", KAT_MAKEFILE],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    if not KAT_RESULTS.is_file():
+        last = rc.stderr.splitlines()[-1] if rc.stderr else ""
+        return {
+            "id": "datapath_kat_hmac",
+            "status": "blocked",
+            "detail": f"no results_kat.xml; cocotb/verilator unavailable. {last}",
+        }
+    tree = ET.parse(KAT_RESULTS)
+    seen, failed = set(), []
+    for tc in tree.iter("testcase"):
+        name = tc.get("name", "")
+        seen.add(name)
+        if tc.find("failure") is not None or tc.find("error") is not None:
+            failed.append(name)
+    if KAT_TEST not in seen:
+        return {
+            "id": "datapath_kat_hmac",
+            "status": "fail",
+            "detail": f"KAT {KAT_TEST} did not run (seen={sorted(seen)})",
+        }
+    if failed:
+        return {
+            "id": "datapath_kat_hmac",
+            "status": "fail",
+            "detail": f"KAT failed: {failed}",
+        }
+    return {
+        "id": "datapath_kat_hmac",
+        "status": "pass",
+        "detail": "real OpenTitan HMAC computed SHA-256(\"abc\") = "
+        "ba7816bf...f20015ad (FIPS 180-4 KAT) through e1_rot_xbar "
+        "(tlul_adapter_host -> tlul_socket_1n -> hmac); host->datapath->block "
+        "proven functional",
+    }
+
+
+# The HMAC crypto datapath is wired and proven functional (datapath_kat_hmac):
+# the Ibex-style host port reaches the real OpenTitan hmac through e1_rot_xbar
+# and a verified SHA-256 KAT comes back. What remains unwired is the EDN entropy
+# sideband stack and the keymgr key ladder -- named here so the gate stays
+# fail-closed on the still-incomplete sideband data path for the blocks that
+# need it (csrng/edn/entropy_src/keymgr/aes masking).
 MISSING_DATAPATH = (
-    "RoT crossbar adapter (e1_rot_tlul_pkg <-> tlul_pkg) routing Ibex MMIO "
-    "accesses into the now-real OpenTitan block TL-UL device ports, plus the "
-    "block sideband data path (EDN entropy stack, keymgr sideload, rom_ctrl "
-    "image). The blocks elaborate as real RTL with idle-tied TL/sideband ports; "
-    "no functional crypto or secure-boot result is produced yet."
+    "EDN entropy sideband stack (entropy_src -> csrng -> edn -> the edn_i "
+    "inputs of aes/kmac/keymgr) and the keymgr sideload key ladder remain tied "
+    "to package-default idle in e1_rot_ot_blocks.sv. The TL-UL register "
+    "datapath is wired through e1_rot_xbar (tlul_adapter_host + tlul_socket_1n) "
+    "and proven functional for HMAC (verified SHA-256 KAT), but blocks that "
+    "depend on the entropy stack or sideload key bus cannot yet produce a "
+    "functional result, so no secure-boot / hardware-key / attestation claim is "
+    "permitted for those blocks."
 )
 
 
@@ -587,6 +658,20 @@ def main() -> int:
     ]
     all_crypto_real = bool(crypto_blocks) and not shimmed
 
+    # Functional crypto-datapath KAT only runs once the crossbar can be wired
+    # (HMAC is real and the integrated top elaborates with it). If HMAC is
+    # shimmed the datapath cannot be proven, so the KAT is not run and the gate
+    # stays BLOCKED on the shimmed block above.
+    hmac_real = any(b["name"] == "hmac" and b["real"] for b in crypto_blocks)
+    integrated_ok = any(
+        c["id"] == "elaborate_crypto_integrated" and c["status"] == "pass" for c in checks
+    )
+    kat = None
+    if verilator is not None and hmac_real and integrated_ok:
+        kat = check_datapath_kat()
+        checks.append(kat)
+    kat_pass = kat is not None and kat["status"] == "pass"
+
     # Gate verdict. Fail-closed law:
     #   * any FAIL check -> FAIL.
     #   * any BLOCKED check (missing tool/checkout) -> BLOCKED.
@@ -620,29 +705,63 @@ def main() -> int:
             + ". Missing dependency: "
             + MISSING_OT_DEP
         )
-    elif all_crypto_real:
-        status, blocker_id = "BLOCKED", "rot_crypto_datapath_unwired"
+    elif all_crypto_real and kat_pass:
+        # The TL-UL register datapath is wired (e1_rot_xbar: tlul_adapter_host +
+        # tlul_socket_1n) and proven functional end to end for HMAC -- a real
+        # SHA-256 KAT comes back through the host->socket->block path. The gate
+        # stays BLOCKED, but on the NAMED remaining sideband (EDN entropy stack
+        # + keymgr sideload), not on the datapath being absent. Fail-closed:
+        # blocks that need the entropy stack still produce no functional result.
+        status, blocker_id = "BLOCKED", "rot_crypto_sideband_unwired"
         blocker_reason = (
-            "All 9 OpenTitan crypto/security blocks now elaborate as REAL RTL "
-            "in the RoT flow (no shims remain), but their TL-UL device ports "
-            "are tied idle. Missing dependency: " + MISSING_DATAPATH
+            "RoT TL-UL crypto datapath is WIRED and FUNCTIONAL for HMAC: the "
+            "Ibex-style host port reaches the real OpenTitan hmac through "
+            "e1_rot_xbar and a FIPS 180-4 SHA-256 KAT is verified end to end "
+            "(datapath_kat_hmac). Remaining named blocker: " + MISSING_DATAPATH
+        )
+    elif all_crypto_real and not kat_pass:
+        # Blocks are real and the integrated top elaborates, but the functional
+        # datapath KAT did not pass (or did not run) -> still BLOCKED on the
+        # datapath, fail-closed: no functional crypto result is proven.
+        status, blocker_id = "BLOCKED", "rot_crypto_datapath_unwired"
+        kat_detail = kat["detail"] if kat is not None else "KAT not run"
+        blocker_reason = (
+            "All 9 OpenTitan crypto/security blocks elaborate as REAL RTL, but "
+            "no functional crypto result is proven through the datapath "
+            f"(datapath_kat_hmac: {kat_detail}). Missing dependency: "
+            + MISSING_DATAPATH
         )
     else:
         status, blocker_id, blocker_reason = "PASS", None, None
 
-    boundary_crypto = (
-        "All 9 OpenTitan crypto/security blocks (rom_ctrl/keymgr/kmac/hmac/aes/"
-        "csrng/edn/entropy_src/alert_handler) elaborate as REAL vendored RTL "
-        "in e1_rot_top via the e1_rot_ot_<block> harnesses, but with TL-UL and "
-        "sideband ports tied idle: NO functional crypto or secure-boot result "
-        "is produced. No secure-boot / hardware-key / attestation claim is "
-        "permitted from this tree."
-        if all_crypto_real
-        else "The OpenTitan crypto/security blocks that remain shimmed are bound via "
-        "fail-closed E1 integration shims, NOT integrated -- reported BLOCKED "
-        "with the named missing dependency. No secure-boot / hardware-key / "
-        "attestation claim is permitted from this tree."
-    )
+    if all_crypto_real and kat_pass:
+        boundary_crypto = (
+            "All 9 OpenTitan crypto/security blocks (rom_ctrl/keymgr/kmac/hmac/"
+            "aes/csrng/edn/entropy_src/alert_handler) elaborate as REAL vendored "
+            "RTL in e1_rot_top and their TL-UL register ports are WIRED into the "
+            "Ibex-style host through e1_rot_xbar (vendored tlul_adapter_host + "
+            "tlul_socket_1n). The HMAC datapath is PROVEN FUNCTIONAL: a FIPS "
+            "180-4 SHA-256(\"abc\") KAT is computed by the real hmac block and "
+            "read back through the crossbar (datapath_kat_hmac). The EDN entropy "
+            "sideband stack and keymgr sideload key ladder remain idle-tied, so "
+            "NO secure-boot / hardware-key / attestation claim is permitted for "
+            "blocks that depend on them (csrng/edn/entropy_src/keymgr)."
+        )
+    elif all_crypto_real:
+        boundary_crypto = (
+            "All 9 OpenTitan crypto/security blocks elaborate as REAL vendored "
+            "RTL in e1_rot_top and are wired into e1_rot_xbar, but the functional "
+            "datapath KAT is not proven: NO functional crypto or secure-boot "
+            "result is claimed. No secure-boot / hardware-key / attestation "
+            "claim is permitted from this tree."
+        )
+    else:
+        boundary_crypto = (
+            "The OpenTitan crypto/security blocks that remain shimmed are bound "
+            "via fail-closed E1 integration shims, NOT integrated -- reported "
+            "BLOCKED with the named missing dependency. No secure-boot / "
+            "hardware-key / attestation claim is permitted from this tree."
+        )
 
     report = {
         "schema": "eliza.gate_status.v1",
@@ -653,6 +772,7 @@ def main() -> int:
         "evidence_paths": [
             "rtl/security/rot/e1_rot_top.sv",
             "rtl/security/rot/e1_rot_ot_blocks.sv",
+            "rtl/security/rot/e1_rot_xbar.sv",
             "rtl/security/rot/e1_rot_mailbox.sv",
             "rtl/security/rot/e1_rot_reset_seq.sv",
             "rtl/security/rot/e1_rot_crypto_shim.sv",
@@ -660,6 +780,9 @@ def main() -> int:
             "scripts/gen_ot_flist.py",
             "verify/cocotb/test_e1_rot_top.py",
             "verify/cocotb/rot/e1_rot_top_tb.sv",
+            "verify/cocotb/rot/e1_rot_kat_tb.sv",
+            "verify/cocotb/rot/test_e1_rot_kat.py",
+            "verify/cocotb/rot/Makefile.kat",
             "external/opentitan/pin-manifest.json",
             "scripts/bootstrap_opentitan.sh",
         ],
