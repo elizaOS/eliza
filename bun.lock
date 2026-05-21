@@ -701,8 +701,8 @@
         "typescript": "^6.0.3",
       },
     },
-    "packages/cloud-services/coding-satellite": {
-      "name": "@elizaos/coding-satellite",
+    "packages/cloud-services/coding-remote-runner": {
+      "name": "@elizaos/coding-remote-runner",
       "version": "0.1.0",
       "devDependencies": {
         "@types/node": "22.19.17",
@@ -5949,7 +5949,7 @@
 
     "@elizaos/cloud-test-mocks": ["@elizaos/cloud-test-mocks@workspace:packages/test/cloud-mocks"],
 
-    "@elizaos/coding-satellite": ["@elizaos/coding-satellite@workspace:packages/cloud-services/coding-satellite"],
+    "@elizaos/coding-remote-runner": ["@elizaos/coding-remote-runner@workspace:packages/cloud-services/coding-remote-runner"],
 
     "@elizaos/config": ["@elizaos/config@1.7.2", "", {}, "sha512-faNs1IcEecGivEmzcr/dKAgfoK//Z1jo+X8Mj9d3qpgx9xBoGII2EZSaRc5qatTQVuZsrJjZL0qxFFJ6ztCWbQ=="],
 

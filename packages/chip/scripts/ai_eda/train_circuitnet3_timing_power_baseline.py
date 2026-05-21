@@ -76,7 +76,19 @@ def split_samples(samples: list[dict[str, Any]]) -> dict[str, list[dict[str, Any
         return {"train": ordered, "val": [], "test": []}
     if len(ordered) == 2:
         return {"train": ordered[:1], "val": [], "test": ordered[1:]}
-    return {"train": ordered[:-2], "val": ordered[-2:-1], "test": ordered[-1:]}
+    if len(ordered) < 10:
+        return {"train": ordered[:-2], "val": ordered[-2:-1], "test": ordered[-1:]}
+    val_count = max(1, round(len(ordered) * 0.1))
+    test_count = max(1, round(len(ordered) * 0.1))
+    train_count = len(ordered) - val_count - test_count
+    if train_count < 1:
+        train_count = 1
+        val_count = max(0, len(ordered) - train_count - test_count)
+    return {
+        "train": ordered[:train_count],
+        "val": ordered[train_count : train_count + val_count],
+        "test": ordered[train_count + val_count :],
+    }
 
 
 def mean_model(train_samples: list[dict[str, Any]]) -> dict[str, Any]:
@@ -159,6 +171,7 @@ def main() -> int:
         "record_dirs": [rel(path) for path in record_dirs],
         "sample_count": len(samples),
         "split_counts": {split: len(rows) for split, rows in splits.items()},
+        "split_policy": "deterministic_sorted_case_id_80_10_10_for_n_ge_10_else_holdout",
         "model": rel(model_path),
         "metrics": rel(metrics_path),
         "next_required_gates": [
