@@ -25,9 +25,7 @@ CLAIM_BOUNDARY = "ai_eda_bootstrap_orchestration_no_release_claim"
 METADATA_TARGETS = (
     "ai-eda-local-rag-index",
     "ai-eda-backend-preflight",
-    "ai-eda-verification-targets",
-    "ai-eda-physical-design-targets",
-    "ai-eda-optimization-targets",
+    "ai-eda-all-target-captures",
     "ai-eda-source-inventory-check",
     "ai-eda-ai-workload-manifest-check",
     "ai-eda-assertion-candidate-manifests-check",
