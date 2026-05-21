@@ -3,7 +3,7 @@ status: blocked_split_island_concept_requires_routing_interconnect_and_assembly_
 date: 2026-05-20
 claim_boundary: >
   Board topology decision record only. This determines which PCB architecture
-  can plausibly preserve the selected 5.5 inch display envelope and the 17.33 Wh
+  can plausibly preserve the selected 5.5 inch display envelope and the 22.45 Wh
   battery reference. It is not a routed rigid-flex design, fabrication drawing,
   impedance stackup, enclosure release, or assembly process approval.
 
@@ -18,10 +18,10 @@ source_artifacts:
 
 fixed_product_anchors:
   display_anchor: 5.5_in_1080x1920_MIPI_LCM_CTP
-  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 9.6}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.2}
   board_bbox_mm: {width: 64.0, height: 132.0}
-  selected_battery_mm: {width: 64.0, height: 87.0, thickness: 4.4}
-  required_runtime_target: preserve_17p3wh_class
+  selected_battery_mm: {width: 64.0, height: 87.0, thickness: 5.7}
+  required_runtime_target: preserve_22p45wh_class
 
 topology_constraints:
   selected_battery_width_equals_board_width: true
@@ -39,11 +39,11 @@ topology_constraints:
 evaluated_topologies:
   - id: current_single_rigid_with_45x72_window
     summary: Current concept board with top, side, and bottom islands around a 45 x 72 mm window.
-    battery_fit: fails_17p33wh_reference_pack
+    battery_fit: fails_22p45wh_reference_pack
     routing_risk: lowest_from_current_state
     mechanical_risk: lowest_from_current_state
     runtime_impact: unacceptable_capacity_reduction_or_custom_pack_dependency
-    decision: reject_for_17p3wh_target
+    decision: reject_for_22p45wh_target
   - id: single_rigid_c_shape_full_width_64x87_window
     summary: Attempt to carve a 64 x 87 mm cavity into the 64 mm wide board.
     battery_fit: theoretical_only
@@ -56,14 +56,14 @@ evaluated_topologies:
     battery_fit: supports_64x87_reference_pack
     routing_risk: medium_high_requires_flex_or_board_to_board_high_speed_policy
     mechanical_risk: medium_requires_pack_ribs_button_flex_and_service_strategy
-    runtime_impact: preserves_17p3wh_target
+    runtime_impact: preserves_22p45wh_target
     decision: preferred_evt0_repack_candidate
   - id: two_board_stack_with_battery_rear_pocket
     summary: Keep main logic board compact and place an auxiliary bottom/side board with a rear battery pocket.
     battery_fit: supports_64x87_reference_pack_if_z_stack_allows
     routing_risk: high_requires_interposer_and_z_stack_validation
-    mechanical_risk: high_for_9p6mm_thickness
-    runtime_impact: preserves_17p3wh_target
+    mechanical_risk: high_for_11p2mm_flush_back_thickness
+    runtime_impact: preserves_22p45wh_target
     decision: fallback_if_top_bottom_islands_fail
   - id: custom_narrow_pack_single_rigid
     summary: Retain current single-rigid architecture and quote custom narrow pack variants.
@@ -83,9 +83,9 @@ selected_topology_for_next_repack:
     - keep cellular, Wi-Fi/BT, cameras, display FPC, PMIC, SoC, LPDDR, and UFS on the top island unless SI/thermal review forces split
     - keep USB-C, speaker, microphones, haptic driver, and factory test access on the bottom island
   required_cad_changes:
-    - CAD regenerated with 64 x 87 x 4.4 mm battery envelope
+    - CAD regenerated with 64 x 87 x 5.7 mm battery envelope
     - CAD replaced the prior 55 x 92 mm placeholder with top and bottom PCB islands
-    - add battery swelling and compression-pad allowance to the 9.6 mm z-stack
+    - add battery swelling and compression-pad allowance to the 11.2 mm flush-back z-stack
     - recheck side-button load path after side-key flex/subassembly move
   required_verification:
     - KiCad mechanical overlay regenerated for selected topology

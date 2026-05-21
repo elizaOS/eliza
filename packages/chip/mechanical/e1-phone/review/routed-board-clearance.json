@@ -5,7 +5,7 @@
   "source_reviews": {
     "board_step_readiness_status": "blocked_concept_pcb_no_routed_step",
     "assembly_clearance_status": "pass",
-    "solid_cad_status": "blocked"
+    "solid_cad_status": "generated"
   },
   "production_step_files": [],
   "concept_pcb_step": "mechanical/e1-phone/out/main_pcb.step",
@@ -59,7 +59,7 @@
     },
     {
       "id": "height_critical_components_have_cad_envelopes",
-      "pass": false,
+      "pass": true,
       "evidence": "solid-cad-handoff.json"
     },
     {

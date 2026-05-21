@@ -58,6 +58,7 @@ _REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
 REQUIRED_MARKERS = (
     "Linux version",
     "elizaos-firstboot-ready",
+    "elizaos-agent-ready",
 )
 
 

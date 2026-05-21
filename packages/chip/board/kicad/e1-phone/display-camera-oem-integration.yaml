@@ -71,7 +71,7 @@ display_oem_context:
     current_device_envelope_mm:
       width: 78.0
       height: 153.6
-      max_thickness: 9.6
+      max_thickness: 11.2
     primary_clearance_in_current_envelope_mm:
       width_clearance_mm: 0.9
       height_clearance_mm: 1.83
@@ -79,8 +79,8 @@ display_oem_context:
     recommended_device_envelope_mm:
       width: 78.0
       height: 153.6
-      max_thickness: 9.6
-      basis: primary 5.5 inch Chenghao-class CTP module plus compact CAD rail margin
+      max_thickness: 11.2
+      basis: primary 5.5 inch Chenghao-class CTP module plus compact flush-back CAD rail margin
   external_interface_review:
     region_mm:
       x: 49.0

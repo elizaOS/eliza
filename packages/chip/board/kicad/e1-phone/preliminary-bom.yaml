@@ -79,8 +79,8 @@ major_items:
 
   - function: battery_pack
     qty: 1
-    primary: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
-    alternates: [Made_in_China_736072_4500mAh_LiPo_family, Alibaba_custom_3p85V_4500mAh_pack_quote_pool]
+    primary: LiPol_LP576487_3p85V_5830mAh_22p45Wh_PCM_NTC_JST_SHR_03V_class
+    alternates: [LiPol_LP446487_4500mAh_baseline_outline_family, Made_in_China_custom_5830mAh_LiPo_family, Alibaba_custom_3p85V_5830mAh_pack_quote_pool]
     sourcing: package/battery/e1-phone-17p3wh-pack.yaml
     pcb_dependency: 4pin_battery_connector_or_soldered_pack_variant
     freeze_blockers: [pack_supplier_quote, connector_pinout, ntc_curve, pcm_limits, safety_docs, battery_cavity_resize_or_custom_pack]

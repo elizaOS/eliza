@@ -24,21 +24,22 @@ import argparse
 import asyncio
 import json
 import sys
-from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
 
-from eliza_robot.bridge.backends.dual_target import DualTargetBackend
-from eliza_robot.bridge.backends.mock_backend import MockBackend
-from eliza_robot.bridge.backends.mujoco_backend import MuJocoBackend
-from eliza_robot.bridge.backends.noise_injector import NoiseProfile
-from eliza_robot.bridge.protocol import CommandEnvelope, utc_now_iso
-from eliza_robot.curriculum.loader import load_curriculum
-from eliza_robot.rl.text_conditioned.policy import TextConditionedPolicy
-from eliza_robot.sim.mujoco.demo_env import DemoEnv
-from eliza_robot.sim2real.sysid import calibrate_via_sysid
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
+from eliza_robot.bridge.backends.dual_target import DualTargetBackend  # noqa: E402
+from eliza_robot.bridge.backends.mock_backend import MockBackend  # noqa: E402
+from eliza_robot.bridge.backends.mujoco_backend import MuJocoBackend  # noqa: E402
+from eliza_robot.bridge.backends.noise_injector import NoiseProfile  # noqa: E402
+from eliza_robot.bridge.protocol import CommandEnvelope, utc_now_iso  # noqa: E402
+from eliza_robot.rl.text_conditioned.policy import TextConditionedPolicy  # noqa: E402
+from eliza_robot.sim.mujoco.demo_env import DemoEnv  # noqa: E402
+from eliza_robot.sim2real.sysid import calibrate_via_sysid  # noqa: E402
 
 GATES_PASS_REPORT = "checkpoint loads, policy differentiates by text, sys-ID recovers offsets, bridge accepts commands"
 
@@ -64,9 +65,31 @@ async def _gate_training(ckpt_dir: Path) -> dict:
     return {"passed": all_ok, "results": results}
 
 
+async def _gate_training_dim(ckpt_dir: Path, output_dim: int) -> dict:
+    print(f"[gate-1] loading {ckpt_dir}/policy manifest ...")
+    p = TextConditionedPolicy(ckpt_dir)
+    proprio = np.zeros(int(p.manifest.proprio_dim or 45), dtype=np.float32)
+    if proprio.shape[0] > 5:
+        proprio[5] = 1.0
+    results = []
+    for prompt in p.active_tasks:
+        action, task = p.act(prompt, proprio)
+        results.append(
+            {
+                "prompt": prompt,
+                "matched_task": task,
+                "action_shape": list(action.shape),
+                "finite": bool(np.all(np.isfinite(action))),
+            }
+        )
+    all_ok = all(r["action_shape"] == [output_dim] and r["finite"] for r in results)
+    print(f"[gate-1] {'PASS' if all_ok else 'FAIL'} — {len(results)} prompts, all {output_dim}-D")
+    return {"passed": all_ok, "results": results}
+
+
 async def _gate_conditioning(ckpt_dir: Path) -> dict:
     """Gate 2: text input materially changes the policy output."""
-    print(f"[gate-2] conditioning differentiation...")
+    print("[gate-2] conditioning differentiation...")
     p = TextConditionedPolicy(ckpt_dir)
     proprio = np.zeros(45, dtype=np.float32)
     proprio[5] = 1.0
@@ -92,7 +115,7 @@ async def _gate_conditioning(ckpt_dir: Path) -> dict:
 
 async def _gate_sysid() -> dict:
     """Gate 3: sys-ID recovers per-joint offsets within ≤15 mrad median."""
-    print(f"[gate-3] dual-sim sys-ID calibration...")
+    print("[gate-3] dual-sim sys-ID calibration...")
     profile = NoiseProfile(rng_seed=0, deterministic_only=True)
     result = await calibrate_via_sysid(noise_profile=profile)
     truth = result.truth_offsets_rad or {}
@@ -117,7 +140,7 @@ async def _gate_sysid() -> dict:
 
 async def _gate_bridge_dual() -> dict:
     """Gate 4: DualTargetBackend accepts a programmatic command sequence."""
-    print(f"[gate-4] dual-target bridge contract...")
+    print("[gate-4] dual-target bridge contract...")
     sim_a = MuJocoBackend(
         DemoEnv(target_position=(2.0, 0.0, 0.05)), profile_id="hiwonder-ainex"
     )
@@ -145,16 +168,55 @@ async def _gate_bridge_dual() -> dict:
     return {"passed": passed, "commands_attempted": len(program), "failures": failures}
 
 
+async def _gate_asimov_bridge() -> dict:
+    from eliza_robot.asimov_1.constants import ASIMOV1_FIRMWARE_JOINT_ORDER
+    from eliza_robot.bridge.backends.asimov_mujoco import AsimovMujocoBackend
+    from eliza_robot.bridge.backends.asimov_remote import AsimovRemoteBackend
+
+    async def exercise(backend) -> dict:
+        await backend.connect()
+        failures = []
+        target = [0.0] * len(ASIMOV1_FIRMWARE_JOINT_ORDER)
+        for command, payload in (
+            ("asimov.mode", {"mode": "DAMP"}),
+            ("asimov.mode", {"mode": "STAND"}),
+            ("asimov.velocity", {"vx_mps": 0.0, "vy_mps": 0.0, "yaw_rad_s": 0.0}),
+            ("asimov.trajectory", {"positions": target, "duration": 0.05}),
+        ):
+            resp = await backend.handle_command(
+                CommandEnvelope(
+                    request_id=f"asimov-gate-{command}",
+                    timestamp=utc_now_iso(),
+                    command=command,
+                    payload=payload,
+                )
+            )
+            if not resp.ok:
+                failures.append({"command": command, "message": resp.message})
+        events = await backend.poll_events()
+        await backend.shutdown()
+        return {"backend": backend.backend_name, "passed": not failures and bool(events), "failures": failures}
+
+    mock = await exercise(AsimovRemoteBackend(mock=True))
+    mujoco = await exercise(AsimovMujocoBackend())
+    return {"passed": mock["passed"] and mujoco["passed"], "mock": mock, "mujoco": mujoco}
+
+
 async def main_async(args) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     ckpt_dir = Path(args.checkpoint)
     gates = {}
 
-    gates["g1_training"] = await _gate_training(ckpt_dir)
-    gates["g2_conditioning"] = await _gate_conditioning(ckpt_dir)
-    gates["g3_sysid"] = await _gate_sysid()
-    gates["g4_bridge_dual"] = await _gate_bridge_dual()
+    if args.profile == "asimov-1":
+        gates["g1_checkpoint_contract"] = await _gate_training_dim(ckpt_dir, 25)
+        gates["g2_conditioning"] = await _gate_conditioning(ckpt_dir)
+        gates["g3_asimov_bridge"] = await _gate_asimov_bridge()
+    else:
+        gates["g1_training"] = await _gate_training(ckpt_dir)
+        gates["g2_conditioning"] = await _gate_conditioning(ckpt_dir)
+        gates["g3_sysid"] = await _gate_sysid()
+        gates["g4_bridge_dual"] = await _gate_bridge_dual()
 
     all_pass = all(g["passed"] for g in gates.values())
     summary = {
@@ -187,6 +249,7 @@ def main() -> int:
         default=Path(__file__).resolve().parents[1] / "examples"
         / "robot-mujoco-demo" / "evidence" / "sim_validation_gate",
     )
+    parser.add_argument("--profile", default="hiwonder-ainex")
     args = parser.parse_args()
     return asyncio.run(main_async(args))
 

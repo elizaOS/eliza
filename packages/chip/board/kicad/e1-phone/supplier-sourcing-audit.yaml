@@ -16,7 +16,7 @@ selection_summary:
   device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 9.6
+    max_thickness: 11.2
   mainboard_bbox_mm:
     width: 64.0
     height: 132.0

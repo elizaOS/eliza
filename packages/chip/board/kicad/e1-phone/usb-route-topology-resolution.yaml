@@ -87,6 +87,68 @@ recommended_resolution:
     - freeze split-interconnect pinout with USB_DP/USB_DN adjacent to ground returns
     - place USB2 ESD, CC ESD, VBUS TVS, and PD controller around bottom USB-C without long stubs
     - generate post-route length/skew/impedance report and USB2 attach/ADB/fastboot bring-up logs
+usb2_si_acceptance:
+  evidence_template: board/kicad/e1-phone/usb-route-si-results-template.csv
+  required_evidence_class: physical_usb2_route_si_result
+  expected_measurement_count: 8
+  pass_status: blocked_no_usb2_route_si_results
+  measurements:
+    - id: routed_usb2_total_length_mm
+      domain: route_length
+      unit: mm
+      min: 0
+      max: 90
+      required_artifact: KiCad post-route length/skew report for USB_DP/USB_DN
+      release_blocker: true
+    - id: routed_usb2_intra_pair_skew_mm
+      domain: route_length
+      unit: mm
+      min: 0
+      max: 0.5
+      required_artifact: KiCad post-route length/skew report for USB_DP/USB_DN
+      release_blocker: true
+    - id: flex_or_pcb_diff_impedance_ohm
+      domain: impedance
+      unit: ohm
+      min: 81
+      max: 99
+      required_artifact: supplier stackup, impedance coupon, or TDR report for the selected rigid/flex path
+      release_blocker: true
+    - id: return_via_or_ground_contact_spacing_mm
+      domain: return_path
+      unit: mm
+      min: 0
+      max: 3.0
+      required_artifact: routed USB2 return-path screenshot with GND contacts flanking the split interconnect
+      release_blocker: true
+    - id: usb2_insertion_loss_240mhz_db
+      domain: signal_integrity
+      unit: dB
+      min: -6.0
+      max: 0
+      required_artifact: USB2 channel S-parameter or simulator report through connector/flex/PCB path
+      release_blocker: true
+    - id: usb2_eye_height_mv
+      domain: signal_integrity
+      unit: mV
+      min: 100
+      max: ''
+      required_artifact: USB2 high-speed eye or equivalent compliance prescan capture
+      release_blocker: true
+    - id: usb_attach_adb_fastboot_pass_count
+      domain: bringup
+      unit: count
+      min: 5
+      max: ''
+      required_artifact: repeated attach, ADB, and fastboot log set on EVT units
+      release_blocker: true
+    - id: routed_usb_enclosure_clearance_interference_count
+      domain: mechanical_clearance
+      unit: count
+      min: 0
+      max: 0
+      required_artifact: routed-board STEP reimport and enclosure clearance report for USB/flex geometry
+      release_blocker: true
 cross_checks:
   current_length_violation_matches_route_corridor: true
   usb_pair_constraint_matches_routing_constraints: true

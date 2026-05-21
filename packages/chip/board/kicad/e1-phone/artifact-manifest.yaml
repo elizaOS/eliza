@@ -10,7 +10,7 @@ claim_boundary: >
 design_target:
   display_anchor: 5.5_in_1080x1920_MIPI_LCM_CTP
   board_bbox_mm: {width: 64.0, height: 132.0}
-  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 9.6}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.2}
   battery_window_mm: {width: 64.0, height: 87.0}
   usb_c_ports: 1
   side_buttons: [power, volume_up, volume_down]
@@ -42,14 +42,17 @@ current_artifacts:
     - board/kicad/e1-phone/audio-acoustic-closure.yaml
     - board/kicad/e1-phone/pinout-footprint-freeze.yaml
     - board/kicad/e1-phone/rf-connectivity-closure.yaml
+    - board/kicad/e1-phone/rf-antenna-coexistence-closure.yaml
     - board/kicad/e1-phone/radio-module-integration.yaml
     - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
     - board/kicad/e1-phone/module-host-integration-acceptance-checklist.yaml
+    - board/kicad/e1-phone/module-rf-pinout-execution.yaml
     - board/kicad/e1-phone/routing-constraints.yaml
     - board/kicad/e1-phone/route-feasibility-density.yaml
     - board/kicad/e1-phone/evt1-routing-work-package.yaml
     - board/kicad/e1-phone/route-corridor-execution-package.yaml
     - board/kicad/e1-phone/usb-route-topology-resolution.yaml
+    - board/kicad/e1-phone/usb-route-si-results-template.csv
     - board/kicad/e1-phone/routing-acceptance-checklist.yaml
     - board/kicad/e1-phone/supplier-sourcing-audit.yaml
     - board/kicad/e1-phone/supplier-rfq-intake.yaml
@@ -69,14 +72,18 @@ current_artifacts:
     - board/kicad/e1-phone/live-utilization-audit.yaml
     - board/kicad/e1-phone/component-envelope-fit-audit.yaml
     - board/kicad/e1-phone/placement-repack-candidate.yaml
+    - board/kicad/e1-phone/layout-optimization-execution.yaml
     - board/kicad/e1-phone/component-height-step-integration.yaml
     - board/kicad/e1-phone/pcb-implementation-audit.yaml
     - board/kicad/e1-phone/end-to-end-readiness.yaml
     - board/kicad/e1-phone/manufacturing-closure.yaml
     - board/kicad/e1-phone/production-readiness.yaml
+    - board/kicad/e1-phone/production-factory-release-execution.yaml
     - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
+    - board/kicad/e1-phone/factory-probe-map.yaml
     - board/kicad/e1-phone/procurement-readiness.yaml
     - board/kicad/e1-phone/routed-release-plan.yaml
+    - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
     - board/kicad/e1-phone/mechanical-overlay.yaml
   package_bindings:
     - package/display/v0-dsi-720x1280.yaml
@@ -144,7 +151,7 @@ release_gates:
     required_evidence:
       - STEP assembly with board, display, battery, camera modules, USB-C,
         side buttons, speaker chambers, antennas, and midframe/rear cover.
-      - Tolerance stack proving the 9.6 mm thickness target.
+      - Tolerance stack proving the 11.2 mm flush-back thickness target.
       - USB-C insertion load and side-button load path review.
   power_thermal:
     status: missing

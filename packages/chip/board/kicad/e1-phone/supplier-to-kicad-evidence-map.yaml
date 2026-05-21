@@ -390,11 +390,11 @@ evidence_records:
     symbol_footprint_domain: power_battery_pmic_thermal
     freeze_record: battery_pack_connector
     package_binding: package/battery/e1-phone-17p3wh-pack.yaml
-    primary_candidate: 4500mAh_17p3Wh_64x87x5p3mm_pouch_class
+    primary_candidate: 5830mAh_22p45Wh_64x87x5p7mm_pouch_class
     source_verification_group: battery
     public_source_shortlist: []
     rfq_basis_traceability:
-      - Alibaba and Made-in-China 4500 mAh pouch-class public listings
+      - Alibaba and Made-in-China custom 5830 mAh thick pouch quote pools with LP446487 baseline outline evidence
     rfq_transmittal_draft:
       draft_id: e1_phone_battery_pack_rfq_2026-05-21
       status: draft_not_sent_not_supplier_evidence

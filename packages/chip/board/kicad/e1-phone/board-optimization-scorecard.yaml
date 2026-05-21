@@ -35,7 +35,7 @@ optimization_target:
   selected_battery_reference_mm:
     width: 64.0
     height: 87.0
-    thickness: 4.4
+    thickness: 5.7
   target_stackup: 10_layer_0p8_mm_hdi
 scorecard:
   display_fit:
@@ -89,12 +89,12 @@ scorecard:
     blocker_to_release: supplier_footprints_escape_density_via_count_and_trial_route_missing
   power_efficiency:
     status: blocked_requires_schematic_pi_and_measurements
-    battery_energy_wh: 17.3
+    battery_energy_wh: 22.45
     pd_power_margin_w: 13.3
     charge_path_peak_efficiency_pct_min: 92
     buck_peak_efficiency_pct_min: 88
-    video_call_hours_at_target: 5.41
-    sustained_ai_hours_at_skin_limited_budget: 4.33
+    video_call_hours_at_target: 7.02
+    sustained_ai_hours_at_skin_limited_budget: 5.61
     blocker_to_release: rail_load_step_charge_cycle_and_regulator_efficiency_logs_missing
   thermal:
     status: blocked_requires_routed_board_and_thermal_soak
@@ -143,7 +143,7 @@ optimization_decision:
   current_conclusion: keep_78p0_x_153p6_device_and_64p0_x_132p0_split_board_for_evt1_trial_route
   rationale:
     - selected_5p5_display_fits_current_envelope_with_0p9mm_width_and_1p83mm_height_clearance
-    - 64x87mm_battery_window_matches_selected_17p3Wh_pack_class
+    - 64x87mm_battery_window_matches_selected_22p45Wh_pack_class
     - top_bottom_islands_preserve_full_width_battery_capacity_and_bottom_usb_audio_region
     - route_density_is_high_but_explicitly_gated_by_trial_route_and_supplier_footprints
   do_not_reduce_below_current_envelope_until:

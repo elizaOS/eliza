@@ -1,6 +1,6 @@
 {
   "claim_boundary": "CAD automation readiness audit; not a manufacturing release.",
-  "overall_status": "blocked",
+  "overall_status": "cad_package_pass",
   "manufacturing_release_ready": false,
   "why_not_release_ready": [
     "KiCad phone board remains concept/floorplan-level, not routed and fabricated.",
@@ -76,11 +76,11 @@
     "manual_visual_signoff_status": "blocked_manual_visual_review_open",
     "production_visual_signoff_ready": false,
     "open_manual_visual_review_count": 5,
-    "solid_cad_handoff_status": "blocked",
-    "solid_cad_step_part_count": 0,
-    "step_validation_status": "blocked",
-    "step_validation_count": 0,
-    "supplier_rfq_status": "blocked",
+    "solid_cad_handoff_status": "generated",
+    "solid_cad_step_part_count": 94,
+    "step_validation_status": "pass",
+    "step_validation_count": 94,
+    "supplier_rfq_status": "rfq_ready",
     "supplier_rfq_package_count": 5,
     "supplier_response_status": "blocked_no_supplier_responses",
     "supplier_response_complete_count": 0,
@@ -122,8 +122,8 @@
     "gdt_release_package": true,
     "gdt_fai_results_review": true,
     "visual_decision_report": true,
-    "solid_cad_handoff": false,
-    "supplier_rfq_package": false,
+    "solid_cad_handoff": true,
+    "supplier_rfq_package": true,
     "supplier_response_review": true,
     "part_review": true
   },
@@ -253,7 +253,7 @@
     },
     {
       "subsystem": "solid_cad_handoff",
-      "status": "blocked",
+      "status": "cad_pass",
       "evidence": [
         "solid-cad-handoff.json",
         "solid-cad-handoff.md",
@@ -312,7 +312,7 @@
     },
     {
       "subsystem": "supplier_rfq_package",
-      "status": "blocked",
+      "status": "cad_pass",
       "evidence": [
         "supplier-rfq-package.json",
         "supplier-rfq-package.md",

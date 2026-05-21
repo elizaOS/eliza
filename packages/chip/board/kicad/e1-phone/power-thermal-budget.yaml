@@ -20,15 +20,15 @@ source_files:
   - docs/board/power-tree.md
   - docs/board/pdn-budget.md
 battery_target:
-  capacity_mah: 4500
+  capacity_mah: 5830
   nominal_voltage_v: 3.85
-  nominal_energy_wh: 17.3
-  selected_pack_class: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
+  nominal_energy_wh: 22.45
+  selected_pack_class: LiPol_LP576487_3p85V_5830mAh_22p45Wh_PCM_NTC_JST_SHR_03V_class
   public_reference_dimensions_mm:
     width: 64.0
     height: 87.0
-    thickness: 4.4
-  battery_window_fit_status: sourced_17p3wh_pack_matches_64x87_concept_cavity_pending_supplier_and_routed_board_evidence
+    thickness: 5.7
+  battery_window_fit_status: sourced_22p45wh_pack_matches_64x87x5p7_concept_cavity_pending_supplier_and_routed_board_evidence
   required_missing_parts:
     - supplier_quote_and_sample_for_selected_pack_class
     - fuel_gauge_schematic_and_layout
@@ -199,11 +199,11 @@ voltage_domains_present:
   - VBUS
   - VDD_AMP_3V3
   - VDD_AUDIO_3V3
-runtime_estimates_from_17p3wh_target:
-  video_call_hours_at_target: 5.41
-  sustained_ai_hours_at_skin_limited_budget: 4.33
-  idle_display_on_hours_at_target: 19.22
-  display_off_idle_days_at_target: 2.88
+runtime_estimates_from_22p45wh_target:
+  video_call_hours_at_target: 7.02
+  sustained_ai_hours_at_skin_limited_budget: 5.61
+  idle_display_on_hours_at_target: 24.94
+  display_off_idle_days_at_target: 3.74
 power_targets:
   suspend_current_ma_max: 5
   idle_display_off_w_max: 0.25

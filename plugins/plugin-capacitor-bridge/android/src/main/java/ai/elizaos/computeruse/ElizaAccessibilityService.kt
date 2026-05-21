@@ -1,11 +1,11 @@
 // TODO: validate on device — checklist in ANDROID_CONSTRAINTS.md
 //
-// MiladyAccessibilityService — cross-app input dispatch + element tree snapshot.
+// ElizaAccessibilityService — cross-app input dispatch + element tree snapshot.
 //
 // Requires:
 //   - AccessibilityService declared in AndroidManifest.xml with BIND_ACCESSIBILITY_SERVICE
 //   - accessibility_service_config.xml in res/xml/
-//   - User must manually enable in Settings > Accessibility > Milady
+//   - User must manually enable in Settings > Accessibility > Eliza
 //
 // MARK: - Contract (mirrors android-bridge.ts getAccessibilityTree / dispatchGesture)
 //
@@ -29,12 +29,12 @@ import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONArray
 import org.json.JSONObject
 
-class MiladyAccessibilityService : AccessibilityService() {
+class ElizaAccessibilityService : AccessibilityService() {
 
     companion object {
         // Singleton ref — Capacitor plugin reads this to check if the service is running.
         @Volatile
-        var instance: MiladyAccessibilityService? = null
+        var instance: ElizaAccessibilityService? = null
             private set
     }
 

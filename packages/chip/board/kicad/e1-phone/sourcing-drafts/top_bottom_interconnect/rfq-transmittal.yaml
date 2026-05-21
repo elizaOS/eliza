@@ -13,7 +13,19 @@ draft:
   source_basis:
     - preliminary top/bottom interconnect binding
   verified_public_source_ids: []
-  recipient_candidates: []
+  recipient_candidates:
+    - supplier: Hirose
+      candidate: BM28 hybrid power/signal connector family
+      url: https://www.hirose.com/product/series/BM28?lang=en
+      public_page_status: public_package_binding_observed_2026_05_20
+    - supplier: Hirose
+      candidate: FH58 high-retention FPC connector alternate
+      url: https://www.hirose.com/product/series/FH58
+      public_page_status: public_package_binding_observed_2026_05_20
+    - supplier: Molex
+      candidate: SlimStack ACB6 Plus board-to-board fallback family
+      url: https://www.molex.com/en-us/products/connectors/board-to-board-connectors/slimstack-connectors.html
+      public_page_status: public_package_binding_observed_2026_05_20
   request:
     quote_quantities:
       - 10

@@ -54,6 +54,8 @@ EXPECTATIONS = [
     # Rear camera: -Z face (back)
     {"part": "rear_camera_lens_window", "expected_normal": "-Z", "kind": "camera_lens"},
     {"part": "rear_camera_module",      "expected_normal": "-Z", "kind": "camera_module"},
+    # Rear torch / flash: window faces -Z (back)
+    {"part": "rear_flash_led_window",   "expected_normal": "-Z", "kind": "flash_window"},
     # Front camera: +Z face (front), top
     {"part": "front_camera_under_glass", "expected_normal": "+Z",
      "expected_side": "+Y", "kind": "front_camera"},
@@ -204,6 +206,7 @@ def main() -> int:
 
     out = {
         "schema": "eliza.e1_phone_button_orientation.v1",
+        "evidence_class": "concept_envelope_bbox_orientation_result",
         "date": DATE,
         "reviewer": REVIEWER,
         "enclosure_bbox_mm": [round(v, 3) for v in enc_bbox],

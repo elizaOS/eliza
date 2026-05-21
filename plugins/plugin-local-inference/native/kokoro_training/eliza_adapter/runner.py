@@ -1,4 +1,4 @@
-"""Drive the vendored EnglishTrainer through the milady control flow.
+"""Drive the vendored EnglishTrainer through the eliza control flow.
 
 This module is the only place that owns:
   - sys.path injection for the vendor (vendor's relative imports
@@ -22,7 +22,7 @@ from typing import Any
 from .config import VendorConfigPlan, build_vendor_config
 from .environment import VENDOR_ROOT, probe_vendor_environment
 
-log = logging.getLogger("kokoro.milady_adapter")
+log = logging.getLogger("kokoro.eliza_adapter")
 
 
 def _ensure_vendor_on_path() -> None:
@@ -65,7 +65,7 @@ def _replace_optimizer_with_apollo(trainer: Any, plan: VendorConfigPlan) -> None
         )
     except ImportError as exc:
         raise SystemExit(
-            "milady_adapter requires the elizaOS APOLLO factory at "
+            "eliza_adapter requires the elizaOS APOLLO factory at "
             "packages/training/scripts/training/optimizer.py. The "
             "outer caller must put packages/training/scripts on "
             "sys.path. Inner error: " + str(exc),
@@ -112,7 +112,7 @@ def run_full_finetune(
     env = probe_vendor_environment()
     if not env.available:
         raise SystemExit(
-            "milady_adapter: vendored kokoro_training trainer needs "
+            "eliza_adapter: vendored kokoro_training trainer needs "
             f"these deps to run: {', '.join(env.missing)}. Install via "
             "`pip install -r plugins/plugin-local-inference/native/kokoro_training/requirements.txt`",
         )

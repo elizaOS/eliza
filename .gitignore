@@ -766,5 +766,6 @@ plugins/plugin-local-inference/native/stable-diffusion.cpp/
 # Generated chip mechanical render frames.
 packages/chip/mechanical/e1-phone/out/e1-phone-exploded-frames/
 
-# Zig build cache.
+# Zig build cache + compiled output.
 **/.zig-cache/
+**/zig-out/

@@ -10,7 +10,7 @@ coordinate_system:
   origin: top_left_of_64x132_mainboard_front_view
   units: mm
   board_bbox: {x: 0.0, y: 0.0, width: 64.0, height: 132.0}
-  device_envelope_reference: {width: 78.0, height: 153.6, max_thickness: 9.6}
+  device_envelope_reference: {width: 78.0, height: 153.6, max_thickness: 11.2}
 
 keepouts:
   - id: battery_window

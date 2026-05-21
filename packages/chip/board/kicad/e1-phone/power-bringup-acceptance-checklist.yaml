@@ -16,9 +16,9 @@ source_artifacts:
   - package/pmic/da9063.yaml
   - package/battery/e1-phone-17p3wh-pack.yaml
 power_summary:
-  battery_pack_class: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
-  battery_energy_wh: 17.3
-  battery_window_fit_status: sourced_17p3wh_pack_matches_64x87_concept_cavity_pending_supplier_and_routed_board_evidence
+  battery_pack_class: LiPol_LP576487_3p85V_5830mAh_22p45Wh_PCM_NTC_JST_SHR_03V_class
+  battery_energy_wh: 22.45
+  battery_window_fit_status: sourced_22p45wh_pack_matches_64x87x5p7_concept_cavity_pending_supplier_and_routed_board_evidence
   battery_layout_status: blocked_routed_split_board_and_supplier_pack_evidence_required
   usb_pd_controller: TPS65987DDH
   usb_pd_binding_status: planning_binding_no_bonded_pins_no_fabricated_board
@@ -32,7 +32,7 @@ power_summary:
     - 12v_2p25a
   pd_power_margin_w: 13.3
   max_charge_current_a: 3.0
-  runtime_video_call_hours_target: 5.41
+  runtime_video_call_hours_target: 7.02
   skin_limit_c: 43
   rail_test_points_required:
     - VBUS

@@ -39,20 +39,21 @@ enclosure_fit_policy:
   requires_all_clearance_cases_measured: true
   requires_no_boolean_interference: true
   requires_physical_fit_and_functional_logs: true
-  expected_clearance_case_count: 10
+  expected_clearance_case_count: 11
   complete_clearance_result_count: 0
 current_blockers:
   production_step_files: []
   missing_or_incomplete_clearance_cases:
     - battery_to_pcb_islands
+    - haptic_to_battery
+    - split_interconnect_connectors_on_pcb_islands
+    - usb_shell_to_external_aperture
     - bottom_mic_to_usb
     - front_camera_to_earpiece
     - haptic_to_pcb_islands
     - rear_camera_to_battery
-    - split_interconnect_connectors_on_pcb_islands
     - split_interconnect_flex_to_battery_edge
     - split_interconnect_flex_within_side_rail
-    - usb_shell_to_external_aperture
     - usb_to_bottom_speaker
   required_height_models:
     - usb_c_receptacle

@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   getElizaNamespace,
-  migrateLegacyStateDir,
   readEnv,
   resolveOAuthDir,
   resolveStateDir,
@@ -10,18 +9,13 @@ import {
 } from "@elizaos/core";
 
 const CONFIG_PATH_CANONICAL_KEY = "ELIZA_CONFIG_PATH";
-const CONFIG_PATH_LEGACY_KEYS = ["MILADY_CONFIG_PATH"] as const;
-
-/** Legacy on-disk config filename, read (but never written) for back-compat. */
-const LEGACY_CONFIG_FILENAME = "milady.json";
 
 function readEnvOverride(env: NodeJS.ProcessEnv): string | undefined {
-  return readEnv(CONFIG_PATH_CANONICAL_KEY, CONFIG_PATH_LEGACY_KEYS, { env });
+  return readEnv(CONFIG_PATH_CANONICAL_KEY, [], { env });
 }
 
 export {
   getElizaNamespace,
-  migrateLegacyStateDir,
   resolveOAuthDir,
   resolveStateDir,
   resolveUserPath,
@@ -35,8 +29,6 @@ export {
 function configFilenameCandidates(namespace: string): string[] {
   const candidates = [`${namespace}.json`];
   if (namespace !== "eliza") candidates.push("eliza.json");
-  // Pre-rename installs persisted to `milady.json` — read it if nothing newer exists.
-  candidates.push(LEGACY_CONFIG_FILENAME);
   return candidates;
 }
 
@@ -99,8 +91,7 @@ const STEWARD_CREDENTIALS_FILENAME = "steward-credentials.json";
 
 /**
  * Canonical path to the persisted Steward credentials file.
- * Honors the `ELIZA_STATE_DIR` (legacy `MILADY_STATE_DIR`) > `~/.${namespace}`
- * resolver.
+ * Honors the `ELIZA_STATE_DIR` > `~/.${namespace}` resolver.
  */
 export function resolveStewardCredentialsPath(
   env: NodeJS.ProcessEnv = process.env,

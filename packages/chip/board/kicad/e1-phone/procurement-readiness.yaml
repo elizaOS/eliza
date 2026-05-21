@@ -89,8 +89,8 @@ line_items:
     procurement_status: blocked_charge_policy_and_thermal_review_required
     required_supplier_artifacts: [datasheet, reference_schematic, thermal_layout_guidelines, jeita_policy, battery_ntc_compatibility]
   - function: battery_pack
-    selected_primary: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
-    alternates: [Made_in_China_736072_4500mAh_LiPo_family, Alibaba_custom_3p85V_4500mAh_pack_quote_pool]
+    selected_primary: LiPol_LP576487_3p85V_5830mAh_22p45Wh_PCM_NTC_JST_SHR_03V_class
+    alternates: [LiPol_LP446487_4500mAh_baseline_outline_family, Made_in_China_custom_5830mAh_LiPo_family, Alibaba_custom_3p85V_5830mAh_pack_quote_pool]
     risk_class: safety_logistics_high
     procurement_status: blocked_pack_sample_quote_safety_docs_and_cavity_fit_required
     required_supplier_artifacts: [dimensioned_pack_drawing, connector_pinout, ntc_curve, pcm_limits, max_charge_discharge_current, UN38_3_summary, MSDS, battery_cavity_fit_decision]

@@ -1,0 +1,407 @@
+schema: eliza.e1_phone_layout_optimization_execution.v1
+status: blocked_concept_layout_optimized_requires_supplier_footprints_trial_route_measurements_and_routed_step
+date: '2026-05-21'
+claim_boundary: Execution package for preserving the optimized E1 phone size, placement,
+  route-density, RF, power, thermal, factory-test, and enclosure constraints through
+  EVT1 routing. This is not a routed PCB, not supplier footprint evidence, not SI/PI/RF/thermal
+  signoff, and not enclosure release.
+source_artifacts:
+  - board/kicad/e1-phone/board-optimization-scorecard.yaml
+  - board/kicad/e1-phone/live-utilization-audit.yaml
+  - board/kicad/e1-phone/component-envelope-fit-audit.yaml
+  - board/kicad/e1-phone/placement-repack-candidate.yaml
+  - board/kicad/e1-phone/route-feasibility-density.yaml
+  - board/kicad/e1-phone/routing-acceptance-checklist.yaml
+  - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/rf-connectivity-closure.yaml
+  - board/kicad/e1-phone/power-thermal-budget.yaml
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+upstream_status:
+  board_optimization_scorecard: blocked_concept_optimized_but_not_routed_or_enclosure_ready
+  live_utilization_audit: blocked_live_courtyard_utilization_not_routed_or_supplier_ready
+  component_envelope_fit_audit: blocked_component_envelopes_require_supplier_drawings_or_region_updates_before_routing
+  placement_repack_candidate: active_matrix_matches_overlap_free_repack_candidate_not_routed
+  route_feasibility_density: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
+  routing_acceptance: blocked_routing_acceptance_requires_supplier_footprints_trial_route_drc_and_outputs
+  routed_release_plan: blocked_routed_release_requires_real_route_and_supplier_outputs
+  display_fit: mechanical_fit_baseline_not_step_not_fabrication_ready
+  rf_connectivity: planning_rf_connectivity_cross_checked_not_measured
+  power_thermal: blocked_power_thermal_requires_real_schematic_and_measurement
+  enclosure_fit_execution: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+locked_concept_geometry:
+  device_envelope_mm:
+    width: 78.0
+    height: 153.6
+    max_thickness: 9.6
+  board_bbox_mm:
+    width: 64.0
+    height: 132.0
+    area_mm2: 8448.0
+  battery_window_mm:
+    x: 0.0
+    y: 29.5
+    width: 64.0
+    height: 87.0
+    area_mm2: 5568.0
+  display_outline_mm:
+    width: 77.1
+    height: 151.77
+    thickness: 3.39
+  display_clearance_mm:
+    width_clearance_mm: 0.9
+    height_clearance_mm: 1.83
+  physical_pcb_island_area_mm2: 2816.0
+layout_pressure_closure:
+  concept_route_shield_test_reserve_pct: 10.6
+  target_unallocated_pct_after_layout:
+    min_pct: 10.0
+    max_pct: 18.0
+  post_footprint_reserve_target_pct_range:
+    min: 35.0
+    max: 50.0
+  live_courtyard_area_inside_physical_islands_pct: 68.21
+  battery_window_intrusion_count: 0
+  active_region_overlap_count: 0
+  known_envelope_blockers_count: 1
+  status: blocked_until_supplier_footprints_routed_utilization_escape_density_and_drc_exist
+performance_constraint_closure:
+  route_density:
+    status: blocked_high_pressure_trial_route_required
+    differential_pair_count_required: 24
+    high_speed_domains:
+      usb2_pairs: 2
+      mipi_dsi_pairs: 5
+      mipi_csi_clock_pairs: 2
+      mipi_csi_data_pairs: 6
+      pcie_pairs: 4
+      lpddr_clock_or_strobe_pairs: 2
+      ufs_pairs: 3
+    single_ended_bus_count_required: 11
+    rf_feed_count_required: 5
+    factory_power_test_points_required: 8
+    split_interconnect_min_contacts: 49
+    declared_concept_net_count: 180
+    assigned_concept_pad_net_count: 519
+    blocker_to_release: supplier_footprints_escape_density_via_count_and_trial_route_missing
+  power_efficiency:
+    status: blocked_requires_schematic_pi_and_measurements
+    battery_energy_wh: 22.45
+    pd_power_margin_w: 13.3
+    charge_path_peak_efficiency_pct_min: 92
+    buck_peak_efficiency_pct_min: 88
+    video_call_hours_at_target: 7.02
+    sustained_ai_hours_at_skin_limited_budget: 5.61
+    blocker_to_release: rail_load_step_charge_cycle_and_regulator_efficiency_logs_missing
+  thermal:
+    status: blocked_requires_routed_board_and_thermal_soak
+    skin_limit_c: 43
+    sustained_ai_workload_skin_limited_w: 4.0
+    hotspot_risks:
+      - soc_lpddr_ufs_cluster
+      - pmic_charger_power_path
+      - redcap_modem_tx_bursts
+      - display_bias_and_backlight
+    blocker_to_release: routed_copper_graphite_gap_pad_and_30_min_soak_evidence_missing
+  rf_connectivity:
+    status: blocked_requires_vendor_layout_and_measurements
+    cellular_module: Quectel_RG255C_or_RM255C_5G_RedCap
+    wifi_bt_module: Murata_LBEE5XV2EA_802_Type_2EA
+    rf_feed_count_required: 5
+    required_measurements:
+      - VNA S11/S21 on every antenna feed with EVT0 conducted access
+      - conducted cellular and Wi-Fi output power and sensitivity
+      - radiated pre-scan for FCC/CE/RED and module grant conditions
+      - coexistence test for Wi-Fi/Bluetooth/cellular/GNSS
+      - SAR and RF exposure pre-scan in final enclosure plastics
+      - carrier/PTCRB/GCF plan for selected region SKU
+    blocker_to_release: antenna_vendor_review_matching_measurements_and_certification_scope_missing
+  factory_test_access:
+    status: blocked_requires_routed_probe_coordinates
+    probe_domains: 9
+    power_test_points_required:
+      - VBUS
+      - VBAT
+      - SYS
+      - AON_1V8
+      - IO_1V8
+      - RF_VBAT
+      - CAM_AVDD_2V8
+      - DISP_AVDD_5V5
+    blocker_to_release: probe_coordinates_limits_fixture_and_first_article_transcript_missing
+component_fit_policy:
+  wifi_bluetooth_module:
+    source: package/wifi/murata-type-2ea-wifi6e.yaml
+    known_envelope_mm:
+      width: 12.5
+      height: 9.4
+      thickness: 1.2
+    placement_refdes_group: U_WIFI_BT
+    placement_region_mm:
+      x: 3.0
+      y: 18.0
+      width: 14.0
+      height: 10.0
+    fit:
+      fits_width: true
+      fits_height: true
+      width_shortfall_mm: 0.0
+      height_shortfall_mm: 0.0
+      fits_xy: true
+    status: passes_known_module_outline_pending_supplier_land_pattern_and_rf_keepout
+    required_action: rerun antenna, ground, keepout, and supplier reference-layout
+      checks before EVT1 routing
+  display_module:
+    source: package/display/v0-dsi-720x1280.yaml
+    known_envelope_mm:
+      width: 77.1
+      height: 151.77
+      thickness: 3.39
+    device_envelope_mm:
+      width: 78.0
+      height: 153.6
+      thickness: 9.6
+    fit:
+      fits_width: true
+      fits_height: true
+      width_shortfall_mm: 0.0
+      height_shortfall_mm: 0.0
+      fits_xy: true
+    status: passes_device_envelope_outline_only_pending_fpc_connector_and_stack
+    required_action: obtain final display/touch FPC drawing, connector land pattern,
+      and cover-glass adhesive stack
+  battery_pack:
+    source: package/battery/e1-phone-17p3wh-pack.yaml
+    known_envelope_mm:
+      width: 64.0
+      height: 87.0
+      thickness: 5.7
+    battery_window_mm:
+      x: 0.0
+      y: 29.5
+      width: 64.0
+      height: 87.0
+    fit:
+      fits_width: true
+      fits_height: true
+      width_shortfall_mm: 0.0
+      height_shortfall_mm: 0.0
+      fits_xy: true
+    status: passes_public_outline_only_pending_swelling_tail_pcm_and_supplier_step
+    required_action: replace public outline with supplier swelling, PCM, tab, connector,
+      and tolerance drawing before enclosure release
+  side_button_primary_switch:
+    source: package/human-interface/side-buttons.yaml
+    known_envelope_mm:
+      width: 3.5
+      height: 2.9
+      thickness: 1.35
+    placement_refdes_group: SW_POWER_VOL
+    placement_region_mm:
+      x: 18.0
+      y: 26.0
+      width: 12.0
+      height: 3.0
+    fit:
+      fits_width: true
+      fits_height: true
+      width_shortfall_mm: 0.0
+      height_shortfall_mm: 0.0
+      fits_xy: true
+    status: single_switch_outline_fits_aggregate_region_but_flex_actuator_stack_unknown
+    required_action: define side-key flex, switch centerlines, actuator force path,
+      and enclosure rib datum
+  front_camera_alternate_junde:
+    source: package/camera/oem-mipi-csi-modules.yaml
+    known_envelope_mm:
+      width: 25.0
+      height: 24.0
+    placement_refdes_group: J_CAM0_CAM1
+    placement_region_mm:
+      x: 45.0
+      y: 12.0
+      width: 17.0
+      height: 13.0
+    fit:
+      fits_width: false
+      fits_height: false
+      width_shortfall_mm: 8.0
+      height_shortfall_mm: 11.0
+      fits_xy: false
+    status: blocked_alternate_exceeds_current_camera_connector_escape_region
+    required_action: reject this alternate or widen the camera bump/display connector
+      stack before locking the camera FPC and lens-window datum
+  front_and_rear_camera_primary:
+    source: package/camera/oem-mipi-csi-modules.yaml
+    known_envelope_mm: unknown_supplier_drawing_required
+    placement_refdes_group: J_CAM0_CAM1
+    placement_region_mm:
+      x: 45.0
+      y: 12.0
+      width: 17.0
+      height: 13.0
+    status: blocked_primary_camera_xy_z_stack_unknown
+    required_action: request signed module XY, z-height, FPC tail, connector, and
+      lens-axis drawings for both cameras
+placement_repack_policy:
+  candidate_regions_mm:
+    U_CELL:
+      x: 3.0
+      y: 3.0
+      width: 14.0
+      height: 14.0
+    U_WIFI_BT:
+      x: 3.0
+      y: 18.0
+      width: 14.0
+      height: 10.0
+    U_SOC_LPDDR_UFS:
+      x: 18.0
+      y: 3.0
+      width: 25.0
+      height: 14.0
+    U_PMIC_CHARGER:
+      x: 18.0
+      y: 18.0
+      width: 13.0
+      height: 8.0
+    SW_POWER_VOL:
+      x: 18.0
+      y: 26.0
+      width: 12.0
+      height: 3.0
+    J_BATTERY:
+      x: 31.0
+      y: 27.0
+      width: 12.0
+      height: 2.0
+    J_DISPLAY_TOUCH:
+      x: 45.0
+      y: 3.0
+      width: 17.0
+      height: 8.0
+    J_CAM0_CAM1:
+      x: 45.0
+      y: 12.0
+      width: 17.0
+      height: 13.0
+    J_TOP_BOTTOM_FLEX_TOP:
+      x: 46.0
+      y: 26.0
+      width: 16.0
+      height: 3.0
+    J_TOP_BOTTOM_FLEX_BOTTOM:
+      x: 46.0
+      y: 117.0
+      width: 16.0
+      height: 3.0
+    U_AUDIO_SPK_MIC:
+      x: 3.0
+      y: 120.0
+      width: 22.0
+      height: 8.0
+    J_USB_C:
+      x: 26.0
+      y: 126.0
+      width: 16.0
+      height: 6.0
+  battery_window_audit:
+    battery_window_mm:
+      x: 0.0
+      y: 29.5
+      width: 64.0
+      height: 87.0
+    candidate_intrusion_count: 0
+    candidate_intruding_regions: []
+  region_semantics_changes_required:
+    - refdes_group: J_CAM0_CAM1
+      change: treat active PCB region as camera FPC connector/escape area, not full
+        module body
+      reason: the current shared top-right area cannot fit the 25 x 24 mm Junde alternate
+        plus display connector and top flex
+    - refdes_group: U_AUDIO_SPK_MIC
+      change: split the current broad audio/acoustic strip into explicit bottom-left
+        audio and separate USB/flex zones
+      reason: a single 57 x 8 mm strip overlaps USB-C and bottom split-interconnect
+        regions
+    - refdes_group: SW_POWER_VOL
+      change: route side keys through a short side-key flex tail from the top island
+        instead of consuming the left RF edge
+      reason: the known Wi-Fi/Bluetooth module needs the lower-left top-island area
+        without overlapping cellular or buttons
+  required_before_routed_release:
+    - obtain primary front/rear camera XY and z-height drawings
+    - rerun RF antenna keepout and cellular/Wi-Fi coexistence placement with supplier
+      reference layouts
+    - rerun routed STEP/enclosure clearance once supplier 3D models are available
+routed_release_output_dependencies:
+  - id: pcb_drc_report
+    expected_path: board/kicad/e1-phone/production/reports/drc.json
+    present: false
+    release_required: true
+    blocker: PCB has no routed copper, filled zones, or DRC evidence
+  - id: routed_kicad_pcb
+    expected_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    present: false
+    release_required: true
+    blocker: current KiCad PCB is a concept placeholder scaffold
+  - id: filled_zones
+    expected_path: board/kicad/e1-phone/production/reports/zone-fill.json
+    present: false
+    release_required: true
+    blocker: no copper zones are present in the current board state
+  - id: enclosure_clearance_report_using_routed_step
+    expected_path: mechanical/e1-phone/review/routed-board-clearance.json
+    present: false
+    release_required: true
+    blocker: current enclosure fit uses concept CAD, not routed-board STEP with final
+      component heights
+  - id: si_pi_reports
+    expected_path: board/kicad/e1-phone/production/reports/si-pi
+    present: false
+    release_required: true
+    blocker: USB, MIPI, PCIe, LPDDR, UFS, power-rail, and return-path reports missing
+  - id: rf_reports
+    expected_path: board/kicad/e1-phone/production/reports/rf
+    present: false
+    release_required: true
+    blocker: antenna matching, conducted, coexistence, GNSS, and SAR evidence missing
+  - id: power_thermal_measurements
+    expected_path: board/kicad/e1-phone/production/reports/power-thermal
+    present: false
+    release_required: true
+    blocker: rail sequencing, load-step, charge, discharge, and thermal measurements
+      missing
+  - id: factory_test_limits
+    expected_path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    present: false
+    release_required: true
+    blocker: factory limits for rails, USB-C, radios, display, cameras, audio, buttons,
+      and split interconnect missing
+cross_checks:
+  scorecard_geometry_matches_display_fit: true
+  live_utilization_matches_scorecard_pressure: true
+  route_density_matches_feasibility: true
+  repack_candidate_overlap_free_and_matches_active_matrix: true
+  battery_window_has_no_live_or_candidate_intrusions: true
+  junde_camera_alternate_remains_rejected: true
+  wifi_and_side_button_known_outlines_fit_regions: true
+  release_outputs_all_blocked: true
+release_blockers:
+  - supplier footprints, courtyards, component heights, and STEP models are missing
+  - routed courtyard utilization, escape-density, via-count, and DRC reports are missing
+  - screen/camera connector and primary camera XY/Z supplier drawings are missing
+  - power efficiency, thermal soak, RF, coexistence, SAR, and factory measurements
+    are missing
+  - routed board STEP and enclosure clearance rerun are missing
+forbidden_claims:
+  - board_size_optimized_final
+  - layout_release_ready
+  - route_feasible
+  - wasted_space_final
+  - power_efficient
+  - thermal_closed
+  - rf_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

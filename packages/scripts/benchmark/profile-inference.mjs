@@ -63,7 +63,7 @@ function parseArgs(argv) {
   const out = {
     target: "http://localhost:31337",
     config: null,
-    token: process.env.MILADY_API_TOKEN ?? process.env.ELIZA_API_TOKEN ?? null,
+    token: process.env.ELIZA_API_TOKEN ?? null,
     out: null,
     streaming: true,
     loadTimeoutMs: 120_000,
@@ -134,8 +134,8 @@ Options:
   --target <url>            Agent API base (default http://localhost:31337)
   --config <path>           Profiling matrix JSON
                             (default scripts/benchmark/configs/aosp-default.json)
-  --token <str>             API token; also reads MILADY_API_TOKEN /
-                            ELIZA_API_TOKEN from env
+  --token <str>             API token; also reads ELIZA_API_TOKEN
+                            from env
   --out <dir>               Output directory
                             (default reports/porting/<YYYY-MM-DD>)
   --non-streaming           Skip SSE first-token timing; use sync endpoint only

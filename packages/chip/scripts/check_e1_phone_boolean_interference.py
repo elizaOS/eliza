@@ -65,6 +65,7 @@ CONTACT_KEYWORDS = (
     "outline", "actuator_tail", "rib", "recess",
     "acoustic_chamber",
     "flex_tail", "fpc_connector",
+    "flash_led_window",
 )
 
 # Explicit pairwise allowlist for envelope-style overlaps that don't share a
@@ -100,6 +101,12 @@ INTENTIONAL_PAIRS = frozenset({
     frozenset({"usb_c_receptacle", "orange_usb_reinforcement_saddle"}),
     # split-interconnect connector pads bond on top of the battery pouch tab
     frozenset({"battery_pouch", "split_interconnect_top_connector"}),
+    # rear torch: LED emitter sits buried behind the back wall, its window is a
+    # cut in the back shell, and the emitter registers against its own window.
+    frozenset({"rear_flash_led", "rear_flash_led_window"}),
+    frozenset({"rear_flash_led_window", "orange_back_shell"}),
+    frozenset({"rear_flash_led", "orange_back_shell"}),
+    frozenset({"rear_flash_led", "main_pcb"}),
 })
 
 # Scope cases mirror review/full-cad-boolean-interference.md.
@@ -167,8 +174,16 @@ SCOPES: List[Dict] = [
                   "rear_camera_cover_adhesive_top",
                   "rear_camera_light_baffle_top",
                   "rear_camera_light_baffle_bottom",
-                  "rear_camera_lens_window", "orange_back_shell"],
-        "risk": "rear camera module, cover window, adhesive, and baffles must remain interference-free",
+                  "rear_camera_lens_window", "orange_back_shell",
+                  "rear_flash_led_window"],
+        "risk": "rear camera module, cover window, adhesive, baffles, and the adjacent flash window must remain interference-free",
+    },
+    {
+        "id": "rear_flash_torch_window_back_wall",
+        "parts": ["rear_flash_led", "rear_flash_led_window",
+                  "orange_back_shell", "rear_camera_module",
+                  "rear_camera_lens_window", "main_pcb"],
+        "risk": "rear torch LED must sit buried behind the back wall, its window must register in the back shell, and it must not clash with the adjacent camera or PCB",
     },
     {
         "id": "battery_pouch_pcb_flex_haptic",
@@ -421,6 +436,71 @@ def scope_status(pairs: List[Dict], travel: Optional[Dict]) -> Tuple[str, float,
     return status, round(min_gap, 4), round(real_clash_vol, 4), real_clash_count
 
 
+# Envelope/void parts that intentionally extend past the exterior surface:
+# they represent acoustic cavities, service-label cutouts, and other negative
+# features, not solid material. They are excluded from the flush-back solid
+# protrusion check (which targets real exterior bodies).
+FLUSH_BACK_ENVELOPE_TOKENS = (
+    "acoustic_chamber", "recess", "keepout", "port", "grille_slot",
+    "aperture", "mold_", "ejector", "cooling_channel",
+)
+
+
+def evaluate_flush_back(parts: Dict[str, Part], back_outer_z: float) -> Dict:
+    """Confirm no real exterior part extends beyond the flat back outer plane.
+
+    back_outer_z is the most-negative Z of the back shell outer face. A part
+    'protrudes' when its Zmin is more negative than that plane. Negative
+    protrusion (Zmin inside the plane) is good. Envelope/void parts are
+    reported separately and do not fail the check.
+    """
+    protrusions: List[Dict] = []
+    envelope_excursions: List[Dict] = []
+    max_protrusion = 0.0
+    for name, p in parts.items():
+        zmin = p.bbox[2]
+        excursion = round(back_outer_z - zmin, 4)  # >0 means beyond the plane
+        if excursion <= 1e-6:
+            continue
+        rec = {"part": name, "zmin_mm": round(zmin, 4),
+               "protrusion_mm": excursion}
+        if any(tok in name for tok in FLUSH_BACK_ENVELOPE_TOKENS):
+            envelope_excursions.append(rec)
+            continue
+        protrusions.append(rec)
+        max_protrusion = max(max_protrusion, excursion)
+    return {
+        "id": "flush_back_no_rear_protrusion",
+        "back_outer_plane_z_mm": round(back_outer_z, 4),
+        "max_protrusion_mm": round(max_protrusion, 4),
+        "protruding_parts": protrusions,
+        "envelope_excursions": envelope_excursions,
+        "status": "pass" if max_protrusion <= 1e-6 else "fail",
+        "risk": "no solid exterior part may extend beyond the flat back outer plane",
+    }
+
+
+def evaluate_burial(parts: Dict[str, Part], back_inner_z: float,
+                    targets: List[str]) -> List[Dict]:
+    """Confirm each target's back face (Zmin) sits at or inside the back inner
+    wall. Burial clearance = Zmin - back_inner_z (>=0 means buried/inside)."""
+    out: List[Dict] = []
+    for t in targets:
+        if t not in parts:
+            out.append({"part": t, "buried": False, "note": "missing"})
+            continue
+        zmin = parts[t].bbox[2]
+        clearance = round(zmin - back_inner_z, 4)
+        out.append({
+            "part": t,
+            "back_face_zmin_mm": round(zmin, 4),
+            "back_inner_wall_z_mm": round(back_inner_z, 4),
+            "burial_clearance_mm": clearance,
+            "buried": clearance >= -1e-6,
+        })
+    return out
+
+
 def main() -> int:
     t0 = time.time()
     with open(MANIFEST) as f:
@@ -499,6 +579,22 @@ def main() -> int:
             "status": status,
         })
 
+    # --- flush-back + burial geometry checks ---
+    back_shell = parts.get("orange_back_shell")
+    if back_shell is None:
+        print("orange_back_shell missing — cannot run flush-back check", file=sys.stderr)
+        return 2
+    back_outer_z = back_shell.bbox[2]   # most-negative Z = outer back face
+    back_inner_z = back_shell.bbox[5]   # most-positive Z of shell = inner wall face
+    flush_back = evaluate_flush_back(parts, back_outer_z)
+    burial = evaluate_burial(parts, back_inner_z,
+                             ["rear_camera_module", "rear_flash_led"])
+    print(f"[flush_back] max_protrusion={flush_back['max_protrusion_mm']}mm "
+          f"status={flush_back['status']}", file=sys.stderr)
+    for b in burial:
+        print(f"[burial] {b['part']}: clearance={b.get('burial_clearance_mm')}mm "
+              f"buried={b.get('buried')}", file=sys.stderr)
+
     # --- N x N min-gap matrix (AABB pre-filter, BRep for close pairs) ---
     names = sorted(parts.keys())
     name_to_idx = {n: i for i, n in enumerate(names)}
@@ -531,12 +627,16 @@ def main() -> int:
     print(f"Pairs total={pair_count_full}, BRep-evaluated={pair_count_brep}, "
           f"unintentional clashes={len(interferences)}", file=sys.stderr)
 
-    overall_pass = all(s["status"] == "pass" for s in scope_results) and len(interferences) == 0
+    overall_pass = (all(s["status"] == "pass" for s in scope_results)
+                    and len(interferences) == 0
+                    and flush_back["status"] == "pass"
+                    and all(b.get("buried") for b in burial))
 
     # --- write JSON ---
     out_json = {
         "schema": "eliza.e1_phone_full_cad_boolean_interference.v1",
         "engine": ENGINE_NAME,
+        "evidence_class": "concept_envelope_brep_boolean_interference_result",
         "date": DATE,
         "reviewer": REVIEWER,
         "aabb_prefilter_mm": AABB_PREFILTER_MM,
@@ -557,6 +657,11 @@ def main() -> int:
             for s in scope_results
         ],
         "scope_results_full": scope_results,
+        "flush_back_check": flush_back,
+        "burial_check": {
+            "back_inner_wall_z_mm": round(back_inner_z, 4),
+            "targets": burial,
+        },
         "overall_status": "pass" if overall_pass else "fail",
         "wall_seconds": round(time.time() - t0, 2),
     }
@@ -587,6 +692,31 @@ def main() -> int:
             f"{s['min_gap_mm']} | {s['interference_volume_mm3']} | "
             f"{s['status'].upper()} |"
         )
+    md_lines += [
+        "",
+        "## Flush-Back / Burial Geometry",
+        "",
+        f"Back outer plane Z = {flush_back['back_outer_plane_z_mm']} mm. "
+        f"Flush-back `flush_back_no_rear_protrusion`: "
+        f"max solid protrusion = {flush_back['max_protrusion_mm']} mm "
+        f"({flush_back['status'].upper()}).",
+    ]
+    if flush_back["protruding_parts"]:
+        for pp in flush_back["protruding_parts"]:
+            md_lines.append(f"- PROTRUSION: `{pp['part']}` "
+                            f"{pp['protrusion_mm']} mm beyond back outer plane")
+    if flush_back["envelope_excursions"]:
+        md_lines.append("- Envelope/void excursions (not solid, not a fault): " +
+                        ", ".join(f"`{e['part']}` ({e['protrusion_mm']}mm)"
+                                  for e in flush_back["envelope_excursions"]))
+    md_lines.append("")
+    md_lines.append(f"Burial vs back inner wall (Z = {round(back_inner_z,4)} mm); "
+                    "clearance >= 0 means back face at or inside the wall:")
+    for b in burial:
+        md_lines.append(f"- `{b['part']}`: back face Zmin = "
+                        f"{b.get('back_face_zmin_mm')} mm, burial clearance = "
+                        f"{b.get('burial_clearance_mm')} mm "
+                        f"({'BURIED' if b.get('buried') else 'EXPOSED'})")
     md_lines += [
         "",
         "## Missing Or Incomplete Boolean Results",

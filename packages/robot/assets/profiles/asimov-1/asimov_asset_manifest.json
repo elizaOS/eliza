@@ -1,0 +1,59 @@
+{
+  "profile_id": "asimov-1",
+  "source_xml": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/sim-model/xmls/asimov.xml",
+  "generated_mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+  "mesh_dir": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes",
+  "source_xml_sha256": "fdb12df1dbead6fb4019a56297c0e917ae5f9e4686a848ca2686fd3c5725da42",
+  "generated_mjcf_sha256": "bf4125c9f63ed3027b6c8513de9dda02e97cbee4f55ff8e0f06a4b92aefb7bb0",
+  "joint_order": [
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "left_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint",
+    "right_ankle_pitch_joint",
+    "right_ankle_roll_joint",
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_yaw_joint",
+    "waist_yaw_joint",
+    "neck_pitch_joint",
+    "neck_yaw_joint"
+  ],
+  "model": {
+    "nq": 34,
+    "nv": 33,
+    "nu": 25
+  },
+  "cad": {
+    "ok": true,
+    "main_step": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/ASIMOV_V1.STEP",
+    "source_xml": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/sim-model/xmls/asimov.xml",
+    "mesh_dir": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes",
+    "fabrication_manifest": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/mechanical/FABRICATION_MANIFEST.json",
+    "step_count": 178,
+    "stl_count": 28,
+    "cad_entries": 6,
+    "subassemblies": [
+      "100",
+      "200",
+      "300",
+      "400",
+      "500",
+      "600",
+      "700"
+    ]
+  }
+}

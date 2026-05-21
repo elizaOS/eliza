@@ -1,4 +1,4 @@
-# milady_adapter
+# eliza_adapter
 
 Thin bridge between Eliza's training scripts (under
 `packages/training/scripts/kokoro/`) and the vendored `kokoro_training`
@@ -22,14 +22,14 @@ ours:
 - Vendor expects to own the optimizer + scheduler vs. our adapter
   pattern.
 
-`milady_adapter` translates between the two and is the only Eliza-side
+`eliza_adapter` translates between the two and is the only Eliza-side
 code that depends on the vendor's internal structure. Re-vendoring the
-upstream means only `milady_adapter/` may need adjustment.
+upstream means only `eliza_adapter/` may need adjustment.
 
 ## Surface (stable)
 
 ```python
-from milady_adapter import (
+from eliza_adapter import (
     VendorEnvironment,
     probe_vendor_environment,
     build_vendor_config,
@@ -59,10 +59,10 @@ The Eliza-side `finetune_kokoro.py` has two modes:
   doesn't exist; see `.swarm/impl/I7-kokoro.md`). Kept for
   experimentation; gated on the missing forward.
 - `--mode=full-finetune` (DEFAULT) — calls
-  `milady_adapter.run_full_finetune(...)`.
+  `eliza_adapter.run_full_finetune(...)`.
 
 When `--synthetic-smoke` is passed, the entrypoint dispatches to
-`milady_adapter.smoke_full_finetune(...)` instead.
+`eliza_adapter.smoke_full_finetune(...)` instead.
 
 ## Why we override the vendor's optimizer
 

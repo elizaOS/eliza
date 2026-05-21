@@ -13,7 +13,19 @@ draft:
   source_basis:
     - preliminary audio package binding and acoustic closure plan
   verified_public_source_ids: []
-  recipient_candidates: []
+  recipient_candidates:
+    - supplier: Realtek
+      candidate: ALC5688 audio codec family
+      url: https://www.realtek.com/en/products/communications-network-ics/item/alc5688
+      public_page_status: public_package_binding_observed_2026_05_20
+    - supplier: Cirrus Logic
+      candidate: CS35L41 smart amplifier family
+      url: https://www.cirrus.com/products/cs35l41/
+      public_page_status: public_package_binding_observed_2026_05_20
+    - supplier: Knowles
+      candidate: SPH0641LM4H PDM microphone family
+      url: https://www.knowles.com/products/microphones/sph0641lm4h-1
+      public_page_status: public_package_binding_observed_2026_05_20
   request:
     quote_quantities:
       - 10

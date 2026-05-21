@@ -31,11 +31,11 @@ interface_summary:
     width: 7.0
     height: 46.0
   side_key_required_nets:
+    - PWR_KEY_N
+    - VOL_UP_N
+    - VOL_DOWN_N
     - AON_1V8
     - GND
-    - PWR_KEY_N
-    - VOL_DOWN_N
-    - VOL_UP_N
   side_key_recommended_min_contacts: 8
   pd_controller: TPS65987DDH
   charger: MAX77860

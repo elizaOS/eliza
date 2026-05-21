@@ -82,7 +82,7 @@ probe_domains:
       - lens_alignment_and_contamination_screening
     release_status: blocked_no_camera_supplier_pinout_or_test_chart_limits
   - id: radios
-    nets: [CELL_RF_MAIN, CELL_RF_DIV, CELL_GNSS_RF, WIFI_BT_RF0, WIFI_BT_RF1, USIM_IO, ESIM_IO]
+    nets: [CELL_GNSS_RF, CELL_RF_DIV, CELL_RF_MAIN, WIFI_BT_RF0, WIFI_BT_RF1, USIM_IO, ESIM_IO]
     method: conducted_RF_fixture_plus_SIM_eSIM_and_wireless_calibration_flow
     expected_limits_source: RF_pre_scan_conducted_limits_and_module_vendor_procedure
     required_checks:

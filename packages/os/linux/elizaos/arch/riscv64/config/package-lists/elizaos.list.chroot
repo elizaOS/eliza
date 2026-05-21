@@ -1,0 +1,74 @@
+# elizaOS Debian RISC-V 64 — chroot package list.
+#
+# Consumed by live-build at chroot stage. One package per line, comments
+# begin with `#`. Packages must exist for `riscv64` in Debian Trixie.
+#
+# Pinned for QEMU `virt` + early RISC-V hardware bring-up. No desktop or
+# Tor/persistence plumbing — that lives in `milady-tails` only.
+
+# ── Base system ──────────────────────────────────────────────────────
+# Standard live-system runtime. `live-boot` + `live-config` are the
+# Debian live framework live-build wires into the initrd; without them
+# the ISO does not finish boot. `systemd-sysv` pins the init system so
+# the chroot does not regress to sysvinit on a re-bootstrap.
+live-boot
+live-config
+live-config-systemd
+systemd
+systemd-sysv
+udev
+dbus
+init
+util-linux
+locales
+console-setup
+keyboard-configuration
+tzdata
+ca-certificates
+busybox
+
+# ── Kernel + bootloader ──────────────────────────────────────────────
+# The riscv64 kernel flavour is named `riscv64` upstream and is the only
+# one live-build is configured to install (see auto/config). The
+# bootloader payload is grub-efi-riscv64-bin so the ISO can boot via the
+# UEFI path on QEMU `virt` (with `-bios u-boot.bin` providing the EFI
+# runtime services through U-Boot's EFI implementation). `u-boot-menu`
+# regenerates `extlinux.conf` for the U-Boot extlinux fallback path.
+linux-image-riscv64
+initramfs-tools
+grub-efi-riscv64-bin
+grub-common
+grub2-common
+u-boot-menu
+
+# ── Networking + remote access ───────────────────────────────────────
+# `openssh-server` is installed but key-only; password auth is disabled
+# by the agent hook below. NetworkManager is the same path milady-tails
+# uses so connector tooling behaves the same across variants.
+openssh-server
+network-manager
+iproute2
+iputils-ping
+curl
+wget
+rsync
+
+# ── elizaOS agent runtime dependencies ───────────────────────────────
+# The agent runs on Node 20+ with bun as the package/test runner and
+# sqlite as the local store. `nodejs` in Trixie is 20.x; bun is not in
+# Debian and is fetched by the agent hook from upstream.
+nodejs
+sqlite3
+libsqlite3-0
+xz-utils
+unzip
+
+# ── Diagnostics ──────────────────────────────────────────────────────
+# Minimal toolkit so a board bring-up engineer can debug a non-booting
+# ISO without re-spinning. Kept tight; this is not a desktop.
+pciutils
+usbutils
+strace
+less
+nano
+htop

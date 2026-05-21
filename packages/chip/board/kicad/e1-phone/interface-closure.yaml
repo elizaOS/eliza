@@ -16,7 +16,7 @@ source_files:
 device_envelope_mm:
   width: 78.0
   height: 153.6
-  max_thickness: 9.6
+  max_thickness: 11.2
 board_bbox_mm:
   width: 64.0
   height: 132.0
@@ -388,7 +388,7 @@ interfaces:
       - enclosure_clamp_or_adhesive_under_battery_edge_required
     assembly_closure_requirements:
       - battery must insert without overstressing the mated top/bottom flex
-      - connector mated height and stiffener stack must clear the 9.6 mm enclosure
+      - connector mated height and stiffener stack must clear the 11.2 mm flush-back enclosure
       - strain relief or clamp must be defined before drop/torsion testing
       - bottom island service order must be documented before first article assembly
     passes_planning_gate: true

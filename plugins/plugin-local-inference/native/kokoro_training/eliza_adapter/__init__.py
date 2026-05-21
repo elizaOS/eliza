@@ -1,4 +1,4 @@
-"""milady_adapter — bridge between Eliza training scripts and the vendored
+"""eliza_adapter — bridge between Eliza training scripts and the vendored
 jonirajala/kokoro_training trainer.
 
 Stable surface (importable from packages/training/scripts/kokoro/):

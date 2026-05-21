@@ -33,6 +33,10 @@ class CheckpointManifest:
     active_tasks: list[str]
     obs_dim: int
     action_dim: int
+    profile_id: str = "hiwonder-ainex"
+    proprio_dim: int | None = None
+    text_dim: int | None = None
+    output_dim: int = 24
     encoder_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     ckpt: str = "policy.zip"
     policy_hidden_layer_sizes: tuple[int, ...] = (512, 256, 128)
@@ -49,6 +53,10 @@ def _load_manifest(ckpt_dir: Path) -> CheckpointManifest:
         active_tasks=list(raw.get("active_tasks", [])),
         obs_dim=int(raw["obs_dim"]),
         action_dim=int(raw["action_dim"]),
+        profile_id=raw.get("profile_id", "hiwonder-ainex"),
+        proprio_dim=raw.get("proprio_dim"),
+        text_dim=raw.get("text_dim"),
+        output_dim=int(raw.get("output_dim", raw.get("action_dim", 24))),
         encoder_model=raw.get(
             "encoder_model", "sentence-transformers/all-MiniLM-L6-v2"
         ),
@@ -88,6 +96,8 @@ class TextConditionedPolicy:
                 ckpt_dir=self.ckpt_dir,
                 manifest=self.manifest,
             )
+        if self.manifest.regime == "numpy_linear_rl_smoke":
+            return _NumpyLinearPolicyModelAdapter(self.ckpt_dir / self.manifest.ckpt)
         raise NotImplementedError(
             f"unsupported regime in manifest: {self.manifest.regime}"
         )
@@ -98,7 +108,24 @@ class TextConditionedPolicy:
         if text == self._policy_cache_text and self._cached_task_embed is not None:
             assert self._cached_task_id is not None
             return self._cached_task_id, self._cached_task_embed, 1.0
-        task_id, embed, sim = project_text(text, embeddings=self._embeddings)
+        if text in self._embeddings:
+            task_id = text
+            embed = self._embeddings[text].reduced_embed
+            sim = 1.0
+        else:
+            try:
+                task_id, embed, sim = project_text(text, embeddings=self._embeddings)
+            except ModuleNotFoundError:
+                task_id = self.manifest.active_tasks[0] if self.manifest.active_tasks else next(iter(self._embeddings))
+                lowered = text.lower()
+                for candidate in self.manifest.active_tasks:
+                    if candidate.lower() in lowered:
+                        task_id = candidate
+                        break
+                embed = self._embeddings[task_id].reduced_embed
+                sim = 1.0 if task_id in lowered else 0.0
+        text_dim = int(self.manifest.text_dim or self.manifest.pca_dim)
+        embed = _pad_or_trim(np.asarray(embed, dtype=np.float32), text_dim)
         self._policy_cache_text = text
         self._cached_task_embed = embed.astype(np.float32)
         self._cached_task_id = task_id
@@ -110,7 +137,7 @@ class TextConditionedPolicy:
         proprio: np.ndarray,
         deterministic: bool = True,
         *,
-        output_dim: int = 24,
+        output_dim: int | None = None,
     ) -> tuple[np.ndarray, str]:
         """Returns (action, matched_task_id). `proprio` may be padded internally
         to match the policy's expected obs dim.
@@ -121,7 +148,8 @@ class TextConditionedPolicy:
         callers can drive a full 24-DoF target without special-casing.
         """
         _, task_embed, _ = self.resolve_task(text)
-        proprio_dim = self.manifest.obs_dim - task_embed.shape[0]
+        output_dim = int(output_dim or self.manifest.output_dim)
+        proprio_dim = int(self.manifest.proprio_dim or (self.manifest.obs_dim - task_embed.shape[0]))
         if proprio.shape[0] < proprio_dim:
             proprio = np.concatenate([
                 proprio.astype(np.float32),
@@ -163,13 +191,12 @@ class _BraxPPOModelAdapter:
     """
 
     def __init__(self, ckpt_dir: Path, manifest: CheckpointManifest) -> None:
-        import functools
 
         import jax
         import jax.numpy as jp
+        from brax.io import model as brax_model
         from brax.training.acme import running_statistics
         from brax.training.agents.ppo import networks as ppo_networks
-        from brax.io import model as brax_model
 
         params_path = ckpt_dir / manifest.ckpt
         try:
@@ -218,3 +245,22 @@ class _BraxPPOModelAdapter:
         import numpy as np
 
         return np.asarray(action, dtype=np.float32), None
+
+
+def _pad_or_trim(arr: np.ndarray, dim: int) -> np.ndarray:
+    if arr.shape[0] == dim:
+        return arr.astype(np.float32)
+    if arr.shape[0] > dim:
+        return arr[:dim].astype(np.float32)
+    return np.concatenate([arr.astype(np.float32), np.zeros(dim - arr.shape[0], dtype=np.float32)])
+
+
+class _NumpyLinearPolicyModelAdapter:
+    def __init__(self, path: Path) -> None:
+        raw = json.loads(path.read_text())
+        self._weights = np.asarray(raw["weights"], dtype=np.float32)
+        self._bias = np.asarray(raw["bias"], dtype=np.float32)
+
+    def predict(self, obs, deterministic: bool = True):
+        obs_arr = np.asarray(obs, dtype=np.float32).reshape(-1)
+        return obs_arr @ self._weights + self._bias, None

@@ -20,6 +20,9 @@ BUILD := build
 .PHONY: e1-phone-interface-closure
 .PHONY: e1-phone-power-thermal
 .PHONY: e1-phone-rf-connectivity
+.PHONY: e1-phone-module-rf-pinout-execution
+.PHONY: e1-phone-routed-pcb-implementation-execution
+.PHONY: e1-phone-layout-optimization-execution
 .PHONY: e1-phone-pinout-footprint-freeze
 .PHONY: e1-phone-audio-acoustic
 .PHONY: e1-phone-routed-release-plan
@@ -84,6 +87,15 @@ e1-phone-audio-acoustic:
 
 e1-phone-rf-connectivity:
 	@$(PYTHON) scripts/generate_e1_phone_rf_connectivity.py
+
+e1-phone-module-rf-pinout-execution:
+	@$(PYTHON) scripts/generate_e1_phone_module_rf_pinout_execution.py
+
+e1-phone-routed-pcb-implementation-execution:
+	@$(PYTHON) scripts/generate_e1_phone_routed_pcb_implementation_execution.py
+
+e1-phone-layout-optimization-execution:
+	@$(PYTHON) scripts/generate_e1_phone_layout_optimization_execution.py
 
 e1-phone-supplier-sourcing-audit:
 	@$(PYTHON) scripts/generate_e1_phone_supplier_sourcing_audit.py

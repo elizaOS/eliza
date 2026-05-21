@@ -180,8 +180,8 @@ START_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 boot_markers_present() {
     grep -F -q -- "Linux version" "${TRANSCRIPT_PATH}" \
-        && { grep -F -q -- "elizaos-firstboot-ready" "${TRANSCRIPT_PATH}" \
-            || grep -F -q -- "login:" "${TRANSCRIPT_PATH}"; }
+        && grep -F -q -- "elizaos-firstboot-ready" "${TRANSCRIPT_PATH}" \
+        && grep -F -q -- "elizaos-agent-ready" "${TRANSCRIPT_PATH}"
 }
 
 forbidden_marker_present() {
@@ -233,8 +233,8 @@ DURATION_S=$(( END_EPOCH - START_EPOCH ))
 REQUIRED_MARKERS=(
     "Linux version"
     "elizaos-firstboot-ready"
+    "elizaos-agent-ready"
 )
-LOGIN_MARKER="login:"
 FORBIDDEN_MARKERS=(
     "Kernel panic"
     "Oops"
@@ -252,10 +252,6 @@ for marker in "${REQUIRED_MARKERS[@]}"; do
     fi
 done
 
-if grep -F -q -- "${LOGIN_MARKER}" "${TRANSCRIPT_PATH}"; then
-    MARKERS_FOUND+=( "${LOGIN_MARKER}" )
-fi
-
 FORBIDDEN_HIT=()
 for forbid in "${FORBIDDEN_MARKERS[@]}"; do
     if grep -F -q -- "${forbid}" "${TRANSCRIPT_PATH}"; then
@@ -265,23 +261,25 @@ done
 
 # `boot_completed` requires:
 #   * Linux version banner
-#   * first-boot script wrote `elizaos-firstboot-ready` OR a `login:` prompt
+#   * first-boot script wrote `elizaos-firstboot-ready`
+#   * target-side agent health check passed and wrote `elizaos-agent-ready`
 #   * zero forbidden markers
 HAS_LINUX=0
 HAS_READY=0
-HAS_LOGIN=0
+HAS_AGENT=0
 for m in "${MARKERS_FOUND[@]}"; do
     case "${m}" in
         "Linux version") HAS_LINUX=1;;
         "elizaos-firstboot-ready") HAS_READY=1;;
-        "login:") HAS_LOGIN=1;;
+        "elizaos-agent-ready") HAS_AGENT=1;;
     esac
 done
 
 BOOT_COMPLETED="false"
 if [ ${#FORBIDDEN_HIT[@]} -eq 0 ] \
    && [ "${HAS_LINUX}" -eq 1 ] \
-   && { [ "${HAS_READY}" -eq 1 ] || [ "${HAS_LOGIN}" -eq 1 ]; }; then
+   && [ "${HAS_READY}" -eq 1 ] \
+   && [ "${HAS_AGENT}" -eq 1 ]; then
     BOOT_COMPLETED="true"
 fi
 

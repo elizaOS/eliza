@@ -20,15 +20,15 @@ envelope_cross_check:
   metrics_device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 9.6
+    max_thickness: 11.2
   enclosure_device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 9.6
+    max_thickness: 11.2
   cad_device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 9.6
+    max_thickness: 11.2
   display_primary_fits_current_envelope: true
   display_clearance_mm:
     width_clearance_mm: 0.9
@@ -228,7 +228,7 @@ placement_interfaces_closed_for_concept:
 release_blockers:
   - routed KiCad board STEP with final component 3D models
   - supplier display, camera, USB-C, button, battery, speaker, and radio STEP/B-rep models
-  - formal 9.6 mm tolerance stack with gasket compression and battery swelling
+  - formal 11.2 mm flush-back tolerance stack with gasket compression and battery swelling
   - full CAD boolean interference check using supplier geometry
   - USB-C insertion/removal load test into enclosure saddle
   - side-button load-path and cycle test

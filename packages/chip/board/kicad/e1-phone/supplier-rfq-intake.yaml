@@ -181,13 +181,13 @@ rfq_lines:
       - sample force and life-cycle test report
     intake_status: blocked_no_side_key_flex_or_switch_subassembly_pack
   - function: battery_pack
-    primary_candidate: 4500mAh_17p3Wh_64x87x5p3mm_pouch_class
+    primary_candidate: 5830mAh_22p45Wh_64x87x5p7mm_pouch_class
     sourcing_audit_group: battery
     package_binding: package/battery/e1-phone-17p3wh-pack.yaml
     marketplace_or_vendor_basis:
-      - Alibaba and Made-in-China 4500 mAh pouch-class public listings
+      - Alibaba and Made-in-China custom 5830 mAh thick pouch quote pools with LP446487 baseline outline evidence
     board_dependency:
-      - 64 x 87 mm battery cavity and 9.6 mm device thickness target
+      - 64 x 87 mm battery cavity and 11.2 mm flush-back device thickness target
       - VBAT, BAT_NTC, BAT_ID, GND connector and pack swelling clearance
     required_supplier_artifacts:
       - signed pack drawing with cell, PCM, tab, connector, and adhesive datums

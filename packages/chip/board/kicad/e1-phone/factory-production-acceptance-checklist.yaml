@@ -13,6 +13,7 @@ source_artifacts:
   - board/kicad/e1-phone/power-bringup-acceptance-checklist.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/production-factory-release-execution.yaml
 factory_production_summary:
   production_readiness_status: blocked_requires_routed_board_supplier_data_and_factory_quotes
   manufacturing_status: blocked_manufacturing_requires_routed_pcb_and_fab_outputs

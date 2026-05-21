@@ -8,12 +8,24 @@ draft:
   draft_id: e1_phone_battery_pack_rfq_2026-05-21
   function: battery_pack
   status: draft_not_sent_not_supplier_evidence
-  primary_candidate: 4500mAh_17p3Wh_64x87x5p3mm_pouch_class
+  primary_candidate: 5830mAh_22p45Wh_64x87x5p7mm_pouch_class
   package_binding: package/battery/e1-phone-17p3wh-pack.yaml
   source_basis:
-    - Alibaba and Made-in-China 4500 mAh pouch-class public listings
+    - Alibaba and Made-in-China custom 5830 mAh thick pouch quote pools with LP446487 baseline outline evidence
   verified_public_source_ids: []
-  recipient_candidates: []
+  recipient_candidates:
+    - supplier: LiPol Battery
+      candidate: LP446487 high-voltage lithium-polymer 4500 mAh pack class
+      url: https://www.lithium-polymer-battery.net/high-voltage-lithium-polymer-battery-3-85v-lp446487-4500mah-17-33wh-with-pcm-and-ntc-and-jst-shr-03v-s-b/
+      public_page_status: public_package_binding_observed_2026_05_20
+    - supplier: Made-in-China lithium-polymer pack supplier family
+      candidate: 736072 or equivalent 4500 mAh lithium-polymer pack class
+      url: https://www.made-in-china.com/showroom/jasonlai1989/product-detailcmbRXrtjYVka/China-Lithium-Polymer-Battery-4500mAh.html
+      public_page_status: public_package_binding_observed_2026_05_20
+    - supplier: Alibaba lithium-polymer pack supplier pool
+      candidate: 3.7 V to 3.85 V 4500 mAh custom pack family
+      url: https://www.alibaba.com/showroom/li-polymer-battery-3.7v-4500mah.html
+      public_page_status: public_package_binding_observed_2026_05_20
   request:
     quote_quantities:
       - 10
@@ -34,7 +46,7 @@ draft:
       - charge profile limits and fuel-gauge characterization data
       - sample lot capacity, IR, and dimensional inspection report
     board_dependency:
-      - 64 x 87 mm battery cavity and 9.6 mm device thickness target
+      - 64 x 87 mm battery cavity and 11.2 mm flush-back device thickness target
       - VBAT, BAT_NTC, BAT_ID, GND connector and pack swelling clearance
   acceptance_gate_before_kicad_use:
     orderable_mpn_received: false

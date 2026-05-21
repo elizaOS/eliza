@@ -40,7 +40,7 @@ known_component_envelopes:
     known_envelope_mm:
       width: 64.0
       height: 87.0
-      thickness: 4.4
+      thickness: 5.7
     battery_window_mm:
       x: 0.0
       y: 29.5

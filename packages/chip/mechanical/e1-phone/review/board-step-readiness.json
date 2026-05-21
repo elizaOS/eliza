@@ -95,7 +95,7 @@
     },
     {
       "id": "solid_envelope_step_available",
-      "pass": false,
+      "pass": true,
       "evidence": "mechanical/e1-phone/out/e1-phone-solid-assembly.step"
     },
     {

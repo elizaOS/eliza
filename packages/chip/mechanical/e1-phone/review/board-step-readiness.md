@@ -7,7 +7,7 @@ This is the mechanical gate for replacing the concept PCB envelope with routed K
 ## Cases
 
 - PASS: `kicad_placement_reconciled_to_cad` from `kicad-placement-reconciliation.json`
-- BLOCKED: `solid_envelope_step_available` from `mechanical/e1-phone/out/e1-phone-solid-assembly.step`
+- PASS: `solid_envelope_step_available` from `mechanical/e1-phone/out/e1-phone-solid-assembly.step`
 - PASS: `concept_pcb_step_available` from `mechanical/e1-phone/out/main_pcb.step`
 - PASS: `concept_split_island_geometry_matches_kicad` from `board/kicad/e1-phone/layout-utilization.yaml`
 - BLOCKED: `routed_tracks_present` from `board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb`

@@ -13,7 +13,15 @@ draft:
   source_basis:
     - preliminary side-button binding and enclosure interface plan
   verified_public_source_ids: []
-  recipient_candidates: []
+  recipient_candidates:
+    - supplier: Panasonic Industry
+      candidate: EVQ-P7/EVQ-P3/EVQ-9P7 side-push tactile family
+      url: https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247
+      public_page_status: public_package_binding_observed_2026_05_20
+    - supplier: Littelfuse C&K
+      candidate: KMR2 micro-miniature SMT tactile alternate
+      url: https://www.ckswitches.com/products/switches/product-details/Tactile/KMR2
+      public_page_status: public_package_binding_observed_2026_05_20
   request:
     quote_quantities:
       - 10

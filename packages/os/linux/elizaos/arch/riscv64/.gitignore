@@ -1,0 +1,27 @@
+# live-build / debootstrap working state — large, often root-owned, recreated
+# on every build. Never check in.
+.build/
+.lock
+.ruff_cache/
+cache/
+chroot/
+chroot.packages.install
+binary/
+local/
+config/binary
+config/bootstrap
+config/chroot
+config/common
+config/debian-installer
+config/source
+chroot.files
+
+# Build output ISOs — never commit; reference by sha256 in manifest.json instead.
+out/
+
+# UEFI variable store blobs — ephemeral qemu-efi scratch files, 32 MB each.
+evidence/*.fd
+
+# Kokoro TTS model and binary — large assets managed outside git.
+# They belong in the build pipeline / artifact store, not version control.
+config/includes.chroot/opt/

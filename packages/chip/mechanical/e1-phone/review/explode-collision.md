@@ -13,8 +13,8 @@ Solid parts: 89. Pairs checked: 3916. Trajectory samples: 21. Virtual keepout vo
 
 - review: `main_pcb` vs `split_interconnect_top_flex_tail` 3.6 mm^3 still nested
 - review: `main_pcb` vs `split_interconnect_bottom_flex_tail` 3.6 mm^3 still nested
-- review: `battery_pouch` vs `orange_screw_boss_5` 49.392 mm^3 still nested
-- review: `battery_pouch` vs `orange_screw_boss_6` 49.392 mm^3 still nested
+- review: `battery_pouch` vs `orange_screw_boss_5` 37.044 mm^3 still nested
+- review: `battery_pouch` vs `orange_screw_boss_6` 37.044 mm^3 still nested
 - review: `battery_pouch` vs `orange_battery_left_rib` 91.35 mm^3 still nested
 - review: `battery_pouch` vs `orange_battery_right_rib` 91.35 mm^3 still nested
 - review: `usb_c_molded_drip_break_lip` vs `usb_c_internal_drain_shelf` 0.1123 mm^3 still nested

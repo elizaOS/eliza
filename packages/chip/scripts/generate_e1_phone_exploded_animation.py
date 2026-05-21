@@ -48,11 +48,20 @@ FPS = 30
 def classify(name: str) -> tuple[np.ndarray, int]:
     """Return (unit-direction, ring) for explode offset. ring>=1 multiplied by RING_MM."""
     n = name.lower()
+    # Front-surface apertures lift straight off the glass face (+Z) so they do not
+    # drag sideways into the molded side frame as the stack separates.
+    if n.startswith("handset_acoustic") or "front_camera_under_glass" in n:
+        return np.array([0.0, 0.0, 1.0]), 2
+    # The rear speaker acoustic cavity sits deepest behind the bottom PCB island,
+    # so it ejects straight back (-Z) ahead of the board rather than -Y, where it
+    # would otherwise be dived-through by the PCB or overtake the bottom grille.
+    if "bottom_speaker_acoustic_chamber" in n:
+        return np.array([0.0, 0.0, -1.0]), 3
     # USB-C bottom group → -Y
     if n.startswith("usb_c") or n.startswith("bottom_mic") or n.startswith("bottom_microphone") or "bottom_speaker" in n:
         return np.array([0.0, -1.0, 0.0]), 2 if "module" in n or "receptacle" in n else 3
     # Top earpiece / top mic / front camera → +Y
-    if n.startswith("earpiece") or n.startswith("top_mic") or n.startswith("top_microphone") or n.startswith("handset_acoustic") or n.startswith("front_camera"):
+    if n.startswith("earpiece") or n.startswith("top_mic") or n.startswith("top_microphone") or n.startswith("front_camera"):
         return np.array([0.0, 1.0, 0.0]), 2 if "module" in n or "receiver" in n else 3
     # side buttons: power on +X, volume on -X
     if n.startswith("power_button") or "power_actuator" in n or "power_flex" in n:
@@ -71,9 +80,11 @@ def classify(name: str) -> tuple[np.ndarray, int]:
         return np.array([0.0, 0.0, 1.0]), 2
     if "fpc" in n or n.startswith("display_fpc"):
         return np.array([0.0, 0.0, 1.0]), 1
-    # everything else on the back side of the stack → -Z, ring by depth
+    # everything else on the back side of the stack → -Z, ring by depth.
+    # The back shell is the outermost back layer, so it must travel farthest -Z
+    # and lead every internal part (PCB, battery, rear camera) out the back.
     if n.startswith("orange_back_shell"):
-        return np.array([0.0, 0.0, -1.0]), 3
+        return np.array([0.0, 0.0, -1.0]), 5
     if n.startswith("orange_side_frame"):
         return np.array([0.0, 0.0, 1.0]), 1  # frame slightly forward
     if n.startswith("main_pcb") or "shield_can" in n or n.startswith("pmic") or n.startswith("soc") or n.startswith("radio"):
@@ -88,8 +99,12 @@ def classify(name: str) -> tuple[np.ndarray, int]:
         return np.array([0.0, 0.0, -1.0]), 1
     if "snap_hook" in n or "screw_boss" in n or "rib" in n or "reinforcement" in n:
         return np.array([0.0, 0.0, -1.0]), 2
-    if "service_label" in n or "sim_tray" in n:
+    if "service_label" in n:
         return np.array([0.0, 0.0, -1.0]), 3
+    # The SIM tray services from the +X side wall, so it ejects sideways rather
+    # than plunging -Z through the PCB and battery stack.
+    if "sim_tray" in n:
+        return np.array([1.0, 0.0, 0.0]), 4
     # default: back, ring 1
     return np.array([0.0, 0.0, -1.0]), 1
 
@@ -339,10 +354,11 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
     # EGL leaks GPU memory across frames and dies around ~150 frames otherwise.
     RENDERER_CHUNK = 30
     renderer = pyrender.OffscreenRenderer(viewport_width=W, viewport_height=H)
-    # lights: 3-point
-    key = pyrender.DirectionalLight(color=np.ones(3), intensity=5.0)
-    fill = pyrender.DirectionalLight(color=np.ones(3) * 0.85, intensity=2.5)
-    rim = pyrender.DirectionalLight(color=np.ones(3), intensity=3.0)
+    # 3-point lighting, tuned so the safety-orange shell reads as orange rather
+    # than blowing out toward yellow under combined key+fill+rim exposure.
+    key = pyrender.DirectionalLight(color=np.ones(3), intensity=3.2)
+    fill = pyrender.DirectionalLight(color=np.ones(3) * 0.85, intensity=1.5)
+    rim = pyrender.DirectionalLight(color=np.ones(3), intensity=1.8)
 
     key_frame_times = {round(x * 0.5, 2) for x in range(int(TURNTABLE_S / 0.5) + 1)}
 
@@ -352,7 +368,7 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
             renderer = pyrender.OffscreenRenderer(viewport_width=W, viewport_height=H)
         t = fi / FPS
         pyscene = pyrender.Scene(bg_color=np.array([0.22, 0.22, 0.24, 1.0]),
-                                 ambient_light=np.array([0.35, 0.35, 0.38]))
+                                 ambient_light=np.array([0.28, 0.28, 0.30]))
         # add parts with displaced positions
         for p in parts:
             offset = part_offset(t, p["dir"], p["ring"])

@@ -413,7 +413,7 @@
     },
     {
       "id": "manufacturing_release_readiness",
-      "status": "blocked",
+      "status": "cad_package_pass",
       "pass": false,
       "required_evidence": [
         "manufacturing-readiness.json"

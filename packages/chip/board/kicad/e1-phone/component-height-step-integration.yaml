@@ -21,23 +21,21 @@ compactness_context:
   current_envelope_mm:
     - 78.0
     - 153.6
-    - 9.6
+    - 11.2
   width_excess_over_bound_mm: 0.3
   height_excess_over_bound_mm: 1.23
   area_excess_over_bound_mm2: 141.7
-  decision: 'Keep 78.0 x 153.6 x 9.6 mm molded orange body: width is within 0.3 mm of the display-driven lower bound,
-    height preserves only 1.23 mm over the display lower bound for rails, adhesive tolerance, corner radius, and
-    assembly handling.'
+  decision: 'Keep 78.0 x 153.6 x 11.2 mm molded orange body: width/height stay display-driven; depth was deliberately raised to fully bury the rear camera and torch under a flat flush back wall (no camera bump, no proud lens ring).'
 concept_step_context:
   enclosure_placement_status: enclosure_placement_cross_checked_not_release_ready
   step_validation_status: pass
-  validated_step_count: 97
+  validated_step_count: 94
   assembly_step: mechanical/e1-phone/out/e1-phone-solid-assembly.step
   assembly_step_imported: true
   assembly_step_bbox_span_mm:
     - 81.1
     - 154.24
-    - 13.325
+    - 11.63
   concept_step_artifact_count: 25
   missing_concept_step_artifacts: []
   concept_is_release_evidence: false
@@ -46,7 +44,7 @@ routed_board_step_context:
   routed_board_clearance_status: blocked_waiting_for_routed_board_step
   production_step_files: []
   has_tracks: false
-  has_filled_zones: false
+  has_filled_zones: true
   has_production_step: false
   placeholder_marker_count: 116
   concept_split_island_geometry_matches_kicad: true
@@ -126,7 +124,7 @@ supplier_geometry_context:
         - front_camera
       pass: false
     - id: wireless_modules
-      rfq_package_id: wireless_modules
+      rfq_package_id: ''
       rfq_package_ready: true
       cad_replacement_scope:
         - cellular_redcap
@@ -247,6 +245,16 @@ routed_clearance_rerun_matrix:
     measurement_instruction: Tight concept margin leaves little room for routed footprint, tolerance, or supplier
       STEP variation.
     requires_routed_step_rerun: true
+  - case_id: haptic_to_battery
+    concept_clearance_pass: true
+    concept_actual_mm: 0.5
+    concept_required_mm: 0.5
+    concept_margin_mm: 0.0
+    rerun_priority: 1
+    risk_level: high_zero_nominal_clearance
+    measurement_instruction: Zero-clearance concept registration must be checked for routed component body and solder
+      fillet interference.
+    requires_routed_step_rerun: true
   - case_id: split_interconnect_connectors_on_pcb_islands
     concept_clearance_pass: true
     concept_actual_mm: 0.0
@@ -326,7 +334,7 @@ routed_clearance_rerun_matrix:
     concept_actual_mm: 1.118
     concept_required_mm: 0.5
     concept_margin_mm: 0.618
-    rerun_priority: 4
+    rerun_priority: 3
     risk_level: standard
     measurement_instruction: Measure during the routed-board clearance rerun.
     requires_routed_step_rerun: true

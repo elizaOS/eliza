@@ -13,7 +13,15 @@ draft:
   source_basis:
     - preliminary USB-C binding and waterproof Molex production alternate
   verified_public_source_ids: []
-  recipient_candidates: []
+  recipient_candidates:
+    - supplier: GCT
+      candidate: USB4105 USB2 Type-C receptacle family
+      url: https://gct.co/files/specs/usb4105-spec.pdf
+      public_page_status: public_package_binding_observed_2026_05_20
+    - supplier: Molex
+      candidate: 221632 or 217804 Port-On waterproof Type-C family
+      url: https://www.molex.com/content/dam/molex/molex-dot-com/en_us/pdf/datasheets/987651-4081.pdf
+      public_page_status: public_package_binding_observed_2026_05_20
   request:
     quote_quantities:
       - 10
