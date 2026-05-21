@@ -11,6 +11,7 @@
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-groq": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
+        "@elizaos/plugin-nearai": "workspace:*",
         "@elizaos/plugin-ollama": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
@@ -4366,6 +4367,25 @@
         "@capacitor/core": "^8.3.1",
       },
     },
+    "plugins/plugin-nearai": {
+      "name": "@elizaos/plugin-nearai",
+      "version": "2.0.3",
+      "dependencies": {
+        "@ai-sdk/openai-compatible": "^1.0.0",
+        "@elizaos/core": "workspace:*",
+        "ai": "^6.0.23",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@types/bun": "^1.3.10",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.4",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+    },
     "plugins/plugin-ngrok": {
       "name": "@elizaos/plugin-ngrok",
       "version": "2.0.3",
@@ -6256,6 +6276,8 @@
     "@elizaos/plugin-music": ["@elizaos/plugin-music@workspace:plugins/plugin-music"],
 
     "@elizaos/plugin-mysticism": ["@elizaos/plugin-mysticism@workspace:plugins/plugin-mysticism"],
+
+    "@elizaos/plugin-nearai": ["@elizaos/plugin-nearai@workspace:plugins/plugin-nearai"],
 
     "@elizaos/plugin-ngrok": ["@elizaos/plugin-ngrok@workspace:plugins/plugin-ngrok"],
 

@@ -100,6 +100,12 @@ const CREDENTIAL_SOURCES: CredentialSource[] = [
       null,
   },
   {
+    providerId: "nearai",
+    envVar: "NEARAI_API_KEY",
+    authType: "api-key",
+    resolve: () => process.env.NEARAI_API_KEY?.trim() || null,
+  },
+  {
     providerId: "moonshot",
     envVar: "MOONSHOT_API_KEY",
     authType: "api-key",

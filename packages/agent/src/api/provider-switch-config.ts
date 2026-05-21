@@ -425,6 +425,12 @@ const PROVIDER_DEFAULT_MODELS: Record<
     largeKey: "GROQ_LARGE_MODEL",
     largeVal: "openai/gpt-oss-120b",
   },
+  nearai: {
+    smallKey: "NEARAI_SMALL_MODEL",
+    smallVal: "Qwen/Qwen3.6-35B-A3B-FP8",
+    largeKey: "NEARAI_LARGE_MODEL",
+    largeVal: "zai-org/GLM-5.1-FP8",
+  },
   // MLX (Apple Silicon, mlx_lm.server). Defaults pick small/fast 4-bit
   // quantizations from the `mlx-community` HuggingFace org — they're the
   // canonical converted models the MLX team publishes. Operators with their
@@ -713,6 +719,7 @@ export function clearPersistedOnboardingConfig(
     "mistral",
     "mlx",
     "moonshot",
+    "nearai",
     "ollama",
     "openai",
     "openai-subscription",

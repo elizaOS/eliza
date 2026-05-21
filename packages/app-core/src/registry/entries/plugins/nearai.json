@@ -1,0 +1,73 @@
+{
+  "id": "nearai",
+  "name": "NEAR AI",
+  "description": "NEAR AI Cloud TEE inference provider via an OpenAI-compatible API.",
+  "npmName": "@elizaos/plugin-nearai",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["ai-provider", "llm", "nearai", "near-ai", "tee", "chat"],
+  "config": {
+    "NEARAI_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "API Key",
+      "help": "API key used to authenticate requests to NEAR AI Cloud.",
+      "advanced": false
+    },
+    "NEARAI_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://cloud-api.near.ai/v1",
+      "label": "Base URL",
+      "help": "Base URL for the NEAR AI Cloud OpenAI-compatible API.",
+      "advanced": false
+    },
+    "NEARAI_SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "Qwen/Qwen3.6-35B-A3B-FP8",
+      "label": "Small Model",
+      "help": "Override the default NEAR AI small text model identifier.",
+      "placeholder": "e.g., Qwen/Qwen3.6-35B-A3B-FP8",
+      "advanced": false
+    },
+    "NEARAI_LARGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "zai-org/GLM-5.1-FP8",
+      "label": "Large Model",
+      "help": "Override the default NEAR AI large text model identifier.",
+      "placeholder": "e.g., zai-org/GLM-5.1-FP8",
+      "advanced": false
+    },
+    "NEARAI_BROWSER_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Browser Base URL",
+      "help": "Browser-only proxy endpoint base URL for NEAR AI requests. Do not expose API keys in browser clients.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ShieldCheck",
+    "group": "ai-provider",
+    "groupOrder": 0,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://near.ai",
+    "repository": "https://github.com/elizaos-plugins/plugin-nearai",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#near-ai"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "ai-provider"
+}

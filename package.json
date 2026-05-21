@@ -443,6 +443,7 @@
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/plugin-nearai": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
