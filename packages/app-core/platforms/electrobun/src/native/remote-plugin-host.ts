@@ -60,6 +60,7 @@ export interface RemotePluginInstallFromDirectoryOptions {
   sourceDir: string;
   devMode?: boolean;
   permissionsGranted?: RemotePluginPermissionGrant;
+  currentHash?: string | null;
 }
 
 export interface RemotePluginUninstallResult {
@@ -439,6 +440,7 @@ export class RemotePluginHost {
       {
         devMode: options.devMode === true,
         permissionsGranted: options.permissionsGranted,
+        currentHash: options.currentHash,
         source: { kind: "local", path: sourceDir },
         now: this.now,
       },
