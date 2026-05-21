@@ -12,7 +12,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_DIR = ROOT / "verify/ai_eda/assertion_candidates"
 EXPECTED_SCHEMA = "eliza.ai_eda.assertion_candidate_manifest.v1"
-EXPECTED_CLAIM_BOUNDARY = "assertion_candidates_only_not_bound_to_rtl"
+EXPECTED_CLAIM_BOUNDARY = "assertion_candidates_only_no_rtl_bind_formal_pass_or_release_claim"
 ALLOWED_REVIEW_STATUS = {"pending", "approved", "rejected", "needs_revision"}
 ALLOWED_GENERATOR_SOURCE = {"human_seed", "llm_candidate", "retrieval_candidate", "tool_import"}
 REQUIRED_CANDIDATE_FIELDS = (

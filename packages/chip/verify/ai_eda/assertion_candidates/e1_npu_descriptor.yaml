@@ -5,7 +5,7 @@ source_ids:
   - assertionforge
   - codev-sva
 dut: e1_npu
-claim_boundary: assertion_candidates_only_not_bound_to_rtl
+claim_boundary: assertion_candidates_only_no_rtl_bind_formal_pass_or_release_claim
 review_policy:
   generated_assertions_committed_to_rtl: false
   generated_assertions_bound_to_rtl: false
