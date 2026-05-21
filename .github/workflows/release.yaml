@@ -55,6 +55,9 @@ jobs:
     permissions:
       contents: write   # release commits push lerna version bumps + git tags
       id-token: write   # OIDC for npm publish
+      packages: write   # publish to GitHub Packages mirror
+      issues: write     # comment on release-tracking issues
+      actions: read     # read other workflow runs for context
     # Skip if commit message contains [skip ci]. Alpha releases are disabled;
     # prerelease GitHub-release events are skipped so tag pushes are the single
     # npm publication path for beta versions.
@@ -64,12 +67,6 @@ jobs:
         !(github.event_name == 'release' && contains(github.event.release.tag_name || '', '-')) &&
         !(github.ref_type == 'tag' && contains(github.ref_name || '', '-alpha'))
       }}
-
-    permissions:
-      contents: write
-      packages: write
-      issues: write
-      actions: read
 
     steps:
       - name: Checkout code
