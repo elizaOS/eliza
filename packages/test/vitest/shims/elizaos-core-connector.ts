@@ -8,6 +8,7 @@ export {
   getConnectorAccountManager,
   resetConnectorAccountManagerForTests,
 } from "../../../core/src/connectors/account-manager.ts";
+export { readRequestedConnectorRole } from "../../../core/src/connectors/oauth-role.ts";
 export type {
   IAgentRuntime,
   Plugin,

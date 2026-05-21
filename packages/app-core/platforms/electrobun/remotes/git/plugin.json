@@ -1,28 +1,26 @@
 {
-  "id": "eliza.local-model",
-  "name": "Eliza Model",
+  "id": "eliza.git",
+  "name": "Eliza Git",
   "version": "0.1.0",
-  "description": "Model Remote for ElizaLaunch. Provides Eliza-1 local model catalog, status, download, and routing controls for Eliza Orbit.",
+  "description": "Git Remote for ElizaLaunch. Provides trusted local Git operations for Eliza Orbit.",
   "mode": "background",
   "permissions": {
     "host": {
       "storage": true,
-      "manage-carrots": true
+      "manage-remote-plugins": true
     },
     "bun": {
       "read": true,
       "write": true,
       "env": true,
       "run": true,
-      "worker": true,
-      "ffi": true,
-      "addons": true
+      "worker": true
     },
     "isolation": "isolated-process"
   },
   "view": {
     "relativePath": "src/web/index.html",
-    "title": "Eliza Model Remote",
+    "title": "Eliza Git Remote",
     "width": 480,
     "height": 320,
     "hidden": true
