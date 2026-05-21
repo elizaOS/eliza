@@ -113,13 +113,6 @@ export default defineConfig({
           "index.ts",
         ),
       },
-      {
-        find: /^@elizaos\/plugin-worker-runtime$/,
-        replacement: path.join(
-          monorepoRoot,
-          "packages/plugin-worker-runtime/src/index.ts",
-        ),
-      },
     ],
   },
   test: {
