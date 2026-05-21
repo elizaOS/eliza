@@ -1,20 +1,9 @@
 # Manual review — dashboard-agents
 
-Route: `/dashboard/agents`
-
-Screenshots: `../desktop/dashboard-agents.png`, `../desktop/dashboard-agents--hover.png`, `../mobile/dashboard-agents.png`
+Route inferred from slug. Screenshots: `../desktop/dashboard-agents.png`, `../desktop/dashboard-agents--hover.png`, `../mobile/dashboard-agents.png`
 
 ## Verdict
 
-`broken` — page captures only the loading skeleton. This is a known audit-harness limitation: the agent list query depends on a JWT in localStorage (not just the test-auth cookie) and the audit does not perform a real login. Document under "harness next steps" — needs `loginWithInjectedEthereum` integration into the audit run.
+`needs-work`
 
-## Visual issues (when populated — verified manually outside the audit)
-
-- Header label says "Instances" but route is `/dashboard/agents` and sidebar label is "Instances". Pick one canonical word. Recommend "Agents" everywhere (the user-facing term) and treat "Instance" as a deployment substrate detail.
-- Usage & Rates card layout (`RUNNING / IDLE / YOUR COST / REMAINING`) is good.
-
-## Interaction targets for e2e
-
-- "New Agent" empty-state button → routes to create flow.
-- Running cost ticker.
-- Bulk actions on agent rows.
+Loop-4 JWT injection unblocked the page. Sidebar shows orange Instances highlight (good). Skeleton remains for the agent list; the Usage & Rates card from loop 1 captures (RUNNING / IDLE / YOUR COST / REMAINING) is not rendering because the audit mock doesn't drive the cost stream. Layout chrome is clean.
