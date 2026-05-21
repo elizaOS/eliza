@@ -1422,8 +1422,8 @@ function hasRootPackageOverride(name: string): boolean {
       resolutions?: Record<string, unknown>;
     }>(PACKAGE_JSON_PATH);
     return (
-      Object.prototype.hasOwnProperty.call(manifest.overrides ?? {}, name) ||
-      Object.prototype.hasOwnProperty.call(manifest.resolutions ?? {}, name)
+      Object.hasOwn(manifest.overrides ?? {}, name) ||
+      Object.hasOwn(manifest.resolutions ?? {}, name)
     );
   } catch {
     return false;
@@ -1740,7 +1740,9 @@ function collectRuntimeExportEntryPaths(value: unknown): string[] {
     ([key]) => key === "." || key.startsWith("./"),
   );
   if (hasSubpathKeys) {
-    return entries.flatMap(([, entry]) => collectRuntimeExportEntryPaths(entry));
+    return entries.flatMap(([, entry]) =>
+      collectRuntimeExportEntryPaths(entry),
+    );
   }
 
   return entries.flatMap(([condition, entry]) => {

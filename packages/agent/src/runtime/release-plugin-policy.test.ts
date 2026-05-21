@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   BASELINE_BUNDLED_RUNTIME_PACKAGES,
   classifyRegistryPluginRelease,
-  getBundledRuntimePluginIds,
   getBundledRuntimePackages,
+  getBundledRuntimePluginIds,
 } from "./release-plugin-policy.ts";
 
 describe("release plugin policy", () => {

@@ -75,8 +75,9 @@ const CORE_PACKAGE_DIR = resolveWorkspacePackageDir("core");
 const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-agent-orchestrator",
 );
-const PLUGIN_REMOTE_MANIFEST_PACKAGE_DIR =
-  resolveWorkspacePackageDir("plugin-remote-manifest");
+const PLUGIN_REMOTE_MANIFEST_PACKAGE_DIR = resolveWorkspacePackageDir(
+  "plugin-remote-manifest",
+);
 const PLUGIN_WORKER_RUNTIME_PACKAGE_DIR = resolveWorkspacePackageDir(
   "plugin-worker-runtime",
 );
@@ -305,12 +306,7 @@ function runOptionalWorkspaceInstall(cwd, label) {
     return;
   }
   runBun(
-    [
-      "install",
-      "--ignore-scripts",
-      "--cache-dir",
-      DESKTOP_BUILD_BUN_CACHE_DIR,
-    ],
+    ["install", "--ignore-scripts", "--cache-dir", DESKTOP_BUILD_BUN_CACHE_DIR],
     {
       cwd,
       env: desktopBuildTempEnv(),

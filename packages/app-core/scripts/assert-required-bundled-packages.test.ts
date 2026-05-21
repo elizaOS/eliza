@@ -329,9 +329,9 @@ describe("assertRequiredBundledPackagesLanded", () => {
       ),
     );
 
-    expect(getRuntimeDependencies(path.join(packageRoot, "package.json"))).toEqual([
-      "lucide-react",
-    ]);
+    expect(
+      getRuntimeDependencies(path.join(packageRoot, "package.json")),
+    ).toEqual(["lucide-react"]);
   });
 
   it("hoists Solana packages when a compatible top-level copy exists", () => {
