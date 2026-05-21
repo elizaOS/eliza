@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -125,6 +125,18 @@ def is_fixture_metrics(path: Path) -> bool:
     return "docs/spec-db/ai-eda/openlane-metrics-fixtures" in rel_path
 
 
+def run_design_name(metrics_path: Path) -> str | None:
+    """Read DESIGN_NAME from the run's resolved.json so downstream consumers can
+    distinguish which design the parsed metrics belong to (e.g. a macro-less
+    smoke top vs the full SoC carrying a hard SRAM macro)."""
+    resolved = metrics_path.parent.parent / "resolved.json"
+    if not resolved.is_file():
+        return None
+    data = json.loads(resolved.read_text(encoding="utf-8"))
+    name = data.get("DESIGN_NAME")
+    return name if isinstance(name, str) else None
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-flow-run", type=Path, default=DEFAULT_BASE_FLOW_RUN)
@@ -135,7 +147,7 @@ def parse_args() -> argparse.Namespace:
         help="OpenLane final metrics JSON. Defaults to the latest pd/openlane/runs/RUN_*/final/metrics.json, or the checked-in parser fixture if no local run exists.",
     )
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     return parser.parse_args()
 
 
@@ -159,6 +171,8 @@ def main() -> int:
         "label_status": status,
         "normalized": labels,
         "source_metrics": rel(metrics_path),
+        "source_design": run_design_name(metrics_path),
+        "macro_count": labels["macro_count"],
         "selection_policy": selection_policy,
         "deterministic_run_artifacts_present": deterministic_run_artifacts_present,
         "required_metrics": list(REQUIRED_LABELS),
@@ -187,7 +201,7 @@ def main() -> int:
     flow_path.write_text(json.dumps(flow_run, indent=2, sort_keys=True) + "\n")
     report = {
         "schema": "eliza.ai_eda.openlane_flow_label_parse_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
@@ -198,10 +212,15 @@ def main() -> int:
         "flow_run_record": rel(flow_path),
         "label_status": status,
         "missing_required_labels": missing,
+        "source_design": run_design_name(metrics_path),
+        "macro_count": labels["macro_count"],
     }
     report_path = out_dir / "label-parse-report.json"
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
-    print(f"STATUS: PASS ai_eda.openlane_flow_labels {report_path}")
+    print(
+        "STATUS: PASS ai_eda.openlane_flow_labels "
+        f"design={report['source_design']} macro_count={report['macro_count']} {report_path}"
+    )
     return 0 if not missing else 2
 
 
