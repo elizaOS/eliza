@@ -1,6 +1,6 @@
 # E1 Phone STEP Validation
 
-Status: pass; re-imported 97 part STEP files.
+Status: pass; re-imported 94 part STEP files.
 
 ## Cases
 
@@ -12,6 +12,8 @@ Status: pass; re-imported 97 part STEP files.
 - PASS: `battery_pouch` max span error 0.0 mm
 - PASS: `usb_c_receptacle` max span error 0.0 mm
 - PASS: `rear_camera_module` max span error 0.0 mm
+- PASS: `rear_flash_led` max span error 0.0 mm
+- PASS: `rear_flash_led_window` max span error 0.0 mm
 - PASS: `front_camera_module` max span error 0.0 mm
 - PASS: `bottom_speaker_module` max span error 0.0 mm
 - PASS: `earpiece_receiver` max span error 0.0 mm
@@ -65,11 +67,6 @@ Status: pass; re-imported 97 part STEP files.
 - PASS: `split_interconnect_side_flex` max span error 0.0 mm
 - PASS: `split_interconnect_top_flex_tail` max span error 0.0 mm
 - PASS: `split_interconnect_bottom_flex_tail` max span error 0.0 mm
-- PASS: `side_key_flex_connector` max span error 0.0 mm
-- PASS: `side_key_volume_flex_tail` max span error 0.0 mm
-- PASS: `side_key_volume_actuator_tail` max span error 0.0 mm
-- PASS: `side_key_power_flex_tail` max span error 0.0 mm
-- PASS: `side_key_power_actuator_tail` max span error 0.0 mm
 - PASS: `bottom_microphone_port_1` max span error 0.0 mm
 - PASS: `bottom_microphone_mesh_1` max span error 0.0 mm
 - PASS: `bottom_microphone_port_2` max span error 0.0 mm

@@ -21,11 +21,12 @@ This gate joins board objective readiness with mechanical release gates for the 
 - BLOCKED: `routed_board_step_and_clearance`
 - BLOCKED: `supplier_family_lock`
 - BLOCKED: `full_cad_boolean_interference`
-- BLOCKED: `mechanical_lifecycle_physical_results`
+- BLOCKED: `automated_visual_and_manual_cmf_signoff`
 - BLOCKED: `physical_process_validation_results`
 - BLOCKED: `tooling_mold_flow_and_toolmaker_signoff`
 - BLOCKED: `orange_cmf_release`
+- BLOCKED: `manufacturing_release_readiness`
 
 ## Release Rule
 
-- Every board objective requirement and every mechanical gate must pass, the board end-to-end release decision must be true, and all required release outputs must exist before claiming the finished phone is end-to-end ready.
+- Every board objective requirement and every mechanical gate must pass, the board end-to-end release decision must be true, manufacturing_release_ready must be true, and all required release outputs must exist before claiming the finished phone is end-to-end ready.

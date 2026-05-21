@@ -85,10 +85,10 @@
       "fixture": "anechoic_box_or_phone_acoustic_jig",
       "notes": "1 W/0.5 m equivalent or vendor-normalized compact-phone SPL target.",
       "required_evidence_artifacts": [
-        "speaker_spl_raw_sweep",
-        "acoustic_calibrator_certificate",
-        "speaker_chamber_setup_photo",
-        "speaker_module_lot_record"
+        "speaker_spl_raw_sweep_csv",
+        "acoustic_fixture_calibration_certificate",
+        "speaker_grille_test_photo",
+        "speaker_module_and_mesh_lot_records"
       ]
     },
     {
@@ -99,9 +99,9 @@
       "fixture": "impedance_sweep",
       "notes": "Verify module impedance and acoustic chamber loading.",
       "required_evidence_artifacts": [
-        "speaker_impedance_raw_sweep",
-        "impedance_analyzer_calibration_certificate",
-        "speaker_probe_setup_photo",
+        "speaker_impedance_raw_sweep_csv",
+        "audio_analyzer_calibration_certificate",
+        "speaker_module_test_photo",
         "speaker_module_lot_record"
       ]
     },
@@ -113,10 +113,10 @@
       "fixture": "evt_fixture_bottom_acoustic_leak_mask",
       "notes": "Masked/unmasked leakage delta around bottom speaker and mic ports.",
       "required_evidence_artifacts": [
-        "speaker_leak_raw_sweep",
-        "bottom_acoustic_fixture_certificate",
-        "bottom_leak_mask_photo",
-        "speaker_mic_gasket_lot_record"
+        "bottom_speaker_leak_raw_sweep_csv",
+        "leak_fixture_calibration_certificate",
+        "bottom_audio_port_mask_photo",
+        "speaker_mesh_and_gasket_lot_records"
       ]
     },
     {
@@ -127,10 +127,10 @@
       "fixture": "calibrated_speech_noise_box",
       "notes": "Bottom MEMS microphone SNR through molded port and mesh stack.",
       "required_evidence_artifacts": [
-        "bottom_mic_snr_raw_log",
-        "speech_noise_box_calibration_certificate",
-        "bottom_mic_port_setup_photo",
-        "bottom_mic_lot_record"
+        "microphone_snr_raw_log",
+        "anechoic_or_quiet_box_calibration_certificate",
+        "microphone_port_test_photo",
+        "microphone_and_mesh_lot_records"
       ]
     },
     {
@@ -141,10 +141,10 @@
       "fixture": "calibrated_speech_noise_box",
       "notes": "Noise-cancel MEMS microphone SNR and PDM integrity.",
       "required_evidence_artifacts": [
-        "top_mic_snr_raw_log",
-        "speech_noise_box_calibration_certificate",
-        "top_mic_port_setup_photo",
-        "top_mic_lot_record"
+        "top_microphone_snr_raw_log",
+        "anechoic_or_quiet_box_calibration_certificate",
+        "top_microphone_port_test_photo",
+        "microphone_and_mesh_lot_records"
       ]
     },
     {
@@ -155,10 +155,10 @@
       "fixture": "ear_simulator",
       "notes": "Behind-glass receiver SPL through gasketed handset slot.",
       "required_evidence_artifacts": [
-        "earpiece_spl_raw_sweep",
-        "ear_simulator_calibration_certificate",
-        "earpiece_gasket_setup_photo",
-        "receiver_module_lot_record"
+        "earpiece_spl_raw_sweep_csv",
+        "acoustic_fixture_calibration_certificate",
+        "earpiece_slot_test_photo",
+        "receiver_and_gasket_lot_records"
       ]
     },
     {
@@ -169,10 +169,10 @@
       "fixture": "evt_fixture_earpiece_leak_mask",
       "notes": "Leakage around receiver gasket and cover-glass slot.",
       "required_evidence_artifacts": [
-        "earpiece_leak_raw_sweep",
-        "earpiece_acoustic_fixture_certificate",
-        "earpiece_leak_mask_photo",
-        "receiver_gasket_lot_record"
+        "earpiece_leak_raw_sweep_csv",
+        "leak_fixture_calibration_certificate",
+        "compressed_earpiece_gasket_photo",
+        "receiver_and_gasket_lot_records"
       ]
     }
   ],

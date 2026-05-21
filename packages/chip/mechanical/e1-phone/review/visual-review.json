@@ -5,19 +5,29 @@
       1650
     ],
     "mean_rgb": [
-      248.033,
-      243.63,
-      241.683
+      248.627,
+      243.478,
+      241.197
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.05366,
-    "orange_pixel_ratio_of_nonwhite": 0.43302,
-    "warm_orange_pixel_ratio_of_nonwhite": 0.42543,
-    "dark_pixel_ratio_of_nonwhite": 0.5465,
+    "nonwhite_pixel_ratio": 0.05561,
+    "occupied_bbox_ratio": 0.2526,
+    "edge_pixel_ratio": 0.00451,
+    "quantized_unique_color_count": 115,
+    "content_checks": {
+      "resolution": true,
+      "channel_span": true,
+      "nonwhite_coverage": true,
+      "occupied_bbox": true,
+      "edge_detail": true,
+      "color_variation": true
+    },
+    "orange_pixel_ratio_of_nonwhite": 0.50414,
+    "dark_pixel_ratio_of_nonwhite": 0.48084,
     "pass": true
   },
   "full_back_iso.png": {
@@ -26,19 +36,29 @@
       1650
     ],
     "mean_rgb": [
-      254.578,
-      245.083,
-      240.854
+      254.589,
+      244.769,
+      240.395
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.05702,
-    "orange_pixel_ratio_of_nonwhite": 0.97389,
-    "warm_orange_pixel_ratio_of_nonwhite": 0.95179,
-    "dark_pixel_ratio_of_nonwhite": 0.01315,
+    "nonwhite_pixel_ratio": 0.05885,
+    "occupied_bbox_ratio": 0.25143,
+    "edge_pixel_ratio": 0.00487,
+    "quantized_unique_color_count": 108,
+    "content_checks": {
+      "resolution": true,
+      "channel_span": true,
+      "nonwhite_coverage": true,
+      "occupied_bbox": true,
+      "edge_detail": true,
+      "color_variation": true
+    },
+    "orange_pixel_ratio_of_nonwhite": 0.97535,
+    "dark_pixel_ratio_of_nonwhite": 0.01214,
     "pass": true
   },
   "rear_feature_detail.png": {
@@ -47,18 +67,28 @@
       1650
     ],
     "mean_rgb": [
-      254.12,
-      245.157,
-      241.209
+      254.119,
+      245.135,
+      241.178
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.11003,
-    "orange_pixel_ratio_of_nonwhite": 0.00173,
-    "warm_orange_pixel_ratio_of_nonwhite": 0.97237,
+    "nonwhite_pixel_ratio": 0.11025,
+    "occupied_bbox_ratio": 0.25089,
+    "edge_pixel_ratio": 0.01597,
+    "quantized_unique_color_count": 132,
+    "content_checks": {
+      "resolution": true,
+      "channel_span": true,
+      "nonwhite_coverage": true,
+      "occupied_bbox": true,
+      "edge_detail": true,
+      "color_variation": true
+    },
+    "orange_pixel_ratio_of_nonwhite": 0.00168,
     "dark_pixel_ratio_of_nonwhite": 0.00943,
     "pass": true
   },
@@ -68,19 +98,29 @@
       1650
     ],
     "mean_rgb": [
-      254.414,
-      249.722,
-      247.633
+      254.686,
+      249.399,
+      247.044
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.02973,
-    "orange_pixel_ratio_of_nonwhite": 0.92483,
-    "warm_orange_pixel_ratio_of_nonwhite": 0.88553,
-    "dark_pixel_ratio_of_nonwhite": 0.06132,
+    "nonwhite_pixel_ratio": 0.03224,
+    "occupied_bbox_ratio": 0.23514,
+    "edge_pixel_ratio": 0.00429,
+    "quantized_unique_color_count": 95,
+    "content_checks": {
+      "resolution": true,
+      "channel_span": true,
+      "nonwhite_coverage": true,
+      "occupied_bbox": true,
+      "edge_detail": true,
+      "color_variation": true
+    },
+    "orange_pixel_ratio_of_nonwhite": 0.95824,
+    "dark_pixel_ratio_of_nonwhite": 0.0202,
     "pass": true
   },
   "full_bottom_port.png": {
@@ -99,8 +139,18 @@
       255
     ],
     "nonwhite_pixel_ratio": 0.02397,
+    "occupied_bbox_ratio": 0.22875,
+    "edge_pixel_ratio": 0.00395,
+    "quantized_unique_color_count": 66,
+    "content_checks": {
+      "resolution": true,
+      "channel_span": true,
+      "nonwhite_coverage": true,
+      "occupied_bbox": true,
+      "edge_detail": true,
+      "color_variation": true
+    },
     "orange_pixel_ratio_of_nonwhite": 0.77781,
-    "warm_orange_pixel_ratio_of_nonwhite": 0.77783,
     "dark_pixel_ratio_of_nonwhite": 0.19595,
     "pass": true
   },
@@ -110,19 +160,29 @@
       1650
     ],
     "mean_rgb": [
-      229.549,
-      228.215,
-      227.563
+      229.683,
+      228.288,
+      227.608
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.11026,
-    "orange_pixel_ratio_of_nonwhite": 0.068,
-    "warm_orange_pixel_ratio_of_nonwhite": 0.06365,
-    "dark_pixel_ratio_of_nonwhite": 0.92223,
+    "nonwhite_pixel_ratio": 0.11015,
+    "occupied_bbox_ratio": 0.17627,
+    "edge_pixel_ratio": 0.00541,
+    "quantized_unique_color_count": 111,
+    "content_checks": {
+      "resolution": true,
+      "channel_span": true,
+      "nonwhite_coverage": true,
+      "occupied_bbox": true,
+      "edge_detail": true,
+      "color_variation": true
+    },
+    "orange_pixel_ratio_of_nonwhite": 0.07162,
+    "dark_pixel_ratio_of_nonwhite": 0.91816,
     "pass": true
   },
   "exploded_iso.png": {
@@ -131,19 +191,29 @@
       1650
     ],
     "mean_rgb": [
-      244.953,
-      238.985,
-      236.312
+      244.885,
+      238.666,
+      235.881
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.07599,
-    "orange_pixel_ratio_of_nonwhite": 0.45795,
-    "warm_orange_pixel_ratio_of_nonwhite": 0.44613,
-    "dark_pixel_ratio_of_nonwhite": 0.52474,
+    "nonwhite_pixel_ratio": 0.07773,
+    "occupied_bbox_ratio": 0.26391,
+    "edge_pixel_ratio": 0.0061,
+    "quantized_unique_color_count": 133,
+    "content_checks": {
+      "resolution": true,
+      "channel_span": true,
+      "nonwhite_coverage": true,
+      "occupied_bbox": true,
+      "edge_detail": true,
+      "color_variation": true
+    },
+    "orange_pixel_ratio_of_nonwhite": 0.46694,
+    "dark_pixel_ratio_of_nonwhite": 0.51766,
     "pass": true
   },
   "component_stack.png": {
@@ -152,19 +222,29 @@
       1650
     ],
     "mean_rgb": [
-      237.56,
-      239.5,
-      238.55
+      237.583,
+      239.52,
+      238.572
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.07952,
-    "orange_pixel_ratio_of_nonwhite": 0.01139,
-    "warm_orange_pixel_ratio_of_nonwhite": 0.01187,
-    "dark_pixel_ratio_of_nonwhite": 0.67433,
+    "nonwhite_pixel_ratio": 0.07942,
+    "occupied_bbox_ratio": 0.18846,
+    "edge_pixel_ratio": 0.0042,
+    "quantized_unique_color_count": 218,
+    "content_checks": {
+      "resolution": true,
+      "channel_span": true,
+      "nonwhite_coverage": true,
+      "occupied_bbox": true,
+      "edge_detail": true,
+      "color_variation": true
+    },
+    "orange_pixel_ratio_of_nonwhite": 0.01136,
+    "dark_pixel_ratio_of_nonwhite": 0.67439,
     "pass": true
   },
   "mold_tooling.png": {
@@ -173,19 +253,29 @@
       1650
     ],
     "mean_rgb": [
-      251.424,
-      247.297,
-      245.557
+      251.435,
+      247.113,
+      245.282
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.0406,
-    "orange_pixel_ratio_of_nonwhite": 0.13253,
-    "warm_orange_pixel_ratio_of_nonwhite": 0.12985,
-    "dark_pixel_ratio_of_nonwhite": 0.02517,
+    "nonwhite_pixel_ratio": 0.04165,
+    "occupied_bbox_ratio": 0.21159,
+    "edge_pixel_ratio": 0.00545,
+    "quantized_unique_color_count": 241,
+    "content_checks": {
+      "resolution": true,
+      "channel_span": true,
+      "nonwhite_coverage": true,
+      "occupied_bbox": true,
+      "edge_detail": true,
+      "color_variation": true
+    },
+    "orange_pixel_ratio_of_nonwhite": 0.1561,
+    "dark_pixel_ratio_of_nonwhite": 0.02452,
     "pass": true
   }
 }

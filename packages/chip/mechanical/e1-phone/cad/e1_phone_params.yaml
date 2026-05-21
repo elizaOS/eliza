@@ -1,10 +1,11 @@
 device:
   name: E1 phone EVT0 mechanical concept
-  revision: evt0-mechanical-cad
-  envelope_mm: [78.0, 153.6, 9.6]
+  revision: evt0-mechanical-cad-flush-back
+  envelope_mm: [78.0, 153.6, 11.2]
   corner_radius_mm: 7.5
   plastic_color: hard safety orange
   wall_thickness_mm: 1.15
+  back_face: fully flush flat back; no camera bump, no protruding lens ring; rear camera and torch buried under flat back wall behind flush internal windows
   target_mass_g: 185
   ship_target_mass_g: 168
   design_language: hard orange phone-like slab with teenage-engineering/rabbit-r1 influence
@@ -30,9 +31,13 @@ pcb:
   edge_clearance_mm: 2.5
 
 battery:
-  candidate: LiPol LP446487 class 3.85 V 4500 mAh 17.33 Wh pouch
-  envelope_mm: [64.0, 87.0, 4.4]
-  z_center_mm: -2.5
+  candidate: LiPol LP576487 class 3.85 V 5830 mAh 22.45 Wh thick pouch
+  envelope_mm: [64.0, 87.0, 5.7]
+  z_center_mm: -1.45
+  capacity_mah: 5830
+  energy_wh: 22.45
+  nominal_voltage_v: 3.85
+  capacity_basis: 4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.7/4.4) for the flush-back volume gain
 
 components:
   usb_c:
@@ -63,24 +68,36 @@ components:
     envelope_mm: [12.3, 18.0, 1.2]
     keepout_mm: [14.5, 22.0, 2.0]
   rear_camera_glass:
-    candidate: chemically strengthened rear camera cover window
+    candidate: flush internal sapphire/glass insert set into the flat back wall, no proud ring
     envelope_mm: [9.2, 9.2, 0.55]
+    mounting: internal-only window, outer face coplanar with the flat back outer surface (flush, not proud)
   rear_camera:
-    candidate: OV13855/OV13850 13 MP autofocus MIPI module
+    candidate: single OV13855/OV13850 class 13 MP simple-AF MIPI module, single lens, buried under flush back wall
     module_mm: [10.0, 10.0, 5.1]
     lens_diameter_mm: 6.8
+    lens_count: 1
+    array: single
+  rear_flash_led:
+    candidate: OSRAM/Everlight class 1.0x1.0x0.6 mm top-fire white flash/torch LED beside the rear camera, buried under a flush light-pipe window
+    envelope_mm: [1.0, 1.0, 0.7]
+    window_mm: [1.6, 1.6, 0.5]
+    emit_direction: -Z (out the flat back, through a flush light pipe/window)
   front_camera:
-    candidate: 5-8 MP fixed-focus MIPI module behind cover glass
+    candidate: single 5-8 MP fixed-focus MIPI module behind cover glass, single lens
     module_mm: [6.5, 6.5, 3.2]
     lens_diameter_mm: 3.4
+    lens_count: 1
+    array: single
   power_button:
     candidate: Panasonic EVQ-P7/P3/9P7 side-push tactile switch
+    standardized_part: Panasonic EVQ-P7xxx
     travel_mm: 0.35
     force_n: 1.6
     cap_mm: [2.0, 12.0, 1.1]
     source_url: https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247
   volume_button:
     candidate: Panasonic EVQ-P7/P3/9P7 side-push tactile switch
+    standardized_part: Panasonic EVQ-P7xxx
     travel_mm: 0.35
     force_n: 1.5
     cap_mm: [2.0, 21.0, 1.1]
@@ -151,7 +168,7 @@ tolerances:
     display_gap_to_bezel_mm: { nominal: 0.15, tolerance: 0.15 }
     power_button_cap_proud_mm: { nominal: 0.30, tolerance: 0.10 }
     usb_c_aperture_clearance_mm: { nominal: 0.20, tolerance: 0.10 }
-    rear_camera_ring_vs_glass_mm: { nominal: 0.10, tolerance: 0.10 }
+    rear_camera_window_flush_to_back_mm: { nominal: 0.0, tolerance: 0.05 }
   environmental_targets:
     drop_height_m: 1.0
     ingress_target: IP54 design intent only

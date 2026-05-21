@@ -1,6 +1,6 @@
-criterion_id,sample_id,artifact,measured_value,accepted,reviewer,notes
-orange_resin_color_plaque_delta_e,,,,,,molded orange PC+ABS plaque within deltaE <= 2.0 against approved master chip
-hard_touch_gloss_texture,,,,,,hard matte/satin orange texture approved with 8-18 GU at 60 deg and documented texture depth
-scratch_and_hand_oil_visibility,,,,,,"no objectionable whitening, gloss change, or dark hand-oil staining on orange A-surfaces after rub/scratch exposure"
-gate_blush_vestige_and_weld_line_visibility,,,,,,"gate vestige off A-surface; no visible weld line on front rail, back hero surface, camera land, or USB lip"
-rendered_orange_identity_locked,,,,,,CAD review views show dominant orange shell with black glass front and compact phone slab proportions
+criterion_id,sample_id,artifact,measured_value,accepted,reviewer,evidence_class,notes
+orange_resin_color_plaque_delta_e,,,,,,,molded orange PC+ABS plaque within deltaE <= 2.0 against approved master chip
+hard_touch_gloss_texture,,,,,,,hard matte/satin orange texture approved with 8-18 GU at 60 deg and documented texture depth
+scratch_and_hand_oil_visibility,,,,,,,"no objectionable whitening, gloss change, or dark hand-oil staining on orange A-surfaces after rub/scratch exposure"
+gate_blush_vestige_and_weld_line_visibility,,,,,,,"gate vestige off A-surface; no visible weld line on front rail, back hero surface, camera land, or USB lip"
+rendered_orange_identity_locked,,,,,,,CAD review views show dominant orange shell with black glass front and compact phone slab proportions

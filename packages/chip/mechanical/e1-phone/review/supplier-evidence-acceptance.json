@@ -2,7 +2,7 @@
   "claim_boundary": "Fail-closed supplier evidence acceptance. Public shortlist entries and generated RFQs do not count; each functional family needs supplier-returned quote, 2D drawing, STEP, sample evidence, and reviewer identity before CAD lock.",
   "status": "blocked_no_supplier_evidence",
   "source_status": {
-    "supplier_rfq_status": "rfq_ready",
+    "supplier_rfq_status": "blocked",
     "supplier_response_status": "blocked_no_supplier_responses",
     "supplier_response_complete_count": 0
   },
@@ -32,26 +32,6 @@
         "mating_connector",
         "touch_display_bringup_data"
       ],
-      "status": "blocked_missing_supplier_family_evidence",
-      "rfq_package_ready": true,
-      "items": [
-        {
-          "supplier_item_id": "display_lcm_ctp",
-          "in_supplier_matrix": true,
-          "rfq_package_id": "display_touch_stack",
-          "response_case_present": true,
-          "response_pass": false
-        }
-      ],
-      "required_supplier_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "fpc_pinout",
-        "mating_connector",
-        "touch_display_bringup_data"
-      ],
       "required_return_artifacts": [
         "display_sample_photos",
         "fpc_pinout_and_mating_connector",
@@ -67,6 +47,27 @@
         "active_area_offset_mm",
         "connector_stack_height_mm",
         "outline_tolerance_mm"
+      ],
+      "status": "blocked_missing_supplier_family_evidence",
+      "rfq_package_ready": true,
+      "items": [
+        {
+          "supplier_item_id": "display_lcm_ctp",
+          "in_supplier_matrix": true,
+          "rfq_package_id": "display_touch_stack",
+          "response_case_present": true,
+          "response_pass": false,
+          "physical_evidence_pass": false
+        }
+      ],
+      "required_supplier_evidence_keys": [
+        "quote",
+        "2d_drawing",
+        "step_model",
+        "sample",
+        "fpc_pinout",
+        "mating_connector",
+        "touch_display_bringup_data"
       ],
       "evidence_key_status": {
         "quote": false,
@@ -106,26 +107,6 @@
         "insertion_force_data",
         "splash_gasket_review"
       ],
-      "status": "blocked_missing_supplier_family_evidence",
-      "rfq_package_ready": true,
-      "items": [
-        {
-          "supplier_item_id": "usb_c",
-          "in_supplier_matrix": true,
-          "rfq_package_id": "usb_c_and_bottom_audio",
-          "response_case_present": true,
-          "response_pass": false
-        }
-      ],
-      "required_supplier_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "usb_land_pattern",
-        "insertion_force_data",
-        "splash_gasket_review"
-      ],
       "required_return_artifacts": [
         "gasket_or_splash_path_review",
         "pcb_land_pattern",
@@ -141,6 +122,27 @@
         "insertion_force_n",
         "mating_cycle_rating",
         "shell_stake_tolerance_mm"
+      ],
+      "status": "blocked_missing_supplier_family_evidence",
+      "rfq_package_ready": true,
+      "items": [
+        {
+          "supplier_item_id": "usb_c",
+          "in_supplier_matrix": true,
+          "rfq_package_id": "usb_c_and_bottom_audio",
+          "response_case_present": true,
+          "response_pass": false,
+          "physical_evidence_pass": false
+        }
+      ],
+      "required_supplier_evidence_keys": [
+        "quote",
+        "2d_drawing",
+        "step_model",
+        "sample",
+        "usb_land_pattern",
+        "insertion_force_data",
+        "splash_gasket_review"
       ],
       "evidence_key_status": {
         "quote": false,
@@ -180,26 +182,6 @@
         "gasket_material_spec",
         "compression_set_data"
       ],
-      "status": "blocked_missing_supplier_family_evidence",
-      "rfq_package_ready": true,
-      "items": [
-        {
-          "supplier_item_id": "side_buttons",
-          "in_supplier_matrix": true,
-          "rfq_package_id": "buttons_haptics_service",
-          "response_case_present": true,
-          "response_pass": false
-        }
-      ],
-      "required_supplier_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "force_travel_curve",
-        "gasket_material_spec",
-        "compression_set_data"
-      ],
       "required_return_artifacts": [
         "cap_and_actuator_stack_drawing",
         "sample_force_curve",
@@ -215,6 +197,27 @@
         "actuation_force_n",
         "compression_set_percent",
         "travel_mm"
+      ],
+      "status": "blocked_missing_supplier_family_evidence",
+      "rfq_package_ready": true,
+      "items": [
+        {
+          "supplier_item_id": "side_buttons",
+          "in_supplier_matrix": true,
+          "rfq_package_id": "buttons_haptics_service",
+          "response_case_present": true,
+          "response_pass": false,
+          "physical_evidence_pass": false
+        }
+      ],
+      "required_supplier_evidence_keys": [
+        "quote",
+        "2d_drawing",
+        "step_model",
+        "sample",
+        "force_travel_curve",
+        "gasket_material_spec",
+        "compression_set_data"
       ],
       "evidence_key_status": {
         "quote": false,
@@ -255,33 +258,6 @@
         "optical_center_datum",
         "sample_capture_evidence"
       ],
-      "status": "blocked_missing_supplier_family_evidence",
-      "rfq_package_ready": true,
-      "items": [
-        {
-          "supplier_item_id": "rear_camera",
-          "in_supplier_matrix": true,
-          "rfq_package_id": "camera_stack",
-          "response_case_present": true,
-          "response_pass": false
-        },
-        {
-          "supplier_item_id": "front_camera",
-          "in_supplier_matrix": true,
-          "rfq_package_id": "camera_stack",
-          "response_case_present": true,
-          "response_pass": false
-        }
-      ],
-      "required_supplier_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "fpc_pinout",
-        "optical_center_datum",
-        "sample_capture_evidence"
-      ],
       "required_return_artifacts": [
         "behind_glass_sample_capture",
         "fpc_pinout_and_connector",
@@ -301,6 +277,35 @@
         "lens_center_offset_mm",
         "minimum_focus_distance_mm",
         "module_total_height_mm"
+      ],
+      "status": "blocked_missing_supplier_family_evidence",
+      "rfq_package_ready": true,
+      "items": [
+        {
+          "supplier_item_id": "rear_camera",
+          "in_supplier_matrix": true,
+          "rfq_package_id": "camera_stack",
+          "response_case_present": true,
+          "response_pass": false,
+          "physical_evidence_pass": false
+        },
+        {
+          "supplier_item_id": "front_camera",
+          "in_supplier_matrix": true,
+          "rfq_package_id": "camera_stack",
+          "response_case_present": true,
+          "response_pass": false,
+          "physical_evidence_pass": false
+        }
+      ],
+      "required_supplier_evidence_keys": [
+        "quote",
+        "2d_drawing",
+        "step_model",
+        "sample",
+        "fpc_pinout",
+        "optical_center_datum",
+        "sample_capture_evidence"
       ],
       "evidence_key_status": {
         "quote": false,
@@ -342,33 +347,6 @@
         "antenna_keepout",
         "certification_path"
       ],
-      "status": "blocked_missing_supplier_family_evidence",
-      "rfq_package_ready": true,
-      "items": [
-        {
-          "supplier_item_id": "cellular_redcap",
-          "in_supplier_matrix": true,
-          "rfq_package_id": "",
-          "response_case_present": true,
-          "response_pass": false
-        },
-        {
-          "supplier_item_id": "wifi_bt",
-          "in_supplier_matrix": true,
-          "rfq_package_id": "",
-          "response_case_present": true,
-          "response_pass": false
-        }
-      ],
-      "required_supplier_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "pinout_reference_design",
-        "antenna_keepout",
-        "certification_path"
-      ],
       "required_return_artifacts": [
         "antenna_matching_reference",
         "antenna_reference_design",
@@ -391,6 +369,35 @@
         "module_height_mm",
         "peak_current_a",
         "thermal_dissipation_w"
+      ],
+      "status": "blocked_missing_supplier_family_evidence",
+      "rfq_package_ready": true,
+      "items": [
+        {
+          "supplier_item_id": "cellular_redcap",
+          "in_supplier_matrix": true,
+          "rfq_package_id": "",
+          "response_case_present": true,
+          "response_pass": false,
+          "physical_evidence_pass": false
+        },
+        {
+          "supplier_item_id": "wifi_bt",
+          "in_supplier_matrix": true,
+          "rfq_package_id": "",
+          "response_case_present": true,
+          "response_pass": false,
+          "physical_evidence_pass": false
+        }
+      ],
+      "required_supplier_evidence_keys": [
+        "quote",
+        "2d_drawing",
+        "step_model",
+        "sample",
+        "pinout_reference_design",
+        "antenna_keepout",
+        "certification_path"
       ],
       "evidence_key_status": {
         "quote": false,
@@ -431,6 +438,23 @@
         "gate_runner_ejector_strategy",
         "texture_color_standard"
       ],
+      "required_return_artifacts": [
+        "color_plaque_or_first_shot_photo",
+        "dfm_markup",
+        "signed_tool_drawing",
+        "tooling_quote"
+      ],
+      "required_technical_decisions": [
+        "gate_location",
+        "orange_resin_grade",
+        "surface_texture",
+        "tooling_path_soft_or_hard_tool"
+      ],
+      "required_validation_outputs": [
+        "color_delta_e",
+        "first_shot_warp_mm",
+        "gate_vestige_height_mm"
+      ],
       "status": "blocked_missing_supplier_family_evidence",
       "rfq_package_ready": true,
       "items": [
@@ -439,7 +463,8 @@
           "in_supplier_matrix": true,
           "rfq_package_id": "orange_enclosure_tooling",
           "response_case_present": true,
-          "response_pass": false
+          "response_pass": false,
+          "physical_evidence_pass": false
         }
       ],
       "required_supplier_evidence_keys": [
@@ -450,22 +475,6 @@
         "dfm_markup",
         "gate_runner_ejector_strategy",
         "texture_color_standard"
-      ],
-      "required_return_artifacts": [
-        "dfm_markup",
-        "orange_plaque_or_first_shot_photo",
-        "tool_layout_drawing",
-        "tooling_quote"
-      ],
-      "required_technical_decisions": [
-        "gate_runner_ejector_strategy",
-        "texture_and_color_standard",
-        "tool_class_and_cavity_count"
-      ],
-      "required_validation_outputs": [
-        "delta_e_orange",
-        "estimated_part_cost_usd_20",
-        "tooling_lead_time_days"
       ],
       "evidence_key_status": {
         "toolmaker_quote": false,
@@ -491,358 +500,5 @@
       "pass": false
     }
   ],
-  "cases": [
-    {
-      "id": "display_touch_stack",
-      "rfq_package_id": "display_touch_stack",
-      "rfq_package_ready": true,
-      "cad_replacement_scope": [
-        "display_lcm_ctp"
-      ],
-      "required_evidence": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "fpc_pinout",
-        "mating_connector",
-        "touch_display_bringup_data"
-      ],
-      "required_supplier_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "fpc_pinout",
-        "mating_connector",
-        "touch_display_bringup_data"
-      ],
-      "required_return_artifacts": [
-        "display_sample_photos",
-        "fpc_pinout_and_mating_connector",
-        "native_or_step_stack_model",
-        "signed_2d_stack_drawing"
-      ],
-      "required_technical_decisions": [
-        "cover_glass_bonded_or_separate",
-        "fpc_exit_side_and_bend_radius",
-        "touch_controller_and_init_sequence"
-      ],
-      "required_validation_outputs": [
-        "active_area_offset_mm",
-        "connector_stack_height_mm",
-        "outline_tolerance_mm"
-      ],
-      "returned_basic_evidence": false,
-      "missing_required_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "fpc_pinout",
-        "mating_connector",
-        "touch_display_bringup_data"
-      ],
-      "missing_supplier_items": [
-        "display_lcm_ctp"
-      ],
-      "pass": false
-    },
-    {
-      "id": "usb_audio_bottom_io",
-      "rfq_package_id": "usb_c_and_bottom_audio",
-      "rfq_package_ready": true,
-      "cad_replacement_scope": [
-        "usb_c"
-      ],
-      "required_evidence": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "usb_land_pattern",
-        "insertion_force_data",
-        "splash_gasket_review"
-      ],
-      "required_supplier_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "usb_land_pattern",
-        "insertion_force_data",
-        "splash_gasket_review"
-      ],
-      "required_return_artifacts": [
-        "gasket_or_splash_path_review",
-        "pcb_land_pattern",
-        "signed_receptacle_2d_drawing",
-        "step_model_with_shell_stakes"
-      ],
-      "required_technical_decisions": [
-        "exact_connector_suffix",
-        "gasket_seat_acceptance",
-        "mid_mount_or_top_mount_orientation"
-      ],
-      "required_validation_outputs": [
-        "insertion_force_n",
-        "mating_cycle_rating",
-        "shell_stake_tolerance_mm"
-      ],
-      "returned_basic_evidence": false,
-      "missing_required_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "usb_land_pattern",
-        "insertion_force_data",
-        "splash_gasket_review"
-      ],
-      "missing_supplier_items": [
-        "usb_c"
-      ],
-      "pass": false
-    },
-    {
-      "id": "power_volume_buttons",
-      "rfq_package_id": "buttons_haptics_service",
-      "rfq_package_ready": true,
-      "cad_replacement_scope": [
-        "side_buttons"
-      ],
-      "required_evidence": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "force_travel_curve",
-        "gasket_material_spec",
-        "compression_set_data"
-      ],
-      "required_supplier_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "force_travel_curve",
-        "gasket_material_spec",
-        "compression_set_data"
-      ],
-      "required_return_artifacts": [
-        "cap_and_actuator_stack_drawing",
-        "sample_force_curve",
-        "silicone_gasket_material_spec",
-        "switch_drawing"
-      ],
-      "required_technical_decisions": [
-        "flex_or_direct_pcb_mount",
-        "power_switch_part_number",
-        "volume_switch_part_number"
-      ],
-      "required_validation_outputs": [
-        "actuation_force_n",
-        "compression_set_percent",
-        "travel_mm"
-      ],
-      "returned_basic_evidence": false,
-      "missing_required_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "force_travel_curve",
-        "gasket_material_spec",
-        "compression_set_data"
-      ],
-      "missing_supplier_items": [
-        "side_buttons"
-      ],
-      "pass": false
-    },
-    {
-      "id": "camera_modules",
-      "rfq_package_id": "camera_stack",
-      "rfq_package_ready": true,
-      "cad_replacement_scope": [
-        "rear_camera",
-        "front_camera"
-      ],
-      "required_evidence": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "fpc_pinout",
-        "optical_center_datum",
-        "sample_capture_evidence"
-      ],
-      "required_supplier_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "fpc_pinout",
-        "optical_center_datum",
-        "sample_capture_evidence"
-      ],
-      "required_return_artifacts": [
-        "behind_glass_sample_capture",
-        "fpc_pinout_and_connector",
-        "sample_capture_evidence",
-        "signed_module_2d_drawing",
-        "step_model_with_lens_stack"
-      ],
-      "required_technical_decisions": [
-        "black_mask_aperture_size",
-        "fpc_exit_side",
-        "optical_center_datum",
-        "sensor_and_lens_variant",
-        "under_glass_placement_datum"
-      ],
-      "required_validation_outputs": [
-        "glass_to_lens_gap_mm",
-        "lens_center_offset_mm",
-        "minimum_focus_distance_mm",
-        "module_total_height_mm"
-      ],
-      "returned_basic_evidence": false,
-      "missing_required_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "fpc_pinout",
-        "optical_center_datum",
-        "sample_capture_evidence"
-      ],
-      "missing_supplier_items": [
-        "rear_camera",
-        "front_camera"
-      ],
-      "pass": false
-    },
-    {
-      "id": "wireless_modules",
-      "rfq_package_id": "wireless_modules",
-      "rfq_package_ready": true,
-      "cad_replacement_scope": [
-        "cellular_redcap",
-        "wifi_bt"
-      ],
-      "required_evidence": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "pinout_reference_design",
-        "antenna_keepout",
-        "certification_path"
-      ],
-      "required_supplier_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "pinout_reference_design",
-        "antenna_keepout",
-        "certification_path"
-      ],
-      "required_return_artifacts": [
-        "antenna_matching_reference",
-        "antenna_reference_design",
-        "module_datasheet",
-        "module_step_model",
-        "pinout_and_land_pattern",
-        "pinout_and_reference_schematic"
-      ],
-      "required_technical_decisions": [
-        "antenna_feed_strategy",
-        "certification_path",
-        "coexistence_interface",
-        "module_or_chip_down",
-        "regional_sku",
-        "rf_connector_or_solder_feed"
-      ],
-      "required_validation_outputs": [
-        "antenna_clearance_mm",
-        "antenna_keepout_mm",
-        "module_height_mm",
-        "peak_current_a",
-        "thermal_dissipation_w"
-      ],
-      "returned_basic_evidence": false,
-      "missing_required_evidence_keys": [
-        "quote",
-        "2d_drawing",
-        "step_model",
-        "sample",
-        "pinout_reference_design",
-        "antenna_keepout",
-        "certification_path"
-      ],
-      "missing_supplier_items": [
-        "cellular_redcap",
-        "wifi_bt"
-      ],
-      "pass": false
-    },
-    {
-      "id": "orange_enclosure_tooling",
-      "rfq_package_id": "orange_enclosure_tooling",
-      "rfq_package_ready": true,
-      "cad_replacement_scope": [
-        "orange_enclosure_tooling"
-      ],
-      "required_evidence": [
-        "toolmaker_quote",
-        "tool_drawing",
-        "mold_flow_plan",
-        "orange_color_sample",
-        "dfm_markup",
-        "gate_runner_ejector_strategy",
-        "texture_color_standard"
-      ],
-      "required_supplier_evidence_keys": [
-        "toolmaker_quote",
-        "tool_drawing",
-        "mold_flow_plan",
-        "orange_color_sample",
-        "dfm_markup",
-        "gate_runner_ejector_strategy",
-        "texture_color_standard"
-      ],
-      "required_return_artifacts": [
-        "dfm_markup",
-        "orange_plaque_or_first_shot_photo",
-        "tool_layout_drawing",
-        "tooling_quote"
-      ],
-      "required_technical_decisions": [
-        "gate_runner_ejector_strategy",
-        "texture_and_color_standard",
-        "tool_class_and_cavity_count"
-      ],
-      "required_validation_outputs": [
-        "delta_e_orange",
-        "estimated_part_cost_usd_20",
-        "tooling_lead_time_days"
-      ],
-      "returned_basic_evidence": false,
-      "missing_required_evidence_keys": [
-        "toolmaker_quote",
-        "tool_drawing",
-        "mold_flow_plan",
-        "orange_color_sample",
-        "dfm_markup",
-        "gate_runner_ejector_strategy",
-        "texture_color_standard"
-      ],
-      "missing_supplier_items": [
-        "orange_enclosure_tooling"
-      ],
-      "pass": false
-    }
-  ],
-  "release_rule": "Every supplier family must have returned quote, 2D drawing, STEP/native CAD, physical sample evidence, and reviewer identity before replacing EVT0 envelope CAD or locking the phone for tooling."
+  "release_rule": "Each supplier family must have RFQ coverage, physical_supplier_response rows for all required supplier items, quote/drawing/STEP/sample/traceability artifacts, family-specific technical evidence, and reviewer identity before supplier CAD can replace EVT0 envelope geometry."
 }

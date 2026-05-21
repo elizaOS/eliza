@@ -1,6 +1,6 @@
 {
   "claim_boundary": "Rough CAD mass estimate using nominal densities; not measured mass.",
-  "total_estimated_mass_g": 143.59,
+  "total_estimated_mass_g": 163.52,
   "mass_by_role_g": {
     "EMI shield": 7.01,
     "I/O": 1.77,
@@ -8,18 +8,17 @@
     "PCB": 4.17,
     "RF keepout": 0.0,
     "audio": 1.75,
-    "battery": 64.92,
+    "battery": 84.1,
     "button": 0.09,
     "button seal": 0.03,
     "camera": 1.03,
     "camera seal": 0.02,
     "connector": 0.21,
     "haptics": 0.22,
-    "molded enclosure": 22.78,
+    "molded enclosure": 23.72,
     "screen": 39.03,
-    "screen retention": 0.09,
+    "screen retention": 0.08,
     "service": 0.0,
-    "side-key interconnect": 0.18,
     "split-board interconnect": 0.28
   },
   "parts": [
@@ -34,9 +33,9 @@
     {
       "name": "orange_side_frame",
       "role": "molded enclosure",
-      "volume_mm3": 4911.279,
+      "volume_mm3": 5729.825,
       "density_g_per_cm3": 1.15,
-      "mass_g": 5.648,
+      "mass_g": 6.589,
       "excluded_placeholder": false
     },
     {
@@ -66,9 +65,9 @@
     {
       "name": "battery_pouch",
       "role": "battery",
-      "volume_mm3": 24499.2,
+      "volume_mm3": 31737.6,
       "density_g_per_cm3": 2.65,
-      "mass_g": 64.923,
+      "mass_g": 84.105,
       "excluded_placeholder": false
     },
     {
@@ -178,10 +177,26 @@
     {
       "name": "rear_camera_lens_window",
       "role": "camera",
-      "volume_mm3": 28.971,
+      "volume_mm3": 19.917,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
       "excluded_placeholder": true
+    },
+    {
+      "name": "rear_flash_led",
+      "role": "camera",
+      "volume_mm3": 0.7,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "rear_flash_led_window",
+      "role": "camera",
+      "volume_mm3": 1.093,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
     },
     {
       "name": "front_camera_module",
@@ -376,46 +391,6 @@
       "excluded_placeholder": false
     },
     {
-      "name": "side_key_flex_connector",
-      "role": "side-key interconnect",
-      "volume_mm3": 28.8,
-      "density_g_per_cm3": 3.0,
-      "mass_g": 0.086,
-      "excluded_placeholder": false
-    },
-    {
-      "name": "side_key_volume_flex_tail",
-      "role": "side-key interconnect",
-      "volume_mm3": 8.46,
-      "density_g_per_cm3": 3.0,
-      "mass_g": 0.025,
-      "excluded_placeholder": false
-    },
-    {
-      "name": "side_key_volume_actuator_tail",
-      "role": "side-key interconnect",
-      "volume_mm3": 10.08,
-      "density_g_per_cm3": 1.2,
-      "mass_g": 0.012,
-      "excluded_placeholder": false
-    },
-    {
-      "name": "side_key_power_flex_tail",
-      "role": "side-key interconnect",
-      "volume_mm3": 14.4,
-      "density_g_per_cm3": 3.0,
-      "mass_g": 0.043,
-      "excluded_placeholder": false
-    },
-    {
-      "name": "side_key_power_actuator_tail",
-      "role": "side-key interconnect",
-      "volume_mm3": 7.92,
-      "density_g_per_cm3": 1.2,
-      "mass_g": 0.01,
-      "excluded_placeholder": false
-    },
-    {
       "name": "bottom_microphone_port_1",
       "role": "audio",
       "volume_mm3": 0.249,
@@ -514,33 +489,33 @@
     {
       "name": "screen_adhesive_top",
       "role": "screen retention",
-      "volume_mm3": 13.878,
+      "volume_mm3": 11.34,
       "density_g_per_cm3": 1.15,
-      "mass_g": 0.016,
+      "mass_g": 0.013,
       "excluded_placeholder": false
     },
     {
       "name": "screen_adhesive_bottom",
       "role": "screen retention",
-      "volume_mm3": 13.878,
+      "volume_mm3": 11.34,
       "density_g_per_cm3": 1.15,
-      "mass_g": 0.016,
+      "mass_g": 0.013,
       "excluded_placeholder": false
     },
     {
       "name": "screen_adhesive_left",
       "role": "screen retention",
-      "volume_mm3": 27.319,
+      "volume_mm3": 24.781,
       "density_g_per_cm3": 1.15,
-      "mass_g": 0.031,
+      "mass_g": 0.028,
       "excluded_placeholder": false
     },
     {
       "name": "screen_adhesive_right",
       "role": "screen retention",
-      "volume_mm3": 27.319,
+      "volume_mm3": 24.781,
       "density_g_per_cm3": 1.15,
-      "mass_g": 0.031,
+      "mass_g": 0.028,
       "excluded_placeholder": false
     },
     {

@@ -12,7 +12,7 @@
           "radio_shield_can",
           "soc_shield_can"
         ],
-        "estimated_physical_mass_g": 143.6,
+        "estimated_physical_mass_g": 163.5,
         "target_mass_g": 185
       },
       "target": "shield cans present and CAD mass below target for thermal inertia; lab skin temperature <= target",
@@ -88,7 +88,13 @@
       "min": "",
       "max": 43,
       "fixture": "thermal_chamber_or_skin_temp_probe",
-      "notes": "Worst-case video call or radio-active thermal soak at target ambient."
+      "notes": "Worst-case video call or radio-active thermal soak at target ambient.",
+      "required_evidence_artifacts": [
+        "skin_temperature_raw_log",
+        "thermal_chamber_or_probe_calibration_certificate",
+        "thermal_probe_placement_photo",
+        "enclosure_resin_and_unit_lot_records"
+      ]
     },
     {
       "measurement_id": "soc_shield_can_peak_temp_c",
@@ -97,7 +103,13 @@
       "min": "",
       "max": 85.0,
       "fixture": "thermocouple_on_soc_shield",
-      "notes": "Peak shield-can temperature during sustained load."
+      "notes": "Peak shield-can temperature during sustained load.",
+      "required_evidence_artifacts": [
+        "soc_shield_thermocouple_raw_log",
+        "thermocouple_calibration_certificate",
+        "soc_shield_probe_photo",
+        "pcb_and_shield_can_lot_records"
+      ]
     },
     {
       "measurement_id": "cellular_desense_delta_db",
@@ -106,7 +118,13 @@
       "min": "",
       "max": 3.0,
       "fixture": "rf_chamber_desense_prescan",
-      "notes": "Cellular sensitivity delta with display, camera, and USB active."
+      "notes": "Cellular sensitivity delta with display, camera, and USB active.",
+      "required_evidence_artifacts": [
+        "cellular_desense_raw_chamber_csv",
+        "rf_chamber_calibration_certificate",
+        "antenna_test_setup_photo",
+        "radio_module_and_antenna_lot_records"
+      ]
     },
     {
       "measurement_id": "wifi_bt_desense_delta_db",
@@ -115,7 +133,13 @@
       "min": "",
       "max": 3.0,
       "fixture": "rf_chamber_desense_prescan",
-      "notes": "Wi-Fi/Bluetooth sensitivity delta with phone subsystems active."
+      "notes": "Wi-Fi/Bluetooth sensitivity delta with phone subsystems active.",
+      "required_evidence_artifacts": [
+        "wifi_bt_desense_raw_chamber_csv",
+        "rf_chamber_calibration_certificate",
+        "wifi_bt_antenna_test_setup_photo",
+        "wifi_module_and_antenna_lot_records"
+      ]
     },
     {
       "measurement_id": "sar_prescan_w_per_kg_1g",
@@ -124,7 +148,13 @@
       "min": "",
       "max": 1.6,
       "fixture": "accredited_sar_prescan",
-      "notes": "U.S. general-population candidate SAR pre-scan target; final limits depend on certified-region compliance plan."
+      "notes": "U.S. general-population candidate SAR pre-scan target; final limits depend on certified-region compliance plan.",
+      "required_evidence_artifacts": [
+        "sar_prescan_raw_report",
+        "sar_system_calibration_certificate",
+        "sar_probe_position_photo",
+        "radio_module_antenna_and_enclosure_lot_records"
+      ]
     },
     {
       "measurement_id": "drop_1m_functional_failures",
@@ -133,7 +163,13 @@
       "min": 0.0,
       "max": 0.0,
       "fixture": "evt_corner_edge_face_drop",
-      "notes": "Functional failures after 1 m corner/edge/face drop sequence."
+      "notes": "Functional failures after 1 m corner/edge/face drop sequence.",
+      "required_evidence_artifacts": [
+        "drop_sequence_result_log",
+        "drop_fixture_calibration_certificate",
+        "post_drop_functional_test_log_or_video",
+        "evt_unit_lot_traceability_record"
+      ]
     },
     {
       "measurement_id": "drop_1m_crack_or_latch_release",
@@ -142,7 +178,13 @@
       "min": 0.0,
       "max": 0.0,
       "fixture": "evt_visual_and_latch_inspection",
-      "notes": "Orange shell cracks, snap release, screen lift, or glass crack after drop."
+      "notes": "Orange shell cracks, snap release, screen lift, or glass crack after drop.",
+      "required_evidence_artifacts": [
+        "drop_visual_inspection_report",
+        "drop_fixture_calibration_certificate",
+        "post_drop_shell_screen_photo_set",
+        "enclosure_glass_and_adhesive_lot_records"
+      ]
     },
     {
       "measurement_id": "ip54_dust_ingress_functional_failures",
@@ -151,7 +193,13 @@
       "min": 0.0,
       "max": 0.0,
       "fixture": "dust_ingress_screen_usb_audio_inspection",
-      "notes": "Functional failures after design-intent dust exposure."
+      "notes": "Functional failures after design-intent dust exposure.",
+      "required_evidence_artifacts": [
+        "dust_ingress_result_log",
+        "dust_chamber_calibration_certificate",
+        "post_dust_port_and_screen_inspection_photos",
+        "mesh_gasket_and_evt_unit_lot_records"
+      ]
     },
     {
       "measurement_id": "ip54_splash_ingress_functional_failures",
@@ -160,7 +208,13 @@
       "min": 0.0,
       "max": 0.0,
       "fixture": "splash_ingress_screen_usb_audio_inspection",
-      "notes": "Functional failures after design-intent splash exposure."
+      "notes": "Functional failures after design-intent splash exposure.",
+      "required_evidence_artifacts": [
+        "splash_ingress_result_log",
+        "splash_fixture_calibration_certificate",
+        "post_splash_port_and_usb_inspection_photos",
+        "mesh_gasket_and_evt_unit_lot_records"
+      ]
     }
   ],
   "results_template": "mechanical/e1-phone/review/environmental-results-template.csv",

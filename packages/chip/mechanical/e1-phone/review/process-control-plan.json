@@ -3,8 +3,17 @@
   "status": "blocked_no_process_control_results",
   "expected_control_count": 7,
   "cad_prerequisite_control_count": 7,
+  "observed_row_count": 7,
   "complete_result_count": 0,
   "results_template": "mechanical/e1-phone/review/process-control-results-template.csv",
+  "required_evidence_class": "physical_process_control_record",
+  "forbidden_evidence_classes": [
+    "blank_template",
+    "planning",
+    "simulated",
+    "simulated_first_article_for_evt_planning_not_production_release",
+    "simulated_process_control_for_planning_not_release"
+  ],
   "controls": [
     {
       "id": "incoming_supplier_identity_control",
@@ -27,20 +36,21 @@
         "gdt-release-package.json"
       ],
       "stop_rule": "quarantine lot and block build if any supplier drawing, STEP, or sample identity is missing",
+      "traveler_step_present": true,
+      "cad_prerequisites_present": true,
       "linked_statuses": {
         "supplier_response_status": "blocked_no_supplier_responses",
-        "gdt_release_status": "gdt_release_package_ready"
-      },
-      "traveler_step_present": true,
-      "cad_prerequisites_present": true
+        "gdt_release_status": "gdt_release_package_ready",
+        "assembly_build_status": "blocked_no_assembly_build_results"
+      }
     },
     {
       "id": "display_bond_control",
       "station": "display_bond",
       "traveler_step": "screen_adhesive_and_display_bond",
       "critical_to_quality": "cover glass position, adhesive compression, FPC bend radius, luminance, and touch grid pass",
-      "inspection_method": "bond fixture clamp log, optical gap check, touch/luminance bring-up, and FPC visual inspection",
-      "gauge_or_fixture": "evt_fixture_screen_bond_clamp_frame",
+      "inspection_method": "bond fixture clamp log, optical gap check, and display bring-up",
+      "gauge_or_fixture": "screen_bond_clamp_frame_and_optical_gap_gauge",
       "sample_plan": "100% EVT and first production lot",
       "required_output_keys": [
         "cover_glass_xy_mm",
@@ -55,21 +65,21 @@
         "evt-inspection-plan.json"
       ],
       "stop_rule": "stop line on screen lift, FPC overbend, touch-grid failure, or luminance outlier",
-      "linked_statuses": {
-        "display_validation_status": "cad_display_validation_ready",
-        "display_results_status": "blocked_no_display_results",
-        "evt_inspection_status": "evt_inspection_plan_ready"
-      },
       "traveler_step_present": true,
-      "cad_prerequisites_present": true
+      "cad_prerequisites_present": true,
+      "linked_statuses": {
+        "supplier_response_status": "blocked_no_supplier_responses",
+        "gdt_release_status": "gdt_release_package_ready",
+        "assembly_build_status": "blocked_no_assembly_build_results"
+      }
     },
     {
       "id": "pcb_flex_mating_control",
       "station": "pcb_flex_integration",
       "traveler_step": "top_bottom_pcb_islands_and_split_flex",
       "critical_to_quality": "top and bottom PCB islands seat without battery window clash and split flex continuity passes",
-      "inspection_method": "connector seating visual, continuity scan, strain-relief inspection, and keepout check",
-      "gauge_or_fixture": "split_flex_continuity_jig_and_enclosure_keepout_overlay",
+      "inspection_method": "visual connector seating, continuity test, and keepout overlay",
+      "gauge_or_fixture": "split_flex_continuity_jig_and_battery_window_go_no_go",
       "sample_plan": "100% until routed PCB and connector supplier lock",
       "required_output_keys": [
         "top_connector_seated",
@@ -84,21 +94,21 @@
         "assembly-build-traveler.json"
       ],
       "stop_rule": "stop build if connector seating, flex continuity, or battery clearance fails",
-      "linked_statuses": {
-        "interface_validation_status": "cad_interface_validation_pass",
-        "battery_to_pcb_islands": "True",
-        "assembly_build_status": "blocked_no_assembly_build_results"
-      },
       "traveler_step_present": true,
-      "cad_prerequisites_present": true
+      "cad_prerequisites_present": true,
+      "linked_statuses": {
+        "supplier_response_status": "blocked_no_supplier_responses",
+        "gdt_release_status": "gdt_release_package_ready",
+        "assembly_build_status": "blocked_no_assembly_build_results"
+      }
     },
     {
       "id": "camera_audio_stack_control",
       "station": "optical_audio_stack",
       "traveler_step": "camera_handset_and_acoustic_stack",
       "critical_to_quality": "rear/front camera alignment, dust seal, speaker/mic/earpiece leakage, and streaming/audio checks pass",
-      "inspection_method": "camera pin fixture, acoustic leak masks, flat-field dust image, and audio loopback",
-      "gauge_or_fixture": "evt_camera_alignment_and_acoustic_leak_fixtures",
+      "inspection_method": "camera alignment pins, dust image, acoustic sweep, and loopback",
+      "gauge_or_fixture": "camera_alignment_pins_and_acoustic_leak_masks",
       "sample_plan": "100% EVT, then station SPC after fixture correlation",
       "required_output_keys": [
         "rear_camera_center_offset_mm",
@@ -114,22 +124,21 @@
         "acoustic-results-review.json"
       ],
       "stop_rule": "stop line on camera center shift, dust, acoustic leak, blocked mesh, or audio loopback failure",
-      "linked_statuses": {
-        "camera_validation_status": "cad_camera_validation_ready",
-        "camera_results_status": "blocked_no_camera_results",
-        "acoustic_validation_status": "cad_acoustic_validation_ready",
-        "acoustic_results_status": "blocked_no_acoustic_results"
-      },
       "traveler_step_present": true,
-      "cad_prerequisites_present": true
+      "cad_prerequisites_present": true,
+      "linked_statuses": {
+        "supplier_response_status": "blocked_no_supplier_responses",
+        "gdt_release_status": "gdt_release_package_ready",
+        "assembly_build_status": "blocked_no_assembly_build_results"
+      }
     },
     {
       "id": "usb_buttons_haptics_control",
       "station": "side_bottom_io",
       "traveler_step": "usb_buttons_haptics_and_ingress_seals",
       "critical_to_quality": "USB-C insertion, button force/travel, haptic clearance, and port/button seal integrity pass",
-      "inspection_method": "USB insertion gauge, side-key force probe, haptic clearance check, and gasket visual",
-      "gauge_or_fixture": "evt_fixture_usb_c_insertion_gauge_and_button_force_probe",
+      "inspection_method": "load cell, insertion gauge, continuity, and gasket visual check",
+      "gauge_or_fixture": "button_force_probe_usb_insertion_gauge_and_continuity_jig",
       "sample_plan": "100% EVT and 100% first production lot",
       "required_output_keys": [
         "usb_insertion_force_n",
@@ -145,21 +154,21 @@
         "assembly-build-traveler.json"
       ],
       "stop_rule": "stop build on high insertion force, post-cycle continuity failure, button force outlier, or damaged gasket",
-      "linked_statuses": {
-        "interface_validation_status": "cad_interface_validation_pass",
-        "evt_inspection_status": "evt_inspection_plan_ready",
-        "assembly_build_status": "blocked_no_assembly_build_results"
-      },
       "traveler_step_present": true,
-      "cad_prerequisites_present": true
+      "cad_prerequisites_present": true,
+      "linked_statuses": {
+        "supplier_response_status": "blocked_no_supplier_responses",
+        "gdt_release_status": "gdt_release_package_ready",
+        "assembly_build_status": "blocked_no_assembly_build_results"
+      }
     },
     {
       "id": "enclosure_close_control",
       "station": "final_mechanical_close",
       "traveler_step": "battery_install_and_enclosure_close",
       "critical_to_quality": "battery fits without cable pinch, orange enclosure closes, snap/screw retention and gap/flush pass",
-      "inspection_method": "battery window inspection, closing torque/retention check, gap/flush gauge, and cable pinch visual",
-      "gauge_or_fixture": "gap_flush_feeler_gauge_torque_driver_and_visual_aid",
+      "inspection_method": "go/no-go close fixture, torque driver log, and gap/flush gauge",
+      "gauge_or_fixture": "close_force_fixture_torque_driver_and_gap_flush_gauge",
       "sample_plan": "100% EVT and first production lot",
       "required_output_keys": [
         "battery_fit_pass",
@@ -174,21 +183,21 @@
         "gdt-fai-results-review.json"
       ],
       "stop_rule": "stop build on battery interference, cable pinch, failed retention, or out-of-limit gap/flush",
-      "linked_statuses": {
-        "assembly_clearance_status": "pass",
-        "tolerance_stack_status": "cad_tolerance_stack_pass",
-        "battery_to_pcb_islands": "True"
-      },
       "traveler_step_present": true,
-      "cad_prerequisites_present": true
+      "cad_prerequisites_present": true,
+      "linked_statuses": {
+        "supplier_response_status": "blocked_no_supplier_responses",
+        "gdt_release_status": "gdt_release_package_ready",
+        "assembly_build_status": "blocked_no_assembly_build_results"
+      }
     },
     {
       "id": "final_function_cmf_traceability_control",
       "station": "final_acceptance",
       "traveler_step": "final_function_cmf_and_traceability",
       "critical_to_quality": "full function, CMF, serial traceability, and final photo evidence pass before shipment",
-      "inspection_method": "functional smoke test, visual CMF audit, serial scan, and final photo capture",
-      "gauge_or_fixture": "factory_function_station_cmf_lightbox_and_traceability_scanner",
+      "inspection_method": "functional smoke test, CMF inspection, serial scan, and photo record",
+      "gauge_or_fixture": "final_function_jig_color_plaque_reference_and_camera_station",
       "sample_plan": "100% all builds",
       "required_output_keys": [
         "function_smoke_pass",
@@ -203,75 +212,145 @@
         "visual-decision-report.json"
       ],
       "stop_rule": "hold unit on function failure, CMF nonconformance, missing serial trace, or missing final photo",
-      "linked_statuses": {
-        "assembly_build_status": "blocked_no_assembly_build_results",
-        "unit_traceability_status": "blocked_no_unit_traceability_results"
-      },
       "traveler_step_present": true,
-      "cad_prerequisites_present": true
+      "cad_prerequisites_present": true,
+      "linked_statuses": {
+        "supplier_response_status": "blocked_no_supplier_responses",
+        "gdt_release_status": "gdt_release_package_ready",
+        "assembly_build_status": "blocked_no_assembly_build_results"
+      }
     }
   ],
-  "result_cases": [
+  "cases": [
     {
       "control_id": "incoming_supplier_identity_control",
       "expected_control": true,
-      "populated": false,
+      "traveler_step_present": true,
+      "cad_prerequisites_present": true,
+      "operator_present": false,
+      "gauge_id_present": false,
+      "result_present": false,
       "declared_pass": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "raw_data_artifact_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
       "pass": false
     },
     {
       "control_id": "display_bond_control",
       "expected_control": true,
-      "populated": false,
+      "traveler_step_present": true,
+      "cad_prerequisites_present": true,
+      "operator_present": false,
+      "gauge_id_present": false,
+      "result_present": false,
       "declared_pass": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "raw_data_artifact_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
       "pass": false
     },
     {
       "control_id": "pcb_flex_mating_control",
       "expected_control": true,
-      "populated": false,
+      "traveler_step_present": true,
+      "cad_prerequisites_present": true,
+      "operator_present": false,
+      "gauge_id_present": false,
+      "result_present": false,
       "declared_pass": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "raw_data_artifact_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
       "pass": false
     },
     {
       "control_id": "camera_audio_stack_control",
       "expected_control": true,
-      "populated": false,
+      "traveler_step_present": true,
+      "cad_prerequisites_present": true,
+      "operator_present": false,
+      "gauge_id_present": false,
+      "result_present": false,
       "declared_pass": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "raw_data_artifact_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
       "pass": false
     },
     {
       "control_id": "usb_buttons_haptics_control",
       "expected_control": true,
-      "populated": false,
+      "traveler_step_present": true,
+      "cad_prerequisites_present": true,
+      "operator_present": false,
+      "gauge_id_present": false,
+      "result_present": false,
       "declared_pass": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "raw_data_artifact_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
       "pass": false
     },
     {
       "control_id": "enclosure_close_control",
       "expected_control": true,
-      "populated": false,
+      "traveler_step_present": true,
+      "cad_prerequisites_present": true,
+      "operator_present": false,
+      "gauge_id_present": false,
+      "result_present": false,
       "declared_pass": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "raw_data_artifact_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
       "pass": false
     },
     {
       "control_id": "final_function_cmf_traceability_control",
       "expected_control": true,
-      "populated": false,
+      "traveler_step_present": true,
+      "cad_prerequisites_present": true,
+      "operator_present": false,
+      "gauge_id_present": false,
+      "result_present": false,
       "declared_pass": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "raw_data_artifact_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
       "pass": false
     }
   ],
   "missing_controls": [],
-  "incomplete_controls": [
-    "incoming_supplier_identity_control",
-    "display_bond_control",
-    "pcb_flex_mating_control",
+  "missing_or_incomplete_controls": [
     "camera_audio_stack_control",
-    "usb_buttons_haptics_control",
+    "display_bond_control",
     "enclosure_close_control",
-    "final_function_cmf_traceability_control"
+    "final_function_cmf_traceability_control",
+    "incoming_supplier_identity_control",
+    "pcb_flex_mating_control",
+    "usb_buttons_haptics_control"
   ],
-  "failed_controls": [],
-  "release_rule": "Every process control must name the build, station, operator, calibrated gauge, observed result, and explicit pass before assembly line readiness can be claimed."
+  "release_rule": "Every factory control must have build ID, station, operator, gauge ID, observed result, passing disposition, evidence_class=physical_process_control_record, raw data, photo/log artifact, and lot traceability before process-control validation passes."
 }

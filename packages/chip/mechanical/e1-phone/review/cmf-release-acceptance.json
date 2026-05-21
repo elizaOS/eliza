@@ -7,20 +7,30 @@
   "gate_strategy": "two submarine gates into back cover long edge, fan gate alternate for color consistency",
   "source_status": {
     "visual_decision_status": "pass",
+    "visual_review_coverage_status": "visual_review_coverage_acceptance_pass",
     "dfm_status": "cad_dfm_inputs_ready",
-    "mold_flow_acceptance_status": "mold_flow_results_pass",
     "toolmaker_signoff_status": "blocked_no_toolmaker_signoff"
   },
   "expected_criterion_count": 5,
   "complete_criterion_count": 1,
   "production_required_count": 4,
   "production_complete_count": 0,
+  "required_evidence_class": "physical_cmf_result",
+  "template_evidence_class": "",
+  "forbidden_evidence_classes": [
+    "blank_template",
+    "planning",
+    "rendered_cad_only",
+    "simulated_cmf_result_for_planning_not_release"
+  ],
   "results_template": "mechanical/e1-phone/review/cmf-results-template.csv",
   "visual_gate": {
-    "front_orange_ratio": 0.43302,
-    "back_orange_ratio": 0.97389,
+    "front_orange_ratio": 0.50414,
+    "back_orange_ratio": 0.97535,
     "bottom_orange_ratio": 0.77781,
     "visual_decision_status": "pass",
+    "visual_review_coverage_status": "visual_review_coverage_acceptance_pass",
+    "black_glass_front_visible": true,
     "pass": true
   },
   "cases": [
@@ -38,7 +48,14 @@
         "sample_id_present": false,
         "artifact_present": false,
         "measured_value_present": false,
+        "parsed_measurements": {},
+        "numeric_limit_pass": false,
+        "numeric_limit_failures": [
+          "missing_delta_e"
+        ],
         "reviewer_present": false,
+        "evidence_class": "",
+        "evidence_class_allowed": false,
         "accepted": false,
         "pass": false
       },
@@ -59,7 +76,14 @@
         "sample_id_present": false,
         "artifact_present": false,
         "measured_value_present": false,
+        "parsed_measurements": {},
+        "numeric_limit_pass": false,
+        "numeric_limit_failures": [
+          "missing_gloss_gu_60"
+        ],
         "reviewer_present": false,
+        "evidence_class": "",
+        "evidence_class_allowed": false,
         "accepted": false,
         "pass": false
       },
@@ -79,7 +103,14 @@
         "sample_id_present": false,
         "artifact_present": false,
         "measured_value_present": false,
+        "parsed_measurements": {},
+        "numeric_limit_pass": false,
+        "numeric_limit_failures": [
+          "missing_visible_defect_count"
+        ],
         "reviewer_present": false,
+        "evidence_class": "",
+        "evidence_class_allowed": false,
         "accepted": false,
         "pass": false
       },
@@ -99,7 +130,14 @@
         "sample_id_present": false,
         "artifact_present": false,
         "measured_value_present": false,
+        "parsed_measurements": {},
+        "numeric_limit_pass": false,
+        "numeric_limit_failures": [
+          "missing_a_surface_visible_defects"
+        ],
         "reviewer_present": false,
+        "evidence_class": "",
+        "evidence_class_allowed": false,
         "accepted": false,
         "pass": false
       },
@@ -121,14 +159,21 @@
         "sample_id_present": false,
         "artifact_present": false,
         "measured_value_present": false,
+        "parsed_measurements": {},
+        "numeric_limit_pass": true,
+        "numeric_limit_failures": [],
         "reviewer_present": false,
+        "evidence_class": "",
+        "evidence_class_allowed": false,
         "accepted": false,
         "pass": true,
         "visual_gate": {
-          "front_orange_ratio": 0.43302,
-          "back_orange_ratio": 0.97389,
+          "front_orange_ratio": 0.50414,
+          "back_orange_ratio": 0.97535,
           "bottom_orange_ratio": 0.77781,
           "visual_decision_status": "pass",
+          "visual_review_coverage_status": "visual_review_coverage_acceptance_pass",
+          "black_glass_front_visible": true,
           "pass": true
         }
       },
@@ -141,5 +186,5 @@
     "scratch_and_hand_oil_visibility",
     "gate_blush_vestige_and_weld_line_visibility"
   ],
-  "release_rule": "Color plaque, texture/gloss plaque, scratch/rub sample, gate-blush/weld-line first-shot review, and rendered orange identity must all pass before industrial-design or CMF release."
+  "release_rule": "Color plaque, texture/gloss plaque, scratch/rub sample, gate-blush/weld-line first-shot review, physical numeric limits, evidence_class=physical_cmf_result, and rendered orange identity must all pass before industrial-design or CMF release."
 }

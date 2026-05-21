@@ -25,12 +25,15 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/supplier-response-template.csv`
 - `mechanical/e1-phone/review/supplier-response-review.json`
 - `mechanical/e1-phone/review/supplier-response-review.md`
+- `mechanical/e1-phone/review/supplier-evidence-acceptance.json`
+- `mechanical/e1-phone/review/supplier-evidence-acceptance.md`
 - `mechanical/e1-phone/review/kicad-mechanical-handoff.json`
 - `mechanical/e1-phone/review/kicad-mechanical-handoff.md`
 - `mechanical/e1-phone/review/kicad-placement-reconciliation.json`
 - `mechanical/e1-phone/review/kicad-placement-reconciliation.md`
 - `mechanical/e1-phone/review/board-step-readiness.json`
 - `mechanical/e1-phone/review/board-step-readiness.md`
+- `mechanical/e1-phone/review/routed-board-step-intake-template.csv`
 - `mechanical/e1-phone/review/routed-board-clearance-results-template.csv`
 - `mechanical/e1-phone/review/routed-board-clearance.json`
 - `mechanical/e1-phone/review/routed-board-clearance.md`
@@ -83,6 +86,8 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/unit-traceability-results-template.csv`
 - `mechanical/e1-phone/review/unit-traceability-acceptance.json`
 - `mechanical/e1-phone/review/unit-traceability-acceptance.md`
+- `mechanical/e1-phone/review/physical-process-validation-acceptance.json`
+- `mechanical/e1-phone/review/physical-process-validation-acceptance.md`
 - `mechanical/e1-phone/out/e1-phone-evt-fixtures.glb`
 - `mechanical/e1-phone/out/evt-fixture-manifest.json`
 - `mechanical/e1-phone/review/assembly-clearance.json`
@@ -91,6 +96,8 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/injection-molding-dfm.md`
 - `mechanical/e1-phone/review/mold-process-window.json`
 - `mechanical/e1-phone/review/mold-process-window.md`
+- `mechanical/e1-phone/review/mold-flow-input-deck.json`
+- `mechanical/e1-phone/review/mold-flow-input-deck.md`
 - `mechanical/e1-phone/review/mold-flow-results-template.csv`
 - `mechanical/e1-phone/review/mold-flow-acceptance.json`
 - `mechanical/e1-phone/review/mold-flow-acceptance.md`
@@ -109,8 +116,17 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/part-review.json`
 - `mechanical/e1-phone/review/part-review.md`
 - `mechanical/e1-phone/review/part-review-contact-sheet.png`
+- `mechanical/e1-phone/review/part-visual-coverage.json`
+- `mechanical/e1-phone/review/part-visual-coverage.md`
 - `mechanical/e1-phone/review/visual-decision-report.json`
 - `mechanical/e1-phone/review/visual-decision-report.md`
+- `mechanical/e1-phone/review/visual-review-coverage-acceptance.json`
+- `mechanical/e1-phone/review/visual-review-coverage-acceptance.md`
+- `mechanical/e1-phone/review/cmf-results-template.csv`
+- `mechanical/e1-phone/review/cmf-release-acceptance.json`
+- `mechanical/e1-phone/review/cmf-release-acceptance.md`
+- `mechanical/e1-phone/review/end-to-end-objective-acceptance.json`
+- `mechanical/e1-phone/review/end-to-end-objective-acceptance.md`
 - `mechanical/e1-phone/review/solid-cad-handoff.json`
 - `mechanical/e1-phone/review/solid-cad-handoff.md`
 - `mechanical/e1-phone/review/step-validation.json`
@@ -150,7 +166,6 @@ Status: automated EVT0 concept generation, not tooling release.
 - PASS: `injection_molding_basics`
 - PASS: `molded_retention_features`
 - PASS: `mold_runner_gate_model`
-- PASS: `mold_venting_model`
 - PASS: `mold_ejector_cooling_model`
 - PASS: `final_assembly_excludes_tooling_markers`
 - PASS: `kicad_outline_integration`
@@ -166,12 +181,12 @@ Status: automated EVT0 concept generation, not tooling release.
 - Sprue diameter: 4.0 mm.
 - Runner diameter: 2.2 mm.
 - Gate thickness: 0.85 mm.
-- Estimated CAD mass: 143.59 g.
+- Estimated CAD mass: 163.52 g.
 
 ## Design Decisions From This Pass
 
 - The envelope is held to 78.0 x 153.6 mm around the 77.1 x 151.77 mm commodity touch panel module to keep the orange side rails compact while preserving a narrow positive screen margin.
-- Front camera and earpiece are kept behind the cover glass where practical. The rear camera stays exposed through a back lens window because the available AF module stack is too tall for full under-glass placement in a 9.6 mm phone.
+- Front camera and earpiece are kept behind the cover glass. The single rear camera and single rear torch/flash LED are fully buried under the flat flush back wall behind flush internal windows (no camera bump, no proud lens ring); device depth was raised to accommodate burying the rear module.
 - Orange hard plastic is modeled as the entire molded shell and button material. The black glass remains a separate bonded part.
 - The enclosure now includes six screw bosses, eight snap hooks, battery ribs, a USB-C insertion saddle, display adhesive, display FPC connector keepout, and explicit cold-runner/submarine-gate placeholders for mold review.
 - The exterior shell and cover glass now use rounded-rectangle geometry tied to the 7.5 mm corner-radius parameter instead of square block placeholders.

@@ -4,16 +4,18 @@
   "params": {
     "device": {
       "name": "E1 phone EVT0 mechanical concept",
-      "revision": "evt0-mechanical-cad",
+      "revision": "evt0-mechanical-cad-flush-back",
       "envelope_mm": [
         78.0,
         153.6,
-        9.6
+        11.2
       ],
       "corner_radius_mm": 7.5,
       "plastic_color": "hard safety orange",
       "wall_thickness_mm": 1.15,
+      "back_face": "fully flush flat back; no camera bump, no protruding lens ring; rear camera and torch buried under flat back wall behind flush internal windows",
       "target_mass_g": 185,
+      "ship_target_mass_g": 168,
       "design_language": "hard orange phone-like slab with teenage-engineering/rabbit-r1 influence"
     },
     "display": {
@@ -60,13 +62,17 @@
       "edge_clearance_mm": 2.5
     },
     "battery": {
-      "candidate": "LiPol LP446487 class 3.85 V 4500 mAh 17.33 Wh pouch",
+      "candidate": "LiPol LP576487 class 3.85 V 5830 mAh 22.45 Wh thick pouch",
       "envelope_mm": [
         64.0,
         87.0,
-        4.4
+        5.7
       ],
-      "z_center_mm": -2.5
+      "z_center_mm": -1.45,
+      "capacity_mah": 5830,
+      "energy_wh": 22.45,
+      "nominal_voltage_v": 3.85,
+      "capacity_basis": "4500 mAh baseline at 4.4 mm scaled linearly by pouch thickness (5.7/4.4) for the flush-back volume gain"
     },
     "components": {
       "usb_c": {
@@ -140,33 +146,53 @@
         ]
       },
       "rear_camera_glass": {
-        "candidate": "chemically strengthened rear camera cover window",
+        "candidate": "flush internal sapphire/glass insert set into the flat back wall, no proud ring",
         "envelope_mm": [
           9.2,
           9.2,
           0.55
-        ]
+        ],
+        "mounting": "internal-only window, outer face coplanar with the flat back outer surface (flush, not proud)"
       },
       "rear_camera": {
-        "candidate": "OV13855/OV13850 13 MP autofocus MIPI module",
+        "candidate": "single OV13855/OV13850 class 13 MP simple-AF MIPI module, single lens, buried under flush back wall",
         "module_mm": [
           10.0,
           10.0,
           5.1
         ],
-        "lens_diameter_mm": 6.8
+        "lens_diameter_mm": 6.8,
+        "lens_count": 1,
+        "array": "single"
+      },
+      "rear_flash_led": {
+        "candidate": "OSRAM/Everlight class 1.0x1.0x0.6 mm top-fire white flash/torch LED beside the rear camera, buried under a flush light-pipe window",
+        "envelope_mm": [
+          1.0,
+          1.0,
+          0.7
+        ],
+        "window_mm": [
+          1.6,
+          1.6,
+          0.5
+        ],
+        "emit_direction": "-Z (out the flat back, through a flush light pipe/window)"
       },
       "front_camera": {
-        "candidate": "5-8 MP fixed-focus MIPI module behind cover glass",
+        "candidate": "single 5-8 MP fixed-focus MIPI module behind cover glass, single lens",
         "module_mm": [
           6.5,
           6.5,
           3.2
         ],
-        "lens_diameter_mm": 3.4
+        "lens_diameter_mm": 3.4,
+        "lens_count": 1,
+        "array": "single"
       },
       "power_button": {
         "candidate": "Panasonic EVQ-P7/P3/9P7 side-push tactile switch",
+        "standardized_part": "Panasonic EVQ-P7xxx",
         "travel_mm": 0.35,
         "force_n": 1.6,
         "cap_mm": [
@@ -178,6 +204,7 @@
       },
       "volume_button": {
         "candidate": "Panasonic EVQ-P7/P3/9P7 side-push tactile switch",
+        "standardized_part": "Panasonic EVQ-P7xxx",
         "travel_mm": 0.35,
         "force_n": 1.5,
         "cap_mm": [
@@ -246,6 +273,50 @@
         "usb_shell_to_aperture_clearance_mm": 0.15,
         "battery_to_pcb_gap_mm": 0.5,
         "button_pressure_limit_n_per_mm2": 0.2
+      },
+      "environmental_targets": {
+        "drop_height_m": 1.0,
+        "ingress_target": "IP54 design intent only",
+        "max_skin_temp_c": 43,
+        "acoustic_leakage_status": "requires sample test",
+        "rf_pre_scan_status": "requires antenna simulation and chamber pre-scan"
+      }
+    },
+    "tolerances": {
+      "process_class": "hard_tool_class_101_with_alignment_fixtures",
+      "evidence_class": "cad_estimate_for_evt_planning, not_measured_hardware",
+      "process_contributors": {
+        "plastic_shrink_pct": 0.07,
+        "mold_dimension_tolerance_mm": 0.025,
+        "adhesive_cure_variance_mm": 0.02,
+        "assembly_placement_mm": 0.05,
+        "component_datasheet_typical_mm": 0.05,
+        "solder_reflow_connector_float_mm": 0.03
+      },
+      "process_rationale": {
+        "plastic_shrink_pct": "Hard-tool 1.2738 P20+Ni cavity, PC+ABS controlled lot, CMM FAI validated by toolmaker",
+        "mold_dimension_tolerance_mm": "Class 101 toolmaker, CMM machine repeatability <= +/-0.013 mm",
+        "adhesive_cure_variance_mm": "Controlled cure rate on fixed cure jig",
+        "assembly_placement_mm": "Alignment-pin fixtures (front_camera_alignment_pin, rear_camera_alignment_pin, screen_bond_clamp_frame)",
+        "component_datasheet_typical_mm": "Vendor-controlled per published component datasheets"
+      },
+      "cosmetic_targets": {
+        "display_gap_to_bezel_mm": {
+          "nominal": 0.15,
+          "tolerance": 0.15
+        },
+        "power_button_cap_proud_mm": {
+          "nominal": 0.3,
+          "tolerance": 0.1
+        },
+        "usb_c_aperture_clearance_mm": {
+          "nominal": 0.2,
+          "tolerance": 0.1
+        },
+        "rear_camera_window_flush_to_back_mm": {
+          "nominal": 0.0,
+          "tolerance": 0.05
+        }
       },
       "environmental_targets": {
         "drop_height_m": 1.0,
@@ -340,7 +411,7 @@
     },
     "mesh_integrity": {
       "pass": true,
-      "checked_parts": 97,
+      "checked_parts": 94,
       "failures": []
     },
     "usb_c_insertion_envelope": {
@@ -472,13 +543,6 @@
       "runner_diameter_mm": 2.2,
       "gate_thickness_mm": 0.85
     },
-    "mold_venting_model": {
-      "pass": true,
-      "vent_slot_count": 10,
-      "vent_slot_depth_mm": 0.04,
-      "vent_slot_land_mm": 0.8,
-      "note": "Modeled parting-line vents cover end-of-fill corners, camera/window features, USB saddle, acoustic ports, and snap-hook roots."
-    },
     "mold_ejector_cooling_model": {
       "pass": true,
       "ejector_pin_count": 8,
@@ -507,13 +571,13 @@
       "envelope_mm": [
         78.0,
         153.6,
-        9.6
+        11.2
       ],
-      "note": "Envelope is driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail."
+      "note": "Width/height driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail; depth raised to <=11.5 mm by the flush-back decision to fully bury the rear camera and torch under a flat back wall."
     },
     "mass_budget": {
       "pass": true,
-      "estimated_mass_g": 143.59,
+      "estimated_mass_g": 163.52,
       "target_mass_g": 185,
       "note": "Rough CAD estimate; placeholder void markers excluded."
     }
@@ -549,6 +613,7 @@
     "kicad_placement_reconciliation_md": "mechanical/e1-phone/review/kicad-placement-reconciliation.md",
     "board_step_readiness_json": "mechanical/e1-phone/review/board-step-readiness.json",
     "board_step_readiness_md": "mechanical/e1-phone/review/board-step-readiness.md",
+    "routed_board_step_intake_template": "mechanical/e1-phone/review/routed-board-step-intake-template.csv",
     "routed_board_clearance_template": "mechanical/e1-phone/review/routed-board-clearance-results-template.csv",
     "routed_board_clearance_json": "mechanical/e1-phone/review/routed-board-clearance.json",
     "routed_board_clearance_md": "mechanical/e1-phone/review/routed-board-clearance.md",
@@ -633,6 +698,8 @@
     "part_review_json": "mechanical/e1-phone/review/part-review.json",
     "part_review_md": "mechanical/e1-phone/review/part-review.md",
     "part_review_contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
+    "part_visual_coverage_json": "mechanical/e1-phone/review/part-visual-coverage.json",
+    "part_visual_coverage_md": "mechanical/e1-phone/review/part-visual-coverage.md",
     "visual_decision_report_json": "mechanical/e1-phone/review/visual-decision-report.json",
     "visual_decision_report_md": "mechanical/e1-phone/review/visual-decision-report.md",
     "visual_review_coverage_acceptance_json": "mechanical/e1-phone/review/visual-review-coverage-acceptance.json",

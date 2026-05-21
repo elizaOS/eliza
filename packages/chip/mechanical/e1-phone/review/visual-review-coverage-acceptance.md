@@ -1,30 +1,27 @@
 # E1 Phone Visual Review Coverage Acceptance
 
 Status: visual_review_coverage_acceptance_pass.
+Automated visual coverage ready: True.
+Production visual signoff ready: False.
 
-This gate proves the automated visual review package covers the phone, internals, exploded assembly, tooling, and per-part contact sheet.
+## Required Views
 
-## View Cases
+- PASS: `full_front_iso.png` - front silhouette, orange side rail, black glass stack
+- PASS: `full_back_iso.png` - rear orange shell, camera window, and service features
+- PASS: `rear_feature_detail.png` - rear camera window, SIM edge, and service-label recess
+- PASS: `full_left_side.png` - left-side button protrusion and shell depth
+- PASS: `full_bottom_port.png` - USB-C, speaker grille, and microphone apertures
+- PASS: `full_top_down.png` - compact footprint, screen margin, buttons, and front features
+- PASS: `exploded_iso.png` - glass, display, shell, and component stack separation
+- PASS: `component_stack.png` - PCB, battery, camera, audio, haptic, and I/O placement
+- PASS: `mold_tooling.png` - parting plane, runner, gate, ejector, and cooling placeholders
 
-- PASS: `full_front_iso.png`
-- PASS: `full_back_iso.png`
-- PASS: `rear_feature_detail.png`
-- PASS: `full_left_side.png`
-- PASS: `full_bottom_port.png`
-- PASS: `full_top_down.png`
-- PASS: `exploded_iso.png`
-- PASS: `component_stack.png`
-- PASS: `mold_tooling.png`
+## Supporting Cases
 
-## Visual Design Gates
-
-- PASS: `black_glass_front_visible`
-- PASS: `compact_screen_margin`
-- PASS: `component_stack_visible`
-- PASS: `expected_review_view_coverage`
-- PASS: `hard_orange_shell_visible`
-- PASS: `rear_feature_detail_visible`
+- Part review: PASS (94 parts).
+- Part-to-view coverage: PASS (94/94 parts).
+- Visual decisions: PASS (7 decisions, 5 open manual review items).
 
 ## Release Rule
 
-- Every required full-object, detail, exploded, component, tooling, and per-part review artifact must be generated, pass pixel checks, and be covered by a recorded visual/design decision before CAD visual coverage is accepted.
+- Every required full-object, detail, exploded, component, tooling, and per-part review artifact must be generated, pass pixel/contact-sheet checks, every CAD part must map to at least one generated review view plus the per-part contact sheet, and the views must be covered by a recorded CAD visual/design decision before automated visual coverage is accepted. Production visual/CMF signoff remains blocked until manual review items are closed.

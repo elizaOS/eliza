@@ -16,4 +16,4 @@ This review is fail-closed until display/touch lab and bring-up rows are populat
 
 ## Release Rule
 
-- Every display bond, FPC, touch, luminance, drop, and bring-up row must include sample, operator, numeric passing result, and explicit pass disposition.
+- Every display bond, FPC, touch, luminance, drop, and bring-up row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_display_result, raw measurement/log data, fixture calibration certificate, photo/log artifact, and display or adhesive lot traceability record.

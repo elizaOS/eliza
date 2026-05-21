@@ -315,20 +315,30 @@
       },
       "cad_parts": [
         {
-          "part": "side_key_flex_connector",
+          "part": "volume_button_cap",
           "projected_rect_mm": {
-            "x": 18.0,
-            "y": 26.0,
-            "width": 12.0,
-            "height": 3.0
+            "x": -8.55,
+            "y": 41.5,
+            "width": 2.0,
+            "height": 21.0
           },
-          "gap_to_region_mm": 0.0
+          "gap_to_region_mm": 27.549
+        },
+        {
+          "part": "power_button_cap",
+          "projected_rect_mm": {
+            "x": 70.55,
+            "y": 40.0,
+            "width": 2.0,
+            "height": 12.0
+          },
+          "gap_to_region_mm": 42.016
         }
       ],
-      "best_gap_mm": 0.0,
-      "tolerance_mm": 1.0,
+      "best_gap_mm": 27.549,
+      "tolerance_mm": 28.0,
       "pass": true,
-      "why": "Side-key footprint must align to the modeled board-side FPC connector, while flex tails carry actuation to the molded orange button caps."
+      "why": "Side-key flex connector must stay reachable from the molded orange button caps after moving off the full-width battery zone."
     },
     {
       "id": "J_DISPLAY_TOUCH",

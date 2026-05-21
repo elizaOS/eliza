@@ -3,6 +3,15 @@
   "status": "blocked_no_supplier_responses",
   "response_template": "mechanical/e1-phone/review/supplier-response-template.csv",
   "expected_response_count": 8,
+  "required_evidence_class": "physical_supplier_response",
+  "template_evidence_class": "",
+  "forbidden_evidence_classes": [
+    "blank_template",
+    "planning",
+    "simulated",
+    "simulated_first_article_for_evt_planning_not_production_release",
+    "simulated_supplier_response_for_planning_not_release"
+  ],
   "complete_response_count": 0,
   "missing_or_incomplete_items": [
     "display_lcm_ctp",
@@ -19,226 +28,306 @@
       "supplier_item_id": "display_lcm_ctp",
       "rfq_package_id": "display_touch_stack",
       "populated_identity": false,
+      "supplier_listing_or_portal_url_present": true,
+      "moq_units": null,
+      "lead_time_days": null,
+      "unit_price_20": null,
+      "commercial_terms_pass": false,
+      "mechanical_envelope_mm": [],
+      "mechanical_traceability_pass": false,
       "required_returns": {
         "quote_returned": "",
         "drawing_2d_received": "",
         "step_received": "",
         "sample_received": ""
       },
-      "required_return_artifacts": [
-        "signed_2d_stack_drawing",
-        "native_or_step_stack_model",
-        "fpc_pinout_and_mating_connector",
-        "display_sample_photos"
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "quote_artifact",
+        "drawing_2d_artifact",
+        "step_artifact",
+        "pinout_or_process_artifact",
+        "footprint_or_tooling_artifact",
+        "sample_photo_or_inspection_artifact",
+        "supplier_traceability_record"
       ],
-      "required_technical_decisions": [
-        "cover_glass_bonded_or_separate",
-        "fpc_exit_side_and_bend_radius",
-        "touch_controller_and_init_sequence"
-      ],
-      "required_validation_outputs": [
-        "outline_tolerance_mm",
-        "active_area_offset_mm",
-        "connector_stack_height_mm"
-      ],
+      "quote_artifact_present": false,
+      "drawing_2d_artifact_present": false,
+      "step_artifact_present": false,
+      "pinout_or_process_artifact_present": false,
+      "footprint_or_tooling_artifact_present": false,
+      "sample_photo_or_inspection_artifact_present": false,
+      "supplier_traceability_record_present": false,
+      "physical_evidence_pass": false,
       "pass": false
     },
     {
       "supplier_item_id": "usb_c",
       "rfq_package_id": "usb_c_and_bottom_audio",
       "populated_identity": false,
+      "supplier_listing_or_portal_url_present": true,
+      "moq_units": null,
+      "lead_time_days": null,
+      "unit_price_20": null,
+      "commercial_terms_pass": false,
+      "mechanical_envelope_mm": [],
+      "mechanical_traceability_pass": false,
       "required_returns": {
         "quote_returned": "",
         "drawing_2d_received": "",
         "step_received": "",
         "sample_received": ""
       },
-      "required_return_artifacts": [
-        "signed_receptacle_2d_drawing",
-        "step_model_with_shell_stakes",
-        "pcb_land_pattern",
-        "gasket_or_splash_path_review"
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "quote_artifact",
+        "drawing_2d_artifact",
+        "step_artifact",
+        "pinout_or_process_artifact",
+        "footprint_or_tooling_artifact",
+        "sample_photo_or_inspection_artifact",
+        "supplier_traceability_record"
       ],
-      "required_technical_decisions": [
-        "exact_connector_suffix",
-        "mid_mount_or_top_mount_orientation",
-        "gasket_seat_acceptance"
-      ],
-      "required_validation_outputs": [
-        "insertion_force_n",
-        "mating_cycle_rating",
-        "shell_stake_tolerance_mm"
-      ],
+      "quote_artifact_present": false,
+      "drawing_2d_artifact_present": false,
+      "step_artifact_present": false,
+      "pinout_or_process_artifact_present": false,
+      "footprint_or_tooling_artifact_present": false,
+      "sample_photo_or_inspection_artifact_present": false,
+      "supplier_traceability_record_present": false,
+      "physical_evidence_pass": false,
       "pass": false
     },
     {
       "supplier_item_id": "side_buttons",
       "rfq_package_id": "buttons_haptics_service",
       "populated_identity": false,
+      "supplier_listing_or_portal_url_present": true,
+      "moq_units": null,
+      "lead_time_days": null,
+      "unit_price_20": null,
+      "commercial_terms_pass": false,
+      "mechanical_envelope_mm": [],
+      "mechanical_traceability_pass": false,
       "required_returns": {
         "quote_returned": "",
         "drawing_2d_received": "",
         "step_received": "",
         "sample_received": ""
       },
-      "required_return_artifacts": [
-        "switch_drawing",
-        "cap_and_actuator_stack_drawing",
-        "silicone_gasket_material_spec",
-        "sample_force_curve"
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "quote_artifact",
+        "drawing_2d_artifact",
+        "step_artifact",
+        "pinout_or_process_artifact",
+        "footprint_or_tooling_artifact",
+        "sample_photo_or_inspection_artifact",
+        "supplier_traceability_record"
       ],
-      "required_technical_decisions": [
-        "power_switch_part_number",
-        "volume_switch_part_number",
-        "flex_or_direct_pcb_mount"
-      ],
-      "required_validation_outputs": [
-        "actuation_force_n",
-        "travel_mm",
-        "compression_set_percent"
-      ],
+      "quote_artifact_present": false,
+      "drawing_2d_artifact_present": false,
+      "step_artifact_present": false,
+      "pinout_or_process_artifact_present": false,
+      "footprint_or_tooling_artifact_present": false,
+      "sample_photo_or_inspection_artifact_present": false,
+      "supplier_traceability_record_present": false,
+      "physical_evidence_pass": false,
       "pass": false
     },
     {
       "supplier_item_id": "cellular_redcap",
       "rfq_package_id": "",
       "populated_identity": false,
+      "supplier_listing_or_portal_url_present": true,
+      "moq_units": null,
+      "lead_time_days": null,
+      "unit_price_20": null,
+      "commercial_terms_pass": false,
+      "mechanical_envelope_mm": [],
+      "mechanical_traceability_pass": false,
       "required_returns": {
         "quote_returned": "",
         "drawing_2d_received": "",
         "step_received": "",
         "sample_received": ""
       },
-      "required_return_artifacts": [
-        "module_datasheet",
-        "module_step_model",
-        "pinout_and_reference_schematic",
-        "antenna_reference_design"
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "quote_artifact",
+        "drawing_2d_artifact",
+        "step_artifact",
+        "pinout_or_process_artifact",
+        "footprint_or_tooling_artifact",
+        "sample_photo_or_inspection_artifact",
+        "supplier_traceability_record"
       ],
-      "required_technical_decisions": [
-        "regional_sku",
-        "rf_connector_or_solder_feed",
-        "certification_path"
-      ],
-      "required_validation_outputs": [
-        "module_height_mm",
-        "peak_current_a",
-        "antenna_keepout_mm"
-      ],
+      "quote_artifact_present": false,
+      "drawing_2d_artifact_present": false,
+      "step_artifact_present": false,
+      "pinout_or_process_artifact_present": false,
+      "footprint_or_tooling_artifact_present": false,
+      "sample_photo_or_inspection_artifact_present": false,
+      "supplier_traceability_record_present": false,
+      "physical_evidence_pass": false,
       "pass": false
     },
     {
       "supplier_item_id": "wifi_bt",
       "rfq_package_id": "",
       "populated_identity": false,
+      "supplier_listing_or_portal_url_present": true,
+      "moq_units": null,
+      "lead_time_days": null,
+      "unit_price_20": null,
+      "commercial_terms_pass": false,
+      "mechanical_envelope_mm": [],
+      "mechanical_traceability_pass": false,
       "required_returns": {
         "quote_returned": "",
         "drawing_2d_received": "",
         "step_received": "",
         "sample_received": ""
       },
-      "required_return_artifacts": [
-        "module_datasheet",
-        "module_step_model",
-        "pinout_and_land_pattern",
-        "antenna_matching_reference"
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "quote_artifact",
+        "drawing_2d_artifact",
+        "step_artifact",
+        "pinout_or_process_artifact",
+        "footprint_or_tooling_artifact",
+        "sample_photo_or_inspection_artifact",
+        "supplier_traceability_record"
       ],
-      "required_technical_decisions": [
-        "module_or_chip_down",
-        "antenna_feed_strategy",
-        "coexistence_interface"
-      ],
-      "required_validation_outputs": [
-        "module_height_mm",
-        "antenna_clearance_mm",
-        "thermal_dissipation_w"
-      ],
+      "quote_artifact_present": false,
+      "drawing_2d_artifact_present": false,
+      "step_artifact_present": false,
+      "pinout_or_process_artifact_present": false,
+      "footprint_or_tooling_artifact_present": false,
+      "sample_photo_or_inspection_artifact_present": false,
+      "supplier_traceability_record_present": false,
+      "physical_evidence_pass": false,
       "pass": false
     },
     {
       "supplier_item_id": "rear_camera",
       "rfq_package_id": "camera_stack",
       "populated_identity": false,
+      "supplier_listing_or_portal_url_present": true,
+      "moq_units": null,
+      "lead_time_days": null,
+      "unit_price_20": null,
+      "commercial_terms_pass": false,
+      "mechanical_envelope_mm": [],
+      "mechanical_traceability_pass": false,
       "required_returns": {
         "quote_returned": "",
         "drawing_2d_received": "",
         "step_received": "",
         "sample_received": ""
       },
-      "required_return_artifacts": [
-        "signed_module_2d_drawing",
-        "step_model_with_lens_stack",
-        "fpc_pinout_and_connector",
-        "sample_capture_evidence"
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "quote_artifact",
+        "drawing_2d_artifact",
+        "step_artifact",
+        "pinout_or_process_artifact",
+        "footprint_or_tooling_artifact",
+        "sample_photo_or_inspection_artifact",
+        "supplier_traceability_record"
       ],
-      "required_technical_decisions": [
-        "sensor_and_lens_variant",
-        "fpc_exit_side",
-        "optical_center_datum"
-      ],
-      "required_validation_outputs": [
-        "module_total_height_mm",
-        "lens_center_offset_mm",
-        "minimum_focus_distance_mm"
-      ],
+      "quote_artifact_present": false,
+      "drawing_2d_artifact_present": false,
+      "step_artifact_present": false,
+      "pinout_or_process_artifact_present": false,
+      "footprint_or_tooling_artifact_present": false,
+      "sample_photo_or_inspection_artifact_present": false,
+      "supplier_traceability_record_present": false,
+      "physical_evidence_pass": false,
       "pass": false
     },
     {
       "supplier_item_id": "front_camera",
       "rfq_package_id": "camera_stack",
       "populated_identity": false,
+      "supplier_listing_or_portal_url_present": false,
+      "moq_units": null,
+      "lead_time_days": null,
+      "unit_price_20": null,
+      "commercial_terms_pass": false,
+      "mechanical_envelope_mm": [],
+      "mechanical_traceability_pass": false,
       "required_returns": {
         "quote_returned": "",
         "drawing_2d_received": "",
         "step_received": "",
         "sample_received": ""
       },
-      "required_return_artifacts": [
-        "signed_module_2d_drawing",
-        "step_model_with_lens_stack",
-        "fpc_pinout_and_connector",
-        "behind_glass_sample_capture"
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "quote_artifact",
+        "drawing_2d_artifact",
+        "step_artifact",
+        "pinout_or_process_artifact",
+        "footprint_or_tooling_artifact",
+        "sample_photo_or_inspection_artifact",
+        "supplier_traceability_record"
       ],
-      "required_technical_decisions": [
-        "sensor_and_lens_variant",
-        "black_mask_aperture_size",
-        "under_glass_placement_datum"
-      ],
-      "required_validation_outputs": [
-        "module_total_height_mm",
-        "lens_center_offset_mm",
-        "glass_to_lens_gap_mm"
-      ],
+      "quote_artifact_present": false,
+      "drawing_2d_artifact_present": false,
+      "step_artifact_present": false,
+      "pinout_or_process_artifact_present": false,
+      "footprint_or_tooling_artifact_present": false,
+      "sample_photo_or_inspection_artifact_present": false,
+      "supplier_traceability_record_present": false,
+      "physical_evidence_pass": false,
       "pass": false
     },
     {
       "supplier_item_id": "orange_enclosure_tooling",
       "rfq_package_id": "orange_enclosure_tooling",
       "populated_identity": false,
+      "supplier_listing_or_portal_url_present": false,
+      "moq_units": null,
+      "lead_time_days": null,
+      "unit_price_20": null,
+      "commercial_terms_pass": false,
+      "mechanical_envelope_mm": [],
+      "mechanical_traceability_pass": false,
       "required_returns": {
         "quote_returned": "",
         "drawing_2d_received": "",
         "step_received": "",
         "sample_received": ""
       },
-      "required_return_artifacts": [
-        "tooling_quote",
-        "dfm_markup",
-        "tool_layout_drawing",
-        "orange_plaque_or_first_shot_photo"
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "quote_artifact",
+        "drawing_2d_artifact",
+        "step_artifact",
+        "pinout_or_process_artifact",
+        "footprint_or_tooling_artifact",
+        "sample_photo_or_inspection_artifact",
+        "supplier_traceability_record"
       ],
-      "required_technical_decisions": [
-        "tool_class_and_cavity_count",
-        "gate_runner_ejector_strategy",
-        "texture_and_color_standard"
-      ],
-      "required_validation_outputs": [
-        "tooling_lead_time_days",
-        "estimated_part_cost_usd_20",
-        "delta_e_orange"
-      ],
+      "quote_artifact_present": false,
+      "drawing_2d_artifact_present": false,
+      "step_artifact_present": false,
+      "pinout_or_process_artifact_present": false,
+      "footprint_or_tooling_artifact_present": false,
+      "sample_photo_or_inspection_artifact_present": false,
+      "supplier_traceability_record_present": false,
+      "physical_evidence_pass": false,
       "pass": false
     }
   ],
-  "release_rule": "Every supplier row must name the vendor/part/reviewer, confirm quote, 2D drawing, STEP, and sample receipt, and carry item-specific returned artifacts, technical decisions, and validation outputs before supplier lock."
+  "release_rule": "Every supplier row must name the vendor/part/reviewer, identify a supplier listing or portal, prove low-quantity commercial terms with MOQ <= 50, lead time <= 90 days, and positive unit price, confirm quote, 2D drawing, STEP, and sample receipt, provide three-axis mechanical envelope dimensions, include evidence_class=physical_supplier_response, and attach quote, drawing, STEP, pinout/process, footprint/tooling, sample inspection/photo, and supplier traceability artifacts before supplier lock."
 }

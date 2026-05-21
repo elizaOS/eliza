@@ -9,12 +9,12 @@
       [
         -2.0,
         -98.8,
-        -13.8
+        -14.6
       ],
       [
         2.0,
         -94.8,
-        -5.8
+        -6.6
       ]
     ]
   },
@@ -28,12 +28,12 @@
       [
         -1.1,
         -99.8,
-        -10.9
+        -11.7
       ],
       [
         1.1,
         -65.8,
-        -8.7
+        -9.5
       ]
     ]
   },
@@ -47,12 +47,12 @@
       [
         -30.0,
         -77.625,
-        -10.225
+        -11.025
       ],
       [
         -6.0,
         -76.775,
-        -9.375
+        -10.175
       ]
     ]
   },
@@ -66,12 +66,12 @@
       [
         6.0,
         -77.625,
-        -10.225
+        -11.025
       ],
       [
         30.0,
         -76.775,
-        -9.375
+        -10.175
       ]
     ]
   },
@@ -104,12 +104,12 @@
       [
         -29.9,
         57.1,
-        -4.25
+        -5.05
       ],
       [
         -28.1,
         58.9,
-        -1.25
+        -2.05
       ]
     ]
   },
@@ -123,12 +123,12 @@
       [
         28.1,
         57.1,
-        -4.25
+        -5.05
       ],
       [
         29.9,
         58.9,
-        -1.25
+        -2.05
       ]
     ]
   },
@@ -142,12 +142,12 @@
       [
         -29.9,
         -58.9,
-        -4.25
+        -5.05
       ],
       [
         -28.1,
         -57.1,
-        -1.25
+        -2.05
       ]
     ]
   },
@@ -161,12 +161,12 @@
       [
         28.1,
         -58.9,
-        -4.25
+        -5.05
       ],
       [
         29.9,
         -57.1,
-        -1.25
+        -2.05
       ]
     ]
   },
@@ -180,12 +180,12 @@
       [
         -29.9,
         -20.9,
-        -4.25
+        -5.05
       ],
       [
         -28.1,
         -19.1,
-        -1.25
+        -2.05
       ]
     ]
   },
@@ -199,12 +199,12 @@
       [
         28.1,
         -20.9,
-        -4.25
+        -5.05
       ],
       [
         29.9,
         -19.1,
-        -1.25
+        -2.05
       ]
     ]
   },
@@ -218,12 +218,12 @@
       [
         -31.0,
         59.0,
-        -8.8
+        -9.6
       ],
       [
         -29.0,
         61.0,
-        -6.8
+        -7.6
       ]
     ]
   },
@@ -237,12 +237,12 @@
       [
         -1.0,
         59.0,
-        -8.8
+        -9.6
       ],
       [
         1.0,
         61.0,
-        -6.8
+        -7.6
       ]
     ]
   },
@@ -256,12 +256,12 @@
       [
         29.0,
         59.0,
-        -8.8
+        -9.6
       ],
       [
         31.0,
         61.0,
-        -6.8
+        -7.6
       ]
     ]
   },
@@ -275,12 +275,12 @@
       [
         -31.0,
         -1.0,
-        -8.8
+        -9.6
       ],
       [
         -29.0,
         1.0,
-        -6.8
+        -7.6
       ]
     ]
   },
@@ -294,12 +294,12 @@
       [
         29.0,
         -1.0,
-        -8.8
+        -9.6
       ],
       [
         31.0,
         1.0,
-        -6.8
+        -7.6
       ]
     ]
   },
@@ -313,12 +313,12 @@
       [
         -31.0,
         -61.0,
-        -8.8
+        -9.6
       ],
       [
         -29.0,
         -59.0,
-        -6.8
+        -7.6
       ]
     ]
   },
@@ -332,12 +332,12 @@
       [
         -1.0,
         -61.0,
-        -8.8
+        -9.6
       ],
       [
         1.0,
         -59.0,
-        -6.8
+        -7.6
       ]
     ]
   },
@@ -351,12 +351,12 @@
       [
         29.0,
         -61.0,
-        -8.8
+        -9.6
       ],
       [
         31.0,
         -59.0,
-        -6.8
+        -7.6
       ]
     ]
   },
@@ -370,12 +370,12 @@
       [
         -2.0,
         -99.8,
-        -19.8
+        -20.6
       ],
       [
         2.0,
         -5.8,
-        -15.8
+        -16.6
       ]
     ]
   },
@@ -389,12 +389,12 @@
       [
         -2.0,
         -47.0,
-        -19.8
+        -20.6
       ],
       [
         2.0,
         47.0,
-        -15.8
+        -16.6
       ]
     ]
   },
@@ -408,202 +408,12 @@
       [
         -2.0,
         5.8,
-        -19.8
+        -20.6
       ],
       [
         2.0,
         99.8,
-        -15.8
-      ]
-    ]
-  },
-  {
-    "name": "mold_vent_slot_1_top_left_end_fill",
-    "role": "tooling",
-    "material": "shallow mold vent slot placeholder",
-    "obj": "mechanical/e1-phone/out/mold_vent_slot_1_top_left_end_fill.obj",
-    "stl": "mechanical/e1-phone/out/mold_vent_slot_1_top_left_end_fill.stl",
-    "bounds_mm": [
-      [
-        -34.0,
-        76.85,
-        -8.82
-      ],
-      [
-        -30.0,
-        77.65,
-        -8.78
-      ]
-    ]
-  },
-  {
-    "name": "mold_vent_slot_2_top_right_end_fill",
-    "role": "tooling",
-    "material": "shallow mold vent slot placeholder",
-    "obj": "mechanical/e1-phone/out/mold_vent_slot_2_top_right_end_fill.obj",
-    "stl": "mechanical/e1-phone/out/mold_vent_slot_2_top_right_end_fill.stl",
-    "bounds_mm": [
-      [
-        30.0,
-        76.85,
-        -8.82
-      ],
-      [
-        34.0,
-        77.65,
-        -8.78
-      ]
-    ]
-  },
-  {
-    "name": "mold_vent_slot_3_camera_window_upper",
-    "role": "tooling",
-    "material": "shallow mold vent slot placeholder",
-    "obj": "mechanical/e1-phone/out/mold_vent_slot_3_camera_window_upper.obj",
-    "stl": "mechanical/e1-phone/out/mold_vent_slot_3_camera_window_upper.stl",
-    "bounds_mm": [
-      [
-        18.5,
-        65.9,
-        -8.82
-      ],
-      [
-        23.5,
-        66.7,
-        -8.78
-      ]
-    ]
-  },
-  {
-    "name": "mold_vent_slot_4_camera_window_lower",
-    "role": "tooling",
-    "material": "shallow mold vent slot placeholder",
-    "obj": "mechanical/e1-phone/out/mold_vent_slot_4_camera_window_lower.obj",
-    "stl": "mechanical/e1-phone/out/mold_vent_slot_4_camera_window_lower.stl",
-    "bounds_mm": [
-      [
-        18.5,
-        48.9,
-        -8.82
-      ],
-      [
-        23.5,
-        49.7,
-        -8.78
-      ]
-    ]
-  },
-  {
-    "name": "mold_vent_slot_5_usb_saddle_left",
-    "role": "tooling",
-    "material": "shallow mold vent slot placeholder",
-    "obj": "mechanical/e1-phone/out/mold_vent_slot_5_usb_saddle_left.obj",
-    "stl": "mechanical/e1-phone/out/mold_vent_slot_5_usb_saddle_left.stl",
-    "bounds_mm": [
-      [
-        -10.0,
-        -77.9,
-        -8.82
-      ],
-      [
-        -6.0,
-        -77.1,
-        -8.78
-      ]
-    ]
-  },
-  {
-    "name": "mold_vent_slot_6_usb_saddle_right",
-    "role": "tooling",
-    "material": "shallow mold vent slot placeholder",
-    "obj": "mechanical/e1-phone/out/mold_vent_slot_6_usb_saddle_right.obj",
-    "stl": "mechanical/e1-phone/out/mold_vent_slot_6_usb_saddle_right.stl",
-    "bounds_mm": [
-      [
-        6.0,
-        -77.9,
-        -8.82
-      ],
-      [
-        10.0,
-        -77.1,
-        -8.78
-      ]
-    ]
-  },
-  {
-    "name": "mold_vent_slot_7_speaker_grille_end_fill",
-    "role": "tooling",
-    "material": "shallow mold vent slot placeholder",
-    "obj": "mechanical/e1-phone/out/mold_vent_slot_7_speaker_grille_end_fill.obj",
-    "stl": "mechanical/e1-phone/out/mold_vent_slot_7_speaker_grille_end_fill.stl",
-    "bounds_mm": [
-      [
-        15.0,
-        -77.9,
-        -8.82
-      ],
-      [
-        21.0,
-        -77.1,
-        -8.78
-      ]
-    ]
-  },
-  {
-    "name": "mold_vent_slot_8_handset_slot_end_fill",
-    "role": "tooling",
-    "material": "shallow mold vent slot placeholder",
-    "obj": "mechanical/e1-phone/out/mold_vent_slot_8_handset_slot_end_fill.obj",
-    "stl": "mechanical/e1-phone/out/mold_vent_slot_8_handset_slot_end_fill.stl",
-    "bounds_mm": [
-      [
-        -3.0,
-        69.4,
-        -8.82
-      ],
-      [
-        3.0,
-        70.2,
-        -8.78
-      ]
-    ]
-  },
-  {
-    "name": "mold_vent_slot_9_left_snap_hook_roots",
-    "role": "tooling",
-    "material": "shallow mold vent slot placeholder",
-    "obj": "mechanical/e1-phone/out/mold_vent_slot_9_left_snap_hook_roots.obj",
-    "stl": "mechanical/e1-phone/out/mold_vent_slot_9_left_snap_hook_roots.stl",
-    "bounds_mm": [
-      [
-        -39.85,
-        -8.0,
-        -8.82
-      ],
-      [
-        -39.05,
-        8.0,
-        -8.78
-      ]
-    ]
-  },
-  {
-    "name": "mold_vent_slot_10_right_snap_hook_roots",
-    "role": "tooling",
-    "material": "shallow mold vent slot placeholder",
-    "obj": "mechanical/e1-phone/out/mold_vent_slot_10_right_snap_hook_roots.obj",
-    "stl": "mechanical/e1-phone/out/mold_vent_slot_10_right_snap_hook_roots.stl",
-    "bounds_mm": [
-      [
-        39.05,
-        -8.0,
-        -8.82
-      ],
-      [
-        39.85,
-        8.0,
-        -8.78
+        -16.6
       ]
     ]
   }

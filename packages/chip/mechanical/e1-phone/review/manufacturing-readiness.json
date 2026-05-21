@@ -1,6 +1,6 @@
 {
   "claim_boundary": "CAD automation readiness audit; not a manufacturing release.",
-  "overall_status": "cad_package_pass",
+  "overall_status": "blocked",
   "manufacturing_release_ready": false,
   "why_not_release_ready": [
     "KiCad phone board remains concept/floorplan-level, not routed and fabricated.",
@@ -12,13 +12,13 @@
     "device_envelope_mm": [
       78.0,
       153.6,
-      9.6
+      11.2
     ],
     "corner_radius_mm": 7.5,
     "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
     "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
     "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
-    "estimated_mass_g": 143.59,
+    "estimated_mass_g": 163.52,
     "target_mass_g": 185,
     "compactness_status": "cad_compactness_optimized",
     "compactness_width_excess_mm": 0.3,
@@ -34,9 +34,6 @@
     "board_step_has_production_step": false,
     "board_step_has_concept_pcb_step": true,
     "board_step_concept_split_islands_match_kicad": true,
-    "routed_board_clearance_status": "blocked_waiting_for_routed_board_step",
-    "routed_board_clearance_expected_count": 10,
-    "routed_board_clearance_complete_count": 0,
     "engineering_validation_status": "cad_validation_inputs_ready",
     "interface_validation_status": "cad_interface_validation_pass",
     "interface_validation_case_count": 7,
@@ -64,28 +61,7 @@
     "evt_inspection_measurement_count": 10,
     "evt_results_status": "blocked_no_physical_results",
     "evt_results_populated_count": 0,
-    "fixture_calibration_status": "blocked_no_fixture_calibration_results",
-    "fixture_calibration_expected_count": 7,
-    "fixture_calibration_complete_result_count": 0,
-    "mechanical_lifecycle_status": "blocked_no_lifecycle_results",
-    "mechanical_lifecycle_expected_criterion_count": 4,
-    "mechanical_lifecycle_complete_criterion_count": 0,
-    "assembly_build_status": "blocked_no_assembly_build_results",
-    "assembly_build_expected_step_count": 7,
-    "assembly_build_complete_result_count": 0,
-    "process_control_status": "blocked_no_process_control_results",
-    "process_control_expected_count": 7,
-    "process_control_complete_result_count": 0,
-    "unit_traceability_status": "blocked_no_unit_traceability_results",
-    "unit_traceability_expected_count": 6,
-    "unit_traceability_complete_result_count": 0,
-    "physical_process_validation_status": "blocked_no_physical_process_validation_results",
-    "physical_process_validation_expected_gate_count": 11,
-    "physical_process_validation_complete_gate_count": 0,
     "assembly_clearance_status": "pass",
-    "full_cad_boolean_interference_status": "blocked_boolean_interference_incomplete",
-    "full_cad_boolean_expected_scope_count": 10,
-    "full_cad_boolean_complete_result_count": 10,
     "injection_molding_dfm_status": "cad_dfm_inputs_ready",
     "tolerance_stack_status": "cad_tolerance_stack_pass",
     "gdt_release_status": "gdt_release_package_ready",
@@ -93,40 +69,23 @@
     "gdt_fai_results_status": "blocked_no_fai_results",
     "gdt_fai_results_complete_count": 0,
     "mold_process_window_status": "cad_mold_process_window_ready",
-    "mold_flow_acceptance_status": "mold_flow_results_pass",
-    "mold_flow_complete_result_count": 8,
-    "mold_flow_expected_criterion_count": 8,
     "toolmaker_signoff_status": "blocked_no_toolmaker_signoff",
     "toolmaker_signoff_complete_count": 0,
     "visual_decision_status": "pass",
-    "visual_review_coverage_status": "visual_review_coverage_acceptance_pass",
-    "visual_review_complete_view_count": 9,
-    "visual_review_expected_view_count": 9,
-    "visual_review_complete_gate_count": 6,
-    "visual_review_expected_gate_count": 6,
-    "cmf_release_status": "blocked_no_cmf_results",
-    "cmf_expected_criterion_count": 5,
-    "cmf_complete_criterion_count": 1,
-    "cmf_production_required_count": 4,
-    "cmf_production_complete_count": 0,
-    "solid_cad_handoff_status": "generated",
-    "solid_cad_step_part_count": 97,
-    "step_validation_status": "pass",
-    "step_validation_count": 97,
-    "supplier_rfq_status": "rfq_ready",
+    "automated_visual_status": "automated_visual_coverage_pass",
+    "manual_visual_signoff_status": "blocked_manual_visual_review_open",
+    "production_visual_signoff_ready": false,
+    "open_manual_visual_review_count": 5,
+    "solid_cad_handoff_status": "blocked",
+    "solid_cad_step_part_count": 0,
+    "step_validation_status": "blocked",
+    "step_validation_count": 0,
+    "supplier_rfq_status": "blocked",
     "supplier_rfq_package_count": 5,
     "supplier_response_status": "blocked_no_supplier_responses",
     "supplier_response_complete_count": 0,
     "supplier_response_expected_count": 8,
-    "supplier_evidence_status": "blocked_no_supplier_evidence",
-    "supplier_evidence_complete_family_count": 0,
-    "supplier_evidence_expected_family_count": 6,
-    "end_to_end_objective_status": "blocked_not_end_to_end_ready",
-    "end_to_end_complete_board_objective_count": 0,
-    "end_to_end_expected_board_objective_count": 9,
-    "end_to_end_complete_mechanical_gate_count": 0,
-    "end_to_end_expected_mechanical_gate_count": 7,
-    "part_review_count": 97
+    "part_review_count": 94
   },
   "required_outputs": {
     "assembly_glb": true,
@@ -142,7 +101,6 @@
     "kicad_mechanical_handoff": true,
     "kicad_placement_reconciliation": true,
     "board_step_readiness": true,
-    "routed_board_clearance": true,
     "engineering_validation": true,
     "interface_validation": true,
     "display_validation": true,
@@ -156,29 +114,17 @@
     "evt_validation_fixtures": true,
     "evt_inspection_plan": true,
     "evt_results_review": true,
-    "fixture_calibration_acceptance": true,
-    "mechanical_lifecycle_acceptance": true,
-    "assembly_build_traveler": true,
-    "process_control_plan": true,
-    "unit_traceability_acceptance": true,
-    "physical_process_validation_acceptance": true,
     "assembly_clearance": true,
-    "full_cad_boolean_interference": true,
     "injection_molding_dfm": true,
     "mold_process_window": true,
-    "mold_flow_acceptance": true,
     "toolmaker_signoff_package": true,
     "tolerance_stack": true,
     "gdt_release_package": true,
     "gdt_fai_results_review": true,
     "visual_decision_report": true,
-    "visual_review_coverage_acceptance": true,
-    "cmf_release_acceptance": true,
-    "end_to_end_objective_acceptance": true,
-    "solid_cad_handoff": true,
-    "supplier_rfq_package": true,
+    "solid_cad_handoff": false,
+    "supplier_rfq_package": false,
     "supplier_response_review": true,
-    "supplier_evidence_acceptance": true,
     "part_review": true
   },
   "subsystem_evidence_present": {
@@ -187,7 +133,6 @@
     "screen_stack": true,
     "pcb_integration": true,
     "routed_board_step_import": true,
-    "routed_board_clearance": true,
     "solid_cad_handoff": true,
     "supplier_rfq_package": true,
     "supplier_returned_evidence": true,
@@ -204,19 +149,9 @@
     "toolmaker_moldflow_signoff": true,
     "review_automation": true,
     "visual_aesthetic_decision_log": true,
-    "visual_review_coverage_acceptance": true,
-    "orange_cmf_release": true,
-    "end_to_end_objective_acceptance": true,
     "assembly_clearance": true,
-    "full_cad_boolean_interference": true,
     "engineering_validation_plan": true,
     "physical_evt_results": true,
-    "fixture_calibration": true,
-    "mechanical_lifecycle_results": true,
-    "assembly_build_traveler": true,
-    "process_control_plan": true,
-    "unit_traceability": true,
-    "physical_process_validation": true,
     "tolerance_release_package": true,
     "gdt_fai_results": true
   },
@@ -317,23 +252,8 @@
       ]
     },
     {
-      "subsystem": "routed_board_clearance",
-      "status": "blocked",
-      "evidence": [
-        "routed-board-clearance.json",
-        "routed-board-clearance.md",
-        "routed-board-clearance-results-template.csv",
-        "board-step-readiness.json",
-        "assembly-clearance.json"
-      ],
-      "remaining_blockers": [
-        "Concept PCB clearance is not final routed-board clearance evidence.",
-        "Need routed KiCad board STEP with production 3D models and measured zero-interference results."
-      ]
-    },
-    {
       "subsystem": "solid_cad_handoff",
-      "status": "cad_pass",
+      "status": "blocked",
       "evidence": [
         "solid-cad-handoff.json",
         "solid-cad-handoff.md",
@@ -392,7 +312,7 @@
     },
     {
       "subsystem": "supplier_rfq_package",
-      "status": "cad_pass",
+      "status": "blocked",
       "evidence": [
         "supplier-rfq-package.json",
         "supplier-rfq-package.md",
@@ -413,13 +333,11 @@
       "evidence": [
         "supplier-response-template.csv",
         "supplier-response-review.json",
-        "supplier-response-review.md",
-        "supplier-evidence-acceptance.json",
-        "supplier-evidence-acceptance.md"
+        "supplier-response-review.md"
       ],
       "remaining_blockers": [
         "No supplier-returned quote/drawing/STEP/sample evidence has been recorded.",
-        "Need complete vendor responses for display/touch, USB/audio, buttons, cameras, wireless modules, and orange enclosure tooling before replacing EVT0 envelope CAD with supplier CAD."
+        "Need complete vendor responses before replacing EVT0 envelope CAD with supplier CAD."
       ]
     },
     {
@@ -637,18 +555,12 @@
         "mold_primary_runner",
         "mold_left_submarine_gate",
         "mold_right_submarine_gate",
-        "mold_vent_slot_1_top_left_end_fill",
-        "mold_vent_slot_10_right_snap_hook_roots",
         "mold_runner_gate_model",
-        "mold_venting_model",
         "mold_ejector_cooling_model",
         "injection-molding-dfm.json",
         "injection-molding-dfm.md",
         "mold-process-window.json",
         "mold-process-window.md",
-        "mold-flow-results-template.csv",
-        "mold-flow-acceptance.json",
-        "mold-flow-acceptance.md",
         "toolmaker-signoff-package.json",
         "toolmaker-signoff-package.md",
         "toolmaker-signoff-response-template.csv",
@@ -664,9 +576,6 @@
       "subsystem": "toolmaker_moldflow_signoff",
       "status": "blocked",
       "evidence": [
-        "mold-flow-results-template.csv",
-        "mold-flow-acceptance.json",
-        "mold-flow-acceptance.md",
         "toolmaker-signoff-package.json",
         "toolmaker-signoff-package.md",
         "toolmaker-signoff-response-template.csv",
@@ -686,8 +595,6 @@
         "visual-review.json",
         "part-review.json",
         "part-review-contact-sheet.png",
-        "visual-review-coverage-acceptance.json",
-        "visual-review-coverage-acceptance.md",
         "visual-decision-report.json",
         "visual-decision-report.md",
         "manufacturing_drawing.json",
@@ -718,61 +625,6 @@
       ]
     },
     {
-      "subsystem": "visual_review_coverage_acceptance",
-      "status": "cad_pass",
-      "evidence": [
-        "visual-review-coverage-acceptance.json",
-        "visual-review-coverage-acceptance.md",
-        "visual-review.json",
-        "part-review-contact-sheet.png",
-        "full_front_iso.png",
-        "full_back_iso.png",
-        "rear_feature_detail.png",
-        "full_left_side.png",
-        "full_bottom_port.png",
-        "full_top_down.png",
-        "exploded_iso.png",
-        "component_stack.png",
-        "mold_tooling.png"
-      ],
-      "remaining_blockers": [
-        "Visual review coverage proves generated CAD review completeness only; it does not replace supplier STEP, routed PCB, CMF, or physical validation evidence."
-      ]
-    },
-    {
-      "subsystem": "orange_cmf_release",
-      "status": "blocked",
-      "evidence": [
-        "cmf-results-template.csv",
-        "cmf-release-acceptance.json",
-        "cmf-release-acceptance.md",
-        "visual-decision-report.json",
-        "full_front_iso.png",
-        "full_back_iso.png",
-        "full_bottom_port.png"
-      ],
-      "remaining_blockers": [
-        "Rendered orange identity passes CAD review, but molded color plaques, texture plaques, rub/scratch samples, first-shot gate-blush/weld-line review, and signed CMF approval are still missing.",
-        "CMF release is also blocked until mold-flow and toolmaker signoff results pass."
-      ]
-    },
-    {
-      "subsystem": "end_to_end_objective_acceptance",
-      "status": "blocked",
-      "evidence": [
-        "end-to-end-objective-acceptance.json",
-        "end-to-end-objective-acceptance.md",
-        "supplier-evidence-acceptance.json",
-        "physical-process-validation-acceptance.json",
-        "routed-board-clearance.json",
-        "full-cad-boolean-interference.json",
-        "cmf-release-acceptance.json"
-      ],
-      "remaining_blockers": [
-        "Complete phone acceptance is blocked until board objectives, routed PCB/STEP, supplier evidence, physical validation, boolean interference, tooling, and CMF gates all pass."
-      ]
-    },
-    {
       "subsystem": "assembly_clearance",
       "status": "cad_pass",
       "evidence": [
@@ -786,23 +638,6 @@
       "remaining_blockers": [
         "Clearance checks are targeted AABB/parameter checks, not full B-rep boolean interference analysis.",
         "Need supplier STEP files and routed-board component models for final clash analysis."
-      ]
-    },
-    {
-      "subsystem": "full_cad_boolean_interference",
-      "status": "blocked",
-      "evidence": [
-        "full-cad-boolean-interference-results-template.csv",
-        "full-cad-boolean-interference.json",
-        "full-cad-boolean-interference.md",
-        "solid-cad-handoff.json",
-        "step-validation.json",
-        "assembly-clearance.json",
-        "routed-board-clearance.json"
-      ],
-      "remaining_blockers": [
-        "No populated full B-rep boolean clash results are present.",
-        "Need supplier B-rep models and routed KiCad board STEP before zero-interference signoff."
       ]
     },
     {
@@ -844,83 +679,6 @@
       "remaining_blockers": [
         "No populated EVT measurement rows are present yet.",
         "Need measured, passing first-article data before claiming physical validation."
-      ]
-    },
-    {
-      "subsystem": "fixture_calibration",
-      "status": "blocked",
-      "evidence": [
-        "fixture-calibration-results-template.csv",
-        "fixture-calibration-acceptance.json",
-        "fixture-calibration-acceptance.md"
-      ],
-      "remaining_blockers": [
-        "No populated traceable fixture calibration rows are present yet.",
-        "Need calibration standard, operator, date, as-left error, certificate ID, and pass disposition before EVT rows can support release."
-      ]
-    },
-    {
-      "subsystem": "mechanical_lifecycle_results",
-      "status": "blocked",
-      "evidence": [
-        "mechanical-lifecycle-results-template.csv",
-        "mechanical-lifecycle-acceptance.json",
-        "mechanical-lifecycle-acceptance.md"
-      ],
-      "remaining_blockers": [
-        "No populated lifecycle rows are present for button cycling, USB-C post-cycle insertion/continuity, or screen retention.",
-        "Need passing lifecycle rows from calibrated fixtures before claiming buttons, USB-C, or screen mounting are production-ready."
-      ]
-    },
-    {
-      "subsystem": "assembly_build_traveler",
-      "status": "blocked",
-      "evidence": [
-        "assembly-build-results-template.csv",
-        "assembly-build-traveler.json",
-        "assembly-build-traveler.md"
-      ],
-      "remaining_blockers": [
-        "No populated first-article build traveler rows are present yet.",
-        "Need build ID, unit serial, operator, observed results, and explicit pass for every assembly station."
-      ]
-    },
-    {
-      "subsystem": "process_control_plan",
-      "status": "blocked",
-      "evidence": [
-        "process-control-results-template.csv",
-        "process-control-plan.json",
-        "process-control-plan.md"
-      ],
-      "remaining_blockers": [
-        "No populated station process-control rows are present yet.",
-        "Need build, station, operator, calibrated gauge, measured result, and pass disposition for every line control."
-      ]
-    },
-    {
-      "subsystem": "unit_traceability",
-      "status": "blocked",
-      "evidence": [
-        "unit-traceability-results-template.csv",
-        "unit-traceability-acceptance.json",
-        "unit-traceability-acceptance.md"
-      ],
-      "remaining_blockers": [
-        "No populated unit traceability rows are present yet.",
-        "Need serial, build ID, artifact IDs, reviewer, accepted disposition, lot records, photos, test linkage, and NC/rework history."
-      ]
-    },
-    {
-      "subsystem": "physical_process_validation",
-      "status": "blocked",
-      "evidence": [
-        "physical-process-validation-acceptance.json",
-        "physical-process-validation-acceptance.md"
-      ],
-      "remaining_blockers": [
-        "Finished-phone physical validation is blocked until every lab, EVT, FAI, traceability, build, and process-control result family passes.",
-        "Blank templates and CAD review plans do not count as release evidence without populated passing physical results."
       ]
     },
     {

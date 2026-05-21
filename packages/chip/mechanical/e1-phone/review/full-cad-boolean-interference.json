@@ -2,30 +2,30 @@
   "claim_boundary": "Fail-closed full CAD boolean interference acceptance. Targeted AABB clearance, concept STEP envelopes, and blank templates do not count as supplier B-rep/routed-board boolean clash evidence.",
   "status": "blocked_boolean_interference_incomplete",
   "source_reviews": {
-    "solid_cad_status": "generated",
-    "step_validation_status": "pass",
+    "solid_cad_status": "blocked",
+    "step_validation_status": "blocked",
     "assembly_clearance_status": "pass",
     "board_step_readiness_status": "blocked_concept_pcb_no_routed_step",
     "routed_board_clearance_status": "blocked_waiting_for_routed_board_step",
-    "supplier_evidence_status": "blocked_no_supplier_evidence"
+    "supplier_response_status": "blocked_no_supplier_responses"
   },
   "expected_scope_count": 10,
   "scope_count": 10,
-  "cad_prerequisite_scope_count": 10,
-  "reviewed_close_pair_count": 21,
-  "overlap_pair_count": 15,
-  "intentional_or_keepout_overlap_pair_count": 5,
-  "requires_brep_boolean_review_pair_count": 10,
-  "complete_result_count": 10,
+  "cad_prerequisite_scope_count": 7,
+  "concept_aabb_pair_check_count": 12,
+  "concept_aabb_interference_count": 0,
+  "complete_result_count": 0,
   "results_template": "mechanical/e1-phone/review/full-cad-boolean-interference-results-template.csv",
+  "required_evidence_class": "physical_supplier_brep_boolean_interference_result",
   "prerequisites": {
-    "solid_cad_generated": true,
-    "step_validation_pass": true,
+    "solid_cad_generated": false,
+    "step_validation_pass": false,
     "assembly_clearance_pass": true,
+    "concept_aabb_interference_scan_pass": true,
     "routed_board_step_ready": false,
     "routed_board_clearance_pass": false,
     "supplier_brep_models_accepted": false,
-    "scope_cad_prerequisites_pass": true
+    "scope_cad_prerequisites_pass": false
   },
   "scope_cases": [
     {
@@ -40,62 +40,35 @@
         "screen_adhesive_top",
         "orange_side_frame"
       ],
+      "concept_pair_checks": [
+        [
+          "display_lcm",
+          "screen_cover_glass"
+        ]
+      ],
+      "concept_aabb_pair_checks": [
+        {
+          "scope_id": "screen_stack_to_orange_rails",
+          "pair": [
+            "display_lcm",
+            "screen_cover_glass"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 1,
+          "min_gap_mm": 2.05,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        }
+      ],
+      "concept_aabb_interference_count": 0,
+      "concept_aabb_scan_pass": true,
       "risk": "screen glass, adhesive, and display stack must not clash with molded orange rails or ledges",
       "required_parts_present": true,
       "concept_clearance_case_count": 2,
       "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 4,
-        "overlap_pair_count": 3,
-        "intentional_or_keepout_overlap_pair_count": 1,
-        "requires_brep_boolean_review_pair_count": 2,
-        "overlap_volume_total_mm3": 23747.414,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "screen_cover_glass",
-              "screen_adhesive_top"
-            ],
-            "aabb_gap_mm": 0.06,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "screen_cover_glass",
-              "orange_side_frame"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 8191.027,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "display_lcm",
-              "orange_side_frame"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 15542.509,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "screen_adhesive_top",
-              "orange_side_frame"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 13.878,
-            "classification": "intentional_compressible_stack_overlap",
-            "requires_brep_boolean_review": false
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
+      "cad_prerequisite_pass": true,
+      "early_aabb_fit_pass": true
     },
     {
       "id": "routed_pcb_components_to_orange_enclosure",
@@ -104,176 +77,137 @@
       ],
       "required_parts": [
         "main_pcb",
+        "battery_pouch",
         "orange_back_shell",
         "orange_side_frame"
       ],
+      "concept_pair_checks": [
+        [
+          "main_pcb",
+          "battery_pouch"
+        ]
+      ],
+      "concept_aabb_pair_checks": [
+        {
+          "scope_id": "routed_pcb_components_to_orange_enclosure",
+          "pair": [
+            "main_pcb",
+            "battery_pouch"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 2,
+          "min_gap_mm": 0.5,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        }
+      ],
+      "concept_aabb_interference_count": 0,
+      "concept_aabb_scan_pass": true,
       "risk": "routed board components must clear enclosure ribs, bosses, snaps, and side rails",
       "required_parts_present": true,
       "concept_clearance_case_count": 1,
       "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 2,
-        "overlap_pair_count": 2,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 2,
-        "overlap_volume_total_mm3": 21135.36,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "main_pcb",
-              "orange_side_frame"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 6758.4,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "orange_back_shell",
-              "orange_side_frame"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 14376.96,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
+      "cad_prerequisite_pass": true,
+      "early_aabb_fit_pass": true
     },
     {
       "id": "usb_c_port_saddle_aperture_and_gaskets",
       "source_clearance_ids": [
         "usb_shell_to_external_aperture",
-        "usb_to_bottom_speaker",
-        "bottom_mic_to_usb"
+        "usb_to_bottom_speaker"
       ],
       "required_parts": [
         "usb_c_receptacle",
         "usb_c_external_aperture",
-        "orange_usb_reinforcement_saddle",
-        "usb_c_perimeter_gasket_top",
-        "usb_c_molded_drip_break_lip"
+        "orange_usb_reinforcement_saddle"
       ],
-      "risk": "USB-C shell, aperture, saddle, drip lip, and gaskets must remain interference-free through insertion travel",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 3,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 3,
-        "overlap_pair_count": 1,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 1,
-        "overlap_volume_total_mm3": 7.107,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "usb_c_receptacle",
-              "usb_c_external_aperture"
-            ],
-            "aabb_gap_mm": 0.105,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "usb_c_receptacle",
-              "orange_usb_reinforcement_saddle"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 7.107,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "usb_c_external_aperture",
-              "usb_c_perimeter_gasket_top"
-            ],
-            "aabb_gap_mm": 0.145,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          }
+      "concept_pair_checks": [
+        [
+          "usb_c_receptacle",
+          "bottom_speaker_module"
         ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
+        [
+          "usb_c_receptacle",
+          "bottom_mic"
+        ]
+      ],
+      "concept_aabb_pair_checks": [
+        {
+          "scope_id": "usb_c_port_saddle_aperture_and_gaskets",
+          "pair": [
+            "usb_c_receptacle",
+            "bottom_speaker_module"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 1,
+          "min_gap_mm": 6.53,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        },
+        {
+          "scope_id": "usb_c_port_saddle_aperture_and_gaskets",
+          "pair": [
+            "usb_c_receptacle",
+            "bottom_mic"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 1,
+          "min_gap_mm": 11.78,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        }
+      ],
+      "concept_aabb_interference_count": 0,
+      "concept_aabb_scan_pass": true,
+      "risk": "USB-C shell, aperture, saddle, drip lip, and gaskets must remain interference-free",
+      "required_parts_present": true,
+      "concept_clearance_case_count": 2,
+      "concept_clearance_pass": true,
+      "cad_prerequisite_pass": true,
+      "early_aabb_fit_pass": true
     },
     {
       "id": "side_buttons_switches_gaskets_labyrinth",
       "source_clearance_ids": [
-        "haptic_to_sim_tray_keepout"
+        "button_caps_to_side_frame"
       ],
       "required_parts": [
         "power_button_cap",
         "volume_button_cap",
-        "power_button_elastomer_gasket",
-        "volume_button_elastomer_gasket",
-        "power_button_labyrinth_upper_rail",
-        "volume_button_labyrinth_upper_rail"
+        "orange_side_frame"
       ],
+      "concept_pair_checks": [
+        [
+          "power_button_cap",
+          "volume_button_cap"
+        ]
+      ],
+      "concept_aabb_pair_checks": [
+        {
+          "scope_id": "side_buttons_switches_gaskets_labyrinth",
+          "pair": [
+            "power_button_cap",
+            "volume_button_cap"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 1,
+          "min_gap_mm": 77.1,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        }
+      ],
+      "concept_aabb_interference_count": 0,
+      "concept_aabb_scan_pass": true,
       "risk": "button caps, gaskets, rails, and switch keepouts must not bind or preload",
       "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 4,
-        "overlap_pair_count": 4,
-        "intentional_or_keepout_overlap_pair_count": 4,
-        "requires_brep_boolean_review_pair_count": 0,
-        "overlap_volume_total_mm3": 2.059,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "power_button_cap",
-              "power_button_elastomer_gasket"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 0.66,
-            "classification": "intentional_compressible_stack_overlap",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "volume_button_cap",
-              "volume_button_elastomer_gasket"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 1.155,
-            "classification": "intentional_compressible_stack_overlap",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "power_button_elastomer_gasket",
-              "power_button_labyrinth_upper_rail"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 0.122,
-            "classification": "intentional_compressible_stack_overlap",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "volume_button_elastomer_gasket",
-              "volume_button_labyrinth_upper_rail"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 0.122,
-            "classification": "intentional_compressible_stack_overlap",
-            "requires_brep_boolean_review": false
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
+      "concept_clearance_case_count": 0,
+      "concept_clearance_pass": false,
+      "cad_prerequisite_pass": false,
+      "early_aabb_fit_pass": true
     },
     {
       "id": "front_camera_earpiece_under_glass_stack",
@@ -282,48 +216,38 @@
       ],
       "required_parts": [
         "front_camera_module",
-        "front_camera_under_glass",
-        "front_camera_black_mask_window",
         "earpiece_receiver",
-        "handset_acoustic_slot",
-        "handset_acoustic_mesh"
+        "screen_cover_glass"
       ],
-      "risk": "under-glass camera and handset acoustic path must clear each other and the cover glass",
+      "concept_pair_checks": [
+        [
+          "front_camera_module",
+          "earpiece_receiver"
+        ]
+      ],
+      "concept_aabb_pair_checks": [
+        {
+          "scope_id": "front_camera_earpiece_under_glass_stack",
+          "pair": [
+            "front_camera_module",
+            "earpiece_receiver"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 1,
+          "min_gap_mm": 9.75,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        }
+      ],
+      "concept_aabb_interference_count": 0,
+      "concept_aabb_scan_pass": true,
+      "risk": "under-glass camera and handset acoustic path must clear cover glass and each other",
       "required_parts_present": true,
       "concept_clearance_case_count": 1,
       "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 2,
-        "overlap_pair_count": 1,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 1,
-        "overlap_volume_total_mm3": 0.143,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "front_camera_under_glass",
-              "front_camera_black_mask_window"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 0.143,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "handset_acoustic_slot",
-              "handset_acoustic_mesh"
-            ],
-            "aabb_gap_mm": 0.035,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
+      "cad_prerequisite_pass": true,
+      "early_aabb_fit_pass": true
     },
     {
       "id": "rear_camera_window_baffle_adhesive_stack",
@@ -333,799 +257,215 @@
       "required_parts": [
         "rear_camera_module",
         "rear_camera_cover_glass",
-        "rear_camera_cover_adhesive_top",
-        "rear_camera_light_baffle_top",
-        "rear_camera_light_baffle_bottom"
+        "rear_camera_light_baffle_top"
       ],
+      "concept_pair_checks": [
+        [
+          "rear_camera_module",
+          "battery_pouch"
+        ]
+      ],
+      "concept_aabb_pair_checks": [
+        {
+          "scope_id": "rear_camera_window_baffle_adhesive_stack",
+          "pair": [
+            "rear_camera_module",
+            "battery_pouch"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 1,
+          "min_gap_mm": 16.3,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        }
+      ],
+      "concept_aabb_interference_count": 0,
+      "concept_aabb_scan_pass": true,
       "risk": "rear camera module, cover window, adhesive, and baffles must remain interference-free",
       "required_parts_present": true,
       "concept_clearance_case_count": 1,
       "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 3,
-        "overlap_pair_count": 2,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 2,
-        "overlap_volume_total_mm3": 2.76,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "rear_camera_cover_glass",
-              "rear_camera_cover_adhesive_top"
-            ],
-            "aabb_gap_mm": 0.055,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "rear_camera_cover_glass",
-              "rear_camera_light_baffle_top"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 1.38,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "rear_camera_cover_glass",
-              "rear_camera_light_baffle_bottom"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 1.38,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
+      "cad_prerequisite_pass": true,
+      "early_aabb_fit_pass": true
     },
     {
       "id": "battery_pouch_pcb_flex_haptic",
       "source_clearance_ids": [
         "battery_to_pcb_islands",
-        "split_interconnect_flex_to_battery_edge",
-        "split_interconnect_flex_within_side_rail",
-        "haptic_to_pcb_islands"
+        "haptic_to_pcb_islands",
+        "split_interconnect_flex_to_battery_edge"
       ],
       "required_parts": [
         "battery_pouch",
         "main_pcb",
-        "split_interconnect_side_flex",
-        "haptic_lra"
+        "haptic_lra",
+        "split_interconnect_side_flex"
       ],
+      "concept_pair_checks": [
+        [
+          "battery_pouch",
+          "main_pcb"
+        ],
+        [
+          "battery_pouch",
+          "haptic_lra"
+        ],
+        [
+          "battery_pouch",
+          "split_interconnect_side_flex"
+        ]
+      ],
+      "concept_aabb_pair_checks": [
+        {
+          "scope_id": "battery_pouch_pcb_flex_haptic",
+          "pair": [
+            "battery_pouch",
+            "main_pcb"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 2,
+          "min_gap_mm": 0.5,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        },
+        {
+          "scope_id": "battery_pouch_pcb_flex_haptic",
+          "pair": [
+            "battery_pouch",
+            "haptic_lra"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 1,
+          "min_gap_mm": 0.5,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        },
+        {
+          "scope_id": "battery_pouch_pcb_flex_haptic",
+          "pair": [
+            "battery_pouch",
+            "split_interconnect_side_flex"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 1,
+          "min_gap_mm": 1.3,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        }
+      ],
+      "concept_aabb_interference_count": 0,
+      "concept_aabb_scan_pass": true,
       "risk": "battery, split interconnect, haptic, and PCB islands must not pinch or overlap",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 4,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 2,
-        "overlap_pair_count": 1,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 1,
-        "overlap_volume_total_mm3": 4454.4,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "battery_pouch",
-              "main_pcb"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 4454.4,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "split_interconnect_side_flex",
-              "haptic_lra"
-            ],
-            "aabb_gap_mm": 0.01,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
-    },
-    {
-      "id": "bottom_audio_microphone_speaker_meshes",
-      "source_clearance_ids": [
-        "usb_to_bottom_speaker",
-        "bottom_mic_to_usb"
-      ],
-      "required_parts": [
-        "bottom_speaker_module",
-        "bottom_speaker_dust_mesh",
-        "bottom_mic",
-        "bottom_microphone_mesh_1",
-        "bottom_microphone_mesh_2"
-      ],
-      "risk": "speaker, microphone, meshes, and acoustic ports must not clash with USB or enclosure plastic",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 2,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 0,
-        "overlap_pair_count": 0,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 0,
-        "overlap_volume_total_mm3": 0,
-        "minimum_reviewed_pair_gap_mm": null,
-        "close_pairs": [],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
-    },
-    {
-      "id": "rf_shields_antennas_plastic_windows",
-      "source_clearance_ids": [],
-      "required_parts": [
-        "soc_shield_can",
-        "pmic_shield_can",
-        "radio_shield_can",
-        "cellular_top_antenna_keepout",
-        "cellular_bottom_antenna_keepout",
-        "wifi_bt_side_antenna_keepout"
-      ],
-      "risk": "RF shields, feed regions, and antenna plastic windows must preserve keepouts",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 0,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 1,
-        "overlap_pair_count": 1,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 1,
-        "overlap_volume_total_mm3": 46.8,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "soc_shield_can",
-              "radio_shield_can"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 46.8,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
-    },
-    {
-      "id": "molded_retention_boss_snap_service_features",
-      "source_clearance_ids": [
-        "haptic_to_sim_tray_keepout"
-      ],
-      "required_parts": [
-        "orange_screw_boss_1",
-        "orange_snap_hook_1",
-        "orange_snap_hook_8",
-        "sim_tray_keepout",
-        "service_label_recess"
-      ],
-      "risk": "screw bosses, snap hooks, service tray, and service label recess must not intrude into assemblies",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 0,
-        "overlap_pair_count": 0,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 0,
-        "overlap_volume_total_mm3": 0,
-        "minimum_reviewed_pair_gap_mm": null,
-        "close_pairs": [],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
-    }
-  ],
-  "scopes": [
-    {
-      "id": "screen_stack_to_orange_rails",
-      "source_clearance_ids": [
-        "screen_cover_glass_to_orange_body",
-        "display_lcm_under_cover_glass"
-      ],
-      "required_parts": [
-        "screen_cover_glass",
-        "display_lcm",
-        "screen_adhesive_top",
-        "orange_side_frame"
-      ],
-      "risk": "screen glass, adhesive, and display stack must not clash with molded orange rails or ledges",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 2,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 4,
-        "overlap_pair_count": 3,
-        "intentional_or_keepout_overlap_pair_count": 1,
-        "requires_brep_boolean_review_pair_count": 2,
-        "overlap_volume_total_mm3": 23747.414,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "screen_cover_glass",
-              "screen_adhesive_top"
-            ],
-            "aabb_gap_mm": 0.06,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "screen_cover_glass",
-              "orange_side_frame"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 8191.027,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "display_lcm",
-              "orange_side_frame"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 15542.509,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "screen_adhesive_top",
-              "orange_side_frame"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 13.878,
-            "classification": "intentional_compressible_stack_overlap",
-            "requires_brep_boolean_review": false
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
-    },
-    {
-      "id": "routed_pcb_components_to_orange_enclosure",
-      "source_clearance_ids": [
-        "battery_to_pcb_islands"
-      ],
-      "required_parts": [
-        "main_pcb",
-        "orange_back_shell",
-        "orange_side_frame"
-      ],
-      "risk": "routed board components must clear enclosure ribs, bosses, snaps, and side rails",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 2,
-        "overlap_pair_count": 2,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 2,
-        "overlap_volume_total_mm3": 21135.36,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "main_pcb",
-              "orange_side_frame"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 6758.4,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "orange_back_shell",
-              "orange_side_frame"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 14376.96,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
-    },
-    {
-      "id": "usb_c_port_saddle_aperture_and_gaskets",
-      "source_clearance_ids": [
-        "usb_shell_to_external_aperture",
-        "usb_to_bottom_speaker",
-        "bottom_mic_to_usb"
-      ],
-      "required_parts": [
-        "usb_c_receptacle",
-        "usb_c_external_aperture",
-        "orange_usb_reinforcement_saddle",
-        "usb_c_perimeter_gasket_top",
-        "usb_c_molded_drip_break_lip"
-      ],
-      "risk": "USB-C shell, aperture, saddle, drip lip, and gaskets must remain interference-free through insertion travel",
       "required_parts_present": true,
       "concept_clearance_case_count": 3,
       "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 3,
-        "overlap_pair_count": 1,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 1,
-        "overlap_volume_total_mm3": 7.107,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "usb_c_receptacle",
-              "usb_c_external_aperture"
-            ],
-            "aabb_gap_mm": 0.105,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "usb_c_receptacle",
-              "orange_usb_reinforcement_saddle"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 7.107,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "usb_c_external_aperture",
-              "usb_c_perimeter_gasket_top"
-            ],
-            "aabb_gap_mm": 0.145,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
-    },
-    {
-      "id": "side_buttons_switches_gaskets_labyrinth",
-      "source_clearance_ids": [
-        "haptic_to_sim_tray_keepout"
-      ],
-      "required_parts": [
-        "power_button_cap",
-        "volume_button_cap",
-        "power_button_elastomer_gasket",
-        "volume_button_elastomer_gasket",
-        "power_button_labyrinth_upper_rail",
-        "volume_button_labyrinth_upper_rail"
-      ],
-      "risk": "button caps, gaskets, rails, and switch keepouts must not bind or preload",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 4,
-        "overlap_pair_count": 4,
-        "intentional_or_keepout_overlap_pair_count": 4,
-        "requires_brep_boolean_review_pair_count": 0,
-        "overlap_volume_total_mm3": 2.059,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "power_button_cap",
-              "power_button_elastomer_gasket"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 0.66,
-            "classification": "intentional_compressible_stack_overlap",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "volume_button_cap",
-              "volume_button_elastomer_gasket"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 1.155,
-            "classification": "intentional_compressible_stack_overlap",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "power_button_elastomer_gasket",
-              "power_button_labyrinth_upper_rail"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 0.122,
-            "classification": "intentional_compressible_stack_overlap",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "volume_button_elastomer_gasket",
-              "volume_button_labyrinth_upper_rail"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 0.122,
-            "classification": "intentional_compressible_stack_overlap",
-            "requires_brep_boolean_review": false
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
-    },
-    {
-      "id": "front_camera_earpiece_under_glass_stack",
-      "source_clearance_ids": [
-        "front_camera_to_earpiece"
-      ],
-      "required_parts": [
-        "front_camera_module",
-        "front_camera_under_glass",
-        "front_camera_black_mask_window",
-        "earpiece_receiver",
-        "handset_acoustic_slot",
-        "handset_acoustic_mesh"
-      ],
-      "risk": "under-glass camera and handset acoustic path must clear each other and the cover glass",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 2,
-        "overlap_pair_count": 1,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 1,
-        "overlap_volume_total_mm3": 0.143,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "front_camera_under_glass",
-              "front_camera_black_mask_window"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 0.143,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "handset_acoustic_slot",
-              "handset_acoustic_mesh"
-            ],
-            "aabb_gap_mm": 0.035,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
-    },
-    {
-      "id": "rear_camera_window_baffle_adhesive_stack",
-      "source_clearance_ids": [
-        "rear_camera_to_battery"
-      ],
-      "required_parts": [
-        "rear_camera_module",
-        "rear_camera_cover_glass",
-        "rear_camera_cover_adhesive_top",
-        "rear_camera_light_baffle_top",
-        "rear_camera_light_baffle_bottom"
-      ],
-      "risk": "rear camera module, cover window, adhesive, and baffles must remain interference-free",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 3,
-        "overlap_pair_count": 2,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 2,
-        "overlap_volume_total_mm3": 2.76,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "rear_camera_cover_glass",
-              "rear_camera_cover_adhesive_top"
-            ],
-            "aabb_gap_mm": 0.055,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          },
-          {
-            "parts": [
-              "rear_camera_cover_glass",
-              "rear_camera_light_baffle_top"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 1.38,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "rear_camera_cover_glass",
-              "rear_camera_light_baffle_bottom"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 1.38,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
-    },
-    {
-      "id": "battery_pouch_pcb_flex_haptic",
-      "source_clearance_ids": [
-        "battery_to_pcb_islands",
-        "split_interconnect_flex_to_battery_edge",
-        "split_interconnect_flex_within_side_rail",
-        "haptic_to_pcb_islands"
-      ],
-      "required_parts": [
-        "battery_pouch",
-        "main_pcb",
-        "split_interconnect_side_flex",
-        "haptic_lra"
-      ],
-      "risk": "battery, split interconnect, haptic, and PCB islands must not pinch or overlap",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 4,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 2,
-        "overlap_pair_count": 1,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 1,
-        "overlap_volume_total_mm3": 4454.4,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "battery_pouch",
-              "main_pcb"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 4454.4,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          },
-          {
-            "parts": [
-              "split_interconnect_side_flex",
-              "haptic_lra"
-            ],
-            "aabb_gap_mm": 0.01,
-            "aabb_overlap_volume_mm3": 0.0,
-            "classification": "close_clearance_proxy",
-            "requires_brep_boolean_review": false
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
+      "cad_prerequisite_pass": true,
+      "early_aabb_fit_pass": true
     },
     {
       "id": "bottom_audio_microphone_speaker_meshes",
       "source_clearance_ids": [
-        "usb_to_bottom_speaker",
-        "bottom_mic_to_usb"
+        "bottom_mic_to_usb",
+        "usb_to_bottom_speaker"
       ],
       "required_parts": [
         "bottom_speaker_module",
-        "bottom_speaker_dust_mesh",
         "bottom_mic",
-        "bottom_microphone_mesh_1",
-        "bottom_microphone_mesh_2"
+        "usb_c_receptacle"
       ],
+      "concept_pair_checks": [
+        [
+          "bottom_speaker_module",
+          "bottom_mic"
+        ],
+        [
+          "bottom_speaker_module",
+          "usb_c_receptacle"
+        ]
+      ],
+      "concept_aabb_pair_checks": [
+        {
+          "scope_id": "bottom_audio_microphone_speaker_meshes",
+          "pair": [
+            "bottom_speaker_module",
+            "bottom_mic"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 1,
+          "min_gap_mm": 27.25,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        },
+        {
+          "scope_id": "bottom_audio_microphone_speaker_meshes",
+          "pair": [
+            "bottom_speaker_module",
+            "usb_c_receptacle"
+          ],
+          "missing_parts": [],
+          "component_pair_count": 1,
+          "min_gap_mm": 6.53,
+          "max_overlap_volume_mm3": 0.0,
+          "interference_count": 0,
+          "pass": true
+        }
+      ],
+      "concept_aabb_interference_count": 0,
+      "concept_aabb_scan_pass": true,
       "risk": "speaker, microphone, meshes, and acoustic ports must not clash with USB or enclosure plastic",
       "required_parts_present": true,
       "concept_clearance_case_count": 2,
       "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 0,
-        "overlap_pair_count": 0,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 0,
-        "overlap_volume_total_mm3": 0,
-        "minimum_reviewed_pair_gap_mm": null,
-        "close_pairs": [],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
+      "cad_prerequisite_pass": true,
+      "early_aabb_fit_pass": true
     },
     {
       "id": "rf_shields_antennas_plastic_windows",
-      "source_clearance_ids": [],
+      "source_clearance_ids": [
+        "rf_keepout_to_orange_shell"
+      ],
       "required_parts": [
         "soc_shield_can",
-        "pmic_shield_can",
         "radio_shield_can",
-        "cellular_top_antenna_keepout",
-        "cellular_bottom_antenna_keepout",
-        "wifi_bt_side_antenna_keepout"
+        "orange_back_shell"
       ],
+      "concept_pair_checks": [],
+      "concept_aabb_pair_checks": [],
+      "concept_aabb_interference_count": 0,
+      "concept_aabb_scan_pass": true,
       "risk": "RF shields, feed regions, and antenna plastic windows must preserve keepouts",
       "required_parts_present": true,
       "concept_clearance_case_count": 0,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 1,
-        "overlap_pair_count": 1,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 1,
-        "overlap_volume_total_mm3": 46.8,
-        "minimum_reviewed_pair_gap_mm": 0.0,
-        "close_pairs": [
-          {
-            "parts": [
-              "soc_shield_can",
-              "radio_shield_can"
-            ],
-            "aabb_gap_mm": 0.0,
-            "aabb_overlap_volume_mm3": 46.8,
-            "classification": "requires_brep_boolean_review",
-            "requires_brep_boolean_review": true
-          }
-        ],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
+      "concept_clearance_pass": false,
+      "cad_prerequisite_pass": false,
+      "early_aabb_fit_pass": true
     },
     {
       "id": "molded_retention_boss_snap_service_features",
       "source_clearance_ids": [
-        "haptic_to_sim_tray_keepout"
+        "snap_hooks_to_internal_components"
       ],
       "required_parts": [
-        "orange_screw_boss_1",
-        "orange_snap_hook_1",
-        "orange_snap_hook_8",
-        "sim_tray_keepout",
+        "orange_back_shell",
+        "orange_side_frame",
         "service_label_recess"
       ],
+      "concept_pair_checks": [],
+      "concept_aabb_pair_checks": [],
+      "concept_aabb_interference_count": 0,
+      "concept_aabb_scan_pass": true,
       "risk": "screw bosses, snap hooks, service tray, and service label recess must not intrude into assemblies",
       "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "concept_aabb_proxy": {
-        "reviewed_close_pair_count": 0,
-        "overlap_pair_count": 0,
-        "intentional_or_keepout_overlap_pair_count": 0,
-        "requires_brep_boolean_review_pair_count": 0,
-        "overlap_volume_total_mm3": 0,
-        "minimum_reviewed_pair_gap_mm": null,
-        "close_pairs": [],
-        "claim_boundary": "AABB proxy only; intentional stack contact, gaskets, adhesives, and keepout envelopes can overlap. This does not replace boolean B-rep interference analysis."
-      },
-      "cad_prerequisite_pass": true
+      "concept_clearance_case_count": 0,
+      "concept_clearance_pass": false,
+      "cad_prerequisite_pass": false,
+      "early_aabb_fit_pass": true
     }
   ],
-  "concept_proxy_summary": {
-    "scope_count": 10,
-    "cad_prerequisite_scope_count": 10,
-    "reviewed_close_pair_count": 21,
-    "overlap_pair_count": 15,
-    "intentional_or_keepout_overlap_pair_count": 5,
-    "requires_brep_boolean_review_pair_count": 10,
-    "claim_boundary": "Concept AABB proxy evidence improves automated CAD review coverage but is not routed-board/supplier-B-rep boolean release evidence."
-  },
-  "result_cases": [
-    {
-      "scope_id": "screen_stack_to_orange_rails",
-      "expected_scope": true,
-      "populated": true,
-      "numeric_pass": true,
-      "explicit_pass": true,
-      "pass": true
-    },
-    {
-      "scope_id": "routed_pcb_components_to_orange_enclosure",
-      "expected_scope": true,
-      "populated": true,
-      "numeric_pass": true,
-      "explicit_pass": true,
-      "pass": true
-    },
-    {
-      "scope_id": "usb_c_port_saddle_aperture_and_gaskets",
-      "expected_scope": true,
-      "populated": true,
-      "numeric_pass": true,
-      "explicit_pass": true,
-      "pass": true
-    },
-    {
-      "scope_id": "side_buttons_switches_gaskets_labyrinth",
-      "expected_scope": true,
-      "populated": true,
-      "numeric_pass": true,
-      "explicit_pass": true,
-      "pass": true
-    },
-    {
-      "scope_id": "front_camera_earpiece_under_glass_stack",
-      "expected_scope": true,
-      "populated": true,
-      "numeric_pass": true,
-      "explicit_pass": true,
-      "pass": true
-    },
-    {
-      "scope_id": "rear_camera_window_baffle_adhesive_stack",
-      "expected_scope": true,
-      "populated": true,
-      "numeric_pass": true,
-      "explicit_pass": true,
-      "pass": true
-    },
-    {
-      "scope_id": "battery_pouch_pcb_flex_haptic",
-      "expected_scope": true,
-      "populated": true,
-      "numeric_pass": true,
-      "explicit_pass": true,
-      "pass": true
-    },
-    {
-      "scope_id": "bottom_audio_microphone_speaker_meshes",
-      "expected_scope": true,
-      "populated": true,
-      "numeric_pass": true,
-      "explicit_pass": true,
-      "pass": true
-    },
-    {
-      "scope_id": "rf_shields_antennas_plastic_windows",
-      "expected_scope": true,
-      "populated": true,
-      "numeric_pass": true,
-      "explicit_pass": true,
-      "pass": true
-    },
-    {
-      "scope_id": "molded_retention_boss_snap_service_features",
-      "expected_scope": true,
-      "populated": true,
-      "numeric_pass": true,
-      "explicit_pass": true,
-      "pass": true
-    }
-  ],
-  "missing_or_incomplete_scopes": [],
-  "release_rule": "Every scope must be checked with a named boolean engine against supplier B-rep models and routed KiCad board STEP, with min gap >= 0, zero interference count, zero interference volume, reviewer, and explicit pass."
+  "release_rule": "Every scope must be checked with a named boolean engine against supplier B-rep models and routed KiCad board STEP, with min gap >= 0, zero interference count, zero interference volume, reviewer, evidence_class=physical_supplier_brep_boolean_interference_result, and explicit pass."
 }

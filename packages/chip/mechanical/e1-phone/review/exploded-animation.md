@@ -1,14 +1,14 @@
 # e1-phone exploded animation
 
-- GLB: `/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/out/e1-phone-exploded.glb` (186,520 bytes)
-- MP4: `/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/out/e1-phone-exploded.mp4` (917,782 bytes)
+- GLB: `/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/out/e1-phone-exploded.glb` (183,588 bytes)
+- MP4: `/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/out/e1-phone-exploded.mp4` (942,204 bytes)
 - Frames: `/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/out/e1-phone-exploded-frames` (360 frames, 24 keyframes)
 - Clips: explode, reassemble, turntable
 - Durations: explode 3.0s, hold 1.5s, reassemble 3.0s, hold 1.5s — total 12.0s @ 30fps
-- Parts animated: 97
+- Parts animated: 94
 - Ring spacing: 25.0 mm
 - Renderer: **pyrender-egl + ffmpeg/libx264**
-- Render time: 47.1s
+- Render time: 46.2s
 
 ## Axis decisions
 | Group | Axis |

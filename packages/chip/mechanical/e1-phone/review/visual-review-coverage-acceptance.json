@@ -1,198 +1,192 @@
 {
-  "claim_boundary": "Automated CAD visual review coverage acceptance. This proves required render coverage, image nonblank checks, per-part contact-sheet coverage, and recorded CAD visual decisions; it is not CMF color-chip approval or human industrial-design signoff.",
+  "claim_boundary": "Automated CAD visual review coverage acceptance; proves required render coverage, image nonblank checks, per-part contact-sheet coverage, and recorded CAD visual decisions. It is not CMF lock or human industrial-design signoff.",
   "status": "visual_review_coverage_acceptance_pass",
+  "automated_visual_coverage_ready": true,
+  "production_visual_signoff_ready": false,
   "expected_view_count": 9,
   "complete_view_count": 9,
-  "expected_visual_gate_count": 6,
-  "complete_visual_gate_count": 6,
-  "missing_or_failed_items": [],
+  "expected_visual_gate_count": 5,
+  "passing_visual_gate_count": 5,
   "view_cases": [
     {
       "view": "full_front_iso.png",
-      "purpose": "front assembly",
-      "present": true,
-      "pixel_check_pass": true,
-      "nonwhite_pixel_ratio": 0.05366,
-      "orange_pixel_ratio_of_nonwhite": 0.43302,
-      "warm_orange_pixel_ratio_of_nonwhite": 0.42543,
-      "dark_pixel_ratio_of_nonwhite": 0.5465,
-      "decision_referenced": true,
-      "pass": true
+      "purpose": "front silhouette, orange side rail, black glass stack",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.05561
     },
     {
       "view": "full_back_iso.png",
-      "purpose": "rear assembly",
-      "present": true,
-      "pixel_check_pass": true,
-      "nonwhite_pixel_ratio": 0.05702,
-      "orange_pixel_ratio_of_nonwhite": 0.97389,
-      "warm_orange_pixel_ratio_of_nonwhite": 0.95179,
-      "dark_pixel_ratio_of_nonwhite": 0.01315,
-      "decision_referenced": true,
-      "pass": true
+      "purpose": "rear orange shell, camera window, and service features",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.05885
     },
     {
       "view": "rear_feature_detail.png",
-      "purpose": "rear camera/service detail",
-      "present": true,
-      "pixel_check_pass": true,
-      "nonwhite_pixel_ratio": 0.11003,
-      "orange_pixel_ratio_of_nonwhite": 0.00173,
-      "warm_orange_pixel_ratio_of_nonwhite": 0.97237,
-      "dark_pixel_ratio_of_nonwhite": 0.00943,
-      "decision_referenced": true,
-      "pass": true
+      "purpose": "rear camera window, SIM edge, and service-label recess",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.11025
     },
     {
       "view": "full_left_side.png",
-      "purpose": "side button profile",
-      "present": true,
-      "pixel_check_pass": true,
-      "nonwhite_pixel_ratio": 0.02973,
-      "orange_pixel_ratio_of_nonwhite": 0.92483,
-      "warm_orange_pixel_ratio_of_nonwhite": 0.88553,
-      "dark_pixel_ratio_of_nonwhite": 0.06132,
-      "decision_referenced": true,
-      "pass": true
+      "purpose": "left-side button protrusion and shell depth",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.03224
     },
     {
       "view": "full_bottom_port.png",
-      "purpose": "USB-C, speaker, and mic ports",
-      "present": true,
-      "pixel_check_pass": true,
-      "nonwhite_pixel_ratio": 0.02397,
-      "orange_pixel_ratio_of_nonwhite": 0.77781,
-      "warm_orange_pixel_ratio_of_nonwhite": 0.77783,
-      "dark_pixel_ratio_of_nonwhite": 0.19595,
-      "decision_referenced": true,
-      "pass": true
+      "purpose": "USB-C, speaker grille, and microphone apertures",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.02397
     },
     {
       "view": "full_top_down.png",
-      "purpose": "compact footprint",
-      "present": true,
-      "pixel_check_pass": true,
-      "nonwhite_pixel_ratio": 0.11026,
-      "orange_pixel_ratio_of_nonwhite": 0.068,
-      "warm_orange_pixel_ratio_of_nonwhite": 0.06365,
-      "dark_pixel_ratio_of_nonwhite": 0.92223,
-      "decision_referenced": true,
-      "pass": true
+      "purpose": "compact footprint, screen margin, buttons, and front features",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.11015
     },
     {
       "view": "exploded_iso.png",
-      "purpose": "exploded assembly",
-      "present": true,
-      "pixel_check_pass": true,
-      "nonwhite_pixel_ratio": 0.07599,
-      "orange_pixel_ratio_of_nonwhite": 0.45795,
-      "warm_orange_pixel_ratio_of_nonwhite": 0.44613,
-      "dark_pixel_ratio_of_nonwhite": 0.52474,
-      "decision_referenced": true,
-      "pass": true
+      "purpose": "glass, display, shell, and component stack separation",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.07773
     },
     {
       "view": "component_stack.png",
-      "purpose": "internal component placement",
-      "present": true,
-      "pixel_check_pass": true,
-      "nonwhite_pixel_ratio": 0.07952,
-      "orange_pixel_ratio_of_nonwhite": 0.01139,
-      "warm_orange_pixel_ratio_of_nonwhite": 0.01187,
-      "dark_pixel_ratio_of_nonwhite": 0.67433,
-      "decision_referenced": true,
-      "pass": true
+      "purpose": "PCB, battery, camera, audio, haptic, and I/O placement",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.07942
     },
     {
       "view": "mold_tooling.png",
-      "purpose": "mold tooling placeholders",
-      "present": true,
-      "pixel_check_pass": true,
-      "nonwhite_pixel_ratio": 0.0406,
-      "orange_pixel_ratio_of_nonwhite": 0.13253,
-      "warm_orange_pixel_ratio_of_nonwhite": 0.12985,
-      "dark_pixel_ratio_of_nonwhite": 0.02517,
-      "decision_referenced": true,
-      "pass": true
-    }
-  ],
-  "visual_gate_cases": [
-    {
-      "id": "black_glass_front_visible",
+      "purpose": "parting plane, runner, gate, ejector, and cooling placeholders",
       "pass": true,
-      "metrics": {
-        "front_dark_ratio": 0.5465,
-        "top_down_dark_ratio": 0.92223
-      }
-    },
-    {
-      "id": "compact_screen_margin",
-      "pass": true,
-      "metrics": {
-        "screen_margin_mm": 0.45,
-        "target_min_mm": 0.35,
-        "target_max_mm": 0.6
-      }
-    },
-    {
-      "id": "component_stack_visible",
-      "pass": true,
-      "metrics": {
-        "component_stack_nonwhite_ratio": 0.07952
-      }
-    },
-    {
-      "id": "expected_review_view_coverage",
-      "pass": true,
-      "metrics": {
-        "expected_views": [
-          "component_stack.png",
-          "exploded_iso.png",
-          "full_back_iso.png",
-          "full_bottom_port.png",
-          "full_front_iso.png",
-          "full_left_side.png",
-          "full_top_down.png",
-          "mold_tooling.png",
-          "rear_feature_detail.png"
-        ],
-        "missing_views": []
-      }
-    },
-    {
-      "id": "hard_orange_shell_visible",
-      "pass": true,
-      "metrics": {
-        "front_orange_ratio": 0.43302,
-        "back_orange_ratio": 0.97389,
-        "bottom_orange_ratio": 0.77781
-      }
-    },
-    {
-      "id": "rear_feature_detail_visible",
-      "pass": true,
-      "metrics": {
-        "rear_detail_nonwhite_ratio": 0.11003,
-        "rear_detail_orange_ratio": 0.00173,
-        "rear_detail_warm_orange_ratio": 0.97237,
-        "rear_detail_dark_ratio": 0.00943
-      }
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.04165
     }
   ],
   "part_review_case": {
-    "id": "per_part_contact_sheet",
-    "part_count": 97,
-    "status": "pass",
+    "part_count": 94,
     "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
     "contact_sheet_pass": true,
     "pass": true
   },
-  "decision_case": {
-    "id": "visual_decision_log",
+  "part_visual_coverage_case": {
+    "status": "part_visual_coverage_pass",
+    "expected_part_count": 94,
+    "covered_part_count": 94,
+    "missing_or_incomplete_part_count": 0,
+    "pass": true
+  },
+  "visual_gate_cases": [
+    {
+      "id": "black_glass_front_visible",
+      "pass": true
+    },
+    {
+      "id": "compact_screen_margin",
+      "pass": true
+    },
+    {
+      "id": "component_stack_visible",
+      "pass": true
+    },
+    {
+      "id": "expected_review_view_coverage",
+      "pass": true
+    },
+    {
+      "id": "hard_orange_shell_visible",
+      "pass": true
+    }
+  ],
+  "visual_decision_case": {
     "status": "pass",
+    "automated_visual_status": "automated_visual_coverage_pass",
+    "manual_visual_signoff_status": "blocked_manual_visual_review_open",
+    "production_visual_signoff_ready": false,
     "decision_count": 7,
     "open_manual_review_count": 5,
     "pass": true
   },
-  "release_rule": "Every required full-object, detail, exploded, component, tooling, and per-part review artifact must be generated, pass pixel checks, and be covered by a recorded visual/design decision before CAD visual coverage is accepted."
+  "release_rule": "Every required full-object, detail, exploded, component, tooling, and per-part review artifact must be generated, pass pixel/contact-sheet checks, every CAD part must map to at least one generated review view plus the per-part contact sheet, and the views must be covered by a recorded CAD visual/design decision before automated visual coverage is accepted. Production visual/CMF signoff remains blocked until manual review items are closed."
 }

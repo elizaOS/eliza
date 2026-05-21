@@ -25,6 +25,10 @@
         "display-results-template.csv",
         "display-results-review.json"
       ],
+      "template_present": true,
+      "review_present": true,
+      "complete_result_count": 0,
+      "expected_result_count": 7,
       "pass": false
     },
     {
@@ -35,6 +39,10 @@
         "acoustic-results-template.csv",
         "acoustic-results-review.json"
       ],
+      "template_present": true,
+      "review_present": true,
+      "complete_result_count": 0,
+      "expected_result_count": 7,
       "pass": false
     },
     {
@@ -45,6 +53,10 @@
         "camera-results-template.csv",
         "camera-results-review.json"
       ],
+      "template_present": true,
+      "review_present": true,
+      "complete_result_count": 0,
+      "expected_result_count": 7,
       "pass": false
     },
     {
@@ -55,6 +67,10 @@
         "environmental-results-template.csv",
         "environmental-results-review.json"
       ],
+      "template_present": true,
+      "review_present": true,
+      "complete_result_count": 0,
+      "expected_result_count": 9,
       "pass": false
     },
     {
@@ -65,6 +81,10 @@
         "evt-inspection-results-template.csv",
         "evt-results-review.json"
       ],
+      "template_present": true,
+      "review_present": true,
+      "complete_result_count": 0,
+      "expected_result_count": 10,
       "pass": false
     },
     {
@@ -75,6 +95,10 @@
         "fixture-calibration-results-template.csv",
         "fixture-calibration-acceptance.json"
       ],
+      "template_present": true,
+      "review_present": true,
+      "complete_result_count": 0,
+      "expected_result_count": 0,
       "pass": false
     },
     {
@@ -85,6 +109,10 @@
         "mechanical-lifecycle-results-template.csv",
         "mechanical-lifecycle-acceptance.json"
       ],
+      "template_present": true,
+      "review_present": true,
+      "complete_result_count": 0,
+      "expected_result_count": 0,
       "pass": false
     },
     {
@@ -95,6 +123,10 @@
         "gdt-fai-template.csv",
         "gdt-fai-results-review.json"
       ],
+      "template_present": true,
+      "review_present": true,
+      "complete_result_count": 0,
+      "expected_result_count": 13,
       "pass": false
     },
     {
@@ -105,6 +137,10 @@
         "unit-traceability-results-template.csv",
         "unit-traceability-acceptance.json"
       ],
+      "template_present": true,
+      "review_present": true,
+      "complete_result_count": 0,
+      "expected_result_count": 0,
       "pass": false
     },
     {
@@ -115,6 +151,10 @@
         "assembly-build-results-template.csv",
         "assembly-build-traveler.json"
       ],
+      "template_present": true,
+      "review_present": true,
+      "complete_result_count": 0,
+      "expected_result_count": 0,
       "pass": false
     },
     {
@@ -125,6 +165,10 @@
         "process-control-results-template.csv",
         "process-control-plan.json"
       ],
+      "template_present": true,
+      "review_present": true,
+      "complete_result_count": 0,
+      "expected_result_count": 0,
       "pass": false
     }
   ],

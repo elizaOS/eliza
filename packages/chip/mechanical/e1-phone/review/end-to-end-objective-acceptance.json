@@ -1,5 +1,5 @@
 {
-  "claim_boundary": "CAD-side objective acceptance for the complete phone. This joins the board end-to-end readiness matrix with mechanical CAD release gates; planning artifacts, concept KiCad geometry, blank templates, and CAD envelopes do not count as finished phone evidence.",
+  "claim_boundary": "Generated CAD-side objective acceptance for the complete phone. This joins the board end-to-end readiness matrix with mechanical CAD release gates; planning artifacts, concept KiCad geometry, blank templates, and CAD envelopes do not count as finished phone evidence.",
   "status": "blocked_not_end_to_end_ready",
   "board_end_to_end_source": "board/kicad/e1-phone/end-to-end-readiness.yaml",
   "board_end_to_end_source_present": true,
@@ -20,7 +20,7 @@
   },
   "expected_board_objective_count": 9,
   "complete_board_objective_count": 0,
-  "expected_mechanical_gate_count": 7,
+  "expected_mechanical_gate_count": 8,
   "complete_mechanical_gate_count": 0,
   "board_cases": [
     {
@@ -37,13 +37,29 @@
         "display bring-up, touch probe, V4L2 or Android Camera HAL capture, and image-quality logs missing",
         "routed-board STEP clearance for display FPC bend, camera lens stack, earpiece, cover glass, and enclosure datums missing"
       ],
+      "required_release_outputs": [
+        "board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml",
+        "board/kicad/e1-phone/production/sourcing/display-touch-signed-drawing.pdf",
+        "board/kicad/e1-phone/production/sourcing/display-touch-fpc-pinout.yaml",
+        "board/kicad/e1-phone/production/step/display-touch-stack.step",
+        "board/kicad/e1-phone/production/reports/display-touch-bringup-log.json",
+        "board/kicad/e1-phone/production/reports/mipi-dsi-length-skew-impedance.json",
+        "board/kicad/e1-phone/production/sourcing/rear-camera-signed-drawing.pdf",
+        "board/kicad/e1-phone/production/sourcing/front-camera-signed-drawing.pdf",
+        "board/kicad/e1-phone/production/sourcing/camera-fpc-pinouts.yaml",
+        "board/kicad/e1-phone/production/step/rear-camera-module.step",
+        "board/kicad/e1-phone/production/step/front-camera-module.step",
+        "board/kicad/e1-phone/production/reports/camera-capture-log.json",
+        "board/kicad/e1-phone/production/reports/mipi-csi-length-skew-impedance.json",
+        "board/kicad/e1-phone/production/reports/camera-iq-calibration-plan.yaml"
+      ],
       "pass": false
     },
     {
       "id": "screen_camera_oem_sourcing",
       "requirement": "Use Alibaba/Made-in-China display and camera OEM sourcing evidence and require supplier packs before freeze.",
-      "evidence_artifact": "board/kicad/e1-phone/display-camera-oem-integration.yaml",
-      "current_status": "blocked_requires_display_camera_supplier_pack_routed_mipi_and_capture_evidence",
+      "evidence_artifact": "board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml",
+      "current_status": "public_sources_revalidated_screen_camera_not_supplier_approved",
       "objective_satisfied": false,
       "release_required": true,
       "blockers": [
@@ -53,13 +69,29 @@
         "display bring-up, touch probe, V4L2 or Android Camera HAL capture, and image-quality logs missing",
         "routed-board STEP clearance for display FPC bend, camera lens stack, earpiece, cover glass, and enclosure datums missing"
       ],
+      "required_release_outputs": [
+        "board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml",
+        "board/kicad/e1-phone/production/sourcing/display-touch-signed-drawing.pdf",
+        "board/kicad/e1-phone/production/sourcing/display-touch-fpc-pinout.yaml",
+        "board/kicad/e1-phone/production/step/display-touch-stack.step",
+        "board/kicad/e1-phone/production/reports/display-touch-bringup-log.json",
+        "board/kicad/e1-phone/production/reports/mipi-dsi-length-skew-impedance.json",
+        "board/kicad/e1-phone/production/sourcing/rear-camera-signed-drawing.pdf",
+        "board/kicad/e1-phone/production/sourcing/front-camera-signed-drawing.pdf",
+        "board/kicad/e1-phone/production/sourcing/camera-fpc-pinouts.yaml",
+        "board/kicad/e1-phone/production/step/rear-camera-module.step",
+        "board/kicad/e1-phone/production/step/front-camera-module.step",
+        "board/kicad/e1-phone/production/reports/camera-capture-log.json",
+        "board/kicad/e1-phone/production/reports/mipi-csi-length-skew-impedance.json",
+        "board/kicad/e1-phone/production/reports/camera-iq-calibration-plan.yaml"
+      ],
       "pass": false
     },
     {
       "id": "usb_c_power_volume_hardware",
       "requirement": "Review and wire one USB-C port, USB-PD, charger, power button, and volume buttons.",
-      "evidence_artifact": "board/kicad/e1-phone/usb-sidekey-integration.yaml",
-      "current_status": "blocked_requires_usb_c_pd_charger_sidekey_routed_and_measured_evidence",
+      "evidence_artifact": "board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml",
+      "current_status": "blocked_usb_c_sidekey_acceptance_requires_supplier_route_enclosure_and_measurements",
       "objective_satisfied": false,
       "release_required": true,
       "blockers": [
@@ -69,13 +101,24 @@
         "side-key flex or switch drawing, force/travel, ESD, wake, and recovery-combo evidence missing",
         "routed schematic, ERC, routed PCB, DRC, SI/PI, and enclosure clearance rerun missing"
       ],
+      "required_release_outputs": [
+        "board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml",
+        "board/kicad/e1-phone/production/sourcing/usb-c-signed-drawing.pdf",
+        "board/kicad/e1-phone/production/sourcing/side-key-signed-drawing.pdf",
+        "board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json",
+        "board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json",
+        "board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json",
+        "board/kicad/e1-phone/production/reports/side-button-force-travel.csv",
+        "board/kicad/e1-phone/production/reports/button-wake-recovery-log.json",
+        "mechanical/e1-phone/review/routed-board-clearance.json"
+      ],
       "pass": false
     },
     {
       "id": "off_the_shelf_wireless_modules",
       "requirement": "Use easy-to-acquire off-the-shelf cellular, Wi-Fi, and Bluetooth modules and wire host/RF contracts.",
-      "evidence_artifact": "board/kicad/e1-phone/radio-module-integration.yaml",
-      "current_status": "blocked_requires_module_pinout_firmware_rf_measurement_and_regulatory_evidence",
+      "evidence_artifact": "board/kicad/e1-phone/module-rf-pinout-execution.yaml",
+      "current_status": "blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence",
       "objective_satisfied": false,
       "release_required": true,
       "blockers": [
@@ -86,13 +129,25 @@
         "factory RF calibration procedure, test limits, and first-article transcript are missing",
         "Android/Linux cellular, Wi-Fi, and Bluetooth bring-up logs are missing"
       ],
+      "required_release_outputs": [
+        "board/kicad/e1-phone/production/reports/radio-module-integration.yaml",
+        "board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json",
+        "board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json",
+        "board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json",
+        "board/kicad/e1-phone/production/reports/rf/sar-prescan-summary.pdf",
+        "board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf",
+        "board/kicad/e1-phone/production/test/first-article-test-transcript.json",
+        "package/wifi/evidence/firmware",
+        "package/wifi/evidence/regulatory",
+        "package/cellular/evidence/carrier-certification"
+      ],
       "pass": false
     },
     {
       "id": "board_size_power_rf_thermal_optimization",
       "requirement": "Optimize board size, wasted space, route density, power efficiency, thermal, RF, and factory-test access.",
-      "evidence_artifact": "board/kicad/e1-phone/live-utilization-audit.yaml",
-      "current_status": "blocked_live_courtyard_utilization_not_routed_or_supplier_ready",
+      "evidence_artifact": "board/kicad/e1-phone/layout-optimization-execution.yaml",
+      "current_status": "blocked_concept_layout_optimized_requires_supplier_footprints_trial_route_measurements_and_routed_step",
       "objective_satisfied": false,
       "release_required": true,
       "blockers": [
@@ -105,6 +160,19 @@
         "SI/PI, power efficiency, thermal soak, RF, coexistence, and SAR evidence are missing",
         "routed board STEP and formal enclosure tolerance stack are missing",
         "factory probe coordinates, limits, and first-article transcript are missing"
+      ],
+      "required_release_outputs": [
+        "board/kicad/e1-phone/production/reports/live-utilization-audit.yaml",
+        "board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml",
+        "board/kicad/e1-phone/production/reports/escape-density-via-count.yaml",
+        "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+        "mechanical/e1-phone/review/routed-board-clearance.json",
+        "board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml",
+        "board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml",
+        "board/kicad/e1-phone/production/reports/escape-density-via-count.yaml",
+        "board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json",
+        "board/kicad/e1-phone/production/reports/rf/antenna-coexistence-sar-prescan",
+        "mechanical/e1-phone/review/routed-board-clearance.json"
       ],
       "pass": false
     },
@@ -124,13 +192,22 @@
         "footprint-to-3D-model bindings are missing",
         "sample inspection and compliance packs are missing"
       ],
+      "required_release_outputs": [
+        "board/kicad/e1-phone/production/reports/supplier-to-kicad-evidence-map.yaml",
+        "board/kicad/e1-phone/production/sourcing/*/rfq-transmittal.yaml",
+        "board/kicad/e1-phone/production/reports/pinout-review",
+        "board/kicad/e1-phone/production/reports/symbol-review",
+        "board/kicad/e1-phone/production/reports/footprint-review",
+        "board/kicad/e1-phone/production/reports/footprint-3d-binding",
+        "board/kicad/e1-phone/production/sourcing"
+      ],
       "pass": false
     },
     {
       "id": "schematic_and_pcb_routed_release",
       "requirement": "Finish the PCB end-to-end with real schematic, routed KiCad board, ERC, DRC, SI/PI, and post-route reports.",
-      "evidence_artifact": "board/kicad/e1-phone/pcb-implementation-audit.yaml",
-      "current_status": "blocked_live_kicad_pcb_scaffold_audited_not_routed",
+      "evidence_artifact": "board/kicad/e1-phone/routed-pcb-implementation-execution.yaml",
+      "current_status": "blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step",
       "objective_satisfied": false,
       "release_required": true,
       "blockers": [
@@ -154,6 +231,39 @@
         "routed board STEP has not been imported into mechanical CAD for enclosure clearance rerun",
         "post-route SI/PI/RF/power/thermal and factory first-article evidence is missing"
       ],
+      "required_release_outputs": [
+        "board/kicad/e1-phone/production/reports/pcb-implementation-audit.yaml",
+        "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+        "board/kicad/e1-phone/production/reports/drc.json",
+        "board/kicad/e1-phone/production/reports/erc.json",
+        "board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml",
+        "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+        "board/kicad/e1-phone/production/reports/erc.json",
+        "board/kicad/e1-phone/production/reports/drc.json",
+        "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+        "board/kicad/e1-phone/production/gerbers",
+        "board/kicad/e1-phone/production/ipc-2581",
+        "board/kicad/e1-phone/production/pos",
+        "board/kicad/e1-phone/production/bom",
+        "board/kicad/e1-phone/production/pdf/assembly.pdf",
+        "board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf",
+        "board/kicad/e1-phone/production/step",
+        "board/kicad/e1-phone/production/reports/si-pi",
+        "board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml",
+        "board/kicad/e1-phone/production/reports/external-interface-design-review.yaml",
+        "board/kicad/e1-phone/production/reports/enclosure-tolerance-stack-closure.yaml",
+        "board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml",
+        "board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml",
+        "board/kicad/e1-phone/production/reports/route-feasibility-density.yaml",
+        "board/kicad/e1-phone/production/reports/rf",
+        "board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml",
+        "board/kicad/e1-phone/production/reports/power-thermal",
+        "board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml",
+        "board/kicad/e1-phone/production/test/probe-coordinates.csv",
+        "board/kicad/e1-phone/production/test/factory-test-limits.yaml",
+        "board/kicad/e1-phone/production/sourcing/rfq-response-index.yaml",
+        "mechanical/e1-phone/review/routed-board-clearance.json"
+      ],
       "pass": false
     },
     {
@@ -176,13 +286,28 @@
         "routed-board clearance, boolean interference, and physical fit results are missing",
         "display, USB-C, side-key, camera, radio, battery, acoustic, and interconnect functional evidence is missing"
       ],
+      "required_release_outputs": [
+        "board/kicad/e1-phone/production/reports/component-height-step-integration.yaml",
+        "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+        "mechanical/e1-phone/review/routed-board-clearance.json",
+        "mechanical/e1-phone/review/supplier-evidence-acceptance.json",
+        "mechanical/e1-phone/review/step-validation.json",
+        "mechanical/e1-phone/review/full-cad-boolean-interference.json",
+        "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+        "board/kicad/e1-phone/production/reports/drc.json",
+        "board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step",
+        "mechanical/e1-phone/review/routed-board-clearance.json",
+        "mechanical/e1-phone/review/full-cad-boolean-interference.json",
+        "mechanical/e1-phone/review/enclosure-fit-first-article.yaml",
+        "board/kicad/e1-phone/production/pdf/assembly.pdf"
+      ],
       "pass": false
     },
     {
       "id": "manufacturing_and_factory_release",
       "requirement": "Produce manufacturing outputs, BOM/AVL, assembly data, factory probe limits, and first-article evidence.",
-      "evidence_artifact": "board/kicad/e1-phone/manufacturing-closure.yaml",
-      "current_status": "blocked_manufacturing_requires_routed_pcb_and_fab_outputs",
+      "evidence_artifact": "board/kicad/e1-phone/production-factory-release-execution.yaml",
+      "current_status": "blocked_requires_routed_release_supplier_packs_fab_assembly_fixture_and_first_article",
       "objective_satisfied": false,
       "release_required": true,
       "blockers": [
@@ -196,6 +321,19 @@
         "fab quote",
         "first article",
         "split-board interconnect continuity and assembly inspection"
+      ],
+      "required_release_outputs": [
+        "board/kicad/e1-phone/production/gerbers",
+        "board/kicad/e1-phone/production/ipc-2581",
+        "board/kicad/e1-phone/production/gerbers",
+        "board/kicad/e1-phone/production/bom",
+        "board/kicad/e1-phone/production/pos",
+        "board/kicad/e1-phone/production/step",
+        "board/kicad/e1-phone/production/pdf",
+        "board/kicad/e1-phone/production/pdf",
+        "board/kicad/e1-phone/production/pdf",
+        "board/kicad/e1-phone/production/dfm",
+        "board/kicad/e1-phone/production/fab-quote"
       ],
       "pass": false
     }
@@ -225,16 +363,18 @@
       "status": "blocked_boolean_interference_incomplete",
       "pass": false,
       "required_evidence": [
-        "full-cad-boolean-interference.json"
+        "full-cad-boolean-interference.json",
+        "full-cad-boolean-interference-results-template.csv"
       ]
     },
     {
-      "id": "mechanical_lifecycle_physical_results",
-      "status": "blocked_no_lifecycle_results",
+      "id": "automated_visual_and_manual_cmf_signoff",
+      "status": "visual_review_coverage_acceptance_pass",
       "pass": false,
       "required_evidence": [
-        "mechanical-lifecycle-acceptance.json",
-        "mechanical-lifecycle-results-template.csv"
+        "visual-review-coverage-acceptance.json",
+        "visual-decision-report.json",
+        "cmf-release-acceptance.json"
       ]
     },
     {
@@ -248,21 +388,18 @@
         "camera-results-review.json",
         "environmental-results-review.json",
         "evt-results-review.json",
-        "fixture-calibration-acceptance.json",
-        "gdt-fai-results-review.json",
-        "unit-traceability-acceptance.json",
-        "assembly-build-traveler.json",
-        "process-control-plan.json"
+        "gdt-fai-results-review.json"
       ]
     },
     {
       "id": "tooling_mold_flow_and_toolmaker_signoff",
-      "status": "mold_flow_results_pass",
-      "source_status": "blocked_no_toolmaker_signoff",
+      "status": "blocked_no_toolmaker_signoff",
+      "source_status": "mold_flow_results_pass",
       "pass": false,
       "required_evidence": [
         "mold-flow-acceptance.json",
-        "toolmaker-signoff-review.json"
+        "toolmaker-signoff-review.json",
+        "toolmaker-signoff-response-template.csv"
       ]
     },
     {
@@ -270,7 +407,16 @@
       "status": "blocked_no_cmf_results",
       "pass": false,
       "required_evidence": [
-        "cmf-release-acceptance.json"
+        "cmf-release-acceptance.json",
+        "cmf-results-template.csv"
+      ]
+    },
+    {
+      "id": "manufacturing_release_readiness",
+      "status": "blocked",
+      "pass": false,
+      "required_evidence": [
+        "manufacturing-readiness.json"
       ]
     }
   ],
@@ -287,30 +433,112 @@
     "mechanical:routed_board_step_and_clearance",
     "mechanical:supplier_family_lock",
     "mechanical:full_cad_boolean_interference",
-    "mechanical:mechanical_lifecycle_physical_results",
+    "mechanical:automated_visual_and_manual_cmf_signoff",
     "mechanical:physical_process_validation_results",
     "mechanical:tooling_mold_flow_and_toolmaker_signoff",
-    "mechanical:orange_cmf_release"
+    "mechanical:orange_cmf_release",
+    "mechanical:manufacturing_release_readiness"
   ],
   "required_release_outputs": [
-    "board/kicad/e1-phone/production/reports/end-to-end-readiness.yaml",
-    "board/kicad/e1-phone/production/reports/pcb-implementation-audit.yaml",
-    "board/kicad/e1-phone/production/reports/live-utilization-audit.yaml",
     "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
-    "board/kicad/e1-phone/production/reports/erc.json",
-    "board/kicad/e1-phone/production/reports/drc.json",
-    "board/kicad/e1-phone/production/gerbers",
     "board/kicad/e1-phone/production/bom",
+    "board/kicad/e1-phone/production/dfm",
+    "board/kicad/e1-phone/production/fab-quote",
+    "board/kicad/e1-phone/production/gerbers",
+    "board/kicad/e1-phone/production/ipc-2581",
+    "board/kicad/e1-phone/production/pdf",
+    "board/kicad/e1-phone/production/pdf/assembly.pdf",
+    "board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf",
+    "board/kicad/e1-phone/production/pos",
+    "board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml",
+    "board/kicad/e1-phone/production/reports/button-wake-recovery-log.json",
+    "board/kicad/e1-phone/production/reports/camera-capture-log.json",
+    "board/kicad/e1-phone/production/reports/camera-iq-calibration-plan.yaml",
+    "board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json",
+    "board/kicad/e1-phone/production/reports/component-height-step-integration.yaml",
+    "board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml",
+    "board/kicad/e1-phone/production/reports/display-touch-bringup-log.json",
+    "board/kicad/e1-phone/production/reports/drc.json",
+    "board/kicad/e1-phone/production/reports/enclosure-tolerance-stack-closure.yaml",
+    "board/kicad/e1-phone/production/reports/end-to-end-readiness.yaml",
+    "board/kicad/e1-phone/production/reports/erc.json",
+    "board/kicad/e1-phone/production/reports/escape-density-via-count.yaml",
+    "board/kicad/e1-phone/production/reports/external-interface-design-review.yaml",
+    "board/kicad/e1-phone/production/reports/footprint-3d-binding",
+    "board/kicad/e1-phone/production/reports/footprint-review",
+    "board/kicad/e1-phone/production/reports/live-utilization-audit.yaml",
+    "board/kicad/e1-phone/production/reports/mipi-csi-length-skew-impedance.json",
+    "board/kicad/e1-phone/production/reports/mipi-dsi-length-skew-impedance.json",
+    "board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml",
+    "board/kicad/e1-phone/production/reports/pcb-implementation-audit.yaml",
+    "board/kicad/e1-phone/production/reports/pinout-review",
+    "board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml",
+    "board/kicad/e1-phone/production/reports/power-thermal",
+    "board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json",
+    "board/kicad/e1-phone/production/reports/radio-module-integration.yaml",
+    "board/kicad/e1-phone/production/reports/rf",
+    "board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml",
+    "board/kicad/e1-phone/production/reports/rf/antenna-coexistence-sar-prescan",
+    "board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json",
+    "board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json",
+    "board/kicad/e1-phone/production/reports/rf/sar-prescan-summary.pdf",
+    "board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json",
+    "board/kicad/e1-phone/production/reports/route-feasibility-density.yaml",
+    "board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml",
+    "board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml",
+    "board/kicad/e1-phone/production/reports/si-pi",
+    "board/kicad/e1-phone/production/reports/side-button-force-travel.csv",
+    "board/kicad/e1-phone/production/reports/supplier-to-kicad-evidence-map.yaml",
+    "board/kicad/e1-phone/production/reports/symbol-review",
+    "board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json",
+    "board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml",
+    "board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json",
+    "board/kicad/e1-phone/production/sourcing",
+    "board/kicad/e1-phone/production/sourcing/*/rfq-transmittal.yaml",
+    "board/kicad/e1-phone/production/sourcing/camera-fpc-pinouts.yaml",
+    "board/kicad/e1-phone/production/sourcing/display-touch-fpc-pinout.yaml",
+    "board/kicad/e1-phone/production/sourcing/display-touch-signed-drawing.pdf",
+    "board/kicad/e1-phone/production/sourcing/front-camera-signed-drawing.pdf",
+    "board/kicad/e1-phone/production/sourcing/rear-camera-signed-drawing.pdf",
+    "board/kicad/e1-phone/production/sourcing/rfq-response-index.yaml",
+    "board/kicad/e1-phone/production/sourcing/side-key-signed-drawing.pdf",
+    "board/kicad/e1-phone/production/sourcing/usb-c-signed-drawing.pdf",
+    "board/kicad/e1-phone/production/step",
+    "board/kicad/e1-phone/production/step/display-touch-stack.step",
+    "board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step",
+    "board/kicad/e1-phone/production/step/front-camera-module.step",
+    "board/kicad/e1-phone/production/step/rear-camera-module.step",
     "board/kicad/e1-phone/production/step/routed-board-with-components.step",
-    "mechanical/e1-phone/review/routed-board-clearance.json",
+    "board/kicad/e1-phone/production/test/factory-test-limits.yaml",
     "board/kicad/e1-phone/production/test/first-article-test-transcript.json",
-    "mechanical/e1-phone/review/end-to-end-objective-acceptance.json",
-    "mechanical/e1-phone/review/manufacturing-readiness.json",
-    "mechanical/e1-phone/review/routed-board-clearance.json",
+    "board/kicad/e1-phone/production/test/probe-coordinates.csv",
+    "board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf",
+    "mechanical/e1-phone/review/acoustic-results-review.json",
+    "mechanical/e1-phone/review/board-step-readiness.json",
+    "mechanical/e1-phone/review/camera-results-review.json",
+    "mechanical/e1-phone/review/cmf-release-acceptance.json",
+    "mechanical/e1-phone/review/cmf-results-template.csv",
+    "mechanical/e1-phone/review/display-results-review.json",
+    "mechanical/e1-phone/review/enclosure-fit-first-article.yaml",
+    "mechanical/e1-phone/review/environmental-results-review.json",
+    "mechanical/e1-phone/review/evt-results-review.json",
+    "mechanical/e1-phone/review/full-cad-boolean-interference-results-template.csv",
     "mechanical/e1-phone/review/full-cad-boolean-interference.json",
+    "mechanical/e1-phone/review/gdt-fai-results-review.json",
+    "mechanical/e1-phone/review/manufacturing-readiness.json",
+    "mechanical/e1-phone/review/mold-flow-acceptance.json",
     "mechanical/e1-phone/review/physical-process-validation-acceptance.json",
+    "mechanical/e1-phone/review/routed-board-clearance-results-template.csv",
+    "mechanical/e1-phone/review/routed-board-clearance.json",
+    "mechanical/e1-phone/review/step-validation.json",
     "mechanical/e1-phone/review/supplier-evidence-acceptance.json",
-    "mechanical/e1-phone/review/cmf-release-acceptance.json"
+    "mechanical/e1-phone/review/toolmaker-signoff-response-template.csv",
+    "mechanical/e1-phone/review/toolmaker-signoff-review.json",
+    "mechanical/e1-phone/review/visual-decision-report.json",
+    "mechanical/e1-phone/review/visual-review-coverage-acceptance.json",
+    "package/cellular/evidence/carrier-certification",
+    "package/wifi/evidence/firmware",
+    "package/wifi/evidence/regulatory"
   ],
   "forbidden_claims": [
     "end_to_end_phone_ready",
@@ -320,7 +548,9 @@
     "factory_test_ready",
     "supplier_pack_complete",
     "routed_pcb_ready",
-    "phone_manufacturing_ready"
+    "carrier_ready",
+    "power_thermal_ready",
+    "rf_ready"
   ],
-  "release_rule": "Every board objective requirement and every mechanical gate must pass, the board end-to-end release decision must be true, and all required release outputs must exist before claiming the finished phone is end-to-end ready."
+  "release_rule": "Every board objective requirement and every mechanical gate must pass, the board end-to-end release decision must be true, manufacturing_release_ready must be true, and all required release outputs must exist before claiming the finished phone is end-to-end ready."
 }

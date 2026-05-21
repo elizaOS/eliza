@@ -2,9 +2,9 @@
   "claim_boundary": "CAD-derived camera optical package validation and result template; not supplier module approval, image-quality calibration, or Camera HAL evidence.",
   "status": "cad_camera_validation_ready",
   "camera_components": {
-    "rear_camera": "OV13855/OV13850 13 MP autofocus MIPI module",
-    "front_camera": "5-8 MP fixed-focus MIPI module behind cover glass",
-    "rear_camera_glass": "chemically strengthened rear camera cover window"
+    "rear_camera": "single OV13855/OV13850 class 13 MP simple-AF MIPI module, single lens, buried under flush back wall",
+    "front_camera": "single 5-8 MP fixed-focus MIPI module behind cover glass, single lens",
+    "rear_camera_glass": "flush internal sapphire/glass insert set into the flat back wall, no proud ring"
   },
   "cases": [
     {
@@ -56,7 +56,7 @@
       "id": "camera_interface_strategy",
       "actual": {
         "interface_case_pass": true,
-        "rear_exposed_window": true,
+        "rear_flush_buried_window": true,
         "front_under_cover_glass": true,
         "rear_cover_adhesive_count": 4,
         "rear_light_baffle_count": 2,
@@ -74,7 +74,13 @@
       "min": 0.0,
       "max": 0.25,
       "fixture": "evt_fixture_rear_camera_alignment_pin",
-      "notes": "Rear lens optical center to rear cover-window datum."
+      "notes": "Rear lens optical center to rear cover-window datum.",
+      "required_evidence_artifacts": [
+        "rear_camera_alignment_raw_csv",
+        "camera_alignment_fixture_calibration_certificate",
+        "rear_camera_window_alignment_photo",
+        "rear_camera_module_and_cover_glass_lot_records"
+      ]
     },
     {
       "measurement_id": "front_camera_under_glass_center_error_mm",
@@ -82,7 +88,13 @@
       "min": 0.0,
       "max": 0.3,
       "fixture": "evt_fixture_front_camera_alignment_pin",
-      "notes": "Front camera optical center to under-glass aperture datum."
+      "notes": "Front camera optical center to under-glass aperture datum.",
+      "required_evidence_artifacts": [
+        "front_camera_alignment_raw_csv",
+        "camera_alignment_fixture_calibration_certificate",
+        "front_under_glass_alignment_photo",
+        "front_camera_module_and_cover_glass_lot_records"
+      ]
     },
     {
       "measurement_id": "rear_camera_focus_mtf50_lp_per_mm",
@@ -90,7 +102,13 @@
       "min": 35.0,
       "max": "",
       "fixture": "iso12233_chart",
-      "notes": "AF rear module focus and cover-window optical quality check."
+      "notes": "AF rear module focus and cover-window optical quality check.",
+      "required_evidence_artifacts": [
+        "rear_iso12233_mtf_raw_csv",
+        "camera_chart_and_lightbox_calibration_certificate",
+        "rear_camera_focus_capture",
+        "rear_camera_module_lot_record"
+      ]
     },
     {
       "measurement_id": "front_camera_mtf50_lp_per_mm",
@@ -98,7 +116,13 @@
       "min": 25.0,
       "max": "",
       "fixture": "iso12233_chart_through_cover_glass",
-      "notes": "Front fixed-focus module through cover-glass image sharpness."
+      "notes": "Front fixed-focus module through cover-glass image sharpness.",
+      "required_evidence_artifacts": [
+        "front_iso12233_mtf_raw_csv",
+        "camera_chart_and_lightbox_calibration_certificate",
+        "front_camera_through_glass_capture",
+        "front_camera_module_and_cover_glass_lot_records"
+      ]
     },
     {
       "measurement_id": "front_cover_glass_color_delta_e",
@@ -106,7 +130,13 @@
       "min": 0.0,
       "max": 3.0,
       "fixture": "color_chart_lightbox",
-      "notes": "Color shift from cover-glass/black mask stack over front camera."
+      "notes": "Color shift from cover-glass/black mask stack over front camera.",
+      "required_evidence_artifacts": [
+        "front_color_chart_delta_e_raw_csv",
+        "color_lightbox_calibration_certificate",
+        "front_camera_color_chart_capture",
+        "front_cover_glass_lot_record"
+      ]
     },
     {
       "measurement_id": "rear_camera_dust_or_vignette_defects",
@@ -114,7 +144,13 @@
       "min": 0.0,
       "max": 0.0,
       "fixture": "flat_field_capture",
-      "notes": "Dust, vignette, or gasket intrusion defects in rear cover window."
+      "notes": "Dust, vignette, or gasket intrusion defects in rear cover window.",
+      "required_evidence_artifacts": [
+        "rear_flat_field_defect_raw_log",
+        "flat_field_lightbox_calibration_certificate",
+        "rear_camera_flat_field_capture",
+        "rear_camera_cover_glass_and_gasket_lot_records"
+      ]
     },
     {
       "measurement_id": "camera_streaming_bringup_logs",
@@ -122,7 +158,13 @@
       "min": 1.0,
       "max": 1.0,
       "fixture": "v4l2_or_android_camera_hal",
-      "notes": "Both front and rear cameras enumerate and stream with selected module pinout."
+      "notes": "Both front and rear cameras enumerate and stream with selected module pinout.",
+      "required_evidence_artifacts": [
+        "v4l2_or_camera_hal_streaming_log",
+        "camera_driver_revision_record",
+        "front_and_rear_camera_capture_artifacts",
+        "camera_module_lot_records"
+      ]
     }
   ],
   "results_template": "mechanical/e1-phone/review/camera-results-template.csv",

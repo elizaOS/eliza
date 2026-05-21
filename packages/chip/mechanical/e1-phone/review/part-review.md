@@ -7,11 +7,11 @@ Status: generated part index and contact sheet for every assembly part.
 ## Parts
 
 - `orange_back_shell`: role `molded enclosure`, span [78.0, 153.6, 1.2] mm, material PC+ABS orange rounded back shell
-- `orange_side_frame`: role `molded enclosure`, span [78.0, 153.6, 9.6] mm, material PC+ABS orange rounded perimeter frame
+- `orange_side_frame`: role `molded enclosure`, span [78.0, 153.6, 11.2] mm, material PC+ABS orange rounded perimeter frame
 - `screen_cover_glass`: role `screen`, span [77.1, 151.77, 0.7] mm, material black rounded cover glass
 - `display_lcm`: role `screen`, span [70.78, 129.17, 1.7] mm, material LCM
 - `main_pcb`: role `PCB`, span [64.0, 132.0, 0.8] mm, material 8L HDI FR-4 top/bottom islands around full-width battery
-- `battery_pouch`: role `battery`, span [64.0, 87.0, 4.4] mm, material LiPo pouch
+- `battery_pouch`: role `battery`, span [64.0, 87.0, 5.7] mm, material LiPo pouch
 - `usb_c_receptacle`: role `I/O`, span [8.94, 7.8, 3.25] mm, material stainless shell
 - `usb_c_external_aperture`: role `I/O`, span [10.2, 0.35, 3.6] mm, material USB-C molded aperture visual check
 - `usb_c_perimeter_gasket_top`: role `I/O seal`, span [11.4, 0.45, 0.35] mm, material silicone USB-C perimeter gasket top rail
@@ -24,8 +24,10 @@ Status: generated part index and contact sheet for every assembly part.
 - `earpiece_receiver`: role `audio`, span [12.0, 6.0, 2.5] mm, material receiver
 - `bottom_mic`: role `audio`, span [3.5, 2.65, 1.0] mm, material MEMS mic
 - `top_mic`: role `audio`, span [3.5, 2.65, 1.0] mm, material MEMS mic
-- `rear_camera_module`: role `camera`, span [10.0, 10.0, 5.1] mm, material OV13855 class module
-- `rear_camera_lens_window`: role `camera`, span [6.8, 0.8, 6.8] mm, material glass lens window
+- `rear_camera_module`: role `camera`, span [10.0, 10.0, 5.1] mm, material single 13 MP simple-AF module, buried
+- `rear_camera_lens_window`: role `camera`, span [6.8, 6.8, 0.55] mm, material flush internal lens window, coplanar with flat back
+- `rear_flash_led`: role `camera`, span [1.0, 1.0, 0.7] mm, material single rear torch/flash LED, buried
+- `rear_flash_led_window`: role `camera`, span [1.6, 1.6, 0.55] mm, material flush internal torch light pipe window, coplanar with flat back
 - `front_camera_module`: role `camera`, span [6.5, 6.5, 3.2] mm, material front MIPI camera
 - `front_camera_under_glass`: role `camera`, span [3.4, 0.35, 3.4] mm, material under-glass aperture
 - `rear_camera_cover_adhesive_top`: role `camera seal`, span [10.1, 0.45, 0.16] mm, material black PSA gasket above rear camera cover window
@@ -50,11 +52,6 @@ Status: generated part index and contact sheet for every assembly part.
 - `split_interconnect_side_flex`: role `split-board interconnect`, span [2.4, 88.0, 0.18] mm, material polyimide FPC side service loop envelope
 - `split_interconnect_top_flex_tail`: role `split-board interconnect`, span [12.5, 2.0, 0.18] mm, material polyimide FPC top connector tail envelope
 - `split_interconnect_bottom_flex_tail`: role `split-board interconnect`, span [12.5, 2.0, 0.18] mm, material polyimide FPC bottom connector tail envelope
-- `side_key_flex_connector`: role `side-key interconnect`, span [12.0, 3.0, 0.8] mm, material 5-pin side-key board-to-FPC connector envelope
-- `side_key_volume_flex_tail`: role `side-key interconnect`, span [23.5, 2.0, 0.18] mm, material polyimide FPC tail from side-key connector toward volume actuator
-- `side_key_volume_actuator_tail`: role `side-key interconnect`, span [2.0, 28.0, 0.18] mm, material polyimide FPC tail serving volume button dome contacts
-- `side_key_power_flex_tail`: role `side-key interconnect`, span [40.0, 2.0, 0.18] mm, material polyimide FPC tail from side-key connector toward power actuator
-- `side_key_power_actuator_tail`: role `side-key interconnect`, span [2.0, 22.0, 0.18] mm, material polyimide FPC tail serving power button dome contact
 - `bottom_microphone_port_1`: role `audio`, span [0.9, 0.4, 0.886] mm, material molded microphone acoustic port
 - `bottom_microphone_mesh_1`: role `audio`, span [1.4, 0.12, 1.4] mm, material hydrophobic dust mesh behind bottom microphone port
 - `bottom_microphone_port_2`: role `audio`, span [0.9, 0.4, 0.886] mm, material molded microphone acoustic port
@@ -67,10 +64,10 @@ Status: generated part index and contact sheet for every assembly part.
 - `volume_button_elastomer_gasket`: role `button seal`, span [0.5, 22.0, 1.55] mm, material shore-a silicone side-key gasket behind volume button
 - `volume_button_labyrinth_upper_rail`: role `button seal`, span [0.55, 0.8, 1.85] mm, material molded PC+ABS side-key labyrinth rail
 - `volume_button_labyrinth_lower_rail`: role `button seal`, span [0.55, 0.8, 1.85] mm, material molded PC+ABS side-key labyrinth rail
-- `screen_adhesive_top`: role `screen retention`, span [77.1, 1.0, 0.18] mm, material die-cut display adhesive
-- `screen_adhesive_bottom`: role `screen retention`, span [77.1, 1.0, 0.18] mm, material die-cut display adhesive
-- `screen_adhesive_left`: role `screen retention`, span [1.0, 151.77, 0.18] mm, material die-cut display adhesive
-- `screen_adhesive_right`: role `screen retention`, span [1.0, 151.77, 0.18] mm, material die-cut display adhesive
+- `screen_adhesive_top`: role `screen retention`, span [63.0, 1.0, 0.18] mm, material die-cut display adhesive
+- `screen_adhesive_bottom`: role `screen retention`, span [63.0, 1.0, 0.18] mm, material die-cut display adhesive
+- `screen_adhesive_left`: role `screen retention`, span [1.0, 137.67, 0.18] mm, material die-cut display adhesive
+- `screen_adhesive_right`: role `screen retention`, span [1.0, 137.67, 0.18] mm, material die-cut display adhesive
 - `orange_screw_boss_1`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
 - `orange_screw_boss_2`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
 - `orange_screw_boss_3`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required

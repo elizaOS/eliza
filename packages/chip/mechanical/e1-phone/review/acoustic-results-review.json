@@ -8,7 +8,8 @@
     "blank_template",
     "planning",
     "simulated",
-    "simulated_acoustic_result_for_planning_not_release"
+    "simulated_acoustic_result_for_planning_not_release",
+    "simulated_first_article_for_evt_planning_not_production_release"
   ],
   "observed_row_count": 7,
   "complete_result_count": 0,
@@ -30,10 +31,10 @@
       "evidence_class": "",
       "evidence_class_allowed": false,
       "required_evidence_artifacts": [
-        "speaker_spl_raw_sweep",
-        "acoustic_calibrator_certificate",
-        "speaker_chamber_setup_photo",
-        "speaker_module_lot_record"
+        "speaker_spl_raw_sweep_csv",
+        "acoustic_fixture_calibration_certificate",
+        "speaker_grille_test_photo",
+        "speaker_module_and_mesh_lot_records"
       ],
       "raw_data_artifact_present": false,
       "fixture_calibration_certificate_present": false,
@@ -50,9 +51,9 @@
       "evidence_class": "",
       "evidence_class_allowed": false,
       "required_evidence_artifacts": [
-        "speaker_impedance_raw_sweep",
-        "impedance_analyzer_calibration_certificate",
-        "speaker_probe_setup_photo",
+        "speaker_impedance_raw_sweep_csv",
+        "audio_analyzer_calibration_certificate",
+        "speaker_module_test_photo",
         "speaker_module_lot_record"
       ],
       "raw_data_artifact_present": false,
@@ -70,10 +71,10 @@
       "evidence_class": "",
       "evidence_class_allowed": false,
       "required_evidence_artifacts": [
-        "speaker_leak_raw_sweep",
-        "bottom_acoustic_fixture_certificate",
-        "bottom_leak_mask_photo",
-        "speaker_mic_gasket_lot_record"
+        "bottom_speaker_leak_raw_sweep_csv",
+        "leak_fixture_calibration_certificate",
+        "bottom_audio_port_mask_photo",
+        "speaker_mesh_and_gasket_lot_records"
       ],
       "raw_data_artifact_present": false,
       "fixture_calibration_certificate_present": false,
@@ -90,10 +91,10 @@
       "evidence_class": "",
       "evidence_class_allowed": false,
       "required_evidence_artifacts": [
-        "bottom_mic_snr_raw_log",
-        "speech_noise_box_calibration_certificate",
-        "bottom_mic_port_setup_photo",
-        "bottom_mic_lot_record"
+        "microphone_snr_raw_log",
+        "anechoic_or_quiet_box_calibration_certificate",
+        "microphone_port_test_photo",
+        "microphone_and_mesh_lot_records"
       ],
       "raw_data_artifact_present": false,
       "fixture_calibration_certificate_present": false,
@@ -110,10 +111,10 @@
       "evidence_class": "",
       "evidence_class_allowed": false,
       "required_evidence_artifacts": [
-        "top_mic_snr_raw_log",
-        "speech_noise_box_calibration_certificate",
-        "top_mic_port_setup_photo",
-        "top_mic_lot_record"
+        "top_microphone_snr_raw_log",
+        "anechoic_or_quiet_box_calibration_certificate",
+        "top_microphone_port_test_photo",
+        "microphone_and_mesh_lot_records"
       ],
       "raw_data_artifact_present": false,
       "fixture_calibration_certificate_present": false,
@@ -130,10 +131,10 @@
       "evidence_class": "",
       "evidence_class_allowed": false,
       "required_evidence_artifacts": [
-        "earpiece_spl_raw_sweep",
-        "ear_simulator_calibration_certificate",
-        "earpiece_gasket_setup_photo",
-        "receiver_module_lot_record"
+        "earpiece_spl_raw_sweep_csv",
+        "acoustic_fixture_calibration_certificate",
+        "earpiece_slot_test_photo",
+        "receiver_and_gasket_lot_records"
       ],
       "raw_data_artifact_present": false,
       "fixture_calibration_certificate_present": false,
@@ -150,10 +151,10 @@
       "evidence_class": "",
       "evidence_class_allowed": false,
       "required_evidence_artifacts": [
-        "earpiece_leak_raw_sweep",
-        "earpiece_acoustic_fixture_certificate",
-        "earpiece_leak_mask_photo",
-        "receiver_gasket_lot_record"
+        "earpiece_leak_raw_sweep_csv",
+        "leak_fixture_calibration_certificate",
+        "compressed_earpiece_gasket_photo",
+        "receiver_and_gasket_lot_records"
       ],
       "raw_data_artifact_present": false,
       "fixture_calibration_certificate_present": false,
@@ -165,5 +166,5 @@
       "pass": false
     }
   ],
-  "release_rule": "Every speaker, microphone, earpiece, and leak measurement row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_acoustic_result, raw sweep/log data, fixture calibration certificate, setup photo/log, and lot traceability record."
+  "release_rule": "Every speaker, microphone, earpiece, and leak measurement row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_acoustic_result, raw acoustic/log data, fixture calibration certificate, photo/log artifact, and module/mesh/gasket lot traceability record."
 }

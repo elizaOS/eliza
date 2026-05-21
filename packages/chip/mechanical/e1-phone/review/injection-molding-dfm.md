@@ -13,13 +13,11 @@ Status: CAD-derived DFM inputs ready; mold-flow and toolmaker signoff still requ
 - PASS: `runner_diameter` actual 2.2 target >= 2.0 mm risk low
 - PASS: `ejector_pin_count` actual 8 target 8 modeled pins risk medium
 - PASS: `cooling_channel_clearance` actual 2.0 target >= 2.0 channel diameters from cavity risk medium
-- PASS: `parting_line_vent_slots` actual {'modeled_vent_slots': 10, 'vent_depth_mm': 0.04, 'vent_land_mm': 0.8} target 10 shallow vents at end-of-fill/cosmetic trap locations risk medium
 
 ## Risks
 
 - `long_thin_flow_path`: high; Keep dual gates, consider fan-gate alternate, and run mold-flow before freezing tool steel.
 - `orange_color_match_and_gate_blush`: medium; Use color-chip approval, textured sample plaques, and gate vestige location review.
-- `air_traps_and_flash_at_vents`: medium; Use mold-flow air-trap plots and first-shot flash checks to tune vent depth/land before texture approval.
 - `boss_sink_and_read_through`: medium; Core every boss, add local texture, and keep bosses off visible hero surfaces where possible.
 - `snap_hook_fatigue`: medium; Prototype snap cycles in the selected resin and tune hook root radius after first shots.
 
@@ -31,7 +29,6 @@ Status: CAD-derived DFM inputs ready; mold-flow and toolmaker signoff still requ
 - PASS: `usb_c_bottom_aperture_shutoff` bottom_edge_shutoff_insert_or_local_side_core_with_gasket_seat_review; USB-C mouth needs steel-safe shutoff and gasket-seat review so insertion loads, splash management, and cosmetics survive first shots.
 - PASS: `side_button_openings` side_core_lifter_or_secondary_operation_decision; Button openings are side-wall features; choose a slide/lifter strategy or keep caps mounted through an insert before hard tooling.
 - PASS: `camera_window_and_acoustic_slots` steel_safe_inserts_and_vented_shutoffs; Camera and acoustic apertures need insert/shutoff, adhesive-seat, baffle, venting, and flash-control review before texture freeze.
-- PASS: `parting_line_critical_venting` parting_line_micro_vents_and_toolmaker_air_trap_markup; Modeled vent slots make the air-trap plan visible before mold-flow; toolmaker must still size vents to resin and flash limits.
 
 ## Toolmaker Requests
 

@@ -4,7 +4,7 @@
   "device_envelope_mm": [
     78.0,
     153.6,
-    9.6
+    11.2
   ],
   "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
   "cases": [
@@ -79,18 +79,6 @@
       "pass": true,
       "risk": "medium",
       "note": "Straight channels are placeholders; real tool needs conformal/baffled cooling review."
-    },
-    {
-      "id": "parting_line_vent_slots",
-      "actual": {
-        "modeled_vent_slots": 10,
-        "vent_depth_mm": 0.04,
-        "vent_land_mm": 0.8
-      },
-      "target": "10 shallow vents at end-of-fill/cosmetic trap locations",
-      "pass": true,
-      "risk": "medium",
-      "note": "Vents are CAD review placeholders for corners, camera/window, USB saddle, acoustic ports, and snap-hook roots."
     }
   ],
   "mold_action_plan": [
@@ -175,17 +163,6 @@
         "bottom_speaker_grille_slot_1"
       ],
       "tooling_note": "Camera and acoustic apertures need insert/shutoff, adhesive-seat, baffle, venting, and flash-control review before texture freeze."
-    },
-    {
-      "id": "parting_line_critical_venting",
-      "feature": "end_of_fill_usb_camera_acoustic_and_snap_hook_air_traps",
-      "tool_action": "parting_line_micro_vents_and_toolmaker_air_trap_markup",
-      "pass": true,
-      "evidence": [
-        "mold_vent_slot_1_top_left_end_fill",
-        "mold_vent_slot_10_right_snap_hook_roots"
-      ],
-      "tooling_note": "Modeled vent slots make the air-trap plan visible before mold-flow; toolmaker must still size vents to resin and flash limits."
     }
   ],
   "risks": [
@@ -204,15 +181,6 @@
         "gate_strategy": "two submarine gates into back cover long edge, fan gate alternate for color consistency"
       },
       "mitigation": "Use color-chip approval, textured sample plaques, and gate vestige location review."
-    },
-    {
-      "id": "air_traps_and_flash_at_vents",
-      "severity": "medium",
-      "metric": {
-        "modeled_vent_slots": 10,
-        "vent_depth_mm": 0.04
-      },
-      "mitigation": "Use mold-flow air-trap plots and first-shot flash checks to tune vent depth/land before texture approval."
     },
     {
       "id": "boss_sink_and_read_through",
@@ -247,7 +215,6 @@
     "injection_molding_basics": true,
     "molded_retention_features": true,
     "mold_runner_gate_model": true,
-    "mold_venting_model": true,
     "mold_ejector_cooling_model": true
   }
 }
