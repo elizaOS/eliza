@@ -2,10 +2,10 @@
   "claim_boundary": "Automated STEP re-import and envelope validation; not supplier CAD approval.",
   "status": "pass",
   "tolerance_mm": 0.05,
-  "validated_count": 85,
+  "validated_count": 97,
   "assembly": {
     "step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-    "bytes": 1776601,
+    "bytes": 1989024,
     "imported": true,
     "pass": true,
     "bbox_span_mm": [
@@ -336,6 +336,97 @@
         3.4,
         3.4,
         0.35
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_camera_cover_adhesive_top",
+      "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_top.step",
+      "bytes": 15649,
+      "imported": true,
+      "bbox_span_mm": [
+        10.1,
+        0.45,
+        0.16
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_camera_cover_adhesive_bottom",
+      "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_bottom.step",
+      "bytes": 15649,
+      "imported": true,
+      "bbox_span_mm": [
+        10.1,
+        0.45,
+        0.16
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_camera_cover_adhesive_left",
+      "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_left.step",
+      "bytes": 15619,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        9.2,
+        0.16
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_camera_cover_adhesive_right",
+      "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_right.step",
+      "bytes": 15619,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        9.2,
+        0.16
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_camera_light_baffle_top",
+      "step": "mechanical/e1-phone/out/rear_camera_light_baffle_top.step",
+      "bytes": 15671,
+      "imported": true,
+      "bbox_span_mm": [
+        8.3,
+        0.35,
+        0.55
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_camera_light_baffle_bottom",
+      "step": "mechanical/e1-phone/out/rear_camera_light_baffle_bottom.step",
+      "bytes": 15671,
+      "imported": true,
+      "bbox_span_mm": [
+        8.3,
+        0.35,
+        0.55
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "front_camera_black_mask_window",
+      "step": "mechanical/e1-phone/out/front_camera_black_mask_window.step",
+      "bytes": 15555,
+      "imported": true,
+      "bbox_span_mm": [
+        5.0,
+        5.0,
+        0.12
       ],
       "max_span_error_mm": 0.0,
       "pass": true
@@ -712,6 +803,71 @@
       "bbox_span_mm": [
         12.5,
         2.0,
+        0.18
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "side_key_flex_connector",
+      "step": "mechanical/e1-phone/out/side_key_flex_connector.step",
+      "bytes": 15520,
+      "imported": true,
+      "bbox_span_mm": [
+        12.0,
+        3.0,
+        0.8
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "side_key_volume_flex_tail",
+      "step": "mechanical/e1-phone/out/side_key_volume_flex_tail.step",
+      "bytes": 15571,
+      "imported": true,
+      "bbox_span_mm": [
+        23.5,
+        2.0,
+        0.18
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "side_key_volume_actuator_tail",
+      "step": "mechanical/e1-phone/out/side_key_volume_actuator_tail.step",
+      "bytes": 15585,
+      "imported": true,
+      "bbox_span_mm": [
+        2.0,
+        28.0,
+        0.18
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "side_key_power_flex_tail",
+      "step": "mechanical/e1-phone/out/side_key_power_flex_tail.step",
+      "bytes": 15533,
+      "imported": true,
+      "bbox_span_mm": [
+        40.0,
+        2.0,
+        0.18
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "side_key_power_actuator_tail",
+      "step": "mechanical/e1-phone/out/side_key_power_actuator_tail.step",
+      "bytes": 15507,
+      "imported": true,
+      "bbox_span_mm": [
+        2.0,
+        22.0,
         0.18
       ],
       "max_span_error_mm": 0.0,

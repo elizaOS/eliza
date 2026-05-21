@@ -22,6 +22,7 @@
       ],
       "nonwhite_pixel_ratio": 0.07952,
       "orange_pixel_ratio_of_nonwhite": 0.01139,
+      "warm_orange_pixel_ratio_of_nonwhite": 0.01187,
       "dark_pixel_ratio_of_nonwhite": 0.67433,
       "purpose": "PCB, battery, camera, audio, haptic, and I/O placement"
     },
@@ -34,6 +35,7 @@
       ],
       "nonwhite_pixel_ratio": 0.07599,
       "orange_pixel_ratio_of_nonwhite": 0.45795,
+      "warm_orange_pixel_ratio_of_nonwhite": 0.44613,
       "dark_pixel_ratio_of_nonwhite": 0.52474,
       "purpose": "glass, display, shell, and component stack separation"
     },
@@ -46,6 +48,7 @@
       ],
       "nonwhite_pixel_ratio": 0.05702,
       "orange_pixel_ratio_of_nonwhite": 0.97389,
+      "warm_orange_pixel_ratio_of_nonwhite": 0.95179,
       "dark_pixel_ratio_of_nonwhite": 0.01315,
       "purpose": "rear-side orange shell, camera window, and service-feature review"
     },
@@ -58,6 +61,7 @@
       ],
       "nonwhite_pixel_ratio": 0.02397,
       "orange_pixel_ratio_of_nonwhite": 0.77781,
+      "warm_orange_pixel_ratio_of_nonwhite": 0.77783,
       "dark_pixel_ratio_of_nonwhite": 0.19595,
       "purpose": "USB-C, speaker grille, and microphone aperture review"
     },
@@ -70,6 +74,7 @@
       ],
       "nonwhite_pixel_ratio": 0.05366,
       "orange_pixel_ratio_of_nonwhite": 0.43302,
+      "warm_orange_pixel_ratio_of_nonwhite": 0.42543,
       "dark_pixel_ratio_of_nonwhite": 0.5465,
       "purpose": "front silhouette, orange side rail, black glass stack"
     },
@@ -82,6 +87,7 @@
       ],
       "nonwhite_pixel_ratio": 0.02973,
       "orange_pixel_ratio_of_nonwhite": 0.92483,
+      "warm_orange_pixel_ratio_of_nonwhite": 0.88553,
       "dark_pixel_ratio_of_nonwhite": 0.06132,
       "purpose": "left-side button protrusion and shell depth"
     },
@@ -94,6 +100,7 @@
       ],
       "nonwhite_pixel_ratio": 0.11026,
       "orange_pixel_ratio_of_nonwhite": 0.068,
+      "warm_orange_pixel_ratio_of_nonwhite": 0.06365,
       "dark_pixel_ratio_of_nonwhite": 0.92223,
       "purpose": "compact footprint, screen margin, buttons, and front features"
     },
@@ -104,9 +111,10 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.04052,
-      "orange_pixel_ratio_of_nonwhite": 0.13278,
-      "dark_pixel_ratio_of_nonwhite": 0.02522,
+      "nonwhite_pixel_ratio": 0.0406,
+      "orange_pixel_ratio_of_nonwhite": 0.13253,
+      "warm_orange_pixel_ratio_of_nonwhite": 0.12985,
+      "dark_pixel_ratio_of_nonwhite": 0.02517,
       "purpose": "parting plane, runner, gate, ejector, and cooling placeholders"
     },
     {
@@ -118,6 +126,7 @@
       ],
       "nonwhite_pixel_ratio": 0.11003,
       "orange_pixel_ratio_of_nonwhite": 0.00173,
+      "warm_orange_pixel_ratio_of_nonwhite": 0.97237,
       "dark_pixel_ratio_of_nonwhite": 0.00943,
       "purpose": "translucent rear shell review of camera window, SIM edge, and service-label recess"
     }
@@ -152,6 +161,13 @@
     "component_stack_visible": {
       "pass": true,
       "component_stack_nonwhite_ratio": 0.07952
+    },
+    "rear_feature_detail_visible": {
+      "pass": true,
+      "rear_detail_nonwhite_ratio": 0.11003,
+      "rear_detail_orange_ratio": 0.00173,
+      "rear_detail_warm_orange_ratio": 0.97237,
+      "rear_detail_dark_ratio": 0.00943
     },
     "compact_screen_margin": {
       "pass": true,

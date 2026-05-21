@@ -1,0 +1,68 @@
+schema: eliza.e1_phone_supplier_rfq_transmittal_draft.v1
+status: draft_not_sent_not_supplier_evidence
+date: '2026-05-21'
+claim_boundary: Draft RFQ transmittal package only. These drafts are not sent RFQs, supplier responses, approved
+  quotes, samples, signed drawings, pinouts, footprints, STEP evidence, or authorization to route or fabricate the
+  PCB.
+draft:
+  draft_id: e1_phone_wifi_bluetooth_rfq_2026-05-21
+  function: wifi_bluetooth
+  status: draft_not_sent_not_supplier_evidence
+  primary_candidate: Murata_LBEE5XV2EA-802_Type_2EA
+  package_binding: package/wifi/murata-type-2ea-wifi6e.yaml
+  source_basis:
+    - Murata Type 2EA vendor product page
+  verified_public_source_ids:
+    - wifi_bluetooth_primary_murata_type_2ea
+  recipient_candidates:
+    - supplier: Murata
+      candidate: LBEE5XV2EA-802
+      url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+      public_page_status: vendor_page_observed_2026_05_20
+  request:
+    quote_quantities:
+      - 10
+      - 100
+      - 1000
+    minimum_sample_lot: 5
+    response_due_date: '2026-06-04'
+    required_response_format: supplier_signed_pdf_or_native_cad_plus_machine_readable_summary
+    accepted_document_languages:
+      - english
+      - bilingual_supplier_original_plus_english
+    required_supplier_artifacts:
+      - module datasheet, hardware design guide, and reference layout package
+      - module 2D drawing with shield height, package datum, and RF keepout
+      - module pinout, SMT pad map, signal-voltage table, and reserved-pin rules
+      - paste mask, land pattern, keepout, and reflow restrictions
+      - certified antenna rules and modular grant limitations
+      - firmware, regulatory database, and driver license package
+      - conducted RF test procedure and coexistence guidance
+      - STEP model with shield height
+    board_dependency:
+      - U_WIFI_BT SMT footprint and RF feed geometry
+      - WIFI_BT_RF0 and WIFI_BT_RF1 antenna matching
+      - PCIe/SDIO and UART Bluetooth coexistence wiring
+  acceptance_gate_before_kicad_use:
+    orderable_mpn_received: false
+    signed_2d_drawing_received: false
+    pinout_or_pad_map_received: false
+    recommended_land_pattern_received: false
+    step_or_brep_model_received: false
+    sample_received_and_inspected: false
+    compliance_pack_received: false
+    pinout_symbol_footprint_reviews_complete: false
+  planned_archive_paths_after_send:
+    draft: board/kicad/e1-phone/sourcing-drafts/wifi_bluetooth/rfq-transmittal.yaml
+    release_archive: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-transmittal.yaml
+    supplier_response_pack: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml
+forbidden_claims:
+  - rfq_sent
+  - supplier_response_received
+  - supplier_approved
+  - pinouts_frozen
+  - footprints_frozen
+  - step_models_bound
+  - production_archive_complete
+  - routed_pcb_ready
+  - enclosure_ready

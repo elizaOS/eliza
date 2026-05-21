@@ -1,0 +1,1029 @@
+schema: eliza.e1_phone_schematic_netclass_execution_package.v1
+status: blocked_requires_supplier_symbols_netclass_capture_erc_and_trial_route
+date: '2026-05-21'
+claim_boundary: Executable schematic and netclass capture package for the selected E1 phone screen, camera, USB-C,
+  side-key, power, radio, audio, split-interconnect, compute, and factory-test domains. It is not a KiCad schematic
+  release, not ERC evidence, not routed copper, not DRC evidence, and not enclosure or fabrication readiness.
+source_artifacts:
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
+  - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+upstream_status:
+  symbol_footprint_status: blocked_requires_real_kicad_symbols_supplier_footprints_and_erc
+  supplier_to_kicad_status: blocked_supplier_evidence_not_ready_for_kicad_capture
+  supplier_intake_status: blocked_supplier_drawing_intake_required_before_real_footprints_or_route
+  evt1_footprint_capture_status: blocked_evt1_footprint_capture_requires_supplier_intake_reviews_and_real_kicad_libraries
+  block_netlist_status: logical_block_netlist_not_kicad_schematic
+  routing_constraints_status: constraint_baseline_not_post_route_signoff
+execution_policy:
+  domain_count: 10
+  requires_real_hierarchical_symbols_before_route: true
+  requires_kicad_netclass_assignment_before_trial_route: true
+  requires_erc_report_before_routed_release: true
+  requires_supplier_footprint_escape_proof_before_route_acceptance: true
+  diff_pair_names_to_capture:
+    - CAM0_CSI_CLK
+    - CAM0_CSI_D0
+    - CAM0_CSI_D1
+    - CAM0_CSI_D2
+    - CAM0_CSI_D3
+    - CAM1_CSI_CLK
+    - CAM1_CSI_D0
+    - CAM1_CSI_D1
+    - CELL_PCIE_RX
+    - CELL_PCIE_TX
+    - CELL_USB2_DP_DN
+    - DSI_CLK
+    - DSI_D0
+    - DSI_D1
+    - DSI_D2
+    - DSI_D3
+    - LPDDR_CK
+    - LPDDR_DQS
+    - UFS_REFCLK
+    - UFS_RX
+    - UFS_TX
+    - USB_DP_DN
+    - WIFI_PCIE_RX
+    - WIFI_PCIE_TX
+domain_execution:
+  - domain: display_touch
+    status: blocked_waiting_symbol_netclass_erc_and_trial_route_evidence
+    schematic_sheets:
+      - display_camera.kicad_sch
+    refdes_groups:
+      - J_DISPLAY_TOUCH
+    placement_records:
+      - refdes_group: J_DISPLAY_TOUCH
+        region_mm:
+          x: 45.0
+          y: 3.0
+          width: 17.0
+          height: 8.0
+        side: top_right
+        constraints:
+          - 100ohm_mipi_dphy
+          - fpc_bend_radius
+          - panel_bias_rails
+    required_nets:
+      - DISP_AVDD_5V5
+      - DISP_AVEE_N5V5
+      - DISP_BL_EN
+      - DISP_BL_PWM
+      - DISP_RESET_N
+      - DISP_TE
+      - DSI_CLK_N
+      - DSI_CLK_P
+      - DSI_D0_N
+      - DSI_D0_P
+      - DSI_D1_N
+      - DSI_D1_P
+      - DSI_D2_N
+      - DSI_D2_P
+      - DSI_D3_N
+      - DSI_D3_P
+      - TOUCH_I2C_SCL
+      - TOUCH_I2C_SDA
+      - TOUCH_IRQ_N
+      - TOUCH_RESET_N
+    netclass_assignments_required:
+      differential_pairs:
+        - name: DSI_CLK
+          nets:
+            - DSI_CLK_P
+            - DSI_CLK_N
+          class: mipi_dphy_diff
+          max_length_mm: 45
+          intra_pair_skew_mm_max: 0.25
+        - name: DSI_D0
+          nets:
+            - DSI_D0_P
+            - DSI_D0_N
+          class: mipi_dphy_diff
+          max_length_mm: 45
+          intra_pair_skew_mm_max: 0.25
+        - name: DSI_D1
+          nets:
+            - DSI_D1_P
+            - DSI_D1_N
+          class: mipi_dphy_diff
+          max_length_mm: 45
+          intra_pair_skew_mm_max: 0.25
+        - name: DSI_D2
+          nets:
+            - DSI_D2_P
+            - DSI_D2_N
+          class: mipi_dphy_diff
+          max_length_mm: 45
+          intra_pair_skew_mm_max: 0.25
+        - name: DSI_D3
+          nets:
+            - DSI_D3_P
+            - DSI_D3_N
+          class: mipi_dphy_diff
+          max_length_mm: 45
+          intra_pair_skew_mm_max: 0.25
+      single_ended_buses:
+        - name: TOUCH_I2C
+          nets:
+            - TOUCH_I2C_SCL
+            - TOUCH_I2C_SDA
+          max_length_mm: 70
+          pullups_to: IO_1V8
+      power_test_points: []
+    upstream_footprint_work_items:
+      - evt1_footprint_capture_01_display_touch
+    execution_tasks:
+      - replace text scaffold with real hierarchical symbols and wires
+      - assign exact supplier pin numbers and electrical types
+      - bind nets to KiCad net classes and differential-pair rules from routing-constraints.yaml
+      - cross-probe schematic nets against placement-interface-matrix.yaml and block-netlist.yaml
+      - run ERC and record signed waivers or clean report
+      - run supplier-footprint escape/trial-route proof before accepting routing
+    release_outputs_required:
+      schematic_review: board/kicad/e1-phone/production/reports/schematic-review/display_touch.yaml
+      netclass_assignment: board/kicad/e1-phone/production/reports/netclass-assignment/display_touch.yaml
+      erc_result: board/kicad/e1-phone/production/reports/erc/display_touch.json
+      trial_route_proof: board/kicad/e1-phone/production/reports/trial-route/display_touch.yaml
+    current_blocker: current KiCad schematic remains scaffold-level and no supplier-reviewed netclass, ERC, or trial-route
+      evidence exists for this domain
+  - domain: front_rear_cameras
+    status: blocked_waiting_symbol_netclass_erc_and_trial_route_evidence
+    schematic_sheets:
+      - display_camera.kicad_sch
+    refdes_groups:
+      - J_CAM0_CAM1
+      - J_CAM0
+      - J_CAM1
+    placement_records:
+      - refdes_group: J_CAM0_CAM1
+        region_mm:
+          x: 45.0
+          y: 12.0
+          width: 17.0
+          height: 13.0
+        side: top_right_camera_bump
+        constraints:
+          - 100ohm_mipi_dphy
+          - camera_z_height
+          - lens_axis_datum
+          - af_vcm_supply
+    required_nets:
+      - CAM0_AF_I2C_SCL
+      - CAM0_AF_I2C_SDA
+      - CAM0_CSI
+      - CAM0_CSI_CLK_N
+      - CAM0_CSI_CLK_P
+      - CAM0_CSI_D0_N
+      - CAM0_CSI_D0_P
+      - CAM0_CSI_D1_N
+      - CAM0_CSI_D1_P
+      - CAM0_CSI_D2_N
+      - CAM0_CSI_D2_P
+      - CAM0_CSI_D3_N
+      - CAM0_CSI_D3_P
+      - CAM0_I2C_SCL
+      - CAM0_I2C_SDA
+      - CAM0_MCLK
+      - CAM0_PWDN
+      - CAM0_RESET_N
+      - CAM1_CSI
+      - CAM1_CSI_CLK_N
+      - CAM1_CSI_CLK_P
+      - CAM1_CSI_D0_N
+      - CAM1_CSI_D0_P
+      - CAM1_CSI_D1_N
+      - CAM1_CSI_D1_P
+      - CAM1_I2C_SCL
+      - CAM1_I2C_SDA
+      - CAM1_MCLK
+      - CAM1_RESET_N
+      - CAM_AFVDD_2V8
+      - CAM_AVDD_2V8
+      - CAM_DVDD_1V2
+      - CAM_IOVDD_1V8
+      - IO_1V8
+    netclass_assignments_required:
+      differential_pairs:
+        - name: CAM0_CSI_CLK
+          nets:
+            - CAM0_CSI_CLK_P
+            - CAM0_CSI_CLK_N
+          class: mipi_dphy_diff
+          max_length_mm: 55
+          intra_pair_skew_mm_max: 0.25
+        - name: CAM0_CSI_D0
+          nets:
+            - CAM0_CSI_D0_P
+            - CAM0_CSI_D0_N
+          class: mipi_dphy_diff
+          max_length_mm: 55
+          intra_pair_skew_mm_max: 0.25
+        - name: CAM0_CSI_D1
+          nets:
+            - CAM0_CSI_D1_P
+            - CAM0_CSI_D1_N
+          class: mipi_dphy_diff
+          max_length_mm: 55
+          intra_pair_skew_mm_max: 0.25
+        - name: CAM0_CSI_D2
+          nets:
+            - CAM0_CSI_D2_P
+            - CAM0_CSI_D2_N
+          class: mipi_dphy_diff
+          max_length_mm: 55
+          intra_pair_skew_mm_max: 0.25
+        - name: CAM0_CSI_D3
+          nets:
+            - CAM0_CSI_D3_P
+            - CAM0_CSI_D3_N
+          class: mipi_dphy_diff
+          max_length_mm: 55
+          intra_pair_skew_mm_max: 0.25
+        - name: CAM1_CSI_CLK
+          nets:
+            - CAM1_CSI_CLK_P
+            - CAM1_CSI_CLK_N
+          class: mipi_dphy_diff
+          max_length_mm: 65
+          intra_pair_skew_mm_max: 0.25
+        - name: CAM1_CSI_D0
+          nets:
+            - CAM1_CSI_D0_P
+            - CAM1_CSI_D0_N
+          class: mipi_dphy_diff
+          max_length_mm: 65
+          intra_pair_skew_mm_max: 0.25
+        - name: CAM1_CSI_D1
+          nets:
+            - CAM1_CSI_D1_P
+            - CAM1_CSI_D1_N
+          class: mipi_dphy_diff
+          max_length_mm: 65
+          intra_pair_skew_mm_max: 0.25
+      single_ended_buses:
+        - name: CAMERA_I2C
+          nets:
+            - CAM0_I2C_SCL
+            - CAM0_I2C_SDA
+            - CAM1_I2C_SCL
+            - CAM1_I2C_SDA
+          max_length_mm: 70
+          pullups_to: IO_1V8
+      power_test_points: []
+    upstream_footprint_work_items:
+      - evt1_footprint_capture_02_rear_camera
+      - evt1_footprint_capture_03_front_camera
+    execution_tasks:
+      - replace text scaffold with real hierarchical symbols and wires
+      - assign exact supplier pin numbers and electrical types
+      - bind nets to KiCad net classes and differential-pair rules from routing-constraints.yaml
+      - cross-probe schematic nets against placement-interface-matrix.yaml and block-netlist.yaml
+      - run ERC and record signed waivers or clean report
+      - run supplier-footprint escape/trial-route proof before accepting routing
+    release_outputs_required:
+      schematic_review: board/kicad/e1-phone/production/reports/schematic-review/front_rear_cameras.yaml
+      netclass_assignment: board/kicad/e1-phone/production/reports/netclass-assignment/front_rear_cameras.yaml
+      erc_result: board/kicad/e1-phone/production/reports/erc/front_rear_cameras.json
+      trial_route_proof: board/kicad/e1-phone/production/reports/trial-route/front_rear_cameras.yaml
+    current_blocker: current KiCad schematic remains scaffold-level and no supplier-reviewed netclass, ERC, or trial-route
+      evidence exists for this domain
+  - domain: usb_c_charge_data_debug
+    status: blocked_waiting_symbol_netclass_erc_and_trial_route_evidence
+    schematic_sheets:
+      - power_usb.kicad_sch
+      - split_interconnect.kicad_sch
+    refdes_groups:
+      - J_USB_C
+      - U_USB_PD
+      - U_CHARGER
+    placement_records:
+      - refdes_group: J_USB_C
+        region_mm:
+          x: 26.0
+          y: 126.0
+          width: 16.0
+          height: 6.0
+        side: bottom_edge
+        constraints:
+          - mechanical_capture
+          - esd_near_connector
+          - 90ohm_usb2_diff
+    required_nets:
+      - SHIELD_GND
+      - USBPD_I2C_SCL
+      - USBPD_I2C_SDA
+      - USBPD_IRQ_N
+      - USBPD_RESET
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBUS
+    netclass_assignments_required:
+      differential_pairs:
+        - name: USB_DP_DN
+          nets: &id001
+            - USB_DP
+            - USB_DN
+          class: usb2_diff
+          max_length_mm: 90
+          intra_pair_skew_mm_max: 0.5
+      single_ended_buses: []
+      power_test_points: []
+    upstream_footprint_work_items:
+      - evt1_footprint_capture_06_usb_c_receptacle_evt0
+    execution_tasks:
+      - replace text scaffold with real hierarchical symbols and wires
+      - assign exact supplier pin numbers and electrical types
+      - bind nets to KiCad net classes and differential-pair rules from routing-constraints.yaml
+      - cross-probe schematic nets against placement-interface-matrix.yaml and block-netlist.yaml
+      - run ERC and record signed waivers or clean report
+      - run supplier-footprint escape/trial-route proof before accepting routing
+    release_outputs_required:
+      schematic_review: board/kicad/e1-phone/production/reports/schematic-review/usb_c_charge_data_debug.yaml
+      netclass_assignment: board/kicad/e1-phone/production/reports/netclass-assignment/usb_c_charge_data_debug.yaml
+      erc_result: board/kicad/e1-phone/production/reports/erc/usb_c_charge_data_debug.json
+      trial_route_proof: board/kicad/e1-phone/production/reports/trial-route/usb_c_charge_data_debug.yaml
+    current_blocker: current KiCad schematic remains scaffold-level and no supplier-reviewed netclass, ERC, or trial-route
+      evidence exists for this domain
+  - domain: side_buttons
+    status: blocked_waiting_symbol_netclass_erc_and_trial_route_evidence
+    schematic_sheets:
+      - audio_buttons.kicad_sch
+    refdes_groups:
+      - SW_POWER_VOL
+      - SW_SIDE_KEYS
+    placement_records:
+      - refdes_group: SW_POWER_VOL
+        region_mm:
+          x: 18.0
+          y: 26.0
+          width: 12.0
+          height: 3.0
+        side: top_island_side_key_flex_tail
+        constraints:
+          - wake_capable_power_key
+          - recovery_key_combo
+          - enclosure_actuator_rib
+    required_nets:
+      - AON_1V8
+      - GND
+      - PWR_KEY_N
+      - VOL_DOWN_N
+      - VOL_UP_N
+    netclass_assignments_required:
+      differential_pairs: []
+      single_ended_buses:
+        - name: SIDE_KEYS
+          nets:
+            - PWR_KEY_N
+            - VOL_UP_N
+            - VOL_DOWN_N
+          max_length_mm: 80
+          aon_domain: true
+      power_test_points: []
+    upstream_footprint_work_items:
+      - evt1_footprint_capture_07_side_buttons
+    execution_tasks:
+      - replace text scaffold with real hierarchical symbols and wires
+      - assign exact supplier pin numbers and electrical types
+      - bind nets to KiCad net classes and differential-pair rules from routing-constraints.yaml
+      - cross-probe schematic nets against placement-interface-matrix.yaml and block-netlist.yaml
+      - run ERC and record signed waivers or clean report
+      - run supplier-footprint escape/trial-route proof before accepting routing
+    release_outputs_required:
+      schematic_review: board/kicad/e1-phone/production/reports/schematic-review/side_buttons.yaml
+      netclass_assignment: board/kicad/e1-phone/production/reports/netclass-assignment/side_buttons.yaml
+      erc_result: board/kicad/e1-phone/production/reports/erc/side_buttons.json
+      trial_route_proof: board/kicad/e1-phone/production/reports/trial-route/side_buttons.yaml
+    current_blocker: current KiCad schematic remains scaffold-level and no supplier-reviewed netclass, ERC, or trial-route
+      evidence exists for this domain
+  - domain: power_battery_pmic_thermal
+    status: blocked_waiting_symbol_netclass_erc_and_trial_route_evidence
+    schematic_sheets:
+      - power_usb.kicad_sch
+    refdes_groups:
+      - U_PMIC_CHARGER
+      - U_PMIC
+      - U_CHARGER
+      - J_BATTERY
+    placement_records:
+      - refdes_group: U_PMIC_CHARGER
+        region_mm: &id008
+          x: 18.0
+          y: 18.0
+          width: 13.0
+          height: 8.0
+        side: top_mid
+        constraints: &id009
+          - short_high_current_paths
+          - thermal_spreading
+          - per_rail_test_points
+      - refdes_group: J_BATTERY
+        region_mm:
+          x: 31.0
+          y: 27.0
+          width: 12.0
+          height: 2.0
+        side: top_island_battery_tail_edge
+        constraints:
+          - battery_window_clearance
+          - pack_service_disconnect
+          - ntc_close_to_charger
+    required_nets:
+      - AON_1V8
+      - AP_0V8
+      - AP_1V1
+      - AP_RAILS
+      - CAM_AVDD_2V8
+      - CAM_DVDD_1V2
+      - CAM_RAILS
+      - DISP_RAILS
+      - IO_1V8
+      - RF_VBAT
+      - SYS
+      - VBAT
+      - VBUS
+      - VDD_AMP_3V3
+      - VDD_AUDIO_3V3
+    netclass_assignments_required:
+      differential_pairs: []
+      single_ended_buses: []
+      power_test_points: &id012
+        - VBUS
+        - VBAT
+        - SYS
+        - AON_1V8
+        - IO_1V8
+        - RF_VBAT
+        - CAM_AVDD_2V8
+        - DISP_AVDD_5V5
+    upstream_footprint_work_items:
+      - evt1_footprint_capture_08_battery_pack
+    execution_tasks:
+      - replace text scaffold with real hierarchical symbols and wires
+      - assign exact supplier pin numbers and electrical types
+      - bind nets to KiCad net classes and differential-pair rules from routing-constraints.yaml
+      - cross-probe schematic nets against placement-interface-matrix.yaml and block-netlist.yaml
+      - run ERC and record signed waivers or clean report
+      - run supplier-footprint escape/trial-route proof before accepting routing
+    release_outputs_required:
+      schematic_review: board/kicad/e1-phone/production/reports/schematic-review/power_battery_pmic_thermal.yaml
+      netclass_assignment: board/kicad/e1-phone/production/reports/netclass-assignment/power_battery_pmic_thermal.yaml
+      erc_result: board/kicad/e1-phone/production/reports/erc/power_battery_pmic_thermal.json
+      trial_route_proof: board/kicad/e1-phone/production/reports/trial-route/power_battery_pmic_thermal.yaml
+    current_blocker: current KiCad schematic remains scaffold-level and no supplier-reviewed netclass, ERC, or trial-route
+      evidence exists for this domain
+  - domain: radios_cellular_wifi_bt_gnss
+    status: blocked_waiting_symbol_netclass_erc_and_trial_route_evidence
+    schematic_sheets:
+      - radios.kicad_sch
+    refdes_groups:
+      - U_CELL
+      - U_WIFI_BT
+      - U_SIM_ESIM
+    placement_records:
+      - refdes_group: U_CELL
+        region_mm: &id004
+          x: 3.0
+          y: 3.0
+          width: 14.0
+          height: 14.0
+        side: top_left_rf
+        constraints: &id005
+          - rf_keepout
+          - cellular_main_div_feeds
+          - sim_or_esim
+          - conducted_rf_test_points
+      - refdes_group: U_WIFI_BT
+        region_mm: &id006
+          x: 3.0
+          y: 18.0
+          width: 14.0
+          height: 10.0
+        side: upper_mid_rf
+        constraints: &id007
+          - rf_keepout
+          - pi_matching_network
+          - coexistence_with_cellular
+    required_nets:
+      - BT_EN
+      - BT_UART
+      - BT_UART_CTS_N
+      - BT_UART_RTS_N
+      - BT_UART_RX
+      - BT_UART_TX
+      - CELL_GNSS_RF
+      - CELL_PCIE
+      - CELL_PCIE_RX_N
+      - CELL_PCIE_RX_P
+      - CELL_PCIE_TX_N
+      - CELL_PCIE_TX_P
+      - CELL_RESET_N
+      - CELL_RF_DIV
+      - CELL_RF_MAIN
+      - CELL_USB2
+      - CELL_USB2_DN
+      - CELL_USB2_DP
+      - CELL_VBAT
+      - CELL_VDDIO_1V8
+      - CELL_WAKE_AP
+      - CELL_W_DISABLE_N
+      - ESIM_CLK
+      - ESIM_IO
+      - ESIM_RST
+      - ESIM_VCC
+      - IO_1V8
+      - RF_VBAT
+      - USIM_CLK
+      - USIM_DET
+      - USIM_IO
+      - USIM_RST
+      - USIM_VCC
+      - WIFI_BT_RF0
+      - WIFI_BT_RF1
+      - WIFI_EN
+      - WIFI_HOST_WAKE
+      - WIFI_IRQ
+      - WIFI_PCIE_OR_SDIO
+      - WIFI_PCIE_RX_N
+      - WIFI_PCIE_RX_P
+      - WIFI_PCIE_TX_N
+      - WIFI_PCIE_TX_P
+      - WIFI_SDIO_CLK
+      - WIFI_SDIO_CMD
+      - WIFI_SDIO_D0
+      - WIFI_SDIO_D1
+      - WIFI_SDIO_D2
+      - WIFI_SDIO_D3
+    netclass_assignments_required:
+      differential_pairs:
+        - name: CELL_USB2_DP_DN
+          nets:
+            - CELL_USB2_DP
+            - CELL_USB2_DN
+          class: usb2_diff
+          max_length_mm: 55
+          intra_pair_skew_mm_max: 0.5
+        - name: WIFI_PCIE_TX
+          nets:
+            - WIFI_PCIE_TX_P
+            - WIFI_PCIE_TX_N
+          class: pcie_diff
+          max_length_mm: 35
+          intra_pair_skew_mm_max: 0.15
+        - name: WIFI_PCIE_RX
+          nets:
+            - WIFI_PCIE_RX_P
+            - WIFI_PCIE_RX_N
+          class: pcie_diff
+          max_length_mm: 35
+          intra_pair_skew_mm_max: 0.15
+        - name: CELL_PCIE_TX
+          nets:
+            - CELL_PCIE_TX_P
+            - CELL_PCIE_TX_N
+          class: pcie_diff
+          max_length_mm: 55
+          intra_pair_skew_mm_max: 0.15
+        - name: CELL_PCIE_RX
+          nets:
+            - CELL_PCIE_RX_P
+            - CELL_PCIE_RX_N
+          class: pcie_diff
+          max_length_mm: 55
+          intra_pair_skew_mm_max: 0.15
+      single_ended_buses:
+        - name: WIFI_SDIO
+          nets:
+            - WIFI_SDIO_CLK
+            - WIFI_SDIO_CMD
+            - WIFI_SDIO_D0
+            - WIFI_SDIO_D1
+            - WIFI_SDIO_D2
+            - WIFI_SDIO_D3
+          max_length_mm: 35
+          group_skew_mm_max: 1.0
+        - name: USIM_ESIM
+          nets:
+            - USIM_VCC
+            - USIM_CLK
+            - USIM_RST
+            - USIM_IO
+            - USIM_DET
+            - ESIM_VCC
+            - ESIM_CLK
+            - ESIM_RST
+            - ESIM_IO
+          max_length_mm: 35
+          esd_required: true
+          keepaway: cellular_rf_feeds
+      power_test_points: []
+    upstream_footprint_work_items:
+      - evt1_footprint_capture_04_cellular
+      - evt1_footprint_capture_05_wifi_bluetooth
+    execution_tasks:
+      - replace text scaffold with real hierarchical symbols and wires
+      - assign exact supplier pin numbers and electrical types
+      - bind nets to KiCad net classes and differential-pair rules from routing-constraints.yaml
+      - cross-probe schematic nets against placement-interface-matrix.yaml and block-netlist.yaml
+      - run ERC and record signed waivers or clean report
+      - run supplier-footprint escape/trial-route proof before accepting routing
+    release_outputs_required:
+      schematic_review: board/kicad/e1-phone/production/reports/schematic-review/radios_cellular_wifi_bt_gnss.yaml
+      netclass_assignment: board/kicad/e1-phone/production/reports/netclass-assignment/radios_cellular_wifi_bt_gnss.yaml
+      erc_result: board/kicad/e1-phone/production/reports/erc/radios_cellular_wifi_bt_gnss.json
+      trial_route_proof: board/kicad/e1-phone/production/reports/trial-route/radios_cellular_wifi_bt_gnss.yaml
+    current_blocker: current KiCad schematic remains scaffold-level and no supplier-reviewed netclass, ERC, or trial-route
+      evidence exists for this domain
+  - domain: audio_haptics
+    status: blocked_waiting_symbol_netclass_erc_and_trial_route_evidence
+    schematic_sheets:
+      - audio_buttons.kicad_sch
+      - split_interconnect.kicad_sch
+    refdes_groups:
+      - U_AUDIO_SPK_MIC
+      - U_AUDIO_HAPTIC
+    placement_records:
+      - refdes_group: U_AUDIO_SPK_MIC
+        region_mm:
+          x: 3.0
+          y: 120.0
+          width: 22.0
+          height: 8.0
+        side: bottom_audio_io
+        constraints:
+          - acoustic_gasket
+          - mic_port_keepout
+          - speaker_chamber
+          - emi_from_usb
+    required_nets:
+      - AMP_INT
+      - AUDIO_I2C_SCL
+      - AUDIO_I2C_SDA
+      - AUDIO_IRQS
+      - CODEC_INT
+      - HAPTIC_DRV
+      - HAPTIC_OUT
+      - I2S_BCLK
+      - I2S_DIN
+      - I2S_DOUT
+      - I2S_LRCLK
+      - I2S_OR_PCM
+      - PDM_CLK
+      - PDM_DAT
+      - PDM_MIC
+      - SPK_N
+      - SPK_OUT
+      - SPK_P
+      - VDD_AMP_3V3
+      - VDD_AUDIO_3V3
+    netclass_assignments_required:
+      differential_pairs: []
+      single_ended_buses:
+        - name: AUDIO_I2S_PDM
+          nets: &id002
+            - I2S_BCLK
+            - I2S_LRCLK
+            - I2S_DOUT
+            - I2S_DIN
+            - PDM_CLK
+            - PDM_DAT
+          max_length_mm: 85
+          group_skew_mm_max: 2.0
+          keepaway: usb_c_and_rf_feeds
+        - name: AUDIO_I2C_IRQ
+          nets: &id003
+            - AUDIO_I2C_SCL
+            - AUDIO_I2C_SDA
+            - CODEC_INT
+            - AMP_INT
+          max_length_mm: 85
+          pullups_to: IO_1V8
+      power_test_points: []
+    upstream_footprint_work_items:
+      - evt1_footprint_capture_09_audio_speaker_microphone_flexes
+    execution_tasks:
+      - replace text scaffold with real hierarchical symbols and wires
+      - assign exact supplier pin numbers and electrical types
+      - bind nets to KiCad net classes and differential-pair rules from routing-constraints.yaml
+      - cross-probe schematic nets against placement-interface-matrix.yaml and block-netlist.yaml
+      - run ERC and record signed waivers or clean report
+      - run supplier-footprint escape/trial-route proof before accepting routing
+    release_outputs_required:
+      schematic_review: board/kicad/e1-phone/production/reports/schematic-review/audio_haptics.yaml
+      netclass_assignment: board/kicad/e1-phone/production/reports/netclass-assignment/audio_haptics.yaml
+      erc_result: board/kicad/e1-phone/production/reports/erc/audio_haptics.json
+      trial_route_proof: board/kicad/e1-phone/production/reports/trial-route/audio_haptics.yaml
+    current_blocker: current KiCad schematic remains scaffold-level and no supplier-reviewed netclass, ERC, or trial-route
+      evidence exists for this domain
+  - domain: split_interconnect
+    status: blocked_waiting_symbol_netclass_erc_and_trial_route_evidence
+    schematic_sheets:
+      - split_interconnect.kicad_sch
+    refdes_groups:
+      - J_TOP_BOTTOM_FLEX_TOP
+      - J_TOP_BOTTOM_FLEX_BOTTOM
+    placement_records:
+      - refdes_group: J_TOP_BOTTOM_FLEX_TOP
+        region_mm:
+          x: 46.0
+          y: 26.0
+          width: 16.0
+          height: 3.0
+        side: top_island_bottom_edge
+        constraints:
+          - split_board_interconnect
+          - usb2_90ohm_across_flex
+          - power_return_interleave
+          - audio_keepaway
+      - refdes_group: J_TOP_BOTTOM_FLEX_BOTTOM
+        region_mm:
+          x: 46.0
+          y: 117.0
+          width: 16.0
+          height: 3.0
+        side: bottom_island_top_edge
+        constraints:
+          - split_board_interconnect
+          - usb2_90ohm_across_flex
+          - power_return_interleave
+          - audio_keepaway
+    required_nets:
+      - AMP_INT
+      - AON_1V8
+      - AUDIO_I2C_SCL
+      - AUDIO_I2C_SDA
+      - AUDIO_IRQS
+      - CODEC_INT
+      - GND
+      - HAPTIC_DRV
+      - HAPTIC_OUT
+      - I2S_BCLK
+      - I2S_DIN
+      - I2S_DOUT
+      - I2S_LRCLK
+      - I2S_OR_PCM
+      - IO_1V8
+      - PDM_CLK
+      - PDM_DAT
+      - PDM_MIC
+      - RF_VBAT
+      - SHIELD_GND
+      - SYS
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBAT
+      - VBUS
+      - VDD_AMP_3V3
+      - VDD_AUDIO_3V3
+    netclass_assignments_required:
+      differential_pairs:
+        - name: USB_DP_DN
+          nets: *id001
+          class: usb2_diff
+          max_length_mm: 90
+          intra_pair_skew_mm_max: 0.5
+      single_ended_buses:
+        - name: AUDIO_I2S_PDM
+          nets: *id002
+          max_length_mm: 85
+          group_skew_mm_max: 2.0
+          keepaway: usb_c_and_rf_feeds
+        - name: AUDIO_I2C_IRQ
+          nets: *id003
+          max_length_mm: 85
+          pullups_to: IO_1V8
+      power_test_points: []
+    upstream_footprint_work_items: []
+    execution_tasks:
+      - replace text scaffold with real hierarchical symbols and wires
+      - assign exact supplier pin numbers and electrical types
+      - bind nets to KiCad net classes and differential-pair rules from routing-constraints.yaml
+      - cross-probe schematic nets against placement-interface-matrix.yaml and block-netlist.yaml
+      - run ERC and record signed waivers or clean report
+      - run supplier-footprint escape/trial-route proof before accepting routing
+    release_outputs_required:
+      schematic_review: board/kicad/e1-phone/production/reports/schematic-review/split_interconnect.yaml
+      netclass_assignment: board/kicad/e1-phone/production/reports/netclass-assignment/split_interconnect.yaml
+      erc_result: board/kicad/e1-phone/production/reports/erc/split_interconnect.json
+      trial_route_proof: board/kicad/e1-phone/production/reports/trial-route/split_interconnect.yaml
+    current_blocker: current KiCad schematic remains scaffold-level and no supplier-reviewed netclass, ERC, or trial-route
+      evidence exists for this domain
+  - domain: compute_storage
+    status: blocked_waiting_symbol_netclass_erc_and_trial_route_evidence
+    schematic_sheets:
+      - compute.kicad_sch
+    refdes_groups:
+      - U_SOC_LPDDR_UFS
+      - U_SOC
+      - U_LPDDR_UFS
+    placement_records:
+      - refdes_group: U_SOC_LPDDR_UFS
+        region_mm: &id010
+          x: 18.0
+          y: 3.0
+          width: 25.0
+          height: 14.0
+        side: top_mid_thermal_path
+        constraints: &id011
+          - thermal_spreader
+          - memory_length_match
+          - decap_escape
+          - debug_access
+    required_nets:
+      - AP_0V8
+      - AP_1V1
+      - AP_RAILS
+      - BOOT_MODE0
+      - BOOT_MODE1
+      - BOOT_MODE2
+      - BOOT_STRAPS
+      - IO_1V8
+      - JTAG_OR_SWD
+      - JTAG_TCK
+      - JTAG_TDI
+      - JTAG_TDO
+      - JTAG_TMS
+      - JTAG_TRST_N
+      - LPDDR_CA0
+      - LPDDR_CA1
+      - LPDDR_CA2
+      - LPDDR_CA3
+      - LPDDR_CK_N
+      - LPDDR_CK_P
+      - LPDDR_DQ0
+      - LPDDR_DQ1
+      - LPDDR_DQ2
+      - LPDDR_DQ3
+      - LPDDR_DQS_N
+      - LPDDR_DQS_P
+      - LPDDR_RESET_N
+      - LPDDR_ZQ
+      - SOC_RESET_N
+      - UFS_REFCLK_N
+      - UFS_REFCLK_P
+      - UFS_RESET_N
+      - UFS_RX_N
+      - UFS_RX_P
+      - UFS_TX_N
+      - UFS_TX_P
+    netclass_assignments_required:
+      differential_pairs:
+        - name: LPDDR_CK
+          nets:
+            - LPDDR_CK_P
+            - LPDDR_CK_N
+          class: memory_diff
+          max_length_mm: 18
+          intra_pair_skew_mm_max: 0.05
+        - name: LPDDR_DQS
+          nets:
+            - LPDDR_DQS_P
+            - LPDDR_DQS_N
+          class: memory_diff
+          max_length_mm: 18
+          intra_pair_skew_mm_max: 0.05
+        - name: UFS_REFCLK
+          nets:
+            - UFS_REFCLK_P
+            - UFS_REFCLK_N
+          class: ufs_diff
+          max_length_mm: 28
+          intra_pair_skew_mm_max: 0.1
+        - name: UFS_TX
+          nets:
+            - UFS_TX_P
+            - UFS_TX_N
+          class: ufs_diff
+          max_length_mm: 28
+          intra_pair_skew_mm_max: 0.1
+        - name: UFS_RX
+          nets:
+            - UFS_RX_P
+            - UFS_RX_N
+          class: ufs_diff
+          max_length_mm: 28
+          intra_pair_skew_mm_max: 0.1
+      single_ended_buses:
+        - name: LPDDR_CA
+          nets:
+            - LPDDR_CA0
+            - LPDDR_CA1
+            - LPDDR_CA2
+            - LPDDR_CA3
+            - LPDDR_RESET_N
+            - LPDDR_ZQ
+          max_length_mm: 18
+          group_skew_mm_max: 0.1
+          keepaway: rf_and_usb_c
+        - name: DEBUG_BOOT
+          nets:
+            - JTAG_TCK
+            - JTAG_TMS
+            - JTAG_TDI
+            - JTAG_TDO
+            - JTAG_TRST_N
+            - BOOT_MODE0
+            - BOOT_MODE1
+            - BOOT_MODE2
+            - SOC_RESET_N
+          max_length_mm: 45
+          pullups_to: IO_1V8
+      power_test_points: []
+    upstream_footprint_work_items: []
+    execution_tasks:
+      - replace text scaffold with real hierarchical symbols and wires
+      - assign exact supplier pin numbers and electrical types
+      - bind nets to KiCad net classes and differential-pair rules from routing-constraints.yaml
+      - cross-probe schematic nets against placement-interface-matrix.yaml and block-netlist.yaml
+      - run ERC and record signed waivers or clean report
+      - run supplier-footprint escape/trial-route proof before accepting routing
+    release_outputs_required:
+      schematic_review: board/kicad/e1-phone/production/reports/schematic-review/compute_storage.yaml
+      netclass_assignment: board/kicad/e1-phone/production/reports/netclass-assignment/compute_storage.yaml
+      erc_result: board/kicad/e1-phone/production/reports/erc/compute_storage.json
+      trial_route_proof: board/kicad/e1-phone/production/reports/trial-route/compute_storage.yaml
+    current_blocker: current KiCad schematic remains scaffold-level and no supplier-reviewed netclass, ERC, or trial-route
+      evidence exists for this domain
+  - domain: factory_test
+    status: blocked_waiting_symbol_netclass_erc_and_trial_route_evidence
+    schematic_sheets:
+      - power_usb.kicad_sch
+      - compute.kicad_sch
+      - radios.kicad_sch
+    refdes_groups:
+      - U_PMIC_CHARGER
+      - U_SOC_LPDDR_UFS
+      - U_CELL
+      - U_WIFI_BT
+    placement_records:
+      - refdes_group: U_CELL
+        region_mm: *id004
+        side: top_left_rf
+        constraints: *id005
+      - refdes_group: U_WIFI_BT
+        region_mm: *id006
+        side: upper_mid_rf
+        constraints: *id007
+      - refdes_group: U_PMIC_CHARGER
+        region_mm: *id008
+        side: top_mid
+        constraints: *id009
+      - refdes_group: U_SOC_LPDDR_UFS
+        region_mm: *id010
+        side: top_mid_thermal_path
+        constraints: *id011
+    required_nets: *id012
+    netclass_assignments_required:
+      differential_pairs: []
+      single_ended_buses: []
+      power_test_points: *id012
+    upstream_footprint_work_items:
+      - evt1_footprint_capture_04_cellular
+      - evt1_footprint_capture_05_wifi_bluetooth
+    execution_tasks:
+      - replace text scaffold with real hierarchical symbols and wires
+      - assign exact supplier pin numbers and electrical types
+      - bind nets to KiCad net classes and differential-pair rules from routing-constraints.yaml
+      - cross-probe schematic nets against placement-interface-matrix.yaml and block-netlist.yaml
+      - run ERC and record signed waivers or clean report
+      - run supplier-footprint escape/trial-route proof before accepting routing
+    release_outputs_required:
+      schematic_review: board/kicad/e1-phone/production/reports/schematic-review/factory_test.yaml
+      netclass_assignment: board/kicad/e1-phone/production/reports/netclass-assignment/factory_test.yaml
+      erc_result: board/kicad/e1-phone/production/reports/erc/factory_test.json
+      trial_route_proof: board/kicad/e1-phone/production/reports/trial-route/factory_test.yaml
+    current_blocker: current KiCad schematic remains scaffold-level and no supplier-reviewed netclass, ERC, or trial-route
+      evidence exists for this domain
+cross_checks:
+  all_domains_have_schematic_sheets: true
+  all_domains_have_required_nets: true
+  all_domains_fail_closed: true
+  referenced_diff_pairs_exist_in_routing_constraints: true
+  supplier_intake_blocks_real_capture: true
+  symbol_footprint_closure_blocks_erc: true
+  evt1_footprint_capture_blocks_trial_route: true
+  route_acceptance_must_wait_for_this_package: true
+release_blockers:
+  - real KiCad symbols and wires have not replaced the schematic text scaffold
+  - supplier pinouts and land patterns are not accepted for production capture
+  - KiCad net classes and differential-pair assignments have not been implemented
+  - ERC reports and signed waivers are missing
+  - supplier-footprint escape and trial-route evidence is missing for all domains
+forbidden_claims:
+  - schematic_ready
+  - netclasses_ready
+  - erc_clean
+  - trial_route_ready
+  - routed_pcb_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

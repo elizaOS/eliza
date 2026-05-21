@@ -25,6 +25,22 @@
         "step_received": "",
         "sample_received": ""
       },
+      "required_return_artifacts": [
+        "signed_2d_stack_drawing",
+        "native_or_step_stack_model",
+        "fpc_pinout_and_mating_connector",
+        "display_sample_photos"
+      ],
+      "required_technical_decisions": [
+        "cover_glass_bonded_or_separate",
+        "fpc_exit_side_and_bend_radius",
+        "touch_controller_and_init_sequence"
+      ],
+      "required_validation_outputs": [
+        "outline_tolerance_mm",
+        "active_area_offset_mm",
+        "connector_stack_height_mm"
+      ],
       "pass": false
     },
     {
@@ -37,6 +53,22 @@
         "step_received": "",
         "sample_received": ""
       },
+      "required_return_artifacts": [
+        "signed_receptacle_2d_drawing",
+        "step_model_with_shell_stakes",
+        "pcb_land_pattern",
+        "gasket_or_splash_path_review"
+      ],
+      "required_technical_decisions": [
+        "exact_connector_suffix",
+        "mid_mount_or_top_mount_orientation",
+        "gasket_seat_acceptance"
+      ],
+      "required_validation_outputs": [
+        "insertion_force_n",
+        "mating_cycle_rating",
+        "shell_stake_tolerance_mm"
+      ],
       "pass": false
     },
     {
@@ -49,6 +81,22 @@
         "step_received": "",
         "sample_received": ""
       },
+      "required_return_artifacts": [
+        "switch_drawing",
+        "cap_and_actuator_stack_drawing",
+        "silicone_gasket_material_spec",
+        "sample_force_curve"
+      ],
+      "required_technical_decisions": [
+        "power_switch_part_number",
+        "volume_switch_part_number",
+        "flex_or_direct_pcb_mount"
+      ],
+      "required_validation_outputs": [
+        "actuation_force_n",
+        "travel_mm",
+        "compression_set_percent"
+      ],
       "pass": false
     },
     {
@@ -61,6 +109,22 @@
         "step_received": "",
         "sample_received": ""
       },
+      "required_return_artifacts": [
+        "module_datasheet",
+        "module_step_model",
+        "pinout_and_reference_schematic",
+        "antenna_reference_design"
+      ],
+      "required_technical_decisions": [
+        "regional_sku",
+        "rf_connector_or_solder_feed",
+        "certification_path"
+      ],
+      "required_validation_outputs": [
+        "module_height_mm",
+        "peak_current_a",
+        "antenna_keepout_mm"
+      ],
       "pass": false
     },
     {
@@ -73,6 +137,22 @@
         "step_received": "",
         "sample_received": ""
       },
+      "required_return_artifacts": [
+        "module_datasheet",
+        "module_step_model",
+        "pinout_and_land_pattern",
+        "antenna_matching_reference"
+      ],
+      "required_technical_decisions": [
+        "module_or_chip_down",
+        "antenna_feed_strategy",
+        "coexistence_interface"
+      ],
+      "required_validation_outputs": [
+        "module_height_mm",
+        "antenna_clearance_mm",
+        "thermal_dissipation_w"
+      ],
       "pass": false
     },
     {
@@ -85,6 +165,22 @@
         "step_received": "",
         "sample_received": ""
       },
+      "required_return_artifacts": [
+        "signed_module_2d_drawing",
+        "step_model_with_lens_stack",
+        "fpc_pinout_and_connector",
+        "sample_capture_evidence"
+      ],
+      "required_technical_decisions": [
+        "sensor_and_lens_variant",
+        "fpc_exit_side",
+        "optical_center_datum"
+      ],
+      "required_validation_outputs": [
+        "module_total_height_mm",
+        "lens_center_offset_mm",
+        "minimum_focus_distance_mm"
+      ],
       "pass": false
     },
     {
@@ -97,6 +193,22 @@
         "step_received": "",
         "sample_received": ""
       },
+      "required_return_artifacts": [
+        "signed_module_2d_drawing",
+        "step_model_with_lens_stack",
+        "fpc_pinout_and_connector",
+        "behind_glass_sample_capture"
+      ],
+      "required_technical_decisions": [
+        "sensor_and_lens_variant",
+        "black_mask_aperture_size",
+        "under_glass_placement_datum"
+      ],
+      "required_validation_outputs": [
+        "module_total_height_mm",
+        "lens_center_offset_mm",
+        "glass_to_lens_gap_mm"
+      ],
       "pass": false
     },
     {
@@ -109,8 +221,24 @@
         "step_received": "",
         "sample_received": ""
       },
+      "required_return_artifacts": [
+        "tooling_quote",
+        "dfm_markup",
+        "tool_layout_drawing",
+        "orange_plaque_or_first_shot_photo"
+      ],
+      "required_technical_decisions": [
+        "tool_class_and_cavity_count",
+        "gate_runner_ejector_strategy",
+        "texture_and_color_standard"
+      ],
+      "required_validation_outputs": [
+        "tooling_lead_time_days",
+        "estimated_part_cost_usd_20",
+        "delta_e_orange"
+      ],
       "pass": false
     }
   ],
-  "release_rule": "Every supplier row must name the vendor/part/reviewer and confirm quote, 2D drawing, STEP, and sample receipt before supplier lock."
+  "release_rule": "Every supplier row must name the vendor/part/reviewer, confirm quote, 2D drawing, STEP, and sample receipt, and carry item-specific returned artifacts, technical decisions, and validation outputs before supplier lock."
 }

@@ -70,6 +70,18 @@
       "pass": true,
       "risk": "medium",
       "note": "Modeled ejectors prove review intent, not pin balance or cosmetic approval."
+    },
+    {
+      "id": "venting_air_trap_proxy",
+      "actual": {
+        "modeled_vent_slots": 10,
+        "vent_depth_mm": 0.04,
+        "vent_land_mm": 0.8
+      },
+      "target": "10 vents, 0.02-0.06 mm depth, >=0.5 mm land",
+      "pass": true,
+      "risk": "medium",
+      "note": "CAD vents make likely air-trap regions explicit; mold-flow must still confirm pressure, flash, and trapped-air removal."
     }
   ],
   "process_window": {
@@ -84,7 +96,7 @@
     ],
     "drying": "Dry PC+ABS per resin datasheet before molding; record dryer dew point and residence time.",
     "pack_hold": "Start with 95-99% fill transfer, stepped pack/hold DOE, and gate-freeze study.",
-    "venting": "Add vents at end-of-fill around top corners, camera window, USB saddle, and snap-hook roots.",
+    "venting": "Modeled vents at end-of-fill corners, camera/window, USB saddle, acoustic ports, and snap-hook roots; toolmaker must tune vent depth/land to resin and flash limits.",
     "cosmetic_controls": [
       "Orange color plaque approval before tool texture freeze.",
       "Gate vestige and blush review on first shots under production lighting.",

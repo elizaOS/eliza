@@ -418,6 +418,139 @@
     ]
   },
   {
+    "name": "rear_camera_cover_adhesive_top",
+    "role": "camera seal",
+    "material": "black PSA gasket above rear camera cover window",
+    "obj": "mechanical/e1-phone/out/rear_camera_cover_adhesive_top.obj",
+    "stl": "mechanical/e1-phone/out/rear_camera_cover_adhesive_top.stl",
+    "bounds_mm": [
+      [
+        15.95,
+        62.455,
+        -4.25
+      ],
+      [
+        26.05,
+        62.905,
+        -4.09
+      ]
+    ]
+  },
+  {
+    "name": "rear_camera_cover_adhesive_bottom",
+    "role": "camera seal",
+    "material": "black PSA gasket below rear camera cover window",
+    "obj": "mechanical/e1-phone/out/rear_camera_cover_adhesive_bottom.obj",
+    "stl": "mechanical/e1-phone/out/rear_camera_cover_adhesive_bottom.stl",
+    "bounds_mm": [
+      [
+        15.95,
+        52.695,
+        -4.25
+      ],
+      [
+        26.05,
+        53.145,
+        -4.09
+      ]
+    ]
+  },
+  {
+    "name": "rear_camera_cover_adhesive_left",
+    "role": "camera seal",
+    "material": "black PSA gasket left of rear camera cover window",
+    "obj": "mechanical/e1-phone/out/rear_camera_cover_adhesive_left.obj",
+    "stl": "mechanical/e1-phone/out/rear_camera_cover_adhesive_left.stl",
+    "bounds_mm": [
+      [
+        15.895,
+        53.2,
+        -4.25
+      ],
+      [
+        16.345,
+        62.4,
+        -4.09
+      ]
+    ]
+  },
+  {
+    "name": "rear_camera_cover_adhesive_right",
+    "role": "camera seal",
+    "material": "black PSA gasket right of rear camera cover window",
+    "obj": "mechanical/e1-phone/out/rear_camera_cover_adhesive_right.obj",
+    "stl": "mechanical/e1-phone/out/rear_camera_cover_adhesive_right.stl",
+    "bounds_mm": [
+      [
+        25.655,
+        53.2,
+        -4.25
+      ],
+      [
+        26.105,
+        62.4,
+        -4.09
+      ]
+    ]
+  },
+  {
+    "name": "rear_camera_light_baffle_top",
+    "role": "camera seal",
+    "material": "black molded rear camera anti-dust light baffle",
+    "obj": "mechanical/e1-phone/out/rear_camera_light_baffle_top.obj",
+    "stl": "mechanical/e1-phone/out/rear_camera_light_baffle_top.stl",
+    "bounds_mm": [
+      [
+        16.85,
+        61.475,
+        -4.725
+      ],
+      [
+        25.15,
+        61.825,
+        -4.175
+      ]
+    ]
+  },
+  {
+    "name": "rear_camera_light_baffle_bottom",
+    "role": "camera seal",
+    "material": "black molded rear camera anti-dust light baffle",
+    "obj": "mechanical/e1-phone/out/rear_camera_light_baffle_bottom.obj",
+    "stl": "mechanical/e1-phone/out/rear_camera_light_baffle_bottom.stl",
+    "bounds_mm": [
+      [
+        16.85,
+        53.775,
+        -4.725
+      ],
+      [
+        25.15,
+        54.125,
+        -4.175
+      ]
+    ]
+  },
+  {
+    "name": "front_camera_black_mask_window",
+    "role": "camera seal",
+    "material": "black printed mask datum around front under-glass camera",
+    "obj": "mechanical/e1-phone/out/front_camera_black_mask_window.obj",
+    "stl": "mechanical/e1-phone/out/front_camera_black_mask_window.stl",
+    "bounds_mm": [
+      [
+        -21.5,
+        65.3,
+        4.66
+      ],
+      [
+        -16.5,
+        70.3,
+        4.78
+      ]
+    ]
+  },
+  {
     "name": "power_button_cap",
     "role": "button",
     "material": "orange molded cap",
@@ -698,6 +831,101 @@
       [
         34.5,
         -51.5,
+        -1.76
+      ]
+    ]
+  },
+  {
+    "name": "side_key_flex_connector",
+    "role": "side-key interconnect",
+    "material": "5-pin side-key board-to-FPC connector envelope",
+    "obj": "mechanical/e1-phone/out/side_key_flex_connector.obj",
+    "stl": "mechanical/e1-phone/out/side_key_flex_connector.stl",
+    "bounds_mm": [
+      [
+        -14.0,
+        37.0,
+        -1.65
+      ],
+      [
+        -2.0,
+        40.0,
+        -0.85
+      ]
+    ]
+  },
+  {
+    "name": "side_key_volume_flex_tail",
+    "role": "side-key interconnect",
+    "material": "polyimide FPC tail from side-key connector toward volume actuator",
+    "obj": "mechanical/e1-phone/out/side_key_volume_flex_tail.obj",
+    "stl": "mechanical/e1-phone/out/side_key_volume_flex_tail.stl",
+    "bounds_mm": [
+      [
+        -32.5,
+        37.5,
+        -1.94
+      ],
+      [
+        -9.0,
+        39.5,
+        -1.76
+      ]
+    ]
+  },
+  {
+    "name": "side_key_volume_actuator_tail",
+    "role": "side-key interconnect",
+    "material": "polyimide FPC tail serving volume button dome contacts",
+    "obj": "mechanical/e1-phone/out/side_key_volume_actuator_tail.obj",
+    "stl": "mechanical/e1-phone/out/side_key_volume_actuator_tail.stl",
+    "bounds_mm": [
+      [
+        -32.5,
+        11.5,
+        -1.94
+      ],
+      [
+        -30.5,
+        39.5,
+        -1.76
+      ]
+    ]
+  },
+  {
+    "name": "side_key_power_flex_tail",
+    "role": "side-key interconnect",
+    "material": "polyimide FPC tail from side-key connector toward power actuator",
+    "obj": "mechanical/e1-phone/out/side_key_power_flex_tail.obj",
+    "stl": "mechanical/e1-phone/out/side_key_power_flex_tail.stl",
+    "bounds_mm": [
+      [
+        -9.0,
+        37.5,
+        -1.94
+      ],
+      [
+        31.0,
+        39.5,
+        -1.76
+      ]
+    ]
+  },
+  {
+    "name": "side_key_power_actuator_tail",
+    "role": "side-key interconnect",
+    "material": "polyimide FPC tail serving power button dome contact",
+    "obj": "mechanical/e1-phone/out/side_key_power_actuator_tail.obj",
+    "stl": "mechanical/e1-phone/out/side_key_power_actuator_tail.stl",
+    "bounds_mm": [
+      [
+        30.0,
+        18.0,
+        -1.94
+      ],
+      [
+        32.0,
+        40.0,
         -1.76
       ]
     ]

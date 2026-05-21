@@ -1,0 +1,85 @@
+schema: eliza.e1_phone_supplier_pinout.v1
+part: TPS65987DDH
+manufacturer: Texas Instruments
+package: 96-pin QFN, RSH package (9 x 9 mm, 0.4 mm pitch), USB Type-C and USB PD 3.1 controller with integrated power switches
+source_doc: https://www.ti.com/lit/ds/symlink/tps65987d.pdf
+source_doc_alt:
+  - https://www.ti.com/product/TPS65987D
+  - https://www.ti.com/lit/an/slva888c/slva888c.pdf
+  - https://www.ti.com/lit/pdf/slvubh2
+source_doc_revision: TPS65987D datasheet rev. as of 2024
+captured_date: 2026-05-21
+captured_by: agent
+evidence_class: public_supplier_datasheet
+notes: |
+  TPS65987DDH is USB-PD 3.1 / USB Type-C controller with integrated PPHV power
+  FETs (up to 60 W per port), BC1.2, 20 GPIOs, Cortex-M0 core, and dual-CC
+  detection. Package marking RSHR = 96-pin QFN. The interface group set below
+  is verified from the public TI datasheet (pp. 1-3) and Hardware Design Guide
+  (SLVA888). Per-pin ball assignment table is on datasheet pp. ~5-9 (binary
+  PDF, not extractable via WebFetch). For KiCad symbol authoring, pull the
+  TI .bsdl / pin file from TI.com (free public download).
+mechanical:
+  package: QFN
+  pin_count: 96
+  pitch_mm: 0.4
+  body_mm: [9.0, 9.0]
+  height_mm_max: 1.0
+electrical:
+  vin_3v3_v: [3.0, 3.6]
+  vbus_v: [3.3, 21.0]
+  power_max_w_per_port: 60
+  gpio_count: 20
+  i2c_count: 2
+  pd_spec: 3.1
+  type_c_spec: 1.2
+interface_pin_groups:
+  power_in:
+    - VIN_3V3 (digital + analog supply)
+    - LDO_1V8_OUT (internal LDO output, decap only)
+    - LDO_3V3_OUT (internal LDO output, decap only)
+    - GND (multiple, including thermal pad)
+  vbus_power:
+    - PP_HV (high-voltage source/sink port)
+    - PP_5V0 (5 V source path)
+    - PP_CABLE (Vconn supply for active cable powering)
+    - VBUS_SENSE (VBUS voltage divider feedback)
+  cc:
+    - CC1
+    - CC2
+  data:
+    - HSD_P (USB 2.0 D+ through-mux)
+    - HSD_N (USB 2.0 D- through-mux)
+    - DM_IN_P / DM_IN_N (alt routing in active mux variant)
+  bc12:
+    - DP_IN / DM_IN (charging detection)
+  host_interface:
+    - I2C1_SDA (host I2C target)
+    - I2C1_SCL
+    - I2C2_SDA (secondary I2C)
+    - I2C2_SCL
+    - SPI_MISO (boot SPI flash)
+    - SPI_MOSI
+    - SPI_CLK
+    - SPI_CS_N
+    - I2C_IRQ_N (interrupt to host)
+  gpio:
+    - GPIO_0 .. GPIO_19 (20 user-programmable GPIO)
+  config_strap:
+    - ADCIN1 (configuration ADC inputs)
+    - ADCIN2
+  thermistor:
+    - TS_C (cable thermistor)
+  thermal:
+    - PAD (exposed thermal pad, tie to GND)
+pins:
+  - pin: ALL
+    name: fetch_required
+    function: full_96qfn_pin_table
+    direction: unknown
+    voltage_v: null
+    notes: |
+      Pull per-pin table from TI TPS65987D datasheet pp. 5-9 (binary PDF figure)
+      or from TI's published .bsdl / IBIS files at
+      https://www.ti.com/product/TPS65987D. Interface groups above are verified
+      from datasheet text body.

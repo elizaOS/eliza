@@ -19,4 +19,4 @@ Template: `mechanical/e1-phone/review/supplier-response-template.csv`
 
 ## Release Rule
 
-- Every supplier row must name the vendor/part/reviewer and confirm quote, 2D drawing, STEP, and sample receipt before supplier lock.
+- Every supplier row must name the vendor/part/reviewer, confirm quote, 2D drawing, STEP, and sample receipt, and carry item-specific returned artifacts, technical decisions, and validation outputs before supplier lock.

@@ -32,6 +32,7 @@ This report records the EVT0 CAD visual decisions and the manual review items st
 - PASS: `hard_orange_shell_visible`
 - PASS: `black_glass_front_visible`
 - PASS: `component_stack_visible`
+- PASS: `rear_feature_detail_visible`
 - PASS: `compact_screen_margin`
 
 ## Manual Review Items

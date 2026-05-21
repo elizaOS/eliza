@@ -13,10 +13,10 @@
     1. drops symlinks directly under device/eliza/eliza_ai_soc/ pointing at the
        repo-local overlay (default; no network round-trip), or
     2. writes this local manifest into .repo/local_manifests/ after rewriting
-       the placeholder remote to point at the Milady checkout (file:// URL).
+       the placeholder remote to point at the elizaOS checkout (file:// URL).
 
   The `remote` URL is intentionally a placeholder; build-aosp-riscv64.sh
-  rewrites it to the actual Milady repo path at sync time when run in
+  rewrites it to the actual elizaOS repo path at sync time when run in
   local-manifest mode (device-overlay-mode set to "local-manifest").
 
   This file must enumerate every overlay file required by AOSP `m` for the

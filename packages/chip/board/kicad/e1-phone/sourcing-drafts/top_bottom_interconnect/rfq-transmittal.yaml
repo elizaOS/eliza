@@ -1,0 +1,62 @@
+schema: eliza.e1_phone_supplier_rfq_transmittal_draft.v1
+status: draft_not_sent_not_supplier_evidence
+date: '2026-05-21'
+claim_boundary: Draft RFQ transmittal package only. These drafts are not sent RFQs, supplier responses, approved
+  quotes, samples, signed drawings, pinouts, footprints, STEP evidence, or authorization to route or fabricate the
+  PCB.
+draft:
+  draft_id: e1_phone_top_bottom_interconnect_rfq_2026-05-21
+  function: top_bottom_interconnect
+  status: draft_not_sent_not_supplier_evidence
+  primary_candidate: Hirose_BM28_class_board_to_board_or_flex_stack
+  package_binding: package/interconnect/e1-phone-top-bottom-flex.yaml
+  source_basis:
+    - preliminary top/bottom interconnect binding
+  verified_public_source_ids: []
+  recipient_candidates: []
+  request:
+    quote_quantities:
+      - 10
+      - 100
+      - 1000
+    minimum_sample_lot: 5
+    response_due_date: '2026-06-04'
+    required_response_format: supplier_signed_pdf_or_native_cad_plus_machine_readable_summary
+    accepted_document_languages:
+      - english
+      - bilingual_supplier_original_plus_english
+    required_supplier_artifacts:
+      - exact mating connector pair MPNs and circuit count
+      - top and bottom connector pinout plus flex pinout with ground-return allocation
+      - connector land patterns, keepouts, mated height, retention, and cycle rating
+      - STEP model for both mating connectors, stiffeners, and flex/board stack height
+      - flex stackup drawing with impedance, stiffeners, bend radius, and strain relief
+      - power contact current rating and ground/return allocation recommendation
+      - assembly drawing for mating sequence and inspection
+      - continuity and USB2/audio SI test recommendations
+    board_dependency:
+      - USB2, power, audio, haptic, control, and factory-test crossing nets
+      - full-width 64 x 87 mm battery cavity split-board topology
+  acceptance_gate_before_kicad_use:
+    orderable_mpn_received: false
+    signed_2d_drawing_received: false
+    pinout_or_pad_map_received: false
+    recommended_land_pattern_received: false
+    step_or_brep_model_received: false
+    sample_received_and_inspected: false
+    compliance_pack_received: false
+    pinout_symbol_footprint_reviews_complete: false
+  planned_archive_paths_after_send:
+    draft: board/kicad/e1-phone/sourcing-drafts/top_bottom_interconnect/rfq-transmittal.yaml
+    release_archive: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-transmittal.yaml
+    supplier_response_pack: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-response-pack.yaml
+forbidden_claims:
+  - rfq_sent
+  - supplier_response_received
+  - supplier_approved
+  - pinouts_frozen
+  - footprints_frozen
+  - step_models_bound
+  - production_archive_complete
+  - routed_pcb_ready
+  - enclosure_ready

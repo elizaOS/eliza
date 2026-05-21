@@ -416,5 +416,195 @@
         -15.8
       ]
     ]
+  },
+  {
+    "name": "mold_vent_slot_1_top_left_end_fill",
+    "role": "tooling",
+    "material": "shallow mold vent slot placeholder",
+    "obj": "mechanical/e1-phone/out/mold_vent_slot_1_top_left_end_fill.obj",
+    "stl": "mechanical/e1-phone/out/mold_vent_slot_1_top_left_end_fill.stl",
+    "bounds_mm": [
+      [
+        -34.0,
+        76.85,
+        -8.82
+      ],
+      [
+        -30.0,
+        77.65,
+        -8.78
+      ]
+    ]
+  },
+  {
+    "name": "mold_vent_slot_2_top_right_end_fill",
+    "role": "tooling",
+    "material": "shallow mold vent slot placeholder",
+    "obj": "mechanical/e1-phone/out/mold_vent_slot_2_top_right_end_fill.obj",
+    "stl": "mechanical/e1-phone/out/mold_vent_slot_2_top_right_end_fill.stl",
+    "bounds_mm": [
+      [
+        30.0,
+        76.85,
+        -8.82
+      ],
+      [
+        34.0,
+        77.65,
+        -8.78
+      ]
+    ]
+  },
+  {
+    "name": "mold_vent_slot_3_camera_window_upper",
+    "role": "tooling",
+    "material": "shallow mold vent slot placeholder",
+    "obj": "mechanical/e1-phone/out/mold_vent_slot_3_camera_window_upper.obj",
+    "stl": "mechanical/e1-phone/out/mold_vent_slot_3_camera_window_upper.stl",
+    "bounds_mm": [
+      [
+        18.5,
+        65.9,
+        -8.82
+      ],
+      [
+        23.5,
+        66.7,
+        -8.78
+      ]
+    ]
+  },
+  {
+    "name": "mold_vent_slot_4_camera_window_lower",
+    "role": "tooling",
+    "material": "shallow mold vent slot placeholder",
+    "obj": "mechanical/e1-phone/out/mold_vent_slot_4_camera_window_lower.obj",
+    "stl": "mechanical/e1-phone/out/mold_vent_slot_4_camera_window_lower.stl",
+    "bounds_mm": [
+      [
+        18.5,
+        48.9,
+        -8.82
+      ],
+      [
+        23.5,
+        49.7,
+        -8.78
+      ]
+    ]
+  },
+  {
+    "name": "mold_vent_slot_5_usb_saddle_left",
+    "role": "tooling",
+    "material": "shallow mold vent slot placeholder",
+    "obj": "mechanical/e1-phone/out/mold_vent_slot_5_usb_saddle_left.obj",
+    "stl": "mechanical/e1-phone/out/mold_vent_slot_5_usb_saddle_left.stl",
+    "bounds_mm": [
+      [
+        -10.0,
+        -77.9,
+        -8.82
+      ],
+      [
+        -6.0,
+        -77.1,
+        -8.78
+      ]
+    ]
+  },
+  {
+    "name": "mold_vent_slot_6_usb_saddle_right",
+    "role": "tooling",
+    "material": "shallow mold vent slot placeholder",
+    "obj": "mechanical/e1-phone/out/mold_vent_slot_6_usb_saddle_right.obj",
+    "stl": "mechanical/e1-phone/out/mold_vent_slot_6_usb_saddle_right.stl",
+    "bounds_mm": [
+      [
+        6.0,
+        -77.9,
+        -8.82
+      ],
+      [
+        10.0,
+        -77.1,
+        -8.78
+      ]
+    ]
+  },
+  {
+    "name": "mold_vent_slot_7_speaker_grille_end_fill",
+    "role": "tooling",
+    "material": "shallow mold vent slot placeholder",
+    "obj": "mechanical/e1-phone/out/mold_vent_slot_7_speaker_grille_end_fill.obj",
+    "stl": "mechanical/e1-phone/out/mold_vent_slot_7_speaker_grille_end_fill.stl",
+    "bounds_mm": [
+      [
+        15.0,
+        -77.9,
+        -8.82
+      ],
+      [
+        21.0,
+        -77.1,
+        -8.78
+      ]
+    ]
+  },
+  {
+    "name": "mold_vent_slot_8_handset_slot_end_fill",
+    "role": "tooling",
+    "material": "shallow mold vent slot placeholder",
+    "obj": "mechanical/e1-phone/out/mold_vent_slot_8_handset_slot_end_fill.obj",
+    "stl": "mechanical/e1-phone/out/mold_vent_slot_8_handset_slot_end_fill.stl",
+    "bounds_mm": [
+      [
+        -3.0,
+        69.4,
+        -8.82
+      ],
+      [
+        3.0,
+        70.2,
+        -8.78
+      ]
+    ]
+  },
+  {
+    "name": "mold_vent_slot_9_left_snap_hook_roots",
+    "role": "tooling",
+    "material": "shallow mold vent slot placeholder",
+    "obj": "mechanical/e1-phone/out/mold_vent_slot_9_left_snap_hook_roots.obj",
+    "stl": "mechanical/e1-phone/out/mold_vent_slot_9_left_snap_hook_roots.stl",
+    "bounds_mm": [
+      [
+        -39.85,
+        -8.0,
+        -8.82
+      ],
+      [
+        -39.05,
+        8.0,
+        -8.78
+      ]
+    ]
+  },
+  {
+    "name": "mold_vent_slot_10_right_snap_hook_roots",
+    "role": "tooling",
+    "material": "shallow mold vent slot placeholder",
+    "obj": "mechanical/e1-phone/out/mold_vent_slot_10_right_snap_hook_roots.obj",
+    "stl": "mechanical/e1-phone/out/mold_vent_slot_10_right_snap_hook_roots.stl",
+    "bounds_mm": [
+      [
+        39.05,
+        -8.0,
+        -8.82
+      ],
+      [
+        39.85,
+        8.0,
+        -8.78
+      ]
+    ]
   }
 ]

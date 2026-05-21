@@ -11,17 +11,17 @@
       "function": "charging_data_debug_single_usb_c_port",
       "region_mm": {
         "x": 26.0,
-        "y": 124.0,
+        "y": 126.0,
         "width": 16.0,
         "height": 6.0
       },
       "expected_center_mm": {
         "x": 34.0,
-        "y": 127.0
+        "y": 129.0
       },
       "actual_footprint_at_mm": {
         "x": 34.0,
-        "y": 127.0
+        "y": 129.0
       },
       "center_error_mm": 0.0,
       "tolerance_mm": 0.25,
@@ -31,17 +31,17 @@
       "id": "SW_POWER_VOL",
       "function": "power_volume_side_key_flex_connector",
       "region_mm": {
-        "x": 2.0,
+        "x": 18.0,
         "y": 26.0,
-        "width": 16.0,
+        "width": 12.0,
         "height": 3.0
       },
       "expected_center_mm": {
-        "x": 10.0,
+        "x": 24.0,
         "y": 27.5
       },
       "actual_footprint_at_mm": {
-        "x": 10.0,
+        "x": 24.0,
         "y": 27.5
       },
       "center_error_mm": 0.0,
@@ -50,20 +50,20 @@
     },
     {
       "id": "J_DISPLAY_TOUCH",
-      "function": "5p5_in_fhd_mipi_display_touch",
+      "function": "5p5_in_fhd_mipi_display_touch_fpc_connector_escape",
       "region_mm": {
-        "x": 49.0,
-        "y": 8.0,
-        "width": 13.0,
-        "height": 19.0
+        "x": 45.0,
+        "y": 3.0,
+        "width": 17.0,
+        "height": 8.0
       },
       "expected_center_mm": {
-        "x": 55.5,
-        "y": 17.5
+        "x": 53.5,
+        "y": 7.0
       },
       "actual_footprint_at_mm": {
-        "x": 55.5,
-        "y": 17.5
+        "x": 53.5,
+        "y": 7.0
       },
       "center_error_mm": 0.0,
       "tolerance_mm": 0.25,
@@ -71,20 +71,20 @@
     },
     {
       "id": "J_CAM0_CAM1",
-      "function": "rear_and_front_mipi_csi_cameras",
+      "function": "rear_and_front_mipi_csi_camera_fpc_connector_escape",
       "region_mm": {
         "x": 45.0,
-        "y": 3.0,
+        "y": 12.0,
         "width": 17.0,
-        "height": 24.0
+        "height": 13.0
       },
       "expected_center_mm": {
         "x": 53.5,
-        "y": 15.0
+        "y": 18.5
       },
       "actual_footprint_at_mm": {
         "x": 53.5,
-        "y": 15.0
+        "y": 18.5
       },
       "center_error_mm": 0.0,
       "tolerance_mm": 0.25,
@@ -94,18 +94,18 @@
       "id": "U_CELL",
       "function": "cellular_5g_redcap_module",
       "region_mm": {
-        "x": 4.0,
-        "y": 8.0,
-        "width": 13.0,
-        "height": 19.0
+        "x": 3.0,
+        "y": 3.0,
+        "width": 14.0,
+        "height": 14.0
       },
       "expected_center_mm": {
-        "x": 10.5,
-        "y": 17.5
+        "x": 10.0,
+        "y": 10.0
       },
       "actual_footprint_at_mm": {
-        "x": 10.5,
-        "y": 17.5
+        "x": 10.0,
+        "y": 10.0
       },
       "center_error_mm": 0.0,
       "tolerance_mm": 0.25,
@@ -116,17 +116,17 @@
       "function": "wifi_6e_bluetooth_module",
       "region_mm": {
         "x": 3.0,
-        "y": 22.0,
+        "y": 18.0,
         "width": 14.0,
-        "height": 7.0
+        "height": 10.0
       },
       "expected_center_mm": {
         "x": 10.0,
-        "y": 25.5
+        "y": 23.0
       },
       "actual_footprint_at_mm": {
         "x": 10.0,
-        "y": 25.5
+        "y": 23.0
       },
       "center_error_mm": 0.0,
       "tolerance_mm": 0.25,
@@ -136,18 +136,18 @@
       "id": "U_PMIC_CHARGER",
       "function": "pmic_charger_power_path",
       "region_mm": {
-        "x": 32.0,
-        "y": 20.0,
-        "width": 12.0,
-        "height": 9.0
+        "x": 18.0,
+        "y": 18.0,
+        "width": 13.0,
+        "height": 8.0
       },
       "expected_center_mm": {
-        "x": 38.0,
-        "y": 24.5
+        "x": 24.5,
+        "y": 22.0
       },
       "actual_footprint_at_mm": {
-        "x": 38.0,
-        "y": 24.5
+        "x": 24.5,
+        "y": 22.0
       },
       "center_error_mm": 0.0,
       "tolerance_mm": 0.25,
@@ -157,17 +157,17 @@
       "id": "J_BATTERY",
       "function": "battery_pack_power_thermistor_id",
       "region_mm": {
-        "x": 18.0,
+        "x": 31.0,
         "y": 27.0,
         "width": 12.0,
         "height": 2.0
       },
       "expected_center_mm": {
-        "x": 24.0,
+        "x": 37.0,
         "y": 28.0
       },
       "actual_footprint_at_mm": {
-        "x": 24.0,
+        "x": 37.0,
         "y": 28.0
       },
       "center_error_mm": 0.0,
@@ -179,17 +179,17 @@
       "function": "compute_memory_storage",
       "region_mm": {
         "x": 18.0,
-        "y": 5.0,
+        "y": 3.0,
         "width": 25.0,
         "height": 14.0
       },
       "expected_center_mm": {
         "x": 30.5,
-        "y": 12.0
+        "y": 10.0
       },
       "actual_footprint_at_mm": {
         "x": 30.5,
-        "y": 12.0
+        "y": 10.0
       },
       "center_error_mm": 0.0,
       "tolerance_mm": 0.25,
@@ -197,20 +197,20 @@
     },
     {
       "id": "U_AUDIO_SPK_MIC",
-      "function": "speakers_microphones_audio_codec_haptics",
+      "function": "bottom_left_audio_codec_speaker_microphone_haptic_connector_escape",
       "region_mm": {
-        "x": 5.0,
-        "y": 118.0,
-        "width": 57.0,
+        "x": 3.0,
+        "y": 120.0,
+        "width": 22.0,
         "height": 8.0
       },
       "expected_center_mm": {
-        "x": 33.5,
-        "y": 122.0
+        "x": 14.0,
+        "y": 124.0
       },
       "actual_footprint_at_mm": {
-        "x": 33.5,
-        "y": 122.0
+        "x": 14.0,
+        "y": 124.0
       },
       "center_error_mm": 0.0,
       "tolerance_mm": 0.25,
@@ -221,17 +221,17 @@
       "function": "top_mate_for_split_board_interconnect",
       "region_mm": {
         "x": 46.0,
-        "y": 27.0,
+        "y": 26.0,
         "width": 16.0,
         "height": 3.0
       },
       "expected_center_mm": {
         "x": 54.0,
-        "y": 28.5
+        "y": 27.5
       },
       "actual_footprint_at_mm": {
         "x": 54.0,
-        "y": 28.5
+        "y": 27.5
       },
       "center_error_mm": 0.0,
       "tolerance_mm": 0.25,
@@ -264,7 +264,7 @@
       "id": "J_USB_C",
       "region_mm": {
         "x": 26.0,
-        "y": 124.0,
+        "y": 126.0,
         "width": 16.0,
         "height": 6.0
       },
@@ -277,7 +277,7 @@
             "width": 8.94,
             "height": 7.8
           },
-          "gap_to_region_mm": 4.8
+          "gap_to_region_mm": 2.8
         },
         {
           "part": "usb_c_external_aperture",
@@ -287,7 +287,7 @@
             "width": 10.2,
             "height": 0.35
           },
-          "gap_to_region_mm": 12.705
+          "gap_to_region_mm": 10.705
         },
         {
           "part": "orange_usb_reinforcement_saddle",
@@ -297,10 +297,10 @@
             "width": 18.0,
             "height": 2.0
           },
-          "gap_to_region_mm": 3.4
+          "gap_to_region_mm": 1.4
         }
       ],
-      "best_gap_mm": 3.4,
+      "best_gap_mm": 1.4,
       "tolerance_mm": 12.0,
       "pass": true,
       "why": "USB-C footprint must stay aligned with the molded bottom aperture and insertion-load saddle."
@@ -308,45 +308,35 @@
     {
       "id": "SW_POWER_VOL",
       "region_mm": {
-        "x": 2.0,
+        "x": 18.0,
         "y": 26.0,
-        "width": 16.0,
+        "width": 12.0,
         "height": 3.0
       },
       "cad_parts": [
         {
-          "part": "volume_button_cap",
+          "part": "side_key_flex_connector",
           "projected_rect_mm": {
-            "x": -8.55,
-            "y": 41.5,
-            "width": 2.0,
-            "height": 21.0
+            "x": 18.0,
+            "y": 26.0,
+            "width": 12.0,
+            "height": 3.0
           },
-          "gap_to_region_mm": 15.144
-        },
-        {
-          "part": "power_button_cap",
-          "projected_rect_mm": {
-            "x": 70.55,
-            "y": 40.0,
-            "width": 2.0,
-            "height": 12.0
-          },
-          "gap_to_region_mm": 53.689
+          "gap_to_region_mm": 0.0
         }
       ],
-      "best_gap_mm": 15.144,
-      "tolerance_mm": 16.0,
+      "best_gap_mm": 0.0,
+      "tolerance_mm": 1.0,
       "pass": true,
-      "why": "Side-key flex connector must stay reachable from the molded orange button caps after moving off the full-width battery zone."
+      "why": "Side-key footprint must align to the modeled board-side FPC connector, while flex tails carry actuation to the molded orange button caps."
     },
     {
       "id": "J_DISPLAY_TOUCH",
       "region_mm": {
-        "x": 49.0,
-        "y": 8.0,
-        "width": 13.0,
-        "height": 19.0
+        "x": 45.0,
+        "y": 3.0,
+        "width": 17.0,
+        "height": 8.0
       },
       "cad_parts": [
         {
@@ -379,9 +369,9 @@
       "id": "J_CAM0_CAM1",
       "region_mm": {
         "x": 45.0,
-        "y": 3.0,
+        "y": 12.0,
         "width": 17.0,
-        "height": 24.0
+        "height": 13.0
       },
       "cad_parts": [
         {
@@ -402,7 +392,7 @@
             "width": 6.5,
             "height": 6.5
           },
-          "gap_to_region_mm": 28.792
+          "gap_to_region_mm": 30.625
         },
         {
           "part": "rear_camera_cover_glass",
@@ -423,10 +413,10 @@
     {
       "id": "U_CELL",
       "region_mm": {
-        "x": 4.0,
-        "y": 8.0,
-        "width": 13.0,
-        "height": 19.0
+        "x": 3.0,
+        "y": 3.0,
+        "width": 14.0,
+        "height": 14.0
       },
       "cad_parts": [
         {
@@ -447,7 +437,7 @@
             "width": 62.0,
             "height": 6.0
           },
-          "gap_to_region_mm": 10.4
+          "gap_to_region_mm": 5.4
         }
       ],
       "best_gap_mm": 0.0,
@@ -459,9 +449,9 @@
       "id": "U_WIFI_BT",
       "region_mm": {
         "x": 3.0,
-        "y": 22.0,
+        "y": 18.0,
         "width": 14.0,
-        "height": 7.0
+        "height": 10.0
       },
       "cad_parts": [
         {
@@ -493,10 +483,10 @@
     {
       "id": "U_PMIC_CHARGER",
       "region_mm": {
-        "x": 32.0,
-        "y": 20.0,
-        "width": 12.0,
-        "height": 9.0
+        "x": 18.0,
+        "y": 18.0,
+        "width": 13.0,
+        "height": 8.0
       },
       "cad_parts": [
         {
@@ -507,7 +497,7 @@
             "width": 11.0,
             "height": 10.0
           },
-          "gap_to_region_mm": 4.0
+          "gap_to_region_mm": 8.246
         },
         {
           "part": "usb_c_receptacle",
@@ -517,10 +507,10 @@
             "width": 8.94,
             "height": 7.8
           },
-          "gap_to_region_mm": 105.8
+          "gap_to_region_mm": 108.8
         }
       ],
-      "best_gap_mm": 4.0,
+      "best_gap_mm": 8.246,
       "tolerance_mm": 14.0,
       "pass": true,
       "why": "PMIC/charger region must stay close to the USB-C power path and shielded power zone."
@@ -528,7 +518,7 @@
     {
       "id": "J_BATTERY",
       "region_mm": {
-        "x": 18.0,
+        "x": 31.0,
         "y": 27.0,
         "width": 12.0,
         "height": 2.0
@@ -564,7 +554,7 @@
       "id": "U_SOC_LPDDR_UFS",
       "region_mm": {
         "x": 18.0,
-        "y": 5.0,
+        "y": 3.0,
         "width": 25.0,
         "height": 14.0
       },
@@ -598,9 +588,9 @@
     {
       "id": "U_AUDIO_SPK_MIC",
       "region_mm": {
-        "x": 5.0,
-        "y": 118.0,
-        "width": 57.0,
+        "x": 3.0,
+        "y": 120.0,
+        "width": 22.0,
         "height": 8.0
       },
       "cad_parts": [
@@ -612,7 +602,7 @@
             "width": 15.0,
             "height": 11.0
           },
-          "gap_to_region_mm": 0.0
+          "gap_to_region_mm": 18.0
         },
         {
           "part": "bottom_mic",
@@ -622,7 +612,7 @@
             "width": 3.5,
             "height": 2.65
           },
-          "gap_to_region_mm": 7.275
+          "gap_to_region_mm": 5.275
         },
         {
           "part": "haptic_lra",
@@ -632,10 +622,10 @@
             "width": 6.0,
             "height": 12.0
           },
-          "gap_to_region_mm": 3.202
+          "gap_to_region_mm": 39.702
         }
       ],
-      "best_gap_mm": 0.0,
+      "best_gap_mm": 5.275,
       "tolerance_mm": 18.0,
       "pass": true,
       "why": "Bottom audio/haptic region must stay connected to speaker, microphone, and haptic envelopes."

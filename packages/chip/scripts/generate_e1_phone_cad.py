@@ -4953,6 +4953,54 @@ def write_display_validation_artifacts(
             "notes": "Glass crack, adhesive lift, or LCM shift after EVT drop screen check.",
         },
     ]
+    required_evidence_by_measurement = {
+        "display_bond_peel_n_per_mm": [
+            "display_peel_force_raw_csv",
+            "peel_fixture_calibration_certificate",
+            "bond_perimeter_photo",
+            "display_adhesive_lot_record",
+        ],
+        "screen_adhesive_compression_mm": [
+            "compression_height_raw_csv",
+            "screen_bond_fixture_certificate",
+            "compression_witness_photo",
+            "display_adhesive_lot_record",
+        ],
+        "display_fpc_bend_radius_mm": [
+            "fpc_bend_radius_measurement_csv",
+            "optical_measurement_fixture_certificate",
+            "mated_fpc_bend_photo",
+            "display_module_lot_record",
+        ],
+        "display_luminance_cd_m2": [
+            "display_luminance_raw_csv",
+            "colorimeter_calibration_certificate",
+            "white_screen_photo",
+            "display_module_lot_record",
+        ],
+        "touch_grid_dead_zones": [
+            "touch_grid_raw_log",
+            "touch_fixture_calibration_record",
+            "touch_grid_screenshot",
+            "display_touch_module_lot_record",
+        ],
+        "display_dsi_bringup_logs": [
+            "drm_or_surfaceflinger_bringup_log",
+            "display_driver_revision_record",
+            "display_image_output_photo",
+            "display_module_lot_record",
+        ],
+        "screen_drop_lift_or_glass_crack": [
+            "drop_test_result_log",
+            "drop_fixture_calibration_certificate",
+            "post_drop_screen_inspection_photo",
+            "display_glass_and_adhesive_lot_records",
+        ],
+    }
+    for measurement in measurements:
+        measurement["required_evidence_artifacts"] = required_evidence_by_measurement[
+            measurement["measurement_id"]
+        ]
     template_path = REVIEW_DIR / "display-results-template.csv"
     fieldnames = [
         "sample_id",
@@ -4963,6 +5011,12 @@ def write_display_validation_artifacts(
         "measured_value",
         "pass",
         "operator",
+        "evidence_class",
+        "required_evidence_artifacts",
+        "raw_data_artifact",
+        "fixture_calibration_certificate",
+        "photo_or_log_artifact",
+        "lot_traceability_record",
         "notes",
     ]
     with template_path.open("w", newline="") as csv_file:
@@ -4979,6 +5033,14 @@ def write_display_validation_artifacts(
                     "measured_value": "",
                     "pass": "",
                     "operator": "",
+                    "evidence_class": "",
+                    "required_evidence_artifacts": ";".join(
+                        measurement["required_evidence_artifacts"]
+                    ),
+                    "raw_data_artifact": "",
+                    "fixture_calibration_certificate": "",
+                    "photo_or_log_artifact": "",
+                    "lot_traceability_record": "",
                     "notes": measurement["notes"],
                 }
             )
@@ -5029,11 +5091,23 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
     csv_path = REVIEW_DIR / "display-results-template.csv"
     expected = {item["measurement_id"]: item for item in display_validation["measurements"]}
     rows: list[dict[str, str]] = []
+    template_evidence_class = ""
     if csv_path.is_file():
-        with csv_path.open(newline="") as csv_file:
+        csv_text = csv_path.read_text()
+        csv_lines = csv_text.splitlines()
+        if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+            template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+            csv_text = "\n".join(csv_lines[1:]) + "\n"
+        with StringIO(csv_text) as csv_file:
             rows = list(csv.DictReader(csv_file))
 
     cases: list[dict[str, Any]] = []
+    forbidden_evidence_classes = {
+        "simulated_display_result_for_planning_not_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
     for row in rows:
         measurement_id = row.get("measurement_id", "")
         expected_item = expected.get(measurement_id, {})
@@ -5041,6 +5115,28 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
         pass_text = row.get("pass", "").strip().lower()
         sample_id = row.get("sample_id", "").strip()
         operator = row.get("operator", "").strip()
+        evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+        required_evidence_artifacts = [
+            artifact
+            for artifact in (
+                row.get("required_evidence_artifacts")
+                or ";".join(expected_item.get("required_evidence_artifacts", []))
+            ).split(";")
+            if artifact
+        ]
+        evidence_fields_present = all(
+            row.get(field, "").strip()
+            for field in [
+                "raw_data_artifact",
+                "fixture_calibration_certificate",
+                "photo_or_log_artifact",
+                "lot_traceability_record",
+            ]
+        )
+        evidence_class_allowed = (
+            evidence_class == "physical_display_result"
+            and evidence_class not in forbidden_evidence_classes
+        )
         measured_value: float | None = None
         parse_ok = False
         if measured_text:
@@ -5055,11 +5151,32 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
         within_max = measured_value is not None and (
             max_value in {"", None} or measured_value <= float(max_value)
         )
-        populated = bool(sample_id and operator and measured_text and pass_text)
+        populated = bool(
+            sample_id
+            and operator
+            and measured_text
+            and pass_text
+            and evidence_class
+            and required_evidence_artifacts
+            and evidence_fields_present
+        )
         cases.append(
             {
                 "measurement_id": measurement_id,
                 "expected_measurement": measurement_id in expected,
+                "evidence_class": evidence_class,
+                "evidence_class_allowed": evidence_class_allowed,
+                "required_evidence_artifacts": required_evidence_artifacts,
+                "raw_data_artifact_present": bool(row.get("raw_data_artifact", "").strip()),
+                "fixture_calibration_certificate_present": bool(
+                    row.get("fixture_calibration_certificate", "").strip()
+                ),
+                "photo_or_log_artifact_present": bool(
+                    row.get("photo_or_log_artifact", "").strip()
+                ),
+                "lot_traceability_record_present": bool(
+                    row.get("lot_traceability_record", "").strip()
+                ),
                 "populated": populated,
                 "numeric_check_pass": bool(parse_ok and within_min and within_max),
                 "declared_pass": pass_text in {"pass", "true", "yes", "1"},
@@ -5068,7 +5185,8 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
                 and parse_ok
                 and within_min
                 and within_max
-                and pass_text in {"pass", "true", "yes", "1"},
+                and pass_text in {"pass", "true", "yes", "1"}
+                and evidence_class_allowed,
             }
         )
 
@@ -5077,7 +5195,12 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
     failed_measurements = [
         case["measurement_id"]
         for case in cases
-        if case["populated"] and (not case["numeric_check_pass"] or not case["declared_pass"])
+        if case["populated"]
+        and (
+            not case["numeric_check_pass"]
+            or not case["declared_pass"]
+            or not case["evidence_class_allowed"]
+        )
     ]
     complete_count = sum(1 for case in cases if case["pass"])
     report = {
@@ -5088,13 +5211,16 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
         if complete_count == 0
         else "blocked_display_results_incomplete",
         "expected_measurement_count": len(expected),
+        "required_evidence_class": "physical_display_result",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
         "observed_row_count": len(cases),
         "complete_result_count": complete_count,
         "missing_measurements": missing_measurements,
         "blank_or_incomplete_measurements": blank_or_incomplete,
         "failed_measurements": failed_measurements,
         "cases": cases,
-        "release_rule": "Every display bond, FPC, touch, luminance, drop, and bring-up row must include sample, operator, numeric passing result, and explicit pass disposition.",
+        "release_rule": "Every display bond, FPC, touch, luminance, drop, and bring-up row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_display_result, raw measurement/log data, fixture calibration certificate, photo/log artifact, and display or adhesive lot traceability record.",
     }
     (REVIEW_DIR / "display-results-review.json").write_text(json.dumps(report, indent=2) + "\n")
 

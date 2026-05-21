@@ -1,0 +1,311 @@
+{
+  "claim_boundary": "Fail-closed routed-board mechanical clearance intake. Concept PCB envelope clearance does not prove routed PCB/component clearance.",
+  "status": "blocked_waiting_for_routed_board_step",
+  "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
+  "source_reviews": {
+    "board_step_readiness_status": "blocked_concept_pcb_no_routed_step",
+    "assembly_clearance_status": "pass",
+    "solid_cad_status": "generated"
+  },
+  "production_step_files": [],
+  "concept_pcb_step": "mechanical/e1-phone/out/main_pcb.step",
+  "required_height_models": [
+    "usb_c_receptacle",
+    "display_fpc_connector",
+    "split_interconnect_top_connector",
+    "split_interconnect_bottom_connector",
+    "rear_camera_module",
+    "front_camera_module",
+    "bottom_speaker_module",
+    "earpiece_receiver",
+    "haptic_lra",
+    "soc_shield_can",
+    "pmic_shield_can",
+    "radio_shield_can"
+  ],
+  "import_execution_plan": [
+    {
+      "step": "export_routed_kicad_step",
+      "owner": "layout",
+      "required_input": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+      "required_output": "board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step",
+      "blocks_clearance": true
+    },
+    {
+      "step": "replace_concept_main_pcb",
+      "owner": "mechanical",
+      "required_input": "board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step",
+      "required_output": "phone CAD assembly with routed board STEP and supplier 3D models",
+      "blocks_clearance": true
+    },
+    {
+      "step": "rerun_clearance_matrix",
+      "owner": "mechanical",
+      "required_input": "routed board assembly import",
+      "required_output": "mechanical/e1-phone/review/routed-board-clearance-results-template.csv populated",
+      "blocks_clearance": true
+    },
+    {
+      "step": "promote_to_full_boolean_review",
+      "owner": "mechanical",
+      "required_input": "routed board clearance pass and supplier B-rep models",
+      "required_output": "mechanical/e1-phone/review/full-cad-boolean-interference.json with complete passing results",
+      "blocks_clearance": true
+    }
+  ],
+  "expected_clearance_case_count": 10,
+  "complete_clearance_result_count": 0,
+  "results_template": "mechanical/e1-phone/review/routed-board-clearance-results-template.csv",
+  "cases": [
+    {
+      "id": "routed_board_step_available_for_import",
+      "pass": false,
+      "evidence": "board-step-readiness.json"
+    },
+    {
+      "id": "concept_pcb_step_not_release_evidence",
+      "pass": true,
+      "evidence": "mechanical/e1-phone/out/main_pcb.step",
+      "note": "Concept PCB STEP is retained only as a packaging placeholder."
+    },
+    {
+      "id": "height_critical_components_have_cad_envelopes",
+      "pass": true,
+      "evidence": "solid-cad-handoff.json"
+    },
+    {
+      "id": "clearance_rerun_cases_defined",
+      "pass": true,
+      "evidence": "assembly-clearance.json"
+    },
+    {
+      "id": "routed_step_clearance_results_present",
+      "pass": false,
+      "evidence": "mechanical/e1-phone/review/routed-board-clearance-results-template.csv",
+      "note": "Fail-closed until a routed KiCad STEP with supplier 3D models is imported and measured."
+    }
+  ],
+  "rerun_matrix": [
+    {
+      "case_id": "battery_to_pcb_islands",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 0.5,
+      "concept_required_mm": 0.5,
+      "concept_margin_mm": 0.0,
+      "rerun_priority": 1,
+      "risk_level": "high_less_than_0p1mm_margin",
+      "measurement_instruction": "Tight concept margin leaves little room for routed footprint, tolerance, or supplier STEP variation.",
+      "requires_routed_step_rerun": true
+    },
+    {
+      "case_id": "split_interconnect_connectors_on_pcb_islands",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 0.0,
+      "concept_required_mm": 0.0,
+      "concept_margin_mm": 0.0,
+      "rerun_priority": 1,
+      "risk_level": "high_zero_nominal_clearance",
+      "measurement_instruction": "Zero-clearance concept registration must be checked for routed component body and solder fillet interference.",
+      "requires_routed_step_rerun": true
+    },
+    {
+      "case_id": "usb_shell_to_external_aperture",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 0.175,
+      "concept_required_mm": 0.15,
+      "concept_margin_mm": 0.025,
+      "rerun_priority": 1,
+      "risk_level": "high_less_than_0p1mm_margin",
+      "measurement_instruction": "Tight concept margin leaves little room for routed footprint, tolerance, or supplier STEP variation.",
+      "requires_routed_step_rerun": true
+    },
+    {
+      "case_id": "bottom_mic_to_usb",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 11.78,
+      "concept_required_mm": 1.0,
+      "concept_margin_mm": 10.78,
+      "rerun_priority": 3,
+      "risk_level": "medium_functional_interface",
+      "measurement_instruction": "Functional interface clearance affects assembly, service, or user-facing fit.",
+      "requires_routed_step_rerun": true
+    },
+    {
+      "case_id": "front_camera_to_earpiece",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 9.75,
+      "concept_required_mm": 1.0,
+      "concept_margin_mm": 8.75,
+      "rerun_priority": 3,
+      "risk_level": "medium_functional_interface",
+      "measurement_instruction": "Functional interface clearance affects assembly, service, or user-facing fit.",
+      "requires_routed_step_rerun": true
+    },
+    {
+      "case_id": "rear_camera_to_battery",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 16.3,
+      "concept_required_mm": 2.0,
+      "concept_margin_mm": 14.3,
+      "rerun_priority": 3,
+      "risk_level": "medium_functional_interface",
+      "measurement_instruction": "Functional interface clearance affects assembly, service, or user-facing fit.",
+      "requires_routed_step_rerun": true
+    },
+    {
+      "case_id": "split_interconnect_flex_to_battery_edge",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 1.3,
+      "concept_required_mm": 0.5,
+      "concept_margin_mm": 0.8,
+      "rerun_priority": 3,
+      "risk_level": "medium_functional_interface",
+      "measurement_instruction": "Functional interface clearance affects assembly, service, or user-facing fit.",
+      "requires_routed_step_rerun": true
+    },
+    {
+      "case_id": "split_interconnect_flex_within_side_rail",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 3.3,
+      "concept_required_mm": 1.5,
+      "concept_margin_mm": 1.8,
+      "rerun_priority": 3,
+      "risk_level": "medium_functional_interface",
+      "measurement_instruction": "Functional interface clearance affects assembly, service, or user-facing fit.",
+      "requires_routed_step_rerun": true
+    },
+    {
+      "case_id": "usb_to_bottom_speaker",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 6.53,
+      "concept_required_mm": 1.0,
+      "concept_margin_mm": 5.53,
+      "rerun_priority": 3,
+      "risk_level": "medium_functional_interface",
+      "measurement_instruction": "Functional interface clearance affects assembly, service, or user-facing fit.",
+      "requires_routed_step_rerun": true
+    },
+    {
+      "case_id": "haptic_to_pcb_islands",
+      "concept_clearance_pass": true,
+      "concept_actual_mm": 1.118,
+      "concept_required_mm": 0.5,
+      "concept_margin_mm": 0.618,
+      "rerun_priority": 4,
+      "risk_level": "standard",
+      "measurement_instruction": "Measure during the routed-board clearance rerun.",
+      "requires_routed_step_rerun": true
+    }
+  ],
+  "result_cases": [
+    {
+      "case_id": "battery_to_pcb_islands",
+      "expected_case": true,
+      "populated": false,
+      "numeric_gap_pass": false,
+      "interference_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "case_id": "bottom_mic_to_usb",
+      "expected_case": true,
+      "populated": false,
+      "numeric_gap_pass": false,
+      "interference_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "case_id": "front_camera_to_earpiece",
+      "expected_case": true,
+      "populated": false,
+      "numeric_gap_pass": false,
+      "interference_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "case_id": "haptic_to_pcb_islands",
+      "expected_case": true,
+      "populated": false,
+      "numeric_gap_pass": false,
+      "interference_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "case_id": "rear_camera_to_battery",
+      "expected_case": true,
+      "populated": false,
+      "numeric_gap_pass": false,
+      "interference_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "case_id": "split_interconnect_connectors_on_pcb_islands",
+      "expected_case": true,
+      "populated": false,
+      "numeric_gap_pass": false,
+      "interference_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "case_id": "split_interconnect_flex_to_battery_edge",
+      "expected_case": true,
+      "populated": false,
+      "numeric_gap_pass": false,
+      "interference_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "case_id": "split_interconnect_flex_within_side_rail",
+      "expected_case": true,
+      "populated": false,
+      "numeric_gap_pass": false,
+      "interference_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "case_id": "usb_shell_to_external_aperture",
+      "expected_case": true,
+      "populated": false,
+      "numeric_gap_pass": false,
+      "interference_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "case_id": "usb_to_bottom_speaker",
+      "expected_case": true,
+      "populated": false,
+      "numeric_gap_pass": false,
+      "interference_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    }
+  ],
+  "missing_or_incomplete_clearance_cases": [
+    "battery_to_pcb_islands",
+    "bottom_mic_to_usb",
+    "front_camera_to_earpiece",
+    "haptic_to_pcb_islands",
+    "rear_camera_to_battery",
+    "split_interconnect_connectors_on_pcb_islands",
+    "split_interconnect_flex_to_battery_edge",
+    "split_interconnect_flex_within_side_rail",
+    "usb_shell_to_external_aperture",
+    "usb_to_bottom_speaker"
+  ],
+  "required_next_actions": [
+    "Export routed KiCad board STEP with all production connector, shield, camera, display, acoustic, RF, and haptic 3D models.",
+    "Replace the concept `main_pcb` envelope in the phone assembly with the routed board STEP.",
+    "Re-run the listed clearance cases against the routed board STEP and preserve measured minimum gaps.",
+    "Block manufacturing release if any routed board component intersects the orange enclosure, screen adhesive, USB-C aperture, buttons, acoustic paths, camera stack, battery, or flex interconnect."
+  ],
+  "release_rule": "Routed-board clearance passes only after routed KiCad STEP is available, all height-critical component models are present, every rerun case is measured, every minimum gap is met, and every interference count is zero."
+}

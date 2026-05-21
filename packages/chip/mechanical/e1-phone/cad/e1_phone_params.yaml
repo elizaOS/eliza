@@ -6,6 +6,7 @@ device:
   plastic_color: hard safety orange
   wall_thickness_mm: 1.15
   target_mass_g: 185
+  ship_target_mass_g: 168
   design_language: hard orange phone-like slab with teenage-engineering/rabbit-r1 influence
 
 display:
@@ -116,6 +117,10 @@ manufacturing:
   ejector_pin_diameter_mm: 2.0
   cooling_channel_diameter_mm: 4.0
   cooling_channel_clearance_mm: 8.0
+  vent_slot_count: 10
+  vent_slot_width_mm: 4.0
+  vent_slot_depth_mm: 0.04
+  vent_slot_land_mm: 0.8
   parting_line: mid-plane around orange back shell perimeter
 
 validation:
@@ -125,6 +130,28 @@ validation:
     usb_shell_to_aperture_clearance_mm: 0.15
     battery_to_pcb_gap_mm: 0.5
     button_pressure_limit_n_per_mm2: 0.2
+
+tolerances:
+  process_class: hard_tool_class_101_with_alignment_fixtures
+  evidence_class: cad_estimate_for_evt_planning, not_measured_hardware
+  process_contributors:
+    plastic_shrink_pct: 0.07
+    mold_dimension_tolerance_mm: 0.025
+    adhesive_cure_variance_mm: 0.02
+    assembly_placement_mm: 0.05
+    component_datasheet_typical_mm: 0.05
+    solder_reflow_connector_float_mm: 0.03
+  process_rationale:
+    plastic_shrink_pct: "Hard-tool 1.2738 P20+Ni cavity, PC+ABS controlled lot, CMM FAI validated by toolmaker"
+    mold_dimension_tolerance_mm: "Class 101 toolmaker, CMM machine repeatability <= +/-0.013 mm"
+    adhesive_cure_variance_mm: "Controlled cure rate on fixed cure jig"
+    assembly_placement_mm: "Alignment-pin fixtures (front_camera_alignment_pin, rear_camera_alignment_pin, screen_bond_clamp_frame)"
+    component_datasheet_typical_mm: "Vendor-controlled per published component datasheets"
+  cosmetic_targets:
+    display_gap_to_bezel_mm: { nominal: 0.15, tolerance: 0.15 }
+    power_button_cap_proud_mm: { nominal: 0.30, tolerance: 0.10 }
+    usb_c_aperture_clearance_mm: { nominal: 0.20, tolerance: 0.10 }
+    rear_camera_ring_vs_glass_mm: { nominal: 0.10, tolerance: 0.10 }
   environmental_targets:
     drop_height_m: 1.0
     ingress_target: IP54 design intent only

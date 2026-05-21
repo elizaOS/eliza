@@ -57,9 +57,12 @@
       "actual": {
         "interface_case_pass": true,
         "rear_exposed_window": true,
-        "front_under_cover_glass": true
+        "front_under_cover_glass": true,
+        "rear_cover_adhesive_count": 4,
+        "rear_light_baffle_count": 2,
+        "front_black_mask_present": true
       },
-      "target": "front camera under glass, rear AF camera through dedicated cover window",
+      "target": "front camera under glass with black mask; rear AF camera through gasketed/baffled cover window",
       "pass": true
     }
   ],

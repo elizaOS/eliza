@@ -12,7 +12,7 @@
           "radio_shield_can",
           "soc_shield_can"
         ],
-        "estimated_physical_mass_g": 143.4,
+        "estimated_physical_mass_g": 143.6,
         "target_mass_g": 185
       },
       "target": "shield cans present and CAD mass below target for thermal inertia; lab skin temperature <= target",

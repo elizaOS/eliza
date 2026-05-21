@@ -1,0 +1,132 @@
+{
+  "claim_boundary": "Fail-closed finished-phone validation acceptance. CAD plans, fixtures, blank templates, and individual review files do not count as finished phone evidence until every lab, EVT, FAI, traceability, build, and process-control result family passes.",
+  "status": "blocked_no_physical_process_validation_results",
+  "expected_gate_count": 11,
+  "complete_gate_count": 0,
+  "missing_or_incomplete_gates": [
+    "display_touch_lab_results",
+    "acoustic_lab_results",
+    "camera_optical_lab_results",
+    "thermal_rf_drop_ingress_environmental_results",
+    "button_usb_screen_evt_physical_results",
+    "fixture_calibration_results",
+    "mechanical_lifecycle_results",
+    "gdt_first_article_results",
+    "unit_traceability_records",
+    "assembly_build_traveler_records",
+    "factory_process_control_records"
+  ],
+  "cases": [
+    {
+      "id": "display_touch_lab_results",
+      "status": "blocked_no_display_results",
+      "pass_status": "display_results_pass",
+      "required_evidence": [
+        "display-results-template.csv",
+        "display-results-review.json"
+      ],
+      "pass": false
+    },
+    {
+      "id": "acoustic_lab_results",
+      "status": "blocked_no_acoustic_results",
+      "pass_status": "acoustic_results_pass",
+      "required_evidence": [
+        "acoustic-results-template.csv",
+        "acoustic-results-review.json"
+      ],
+      "pass": false
+    },
+    {
+      "id": "camera_optical_lab_results",
+      "status": "blocked_no_camera_results",
+      "pass_status": "camera_results_pass",
+      "required_evidence": [
+        "camera-results-template.csv",
+        "camera-results-review.json"
+      ],
+      "pass": false
+    },
+    {
+      "id": "thermal_rf_drop_ingress_environmental_results",
+      "status": "blocked_no_environmental_results",
+      "pass_status": "environmental_results_pass",
+      "required_evidence": [
+        "environmental-results-template.csv",
+        "environmental-results-review.json"
+      ],
+      "pass": false
+    },
+    {
+      "id": "button_usb_screen_evt_physical_results",
+      "status": "blocked_no_physical_results",
+      "pass_status": "evt_results_pass",
+      "required_evidence": [
+        "evt-inspection-results-template.csv",
+        "evt-results-review.json"
+      ],
+      "pass": false
+    },
+    {
+      "id": "fixture_calibration_results",
+      "status": "blocked_no_fixture_calibration_results",
+      "pass_status": "fixture_calibration_results_pass",
+      "required_evidence": [
+        "fixture-calibration-results-template.csv",
+        "fixture-calibration-acceptance.json"
+      ],
+      "pass": false
+    },
+    {
+      "id": "mechanical_lifecycle_results",
+      "status": "blocked_no_lifecycle_results",
+      "pass_status": "mechanical_lifecycle_results_pass",
+      "required_evidence": [
+        "mechanical-lifecycle-results-template.csv",
+        "mechanical-lifecycle-acceptance.json"
+      ],
+      "pass": false
+    },
+    {
+      "id": "gdt_first_article_results",
+      "status": "blocked_no_fai_results",
+      "pass_status": "gdt_fai_results_pass",
+      "required_evidence": [
+        "gdt-fai-template.csv",
+        "gdt-fai-results-review.json"
+      ],
+      "pass": false
+    },
+    {
+      "id": "unit_traceability_records",
+      "status": "blocked_no_unit_traceability_results",
+      "pass_status": "unit_traceability_results_pass",
+      "required_evidence": [
+        "unit-traceability-results-template.csv",
+        "unit-traceability-acceptance.json"
+      ],
+      "pass": false
+    },
+    {
+      "id": "assembly_build_traveler_records",
+      "status": "blocked_no_assembly_build_results",
+      "pass_status": "assembly_build_results_pass",
+      "required_evidence": [
+        "assembly-build-results-template.csv",
+        "assembly-build-traveler.json"
+      ],
+      "pass": false
+    },
+    {
+      "id": "factory_process_control_records",
+      "status": "blocked_no_process_control_results",
+      "pass_status": "process_control_results_pass",
+      "required_evidence": [
+        "process-control-results-template.csv",
+        "process-control-plan.json"
+      ],
+      "pass": false
+    }
+  ],
+  "release_rule": "Display/touch, acoustic, camera, environmental, EVT physical, fixture calibration, lifecycle, GD&T/FAI, unit traceability, assembly traveler, and process-control results must all be populated and passing before the phone can be treated as physically validated."
+}

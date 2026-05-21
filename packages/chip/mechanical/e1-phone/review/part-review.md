@@ -28,6 +28,13 @@ Status: generated part index and contact sheet for every assembly part.
 - `rear_camera_lens_window`: role `camera`, span [6.8, 0.8, 6.8] mm, material glass lens window
 - `front_camera_module`: role `camera`, span [6.5, 6.5, 3.2] mm, material front MIPI camera
 - `front_camera_under_glass`: role `camera`, span [3.4, 0.35, 3.4] mm, material under-glass aperture
+- `rear_camera_cover_adhesive_top`: role `camera seal`, span [10.1, 0.45, 0.16] mm, material black PSA gasket above rear camera cover window
+- `rear_camera_cover_adhesive_bottom`: role `camera seal`, span [10.1, 0.45, 0.16] mm, material black PSA gasket below rear camera cover window
+- `rear_camera_cover_adhesive_left`: role `camera seal`, span [0.45, 9.2, 0.16] mm, material black PSA gasket left of rear camera cover window
+- `rear_camera_cover_adhesive_right`: role `camera seal`, span [0.45, 9.2, 0.16] mm, material black PSA gasket right of rear camera cover window
+- `rear_camera_light_baffle_top`: role `camera seal`, span [8.3, 0.35, 0.55] mm, material black molded rear camera anti-dust light baffle
+- `rear_camera_light_baffle_bottom`: role `camera seal`, span [8.3, 0.35, 0.55] mm, material black molded rear camera anti-dust light baffle
+- `front_camera_black_mask_window`: role `camera seal`, span [5.0, 5.0, 0.12] mm, material black printed mask datum around front under-glass camera
 - `power_button_cap`: role `button`, span [2.0, 12.0, 1.1] mm, material orange molded cap
 - `volume_button_cap`: role `button`, span [2.0, 21.0, 1.1] mm, material orange molded cap
 - `handset_acoustic_slot`: role `audio`, span [16.0, 1.0, 0.25] mm, material gasketed handset slot
@@ -43,6 +50,11 @@ Status: generated part index and contact sheet for every assembly part.
 - `split_interconnect_side_flex`: role `split-board interconnect`, span [2.4, 88.0, 0.18] mm, material polyimide FPC side service loop envelope
 - `split_interconnect_top_flex_tail`: role `split-board interconnect`, span [12.5, 2.0, 0.18] mm, material polyimide FPC top connector tail envelope
 - `split_interconnect_bottom_flex_tail`: role `split-board interconnect`, span [12.5, 2.0, 0.18] mm, material polyimide FPC bottom connector tail envelope
+- `side_key_flex_connector`: role `side-key interconnect`, span [12.0, 3.0, 0.8] mm, material 5-pin side-key board-to-FPC connector envelope
+- `side_key_volume_flex_tail`: role `side-key interconnect`, span [23.5, 2.0, 0.18] mm, material polyimide FPC tail from side-key connector toward volume actuator
+- `side_key_volume_actuator_tail`: role `side-key interconnect`, span [2.0, 28.0, 0.18] mm, material polyimide FPC tail serving volume button dome contacts
+- `side_key_power_flex_tail`: role `side-key interconnect`, span [40.0, 2.0, 0.18] mm, material polyimide FPC tail from side-key connector toward power actuator
+- `side_key_power_actuator_tail`: role `side-key interconnect`, span [2.0, 22.0, 0.18] mm, material polyimide FPC tail serving power button dome contact
 - `bottom_microphone_port_1`: role `audio`, span [0.9, 0.4, 0.886] mm, material molded microphone acoustic port
 - `bottom_microphone_mesh_1`: role `audio`, span [1.4, 0.12, 1.4] mm, material hydrophobic dust mesh behind bottom microphone port
 - `bottom_microphone_port_2`: role `audio`, span [0.9, 0.4, 0.886] mm, material molded microphone acoustic port

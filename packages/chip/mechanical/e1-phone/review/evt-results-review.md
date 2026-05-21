@@ -22,3 +22,7 @@ This review is fail-closed: blank rows do not count as physical validation.
 - `front_camera_under_glass_center_error`
 - `bottom_audio_leak_delta`
 - `handset_receiver_leak_delta`
+
+## Release Rule
+
+- Every EVT row must include a real sample, operator, numeric passing value, explicit pass, evidence_class=physical_evt_result, raw data artifact, fixture calibration certificate, photo/log artifact, and lot traceability record before physical interface validation can pass.

@@ -1,0 +1,113 @@
+schema: eliza.e1_phone_split_interconnect_connector_binding.v1
+status: blocked_placeholder_connectors_bound_to_pin_allocation_not_supplier_release
+date: '2026-05-21'
+claim_boundary: Schematic/PCB binding package for the split-interconnect pin allocation. This proves the non-release
+  placeholder connector pad order follows the planning allocation. It is not a supplier symbol, not a supplier footprint,
+  not a routed flex, not ERC/DRC evidence, and not fabrication or enclosure readiness.
+source_artifacts:
+  - board/kicad/e1-phone/split-interconnect-pin-allocation.yaml
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  - board/kicad/e1-phone/schematic/split_interconnect.kicad_sch
+  - board/kicad/e1-phone/pcb-implementation-audit.yaml
+  - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
+  - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
+upstream_status:
+  split_interconnect_pin_allocation_status: blocked_requires_connector_part_numbers_flex_stackup_si_and_drc
+  pcb_audit_status: blocked_live_kicad_pcb_scaffold_audited_not_routed
+  symbol_footprint_status: blocked_requires_real_kicad_symbols_supplier_footprints_and_erc
+  supplier_intake_status: blocked_supplier_drawing_intake_required_before_real_footprints_or_route
+binding_policy:
+  contact_count: 49
+  top_and_bottom_connectors_use_same_logical_pin_order: true
+  mated_flex_mirror_review_required_before_supplier_release: true
+  placeholder_pad_order_can_drive_trial_route_only: true
+  supplier_land_pattern_required_before_fabrication: true
+connector_bindings:
+  - refdes: J_TOP_BOTTOM_FLEX_TOP
+    status: blocked_placeholder_binding_waiting_supplier_land_pattern_and_schematic_symbol
+    schematic_ref_present: true
+    pcb_placeholder_present: true
+    allocated_contact_count: 49
+    pcb_pad_count: 49
+    pad_order_matches_allocation: true
+    mismatched_contacts: []
+    usb2_contacts:
+      USB_DP:
+        - 2
+      USB_DN:
+        - 3
+      near_returns:
+        - 1
+        - 4
+    required_release_evidence:
+      - real 49-contact or greater supplier connector symbol with electrical pin types
+      - supplier land pattern with pad numbering checked against this allocation
+      - mated connector STEP and flex stiffener model bound to footprint
+      - ERC cross-probe proving both top and bottom connector pins share the same nets
+      - DRC, continuity, and USB2 SI report for routed top-board/flex/bottom-board path
+  - refdes: J_TOP_BOTTOM_FLEX_BOTTOM
+    status: blocked_placeholder_binding_waiting_supplier_land_pattern_and_schematic_symbol
+    schematic_ref_present: true
+    pcb_placeholder_present: true
+    allocated_contact_count: 49
+    pcb_pad_count: 49
+    pad_order_matches_allocation: true
+    mismatched_contacts: []
+    usb2_contacts:
+      USB_DP:
+        - 2
+      USB_DN:
+        - 3
+      near_returns:
+        - 1
+        - 4
+    required_release_evidence:
+      - real 49-contact or greater supplier connector symbol with electrical pin types
+      - supplier land pattern with pad numbering checked against this allocation
+      - mated connector STEP and flex stiffener model bound to footprint
+      - ERC cross-probe proving both top and bottom connector pins share the same nets
+      - DRC, continuity, and USB2 SI report for routed top-board/flex/bottom-board path
+schematic_binding:
+  sheet: board/kicad/e1-phone/schematic/split_interconnect.kicad_sch
+  evidence_class: non_release_text_scaffold
+  top_connector_text_present: true
+  bottom_connector_text_present: true
+  real_symbol_present: false
+  erc_ready: false
+  required_update: replace text scaffold with reviewed 49-pin connector symbols using this pin allocation
+pcb_binding:
+  board: board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  evidence_class: non_release_placeholder_footprints
+  all_placeholder_pad_orders_match_allocation: true
+  top_bottom_same_logical_pin_order: true
+  mirrored_contact_mismatches: []
+  real_supplier_land_pattern_present: false
+  drc_ready: false
+cross_checks:
+  allocation_contact_count_is_49: true
+  both_connector_placeholders_present: true
+  both_connector_pad_counts_are_49: true
+  both_connector_pad_orders_match_allocation: true
+  usb2_contacts_match_allocation: true
+  top_and_bottom_same_logical_pin_order: true
+  schematic_scaffold_names_both_connectors: true
+  symbol_footprint_closure_still_blocks_release: true
+  supplier_intake_still_blocks_real_footprints: true
+release_blockers:
+  - schematic split-interconnect sheet is still a text scaffold, not real 49-pin connector symbols
+  - placeholder PCB footprints are not supplier land patterns, courtyards, paste, or STEP models
+  - mated top/bottom connector orientation and mirrored flex pin numbering are not supplier-reviewed
+  - ERC cross-probe and KiCad symbol-to-footprint pin-map report are missing
+  - USB2 routed copper, DRC, impedance, eye, attach, ADB, and fastboot evidence are missing
+  - flex assembly drawing, continuity test, strain relief, and enclosure clearance evidence are missing
+forbidden_claims:
+  - schematic_connector_symbols_ready
+  - supplier_footprints_ready
+  - pinmap_release_ready
+  - split_interconnect_routed
+  - usb_si_closed
+  - erc_clean
+  - drc_clean
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

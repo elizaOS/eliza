@@ -10,6 +10,9 @@
   "board_state_detected": {
     "has_tracks": false,
     "has_filled_zones": false,
+    "has_keepout_zones": true,
+    "generated_keepout_zone_count": 11,
+    "copper_zone_count": 0,
     "has_production_step": false,
     "has_concept_pcb_step": true,
     "placeholder_marker_count": 116,
@@ -50,6 +53,38 @@
     ],
     "matches": true
   },
+  "required_outputs": [
+    {
+      "id": "routed_kicad_board",
+      "path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+      "present": false,
+      "why_required": "Final route with production footprints replaces concept placement scaffold."
+    },
+    {
+      "id": "routed_board_step",
+      "path": "board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step",
+      "present": false,
+      "why_required": "Mechanical import source for enclosure, screen, USB, button, camera, acoustic, and battery clearance."
+    },
+    {
+      "id": "drc_report",
+      "path": "board/kicad/e1-phone/production/reports/drc.json",
+      "present": false,
+      "why_required": "Prevents unrouted or DRC-failing board geometry from being treated as release evidence."
+    },
+    {
+      "id": "component_3d_models",
+      "path": "supplier STEP/B-rep models captured through supplier-drawing-intake-checklist.yaml",
+      "present": false,
+      "why_required": "Routed board STEP must include actual connector, shield, camera, display, acoustic, RF, haptic, and battery connector heights."
+    }
+  ],
+  "missing_or_incomplete_outputs": [
+    "routed_kicad_board",
+    "routed_board_step",
+    "drc_report",
+    "component_3d_models"
+  ],
   "cases": [
     {
       "id": "kicad_placement_reconciled_to_cad",
@@ -79,6 +114,12 @@
     {
       "id": "filled_zones_present",
       "pass": false,
+      "evidence": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
+      "note": "Copper zones only; generated E1Phone_KEEP_* mechanical keepout zones are tracked separately and are not routed copper evidence."
+    },
+    {
+      "id": "mechanical_keepout_zones_present",
+      "pass": true,
       "evidence": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
     },
     {

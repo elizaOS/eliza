@@ -1,0 +1,35 @@
+{
+  "glb": "/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/out/e1-phone-exploded.glb",
+  "glb_size_bytes": 186520,
+  "mp4": "/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/out/e1-phone-exploded.mp4",
+  "mp4_size_bytes": 917782,
+  "frames_dir": "/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/out/e1-phone-exploded-frames",
+  "frame_count": 360,
+  "keyframe_count": 24,
+  "clips": [
+    "explode",
+    "reassemble",
+    "turntable"
+  ],
+  "clip_durations_s": {
+    "explode": 3.0,
+    "hold_exploded": 1.5,
+    "reassemble": 3.0,
+    "hold_assembled": 1.5,
+    "turntable_total": 12.0
+  },
+  "fps": 30,
+  "part_count": 97,
+  "ring_offset_mm": 25.0,
+  "renderer": "pyrender-egl + ffmpeg/libx264",
+  "render_seconds": 47.11,
+  "render_command": "ffmpeg -framerate 30 -i frame_%04d.png -c:v libx264 -pix_fmt yuv420p -crf 20 e1-phone-exploded.mp4",
+  "axis_decisions": {
+    "screen_front_stack": "+Z",
+    "back_shell_pcb_battery_haptic": "-Z",
+    "power_button_group": "+X",
+    "volume_button_group": "-X",
+    "usb_c_and_bottom_speaker_mic": "-Y",
+    "earpiece_top_mic_front_camera": "+Y"
+  }
+}

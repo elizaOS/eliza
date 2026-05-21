@@ -1,0 +1,105 @@
+{
+  "evidence_class": "cad_estimate_for_evt_planning, not_measured_hardware",
+  "source_params_yaml": "chip/mechanical/e1-phone/cad/e1_phone_params.yaml",
+  "device": {
+    "name": "E1 phone EVT0 mechanical concept",
+    "revision": "evt0-mechanical-cad",
+    "os": "AOSP / Android 14"
+  },
+  "mechanical": {
+    "dimensions_mm": {
+      "width": 78.0,
+      "height": 153.6,
+      "thickness": 9.6
+    },
+    "envelope_volume_cm3": 115.02,
+    "corner_radius_mm": 7.5,
+    "mass_g": 171.84,
+    "mass_cad_geometry_subtotal_g": 163.44,
+    "mass_missing_items_subtotal_g": 8.4,
+    "mass_ship_target_g": 168.0,
+    "mass_ship_target_tolerance_g": 10.0,
+    "mass_target_g": 185.0,
+    "mass_target_note": "185 g is the original aspirational concept target; 168 +/-10 g is the EVT0 ship target. Reconciled mass 171.84 g passes ship target.",
+    "color": "hard safety orange",
+    "material": "PC+ABS injection molded"
+  },
+  "display": {
+    "size_in": 5.5,
+    "resolution_px": [
+      1080,
+      1920
+    ],
+    "type": "IPS LCD",
+    "interface": "MIPI DSI",
+    "touch": "capacitive multi-touch",
+    "cover_glass_mm": [
+      77.1,
+      151.77,
+      0.7
+    ],
+    "active_area_mm": [
+      68.04,
+      120.96
+    ]
+  },
+  "compute": {
+    "soc_class": "Unisoc T606",
+    "ram_gb": 4,
+    "ram_type": "LPDDR4X",
+    "storage_gb": 64,
+    "storage_type": "eMMC 5.1"
+  },
+  "cellular": {
+    "modem": "Quectel RG255C 5G RedCap LGA",
+    "bands_typical": [
+      "n1",
+      "n3",
+      "n5",
+      "n8",
+      "n28",
+      "n40",
+      "n41",
+      "n77",
+      "n78"
+    ],
+    "note": "5G RedCap (NR-Light); LTE fallback per module datasheet"
+  },
+  "wireless": {
+    "module": "Murata Type 2EA",
+    "wifi": "Wi-Fi 6E (2.4/5/6 GHz)",
+    "bluetooth": "Bluetooth 5.3"
+  },
+  "usb": {
+    "connector": "USB Type-C (GCT USB4105)",
+    "data": "USB 2.0",
+    "power_delivery": "USB-PD 15 W wired",
+    "video_out": false
+  },
+  "battery": {
+    "chemistry": "LiPo pouch",
+    "capacity_mAh": 4500,
+    "nominal_voltage_V": 3.85,
+    "energy_Wh": 17.33,
+    "wireless_charging": false
+  },
+  "audio": {
+    "bottom_speaker": "1115 micro speaker module",
+    "earpiece": "1206 receiver behind cover glass",
+    "microphones": "2x MEMS (bottom + top noise-cancel)",
+    "haptic": "0612 X-axis LRA"
+  },
+  "camera": {
+    "rear": "13 MP OmniVision OV13855 autofocus",
+    "front": "5 MP GalaxyCore GC5035 fixed-focus"
+  },
+  "environmental": {
+    "ip_rating_design_intent": "IP54 (dust-protected, splash-resistant)",
+    "ip_rating_certified": false,
+    "ip_rating_reasoning": "USB-C perimeter gasket + drip-break lip + drain shelf, labyrinth-sealed side buttons with elastomer gaskets, perimeter cover-glass adhesive bond, port mesh on acoustic openings. Sufficient for IP54 design intent; IP67 not claimed (no pressure-tested chassis seal).",
+    "drop_target_m": 1.0,
+    "drop_target_faces": 6,
+    "drop_certified": false
+  },
+  "evidence_note": "All values are CAD-derived for EVT planning. No measured hardware. Mass, IP rating, and drop figures are design targets and require EVT/DVT verification."
+}

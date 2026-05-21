@@ -1,11 +1,11 @@
-sample_id,measurement_id,fixture,units,min,max,nominal,measured,pass,operator,notes
-,power_button_actuation_force,evt_fixture_button_force_probe,N,1.2,2.2,1.6,,,,Load-cell press normal to cap center until tactile event.
-,power_button_travel,evt_fixture_button_force_probe,mm,0.25,0.55,0.35,,,,Dial indicator travel from cap free height to tactile event.
-,volume_button_actuation_force,evt_fixture_button_force_probe,N,1.2,2.2,1.5,,,,Load-cell press at volume cap center and both cap ends.
-,usb_c_insertion_force_no_rub,evt_fixture_usb_c_insertion_gauge,N,0.0,35.0,,,,,Insert USB-C gauge/plug along port axis and record peak insertion force and aperture rub.
-,screen_adhesive_compression,evt_fixture_screen_bond_clamp_frame,mm,0.03,0.08,0.045,,,,Measure bond-line compression witness after clamp cure cycle.
-,display_fpc_bend_radius,evt_fixture_screen_bond_clamp_frame,mm,1.0,,1.0,,,,Inspect FPC bend path after screen placement and board connection.
-,rear_camera_lens_center_error,evt_fixture_rear_camera_alignment_pin,mm,0.0,0.25,0.0,,,,Insert rear lens datum pin and measure radial offset to camera cover window.
-,front_camera_under_glass_center_error,evt_fixture_front_camera_alignment_pin,mm,0.0,0.3,0.0,,,,Inspect under-glass aperture alignment through cover glass.
-,bottom_audio_leak_delta,evt_fixture_bottom_acoustic_leak_mask,dB,0.0,3.0,0.0,,,,Compare masked/unmasked bottom speaker and mic path leakage at fixed tone.
-,handset_receiver_leak_delta,evt_fixture_earpiece_leak_mask,dB,0.0,3.0,0.0,,,,Compare masked/unmasked receiver leakage around handset gasket.
+sample_id,measurement_id,fixture,units,min,max,nominal,measured,pass,operator,evidence_class,required_evidence_artifacts,raw_data_artifact,fixture_calibration_certificate,photo_or_log_artifact,lot_traceability_record,notes
+,power_button_actuation_force,evt_fixture_button_force_probe,N,1.2,2.2,1.6,,,,,load_cell_raw_csv;button_probe_calibration_certificate;button_cap_probe_photo;button_switch_lot_record,,,,,Load-cell press normal to cap center until tactile event.
+,power_button_travel,evt_fixture_button_force_probe,mm,0.25,0.55,0.35,,,,,dial_indicator_raw_csv;button_probe_calibration_certificate;button_travel_photo;button_switch_lot_record,,,,,Dial indicator travel from cap free height to tactile event.
+,volume_button_actuation_force,evt_fixture_button_force_probe,N,1.2,2.2,1.5,,,,,load_cell_raw_csv;button_probe_calibration_certificate;volume_cap_probe_photo;button_switch_lot_record,,,,,Load-cell press at volume cap center and both cap ends.
+,usb_c_insertion_force_no_rub,evt_fixture_usb_c_insertion_gauge,N,0.0,35.0,,,,,,insertion_force_raw_csv;usb_c_gauge_calibration_certificate;usb_c_port_axis_video_or_photo;usb_c_connector_lot_record,,,,,Insert USB-C gauge/plug along port axis and record peak insertion force and aperture rub.
+,screen_adhesive_compression,evt_fixture_screen_bond_clamp_frame,mm,0.03,0.08,0.045,,,,,bond_gap_witness_record;screen_clamp_calibration_certificate;compression_witness_photo;display_adhesive_lot_record,,,,,Measure bond-line compression witness after clamp cure cycle.
+,display_fpc_bend_radius,evt_fixture_screen_bond_clamp_frame,mm,1.0,,1.0,,,,,fpc_bend_radius_photo;screen_clamp_calibration_certificate;display_connector_seat_photo;display_module_lot_record,,,,,Inspect FPC bend path after screen placement and board connection.
+,rear_camera_lens_center_error,evt_fixture_rear_camera_alignment_pin,mm,0.0,0.25,0.0,,,,,camera_alignment_raw_csv;rear_camera_fixture_certificate;rear_camera_datum_photo;rear_camera_module_lot_record,,,,,Insert rear lens datum pin and measure radial offset to camera cover window.
+,front_camera_under_glass_center_error,evt_fixture_front_camera_alignment_pin,mm,0.0,0.3,0.0,,,,,camera_alignment_raw_csv;front_camera_fixture_certificate;front_under_glass_datum_photo;front_camera_module_lot_record,,,,,Inspect under-glass aperture alignment through cover glass.
+,bottom_audio_leak_delta,evt_fixture_bottom_acoustic_leak_mask,dB,0.0,3.0,0.0,,,,,acoustic_leak_raw_csv;bottom_acoustic_fixture_certificate;speaker_mic_mask_photo;speaker_mic_lot_record,,,,,Compare masked/unmasked bottom speaker and mic path leakage at fixed tone.
+,handset_receiver_leak_delta,evt_fixture_earpiece_leak_mask,dB,0.0,3.0,0.0,,,,,acoustic_leak_raw_csv;earpiece_acoustic_fixture_certificate;earpiece_mask_photo;receiver_lot_record,,,,,Compare masked/unmasked receiver leakage around handset gasket.

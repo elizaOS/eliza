@@ -31,6 +31,12 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/kicad-placement-reconciliation.md`
 - `mechanical/e1-phone/review/board-step-readiness.json`
 - `mechanical/e1-phone/review/board-step-readiness.md`
+- `mechanical/e1-phone/review/routed-board-clearance-results-template.csv`
+- `mechanical/e1-phone/review/routed-board-clearance.json`
+- `mechanical/e1-phone/review/routed-board-clearance.md`
+- `mechanical/e1-phone/review/full-cad-boolean-interference-results-template.csv`
+- `mechanical/e1-phone/review/full-cad-boolean-interference.json`
+- `mechanical/e1-phone/review/full-cad-boolean-interference.md`
 - `mechanical/e1-phone/review/engineering-validation.json`
 - `mechanical/e1-phone/review/engineering-validation.md`
 - `mechanical/e1-phone/review/interface-validation.json`
@@ -62,6 +68,21 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/evt-inspection-results-template.csv`
 - `mechanical/e1-phone/review/evt-results-review.json`
 - `mechanical/e1-phone/review/evt-results-review.md`
+- `mechanical/e1-phone/review/fixture-calibration-results-template.csv`
+- `mechanical/e1-phone/review/fixture-calibration-acceptance.json`
+- `mechanical/e1-phone/review/fixture-calibration-acceptance.md`
+- `mechanical/e1-phone/review/mechanical-lifecycle-results-template.csv`
+- `mechanical/e1-phone/review/mechanical-lifecycle-acceptance.json`
+- `mechanical/e1-phone/review/mechanical-lifecycle-acceptance.md`
+- `mechanical/e1-phone/review/assembly-build-results-template.csv`
+- `mechanical/e1-phone/review/assembly-build-traveler.json`
+- `mechanical/e1-phone/review/assembly-build-traveler.md`
+- `mechanical/e1-phone/review/process-control-results-template.csv`
+- `mechanical/e1-phone/review/process-control-plan.json`
+- `mechanical/e1-phone/review/process-control-plan.md`
+- `mechanical/e1-phone/review/unit-traceability-results-template.csv`
+- `mechanical/e1-phone/review/unit-traceability-acceptance.json`
+- `mechanical/e1-phone/review/unit-traceability-acceptance.md`
 - `mechanical/e1-phone/out/e1-phone-evt-fixtures.glb`
 - `mechanical/e1-phone/out/evt-fixture-manifest.json`
 - `mechanical/e1-phone/review/assembly-clearance.json`
@@ -70,6 +91,9 @@ Status: automated EVT0 concept generation, not tooling release.
 - `mechanical/e1-phone/review/injection-molding-dfm.md`
 - `mechanical/e1-phone/review/mold-process-window.json`
 - `mechanical/e1-phone/review/mold-process-window.md`
+- `mechanical/e1-phone/review/mold-flow-results-template.csv`
+- `mechanical/e1-phone/review/mold-flow-acceptance.json`
+- `mechanical/e1-phone/review/mold-flow-acceptance.md`
 - `mechanical/e1-phone/review/toolmaker-signoff-package.json`
 - `mechanical/e1-phone/review/toolmaker-signoff-package.md`
 - `mechanical/e1-phone/review/toolmaker-signoff-response-template.csv`
@@ -119,12 +143,14 @@ Status: automated EVT0 concept generation, not tooling release.
 - PASS: `button_ingress_seal_stack`
 - PASS: `screen_mount_and_connection`
 - PASS: `camera_speaker_behind_glass`
+- PASS: `camera_optical_seal_stack`
 - PASS: `rf_antenna_keepouts`
 - PASS: `shielding_haptics_service`
 - PASS: `pcb_battery_non_overlap`
 - PASS: `injection_molding_basics`
 - PASS: `molded_retention_features`
 - PASS: `mold_runner_gate_model`
+- PASS: `mold_venting_model`
 - PASS: `mold_ejector_cooling_model`
 - PASS: `final_assembly_excludes_tooling_markers`
 - PASS: `kicad_outline_integration`
@@ -140,7 +166,7 @@ Status: automated EVT0 concept generation, not tooling release.
 - Sprue diameter: 4.0 mm.
 - Runner diameter: 2.2 mm.
 - Gate thickness: 0.85 mm.
-- Estimated CAD mass: 143.39 g.
+- Estimated CAD mass: 143.59 g.
 
 ## Design Decisions From This Pass
 

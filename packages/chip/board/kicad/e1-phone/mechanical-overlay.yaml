@@ -20,7 +20,7 @@ keepouts:
     rule: no rigid PCB components or copper intrusion; top/bottom island or flex implementation required
   - id: usb_c_shell_capture
     layer: Dwgs.User
-    rect_mm: {x: 26.0, y: 124.0, width: 16.0, height: 6.0}
+    rect_mm: {x: 26.0, y: 126.0, width: 16.0, height: 6.0}
     source: cad_usb_c_receptacle_and_external_aperture
     rule: connector mouth, shell stakes, and insertion load must align to enclosure saddle
   - id: display_fpc_bend_keepout

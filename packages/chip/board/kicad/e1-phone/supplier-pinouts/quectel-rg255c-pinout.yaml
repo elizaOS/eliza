@@ -1,0 +1,65 @@
+schema: eliza.e1_phone_supplier_pinout.v1
+part: RG255C-EAB
+manufacturer: Quectel Wireless Solutions
+package: LGA, ~250 pads, 5G RedCap Sub-6 (3GPP Rel-17), EU/Asia band variant
+source_doc: https://www.quectel.com/product/5g-redcap-rg255c-series/
+source_doc_alt:
+  - https://www.quectel.com/content/uploads/2024/03/Quectel_RG255C_Series_5G_Module_Specification_V1.1.pdf
+  - https://www.quectel.com/library/new-product-intro-rg255c-5g-redcap-module/
+  - https://forums.quectel.com/t/hardware-design-rg255c-gl/39485
+source_doc_revision: Series Specification V1.1 (2024-03); Hardware Design V1.x (NDA download)
+captured_date: 2026-05-21
+captured_by: agent
+evidence_class: public_supplier_datasheet
+procurement_status: hardware_design_manual_requires_quectel_partner_portal_registration
+procurement_url: https://www.quectel.com/contact/
+notes: |
+  RG255C-EAB is the EU/Asia band SKU of the RG255C 5G RedCap LGA family. The
+  vendor product page and series specification PDF confirm the LGA package and
+  high-level interface list, but the per-pad pad-map is published only in the
+  Quectel RG255C Hardware Design manual, which is gated behind the Quectel
+  Partner Portal (NDA/registration). Per-pin entries below are marked
+  fetch_required and reference the exact retrieval channel.
+
+  Verified public facts from the vendor product page and spec PDF:
+    - peak DL 223 Mbps / UL 123 Mbps (Rel-17 RedCap)
+    - LGA module, surface-mount
+    - includes USB 2.0 host/device interface
+    - includes (e)SIM (1 or 2 depending on SKU)
+    - includes PCM/I2S audio, UART debug, multiple GPIO
+    - supports antenna ports: main, aux/diversity, GNSS
+    - 3GPP Rel-17 5G NR Sub-6 band coverage (region-specific in EAB)
+interfaces_verified_public:
+  power:
+    - VBAT (module main supply, typical 3.3-4.2 V)
+    - VBAT_BB (baseband supply rail per HW guide)
+    - VDD_EXT (host-IO reference, typically 1.8 V)
+    - GND (multiple)
+  digital:
+    - USB 2.0 HS (USB_DP / USB_DM / USB_VBUS)
+    - 2x UART (main + debug)
+    - PCM/I2S (PCM_CLK, PCM_SYNC, PCM_IN, PCM_OUT)
+    - I2C (SCL, SDA)
+    - SDIO (optional, on some SKUs)
+    - multiple GPIO / status (STATUS, NET_STATUS, WAKEUP, RESET_N, PWRKEY)
+  sim:
+    - SIM1 (VDD, RST, CLK, DATA, DET)
+    - eSIM/SIM2 on selected SKUs
+  rf:
+    - ANT_MAIN
+    - ANT_DIV / ANT_AUX
+    - ANT_GNSS (where applicable)
+  rf_calibration:
+    - RF test pads per HW design guide
+pad_count_estimated: 250
+pins:
+  - pin: ALL
+    name: fetch_required
+    function: full_lga_pad_map
+    direction: unknown
+    voltage_v: null
+    notes: |
+      Per-pad pinout is in Quectel RG255C Hardware Design manual. Retrieve via
+      Quectel Partner Portal (https://www.quectel.com/contact/), then capture
+      under board/kicad/e1-phone/production/sourcing/cellular/pinout-or-pad-map.csv
+      and re-emit this YAML with full per-pin entries before pinout review signoff.

@@ -63,7 +63,13 @@ differential_pairs:
   - {name: DSI_D2, nets: [DSI_D2_P, DSI_D2_N], class: mipi_dphy_diff, max_length_mm: 45, intra_pair_skew_mm_max: 0.25, region: soc_to_display_ffi}
   - {name: DSI_D3, nets: [DSI_D3_P, DSI_D3_N], class: mipi_dphy_diff, max_length_mm: 45, intra_pair_skew_mm_max: 0.25, region: soc_to_display_ffi}
   - {name: CAM0_CSI_CLK, nets: [CAM0_CSI_CLK_P, CAM0_CSI_CLK_N], class: mipi_dphy_diff, max_length_mm: 55, intra_pair_skew_mm_max: 0.25, region: rear_camera_to_soc}
+  - {name: CAM0_CSI_D0, nets: [CAM0_CSI_D0_P, CAM0_CSI_D0_N], class: mipi_dphy_diff, max_length_mm: 55, intra_pair_skew_mm_max: 0.25, region: rear_camera_to_soc}
+  - {name: CAM0_CSI_D1, nets: [CAM0_CSI_D1_P, CAM0_CSI_D1_N], class: mipi_dphy_diff, max_length_mm: 55, intra_pair_skew_mm_max: 0.25, region: rear_camera_to_soc}
+  - {name: CAM0_CSI_D2, nets: [CAM0_CSI_D2_P, CAM0_CSI_D2_N], class: mipi_dphy_diff, max_length_mm: 55, intra_pair_skew_mm_max: 0.25, region: rear_camera_to_soc}
+  - {name: CAM0_CSI_D3, nets: [CAM0_CSI_D3_P, CAM0_CSI_D3_N], class: mipi_dphy_diff, max_length_mm: 55, intra_pair_skew_mm_max: 0.25, region: rear_camera_to_soc}
   - {name: CAM1_CSI_CLK, nets: [CAM1_CSI_CLK_P, CAM1_CSI_CLK_N], class: mipi_dphy_diff, max_length_mm: 65, intra_pair_skew_mm_max: 0.25, region: front_camera_to_soc}
+  - {name: CAM1_CSI_D0, nets: [CAM1_CSI_D0_P, CAM1_CSI_D0_N], class: mipi_dphy_diff, max_length_mm: 65, intra_pair_skew_mm_max: 0.25, region: front_camera_to_soc}
+  - {name: CAM1_CSI_D1, nets: [CAM1_CSI_D1_P, CAM1_CSI_D1_N], class: mipi_dphy_diff, max_length_mm: 65, intra_pair_skew_mm_max: 0.25, region: front_camera_to_soc}
   - {name: WIFI_PCIE_TX, nets: [WIFI_PCIE_TX_P, WIFI_PCIE_TX_N], class: pcie_diff, max_length_mm: 35, intra_pair_skew_mm_max: 0.15, region: wifi_to_soc}
   - {name: WIFI_PCIE_RX, nets: [WIFI_PCIE_RX_P, WIFI_PCIE_RX_N], class: pcie_diff, max_length_mm: 35, intra_pair_skew_mm_max: 0.15, region: wifi_to_soc}
   - {name: CELL_PCIE_TX, nets: [CELL_PCIE_TX_P, CELL_PCIE_TX_N], class: pcie_diff, max_length_mm: 55, intra_pair_skew_mm_max: 0.15, region: cellular_to_soc}
@@ -111,7 +117,7 @@ power_integrity:
 
 mechanical_keepouts:
   battery_window: {x: 0.0, y: 29.5, width: 64.0, height: 87.0, rule: no_components_or_copper_intrusions_without_me_review_top_bottom_islands_required}
-  usb_c_shell: {x: 26.0, y: 124.0, width: 16.0, height: 6.0, rule: enclosure_captured_connector}
+  usb_c_shell: {x: 26.0, y: 126.0, width: 16.0, height: 6.0, rule: enclosure_captured_connector}
   side_buttons: {x: 4.0, y: 50.0, width: 7.0, height: 46.0, rule: switch_load_path_to_enclosure_rib}
   rear_camera: {x: 47.0, y: 8.0, width: 15.0, height: 24.0, rule: lens_axis_and_z_height_datums_required}
   display_fpc_bend: {x: 42.0, y: 33.0, width: 20.0, height: 11.0, rule: preserve_bend_radius_to_cover_glass_display_stack}

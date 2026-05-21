@@ -22,10 +22,10 @@ freeze_records:
     package_binding:
       - package/display/v0-dsi-720x1280.yaml
     placement_region_mm:
-      x: 47.0
-      y: 8.0
-      width: 15.0
-      height: 24.0
+      x: 45.0
+      y: 3.0
+      width: 17.0
+      height: 8.0
     footprint_strategy: supplier_defined_40pin_or_equivalent_mipi_touch_fpc
     planned_contract_nets:
       - DISP_BL_EN
@@ -81,10 +81,10 @@ freeze_records:
     package_binding:
       - package/camera/oem-mipi-csi-modules.yaml
     placement_region_mm:
-      x: 47.0
-      y: 8.0
-      width: 15.0
-      height: 34.0
+      x: 45.0
+      y: 12.0
+      width: 17.0
+      height: 13.0
     footprint_strategy: supplier_defined_24_to_30pin_mipi_csi_camera_fpc
     planned_contract_nets:
       - CAM0_CSI_CLK_N
@@ -147,10 +147,10 @@ freeze_records:
     package_binding:
       - package/camera/oem-mipi-csi-modules.yaml
     placement_region_mm:
-      x: 47.0
-      y: 8.0
-      width: 15.0
-      height: 34.0
+      x: 45.0
+      y: 12.0
+      width: 17.0
+      height: 13.0
     footprint_strategy: supplier_defined_small_mipi_csi_fpc_after_z_stack_freeze
     planned_contract_nets:
       - CAM0_CSI_CLK_N
@@ -210,7 +210,7 @@ freeze_records:
       - package/usb-c/e1-phone-usb-c-port.yaml
     placement_region_mm:
       x: 26.0
-      y: 124.0
+      y: 126.0
       width: 16.0
       height: 6.0
     footprint_strategy: gct_usb4105_usb2_evt0_or_waterproof_usb3_variant_controlled
@@ -256,10 +256,10 @@ freeze_records:
     package_binding:
       - package/human-interface/side-buttons.yaml
     placement_region_mm:
-      x: 4.0
-      y: 50.0
-      width: 7.0
-      height: 46.0
+      x: 18.0
+      y: 26.0
+      width: 12.0
+      height: 3.0
     footprint_strategy: direct_side_push_tactile_or_side_key_flex_variant_controlled
     planned_contract_nets:
       - AON_1V8
@@ -299,10 +299,10 @@ freeze_records:
     package_binding:
       - package/cellular/quectel-5g-redcap.yaml
     placement_region_mm:
-      x: 4.0
-      y: 8.0
-      width: 13.0
-      height: 19.0
+      x: 3.0
+      y: 3.0
+      width: 14.0
+      height: 14.0
     footprint_strategy: quectel_rg255c_lga_or_rm255c_m2_lab_variant
     planned_contract_nets:
       - AP_WAKE_CELL
@@ -357,10 +357,10 @@ freeze_records:
     package_binding:
       - package/battery/e1-phone-17p3wh-pack.yaml
     placement_region_mm:
-      x: 14.0
-      y: 44.0
-      width: 45.0
-      height: 4.0
+      x: 31.0
+      y: 27.0
+      width: 12.0
+      height: 2.0
     footprint_strategy: 4pin_battery_connector_or_soldered_pack_variant_after_pack_supplier_freeze
     planned_contract_nets:
       - BAT_ID
@@ -406,10 +406,10 @@ freeze_records:
     package_binding:
       - package/wifi/murata-type-2ea-wifi6e.yaml
     placement_region_mm:
-      x: 33.0
-      y: 33.0
-      width: 17.0
-      height: 9.0
+      x: 3.0
+      y: 18.0
+      width: 14.0
+      height: 10.0
     footprint_strategy: murata_type_2ea_reference_land_pattern_and_rf_feed
     planned_contract_nets:
       - BT_EN
@@ -465,10 +465,10 @@ freeze_records:
     package_binding:
       - package/audio/v0-codec.yaml
     placement_region_mm:
-      x: 5.0
-      y: 104.0
-      width: 57.0
-      height: 10.0
+      x: 3.0
+      y: 120.0
+      width: 22.0
+      height: 8.0
     footprint_strategy: bottom_audio_flex_or_board_mount_codec_with_speaker_mic_contacts
     planned_contract_nets:
       - AMP_INT
@@ -521,35 +521,43 @@ freeze_records:
     package_binding:
       - package/interconnect/e1-phone-top-bottom-flex.yaml
     placement_region_mm:
-      top_mate: {x: 46.0, y: 27.0, width: 16.0, height: 3.0}
-      bottom_mate: {x: 46.0, y: 117.0, width: 16.0, height: 3.0}
+      J_TOP_BOTTOM_FLEX_TOP:
+        x: 46.0
+        y: 26.0
+        width: 16.0
+        height: 3.0
+      J_TOP_BOTTOM_FLEX_BOTTOM:
+        x: 46.0
+        y: 117.0
+        width: 16.0
+        height: 3.0
     footprint_strategy: supplier_defined_49plus_contact_split_board_fpc_or_board_to_board_pair
     planned_contract_nets:
-      - USB_DP
-      - USB_DN
-      - USB_CC1
-      - USB_CC2
-      - VBUS
-      - SHIELD_GND
-      - SYS
+      - AMP_INT
       - AON_1V8
-      - IO_1V8
-      - VDD_AUDIO_3V3
-      - VDD_AMP_3V3
-      - I2S_BCLK
-      - I2S_LRCLK
-      - I2S_DOUT
-      - I2S_DIN
-      - PDM_CLK
-      - PDM_DAT
       - AUDIO_I2C_SCL
       - AUDIO_I2C_SDA
       - CODEC_INT
-      - AMP_INT
-      - HAPTIC_OUT
-      - VBAT
-      - RF_VBAT
       - GND
+      - HAPTIC_OUT
+      - I2S_BCLK
+      - I2S_DIN
+      - I2S_DOUT
+      - I2S_LRCLK
+      - IO_1V8
+      - PDM_CLK
+      - PDM_DAT
+      - RF_VBAT
+      - SHIELD_GND
+      - SYS
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBAT
+      - VBUS
+      - VDD_AMP_3V3
+      - VDD_AUDIO_3V3
     missing_contract_nets: []
     mechanical_datums_required:
       - top_island_mating_location

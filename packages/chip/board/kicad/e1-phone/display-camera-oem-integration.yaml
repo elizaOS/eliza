@@ -1,0 +1,528 @@
+schema: eliza.e1_phone_display_camera_oem_integration.v1
+status: blocked_requires_display_camera_supplier_pack_routed_mipi_and_capture_evidence
+date: '2026-05-20'
+claim_boundary: Fail-closed integration gate for the selected 5.5 inch display/touch module and front/rear MIPI camera OEM
+  modules. Public marketplace listings are RFQ seed evidence only. This is not a signed supplier drawing pack, exact FPC pinout,
+  KiCad footprint freeze, routed MIPI signoff, STEP clearance proof, display bring-up log, camera capture proof, or enclosure-ready
+  evidence.
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - package/display/v0-dsi-720x1280.yaml
+  - package/camera/oem-mipi-csi-modules.yaml
+  - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/supplier-source-verification.yaml
+  - board/kicad/e1-phone/supplier-rfq-intake.yaml
+  - board/kicad/e1-phone/external-interface-design-review.yaml
+  - board/kicad/e1-phone/module-host-integration-closure.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/component-height-step-integration.yaml
+display_oem_context:
+  selected_primary:
+    vendor: Chenghao Optoelectronic
+    part: CH550FH01A-CT
+    resolution: 1080x1920
+    interface: MIPI-DSI
+    module_outline_mm:
+      width: 77.1
+      height: 151.77
+      thickness: 3.39
+    active_area_mm:
+      width: 68.04
+      height: 120.96
+    touch: capacitive
+    datasheet_status: supplier_request_required
+  public_source_refresh:
+    id: display_primary_chenghao_ch550fh01a_ct
+    group: display
+    supplier: Shenzhen Chenghao Optoelectronic
+    marketplace_or_vendor: Made-in-China
+    url: https://chenghaolcd.en.made-in-china.com/product/pmFUBTZDnXVH/China-LCD-Manufacturer-1080-1920-Pixels-5-5inch-Pcap-Capacitive-Touch-Display-TFT-Module.html
+    public_page_status: public_listing_observed_2026_05_20
+    candidate: CH550FH01A-CT
+    observed_public_fields:
+      model: CH550FH01A-CT
+      type: 5p5_in_tft_ctp
+      resolution: 1080x1920
+      interface: MIPI
+      module_outline_mm:
+        width: 77.1
+        height: 151.77
+        thickness: 3.39
+      tft_outline_mm:
+        width: 70.78
+        height: 129.17
+        thickness: 1.7
+      active_area_mm:
+        width: 68.04
+        height: 120.96
+      price_signal_usd:
+        qty_2_to_299: 17.4
+        qty_300_to_999: 16.5
+        qty_1000_plus: 15.4
+      production_capacity_signal: 500000_pcs_per_month
+    board_use: primary_display_mechanical_anchor_for_78p0_x_153p6_mm_enclosure
+    still_missing_before_use:
+      - signed_display_drawing_with_fpc_exit_pin1_and_cover_lens_datums
+      - exact_display_touch_fpc_pinout_and_mating_connector_mpn
+      - panel_init_sequence_touch_controller_data_and_bias_current
+      - display_stack_step_model_and_sample_inspection
+  display_fit:
+    current_device_envelope_mm:
+      width: 78.0
+      height: 153.6
+      max_thickness: 9.6
+    primary_clearance_in_current_envelope_mm:
+      width_clearance_mm: 0.9
+      height_clearance_mm: 1.83
+    primary_fits_current_envelope: true
+    recommended_device_envelope_mm:
+      width: 78.0
+      height: 153.6
+      max_thickness: 9.6
+      basis: primary 5.5 inch Chenghao-class CTP module plus compact CAD rail margin
+  external_interface_review:
+    region_mm:
+      x: 49.0
+      y: 8.0
+      width: 13.0
+      height: 19.0
+    required_nets:
+      - DSI_CLK_P
+      - DSI_CLK_N
+      - DSI_D0_P
+      - DSI_D0_N
+      - DSI_D1_P
+      - DSI_D1_N
+      - DSI_D2_P
+      - DSI_D2_N
+      - DSI_D3_P
+      - DSI_D3_N
+      - DISP_RESET_N
+      - DISP_TE
+      - DISP_BL_EN
+      - DISP_BL_PWM
+      - TOUCH_I2C_SCL
+      - TOUCH_I2C_SDA
+    layout_requirements:
+      - 100_ohm_mipi_dphy_clock_and_data_pairs_length_skew_review
+      - display_fpc_bend_radius_and_stiffener_keepout_from_camera_fpcs
+      - backlight_bias_rail_sequence_and_test_points_before_panel_connector
+      - touch_i2c_pullups_irq_reset_and_esd_defined_from_supplier_pinout
+      - connector_height_and_keepout_loaded_into_routed_board_step
+    mechanical_requirements:
+      - selected_display_outline_matches_display-fit.yaml_primary_display
+      - display_module_clearance_is_0p9_mm_width_and_1p83_mm_height_inside_current_envelope
+      - cover_lens_touch_lcm_adhesive_and_midframe_stack_rerun_in_STEP
+      - fpc_exit_datum_signed_before_schematic_symbol_freeze
+    validation_required_before_release:
+      - signed_display_2d_drawing_with_fpc_exit_and_pin_1_datum
+      - connector_mpn_land_pattern_and_step_model
+      - panel_init_sequence_and_touch_controller_datasheet
+      - routed_mipi_length_skew_and_impedance_report
+      - display_touch_bringup_log
+  module_host_contracts:
+    - DSI_CLK_P
+    - DSI_CLK_N
+    - DSI_D0_P
+    - DSI_D0_N
+    - DSI_D1_P
+    - DSI_D1_N
+    - DSI_D2_P
+    - DSI_D2_N
+    - DSI_D3_P
+    - DSI_D3_N
+    - DISP_RESET_N
+    - DISP_TE
+    - DISP_BL_EN
+    - DISP_BL_PWM
+    - TOUCH_I2C_SCL
+    - TOUCH_I2C_SDA
+    - TOUCH_IRQ_N
+    - TOUCH_RESET_N
+  rfq_line:
+    function: display_touch
+    primary_candidate: CH550FH01A-CT
+    sourcing_audit_group: display
+    package_binding: package/display/v0-dsi-720x1280.yaml
+    marketplace_or_vendor_basis:
+      - Made-in-China Chenghao 5.5 inch 1080x1920 MIPI CTP listing
+      - Alibaba 5.5 inch 1080x1920 MIPI alternates
+    board_dependency:
+      - J_DISPLAY_TOUCH exact FPC pinout
+      - 77.1 x 151.77 x 3.39 mm display stack clearance
+      - display FPC bend keepout and cover glass datum
+    required_supplier_artifacts:
+      - signed LCM plus CTP 2D drawing with active, viewing, outline, FPC, and cover-lens datums
+      - FPC pinout including MIPI DSI lanes, touch I2C, reset, TE, backlight, bias, and grounds
+      - mating connector MPN, height, keepout, and recommended land pattern
+      - display/touch power sequence and inrush/backlight current data
+      - STEP model for display stack, FPC tail, stiffener, and adhesive stack
+      - sample inspection report for outline, FPC exit, and touch stack thickness
+    intake_status: blocked_no_signed_drawing_pinout_or_sample
+  supply_diversity:
+    verified_display_source_count: 3
+    has_alibaba_alternate: true
+    has_made_in_china_primary_or_alternate: true
+camera_oem_context:
+  rear_primary:
+    vendor: Sincere First
+    module: SF-XR3855A-A0
+    sensor: OV13855_or_OV13850
+    resolution_mp: 13
+    sensor_size_in: 1/3.06
+    interface: MIPI_CSI
+    pin_count: 24
+    focus: autofocus
+    f_number: 2.0
+    field_of_view_deg: 78.4
+    sourcing_url: https://sincerefirst.en.made-in-china.com/product/WACpUrRYOVkc/China-Ov13855-Ov13850-CMOS-Sensor-Autofocus-13MP-Mipi-Camera-Module.html
+  front_primary:
+    vendor: Sincere First
+    module: SF-G5035S60FY
+    sensor: GC5035
+    resolution_px: 2592x1944
+    interface: MIPI_CSI_2_lane
+    pin_count: 30
+    focus: fixed_focus
+    sourcing_url: https://sincerefirst.en.made-in-china.com/product/stzRqCgufMVy/China-5MP-Gc5035-CMOS-Image-Sensor-Small-Size-Fixed-Focus-Mipi-Camera-Module.html
+  public_source_refresh:
+    rear:
+      id: rear_camera_primary_sincere_first_ov13855
+      group: camera
+      supplier: Guangzhou Sincere Information Technology / Sincere First
+      marketplace_or_vendor: Made-in-China
+      url: https://sincerefirst.en.made-in-china.com/product/WACpUrRYOVkc/China-Ov13855-Ov13850-CMOS-Sensor-Autofocus-13MP-Mipi-Camera-Module.html
+      public_page_status: public_listing_observed_2026_05_20
+      candidate: SF-XR3855A-A0
+      observed_public_fields:
+        sensor_class: OV13855_or_OV13850
+        resolution_mp: 13
+        interface: MIPI
+        pinout: 24_pin
+        focus: autofocus
+        sensor_size_in: 1/3.06
+        f_number: 2.0
+        view_angle_deg: 78.4
+        price_signal_usd:
+          qty_5_to_999: 16.35
+          qty_1000_to_9999: 11.65
+          qty_10000_plus: 8.35
+      board_use: rear_camera_primary_fpc_z_stack_and_csi_lane_class
+      still_missing_before_use:
+        - exact_selected_module_2d_drawing_lens_axis_z_height_and_fpc_exit
+        - exact_fpc_pinout_lane_order_power_sequence_and_mating_connector_mpn
+        - module_step_model_register_pack_driver_plan_and_otp_calibration_flow
+        - sample_image_quality_and_incoming_dimension_report
+    front:
+      id: front_camera_primary_sincere_first_gc5035
+      group: camera
+      supplier: Guangzhou Sincere Information Technology / Sincere First
+      marketplace_or_vendor: Made-in-China
+      url: https://sincerefirst.en.made-in-china.com/product/stzRqCgufMVy/China-5MP-Gc5035-CMOS-Image-Sensor-Small-Size-Fixed-Focus-Mipi-Camera-Module.html
+      public_page_status: public_listing_observed_2026_05_20
+      candidate: SF-G5035S60FY
+      observed_public_fields:
+        sensor: GC5035
+        resolution_px: 2592x1944
+        interface: MIPI_2_lane
+        pinout: 30pin
+        focus: fixed_focus
+        sensor_size_in: 1/5
+        module_type: fixed_focus
+        production_capacity_signal: 10kk_pcs_per_month
+      board_use: front_camera_primary_fpc_z_stack_and_two_lane_csi_class
+      still_missing_before_use:
+        - exact_variant_confirmation_and_front_camera_2d_drawing
+        - exact_fpc_pinout_lane_order_power_sequence_and_mating_connector_mpn
+        - lens_height_cover_glass_clearance_step_model_and_driver_notes
+        - sample_capture_and_incoming_dimension_report
+  external_interface_review:
+    region_mm:
+      x: 45.0
+      y: 3.0
+      width: 17.0
+      height: 24.0
+    required_nets:
+      - CAM0_CSI_CLK_P
+      - CAM0_CSI_D0_P
+      - CAM0_CSI_D1_P
+      - CAM0_CSI_D2_P
+      - CAM0_CSI_D3_P
+      - CAM0_MCLK
+      - CAM0_RESET_N
+      - CAM1_CSI_CLK_P
+      - CAM1_CSI_D0_P
+      - CAM1_CSI_D1_P
+      - CAM1_MCLK
+      - CAM1_RESET_N
+      - CAM_AVDD_2V8
+      - CAM_DVDD_1V2
+      - IO_1V8
+    layout_requirements:
+      - csi_clock_and_data_pairs_routed_as_100_ohm_mipi_dphy
+      - rear_autofocus_vcm_supply_and_i2c_pins_defined_from_supplier_pinout
+      - camera_power_sequence_test_points_for_avdd_dvdd_iovdd_and_reset
+      - camera_fpc_bend_radius_compatible_with_display_fpc_zone
+      - lens_axis_datums_preserved_in_enclosure_STEP
+    mechanical_requirements:
+      - rear_camera_z_height_and_lens_axis_locked_before_ID_freeze
+      - front_camera_bezel_and_cover_glass_clearance_locked_before_panel_order
+      - fpc_pin_1_orientation_and mating_connector_height_loaded_into_STEP
+    validation_required_before_release:
+      - signed_rear_camera_2d_drawing_pinout_and_step_model
+      - signed_front_camera_2d_drawing_pinout_and_step_model
+      - routed_csi_length_skew_and_impedance_report
+      - v4l2_or_android_camera_hal_capture_log
+      - focus_calibration_and_image_quality_fixture_plan
+  module_host_contracts:
+    - CAM0_CSI_CLK_P
+    - CAM0_CSI_CLK_N
+    - CAM0_CSI_D0_P
+    - CAM0_CSI_D0_N
+    - CAM0_CSI_D1_P
+    - CAM0_CSI_D1_N
+    - CAM0_CSI_D2_P
+    - CAM0_CSI_D2_N
+    - CAM0_CSI_D3_P
+    - CAM0_CSI_D3_N
+    - CAM0_MCLK
+    - CAM0_RESET_N
+    - CAM0_PWDN
+    - CAM0_I2C_SCL
+    - CAM0_I2C_SDA
+    - CAM0_AF_I2C_SCL
+    - CAM0_AF_I2C_SDA
+    - CAM1_CSI_CLK_P
+    - CAM1_CSI_CLK_N
+    - CAM1_CSI_D0_P
+    - CAM1_CSI_D0_N
+    - CAM1_CSI_D1_P
+    - CAM1_CSI_D1_N
+    - CAM1_MCLK
+    - CAM1_RESET_N
+    - CAM1_I2C_SCL
+    - CAM1_I2C_SDA
+    - CAM_AVDD_2V8
+    - CAM_DVDD_1V2
+    - IO_1V8
+    - CAM_AFVDD_2V8
+  rfq_lines:
+    rear_camera:
+      function: rear_camera
+      primary_candidate: SF-XR3855A-A0_OV13855_or_OV13850_13MP_AF
+      sourcing_audit_group: camera
+      package_binding: package/camera/oem-mipi-csi-modules.yaml
+      marketplace_or_vendor_basis:
+        - Made-in-China Sincere First OV13855/OV13850 13MP AF MIPI listing
+        - Alibaba Sincere camera module supplier family
+      board_dependency:
+        - J_CAM0 FPC pinout and CSI lane count
+        - rear lens window datum and camera bump z-height
+        - AF/VCM current and camera rail sequence
+      required_supplier_artifacts:
+        - sensor module 2D drawing with lens center, barrel height, FPC tail, and keepout
+        - 24 or 30 pin FPC pinout with CSI lanes, MCLK, I2C, reset, PWDN, AF, AVDD, DVDD, and grounds
+        - mating connector MPN and land pattern
+        - module STEP model including lens barrel and stiffener
+        - sensor bring-up register pack or Linux/Android driver notes
+        - image quality sample report and inspection dimensions
+      intake_status: blocked_no_exact_module_drawing_pinout_or_sample
+    front_camera:
+      function: front_camera
+      primary_candidate: SF-G5035S60FY_GC5035_5MP_FF_MIPI
+      sourcing_audit_group: camera
+      package_binding: package/camera/oem-mipi-csi-modules.yaml
+      marketplace_or_vendor_basis:
+        - Made-in-China Sincere First GC5035 5MP fixed-focus MIPI listing
+        - Alibaba IMX219 and phone-camera alternates
+      board_dependency:
+        - J_CAM1 FPC pinout and front camera/earpiece keepout
+        - front lens window datum and display-side clearance
+      required_supplier_artifacts:
+        - module 2D drawing with optical center, FPC exit, stiffener, and keepout
+        - CSI pinout and power sequence
+        - mating connector MPN and footprint
+        - STEP model with lens height
+        - driver or V4L2/Android integration notes
+        - sample inspection report
+      intake_status: blocked_no_exact_front_camera_mpn_drawing_or_sample
+  supply_diversity:
+    verified_camera_source_count: 4
+    has_alibaba_alternate: true
+    has_made_in_china_primary_or_alternate: true
+routing_and_height_context:
+  display_dsi_pairs:
+    - name: DSI_CLK
+      nets:
+        - DSI_CLK_P
+        - DSI_CLK_N
+      class: mipi_dphy_diff
+      max_length_mm: 45
+      intra_pair_skew_mm_max: 0.25
+      region: soc_to_display_ffi
+    - name: DSI_D0
+      nets:
+        - DSI_D0_P
+        - DSI_D0_N
+      class: mipi_dphy_diff
+      max_length_mm: 45
+      intra_pair_skew_mm_max: 0.25
+      region: soc_to_display_ffi
+    - name: DSI_D1
+      nets:
+        - DSI_D1_P
+        - DSI_D1_N
+      class: mipi_dphy_diff
+      max_length_mm: 45
+      intra_pair_skew_mm_max: 0.25
+      region: soc_to_display_ffi
+    - name: DSI_D2
+      nets:
+        - DSI_D2_P
+        - DSI_D2_N
+      class: mipi_dphy_diff
+      max_length_mm: 45
+      intra_pair_skew_mm_max: 0.25
+      region: soc_to_display_ffi
+    - name: DSI_D3
+      nets:
+        - DSI_D3_P
+        - DSI_D3_N
+      class: mipi_dphy_diff
+      max_length_mm: 45
+      intra_pair_skew_mm_max: 0.25
+      region: soc_to_display_ffi
+  camera_csi_pairs:
+    - name: CAM0_CSI_CLK
+      nets:
+        - CAM0_CSI_CLK_P
+        - CAM0_CSI_CLK_N
+      class: mipi_dphy_diff
+      max_length_mm: 55
+      intra_pair_skew_mm_max: 0.25
+      region: rear_camera_to_soc
+    - name: CAM0_CSI_D0
+      nets:
+        - CAM0_CSI_D0_P
+        - CAM0_CSI_D0_N
+      class: mipi_dphy_diff
+      max_length_mm: 55
+      intra_pair_skew_mm_max: 0.25
+      region: rear_camera_to_soc
+    - name: CAM0_CSI_D1
+      nets:
+        - CAM0_CSI_D1_P
+        - CAM0_CSI_D1_N
+      class: mipi_dphy_diff
+      max_length_mm: 55
+      intra_pair_skew_mm_max: 0.25
+      region: rear_camera_to_soc
+    - name: CAM0_CSI_D2
+      nets:
+        - CAM0_CSI_D2_P
+        - CAM0_CSI_D2_N
+      class: mipi_dphy_diff
+      max_length_mm: 55
+      intra_pair_skew_mm_max: 0.25
+      region: rear_camera_to_soc
+    - name: CAM0_CSI_D3
+      nets:
+        - CAM0_CSI_D3_P
+        - CAM0_CSI_D3_N
+      class: mipi_dphy_diff
+      max_length_mm: 55
+      intra_pair_skew_mm_max: 0.25
+      region: rear_camera_to_soc
+    - name: CAM1_CSI_CLK
+      nets:
+        - CAM1_CSI_CLK_P
+        - CAM1_CSI_CLK_N
+      class: mipi_dphy_diff
+      max_length_mm: 65
+      intra_pair_skew_mm_max: 0.25
+      region: front_camera_to_soc
+    - name: CAM1_CSI_D0
+      nets:
+        - CAM1_CSI_D0_P
+        - CAM1_CSI_D0_N
+      class: mipi_dphy_diff
+      max_length_mm: 65
+      intra_pair_skew_mm_max: 0.25
+      region: front_camera_to_soc
+    - name: CAM1_CSI_D1
+      nets:
+        - CAM1_CSI_D1_P
+        - CAM1_CSI_D1_N
+      class: mipi_dphy_diff
+      max_length_mm: 65
+      intra_pair_skew_mm_max: 0.25
+      region: front_camera_to_soc
+  touch_i2c_bus:
+    name: TOUCH_I2C
+    nets:
+      - TOUCH_I2C_SCL
+      - TOUCH_I2C_SDA
+    max_length_mm: 70
+    pullups_to: IO_1V8
+  camera_i2c_bus:
+    name: CAMERA_I2C
+    nets:
+      - CAM0_I2C_SCL
+      - CAM0_I2C_SDA
+      - CAM1_I2C_SCL
+      - CAM1_I2C_SDA
+    max_length_mm: 70
+    pullups_to: IO_1V8
+  height_models_required:
+    - display_fpc_connector
+    - rear_camera_module
+    - front_camera_module
+required_release_outputs:
+  - board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
+  - board/kicad/e1-phone/production/sourcing/display-touch-signed-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/display-touch-fpc-pinout.yaml
+  - board/kicad/e1-phone/production/step/display-touch-stack.step
+  - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  - board/kicad/e1-phone/production/reports/mipi-dsi-length-skew-impedance.json
+  - board/kicad/e1-phone/production/sourcing/rear-camera-signed-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/front-camera-signed-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/camera-fpc-pinouts.yaml
+  - board/kicad/e1-phone/production/step/rear-camera-module.step
+  - board/kicad/e1-phone/production/step/front-camera-module.step
+  - board/kicad/e1-phone/production/reports/camera-capture-log.json
+  - board/kicad/e1-phone/production/reports/mipi-csi-length-skew-impedance.json
+  - board/kicad/e1-phone/production/reports/camera-iq-calibration-plan.yaml
+cross_checks:
+  primary_display_matches_display_fit: true
+  primary_display_fits_current_envelope: true
+  display_has_alibaba_and_made_in_china_sources: true
+  camera_has_alibaba_and_made_in_china_sources: true
+  rear_and_front_camera_primary_sources_match_binding: true
+  display_camera_contracts_remain_fail_closed: true
+  release_outputs_fail_closed: true
+release_blockers:
+  - display supplier signed 2D drawing, FPC pinout, connector MPN, panel init sequence, touch-controller data, and STEP model
+    missing
+  - rear and front camera drawings, exact FPC pinouts, mating connector MPNs, STEP models, driver notes, and calibration data
+    missing
+  - routed MIPI DSI/CSI length-skew, impedance, return-path, and DRC evidence missing
+  - display bring-up, touch probe, V4L2 or Android Camera HAL capture, and image-quality logs missing
+  - routed-board STEP clearance for display FPC bend, camera lens stack, earpiece, cover glass, and enclosure datums missing
+forbidden_claims:
+  - 60_Hz_sustained
+  - Composer_HAL_VINTF_compatible
+  - SurfaceFlinger_running
+  - autofocus_ready
+  - calibrated_image_quality
+  - camera_hal_ready
+  - camera_ready
+  - display_camera_oem_ready
+  - display_touch_ready
+  - display_works
+  - enclosure_ready
+  - end_to_end_phone_ready
+  - fabrication_ready
+  - mipi_routed
+  - panel_probed
+  - supplier_pack_received

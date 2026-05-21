@@ -1,0 +1,95 @@
+schema: eliza.e1_phone_supplier_pinout.v1
+part: LBEE5XV2EA-802
+manufacturer: Murata Manufacturing Co., Ltd.
+package: Type 2EA SMT module, 12.5 x 9.4 x 1.2 mm, Infineon CYW55573 chipset
+source_doc: https://www.murata.com/products/productdata/8821680046110/TYPE2EA.pdf
+source_doc_alt:
+  - https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+  - https://www.murata.com/-/media/webrenewal/products/connectivitymodule/asset/pub/rfm/data/type2ea/type2ea-hw-application-note.ashx
+  - https://shop.richardsonrfpd.com/docs/rfpd/type2ea.pdf
+source_doc_revision: Datasheet rev. as of 2025-10 (Murata SP-XV2EA)
+captured_date: 2026-05-21
+captured_by: agent
+evidence_class: public_supplier_datasheet
+notes: |
+  Type 2EA is Wi-Fi 6E + Bluetooth 5.3 module based on Infineon CYW55573. WLAN
+  host interface offered is PCIe Gen2 OR SDIO 3.0/2.0 (selected via pin
+  strapping at boot per Murata HW app note). Bluetooth host interface is HCI
+  UART with PCM and I2S codec port. The exact mechanical pinout matrix is
+  published in the Murata datasheet PDF (binary, not text-extractable). The
+  verified-public interface groups below are captured; per-pad coordinates
+  require pulling the datasheet PDF figure during KiCad symbol authoring.
+mechanical:
+  package_mm: [12.5, 9.4, 1.2]
+  weight_mg: 360
+  msl: 3
+  operating_temperature_c: [-40, 85]
+  rohs: true
+electrical:
+  vbat_v: [3.135, 4.8]
+  vio_v: [1.71, 1.89]
+  wlan_chipset: Infineon CYW55573
+  wifi_standards: [802.11a, 802.11b, 802.11g, 802.11n, 802.11ac, 802.11ax]
+  wifi_mimo: 2x2
+  bluetooth_version: 5.3
+  bluetooth_modes: [BR, EDR, LE]
+  wlan_host_interfaces: [PCIe_3.0_Gen2, SDIO_3.0, SDIO_2.0]
+  bt_host_interfaces: [HCI_UART, PCM, I2S]
+interface_pin_groups:
+  power:
+    - VBAT (Wi-Fi+BT module main supply)
+    - VIO (host IO reference, 1.8 V)
+    - GND (multiple)
+  wlan_sdio:
+    - WL_SDIO_CLK
+    - WL_SDIO_CMD
+    - WL_SDIO_DATA0
+    - WL_SDIO_DATA1
+    - WL_SDIO_DATA2
+    - WL_SDIO_DATA3
+    - WL_HOST_WAKE (out, to host AP)
+    - WL_REG_ON (in, enable from host)
+    - WL_DEV_WAKE (in, from host)
+  wlan_pcie:
+    - WL_PCIE_REFCLK_P
+    - WL_PCIE_REFCLK_N
+    - WL_PCIE_TX_P
+    - WL_PCIE_TX_N
+    - WL_PCIE_RX_P
+    - WL_PCIE_RX_N
+    - WL_PCIE_PERST_N
+    - WL_PCIE_CLKREQ_N
+    - WL_PCIE_WAKE_N
+  bt_uart:
+    - BT_UART_TXD
+    - BT_UART_RXD
+    - BT_UART_CTS
+    - BT_UART_RTS
+    - BT_REG_ON
+    - BT_HOST_WAKE
+    - BT_DEV_WAKE
+  bt_pcm_i2s:
+    - PCM_CLK
+    - PCM_SYNC
+    - PCM_IN
+    - PCM_OUT
+  rf:
+    - WLAN_ANT (main antenna feed, 50 ohm)
+    - BT_ANT (Bluetooth antenna feed, 50 ohm; some variants share with WLAN)
+  strap:
+    - HOST_IF_SEL (selects PCIe vs SDIO at WL_REG_ON deassertion)
+  clock:
+    - LPO_IN (32.768 kHz sleep clock from host, if not internal)
+  debug:
+    - JTAG / SWD test pads (reserved)
+pins:
+  - pin: ALL
+    name: fetch_required
+    function: full_smt_pad_map
+    direction: unknown
+    voltage_v: null
+    notes: |
+      Per-pad coordinates require parsing the binary Murata Type 2EA datasheet
+      PDF figure (pin assignment table) or pulling the Cadence/Allegro/KiCad
+      footprint from Murata's reference layout pack. Interface groups above
+      are verified from the datasheet text summary and Murata vendor page.

@@ -1,4 +1,4 @@
-From: Milady chip team <chip-team@elizaos.invalid>
+From: elizaOS chip team <chip-team@elizaos.invalid>
 Subject: [PATCH] cva6: bht.sv work around V3Delayed whole-array NBA limitation
 
 Same root cause as btb-v3delayed-workaround.patch: the simulator's

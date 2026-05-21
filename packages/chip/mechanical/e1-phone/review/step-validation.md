@@ -1,6 +1,6 @@
 # E1 Phone STEP Validation
 
-Status: pass; re-imported 85 part STEP files.
+Status: pass; re-imported 97 part STEP files.
 
 ## Cases
 
@@ -29,6 +29,13 @@ Status: pass; re-imported 85 part STEP files.
 - PASS: `rear_camera_cover_glass` max span error 0.0 mm
 - PASS: `rear_camera_lens_window` max span error 0.0 mm
 - PASS: `front_camera_under_glass` max span error 0.0 mm
+- PASS: `rear_camera_cover_adhesive_top` max span error 0.0 mm
+- PASS: `rear_camera_cover_adhesive_bottom` max span error 0.0 mm
+- PASS: `rear_camera_cover_adhesive_left` max span error 0.0 mm
+- PASS: `rear_camera_cover_adhesive_right` max span error 0.0 mm
+- PASS: `rear_camera_light_baffle_top` max span error 0.0 mm
+- PASS: `rear_camera_light_baffle_bottom` max span error 0.0 mm
+- PASS: `front_camera_black_mask_window` max span error 0.0 mm
 - PASS: `handset_acoustic_slot` max span error 0.0 mm
 - PASS: `handset_acoustic_mesh` max span error 0.0 mm
 - PASS: `usb_c_external_aperture` max span error 0.0 mm
@@ -58,6 +65,11 @@ Status: pass; re-imported 85 part STEP files.
 - PASS: `split_interconnect_side_flex` max span error 0.0 mm
 - PASS: `split_interconnect_top_flex_tail` max span error 0.0 mm
 - PASS: `split_interconnect_bottom_flex_tail` max span error 0.0 mm
+- PASS: `side_key_flex_connector` max span error 0.0 mm
+- PASS: `side_key_volume_flex_tail` max span error 0.0 mm
+- PASS: `side_key_volume_actuator_tail` max span error 0.0 mm
+- PASS: `side_key_power_flex_tail` max span error 0.0 mm
+- PASS: `side_key_power_actuator_tail` max span error 0.0 mm
 - PASS: `bottom_microphone_port_1` max span error 0.0 mm
 - PASS: `bottom_microphone_mesh_1` max span error 0.0 mm
 - PASS: `bottom_microphone_port_2` max span error 0.0 mm

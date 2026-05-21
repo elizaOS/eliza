@@ -12,6 +12,7 @@ This is the mechanical gate for replacing the concept PCB envelope with routed K
 - PASS: `concept_split_island_geometry_matches_kicad` from `board/kicad/e1-phone/layout-utilization.yaml`
 - BLOCKED: `routed_tracks_present` from `board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb`
 - BLOCKED: `filled_zones_present` from `board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb`
+- PASS: `mechanical_keepout_zones_present` from `board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb`
 - BLOCKED: `production_board_step_present` from `board/kicad/e1-phone/production/step`
 - BLOCKED: `placeholder_footprints_replaced` from `board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb`
 

@@ -16,6 +16,7 @@
     ],
     "nonwhite_pixel_ratio": 0.05366,
     "orange_pixel_ratio_of_nonwhite": 0.43302,
+    "warm_orange_pixel_ratio_of_nonwhite": 0.42543,
     "dark_pixel_ratio_of_nonwhite": 0.5465,
     "pass": true
   },
@@ -36,6 +37,7 @@
     ],
     "nonwhite_pixel_ratio": 0.05702,
     "orange_pixel_ratio_of_nonwhite": 0.97389,
+    "warm_orange_pixel_ratio_of_nonwhite": 0.95179,
     "dark_pixel_ratio_of_nonwhite": 0.01315,
     "pass": true
   },
@@ -56,6 +58,7 @@
     ],
     "nonwhite_pixel_ratio": 0.11003,
     "orange_pixel_ratio_of_nonwhite": 0.00173,
+    "warm_orange_pixel_ratio_of_nonwhite": 0.97237,
     "dark_pixel_ratio_of_nonwhite": 0.00943,
     "pass": true
   },
@@ -76,6 +79,7 @@
     ],
     "nonwhite_pixel_ratio": 0.02973,
     "orange_pixel_ratio_of_nonwhite": 0.92483,
+    "warm_orange_pixel_ratio_of_nonwhite": 0.88553,
     "dark_pixel_ratio_of_nonwhite": 0.06132,
     "pass": true
   },
@@ -96,6 +100,7 @@
     ],
     "nonwhite_pixel_ratio": 0.02397,
     "orange_pixel_ratio_of_nonwhite": 0.77781,
+    "warm_orange_pixel_ratio_of_nonwhite": 0.77783,
     "dark_pixel_ratio_of_nonwhite": 0.19595,
     "pass": true
   },
@@ -116,6 +121,7 @@
     ],
     "nonwhite_pixel_ratio": 0.11026,
     "orange_pixel_ratio_of_nonwhite": 0.068,
+    "warm_orange_pixel_ratio_of_nonwhite": 0.06365,
     "dark_pixel_ratio_of_nonwhite": 0.92223,
     "pass": true
   },
@@ -136,6 +142,7 @@
     ],
     "nonwhite_pixel_ratio": 0.07599,
     "orange_pixel_ratio_of_nonwhite": 0.45795,
+    "warm_orange_pixel_ratio_of_nonwhite": 0.44613,
     "dark_pixel_ratio_of_nonwhite": 0.52474,
     "pass": true
   },
@@ -156,6 +163,7 @@
     ],
     "nonwhite_pixel_ratio": 0.07952,
     "orange_pixel_ratio_of_nonwhite": 0.01139,
+    "warm_orange_pixel_ratio_of_nonwhite": 0.01187,
     "dark_pixel_ratio_of_nonwhite": 0.67433,
     "pass": true
   },
@@ -165,18 +173,19 @@
       1650
     ],
     "mean_rgb": [
-      251.436,
-      247.307,
-      245.563
+      251.424,
+      247.297,
+      245.557
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.04052,
-    "orange_pixel_ratio_of_nonwhite": 0.13278,
-    "dark_pixel_ratio_of_nonwhite": 0.02522,
+    "nonwhite_pixel_ratio": 0.0406,
+    "orange_pixel_ratio_of_nonwhite": 0.13253,
+    "warm_orange_pixel_ratio_of_nonwhite": 0.12985,
+    "dark_pixel_ratio_of_nonwhite": 0.02517,
     "pass": true
   }
 }
