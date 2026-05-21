@@ -28,10 +28,7 @@ const VIEWPORTS = [
   { name: "mobile", width: 390, height: 844 },
 ] as const;
 
-const ARTIFACT_DIR = path.resolve(
-  process.cwd(),
-  "test-results/aesthetic",
-);
+const ARTIFACT_DIR = path.resolve(process.cwd(), "test-results/aesthetic");
 
 const mockUser = {
   id: "user_aesthetic_audit",
@@ -121,7 +118,9 @@ async function settle(page: Page) {
   await page
     .waitForSelector("h1, h2, button, [data-marquee]", { timeout: 10_000 })
     .catch(() => {});
-  await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+  await page
+    .waitForLoadState("networkidle", { timeout: 10_000 })
+    .catch(() => {});
   await page.waitForTimeout(400);
 }
 
@@ -171,11 +170,7 @@ for (const viewport of VIEWPORTS) {
         const settledPath = new URL(page.url()).pathname;
 
         await page.screenshot({
-          path: path.join(
-            ARTIFACT_DIR,
-            viewport.name,
-            `${route.name}.png`,
-          ),
+          path: path.join(ARTIFACT_DIR, viewport.name, `${route.name}.png`),
           fullPage: true,
           mask: dynamicMask(page),
           animations: "disabled",
@@ -233,11 +228,15 @@ for (const viewport of VIEWPORTS) {
               const isFullyRounded = r >= half - 0.5;
               if (!(isZero || isXs || isFullyRounded)) {
                 const id = el.id ? `#${el.id}` : "";
-                const cls = el.className && typeof el.className === "string"
-                  ? `.${el.className.split(/\s+/).filter(Boolean).join(".")}`
-                  : "";
+                const cls =
+                  el.className && typeof el.className === "string"
+                    ? `.${el.className.split(/\s+/).filter(Boolean).join(".")}`
+                    : "";
                 offenders.push({
-                  selector: `${el.tagName.toLowerCase()}${id}${cls}`.slice(0, 200),
+                  selector: `${el.tagName.toLowerCase()}${id}${cls}`.slice(
+                    0,
+                    200,
+                  ),
                   radius: radii.join(","),
                   tag: el.tagName.toLowerCase(),
                 });
@@ -269,10 +268,15 @@ for (const viewport of VIEWPORTS) {
             const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
             return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
           }
-          function close(a: [number, number, number], b: [number, number, number]) {
-            return Math.abs(a[0] - b[0]) < 8 &&
+          function close(
+            a: [number, number, number],
+            b: [number, number, number],
+          ) {
+            return (
+              Math.abs(a[0] - b[0]) < 8 &&
               Math.abs(a[1] - b[1]) < 8 &&
-              Math.abs(a[2] - b[2]) < 8;
+              Math.abs(a[2] - b[2]) < 8
+            );
           }
           // Sample the brand-orange + brand-blue from CSS vars on body.
           const cs = getComputedStyle(document.body);
@@ -283,9 +287,7 @@ for (const viewport of VIEWPORTS) {
             cs.getPropertyValue("--brand-blue").trim() || "rgb(34, 158, 217)",
           );
           const buttons = Array.from(
-            document.querySelectorAll<HTMLElement>(
-              'button, [role="button"]',
-            ),
+            document.querySelectorAll<HTMLElement>('button, [role="button"]'),
           );
           const flagged: string[] = [];
           for (const btn of buttons) {
@@ -388,9 +390,7 @@ test.describe("brand chrome consistency", () => {
 test.describe("Sign-In With Solana", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test("Solana button signs in and routes to /connected", async ({
-    page,
-  }) => {
+  test("Solana button signs in and routes to /connected", async ({ page }) => {
     await installCloudMocks(page);
 
     // Inject a deterministic test signer before the page boots.

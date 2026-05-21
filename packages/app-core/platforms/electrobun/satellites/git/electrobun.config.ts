@@ -8,7 +8,7 @@ const gitSatellite = {
 	permissions: {
 		host: {
 			storage: true,
-			"manage-carrots": true,
+			"manage-remote-plugins": true,
 		},
 		bun: {
 			read: true,

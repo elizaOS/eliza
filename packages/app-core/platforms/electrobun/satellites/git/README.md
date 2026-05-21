@@ -72,4 +72,4 @@ When the host forwards worker events, the Git Satellite can emit operation event
 
 ## Upstream Packaging Boundary
 
-The current local module system still requires upstream packaging names like `carrot.json`, `build.carrot`, and `carrotOnly`. They are used only at the packaging boundary.
+The current local module system still requires upstream packaging names like `plugin.json`, `build.carrot`, and `carrotOnly`. They are used only at the packaging boundary.

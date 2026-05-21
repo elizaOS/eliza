@@ -446,6 +446,12 @@ Implemented schema foundation:
   candidate manifest.
   `make ai-eda-tool-actions-check` validates the initial dry-run
   `eda.tool_action.v1` fixture and command governance policy.
+  `make ai-eda-cocotb-stimulus-dry-run` now covers five dry-run stimulus
+  scopes: `e1_npu` descriptor queue, `e1_dma`, `e1_riscv_iommu`,
+  `e1_linux_soc_contract` interrupt/reset edges, and `e1_npu` command-buffer
+  behavior. The report contains 27 total coverage bins and 26 existing seed
+  references, but still records no generated stimulus as evidence until
+  deterministic cocotb regressions pass.
   `make docs-check` depends on the schema checker.
 
 Converters to add or complete:
@@ -649,8 +655,9 @@ Inputs:
 
 Implementation TODOs:
 
-- Extend `scripts/ai_eda/run_cocotb_stimulus_search.py` to search descriptor
-  queue, DMA, IOMMU, interrupt, reset, and NPU command-buffer edges.
+- Replace the current `scripts/ai_eda/run_cocotb_stimulus_search.py` dry-run
+  manifest validator with a real LLM4DV/CVDP-backed seed generator for the
+  descriptor queue, DMA, IOMMU, interrupt, reset, and NPU command-buffer bins.
 - Add a candidate assertion schema:
   module, signal scope, reset semantics, clock domain, antecedent,
   consequent, bounded depth, generated-by, reviewer, bind status.
@@ -1035,7 +1042,7 @@ not as:
 - [x] Add logic-synthesis recipe corpus generator.
 - [x] Add OpenABC-D/ABC/Yosys policy baseline.
 - [x] Add PD surrogate training/eval smoke.
-- [ ] Extend cocotb stimulus search beyond NPU descriptor queue.
+- [x] Extend cocotb stimulus search beyond NPU descriptor queue.
 - [x] Define typed EDA tool-action schema before any write-capable agent.
 - [ ] Keep `alphachip-checkpoint-blocker.md` monthly re-audits.
 
