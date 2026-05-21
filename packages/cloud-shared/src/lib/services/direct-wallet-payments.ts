@@ -129,6 +129,20 @@ const BSC_TOKEN_OPTIONS: DirectWalletTokenOption[] = [
  */
 const NATIVE_SLIPPAGE_BPS = 200;
 
+const EXPLORER_BASE: Record<DirectWalletNetwork, string> = {
+  base: "https://basescan.org/tx/",
+  bsc: "https://bscscan.com/tx/",
+  solana: "https://solscan.io/tx/",
+};
+
+function buildExplorerUrl(
+  network: DirectWalletNetwork | null,
+  txHash: string | null,
+): string | null {
+  if (!network || !txHash) return null;
+  return `${EXPLORER_BASE[network]}${txHash}`;
+}
+
 function resolveBscToken(symbol: string | undefined): DirectWalletTokenOption {
   if (!symbol) return BSC_TOKEN_OPTIONS[1]; // default USDT
   const match = BSC_TOKEN_OPTIONS.find(
@@ -710,24 +724,25 @@ export class DirectWalletPaymentsService {
     const now = new Date();
 
     const payment = await dbWrite.transaction(async (tx) => {
-      if (promoRequested) {
-        await tx.execute(sql`
-          SELECT pg_advisory_xact_lock(hashtext(${"crypto_direct_bsc_promo:" + params.organizationId}))
-        `);
-        const existingPromo = await tx
-          .select({ id: cryptoPayments.id })
-          .from(cryptoPayments)
-          .where(sql`
-            ${cryptoPayments.organization_id} = ${params.organizationId}
-            AND ${cryptoPayments.status} IN ('pending', 'confirmed')
-            AND ${cryptoPayments.metadata}->>'kind' = 'direct_wallet_credit_purchase'
-            AND ${cryptoPayments.metadata}->>'promo_code' = 'bsc'
-          `)
-          .limit(1);
-        if (existingPromo.length > 0) {
-          throw new Error("BSC promotion has already been redeemed for this organization");
-        }
-      }
+      // BSC promo redemption check temporarily disabled — allow repeat $5 bonus on $10 buys.
+      // if (promoRequested) {
+      //   await tx.execute(sql`
+      //     SELECT pg_advisory_xact_lock(hashtext(${"crypto_direct_bsc_promo:" + params.organizationId}))
+      //   `);
+      //   const existingPromo = await tx
+      //     .select({ id: cryptoPayments.id })
+      //     .from(cryptoPayments)
+      //     .where(sql`
+      //       ${cryptoPayments.organization_id} = ${params.organizationId}
+      //       AND ${cryptoPayments.status} IN ('pending', 'confirmed')
+      //       AND ${cryptoPayments.metadata}->>'kind' = 'direct_wallet_credit_purchase'
+      //       AND ${cryptoPayments.metadata}->>'promo_code' = 'bsc'
+      //     `)
+      //     .limit(1);
+      //   if (existingPromo.length > 0) {
+      //     throw new Error("BSC promotion has already been redeemed for this organization");
+      //   }
+      // }
 
       const [created] = await tx
         .insert(cryptoPayments)
@@ -805,6 +820,130 @@ export class DirectWalletPaymentsService {
         bonusCredits,
         expiresAt: payment.expires_at.toISOString(),
       },
+    };
+  }
+
+  /**
+   * Records a broadcast tx hash against a pending payment. Called by the
+   * frontend the instant the wallet returns a hash, BEFORE the user-driven
+   * confirm path runs. Persisting the hash here means a browser crash, tab
+   * close, or network drop between broadcast and confirm doesn't orphan a
+   * paid tx — the cron auto-confirm path picks it up.
+   *
+   * Idempotent: a second call with the same hash is a no-op. A different
+   * hash on an already-attached payment errors.
+   */
+  async attachTransaction(
+    params: { paymentId: string; txHash: string; userId: string },
+  ): Promise<{
+    payment: CryptoPayment;
+    alreadyAttached: boolean;
+  }> {
+    return await dbWrite.transaction(async (tx) => {
+      const [payment] = await tx
+        .select()
+        .from(cryptoPayments)
+        .where(eq(cryptoPayments.id, params.paymentId))
+        .for("update");
+      if (!payment) throw new Error("Payment not found");
+      if (payment.user_id !== params.userId) throw new Error("Unauthorized");
+
+      // Already-confirmed payments don't accept new hashes — the hash is
+      // already final.
+      if (payment.status === "confirmed") {
+        return { payment, alreadyAttached: true };
+      }
+
+      if (payment.transaction_hash === params.txHash) {
+        return { payment, alreadyAttached: true };
+      }
+      if (payment.transaction_hash && payment.transaction_hash !== params.txHash) {
+        throw new Error(
+          "Payment already has a different transaction hash attached",
+        );
+      }
+      if (payment.status !== "pending") {
+        throw new Error(`Cannot attach tx to payment in status ${payment.status}`);
+      }
+
+      // Guard against the same tx being attached to two different payments.
+      const existingTx = await tx
+        .select()
+        .from(cryptoPayments)
+        .where(eq(cryptoPayments.transaction_hash, params.txHash))
+        .for("update");
+      if (existingTx.length > 0 && existingTx[0].id !== payment.id) {
+        throw new Error("Transaction already attached to another payment");
+      }
+
+      const [updated] = await tx
+        .update(cryptoPayments)
+        .set({
+          transaction_hash: params.txHash,
+          status: "broadcast",
+          updated_at: new Date(),
+        })
+        .where(eq(cryptoPayments.id, payment.id))
+        .returning();
+      if (!updated) throw new Error("Failed to attach transaction");
+      return { payment: updated, alreadyAttached: false };
+    });
+  }
+
+  /**
+   * Read-only status fetch for the user's polling loop. Returns the minimum
+   * the UI needs to render a "waiting for confirmation" screen without
+   * leaking unrelated metadata.
+   */
+  async getPaymentStatusForUser(
+    params: { paymentId: string; userId: string },
+  ): Promise<{
+    paymentId: string;
+    status: string;
+    network: DirectWalletNetwork | null;
+    txHash: string | null;
+    blockNumber: string | null;
+    expectedAmount: string;
+    creditsToAdd: string;
+    bonusCredits: number;
+    expiresAt: string;
+    confirmedAt: string | null;
+    explorerUrl: string | null;
+    error: string | null;
+  } | null> {
+    const payment = await dbWrite
+      .select()
+      .from(cryptoPayments)
+      .where(eq(cryptoPayments.id, params.paymentId))
+      .limit(1)
+      .then((rows) => rows[0]);
+    if (!payment) return null;
+    if (payment.user_id !== params.userId) {
+      throw new Error("Unauthorized");
+    }
+    const metadata = metadataOf(payment);
+    const rawNetwork = metadata.direct_network;
+    const network: DirectWalletNetwork | null =
+      rawNetwork === "base" || rawNetwork === "bsc" || rawNetwork === "solana"
+        ? rawNetwork
+        : null;
+    const explorerUrl = buildExplorerUrl(network, payment.transaction_hash);
+    const errorValue =
+      typeof metadata.failure_reason === "string" ? metadata.failure_reason : null;
+
+    return {
+      paymentId: payment.id,
+      status: payment.status,
+      network,
+      txHash: payment.transaction_hash,
+      blockNumber: payment.block_number,
+      expectedAmount: payment.expected_amount,
+      creditsToAdd: payment.credits_to_add,
+      bonusCredits: Number(metadata.bonus_credits ?? 0),
+      expiresAt: payment.expires_at.toISOString(),
+      confirmedAt: payment.confirmed_at?.toISOString() ?? null,
+      explorerUrl,
+      error: errorValue,
     };
   }
 
@@ -1003,6 +1142,94 @@ export class DirectWalletPaymentsService {
     });
 
     return result;
+  }
+
+  /**
+   * Auto-confirm any payments stuck in `broadcast` — the user broadcast a
+   * tx but never called (or failed to call) confirm. The cron path drives
+   * this every minute or so; each payment gets a short on-chain check, and
+   * one of three things happens:
+   *
+   *   - Tx is mined and matches expected → confirm the payment, issue credits.
+   *   - Tx isn't on chain yet (mempool / not propagated) → leave as `broadcast`,
+   *     retry next tick.
+   *   - Tx reverted, recipient/amount wrong, or chain rejected → mark
+   *     `failed_chain` with `metadata.failure_reason`. Surfaces in the UI
+   *     waiting overlay so the user knows it's done.
+   */
+  async processBroadcastBatch(
+    env: Bindings,
+    options: { batchSize?: number } = {},
+  ): Promise<{
+    processed: number;
+    confirmed: number;
+    stillPending: number;
+    failed: number;
+  }> {
+    const batchSize = options.batchSize ?? 25;
+    const stats = { processed: 0, confirmed: 0, stillPending: 0, failed: 0 };
+
+    const candidates = await dbWrite
+      .select()
+      .from(cryptoPayments)
+      .where(
+        sql`${cryptoPayments.status} = 'broadcast'
+            AND ${cryptoPayments.transaction_hash} IS NOT NULL
+            AND ${cryptoPayments.metadata}->>'kind' = 'direct_wallet_credit_purchase'`,
+      )
+      .limit(batchSize);
+
+    for (const payment of candidates) {
+      stats.processed += 1;
+      const hash = payment.transaction_hash;
+      if (!hash) continue;
+      try {
+        await this.confirmPayment(env, {
+          paymentId: payment.id,
+          txHash: hash,
+          userId: payment.user_id ?? "",
+          allowExpired: true,
+        });
+        stats.confirmed += 1;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        // Heuristic: receipt-not-yet-found means we should keep waiting.
+        // Anything else (wrong recipient, low value, reverted) is terminal
+        // — record it so the user sees a clear failure.
+        const transient =
+          /not found|not yet|pending|TransactionReceiptNotFoundError|could not be found/i.test(
+            msg,
+          );
+        if (transient) {
+          stats.stillPending += 1;
+          continue;
+        }
+        stats.failed += 1;
+        await dbWrite
+          .update(cryptoPayments)
+          .set({
+            status: "failed_chain",
+            updated_at: new Date(),
+            metadata: sql`COALESCE(${cryptoPayments.metadata}, '{}'::jsonb) || ${JSON.stringify(
+              {
+                failure_reason: msg,
+                failed_at: new Date().toISOString(),
+              },
+            )}::jsonb`,
+          })
+          .where(eq(cryptoPayments.id, payment.id));
+        logger.warn("[DirectWalletPayments] Marked payment failed_chain", {
+          paymentId: redact.paymentId(payment.id),
+          txHash: redact.txHash(hash),
+          reason: msg,
+        });
+      }
+    }
+
+    if (stats.processed > 0) {
+      logger.info("[DirectWalletPayments] processBroadcastBatch summary", stats);
+    }
+    return stats;
   }
 }
 

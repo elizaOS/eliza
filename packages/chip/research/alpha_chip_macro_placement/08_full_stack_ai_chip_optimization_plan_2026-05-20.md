@@ -748,7 +748,7 @@ Current local validation on the 128 GiB M4 host:
   including execute-mode blocks for asset downloads, training, inference,
   replay, and AlphaChip stages when their explicit allow flags are absent,
   without executing commands or downloading assets.
-- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-readiness-dryrun
+- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-current-readiness
   ai-eda-cuda-readiness-audit`: PASS with `PASS_WITH_BLOCKERS_RECORDED`. The
   audit now depends on `ai-eda-cuda-run-plan-dry-run` and
   `ai-eda-cuda-run-plan-safety-matrix`, records both the expanded
