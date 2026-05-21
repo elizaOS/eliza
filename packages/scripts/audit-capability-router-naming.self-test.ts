@@ -74,15 +74,16 @@ async function main(): Promise<void> {
       );
     }
     if (
-      !productionReport.allowedSatelliteMentionFiles.includes(
-        "packages/agent/src/services/remote-capability-router.ts",
+      !Array.isArray(productionReport.legacySatelliteVocabularyFiles) ||
+      !productionReport.legacySatelliteVocabularyFiles.includes(
+        "packages/agent/src/services/e2b-capability-router.ts",
       ) ||
-      !productionReport.allowedSatelliteMentionFiles.includes(
-        "packages/agent/src/services/remote-capability-router.test.ts",
+      !productionReport.legacySatelliteVocabularyFiles.includes(
+        "packages/agent/src/services/e2b-capability-router.test.ts",
       )
     ) {
       throw new Error(
-        `production naming audit must report legacy env alias allowlists: ${production.output}`,
+        `production naming audit must report legacy satellite vocabulary files: ${production.output}`,
       );
     }
 
