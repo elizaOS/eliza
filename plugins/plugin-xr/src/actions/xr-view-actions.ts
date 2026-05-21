@@ -371,6 +371,7 @@ function extractViewId(text: string): string {
     "trajectory-logger",
     "model-tester",
     "smartglasses",
+    "facewear",
     "defense-of-the-agents",
   ];
   for (const id of known) {

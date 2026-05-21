@@ -63,7 +63,7 @@ export const facewearPlugin: Plugin = {
 
   views: [
     {
-      id: "hearwear",
+      id: "facewear",
       viewType: "gui",
       path: "/apps/hearwear",
       label: "Hearwear",
@@ -95,7 +95,7 @@ export const facewearPlugin: Plugin = {
       ],
     },
     {
-      id: "hearwear",
+      id: "facewear",
       viewType: "tui",
       path: "/apps/hearwear/tui",
       label: "Hearwear TUI",
@@ -105,7 +105,7 @@ export const facewearPlugin: Plugin = {
       tags: ["hearwear", "xr", "smartglasses", "tui"],
     },
     {
-      id: "hearwear",
+      id: "facewear",
       viewType: "xr",
       path: "/apps/hearwear/xr",
       label: "Hearwear XR",
@@ -164,10 +164,19 @@ export const facewearPlugin: Plugin = {
       path: "/apps/smartglasses/tui",
       label: "Smartglasses TUI",
       description:
-        "Terminal UI for smartglasses setup and diagnostics from the shared view.",
+        "Terminal UI for smartglasses setup, status, and diagnostics.",
+      icon: "Glasses",
       bundlePath: "dist/views/bundle.js",
       componentExport: "SmartglassesView",
-      tags: ["hearwear", "smartglasses", "wearable", "hardware", "tui"],
+      tags: [
+        "hearwear",
+        "smartglasses",
+        "wearable",
+        "bluetooth",
+        "hardware",
+        "tui",
+      ],
+      visibleInManager: false,
     },
     {
       id: "smartglasses",
