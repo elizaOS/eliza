@@ -420,7 +420,7 @@ def main() -> int:
     candidates_dir = out_dir / "candidates"
     candidates_dir.mkdir(parents=True, exist_ok=True)
     for stale_candidate in candidates_dir.glob(f"macro-placement-*-{args.run_id}.json"):
-        stale_candidate.unlink()
+        stale_candidate.unlink(missing_ok=True)
     model_path = out_dir / "center_baseline_policy.json"
 
     model = {

@@ -389,7 +389,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     candidates_dir.mkdir(parents=True, exist_ok=True)
     for stale_candidate in candidates_dir.glob(f"macro-placement-supervised-*-{args.run_id}.json"):
-        stale_candidate.unlink()
+        stale_candidate.unlink(missing_ok=True)
 
     model = train_model(train_samples)
     model["run_id"] = args.run_id

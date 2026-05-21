@@ -272,7 +272,6 @@ export {
 	stopTaskScheduler,
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
-export * from "./services/runtime-capability-service";
 export * from "./services/tool-policy";
 export * from "./services/trajectories";
 export * from "./services/triggerScheduling";

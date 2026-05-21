@@ -547,6 +547,12 @@ Implemented schema foundation:
   plus 4 supervised predictions with out-of-bounds or overlap geometry. This
   proves train/eval/infer artifacts only; it has no graph, timing, routing,
   congestion, or PPA claim.
+- `scripts/ai_eda/check_macro_placement_supervised_model.py` validates the
+  dependency-free supervised training report, model, metrics, dataset-link
+  counts, candidate inventory, blocked-case accounting, and pre-replay geometry
+  fields. It rejects unreported stale candidate files and any emitted
+  supervised candidate with unknown targets, out-of-bounds placements, or macro
+  overlaps.
   `make ai-eda-macro-placement-supervised-replay-plan` applies the same
   fail-closed replay planner and tool-action validation to those supervised
   candidates. Current supervised replay result: 15 candidates, 0 ready for
@@ -630,7 +636,8 @@ Implemented schema foundation:
   accounting.
   `make ai-eda-macro-placement-supervised-train` trains the dependency-free
   supervised mean-prior model, writes train/validation/test metrics, and emits
-  only pre-replay-geometry-clean quarantined candidates.
+  only pre-replay-geometry-clean quarantined candidates. The target also runs
+  the supervised-model validator before candidate-manifest validation.
   `make ai-eda-macro-placement-torch-train` runs the PyTorch regressor when
   PyTorch is installed, using CUDA automatically on a CUDA host and CPU
   otherwise.
@@ -1312,6 +1319,8 @@ not as:
   counts, split leakage, and fallback-size accounting.
 - [x] Train/evaluate first dependency-free supervised macro-placement imitation
   model over the JSONL splits and emit quarantined E1 softmacro candidates.
+- [x] Add supervised macro-placement model/report validator for metrics,
+  candidate inventory, blocked cases, and pre-replay geometry.
 - [x] Add CUDA-capable PyTorch macro-placement regressor entrypoint over the
   supervised JSONL splits.
 - [x] Add fail-closed replay plans for supervised macro-placement candidates.

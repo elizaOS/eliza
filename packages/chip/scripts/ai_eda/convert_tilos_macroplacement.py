@@ -414,7 +414,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     report_path = args.out_root / args.run_id / "conversion_report.json"
     for stale_record in out_dir.glob("*.json"):
-        stale_record.unlink()
+        stale_record.unlink(missing_ok=True)
 
     records: list[dict[str, Any]] = []
     case_summaries: list[dict[str, Any]] = []
