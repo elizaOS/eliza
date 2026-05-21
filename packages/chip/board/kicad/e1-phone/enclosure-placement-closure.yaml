@@ -20,19 +20,87 @@ envelope_cross_check:
   metrics_device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 11.2
+    max_thickness: 11.8
   enclosure_device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 11.2
+    max_thickness: 11.8
   cad_device_envelope_mm:
     width: 78.0
     height: 153.6
-    max_thickness: 11.2
+    max_thickness: 12.7
   display_primary_fits_current_envelope: true
   display_clearance_mm:
     width_clearance_mm: 0.9
     height_clearance_mm: 1.83
+component_height_stack_vs_interior_depth:
+  claim_boundary: Component height stack vs flush-back interior depth from EVT0 CAD fit-check z-coordinates,
+    carried to an end-of-life worst case with explicit LiPo swell and the molded/placement tolerance stack-up.
+    This is a CAD-estimate proof using datasheet-typical tolerances, not a measured tolerance stack with
+    gasket compression, foam compression set, or supplier z-height signoff.
+  device_thickness_mm: 12.7
+  wall_thickness_mm: 1.15
+  interior_depth_between_walls_mm: 10.4
+  front_to_back_z_coordinates_mm:
+    display_lcm_back_z: 1.15
+    battery_front_z: 1.0
+    battery_back_z: -4.6
+    back_inner_wall_z: -5.2
+  derived_stack_mm:
+    battery_thickness: 5.6
+    display_to_battery_gap: 0.15
+    battery_to_back_wall_gap: 0.6
+    occupied_display_back_to_back_wall: 6.35
+    display_back_to_back_wall_span: 6.35
+    nominal_interior_residual_margin: 0.0
+    front_static_gap_required: 0.15
+    back_swell_gap_required: 0.6
+  battery_swell_allowance_mm:
+    basis: LiPo pouch swells 8-10 percent in thickness over service life
+    swell_pct_range:
+      - 8.0
+      - 10.0
+    swell_low_mm: 0.448
+    swell_high_mm: 0.56
+    declared_back_swell_void_mm: 0.6
+    swell_vented_to: back_shell_side_void (display-side static gap unaffected)
+  stack_tolerance_budget_mm:
+    evidence_class: cad_estimate_for_evt_planning, not_measured_hardware
+    process_class: hard_tool_class_101_with_alignment_fixtures
+    contributors:
+      plastic_shrink_on_interior_depth: 0.007
+      mold_dimension_tolerance: 0.025
+      adhesive_cure_variance: 0.02
+      assembly_placement: 0.05
+      component_datasheet_typical: 0.05
+      solder_reflow_connector_float: 0.03
+    back_void_tolerance_arithmetic_mm: 0.182
+    back_void_tolerance_rss_mm: 0.084
+    front_gap_tolerance_arithmetic_mm: 0.12
+    front_gap_tolerance_rss_mm: 0.073
+  worst_case_residual_mm:
+    back_swell_void_arithmetic: -0.142
+    back_swell_void_rss: -0.044
+    display_static_gap_arithmetic: 0.03
+    display_static_gap_rss: 0.077
+    gate_basis: arithmetic worst case (fail-closed); RSS shown for reference only
+  interface_z_stack_battery_target_mm: 5.6
+  fits_flush_back_budget: true
+  fits_worst_case_swell_and_tolerance: false
+  panel_protected_at_worst_case: true
+  back_void_holds_at_worst_case: false
+  worst_case_over_budget_mm: 0.142
+  mitigation:
+    - back_swell_void over budget by 0.142 mm at worst case (10 percent swell 0.56 mm + arithmetic tolerance
+      0.182 mm vs declared void 0.6 mm)
+    - 'UPSTREAM FIX REQUIRED in mechanical/e1-phone/cad/e1_phone_params.yaml battery.battery_swell_gap_mm:
+      raise from 0.6 mm to >= 0.742 mm (and grow device envelope_mm[2] by the same delta), or tighten
+      the tolerance class, or specify a back-void compressible foam pad with a documented compression
+      set that absorbs the over-budget without preloading the cell'
+  gaps_meet_minimum: true
+  discrepancies:
+    - enclosure_interface device_envelope max_thickness 11.8_mm differs from fit-check CAD envelope 12.7_mm;
+      the enclosure-interface baseline must be raised to the swell-void depth before tolerance-stack signoff
 pcb_to_cad_handoff:
   pcb_source: board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
   kicad_outline_check:
@@ -89,7 +157,7 @@ step_artifacts:
   e1-phone-solid-assembly.step:
     path: mechanical/e1-phone/out/e1-phone-solid-assembly.step
     present: true
-    bytes: 1989024
+    bytes: 1953430
   main_pcb.step:
     path: mechanical/e1-phone/out/main_pcb.step
     present: true
@@ -101,11 +169,11 @@ step_artifacts:
   screen_cover_glass.step:
     path: mechanical/e1-phone/out/screen_cover_glass.step
     present: true
-    bytes: 32178
+    bytes: 32228
   battery_pouch.step:
     path: mechanical/e1-phone/out/battery_pouch.step
     present: true
-    bytes: 15539
+    bytes: 15521
   usb_c_receptacle.step:
     path: mechanical/e1-phone/out/usb_c_receptacle.step
     present: true
@@ -125,11 +193,11 @@ step_artifacts:
   rear_camera_module.step:
     path: mechanical/e1-phone/out/rear_camera_module.step
     present: true
-    bytes: 15496
+    bytes: 15522
   front_camera_module.step:
     path: mechanical/e1-phone/out/front_camera_module.step
     present: true
-    bytes: 15600
+    bytes: 15602
   bottom_speaker_module.step:
     path: mechanical/e1-phone/out/bottom_speaker_module.step
     present: true
@@ -137,7 +205,7 @@ step_artifacts:
   bottom_speaker_acoustic_chamber.step:
     path: mechanical/e1-phone/out/bottom_speaker_acoustic_chamber.step
     present: true
-    bytes: 15533
+    bytes: 15550
   bottom_mic.step:
     path: mechanical/e1-phone/out/bottom_mic.step
     present: true
@@ -187,13 +255,13 @@ step_artifacts:
     present: true
     bytes: 15482
 missing_step_artifacts: []
-assembly_manifest_part_count: 97
+assembly_manifest_part_count: 95
 solid_cad_handoff:
   status: generated
   tool_available: true
   assembly_step: mechanical/e1-phone/out/e1-phone-solid-assembly.step
-  assembly_step_bytes: 1989024
-  part_count: 97
+  assembly_step_bytes: 1953430
+  part_count: 95
   linked_fit_status: pass
   remaining_blockers:
     - Solids are parametric envelopes, not final supplier STEP models.
@@ -228,7 +296,11 @@ placement_interfaces_closed_for_concept:
 release_blockers:
   - routed KiCad board STEP with final component 3D models
   - supplier display, camera, USB-C, button, battery, speaker, and radio STEP/B-rep models
-  - formal 11.2 mm flush-back tolerance stack with gasket compression and battery swelling
+  - 'battery-swell + tolerance worst case is OVER BUDGET by 0.142 mm on the back swell void: UPSTREAM
+    FIX REQUIRED in mechanical/e1-phone/cad/e1_phone_params.yaml battery.battery_swell_gap_mm: raise from
+    0.6 mm to >= 0.742 mm (and grow device envelope_mm[2] by the same delta), or tighten the tolerance
+    class, or specify a back-void compressible foam pad with a documented compression set that absorbs
+    the over-budget without preloading the cell'
   - full CAD boolean interference check using supplier geometry
   - USB-C insertion/removal load test into enclosure saddle
   - side-button load-path and cycle test
