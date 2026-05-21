@@ -61,11 +61,8 @@ SETUP_CHECK_TARGETS = (
     "ai-eda-tilos-macroplacement-convert",
     "ai-eda-circuitnet3-convert",
     "ai-eda-chipbench-d-convert",
-<<<<<<< Updated upstream
     "ai-eda-aieda-idata-convert",
     "ai-eda-circuitnet3-surrogate",
-=======
->>>>>>> Stashed changes
     "ai-eda-openabc-d-convert",
     "ai-eda-e1-softmacro-cases",
     "ai-eda-external-fixture-convert",
