@@ -350,11 +350,11 @@ freeze_records:
     status: blocked_waiting_supplier_pinout_footprint_mechanical_data
     refdes_group: J_BATTERY
     bom_function: battery_pack
-    selected_primary: LiPol_LP576487_3p85V_5830mAh_22p45Wh_PCM_NTC_JST_SHR_03V_class
+    selected_primary: LiPol_LP566487_3p85V_5727mAh_22p05Wh_PCM_NTC_JST_SHR_03V_class
     alternates:
       - LiPol_LP446487_4500mAh_baseline_outline_family
-      - Made_in_China_custom_5830mAh_LiPo_family
-      - Alibaba_custom_3p85V_5830mAh_pack_quote_pool
+      - Made_in_China_custom_5727mAh_LiPo_family
+      - Alibaba_custom_3p85V_5727mAh_pack_quote_pool
     package_binding:
       - package/battery/e1-phone-17p3wh-pack.yaml
     placement_region_mm:

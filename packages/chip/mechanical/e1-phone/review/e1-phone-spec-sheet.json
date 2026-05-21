@@ -10,18 +10,18 @@
     "dimensions_mm": {
       "width": 78.0,
       "height": 153.6,
-      "thickness": 11.2
+      "thickness": 11.8
     },
     "back_face": "fully flush flat back, no camera bump, no protruding lens ring",
-    "envelope_volume_cm3": 134.19,
+    "envelope_volume_cm3": 141.37,
     "corner_radius_mm": 7.5,
-    "mass_g": 171.92,
-    "mass_cad_geometry_subtotal_g": 163.52,
+    "mass_g": 170.82,
+    "mass_cad_geometry_subtotal_g": 162.42,
     "mass_missing_items_subtotal_g": 8.4,
     "mass_ship_target_g": 168.0,
     "mass_ship_target_tolerance_g": 10.0,
     "mass_target_g": 185.0,
-    "mass_target_note": "185 g is the original aspirational concept target; 168 +/-10 g is the EVT0 ship target. Flush-back rev (11.2 mm, 5830 mAh battery) reconciled mass 171.92 g still passes the 168 +/-10 g ship target; ship target unchanged.",
+    "mass_target_note": "185 g is the original aspirational concept target; 168 +/-10 g is the EVT0 ship target. Flush-back rev (11.8 mm, 5727 mAh battery) reconciled mass 170.82 g still passes the 168 +/-10 g ship target; ship target unchanged.",
     "color": "hard safety orange",
     "material": "PC+ABS injection molded"
   },
@@ -79,10 +79,15 @@
   },
   "battery": {
     "chemistry": "LiPo pouch",
-    "candidate": "LP576487-class 3.85 V thick pouch",
-    "capacity_mAh": 5830,
+    "candidate": "LiPol LP566487 class 3.85 V 5727 mAh 22.05 Wh thick pouch",
+    "envelope_mm": [
+      64.0,
+      87.0,
+      5.6
+    ],
+    "capacity_mAh": 5727,
     "nominal_voltage_V": 3.85,
-    "energy_Wh": 22.45,
+    "energy_Wh": 22.05,
     "wireless_charging": false
   },
   "audio": {
@@ -92,10 +97,10 @@
     "haptic": "0612 X-axis LRA"
   },
   "camera": {
-    "rear": "13 MP OmniVision OV13855 autofocus, single lens",
+    "rear": "13 MP OmniVision OV13855 autofocus, 1 lens (single)",
     "rear_array": "single",
     "rear_flash": "single rear torch/flash LED (Everlight/OSRAM-class ~1.0x1.0 mm) behind a flush light-pipe window, AW36515-class flash driver",
-    "front": "5 MP GalaxyCore GC5035 fixed-focus, single lens",
+    "front": "5 MP GalaxyCore GC5035 fixed-focus, 1 lens (single)",
     "front_array": "single"
   },
   "environmental": {
