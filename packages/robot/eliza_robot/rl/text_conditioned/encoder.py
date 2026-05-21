@@ -47,6 +47,35 @@ def _hash_cache_key(model: str, pca_dim: int, curriculum_version: int) -> str:
     return f"{model.replace('/', '__')}__pca{pca_dim}__v{curriculum_version}"
 
 
+def _synthetic_task_embeddings(
+    curriculum: Curriculum, *, pca_dim: int
+) -> dict[str, TaskEmbedding]:
+    """Hash-seeded deterministic embeddings used when sentence_transformers
+    and sklearn are unavailable. NOT a semantic encoder — task ids that
+    sound similar get unrelated vectors. Adequate for shape-compatibility
+    tests, contract checks, and zero-policy mp4 rendering where the
+    embedding is fed as obs but the policy doesn't depend on its content.
+    """
+    import hashlib
+
+    out: dict[str, TaskEmbedding] = {}
+    for task in curriculum.tasks:
+        digest = hashlib.sha256(task.id.encode("utf-8")).digest()
+        seed = int.from_bytes(digest[:8], "little", signed=False)
+        rng = np.random.default_rng(seed)
+        mean = rng.standard_normal(DEFAULT_DIM).astype(np.float32)
+        mean = mean / (np.linalg.norm(mean) + 1e-9)
+        reduced = rng.standard_normal(pca_dim).astype(np.float32)
+        reduced = reduced / (np.linalg.norm(reduced) + 1e-9)
+        out[task.id] = TaskEmbedding(
+            task_id=task.id,
+            mean_embed=mean,
+            reduced_embed=reduced,
+            variants=task.verbs.all_variants(),
+        )
+    return out
+
+
 def build_task_embeddings(
     curriculum: Curriculum | None = None,
     *,
@@ -65,6 +94,24 @@ def build_task_embeddings(
     key = _hash_cache_key(model, pca_dim, curriculum.version)
     cache_path = cache_dir / f"{key}.npz"
     meta_path = cache_dir / f"{key}.json"
+
+    # Inference-time fallback: when the cache is missing AND
+    # sentence_transformers / sklearn aren't installed, synthesize a
+    # deterministic per-task embedding so policies can still be loaded
+    # and exercised end-to-end (zero-policy mp4 rendering, contract tests,
+    # CI smokes on the bridge). The embedding is a hash-seeded normalized
+    # vector per task — has no semantic transfer power, but matches the
+    # training cache's shape/dtype exactly so downstream code is happy.
+    try:
+        import sentence_transformers  # noqa: F401
+        import sklearn  # noqa: F401
+
+        sentence_libs_available = True
+    except ImportError:
+        sentence_libs_available = False
+
+    if not sentence_libs_available and not cache_path.exists() and not force_rebuild:
+        return _synthetic_task_embeddings(curriculum, pca_dim=pca_dim)
 
     if not force_rebuild and cache_path.exists() and meta_path.exists():
         npz = np.load(cache_path)

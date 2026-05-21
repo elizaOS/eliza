@@ -119,3 +119,69 @@ def test_asset_paths_resolved_to_absolute() -> None:
 def test_load_unknown_profile_raises() -> None:
     with pytest.raises(FileNotFoundError):
         load_profile("does-not-exist")
+
+
+# ---------------------------------------------------------------------------
+# Multi-robot profile registry: every supported profile must load cleanly.
+# ---------------------------------------------------------------------------
+
+SUPPORTED_PROFILE_IDS = ("hiwonder-ainex", "asimov-1", "unitree-g1", "unitree-h1")
+EXPECTED_DOF = {
+    "hiwonder-ainex": 24,
+    "asimov-1": 25,
+    "unitree-g1": 29,
+    "unitree-h1": 19,
+}
+
+
+@pytest.mark.parametrize("profile_id", SUPPORTED_PROFILE_IDS)
+def test_supported_profile_loads(profile_id: str) -> None:
+    profile = load_profile(profile_id)
+    assert isinstance(profile, RobotProfile)
+    assert profile.id == profile_id
+    assert profile.kinematics.dof == EXPECTED_DOF[profile_id]
+    assert len(profile.kinematics.joints) == profile.kinematics.dof
+
+
+@pytest.mark.parametrize("profile_id", SUPPORTED_PROFILE_IDS)
+def test_supported_profile_joint_indices_are_contiguous(profile_id: str) -> None:
+    profile = load_profile(profile_id)
+    indices = sorted(j.index for j in profile.kinematics.joints)
+    assert indices == list(range(profile.kinematics.dof))
+
+
+@pytest.mark.parametrize("profile_id", SUPPORTED_PROFILE_IDS)
+def test_supported_profile_joint_limits_within_two_pi(profile_id: str) -> None:
+    profile = load_profile(profile_id)
+    for j in profile.kinematics.joints:
+        assert -2 * math.pi <= j.lower_rad < j.upper_rad <= 2 * math.pi
+        assert j.lower_rad <= j.home_rad <= j.upper_rad
+
+
+@pytest.mark.parametrize("profile_id", SUPPORTED_PROFILE_IDS)
+def test_supported_profile_has_head_camera(profile_id: str) -> None:
+    profile = load_profile(profile_id)
+    cams = profile.sensors.cameras
+    assert cams, f"{profile_id} declares no cameras"
+    # A head-mounted camera is what the perception module + ego-pose
+    # observation augmentation rely on. Every supported humanoid has one.
+    head_cams = [c for c in cams if "head" in c.name.lower() or "head" in c.mount_link.lower()]
+    assert head_cams, f"{profile_id} missing a head-mounted camera"
+
+
+@pytest.mark.parametrize("profile_id", SUPPORTED_PROFILE_IDS)
+def test_supported_profile_assets_exist_on_disk(profile_id: str) -> None:
+    profile = load_profile(profile_id)
+    assert profile.assets.mjcf_xml.is_file(), f"missing {profile.assets.mjcf_xml}"
+    assert profile.assets.mesh_dir.is_dir(), f"missing {profile.assets.mesh_dir}"
+
+
+@pytest.mark.parametrize("profile_id", SUPPORTED_PROFILE_IDS)
+def test_supported_profile_loads_in_mujoco(profile_id: str) -> None:
+    """The canonical MJCF must compile under MuJoCo with the documented DoF."""
+    mujoco = pytest.importorskip("mujoco")
+    profile = load_profile(profile_id)
+    model = mujoco.MjModel.from_xml_path(str(profile.assets.mjcf_xml))
+    assert model.nu == profile.kinematics.dof, (
+        f"{profile_id} MJCF actuator count {model.nu} != profile dof {profile.kinematics.dof}"
+    )
