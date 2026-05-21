@@ -161,9 +161,19 @@ lb build
 # ── Step 3: verify ───────────────────────────────────────────────────
 echo
 echo "--- step 3/5: verify ---"
-SRC_ISO="${HERE}/binary.hybrid.iso"
-if [ ! -f "${SRC_ISO}" ]; then
-    echo "ERROR: expected ${SRC_ISO} not found." >&2
+# live-build names the image live-image-<arch>.hybrid.iso; older trees used
+# binary.hybrid.iso. Accept whichever the toolchain produced.
+SRC_ISO=""
+for candidate in \
+    "${HERE}/live-image-${ARCH}.hybrid.iso" \
+    "${HERE}/binary.hybrid.iso"; do
+    if [ -f "${candidate}" ]; then SRC_ISO="${candidate}"; break; fi
+done
+if [ -z "${SRC_ISO}" ]; then
+    SRC_ISO="$(find "${HERE}" -maxdepth 1 -name '*.hybrid.iso' -print -quit 2>/dev/null || true)"
+fi
+if [ -z "${SRC_ISO}" ] || [ ! -f "${SRC_ISO}" ]; then
+    echo "ERROR: no .hybrid.iso produced by lb build in ${HERE}." >&2
     exit 2
 fi
 
