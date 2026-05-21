@@ -1,7 +1,23 @@
 # AVB Chain, A/B Slots, OTA, and Recovery
 
-Status: pre-silicon specification. AOSP `fstab.eliza` AVB flags are
-scaffold markers only (per work order). No verified-boot path executes today.
+Status: pre-silicon specification, with the vbmeta **verification** path now
+implemented in firmware and exercised by host known-answer + negative tests.
+The freestanding vbmeta verifier (`fw/avb/avb_verify.{c,h}`) parses the real
+libavb vbmeta image and descriptor formats, verifies the authentication block,
+pins the AVB key, checks rollback, and walks hash/hashtree/chain/property
+descriptors; it builds freestanding for riscv64 and is gated by
+`scripts/check_avb_verify.py` (report `build/reports/avb_verify.json`). See §2.1
+for the implemented scope and the E1 algorithm profile.
+
+The rest of this document remains specification. What is **not** yet
+implemented: on-device AVB *enforcement* inside a booted Android image
+(dm-verity activation, `androidboot.verifiedbootstate` propagation, the
+fstab-driven runtime path) is gated on the AOSP boot lane; full A/B OTA
+download/apply, slot switching, and recovery sideload (§§4-7) are
+specification only; and the silicon root-of-trust — the OTP rollback fuses and
+RoT crypto that supply the verifier's trust inputs — is hardware-gated. AOSP
+`fstab.eliza` AVB flags remain scaffold markers. No production verified-boot
+claim follows from host/sim evidence alone.
 
 ## 1. A/B slot layout
 
@@ -61,6 +77,64 @@ androidboot.verifiedbootstate values:
 - YELLOW: locked, signed by user key (not used in v0).
 - ORANGE: unlocked (fastboot oem unlock); user-keyed; user-data wiped.
 - RED: AVB failure; bootloader halts before kernel.
+
+### 2.1 Implemented vbmeta verifier (E1 Ed25519 profile)
+
+`fw/avb/avb_verify.{c,h}` implements the vbmeta **verification** step of the
+chain above. It is freestanding (no malloc, no libc beyond the shared crypto
+sources), fail-closed (first failing check returns a distinct error code; only
+an all-pass returns `AVB_OK`), and reuses the constant-time SHA-256 and Ed25519
+primitives from `fw/boot-rom/secure` — no crypto is duplicated.
+
+On-wire format: the verifier parses the real libavb image — the 256-byte
+big-endian `AvbVBMetaImageHeader` (`magic "AVB0"`, required libavb version,
+authentication/auxiliary block sizes, `algorithm_type`, the hash/signature/
+public-key/descriptors offset+size pairs, `rollback_index`, `flags`,
+`rollback_index_location`, release string) followed by the authentication block
+and the auxiliary block — and the libavb descriptor stream (`AvbDescriptor`
+header plus bodies for tags HASH=2, HASHTREE=1, CHAIN_PARTITION=4, PROPERTY=0,
+and KERNEL_CMDLINE=3). Every block size and every sub-field offset+size is
+bounds-checked against the supplied image length before any field is read;
+out-of-range descriptors are rejected.
+
+Algorithm profile — **E1, not libavb-RSA**: libavb's standard authentication is
+`SHA256_RSA*`. The E1 root-of-trust key ladder is Ed25519
+(`boot-image-format.md` §1), so this verifier authenticates vbmeta with
+Ed25519: the authentication hash is `SHA-256(header || auxiliary block)` (the
+authentication block, which holds the hash and signature, is excluded from the
+hashed span, matching libavb's `avb_vbmeta_image_verify`), and the signature is
+Ed25519 (RFC 8032) over that 32-byte hash, made with AVB key A. The profile is
+carried in `algorithm_type` as the vendor-reserved id
+`AVB_ALGORITHM_TYPE_E1_SHA256_ED25519`; the four standard libavb RSA ids are
+recognized only so they can be rejected with a precise error. **No
+libavb-RSA-compatibility is claimed or implemented.**
+
+Verification order: OTP parity gate → header parse + structural bounds → magic
+→ libavb major version → block bounds → E1 algorithm id → `flags` must not
+disable verification → auth hash → AVB-key pin → Ed25519 signature → rollback
+floor → descriptor walk. The AVB-key pin (`SHA-256(aux public key)` ==
+expected hash supplied by the loading boot stage) is the AVB analogue of the
+OPNPHN01 key ladder's `next_stage_pubkey_hash`. The rollback check refuses any
+`rollback_index` below the OTP floor for this image's
+`rollback_index_location` (`boot-image-format.md` §4 slot 2). Chain-partition
+descriptors are recorded as pins (partition name, rollback location, the
+trusted vbmeta public key) so the bootloader can load and verify each chained
+vbmeta with `expected_pubkey_hash = SHA-256(pin.public_key)` — the verifier
+does not itself recurse into chained partitions. Hash descriptors are verified
+against caller-supplied partition images when provided (`SHA-256(salt ||
+image)`; SHA-256 digests only). Hashtree descriptors are validated for
+well-formedness (the dm-verity root digest field is bounds-checked); dm-verity
+activation itself is a runtime-enforcement concern on the AOSP boot lane and is
+out of scope here.
+
+Evidence: `fw/avb/tests/make_vbmeta.py` (independent python `cryptography`
+Ed25519) builds a valid image plus tampered-descriptor, wrong-key, bad-magic,
+rollback-downgrade, truncated-aux, and corrupted-hash-descriptor negatives;
+`fw/avb/tests/test_kat.c` asserts the exact `avb_result` for each.
+`bash fw/avb/tests/run_tests.sh` runs the suite and the riscv64 freestanding
+build; `python3 scripts/check_avb_verify.py` is the gate
+(`build/reports/avb_verify.json`, `eliza.gate_status.v1`). Scope is vbmeta
+verification only — see the status block for what remains specification.
 
 ## 3. Rollback protection
 
