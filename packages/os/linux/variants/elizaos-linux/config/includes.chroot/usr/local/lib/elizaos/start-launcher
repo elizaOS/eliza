@@ -1,0 +1,16 @@
+#!/bin/sh
+# Start the elizaOS application launcher (Electrobun-based home surface).
+# Waits for the local agent's /api/health before launching so the UI
+# never sees a "no backend" flash on cold boot.
+set -eu
+
+AGENT_URL="${ELIZAOS_AGENT_URL:-http://127.0.0.1:31337}"
+
+for _ in $(seq 1 60); do
+    if curl -fsS "${AGENT_URL}/api/health" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+exec /opt/elizaos/app/elizaos --shell-mode=launcher

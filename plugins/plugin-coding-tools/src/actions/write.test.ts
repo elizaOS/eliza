@@ -6,6 +6,7 @@ import {
   type ElizaCapabilityRouter,
   type FileWriteTextParams,
   type IAgentRuntime,
+  UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
@@ -23,21 +24,6 @@ function unavailableCapability(
   });
 }
 
-function unavailablePlugin(): ElizaCapabilityRouter["plugin"] {
-  const stub = async (): Promise<never> => {
-    throw new Error("plugin unavailable");
-  };
-  return {
-    listModules: stub, invokeAction: stub, getProvider: stub, callRoute: stub,
-    getAsset: stub, shouldRunEvaluator: stub, prepareEvaluator: stub,
-    promptEvaluator: stub, processEvaluator: stub,
-    shouldRunResponseHandlerEvaluator: stub, evaluateResponseHandlerEvaluator: stub,
-    shouldRunResponseHandlerFieldEvaluator: stub, parseResponseHandlerFieldEvaluator: stub,
-    handleResponseHandlerFieldEvaluator: stub, callLifecycle: stub, handleEvent: stub,
-    invokeModel: stub, callService: stub, callAppBridge: stub,
-  };
-}
-
 function makeWriteRouter(
   writeText: ElizaCapabilityRouter["fs"]["writeText"],
 ): ElizaCapabilityRouter {
@@ -51,7 +37,6 @@ function makeWriteRouter(
         pty: false,
         git: false,
         model: false,
-        plugin: false,
       },
     }),
     fs: {
@@ -65,13 +50,12 @@ function makeWriteRouter(
     git: {
       status: async () => unavailableCapability("git", "git.status"),
       diff: async () => unavailableCapability("git", "git.diff"),
-      commandRun: async () =>
-        unavailableCapability("git", "git.command.run"),
+      commandRun: async () => unavailableCapability("git", "git.command.run"),
     },
     model: {
       status: async () => unavailableCapability("model", "model.status"),
     },
-    plugin: unavailablePlugin(),
+    plugin: new UnavailableCapabilityRouter("desktop").plugin,
   };
 }
 

@@ -1,0 +1,43 @@
+# Architecture-neutral packages for every elizaOS Linux build.
+# Arch-specific kernels and bootloaders live in per-arch lists.
+
+# Live system base.
+live-boot
+live-config
+live-config-systemd
+systemd-sysv
+
+# Desktop session (GNOME, minimal seed).
+xorg
+gdm3
+gnome-session
+gnome-shell
+gnome-terminal
+gnome-control-center
+nautilus
+network-manager
+network-manager-gnome
+pulseaudio
+pipewire
+pipewire-pulse
+
+# Boot splash.
+plymouth
+plymouth-themes
+plymouth-label
+
+# elizaOS runtime dependencies.
+ca-certificates
+curl
+git
+sqlite3
+xdg-utils
+fontconfig
+fonts-noto
+fonts-noto-color-emoji
+
+# Diagnostics (small set; keep image lean).
+pciutils
+usbutils
+htop
+strace

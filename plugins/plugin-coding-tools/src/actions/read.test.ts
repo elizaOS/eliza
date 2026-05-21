@@ -5,6 +5,7 @@ import {
   CapabilityError,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
+  UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
@@ -100,7 +101,6 @@ describe("READ", () => {
           pty: false,
           git: false,
           model: false,
-          plugin: false,
         },
       }),
       fs: {
@@ -176,18 +176,7 @@ describe("READ", () => {
           });
         },
       },
-      plugin: (() => {
-        const stub = async (): Promise<never> => { throw new Error("plugin unavailable"); };
-        return {
-          listModules: stub, invokeAction: stub, getProvider: stub, callRoute: stub,
-          getAsset: stub, shouldRunEvaluator: stub, prepareEvaluator: stub,
-          promptEvaluator: stub, processEvaluator: stub,
-          shouldRunResponseHandlerEvaluator: stub, evaluateResponseHandlerEvaluator: stub,
-          shouldRunResponseHandlerFieldEvaluator: stub, parseResponseHandlerFieldEvaluator: stub,
-          handleResponseHandlerFieldEvaluator: stub, callLifecycle: stub, handleEvent: stub,
-          invokeModel: stub, callService: stub, callAppBridge: stub,
-        };
-      })(),
+      plugin: new UnavailableCapabilityRouter("desktop").plugin,
     };
     const runtime = {
       ...env.runtime,

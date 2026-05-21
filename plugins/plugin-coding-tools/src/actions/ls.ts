@@ -4,8 +4,8 @@ import * as path from "node:path";
 import {
   type ActionResult,
   CapabilityError,
-  getCapabilityRouter,
   logger as coreLogger,
+  getCapabilityRouter,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -34,6 +34,57 @@ interface LsEntry {
   name: string;
   type: EntryType;
   size?: number;
+}
+
+function normalizeEntryKind(kind: string): EntryType {
+  if (kind === "directory") return "dir";
+  if (kind === "symlink") return "symlink";
+  return "file";
+}
+
+async function listWithCapabilityRouter(params: {
+  runtime: IAgentRuntime;
+  dir: string;
+  ignore?: string[];
+}): Promise<
+  | {
+      ok: true;
+      entries: LsEntry[];
+      truncated: boolean;
+      totalAfterIgnore: number;
+    }
+  | { ok: false; reason: "unavailable" | "failed"; message: string }
+> {
+  const router = getCapabilityRouter(params.runtime);
+  if (!router) return { ok: false, reason: "unavailable", message: "" };
+  try {
+    const result = await router.fs.list({
+      path: params.dir,
+      limit: ENTRY_LIMIT,
+      includeHidden: true,
+      ...(params.ignore ? { ignore: params.ignore } : {}),
+    });
+    return {
+      ok: true,
+      entries: result.entries.map((entry) => {
+        const type = normalizeEntryKind(entry.kind);
+        return type === "file"
+          ? { name: entry.name, type, size: entry.size }
+          : { name: entry.name, type };
+      }),
+      truncated: result.truncated,
+      totalAfterIgnore: result.totalAfterIgnore,
+    };
+  } catch (error) {
+    if (
+      error instanceof CapabilityError &&
+      error.code === "CAPABILITY_UNAVAILABLE"
+    ) {
+      return { ok: false, reason: "unavailable", message: error.message };
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: "failed", message };
+  }
 }
 
 function globToRegExp(pattern: string): RegExp {
@@ -116,64 +167,43 @@ export async function lsHandler(
   const dir = validation.resolved;
 
   const ignoreRaw = readArrayParam(options, "ignore");
-  const ignoreMatchers: RegExp[] = (ignoreRaw ?? [])
-    .filter(
-      (entry): entry is string => typeof entry === "string" && entry.length > 0,
-    )
-    .map((entry) => globToRegExp(entry));
+  const ignore = (ignoreRaw ?? []).filter(
+    (entry): entry is string => typeof entry === "string" && entry.length > 0,
+  );
 
-  const router = getCapabilityRouter(runtime);
-  if (router) {
-    try {
-      const result = await router.fs.list({
-        path: dir,
-        limit: ENTRY_LIMIT,
-        includeHidden: true,
-        ignore: ignoreRaw ?? undefined,
-      });
-      const sorted: LsEntry[] = [
-        ...result.entries
-          .filter((e) => e.kind === "directory")
-          .map((e) => ({ name: e.name, type: "dir" as EntryType }))
-          .sort((a, b) => a.name.localeCompare(b.name)),
-        ...result.entries
-          .filter((e) => e.kind !== "directory")
-          .map((e) => {
-            const type: EntryType = e.kind === "symlink" ? "symlink" : "file";
-            return e.size !== undefined
-              ? { name: e.name, type, size: e.size }
-              : { name: e.name, type };
-          })
-          .sort((a, b) => a.name.localeCompare(b.name)),
-      ];
-      const truncated = result.truncated;
-      const totalAfterIgnore = result.totalAfterIgnore;
-      const lines = [
-        `Directory: ${dir}`,
-        ...sorted.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
-      ];
-      if (truncated) {
-        lines.push(
-          `…[truncated, listed ${ENTRY_LIMIT} of ${totalAfterIgnore} entries]`,
-        );
-      }
-      const text = lines.join("\n");
-      coreLogger.debug(
-        `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length} truncated=${truncated} via=capability-router`,
+  const routed = await listWithCapabilityRouter({
+    runtime,
+    dir,
+    ignore: ignore.length > 0 ? ignore : undefined,
+  });
+  if (routed.ok) {
+    const lines = [
+      `Directory: ${dir}`,
+      ...routed.entries.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
+    ];
+    if (routed.truncated) {
+      lines.push(
+        `…[truncated, listed ${ENTRY_LIMIT} of ${routed.totalAfterIgnore} entries]`,
       );
-      if (callback) await callback({ text, source: "coding-tools" });
-      return successActionResult(text, { entries: sorted, truncated });
-    } catch (error) {
-      if (
-        !(
-          error instanceof CapabilityError &&
-          error.code === "CAPABILITY_UNAVAILABLE"
-        )
-      ) {
-        throw error;
-      }
     }
+    const text = lines.join("\n");
+    coreLogger.debug(
+      `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${routed.entries.length} truncated=${routed.truncated}`,
+    );
+    if (callback) await callback({ text, source: "coding-tools" });
+    return successActionResult(text, {
+      entries: routed.entries,
+      truncated: routed.truncated,
+    });
   }
+  if (routed.reason === "failed") {
+    return failureToActionResult({
+      reason: "io_error",
+      message: `readdir failed: ${routed.message}`,
+    });
+  }
+
+  const ignoreMatchers: RegExp[] = ignore.map((entry) => globToRegExp(entry));
 
   let names: string[];
   try {

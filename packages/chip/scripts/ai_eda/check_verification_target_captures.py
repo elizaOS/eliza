@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-
-EXPECTED_REPORTS = {
+REPORTS = {
     "logic_synthesis": {
         "path": "build/ai_eda/logic_synthesis_targets/{run_id}/targets_report.json",
         "schema": "eliza.ai_eda.logic_synthesis_targets.v1",
@@ -102,7 +101,7 @@ def validate_artifacts(report_id: str, report: dict[str, Any]) -> list[str]:
     artifacts = report.get("input_artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         return [f"{report_id}: input_artifacts must be a non-empty list"]
-    present_count = 0
+    present = 0
     for index, artifact in enumerate(artifacts):
         label = f"{report_id}: input_artifacts[{index}]"
         if not isinstance(artifact, dict):
@@ -110,7 +109,7 @@ def validate_artifacts(report_id: str, report: dict[str, Any]) -> list[str]:
             continue
         status = artifact.get("status")
         if status == "PRESENT":
-            present_count += 1
+            present += 1
             sha = artifact.get("sha256")
             if not isinstance(sha, str) or len(sha) != 64:
                 errors.append(f"{label}: PRESENT artifact requires a 64-character sha256")
@@ -119,7 +118,7 @@ def validate_artifacts(report_id: str, report: dict[str, Any]) -> list[str]:
                 errors.append(f"{label}: PRESENT artifact is missing on disk")
         elif status != "MISSING":
             errors.append(f"{label}: status must be PRESENT or MISSING")
-    if present_count == 0:
+    if present == 0:
         errors.append(f"{report_id}: at least one input artifact must be present")
     return errors
 
@@ -129,7 +128,7 @@ def validate_tasks(report_id: str, report: dict[str, Any]) -> list[str]:
     tasks = report.get("candidate_tasks")
     if not isinstance(tasks, list) or not tasks:
         return [f"{report_id}: candidate_tasks must be a non-empty list"]
-    seen_ids: set[str] = set()
+    seen: set[str] = set()
     for index, task in enumerate(tasks):
         label = f"{report_id}: candidate_tasks[{index}]"
         if not isinstance(task, dict):
@@ -138,10 +137,10 @@ def validate_tasks(report_id: str, report: dict[str, Any]) -> list[str]:
         task_id = task.get("id")
         if not isinstance(task_id, str) or not task_id:
             errors.append(f"{label}: id is required")
-        elif task_id in seen_ids:
+        elif task_id in seen:
             errors.append(f"{label}: duplicate id {task_id}")
         else:
-            seen_ids.add(task_id)
+            seen.add(task_id)
         if not str(task.get("status", "")).startswith("CAPTURED_"):
             errors.append(f"{label}: status must start with CAPTURED_")
         gates = task.get("acceptance_gates")
@@ -185,14 +184,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    paths = args.report or [
-        repo_path(item["path"].format(run_id=args.run_id))
-        for item in EXPECTED_REPORTS.values()
-    ]
-    expected_by_schema = {
-        item["schema"]: (report_id, item)
-        for report_id, item in EXPECTED_REPORTS.items()
-    }
+    paths = args.report or [repo_path(item["path"].format(run_id=args.run_id)) for item in REPORTS.values()]
+    expected_by_schema = {item["schema"]: (key, item) for key, item in REPORTS.items()}
     errors: list[str] = []
     validated = 0
     for path in paths:
