@@ -158,7 +158,6 @@ async function findHolder(rpcUrl: string, chain: Chain): Promise<Address | null>
       if (window.length > 0) break;
     } catch {
       // RPC may still rate-limit; try the next chunk.
-      continue;
     }
   }
   for (const log of logs) {

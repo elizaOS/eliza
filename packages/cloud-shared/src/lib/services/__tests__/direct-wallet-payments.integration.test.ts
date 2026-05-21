@@ -56,8 +56,8 @@ interface FakeTx {
 
 const chainTxs = new Map<string, FakeTx>();
 
-vi.mock("viem", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("viem")>();
+vi.mock("viem", async () => {
+  const actual = (await vi.importActual("viem")) as typeof import("viem");
   return {
     ...actual,
     createPublicClient: () => ({
@@ -152,8 +152,8 @@ const solanaTestState = vi.hoisted(() => ({
   parsedTxOverride: null as unknown,
 }));
 
-vi.mock("@solana/spl-token", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@solana/spl-token")>();
+vi.mock("@solana/spl-token", async () => {
+  const actual = (await vi.importActual("@solana/spl-token")) as typeof import("@solana/spl-token");
   return {
     ...actual,
     getAccount: vi.fn(async (_connection: unknown, ata: { toBase58(): string }) => {
@@ -171,8 +171,8 @@ vi.mock("@solana/spl-token", async (importOriginal) => {
   };
 });
 
-vi.mock("@solana/web3.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@solana/web3.js")>();
+vi.mock("@solana/web3.js", async () => {
+  const actual = (await vi.importActual("@solana/web3.js")) as typeof import("@solana/web3.js");
   return {
     ...actual,
     Connection: class FakeConnection {
