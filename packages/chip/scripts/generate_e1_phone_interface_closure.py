@@ -95,6 +95,7 @@ def report_split_interconnect(
     blocks: list[dict[str, Any]],
     required_nets: set[str],
     required_mechanical: list[str],
+    device_thickness_mm: float,
 ) -> dict[str, Any]:
     block_nets = set().union(*(flatten_net_groups(block["nets"]) for block in blocks))
     placement_nets = set(top_placement["required_nets"]) | set(bottom_placement["required_nets"])
@@ -133,7 +134,8 @@ def report_split_interconnect(
         "mechanical_closure_requirements": required_mechanical,
         "assembly_closure_requirements": [
             "battery must insert without overstressing the mated top/bottom flex",
-            "connector mated height and stiffener stack must clear the 9.6 mm enclosure",
+            "connector mated height and stiffener stack must clear the "
+            f"{device_thickness_mm} mm flush-back enclosure",
             "strain relief or clamp must be defined before drop/torsion testing",
             "bottom island service order must be documented before first article assembly",
         ],
@@ -154,6 +156,8 @@ def main() -> int:
 
     placements = placement_by_refdes(matrix)
     blocks = block_by_id(netlist)
+    device_envelope = enclosure["coordinate_system"]["device_envelope"]
+    device_thickness_mm = device_envelope["max_thickness"]
 
     interfaces = [
         report_interface(
@@ -286,6 +290,7 @@ def main() -> int:
                 interconnect["flex_stackup_requirements"]["target"],
                 interconnect["flex_stackup_requirements"]["strain_relief"],
             ],
+            device_thickness_mm=device_thickness_mm,
         ),
     ]
 
@@ -298,7 +303,7 @@ def main() -> int:
             "pinout, KiCad schematic, ERC/DRC result, or fabricated-board proof."
         ),
         "source_files": [str(path.relative_to(ROOT)) for path in SOURCES.values()],
-        "device_envelope_mm": enclosure["coordinate_system"]["device_envelope"],
+        "device_envelope_mm": device_envelope,
         "board_bbox_mm": matrix["board"]["bbox_mm"],
         "interfaces": interfaces,
         "routing_classes_referenced": {

@@ -20,7 +20,7 @@ selected_primary_display:
 current_device_envelope_mm:
   width: 78.0
   height: 153.6
-  max_thickness: 11.2
+  max_thickness: 11.8
 minimum_envelope_for_primary_with_margin_mm:
   width: 77.7
   height: 153.57
@@ -65,6 +65,9 @@ candidate_fit_summary:
       height_clearance_mm: 25.24
     fits_current_envelope: true
     board_width_margin_behind_outline_mm: 6.66
+  - vendor: Alibaba OEM/ODM 5.5 inch ILI7807D class
+    part: 5p5_1080x1920_MIPI_40pin_1200nit_class
+    status: missing_mechanical_outline
   - vendor: BOE
     part: TV050QDM-N00
     status: missing_mechanical_outline
@@ -77,8 +80,8 @@ candidate_fit_summary:
 recommended_device_envelope_mm:
   width: 78.0
   height: 153.6
-  max_thickness: 11.2
-  basis: primary 5.5 inch Chenghao-class CTP module plus compact flush-back CAD rail margin
+  max_thickness: 11.8
+  basis: primary 5.5 inch Chenghao-class CTP module plus compact CAD rail margin
 required_next_evidence:
   - supplier 2D drawing with display FPC exit and connector datum
   - cover-lens/touch-stack decision if using CTP module wider than 72 mm
