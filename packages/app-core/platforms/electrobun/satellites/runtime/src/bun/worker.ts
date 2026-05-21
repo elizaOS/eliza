@@ -42,7 +42,7 @@ type HostRequestMessage = {
   type: "host-request";
   requestId: number;
   method:
-    | "invoke-carrot"
+    | "invoke-remote-plugin"
     | "agent-manager-start"
     | "agent-manager-stop"
     | "agent-manager-restart"
@@ -636,9 +636,9 @@ function invokeSatellite(
   params?: JsonValue,
 ): Promise<JsonValue | undefined> {
   return requestHost(
-    "invoke-carrot",
+    "invoke-remote-plugin",
     {
-      carrotId: satelliteId,
+      remotePluginId: satelliteId,
       method,
       ...(params === undefined ? {} : { params }),
     },

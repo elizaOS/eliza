@@ -42,7 +42,7 @@ env:
   BUN_VERSION: "1.3.13"
   NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
-  NODE_OPTIONS: "--max-old-space-size=8192 --experimental-sqlite"
+  NODE_OPTIONS: "--max-old-space-size=8192"
   # Live-test keys. Suites gated via describeLive() / requiredEnv skip cleanly
   # with a yellow warning when a key is missing — the workflow stays green.
   # Cerebras is the universal default LLM (gpt-oss-120b); the OPENAI_* aliases
