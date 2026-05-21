@@ -164,6 +164,19 @@ The mirror helper script
 once a private URL is in hand, and is wired in as a fallback by
 `download_pretrained_checkpoint.sh` whenever the GCS path returns non-2xx.
 
+## Owner decision (2026-05-21)
+
+Project owner confirmed no lawful private pre-February-2026 copy of
+`plc_wrapper_main` (or the TPU checkpoint) is available. The AlphaChip Circuit
+Training RL lane is therefore treated as a **permanent external-artifact
+blocker**: no compute (local or Nebius H200) can unblock it because the
+placement-cost binary is closed-source and the GCS bucket returns 403. The
+standing substitute for macro-placement candidate generation is the
+deterministic proxy lane set (legal-grid / target-aware / target-repair plus the
+simulated-annealing, Hier-RTLMP, and ChipDiffusion proxy adapters), with
+OpenLane/OpenROAD as the authoritative replay. Revisit only if a lawful binary
+with a recorded SHA256 is later obtained.
+
 ## Re-audit cadence
 
 Re-test the GCS URLs and refresh `pin-manifest.json:last_audited` on the first
