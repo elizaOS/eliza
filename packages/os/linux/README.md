@@ -1,31 +1,24 @@
 # elizaOS Linux
 
-This tree now contains the active elizaOS Linux distribution work:
+The active elizaOS Linux distribution lives in [`elizaos/`](./elizaos/): a
+single Debian-based live ISO build that targets **x86_64 (amd64), arm64, and
+riscv64** from one live-build configuration.
 
 ```text
 packages/os/linux/
 ├── README.md
 ├── LICENSES/
-└── variants/
-    └── eliza-tails/   # elizaOS Live USB, based on Tails/live-build
+├── elizaos/                # the unified multi-arch live-build (source of truth)
+└── agent/  crates/  vm/    # elizad daemon schemas + VM bundle metadata
 ```
 
-The older root-level usbeliza prototype was removed from this branch. It
-was a separate minimal kiosk/live-build experiment with its own agent,
-Rust crates, VM harness, and scripts. The product direction for this PR is
-the Tails-based **elizaOS Live USB** in
-[`variants/eliza-tails/`](./variants/eliza-tails/): a full desktop live
-OS that preserves the Tails boot/greeter/security model, brands the user
-experience as elizaOS, and starts the bundled elizaOS app as the always-on
-home surface.
+Architecture is selected at build time via `ELIZAOS_ARCH`; an optional
+`ELIZAOS_PROFILE=secure` overlays a privacy/hardening profile (Tor,
+AppArmor, MAC randomization, amnesic tmpfs home) assembled from standard
+Debian packages. There is no Tails fork: the earlier amd64 Tails-derived
+variant and the separate riscv64 Debian variant were consolidated into this
+one tree.
 
-Use the variant docs as the source of truth:
-
-- [`variants/eliza-tails/README.md`](./variants/eliza-tails/README.md)
-- [`variants/eliza-tails/PLAN.md`](./variants/eliza-tails/PLAN.md)
-- [`variants/eliza-tails/ROADMAP.md`](./variants/eliza-tails/ROADMAP.md)
-- [`variants/eliza-tails/docs/production-readiness.md`](./variants/eliza-tails/docs/production-readiness.md)
-- [`variants/eliza-tails/docs/security-model.md`](./variants/eliza-tails/docs/security-model.md)
-- [`variants/eliza-tails/docs/runtime-packaging.md`](./variants/eliza-tails/docs/runtime-packaging.md)
-- [`variants/eliza-tails/docs/inherited-tails-sudoers-review.md`](./variants/eliza-tails/docs/inherited-tails-sudoers-review.md)
-- [`variants/eliza-tails/docs/distribution-and-updates.md`](./variants/eliza-tails/docs/distribution-and-updates.md)
+See [`elizaos/README.md`](./elizaos/README.md) for build commands, profiles,
+the branding pipeline, and release-evidence flow, and
+[`../CLAUDE.md`](../CLAUDE.md) for distribution channels and promotion policy.
