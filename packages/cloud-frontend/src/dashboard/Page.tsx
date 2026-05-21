@@ -267,7 +267,12 @@ export default function DashboardPage() {
                 label={t("cloud.dashboard.stats.containers", {
                   defaultValue: "Instances running",
                 })}
-                value={`${runningContainers} / ${containerList.length}`}
+                value={runningContainers}
+                caption={
+                  containerList.length > 0
+                    ? `of ${containerList.length} total`
+                    : undefined
+                }
                 isLoading={containers.isLoading}
               />
               <StatCard
@@ -276,7 +281,10 @@ export default function DashboardPage() {
                 label={t("cloud.dashboard.stats.apps", {
                   defaultValue: "Apps deployed",
                 })}
-                value={`${deployedApps} / ${appList.length}`}
+                value={deployedApps}
+                caption={
+                  appList.length > 0 ? `of ${appList.length} total` : undefined
+                }
                 isLoading={apps.isLoading}
               />
               <StatCard

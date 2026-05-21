@@ -24,12 +24,13 @@ CLAIM_BOUNDARY = "ai_eda_bootstrap_orchestration_no_release_claim"
 
 METADATA_TARGETS = (
     "ai-eda-local-rag-index",
+    "ai-eda-backend-preflight",
     "ai-eda-verification-targets",
     "ai-eda-physical-design-targets",
+    "ai-eda-optimization-targets",
     "ai-eda-source-inventory-check",
     "ai-eda-external-assets-check",
     "ai-eda-external-intake-check",
-    "ai-eda-backend-preflight",
     "ai-eda-alphachip-checkpoint-blocker-check",
     "ai-eda-internal-schemas-check",
     "ai-eda-external-assets-dry-run",
@@ -43,6 +44,9 @@ LOCAL_SMOKE_TARGETS = (
     "ai-eda-chipbench-d-convert",
     "ai-eda-aieda-idata-convert",
     "ai-eda-edalearn-convert",
+    "ai-eda-macro-place-challenge-convert",
+    "ai-eda-mlcad-fpga-macro-convert",
+    "ai-eda-research-code-assets-convert",
     "ai-eda-openabc-d-convert",
     "ai-eda-e1-softmacro-cases",
     "ai-eda-external-fixture-convert",
@@ -69,6 +73,9 @@ SETUP_CHECK_TARGETS = (
     "ai-eda-chipbench-d-convert",
     "ai-eda-aieda-idata-convert",
     "ai-eda-edalearn-convert",
+    "ai-eda-macro-place-challenge-convert",
+    "ai-eda-mlcad-fpga-macro-convert",
+    "ai-eda-research-code-assets-convert",
     "ai-eda-circuitnet3-surrogate",
     "ai-eda-openabc-d-convert",
     "ai-eda-e1-softmacro-cases",
@@ -133,6 +140,59 @@ def print_step_status(kind: str, item: dict[str, Any], target: str | None = None
         f"kind={kind}{label} returncode={item['returncode']}",
         flush=True,
     )
+
+
+def build_report(
+    args: argparse.Namespace,
+    steps: list[dict[str, Any]],
+    overall_rc: int,
+    status: str,
+) -> dict[str, Any]:
+    return {
+        "schema": "eliza.ai_eda.bootstrap_report.v1",
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "run_id": args.run_id,
+        "profile": args.profile,
+        "status": status,
+        "complete": status in {"PASS", "FAIL"},
+        "claim_boundary": CLAIM_BOUNDARY,
+        "policy": {
+            "release_use_allowed": False,
+            "execute_fetch_requires_explicit_asset": True,
+            "external_payloads_remain_ignored": True,
+        },
+        "python_executable": sys.executable,
+        "assets": args.asset,
+        "execute_fetch": bool(args.execute_fetch),
+        "include_torch": bool(args.include_torch),
+        "step_count": len(steps),
+        "failed_steps": [
+            {
+                "kind": step["kind"],
+                "target": step.get("target"),
+                "command": step["command"],
+                "returncode": step["returncode"],
+            }
+            for step in steps
+            if step["returncode"] != 0
+        ],
+        "steps": steps,
+        "overall_returncode": overall_rc,
+    }
+
+
+def write_report(
+    args: argparse.Namespace,
+    out_dir: Path,
+    steps: list[dict[str, Any]],
+    overall_rc: int,
+    status: str,
+) -> Path:
+    report_path = out_dir / "bootstrap_report.json"
+    report_path.write_text(
+        json.dumps(build_report(args, steps, overall_rc, status), indent=2, sort_keys=True) + "\n"
+    )
+    return report_path
 
 
 def selected_targets(profile: str, include_torch: bool) -> list[str]:
@@ -207,6 +267,7 @@ def main() -> int:
         args.timeout_seconds,
     )
     steps.append({"kind": "preflight", **preflight})
+    write_report(args, out_dir, steps, overall_rc, "RUNNING")
     print_step_status("preflight", preflight)
     if preflight["returncode"] != 0:
         overall_rc = max(overall_rc, preflight["returncode"])
@@ -220,6 +281,7 @@ def main() -> int:
     for command in fetch_commands(args):
         item = run(command, args.timeout_seconds)
         steps.append({"kind": "external_asset", **item})
+        write_report(args, out_dir, steps, overall_rc, "RUNNING")
         print_step_status("external_asset", item)
         if item["returncode"] != 0:
             overall_rc = max(overall_rc, item["returncode"])
@@ -230,43 +292,15 @@ def main() -> int:
     for target in targets:
         item = make_target(target, args.timeout_seconds, args.run_id)
         steps.append({"kind": "make_target", "target": target, **item})
+        write_report(args, out_dir, steps, overall_rc, "RUNNING")
         print_step_status("make_target", item, target)
         if item["returncode"] != 0:
             overall_rc = max(overall_rc, item["returncode"])
             if not args.continue_on_error:
                 break
 
-    report = {
-        "schema": "eliza.ai_eda.bootstrap_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        "run_id": args.run_id,
-        "profile": args.profile,
-        "claim_boundary": CLAIM_BOUNDARY,
-        "policy": {
-            "release_use_allowed": False,
-            "execute_fetch_requires_explicit_asset": True,
-            "external_payloads_remain_ignored": True,
-        },
-        "python_executable": sys.executable,
-        "assets": args.asset,
-        "execute_fetch": bool(args.execute_fetch),
-        "include_torch": bool(args.include_torch),
-        "step_count": len(steps),
-        "failed_steps": [
-            {
-                "kind": step["kind"],
-                "target": step.get("target"),
-                "command": step["command"],
-                "returncode": step["returncode"],
-            }
-            for step in steps
-            if step["returncode"] != 0
-        ],
-        "steps": steps,
-    }
-    report_path = out_dir / "bootstrap_report.json"
-    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     status = "PASS" if overall_rc == 0 else "FAIL"
+    report_path = write_report(args, out_dir, steps, overall_rc, status)
     print(f"STATUS: {status} ai_eda.bootstrap profile={args.profile} {report_path}")
     return overall_rc
 
