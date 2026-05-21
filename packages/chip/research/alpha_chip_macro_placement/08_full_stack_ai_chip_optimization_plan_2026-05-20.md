@@ -383,9 +383,14 @@ Current local validation on the 128 GiB M4 host:
   only, not an E1 timing or power claim.
 - `make ai-eda-chipbench-d-convert`: PASS. The bounded local sample converts 4
   restored ChiPBench-D payload cases into 12 internal placement/design/flow
-  records from 20 available cases, then validates exact report-to-record
-  inventory, file hashes, floorplans, macro sizes, target placements, and the
-  training-only/no-E1-signoff claim boundary.
+  records from 20 available cases with 361 macro target placements, then
+  validates exact report-to-record inventory, file hashes, floorplans, macro
+  sizes, target placements, and the training-only/no-E1-signoff claim boundary.
+- `make ai-eda-macro-placement-supervised-dataset`: PASS. The supervised
+  macro-placement dataset now consumes internal fixtures, TILOS MacroPlacement,
+  bounded ChiPBench-D, and E1 softmacro cases by default, so the restored
+  ChiPBench-D macro target labels are included in train/validation/test JSONL
+  preparation instead of remaining a detached conversion artifact.
 - `make ai-eda-openabc-d-convert`: PASS. The bounded local sample converts 8
   restored OpenABC-D BENCH logic networks into 24 internal
   `eda.design_bundle.v1`, `eda.graph_sample.v1`, and `eda.flow_run.v1`
@@ -697,6 +702,11 @@ Implemented schema foundation:
   validates that the conversion report exactly matches the generated record
   directory and that placement cases retain DEF/LEF-derived macro targets under
   the no-E1-signoff claim boundary.
+- `scripts/ai_eda/build_macro_placement_supervised_dataset.py` and
+  `scripts/ai_eda/train_macro_placement_supervised_model.py` include bounded
+  ChiPBench-D placement records in their default record directories, moving the
+  restored public macro-placement labels into the supervised training and
+  candidate-generation spine.
 - `scripts/ai_eda/convert_openabc_d_to_internal_records.py` converts bounded
   OpenABC-D BENCH logic networks into graph and flow records for
   synthesis-policy pretraining, with explicit blockers for leakage review,

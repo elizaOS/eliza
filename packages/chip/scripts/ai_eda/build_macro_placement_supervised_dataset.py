@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RECORD_DIRS = (
     ROOT / "build/ai_eda/internal_dataset_fixtures/validation/records",
     ROOT / "build/ai_eda/tilos_macroplacement/validation/records",
+    ROOT / "build/ai_eda/chipbench_d/validation/records",
     ROOT / "build/ai_eda/e1_softmacro_cases/validation/records",
 )
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/macro_placement_supervised_dataset"

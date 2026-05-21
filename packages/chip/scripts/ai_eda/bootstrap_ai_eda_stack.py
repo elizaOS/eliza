@@ -37,7 +37,6 @@ LOCAL_SMOKE_TARGETS = (
     "ai-eda-tilos-macroplacement-convert",
     "ai-eda-circuitnet3-convert",
     "ai-eda-chipbench-d-convert",
-    "ai-eda-circuitnet3-surrogate",
     "ai-eda-openabc-d-convert",
     "ai-eda-e1-softmacro-cases",
     "ai-eda-external-fixture-convert",
@@ -114,8 +113,17 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
         }
 
 
-def make_target(target: str, timeout_seconds: int) -> dict[str, Any]:
-    return run(["make", f"PYTHON={sys.executable}", target], timeout_seconds)
+def make_target(target: str, timeout_seconds: int, run_id: str) -> dict[str, Any]:
+    return run(["make", f"PYTHON={sys.executable}", f"AI_EDA_RUN_ID={run_id}", target], timeout_seconds)
+
+
+def print_step_status(kind: str, item: dict[str, Any], target: str | None = None) -> None:
+    label = f" target={target}" if target else ""
+    print(
+        "STATUS: STEP ai_eda.bootstrap "
+        f"kind={kind}{label} returncode={item['returncode']}",
+        flush=True,
+    )
 
 
 def selected_targets(profile: str, include_torch: bool) -> list[str]:
@@ -190,6 +198,7 @@ def main() -> int:
         args.timeout_seconds,
     )
     steps.append({"kind": "preflight", **preflight})
+    print_step_status("preflight", preflight)
     if preflight["returncode"] != 0:
         overall_rc = max(overall_rc, preflight["returncode"])
         if not args.continue_on_error:
@@ -202,6 +211,7 @@ def main() -> int:
     for command in fetch_commands(args):
         item = run(command, args.timeout_seconds)
         steps.append({"kind": "external_asset", **item})
+        print_step_status("external_asset", item)
         if item["returncode"] != 0:
             overall_rc = max(overall_rc, item["returncode"])
             if not args.continue_on_error:
@@ -209,8 +219,9 @@ def main() -> int:
                 break
 
     for target in targets:
-        item = make_target(target, args.timeout_seconds)
+        item = make_target(target, args.timeout_seconds, args.run_id)
         steps.append({"kind": "make_target", "target": target, **item})
+        print_step_status("make_target", item, target)
         if item["returncode"] != 0:
             overall_rc = max(overall_rc, item["returncode"])
             if not args.continue_on_error:

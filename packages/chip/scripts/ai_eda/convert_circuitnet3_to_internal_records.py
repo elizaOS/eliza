@@ -253,6 +253,8 @@ def main() -> int:
         return 2
     out_dir = args.out_root / args.run_id / "records"
     out_dir.mkdir(parents=True, exist_ok=True)
+    for stale_record in out_dir.glob("circuitnet3-*.json"):
+        stale_record.unlink()
     converted: list[dict[str, Any]] = []
     with zipfile.ZipFile(args.archive) as zip_file:
         prefixes = final_case_prefixes(zip_file)
