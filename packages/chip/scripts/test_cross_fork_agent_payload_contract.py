@@ -41,7 +41,7 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         workspace = tmp
         app_core = workspace / "app-core"
-        os_rv64 = workspace / "os/linux/variants/elizaos-debian-riscv64"
+        os_rv64 = workspace / "os/linux/elizaos"
         bun_version = write(
             app_core / "scripts/bun-riscv64/bun-version.json",
             bun_version_json(

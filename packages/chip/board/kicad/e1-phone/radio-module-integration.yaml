@@ -9,6 +9,7 @@ source_artifacts:
   - package/cellular/quectel-5g-redcap.yaml
   - package/wifi/murata-type-2ea-wifi6e.yaml
   - package/wifi/evidence-gates.yaml
+  - board/kicad/e1-phone/radio-module-source-revalidation.yaml
   - board/kicad/e1-phone/module-host-integration-closure.yaml
   - board/kicad/e1-phone/rf-connectivity-closure.yaml
   - board/kicad/e1-phone/rf-antenna-coexistence-closure.yaml

@@ -54,12 +54,14 @@ Cap rests with positive clearance to the dome (no rest pre-load), the dome reach
 
 ## Gasket (IP54 seal)
 
-| Button | Shore A | Modulus (MPa) | Seal pressure (N/mm^2) | Force added (N) | IP54 |
-|---|---|---|---|---|---|
-| power | 50.0 | 2.4661 | 0.6165 | 0.1146 | PASS |
-| volume | 50.0 | 2.4661 | 0.6165 | 0.1882 | PASS |
+IP54 splash seal threshold: 0.05 N/mm^2 [ASSUMED].
 
-Elastomer compression preloads the labyrinth seal above the IP54 splash threshold while adding only a small fraction of the operating force to the button feel. Shore A, bead width and compression are [ASSUMED].
+| Button | Shore A | Modulus (MPa) | Seal pressure (N/mm^2) | Web k (N/mm) | Force added (N) | IP54 |
+|---|---|---|---|---|---|---|
+| power | 50.0 | 2.4661 | 0.6165 | 0.3274 | 0.1146 | PASS |
+| volume | 50.0 | 2.4661 | 0.6165 | 0.5378 | 0.1882 | PASS |
+
+Elastomer compression preloads the labyrinth seal above the IP54 splash threshold while adding only a small fraction of the operating force to the button feel. Shore A, membrane skirt geometry and compression are [ASSUMED].
 
 ## Fatigue
 

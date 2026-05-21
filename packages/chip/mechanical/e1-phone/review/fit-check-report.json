@@ -629,6 +629,8 @@
     "display_results_template": "mechanical/e1-phone/review/display-results-template.csv",
     "display_results_review_json": "mechanical/e1-phone/review/display-results-review.json",
     "display_results_review_md": "mechanical/e1-phone/review/display-results-review.md",
+    "mechanical_integration_sim_json": "mechanical/e1-phone/review/mechanical-integration-sim.json",
+    "mechanical_integration_sim_md": "mechanical/e1-phone/review/mechanical-integration-sim.md",
     "acoustic_validation_json": "mechanical/e1-phone/review/acoustic-validation.json",
     "acoustic_validation_md": "mechanical/e1-phone/review/acoustic-validation.md",
     "acoustic_results_template": "mechanical/e1-phone/review/acoustic-results-template.csv",

@@ -25,6 +25,15 @@ vendor_public_specs:
   temperature_c: {min: -40, max: 85}
   certification_note: FCC_IC_reference_certified
   sourcing_url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+  product_brief_public_fields:
+    url: https://www.murata.com/-/media/webrenewal/products/connectivitymodule/asset/pub/rfm/data/type2ea/type2ea-brief.ashx?cvid=20231215091723000000&la=en-sg
+    embedded_artists_m2_module: EAR00413
+    wifi_interface: [PCIe_3_0, SDIO_3_0]
+    bluetooth_interface: UART
+    software: [Linux, Android]
+    wifi_max_data_rate_mbps: 1201
+    bluetooth_max_data_rate_mbps: 3
+    interface_voltage_v: 1.8
   public_source_revalidation:
     checked_date: 2026-05-21
     source_type: direct_murata_vendor_page_opened

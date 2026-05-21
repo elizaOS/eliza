@@ -159,14 +159,18 @@ def test_supported_profile_joint_limits_within_two_pi(profile_id: str) -> None:
 
 
 @pytest.mark.parametrize("profile_id", SUPPORTED_PROFILE_IDS)
-def test_supported_profile_has_head_camera(profile_id: str) -> None:
+def test_supported_profile_has_ego_camera(profile_id: str) -> None:
     profile = load_profile(profile_id)
     cams = profile.sensors.cameras
+    # Every supported humanoid declares at least one robot-mounted RGB
+    # camera for the ego-pose observation channel + perception module.
+    # Mount link varies per robot (head_tilt_link on AiNex, torso on
+    # Unitree, pelvis_link on Asimov) — we only require one exists with
+    # a valid mount link and resolution.
     assert cams, f"{profile_id} declares no cameras"
-    # A head-mounted camera is what the perception module + ego-pose
-    # observation augmentation rely on. Every supported humanoid has one.
-    head_cams = [c for c in cams if "head" in c.name.lower() or "head" in c.mount_link.lower()]
-    assert head_cams, f"{profile_id} missing a head-mounted camera"
+    cam = cams[0]
+    assert cam.mount_link, f"{profile_id} camera has no mount_link"
+    assert cam.width > 0 and cam.height > 0 and cam.fps > 0
 
 
 @pytest.mark.parametrize("profile_id", SUPPORTED_PROFILE_IDS)

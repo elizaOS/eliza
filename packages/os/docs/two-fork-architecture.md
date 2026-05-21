@@ -63,8 +63,8 @@ Code that lives in exactly one fork and should not be unified:
 | `packages/chip/sw/aosp-device/` | AOSP |
 | `packages/os/android/` (system-ui, vendor, installer) | AOSP |
 | `packages/os/setup/` (Pixel/fastboot flasher UI) | AOSP |
-| `packages/os/linux/variants/eliza-tails/` | Debian (x86_64) |
-| `packages/os/linux/variants/elizaos-debian-riscv64/` | Debian (riscv64) |
+| `packages/os/linux/elizaos/` (`ARCH=amd64`) | Debian (x86_64) |
+| `packages/os/linux/elizaos/` (`ARCH=riscv64`) | Debian (riscv64) |
 | `packages/chip/sw/linux/{configs,dts,drivers}` | Debian (e1) |
 
 ## Cross-fork contracts that MUST stay aligned

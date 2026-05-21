@@ -39,7 +39,7 @@ case "${ARCH}" in
             -display gtk
         ;;
     riscv64)
-        exec "$(dirname "$0")/qemu_virt_boot_riscv64.sh" "${ISO}"
+        exec "$(dirname "$0")/qemu_virt_boot_riscv64.sh" --iso "${ISO}"
         ;;
     *)
         echo "ERROR: unknown arch ${ARCH}" >&2

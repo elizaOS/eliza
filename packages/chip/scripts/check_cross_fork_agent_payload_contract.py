@@ -22,7 +22,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
 APP_CORE = WORKSPACE / "app-core"
-OS_RV64 = WORKSPACE / "os/linux/variants/elizaos-debian-riscv64"
+OS_RV64 = WORKSPACE / "os/linux/elizaos"
 
 BUN_VERSION_JSON = APP_CORE / "scripts/bun-riscv64/bun-version.json"
 ANDROID_STAGE = APP_CORE / "scripts/lib/stage-android-agent.mjs"
@@ -101,7 +101,13 @@ def manifest_evidence_ids(data: dict[str, Any]) -> set[str]:
 def linux_variant_mentions_shared_bun() -> bool:
     if not OS_RV64.is_dir():
         return False
-    needles = ("bun-linux-riscv64-musl", "bun-version.json", "ELIZA_BUN_RISCV64_URL")
+    needles = (
+        "bun-linux-riscv64-musl",
+        "bun-version.json",
+        "MILADY_BUN_RISCV64_FILE",
+        "MILADY_BUN_RISCV64_URL",
+        "ELIZA_BUN_RISCV64_URL",
+    )
     for path in OS_RV64.rglob("*"):
         if not path.is_file() or path.stat().st_size > 2_000_000:
             continue
@@ -211,9 +217,14 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
-        "ELIZA_BUN_RISCV64_URL" in android_stage and "sha256" not in android_stage.lower(),
+        (
+            "MILADY_BUN_RISCV64_URL" in android_stage
+            or "MILADY_BUN_RISCV64_FILE" in android_stage
+            or "ELIZA_BUN_RISCV64_URL" in android_stage
+        )
+        and "sha256" not in android_stage.lower(),
         "android_riscv64_bun_payload_is_url_only",
-        "Android riscv64 Bun staging depends on an operator-provided URL without a local required hash contract",
+        "Android riscv64 Bun staging depends on an operator-provided artifact without a local required hash contract",
         rel(ANDROID_STAGE),
         "Require a pinned URL plus SHA-256 for the riscv64 Bun zip or consume a signed release artifact manifest.",
     )

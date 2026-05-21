@@ -45,3 +45,4 @@ chown -R elizaos:elizaos /var/lib/elizaos /var/log/elizaos "${INSTALL}"
 # (created by hook 0030).
 systemctl enable elizaos-first-boot.service || true
 systemctl enable elizaos-agent.service || true
+systemctl enable elizaos-terminal-tui-smoke.service || true

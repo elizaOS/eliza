@@ -8,6 +8,7 @@ claim_boundary: Execution package for turning selected off-the-shelf cellular an
 source_artifacts:
   - board/kicad/e1-phone/radio-module-integration.yaml
   - board/kicad/e1-phone/module-host-integration-acceptance-checklist.yaml
+  - board/kicad/e1-phone/radio-module-source-revalidation.yaml
   - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
   - board/kicad/e1-phone/rf-connectivity-closure.yaml
   - board/kicad/e1-phone/routing-constraints.yaml

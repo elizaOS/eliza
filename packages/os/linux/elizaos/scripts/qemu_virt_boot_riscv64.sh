@@ -181,6 +181,7 @@ START_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 boot_markers_present() {
     grep -F -q -- "Linux version" "${TRANSCRIPT_PATH}" \
         && grep -F -q -- "elizaos-firstboot-ready" "${TRANSCRIPT_PATH}" \
+        && grep -F -q -- "elizaos-curl-health-ready" "${TRANSCRIPT_PATH}" \
         && grep -F -q -- "elizaos-agent-ready" "${TRANSCRIPT_PATH}" \
         && grep -F -q -- "elizaos-tui-ready" "${TRANSCRIPT_PATH}"
 }
@@ -234,6 +235,7 @@ DURATION_S=$(( END_EPOCH - START_EPOCH ))
 REQUIRED_MARKERS=(
     "Linux version"
     "elizaos-firstboot-ready"
+    "elizaos-curl-health-ready"
     "elizaos-agent-ready"
     "elizaos-tui-ready"
 )
@@ -264,17 +266,20 @@ done
 # `boot_completed` requires:
 #   * Linux version banner
 #   * first-boot script wrote `elizaos-firstboot-ready`
+#   * target-side curl health check passed and wrote `elizaos-curl-health-ready`
 #   * target-side agent health check passed and wrote `elizaos-agent-ready`
 #   * target-side terminal TUI smoke passed and wrote `elizaos-tui-ready`
 #   * zero forbidden markers
 HAS_LINUX=0
 HAS_READY=0
+HAS_CURL=0
 HAS_AGENT=0
 HAS_TUI=0
 for m in "${MARKERS_FOUND[@]}"; do
     case "${m}" in
         "Linux version") HAS_LINUX=1;;
         "elizaos-firstboot-ready") HAS_READY=1;;
+        "elizaos-curl-health-ready") HAS_CURL=1;;
         "elizaos-agent-ready") HAS_AGENT=1;;
         "elizaos-tui-ready") HAS_TUI=1;;
     esac
@@ -284,6 +289,7 @@ BOOT_COMPLETED="false"
 if [ ${#FORBIDDEN_HIT[@]} -eq 0 ] \
    && [ "${HAS_LINUX}" -eq 1 ] \
    && [ "${HAS_READY}" -eq 1 ] \
+   && [ "${HAS_CURL}" -eq 1 ] \
    && [ "${HAS_AGENT}" -eq 1 ] \
    && [ "${HAS_TUI}" -eq 1 ]; then
     BOOT_COMPLETED="true"

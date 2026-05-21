@@ -26,8 +26,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         syslinux-common \
         grub-pc-bin \
         grub-efi-amd64-bin \
-        grub-efi-arm64-bin \
-        grub-efi-riscv64-bin \
         imagemagick \
         librsvg2-bin \
         mtools \
@@ -49,4 +47,4 @@ RUN update-binfmts --enable qemu-aarch64 || true \
  && update-binfmts --enable qemu-riscv64 || true
 
 WORKDIR /build
-ENTRYPOINT ["/build/build.sh"]
+ENTRYPOINT ["bash", "/build/build.sh"]

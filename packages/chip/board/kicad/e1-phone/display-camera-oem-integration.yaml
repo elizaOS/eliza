@@ -32,6 +32,14 @@ display_oem_context:
       height: 120.96
     touch: capacitive
     datasheet_status: supplier_request_required
+    public_pdf_cross_check:
+      url: https://www.chenghaolcd.com/doc/14495745/5-5-inch-tft-capacitive-touchscreen-1080x1920-pixel-ltps-transmissive.pdf
+      status: public_reference_not_signed_supplier_pack
+      tft_interface: 4_lane_MIPI
+      ctp_interface: I2C
+      tft_driver_ic: HX8399C
+      ctp_driver_ic: GT911
+      luminance_cd_m2: 650
   public_source_refresh:
     id: display_primary_chenghao_ch550fh01a_ct
     group: display

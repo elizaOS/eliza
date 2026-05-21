@@ -6404,6 +6404,182 @@ def write_display_results_review_artifacts(display_validation: dict[str, Any]) -
     return report
 
 
+def write_mechanical_integration_sim_artifacts(
+    params: dict[str, Any],
+    parts: list[Part],
+    interface_validation: dict[str, Any],
+    display_validation: dict[str, Any],
+) -> dict[str, Any]:
+    comp = params["components"]
+    display = params["display"]
+    tolerance = params["validation"]["tolerance"]
+    part_names = {part.name for part in parts}
+    interface_cases = {case["id"]: case for case in interface_validation.get("interfaces", [])}
+    display_cases = {case["id"]: case for case in display_validation.get("cases", [])}
+
+    usb_aperture_mm = [10.2, 3.6]
+    usb_shell = comp["usb_c"]["envelope_mm"]
+    usb_xy_clearance_mm = (usb_aperture_mm[0] - usb_shell[0]) / 2.0
+    usb_z_clearance_mm = (usb_aperture_mm[1] - usb_shell[2]) / 2.0
+    usb_min_clearance_mm = min(usb_xy_clearance_mm, usb_z_clearance_mm)
+    plug_shell_mm = [8.35, 2.6]
+    plug_clearance_mm = min(
+        (usb_aperture_mm[0] - plug_shell_mm[0]) / 2.0,
+        (usb_aperture_mm[1] - plug_shell_mm[1]) / 2.0,
+    )
+    usb_base_insertion_force_n = 18.0
+    usb_clearance_penalty_n = max(
+        0.0, (tolerance["usb_shell_to_aperture_clearance_mm"] - usb_min_clearance_mm) * 80.0
+    )
+    usb_predicted_peak_force_n = usb_base_insertion_force_n + usb_clearance_penalty_n
+
+    adhesive_area_mm2 = (
+        2.0 * display["cover_glass_mm"][0] * display["adhesive_width_mm"]
+        + 2.0 * display["cover_glass_mm"][1] * display["adhesive_width_mm"]
+    )
+    adhesive_compression_mm = display["adhesive_thickness_mm"] * (
+        display["compression_target_pct"] / 100.0
+    )
+    screen_bond_clamp_force_n = adhesive_area_mm2 * 0.08
+    screen_compression_pressure_n_per_mm2 = screen_bond_clamp_force_n / adhesive_area_mm2
+
+    button_cases = []
+    for button_id, key in [("power_button", "power_button"), ("volume_button", "volume_button")]:
+        button = comp[key]
+        cap_area_mm2 = button["cap_mm"][1] * button["cap_mm"][2]
+        pressure_n_per_mm2 = button["force_n"] / cap_area_mm2
+        button_cases.append(
+            {
+                "id": button_id,
+                "switch_candidate": button["standardized_part"],
+                "actuation_force_n": button["force_n"],
+                "travel_mm": button["travel_mm"],
+                "cap_pressure_n_per_mm2": round(pressure_n_per_mm2, 4),
+                "pressure_limit_n_per_mm2": tolerance["button_pressure_limit_n_per_mm2"],
+                "required_parts_present": all(
+                    name in part_names
+                    for name in [
+                        f"{button_id}_cap",
+                        f"{button_id}_elastomer_gasket",
+                    ]
+                ),
+                "planning_pass": 1.2 <= button["force_n"] <= 2.2
+                and button["travel_mm"] >= 0.25
+                and pressure_n_per_mm2 <= tolerance["button_pressure_limit_n_per_mm2"],
+            }
+        )
+
+    cases = [
+        {
+            "id": "usb_c_insertion_load_planning",
+            "interface_case": "usb_c_insertion_capture",
+            "evidence_class": "deterministic_cad_simulation_not_physical_result",
+            "actual": {
+                "usb_receptacle_shell_mm": usb_shell,
+                "aperture_mm": usb_aperture_mm,
+                "plug_shell_mm": plug_shell_mm,
+                "shell_xy_clearance_each_side_mm": round(usb_xy_clearance_mm, 3),
+                "shell_z_clearance_each_side_mm": round(usb_z_clearance_mm, 3),
+                "plug_min_clearance_mm": round(plug_clearance_mm, 3),
+                "predicted_peak_insertion_force_n": round(usb_predicted_peak_force_n, 2),
+                "cycle_rating": comp["usb_c"]["cycles"],
+            },
+            "target": ">=0.15 mm shell-to-aperture clearance, plug clearance positive, predicted peak insertion force <=35 N, cycle rating >=10000",
+            "planning_pass": usb_min_clearance_mm >= tolerance["usb_shell_to_aperture_clearance_mm"]
+            and plug_clearance_mm > 0.0
+            and usb_predicted_peak_force_n <= 35.0
+            and comp["usb_c"]["cycles"] >= 10000
+            and bool(interface_cases.get("usb_c_insertion_capture", {}).get("pass")),
+            "physical_release_evidence_required": [
+                "usb_c_insertion_force_raw_csv",
+                "usb_insertion_fixture_calibration_certificate",
+                "usb_c_insertion_gauge_video_or_photo",
+                "post_cycle_continuity_log",
+            ],
+        },
+        {
+            "id": "screen_bond_clamp_and_fpc_planning",
+            "interface_case": "screen_bond_and_fpc_connection",
+            "evidence_class": "deterministic_cad_simulation_not_physical_result",
+            "actual": {
+                "adhesive_area_mm2": round(adhesive_area_mm2, 1),
+                "adhesive_width_mm": display["adhesive_width_mm"],
+                "adhesive_thickness_mm": display["adhesive_thickness_mm"],
+                "compression_target_pct": display["compression_target_pct"],
+                "compression_mm": round(adhesive_compression_mm, 3),
+                "estimated_clamp_force_n": round(screen_bond_clamp_force_n, 1),
+                "estimated_compression_pressure_n_per_mm2": round(
+                    screen_compression_pressure_n_per_mm2, 3
+                ),
+                "fpc_bend_radius_mm": display["fpc_bend_radius_mm"],
+            },
+            "target": "four-sided adhesive, 0.03-0.08 mm compression, FPC bend radius >=1.0 mm, display CAD cases pass",
+            "planning_pass": bool(display_cases.get("adhesive_bond_geometry", {}).get("pass"))
+            and bool(display_cases.get("display_fpc_bend_and_connector", {}).get("pass"))
+            and bool(interface_cases.get("screen_bond_and_fpc_connection", {}).get("pass")),
+            "physical_release_evidence_required": [
+                "display_peel_force_raw_csv",
+                "screen_compression_witness_raw_csv",
+                "display_fpc_bend_radius_raw_csv",
+                "display_dsi_bringup_log",
+            ],
+        },
+        {
+            "id": "side_button_force_pressure_planning",
+            "interface_case": "power_button_force_travel_pressure",
+            "evidence_class": "deterministic_cad_simulation_not_physical_result",
+            "button_cases": button_cases,
+            "target": "power and volume force 1.2-2.2 N, travel >=0.25 mm, cap pressure <= limit",
+            "planning_pass": all(case["planning_pass"] for case in button_cases)
+            and bool(interface_cases.get("power_button_force_travel_pressure", {}).get("pass"))
+            and bool(interface_cases.get("volume_button_force_travel_pressure", {}).get("pass")),
+            "physical_release_evidence_required": [
+                "power_button_force_raw_csv",
+                "volume_button_force_raw_csv",
+                "button_cycle_log",
+                "post_dust_splash_button_stickiness_log",
+            ],
+        },
+    ]
+    report = {
+        "claim_boundary": (
+            "Deterministic CAD/parameter simulation for USB-C insertion, display bonding/FPC "
+            "routing, and side-button actuation planning. It is not measured physical validation "
+            "and cannot satisfy release evidence gates."
+        ),
+        "status": "cad_mechanical_integration_sim_ready"
+        if all(case["planning_pass"] for case in cases)
+        else "blocked_mechanical_integration_sim",
+        "evidence_class": "deterministic_cad_simulation_not_physical_result",
+        "case_count": len(cases),
+        "cases": cases,
+        "release_rule": (
+            "Release still requires physical USB insertion/cycle data, bonded display peel and "
+            "compression data, FPC bend inspection, and button force/travel/cycle measurements "
+            "with calibrated fixtures and lot traceability."
+        ),
+    }
+    (REVIEW_DIR / "mechanical-integration-sim.json").write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+    lines = [
+        "# E1 Phone Mechanical Integration Simulation",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This is deterministic CAD planning evidence only; physical release gates stay closed.",
+        "",
+        "## Cases",
+        "",
+    ]
+    for case in cases:
+        result = "PASS" if case["planning_pass"] else "BLOCKED"
+        lines.append(f"- {result}: `{case['id']}` target {case['target']}")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "mechanical-integration-sim.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
 def write_environmental_validation_artifacts(
     params: dict[str, Any],
     parts: list[Part],
@@ -9860,6 +10036,370 @@ def write_mold_process_window_artifacts(
     return report
 
 
+def write_mold_flow_acceptance_artifacts(
+    params: dict[str, Any],
+    dfm: dict[str, Any],
+    mold_process: dict[str, Any],
+) -> dict[str, Any]:
+    mfg = params["manufacturing"]
+    criteria = [
+        {
+            "id": "fill_pressure_at_vp_transfer_mpa",
+            "target": "<= 85% of selected press/resin limit",
+            "required_evidence_keys": [
+                "fill_pressure_plot",
+                "selected_press_spec",
+                "resin_pressure_limit_table",
+            ],
+            "required_numeric_results": [
+                "vp_transfer_pressure_mpa",
+                "press_pressure_limit_mpa",
+                "percent_of_limit",
+            ],
+        },
+        {
+            "id": "clamp_tonnage_margin",
+            "target": "selected press capacity >= CAD high clamp-tonnage estimate",
+            "required_evidence_keys": [
+                "clamp_tonnage_report",
+                "press_quote_or_machine_spec",
+                "projected_area_basis",
+            ],
+            "required_numeric_results": [
+                "projected_area_cm2",
+                "estimated_peak_tons",
+                "selected_press_capacity_tons",
+            ],
+        },
+        {
+            "id": "max_warp_after_shrink_mm",
+            "target": "<= 0.35 mm across cover-glass bonding ledge and <= 0.50 mm across back shell",
+            "required_evidence_keys": [
+                "post_shrink_warp_plot",
+                "gdt_datum_overlay",
+                "shrink_compensation_table",
+            ],
+            "required_numeric_results": [
+                "glass_ledge_warp_mm",
+                "back_shell_warp_mm",
+                "datum_shift_mm",
+            ],
+        },
+        {
+            "id": "sink_at_boss_and_rib_readthrough_mm",
+            "target": "<= 0.05 mm on exterior A-surfaces over bosses/ribs",
+            "required_evidence_keys": [
+                "sink_readthrough_plot",
+                "boss_rib_location_overlay",
+                "a_surface_cosmetic_map",
+            ],
+            "required_numeric_results": [
+                "max_boss_sink_mm",
+                "max_rib_readthrough_mm",
+                "a_surface_sink_mm",
+            ],
+        },
+        {
+            "id": "weld_lines_on_cosmetic_surfaces",
+            "target": "no weld lines on front orange rail, back hero surface, camera window land, or USB-C lip",
+            "required_evidence_keys": [
+                "weld_line_plot",
+                "cosmetic_keepout_overlay",
+                "gate_location_revision",
+            ],
+            "required_numeric_results": [
+                "cosmetic_weld_line_count",
+                "nearest_weld_to_camera_land_mm",
+                "nearest_weld_to_usb_lip_mm",
+            ],
+        },
+        {
+            "id": "air_traps_at_ports_and_snap_hooks",
+            "target": "vents added or air traps cleared at USB-C saddle, camera window, acoustic ports, and snap-hook roots",
+            "required_evidence_keys": [
+                "air_trap_plot",
+                "vent_layout_markup",
+                "critical_port_region_overlay",
+            ],
+            "required_numeric_results": [
+                "unvented_usb_air_traps",
+                "unvented_acoustic_air_traps",
+                "unvented_snap_hook_air_traps",
+            ],
+        },
+        {
+            "id": "cooling_delta_t_and_cycle_time",
+            "target": "<= 8 C cavity surface delta and quoted cycle time <= 30 s",
+            "required_evidence_keys": [
+                "cooling_delta_t_plot",
+                "cooling_circuit_layout",
+                "cycle_time_prediction",
+            ],
+            "required_numeric_results": [
+                "max_cavity_delta_t_c",
+                "predicted_cycle_time_s",
+                "hotspot_count",
+            ],
+        },
+        {
+            "id": "orange_gate_blush_and_vestige",
+            "target": "gate vestige outside A-surface and blush accepted on orange plaque/first shots",
+            "required_evidence_keys": [
+                "gate_vestige_markup",
+                "orange_color_plaque_photo",
+                "gate_blush_limit_sample",
+            ],
+            "required_numeric_results": [
+                "a_surface_gate_vestige_count",
+                "vestige_height_mm",
+                "delta_e_orange_plaque",
+            ],
+        },
+    ]
+    input_deck = {
+        "claim_boundary": (
+            "CAD-derived mold-flow input deck for a toolmaker or simulation package; "
+            "not a returned Moldflow/SolidWorks Plastics/Moldex3D result."
+        ),
+        "status": "mold_flow_input_deck_ready"
+        if dfm["status"] == "cad_dfm_inputs_ready"
+        and mold_process["status"] == "cad_mold_process_window_ready"
+        else "blocked",
+        "geometry_sources": {
+            "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
+            "tooling_glb": "mechanical/e1-phone/out/e1-phone-mold-tooling.glb",
+            "tooling_render": "mechanical/e1-phone/review/mold_tooling.png",
+        },
+        "material_request": {
+            "family": mfg["plastic"],
+            "color": params["device"]["plastic_color"],
+            "required_supplier_data": [
+                "viscosity_curve",
+                "pvT_data",
+                "shrinkage_tensor",
+                "recommended_melt_and_mold_temperature",
+            ],
+        },
+        "nominal_process_window": mold_process["process_window"],
+        "required_outputs": [criterion["id"] for criterion in criteria],
+        "first_shot_doe": mold_process["first_shot_doe"],
+    }
+    (REVIEW_DIR / "mold-flow-input-deck.json").write_text(
+        json.dumps(input_deck, indent=2) + "\n"
+    )
+    input_lines = [
+        "# E1 Phone Mold-Flow Input Deck",
+        "",
+        f"Status: {input_deck['status']}.",
+        "",
+        "This deck defines the required mold-flow result package; it is not returned simulation evidence.",
+        "",
+        "## Required Outputs",
+        "",
+    ]
+    for criterion in criteria:
+        input_lines.append(f"- `{criterion['id']}`: {criterion['target']}")
+    (REVIEW_DIR / "mold-flow-input-deck.md").write_text("\n".join(input_lines) + "\n")
+
+    template_path = REVIEW_DIR / "mold-flow-results-template.csv"
+    fieldnames = [
+        "criterion_id",
+        "toolmaker_name",
+        "evidence_class",
+        "returned_artifact",
+        "raw_simulation_archive",
+        "reviewer_acceptance_record",
+        "resin_tooling_traceability_record",
+        "measured_or_predicted_value",
+        "accepted",
+        "reviewer",
+        "required_evidence_keys",
+        "required_numeric_results",
+        "linked_cad_evidence",
+        "notes",
+    ]
+    rows = [
+        {
+            "criterion_id": criterion["id"],
+            "toolmaker_name": "",
+            "evidence_class": "",
+            "returned_artifact": "",
+            "raw_simulation_archive": "",
+            "reviewer_acceptance_record": "",
+            "resin_tooling_traceability_record": "",
+            "measured_or_predicted_value": "",
+            "accepted": "",
+            "reviewer": "",
+            "required_evidence_keys": ";".join(criterion["required_evidence_keys"]),
+            "required_numeric_results": ";".join(criterion["required_numeric_results"]),
+            "linked_cad_evidence": "mold-flow-input-deck.json;mold-process-window.json;injection-molding-dfm.json",
+            "notes": criterion["target"],
+        }
+        for criterion in criteria
+    ]
+    _write_results_template_if_blank(
+        template_path,
+        fieldnames,
+        rows,
+        "criterion_id",
+        [
+            "toolmaker_name",
+            "evidence_class",
+            "returned_artifact",
+            "raw_simulation_archive",
+            "reviewer_acceptance_record",
+            "resin_tooling_traceability_record",
+            "measured_or_predicted_value",
+            "accepted",
+            "reviewer",
+        ],
+    )
+
+    template_evidence_class = ""
+    csv_text = template_path.read_text() if template_path.is_file() else ""
+    csv_lines = csv_text.splitlines()
+    if csv_lines and csv_lines[0].startswith("# evidence_class:"):
+        template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
+        csv_text = "\n".join(csv_lines[1:]) + "\n"
+    expected_by_id = {criterion["id"]: criterion for criterion in criteria}
+    forbidden_evidence_classes = {
+        "simulated_mold_flow_for_planning_not_release",
+        "simulated_first_article_for_evt_planning_not_production_release",
+        "simulated",
+        "planning",
+        "blank_template",
+    }
+    cases: list[dict[str, Any]] = []
+    with StringIO(csv_text) as csv_file:
+        for row in csv.DictReader(csv_file):
+            criterion_id = row.get("criterion_id", "")
+            expected = expected_by_id.get(criterion_id, {})
+            evidence_class = row.get("evidence_class", "").strip() or template_evidence_class
+            accepted = row.get("accepted", "").strip().lower()
+            required_evidence_keys = [
+                key
+                for key in (
+                    row.get("required_evidence_keys")
+                    or ";".join(expected.get("required_evidence_keys", []))
+                ).split(";")
+                if key
+            ]
+            required_numeric_results = [
+                key
+                for key in (
+                    row.get("required_numeric_results")
+                    or ";".join(expected.get("required_numeric_results", []))
+                ).split(";")
+                if key
+            ]
+            evidence_fields_present = all(
+                row.get(field, "").strip()
+                for field in [
+                    "returned_artifact",
+                    "raw_simulation_archive",
+                    "reviewer_acceptance_record",
+                    "resin_tooling_traceability_record",
+                ]
+            )
+            evidence_class_allowed = (
+                evidence_class == "physical_mold_flow_result"
+                and evidence_class not in forbidden_evidence_classes
+            )
+            populated = bool(
+                criterion_id
+                and row.get("toolmaker_name", "").strip()
+                and evidence_class
+                and row.get("measured_or_predicted_value", "").strip()
+                and row.get("reviewer", "").strip()
+                and required_evidence_keys
+                and required_numeric_results
+                and evidence_fields_present
+            )
+            cases.append(
+                {
+                    "criterion_id": criterion_id,
+                    "expected_criterion": criterion_id in expected_by_id,
+                    "toolmaker_named": bool(row.get("toolmaker_name", "").strip()),
+                    "evidence_class": evidence_class,
+                    "evidence_class_allowed": evidence_class_allowed,
+                    "returned_artifact_present": bool(row.get("returned_artifact", "").strip()),
+                    "raw_simulation_archive_present": bool(
+                        row.get("raw_simulation_archive", "").strip()
+                    ),
+                    "reviewer_acceptance_record_present": bool(
+                        row.get("reviewer_acceptance_record", "").strip()
+                    ),
+                    "resin_tooling_traceability_record_present": bool(
+                        row.get("resin_tooling_traceability_record", "").strip()
+                    ),
+                    "value_present": bool(row.get("measured_or_predicted_value", "").strip()),
+                    "reviewer_present": bool(row.get("reviewer", "").strip()),
+                    "accepted": accepted in {"yes", "true", "1", "pass"},
+                    "required_evidence_keys": required_evidence_keys,
+                    "required_numeric_results": required_numeric_results,
+                    "linked_cad_evidence": [
+                        item
+                        for item in row.get("linked_cad_evidence", "").split(";")
+                        if item
+                    ],
+                    "populated": populated,
+                    "physical_evidence_pass": evidence_class_allowed and evidence_fields_present,
+                    "pass": populated
+                    and criterion_id in expected_by_id
+                    and accepted in {"yes", "true", "1", "pass"}
+                    and evidence_class_allowed
+                    and evidence_fields_present,
+                }
+            )
+    missing_or_incomplete = [case["criterion_id"] for case in cases if not case["pass"]]
+    complete_count = sum(1 for case in cases if case["pass"])
+    report = {
+        "claim_boundary": (
+            "Fail-closed mold-flow acceptance contract. CAD process proxies and simulated rows "
+            "do not count as physical/toolmaker mold-flow evidence."
+        ),
+        "status": "mold_flow_results_pass"
+        if cases and complete_count == len(criteria) and not missing_or_incomplete
+        else "blocked_no_mold_flow_results"
+        if complete_count == 0
+        else "blocked_mold_flow_results_incomplete",
+        "plastic": mfg["plastic"],
+        "gate_strategy": mfg["gate_strategy"],
+        "input_deck": "mechanical/e1-phone/review/mold-flow-input-deck.json",
+        "input_deck_status": input_deck["status"],
+        "results_template": "mechanical/e1-phone/review/mold-flow-results-template.csv",
+        "expected_criterion_count": len(criteria),
+        "required_evidence_class": "physical_mold_flow_result",
+        "template_evidence_class": template_evidence_class,
+        "forbidden_evidence_classes": sorted(forbidden_evidence_classes),
+        "complete_result_count": complete_count,
+        "missing_or_incomplete_criteria": missing_or_incomplete,
+        "criteria": criteria,
+        "cases": cases,
+        "release_rule": (
+            "Every mold-flow criterion must include toolmaker name, evidence_class=physical_mold_flow_result, "
+            "returned report, raw simulation archive, reviewer acceptance record, resin/tooling traceability, "
+            "numeric measured/predicted value, accepted disposition, and reviewer before tooling release."
+        ),
+    }
+    (REVIEW_DIR / "mold-flow-acceptance.json").write_text(json.dumps(report, indent=2) + "\n")
+    lines = [
+        "# E1 Phone Mold-Flow Acceptance",
+        "",
+        f"Status: {report['status']}.",
+        "",
+        "This review is fail-closed until physical/toolmaker mold-flow evidence is returned.",
+        "",
+        "## Missing Or Incomplete",
+        "",
+    ]
+    for criterion_id in missing_or_incomplete:
+        lines.append(f"- `{criterion_id}`")
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "mold-flow-acceptance.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
 def write_toolmaker_signoff_artifacts(
     params: dict[str, Any], dfm: dict[str, Any], mold_process: dict[str, Any]
 ) -> dict[str, Any]:
@@ -10993,6 +11533,7 @@ def write_readiness_artifacts(
     interface_validation: dict[str, Any],
     display_validation: dict[str, Any],
     display_results: dict[str, Any],
+    mechanical_integration_sim: dict[str, Any],
     acoustic_validation: dict[str, Any],
     acoustic_results: dict[str, Any],
     camera_validation: dict[str, Any],
@@ -11074,6 +11615,7 @@ def write_readiness_artifacts(
             "status": "cad_pass"
             if interface_validation["status"] == "cad_interface_validation_pass"
             and display_validation["status"] == "cad_display_validation_ready"
+            and mechanical_integration_sim["status"] == "cad_mechanical_integration_sim_ready"
             else "blocked",
             "evidence": [
                 "screen_cover_glass",
@@ -11088,6 +11630,8 @@ def write_readiness_artifacts(
                 "display-results-template.csv",
                 "display-results-review.json",
                 "display-results-review.md",
+                "mechanical-integration-sim.json",
+                "mechanical-integration-sim.md",
             ],
             "remaining_blockers": [
                 "Need supplier drawing and exact FPC exit direction.",
@@ -11227,6 +11771,7 @@ def write_readiness_artifacts(
             "subsystem": "buttons",
             "status": "cad_pass"
             if interface_validation["status"] == "cad_interface_validation_pass"
+            and mechanical_integration_sim["status"] == "cad_mechanical_integration_sim_ready"
             else "blocked",
             "evidence": [
                 "power_button_cap",
@@ -11238,6 +11783,8 @@ def write_readiness_artifacts(
                 "button_ingress_seal_stack",
                 "interface-validation.json",
                 "interface-validation.md",
+                "mechanical-integration-sim.json",
+                "mechanical-integration-sim.md",
             ],
             "remaining_blockers": [
                 "Need tactile switch vendor part and tolerance stack.",
@@ -11249,6 +11796,7 @@ def write_readiness_artifacts(
             "status": "cad_pass"
             if interface_validation["status"] == "cad_interface_validation_pass"
             and acoustic_validation["status"] == "cad_acoustic_validation_ready"
+            and mechanical_integration_sim["status"] == "cad_mechanical_integration_sim_ready"
             else "blocked",
             "evidence": [
                 "usb_c_receptacle",
@@ -11266,6 +11814,8 @@ def write_readiness_artifacts(
                 "bottom_io_acoustic_apertures",
                 "interface-validation.json",
                 "interface-validation.md",
+                "mechanical-integration-sim.json",
+                "mechanical-integration-sim.md",
                 "acoustic-validation.json",
                 "acoustic-validation.md",
                 "acoustic-results-template.csv",
@@ -11555,6 +12105,7 @@ def write_readiness_artifacts(
             "status": "cad_pass"
             if validation["status"] == "cad_validation_inputs_ready"
             and interface_validation["status"] == "cad_interface_validation_pass"
+            and mechanical_integration_sim["status"] == "cad_mechanical_integration_sim_ready"
             and evt_fixtures["status"] == "evt_fixture_cad_ready"
             and evt_inspection["status"] == "evt_inspection_plan_ready"
             else "blocked",
@@ -11570,6 +12121,8 @@ def write_readiness_artifacts(
                 "evt-inspection-results-template.csv",
                 "evt-results-review.json",
                 "evt-results-review.md",
+                "mechanical-integration-sim.json",
+                "mechanical-integration-sim.md",
                 "e1-phone-evt-fixtures.glb",
                 "evt-fixture-manifest.json",
                 "usb_c_insertion_envelope",
@@ -11669,6 +12222,10 @@ def write_readiness_artifacts(
         and (REVIEW_DIR / "display-results-template.csv").is_file(),
         "display_results_review": (REVIEW_DIR / "display-results-review.json").is_file()
         and (REVIEW_DIR / "display-results-review.md").is_file(),
+        "mechanical_integration_sim": mechanical_integration_sim["status"]
+        == "cad_mechanical_integration_sim_ready"
+        and (REVIEW_DIR / "mechanical-integration-sim.json").is_file()
+        and (REVIEW_DIR / "mechanical-integration-sim.md").is_file(),
         "acoustic_validation": acoustic_validation["status"] == "cad_acoustic_validation_ready"
         and (REVIEW_DIR / "acoustic-validation.json").is_file()
         and (REVIEW_DIR / "acoustic-validation.md").is_file()
@@ -11822,6 +12379,10 @@ def write_readiness_artifacts(
             "display_measurement_count": display_validation.get("measurement_count", 0),
             "display_results_status": display_results["status"],
             "display_results_complete_count": display_results.get("complete_result_count", 0),
+            "mechanical_integration_sim_status": mechanical_integration_sim["status"],
+            "mechanical_integration_sim_case_count": mechanical_integration_sim.get(
+                "case_count", 0
+            ),
             "acoustic_validation_status": acoustic_validation["status"],
             "acoustic_measurement_count": acoustic_validation.get("measurement_count", 0),
             "acoustic_results_status": acoustic_results["status"],
@@ -13061,6 +13622,8 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "display_results_template": "mechanical/e1-phone/review/display-results-template.csv",
             "display_results_review_json": "mechanical/e1-phone/review/display-results-review.json",
             "display_results_review_md": "mechanical/e1-phone/review/display-results-review.md",
+            "mechanical_integration_sim_json": "mechanical/e1-phone/review/mechanical-integration-sim.json",
+            "mechanical_integration_sim_md": "mechanical/e1-phone/review/mechanical-integration-sim.md",
             "acoustic_validation_json": "mechanical/e1-phone/review/acoustic-validation.json",
             "acoustic_validation_md": "mechanical/e1-phone/review/acoustic-validation.md",
             "acoustic_results_template": "mechanical/e1-phone/review/acoustic-results-template.csv",
@@ -13450,6 +14013,12 @@ def main() -> int:
         params, parts, clearance, interface_validation, tolerance_stack
     )
     display_results = write_display_results_review_artifacts(display_validation)
+    mechanical_integration_sim = write_mechanical_integration_sim_artifacts(
+        params,
+        parts,
+        interface_validation,
+        display_validation,
+    )
     acoustic_validation = write_acoustic_validation_artifacts(
         params, parts, clearance, interface_validation
     )
@@ -13470,6 +14039,7 @@ def main() -> int:
     evt_inspection = write_evt_inspection_plan_artifacts(params, interface_validation, evt_fixtures)
     evt_results = write_evt_results_review_artifacts(evt_inspection)
     mold_process = write_mold_process_window_artifacts(params, parts, tooling, dfm, tolerance_stack)
+    mold_flow_acceptance = write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
     toolmaker_signoff = write_toolmaker_signoff_artifacts(params, dfm, mold_process)
     routed_board_clearance = write_routed_board_clearance_artifacts(
         board_step,
@@ -13526,6 +14096,7 @@ def main() -> int:
         interface_validation,
         display_validation,
         display_results,
+        mechanical_integration_sim,
         acoustic_validation,
         acoustic_results,
         camera_validation,

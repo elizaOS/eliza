@@ -3,24 +3,25 @@
   "source_params_yaml": "chip/mechanical/e1-phone/cad/e1_phone_params.yaml",
   "device": {
     "name": "E1 phone EVT0 mechanical concept",
-    "revision": "evt0-mechanical-cad",
+    "revision": "evt0-mechanical-cad-flush-back",
     "os": "AOSP / Android 14"
   },
   "mechanical": {
     "dimensions_mm": {
       "width": 78.0,
       "height": 153.6,
-      "thickness": 9.6
+      "thickness": 11.2
     },
-    "envelope_volume_cm3": 115.02,
+    "back_face": "fully flush flat back, no camera bump, no protruding lens ring",
+    "envelope_volume_cm3": 134.19,
     "corner_radius_mm": 7.5,
-    "mass_g": 171.84,
-    "mass_cad_geometry_subtotal_g": 163.44,
+    "mass_g": 171.92,
+    "mass_cad_geometry_subtotal_g": 163.52,
     "mass_missing_items_subtotal_g": 8.4,
     "mass_ship_target_g": 168.0,
     "mass_ship_target_tolerance_g": 10.0,
     "mass_target_g": 185.0,
-    "mass_target_note": "185 g is the original aspirational concept target; 168 +/-10 g is the EVT0 ship target. Reconciled mass 171.84 g passes ship target.",
+    "mass_target_note": "185 g is the original aspirational concept target; 168 +/-10 g is the EVT0 ship target. Flush-back rev (11.2 mm, 5830 mAh battery) reconciled mass 171.92 g still passes the 168 +/-10 g ship target; ship target unchanged.",
     "color": "hard safety orange",
     "material": "PC+ABS injection molded"
   },
@@ -78,9 +79,10 @@
   },
   "battery": {
     "chemistry": "LiPo pouch",
-    "capacity_mAh": 4500,
+    "candidate": "LP576487-class 3.85 V thick pouch",
+    "capacity_mAh": 5830,
     "nominal_voltage_V": 3.85,
-    "energy_Wh": 17.33,
+    "energy_Wh": 22.45,
     "wireless_charging": false
   },
   "audio": {
@@ -90,8 +92,11 @@
     "haptic": "0612 X-axis LRA"
   },
   "camera": {
-    "rear": "13 MP OmniVision OV13855 autofocus",
-    "front": "5 MP GalaxyCore GC5035 fixed-focus"
+    "rear": "13 MP OmniVision OV13855 autofocus, single lens",
+    "rear_array": "single",
+    "rear_flash": "single rear torch/flash LED (Everlight/OSRAM-class ~1.0x1.0 mm) behind a flush light-pipe window, AW36515-class flash driver",
+    "front": "5 MP GalaxyCore GC5035 fixed-focus, single lens",
+    "front_array": "single"
   },
   "environmental": {
     "ip_rating_design_intent": "IP54 (dust-protected, splash-resistant)",

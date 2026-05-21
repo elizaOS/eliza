@@ -187,13 +187,16 @@ def simulate_button(name: str, cap_mm: list[float], f_peak: float) -> dict[str, 
     seal_strain = GASKET_COMPRESS_MM / bead_h_mm
     seal_pressure = e_mpa * seal_strain  # MPa == N/mm^2 lip contact pressure
     ip54_ok = seal_pressure >= IP54_SEAL_PRESSURE_MIN
-    # Added travel force: thin elastomer web around the cap acting as a soft
-    # spring over the stroke. k_web = E * A_web / web_span; A_web = web
-    # cross-section bridging cap to frame.
-    web_t_mm = 0.25  # [ASSUMED] gasket web thickness bridging cap->frame
-    web_span_mm = 0.5  # [ASSUMED] free span of the web
-    a_web = GASKET_PERIM_MM[name] * web_t_mm  # mm^2 shear area
-    k_web_n_per_mm = (e_mpa / 3.0) * a_web / web_span_mm  # shear modulus ~E/3
+    # Added travel force: a thin elastomer membrane skirt bridges the moving
+    # cap to the fixed frame and bends over the 0.35 mm stroke. Modeled as a
+    # built-in (fixed-fixed) beam strip of width = perimeter, deflecting by the
+    # stroke: k = 192 * E * I / span^3, I = w * t^3 / 12. Thin membranes are
+    # very compliant, so the added force is small.
+    web_t_mm = 0.10  # [ASSUMED] elastomer membrane skirt thickness
+    web_span_mm = 1.5  # [ASSUMED] free bending span of the skirt
+    w_mm = GASKET_PERIM_MM[name]
+    inertia = w_mm * web_t_mm**3 / 12.0  # mm^4
+    k_web_n_per_mm = 192.0 * e_mpa * inertia / web_span_mm**3  # N/mm
     seal_force_added = k_web_n_per_mm * TRAVEL_MM  # N at full stroke
     seal_force_reasonable = seal_force_added < 0.5 * f_peak
 
@@ -242,8 +245,9 @@ def simulate_button(name: str, cap_mm: list[float], f_peak: float) -> dict[str, 
         "gasket": {
             "shore_a": GASKET_SHORE_A,
             "modulus_mpa": round(e_mpa, 4),
-            "seal_area_mm2": round(seal_area, 3),
+            "seal_compression_mm": GASKET_COMPRESS_MM,
             "seal_pressure_n_per_mm2": round(seal_pressure, 4),
+            "web_stiffness_n_per_mm": round(k_web_n_per_mm, 4),
             "seal_force_added_n": round(seal_force_added, 4),
             "ip54_preload_ok": ip54_ok,
             "seal_force_reasonable": seal_force_reasonable,
@@ -294,9 +298,9 @@ def fatigue(f_peak: float) -> dict[str, Any]:
         "life_margin_x": round(margin, 2),
         "life_margin_ok": margin >= 1.5,
         "contact_stress_note": (
-            "Dome operating force ~%.1f N is within EVQ-P7 rated operating-force "
-            "envelope; cycling below rated stroke and force keeps dome contact "
-            "stress under the metal-dome fatigue limit (qualitative)." % f_peak
+            f"Dome operating force ~{f_peak:.1f} N is within EVQ-P7 rated "
+            "operating-force envelope; cycling below rated stroke and force keeps "
+            "dome contact stress under the metal-dome fatigue limit (qualitative)."
         ),
     }
 
@@ -406,7 +410,7 @@ def render_md(r: dict[str, Any], png: Path) -> str:
     lines.append("# E1 phone side-button physics simulation")
     lines.append("")
     lines.append(f"- evidence_class: `{r['evidence_class']}`")
-    lines.append(f"- datasheet: Panasonic EVQ-P7 series light-touch tactile switch")
+    lines.append("- datasheet: Panasonic EVQ-P7 series light-touch tactile switch")
     lines.append(f"  - {r['datasheet']}")
     lines.append(f"- params: `{r['params_source']}`")
     lines.append(f"- F-x plot: `{png.relative_to(ROOT)}`")
@@ -475,17 +479,21 @@ def render_md(r: dict[str, Any], png: Path) -> str:
     lines.append("")
     lines.append("## Gasket (IP54 seal)")
     lines.append("")
-    lines.append("| Button | Shore A | Modulus (MPa) | Seal pressure (N/mm^2) | Force added (N) | IP54 |")
-    lines.append("|---|---|---|---|---|---|")
+    lines.append(f"IP54 splash seal threshold: {IP54_SEAL_PRESSURE_MIN} N/mm^2 [ASSUMED].")
+    lines.append("")
+    lines.append("| Button | Shore A | Modulus (MPa) | Seal pressure (N/mm^2) | Web k (N/mm) | Force added (N) | IP54 |")
+    lines.append("|---|---|---|---|---|---|---|")
     for b in (p, v):
         g = b["gasket"]
         lines.append(f"| {b['name']} | {g['shore_a']} | {g['modulus_mpa']} | "
-                     f"{g['seal_pressure_n_per_mm2']} | {g['seal_force_added_n']} | "
+                     f"{g['seal_pressure_n_per_mm2']} | {g['web_stiffness_n_per_mm']} | "
+                     f"{g['seal_force_added_n']} | "
                      f"{'PASS' if g['ip54_preload_ok'] else 'FAIL'} |")
     lines.append("")
     lines.append("Elastomer compression preloads the labyrinth seal above the IP54 "
                  "splash threshold while adding only a small fraction of the operating "
-                 "force to the button feel. Shore A, bead width and compression are [ASSUMED].")
+                 "force to the button feel. Shore A, membrane skirt geometry and "
+                 "compression are [ASSUMED].")
     lines.append("")
     lines.append("## Fatigue")
     lines.append("")

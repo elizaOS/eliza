@@ -202,6 +202,45 @@ async def _gate_asimov_bridge() -> dict:
     return {"passed": mock["passed"] and mujoco["passed"], "mock": mock, "mujoco": mujoco}
 
 
+async def _gate_asimov_mjx_env() -> dict:
+    print("[gate-4] ASIMOV MJX env reset/step...")
+    import jax
+    import jax.numpy as jp
+
+    from eliza_robot.sim.mujoco.asimov_mjx_training import make_asimov_text_conditioned_mjx_env
+
+    env = make_asimov_text_conditioned_mjx_env(
+        active_tasks=("stand_up", "walk_forward"),
+        pca_dim=8,
+        episode_length=3,
+        domain_randomization={},
+    )
+    state = env.reset(jax.random.PRNGKey(0))
+    state = env.step(state, jp.zeros(env.action_size))
+    passed = (
+        tuple(state.obs.shape) == (env.observation_size,)
+        and env.proprio_dim == 45
+        and env.text_dim == 8
+        and env.action_size == 12
+        and env.mj_model.nu == 25
+        and bool(jp.all(jp.isfinite(state.obs)))
+        and bool(jp.isfinite(state.reward))
+    )
+    print(
+        f"[gate-4] {'PASS' if passed else 'FAIL'} — "
+        f"obs={state.obs.shape}, action={env.action_size}, actuators={env.mj_model.nu}"
+    )
+    return {
+        "passed": passed,
+        "obs_shape": list(state.obs.shape),
+        "observation_size": int(env.observation_size),
+        "proprio_dim": int(env.proprio_dim),
+        "text_dim": int(env.text_dim),
+        "action_size": int(env.action_size),
+        "mujoco_actuators": int(env.mj_model.nu),
+    }
+
+
 async def main_async(args) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -212,6 +251,7 @@ async def main_async(args) -> int:
         gates["g1_checkpoint_contract"] = await _gate_training_dim(ckpt_dir, 25)
         gates["g2_conditioning"] = await _gate_conditioning(ckpt_dir)
         gates["g3_asimov_bridge"] = await _gate_asimov_bridge()
+        gates["g4_asimov_mjx_env"] = await _gate_asimov_mjx_env()
     else:
         gates["g1_training"] = await _gate_training(ckpt_dir)
         gates["g2_conditioning"] = await _gate_conditioning(ckpt_dir)

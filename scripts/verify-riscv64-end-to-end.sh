@@ -198,9 +198,9 @@ fi
 # Real Pixel hardware (SKIP — needs an attached device).
 record "aosp:pixel-arm64-attached" "SKIP" "no \`adb devices\` in sandbox; deploy-pixel.mjs path is unit-tested at script-syntax + test-suite level above"
 
-# ── Debian fork — variant skeleton + manifest ────────────────────────
+# ── Debian fork — unified build skeleton + manifest ──────────────────
 echo "── Debian fork (Linux ISO, riscv64) ──"
-deb_dir="$repo_root/packages/os/linux/variants/elizaos-debian-riscv64"
+deb_dir="$repo_root/packages/os/linux/elizaos"
 if [ -d "$deb_dir" ]; then
     for f in Dockerfile build.sh manifest.json.template README.md auto/config; do
         if [ -f "$deb_dir/$f" ]; then

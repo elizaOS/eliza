@@ -1,7 +1,7 @@
 [Unit]
 Description=elizaOS first-boot bootstrap
-After=local-fs.target
-Before=elizaos-agent.service
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=multi-user.target
 ConditionPathExists=!/var/lib/elizaos/.first-boot-complete
 
 [Service]

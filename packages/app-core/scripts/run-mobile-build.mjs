@@ -47,6 +47,7 @@
  *                 explicitly requested.
  */
 import { spawn, spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6191,6 +6192,66 @@ function findAndroidSystemApk() {
   return firstExisting(candidates);
 }
 
+function sha256File(filePath) {
+  const hash = crypto.createHash("sha256");
+  hash.update(fs.readFileSync(filePath));
+  return hash.digest("hex");
+}
+
+function currentGitRevision() {
+  const result = runCaptureSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot });
+  if (result.status !== 0) return null;
+  return result.stdout.trim() || null;
+}
+
+function writeAndroidSystemProvenance(apkPath) {
+  const zip = resolveExecutable("zip");
+  if (!zip) {
+    throw new Error(
+      "[mobile-build] zip not found on PATH; cannot embed AOSP APK provenance metadata.",
+    );
+  }
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-aosp-apk-"));
+  try {
+    const rel = path.join("META-INF", "eliza", "aosp-build-provenance.json");
+    const target = path.join(tmpDir, rel);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(
+      target,
+      `${JSON.stringify(
+        {
+          schema: "eliza.aosp_build_provenance.v1",
+          staged_at: new Date().toISOString(),
+          repo_root: repoRoot,
+          git_revision: currentGitRevision(),
+          apk_name: path.basename(apkPath),
+          apk_sha256_before_provenance: sha256File(apkPath),
+          android_system_variant: APP.appName,
+          android_package: APP.appId,
+          claim_boundary:
+            "apk_packaging_provenance_only_not_aosp_boot_or_gui_runtime_evidence",
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    const result = spawnSync(zip, ["-q", "-X", apkPath, rel], {
+      cwd: tmpDir,
+      encoding: "utf8",
+    });
+    if (result.status !== 0) {
+      throw new Error(
+        `[mobile-build] Failed to embed AOSP APK provenance: ${
+          result.stderr || result.stdout || `zip exited with ${result.status}`
+        }`,
+      );
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
 function stageAndroidSystemApk() {
   const apk = findAndroidSystemApk();
   if (!apk) {
@@ -6201,6 +6262,7 @@ function stageAndroidSystemApk() {
   fs.mkdirSync(elizaOsApkDir, { recursive: true });
   const target = path.join(elizaOsApkDir, elizaOsApkName);
   fs.copyFileSync(apk, target);
+  writeAndroidSystemProvenance(target);
   console.log(`[mobile-build] Staged ${elizaOsApkName} at ${target}.`);
 }
 

@@ -22,6 +22,15 @@ primary_first_phone:
     gnss: optional_multi_constellation
     host_interfaces: [USB_2_0, PCIe_2_0, PCM, UART, SGMII, SPI]
     driver_os: [Linux, Android, Windows]
+  public_2026_brochure_fields:
+    url: https://www.quectel.com/content/uploads/2026/01/Quectel_Product_Brochure_V8.5_2026.pdf
+    rg255c_lga_dimensions_mm: {width: 29.0, height: 32.0, thickness: 2.4}
+    rg255c_m2_dimensions_mm: {width: 30.0, height: 42.0, thickness: 3.25}
+    rm255c_gl_m2_dimensions_mm: {width: 42.0, height: 30.0, thickness: 2.3}
+    rg255c_lga_weight_g: 5.2
+    rm255c_gl_weight_g: 6.0
+    extended_temperature_c: {min: -40, max: 85}
+    region_sku_families: [RG255C_NA, RG255C_EU, RG255C_GL]
   sourcing_url: https://www.quectel.com/product/5g-redcap-rg255c-series/
   public_source_revalidation:
     checked_date: 2026-05-21

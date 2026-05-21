@@ -2,13 +2,13 @@
 
 - Evidence class: `cad_estimate_for_evt_planning, not_measured_hardware`
 - Source: `chip/mechanical/e1-phone/cad/e1_phone_params.yaml`
-- Revision: evt0-mechanical-cad
+- Revision: evt0-mechanical-cad-flush-back
 
 ## Mechanical
-- Dimensions: 78.0 x 153.6 x 9.6 mm
-- Envelope volume: 115.02 cm^3
+- Dimensions: 78.0 x 153.6 x 11.2 mm (fully flush flat back, no camera bump)
+- Envelope volume: 134.19 cm^3
 - Corner radius: 7.5 mm
-- Mass: 171.84 g reconciled (163.44 g CAD geometry + 8.4 g assembly-stage items); ship target 168 +/-10 g (PASS). Aspirational concept target 185 g retained for reference.
+- Mass: 171.92 g reconciled (163.52 g CAD geometry + 8.4 g assembly-stage items); ship target 168 +/-10 g (PASS, unchanged). Aspirational concept target 185 g retained for reference.
 - Color / material: hard safety orange / PC+ABS injection molded
 
 ## Display
@@ -37,7 +37,7 @@
 - Video out: False
 
 ## Battery & charging
-- 4500 mAh @ 3.85 V = 17.33 Wh (LiPo pouch)
+- 5830 mAh @ 3.85 V = 22.45 Wh (LiPo pouch, LP576487-class thick pouch)
 - Wireless charging: False
 
 ## Audio
@@ -47,8 +47,9 @@
 - Haptic: 0612 X-axis LRA
 
 ## Camera
-- Rear: 13 MP OmniVision OV13855 autofocus
-- Front: 5 MP GalaxyCore GC5035 fixed-focus
+- Rear: 13 MP OmniVision OV13855 autofocus, single lens (no array)
+- Rear flash: single rear torch/flash LED (Everlight/OSRAM-class ~1.0x1.0 mm) behind a flush light-pipe window, AW36515-class flash driver
+- Front: 5 MP GalaxyCore GC5035 fixed-focus, single lens (no array)
 
 ## Environmental
 - IP rating (design intent): IP54 (dust-protected, splash-resistant)

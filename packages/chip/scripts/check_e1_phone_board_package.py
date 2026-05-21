@@ -1015,6 +1015,7 @@ def check_display_camera_source_revalidation() -> None:
         raise SystemExit("display/camera source revalidation date is stale")
     for key in [
         "display_primary_page_still_exposes",
+        "display_primary_pdf_still_exposes",
         "rear_camera_primary_page_still_exposes",
         "front_camera_primary_page_still_exposes",
     ]:
@@ -1026,6 +1027,7 @@ def check_display_camera_source_revalidation() -> None:
     sources = {item["id"]: item for item in revalidation["revalidated_sources"]}
     required_sources = {
         "display_primary_chenghao_ch550fh01a_ct",
+        "display_primary_chenghao_ch550fh01a_ct_public_pdf",
         "rear_camera_primary_sincere_first_ov13855",
         "front_camera_primary_sincere_first_gc5035",
         "front_camera_alternate_alibaba_junde_imx219",
@@ -1046,6 +1048,18 @@ def check_display_camera_source_revalidation() -> None:
         raise SystemExit("display primary outline diverges from display fit")
     if display["board_decision"] != "keep_as_primary_display_mechanical_anchor":
         raise SystemExit("display primary board decision changed")
+    display_pdf = sources["display_primary_chenghao_ch550fh01a_ct_public_pdf"]
+    if display_pdf["source_type"] != "direct_chenghao_pdf_opened_2026_05_21":
+        raise SystemExit("display primary PDF source type is stale")
+    pdf_fields = display_pdf["observed_public_fields"]
+    if pdf_fields["model"] != display["observed_public_fields"]["model"]:
+        raise SystemExit("display primary PDF model diverges from marketplace listing")
+    if pdf_fields["module_outline_mm"] != display_fit["selected_primary_display"]["outline_mm"]:
+        raise SystemExit("display primary PDF outline diverges from display fit")
+    if pdf_fields["tft_interface"] != "4_lane_MIPI" or pdf_fields["ctp_interface"] != "I2C":
+        raise SystemExit("display primary PDF interface fields changed")
+    if pdf_fields["tft_driver_ic"] != "HX8399C" or pdf_fields["ctp_driver_ic"] != "GT911":
+        raise SystemExit("display primary PDF driver fields changed")
 
     rear = sources["rear_camera_primary_sincere_first_ov13855"]
     if rear["source_type"] != "direct_made_in_china_page_opened_2026_05_21":
@@ -1085,6 +1099,8 @@ def check_display_camera_source_revalidation() -> None:
         "primary_display_fits_device_envelope",
         "front_camera_junde_alternate_still_rejected_by_active_matrix",
         "made_in_china_primary_display_verified",
+        "display_pdf_datasheet_matches_primary_outline",
+        "display_pdf_adds_driver_touch_controller_rfq_fields",
         "made_in_china_primary_camera_sources_verified",
         "alibaba_camera_alternate_not_promoted",
         "requires_quote_drawing_samples_before_release",
@@ -1239,6 +1255,7 @@ def check_display_camera_acceptance() -> None:
 def check_usb_sidekey_acceptance() -> None:
     acceptance = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml")
     integration = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-integration.yaml")
+    revalidation = load_yaml(ROOT / "board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml")
     placement = load_yaml(ROOT / "board/kicad/e1-phone/placement-interface-matrix.yaml")
     usb_binding = load_yaml(ROOT / "package/usb-c/e1-phone-usb-c-port.yaml")
     side_buttons = load_yaml(ROOT / "package/human-interface/side-buttons.yaml")
@@ -1252,6 +1269,7 @@ def check_usb_sidekey_acceptance() -> None:
         raise SystemExit(f"unexpected USB/side-key acceptance status: {acceptance['status']}")
     for source in [
         "board/kicad/e1-phone/usb-sidekey-integration.yaml",
+        "board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml",
         "board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml",
         "package/usb-c/e1-phone-usb-c-port.yaml",
         "package/human-interface/side-buttons.yaml",
@@ -1296,6 +1314,49 @@ def check_usb_sidekey_acceptance() -> None:
     if usb_context["selected_evt0_connector"]["family"] != usb_binding["connector_strategy"]["evt0_low_risk"]["family"]:
         raise SystemExit("USB/side-key acceptance EVT0 connector family stale")
 
+    if revalidation["schema"] != "eliza.e1_phone_usb_sidekey_source_revalidation.v1":
+        raise SystemExit("USB/side-key source revalidation schema diverges")
+    if revalidation["status"] != "public_sources_revalidated_usb_sidekey_not_supplier_approved":
+        raise SystemExit(f"unexpected USB/side-key source status: {revalidation['status']}")
+    if (
+        revalidation["browser_revalidation_context"]["method"]
+        != "manual_browser_open_and_search_on_2026_05_21"
+    ):
+        raise SystemExit("USB/side-key source revalidation method is stale")
+    if (
+        revalidation["browser_revalidation_context"]["current_browser_result"]["checked_date"]
+        != "2026-05-21"
+    ):
+        raise SystemExit("USB/side-key source revalidation date is stale")
+    source_records = {item["id"]: item for item in revalidation["revalidated_sources"]}
+    required_source_ids = {
+        "usb_evt0_gct_usb4105",
+        "usb_production_molex_port_on_waterproof",
+        "side_switch_primary_panasonic_evq_p7",
+        "side_switch_alternate_ck_kmr2",
+    }
+    if set(source_records) != required_source_ids:
+        raise SystemExit("USB/side-key source set diverges")
+    evt0 = source_records["usb_evt0_gct_usb4105"]
+    if evt0["observed_public_fields"]["family"] != usb_binding["connector_strategy"]["evt0_low_risk"]["family"]:
+        raise SystemExit("USB-C EVT0 source family diverges from package binding")
+    if evt0["observed_public_fields"]["active_contacts"] != usb_context["selected_evt0_connector"]["active_contacts"]:
+        raise SystemExit("USB-C EVT0 source active-contact count stale")
+    production = source_records["usb_production_molex_port_on_waterproof"]
+    if production["observed_public_fields"]["features"] != usb_binding["connector_strategy"]["production_superspeed"]["features"]:
+        raise SystemExit("USB-C production alternate source features stale")
+    side_primary = source_records["side_switch_primary_panasonic_evq_p7"]
+    if side_primary["observed_public_fields"]["dimensions_mm"] != side_buttons["primary_switch_family"]["dimensions_mm"]:
+        raise SystemExit("side-key primary source dimensions stale")
+    if side_primary["observed_public_fields"]["travel_mm"] != side_buttons["primary_switch_family"]["travel_mm"]:
+        raise SystemExit("side-key primary source travel stale")
+    side_alt = source_records["side_switch_alternate_ck_kmr2"]
+    if side_alt["observed_public_fields"]["dimensions_mm"] != side_buttons["alternate_switch_family"]["dimensions_mm"]:
+        raise SystemExit("side-key alternate source dimensions stale")
+    for key, value in revalidation["cross_checks"].items():
+        if value is not True:
+            raise SystemExit(f"USB/side-key source revalidation cross-check failed: {key}")
+
     for _, draft_path in acceptance["supplier_draft_links"].items():
         require_path(ROOT / draft_path)
     expected_items = {
@@ -1339,7 +1400,8 @@ def check_usb_sidekey_acceptance() -> None:
             raise SystemExit(f"USB/side-key acceptance missing forbidden claim {claim}")
     print(
         "USB/side-key acceptance ok: "
-        f"{len(items)} acceptance items blocked, port_count={summary['usb_c_port_count']}"
+        f"{len(items)} acceptance items blocked, {len(source_records)} public sources checked, "
+        f"port_count={summary['usb_c_port_count']}"
     )
 
 
@@ -3541,6 +3603,7 @@ def check_rf_connectivity_closure() -> None:
     closure = load_yaml(ROOT / "board/kicad/e1-phone/rf-connectivity-closure.yaml")
     cellular = load_yaml(ROOT / "package/cellular/quectel-5g-redcap.yaml")
     wifi_bt = load_yaml(ROOT / "package/wifi/murata-type-2ea-wifi6e.yaml")
+    revalidation = load_yaml(ROOT / "board/kicad/e1-phone/radio-module-source-revalidation.yaml")
     if closure["status"] != "planning_rf_connectivity_cross_checked_not_measured":
         raise SystemExit(f"unexpected RF connectivity status: {closure['status']}")
     if str(cellular["as_of"]) != "2026-05-21":
@@ -3581,6 +3644,51 @@ def check_rf_connectivity_closure() -> None:
             raise SystemExit(f"Wi-Fi/Bluetooth public source missing field: {field}")
     if len(wifi_revalidation["still_missing_before_use"]) < 4:
         raise SystemExit("Wi-Fi/Bluetooth public source must remain blocked on supplier inputs")
+    if revalidation["schema"] != "eliza.e1_phone_radio_module_source_revalidation.v1":
+        raise SystemExit("radio module source revalidation schema diverges")
+    if revalidation["status"] != "public_sources_revalidated_radio_modules_not_supplier_approved":
+        raise SystemExit(f"unexpected radio module source status: {revalidation['status']}")
+    context = revalidation["browser_revalidation_context"]
+    if context["method"] != "manual_browser_search_and_open_on_2026_05_21":
+        raise SystemExit("radio module source revalidation method is stale")
+    if context["current_browser_result"]["checked_date"] != "2026-05-21":
+        raise SystemExit("radio module source revalidation date is stale")
+    radio_sources = {item["id"]: item for item in revalidation["revalidated_sources"]}
+    required_radio_sources = {
+        "cellular_primary_quectel_rg255c_vendor_page",
+        "cellular_quectel_2026_product_brochure",
+        "wifi_bluetooth_primary_murata_type_2ea_vendor_page",
+        "wifi_bluetooth_murata_type_2ea_product_brief",
+    }
+    if set(radio_sources) != required_radio_sources:
+        raise SystemExit("radio module source set diverges")
+    cell_page = radio_sources["cellular_primary_quectel_rg255c_vendor_page"]
+    if cell_page["observed_public_fields"]["family"] not in cellular["primary_first_phone"]["family"]:
+        raise SystemExit("cellular vendor source family diverges from package binding")
+    if (
+        cell_page["observed_public_fields"]["host_interfaces"]
+        != cellular["primary_first_phone"]["public_features"]["host_interfaces"]
+    ):
+        raise SystemExit("cellular vendor source host interfaces stale")
+    cell_brochure = radio_sources["cellular_quectel_2026_product_brochure"]
+    brochure_fields = cellular["primary_first_phone"]["public_2026_brochure_fields"]
+    if cell_brochure["observed_public_fields"]["rg255c_lga_dimensions_mm"] != brochure_fields["rg255c_lga_dimensions_mm"]:
+        raise SystemExit("cellular brochure LGA dimensions stale")
+    if cell_brochure["observed_public_fields"]["rm255c_gl_m2_dimensions_mm"] != brochure_fields["rm255c_gl_m2_dimensions_mm"]:
+        raise SystemExit("cellular brochure M.2 fallback dimensions stale")
+    wifi_page = radio_sources["wifi_bluetooth_primary_murata_type_2ea_vendor_page"]
+    if wifi_page["observed_public_fields"]["order_number"] != wifi_bt["vendor_public_specs"]["order_number"]:
+        raise SystemExit("Wi-Fi/Bluetooth vendor source order number stale")
+    if wifi_page["observed_public_fields"]["package_mm"] != wifi_bt["vendor_public_specs"]["package_mm"]:
+        raise SystemExit("Wi-Fi/Bluetooth vendor source package dimensions stale")
+    wifi_brief = radio_sources["wifi_bluetooth_murata_type_2ea_product_brief"]
+    if wifi_brief["observed_public_fields"]["wifi_interface"] != wifi_bt["vendor_public_specs"]["product_brief_public_fields"]["wifi_interface"]:
+        raise SystemExit("Wi-Fi/Bluetooth product brief interface fields stale")
+    if wifi_brief["observed_public_fields"]["wifi_max_data_rate_mbps"] != wifi_bt["vendor_public_specs"]["product_brief_public_fields"]["wifi_max_data_rate_mbps"]:
+        raise SystemExit("Wi-Fi/Bluetooth product brief data rate stale")
+    for key, value in revalidation["cross_checks"].items():
+        if value is not True:
+            raise SystemExit(f"radio module source revalidation cross-check failed: {key}")
     if closure["missing_required_nets"]:
         raise SystemExit(f"RF connectivity missing nets: {closure['missing_required_nets']}")
     if closure["missing_matching_networks"]:
@@ -3632,7 +3740,8 @@ def check_rf_connectivity_closure() -> None:
             raise SystemExit(f"RF closure missing measurement requirement containing {required}")
     print(
         "rf connectivity ok: "
-        f"{len(interfaces)} radio interfaces, {len(closure['required_rf_nets'])} RF nets, "
+        f"{len(interfaces)} radio interfaces, {len(radio_sources)} radio public sources, "
+        f"{len(closure['required_rf_nets'])} RF nets, "
         "measurement release blockers preserved"
     )
 

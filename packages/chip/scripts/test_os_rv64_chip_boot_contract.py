@@ -30,12 +30,12 @@ def write_json(path: Path, payload: dict) -> Path:
 
 class OsRv64ChipBootContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
-        variant = tmp / "os/linux/variants/elizaos-debian-riscv64"
+        variant = tmp / "os/linux/elizaos"
         manifest = write_json(
             variant / "manifest.json",
             {
                 "status": "candidate",
-                "filename": "elizaos-debian-riscv64-fixture.iso",
+                "filename": "elizaos-linux-riscv64-fixture.iso",
                 "sizeBytes": 1710800896,
                 "target": {
                     "platform": "linux",
@@ -97,6 +97,15 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             "# Marker the elizaOS first-boot unit prints once the agent is up.\n"
             'REQUIRED_TRANSCRIPT_MARKER = "elizaos-ready"\n',
         )
+        tui_unit = write(
+            variant
+            / "config/includes.chroot/etc/systemd/system/elizaos-terminal-tui-smoke.service",
+            "[Service]\nExecStart=/usr/lib/elizaos/run-terminal-tui-smoke.sh http://127.0.0.1:31337\n",
+        )
+        tui_script = write(
+            variant / "config/includes.chroot/usr/lib/elizaos/run-terminal-tui-smoke.sh",
+            "#!/bin/sh\nelizaos tui-smoke --api http://127.0.0.1:31337\n",
+        )
         patches = [
             mock.patch.object(gate, "WORKSPACE", tmp),
             mock.patch.object(gate, "VARIANT", variant),
@@ -111,6 +120,8 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
                 variant / "config/hooks/normal/0010-elizaos-agent.hook.chroot",
             ),
             mock.patch.object(gate, "RELEASE_CHECK", release_check),
+            mock.patch.object(gate, "TUI_SMOKE_UNIT", tui_unit),
+            mock.patch.object(gate, "TUI_SMOKE_SCRIPT", tui_script),
         ]
         return patches, manifest, qemu, variant
 
@@ -141,7 +152,8 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
                 transcript,
                 "OpenSBI\nLinux version\n"
                 "systemctl is-active elizaos-agent.service: active\n"
-                "GET /api/health 200\nelizaos-agent-ready\n",
+                "GET /api/health 200\nelizaos-agent-ready\n"
+                "elizaos-tui-ready\n",
             )
             write_json(
                 manifest,

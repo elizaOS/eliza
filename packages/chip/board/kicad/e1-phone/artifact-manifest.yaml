@@ -43,6 +43,7 @@ current_artifacts:
     - board/kicad/e1-phone/pinout-footprint-freeze.yaml
     - board/kicad/e1-phone/rf-connectivity-closure.yaml
     - board/kicad/e1-phone/rf-antenna-coexistence-closure.yaml
+    - board/kicad/e1-phone/radio-module-source-revalidation.yaml
     - board/kicad/e1-phone/radio-module-integration.yaml
     - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
     - board/kicad/e1-phone/module-host-integration-acceptance-checklist.yaml
@@ -63,6 +64,7 @@ current_artifacts:
     - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
     - board/kicad/e1-phone/schematic-netclass-execution-package.yaml
     - board/kicad/e1-phone/usb-sidekey-integration.yaml
+    - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
     - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
     - board/kicad/e1-phone/display-camera-oem-integration.yaml
     - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml

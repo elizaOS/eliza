@@ -31,7 +31,7 @@ case "${ARCH}" in
     riscv64)
         KERNEL_FLAVOUR="riscv64"
         BOOTLOADERS="grub-efi"
-        BOOTAPPEND="boot=live components quiet earlycon=sbi console=ttyS0,115200n8 console=tty0"
+        BOOTAPPEND="boot=live components earlycon=sbi loglevel=7 console=ttyS0,115200n8 console=tty0"
         ;;
     *)
         echo "ERROR: unsupported ELIZAOS_ARCH=${ARCH}" >&2

@@ -939,6 +939,47 @@ def test_evt0_phone_display_validation_quantifies_bond_fpc_and_lab_template(
     assert (tmp_path / "display-results-review.md").is_file()
 
 
+def test_evt0_phone_mechanical_integration_sim_covers_usb_screen_and_buttons(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    interface_validation = cad.write_interface_validation_artifacts(
+        params, parts, checks, clearance, tolerance_stack
+    )
+    display = cad.write_display_validation_artifacts(
+        params, parts, clearance, interface_validation, tolerance_stack
+    )
+    sim = cad.write_mechanical_integration_sim_artifacts(
+        params, parts, interface_validation, display
+    )
+    cases = {case["id"]: case for case in sim["cases"]}
+
+    assert sim["status"] == "cad_mechanical_integration_sim_ready"
+    assert sim["evidence_class"] == "deterministic_cad_simulation_not_physical_result"
+    assert {
+        "usb_c_insertion_load_planning",
+        "screen_bond_clamp_and_fpc_planning",
+        "side_button_force_pressure_planning",
+    }.issubset(cases)
+    assert cases["usb_c_insertion_load_planning"]["planning_pass"]
+    assert (
+        cases["usb_c_insertion_load_planning"]["actual"]["predicted_peak_insertion_force_n"]
+        <= 35.0
+    )
+    assert cases["screen_bond_clamp_and_fpc_planning"]["planning_pass"]
+    assert cases["screen_bond_clamp_and_fpc_planning"]["actual"]["compression_mm"] == 0.045
+    assert cases["side_button_force_pressure_planning"]["planning_pass"]
+    assert "physical USB insertion/cycle data" in sim["release_rule"]
+    assert (tmp_path / "mechanical-integration-sim.json").is_file()
+    assert (tmp_path / "mechanical-integration-sim.md").is_file()
+
+
 def test_evt0_phone_display_results_reject_simulated_rows(
     tmp_path, monkeypatch
 ) -> None:
@@ -2050,6 +2091,91 @@ def test_evt0_phone_mold_process_window_quantifies_tooling_risks(tmp_path, monke
     assert (tmp_path / "mold-process-window.md").is_file()
 
 
+def test_evt0_phone_mold_flow_acceptance_fails_closed_without_physical_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    tooling = cad.tooling_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    mold_process = cad.write_mold_process_window_artifacts(
+        params,
+        parts,
+        tooling,
+        dfm,
+        tolerance_stack,
+    )
+    report = cad.write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
+    csv_text = (tmp_path / "mold-flow-results-template.csv").read_text()
+
+    assert report["status"] == "blocked_no_mold_flow_results"
+    assert report["input_deck_status"] == "mold_flow_input_deck_ready"
+    assert report["required_evidence_class"] == "physical_mold_flow_result"
+    assert report["complete_result_count"] == 0
+    assert "fill_pressure_at_vp_transfer_mpa" in report["missing_or_incomplete_criteria"]
+    assert "evidence_class" in csv_text
+    assert "raw_simulation_archive" in csv_text
+    assert "evidence_class=physical_mold_flow_result" in report["release_rule"]
+    assert (tmp_path / "mold-flow-input-deck.json").is_file()
+    assert (tmp_path / "mold-flow-input-deck.md").is_file()
+    assert (tmp_path / "mold-flow-acceptance.json").is_file()
+    assert (tmp_path / "mold-flow-acceptance.md").is_file()
+
+
+def test_evt0_phone_mold_flow_acceptance_rejects_simulated_rows(
+    tmp_path, monkeypatch
+) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    tooling = cad.tooling_parts(params)
+    checks = cad.run_checks(params, parts)
+    monkeypatch.setattr(cad, "REVIEW_DIR", tmp_path)
+
+    dfm = cad.write_injection_molding_dfm_artifacts(params, parts, tooling, checks)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    mold_process = cad.write_mold_process_window_artifacts(
+        params,
+        parts,
+        tooling,
+        dfm,
+        tolerance_stack,
+    )
+    cad.write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
+    template_text = (tmp_path / "mold-flow-results-template.csv").read_text()
+    rows = list(csv.DictReader(StringIO(template_text)))
+    for row in rows:
+        row.update(
+            {
+                "toolmaker_name": "simulated mold-flow vendor",
+                "evidence_class": "simulated_mold_flow_for_planning_not_release",
+                "returned_artifact": "simulated-moldflow-report.pdf",
+                "raw_simulation_archive": "simulated-moldflow.zip",
+                "reviewer_acceptance_record": "simulated-acceptance.md",
+                "resin_tooling_traceability_record": "simulated-traceability.yaml",
+                "measured_or_predicted_value": "simulated pass",
+                "accepted": "true",
+                "reviewer": "simulation",
+            }
+        )
+    with (tmp_path / "mold-flow-results-template.csv").open("w", newline="") as csv_file:
+        csv_file.write("# evidence_class: simulated_mold_flow_for_planning_not_release\n")
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    report = cad.write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
+
+    assert report["status"] == "blocked_no_mold_flow_results"
+    assert report["template_evidence_class"] == "simulated_mold_flow_for_planning_not_release"
+    assert report["complete_result_count"] == 0
+    assert report["cases"][0]["evidence_class_allowed"] is False
+    assert report["cases"][0]["physical_evidence_pass"] is False
+
+
 def test_evt0_phone_toolmaker_signoff_package_fails_closed_without_returns(
     tmp_path, monkeypatch
 ) -> None:
@@ -2636,6 +2762,12 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         params, parts, clearance, interface_validation, tolerance_stack
     )
     display_results = cad.write_display_results_review_artifacts(display_validation)
+    mechanical_integration_sim = cad.write_mechanical_integration_sim_artifacts(
+        params,
+        parts,
+        interface_validation,
+        display_validation,
+    )
     acoustic_validation = cad.write_acoustic_validation_artifacts(
         params, parts, clearance, interface_validation
     )
@@ -2706,6 +2838,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         interface_validation,
         display_validation,
         display_results,
+        mechanical_integration_sim,
         acoustic_validation,
         acoustic_results,
         camera_validation,
@@ -2743,6 +2876,11 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     assert readiness["parameters"]["compactness_height_excess_mm"] <= 1.5
     assert readiness["subsystem_evidence_present"]["rf_shielding_haptics_service"]
     assert readiness["required_outputs"]["kicad_placement_reconciliation"]
+    assert readiness["required_outputs"]["mechanical_integration_sim"]
+    assert (
+        readiness["parameters"]["mechanical_integration_sim_status"]
+        == "cad_mechanical_integration_sim_ready"
+    )
     assert readiness["required_outputs"]["board_step_readiness"]
     assert (
         readiness["parameters"]["kicad_placement_reconciliation_status"]

@@ -25,6 +25,15 @@ browser_revalidation_context:
       - 68.04 x 120.96 mm active area
       - 500000 pcs/month production-capacity signal
       - public price ladder from 2 pieces through 1000+ pieces
+    display_primary_pdf_still_exposes:
+      - CH550FH01A-CT model number
+      - 4-lane MIPI TFT interface
+      - I2C CTP interface
+      - HX8399C TFT driver IC
+      - GT911 CTP driver IC
+      - 77.1 x 151.77 x 3.39 mm module outline
+      - 68.04 x 120.96 mm active area
+      - 650 cd/m2 luminance signal
     rear_camera_primary_page_still_exposes:
       - SF-XR3855A-A0 model number
       - OV13855 sensor class
@@ -69,6 +78,35 @@ revalidated_sources:
       production_capacity_signal: 500000_pcs_per_month
     board_decision: keep_as_primary_display_mechanical_anchor
     blocking_gap: signed_drawing_fpc_pinout_mating_connector_step_model_and_sample_inspection_missing
+  - id: display_primary_chenghao_ch550fh01a_ct_public_pdf
+    group: display
+    source_type: direct_chenghao_pdf_opened_2026_05_21
+    supplier: Shenzhen Chenghao Optoelectronic
+    url: https://www.chenghaolcd.com/doc/14495745/5-5-inch-tft-capacitive-touchscreen-1080x1920-pixel-ltps-transmissive.pdf
+    candidate: CH550FH01A-CT
+    observed_public_fields:
+      model: CH550FH01A-CT
+      resolution: 1080x1920
+      tft_interface: 4_lane_MIPI
+      ctp_interface: I2C
+      tft_driver_ic: HX8399C
+      ctp_driver_ic: GT911
+      luminance_cd_m2: 650
+      module_outline_mm:
+        width: 77.1
+        height: 151.77
+        thickness: 3.39
+      active_area_mm:
+        width: 68.04
+        height: 120.96
+      tft_outline_mm:
+        width: 70.78
+        height: 129.17
+        thickness: 1.7
+      operating_temp_c: [-20, 70]
+      storage_temp_c: [-30, 80]
+    board_decision: bind_public_driver_and_touch_controller_fields_to_display_rfq_not_release
+    blocking_gap: pdf_is_public_reference_not_signed_supplier_drawing_or_final_fpc_pinout
   - id: rear_camera_primary_sincere_first_ov13855
     group: camera
     source_type: direct_made_in_china_page_opened_2026_05_21
@@ -130,6 +168,7 @@ revalidated_sources:
     blocking_gap: oversized_for_active_camera_connector_escape_and_direct_page_not_machine_parsed
 layout_decisions:
   primary_display: Chenghao_CH550FH01A_CT_remains_primary_screen_anchor
+  primary_display_pdf: use_public_pdf_for_driver_touch_and_interface_rfq_fields_only
   rear_camera: Sincere_First_OV13855_class_remains_rear_primary_pending_supplier_pack
   front_camera: Sincere_First_GC5035_class_remains_front_primary_pending_supplier_pack
   alibaba_junde_imx219: not_promoted_due_to_25x24_mm_envelope_and_parser_inaccessibility
@@ -138,6 +177,8 @@ cross_checks:
   primary_display_fits_device_envelope: true
   front_camera_junde_alternate_still_rejected_by_active_matrix: true
   made_in_china_primary_display_verified: true
+  display_pdf_datasheet_matches_primary_outline: true
+  display_pdf_adds_driver_touch_controller_rfq_fields: true
   made_in_china_primary_camera_sources_verified: true
   alibaba_camera_alternate_not_promoted: true
   requires_quote_drawing_samples_before_release: true

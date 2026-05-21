@@ -23,7 +23,7 @@ from typing import Any
 
 HERE = Path(__file__).resolve().parent
 VARIANT_DIR = HERE.parent
-BASH_HARNESS = HERE / "qemu_virt_boot.sh"
+BASH_HARNESS = HERE / "qemu_virt_boot_riscv64.sh"
 
 EVIDENCE_SCHEMA = "eliza.os.linux.qemu_virt_boot.v1"
 CLAIM_BOUNDARY = (
@@ -58,7 +58,9 @@ _REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
 REQUIRED_MARKERS = (
     "Linux version",
     "elizaos-firstboot-ready",
+    "elizaos-curl-health-ready",
     "elizaos-agent-ready",
+    "elizaos-tui-ready",
 )
 
 

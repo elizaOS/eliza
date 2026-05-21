@@ -20,7 +20,7 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
   Evidence: compactness-optimization.json, compactness-optimization.md, compactness-optimization.png, compactness-optimization.svg, device_compactness, screen_mount_margin, pcb_battery_non_overlap
   Remaining: Envelope is optimized against current EVT0 supplier envelopes only.; Need supplier STEP and routed PCB before proving no further local reduction is possible.
 - PASS: `screen_stack`
-  Evidence: screen_cover_glass, display_lcm, screen_adhesive_top, display_fpc_connector, screen_mount_and_connection, interface-validation.json, interface-validation.md, display-validation.json, display-validation.md, display-results-template.csv, display-results-review.json, display-results-review.md
+  Evidence: screen_cover_glass, display_lcm, screen_adhesive_top, display_fpc_connector, screen_mount_and_connection, interface-validation.json, interface-validation.md, display-validation.json, display-validation.md, display-results-template.csv, display-results-review.json, display-results-review.md, mechanical-integration-sim.json, mechanical-integration-sim.md
   Remaining: Need supplier drawing and exact FPC exit direction.; Need verified touch/display pinout and bend test with real sample.; Need populated display/touch bond, luminance, touch-grid, drop, and bring-up results.
 - PASS: `pcb_integration`
   Evidence: main_pcb, kicad_outline_integration, pcb_battery_non_overlap, kicad-placement-reconciliation.json, kicad-placement-reconciliation.md, board-step-readiness.json, board-step-readiness.md
@@ -38,10 +38,10 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
   Evidence: supplier-response-template.csv, supplier-response-review.json, supplier-response-review.md
   Remaining: No supplier-returned quote/drawing/STEP/sample evidence has been recorded.; Need complete vendor responses before replacing EVT0 envelope CAD with supplier CAD.
 - PASS: `buttons`
-  Evidence: power_button_cap, volume_button_cap, power_button_elastomer_gasket, volume_button_elastomer_gasket, button_force_and_travel, button_pressure_support, button_ingress_seal_stack, interface-validation.json, interface-validation.md
+  Evidence: power_button_cap, volume_button_cap, power_button_elastomer_gasket, volume_button_elastomer_gasket, button_force_and_travel, button_pressure_support, button_ingress_seal_stack, interface-validation.json, interface-validation.md, mechanical-integration-sim.json, mechanical-integration-sim.md
   Remaining: Need tactile switch vendor part and tolerance stack.; Need fatigue testing on snap retention and button caps.
 - PASS: `usb_audio_ports`
-  Evidence: usb_c_receptacle, usb_c_external_aperture, usb_c_perimeter_gasket_top, usb_c_perimeter_gasket_bottom, usb_c_perimeter_gasket_left, usb_c_perimeter_gasket_right, usb_c_molded_drip_break_lip, usb_c_internal_drain_shelf, bottom_speaker_grille_slot_1, bottom_microphone_port_1, usb_c_insertion_envelope, usb_c_port_seal_stack, bottom_io_acoustic_apertures, interface-validation.json, interface-validation.md, acoustic-validation.json, acoustic-validation.md, acoustic-results-template.csv, acoustic-results-review.json, acoustic-results-review.md
+  Evidence: usb_c_receptacle, usb_c_external_aperture, usb_c_perimeter_gasket_top, usb_c_perimeter_gasket_bottom, usb_c_perimeter_gasket_left, usb_c_perimeter_gasket_right, usb_c_molded_drip_break_lip, usb_c_internal_drain_shelf, bottom_speaker_grille_slot_1, bottom_microphone_port_1, usb_c_insertion_envelope, usb_c_port_seal_stack, bottom_io_acoustic_apertures, interface-validation.json, interface-validation.md, mechanical-integration-sim.json, mechanical-integration-sim.md, acoustic-validation.json, acoustic-validation.md, acoustic-results-template.csv, acoustic-results-review.json, acoustic-results-review.md
   Remaining: Need USB-C receptacle supplier drawing and insertion-cycle mechanical validation.; Need acoustic simulation/measurement for speaker chamber and microphone tunnels.
 - PASS: `cameras_and_handset`
   Evidence: rear_camera_module, front_camera_module, front_camera_under_glass, front_camera_black_mask_window, rear_camera_cover_glass, rear_camera_cover_adhesive_top, rear_camera_cover_adhesive_bottom, rear_camera_cover_adhesive_left, rear_camera_cover_adhesive_right, rear_camera_light_baffle_top, rear_camera_light_baffle_bottom, earpiece_receiver, handset_acoustic_slot, camera_speaker_behind_glass, camera_optical_seal_stack, interface-validation.json, interface-validation.md, camera-validation.json, camera-validation.md, camera-results-template.csv, camera-results-review.json, camera-results-review.md, acoustic-validation.json, acoustic-validation.md
@@ -80,7 +80,7 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
   Evidence: assembly-clearance.json, assembly-clearance.md, battery_to_pcb_islands, haptic_to_battery, usb_to_bottom_speaker, front_camera_to_earpiece
   Remaining: Clearance checks are targeted AABB/parameter checks, not full B-rep boolean interference analysis.; Need supplier STEP files and routed-board component models for final clash analysis.
 - PASS: `engineering_validation_plan`
-  Evidence: engineering-validation.json, engineering-validation.md, interface-validation.json, interface-validation.md, evt-fixtures.json, evt-fixtures.md, evt-inspection-plan.json, evt-inspection-plan.md, evt-inspection-results-template.csv, evt-results-review.json, evt-results-review.md, e1-phone-evt-fixtures.glb, evt-fixture-manifest.json, usb_c_insertion_envelope, button_pressure_support, screen_mount_and_connection, rf_antenna_keepouts
+  Evidence: engineering-validation.json, engineering-validation.md, interface-validation.json, interface-validation.md, evt-fixtures.json, evt-fixtures.md, evt-inspection-plan.json, evt-inspection-plan.md, evt-inspection-results-template.csv, evt-results-review.json, evt-results-review.md, mechanical-integration-sim.json, mechanical-integration-sim.md, e1-phone-evt-fixtures.glb, evt-fixture-manifest.json, usb_c_insertion_envelope, button_pressure_support, screen_mount_and_connection, rf_antenna_keepouts
   Remaining: Tolerance, thermal, RF, acoustic, ingress, and drop results are CAD-derived planning checks only.; Need EVT samples and lab measurements to close DVT/PVT gates.; EVT results review is fail-closed until populated sample measurements pass.
 - PASS: `physical_evt_results`
   Evidence: evt-inspection-results-template.csv, evt-results-review.json, evt-results-review.md
@@ -111,6 +111,7 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
 - PASS: `interface_validation`
 - PASS: `display_validation`
 - PASS: `display_results_review`
+- PASS: `mechanical_integration_sim`
 - PASS: `acoustic_validation`
 - PASS: `acoustic_results_review`
 - PASS: `camera_validation`

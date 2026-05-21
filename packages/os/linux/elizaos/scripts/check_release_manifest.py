@@ -65,7 +65,9 @@ PROMOTED_STATUSES: frozenset[str] = frozenset({"candidate", "published"})
 # marker is emitted only after a target-side health check has succeeded.
 REQUIRED_TRANSCRIPT_MARKERS: tuple[str, ...] = (
     "elizaos-firstboot-ready",
+    "elizaos-curl-health-ready",
     "elizaos-agent-ready",
+    "elizaos-tui-ready",
 )
 REQUIRED_TRANSCRIPT_MARKER = REQUIRED_TRANSCRIPT_MARKERS[0]
 GRUB_TRANSCRIPT_MARKERS: tuple[str, ...] = (

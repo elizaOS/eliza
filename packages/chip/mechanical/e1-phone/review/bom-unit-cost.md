@@ -91,15 +91,18 @@ roughly 78% of total BOM dollars, so even if every estimate line is off by
 
 | Sub-total | @10k | @100k |
 |-----------|-----:|------:|
-| Components (lines 1-26, 31-35) | $97.45 | $79.32 |
+| Components (lines 1-26, 31-35) | $98.09 | $79.90 |
 | PCB fab + PCBA + NRE | $7.30 | $4.56 |
 | Enclosure (plastic + tooling amortized + mold cycle) | $6.53 | $0.95 |
 | Packaging | $1.85 | $1.30 |
 | Labor / test / yield | $4.80 | $3.20 |
 | Inbound logistics | $0.85 | $0.55 |
-| **Ex-factory unit cost** | **$115.70** | **$87.56** |
-| Retail @ 2× markup | $231.40 | $175.12 |
-| Retail @ 3× markup | $347.10 | $262.68 |
+| **Ex-factory unit cost** | **$116.34** | **$88.14** |
+| Retail @ 2× markup | $232.68 | $176.28 |
+| Retail @ 3× markup | $349.02 | $264.42 |
+
+Flush-back-rev delta vs prior 9.6 mm design: **+$0.64/unit @10k**, **+$0.58/unit @100k**
+(bigger battery +$0.40, flash driver +$0.16/+$0.12, torch LED +$0.08/+$0.06).
 
 NRE totals: injection-mold tooling **$60,000**, PCBA NRE **$6,000**, total
 **$66,000** one-time.
@@ -138,6 +141,10 @@ NRE totals: injection-mold tooling **$60,000**, PCBA NRE **$6,000**, total
 30. https://www.alibaba.com/showroom/stamped-precision-emi-shielding.html
 31. https://www.bytecable.com/usb-c-cable-factory/
 32. https://www.majorcustompackaging.com/product/cable-retail-box/
+33. https://www.lcsc.com/product-detail/LED-Drivers_AWINIC-Shanghai-Awinic-Tech-AW36515FCR_C2844183.html  (AW36515 flash driver)
+34. https://www.sg-micro.com/product/SGM3140  (SGM3140 flash driver alt)
+35. https://en.everlight.com/visible_led/category-flash_led/  (Everlight flash LED)
+36. https://li-polymer-battery.com/high-energy-density-option-li-polymer-battery-3-85v-5800mah-lphv486697/  (5800 mAh 3.85 V pouch)
 
 ## Top cost-down levers (ranked)
 
@@ -157,6 +164,7 @@ price point at 3× markup.
 - Quectel RG255C-GL region-SKU RFQ.
 - Murata authorized-distributor 10k quote vs. Realtek RTL8852BS Chinese channel quote.
 - Display module supplier RFQ (Chenghao or BOE) with init sequence + FPC drawing.
-- LiPol / Grepow battery pack quote with safety-doc package.
+- LiPol / Grepow 5830 mAh (LP576487-class) battery pack quote with safety-doc package.
+- Awinic AW36515 (or SGM3140) flash driver + flash LED quote at 10k/100k.
 - Tool-shop quote for hard-tool front + rear + small-parts mold set.
 - ODM EMS (Wingtech / Huaqin / Longcheer) loaded PCBA + assembly + test quote at both volumes.

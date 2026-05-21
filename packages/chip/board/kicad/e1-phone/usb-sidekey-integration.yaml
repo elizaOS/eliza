@@ -12,6 +12,7 @@ source_artifacts:
   - package/human-interface/side-buttons.yaml
   - board/kicad/e1-phone/placement-interface-matrix.yaml
   - board/kicad/e1-phone/external-interface-design-review.yaml
+  - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
   - board/kicad/e1-phone/power-sequence-bringup-closure.yaml
   - board/kicad/e1-phone/power-thermal-budget.yaml
   - board/kicad/e1-phone/block-netlist.yaml

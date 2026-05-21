@@ -41,6 +41,8 @@
     "display_measurement_count": 7,
     "display_results_status": "blocked_no_display_results",
     "display_results_complete_count": 0,
+    "mechanical_integration_sim_status": "cad_mechanical_integration_sim_ready",
+    "mechanical_integration_sim_case_count": 3,
     "acoustic_validation_status": "cad_acoustic_validation_ready",
     "acoustic_measurement_count": 7,
     "acoustic_results_status": "blocked_no_acoustic_results",
@@ -105,6 +107,7 @@
     "interface_validation": true,
     "display_validation": true,
     "display_results_review": true,
+    "mechanical_integration_sim": true,
     "acoustic_validation": true,
     "acoustic_results_review": true,
     "camera_validation": true,
@@ -212,7 +215,9 @@
         "display-validation.md",
         "display-results-template.csv",
         "display-results-review.json",
-        "display-results-review.md"
+        "display-results-review.md",
+        "mechanical-integration-sim.json",
+        "mechanical-integration-sim.md"
       ],
       "remaining_blockers": [
         "Need supplier drawing and exact FPC exit direction.",
@@ -352,7 +357,9 @@
         "button_pressure_support",
         "button_ingress_seal_stack",
         "interface-validation.json",
-        "interface-validation.md"
+        "interface-validation.md",
+        "mechanical-integration-sim.json",
+        "mechanical-integration-sim.md"
       ],
       "remaining_blockers": [
         "Need tactile switch vendor part and tolerance stack.",
@@ -378,6 +385,8 @@
         "bottom_io_acoustic_apertures",
         "interface-validation.json",
         "interface-validation.md",
+        "mechanical-integration-sim.json",
+        "mechanical-integration-sim.md",
         "acoustic-validation.json",
         "acoustic-validation.md",
         "acoustic-results-template.csv",
@@ -655,6 +664,8 @@
         "evt-inspection-results-template.csv",
         "evt-results-review.json",
         "evt-results-review.md",
+        "mechanical-integration-sim.json",
+        "mechanical-integration-sim.md",
         "e1-phone-evt-fixtures.glb",
         "evt-fixture-manifest.json",
         "usb_c_insertion_envelope",
