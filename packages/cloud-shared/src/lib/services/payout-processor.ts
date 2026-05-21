@@ -39,6 +39,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { dbRead, dbWrite } from "../../db/client";
 import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { tokenRedemptions } from "../../db/schemas/token-redemptions";
+import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
@@ -359,15 +360,16 @@ export class PayoutProcessorService {
 
     const account = privateKeyToAccount(this.evmPrivateKey);
 
+    const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
     const publicClient = createPublicClient({
       chain,
-      transport: http(),
+      transport: http(rpcUrl),
     });
 
     const walletClient = createWalletClient({
       account,
       chain,
-      transport: http(),
+      transport: http(rpcUrl),
     });
 
     // Check hot wallet balance
@@ -625,9 +627,10 @@ export class PayoutProcessorService {
       for (const [network, chain] of Object.entries(EVM_CHAINS)) {
         const tokenAddress = ELIZA_TOKEN_ADDRESSES[network as SupportedNetwork] as Address;
 
+        const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
         const publicClient = createPublicClient({
           chain,
-          transport: http(),
+          transport: http(rpcUrl),
         });
 
         const balance = await publicClient.readContract({

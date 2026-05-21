@@ -190,6 +190,9 @@ const AdminMetricsPage = lazyWithPreload(
 const AdminRedemptionsPage = lazyWithPreload(
   () => import("./dashboard/admin/redemptions/Page"),
 );
+const AdminRpcStatusPage = lazyWithPreload(
+  () => import("./dashboard/admin/rpc-status/Page"),
+);
 
 /**
  * Map of React Router path pattern → preload function. Hovering or focusing
@@ -745,6 +748,7 @@ function App() {
             />
             <Route path="metrics" element={<AdminMetricsPage />} />
             <Route path="redemptions" element={<AdminRedemptionsPage />} />
+            <Route path="rpc-status" element={<AdminRpcStatusPage />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />
