@@ -73,7 +73,7 @@ describe("mock-stack-up orchestrator", () => {
     // or fast non-zero exit (failure handled) prove the orchestrator's
     // wiring, signal, and failure paths are intact and it didn't hang.
     const handled =
-      combined.includes("Milady cloud mock stack") ||
+      combined.includes("Eliza cloud mock stack") ||
       combined.includes("shutting down") ||
       combined.includes("stopped") ||
       combined.includes("failed to start") ||

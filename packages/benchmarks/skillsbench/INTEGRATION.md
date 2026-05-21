@@ -1,6 +1,6 @@
 # SkillsBench Integration Notes
 
-Snapshot of the upstream [benchflow-ai/skillsbench](https://github.com/benchflow-ai/skillsbench) repo, cleaned for local integration into the Milady benchmarks suite.
+Snapshot of the upstream [benchflow-ai/skillsbench](https://github.com/benchflow-ai/skillsbench) repo, cleaned for local integration into the elizaOS benchmarks suite.
 
 ## What is SkillsBench?
 
@@ -102,7 +102,7 @@ Best-effort estimate from task TOMLs:
 | Vertex AI Claude (Opus/Sonnet/Haiku 4.x) | Vertex AI auth |
 | Judge LLM | **No judge LLM.** Scoring is entirely deterministic via `tests/test_outputs.py` pytest assertions on agent outputs. |
 
-## Integration Plan for Milady Adapters
+## Integration Plan for elizaOS Adapters
 
 Mirror the pattern at `/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/eliza-adapter/eliza_adapter/bfcl.py`. That file defines an agent class (`ElizaBFCLAgent`) with the duck-typed interface a runner expects:
 
@@ -141,8 +141,8 @@ For SkillsBench, the analogous interface is BenchFlow's agent SDK (a `claude-age
 
 ### Runner integration
 
-- Mirror `experiments/scripts/run_benchflow_integration.py` as `packages/benchmarks/skillsbench/run.py` in the Milady tree, parameterized by `--adapter eliza|hermes|openclaw` and `--model …`.
-- Results land in `~/.milady/benchmark_results/skillsbench/<run-id>/` using the same `result.json` + `trajectory.json` + `reward.txt` layout the rest of `benchmark_results/` uses.
+- Mirror `experiments/scripts/run_benchflow_integration.py` as `packages/benchmarks/skillsbench/run.py` in the elizaOS tree, parameterized by `--adapter eliza|hermes|openclaw` and `--model …`.
+- Results land in `~/.elizaos/benchmark_results/skillsbench/<run-id>/` using the same `result.json` + `trajectory.json` + `reward.txt` layout the rest of `benchmark_results/` uses.
 
 ## Verification Steps Before First Run
 

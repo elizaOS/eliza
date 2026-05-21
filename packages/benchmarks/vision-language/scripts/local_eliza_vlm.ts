@@ -20,7 +20,7 @@ async function readStdin(): Promise<Payload> {
 }
 
 function elizaModelsDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.MILADY_STATE_DIR;
+  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
   const ns = process.env.ELIZA_NAMESPACE ?? "eliza";
   const stateDir = explicit ?? path.join(homedir(), `.${ns}`);
   return path.join(stateDir, "local-inference", "models");

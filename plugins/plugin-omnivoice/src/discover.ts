@@ -1,8 +1,8 @@
 /**
  * Filesystem-based discovery for omnivoice GGUFs.
  *
- * Convention: per-user state dir (`MILADY_STATE_DIR` / `ELIZA_STATE_DIR` /
- * `~/.milady`) holds the converted artifacts at:
+ * Convention: per-user state dir (`ELIZA_STATE_DIR` / `ELIZA_STATE_DIR` /
+ * `~/.eliza`) holds the converted artifacts at:
  *
  *   <stateDir>/models/omnivoice/speech/{base,model}*.gguf  (LM)
  *   <stateDir>/models/omnivoice/speech/{tokenizer,codec}*.gguf  (codec)
@@ -40,16 +40,16 @@ export interface OmnivoiceDiscoveryResult {
 }
 
 export interface OmnivoiceDiscoveryOptions {
-  /** Override the per-user state root. Defaults to env / ~/.milady. */
+  /** Override the per-user state root. Defaults to env / ~/.eliza. */
   stateDir?: string;
 }
 
 function resolveStateDir(stateDir: string | undefined): string {
   if (stateDir && stateDir.length > 0) return stateDir;
   const env =
-    process.env.MILADY_STATE_DIR ?? process.env.ELIZA_STATE_DIR ?? undefined;
+    process.env.ELIZA_STATE_DIR ?? process.env.ELIZA_STATE_DIR ?? undefined;
   if (env && env.length > 0) return env;
-  return join(homedir(), ".milady");
+  return join(homedir(), ".eliza");
 }
 
 function isGgufFile(name: string): boolean {

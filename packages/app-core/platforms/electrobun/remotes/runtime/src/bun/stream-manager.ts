@@ -76,7 +76,7 @@ function resolveAuthToken(options: AgentStreamManagerOptions): string | null {
     return configured.trim();
   }
   const envToken =
-    process.env.ELIZA_RUNTIME_API_TOKEN ?? process.env.MILADY_API_TOKEN ?? null;
+    process.env.ELIZA_RUNTIME_API_TOKEN ?? process.env.ELIZA_API_TOKEN ?? null;
   return envToken !== null && envToken.trim().length > 0
     ? envToken.trim()
     : null;

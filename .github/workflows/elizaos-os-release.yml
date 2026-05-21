@@ -66,7 +66,7 @@ jobs:
 
       - name: Validate Linux live USB metadata
         run: |
-          cd packages/os/linux/variants/milady-tails
+          cd packages/os/linux/variants/eliza-tails
           ELIZAOS_STATIC_SOURCE_ONLY=1 ./scripts/static-smoke.sh
 
       - name: Validate OS homepage

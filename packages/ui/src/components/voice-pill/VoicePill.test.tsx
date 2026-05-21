@@ -31,8 +31,8 @@ describe("VoicePill", () => {
   });
 
   it("uses a custom aria-label when provided", () => {
-    const { getByRole } = render(<VoicePill ariaLabel="Milady" />);
-    expect(getByRole("button", { name: "Milady" })).not.toBeNull();
+    const { getByRole } = render(<VoicePill ariaLabel="Eliza" />);
+    expect(getByRole("button", { name: "Eliza" })).not.toBeNull();
   });
 
   it("fires onSubmit with trimmed text and clears the input", () => {

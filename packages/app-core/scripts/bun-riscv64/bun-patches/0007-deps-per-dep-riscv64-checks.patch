@@ -1,5 +1,5 @@
 From cc9ed5d967599f14da31b6c6e6da90d173ac5d74 Mon Sep 17 00:00:00 2001
-From: bun-riscv64 build <bun-riscv64@milady.local>
+From: bun-riscv64 build <bun-riscv64@eliza.local>
 Date: Tue, 19 May 2026 04:36:42 -0700
 Subject: [PATCH 7/7] deps/lolhtml: set rustTarget for linux/riscv64
  cross-compile

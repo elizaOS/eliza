@@ -64,7 +64,7 @@ describe("workspace-folder storage", () => {
 
   it("accepts null bookmark (Flathub/Windows)", () => {
     persistStoredWorkspaceFolder({
-      path: "/home/x/Milady",
+      path: "/home/x/Eliza",
       bookmark: null,
     });
     expect(readStoredWorkspaceFolder()?.bookmark).toBeNull();

@@ -171,10 +171,10 @@ else
     record "aosp:bun-riscv64/bun-version-json-parse" "FAIL" "$(tail -1 "$tmp_log")"
 fi
 # Actual Bun riscv64 artifact availability (SKIP — upstream-blocked).
-if [ -n "${MILADY_BUN_RISCV64_URL:-}" ]; then
-    record "aosp:bun-riscv64-artifact" "PASS" "MILADY_BUN_RISCV64_URL set: ${MILADY_BUN_RISCV64_URL}"
+if [ -n "${ELIZA_BUN_RISCV64_URL:-}" ]; then
+    record "aosp:bun-riscv64-artifact" "PASS" "ELIZA_BUN_RISCV64_URL set: ${ELIZA_BUN_RISCV64_URL}"
 else
-    record "aosp:bun-riscv64-artifact" "SKIP" "MILADY_BUN_RISCV64_URL unset (upstream oven-sh/bun#6266)"
+    record "aosp:bun-riscv64-artifact" "SKIP" "ELIZA_BUN_RISCV64_URL unset (upstream oven-sh/bun#6266)"
 fi
 
 # Cuttlefish boot smoke status. The log file may exist locally without

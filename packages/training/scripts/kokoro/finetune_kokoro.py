@@ -18,7 +18,7 @@ Outputs:
 Mode = `full-finetune` (DEFAULT, publish path):
   - Drives the vendored trainer at
     plugins/plugin-local-inference/native/kokoro_training/ via
-    plugins/plugin-local-inference/native/kokoro_training/milady_adapter/.
+    plugins/plugin-local-inference/native/kokoro_training/eliza_adapter/.
   - Trains a Kokoro-inspired encoder-decoder transformer end-to-end on the
     same (or other) LJSpeech-format corpus. Vendor provides the model
     architecture + dataset loader + training loop; the adapter swaps in our

@@ -16,7 +16,7 @@ describe("workspace-folder-config", () => {
 
 	beforeEach(() => {
 		stateDir = mkdtempSync(join(os.tmpdir(), "wf-config-"));
-		env = { MILADY_STATE_DIR: stateDir };
+		env = { ELIZA_STATE_DIR: stateDir };
 	});
 
 	afterEach(() => {
@@ -42,7 +42,7 @@ describe("workspace-folder-config", () => {
 	});
 
 	it("accepts null bookmark (Flathub / Windows AppContainer)", () => {
-		writeWorkspaceFolderConfig({ path: "/home/x/Milady", bookmark: null }, env);
+		writeWorkspaceFolderConfig({ path: "/home/x/Eliza", bookmark: null }, env);
 		expect(readWorkspaceFolderConfig(env)?.bookmark).toBeNull();
 	});
 
@@ -63,13 +63,13 @@ describe("workspace-folder-config", () => {
 		expect(() => clearWorkspaceFolderConfig(env)).not.toThrow();
 	});
 
-	it("honors MILADY_STATE_DIR for file location", () => {
+	it("honors ELIZA_STATE_DIR for file location", () => {
 		expect(workspaceFolderConfigPath(env)).toBe(
 			join(stateDir, "workspace-folder.json"),
 		);
 	});
 
-	it("honors ELIZA_STATE_DIR when MILADY_STATE_DIR is unset", () => {
+	it("honors ELIZA_STATE_DIR when ELIZA_STATE_DIR is unset", () => {
 		const env2: NodeJS.ProcessEnv = { ELIZA_STATE_DIR: stateDir };
 		expect(workspaceFolderConfigPath(env2)).toBe(
 			join(stateDir, "workspace-folder.json"),

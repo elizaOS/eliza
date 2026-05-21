@@ -101,7 +101,7 @@ def manifest_evidence_ids(data: dict[str, Any]) -> set[str]:
 def linux_variant_mentions_shared_bun() -> bool:
     if not OS_RV64.is_dir():
         return False
-    needles = ("bun-linux-riscv64-musl", "bun-version.json", "MILADY_BUN_RISCV64_URL")
+    needles = ("bun-linux-riscv64-musl", "bun-version.json", "ELIZA_BUN_RISCV64_URL")
     for path in OS_RV64.rglob("*"):
         if not path.is_file() or path.stat().st_size > 2_000_000:
             continue
@@ -211,7 +211,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
-        "MILADY_BUN_RISCV64_URL" in android_stage and "sha256" not in android_stage.lower(),
+        "ELIZA_BUN_RISCV64_URL" in android_stage and "sha256" not in android_stage.lower(),
         "android_riscv64_bun_payload_is_url_only",
         "Android riscv64 Bun staging depends on an operator-provided URL without a local required hash contract",
         rel(ANDROID_STAGE),

@@ -28,14 +28,14 @@ from lib.local_path_source import LocalPathSource, expand_env  # noqa: E402
 
 
 def test_expand_env_uses_default_when_var_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("MILADY_TEST_ROOT", raising=False)
-    assert expand_env("${MILADY_TEST_ROOT:-/tmp/default}") == "/tmp/default"
+    monkeypatch.delenv("ELIZA_TEST_ROOT", raising=False)
+    assert expand_env("${ELIZA_TEST_ROOT:-/tmp/default}") == "/tmp/default"
 
 
 def test_expand_env_uses_env_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MILADY_TEST_ROOT", "/var/data/eliza")
+    monkeypatch.setenv("ELIZA_TEST_ROOT", "/var/data/eliza")
     assert (
-        expand_env("${MILADY_TEST_ROOT:-/tmp/default}/training/datasets")
+        expand_env("${ELIZA_TEST_ROOT:-/tmp/default}/training/datasets")
         == "/var/data/eliza/training/datasets"
     )
 
@@ -74,13 +74,13 @@ def test_from_entry_requires_root_and_glob() -> None:
 
 
 def test_from_entry_parses_full_block(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MILADY_TEST_ROOT", "/tmp/eliza-state")
+    monkeypatch.setenv("ELIZA_TEST_ROOT", "/tmp/eliza-state")
     parsed = LocalPathSource.from_entry(
         {
             "slug": "eliza-nightly-action-planner",
             "source": {
                 "type": "local_path",
-                "root": "${MILADY_TEST_ROOT:-~/.eliza}/training/datasets",
+                "root": "${ELIZA_TEST_ROOT:-~/.eliza}/training/datasets",
                 "glob": "*/action_planner_trajectories.jsonl",
                 "task": "action_planner",
             },
@@ -140,13 +140,13 @@ def test_stage_local_path_source_symlinks_files(
     src.write_text("{}\n")
 
     monkeypatch.setattr(download_datasets, "RAW_DIR", raw_root)
-    monkeypatch.setenv("MILADY_TEST_ROOT", str(export_root))
+    monkeypatch.setenv("ELIZA_TEST_ROOT", str(export_root))
 
     entry = {
         "slug": "eliza-nightly-action-planner",
         "source": {
             "type": "local_path",
-            "root": "${MILADY_TEST_ROOT}",
+            "root": "${ELIZA_TEST_ROOT}",
             "glob": "*/action_planner_trajectories.jsonl",
             "task": "action_planner",
         },
@@ -307,13 +307,13 @@ def test_end_to_end_stage_then_normalize(
     monkeypatch.setattr(download_datasets, "RAW_DIR", raw_root)
     monkeypatch.setattr(normalize, "RAW_DIR", raw_root)
     monkeypatch.setattr(normalize, "OUT_DIR", normalized_root)
-    monkeypatch.setenv("MILADY_TEST_ROOT", str(export_root))
+    monkeypatch.setenv("ELIZA_TEST_ROOT", str(export_root))
 
     entry = {
         "slug": "eliza-nightly-action-planner",
         "source": {
             "type": "local_path",
-            "root": "${MILADY_TEST_ROOT}",
+            "root": "${ELIZA_TEST_ROOT}",
             "glob": "*/action_planner_trajectories.jsonl",
             "task": "action_planner",
         },

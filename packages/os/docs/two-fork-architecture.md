@@ -63,7 +63,7 @@ Code that lives in exactly one fork and should not be unified:
 | `packages/chip/sw/aosp-device/` | AOSP |
 | `packages/os/android/` (system-ui, vendor, installer) | AOSP |
 | `packages/os/setup/` (Pixel/fastboot flasher UI) | AOSP |
-| `packages/os/linux/variants/milady-tails/` | Debian (x86_64) |
+| `packages/os/linux/variants/eliza-tails/` | Debian (x86_64) |
 | `packages/os/linux/variants/elizaos-debian-riscv64/` | Debian (riscv64) |
 | `packages/chip/sw/linux/{configs,dts,drivers}` | Debian (e1) |
 

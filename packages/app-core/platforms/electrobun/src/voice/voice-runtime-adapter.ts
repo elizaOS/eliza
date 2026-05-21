@@ -169,12 +169,12 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
     this.apiBase =
       options.apiBase ??
       this.env.ELIZA_RUNTIME_API_BASE ??
-      this.env.MILADY_DESKTOP_API_BASE ??
+      this.env.ELIZA_DESKTOP_API_BASE ??
       "http://127.0.0.1:31337";
     this.token =
       options.token ??
       this.env.ELIZA_RUNTIME_API_TOKEN ??
-      this.env.MILADY_API_TOKEN ??
+      this.env.ELIZA_API_TOKEN ??
       null;
     this.fetchImpl = options.fetchImpl ?? fetch;
   }

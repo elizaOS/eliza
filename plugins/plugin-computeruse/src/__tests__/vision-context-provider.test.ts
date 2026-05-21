@@ -30,7 +30,7 @@ function makeScene(): Scene {
       },
     ],
     focused_window: {
-      app: "Milady",
+      app: "Eliza",
       pid: 123,
       bounds: [10, 20, 800, 600],
       title: "Chat",
@@ -38,7 +38,7 @@ function makeScene(): Scene {
     },
     apps: [
       {
-        name: "Milady",
+        name: "Eliza",
         pid: 123,
         windows: [
           {
@@ -84,9 +84,9 @@ describe("VisionContextProvider", () => {
 
     const provider = new VisionContextProvider(runtime);
     await expect(provider.getContext()).resolves.toEqual({
-      openApps: ["Milady"],
+      openApps: ["Eliza"],
       focusedWindow: {
-        app: "Milady",
+        app: "Eliza",
         title: "Chat",
         bbox: [10, 20, 800, 600],
       },
@@ -113,7 +113,7 @@ describe("VisionContextProvider", () => {
     const provider = new VisionContextProvider(runtime);
     const context = await provider.getContext();
     expect(refreshMode).toBe("agent-turn");
-    expect(context.focusedWindow?.app).toBe("Milady");
+    expect(context.focusedWindow?.app).toBe("Eliza");
   });
 
   it("returns empty context when computeruse is not registered", async () => {

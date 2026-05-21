@@ -56,7 +56,7 @@ and `packages/chip/compiler/runtime`.
 
 The OS package is the elizaOS distribution:
 
-- Linux is a Tails-derived live USB path under `linux/variants/milady-tails/`.
+- Linux is a Tails-derived live USB path under `linux/variants/eliza-tails/`.
 - AOSP lives under `packages/os/android/`, with Cuttlefish validation, Pixel
   target support, privileged assistant/system app integration, sepolicy, init
   hooks, product overlays, and release manifests.

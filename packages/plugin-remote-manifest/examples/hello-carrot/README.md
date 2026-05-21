@@ -22,7 +22,7 @@ manager.installFromDirectory({
 manager.startWorker("hello-carrot");
 ```
 
-After install, the store layout under `<MILADY_CARROT_STORE_DIR>/hello-carrot/` looks like:
+After install, the store layout under `<ELIZA_CARROT_STORE_DIR>/hello-carrot/` looks like:
 
 ```
 current/

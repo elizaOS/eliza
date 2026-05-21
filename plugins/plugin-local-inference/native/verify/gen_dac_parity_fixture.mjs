@@ -45,7 +45,7 @@
  * "Pre-merge" means before `elizaOS/llama.cpp@78c4fb190` ("migrate
  * dac_conv_t1d to ggml_conv_transpose_1d"). The known-good reference
  * tag the eliza fork ships is `v1.2.0-eliza`; alternatively any commit
- * before `79079c25e` ("merge: upstream/master into milady/main") works.
+ * before `79079c25e` ("merge: upstream/master into eliza/main") works.
  * The exact SHA captured goes into the fixture's `baseline_build_sha`
  * field so reviewers can reproduce.
  *

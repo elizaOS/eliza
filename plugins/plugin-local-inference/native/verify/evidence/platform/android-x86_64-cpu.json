@@ -18,7 +18,7 @@
     "kind": "cuttlefish",
     "kernel": "Linux localhost 6.12.38-android16-5-g501f58f107ab-ab13974591 #1 SMP PREEMPT Thu Aug 21 21:28:12 UTC 2025 x86_64 Toybox",
     "abi": "x86_64",
-    "buildFingerprint": "generic/milady_cf_x86_64_phone/vsoc_x86_64_only:Baklava/BP4A.251205.006/eng.shaw:userdebug/test-keys",
+    "buildFingerprint": "generic/eliza_cf_x86_64_phone/vsoc_x86_64_only:Baklava/BP4A.251205.006/eng.shaw:userdebug/test-keys",
     "sdkVersion": "36",
     "cpu": "Intel(R) Core(TM) Ultra 9 275HX (passthrough; AVX/AVX2/FMA/F16C/AVX-VNNI/VAES/GFNI/PCLMUL flags visible)",
     "cvd": "1.53.0 (VCS ac10ece828fc57cb378c91d744727d0b4543b3a3)",

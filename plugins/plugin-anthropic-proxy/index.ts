@@ -51,7 +51,7 @@ const anthropicProxyPlugin: Plugin = {
    * Mirror of `auto-enable.ts` for runtimes that consume the Plugin-object
    * `autoEnable` field instead of the per-plugin manifest module. Keep both
    * in sync. The per-plugin manifest engine reads `auto-enable.ts` while
-   * legacy / cloud runtimes (milady-cloud's `applyPluginSelfDeclaredAutoEnable`)
+   * legacy / cloud runtimes (eliza-cloud's `applyPluginSelfDeclaredAutoEnable`)
    * read this field. The opt-in is identical: CLAUDE_MAX_PROXY_MODE in
    * {inline, shared} enables; off / unset does not.
    */

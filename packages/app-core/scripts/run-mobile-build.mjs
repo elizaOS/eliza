@@ -3096,7 +3096,7 @@ function isIosAppStoreLocalRuntimeEnabled(env = process.env) {
 function isIosLlamaRequested(env = process.env) {
   return (
     isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(env.MILADY_IOS_INCLUDE_LLAMA)
+    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA)
   );
 }
 
@@ -3138,7 +3138,7 @@ export function isIosAppStoreBuild(env = process.env) {
   return (
     env.ELIZA_RELEASE_AUTHORITY === "apple-app-store" ||
     env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
-    env.MILADY_BUILD_VARIANT?.toLowerCase() === "store"
+    env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store"
   );
 }
 
@@ -5680,9 +5680,9 @@ async function buildAndroid() {
   // env vars, fail loudly and point them at the right target.
   const playStoreFlagged =
     process.env.ELIZA_PLAY_STORE_BUILD === "1" ||
-    process.env.MILADY_PLAY_STORE_BUILD === "1" ||
+    process.env.ELIZA_PLAY_STORE_BUILD === "1" ||
     process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
-    process.env.MILADY_BUILD_VARIANT?.toLowerCase() === "store";
+    process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store";
   if (playStoreFlagged) {
     console.error(
       "[mobile-build] Refusing target `android` under ELIZA_PLAY_STORE_BUILD / " +
@@ -6309,7 +6309,7 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
   if (isIosAppStoreBuild()) {
     process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
-    process.env.MILADY_IOS_INCLUDE_LLAMA = "0";
+    process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
   } else {
     setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
   }
@@ -6330,7 +6330,7 @@ export function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
   process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
-  process.env.MILADY_IOS_INCLUDE_LLAMA = "0";
+  process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
 }
 
 async function buildIos({ local = false } = {}) {

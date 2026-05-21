@@ -32,7 +32,7 @@ export function useEmbedMode(): EmbedContextValue {
 
 /**
  * Detects embed mode from URL params and listens for FEED_AUTH
- * postMessage from the embedding host (Milady desktop/web).
+ * postMessage from the embedding host (Eliza desktop/web).
  *
  * Flow:
  * 1. Detect ?embedded=true in URL → set isEmbedded

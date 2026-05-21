@@ -121,10 +121,10 @@ describe("useChatVoiceController voice playback unlock", () => {
     const { result } = renderHook(() => useChatVoiceController(baseOptions));
 
     act(() => {
-      result.current.handleSpeakMessage("message-1", "hello from Milady");
+      result.current.handleSpeakMessage("message-1", "hello from Eliza");
     });
 
-    expect(voiceState.speak).toHaveBeenCalledWith("hello from Milady", {
+    expect(voiceState.speak).toHaveBeenCalledWith("hello from Eliza", {
       telemetry: { messageId: "message-1" },
     });
   });

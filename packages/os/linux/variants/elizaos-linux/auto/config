@@ -2,7 +2,7 @@
 # elizaOS Linux — unified multi-arch live-build configuration.
 #
 # Single source of truth for all elizaOS Linux ISOs. Supersedes the
-# previous milady-tails (amd64) and elizaos-debian-riscv64 variants.
+# previous eliza-tails (amd64) and elizaos-debian-riscv64 variants.
 #
 # Architecture is selected via ELIZAOS_ARCH (default: amd64). Supported:
 #   amd64   — x86_64 desktops/laptops, EFI + BIOS via grub-efi + grub-pc

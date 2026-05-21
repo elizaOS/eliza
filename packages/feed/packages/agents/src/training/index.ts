@@ -4,7 +4,7 @@
  * Trajectory capture, reward computation, model deployment, and the
  * automation pipeline. The Python RL trainer lives in
  * `packages/training/scripts/rl/` and reads JSONL exports from
- * `~/.milady/state/trajectories/`.
+ * `~/.eliza/state/trajectories/`.
  *
  * @packageDocumentation
  */

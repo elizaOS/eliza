@@ -5,7 +5,7 @@ runtimes (Capacitor bun-runtime, full Bun engine port) need to link
 against:
 
 - **llama.cpp** → `llama.cpp/dist/LlamaCpp.xcframework` (device + simulator
-  slices, Metal embedded, baked from the milady-controlled
+  slices, Metal embedded, baked from the eliza-controlled
   [`elizaOS/llama.cpp`](https://github.com/elizaOS/llama.cpp) fork — carries
   Q4_POLAR / QJL1_256 / TBQ4_0 / TBQ3_0 GGML types + Metal/Vulkan/CUDA
   kernels and DFlash spec-decode on top of stock upstream).
@@ -14,12 +14,12 @@ against:
   run inside JSContext on iOS 16.4+ because WebAssembly is gated off).
 
 This package replaces the pre-2026-05-13 layout at
-`milady/native/ios-bun-port/vendor-deps/`, which duplicated this tooling
-inside the milady workspace. Per the
-"milady-depends-100%-on-eliza, eliza-is-ejectable-via-submodule"
+`eliza/native/ios-bun-port/vendor-deps/`, which duplicated this tooling
+inside the eliza workspace. Per the
+"eliza-depends-100%-on-eliza, eliza-is-ejectable-via-submodule"
 architectural rule, the build harness now lives in eliza and is consumed
-either as a workspace symlink (`MILADY_ELIZA_SOURCE=local`) or as the
-published npm package (`MILADY_ELIZA_SOURCE=packages`).
+either as a workspace symlink (`ELIZA_ELIZA_SOURCE=local`) or as the
+published npm package (`ELIZA_ELIZA_SOURCE=packages`).
 
 ## Pins
 
@@ -43,7 +43,7 @@ LLAMA_CPP_REPO=https://github.com/ggml-org/llama.cpp \
   bun run build:llama-cpp
 
 # Override iOS deployment target (default 15.0):
-MILADY_IOS_MIN_VERSION=16.4 \
+ELIZA_IOS_MIN_VERSION=16.4 \
   bun run build:llama-cpp
 
 # From a consumer package (workspace or installed):
@@ -72,7 +72,7 @@ and the verification recipes (`nm -gU`, `otool -l`).
 |---|---|---|
 | `@elizaos/capacitor-bun-runtime` | `eliza/plugins/plugin-native-bun-runtime/` | `LlamaCpp.xcframework` via the Pod's `vendored_frameworks` |
 | `@elizaos/bun-ios-runtime` | `eliza/packages/native/bun-runtime/` | Pending wire-up (see M02-deps-cross-build) |
-| `milady` iOS app shell | `milady/native/ios-bun-port/` | Pending wire-up (the directory is being migrated to depend on this package) |
+| `eliza` iOS app shell | `eliza/native/ios-bun-port/` | Pending wire-up (the directory is being migrated to depend on this package) |
 
 ## Prerequisites
 

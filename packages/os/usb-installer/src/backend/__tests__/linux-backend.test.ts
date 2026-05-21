@@ -30,7 +30,7 @@ describe("findPrivilegeEscalator", () => {
     expect(result).toEqual({ command: "sudo", argsPrefix: ["-n"] });
   });
 
-  it("does not select interactive sudo unless MILADY_USB_ALLOW_SUDO=1", async () => {
+  it("does not select interactive sudo unless ELIZA_USB_ALLOW_SUDO=1", async () => {
     await expect(
       findPrivilegeEscalator(env, {
         hasCommand: async (cmd) => cmd === "sudo",
@@ -41,7 +41,7 @@ describe("findPrivilegeEscalator", () => {
 
   it("uses interactive sudo when explicitly enabled", async () => {
     const result = await findPrivilegeEscalator(
-      { MILADY_USB_ALLOW_SUDO: "1" } as NodeJS.ProcessEnv,
+      { ELIZA_USB_ALLOW_SUDO: "1" } as NodeJS.ProcessEnv,
       {
         hasCommand: async (cmd) => cmd === "sudo",
         sudoNonInteractiveOk: async () => false,

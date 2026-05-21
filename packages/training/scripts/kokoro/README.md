@@ -55,7 +55,7 @@ indexes into the bin by `min(len(phonemes), N-1)`). Shape on disk:
 file is consumable both by:
 
 - the upstream Kokoro inference path (`np.fromfile(..., dtype=np.float32).reshape(-1, 1, 256)`),
-- the Milady runtime's voice preset format (see
+- the Eliza runtime's voice preset format (see
   `packages/shared/src/local-inference/kokoro/types.ts`),
   via a thin wrapper that wraps the 256-dim vector inside the ELZ1
   preset envelope. `package_voice_for_release.py` is the wrapper.

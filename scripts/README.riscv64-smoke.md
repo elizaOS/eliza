@@ -11,11 +11,11 @@ pipeline for every riscv64 native artifact the repo ships:
 Both wrappers are exposed at the repo root as bun scripts:
 
 ```bash
-MILADY_RISCV64_SMOKE=1 bun run build:riscv64-artifacts
-MILADY_RISCV64_SMOKE=1 bun run check:riscv64-artifacts
+ELIZA_RISCV64_SMOKE=1 bun run build:riscv64-artifacts
+ELIZA_RISCV64_SMOKE=1 bun run check:riscv64-artifacts
 ```
 
-With `MILADY_RISCV64_SMOKE` unset they are intentional no-ops — that
+With `ELIZA_RISCV64_SMOKE` unset they are intentional no-ops — that
 keeps the default CI lane cheap, and the smoke is gated to riscv64-
 specific branches / workflow_dispatch runs.
 
@@ -84,8 +84,8 @@ export ANDROID_NDK_HOME=/opt/android-ndk-r27c
 
 # 3. Smoke.
 cd /path/to/eliza
-MILADY_RISCV64_SMOKE=1 bun run build:riscv64-artifacts
-MILADY_RISCV64_SMOKE=1 bun run check:riscv64-artifacts
+ELIZA_RISCV64_SMOKE=1 bun run build:riscv64-artifacts
+ELIZA_RISCV64_SMOKE=1 bun run check:riscv64-artifacts
 jq '.summary, .final_status' build/reports/riscv64_artifacts.json
 ```
 
@@ -96,7 +96,7 @@ the on-disk paths are still present, you can run the smoke harness
 alone:
 
 ```bash
-MILADY_RISCV64_SMOKE=1 bun run check:riscv64-artifacts
+ELIZA_RISCV64_SMOKE=1 bun run check:riscv64-artifacts
 ```
 
 Missing artifacts are reported as `SKIP` records with a reason, not
@@ -109,7 +109,7 @@ For tier-1 smoke that only validates *every artifact is the right ELF
 arch* (cheap, ~seconds, no QEMU required):
 
 ```bash
-MILADY_RISCV64_SMOKE=1 bash scripts/check-riscv64-artifacts.sh --no-qemu
+ELIZA_RISCV64_SMOKE=1 bash scripts/check-riscv64-artifacts.sh --no-qemu
 ```
 
 This mode confirms `ELF 64-bit LSB ... UCB RISC-V ... double-float ABI`

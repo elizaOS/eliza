@@ -1,11 +1,11 @@
 /**
  * WS8 — Android AX tree normalization tests.
  *
- * Verifies the JSON emitted by `MiladyAccessibilityService.getAccessibilityTreeJson()`
+ * Verifies the JSON emitted by `ElizaAccessibilityService.getAccessibilityTreeJson()`
  * (Kotlin) round-trips through `parseAndroidAxTree` into the WS6 `Scene.ax`
  * shape that WS7's `OcrCoordinateGroundingActor.resolveReference` expects.
  *
- * The Kotlin shape (from MiladyAccessibilityService.kt walkNode):
+ * The Kotlin shape (from ElizaAccessibilityService.kt walkNode):
  *
  *   {
  *     "id": "0",
@@ -32,7 +32,7 @@ import { ANDROID_LOGICAL_DISPLAY_ID } from "../mobile/mobile-screen-capture.js";
 import type { Scene } from "../scene/scene-types.js";
 
 /**
- * Fixture mirroring exactly what MiladyAccessibilityService.kt would emit.
+ * Fixture mirroring exactly what ElizaAccessibilityService.kt would emit.
  * We verify the parser handles every documented quirk:
  *   - integer ids stringified
  *   - label nullable

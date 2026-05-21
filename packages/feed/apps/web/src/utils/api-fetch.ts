@@ -114,7 +114,7 @@ export async function apiFetch(
     if (token) {
       finalHeaders.set("Authorization", `Bearer ${token}`);
     } else if (typeof window !== "undefined") {
-      // Check for embed token from Milady desktop/web host
+      // Check for embed token from Eliza desktop/web host
       const embedToken = (window as Window & { __feedEmbedToken?: string })
         .__feedEmbedToken;
       if (embedToken) {

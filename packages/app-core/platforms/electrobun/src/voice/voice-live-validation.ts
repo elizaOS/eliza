@@ -144,7 +144,7 @@ function validationText(env: Record<string, string | undefined>): string {
 function apiBase(env: Record<string, string | undefined>): string {
   return (
     env.ELIZA_RUNTIME_API_BASE ??
-    env.MILADY_DESKTOP_API_BASE ??
+    env.ELIZA_DESKTOP_API_BASE ??
     "http://127.0.0.1:31337"
   );
 }

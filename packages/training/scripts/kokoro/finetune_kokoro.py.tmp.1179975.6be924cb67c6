@@ -18,7 +18,7 @@ Outputs:
 Mode = `full-finetune` (DEFAULT, publish path):
   - Drives the vendored trainer at
     plugins/plugin-local-inference/native/kokoro_training/ via
-    plugins/plugin-local-inference/native/kokoro_training/milady_adapter/.
+    plugins/plugin-local-inference/native/kokoro_training/eliza_adapter/.
   - Trains a Kokoro-inspired encoder-decoder transformer end-to-end on the
     sam (or other) LJSpeech-format corpus. Vendor provides the model
     architecture + dataset loader + training loop; the adapter swaps in our
@@ -529,7 +529,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("full-finetune", "lora-experimental"),
         help=(
             "Training path. `full-finetune` (default, publish) drives the "
-            "vendored kokoro_training trainer via milady_adapter; "
+            "vendored kokoro_training trainer via eliza_adapter; "
             "`lora-experimental` attaches PEFT LoRA to the installed "
             "kokoro PyPI KModel (gated on forward_train, see "
             ".swarm/impl/I7-kokoro.md). Falls back to cfg['mode'] when unset; "
@@ -572,10 +572,10 @@ def _resolve_mode(args: argparse.Namespace, cfg: dict[str, Any]) -> str:
 
 
 def _run_full_finetune_via_adapter(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
-    """Drive the vendored kokoro_training trainer via milady_adapter.
+    """Drive the vendored kokoro_training trainer via eliza_adapter.
 
     The adapter lives at
-    plugins/plugin-local-inference/native/kokoro_training/milady_adapter/.
+    plugins/plugin-local-inference/native/kokoro_training/eliza_adapter/.
     """
     repo_root = Path(__file__).resolve().parents[3]
     adapter_root = (
@@ -587,7 +587,7 @@ def _run_full_finetune_via_adapter(args: argparse.Namespace, cfg: dict[str, Any]
     )
     if not adapter_root.exists():
         raise SystemExit(
-            f"milady_adapter root not found at {adapter_root}; "
+            f"eliza_adapter root not found at {adapter_root}; "
             "the vendored kokoro_training trainer is missing. "
             "Did the workspace lose plugins/plugin-local-inference/native/kokoro_training/?",
         )
@@ -599,7 +599,7 @@ def _run_full_finetune_via_adapter(args: argparse.Namespace, cfg: dict[str, Any]
     if str(training_scripts) not in sys.path:
         sys.path.insert(0, str(training_scripts))
 
-    from milady_adapter import run_full_finetune  # type: ignore  # noqa: PLC0415
+    from eliza_adapter import run_full_finetune  # type: ignore  # noqa: PLC0415
 
     run_dir = Path(args.run_dir).resolve()
     processed = run_dir / "processed"
@@ -644,7 +644,7 @@ def _run_full_finetune_via_adapter(args: argparse.Namespace, cfg: dict[str, Any]
         synthetic=False,
         checkpoint_paths=[],
     )
-    manifest["adapter"] = "milady_adapter"
+    manifest["adapter"] = "eliza_adapter"
     manifest["mode"] = "full-finetune"
     (ckpt_dir / "train_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     log.info("full-finetune complete; manifest at %s", ckpt_dir / "train_manifest.json")

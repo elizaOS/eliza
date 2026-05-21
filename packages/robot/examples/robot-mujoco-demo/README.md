@@ -37,7 +37,7 @@ PYTHONPATH=packages/robot uv run --project packages/robot \
 bun run --cwd packages/robot robot:bridge:mujoco
 
 # Terminal 2 — launch Eliza with plugin-ainex auto-enabled
-MILADY_AINEX_BRIDGE_URL=ws://localhost:9100 bun run dev
+ELIZA_AINEX_BRIDGE_URL=ws://localhost:9100 bun run dev
 ```
 
 The agent now exposes 15 `AINEX_*` actions and 4 `AINEX_*` providers; chat
@@ -64,7 +64,7 @@ PYTHONPATH=packages/robot uv run --project packages/robot \
         --camera-device 0 --camera-width 1280 --camera-height 720
 
 # Terminal 2 — Eliza, same as the sim quick start
-MILADY_AINEX_BRIDGE_URL=ws://<dev-box-ip>:9100 bun run dev
+ELIZA_AINEX_BRIDGE_URL=ws://<dev-box-ip>:9100 bun run dev
 ```
 
 The agent has no idea which target it's pointing at — that's the entire

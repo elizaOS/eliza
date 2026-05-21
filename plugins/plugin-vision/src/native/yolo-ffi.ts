@@ -39,7 +39,7 @@ function defaultLibraryPath(): string {
 export function defaultYoloWeightsPath(): string {
   const stateDir =
     process.env.ELIZA_STATE_DIR ??
-    path.join(process.env.HOME ?? "/tmp", ".milady");
+    path.join(process.env.HOME ?? "/tmp", ".eliza");
   return (
     process.env.ELIZA_YOLO_GGUF ??
     path.join(stateDir, "models", "vision", "yolov8n.gguf")

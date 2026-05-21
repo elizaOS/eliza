@@ -4,7 +4,7 @@
 // `eliza-1.manifest.v1.json` JSON Schema. The upstream elizaOS source has
 // a longer prose specification under `packages/inference/AGENTS.md` (§6
 // manifest, §3 mandatory kernels, §2 bundle/tier matrix); that file does
-// not exist in the milady checkout — when editing the schema, treat the
+// not exist in the eliza checkout — when editing the schema, treat the
 // Zod definitions below as canonical and consult R5-versioning.md §1 for
 // the latest gap analysis between bundle and per-sub-model versioning.
 //

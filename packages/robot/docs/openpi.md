@@ -54,9 +54,9 @@ place when `OpenPIPolicyClient.start()` runs, the client raises a clear
 
 | Variable | Default | Notes |
 |---|---|---|
-| `MILADY_AINEX_OPENPI_ENDPOINT` | _unset_ | `ws://host:port` for the inference server. Required to run the loop. |
-| `MILADY_AINEX_OPENPI_PROFILE` | `hiwonder-ainex` | Robot profile resolved at `start()`. |
-| `MILADY_AINEX_OPENPI_TIMEOUT_S` | `2.0` | Per-step timeout used by the openpi client. |
+| `ELIZA_AINEX_OPENPI_ENDPOINT` | _unset_ | `ws://host:port` for the inference server. Required to run the loop. |
+| `ELIZA_AINEX_OPENPI_PROFILE` | `hiwonder-ainex` | Robot profile resolved at `start()`. |
+| `ELIZA_AINEX_OPENPI_TIMEOUT_S` | `2.0` | Per-step timeout used by the openpi client. |
 
 The bridge `policy.start` payload should include
 `{"policy": "openpi", "endpoint": "<ws-url>"}`. `eliza_robot.policy.dispatch.get_policy_backend("openpi", endpoint=...)`

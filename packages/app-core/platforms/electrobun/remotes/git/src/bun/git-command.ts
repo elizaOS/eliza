@@ -105,7 +105,7 @@ export class GitCommandRunner {
 
 export function defaultCwd(): string {
 	return (
-		process.env.MILADY_REPO_DIR ?? process.env.ELIZA_REPO_DIR ?? process.cwd()
+		process.env.ELIZA_REPO_DIR ?? process.env.ELIZA_REPO_DIR ?? process.cwd()
 	);
 }
 

@@ -47,7 +47,7 @@ export type AndroidBridgeErrorCode =
   | "unsupported_platform" // API level below minimum
   | "permission_denied" // runtime or special permission not granted
   | "permission_pending" // consent dialog shown, result pending
-  | "accessibility_unavailable" // MiladyAccessibilityService not running
+  | "accessibility_unavailable" // ElizaAccessibilityService not running
   | "capture_unavailable" // MediaProjection not started or no frame yet
   | "camera_not_open" // startCamera not called
   | "invalid_argument" // unknown gesture type / action name

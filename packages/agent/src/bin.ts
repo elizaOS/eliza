@@ -14,7 +14,7 @@ const _binDebugLog =
     ? (() => {
         const stateDir =
           process.env.ELIZA_STATE_DIR ||
-          process.env.MILADY_STATE_DIR ||
+          process.env.ELIZA_STATE_DIR ||
           `${process.env.HOME ?? "/data/local/tmp"}/.eliza`;
         const logPath = `${stateDir}/bin-debug.log`;
         try {

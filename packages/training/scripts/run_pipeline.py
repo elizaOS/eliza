@@ -114,7 +114,7 @@ def _resolve_llama_bench(fork_dir: Path | None) -> Path | None:
     repo (a contended throughput bench once silently ran on the CPU binary while
     a perfectly good CUDA build sat in ~/.cache/eliza-dflash). Globs the
     per-backend build dirs rather than hard-coding paths so it survives the
-    `milady`↔`eliza1` renames and the in-repo-submodule vs ~/.cache layouts."""
+    `eliza`↔`eliza1` renames and the in-repo-submodule vs ~/.cache layouts."""
     import glob
     import shutil
     home = str(Path.home())

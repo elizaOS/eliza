@@ -79,15 +79,15 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "MILADY_AINEX_BRIDGE_URL": {
+      "ELIZA_AINEX_BRIDGE_URL": {
         "type": "string",
         "description": "Websocket URL for the AiNex bridge server (default: ws://localhost:9100)"
       },
-      "MILADY_AINEX_PROFILE": {
+      "ELIZA_AINEX_PROFILE": {
         "type": "string",
         "description": "Robot profile descriptor name (default: hiwonder-ainex)"
       },
-      "MILADY_AINEX_CAMERA_FPS": {
+      "ELIZA_AINEX_CAMERA_FPS": {
         "type": "number",
         "description": "Robot camera frame rate to subscribe to (default: 10)"
       }

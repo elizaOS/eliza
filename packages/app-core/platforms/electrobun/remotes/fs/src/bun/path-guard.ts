@@ -137,7 +137,7 @@ export class PathGuard {
 				.filter((entry) => entry.length > 0);
 		}
 		const fallback =
-			this.env.MILADY_REPO_DIR?.trim() ??
+			this.env.ELIZA_REPO_DIR?.trim() ??
 			this.env.ELIZA_REPO_DIR?.trim() ??
 			process.cwd();
 		return [fallback];

@@ -33,7 +33,7 @@ const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
 const workspaceVersions = collectWorkspaceVersions(repoRoot);
 const skipLocalUpstreams =
   process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1" ||
-  process.env.MILADY_SKIP_LOCAL_UPSTREAMS === "1";
+  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
 const OPTIONAL_PLUGIN_FALLBACK_VERSIONS = new Map([
   ["@elizaos/plugin-sql", "beta"],
   ["@elizaos/plugin-ollama", "beta"],

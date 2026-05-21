@@ -25,7 +25,7 @@ output before exit.
 3. Sample 10 rows from `data/final/train.jsonl` (exercises the broad
    mixed-final pipeline).
 4. Convert recent Eliza scenario trajectories from
-   `~/.milady/trajectories/` (or `ELIZA_TRAJECTORY_DIR`) to
+   `~/.eliza/trajectories/` (or `ELIZA_TRAJECTORY_DIR`) to
    `eliza_native_v1` boundary rows via
    `sample_native_trajectory_alignment.native_rows_from_recorded_trajectory`.
    Window: trajectories with `mtime` in the last 7 days. Cap: 100 rows.

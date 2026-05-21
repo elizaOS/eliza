@@ -78,7 +78,7 @@ See `AOSP_SYSTEM_APP.md` for the privileged build path.
 When Advanced Protection Mode (APM) is active on Pixel 9+ and some OEM variants:
 
 - AccessibilityService registered with `featureAccessibility` (not `featureGeneric`) survives.
-  `MiladyAccessibilityService` is registered correctly.
+  `ElizaAccessibilityService` is registered correctly.
 - Third-party AccessibilityServices with broad event masks may be killed on APM devices
   even when re-enabled in Settings. If the service is repeatedly stopped, check `adb logcat`
   for `AccessibilityManagerService` or `android.safetycenter` entries.
@@ -104,11 +104,11 @@ smoke-testing, but the x86_64 JNI patch must be present (see WS4 llama-cpp-capac
 
 - [ ] Install the APK and open the app.
 - [ ] Grant `CAMERA` runtime permission when prompted.
-- [ ] Navigate to Settings > Accessibility > Milady > enable the service.
-  Verify `MiladyAccessibilityService.instance` is non-null via:
-  `adb shell dumpsys accessibility | grep -i milady`
+- [ ] Navigate to Settings > Accessibility > Eliza > enable the service.
+  Verify `ElizaAccessibilityService.instance` is non-null via:
+  `adb shell dumpsys accessibility | grep -i eliza`
 - [ ] Navigate to Settings > Digital Wellbeing (or Settings > Security > Usage Access)
-  > Milady > enable Usage Access.
+  > Eliza > enable Usage Access.
 
 ### 2. AccessibilityService — view tree
 
@@ -188,7 +188,7 @@ curl -X POST http://localhost:1337/api/computer-use/stopCamera
 
 ### 8. Memory pressure dispatch
 
-Open a memory-intensive app or use `adb shell am send-trim-memory $(pidof ai.milady.milady) 80`
+Open a memory-intensive app or use `adb shell am send-trim-memory $(pidof ai.eliza.eliza) 80`
 to simulate TRIM_MEMORY_RUNNING_CRITICAL.
 
 Expected: the JS console (or logcat for bridge events) shows:

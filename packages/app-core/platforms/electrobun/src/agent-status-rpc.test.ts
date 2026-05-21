@@ -61,7 +61,7 @@ describe("getAgentStatus typed RPC", () => {
   it("reads and validates the HTTP status payload", async () => {
     mockFetchJson(200, {
       state: "starting",
-      agentName: "milady",
+      agentName: "eliza",
       startedAt: 1700000000000,
       cloud: {
         connectionStatus: "disconnected",
@@ -73,7 +73,7 @@ describe("getAgentStatus typed RPC", () => {
 
     await expect(readAgentStatusViaHttp(31337)).resolves.toEqual({
       state: "starting",
-      agentName: "milady",
+      agentName: "eliza",
       startedAt: 1700000000000,
       cloud: {
         connectionStatus: "disconnected",
@@ -87,7 +87,7 @@ describe("getAgentStatus typed RPC", () => {
   it("returns null on malformed status payloads", async () => {
     mockFetchJson(200, {
       state: "paused",
-      agentName: "milady",
+      agentName: "eliza",
     });
 
     await expect(readAgentStatusViaHttp(31337)).resolves.toBeNull();
