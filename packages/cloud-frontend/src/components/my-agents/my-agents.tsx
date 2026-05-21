@@ -211,7 +211,8 @@ export function MyAgentsClient() {
       let ownedAgents: AgentWithOwnership[] = [];
       let ownedFetchFailed = false;
       if (ownedResponse.ok) {
-        const ownedResult = await ownedResponse.json();
+        const ownedText = await ownedResponse.text();
+        const ownedResult = ownedText ? JSON.parse(ownedText) : {};
         ownedAgents = (ownedResult.data?.characters || []).map(
           (char: AgentWithOwnership) => ({
             ...char,
@@ -226,7 +227,8 @@ export function MyAgentsClient() {
       // Process saved agents (may not exist yet - gracefully handle 404)
       let savedAgents: AgentWithOwnership[] = [];
       if (savedResponse.ok) {
-        const savedResult = await savedResponse.json();
+        const savedText = await savedResponse.text();
+        const savedResult = savedText ? JSON.parse(savedText) : {};
         savedAgents = (savedResult.data?.agents || []).map(
           (agent: SavedAgent) => ({
             id: agent.id,
@@ -283,7 +285,11 @@ export function MyAgentsClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionToken: sessionToken || undefined }),
     })
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        return text ? JSON.parse(text) : { success: false };
+      })
       .then((data) => {
         if (data.success && data.claimed?.length > 0) {
           toast.success(

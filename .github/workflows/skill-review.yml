@@ -20,7 +20,7 @@ jobs:
       issues: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 1
       # Don't fail the workflow when the Anthropic API is unavailable

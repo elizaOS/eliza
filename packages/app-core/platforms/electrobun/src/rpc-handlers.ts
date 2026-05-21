@@ -781,29 +781,30 @@ export function buildBunRpcHandlers({
 
     // ---- Remote Plugins ----
     remotePluginGetStoreRoot: async () => ({
-      storeRoot: remotePlugins.getStoreRoot(),
+      storeRoot: remotePluginHost.getStoreRoot(),
     }),
     remotePluginList: async () => ({
       remotePlugins: remotePluginHost.listRemotePlugins(),
     }),
-    remotePluginGetStoreSnapshot: async () => remotePlugins.getStoreSnapshot(),
+    remotePluginGetStoreSnapshot: async () =>
+      remotePluginHost.getStoreSnapshot(),
     remotePluginGet: async (params: { id: string }) =>
       remotePluginHost.getRemotePlugin(params.id),
     remotePluginInstallFromDirectory: async (params) =>
       remotePluginHost.installFromDirectory(params),
     remotePluginUninstall: async (params: { id: string }) =>
-      remotePlugins.uninstall(params.id),
+      remotePluginHost.uninstall(params.id),
     remotePluginStartWorker: async (params: { id: string }) =>
-      remotePlugins.startWorker(params.id),
+      remotePluginHost.startWorker(params.id),
     remotePluginStopWorker: async (params: { id: string }) =>
-      remotePlugins.stopWorker(params.id),
+      remotePluginHost.stopWorker(params.id),
     remotePluginGetWorkerStatus: async (params: { id: string }) =>
-      remotePlugins.getWorkerStatus(params.id),
+      remotePluginHost.getWorkerStatus(params.id),
     remotePluginListWorkerStatuses: async () => ({
-      workers: remotePlugins.listWorkerStatuses(),
+      workers: remotePluginHost.listWorkerStatuses(),
     }),
     remotePluginGetLogs: async (params) =>
-      remotePlugins.getLogs(params.id, params.maxBytes),
+      remotePluginHost.getLogs(params.id, params.maxBytes),
 
     // ---- Browser Workspace ----
     browserWorkspaceGetSnapshot: async () => ({

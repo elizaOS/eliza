@@ -137,10 +137,13 @@ export async function signInWithSolana(): Promise<SiwsVerifyResponse> {
     };
   }
 
-  const nonceRes = await fetch(`${base}/api/auth/siws/nonce?chainId=solana:mainnet`, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
+  const nonceRes = await fetch(
+    `${base}/api/auth/siws/nonce?chainId=solana:mainnet`,
+    {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    },
+  );
   if (!nonceRes.ok) {
     throw new Error(`SIWS nonce request failed: ${nonceRes.status}`);
   }
@@ -169,7 +172,9 @@ export async function signInWithSolana(): Promise<SiwsVerifyResponse> {
   });
   if (!verifyRes.ok) {
     const detail = await verifyRes.text().catch(() => "");
-    throw new Error(`SIWS verification failed (${verifyRes.status}): ${detail}`);
+    throw new Error(
+      `SIWS verification failed (${verifyRes.status}): ${detail}`,
+    );
   }
   return (await verifyRes.json()) as SiwsVerifyResponse;
 }
