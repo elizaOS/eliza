@@ -25,7 +25,7 @@ def _load_results_store():
     name; pytest's collection of training tests already imports the
     former. Direct file-path loading keeps the two isolated.
     """
-    module_name = "_milady_test_results_store"
+    module_name = "_eliza_test_results_store"
     if module_name in sys.modules:
         return sys.modules[module_name].ResultsStore
     rs_path = HERE.parent.parent / "benchmarks" / "lib" / "results_store.py"

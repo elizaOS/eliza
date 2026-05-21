@@ -100,7 +100,7 @@ candidate_connector_stack:
     expected_role: fallback if mechanical team chooses a stacked daughterboard instead of a long flex.
     why: 0.35 mm pitch, low mated height, 10-60 circuits, and power-nail options are suitable for compact electronics.
     unresolved:
-      - z_stack_margin_in_9p6mm_enclosure
+      - z_stack_margin_in_11p2mm_flush_back_enclosure
       - assembly_service_sequence
       - drop_and_torsion_load_path
 

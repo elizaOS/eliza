@@ -1,3 +1,0 @@
-[[!meta title="Work on sensitive documents"]]
-
-[[!inline pages="doc/sensitive_documents.index" raw="yes" sort="age"]]

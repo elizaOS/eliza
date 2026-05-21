@@ -25,11 +25,6 @@ const LazyDirectCryptoCreditCard = lazy(async () => {
   return { default: mod.DirectCryptoCreditCard };
 });
 
-const LazyAttachWalletCard = lazy(async () => {
-  const mod = await import("./_components/attach-wallet-card");
-  return { default: mod.AttachWalletCard };
-});
-
 export default function BscPromoPage() {
   const { user, isReady, isAuthenticated, isLoading, isError, error } =
     useUserProfile();
@@ -222,26 +217,21 @@ export default function BscPromoPage() {
                     </Card>
                   }
                 >
-                  {user.wallet_address ? (
-                    <LazyDirectCryptoCreditCard
-                      amount={amountValue}
-                      promoCode="bsc"
-                      status={status}
-                      accountWalletAddress={user.wallet_address}
-                      surface="cloud"
-                      lockedNetwork="bsc"
-                      onSuccess={() => undefined}
-                    />
-                  ) : (
-                    // OAuth signups (Google / Discord / GitHub / Magic
-                    // Link / Passkey) land here. The direct-crypto-payments
-                    // endpoint requires `user.wallet_address`, so until
-                    // they verify a wallet against their account the pay
-                    // button is a dead-end. AttachWalletCard drives the
-                    // SIWE flow that fixes that, then `useUserProfile`
-                    // refetches and this branch swaps to the purchase UI.
-                    <LazyAttachWalletCard chainId={56} />
-                  )}
+                  <LazyDirectCryptoCreditCard
+                    amount={amountValue}
+                    promoCode="bsc"
+                    status={status}
+                    accountWalletAddress={user.wallet_address ?? null}
+                    surface="cloud"
+                    lockedNetwork="bsc"
+                    onSuccess={() => undefined}
+                  />
+                  {/* OAuth users (Google / Discord / GitHub / Magic Link /
+                      Passkey) no longer need to attach a wallet to their
+                      account before paying — DirectCryptoCreditCard's Connect
+                      button drives a one-off wallet connect for the payment.
+                      Credits land on the org_id from the session, not on the
+                      paying wallet. */}
                 </Suspense>
               )}
             </div>

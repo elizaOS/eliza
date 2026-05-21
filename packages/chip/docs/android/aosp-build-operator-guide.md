@@ -70,7 +70,7 @@ builder** (next section). Don't try to patch missing libraries by hand.
 
 ## Step-by-step run (bare-metal Ubuntu 24.04 host)
 
-From the Milady checkout:
+From the elizaOS checkout:
 
 ```sh
 # 1. Choose a workspace with >= 400 GB free.
@@ -129,7 +129,7 @@ docker buildx build \
     -t eliza/aosp-riscv64-builder:dev \
     packages/chip/sw/aosp-device
 
-# 2. Run the pipeline inside the container. Mount the Milady checkout read-only
+# 2. Run the pipeline inside the container. Mount the elizaOS checkout read-only
 #    and a fresh workspace volume read-write.
 docker run --rm -it \
     -v "$PWD:/eliza:ro" \

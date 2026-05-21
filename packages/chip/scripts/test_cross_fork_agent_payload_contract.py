@@ -41,7 +41,7 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         workspace = tmp
         app_core = workspace / "app-core"
-        os_rv64 = workspace / "os/linux/variants/elizaos-debian-riscv64"
+        os_rv64 = workspace / "os/linux/elizaos"
         bun_version = write(
             app_core / "scripts/bun-riscv64/bun-version.json",
             bun_version_json(
@@ -53,7 +53,7 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
             'const BUN_VERSION = "1.3.13";\n'
             'const DEFAULT_BUN_CHANNEL = "canary";\n'
             "const ABI_TARGETS = [{ androidAbi: 'riscv64' }];\n"
-            "const url = process.env.MILADY_BUN_RISCV64_URL;\n",
+            "const url = process.env.ELIZA_BUN_RISCV64_URL;\n",
         )
         android_service = write(
             app_core / "platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
@@ -123,7 +123,7 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
                     'const BUN_VERSION = "1.3.13";\n'
                     'const DEFAULT_BUN_CHANNEL = "canary";\n'
                     "const ABI_TARGETS = [{ androidAbi: 'riscv64' }];\n"
-                    "const expectedSha256 = process.env.MILADY_BUN_RISCV64_SHA256;\n"
+                    "const expectedSha256 = process.env.ELIZA_BUN_RISCV64_SHA256;\n"
                     "const artifact = 'bun-linux-riscv64-musl.zip';\n",
                     encoding="utf-8",
                 )

@@ -1,7 +1,7 @@
 """VoiceAgentBench - voice-in + tool-call-out + multi-turn benchmark.
 
 Vendors the VoiceAgentBench task suite (Patil et al., 2025;
-https://arxiv.org/html/2510.07978v1) into Milady's benchmark harness.
+https://arxiv.org/html/2510.07978v1) into elizaOS's benchmark harness.
 5,757 voice queries across six suites:
 
   * ``single``       - single tool call from a voice query

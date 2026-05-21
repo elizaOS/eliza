@@ -45,10 +45,10 @@ interfaces:
       function: cellular_5g_redcap_module
       package_binding: package/cellular/quectel-5g-redcap.yaml
       region_mm:
-        x: 4.0
-        y: 8.0
-        width: 13.0
-        height: 19.0
+        x: 3.0
+        y: 3.0
+        width: 14.0
+        height: 14.0
       side: top_left_rf
       required_nets:
         - CELL_VBAT
@@ -153,9 +153,9 @@ interfaces:
       package_binding: package/wifi/murata-type-2ea-wifi6e.yaml
       region_mm:
         x: 3.0
-        y: 22.0
+        y: 18.0
         width: 14.0
-        height: 7.0
+        height: 10.0
       side: upper_mid_rf
       required_nets:
         - WIFI_PCIE_OR_SDIO

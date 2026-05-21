@@ -33,7 +33,7 @@ function mockFetchJson(status: number, body: unknown) {
 const agentSelfStatus = {
   generatedAt: "2026-05-12T12:00:00.000Z",
   state: "running",
-  agentName: "Milady",
+  agentName: "Eliza",
   model: "gpt-5.5",
   provider: "openai",
   automationMode: "full",

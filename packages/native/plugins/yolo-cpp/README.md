@@ -55,7 +55,7 @@ half-built converter cannot pass for working.
 python scripts/yolo_to_gguf.py \
     --checkpoint /path/to/yolov8n.pt \
     --variant    yolov8n \
-    --output     ~/.milady/models/yolo/yolov8n.gguf
+    --output     ~/.eliza/models/yolo/yolov8n.gguf
 ```
 
 ## Layout

@@ -82,11 +82,17 @@
       "opening": "rear camera cover glass",
       "seal_stack": [
         "rear_camera_cover_glass",
-        "rear_camera_lens_window"
+        "rear_camera_lens_window",
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_cover_adhesive_bottom",
+        "rear_camera_cover_adhesive_left",
+        "rear_camera_cover_adhesive_right",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom"
       ],
-      "strategy": "camera cover glass is modeled as a separate bonded cosmetic/ingress window",
+      "strategy": "rear cover glass is bonded with a four-sided black PSA gasket plus internal baffles to limit dust and flare",
       "cad_pass": true,
-      "lab_closure": "camera dust inspection, focus/MTF check, and cover-glass adhesive review"
+      "lab_closure": "camera dust inspection, focus/MTF check, flare check, and cover-glass adhesive peel review"
     },
     {
       "id": "side_button_rails",

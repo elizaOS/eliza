@@ -3,6 +3,15 @@
   "status": "blocked_no_fai_results",
   "fai_template": "mechanical/e1-phone/review/gdt-fai-template.csv",
   "expected_characteristic_count": 13,
+  "required_evidence_class": "physical_fai_result",
+  "template_evidence_class": "",
+  "forbidden_evidence_classes": [
+    "blank_template",
+    "planning",
+    "simulated",
+    "simulated_fai_result_for_planning_not_release",
+    "simulated_first_article_for_evt_planning_not_production_release"
+  ],
   "observed_row_count": 13,
   "complete_result_count": 0,
   "blank_or_incomplete_characteristics": [
@@ -24,6 +33,18 @@
     {
       "characteristic_id": "CRIT-001",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -34,6 +55,18 @@
     {
       "characteristic_id": "CRIT-002",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -44,6 +77,18 @@
     {
       "characteristic_id": "CRIT-003",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -54,6 +99,18 @@
     {
       "characteristic_id": "CRIT-004",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -64,6 +121,18 @@
     {
       "characteristic_id": "CRIT-005",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -74,6 +143,18 @@
     {
       "characteristic_id": "STACK-006",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -84,6 +165,18 @@
     {
       "characteristic_id": "STACK-007",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -94,6 +187,18 @@
     {
       "characteristic_id": "STACK-008",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -104,6 +209,18 @@
     {
       "characteristic_id": "STACK-009",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -114,6 +231,18 @@
     {
       "characteristic_id": "STACK-010",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -124,6 +253,18 @@
     {
       "characteristic_id": "STACK-011",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -134,6 +275,18 @@
     {
       "characteristic_id": "STACK-012",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -144,6 +297,18 @@
     {
       "characteristic_id": "STACK-013",
       "expected_characteristic": true,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "raw_measurement_artifact_present": false,
+      "inspection_equipment_calibration_certificate_present": false,
+      "inspection_photo_or_scan_present": false,
+      "lot_traceability_record_present": false,
       "sample_id_present": false,
       "measured_value_present": false,
       "inspector_present": false,
@@ -152,5 +317,5 @@
       "pass": false
     }
   ],
-  "release_rule": "Every GD&T/FAI characteristic must include sample ID, measured value, inspector, and passing disposition before tolerance release."
+  "release_rule": "Every GD&T/FAI characteristic must include sample ID, measured value, inspector, passing disposition, evidence_class=physical_fai_result, raw CMM/inspection report, inspection equipment calibration certificate, inspection photo/scan, and part revision/tooling/resin lot traceability before tolerance release."
 }

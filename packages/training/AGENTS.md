@@ -14,7 +14,7 @@ applies to everything under `packages/training/`.
 - **TESTING HARNESS:** Nebius (OpenAI-compatible inference endpoint
   used for rollouts during RL — `NEBIUS_BASE_URL`, `NEBIUS_API_KEY`).
 - **Continuous RL data:** on-disk JSONL exports under
-  `${ELIZA_STATE_DIR:-~/.milady/state}/trajectories/`, written by the
+  `${ELIZA_STATE_DIR:-~/.eliza/state}/trajectories/`, written by the
   eliza native trajectory recorder. No database dependency.
 
 Do not edit configs to point at Qwen base names or OpenAI judges —

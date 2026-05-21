@@ -1,0 +1,61 @@
+schema: eliza.e1_phone_pcb_implementation_audit_demo.v1
+evidence_class: non_release_routing_demonstration
+status: blocked_concept_routing_demo_not_supplier_pinout_locked
+date: '2026-05-20'
+claim_boundary: >
+  This manifest indexes a non-release routing demonstration set. It is NOT
+  a tape-out package, NOT a fabrication release, NOT a factory-assembly
+  package, and NOT supplier-pinout-locked. Generic Conn_01_xNN symbols and
+  placeholder land patterns stand in for real supplier components. All gates
+  in routed-release-plan.yaml, manufacturing-closure.yaml,
+  production-readiness.yaml, and kicad-mechanical-handoff.json remain
+  fail-closed.
+not_release_for:
+  - tape_out
+  - fabrication
+  - factory_assembly
+  - enclosure_release
+  - supplier_pinout_lock
+concept_routing_demo:
+  schematic_root: board/kicad/e1-phone/schematic/e1-phone-demo.kicad_sch
+  schematic_sheets:
+    - board/kicad/e1-phone/schematic/power_usb-demo.kicad_sch
+    - board/kicad/e1-phone/schematic/compute-demo.kicad_sch
+    - board/kicad/e1-phone/schematic/display_camera-demo.kicad_sch
+    - board/kicad/e1-phone/schematic/radios-demo.kicad_sch
+    - board/kicad/e1-phone/schematic/audio_buttons-demo.kicad_sch
+    - board/kicad/e1-phone/schematic/split_interconnect-demo.kicad_sch
+  pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-demo.kicad_pcb
+  fab_demo_dir: board/kicad/e1-phone/pcb/fab-demo
+  fab_demo_files:
+    - e1-phone-mainboard-demo-B_Cu.gbr
+    - e1-phone-mainboard-demo-B_Mask.gbr
+    - e1-phone-mainboard-demo-B_Paste.gbr
+    - e1-phone-mainboard-demo-B_Silkscreen.gbr
+    - e1-phone-mainboard-demo-Edge_Cuts.gbr
+    - e1-phone-mainboard-demo-F_Cu.gbr
+    - e1-phone-mainboard-demo-F_Mask.gbr
+    - e1-phone-mainboard-demo-F_Paste.gbr
+    - e1-phone-mainboard-demo-F_Silkscreen.gbr
+    - e1-phone-mainboard-demo-In1_GND.gbr
+    - e1-phone-mainboard-demo-In2_Cu.gbr
+    - e1-phone-mainboard-demo-In3_Cu.gbr
+    - e1-phone-mainboard-demo-In4_Cu.gbr
+    - e1-phone-mainboard-demo-In5_Sig.gbr
+    - e1-phone-mainboard-demo-In6_PWR.gbr
+    - e1-phone-mainboard-demo-In7_Sig.gbr
+    - e1-phone-mainboard-demo-In8_GND.gbr
+    - e1-phone-mainboard-demo-NPTH.drl
+    - e1-phone-mainboard-demo-PTH.drl
+    - e1-phone-mainboard-demo-bom.csv
+    - e1-phone-mainboard-demo-job.gbrjob
+    - e1-phone-mainboard-demo-pos.csv
+    - e1-phone-mainboard-demo.step
+  step_secondary_copy: mechanical/e1-phone/out/e1-phone-mainboard-demo.step
+export_status:
+  gerbers: ok
+  drill: ok
+  step: ok
+  pos: ok
+  bom: ok
+regenerated_by: scripts/generate_e1_phone_routed_mainboard_demo.py

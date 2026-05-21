@@ -4,25 +4,34 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import io
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
 from eliza_robot.bridge.backends.base import BridgeBackend
-from eliza_robot.bridge.backends.mock_backend import MockBackend
+
 # isaac_backend and ros_backend may pull lazy ROS/IsaacLab modules at call-time;
 # their top-level imports are safe. mujoco_backend is resolved lazily so the
 # bridge can boot without mujoco installed.
 from eliza_robot.bridge.backends.isaac_backend import IsaacBackend
+from eliza_robot.bridge.backends.mock_backend import MockBackend
 from eliza_robot.bridge.backends.ros_backend import RosBridgeBackend
-from eliza_robot.bridge.protocol import CommandEnvelope, EventEnvelope, ResponseEnvelope, parse_command, utc_now_iso
+from eliza_robot.bridge.protocol import (
+    CommandEnvelope,
+    EventEnvelope,
+    ResponseEnvelope,
+    parse_command,
+    utc_now_iso,
+)
 from eliza_robot.bridge.safety import (
     CommandRateLimiter,
-    PolicyGuardResult,
     PolicyHeartbeatMonitor,
     check_policy_motion_bounds,
     is_deadman_heartbeat_command,
@@ -31,10 +40,6 @@ from eliza_robot.bridge.trace_log import TraceLogger, safe_to_record
 from eliza_robot.bridge.types import JsonDict, JsonValue
 from eliza_robot.bridge.validation import validate_command_payload
 from eliza_robot.profiles.schema import RobotProfile, load_profile
-
-import base64
-import io
-import numpy as np
 
 try:
     from PIL import Image as _PILImage
@@ -115,6 +120,8 @@ class RuntimeConfig:
     # Remote AiNex rosbridge connection (--backend ainex_remote).
     rosbridge_host: str = "192.168.1.218"
     rosbridge_port: int = 9090
+    asimov_livekit_url: str = ""
+    asimov_livekit_token: str = ""
 
 
 def _load_config_file(path: str) -> JsonDict:
@@ -167,6 +174,8 @@ def _coerce_runtime_config(args: argparse.Namespace, config_obj: JsonDict) -> Ru
         camera_height=getattr(args, "camera_height", 480),
         rosbridge_host=getattr(args, "rosbridge_host", "192.168.1.218"),
         rosbridge_port=getattr(args, "rosbridge_port", 9090),
+        asimov_livekit_url=getattr(args, "asimov_livekit_url", ""),
+        asimov_livekit_token=getattr(args, "asimov_livekit_token", ""),
     )
 
 
@@ -206,6 +215,25 @@ def _build_backend_factory(name: str, config: RuntimeConfig) -> BackendFactory:
             )
 
         return _build_remote_backend
+    if name in {"asimov_mock", "asimov_remote"}:
+        def _build_asimov_backend() -> BridgeBackend:
+            from eliza_robot.bridge.backends.asimov_remote import AsimovRemoteBackend
+
+            return AsimovRemoteBackend(
+                profile_id=config.profile_id,
+                mock=name == "asimov_mock",
+                livekit_url=config.asimov_livekit_url,
+                livekit_token=config.asimov_livekit_token,
+            )
+
+        return _build_asimov_backend
+    if name == "asimov_mujoco":
+        def _build_asimov_mujoco_backend() -> BridgeBackend:
+            from eliza_robot.bridge.backends.asimov_mujoco import AsimovMujocoBackend
+
+            return AsimovMujocoBackend(profile_id=config.profile_id)
+
+        return _build_asimov_mujoco_backend
     raise ValueError(f"unsupported backend: {name}")
 
 
@@ -545,7 +573,10 @@ async def _handle_policy_command(
 
             # Direct joint control mode: dispatch servo.set with joint positions
             if "joint_positions" in action_payload:
-                from eliza_robot.bridge.isaaclab.joint_map import joint_name_to_servo_id, radians_to_pulse
+                from eliza_robot.bridge.isaaclab.joint_map import (
+                    joint_name_to_servo_id,
+                    radians_to_pulse,
+                )
 
                 jp = action_payload["joint_positions"]
                 duration = action_payload.get("duration", 20)
@@ -1076,7 +1107,8 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         choices=[
             "mock", "mujoco", "ros", "ros_real", "ros_sim", "isaac",
-            "ainex_remote", "ros_remote",
+            "ainex_remote", "ros_remote", "asimov_mock", "asimov_remote",
+            "asimov_mujoco",
         ],
         default="mock",
         help="target backend adapter",
@@ -1099,6 +1131,18 @@ def _parse_args() -> argparse.Namespace:
         default="hiwonder-ainex",
         help="robot profile id (resolves URDF, calibration, safety from "
              "packages/robot/profiles/<id>/)",
+    )
+    parser.add_argument(
+        "--asimov-livekit-url",
+        type=str,
+        default="",
+        help="ASIMOV LiveKit websocket URL for --backend asimov_remote",
+    )
+    parser.add_argument(
+        "--asimov-livekit-token",
+        type=str,
+        default="",
+        help="ASIMOV LiveKit access token for --backend asimov_remote",
     )
     parser.add_argument(
         "--queue-size",
@@ -1182,4 +1226,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

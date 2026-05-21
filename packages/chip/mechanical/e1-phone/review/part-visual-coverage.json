@@ -1,0 +1,1059 @@
+{
+  "claim_boundary": "Automated part-to-view coverage map. It proves every generated CAD part is assigned to generated review artifacts and the per-part contact sheet; it does not prove human CMF approval or pixel-level part segmentation.",
+  "status": "part_visual_coverage_pass",
+  "coverage_mode": "role_and_name_based_review_view_mapping",
+  "expected_part_count": 94,
+  "covered_part_count": 94,
+  "required_review_artifacts": [
+    "component_stack.png",
+    "exploded_iso.png",
+    "full_back_iso.png",
+    "full_bottom_port.png",
+    "full_front_iso.png",
+    "full_left_side.png",
+    "full_top_down.png",
+    "part-review-contact-sheet.png",
+    "rear_feature_detail.png"
+  ],
+  "missing_or_incomplete_parts": [],
+  "cases": [
+    {
+      "part": "orange_back_shell",
+      "role": "molded enclosure",
+      "required_views": [
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_side_frame",
+      "role": "molded enclosure",
+      "required_views": [
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "screen_cover_glass",
+      "role": "screen",
+      "required_views": [
+        "full_front_iso.png",
+        "full_top_down.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "display_lcm",
+      "role": "screen",
+      "required_views": [
+        "full_front_iso.png",
+        "full_top_down.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "main_pcb",
+      "role": "PCB",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "battery_pouch",
+      "role": "battery",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "usb_c_receptacle",
+      "role": "I/O",
+      "required_views": [
+        "full_bottom_port.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "usb_c_external_aperture",
+      "role": "I/O",
+      "required_views": [
+        "full_bottom_port.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "usb_c_perimeter_gasket_top",
+      "role": "I/O seal",
+      "required_views": [
+        "full_bottom_port.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "usb_c_perimeter_gasket_bottom",
+      "role": "I/O seal",
+      "required_views": [
+        "full_bottom_port.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "usb_c_perimeter_gasket_left",
+      "role": "I/O seal",
+      "required_views": [
+        "full_bottom_port.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "usb_c_perimeter_gasket_right",
+      "role": "I/O seal",
+      "required_views": [
+        "full_bottom_port.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "usb_c_molded_drip_break_lip",
+      "role": "I/O seal",
+      "required_views": [
+        "full_bottom_port.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "usb_c_internal_drain_shelf",
+      "role": "I/O seal",
+      "required_views": [
+        "full_bottom_port.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_speaker_module",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "earpiece_receiver",
+      "role": "audio",
+      "required_views": [
+        "exploded_iso.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_mic",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "top_mic",
+      "role": "audio",
+      "required_views": [
+        "exploded_iso.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_module",
+      "role": "camera",
+      "required_views": [
+        "rear_feature_detail.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_lens_window",
+      "role": "camera",
+      "required_views": [
+        "rear_feature_detail.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_flash_led",
+      "role": "camera",
+      "required_views": [
+        "rear_feature_detail.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_flash_led_window",
+      "role": "camera",
+      "required_views": [
+        "rear_feature_detail.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "front_camera_module",
+      "role": "camera",
+      "required_views": [
+        "full_top_down.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "front_camera_under_glass",
+      "role": "camera",
+      "required_views": [
+        "full_top_down.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_cover_adhesive_top",
+      "role": "camera seal",
+      "required_views": [
+        "rear_feature_detail.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_cover_adhesive_bottom",
+      "role": "camera seal",
+      "required_views": [
+        "rear_feature_detail.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_cover_adhesive_left",
+      "role": "camera seal",
+      "required_views": [
+        "rear_feature_detail.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_cover_adhesive_right",
+      "role": "camera seal",
+      "required_views": [
+        "rear_feature_detail.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_light_baffle_top",
+      "role": "camera seal",
+      "required_views": [
+        "rear_feature_detail.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_light_baffle_bottom",
+      "role": "camera seal",
+      "required_views": [
+        "rear_feature_detail.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "front_camera_black_mask_window",
+      "role": "camera seal",
+      "required_views": [
+        "rear_feature_detail.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "power_button_cap",
+      "role": "button",
+      "required_views": [
+        "full_left_side.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "volume_button_cap",
+      "role": "button",
+      "required_views": [
+        "full_left_side.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "handset_acoustic_slot",
+      "role": "audio",
+      "required_views": [
+        "exploded_iso.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "handset_acoustic_mesh",
+      "role": "audio",
+      "required_views": [
+        "exploded_iso.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_speaker_grille_slot_1",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_speaker_grille_slot_2",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_speaker_grille_slot_3",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_speaker_grille_slot_4",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_speaker_grille_slot_5",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_speaker_dust_mesh",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "split_interconnect_top_connector",
+      "role": "split-board interconnect",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "split_interconnect_bottom_connector",
+      "role": "split-board interconnect",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "split_interconnect_side_flex",
+      "role": "split-board interconnect",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "split_interconnect_top_flex_tail",
+      "role": "split-board interconnect",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "split_interconnect_bottom_flex_tail",
+      "role": "split-board interconnect",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_microphone_port_1",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_microphone_mesh_1",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_microphone_port_2",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_microphone_mesh_2",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "top_microphone_port",
+      "role": "audio",
+      "required_views": [
+        "exploded_iso.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "top_microphone_mesh",
+      "role": "audio",
+      "required_views": [
+        "exploded_iso.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "power_button_elastomer_gasket",
+      "role": "button seal",
+      "required_views": [
+        "full_left_side.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "power_button_labyrinth_upper_rail",
+      "role": "button seal",
+      "required_views": [
+        "full_left_side.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "power_button_labyrinth_lower_rail",
+      "role": "button seal",
+      "required_views": [
+        "full_left_side.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "volume_button_elastomer_gasket",
+      "role": "button seal",
+      "required_views": [
+        "full_left_side.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "volume_button_labyrinth_upper_rail",
+      "role": "button seal",
+      "required_views": [
+        "full_left_side.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "volume_button_labyrinth_lower_rail",
+      "role": "button seal",
+      "required_views": [
+        "full_left_side.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "screen_adhesive_top",
+      "role": "screen retention",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "screen_adhesive_bottom",
+      "role": "screen retention",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "screen_adhesive_left",
+      "role": "screen retention",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "screen_adhesive_right",
+      "role": "screen retention",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_screw_boss_1",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_screw_boss_2",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_screw_boss_3",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_screw_boss_4",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_screw_boss_5",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_screw_boss_6",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_snap_hook_1",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_snap_hook_2",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_snap_hook_3",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_snap_hook_4",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_snap_hook_5",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_snap_hook_6",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_snap_hook_7",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_snap_hook_8",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_battery_left_rib",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_battery_right_rib",
+      "role": "molded enclosure",
+      "required_views": [
+        "exploded_iso.png",
+        "part-review-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "orange_usb_reinforcement_saddle",
+      "role": "molded enclosure",
+      "required_views": [
+        "full_bottom_port.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "display_fpc_connector",
+      "role": "connector",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "display_fpc_bend_keepout",
+      "role": "connector",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "bottom_speaker_acoustic_chamber",
+      "role": "audio",
+      "required_views": [
+        "full_bottom_port.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "earpiece_gasket",
+      "role": "audio",
+      "required_views": [
+        "exploded_iso.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "cellular_top_antenna_keepout",
+      "role": "RF keepout",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "cellular_bottom_antenna_keepout",
+      "role": "RF keepout",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "wifi_bt_side_antenna_keepout",
+      "role": "RF keepout",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "soc_shield_can",
+      "role": "EMI shield",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "pmic_shield_can",
+      "role": "EMI shield",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "radio_shield_can",
+      "role": "EMI shield",
+      "required_views": [
+        "component_stack.png",
+        "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "haptic_lra",
+      "role": "haptics",
+      "required_views": [
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "sim_tray_keepout",
+      "role": "service",
+      "required_views": [
+        "rear_feature_detail.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "sim_tray_outline",
+      "role": "service",
+      "required_views": [
+        "rear_feature_detail.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_cover_glass",
+      "role": "camera",
+      "required_views": [
+        "rear_feature_detail.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "service_label_recess",
+      "role": "service",
+      "required_views": [
+        "rear_feature_detail.png",
+        "component_stack.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "pass": true
+    }
+  ],
+  "release_rule": "Every CAD part must have a passing per-part contact-sheet entry and at least one role-appropriate generated review view before automated visual review coverage can claim that every part is reviewable."
+}

@@ -107,9 +107,9 @@ control:
 # Files are dropped in by sibling agent W2.2.
 # ---------------------------------------------------------------------------
 assets:
-  mjcf_xml: ainex.xml
-  mjx_xml: ainex_mjx.xml
-  urdf: ainex.urdf
+  mjcf_xml: mjcf/ainex.xml
+  mjx_xml: mjcf/ainex_mjx.xml
+  urdf: urdf/ainex.urdf.xacro
   mesh_dir: meshes
 
 # ---------------------------------------------------------------------------

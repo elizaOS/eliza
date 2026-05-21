@@ -96,7 +96,7 @@ Existing adapter dirs in `packages/benchmarks/`:
 Recommended integration:
 
 1. **Native path (openclaw-adapter)**. Drive the upstream `scripts/benchmark.py` end-to-end through `openclaw-adapter` by:
-   - Pointing the `--model` arg at the model identifier our adapter exposes (e.g. `milady-local/qwen3.6-plus-gguf`).
+   - Pointing the `--model` arg at the model identifier our adapter exposes (e.g. `eliza-local/qwen3.6-plus-gguf`).
    - Generating an `openclaw.json` that registers our local provider (Ollama / vLLM / Eliza Cloud) and binding `DASHSCOPE_API_KEY` (or the equivalent) via `openclaw_config/.env`.
    - Mounting our `/tmp/qwenclawbench` snapshot dir as a tmpfs in CI to keep evaluation hermetic.
    - Parsing `results/<dataset>/<slugified-model>/summary.json` for the pass-rate aggregates (∈ [0,1], multiply by 100 for the leaderboard percentage).

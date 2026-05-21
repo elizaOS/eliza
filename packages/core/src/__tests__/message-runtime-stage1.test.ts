@@ -463,7 +463,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
-				replyText: "https://milady.ai\nhttps://app.milady.ai",
+				replyText: "https://eliza.so\nhttps://app.eliza.so",
 				extra: { requiresTool: false },
 			}),
 		]);
@@ -473,7 +473,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({
-				text: "[sub-agent: package check (opencode) task_complete]\nhttps://milady.ai\nhttps://app.milady.ai",
+				text: "[sub-agent: package check (opencode) task_complete]\nhttps://eliza.so\nhttps://app.eliza.so",
 				source: "sub_agent",
 			}),
 			state,
@@ -484,7 +484,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(1);
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"https://milady.ai\nhttps://app.milady.ai",
+				"https://eliza.so\nhttps://app.eliza.so",
 			);
 		}
 	});

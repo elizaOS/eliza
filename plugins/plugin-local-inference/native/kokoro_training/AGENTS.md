@@ -20,7 +20,7 @@ verbatim from `https://github.com/jonirajala/kokoro_training` at commit
 
 2. **No re-export of vendored symbols from non-adjacent code.** The
    bridge between the Eliza training scripts and this vendor lives in
-   `milady_adapter/` (one directory, one file per concern). Other
+   `eliza_adapter/` (one directory, one file per concern). Other
    Eliza-side code MUST go through the adapter — direct imports from
    `kokoro_training.kokoro.model` etc. are not allowed from the
    `packages/` tree.
@@ -64,15 +64,15 @@ verbatim from `https://github.com/jonirajala/kokoro_training` at commit
 
 ## Adapter contract
 
-`milady_adapter/` is the only stable interface. See
-`milady_adapter/README.md` for the surface. Stable functions:
+`eliza_adapter/` is the only stable interface. See
+`eliza_adapter/README.md` for the surface. Stable functions:
 
-- `milady_adapter.run_full_finetune(config_dict) -> ExitCode` —
+- `eliza_adapter.run_full_finetune(config_dict) -> ExitCode` —
   wraps `training_english.main()` with our config schema, our
   trajectory-aware logging, and the APOLLO optimizer mandate from
   `packages/training/AGENTS.md`.
-- `milady_adapter.smoke_full_finetune(corpus_dir, run_dir, steps=2) -> None` —
+- `eliza_adapter.smoke_full_finetune(corpus_dir, run_dir, steps=2) -> None` —
   pure smoke test that validates the import surface + a 2-step batch.
 
 Everything else is internal. Future-proofing tip: when we re-vendor
-upstream, only `milady_adapter/` needs to stay stable.
+upstream, only `eliza_adapter/` needs to stay stable.

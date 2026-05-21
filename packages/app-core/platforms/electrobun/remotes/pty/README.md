@@ -47,7 +47,7 @@ Output polling through `pty.session.output.tail` is sufficient for Phase 6 when 
 - `ELIZA_PTY_MAX_OUTPUT_BYTES` defaults to `5242880`
 - `ELIZA_PTY_MAX_SESSIONS` defaults to `8`
 - `ELIZA_PTY_COMMAND_TIMEOUT_MS` defaults to `120000`
-- `MILADY_REPO_DIR` sets the default cwd before `ELIZA_REPO_DIR`
+- `ELIZA_REPO_DIR` sets the default cwd before `ELIZA_REPO_DIR`
 - `ELIZA_REPO_DIR` sets the fallback default cwd
 
 Session environment inherits `process.env` and merges per-session env overrides.

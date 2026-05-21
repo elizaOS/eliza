@@ -45,7 +45,7 @@ build options:
                                               device/eliza/eliza_ai_soc/.
                           local-manifest    - install local_manifests/eliza.xml
                                               with the remote rewritten to the
-                                              Milady checkout, then `repo sync`
+                                              elizaOS checkout, then `repo sync`
                                               again so repo materializes the
                                               project + linkfiles.
 
@@ -129,7 +129,7 @@ mkdir -p "$WORKSPACE"
 WORKSPACE=$(cd -- "$WORKSPACE" && pwd)
 [ -z "$REPORT_PATH" ] && REPORT_PATH="$WORKSPACE/eliza-build-report.json"
 
-# Sanity: device overlay we expect to project must exist in the Milady repo.
+# Sanity: device overlay we expect to project must exist in the elizaOS repo.
 for required in \
   "$DEVICE_OVERLAY_SRC/AndroidProducts.mk" \
   "$DEVICE_OVERLAY_SRC/eliza_ai_soc.mk" \

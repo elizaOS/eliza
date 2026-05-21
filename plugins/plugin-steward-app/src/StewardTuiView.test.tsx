@@ -62,7 +62,7 @@ const sampleStatus = {
   evmAddress: "0x1234567890abcdef",
   error: null,
   walletAddresses: { evm: "0x1234567890abcdef", solana: null },
-  agentName: "milady",
+  agentName: "eliza",
   vaultHealth: "ok",
 };
 

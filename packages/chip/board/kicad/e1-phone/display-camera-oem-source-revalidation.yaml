@@ -1,0 +1,206 @@
+schema: eliza.e1_phone_display_camera_oem_source_revalidation.v1
+status: public_sources_revalidated_screen_camera_not_supplier_approved
+date: '2026-05-21'
+claim_boundary: Public-source revalidation only. Browser-visible marketplace/vendor fields can seed RFQs and layout
+  risk decisions, but they are not supplier approval, signed drawings, footprints, pinouts, samples, or release
+  evidence.
+source_artifacts:
+  - package/display/v0-dsi-720x1280.yaml
+  - package/camera/oem-mipi-csi-modules.yaml
+  - board/kicad/e1-phone/supplier-source-verification.yaml
+  - board/kicad/e1-phone/component-envelope-fit-audit.yaml
+  - board/kicad/e1-phone/display-fit.yaml
+browser_revalidation_context:
+  method: manual_browser_open_and_search_on_2026_05_21
+  primary_source_policy: prefer directly opened Made-in-China pages for display and camera primary choices; treat
+    Alibaba search-result snippets as shortlist evidence only until the product page is machine-readable and supplier
+    drawings are received
+  current_browser_result:
+    checked_date: '2026-05-21'
+    display_primary_page_still_exposes:
+      - CH550FH01A-CT model number
+      - 1080x1920 resolution
+      - MIPI interface
+      - 77.1 x 151.77 x 3.39 mm outline
+      - 68.04 x 120.96 mm active area
+      - 500000 pcs/month production-capacity signal
+      - public price ladder from 2 pieces through 1000+ pieces
+    display_primary_pdf_still_exposes:
+      - CH550FH01A-CT model number
+      - 4-lane MIPI TFT interface
+      - I2C CTP interface
+      - HX8399C TFT driver IC
+      - GT911 CTP driver IC
+      - 77.1 x 151.77 x 3.39 mm module outline
+      - 68.04 x 120.96 mm active area
+      - 650 cd/m2 luminance signal
+    rear_camera_primary_page_still_exposes:
+      - SF-XR3855A-A0 model number
+      - OV13855 sensor class
+      - 13MP resolution
+      - MIPI interface
+      - 24-pin pinout class
+      - 1/3.06 inch sensor size
+      - autofocus and 78.4 degree view-angle class
+    front_camera_primary_page_still_exposes:
+      - SF-G5035S60FY model number
+      - GC5035 sensor
+      - 2592x1944 resolution
+      - MIPI 2-lane interface support
+      - 30-pin pinout class
+      - fixed-focus camera module class
+      - 10kk pcs/month production-capacity signal
+    alibaba_display_alternate_result: direct Alibaba product URL opened but machine-readable page body returned no
+      parseable product lines in this environment; keep as alternate shortlist evidence only until supplier RFQ response
+      or a parseable product page is available
+revalidated_sources:
+  - id: display_primary_chenghao_ch550fh01a_ct
+    group: display
+    source_type: direct_made_in_china_page_opened_2026_05_21
+    supplier: Shenzhen Chenghao Optoelectronic
+    url: https://chenghaolcd.en.made-in-china.com/product/pmFUBTZDnXVH/China-LCD-Manufacturer-1080-1920-Pixels-5-5inch-Pcap-Capacitive-Touch-Display-TFT-Module.html
+    candidate: CH550FH01A-CT
+    observed_public_fields:
+      model: CH550FH01A-CT
+      resolution: 1080x1920
+      interface: MIPI-DSI
+      module_outline_mm:
+        width: 77.1
+        height: 151.77
+        thickness: 3.39
+      active_area_mm:
+        width: 68.04
+        height: 120.96
+      price_signal_usd:
+        qty_2_to_299: 17.4
+        qty_300_to_999: 16.5
+        qty_1000_plus: 15.4
+      production_capacity_signal: 500000_pcs_per_month
+    board_decision: keep_as_primary_display_mechanical_anchor
+    blocking_gap: signed_drawing_fpc_pinout_mating_connector_step_model_and_sample_inspection_missing
+  - id: display_primary_chenghao_ch550fh01a_ct_public_pdf
+    group: display
+    source_type: direct_chenghao_pdf_opened_2026_05_21
+    supplier: Shenzhen Chenghao Optoelectronic
+    url: https://www.chenghaolcd.com/doc/14495745/5-5-inch-tft-capacitive-touchscreen-1080x1920-pixel-ltps-transmissive.pdf
+    candidate: CH550FH01A-CT
+    observed_public_fields:
+      model: CH550FH01A-CT
+      resolution: 1080x1920
+      tft_interface: 4_lane_MIPI
+      ctp_interface: I2C
+      tft_driver_ic: HX8399C
+      ctp_driver_ic: GT911
+      luminance_cd_m2: 650
+      module_outline_mm:
+        width: 77.1
+        height: 151.77
+        thickness: 3.39
+      active_area_mm:
+        width: 68.04
+        height: 120.96
+      tft_outline_mm:
+        width: 70.78
+        height: 129.17
+        thickness: 1.7
+      operating_temp_c: [-20, 70]
+      storage_temp_c: [-30, 80]
+    board_decision: bind_public_driver_and_touch_controller_fields_to_display_rfq_not_release
+    blocking_gap: pdf_is_public_reference_not_signed_supplier_drawing_or_final_fpc_pinout
+  - id: rear_camera_primary_sincere_first_ov13855
+    group: camera
+    source_type: direct_made_in_china_page_opened_2026_05_21
+    supplier: Sincere First
+    url: https://sincerefirst.en.made-in-china.com/product/WACpUrRYOVkc/China-Ov13855-Ov13850-CMOS-Sensor-Autofocus-13MP-Mipi-Camera-Module.html
+    candidate: SF-XR3855A-A0
+    observed_public_fields:
+      sensor_class: OV13855_or_OV13850
+      resolution_mp: 13
+      interface: MIPI_CSI
+      pin_count: 24
+      focus: autofocus
+      price_signal_usd:
+        qty_5_to_999: 16.35
+        qty_1000_to_9999: 11.65
+        qty_10000_plus: 8.35
+      customization: available
+    board_decision: keep_as_rear_camera_primary_class_pending_supplier_xy_z_drawing
+    blocking_gap: module_xy_z_lens_axis_fpc_pinout_step_model_and_capture_samples_missing
+  - id: front_camera_primary_sincere_first_gc5035
+    group: camera
+    source_type: direct_made_in_china_page_opened_2026_05_21
+    supplier: Sincere First
+    url: https://sincerefirst.en.made-in-china.com/product/stzRqCgufMVy/China-5MP-Gc5035-CMOS-Image-Sensor-Small-Size-Fixed-Focus-Mipi-Camera-Module.html
+    candidate: SF-G5035S60FY
+    observed_public_fields:
+      sensor: GC5035
+      resolution_px: 2592x1944
+      interface: MIPI_CSI_2_lane
+      pin_count: 30
+      focus: fixed_focus
+      sensor_size_in: 1/5
+      mipi_lanes: 2
+      production_capacity_signal: 10kk_pcs_per_month
+    board_decision: keep_as_front_camera_primary_class_pending_supplier_xy_z_drawing
+    blocking_gap: exact_variant_module_xy_z_lens_height_fpc_pinout_step_model_and_capture_samples_missing
+  - id: front_camera_alternate_alibaba_junde_imx219
+    group: camera
+    source_type: alibaba_direct_url_opened_not_machine_parsed_2026_05_21
+    supplier: Shenzhen Junde Electronics
+    url: https://www.alibaba.com/product-detail/IMX219-8MP-120-Degree-Wide-Angle_1601568412012.html
+    candidate: JDT-HPLCC-8MP-120
+    observed_public_fields:
+      sensor: IMX219
+      resolution_px: 3280x2464
+      interface: MIPI_CSI
+      focus: fixed_focus
+      module_size_mm:
+        width: 25
+        height: 24
+      system_compatibility: Jetson_Nano_class_lab_bringup_not_phone_primary
+    board_decision: reject_for_current_phone_camera_region_keep_as_lab_bringup_or_camera_bump_redesign_alternate
+    fit_result:
+      fits_width: false
+      fits_height: false
+      width_shortfall_mm: 8.0
+      height_shortfall_mm: 11.0
+      fits_xy: false
+    blocking_gap: oversized_for_active_camera_connector_escape_and_direct_page_not_machine_parsed
+layout_decisions:
+  primary_display: Chenghao_CH550FH01A_CT_remains_primary_screen_anchor
+  primary_display_pdf: use_public_pdf_for_driver_touch_and_interface_rfq_fields_only
+  rear_camera: Sincere_First_OV13855_class_remains_rear_primary_pending_supplier_pack
+  front_camera: Sincere_First_GC5035_class_remains_front_primary_pending_supplier_pack
+  alibaba_junde_imx219: not_promoted_due_to_25x24_mm_envelope_and_parser_inaccessibility
+cross_checks:
+  primary_display_matches_display_fit: true
+  primary_display_fits_device_envelope: true
+  front_camera_junde_alternate_still_rejected_by_active_matrix: true
+  made_in_china_primary_display_verified: true
+  display_pdf_datasheet_matches_primary_outline: true
+  display_pdf_adds_driver_touch_controller_rfq_fields: true
+  made_in_china_primary_camera_sources_verified: true
+  alibaba_camera_alternate_not_promoted: true
+  requires_quote_drawing_samples_before_release: true
+  supplier_source_verification_still_fail_closed: true
+  current_public_fields_revalidated_2026_05_21: true
+  alibaba_direct_page_remains_shortlist_only_until_parseable_or_supplier_response: true
+required_next_supplier_artifacts:
+  - display signed 2D drawing with FPC exit, pin-1 datum, cover-lens datums, and mating connector MPN
+  - rear camera signed 2D drawing with lens-axis datum, z-height, FPC exit, pinout, and STEP model
+  - front camera signed 2D drawing with lens height, FPC exit, pinout, and STEP model
+  - quotes at 10, 100, and 1000 piece quantities with lead time and lifecycle status
+  - sample receipt plus incoming dimensional inspection before KiCad footprint freeze
+release_blockers:
+  - public pages are not signed supplier drawings or footprint evidence
+  - Alibaba Junde IMX219 alternate remains oversized for the active phone camera region
+  - camera and display FPC pinouts, mating connectors, STEP models, and samples are missing
+forbidden_claims:
+  - display_supplier_approved
+  - camera_supplier_approved
+  - camera_region_ready
+  - display_connector_ready
+  - supplier_footprints_ready
+  - samples_received
+  - enclosure_ready
+  - end_to_end_phone_ready

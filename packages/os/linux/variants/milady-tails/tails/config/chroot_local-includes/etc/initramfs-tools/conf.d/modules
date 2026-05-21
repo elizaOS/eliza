@@ -1,3 +1,0 @@
-# Don't include any module by default.
-# We'll add the ones we need in /etc/initramfs-tools/hooks/add_modules
-MODULES=list

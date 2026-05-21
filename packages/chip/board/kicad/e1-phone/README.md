@@ -32,7 +32,7 @@ board/kicad/e1-phone/
 The committed `kibot.yaml` is a skeleton and is not release evidence. Outputs
 planned:
 
-- `gerbers/`: standard Gerber X2 set + drill files for an 8-layer 0.8 mm board.
+- `gerbers/`: standard Gerber X2 set + drill files for a 10-layer 0.6 mm board (matches `pcb/e1-phone-mainboard-concept.kicad_pcb` stackup).
 - `ipc-2581/`: IPC-2581 Revision C package (manufacturer-neutral fabrication).
 - `bom/`: Interactive HTML BOM + iBOM + CSV BOM with vendor PNs.
 - `step/`: Mechanical 3D model for case integration review.
@@ -226,4 +226,4 @@ fabrication evidence:
    `research/mobile_platform_2026/03_implementation/platform_path_for_e1.md`
    M-4: "Document `package/som-vs-mainboard-split.md`."
 2. Board outline / mechanical envelope (depends on case selection).
-3. Layer stack-up: 8L 0.8 mm vs 10L 0.6 mm vs HDI 12L (cost vs density).
+3. Layer stack-up: current concept PCB is **10-layer 0.6 mm** (matches `.kicad_pcb`). Trade study tracked in `docs/board/stackup-trade-study.md`; only the chosen stackup is reflected in source.

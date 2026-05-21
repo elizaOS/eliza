@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # `JointSpec.group` enum. Mirrors the LEG/ARM/HEAD split in
 # `ainex-robot-code/training/mujoco/ainex_constants.py`.
-JointGroup = Literal["LEG", "ARM", "HEAD"]
+JointGroup = Literal["LEG", "ARM", "HEAD", "TORSO"]
 
 # `GaitParams.controller` enum. `bezier` is the hand-tuned Hiwonder gait
 # (`GAIT_SOURCE_CODE.py`), `rl` is a learned Brax-PPO policy, `openpi` is
@@ -196,6 +196,14 @@ class AssetPaths(BaseModel):
     mjx_xml: Path
     urdf: Path
     mesh_dir: Path
+    scene_xml: Path | None = Field(
+        default=None,
+        description=(
+            "Optional MJCF that includes mjcf_xml plus a ground plane, "
+            "lighting, and a free camera. Used by the interactive viewer "
+            "and video recorder; falls back to mjcf_xml when not set."
+        ),
+    )
 
 
 class Frame(BaseModel):
@@ -283,16 +291,15 @@ class RobotProfile(BaseModel):
 
     @field_validator("kinematics")
     @classmethod
-    def _joint_limits_within_pi(cls, v: Kinematics) -> Kinematics:
+    def _joint_limits_within_two_pi(cls, v: Kinematics) -> Kinematics:
+        # Real humanoid wrists / shoulder-yaws can rotate beyond ±π (Unitree
+        # H1 shoulder_yaw range is ±4.45 rad). Anything beyond ±2π is almost
+        # certainly a URDF unit bug (degrees rather than radians).
         for j in v.joints:
-            if j.lower_rad < -math.pi or j.upper_rad > math.pi:
-                # Most hobby servos are physically capped within ±π; allowing
-                # wider limits is almost always a profile bug. Tighten by
-                # explicitly relaxing this check in a per-robot subclass if a
-                # real wrist/continuous joint ever needs it.
+            if j.lower_rad < -2 * math.pi or j.upper_rad > 2 * math.pi:
                 raise ValueError(
                     f"joint {j.name!r} limits [{j.lower_rad}, {j.upper_rad}] "
-                    f"exceed ±π — verify URDF units"
+                    f"exceed ±2π — verify URDF units (degrees vs radians)"
                 )
         return v
 
@@ -325,6 +332,12 @@ def _resolve_assets(profile_id: str, raw: dict) -> dict:
         if not path.is_absolute():
             path = (base / path).resolve()
         resolved[key] = path
+    scene = assets.get("scene_xml")
+    if scene is not None:
+        scene_path = Path(scene)
+        if not scene_path.is_absolute():
+            scene_path = (base / scene_path).resolve()
+        resolved["scene_xml"] = scene_path
     raw = dict(raw)
     raw["assets"] = resolved
     return raw

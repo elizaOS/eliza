@@ -1101,7 +1101,7 @@ function callIosHost(
 function resolveMobileStateDir(): string {
 	const explicit =
 		process.env.ELIZA_STATE_DIR ||
-		process.env.MILADY_STATE_DIR ||
+		process.env.ELIZA_STATE_DIR ||
 		process.env.ELIZA_HOME;
 	if (explicit?.trim()) return explicit.trim();
 	if (process.env.HOME?.trim()) {
@@ -1455,7 +1455,7 @@ function resolveAssignedModel(slot: string): InstalledModelEntry | null {
 function nativeLlamaContextSize(): number {
 	return (
 		positiveInteger(process.env.ELIZA_IOS_LLAMA_CONTEXT_SIZE) ??
-		positiveInteger(process.env.MILADY_IOS_LLAMA_CONTEXT_SIZE) ??
+		positiveInteger(process.env.ELIZA_IOS_LLAMA_CONTEXT_SIZE) ??
 		positiveInteger(process.env.ELIZA_LOCAL_CONTEXT_SIZE) ??
 		4096
 	);

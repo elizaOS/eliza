@@ -59,6 +59,47 @@
       "deadman_timeout_sec": 60.0,
       "requires_ros": false,
       "camera_url": ""
+    },
+    "asimov": {
+      "description": "ASIMOV-1 deterministic command-envelope mock",
+      "backend": "asimov_mock",
+      "host": "0.0.0.0",
+      "rosbridge_port": 9093,
+      "envelope_port": 9103,
+      "publish_hz": 30.0,
+      "max_commands_per_sec": 100,
+      "deadman_timeout_sec": 60.0,
+      "requires_ros": false,
+      "camera_url": "",
+      "profile_id": "asimov-1"
+    },
+    "asimov-mujoco": {
+      "description": "ASIMOV-1 CPU MuJoCo command-envelope simulation",
+      "backend": "asimov_mujoco",
+      "host": "0.0.0.0",
+      "rosbridge_port": 9095,
+      "envelope_port": 9105,
+      "publish_hz": 30.0,
+      "max_commands_per_sec": 60,
+      "deadman_timeout_sec": 60.0,
+      "requires_ros": false,
+      "camera_url": "",
+      "profile_id": "asimov-1"
+    },
+    "asimov-real": {
+      "description": "ASIMOV-1 hardware via Menlo LiveKit/protobuf API",
+      "backend": "asimov_remote",
+      "host": "0.0.0.0",
+      "rosbridge_port": 9094,
+      "envelope_port": 9104,
+      "publish_hz": 50.0,
+      "max_commands_per_sec": 50,
+      "deadman_timeout_sec": 1.0,
+      "requires_ros": false,
+      "camera_url": "",
+      "profile_id": "asimov-1",
+      "asimov_livekit_url": "",
+      "asimov_livekit_token": ""
     }
   },
   "env_overrides": {

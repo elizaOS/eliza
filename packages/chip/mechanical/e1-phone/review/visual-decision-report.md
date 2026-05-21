@@ -1,15 +1,17 @@
 # E1 Phone Visual Decision Report
 
 Status: pass.
+Automated visual status: automated_visual_coverage_pass.
+Production visual signoff: blocked_manual_visual_review_open.
 
 This report records the EVT0 CAD visual decisions and the manual review items still open.
 
 ## Decisions
 
-- `compact_orange_shell`: keep; Hold 78.0 x 153.6 x 9.6 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.
+- `compact_orange_shell`: keep; Hold 78.0 x 153.6 x 11.2 mm envelope around commodity touch panel with 0.45 mm minimum nominal screen margin.
 - `black_bonded_glass_front`: keep; Black cover glass remains a separate bonded part over the display stack.
 - `under_glass_front_camera_and_earpiece`: keep_for_evt0; Front camera and earpiece are represented behind glass/acoustic gasketing for CAD packaging.
-- `rear_camera_cover_window`: keep_for_evt0; Rear AF camera stack remains in a back lens window because full under-glass packaging is too tall.
+- `rear_camera_cover_window`: keep_for_evt0; Single rear AF camera is buried under the flat back wall behind a flush internal window (no bump, no proud ring); device depth was raised to fully bury the module.
 - `bottom_io_pattern`: keep_for_evt0; USB-C insertion envelope, speaker slots, and microphone ports are modeled for mechanical review.
 - `component_and_service_layout`: keep_for_evt0; PCB, battery, haptic, SIM keepout, RF keepouts, shields, cameras, and audio parts are indexed.
 - `injection_mold_tooling_placeholders`: keep_for_dfm_discussion; Runner, submarine gates, ejector pins, cooling channels, and parting plane are CAD placeholders.
@@ -41,3 +43,7 @@ This report records the EVT0 CAD visual decisions and the manual review items st
 - Validate camera-window aesthetics, lens stack height, dust gasket, and service label placement using supplier samples.
 - Run tactile reviews for button travel, rattle, switch force, and snap-hook fatigue on physical samples.
 - Replace mesh-derived review with real supplier STEP/B-rep data and routed KiCad board STEP before tooling release.
+
+## Release Rule
+
+- Automated render coverage may pass with generated nonblank views, but production visual/CMF signoff requires zero open manual review items, supplier STEP/B-rep review, molded orange resin CMF samples, and physical tactile/aesthetic review.

@@ -70,7 +70,7 @@ Then add to `assetlinks.json`:
   "relation": ["delegate_permission/common.handle_all_urls"],
   "target": {
     "namespace": "android_app",
-    "package_name": "com.milady.xr.quest",
+    "package_name": "com.eliza.xr.quest",
     "sha256_cert_fingerprints": ["<YOUR_SHA256_HERE>"]
   }
 }]
@@ -88,7 +88,7 @@ The `bubblewrap.json` sets `isMetaQuest: true` and `features.metaQuest: true`, w
 | Problem | Fix |
 |---------|-----|
 | `ADB not found` | Add `$ANDROID_HOME/platform-tools` to PATH |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | `adb uninstall com.milady.xr.quest` first |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | `adb uninstall com.eliza.xr.quest` first |
 | TWA shows browser bar (not full-screen) | Digital Asset Links file missing or SHA256 mismatch |
 | Black screen on Quest | The PWA must be served over HTTPS; check `manifest.json` is reachable |
 | `bubblewrap build` fails on Gradle | Run `npx @bubblewrap/cli doctor` and accept the JDK/Gradle setup prompts |

@@ -22,7 +22,6 @@ import numpy as np
 
 from eliza_robot.rl.text_conditioned.policy import TextConditionedPolicy
 
-
 CANNED_TEXTS = [
     "stand up",
     "walk forward",
@@ -46,6 +45,10 @@ def main() -> int:
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--n-trials", type=int, default=4)
+    parser.add_argument("--profile", default=None)
+    parser.add_argument("--require-proprio-dim", type=int, default=None)
+    parser.add_argument("--require-action-dim", type=int, default=None)
+    parser.add_argument("--require-output-dim", type=int, default=None)
     args = parser.parse_args()
 
     print(f"Loading policy from {args.ckpt}...")
@@ -85,7 +88,7 @@ def main() -> int:
         magnitudes: list[float] = []
         latencies_ms: list[float] = []
         actions_first: np.ndarray | None = None
-        for trial in range(args.n_trials):
+        for _trial in range(args.n_trials):
             proprio = _make_proprio(rng, proprio_dim)
             t0 = time.time()
             action, task_id = policy.act(text, proprio)
@@ -115,10 +118,18 @@ def main() -> int:
         )
 
     out_path = args.ckpt / "inference_check.json"
-    out_path.write_text(json.dumps(results, indent=2))
+    output_dim = int(raw.get("output_dim", manifest.output_dim))
+    checks = {
+        "profile": args.profile is None or manifest.profile_id == args.profile,
+        "proprio_dim": args.require_proprio_dim is None or proprio_dim == args.require_proprio_dim,
+        "action_dim": args.require_action_dim is None or manifest.action_dim == args.require_action_dim,
+        "output_dim": args.require_output_dim is None or output_dim == args.require_output_dim,
+    }
+    report = {"ok": all(checks.values()), "checks": checks, "results": results}
+    out_path.write_text(json.dumps(report, indent=2))
     print()
     print(f"Wrote {out_path}")
-    return 0
+    return 0 if report["ok"] else 2
 
 
 if __name__ == "__main__":

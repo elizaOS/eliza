@@ -1,0 +1,197 @@
+schema: eliza.e1_phone_radio_module_source_revalidation.v1
+status: public_sources_revalidated_radio_modules_not_supplier_approved
+date: '2026-05-21'
+claim_boundary: >
+  Public-source revalidation for off-the-shelf cellular and Wi-Fi/Bluetooth
+  module choices. These fields can drive RFQ, footprint-envelope planning,
+  host-interface contracts, and routing constraints, but they are not supplier
+  approval, final pinouts, reference layouts, firmware release packs, regulatory
+  evidence, tuned antennas, SAR, or carrier approval.
+source_artifacts:
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+  - board/kicad/e1-phone/radio-module-integration.yaml
+  - board/kicad/e1-phone/module-rf-pinout-execution.yaml
+  - board/kicad/e1-phone/rf-connectivity-closure.yaml
+
+browser_revalidation_context:
+  method: manual_browser_search_and_open_on_2026_05_21
+  current_browser_result:
+    checked_date: '2026-05-21'
+    cellular_vendor_pages_still_expose:
+      - Quectel RG255C 5G RedCap LGA family
+      - Quectel RM255C-GL M.2 RedCap family as lab/dev fallback
+      - 3GPP Release 17 RedCap class
+      - LTE Cat 4 fallback
+      - optional multi-constellation GNSS
+      - USB 2.0, PCIe 2.0, PCM, UART, SGMII, and SPI host-interface class
+    quectel_2026_brochure_adds:
+      - RG255C LGA 29.0 x 32.0 x 2.4 mm form factor
+      - RG255C M.2 30.0 x 42.0 x 3.25 mm form factor
+      - RG255C Mini PCIe 30.0 x 50.95 x 4.95 mm form factor
+      - RM255C-GL M.2 42.0 x 30.0 x 2.3 mm form factor
+      - RG255C regional SKU/band families for NA, EU, and GL
+      - -40 C to 85 C extended-temperature family signal
+    wifi_vendor_pages_still_expose:
+      - Murata Type 2EA LBEE5XV2EA-802 module
+      - In Production product status
+      - Infineon CYW55573 chipset
+      - Wi-Fi 6E 2x2 MIMO over 2.4 GHz, 5 GHz, and 6 GHz
+      - Bluetooth 5.3 BR/EDR/LE
+      - 12.5 x 9.4 x 1.2 mm shielded SMT package
+      - PCIe, SDIO, UART, GPIO, and PCM interface class
+      - Linux and Android software support signal
+
+revalidated_sources:
+  - id: cellular_primary_quectel_rg255c_vendor_page
+    group: cellular
+    source_type: direct_quectel_vendor_page_opened_2026_05_21
+    supplier: Quectel
+    url: https://www.quectel.com/product/5g-redcap-rg255c-series/
+    candidate: RG255C_series
+    observed_public_fields:
+      family: RG255C
+      form_factor: LGA
+      class: 5G_RedCap_Sub_6
+      release: 3GPP_Rel_17_RedCap
+      peak_downlink_mbps: 223
+      peak_uplink_mbps: 123
+      fallback: LTE_Cat_4
+      gnss: optional_multi_constellation
+      host_interfaces:
+        - USB_2_0
+        - PCIe_2_0
+        - PCM
+        - UART
+        - SGMII
+        - SPI
+      driver_os:
+        - Linux
+        - Android
+        - Windows
+    board_decision: keep_rg255c_lga_family_as_primary_phone_cellular_module_pending_region_sku_and_supplier_pack
+    blocking_gap: exact_region_sku_band_matrix_pad_map_reference_layout_step_firmware_carrier_and_sar_scope_missing
+  - id: cellular_quectel_2026_product_brochure
+    group: cellular
+    source_type: direct_quectel_2026_brochure_opened_2026_05_21
+    supplier: Quectel
+    url: https://www.quectel.com/content/uploads/2026/01/Quectel_Product_Brochure_V8.5_2026.pdf
+    candidate: RG255C_and_RM255C_family
+    observed_public_fields:
+      rg255c_lga_dimensions_mm:
+        width: 29.0
+        height: 32.0
+        thickness: 2.4
+      rg255c_m2_dimensions_mm:
+        width: 30.0
+        height: 42.0
+        thickness: 3.25
+      rm255c_gl_m2_dimensions_mm:
+        width: 42.0
+        height: 30.0
+        thickness: 2.3
+      rg255c_lga_weight_g: 5.2
+      rm255c_gl_weight_g: 6.0
+      extended_temperature_c:
+        min: -40
+        max: 85
+      region_sku_families:
+        - RG255C_NA
+        - RG255C_EU
+        - RG255C_GL
+    board_decision: keep_lga_rg255c_for_phone_pcb_and_rm255c_gl_m2_as_lab_fallback
+    blocking_gap: brochure_is_public_summary_not_hardware_design_manual_or_orderable_sku_commit
+  - id: wifi_bluetooth_primary_murata_type_2ea_vendor_page
+    group: wifi_bluetooth
+    source_type: direct_murata_vendor_page_opened_2026_05_21
+    supplier: Murata
+    url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+    candidate: LBEE5XV2EA-802
+    observed_public_fields:
+      order_number: LBEE5XV2EA-802
+      product_status: In_Production
+      chipset: Infineon_CYW55573
+      wifi: 802.11a_b_g_n_ac_ax_2x2_MIMO_2p4_5_6_GHz
+      bluetooth: 5.3_BR_EDR_LE
+      interfaces:
+        - PCIe
+        - SDIO
+        - UART
+        - GPIO
+        - PCM
+      package_mm:
+        width: 12.5
+        height: 9.4
+        thickness: 1.2
+      io_voltage_v: 1.8
+      temperature_c:
+        min: -40
+        max: 85
+    board_decision: keep_type_2ea_as_primary_wifi6e_bluetooth_5p3_module_pending_reference_layout_firmware_and_regulatory_pack
+    blocking_gap: app_note_land_pattern_reference_layout_step_firmware_nvram_clm_license_and_antenna_gain_review_missing
+  - id: wifi_bluetooth_murata_type_2ea_product_brief
+    group: wifi_bluetooth
+    source_type: direct_murata_product_brief_opened_2026_05_21
+    supplier: Murata
+    url: https://www.murata.com/-/media/webrenewal/products/connectivitymodule/asset/pub/rfm/data/type2ea/type2ea-brief.ashx?cvid=20231215091723000000&la=en-sg
+    candidate: LBEE5XV2EA-802
+    observed_public_fields:
+      order_number: LBEE5XV2EA-802
+      embedded_artists_m2_module: EAR00413
+      chipset: Infineon_CYW55573
+      wifi_interface:
+        - PCIe_3_0
+        - SDIO_3_0
+      bluetooth_interface: UART
+      software:
+        - Linux
+        - Android
+      wifi_max_data_rate_mbps: 1201
+      bluetooth_max_data_rate_mbps: 3
+      interface_voltage_v: 1.8
+      package_mm:
+        width: 12.5
+        height: 9.4
+        thickness: 1.2
+    board_decision: use_product_brief_to_refine_host_bus_speed_and_lab_adapter_expectations_not_release
+    blocking_gap: product_brief_is_not_land_pattern_reference_layout_or_firmware_license_pack
+
+layout_decisions:
+  cellular_primary: Quectel_RG255C_LGA_remains_primary_phone_module
+  cellular_lab_fallback: Quectel_RM255C_GL_M2_remains_dev_bringup_fallback_not_phone_layout_primary
+  wifi_bluetooth_primary: Murata_LBEE5XV2EA_802_Type_2EA_remains_primary_phone_wifi_bt_module
+  wifi_bluetooth_lab_adapter: Embedded_Artists_EAR00413_M2_signal_is_lab_evaluation_only
+
+cross_checks:
+  cellular_vendor_page_matches_package_binding: true
+  cellular_brochure_dimensions_bound_to_phone_vs_lab_decision: true
+  wifi_vendor_page_matches_package_binding: true
+  wifi_product_brief_matches_package_binding: true
+  cellular_lga_selected_over_m2_for_phone_size: true
+  wifi_module_fits_current_top_rf_region: true
+  rf_feed_count_remains_five: true
+  requires_supplier_pack_firmware_rf_and_regulatory_before_release: true
+
+required_next_supplier_artifacts:
+  - Quectel exact region SKU/orderable MPN, band matrix, hardware design guide, LGA pad map, reference layout,
+    STEP model, firmware/driver package, test-mode procedure, and carrier/PTCRB/GCF plan
+  - Murata Type 2EA application note, land pattern, reference layout, STEP model, firmware/NVRAM/CLM/license archive,
+    regulatory database, final antenna gain review, and modular approval scope
+  - antenna vendor review for cellular main/diversity/GNSS and Wi-Fi/Bluetooth 2x2 feed locations
+  - factory RF calibration procedure, conducted test access, VNA/coexistence/SAR pre-scan plan, and first-article RF limits
+
+release_blockers:
+  - public vendor pages and brochures are not supplier design packs
+  - cellular region SKU, LGA pad map, reference layout, firmware, carrier, and SAR scope are missing
+  - Wi-Fi/Bluetooth land pattern, reference layout, firmware/NVRAM/CLM, license, and regulatory review are missing
+  - routed 50 ohm RF feeds, matching networks, conducted access, antenna tuning, VNA, coexistence, and factory RF limits are missing
+
+forbidden_claims:
+  - cellular_ready
+  - wifi_ready
+  - bluetooth_ready
+  - carrier_ready
+  - regulatory_ready
+  - rf_ready
+  - sar_ready
+  - enclosure_ready

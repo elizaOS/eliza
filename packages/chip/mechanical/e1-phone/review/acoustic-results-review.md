@@ -16,4 +16,4 @@ This review is fail-closed until acoustic lab rows are populated.
 
 ## Release Rule
 
-- Every speaker, microphone, earpiece, and leak measurement row must include sample, operator, numeric passing result, and explicit pass disposition.
+- Every speaker, microphone, earpiece, and leak measurement row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_acoustic_result, raw acoustic/log data, fixture calibration certificate, photo/log artifact, and module/mesh/gasket lot traceability record.

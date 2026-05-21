@@ -53,3 +53,8 @@ data/processed/
 # OS noise
 .DS_Store
 research/
+
+# Third-party MJCF source library (sparse-cloned by
+# scripts/sync_menagerie.sh; the canonical copies live under
+# assets/profiles/<id>/mjcf/ so the menagerie checkout is build-time only).
+vendor/mujoco_menagerie/

@@ -1,0 +1,159 @@
+schema: eliza.e1_phone_schematic_symbol_footprint_closure.v1
+status: blocked_requires_real_kicad_symbols_supplier_footprints_and_erc
+date: '2026-05-21'
+claim_boundary: KiCad schematic, symbol, and footprint closure contract only. This records the evidence required
+  to replace the current text-only schematic scaffold and placeholder PCB footprints with reviewed symbols, exact
+  supplier pinouts, supplier land patterns, net ties, ERC evidence, and footprint-to-3D-model bindings. It is not
+  a fabrication schematic, routed PCB, ERC pass, DRC pass, production BOM, or enclosure-ready board.
+source_artifacts:
+  - board/kicad/e1-phone/e1-phone.kicad_pro
+  - board/kicad/e1-phone/schematic/e1-phone.kicad_sch
+  - board/kicad/e1-phone/schematic/power_usb.kicad_sch
+  - board/kicad/e1-phone/schematic/compute.kicad_sch
+  - board/kicad/e1-phone/schematic/display_camera.kicad_sch
+  - board/kicad/e1-phone/schematic/radios.kicad_sch
+  - board/kicad/e1-phone/schematic/audio_buttons.kicad_sch
+  - board/kicad/e1-phone/schematic/split_interconnect.kicad_sch
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+  - board/kicad/e1-phone/preliminary-bom.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+current_kicad_state:
+  schematic_sheet_count: 14
+  schematic_symbol_count: 0
+  schematic_text_item_count: 211
+  pcb_declared_net_count: 181
+  pcb_placeholder_footprint_count: 87
+  pcb_track_or_zone_count: 11
+  schematic_evidence_class: text_only_non_release_scaffold
+  pcb_evidence_class: non_release_placeholder_footprint_floorplan
+  erc_report_present: false
+  footprint_library_release_present: false
+  symbol_library_release_present: false
+  supplier_3d_model_binding_present: false
+major_symbol_footprint_closures:
+  - domain: usb_c_charge_data_debug
+    refdes_groups:
+      - J_USB_C
+      - U_USB_PD
+      - U_CHARGER
+    required_supplier_inputs:
+      - Type-C receptacle datasheet, recommended footprint, shell stake drawing, and STEP
+      - USB-PD controller symbol and pin map reviewed against selected charging policy
+      - charger/power-path symbol, package, thermal pad, and sense-pin Kelvin routing requirements
+      - ESD/TVS selected MPNs with package, pad geometry, and VBUS surge/current rating
+    required_kicad_outputs:
+      - reviewed KiCad symbols with electrical types and hidden power pins resolved
+      - USB-C receptacle footprint with shell pads, keepouts, courtyard, paste, and 3D model
+      - charger and USB-PD footprints with thermal-pad paste aperture and height model
+      - ERC report with no unwaived power, CC, VBUS, or shield grounding errors
+    current_status: blocked_text_scaffold_and_placeholder_footprints_only
+  - domain: display_touch
+    refdes_groups:
+      - J_DISPLAY_TOUCH
+    required_supplier_inputs:
+      - selected 5.5 inch display FPC pinout, mating connector MPN, stack drawing, and STEP
+      - touch controller I2C address, interrupt/reset pins, panel initialization, and backlight/bias power spec
+      - FPC exit, stiffener, bend radius, cover-glass datum, and display active-area drawing
+    required_kicad_outputs:
+      - display/touch connector symbol matching supplier pin order exactly
+      - connector footprint with pad numbering, courtyard, keepout, and mated-height model
+      - DSI/touch/backlight/bias nets tied to routing constraints and power sequencing
+      - ERC report plus pinout review signoff
+    current_status: blocked_waiting_supplier_pinout_and_connector_land_pattern
+  - domain: front_rear_cameras
+    refdes_groups:
+      - J_CAM0
+      - J_CAM1
+      - J_CAM0_CAM1
+    required_supplier_inputs:
+      - front and rear module FPC pinouts, lane order, clock, reset, power sequence, and mating connector MPNs
+      - lens axis, z-height, module outline, shield height, optical window, and STEP models
+      - driver/OTP calibration and bring-up interface requirements
+    required_kicad_outputs:
+      - separate front and rear camera symbols or explicit dual-camera connector symbol
+      - supplier land patterns with pad order verified against CSI lane assignment
+      - camera power sequencing and reset/clock nets captured in schematic
+      - ERC report plus camera pinout signoff
+    current_status: blocked_waiting_supplier_camera_drawings_and_pinouts
+  - domain: radios_cellular_wifi_bt_gnss
+    refdes_groups:
+      - U_CELL
+      - U_WIFI_BT
+      - U_SIM_ESIM
+    required_supplier_inputs:
+      - cellular module hardware design guide, region SKU band matrix, LGA/socket footprint, and antenna reference
+        layout
+      - Wi-Fi/Bluetooth module datasheet, reference land pattern, RF feed rules, firmware/regulatory scope, and
+        STEP
+      - SIM/eSIM reference design, ESD, level shifting, and carrier/regulatory certification scope
+    required_kicad_outputs:
+      - cellular, Wi-Fi/Bluetooth, SIM/eSIM symbols and exact host-interface pin mapping
+      - module footprints with keepouts, ground pads, stencil, courtyard, and 3D models
+      - RF feed, conducted access, matching footprints, and antenna keepouts tied to net classes
+      - ERC report covering host wake/reset/enable, USIM/eSIM, PCIe/USB2, and RF control pins
+    current_status: blocked_waiting_module_reference_layout_and_certification_scope
+  - domain: power_battery_pmic_thermal
+    refdes_groups:
+      - J_BATTERY
+      - U_PMIC
+      - U_CHARGER
+      - U_PMIC_CHARGER
+    required_supplier_inputs:
+      - battery pack drawing, connector pinout, NTC curve, PCM limits, swelling envelope, UN38.3, and MSDS
+      - PMIC and charger package drawings, thermal pad rules, power-sequence requirements, and layout guides
+      - regulator inductor/capacitor MPNs, derating, DCR/ESR, current ratings, and height models
+    required_kicad_outputs:
+      - rail-by-rail schematic with power flags, sequencing, load switches, and measurement points
+      - footprints for PMIC, charger, passives, inductors, current sense, and battery connector
+      - ERC plus reviewed power-tree, current-limit, and thermal-pad signoff
+    current_status: blocked_waiting_power_tree_symbol_capture_and_supplier_land_patterns
+  - domain: side_buttons_audio_haptics_split_interconnect
+    refdes_groups:
+      - SW_POWER_VOL
+      - U_AUDIO_SPK_MIC
+      - U_AUDIO_HAPTIC
+      - J_TOP_BOTTOM_FLEX_TOP
+      - J_TOP_BOTTOM_FLEX_BOTTOM
+    required_supplier_inputs:
+      - power/volume switch or side-key flex drawing, force/travel stack, land pattern, and lifecycle rating
+      - codec, amplifier, microphones, speaker box, haptic driver/LRA, acoustic gasket, and port drawings
+      - top/bottom flex connector pin count, mating height, pinout, stiffener, bend, and strain relief drawing
+    required_kicad_outputs:
+      - side-key, audio, haptic, and interconnect symbols with exact pin order
+      - footprints with mechanical actuation, acoustic, and mated-height datums
+      - split-board continuity/test coverage and ERC for wake/audio/haptic crossing nets
+    current_status: blocked_waiting_supplier_mechanical_and_connector_data
+release_required_outputs:
+  - board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/libraries/e1-phone-symbols.kicad_sym
+  - board/kicad/e1-phone/production/libraries/e1-phone-footprints.pretty
+  - board/kicad/e1-phone/production/reports/pinout-review-signoff.yaml
+  - board/kicad/e1-phone/production/reports/footprint-3d-model-binding.yaml
+cross_checks:
+  schematic_is_text_scaffold: true
+  real_schematic_symbols_missing: true
+  placeholder_footprints_present: true
+  tracks_and_zones_missing: true
+  erc_missing: true
+  every_major_interface_has_symbol_footprint_closure_record: true
+  production_outputs_are_blocked_until_supplier_symbols_footprints_and_erc_exist: true
+release_blockers:
+  - KiCad schematic sheets contain text scaffolds instead of real symbols and wires
+  - exact supplier pinouts and mating connector drawings are not frozen
+  - reviewed symbol library and footprint library are not present
+  - placeholder footprints have not been replaced with supplier land patterns, courtyards, paste, and STEP models
+  - footprint pad numbering has not been checked against supplier pinouts
+  - ERC report and symbol electrical-type waivers are missing
+  - PCB has no routed tracks or filled zones
+forbidden_claims:
+  - schematic_ready
+  - symbols_ready
+  - footprints_ready
+  - erc_clean
+  - routed_pcb_ready
+  - fabrication_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

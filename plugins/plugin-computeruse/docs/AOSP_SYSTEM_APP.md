@@ -8,7 +8,7 @@ Third-party apps on stock Android cannot:
 - Inject raw input events with pixel-perfect coordinates (only `AccessibilityGestureDescription`, which is coarser).
 - Enumerate all running processes beyond what `ActivityManager.getRunningAppProcesses()` returns to non-system callers.
 
-Deploying Milady as a privileged system app in a custom AOSP build removes all three restrictions.
+Deploying Eliza as a privileged system app in a custom AOSP build removes all three restrictions.
 The `aosp` build flavor enables the `AospPrivilegedBridge` implementation; the `consumer` flavor
 ships the stub that always returns `null` from `createIfAvailable()`.
 
@@ -49,12 +49,12 @@ Place the app source under a dedicated overlay to keep the `device/` tree clean:
 
 ```
 device/elizaos/
-  milady/
+  eliza/
     Android.bp          # BUILD module for the system app
     app/                # APK source tree (this repo, checked out)
-    privapp-permissions-milady.xml
+    privapp-permissions-eliza.xml
     sepolicy/
-      milady_app.te
+      eliza_app.te
       file_contexts
 ```
 
@@ -62,7 +62,7 @@ device/elizaos/
 
 ```makefile
 android_app {
-    name: "MiladyApp",
+    name: "ElizaApp",
     certificate: "platform",        # co-signs with the platform key
     privileged: true,               # installs into /system/priv-app/
     platform_apis: true,            # allows hidden API access
@@ -80,12 +80,12 @@ android_app {
 }
 ```
 
-### 3. `privapp-permissions-milady.xml`
+### 3. `privapp-permissions-eliza.xml`
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <permissions>
-    <privapp-permissions package="ai.milady.milady">
+    <privapp-permissions package="ai.eliza.eliza">
         <permission name="android.permission.READ_FRAME_BUFFER" />
         <permission name="android.permission.INJECT_EVENTS" />
         <permission name="android.permission.REAL_GET_TASKS" />
@@ -95,41 +95,41 @@ android_app {
 </permissions>
 ```
 
-Install this to `$(TARGET_COPY_OUT_SYSTEM)/etc/permissions/privapp-permissions-milady.xml`
+Install this to `$(TARGET_COPY_OUT_SYSTEM)/etc/permissions/privapp-permissions-eliza.xml`
 via the `PRODUCT_COPY_FILES` variable in your device's `device.mk`:
 
 ```makefile
 PRODUCT_COPY_FILES += \
-    device/elizaos/milady/privapp-permissions-milady.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/permissions/privapp-permissions-milady.xml
+    device/elizaos/eliza/privapp-permissions-eliza.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/permissions/privapp-permissions-eliza.xml
 ```
 
-### 4. SELinux policy (`milady_app.te`)
+### 4. SELinux policy (`eliza_app.te`)
 
 The minimal type enforcement rules for the privileged capabilities:
 
 ```te
-type milady_app, domain;
-type milady_app_exec, exec_type, file_type;
+type eliza_app, domain;
+type eliza_app_exec, exec_type, file_type;
 
 # Allow binder IPC to system_server (IActivityManager, InputManager)
-binder_call(milady_app, system_server)
-binder_use(milady_app)
+binder_call(eliza_app, system_server)
+binder_use(eliza_app)
 
 # Allow surface flinger frame buffer read
-allow milady_app gpu_device:chr_file { read ioctl };
-allow milady_app surfaceflinger:fd use;
+allow eliza_app gpu_device:chr_file { read ioctl };
+allow eliza_app surfaceflinger:fd use;
 
 # Allow input event injection
-allow milady_app input_device:chr_file { read write };
+allow eliza_app input_device:chr_file { read write };
 
 # Standard app capabilities
 # (inherit from untrusted_app with additions above)
 ```
 
-Add `milady_app.te` and the `file_contexts` line:
+Add `eliza_app.te` and the `file_contexts` line:
 
 ```
-/system/priv-app/MiladyApp/MiladyApp.apk  u:object_r:priv_app_data_file:s0
+/system/priv-app/ElizaApp/ElizaApp.apk  u:object_r:priv_app_data_file:s0
 ```
 
 to your `sepolicy/` overlay directory.
@@ -253,8 +253,8 @@ subset that the public API returns for non-system callers.
 # From the AOSP root
 source build/envsetup.sh
 lunch <target>-eng          # e.g. sdk_phone_x86_64-eng or device_name-userdebug
-m MiladyApp                 # build just the APK
-adb install -r -d $(ANDROID_PRODUCT_OUT)/system/priv-app/MiladyApp/MiladyApp.apk
+m ElizaApp                 # build just the APK
+adb install -r -d $(ANDROID_PRODUCT_OUT)/system/priv-app/ElizaApp/ElizaApp.apk
 adb reboot
 ```
 
@@ -294,7 +294,7 @@ On a flashed AOSP image:
   for missing allow rules. Build in `userdebug` or `eng` mode to get `auditd` output.
 - Use `audit2allow -i /path/to/avc.log` to generate candidate rules, then
   review them manually — `audit2allow` output is a starting point, not the final policy.
-- Avoid `permissive milady_app` in production builds; it disables all MAC enforcement
+- Avoid `permissive eliza_app` in production builds; it disables all MAC enforcement
   for the domain.
 
 ## Consumer build difference

@@ -205,7 +205,6 @@ import {
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
 import {
-  migrateLegacyStateDir,
   resolveStateDir,
   resolveUserPath,
 } from "../config/paths.ts";
@@ -2964,13 +2963,7 @@ export async function startEliza(
   // Register log listener for chat mirroring
   addLogListener(logToChatListener);
 
-  // 0. Back-compat: migrate a legacy `~/.milady` state dir to `~/.eliza`
-  //    on first run (no-op when an explicit state dir is set or `~/.eliza`
-  //    already exists). Done before any state-dir read so config/skills/etc.
-  //    land in the migrated directory.
-  migrateLegacyStateDir();
-
-  // 1. Load Eliza config from ~/.eliza/eliza.json (legacy `milady.json` honored)
+  // 1. Load Eliza config from ~/.eliza/eliza.json
   let config: ElizaConfig;
   try {
     config = loadElizaConfig();

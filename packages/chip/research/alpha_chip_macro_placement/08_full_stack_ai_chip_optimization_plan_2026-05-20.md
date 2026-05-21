@@ -606,21 +606,23 @@ Current local validation on the 128 GiB M4 host:
   (`entries=587`), 41 external assets, 21 intake manifests,
   candidate/tool-action checks, and docs skeleton checks.
 - `make PYTHON=/usr/bin/python3
-  AI_EDA_RUN_ID=codex-runbook-readiness ai-eda-cuda-readiness-audit`: PASS.
-  The CUDA metadata payload contains 203 files, covers 41 external assets,
+  AI_EDA_RUN_ID=codex-safety-readiness ai-eda-cuda-readiness-audit`: PASS.
+  The CUDA metadata payload contains 204 files, covers 41 external assets,
   includes the current-research watchlist YAML plus capture/check/conversion
   scripts, training-corpus manifest build/check scripts, dry-run run-plan
-  executor/checker scripts, a generated `cuda_handoff_README.md` checked
-  against the run-plan command anchors, OpenROAD ML snapshot capture/check
-  scripts, Macro Placement Challenge, MLCAD FPGA macro, research-code asset,
-  and OpenLane flow-label checkers. The generated execution manifest expands run-id
-  placeholders for 172 run-plan commands, selects 168 directly runnable
-  commands, skips two generic template commands, and explicitly skips the two
-  embedded run-plan orchestration commands so the executor cannot recursively
-  invoke itself. The checker also validates that execute mode requires explicit
-  `--stage` selection and per-risk allow flags before downloads, training,
-  inference, replay, or AlphaChip commands can run. Dataset payloads, tensor
-  payloads, model weights, and build outputs remain outside the tarball.
+  executor/checker scripts, the stage-selection/risky-stage safety-matrix
+  checker, a generated `cuda_handoff_README.md` checked against the run-plan
+  command anchors, OpenROAD ML snapshot capture/check scripts, Macro Placement
+  Challenge, MLCAD FPGA macro, research-code asset, and OpenLane flow-label
+  checkers. The generated execution manifest expands run-id placeholders for
+  173 run-plan commands, selects 169 directly runnable commands, skips two
+  generic template commands, and explicitly skips the two embedded run-plan
+  orchestration commands so the executor cannot recursively invoke itself. The
+  safety matrix validates 14 stage selections and 20 checks, including blocked
+  execute-mode attempts for asset downloads, training, inference, replay, and
+  AlphaChip stages unless their explicit allow flags are supplied. Dataset
+  payloads, tensor payloads, model weights, and build outputs remain outside
+  the tarball.
 - `python3 scripts/ai_eda/fetch_external_asset.py --asset <latest-asset>
   --execute/--verify-only --run-id codex-latest-ai-eda-20260521`: PASS for
   MCP4EDA, ORFS-Agent, OpenROAD Agent, OpenROAD MCP, Open3DBench, DREAMPlace,
@@ -677,29 +679,33 @@ Current local validation on the 128 GiB M4 host:
   AuDoPEDA, AiEDA, and DreamerV3+FR PCB routing. The checker requires source
   hashes, one record per watchlist entry, metadata-only/no-execution policy
   flags, and explicit replay/signoff evidence in every record.
-- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-corpus-manifest2
-  ai-eda-training-corpus-manifest`: PASS. The manifest covers 15 normalized
-  record-producing datasets and 226 records across design bundles, placement
-  cases, graph samples, flow runs, text-instruction samples, candidate
-  fixtures, and tool-action fixtures. The checker verifies record/report
-  hashes, exact dataset inventory, schema-count totals, no payload/model-weight
-  policy flags, and deterministic-replay-before-claim boundaries.
+- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-openroad-corpus-manifest
+  ai-eda-training-corpus-manifest`: PASS. The manifest covers 16 normalized
+  record-producing datasets, including the OpenROAD EDA Corpus JSONL splits. It
+  records 242 sampled/schema records and 2,342 logical training/RAG samples,
+  including 2,116 OpenROAD instruction samples split as train=1,691,
+  validation=206, and test=219. The checker verifies record/report hashes,
+  JSONL split hashes and line counts, exact dataset inventory,
+  schema-count totals, no payload/model-weight policy flags, and
+  deterministic-replay-before-claim boundaries.
 - `make PYTHON=/usr/bin/python3
   AI_EDA_RUN_ID=codex-openroad-ml-snapshot ai-eda-openroad-ml-snapshot`: PASS.
   The snapshot checker records `NO_OPENLANE_RUN_FOUND` in this checkout and
   validates the dry-run label report, advisory-only claim boundary, missing-run
   blocker list, and holdout policy before any PD predictor training claim.
 - `make PYTHON=/usr/bin/python3
-  AI_EDA_RUN_ID=codex-corpus-manifest2 ai-eda-training-corpus-manifest`: PASS.
-  The manifest covers 15 normalized datasets and 226 local records spanning
-  schema fixtures, TILOS/ChipBench-D/Macro Placement Challenge macro placement,
-  CircuitNet3, AiEDA/iDATA, EDALearn, MLCAD FPGA transfer metadata,
-  research-code/current-research RAG records, OpenABC-D logic synthesis,
-  E1 softmacro cases, E1 OpenLane conversion, and fixture OpenLane flow labels.
+  AI_EDA_RUN_ID=codex-openroad-corpus-manifest ai-eda-training-corpus-manifest`: PASS.
+  The manifest now covers 16 normalized datasets spanning schema fixtures,
+  OpenROAD EDA Corpus train/validation/test JSONL, TILOS/ChipBench-D/Macro
+  Placement Challenge macro placement, CircuitNet3, AiEDA/iDATA, EDALearn,
+  MLCAD FPGA transfer metadata, research-code/current-research RAG records,
+  OpenABC-D logic synthesis, E1 softmacro cases, E1 OpenLane conversion, and
+  fixture OpenLane flow labels.
 - `make PYTHON=/usr/bin/python3
-  AI_EDA_RUN_ID=codex-runbook-payload ai-eda-cuda-payload`: PASS with
-  41 asset groups and 203 included files after the 2026 latest-research
-  registry/watchlist expansion. The
+  AI_EDA_RUN_ID=codex-openroad-corpus-payload2 ai-eda-cuda-run-plan-dry-run`:
+  PASS with 41 asset groups, 206 included payload files, 174 run-plan commands,
+  and 170 selected dry-run commands after adding OpenROAD EDA Corpus JSONL
+  split outputs and run-plan safety metadata. The
   payload checker validates the generated
   report and tarball, confirms the embedded `cuda_training_run_plan.json`
   matches the reported run plan, confirms the embedded
@@ -713,9 +719,12 @@ Current local validation on the 128 GiB M4 host:
   `check_training_corpus_manifest.py`,
   `execute_cuda_run_plan.py`,
   `check_cuda_run_plan_execution.py`,
+  `check_cuda_run_plan_safety_matrix.py`,
   `capture_openroad_ml_snapshot.py`, `check_openroad_ml_snapshot.py`, and the
   `current_research_watchlist/<run-id>/targets_report.json` plus
   `cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json`,
+  `cuda_run_plan_safety_matrix/<run-id>/cuda_run_plan_safety_matrix.json`,
+  `openroad_eda_corpus/<run-id>/{train,val,test}.jsonl`,
   `pd_predictor_dataset/<run-id>/{snapshot_manifest,label_report}.json` and
   `training_corpus_manifest/<run-id>/training_corpus_manifest.json` outputs,
   checks dependency order so all normalized record producers run before the
@@ -733,16 +742,25 @@ Current local validation on the 128 GiB M4 host:
   checks referenced command scripts are present in the tarball, and rejects
   ignored payload directories, build outputs, dataset
   archives, and model-weight files.
+- `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-current-safety
+  ai-eda-cuda-run-plan-safety-matrix`: PASS. The matrix uses the generated
+  run plan to validate 14 independent stage selections and 20 safety checks,
+  including execute-mode blocks for asset downloads, training, inference,
+  replay, and AlphaChip stages when their explicit allow flags are absent,
+  without executing commands or downloading assets.
 - `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-readiness-dryrun
   ai-eda-cuda-readiness-audit`: PASS with `PASS_WITH_BLOCKERS_RECORDED`. The
-  audit now depends on `ai-eda-cuda-run-plan-dry-run`, records the expanded
-  `cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json` manifest as
-  an input artifact, and exposes `run_plan_dry_run_validated=true` before
-  assessing CUDA-host readiness. The checked Mac run still records five hard
-  blockers: `cuda.available=false` / `large_training_ready=false`, AlphaChip
-  checkpoint access remains `PASS_BLOCKED_CURRENT`, setup-check bootstrap
-  evidence is missing for this run ID, training-handoff bootstrap evidence is
-  missing for this run ID, and E1 OpenLane/OpenROAD replay remains
+  audit now depends on `ai-eda-cuda-run-plan-dry-run` and
+  `ai-eda-cuda-run-plan-safety-matrix`, records both the expanded
+  `cuda_run_plan_execution/<run-id>/cuda_run_plan_execution.json` manifest and
+  `cuda_run_plan_safety_matrix/<run-id>/cuda_run_plan_safety_matrix.json` as
+  input artifacts, and exposes `run_plan_dry_run_validated=true` plus
+  `run_plan_safety_matrix_validated=true` before assessing CUDA-host readiness.
+  The checked Mac run still records five hard blockers: `cuda.available=false`
+  / `large_training_ready=false`, AlphaChip checkpoint access remains
+  `PASS_BLOCKED_CURRENT`, setup-check bootstrap evidence is missing for this
+  run ID, training-handoff bootstrap evidence is missing for this run ID, and
+  E1 OpenLane/OpenROAD replay remains
   `BLOCKED_REPLAY_EXECUTION`.
 - `make PYTHON=/usr/bin/python3 AI_EDA_RUN_ID=codex-readiness-args
   AI_EDA_SETUP_RUN_ID=codex-cuda-ready-20260521
@@ -1553,9 +1571,15 @@ Inputs:
 
 Implementation TODOs:
 
-- Add a model/workload manifest for every AI benchmark:
-  source, license, input shape, quantization, expected ops, fallback ops,
-  runtime path, and golden output tolerance.
+- [x] Add a model/workload manifest for AI benchmark lanes:
+  `docs/spec-db/ai-eda/e1-ai-workload-manifest.yaml` records source, license,
+  input shape, quantization, expected ops, fallback ops, runtime path, golden
+  output tolerance, artifacts, and blockers for TFLite CPU/NNAPI smoke,
+  NPU scale simulation, Timeloop mapping, StableHLO lowering, INT4, FP8, and
+  sparse 2:4 fixtures. `scripts/ai_eda/check_ai_workload_manifest.py` validates
+  the manifest, benchmark-plan references, local artifact hashes, required
+  workload categories, and blocked zero-fallback lanes. `make docs-check`,
+  bootstrap metadata, and the CUDA payload/run plan now carry this gate.
 - Integrate Timeloop/Accelergy and ZigZag outputs into the same E1 candidate
   schema as PD models.
 - Add compiler autotuning experiments for:
@@ -2012,6 +2036,8 @@ not as:
   RL4LS, MCP4EDA, ORFS-Agent, OpenROAD Agent, OpenROAD MCP, Open3DBench, and
   DREAMPlace research-code repos into normalized text-instruction records for
   RAG/CUDA runbook training, with no execution or optimization claim.
+- [x] Add and validate the E1 AI workload/model manifest for TFLite, NPU scale,
+  Timeloop, StableHLO lowering, INT4, FP8, and sparse 2:4 benchmark lanes.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Replace CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters with the real

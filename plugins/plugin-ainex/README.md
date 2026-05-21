@@ -31,11 +31,11 @@ This plugin is the thin TypeScript surface the Eliza agent uses to talk to that 
 
 | Variable                    | Default                | Purpose                                                         |
 | --------------------------- | ---------------------- | --------------------------------------------------------------- |
-| `MILADY_AINEX_BRIDGE_URL`   | `ws://localhost:9100`  | Websocket URL for the AiNex bridge server.                      |
-| `MILADY_AINEX_PROFILE`      | `hiwonder-ainex`       | Robot profile descriptor name to load on the bridge.            |
-| `MILADY_AINEX_CAMERA_FPS`   | `10`                   | Frame rate to subscribe to from the robot's camera stream.      |
+| `ELIZA_AINEX_BRIDGE_URL`   | `ws://localhost:9100`  | Websocket URL for the AiNex bridge server.                      |
+| `ELIZA_AINEX_PROFILE`      | `hiwonder-ainex`       | Robot profile descriptor name to load on the bridge.            |
+| `ELIZA_AINEX_CAMERA_FPS`   | `10`                   | Frame rate to subscribe to from the robot's camera stream.      |
 
-The plugin auto-enables when `MILADY_AINEX_BRIDGE_URL` is set, or when `features.ainex` is enabled in agent config.
+The plugin auto-enables when `ELIZA_AINEX_BRIDGE_URL` is set, or when `features.ainex` is enabled in agent config.
 
 ## Related packages
 

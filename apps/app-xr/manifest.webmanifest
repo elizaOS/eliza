@@ -1,6 +1,6 @@
 {
-  "name": "Milady XR",
-  "short_name": "MiladyXR",
+  "name": "Eliza XR",
+  "short_name": "ElizaXR",
   "description": "elizaOS agent interface for WebXR headsets — Meta Quest, XReal, Apple Vision Pro",
   "start_url": "/",
   "display": "fullscreen",

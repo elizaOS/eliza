@@ -1,4 +1,4 @@
-# Critical Assessment: SSD AiNex Codebase Port to elizaOS/Milady
+# Critical Assessment: SSD AiNex Codebase Port to elizaOS/Eliza
 
 **Scope**: `/media/shaw/Extreme SSD/hyperscape-robot-workspace/` and sibling directories.  
 **Target**: Porting to `/home/shaw/milady/eliza/packages/robot/` (Python) and `/home/shaw/milady/eliza/plugins/plugin-ainex/` (TypeScript).  

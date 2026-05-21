@@ -21,7 +21,7 @@
  *   `unknown` into `ask` so the user is never surprised.
  * - **Headless server / CLI** (`ELIZA_NETWORK_POLICY=headless` or
  *   `process.stdout.isTTY === false && process.env.CI !== undefined`):
- *   skip auto-update entirely. The `milady models update` CLI invocation
+ *   skip auto-update entirely. The `eliza models update` CLI invocation
  *   still works, but the runtime tick is silent.
  *
  * The Capacitor / native bridges that hook into the global `window`

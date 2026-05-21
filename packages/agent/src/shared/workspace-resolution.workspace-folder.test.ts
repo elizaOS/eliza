@@ -31,11 +31,11 @@ describe("resolveDefaultAgentWorkspaceDir + workspace-folder.json", () => {
     const userPickedFolder = join(stateDir, "user-picked");
     writeWorkspaceFolderConfig(
       { path: userPickedFolder, bookmark: "base64bookmark" },
-      { MILADY_STATE_DIR: stateDir },
+      { ELIZA_STATE_DIR: stateDir },
     );
 
     const resolved = resolveDefaultAgentWorkspaceDir(
-      { MILADY_STATE_DIR: stateDir },
+      { ELIZA_STATE_DIR: stateDir },
       () => stateDir,
       () => "/",
     );
@@ -47,12 +47,12 @@ describe("resolveDefaultAgentWorkspaceDir + workspace-folder.json", () => {
     const explicit = join(stateDir, "explicit-env-wins");
     writeWorkspaceFolderConfig(
       { path: join(stateDir, "persisted"), bookmark: null },
-      { MILADY_STATE_DIR: stateDir },
+      { ELIZA_STATE_DIR: stateDir },
     );
 
     const resolved = resolveDefaultAgentWorkspaceDir(
       {
-        MILADY_STATE_DIR: stateDir,
+        ELIZA_STATE_DIR: stateDir,
         ELIZA_WORKSPACE_DIR: explicit,
       },
       () => stateDir,
@@ -64,7 +64,7 @@ describe("resolveDefaultAgentWorkspaceDir + workspace-folder.json", () => {
 
   it("falls back to <stateDir>/workspace when neither env nor config is set", () => {
     const resolved = resolveDefaultAgentWorkspaceDir(
-      { MILADY_STATE_DIR: stateDir },
+      { ELIZA_STATE_DIR: stateDir },
       () => stateDir,
       () => "/",
     );

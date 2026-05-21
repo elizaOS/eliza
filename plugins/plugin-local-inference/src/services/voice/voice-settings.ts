@@ -94,7 +94,7 @@ function parseNumberMb(value: string | undefined): number | null {
  * Env wins over defaults; overlay wins over env (so tests / UI can lock
  * specific fields). All fields are required in the returned settings.
  *
- * Env knobs (canonical ELIZA_* prefix; MILADY_* aliases honored upstream):
+ * Env knobs (canonical ELIZA_* prefix; ELIZA_* aliases honored upstream):
  *
  *   - `ELIZA_VOICE_BACKEND_MODE`        → backendMode
  *   - `ELIZA_VOICE_AUTO_SWAP`           → autoSwap

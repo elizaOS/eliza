@@ -16,6 +16,7 @@ board_state_detected:
   has_kicad_footprints: true
   has_tracks: false
   has_filled_zones: false
+  has_keepout_zones: true
   has_test_point_footprints: true
   has_fiducials: true
   has_mounting_holes: true
@@ -207,8 +208,10 @@ non_release_pcb_implementation_scaffold:
     - HAPTIC_OUT
     - GND
   declared_net_count: 180
-  generated_net_class_count: 10
-  assigned_pad_net_count: 519
+  generated_net_class_count: 16
+  generated_keepout_zone_count: 11
+  copper_zone_count: 0
+  assigned_pad_net_count: 507
   testpoint_nets_assigned:
     - VBUS
     - VBAT

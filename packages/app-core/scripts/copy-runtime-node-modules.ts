@@ -653,7 +653,8 @@ function shouldPrunePackageRelativePath(
     return (
       normalizedPath === "native/llama.cpp/tools/server/webui" ||
       normalizedPath.startsWith("native/llama.cpp/tools/server/webui/") ||
-      /^native\/llama\.cpp\/build(?:[-/]|$)/.test(normalizedPath)
+      /^native\/llama\.cpp\/build(?:[-/]|$)/.test(normalizedPath) ||
+      /^native\/omnivoice\.cpp\/build(?:[-/]|$)/.test(normalizedPath)
     );
   }
 
@@ -791,7 +792,11 @@ function shouldSkipPackagedAppCoreEntry(relativeEntry: string): boolean {
     relativeEntry === "dist/platforms/electrobun/build" ||
     relativeEntry.startsWith("dist/platforms/electrobun/build/") ||
     relativeEntry === "dist/platforms/electrobun/artifacts" ||
-    relativeEntry.startsWith("dist/platforms/electrobun/artifacts/")
+    relativeEntry.startsWith("dist/platforms/electrobun/artifacts/") ||
+    relativeEntry === "scripts/bun-riscv64" ||
+    relativeEntry.startsWith("scripts/bun-riscv64/") ||
+    relativeEntry === "dist/scripts/bun-riscv64" ||
+    relativeEntry.startsWith("dist/scripts/bun-riscv64/")
   );
 }
 

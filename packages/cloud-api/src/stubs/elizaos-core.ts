@@ -32,7 +32,7 @@ function readEnvValue(
 export function getElizaNamespace(
   env: Record<string, string | undefined> = process.env,
 ): string {
-  return readEnvValue(env, ["ELIZA_NAMESPACE", "MILADY_NAMESPACE"]) ?? "eliza";
+  return readEnvValue(env, ["ELIZA_NAMESPACE", "ELIZA_NAMESPACE"]) ?? "eliza";
 }
 
 export function resolveUserPath(value: string): string {
@@ -46,7 +46,7 @@ export function resolveUserPath(value: string): string {
 export function resolveStateDir(
   env: Record<string, string | undefined> = process.env,
 ): string {
-  const override = readEnvValue(env, ["ELIZA_STATE_DIR", "MILADY_STATE_DIR"]);
+  const override = readEnvValue(env, ["ELIZA_STATE_DIR", "ELIZA_STATE_DIR"]);
   if (override) return resolveUserPath(override);
   const home = env.HOME?.trim() || process.env.HOME?.trim() || "/tmp";
   return `${home}/.${getElizaNamespace(env)}`;

@@ -29,8 +29,8 @@ import { interact, ShopifyTuiView } from "./ShopifyAppView";
 const sampleStatus = {
   connected: true,
   shop: {
-    name: "Milady Store",
-    domain: "milady.myshopify.com",
+    name: "Eliza Store",
+    domain: "eliza.myshopify.com",
     plan: "Basic",
     email: "ops@example.com",
     currencyCode: "USD",
@@ -44,7 +44,7 @@ const sampleProducts = {
       title: "Terminal Hoodie",
       status: "ACTIVE",
       productType: "Apparel",
-      vendor: "Milady",
+      vendor: "Eliza",
       totalInventory: 3,
       priceRange: { min: "42.00", max: "42.00" },
       imageUrl: null,
@@ -151,7 +151,7 @@ describe("ShopifyTuiView", () => {
 
     const { container } = render(React.createElement(ShopifyTuiView));
 
-    await screen.findByText("Milady Store");
+    await screen.findByText("Eliza Store");
     expect(
       screen.getByText("Terminal Hoodie / Black / M @ Main: 3"),
     ).toBeTruthy();
@@ -164,7 +164,7 @@ describe("ShopifyTuiView", () => {
       viewType: "tui",
       viewId: "shopify",
       connected: true,
-      domain: "milady.myshopify.com",
+      domain: "eliza.myshopify.com",
       productCount: 1,
       orderCount: 1,
       inventoryCount: 1,
@@ -216,7 +216,7 @@ describe("ShopifyTuiView", () => {
     await expect(
       interact("terminal-shopify-create-product", {
         title: "Terminal Hoodie",
-        vendor: "Milady",
+        vendor: "Eliza",
         productType: "Apparel",
         price: "42.00",
       }),

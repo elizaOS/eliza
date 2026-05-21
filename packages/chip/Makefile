@@ -22,6 +22,9 @@ BUILD := build
 .PHONY: e1-phone-interface-closure
 .PHONY: e1-phone-power-thermal
 .PHONY: e1-phone-rf-connectivity
+.PHONY: e1-phone-module-rf-pinout-execution
+.PHONY: e1-phone-routed-pcb-implementation-execution
+.PHONY: e1-phone-layout-optimization-execution
 .PHONY: e1-phone-pinout-footprint-freeze
 .PHONY: e1-phone-audio-acoustic
 .PHONY: e1-phone-routed-release-plan
@@ -86,6 +89,15 @@ e1-phone-audio-acoustic:
 
 e1-phone-rf-connectivity:
 	@$(PYTHON) scripts/generate_e1_phone_rf_connectivity.py
+
+e1-phone-module-rf-pinout-execution:
+	@$(PYTHON) scripts/generate_e1_phone_module_rf_pinout_execution.py
+
+e1-phone-routed-pcb-implementation-execution:
+	@$(PYTHON) scripts/generate_e1_phone_routed_pcb_implementation_execution.py
+
+e1-phone-layout-optimization-execution:
+	@$(PYTHON) scripts/generate_e1_phone_layout_optimization_execution.py
 
 e1-phone-supplier-sourcing-audit:
 	@$(PYTHON) scripts/generate_e1_phone_supplier_sourcing_audit.py
@@ -1382,9 +1394,12 @@ evidence-regression-test: no-hardware-action-check software-bsp-test physical-ga
 	ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-verification-targets \
 	ai-eda-physical-design-targets ai-eda-optimization-targets ai-eda-all-target-captures ai-eda-logic-synthesis-recipes \
 	ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload \
-	ai-eda-cuda-payload-check ai-eda-cuda-run-plan-dry-run ai-eda-cuda-readiness-audit
+	ai-eda-cuda-payload-check ai-eda-cuda-run-plan-dry-run ai-eda-cuda-run-plan-safety-matrix ai-eda-cuda-readiness-audit
 ai-eda-source-inventory-check:
 	@AI_EDA_RUN_ID=$(AI_EDA_RUN_ID) $(PYTHON) scripts/check_ai_eda_source_inventory.py
+
+ai-eda-ai-workload-manifest-check:
+	@$(PYTHON) scripts/ai_eda/check_ai_workload_manifest.py
 
 ai-eda-external-assets-check:
 	@$(PYTHON) scripts/ai_eda/check_external_asset_manifests.py
@@ -1667,11 +1682,14 @@ ai-eda-cuda-run-plan-dry-run: ai-eda-cuda-payload
 	@$(PYTHON) scripts/ai_eda/execute_cuda_run_plan.py --plan build/ai_eda/cuda_training_payloads/$(AI_EDA_RUN_ID)/cuda_training_run_plan.json --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_cuda_run_plan_execution.py --report build/ai_eda/cuda_run_plan_execution/$(AI_EDA_RUN_ID)/cuda_run_plan_execution.json
 
-ai-eda-cuda-readiness-audit: ai-eda-cuda-preflight ai-eda-cuda-run-plan-dry-run ai-eda-alphachip-checkpoint-blocker-check ai-eda-optimization-targets ai-eda-macro-placement-replay-preflight
+ai-eda-cuda-run-plan-safety-matrix: ai-eda-cuda-payload
+	@$(PYTHON) scripts/ai_eda/check_cuda_run_plan_safety_matrix.py --plan build/ai_eda/cuda_training_payloads/$(AI_EDA_RUN_ID)/cuda_training_run_plan.json --run-id $(AI_EDA_RUN_ID)
+
+ai-eda-cuda-readiness-audit: ai-eda-cuda-preflight ai-eda-cuda-run-plan-dry-run ai-eda-cuda-run-plan-safety-matrix ai-eda-alphachip-checkpoint-blocker-check ai-eda-optimization-targets ai-eda-macro-placement-replay-preflight
 	@$(PYTHON) scripts/ai_eda/capture_cuda_readiness_audit.py --run-id $(AI_EDA_RUN_ID) --setup-run-id $(AI_EDA_SETUP_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_cuda_readiness_audit.py --report build/ai_eda/cuda_readiness_audit/$(AI_EDA_RUN_ID)/cuda_readiness_audit.json
 
-docs-check: ai-eda-local-rag-index ai-eda-backend-preflight ai-eda-all-target-captures ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-alphachip-checkpoint-blocker-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
+docs-check: ai-eda-local-rag-index ai-eda-backend-preflight ai-eda-all-target-captures ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-alphachip-checkpoint-blocker-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
 	@$(PYTHON) scripts/docs_check.py
 
 tool-versions:

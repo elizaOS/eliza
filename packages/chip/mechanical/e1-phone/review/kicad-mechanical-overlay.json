@@ -1,0 +1,428 @@
+{
+  "claim_boundary": "CAD-side intake of the KiCad mechanical overlay. This checks concept keepout synchronization only; it is not routed-board DRC, copper keepout enforcement, or production STEP evidence.",
+  "status": "cad_kicad_mechanical_overlay_synced",
+  "overlay_source": "board/kicad/e1-phone/mechanical-overlay.yaml",
+  "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
+  "handoff_constraint_present": true,
+  "missing_keepouts": [],
+  "envelope_case": {
+    "id": "device_envelope_reference",
+    "overlay_envelope_mm": {
+      "width": 78.0,
+      "height": 153.6,
+      "max_thickness": 9.6
+    },
+    "cad_envelope_mm": {
+      "width": 78.0,
+      "height": 153.6,
+      "max_thickness": 9.6
+    },
+    "pass": true
+  },
+  "token_cases": [
+    {
+      "token": "MECH_KEEP_USB_C_CAPTURE",
+      "present_in_overlay": true,
+      "present_in_pcb": true,
+      "pass": true
+    },
+    {
+      "token": "MECH_KEEP_SIDE_KEY_ACTUATOR",
+      "present_in_overlay": true,
+      "present_in_pcb": true,
+      "pass": true
+    },
+    {
+      "token": "MECH_KEEP_DISPLAY_FPC",
+      "present_in_overlay": true,
+      "present_in_pcb": true,
+      "pass": true
+    },
+    {
+      "token": "MECH_KEEP_HAPTIC_LRA",
+      "present_in_overlay": true,
+      "present_in_pcb": true,
+      "pass": true
+    },
+    {
+      "token": "MECH_KEEP_SIM_TRAY",
+      "present_in_overlay": true,
+      "present_in_pcb": true,
+      "pass": true
+    },
+    {
+      "token": "MECH_KEEP_RF_TOP",
+      "present_in_overlay": true,
+      "present_in_pcb": true,
+      "pass": true
+    },
+    {
+      "token": "MECH_KEEP_RF_BOTTOM",
+      "present_in_overlay": true,
+      "present_in_pcb": true,
+      "pass": true
+    }
+  ],
+  "projection_cases": [
+    {
+      "id": "battery_window",
+      "keepout_rect_mm": {
+        "x": 0.0,
+        "y": 29.5,
+        "width": 64.0,
+        "height": 87.0
+      },
+      "cad_parts": [
+        {
+          "part": "battery_pouch",
+          "projected_rect_mm": {
+            "x": 0.0,
+            "y": 29.5,
+            "width": 64.0,
+            "height": 87.0
+          },
+          "gap_to_keepout_mm": 0.0
+        }
+      ],
+      "best_gap_mm": 0.0,
+      "max_gap_mm": 0.25,
+      "pass": true,
+      "why": "Battery keepout must match the full-width pouch window used by the split board concept."
+    },
+    {
+      "id": "usb_c_shell_capture",
+      "keepout_rect_mm": {
+        "x": 26.0,
+        "y": 124.0,
+        "width": 16.0,
+        "height": 6.0
+      },
+      "cad_parts": [
+        {
+          "part": "usb_c_receptacle",
+          "projected_rect_mm": {
+            "x": 27.53,
+            "y": 134.8,
+            "width": 8.94,
+            "height": 7.8
+          },
+          "gap_to_keepout_mm": 4.8
+        },
+        {
+          "part": "usb_c_external_aperture",
+          "projected_rect_mm": {
+            "x": 26.9,
+            "y": 142.705,
+            "width": 10.2,
+            "height": 0.35
+          },
+          "gap_to_keepout_mm": 12.705
+        },
+        {
+          "part": "orange_usb_reinforcement_saddle",
+          "projected_rect_mm": {
+            "x": 23.0,
+            "y": 133.4,
+            "width": 18.0,
+            "height": 2.0
+          },
+          "gap_to_keepout_mm": 3.4
+        }
+      ],
+      "best_gap_mm": 3.4,
+      "max_gap_mm": 5.0,
+      "pass": true,
+      "why": "USB-C keepout must remain tied to the receptacle, molded aperture, and insertion-load saddle."
+    },
+    {
+      "id": "display_fpc_bend_keepout",
+      "keepout_rect_mm": {
+        "x": 42.0,
+        "y": 33.0,
+        "width": 20.0,
+        "height": 11.0
+      },
+      "cad_parts": [
+        {
+          "part": "display_fpc_connector",
+          "projected_rect_mm": {
+            "x": 45.5,
+            "y": 9.4,
+            "width": 19.0,
+            "height": 3.2
+          },
+          "gap_to_keepout_mm": 20.4
+        },
+        {
+          "part": "display_fpc_bend_keepout",
+          "projected_rect_mm": {
+            "x": 44.0,
+            "y": -0.5,
+            "width": 22.0,
+            "height": 10.0
+          },
+          "gap_to_keepout_mm": 23.5
+        }
+      ],
+      "best_gap_mm": 20.4,
+      "max_gap_mm": 24.0,
+      "pass": true,
+      "why": "Display FPC keepout tracks the current concept connector region until routed placement replaces rectangles."
+    },
+    {
+      "id": "side_key_actuator_keepout",
+      "keepout_rect_mm": {
+        "x": 4.0,
+        "y": 50.0,
+        "width": 7.0,
+        "height": 46.0
+      },
+      "cad_parts": [
+        {
+          "part": "power_button_cap",
+          "projected_rect_mm": {
+            "x": 70.55,
+            "y": 40.0,
+            "width": 2.0,
+            "height": 12.0
+          },
+          "gap_to_keepout_mm": 59.55
+        },
+        {
+          "part": "volume_button_cap",
+          "projected_rect_mm": {
+            "x": -8.55,
+            "y": 41.5,
+            "width": 2.0,
+            "height": 21.0
+          },
+          "gap_to_keepout_mm": 10.55
+        }
+      ],
+      "best_gap_mm": 10.55,
+      "max_gap_mm": 12.0,
+      "pass": true,
+      "why": "Side-key keepout must stay close enough to the molded cap line to prevent switch side-load drift."
+    },
+    {
+      "id": "rear_camera_z_keepout",
+      "keepout_rect_mm": {
+        "x": 47.0,
+        "y": 8.0,
+        "width": 15.0,
+        "height": 24.0
+      },
+      "cad_parts": [
+        {
+          "part": "rear_camera_module",
+          "projected_rect_mm": {
+            "x": 48.0,
+            "y": 3.2,
+            "width": 10.0,
+            "height": 10.0
+          },
+          "gap_to_keepout_mm": 0.0
+        },
+        {
+          "part": "rear_camera_cover_glass",
+          "projected_rect_mm": {
+            "x": 48.4,
+            "y": 3.6,
+            "width": 9.2,
+            "height": 9.2
+          },
+          "gap_to_keepout_mm": 0.0
+        }
+      ],
+      "best_gap_mm": 0.0,
+      "max_gap_mm": 2.0,
+      "pass": true,
+      "why": "Rear camera keepout protects the lens datum and cover-glass stack."
+    },
+    {
+      "id": "front_camera_earpiece_keepout",
+      "keepout_rect_mm": {
+        "x": 2.0,
+        "y": 3.0,
+        "width": 22.0,
+        "height": 12.0
+      },
+      "cad_parts": [
+        {
+          "part": "front_camera_module",
+          "projected_rect_mm": {
+            "x": 9.75,
+            "y": -5.05,
+            "width": 6.5,
+            "height": 6.5
+          },
+          "gap_to_keepout_mm": 1.55
+        },
+        {
+          "part": "front_camera_under_glass",
+          "projected_rect_mm": {
+            "x": 11.3,
+            "y": -1.975,
+            "width": 3.4,
+            "height": 0.35
+          },
+          "gap_to_keepout_mm": 4.625
+        },
+        {
+          "part": "earpiece_receiver",
+          "projected_rect_mm": {
+            "x": 26.0,
+            "y": -5.8,
+            "width": 12.0,
+            "height": 6.0
+          },
+          "gap_to_keepout_mm": 3.441
+        },
+        {
+          "part": "handset_acoustic_slot",
+          "projected_rect_mm": {
+            "x": 24.0,
+            "y": -3.7,
+            "width": 16.0,
+            "height": 1.0
+          },
+          "gap_to_keepout_mm": 5.7
+        }
+      ],
+      "best_gap_mm": 1.55,
+      "max_gap_mm": 6.0,
+      "pass": true,
+      "why": "Front camera and handset keepout protects under-glass optical and acoustic features."
+    },
+    {
+      "id": "haptic_lra_keepout",
+      "keepout_rect_mm": {
+        "x": 55.0,
+        "y": 101.0,
+        "width": 6.0,
+        "height": 12.0
+      },
+      "cad_parts": [
+        {
+          "part": "haptic_lra",
+          "projected_rect_mm": {
+            "x": 64.5,
+            "y": 104.0,
+            "width": 6.0,
+            "height": 12.0
+          },
+          "gap_to_keepout_mm": 3.5
+        }
+      ],
+      "best_gap_mm": 3.5,
+      "max_gap_mm": 4.0,
+      "pass": true,
+      "why": "Haptic keepout protects the moving mass from tall parts and screw-boss drift."
+    },
+    {
+      "id": "sim_tray_keepout",
+      "keepout_rect_mm": {
+        "x": 56.0,
+        "y": 48.0,
+        "width": 8.0,
+        "height": 24.0
+      },
+      "cad_parts": [
+        {
+          "part": "sim_tray_keepout",
+          "projected_rect_mm": {
+            "x": 56.55,
+            "y": 73.0,
+            "width": 14.5,
+            "height": 22.0
+          },
+          "gap_to_keepout_mm": 1.0
+        }
+      ],
+      "best_gap_mm": 1.0,
+      "max_gap_mm": 2.0,
+      "pass": true,
+      "why": "SIM/service keepout preserves the side-access service volume or forces an eSIM-only decision."
+    },
+    {
+      "id": "top_antenna_keepout",
+      "keepout_rect_mm": {
+        "x": 3.0,
+        "y": 3.0,
+        "width": 58.0,
+        "height": 5.0
+      },
+      "cad_parts": [
+        {
+          "part": "cellular_top_antenna_keepout",
+          "projected_rect_mm": {
+            "x": 1.0,
+            "y": -8.4,
+            "width": 62.0,
+            "height": 6.0
+          },
+          "gap_to_keepout_mm": 5.4
+        }
+      ],
+      "best_gap_mm": 5.4,
+      "max_gap_mm": 8.0,
+      "pass": true,
+      "why": "Top RF keepout must remain tied to the orange plastic antenna aperture."
+    },
+    {
+      "id": "bottom_antenna_keepout",
+      "keepout_rect_mm": {
+        "x": 3.0,
+        "y": 124.0,
+        "width": 58.0,
+        "height": 5.0
+      },
+      "cad_parts": [
+        {
+          "part": "cellular_bottom_antenna_keepout",
+          "projected_rect_mm": {
+            "x": 1.0,
+            "y": 134.4,
+            "width": 62.0,
+            "height": 6.0
+          },
+          "gap_to_keepout_mm": 5.4
+        }
+      ],
+      "best_gap_mm": 5.4,
+      "max_gap_mm": 8.0,
+      "pass": true,
+      "why": "Bottom RF keepout must remain tied to the orange plastic antenna aperture and USB region."
+    },
+    {
+      "id": "wifi_bt_side_antenna_keepout",
+      "keepout_rect_mm": {
+        "x": 41.0,
+        "y": 33.0,
+        "width": 20.0,
+        "height": 5.0
+      },
+      "cad_parts": [
+        {
+          "part": "wifi_bt_side_antenna_keepout",
+          "projected_rect_mm": {
+            "x": 36.0,
+            "y": 20.5,
+            "width": 34.0,
+            "height": 5.0
+          },
+          "gap_to_keepout_mm": 7.5
+        }
+      ],
+      "best_gap_mm": 7.5,
+      "max_gap_mm": 8.0,
+      "pass": true,
+      "why": "Wi-Fi/BT keepout must remain tied to the side plastic antenna aperture."
+    }
+  ],
+  "release_blockers": [
+    "Promote Dwgs.User concept rectangles into actual KiCad keepout/courtyard rules before routed release.",
+    "Re-run this overlay intake after any CAD envelope, battery, USB-C, display FPC, side-key, camera, RF, haptic, or service-tray move.",
+    "Replace overlay proximity checks with routed board STEP collision checks once production footprints and 3D models exist."
+  ]
+}

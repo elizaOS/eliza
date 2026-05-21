@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Milady cloud — one-command local mock stack.
+ * Eliza cloud — one-command local mock stack.
  *
  * Boots Hetzner mock, control-plane mock, cloud-api (with MOCK_REDIS + PGlite),
  * and cloud-frontend, wired together with auto-picked ports and health-check
@@ -26,7 +26,7 @@ const PGDATA_DIR = path.join(REPO_ROOT, ".eliza/.pgdata");
 
 const USAGE = `Usage: bun scripts/cloud/mock-stack-up.mjs [flags]
 
-Boots the local Milady cloud mock stack (Hetzner mock + control-plane mock +
+Boots the local Eliza cloud mock stack (Hetzner mock + control-plane mock +
 cloud-api with MOCK_REDIS + PGlite, optionally cloud-frontend) wired together.
 
 Flags:
@@ -379,7 +379,7 @@ async function main() {
   const pad = (s, n) => (s + " ".repeat(n)).slice(0, n);
   const lines = [
     "┌────────────────────────────────────────────────────────────┐",
-    `│ ${pad("Milady cloud mock stack — ready", 58)} │`,
+    `│ ${pad("Eliza cloud mock stack — ready", 58)} │`,
     "├────────────────────────────────────────────────────────────┤",
     `│ Frontend         ${pad(flags.noFrontend ? "(skipped)" : tFrontend, 41)} │`,
     `│ Cloud API        ${pad(tApi, 41)} │`,

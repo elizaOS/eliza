@@ -132,7 +132,7 @@
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>This app uses on-device speech recognition to listen for voice commands and wake words.</string>
 	<key>NSScreenCaptureDescription</key>
-	<string>Captures the Milady app window when you ask it to see what's on the screen.</string>
+	<string>Captures the Eliza app window when you ask it to see what's on the screen.</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Sends Shortcuts to other apps when you authorize an action through the agent.</string>
 </dict>

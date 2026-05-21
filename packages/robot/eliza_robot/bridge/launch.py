@@ -19,8 +19,6 @@ import argparse
 import asyncio
 import json
 import os
-import signal
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +42,9 @@ class TargetConfig:
     deadman_timeout_sec: float
     requires_ros: bool
     camera_url: str
+    profile_id: str = "hiwonder-ainex"
+    asimov_livekit_url: str = ""
+    asimov_livekit_token: str = ""
 
 
 def _load_targets() -> dict[str, JsonDict]:
@@ -94,6 +95,9 @@ def resolve_target(name: str) -> TargetConfig:
         deadman_timeout_sec=float(raw.get("deadman_timeout_sec", 5.0)),
         requires_ros=bool(raw.get("requires_ros", False)),
         camera_url=str(raw.get("camera_url", "")),
+        profile_id=str(raw.get("profile_id", "hiwonder-ainex")),
+        asimov_livekit_url=str(raw.get("asimov_livekit_url", "")),
+        asimov_livekit_token=str(raw.get("asimov_livekit_token", "")),
     )
 
 
@@ -125,6 +129,9 @@ async def _run(target: TargetConfig, rosbridge: bool, envelope: bool) -> None:
             max_commands_per_sec=target.max_commands_per_sec,
             deadman_timeout_sec=target.deadman_timeout_sec,
             trace_log_path="",
+            profile_id=target.profile_id,
+            asimov_livekit_url=target.asimov_livekit_url,
+            asimov_livekit_token=target.asimov_livekit_token,
         )
         tasks.append(
             asyncio.create_task(

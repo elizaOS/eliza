@@ -15,7 +15,7 @@ device before any of this ships.
 
 `RPScreenRecorder.shared().startCapture(handler:completionHandler:)` returns
 `CMSampleBuffer`s of *the host app's* window. Useful for "show me what's on
-the Milady screen right now."
+the Eliza screen right now."
 
 ```swift
 RPScreenRecorder.shared().startCapture(handler: { sampleBuffer, type, error in
@@ -135,7 +135,7 @@ Add the following to `apps/app/ios/App/App/Info.plist`:
 
 ```xml
 <key>NSScreenCaptureDescription</key>
-<string>Captures the Milady app window when you ask it to see the screen.</string>
+<string>Captures the Eliza app window when you ask it to see the screen.</string>
 <key>NSAppleEventsUsageDescription</key>
 <string>Sends Shortcuts to other apps when you authorize an action.</string>
 ```

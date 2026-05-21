@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-voiceagentbench"
 version = "0.1.0"
-description = "VoiceAgentBench - voice-in + tool-call-out + multi-turn benchmark vendored into Milady."
+description = "VoiceAgentBench - voice-in + tool-call-out + multi-turn benchmark vendored into Eliza."
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 

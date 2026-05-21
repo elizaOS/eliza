@@ -75,32 +75,40 @@
     "filename": "bun-linux-riscv64-musl.zip",
     "internal_layout": "bun-linux-riscv64-musl/bun",
     "matches_oven_release_naming": true,
-    "matches_rationale": "stage-android-agent.mjs:ensureBunBinary unzips and expects the inner directory to be `bun-linux-${bunArch}-musl`. Keeping the layout identical to upstream's other release zips lets the existing fetch path work unmodified once MILADY_BUN_RISCV64_URL is set."
+    "matches_rationale": "stage-android-agent.mjs:ensureBunBinary unzips and expects the inner directory to be `bun-linux-${bunArch}-musl`. Keeping the layout identical to upstream's other release zips lets the existing fetch path work unmodified once ELIZA_BUN_RISCV64_URL is set."
   },
 
   "patch_series": {
     "_rationale": "SHA256 of every patch + recipe under bun-patches/ and webkit-patches/. validate.sh checks these match before invoking the build. Bump alongside the patch content.",
     "bun_patches": {
-      "0001-config-add-riscv64-arch.patch": "676339a226c857a6a3cdb517a2d93d260bb2ca9e44264b55874ed4624a05f6c9",
-      "0002-flags-add-riscv64-march-mabi.patch": "12bdf6dab5ba7ba4160d314a4480c1f020094dc8dde0857d71c81769b584c7ec",
-      "0003-zig-add-riscv64-target-triple-and-cpu.patch": "5afd37f103c82d96cafccf2cafb1cc1255c44b2c7cafe9c813f6f8e6dd667ffc",
-      "0004-webkit-force-local-mode-on-riscv64.patch": "9fff024c2d7b4e227a6886fa6f558c79a0d8776d0b1c36f66dd5f346bb63ae7e",
-      "0005-tinycc-disable-on-riscv64.patch": "72c9bc1b2c33b966c866e526fdb602b098acabddb28b69b0586bc53738070620",
-      "0006-build-add-riscv64-cli-validation.patch": "38c5a067aee61499050e2807db369d91fe8cfa50a01bfc0b409c856f5a87d102",
-      "0007-deps-per-dep-riscv64-checks.patch": "0522f60453db719ac9cf31b753077b66d8e3eabc03931cebcdce1eb2e693dde6"
+      "0001-config-add-riscv64-arch.patch": "e7a5ab0829fc7fabac3db8ef40d1812dc8f3804317527cce590d7e2468d422bc",
+      "0002-flags-add-riscv64-march-mabi.patch": "2cfe032f665220458c90281a534108829d6f9c298c7fe0ff07e5d0a2a5ed57df",
+      "0003-zig-add-riscv64-target-triple-and-cpu.patch": "dd6fd9d693d6c1946cb2838ed19a9cb8127d920cb7c3acf1218b586051cf0053",
+      "0004-webkit-force-local-mode-on-riscv64.patch": "8f2ec7c1ccd33f09d6564d0f2db0ecc438c84e319fe2be276c2c52c4eda85386",
+      "0005-tinycc-disable-on-riscv64.patch": "e77e76dd6d33899f84d29b4e4364fb977274018f027cda32d01bd83630e36c4f",
+      "0006-build-add-riscv64-cli-validation.patch": "2b3dcabb4f0161638414bb1b99be47427c8b1e9ff3aa664cbfaf51894685a60d",
+      "0007-deps-per-dep-riscv64-checks.patch": "3597aded70bb8b0aed15ccb2f53cca93158499d88c7739b05d9610dc65bb276f",
+      "0008-source-stabilize-riscv64-musl-build.patch": "eb3a84fe0435e8c9610f4d90319e62b38f99eb2fde056a673795ba5b5d63a292"
     },
-    "bun_patches_apply_status": "All 7 patches verified to apply cleanly in sequence to a fresh clone of oven-sh/bun @ bun-v1.3.13 via `git apply --check` and full sequential `git apply` (validated 2026-05-19). Touch 7 files, +56/-11 lines total.",
+    "bun_patches_apply_status": "All 8 patches are expected to apply in sequence to oven-sh/bun @ bun-v1.3.13 via git apply --3way. Patch 0008 adds the riscv64 toolchain overrides, external WebKit consumption, nested CMake cross settings, and Zig source enum guards required by the Android riscv64 artifact build.",
     "bun_patches_target": {
-      "scripts/build/config.ts": ["0001", "0004"],
+      "scripts/build/config.ts": ["0001", "0004", "0008"],
       "scripts/build/flags.ts": ["0002"],
       "scripts/build/zig.ts": ["0003"],
-      "scripts/build/deps/webkit.ts": ["0004"],
+      "scripts/build/source.ts": ["0008"],
+      "scripts/build/deps/boringssl.ts": ["0008"],
+      "scripts/build/deps/webkit.ts": ["0004", "0008"],
       "scripts/build/deps/tinycc.ts": ["0005"],
       "scripts/build.ts": ["0006"],
-      "scripts/build/deps/lolhtml.ts": ["0007"]
+      "scripts/build/deps/lolhtml.ts": ["0007"],
+      "src/bun.js/bindings/CPUFeatures.zig": ["0008"],
+      "src/compile_target.zig": ["0008"],
+      "src/crash_handler.zig": ["0008"],
+      "src/env.zig": ["0008"],
+      "src/install/npm.zig": ["0008"]
     },
     "webkit_patches": {
-      "0003-disable-dfg-ftl-on-riscv64.patch": "1a288e9c4fbded9df6e7b15d311343511bd18efad58cf90a79f4737e34ea34f9"
+      "0003-disable-dfg-ftl-on-riscv64.patch": "c00fe21a74ea35c8586cc380af6d03de89fef9d9bc8c4f0186dc7c629f0b9814"
     },
     "webkit_recipes": {
       "0001-cherry-pick-llint-riscv64.recipe": "8017bed5bf3f6fc22585b802c0016734ab48f0f70ddc675613c9b6930b8ea6b6",

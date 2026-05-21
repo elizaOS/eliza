@@ -1,0 +1,217 @@
+schema: eliza.e1_phone_evt1_routing_work_package.v1
+status: blocked_requires_supplier_pinouts_routed_pcb_and_post_route_evidence
+date: 2026-05-20
+claim_boundary: >
+  EVT1 routing execution contract for the E1 phone mainboard. This file turns
+  the concept placement, package bindings, route constraints, supplier RFQ
+  intake, factory probe map, and mechanical routed-board STEP gates into a
+  route-owner checklist. It is not a routed PCB, ERC/DRC report, Gerber,
+  pick-and-place file, STEP export, or enclosure release.
+
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/layout-utilization.yaml
+  - board/kicad/e1-phone/module-host-integration-closure.yaml
+  - board/kicad/e1-phone/route-feasibility-density.yaml
+  - board/kicad/e1-phone/external-interface-design-review.yaml
+  - board/kicad/e1-phone/enclosure-tolerance-stack-closure.yaml
+  - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
+  - board/kicad/e1-phone/board-optimization-scorecard.yaml
+  - board/kicad/e1-phone/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/rf-antenna-coexistence-closure.yaml
+  - board/kicad/e1-phone/top-bottom-interconnect-plan.yaml
+  - board/kicad/e1-phone/supplier-rfq-intake.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+  - board/kicad/e1-phone/production-readiness.yaml
+  - board/kicad/e1-phone/manufacturing-closure.yaml
+  - mechanical/e1-phone/review/board-step-readiness.json
+  - mechanical/e1-phone/review/routed-board-clearance.json
+
+fixed_geometry_inputs:
+  board_bbox_mm: {width: 64.0, height: 132.0}
+  top_island_mm: {x: 0.0, y: 0.0, width: 64.0, height: 29.0}
+  battery_window_mm: {x: 0.0, y: 29.5, width: 64.0, height: 87.0}
+  bottom_island_mm: {x: 0.0, y: 117.0, width: 64.0, height: 15.0}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.2}
+  display_anchor: 5.5_in_1080x1920_MIPI_LCM_CTP
+  route_shield_test_reserve_pct_target: 10.6
+
+placement_locks_before_route:
+  - refdes_group: J_USB_C
+    lock_reason: bottom aperture, shell saddle, ESD/current path, and user-visible port location
+    required_before_unlock: signed USB-C connector drawing and enclosure aperture review
+  - refdes_group: SW_POWER_VOL
+    lock_reason: side-key flex exits top-left island and must not intrude into full-width battery cavity
+    required_before_unlock: side-key flex drawing, force-travel stack, and enclosure rib review
+  - refdes_group: J_DISPLAY_TOUCH
+    lock_reason: display FPC bend, 5.5 inch screen datum, touch stack, and top-right connector reach
+    required_before_unlock: selected display FPC drawing, mating connector footprint, and STEP model
+  - refdes_group: J_CAM0_CAM1
+    lock_reason: rear/front camera optical centers, z-height, lens window, and MIPI CSI length control
+    required_before_unlock: camera module drawings, pinouts, lens axis datums, and STEP models
+  - refdes_group: U_CELL
+    lock_reason: top-left RF feed, antenna keepout, conducted test access, SIM/eSIM reach, and module shielding
+    required_before_unlock: selected region SKU, reference layout, LGA/M.2 footprint, and RF feed rules
+  - refdes_group: U_WIFI_BT
+    lock_reason: Wi-Fi/Bluetooth RF feed length, coexistence separation, and antenna keepout
+    required_before_unlock: Murata reference layout, antenna rules, firmware/regulatory scope, and STEP model
+  - refdes_group: U_PMIC_CHARGER
+    lock_reason: short VBUS/SYS/VBAT loops, thermal spreader path, and rail test-point fanout
+    required_before_unlock: rail current budget, PMIC/charger layout guide, and thermal review
+  - refdes_group: J_BATTERY
+    lock_reason: battery tail, VBAT/NTC/ID polarity, pack service clearance, and full-width cavity edge
+    required_before_unlock: pack drawing, connector pinout, NTC curve, swelling envelope, and safety document pack
+  - refdes_group: U_SOC_LPDDR_UFS
+    lock_reason: LPDDR/UFS length matching, decoupling escape, graphite heat path, and debug access
+    required_before_unlock: package pin map, memory layout guide, decap strategy, and boot/debug strap policy
+  - refdes_group: U_AUDIO_SPK_MIC
+    lock_reason: bottom acoustic gasket, speaker/microphone port keepouts, haptic routing, and USB noise separation
+    required_before_unlock: speaker, microphone, receiver, codec/amp, haptic, gasket, and acoustic fixture data
+  - refdes_group: J_TOP_BOTTOM_FLEX_TOP
+    lock_reason: full-width battery cavity requires top/bottom interconnect at top island edge
+    required_before_unlock: exact mating connector pair, pin count, mated height, and flex stackup
+  - refdes_group: J_TOP_BOTTOM_FLEX_BOTTOM
+    lock_reason: bottom island USB/audio/haptic/service routing and fixture access
+    required_before_unlock: exact mating connector pair, pin count, mated height, and flex stackup
+
+route_phases:
+  - phase: 0_supplier_freeze
+    exit_criteria:
+      - supplier-rfq-intake.yaml has received signed RFQ response packs
+      - external-interface-design-review.yaml supplier drawing requirements are assigned to RFQ owners
+      - pinout-footprint-freeze.yaml has every high-risk connector/module footprint frozen
+      - production-readiness.yaml has fabricator stackup and coupon geometry selected
+    current_status: blocked_no_signed_supplier_packs
+  - phase: 1_schematic_and_netclass_capture
+    exit_criteria:
+      - hierarchical KiCad schematic replaces text scaffolds with reviewed symbols
+      - block-netlist.yaml nets are converted into KiCad nets
+      - routing-constraints.yaml impedance classes are assigned to KiCad net classes
+      - ERC clean or signed waivers captured under production/reports
+    current_status: blocked_schematic_is_scaffold
+  - phase: 2_placement_and_escape
+    exit_criteria:
+      - placeholder footprints replaced with supplier land patterns and component heights
+      - SoC/LPDDR/UFS escape routes and decoupling fanout reviewed
+      - route-feasibility-density.yaml trial-route exit criteria satisfied or topology fallback selected
+      - external-interface-design-review.yaml interface locks are satisfied by supplier models and routed STEP keepouts
+      - board-optimization-scorecard.yaml routed utilization, RF, power, thermal, and enclosure gates are assigned
+      - USB-C, display, camera, radio, battery, side-key, audio, and split-interconnect footprints locked
+      - factory-probe-map.yaml nets have accessible test pads or fixture alternatives
+    current_status: blocked_placeholder_footprints
+  - phase: 3_high_speed_rf_power_route
+    exit_criteria:
+      - USB2, MIPI DSI/CSI, PCIe, LPDDR, UFS, RF, and split-interconnect constraints routed
+      - high-current VBUS/SYS/VBAT/RF_VBAT loops minimized with return stitching
+      - antenna feed matching networks and conducted RF access placed
+      - DRC clean or signed waivers captured under production/reports
+    current_status: blocked_no_tracks_or_zones
+  - phase: 4_manufacturing_outputs
+    exit_criteria:
+      - Gerber X2 or IPC-2581, drill, position, BOM/AVL, assembly drawing, stencil notes, and DFM/DFA quote generated
+      - factory probe coordinates and limits generated from routed board and fixture CAD
+      - routed board STEP exported with supplier 3D models
+    current_status: blocked_no_production_outputs
+  - phase: 5_enclosure_routed_step_rerun
+    exit_criteria:
+      - mechanical/e1-phone/review/board-step-readiness.json passes with production STEP
+      - mechanical/e1-phone/review/routed-board-clearance.json rerun with measured routed-board clearances
+      - no routed component intersects display, battery, USB-C aperture, side buttons, acoustic paths, antennas, or interconnect
+    current_status: blocked_waiting_for_routed_board_step
+
+netclass_to_release_mapping:
+  usb2:
+    constraints: [USB_DP_DN, CELL_USB2_DP_DN]
+    release_evidence: [post_route_length_report, impedance_coupon, USB2_attach_and_eye_or_functional_log]
+  mipi_dphy:
+    constraints: [DSI_CLK, DSI_D0, DSI_D1, DSI_D2, DSI_D3, CAM0_CSI_CLK, CAM1_CSI_CLK]
+    release_evidence: [post_route_length_report, DPHY_length_skew_review, display_camera_bringup_logs]
+  pcie:
+    constraints: [WIFI_PCIE_TX, WIFI_PCIE_RX, CELL_PCIE_TX, CELL_PCIE_RX]
+    release_evidence: [post_route_length_report, impedance_coupon, module_link_training_log]
+  memory_storage:
+    constraints: [LPDDR_CK, LPDDR_DQS, LPDDR_CA, UFS_REFCLK, UFS_TX, UFS_RX]
+    release_evidence: [memory_length_report, LPDDR_training_log, UFS_link_training_log]
+  rf:
+    constraints: [CELL_RF_MAIN, CELL_RF_DIV, CELL_GNSS_RF, WIFI_BT_RF0, WIFI_BT_RF1]
+    release_evidence: [VNA_report, conducted_RF_report, coexistence_report, SAR_prescan]
+  power_integrity:
+    constraints: [VBUS_to_charger, charger_to_battery, RF_VBAT_to_cellular]
+    release_evidence: [rail_current_budget, load_step_report, thermal_soak_report, charge_cycle_log]
+  factory_test:
+    constraints: [VBUS, VBAT, SYS, AON_1V8, IO_1V8, RF_VBAT, CAM_AVDD_2V8, DISP_AVDD_5V5]
+    release_evidence: [probe_coordinates_csv, factory_test_limits_yaml, first_article_transcript]
+
+required_release_outputs:
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/gerbers
+  - board/kicad/e1-phone/production/ipc-2581
+  - board/kicad/e1-phone/production/pos
+  - board/kicad/e1-phone/production/bom
+  - board/kicad/e1-phone/production/pdf/assembly.pdf
+  - board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+  - board/kicad/e1-phone/production/step
+  - board/kicad/e1-phone/production/reports/si-pi
+  - board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
+  - board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
+  - board/kicad/e1-phone/production/reports/enclosure-tolerance-stack-closure.yaml
+  - board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+  - board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
+  - board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
+  - board/kicad/e1-phone/production/reports/rf
+  - board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+  - board/kicad/e1-phone/production/reports/power-thermal
+  - board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/production/test/probe-coordinates.csv
+  - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  - board/kicad/e1-phone/production/sourcing/rfq-response-index.yaml
+  - mechanical/e1-phone/review/routed-board-clearance.json
+
+cross_checks:
+  every_placement_group_has_route_lock: true
+  route_phases_fail_closed_until_real_outputs_exist: true
+  netclass_mapping_covers_usb_mipi_pcie_memory_rf_power_and_factory_test: true
+  route_density_gate_blocks_evt1_until_trial_route_evidence_exists: true
+  module_host_integration_blocks_evt1_until_supplier_pinouts_schematic_and_bringup_exist: true
+  external_interface_review_blocks_evt1_until_supplier_and_measured_evidence_exists: true
+  enclosure_tolerance_stack_blocks_evt1_until_routed_step_supplier_geometry_and_physical_results_exist: true
+  schematic_symbol_footprint_blocks_evt1_until_real_symbols_supplier_footprints_and_erc_exist: true
+  board_optimization_scorecard_blocks_evt1_until_routed_metrics_and_measurements_exist: true
+  power_sequence_bringup_blocks_evt1_until_first_power_scope_and_firmware_logs_exist: true
+  rf_antenna_coexistence_blocks_evt1_until_tuned_feeds_firmware_and_regulatory_evidence_exist: true
+  required_outputs_match_routed_release_plan: true
+  enclosure_rerun_depends_on_routed_board_step: true
+  route_geometry_matches_64x132_board_and_64x87_battery_window: true
+
+release_blockers:
+  - supplier pinouts, footprints, mating connector data, and STEP models are not frozen
+  - KiCad schematic remains scaffold text and has no ERC release report
+  - current PCB has placeholder footprints, no routed tracks, and no filled zones
+  - route feasibility and escape density are not proven with supplier footprints and a trial route
+  - module host integration closure is blocked on supplier pinouts, real schematic capture, routed host interfaces, firmware, RF, and bring-up evidence
+  - external interface design review is blocked on supplier drawings, routed STEP clearance, and measured USB-C, display, camera, and side-key validation
+  - enclosure tolerance stack closure is blocked until routed board STEP, supplier geometry, GD&T, lifecycle, environmental, and interference evidence exist
+  - schematic-symbol-footprint closure is blocked until real KiCad symbols, supplier footprints, pinout signoff, 3D model binding, and ERC evidence exist
+  - board optimization scorecard remains blocked until routed utilization, power/thermal, RF, factory-test, and enclosure evidence exist
+  - power sequence bring-up closure is blocked until first-power, rail scope, charger, regulator, firmware, and thermal evidence exist
+  - RF antenna coexistence closure is blocked until tuned feeds, VNA, conducted RF, coexistence, firmware/regulatory, carrier, and SAR evidence exist
+  - fabricator stackup and impedance coupon geometry are not selected
+  - production Gerber or IPC-2581, drill, position, BOM/AVL, assembly drawing, and STEP outputs are missing
+  - routed board STEP has not been imported into mechanical CAD for enclosure clearance rerun
+  - post-route SI/PI/RF/power/thermal and factory first-article evidence is missing
+
+forbidden_claims:
+  - evt1_route_ready
+  - routed_pcb_ready
+  - fabrication_ready
+  - enclosure_ready
+  - factory_test_ready
+  - power_thermal_ready
+  - rf_ready
+  - end_to_end_phone_ready

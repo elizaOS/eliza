@@ -1,0 +1,77 @@
+schema: eliza.e1_phone_supplier_pinout.v1
+part: OV13855 (module class - 24-pin FPC rear camera, e.g. Sincere First SF-XR3855A)
+manufacturer: OmniVision Technologies (sensor) / Guangzhou Sincere Information Technology (module)
+package: 13MP CMOS sensor module on 24-pin 0.5 mm-pitch FPC tail
+source_doc: https://sincerefirst.en.made-in-china.com/product/WACpUrRYOVkc/China-Ov13855-Ov13850-CMOS-Sensor-Autofocus-13MP-Mipi-Camera-Module.html
+source_doc_alt:
+  - https://www.ovt.com/products/ov13855/
+  - https://www.alibaba.com/product-introduction/Wholesale-Cheap-RK3588-OV13855-Sensor-13mp_1600288027905.html
+source_doc_revision: vendor product page observed 2026-05-20; OV13855 family datasheet under OmniVision NDA
+captured_date: 2026-05-21
+captured_by: agent
+evidence_class: public_supplier_datasheet
+procurement_status: per_pin_fpc_pinout_requires_module_house_signed_drawing
+procurement_url: https://sincerefirst.en.made-in-china.com/contactus.html
+notes: |
+  OV13855 is a 13MP 1/3.06" CMOS image sensor (4224x3136). Sincere First's
+  SF-XR3855A and equivalent OEM modules wrap the sensor on a 24-pin FPC tail
+  with 4-lane MIPI CSI-2, 3-rail power (AVDD, DVDD, IOVDD), VCM/AF driver
+  (AFVDD), I2C, MCLK, reset, and power-down. The exact pin-to-signal ordering
+  on the FPC tail varies per module house and is only confirmed by the signed
+  2D drawing in the supplier RFQ response. Per-pin entries below capture the
+  canonical 24-pin signal set; ordering is marked fetch_required pending
+  signed drawing.
+mechanical:
+  sensor: OV13855
+  resolution_mp: 13
+  resolution_px: [4224, 3136]
+  pixel_size_um: 1.12
+  optical_format_in: 0.3268
+  fpc_pin_count: 24
+  fpc_pitch_mm: 0.5
+  csi2_lanes: 4
+  af: voice_coil_motor
+electrical:
+  AVDD_v: 2.8
+  DVDD_v: 1.2
+  IOVDD_v: 1.8
+  AFVDD_v: 2.8
+  MCLK_mhz: 24
+pin_signal_set:
+  power:
+    - AVDD (2.8 V, sensor analog)
+    - DVDD (1.2 V, sensor digital core)
+    - IOVDD (1.8 V, IO domain)
+    - AFVDD (2.8 V, VCM/AF driver)
+    - GND (multiple)
+  mipi_csi2:
+    - MIPI_CLK_P
+    - MIPI_CLK_N
+    - MIPI_D0_P
+    - MIPI_D0_N
+    - MIPI_D1_P
+    - MIPI_D1_N
+    - MIPI_D2_P
+    - MIPI_D2_N
+    - MIPI_D3_P
+    - MIPI_D3_N
+  control:
+    - MCLK (24 MHz from host)
+    - I2C_SCL
+    - I2C_SDA
+    - RESET_N
+    - PWDN
+  af_driver:
+    - AF_SCL (often shared with main I2C)
+    - AF_SDA (often shared with main I2C)
+pins:
+  - pin: ALL
+    name: fetch_required
+    function: full_24pin_fpc_order
+    direction: unknown
+    voltage_v: null
+    notes: |
+      Per-pin ordering on the 24-pin FPC tail is not published on the public
+      module listing page. Pull signed 2D drawing + pinout-or-pad-map.csv from
+      the module house via the RFQ in board/kicad/e1-phone/supplier-rfq-intake.yaml.
+      Signal set above is the verified canonical OV13855 module interface.

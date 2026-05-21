@@ -11,6 +11,9 @@ source_artifacts:
   - board/kicad/e1-phone/artifact-manifest.yaml
   - board/kicad/e1-phone/block-netlist.yaml
   - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/supplier-rfq-intake.yaml
+  - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/manufacturing-closure.yaml
   - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
 
@@ -18,6 +21,7 @@ board_revision_policy:
   current_revision: EVT0-concept
   release_revision_required_before_fab: EVT1-routed
   revision_lock_requires:
+    - RFQs sent and supplier response packs archived for every high-risk function
     - supplier pinouts and 2D drawings for display, cameras, USB-C, battery, side keys, audio, antennas, SIM/eSIM, and radio modules
     - KiCad schematic ERC clean or signed waivers
     - KiCad PCB DRC clean or signed waivers
@@ -67,13 +71,13 @@ impedance_coupon_plan:
 
 factory_test_coverage_required:
   power_rails: [VBUS, VBAT, SYS, AON_1V8, IO_1V8, RF_VBAT, CAM_AVDD_2V8, DISP_AVDD_5V5]
-  usb_c: [USB_CC1, USB_CC2, USB_DP, USB_DN, VBUS]
-  display_touch: [DSI_CLK_P, DSI_D0_P, TOUCH_I2C_SCL, TOUCH_I2C_SDA, DISP_RESET_N]
-  cameras: [CAM0_CSI_CLK_P, CAM1_CSI_CLK_P, CAM0_I2C_SCL, CAM1_I2C_SCL, CAM0_RESET_N, CAM1_RESET_N]
-  radios: [CELL_RF_MAIN, CELL_RF_DIV, CELL_GNSS_RF, WIFI_BT_RF0, WIFI_BT_RF1, USIM_IO, ESIM_IO]
-  audio_haptics: [I2S_BCLK, PDM_CLK, SPK_P, SPK_N, HAPTIC_OUT]
+  usb_c: [USB_CC1, USB_CC2, USB_DP, USB_DN, VBUS, SHIELD_GND]
+  display_touch: [DSI_CLK_P, DSI_D0_P, TOUCH_I2C_SCL, TOUCH_I2C_SDA, DISP_RESET_N, DISP_BL_EN, DISP_BL_PWM]
+  cameras: [CAM0_CSI_CLK_P, CAM1_CSI_CLK_P, CAM0_I2C_SCL, CAM1_I2C_SCL, CAM0_RESET_N, CAM1_RESET_N, CAM_AVDD_2V8, CAM_DVDD_1V2]
+  radios: [CELL_GNSS_RF, CELL_RF_DIV, CELL_RF_MAIN, WIFI_BT_RF0, WIFI_BT_RF1, USIM_IO, ESIM_IO]
+  audio_haptics: [I2S_BCLK, PDM_CLK, SPK_P, SPK_N, HAPTIC_OUT, VDD_AUDIO_3V3, VDD_AMP_3V3]
   split_board_interconnect: [USB_DP, USB_DN, VBUS, SYS, I2S_BCLK, PDM_CLK, HAPTIC_OUT, AON_1V8, IO_1V8, VDD_AUDIO_3V3, VDD_AMP_3V3]
-  buttons_sensors_nfc: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, NFC_I2C_SCL, SENSOR_I2C_SCL, IMU_INT]
+  buttons_sensors_nfc: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, NFC_I2C_SCL, SENSOR_I2C_SCL, IMU_INT, AON_1V8]
   compute_storage_debug: [LPDDR_CK_P, UFS_TX_P, UFS_RX_P, JTAG_TCK, BOOT_MODE0, SOC_RESET_N]
 
 production_output_requirements:

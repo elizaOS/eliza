@@ -100,7 +100,7 @@
     {
       "id": "rear_camera",
       "role": "camera",
-      "candidate": "OV13855/OV13850 13 MP autofocus MIPI module",
+      "candidate": "single OV13855/OV13850 class 13 MP simple-AF MIPI module, single lens, buried under flush back wall",
       "mechanical_lock": {
         "module_mm": [
           10.0,
@@ -115,7 +115,7 @@
     {
       "id": "front_camera",
       "role": "camera",
-      "candidate": "5-8 MP fixed-focus MIPI module behind cover glass",
+      "candidate": "single 5-8 MP fixed-focus MIPI module behind cover glass, single lens",
       "mechanical_lock": {
         "module_mm": [
           6.5,

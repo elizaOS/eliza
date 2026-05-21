@@ -324,7 +324,7 @@ WORKDIR /work
 #       -v "$PWD/bun-patches:/opt/bun-patches:ro" \
 #       -v "$PWD/webkit-patches:/opt/webkit-patches:ro" \
 #       -v "$PWD/bun-version.json:/opt/bun-version.json:ro" \
-#       milady/bun-riscv64-builder
+#       eliza/bun-riscv64-builder
 #
 # See README.md for the host-side runner that wraps this.
 

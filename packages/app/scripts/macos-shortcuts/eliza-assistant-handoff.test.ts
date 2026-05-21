@@ -30,7 +30,7 @@ describe("macOS Shortcuts assistant handoff", () => {
       handoffScript,
       "--dry-run",
       "--scheme",
-      "milady",
+      "eliza",
       "--source",
       "macos-siri",
       "--action",
@@ -39,7 +39,7 @@ describe("macOS Shortcuts assistant handoff", () => {
     ]);
 
     expect(stdout.trim()).toBe(
-      "milady://assistant?text=check%20in%20on%20me%20tomorrow%20morning&source=macos-siri&action=lifeops.create",
+      "eliza://assistant?text=check%20in%20on%20me%20tomorrow%20morning&source=macos-siri&action=lifeops.create",
     );
   });
 

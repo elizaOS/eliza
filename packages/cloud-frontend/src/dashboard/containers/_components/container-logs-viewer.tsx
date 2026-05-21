@@ -102,7 +102,7 @@ function getLevelBorderColor(logLevel: string): string {
     case "warn":
       return "#eab308";
     case "info":
-      return "#3b82f6";
+      return "#FF5800";
     default:
       return "#6b7280";
   }

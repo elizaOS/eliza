@@ -12,7 +12,7 @@ recipe is intentionally small:
     so the chat_messages schema path is exercised.
   * `N_FROM_FINAL_MIX` rows from `data/final/train.jsonl` so the broad
     mixed-final pipeline is exercised.
-  * Recent Eliza scenario trajectories from `~/.milady/trajectories/`
+  * Recent Eliza scenario trajectories from `~/.eliza/trajectories/`
     (or the path in `ELIZA_TRAJECTORY_DIR`), converted to the
     `eliza_native_v1` boundary record shape that
     `format_for_training.format_record` accepts. Filtered to the last
@@ -157,7 +157,7 @@ def _seed_for(label: str) -> int:
 def _trajectory_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Collect recent Eliza runtime trajectories, convert to eliza_native_v1."""
 
-    state_root = Path(os.environ.get("ELIZA_TRAJECTORY_DIR") or Path.home() / ".milady" / "trajectories")
+    state_root = Path(os.environ.get("ELIZA_TRAJECTORY_DIR") or Path.home() / ".eliza" / "trajectories")
     info: dict[str, Any] = {
         "path": str(state_root),
         "exists": state_root.exists(),

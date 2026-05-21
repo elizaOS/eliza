@@ -39,7 +39,7 @@ Sub-report of [2028-sota-integrated-report.md](../2028-sota-integrated-report.md
 
 - **Intel 18A PowerVia**: cell utilization +5-10%, iso-power perf +4%, op-freq +6%, power loss -30%.
 - **Intel 14A**: 2nd-gen RibbonFET + 2nd-gen BSPDN ("PowerDirect"), Turbo Cells (double-height, high-drive variants).
-- **TSMC**: N2 (2H 2025 HVM) and N2P (2H 2026 HVM) without BSPDN; A16 (2H 2026) introduces TSMC Super Power Rail. Milady "A14 / N2P target" must decide: N2P (no BSPDN, easier PD) or A16 (BSPDN, ~17% die-size reduction reported on Samsung-equivalent SF2 BSPDN, but PD complexity step-up).
+- **TSMC**: N2 (2H 2025 HVM) and N2P (2H 2026 HVM) without BSPDN; A16 (2H 2026) introduces TSMC Super Power Rail. elizaOS "A14 / N2P target" must decide: N2P (no BSPDN, easier PD) or A16 (BSPDN, ~17% die-size reduction reported on Samsung-equivalent SF2 BSPDN, but PD complexity step-up).
 - **PPA delta**: imec DTCO + Samsung disclosures: BSPDN → 8% perf, 15% power, ~17-19% HP-cell area reduction; IR-drop drastically improved.
 
 ### A.5 Signoff corners at N3 / N2

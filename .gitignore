@@ -741,3 +741,33 @@ swe-bench-workspace-opencode/
 !packages/bun-ios-runtime/artifacts/ElizaBunEngine.xcframework/**
 .env.local.bak
 **/.env.local.bak
+
+# Linux live-build / debootstrap working state — large, root-owned, recreated
+# on every build. Never check in; turbo must not traverse these.
+packages/os/linux/**/chroot/
+packages/os/linux/**/chroot.files
+packages/os/linux/**/.build/
+packages/os/linux/**/cache/
+packages/os/linux/**/binary/
+packages/os/linux/**/local/
+packages/os/linux/**/out/
+
+# riscv64 Bun cross-compile cache + build output (multi-GB, regenerated).
+packages/app-core/scripts/bun-riscv64/dist/
+packages/app-core/scripts/bun-riscv64/build-linux-riscv64-cpu/
+
+# Android packaged runtime artifacts (bundled agent dist + compiled native libs).
+packages/app-core/platforms/android/app/src/main/assets/agent/
+packages/app-core/platforms/android/app/src/main/jniLibs/
+
+# Embedded third-party checkouts vendored under the tree (own git repos; must
+# not be committed as gitlinks without a .gitmodules entry).
+packages/robot/vendor/mujoco_menagerie/
+plugins/plugin-local-inference/native/stable-diffusion.cpp/
+
+# Generated chip mechanical render frames.
+packages/chip/mechanical/e1-phone/out/e1-phone-exploded-frames/
+
+# Zig build cache + compiled output.
+**/.zig-cache/
+**/zig-out/

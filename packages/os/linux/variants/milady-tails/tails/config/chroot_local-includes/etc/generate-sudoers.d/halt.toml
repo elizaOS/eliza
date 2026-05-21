@@ -1,7 +1,0 @@
-[[commands]]
-allowed_user = "amnesia"
-executable = "/sbin/poweroff"
-
-[[commands]]
-allowed_user = "amnesia"
-executable = "/sbin/reboot"

@@ -1,0 +1,259 @@
+schema: eliza.e1_phone_external_interface_design_review.v1
+status: blocked_requires_supplier_drawings_routed_pcb_and_measured_interface_validation
+date: 2026-05-20
+claim_boundary: >
+  Fail-closed review of enclosure-facing electrical and mechanical interfaces
+  for the selected phone form factor. This validates that the concept package
+  has explicit requirements for the screen, USB-C port, power key, volume keys,
+  and camera FPC zone before EVT1 routing. It is not a signed supplier drawing,
+  final connector pinout, routed PCB, STEP clearance result, force/travel
+  measurement, USB-PD log, panel bring-up log, or camera capture proof.
+
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/interface-closure.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/supplier-rfq-intake.yaml
+  - package/display/v0-dsi-720x1280.yaml
+  - package/camera/oem-mipi-csi-modules.yaml
+  - package/usb-c/e1-phone-usb-c-port.yaml
+  - package/human-interface/side-buttons.yaml
+  - docs/board/e1-phone-enclosure-interface.yaml
+
+shared_geometry:
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.2}
+  board_bbox_mm: {width: 64.0, height: 132.0}
+  selected_display_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
+  selected_display_active_area_mm: {width: 68.04, height: 120.96}
+  battery_window_mm: {x: 0.0, y: 29.5, width: 64.0, height: 87.0}
+  coordinate_origin: top_left_front_view
+
+interface_reviews:
+  - name: display_touch
+    status: blocked_supplier_fpc_pinout_connector_step_and_panel_init_missing
+    placement_refdes_group: J_DISPLAY_TOUCH
+    interface_closure_ref: top_right_display_touch_fpc
+    package_binding: package/display/v0-dsi-720x1280.yaml
+    selected_supplier_candidate:
+      vendor: Chenghao Optoelectronic
+      part: CH550FH01A-CT
+      sourcing_class: popular_5p5_in_1080x1920_mipi_lcm_ctp
+      supplier_state: supplier_request_required
+    region_mm: {x: 49.0, y: 8.0, width: 13.0, height: 19.0}
+    enclosure_zone_ref: display_camera_fpc_zone
+    required_nets:
+      - DSI_CLK_P
+      - DSI_CLK_N
+      - DSI_D0_P
+      - DSI_D0_N
+      - DSI_D1_P
+      - DSI_D1_N
+      - DSI_D2_P
+      - DSI_D2_N
+      - DSI_D3_P
+      - DSI_D3_N
+      - DISP_RESET_N
+      - DISP_TE
+      - DISP_BL_EN
+      - DISP_BL_PWM
+      - TOUCH_I2C_SCL
+      - TOUCH_I2C_SDA
+    layout_requirements:
+      - 100_ohm_mipi_dphy_clock_and_data_pairs_length_skew_review
+      - display_fpc_bend_radius_and_stiffener_keepout_from_camera_fpcs
+      - backlight_bias_rail_sequence_and_test_points_before_panel_connector
+      - touch_i2c_pullups_irq_reset_and_esd_defined_from_supplier_pinout
+      - connector_height_and_keepout_loaded_into_routed_board_step
+    mechanical_requirements:
+      - selected_display_outline_matches_display-fit.yaml_primary_display
+      - display_module_clearance_is_0p9_mm_width_and_1p83_mm_height_inside_current_envelope
+      - cover_lens_touch_lcm_adhesive_and_midframe_stack_rerun_in_STEP
+      - fpc_exit_datum_signed_before_schematic_symbol_freeze
+    validation_required_before_release:
+      - signed_display_2d_drawing_with_fpc_exit_and_pin_1_datum
+      - connector_mpn_land_pattern_and_step_model
+      - panel_init_sequence_and_touch_controller_datasheet
+      - routed_mipi_length_skew_and_impedance_report
+      - display_touch_bringup_log
+
+  - name: usb_c_charge_data_debug
+    status: blocked_connector_drawing_pd_esd_step_and_attach_logs_missing
+    placement_refdes_group: J_USB_C
+    interface_closure_ref: single_bottom_usb_c_charge_data_debug
+    package_binding: package/usb-c/e1-phone-usb-c-port.yaml
+    selected_supplier_candidate:
+      vendor: GCT
+      family: USB4105
+      sourcing_class: evt0_low_risk_usb2_type_c_receptacle
+      production_alternate: Molex_221632_or_217804_Port_On_waterproof_family
+    port_count: 1
+    region_mm: {x: 26.0, y: 126.0, width: 16.0, height: 6.0}
+    enclosure_zone_ref: usb_c_zone
+    required_nets:
+      - VBUS
+      - USB_DP
+      - USB_DN
+      - USB_CC1
+      - USB_CC2
+      - SHIELD_GND
+      - GND
+    layout_requirements:
+      - 90_ohm_usb2_diff_pair_from_receptacle_to_esd_and_split_interconnect
+      - usb2_esd_close_to_connector_without_long_stub
+      - cc_esd_and_pd_controller_route_near_receptacle
+      - vbus_tvs_current_sense_and_charger_entry_between_port_and_power_path
+      - shield_ground_chassis_policy_and_stitching_defined_before_esd_test
+    mechanical_requirements:
+      - single_bottom_center_port_only
+      - connector_shell_captured_by_enclosure_not_only_solder_joints
+      - chamfered_or_radiused_cutout_verified_with_plug_overmold
+      - through_hole_shell_stakes_or_enclosure_saddle_for_insertion_load
+      - waterproof_variant_requires_new_cutout_gasket_and_drain_review
+    validation_required_before_release:
+      - signed_usb_c_receptacle_drawing_and_land_pattern
+      - pd_controller_cc_attach_log
+      - charger_current_limit_and_vbus_surge_test
+      - usb2_adb_or_fastboot_attach_log
+      - plug_insertion_removal_clearance_STEP_capture
+
+  - name: side_power_volume
+    status: blocked_side_key_flex_force_travel_esd_and_wake_validation_missing
+    placement_refdes_group: SW_POWER_VOL
+    interface_closure_ref: left_edge_power_volume_buttons
+    package_binding: package/human-interface/side-buttons.yaml
+    selected_supplier_candidate:
+      vendor: Panasonic
+      family: EVQ-P7_EVQ-P3_EVQ-9P7
+      sourcing_class: mobile_phone_side_push_tactile_switch_family
+      fallback: Littelfuse_CK_KMR2_with_plunger_conversion
+    region_mm: {x: 18.0, y: 26.0, width: 12.0, height: 3.0}
+    enclosure_zone_ref: left_edge_side_key_flex
+    recommended_min_contacts: 8
+    required_nets:
+      - PWR_KEY_N
+      - VOL_UP_N
+      - VOL_DOWN_N
+      - AON_1V8
+      - GND
+    layout_requirements:
+      - low_cap_esd_near_side_key_flex_if_buttons_are_off_board
+      - one_ground_adjacent_to_each_wake_or_recovery_signal_where_pinout_allows
+      - aon_1v8_pullups_and_bootloader_recovery_key_scan_defined
+      - pogo_or_exposed_test_access_for_power_volume_and_aon_rail
+      - side_key_flex_stiffener_avoids_battery_window_and_top_bottom_interconnect
+    mechanical_requirements:
+      - external_caps_push_enclosure_rib_or_elastomer_not_solder_joints
+      - power_key_and_volume_keys_aligned_to_side_button_cap_centerlines
+      - force_travel_stack_and_ingress_gap_checked_before_ID_freeze
+      - recovery_combo_volume_down_plus_power_available_during_boot
+    validation_required_before_release:
+      - signed_side_key_flex_or_switch_drawing_with_datums
+      - force_travel_measurement_log
+      - wake_from_power_key_log
+      - bootloader_recovery_combo_log
+      - drop_and_side_load_review
+
+  - name: front_rear_camera_fpcs
+    status: blocked_supplier_camera_drawings_pinouts_z_stack_and_capture_logs_missing
+    placement_refdes_group: J_CAM0_CAM1
+    interface_closure_ref: top_right_front_rear_camera_fpcs
+    package_binding: package/camera/oem-mipi-csi-modules.yaml
+    selected_supplier_candidates:
+      rear:
+        vendor: Sincere First
+        module: SF-XR3855A-A0
+        sensor_class: OV13855_or_OV13850_13MP_AF
+      front:
+        vendor: Sincere First
+        module: SF-G5035S60FY
+        sensor_class: GC5035_5MP_fixed_focus
+    region_mm: {x: 45.0, y: 3.0, width: 17.0, height: 24.0}
+    enclosure_zone_ref: display_camera_fpc_zone
+    required_nets:
+      - CAM0_CSI_CLK_P
+      - CAM0_CSI_D0_P
+      - CAM0_CSI_D1_P
+      - CAM0_CSI_D2_P
+      - CAM0_CSI_D3_P
+      - CAM0_MCLK
+      - CAM0_RESET_N
+      - CAM1_CSI_CLK_P
+      - CAM1_CSI_D0_P
+      - CAM1_CSI_D1_P
+      - CAM1_MCLK
+      - CAM1_RESET_N
+      - CAM_AVDD_2V8
+      - CAM_DVDD_1V2
+      - IO_1V8
+    layout_requirements:
+      - csi_clock_and_data_pairs_routed_as_100_ohm_mipi_dphy
+      - rear_autofocus_vcm_supply_and_i2c_pins_defined_from_supplier_pinout
+      - camera_power_sequence_test_points_for_avdd_dvdd_iovdd_and_reset
+      - camera_fpc_bend_radius_compatible_with_display_fpc_zone
+      - lens_axis_datums_preserved_in_enclosure_STEP
+    mechanical_requirements:
+      - rear_camera_z_height_and_lens_axis_locked_before_ID_freeze
+      - front_camera_bezel_and_cover_glass_clearance_locked_before_panel_order
+      - fpc_pin_1_orientation_and mating_connector_height_loaded_into_STEP
+    validation_required_before_release:
+      - signed_rear_camera_2d_drawing_pinout_and_step_model
+      - signed_front_camera_2d_drawing_pinout_and_step_model
+      - routed_csi_length_skew_and_impedance_report
+      - v4l2_or_android_camera_hal_capture_log
+      - focus_calibration_and_image_quality_fixture_plan
+
+validation_matrix:
+  supplier_docs_required: true
+  supplier_docs_received: false
+  real_connector_symbols_and_footprints_required: true
+  real_connector_symbols_and_footprints_complete: false
+  routed_pcb_required: true
+  routed_pcb_complete: false
+  routed_step_required: true
+  routed_step_complete: false
+  fixture_test_required: true
+  fixture_test_complete: false
+  measured_validation_required: true
+  measured_validation_complete: false
+
+release_outputs_required:
+  - board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
+  - board/kicad/e1-phone/production/sourcing/display-touch-signed-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/usb-c-signed-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/side-key-signed-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/camera-signed-drawings
+  - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  - board/kicad/e1-phone/production/reports/side-button-force-travel.csv
+  - board/kicad/e1-phone/production/reports/camera-capture-log.json
+  - mechanical/e1-phone/review/routed-board-clearance.json
+
+cross_checks:
+  display_primary_matches_display_fit: true
+  usb_c_port_count_matches_artifact_manifest: true
+  review_regions_match_placement_interface_matrix: true
+  review_nets_are_subset_of_interface_closure: true
+  side_key_contact_budget_matches_binding: true
+  release_outputs_are_fail_closed: true
+  no_external_interface_ready_claims_allowed: true
+
+release_blockers:
+  - supplier signed drawings, pinouts, land patterns, and STEP models for display, USB-C, side keys, and cameras are missing
+  - real KiCad connector symbols and footprints for external interfaces are missing
+  - routed DRC-clean PCB and post-route MIPI/USB length-skew evidence are missing
+  - routed STEP with display, USB-C, side-key, and camera supplier models has not been rerun in enclosure CAD
+  - USB-PD attach, display/touch bring-up, camera capture, and side-button force/wake/recovery logs are missing
+
+forbidden_claims:
+  - external_interfaces_ready
+  - display_touch_ready
+  - usb_c_ready
+  - side_buttons_ready
+  - power_key_wake_ready
+  - recovery_key_combo_ready
+  - camera_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

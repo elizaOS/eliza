@@ -1,5 +1,5 @@
 From 3f3f8d9cafb3fc24a835fa4874d4b5505ce6a5ac Mon Sep 17 00:00:00 2001
-From: bun-riscv64 build <bun-riscv64@milady.local>
+From: bun-riscv64 build <bun-riscv64@eliza.local>
 Date: Tue, 19 May 2026 04:34:49 -0700
 Subject: [PATCH 1/7] config: add riscv64 to Arch type and derive cfg.riscv64
 

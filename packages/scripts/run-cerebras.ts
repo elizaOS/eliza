@@ -427,8 +427,8 @@ const MOCK_ACTIONS: MockAction[] = [
             snippet: "Open-source agentic runtime for AI assistants.",
           },
           {
-            title: "Milady — local-first AI assistant",
-            url: "https://milady.ai",
+            title: "elizaOS — local-first AI assistant",
+            url: "https://elizaos.ai",
             snippet: "Built on elizaOS.",
           },
         ],
@@ -1125,7 +1125,7 @@ async function main(): Promise<void> {
 
   if (opts.record) {
     const targetDir =
-      process.env.MILADY_TRAJECTORY_DIR ??
+      process.env.ELIZA_TRAJECTORY_DIR ??
       path.resolve(process.cwd(), "trajectories");
     await fs.mkdir(targetDir, { recursive: true });
     const filePath = path.join(targetDir, `${trajectory.trajectoryId}.json`);

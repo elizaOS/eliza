@@ -25,7 +25,7 @@ The mechanical anchor is a 68.04 x 120.96 mm active area and roughly 70-71 mm
 TFT outline, with the phone enclosure driven by the touch lens and side-key
 stack.
 
-- Device envelope: 78.0 x 153.6 x 9.6 mm, before enclosure ME tolerance
+- Device envelope: 78.0 x 153.6 x 11.2 mm flush-back body, before enclosure ME tolerance
   stack. This is driven by the selected 77.1 x 151.77 mm commodity CTP module
   plus minimum enclosure margin; a 72 x 148 mm envelope does not contain that
   display assembly.
@@ -191,7 +191,7 @@ Critical constraints captured there:
   without intruding into the full-width battery cavity.
 - Top/bottom antenna keepouts that must remain plastic/low-metal unless an RF
   vendor signs off the enclosure stack.
-- A 9.6 mm thickness target that still requires STEP and tolerance-stack
+- An 11.2 mm flush-back thickness target that still requires STEP and tolerance-stack
   closure before any enclosure-fit claim.
 
 ## Required Analyses Before Layout Release

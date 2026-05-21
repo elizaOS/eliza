@@ -109,7 +109,7 @@ function isTruthyCloudEnvValue(raw: string | undefined): boolean {
 function isStoreBuildVariant(): boolean {
   const raw =
     process.env.ELIZA_BUILD_VARIANT?.trim() ||
-    process.env.MILADY_BUILD_VARIANT?.trim();
+    process.env.ELIZA_BUILD_VARIANT?.trim();
   return raw?.toLowerCase() === "store";
 }
 

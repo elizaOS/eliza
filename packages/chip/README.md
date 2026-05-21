@@ -111,19 +111,22 @@ paper PDF, model weights, or generated assertions are treated as chip evidence.
 `make ai-eda-cuda-payload` also runs the payload checker, which validates the
 tarball, embedded run plan, generated `cuda_handoff_README.md`, selected
 assets, critical fetch commands, expected CUDA outputs, the current-research
-watchlist capture handoff, OpenROAD ML snapshot handoff, and the
-no-datasets/no-weights payload boundary. `make ai-eda-cuda-run-plan-dry-run`
+watchlist capture handoff, OpenROAD ML snapshot handoff, the E1 AI workload
+manifest/checker, and the no-datasets/no-weights payload boundary.
+`make ai-eda-cuda-run-plan-dry-run`
 expands the embedded CUDA run plan into a reviewed execution manifest without
-running commands; real execution through `execute_cuda_run_plan.py --execute`
-must name one or more `--stage` values and uses explicit allow flags for
-download, training, inference, replay, and AlphaChip stages. The executor also
-skips run-plan orchestration commands inside the plan so it cannot recursively
-invoke itself. `make ai-eda-cuda-readiness-audit`
-first validates that dry-run execution manifest, then summarizes the preflight,
-payload, AlphaChip checkpoint blocker, current-research watchlist,
-setup-check/bootstrap evidence, training-handoff bootstrap evidence, and E1
-replay-preflight state into one machine-readable blocked-or-ready report for
-the CUDA host. For evidence produced under
+running commands. `make ai-eda-cuda-run-plan-safety-matrix` then proves each
+stage can be selected independently and that download, training, inference,
+replay, and AlphaChip stages are blocked in execute mode unless their explicit
+allow flags are present. Real execution through
+`execute_cuda_run_plan.py --execute` must name one or more `--stage` values.
+The executor also skips run-plan orchestration commands inside the plan so it
+cannot recursively invoke itself. `make ai-eda-cuda-readiness-audit`
+first validates that dry-run execution manifest and safety matrix, then
+summarizes the preflight, payload, AlphaChip checkpoint blocker,
+current-research watchlist, setup-check/bootstrap evidence, training-handoff
+bootstrap evidence, and E1 replay-preflight state into one machine-readable
+blocked-or-ready report for the CUDA host. For evidence produced under
 different run IDs, pass `AI_EDA_SETUP_RUN_ID=<setup-run>` and
 `AI_EDA_TRAINING_HANDOFF_RUN_ID=<handoff-run>` when invoking the audit.
 

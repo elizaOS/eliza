@@ -3334,7 +3334,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		// custom KV types too so the server falls back to stock f16 KV.
 		const allowStockKv =
 			readBool("ELIZA_LOCAL_ALLOW_STOCK_KV") ||
-			readBool("MILADY_LOCAL_ALLOW_STOCK_KV");
+			readBool("ELIZA_LOCAL_ALLOW_STOCK_KV");
 		const cacheTypeK = allowStockKv
 			? undefined
 			: typeof overrides?.cacheTypeK === "string"

@@ -14,7 +14,7 @@
  *   dbus `ActiveConnection.Metered`, or macOS `NWPathMonitor` via the
  *   native bridge.
  * - Headless server / CLI: skip auto-update entirely; explicit
- *   `milady models update` only.
+ *   `eliza models update` only.
  *
  * The actual platform shims are wired in `plugin-local-inference`'s
  * `services/network-policy.ts`. This module defines the platform-agnostic
@@ -59,7 +59,7 @@ export interface NetworkPolicyDecision {
 
 /**
  * User-facing toggles that override the default policy. Persisted in
- * `milady.json` via `voiceUpdatePolicy`. The cellular toggle is OWNER-only
+ * `eliza.json` via `voiceUpdatePolicy`. The cellular toggle is OWNER-only
  * (D6 / R5-versioning §5.4).
  */
 export interface NetworkPolicyPreferences {

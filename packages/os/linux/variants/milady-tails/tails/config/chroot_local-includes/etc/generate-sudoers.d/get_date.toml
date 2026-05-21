@@ -1,4 +1,0 @@
-[[commands]]
-executable = "/usr/local/lib/tails-get-date"
-allowed_user = "amnesia"
-

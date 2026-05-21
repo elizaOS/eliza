@@ -1,0 +1,1253 @@
+schema: eliza.e1_phone_routed_pcb_implementation_execution.v1
+status: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
+date: '2026-05-21'
+claim_boundary: File-level execution package for converting the current E1 phone KiCad
+  concept scaffold into an EVT1 routed PCB release. This is not a routed PCB, not
+  ERC/DRC evidence, not SI/PI/RF signoff, not a manufacturing export package, not
+  a routed STEP, and not enclosure-ready evidence.
+source_artifacts:
+  - board/kicad/e1-phone/routing-acceptance-checklist.yaml
+  - board/kicad/e1-phone/evt1-routing-work-package.yaml
+  - board/kicad/e1-phone/route-feasibility-density.yaml
+  - board/kicad/e1-phone/pcb-implementation-audit.yaml
+  - board/kicad/e1-phone/manufacturing-closure.yaml
+  - board/kicad/e1-phone/production-readiness.yaml
+  - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+  - board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml
+  - board/kicad/e1-phone/usb-sidekey-integration.yaml
+  - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
+  - board/kicad/e1-phone/schematic-netclass-execution-package.yaml
+  - board/kicad/e1-phone/route-corridor-execution-package.yaml
+  - board/kicad/e1-phone/usb-route-topology-resolution.yaml
+  - board/kicad/e1-phone/split-interconnect-pin-allocation.yaml
+  - board/kicad/e1-phone/split-interconnect-connector-binding.yaml
+  - board/kicad/e1-phone/module-rf-pinout-execution.yaml
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+upstream_status:
+  routing_acceptance: blocked_routing_acceptance_requires_supplier_footprints_trial_route_drc_and_outputs
+  evt1_routing_work_package: blocked_requires_supplier_pinouts_routed_pcb_and_post_route_evidence
+  route_feasibility_density: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
+  pcb_implementation_audit: blocked_live_kicad_pcb_scaffold_audited_not_routed
+  manufacturing_closure: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
+  production_readiness: blocked_requires_routed_board_supplier_data_and_factory_quotes
+  routed_release_plan: blocked_routed_release_requires_real_route_and_supplier_outputs
+  supplier_to_kicad_evidence_map: blocked_supplier_evidence_not_ready_for_kicad_capture
+  evt1_footprint_capture_work_package: blocked_evt1_footprint_capture_requires_supplier_intake_reviews_and_real_kicad_libraries
+  display_camera_connector_pinout_execution: blocked_requires_supplier_display_camera_pinouts_connector_mpn_footprints_and_step
+  usb_sidekey_integration: blocked_requires_usb_c_pd_charger_sidekey_routed_and_measured_evidence
+  usb_sidekey_acceptance: blocked_usb_c_sidekey_acceptance_requires_supplier_route_enclosure_and_measurements
+  schematic_netclass_execution: blocked_requires_supplier_symbols_netclass_capture_erc_and_trial_route
+  route_corridor_execution: blocked_requires_supplier_footprints_escape_route_and_drc
+  usb_route_topology: blocked_usb2_route_topology_requires_controlled_impedance_flex_or_topology_change
+  split_pin_allocation: blocked_requires_connector_part_numbers_flex_stackup_si_and_drc
+  split_connector_binding: blocked_placeholder_connectors_bound_to_pin_allocation_not_supplier_release
+  module_rf_pinout_execution: blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence
+  enclosure_fit_execution: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+  factory_production_acceptance: blocked_factory_production_acceptance_requires_routed_outputs_fixture_limits_quotes_and_first_article
+current_kicad_state:
+  declared_net_count: 180
+  footprint_count: 87
+  assigned_pad_net_count: 507
+  net_class_count: 16
+  segment_count: 0
+  zone_count: 0
+  keepout_zone_count: 11
+  rf_feed_count: 5
+  test_point_count: 8
+  has_tracks: false
+  has_filled_zones: false
+  has_production_outputs: false
+  kibot_outputs_are_skeleton_commented: true
+routing_pressure_snapshot:
+  board_bbox_mm:
+    width: 64.0
+    height: 132.0
+    area_mm2: 8448.0
+  physical_pcb_island_area_mm2: 2816.0
+  battery_window_mm:
+    x: 0.0
+    y: 29.5
+    width: 64.0
+    height: 87.0
+    area_mm2: 5568.0
+  placement_area_after_battery_and_antenna_keepouts_mm2: 1972.0
+  differential_pair_count_required: 24
+  split_interconnect_min_contacts: 49
+routed_evt1_execution_phases:
+  - phase: 0_supplier_freeze
+    current_status: blocked_no_signed_supplier_packs
+    required_inputs_or_actions:
+      - supplier-rfq-intake.yaml has received signed RFQ response packs
+      - external-interface-design-review.yaml supplier drawing requirements are assigned
+        to RFQ owners
+      - pinout-footprint-freeze.yaml has every high-risk connector/module footprint
+        frozen
+      - production-readiness.yaml has fabricator stackup and coupon geometry selected
+    expected_release_outputs:
+      - id: production_bom_avl
+        expected_path: board/kicad/e1-phone/production/bom
+        present: false
+        release_required: true
+        blocker: production BOM/AVL with exact MPNs, lifecycle, MOQ, lead time, and
+          substitutes missing
+      - id: fab_assembler_quote
+        expected_path: board/kicad/e1-phone/production/fab-quote
+        present: false
+        release_required: true
+        blocker: quote tied to layer count, HDI, impedance, finish, tolerances, assembly,
+          and test missing
+      - id: stackup_impedance_report
+        expected_path: board/kicad/e1-phone/production/stackup
+        present: false
+        release_required: true
+        blocker: fabricator stackup, impedance table, and coupon geometry missing
+    status: blocked_no_release_outputs_present
+  - phase: 1_schematic_and_netclass_capture
+    current_status: blocked_schematic_is_scaffold
+    required_inputs_or_actions:
+      - hierarchical KiCad schematic replaces text scaffolds with reviewed symbols
+      - block-netlist.yaml nets are converted into KiCad nets
+      - routing-constraints.yaml impedance classes are assigned to KiCad net classes
+      - ERC clean or signed waivers captured under production/reports
+    expected_release_outputs:
+      - id: schematic_erc_report
+        expected_path: board/kicad/e1-phone/production/reports/erc.json
+        present: false
+        release_required: true
+        blocker: hierarchical schematic has scaffold symbols and no ERC evidence
+    status: blocked_no_release_outputs_present
+  - phase: 2_placement_and_escape
+    current_status: blocked_placeholder_footprints
+    required_inputs_or_actions:
+      - placeholder footprints replaced with supplier land patterns and component
+        heights
+      - SoC/LPDDR/UFS escape routes and decoupling fanout reviewed
+      - route-feasibility-density.yaml trial-route exit criteria satisfied or topology
+        fallback selected
+      - external-interface-design-review.yaml interface locks are satisfied by supplier
+        models and routed STEP keepouts
+      - board-optimization-scorecard.yaml routed utilization, RF, power, thermal,
+        and enclosure gates are assigned
+      - USB-C, display, camera, radio, battery, side-key, audio, and split-interconnect
+        footprints locked
+      - factory-probe-map.yaml nets have accessible test pads or fixture alternatives
+    expected_release_outputs:
+      - id: routed_kicad_pcb
+        expected_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+        present: false
+        release_required: true
+        blocker: current KiCad PCB is a concept placeholder scaffold
+      - id: pcb_drc_report
+        expected_path: board/kicad/e1-phone/production/reports/drc.json
+        present: false
+        release_required: true
+        blocker: PCB has no routed copper, filled zones, or DRC evidence
+      - id: si_pi_reports
+        expected_path: board/kicad/e1-phone/production/reports/si-pi
+        present: false
+        release_required: true
+        blocker: USB, MIPI, PCIe, LPDDR, UFS, power-rail, and return-path reports
+          missing
+    status: blocked_no_release_outputs_present
+  - phase: 3_high_speed_rf_power_route
+    current_status: blocked_no_tracks_or_zones
+    required_inputs_or_actions:
+      - USB2, MIPI DSI/CSI, PCIe, LPDDR, UFS, RF, and split-interconnect constraints
+        routed
+      - high-current VBUS/SYS/VBAT/RF_VBAT loops minimized with return stitching
+      - antenna feed matching networks and conducted RF access placed
+      - DRC clean or signed waivers captured under production/reports
+    expected_release_outputs:
+      - id: routed_kicad_pcb
+        expected_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+        present: false
+        release_required: true
+        blocker: current KiCad PCB is a concept placeholder scaffold
+      - id: filled_zones
+        expected_path: board/kicad/e1-phone/production/reports/zone-fill.json
+        present: false
+        release_required: true
+        blocker: no copper zones are present in the current board state
+      - id: pcb_drc_report
+        expected_path: board/kicad/e1-phone/production/reports/drc.json
+        present: false
+        release_required: true
+        blocker: PCB has no routed copper, filled zones, or DRC evidence
+      - id: si_pi_reports
+        expected_path: board/kicad/e1-phone/production/reports/si-pi
+        present: false
+        release_required: true
+        blocker: USB, MIPI, PCIe, LPDDR, UFS, power-rail, and return-path reports
+          missing
+      - id: rf_reports
+        expected_path: board/kicad/e1-phone/production/reports/rf
+        present: false
+        release_required: true
+        blocker: antenna matching, conducted, coexistence, GNSS, and SAR evidence
+          missing
+      - id: power_thermal_measurements
+        expected_path: board/kicad/e1-phone/production/reports/power-thermal
+        present: false
+        release_required: true
+        blocker: rail sequencing, load-step, charge, discharge, and thermal measurements
+          missing
+    status: blocked_no_release_outputs_present
+  - phase: 4_manufacturing_outputs
+    current_status: blocked_no_production_outputs
+    required_inputs_or_actions:
+      - Gerber X2 or IPC-2581, drill, position, BOM/AVL, assembly drawing, stencil
+        notes, and DFM/DFA quote generated
+      - factory probe coordinates and limits generated from routed board and fixture
+        CAD
+      - routed board STEP exported with supplier 3D models
+    expected_release_outputs:
+      - id: gerber_x2
+        expected_path: board/kicad/e1-phone/production/gerbers
+        present: false
+        release_required: true
+        blocker: fabrication Gerbers have not been generated
+      - id: ipc_2581_or_odbpp
+        expected_path: board/kicad/e1-phone/production/ipc-2581
+        present: false
+        release_required: true
+        blocker: assembler-neutral manufacturing package has not been generated
+      - id: nc_drill_slots
+        expected_path: board/kicad/e1-phone/production/gerbers
+        present: false
+        release_required: true
+        blocker: NC drill and slot outputs have not been generated
+      - id: position_file
+        expected_path: board/kicad/e1-phone/production/pos
+        present: false
+        release_required: true
+        blocker: pick-and-place output with convention notes missing
+      - id: production_bom_avl
+        expected_path: board/kicad/e1-phone/production/bom
+        present: false
+        release_required: true
+        blocker: production BOM/AVL with exact MPNs, lifecycle, MOQ, lead time, and
+          substitutes missing
+      - id: assembly_drawing
+        expected_path: board/kicad/e1-phone/production/pdf/assembly.pdf
+        present: false
+        release_required: true
+        blocker: assembly drawing with polarity, shield, DNP, connector, and inspection
+          notes missing
+      - id: split_interconnect_assembly_drawing
+        expected_path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+        present: false
+        release_required: true
+        blocker: top/bottom flex mating order, stiffener, strain relief, and inspection
+          drawing missing
+      - id: board_step_with_supplier_models
+        expected_path: board/kicad/e1-phone/production/step
+        present: false
+        release_required: true
+        blocker: routed board STEP with supplier connector/module/shield models missing
+      - id: factory_test_limits
+        expected_path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
+        present: false
+        release_required: true
+        blocker: factory limits for rails, USB-C, radios, display, cameras, audio,
+          buttons, and split interconnect missing
+      - id: first_article_traveler
+        expected_path: board/kicad/e1-phone/production/first-article
+        present: false
+        release_required: true
+        blocker: first-article traveler, current limits, stop-on-fail rules, and signoff
+          missing
+      - id: fab_assembler_quote
+        expected_path: board/kicad/e1-phone/production/fab-quote
+        present: false
+        release_required: true
+        blocker: quote tied to layer count, HDI, impedance, finish, tolerances, assembly,
+          and test missing
+    status: blocked_no_release_outputs_present
+  - phase: 5_enclosure_routed_step_rerun
+    current_status: blocked_waiting_for_routed_board_step
+    required_inputs_or_actions:
+      - mechanical/e1-phone/review/board-step-readiness.json passes with production
+        STEP
+      - mechanical/e1-phone/review/routed-board-clearance.json rerun with measured
+        routed-board clearances
+      - no routed component intersects display, battery, USB-C aperture, side buttons,
+        acoustic paths, antennas, or interconnect
+    expected_release_outputs:
+      - id: board_step_with_supplier_models
+        expected_path: board/kicad/e1-phone/production/step
+        present: false
+        release_required: true
+        blocker: routed board STEP with supplier connector/module/shield models missing
+      - id: enclosure_clearance_report_using_routed_step
+        expected_path: mechanical/e1-phone/review/routed-board-clearance.json
+        present: false
+        release_required: true
+        blocker: current enclosure fit uses concept CAD, not routed-board STEP with
+          final component heights
+    status: blocked_no_release_outputs_present
+domain_route_closure:
+  - id: usb_c_power
+    required_nets:
+      - VBUS
+      - USB_CC1
+      - USB_CC2
+      - USB_DP
+      - USB_DN
+      - SHIELD_GND
+    required_evidence:
+      - Type-C receptacle land pattern and shell capture from supplier drawing
+      - VBUS input protection, charger path, USB-PD controller, and current-limit
+        validation
+      - USB2 differential routing, ESD placement, and bring-up test access
+    status: blocked_no_routed_post_route_or_supplier_release_evidence
+  - id: display_touch
+    required_nets:
+      - DSI_CLK_P
+      - DSI_D0_P
+      - DISP_AVDD_5V5
+      - DISP_AVEE_N5V5
+      - TOUCH_I2C_SCL
+    required_evidence:
+      - selected display/touch FPC pinout converted into real KiCad connector symbol
+        and footprint
+      - MIPI D-PHY post-route length/impedance review
+      - display FPC bend and enclosure clearance with supplier model
+    status: blocked_no_routed_post_route_or_supplier_release_evidence
+  - id: cameras
+    required_nets:
+      - CAM0_CSI_CLK_P
+      - CAM1_CSI_CLK_P
+      - CAM_AVDD_2V8
+      - CAM_DVDD_1V2
+    required_evidence:
+      - front and rear camera FPC pinouts and land patterns
+      - CSI route and power-sequence review
+      - module z-height, lens window, and alignment clearance in enclosure
+    status: blocked_no_routed_post_route_or_supplier_release_evidence
+  - id: radios
+    required_nets:
+      - CELL_RF_MAIN
+      - CELL_RF_DIV
+      - CELL_GNSS_RF
+      - WIFI_BT_RF0
+      - WIFI_BT_RF1
+    required_evidence:
+      - cellular and Wi-Fi/Bluetooth module reference layout adherence
+      - 50 ohm feed, matching, conducted access, and antenna keepout closure
+      - coexistence, GNSS desense, regulatory, carrier, and SAR pre-scan evidence
+    status: blocked_no_routed_post_route_or_supplier_release_evidence
+  - id: side_buttons
+    required_nets:
+      - PWR_KEY_N
+      - VOL_UP_N
+      - VOL_DOWN_N
+      - AON_1V8
+      - GND
+    required_evidence:
+      - side-key flex pinout and ESD/debounce land patterns
+      - actuator stack tolerance, force, ingress, and test access review
+    status: blocked_no_routed_post_route_or_supplier_release_evidence
+  - id: audio_haptics
+    required_nets:
+      - I2S_BCLK
+      - PDM_CLK
+      - SPK_P
+      - SPK_N
+      - HAPTIC_OUT
+    required_evidence:
+      - codec, amplifier, microphones, speaker, and haptic supplier footprints
+      - acoustic chamber, port, mesh, gasket, and enclosure leakage validation
+    status: blocked_no_routed_post_route_or_supplier_release_evidence
+  - id: split_interconnect
+    required_nets:
+      - USB_DP
+      - USB_DN
+      - VBUS
+      - SYS
+      - I2S_BCLK
+      - PDM_CLK
+      - HAPTIC_OUT
+    required_evidence:
+      - top and bottom connector supplier land patterns and mating-height stack
+      - flex cable pinout, stiffener, bend, strain relief, and continuity test
+    status: blocked_no_routed_post_route_or_supplier_release_evidence
+  - id: battery
+    required_nets:
+      - VBAT
+      - BAT_NTC
+      - BAT_ID
+      - GND
+    required_evidence:
+      - supplier pack drawing including swelling, PCM, tab, NTC, connector, and tolerance
+        stack
+      - cavity insertion/removal and thermal expansion clearance in enclosure
+    status: blocked_no_routed_post_route_or_supplier_release_evidence
+  - id: compute_storage
+    required_nets:
+      - LPDDR_CK_P
+      - LPDDR_DQS_P
+      - UFS_REFCLK_P
+      - UFS_TX_P
+      - UFS_RX_P
+      - JTAG_TCK
+    required_evidence:
+      - SoC, LPDDR, UFS, boot strap, and debug exact footprints
+      - post-route memory/storage SI and boot-mode bring-up coverage
+    status: blocked_no_routed_post_route_or_supplier_release_evidence
+  - id: manufacturing
+    required_nets:
+      - VBUS
+      - VBAT
+      - SYS
+      - AON_1V8
+      - IO_1V8
+      - RF_VBAT
+      - CAM_AVDD_2V8
+      - DISP_AVDD_5V5
+    required_evidence:
+      - Gerber X2 or IPC-2581 with stackup notes
+      - NC drill and slot files
+      - ODB++ or IPC-2581 if requested by selected assembler
+      - pick-and-place with side, rotation, and centroid convention documented
+      - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+      - assembly drawing with polarity, shield, keepout, do-not-populate, and inspection
+        notes
+      - split-board interconnect assembly drawing with mating order, stiffener, strain
+        relief, and inspection notes
+      - board STEP exported from routed KiCad with supplier 3D models
+      - stencil design and paste aperture exceptions
+      - DFM/DFA report from selected fab and assembler
+      - first-article traveler, current-limit table, and stop-on-fail instructions
+    status: blocked_no_routed_post_route_or_supplier_release_evidence
+supplier_to_kicad_route_input_matrix:
+  - function: display_touch
+    primary_candidate: CH550FH01A-CT
+    package_binding: package/display/v0-dsi-720x1280.yaml
+    rfq_intake_status: blocked_no_signed_drawing_pinout_or_sample
+    supplier_to_kicad_status: blocked_waiting_supplier_evidence_and_kicad_reviews
+    footprint_capture_work_item: evt1_footprint_capture_01_display_touch
+    footprint_capture_status: blocked_waiting_supplier_intake_and_review
+    refdes_group: J_DISPLAY_TOUCH
+    planned_contract_net_count: 16
+    required_supplier_input_count: 6
+    required_production_evidence:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/display_touch/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/display_touch/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/display_touch/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/display_touch/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/display_touch/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/display_touch/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/display_touch/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/display_touch.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/display_touch.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/display_touch.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/display_touch.yaml
+    supplier_gate_inputs_required:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    all_supplier_gates_closed: false
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/display_touch.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/display_touch.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/display_touch.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/display_touch.yaml
+    current_blocker: supplier intake gates are false and current KiCad board still
+      uses placeholder footprints
+  - function: rear_camera
+    primary_candidate: SF-XR3855A-A0_OV13855_or_OV13850_13MP_AF
+    package_binding: package/camera/oem-mipi-csi-modules.yaml
+    rfq_intake_status: blocked_no_exact_module_drawing_pinout_or_sample
+    supplier_to_kicad_status: blocked_waiting_supplier_evidence_and_kicad_reviews
+    footprint_capture_work_item: evt1_footprint_capture_02_rear_camera
+    footprint_capture_status: blocked_waiting_supplier_intake_and_review
+    refdes_group: J_CAM0_CAM1
+    planned_contract_net_count: 22
+    required_supplier_input_count: 6
+    required_production_evidence:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/rear_camera/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/rear_camera/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/rear_camera/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/rear_camera/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/rear_camera/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/rear_camera/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/rear_camera/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/rear_camera.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/rear_camera.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/rear_camera.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/rear_camera.yaml
+    supplier_gate_inputs_required:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    all_supplier_gates_closed: false
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/rear_camera.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/rear_camera.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/rear_camera.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/rear_camera.yaml
+    current_blocker: supplier intake gates are false and current KiCad board still
+      uses placeholder footprints
+  - function: front_camera
+    primary_candidate: SF-G5035S60FY_GC5035_5MP_FF_MIPI
+    package_binding: package/camera/oem-mipi-csi-modules.yaml
+    rfq_intake_status: blocked_no_exact_front_camera_mpn_drawing_or_sample
+    supplier_to_kicad_status: blocked_waiting_supplier_evidence_and_kicad_reviews
+    footprint_capture_work_item: evt1_footprint_capture_03_front_camera
+    footprint_capture_status: blocked_waiting_supplier_intake_and_review
+    refdes_group: J_CAM0_CAM1
+    planned_contract_net_count: 22
+    required_supplier_input_count: 6
+    required_production_evidence:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/front_camera/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/front_camera/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/front_camera/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/front_camera/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/front_camera/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/front_camera/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/front_camera/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/front_camera.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/front_camera.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/front_camera.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/front_camera.yaml
+    supplier_gate_inputs_required:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    all_supplier_gates_closed: false
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/front_camera.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/front_camera.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/front_camera.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/front_camera.yaml
+    current_blocker: supplier intake gates are false and current KiCad board still
+      uses placeholder footprints
+  - function: cellular
+    primary_candidate: Quectel_RG255C_or_RM255C_5G_RedCap
+    package_binding: package/cellular/quectel-5g-redcap.yaml
+    rfq_intake_status: blocked_no_region_sku_hardware_design_pack_or_cert_scope
+    supplier_to_kicad_status: blocked_waiting_supplier_evidence_and_kicad_reviews
+    footprint_capture_work_item: evt1_footprint_capture_04_cellular
+    footprint_capture_status: blocked_waiting_supplier_intake_and_review
+    refdes_group: U_CELL
+    planned_contract_net_count: 15
+    required_supplier_input_count: 9
+    required_production_evidence:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/cellular/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/cellular/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/cellular/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/cellular/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/cellular/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/cellular/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/cellular/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/cellular.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/cellular.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/cellular.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/cellular.yaml
+    supplier_gate_inputs_required:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    all_supplier_gates_closed: false
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/cellular.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/cellular.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/cellular.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/cellular.yaml
+    current_blocker: supplier intake gates are false and current KiCad board still
+      uses placeholder footprints
+  - function: wifi_bluetooth
+    primary_candidate: Murata_LBEE5XV2EA-802_Type_2EA
+    package_binding: package/wifi/murata-type-2ea-wifi6e.yaml
+    rfq_intake_status: blocked_no_reference_layout_driver_license_or_cert_scope
+    supplier_to_kicad_status: blocked_waiting_supplier_evidence_and_kicad_reviews
+    footprint_capture_work_item: evt1_footprint_capture_05_wifi_bluetooth
+    footprint_capture_status: blocked_waiting_supplier_intake_and_review
+    refdes_group: U_WIFI_BT
+    planned_contract_net_count: 19
+    required_supplier_input_count: 8
+    required_production_evidence:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/wifi_bluetooth.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/wifi_bluetooth.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/wifi_bluetooth.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/wifi_bluetooth.yaml
+    supplier_gate_inputs_required:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    all_supplier_gates_closed: false
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/wifi_bluetooth.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/wifi_bluetooth.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/wifi_bluetooth.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/wifi_bluetooth.yaml
+    current_blocker: supplier intake gates are false and current KiCad board still
+      uses placeholder footprints
+  - function: usb_c_receptacle_evt0
+    primary_candidate: GCT_USB4105_class_USB2_Type_C
+    package_binding: package/usb-c/e1-phone-usb-c-port.yaml
+    rfq_intake_status: blocked_no_signed_connector_drawing_or_mechanical_load_review
+    supplier_to_kicad_status: blocked_waiting_supplier_evidence_and_kicad_reviews
+    footprint_capture_work_item: evt1_footprint_capture_06_usb_c_receptacle_evt0
+    footprint_capture_status: blocked_waiting_supplier_intake_and_review
+    refdes_group: J_USB_C
+    planned_contract_net_count: 6
+    required_supplier_input_count: 7
+    required_production_evidence:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/usb_c_receptacle_evt0.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/usb_c_receptacle_evt0.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/usb_c_receptacle_evt0.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_c_receptacle_evt0.yaml
+    supplier_gate_inputs_required:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    all_supplier_gates_closed: false
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/usb_c_receptacle_evt0.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/usb_c_receptacle_evt0.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/usb_c_receptacle_evt0.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_c_receptacle_evt0.yaml
+    current_blocker: supplier intake gates are false and current KiCad board still
+      uses placeholder footprints
+  - function: side_buttons
+    primary_candidate: side_key_flex_or_enclosure_mounted_switch_subassembly
+    package_binding: package/human-interface/side-buttons.yaml
+    rfq_intake_status: blocked_no_side_key_flex_or_switch_subassembly_pack
+    supplier_to_kicad_status: blocked_waiting_supplier_evidence_and_kicad_reviews
+    footprint_capture_work_item: evt1_footprint_capture_07_side_buttons
+    footprint_capture_status: blocked_waiting_supplier_intake_and_review
+    refdes_group: SW_POWER_VOL
+    planned_contract_net_count: 5
+    required_supplier_input_count: 6
+    required_production_evidence:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/side_buttons/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/side_buttons/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/side_buttons/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/side_buttons/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/side_buttons/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/side_buttons/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/side_buttons/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/side_buttons.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/side_buttons.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/side_buttons.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/side_buttons.yaml
+    supplier_gate_inputs_required:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    all_supplier_gates_closed: false
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/side_buttons.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/side_buttons.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/side_buttons.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/side_buttons.yaml
+    current_blocker: supplier intake gates are false and current KiCad board still
+      uses placeholder footprints
+  - function: battery_pack
+    primary_candidate: 5830mAh_22p45Wh_64x87x5p7mm_pouch_class
+    package_binding: package/battery/e1-phone-17p3wh-pack.yaml
+    rfq_intake_status: blocked_no_custom_pack_quote_drawing_or_cert_pack
+    supplier_to_kicad_status: blocked_waiting_supplier_evidence_and_kicad_reviews
+    footprint_capture_work_item: evt1_footprint_capture_08_battery_pack
+    footprint_capture_status: blocked_waiting_supplier_intake_and_review
+    refdes_group: J_BATTERY
+    planned_contract_net_count: 4
+    required_supplier_input_count: 7
+    required_production_evidence:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/battery_pack/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/battery_pack/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/battery_pack/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/battery_pack/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/battery_pack/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/battery_pack/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/battery_pack/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/battery_pack/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/battery_pack.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/battery_pack.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/battery_pack.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/battery_pack.yaml
+    supplier_gate_inputs_required:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    all_supplier_gates_closed: false
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/battery_pack.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/battery_pack.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/battery_pack.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/battery_pack.yaml
+    current_blocker: supplier intake gates are false and current KiCad board still
+      uses placeholder footprints
+  - function: audio_speaker_microphone_flexes
+    primary_candidate: codec_amp_mics_speaker_receiver_haptic_stack
+    package_binding: package/audio/v0-codec.yaml
+    rfq_intake_status: blocked_no_acoustic_component_drawing_pack_or_test_data
+    supplier_to_kicad_status: blocked_waiting_supplier_evidence_and_kicad_reviews
+    footprint_capture_work_item: evt1_footprint_capture_09_audio_speaker_microphone_flexes
+    footprint_capture_status: blocked_waiting_supplier_intake_and_review
+    refdes_group: U_AUDIO_SPK_MIC
+    planned_contract_net_count: 16
+    required_supplier_input_count: 6
+    required_production_evidence:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/audio_speaker_microphone_flexes.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/audio_speaker_microphone_flexes.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/audio_speaker_microphone_flexes.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/audio_speaker_microphone_flexes.yaml
+    supplier_gate_inputs_required:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    all_supplier_gates_closed: false
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/audio_speaker_microphone_flexes.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/audio_speaker_microphone_flexes.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/audio_speaker_microphone_flexes.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/audio_speaker_microphone_flexes.yaml
+    current_blocker: supplier intake gates are false and current KiCad board still
+      uses placeholder footprints
+  - function: top_bottom_interconnect
+    primary_candidate: Hirose_BM28_class_board_to_board_or_flex_stack
+    package_binding: package/interconnect/e1-phone-top-bottom-flex.yaml
+    rfq_intake_status: blocked_no_exact_connector_pair_flex_stackup_or_si_rules
+    supplier_to_kicad_status: blocked_waiting_supplier_evidence_and_kicad_reviews
+    footprint_capture_work_item: evt1_footprint_capture_10_top_bottom_interconnect
+    footprint_capture_status: blocked_waiting_supplier_intake_and_review
+    refdes_group:
+      - J_TOP_BOTTOM_FLEX_TOP
+      - J_TOP_BOTTOM_FLEX_BOTTOM
+    planned_contract_net_count: 25
+    required_supplier_input_count: 8
+    required_production_evidence:
+      rfq_transmittal: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-transmittal.yaml
+      rfq_response_pack: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-response-pack.yaml
+      signed_2d_drawing: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/signed-2d-drawing.pdf
+      pinout_or_pad_map: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/pinout-or-pad-map.csv
+      recommended_land_pattern: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/recommended-land-pattern.pdf
+      step_or_brep_model: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/supplier-model.step
+      sample_inspection: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/sample-inspection.yaml
+      compliance_pack: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/compliance-pack-index.yaml
+      pinout_review_signoff: board/kicad/e1-phone/production/reports/pinout-review/top_bottom_interconnect.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/top_bottom_interconnect.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/top_bottom_interconnect.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/top_bottom_interconnect.yaml
+    supplier_gate_inputs_required:
+      rfq_response_pack: false
+      signed_2d_drawing: false
+      pinout_or_pad_map: false
+      recommended_land_pattern: false
+      step_or_brep_model: false
+      sample_inspection: false
+      compliance_pack: false
+      pinout_review_signoff: false
+      symbol_review: false
+      footprint_review: false
+      footprint_3d_binding: false
+    all_supplier_gates_closed: false
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/top_bottom_interconnect.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/top_bottom_interconnect.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/top_bottom_interconnect.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/top_bottom_interconnect.yaml
+    current_blocker: supplier intake gates are false and current KiCad board still
+      uses placeholder footprints
+external_interface_hardware_closure:
+  - id: display_touch_fpc
+    route_domain: display_touch
+    status: blocked_waiting_supplier_pinout_connector_land_pattern_step_and_samples
+    source_candidate: CH550FH01A-CT
+    refdes: J_DISPLAY_TOUCH
+    required_contract_nets:
+      - DISP_AVDD_5V5
+      - DISP_AVEE_N5V5
+      - DISP_BL_EN
+      - DISP_BL_PWM
+      - DISP_RESET_N
+      - DISP_TE
+      - DSI_CLK_N
+      - DSI_CLK_P
+      - DSI_D0_N
+      - DSI_D0_P
+      - DSI_D1_N
+      - DSI_D1_P
+      - DSI_D2_N
+      - DSI_D2_P
+      - DSI_D3_N
+      - DSI_D3_P
+      - GND
+      - IO_1V8
+      - TOUCH_I2C_SCL
+      - TOUCH_I2C_SDA
+      - TOUCH_IRQ_N
+      - TOUCH_RESET_N
+    route_constraint_group_count: 5
+    mechanical_capture_tasks:
+      - bind FPC exit, stiffener, bend radius, and z-height datums into routed-board
+        STEP
+      - rerun display/camera enclosure clearance with final connector and module models
+      - record incoming sample dimensional inspection before footprint freeze
+    release_blocker: public listing gives module geometry, but exact display/touch
+      FPC pin count and lane order are missing
+  - id: rear_camera_fpc
+    route_domain: cameras
+    status: blocked_waiting_supplier_pinout_connector_land_pattern_step_and_samples
+    source_candidate: SF-XR3855A-A0
+    refdes: J_CAM0
+    required_contract_nets:
+      - CAM0_AF_I2C_SCL
+      - CAM0_AF_I2C_SDA
+      - CAM0_CSI_CLK_N
+      - CAM0_CSI_CLK_P
+      - CAM0_CSI_D0_N
+      - CAM0_CSI_D0_P
+      - CAM0_CSI_D1_N
+      - CAM0_CSI_D1_P
+      - CAM0_CSI_D2_N
+      - CAM0_CSI_D2_P
+      - CAM0_CSI_D3_N
+      - CAM0_CSI_D3_P
+      - CAM0_MCLK
+      - CAM0_PWDN
+      - CAM0_RESET_N
+      - CAM_AFVDD_2V8
+      - CAM_AVDD_2V8
+      - CAM_DVDD_1V2
+      - GND
+      - IO_1V8
+    route_constraint_group_count: 5
+    mechanical_capture_tasks:
+      - bind FPC exit, stiffener, bend radius, and z-height datums into routed-board
+        STEP
+      - rerun display/camera enclosure clearance with final connector and module models
+      - record incoming sample dimensional inspection before footprint freeze
+    release_blocker: public listing gives 24-pin class only; exact FPC pin order and
+      connector MPN are missing
+  - id: front_camera_fpc
+    route_domain: cameras
+    status: blocked_waiting_supplier_pinout_connector_land_pattern_step_and_samples
+    source_candidate: SF-G5035S60FY
+    refdes: J_CAM1
+    required_contract_nets:
+      - CAM1_CSI_CLK_N
+      - CAM1_CSI_CLK_P
+      - CAM1_CSI_D0_N
+      - CAM1_CSI_D0_P
+      - CAM1_CSI_D1_N
+      - CAM1_CSI_D1_P
+      - CAM1_MCLK
+      - CAM1_RESET_N
+      - CAM_AVDD_2V8
+      - CAM_DVDD_1V2
+      - GND
+      - IO_1V8
+    route_constraint_group_count: 3
+    mechanical_capture_tasks:
+      - bind FPC exit, stiffener, bend radius, and z-height datums into routed-board
+        STEP
+      - rerun display/camera enclosure clearance with final connector and module models
+      - record incoming sample dimensional inspection before footprint freeze
+    release_blocker: public listing gives 30-pin class only; exact FPC pin order and
+      connector MPN are missing
+  - id: usb_c_receptacle_evt0
+    route_domain: usb_c_power
+    status: blocked_requires_usb_c_pd_charger_sidekey_routed_and_measured_evidence
+    source_candidate: USB4105
+    refdes: J_USB_C
+    required_contract_nets:
+      - GND
+      - SHIELD_GND
+      - USBPD_I2C_SCL
+      - USBPD_I2C_SDA
+      - USBPD_IRQ_N
+      - USBPD_RESET
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBUS
+    route_constraint_group_count: 1
+    mechanical_capture_tasks:
+      - single_bottom_center_port_only
+      - connector_shell_captured_by_enclosure_not_only_solder_joints
+      - chamfered_or_radiused_cutout_verified_with_plug_overmold
+      - through_hole_shell_stakes_or_enclosure_saddle_for_insertion_load
+      - waterproof_variant_requires_new_cutout_gasket_and_drain_review
+    acceptance_items:
+      - id: usb_c_connector_shell_load_path
+        owner: mechanical
+        status: blocked_missing_routed_supplier_or_measured_evidence
+        required_evidence:
+          - signed USB-C connector drawing with shell stake and board-edge datum
+          - enclosure saddle/rib load path review
+          - insertion/extraction force test report after first article
+        blocker: USB-C shell capture and plug load path are not proven
+      - id: usb_c_cutout_and_plug_keepout
+        owner: mechanical
+        status: blocked_missing_routed_supplier_or_measured_evidence
+        required_evidence:
+          - routed board STEP with selected connector model
+          - plug overmold clearance sweep
+          - port chamfer/radius tolerance report
+        blocker: USB-C aperture and cable overmold clearance are not validated
+      - id: usb2_cc_vbus_route_and_esd
+        owner: layout
+        status: blocked_missing_routed_supplier_or_measured_evidence
+        required_evidence:
+          - routed USB2 90 ohm pair report
+          - CC and USB2 ESD placement review
+          - VBUS TVS/current-sense layout review
+          - KiCad DRC clean report
+        blocker: USB-C electrical route, ESD, and VBUS protection are not routed
+      - id: pd_attach_and_charger_safety
+        owner: validation
+        status: blocked_missing_routed_supplier_or_measured_evidence
+        required_evidence:
+          - CC attach log for both plug flips
+          - PD sink profile negotiation transcript
+          - dead-battery boot current-limit log
+          - CC/CV charge cycle and JEITA hot/cold logs
+        blocker: PD attach and charger safety evidence are missing
+    release_blocker: USB-C supplier, routed electrical, PD/charger, and enclosure
+      load-path evidence are missing
+  - id: side_buttons
+    route_domain: side_buttons
+    status: blocked_requires_usb_c_pd_charger_sidekey_routed_and_measured_evidence
+    source_candidate: EVQ-P7_EVQ-P3_EVQ-9P7
+    refdes: SW_POWER_VOL
+    required_contract_nets:
+      - AON_1V8
+      - GND
+      - PWR_KEY_N
+      - VOL_DOWN_N
+      - VOL_UP_N
+    route_constraint_group_count: 1
+    mechanical_capture_tasks:
+      - external_caps_push_enclosure_rib_or_elastomer_not_solder_joints
+      - power_key_and_volume_keys_aligned_to_side_button_cap_centerlines
+      - force_travel_stack_and_ingress_gap_checked_before_ID_freeze
+      - recovery_combo_volume_down_plus_power_available_during_boot
+    acceptance_items:
+      - id: side_key_force_travel_and_solder_load
+        owner: mechanical
+        status: blocked_missing_routed_supplier_or_measured_evidence
+        required_evidence:
+          - side-key switch or flex drawing
+          - button cap tolerance stack
+          - force/travel CSV from sample lot
+          - enclosure rib or elastomer load path review
+        blocker: Power/volume actuator force path is not validated
+      - id: side_key_recovery_and_wake
+        owner: firmware_validation
+        status: blocked_missing_routed_supplier_or_measured_evidence
+        required_evidence:
+          - PWR_KEY_N wake transcript
+          - volume-up/down bootloader recovery combo log
+          - AON_1V8 debounce leakage review
+          - pogo fixture access report
+        blocker: Power/volume key wake and recovery behavior is not measured
+    release_blocker: Power/volume key supplier, wake/recovery, force-travel, and enclosure
+      load-path evidence are missing
+output_manifest_closure:
+  - id: schematic_erc_report
+    owner: ee
+    expected_path: board/kicad/e1-phone/production/reports/erc.json
+    present: false
+    release_required: true
+    blocker: hierarchical schematic has scaffold symbols and no ERC evidence
+  - id: pcb_drc_report
+    owner: layout
+    expected_path: board/kicad/e1-phone/production/reports/drc.json
+    present: false
+    release_required: true
+    blocker: PCB has no routed copper, filled zones, or DRC evidence
+  - id: routed_kicad_pcb
+    owner: layout
+    expected_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    present: false
+    release_required: true
+    blocker: current KiCad PCB is a concept placeholder scaffold
+  - id: filled_zones
+    owner: layout
+    expected_path: board/kicad/e1-phone/production/reports/zone-fill.json
+    present: false
+    release_required: true
+    blocker: no copper zones are present in the current board state
+  - id: gerber_x2
+    owner: fabrication
+    expected_path: board/kicad/e1-phone/production/gerbers
+    present: false
+    release_required: true
+    blocker: fabrication Gerbers have not been generated
+  - id: ipc_2581_or_odbpp
+    owner: fabrication
+    expected_path: board/kicad/e1-phone/production/ipc-2581
+    present: false
+    release_required: true
+    blocker: assembler-neutral manufacturing package has not been generated
+  - id: nc_drill_slots
+    owner: fabrication
+    expected_path: board/kicad/e1-phone/production/gerbers
+    present: false
+    release_required: true
+    blocker: NC drill and slot outputs have not been generated
+  - id: stackup_impedance_report
+    owner: fabrication
+    expected_path: board/kicad/e1-phone/production/stackup
+    present: false
+    release_required: true
+    blocker: fabricator stackup, impedance table, and coupon geometry missing
+  - id: position_file
+    owner: assembly
+    expected_path: board/kicad/e1-phone/production/pos
+    present: false
+    release_required: true
+    blocker: pick-and-place output with convention notes missing
+  - id: production_bom_avl
+    owner: sourcing
+    expected_path: board/kicad/e1-phone/production/bom
+    present: false
+    release_required: true
+    blocker: production BOM/AVL with exact MPNs, lifecycle, MOQ, lead time, and substitutes
+      missing
+  - id: assembly_drawing
+    owner: assembly
+    expected_path: board/kicad/e1-phone/production/pdf/assembly.pdf
+    present: false
+    release_required: true
+    blocker: assembly drawing with polarity, shield, DNP, connector, and inspection
+      notes missing
+  - id: split_interconnect_assembly_drawing
+    owner: mechanical_assembly
+    expected_path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+    present: false
+    release_required: true
+    blocker: top/bottom flex mating order, stiffener, strain relief, and inspection
+      drawing missing
+  - id: board_step_with_supplier_models
+    owner: mechanical
+    expected_path: board/kicad/e1-phone/production/step
+    present: false
+    release_required: true
+    blocker: routed board STEP with supplier connector/module/shield models missing
+  - id: enclosure_clearance_report_using_routed_step
+    owner: mechanical
+    expected_path: mechanical/e1-phone/review/routed-board-clearance.json
+    present: false
+    release_required: true
+    blocker: current enclosure fit uses concept CAD, not routed-board STEP with final
+      component heights
+  - id: si_pi_reports
+    owner: signal_power_integrity
+    expected_path: board/kicad/e1-phone/production/reports/si-pi
+    present: false
+    release_required: true
+    blocker: USB, MIPI, PCIe, LPDDR, UFS, power-rail, and return-path reports missing
+  - id: rf_reports
+    owner: rf
+    expected_path: board/kicad/e1-phone/production/reports/rf
+    present: false
+    release_required: true
+    blocker: antenna matching, conducted, coexistence, GNSS, and SAR evidence missing
+  - id: power_thermal_measurements
+    owner: validation
+    expected_path: board/kicad/e1-phone/production/reports/power-thermal
+    present: false
+    release_required: true
+    blocker: rail sequencing, load-step, charge, discharge, and thermal measurements
+      missing
+  - id: factory_test_limits
+    owner: test
+    expected_path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    present: false
+    release_required: true
+    blocker: factory limits for rails, USB-C, radios, display, cameras, audio, buttons,
+      and split interconnect missing
+  - id: first_article_traveler
+    owner: manufacturing
+    expected_path: board/kicad/e1-phone/production/first-article
+    present: false
+    release_required: true
+    blocker: first-article traveler, current limits, stop-on-fail rules, and signoff
+      missing
+  - id: fab_assembler_quote
+    owner: sourcing
+    expected_path: board/kicad/e1-phone/production/fab-quote
+    present: false
+    release_required: true
+    blocker: quote tied to layer count, HDI, impedance, finish, tolerances, assembly,
+      and test missing
+module_and_rf_dependency:
+  execution_status: blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence
+  required_rf_nets:
+    - CELL_GNSS_RF
+    - CELL_RF_DIV
+    - CELL_RF_MAIN
+    - WIFI_BT_RF0
+    - WIFI_BT_RF1
+  rf_feed_count: 5
+  release_blockers:
+    - cellular regional SKU, supplier pinout, land pattern, STEP, firmware, and carrier
+      plan missing
+    - Wi-Fi/Bluetooth module pinout, land pattern, STEP, firmware, NVRAM/CLM, and
+      regulatory scope missing
+    - RF matching networks and conducted access are requirements only; no 50 ohm routed
+      geometry or VNA data exists
+    - factory RF calibration, identity provisioning, and first-article radio limits
+      are missing
+    - routed PCB, DRC, SI/PI, RF, SAR, enclosure, and fabrication outputs are missing
+enclosure_dependency:
+  execution_status: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+  requires_routed_board_step: true
+  routed_step_blocker: enclosure fit must be rerun with routed PCB STEP and final
+    component models
+cross_checks:
+  routing_acceptance_live_counts_match_pcb_audit: true
+  manufacturing_state_matches_routed_release: true
+  routed_release_outputs_all_blocked: true
+  supplier_to_kicad_functions_match_footprint_capture: true
+  all_supplier_to_kicad_route_inputs_fail_closed: true
+  supplier_reviews_match_footprint_capture_outputs: true
+  display_camera_external_interfaces_fail_closed: true
+  usb_sidekey_external_interfaces_fail_closed: true
+  external_interface_release_domain_nets_are_in_contracts: true
+  evt1_required_outputs_cover_routed_release_manifest: true
+  module_rf_execution_blocks_radio_route: true
+  enclosure_fit_waits_for_routed_step: true
+  current_pcb_has_no_tracks_or_zones: true
+  all_execution_phases_fail_closed: true
+release_blockers:
+  - supplier pinouts, symbols, footprints, courtyards, and STEP models are not frozen
+  - supplier-to-KiCad evidence records and EVT1 footprint capture work items are all
+    still blocked
+  - hierarchical schematic capture and ERC evidence are missing
+  - screen, camera, USB-C, and side-button connector pinouts remain blocked before
+    routable schematic capture
+  - current KiCad PCB has placeholder footprints, zero routed segments, and zero filled
+    zones
+  - supplier-footprint escape analysis and trial-route evidence are missing
+  - USB2 split-interconnect route topology is blocked until controlled-impedance flex
+    or topology evidence exists
+  - cellular and Wi-Fi/Bluetooth module pinouts, reference layouts, firmware identity,
+    and RF evidence are missing
+  - post-route DRC, length/skew, impedance, SI/PI, RF, power, thermal, and factory
+    evidence are missing
+  - production Gerber or IPC-2581, drill, position, BOM/AVL, assembly, STEP, DFM/DFA,
+    and quote outputs are missing
+  - routed board STEP has not been generated or rerun through enclosure clearance
+forbidden_claims:
+  - routed_pcb_ready
+  - evt1_route_ready
+  - drc_clean
+  - erc_clean
+  - production_outputs_ready
+  - fabrication_ready
+  - enclosure_ready
+  - factory_test_ready
+  - rf_ready
+  - power_thermal_ready
+  - end_to_end_phone_ready

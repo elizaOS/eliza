@@ -1,0 +1,103 @@
+{
+  "claim_boundary": "Geometric explode-trajectory collision proxy. Part-part overlap is measured as world-AABB interpenetration volume sampled across the explode path; exact for axis-aligned box envelopes, conservative for curved parts. Supplier B-rep boolean remains the signoff engine for the assembled state.",
+  "status": "explode_collision_pass",
+  "engine": "world_aabb_overlap_volume_swept_along_explode_trajectory",
+  "ring_offset_mm": 25.0,
+  "trajectory_samples": 21,
+  "overlap_tolerance_mm3": 0.05,
+  "solid_part_count": 89,
+  "excluded_virtual_volume_count": 5,
+  "excluded_virtual_volumes": [
+    "display_fpc_bend_keepout",
+    "cellular_top_antenna_keepout",
+    "cellular_bottom_antenna_keepout",
+    "wifi_bt_side_antenna_keepout",
+    "sim_tray_keepout"
+  ],
+  "pair_count": 3916,
+  "pass_through_pair_count": 0,
+  "pass_through_pairs": [],
+  "residual_overlap_at_full_explode_pair_count": 15,
+  "residual_overlap_pairs": [
+    {
+      "a": "main_pcb",
+      "b": "split_interconnect_top_flex_tail",
+      "fully_exploded_overlap_mm3": 3.6
+    },
+    {
+      "a": "main_pcb",
+      "b": "split_interconnect_bottom_flex_tail",
+      "fully_exploded_overlap_mm3": 3.6
+    },
+    {
+      "a": "battery_pouch",
+      "b": "orange_screw_boss_5",
+      "fully_exploded_overlap_mm3": 37.044
+    },
+    {
+      "a": "battery_pouch",
+      "b": "orange_screw_boss_6",
+      "fully_exploded_overlap_mm3": 37.044
+    },
+    {
+      "a": "battery_pouch",
+      "b": "orange_battery_left_rib",
+      "fully_exploded_overlap_mm3": 91.35
+    },
+    {
+      "a": "battery_pouch",
+      "b": "orange_battery_right_rib",
+      "fully_exploded_overlap_mm3": 91.35
+    },
+    {
+      "a": "usb_c_molded_drip_break_lip",
+      "b": "usb_c_internal_drain_shelf",
+      "fully_exploded_overlap_mm3": 0.1123
+    },
+    {
+      "a": "rear_camera_lens_window",
+      "b": "rear_camera_cover_glass",
+      "fully_exploded_overlap_mm3": 25.432
+    },
+    {
+      "a": "rear_camera_light_baffle_top",
+      "b": "rear_camera_cover_glass",
+      "fully_exploded_overlap_mm3": 1.3799
+    },
+    {
+      "a": "rear_camera_light_baffle_bottom",
+      "b": "rear_camera_cover_glass",
+      "fully_exploded_overlap_mm3": 1.3799
+    },
+    {
+      "a": "orange_screw_boss_3",
+      "b": "orange_battery_left_rib",
+      "fully_exploded_overlap_mm3": 0.105
+    },
+    {
+      "a": "orange_screw_boss_4",
+      "b": "orange_battery_right_rib",
+      "fully_exploded_overlap_mm3": 0.105
+    },
+    {
+      "a": "orange_screw_boss_5",
+      "b": "orange_battery_left_rib",
+      "fully_exploded_overlap_mm3": 4.41
+    },
+    {
+      "a": "orange_screw_boss_6",
+      "b": "orange_battery_right_rib",
+      "fully_exploded_overlap_mm3": 4.41
+    },
+    {
+      "a": "soc_shield_can",
+      "b": "radio_shield_can",
+      "fully_exploded_overlap_mm3": 46.8
+    }
+  ],
+  "release_rule": "No part-part overlap may grow beyond its assembled baseline anywhere on the explode trajectory (no pass-through). Residual overlaps at full explode are reported for review; same-axis stacked parts may legitimately remain nested if their assembled overlap does not grow.",
+  "part_screenshots": {
+    "part_shot_count": 94,
+    "contact_sheet": "/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/review/part-explode-contact-sheet.png"
+  }
+}

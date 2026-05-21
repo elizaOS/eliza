@@ -1,0 +1,121 @@
+schema: eliza.e1_phone_supplier_pinout_manifest.v1
+date: '2026-05-21'
+claim_boundary: |
+  Manifest of e1-phone supplier pinouts captured from public supplier
+  datasheets. This artifact does NOT promote any pinout to production-release
+  evidence. The production-release gate (pinout-review/<function>.yaml + FAI
+  signoff) remains separate and is still blocked per pinout-footprint-freeze.yaml.
+source_artifacts:
+  - board/kicad/e1-phone/preliminary-bom.yaml
+  - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+captured_pinouts:
+  - file: gct-usb4105-pinout.yaml
+    part: USB4105-GF-A
+    manufacturer: Global Connector Technology
+    function: usb_c_receptacle_evt0
+    package: USB-C 2.0 receptacle 24-pos
+    status: public_pinout_evidence_captured
+    completeness: full_per_pin_table_published
+  - file: quectel-rg255c-pinout.yaml
+    part: RG255C-EAB
+    manufacturer: Quectel
+    function: cellular
+    package: LGA ~250-pad 5G RedCap
+    status: public_pinout_evidence_captured
+    completeness: interface_groups_only_per_pad_requires_partner_portal_download
+    next_action: pull Hardware Design manual via https://www.quectel.com/contact/ (partner portal)
+  - file: murata-type-2ea-pinout.yaml
+    part: LBEE5XV2EA-802
+    manufacturer: Murata
+    function: wifi_bluetooth
+    package: Type 2EA SMT 12.5x9.4 mm
+    status: public_pinout_evidence_captured
+    completeness: interface_groups_only_per_pad_in_binary_datasheet_figure
+    next_action: re-emit with full pad map from datasheet figure during KiCad symbol authoring
+  - file: panasonic-evq-p7-pinout.yaml
+    part: EVQ-P7A01P
+    manufacturer: Panasonic
+    function: side_buttons
+    package: SMT side-push tactile 3.5x2.9 mm
+    status: public_pinout_evidence_captured
+    completeness: full_per_pin_table_published
+  - file: ov13855-pinout.yaml
+    part: SF-XR3855A (OV13855 module)
+    manufacturer: Sincere First / OmniVision
+    function: rear_camera
+    package: 24-pin 0.5 mm FPC tail
+    status: public_pinout_evidence_captured
+    completeness: signal_set_verified_per_pin_fpc_order_requires_signed_drawing
+    next_action: capture signed 2D drawing via supplier RFQ (rear_camera record)
+  - file: gc5035-pinout.yaml
+    part: SF-G5035S60FY (GC5035 module)
+    manufacturer: Sincere First / GalaxyCore
+    function: front_camera
+    package: 22-pin 0.5 mm FPC tail
+    status: public_pinout_evidence_captured
+    completeness: signal_set_verified_per_pin_fpc_order_requires_signed_drawing
+    next_action: capture signed 2D drawing via supplier RFQ (front_camera record)
+  - file: chenghao-ch550fh01a-pinout.yaml
+    part: CH550FH01A-CT
+    manufacturer: Shenzhen Chenghao Optoelectronic
+    function: display_touch
+    package: 40-pin 0.3 mm FPC + touch tail
+    status: public_pinout_evidence_captured
+    completeness: signal_set_verified_per_pin_fpc_order_requires_signed_spec
+    next_action: capture signed module specification via supplier RFQ (display_touch record)
+  - file: hirose-bm28-pinout.yaml
+    part: DF40C-80DP-0.4V(51)
+    manufacturer: Hirose Electric Group
+    function: top_bottom_interconnect
+    package: 80-pos 0.4 mm pitch B2B
+    status: public_pinout_evidence_captured
+    completeness: mechanical_full_signal_assignment_carried_by_flex
+  - file: tps65987-pinout.yaml
+    part: TPS65987DDH
+    manufacturer: Texas Instruments
+    function: usb_pd_controller
+    package: QFN-96, 9x9 mm
+    status: public_pinout_evidence_captured
+    completeness: interface_groups_only_per_pin_in_binary_datasheet_table
+    next_action: pull per-pin table from TI datasheet pp.5-9 or .bsdl from ti.com
+  - file: max77860-pinout.yaml
+    part: MAX77860EWG+
+    manufacturer: Analog Devices (Maxim)
+    function: charger
+    package: WLP-81 9x9 array, 0.4 mm pitch
+    status: public_pinout_evidence_captured
+    completeness: interface_groups_only_per_bump_in_binary_datasheet_table
+    next_action: pull per-bump table from ADI datasheet pp.5-7
+nda_gated_pinouts:
+  - part: Unisoc T606 / T616 (UMS9230)
+    manufacturer: Unisoc Communications
+    function: application_processor_soc
+    package: BGA ~600-ball
+    status: nda_gated_unblock_path_documented
+    unblock_procedure:
+      - contact Unisoc through an authorized regional distributor (Arrow, WPG/WT, or Unisoc-named Tier-1 ODM)
+      - sign Unisoc Mutual NDA and Design-In Agreement for the T606 / T616 platform
+      - request the T606 (or T616) Reference Design Kit (RDK) which includes the SoC Hardware Design Guide, full BGA ball-map, reference schematic, and reference PCB stack-up
+      - mirror ball-map CSV to board/kicad/e1-phone/production/sourcing/soc/pinout-or-pad-map.csv
+      - emit unisoc-t606-pinout.yaml with evidence_class nda_supplier_datasheet
+    blocker_owner: hardware_procurement_lead
+cross_checks:
+  total_captured: 10
+  total_nda_gated: 1
+  every_captured_file_present_on_disk: true
+  every_captured_file_cites_public_url: true
+  every_captured_file_evidence_class_public_supplier_datasheet: true
+  pinout_footprint_freeze_yaml_untouched: true
+  supplier_to_kicad_evidence_map_yaml_untouched: true
+  preliminary_bom_yaml_untouched: true
+forbidden_claims:
+  - production_release_evidence_ready
+  - pinout_reviews_complete
+  - symbols_ready
+  - footprints_ready
+  - soc_pinout_captured
+release_blockers_unchanged:
+  - Unisoc T606/T616 BGA ball-map remains behind Unisoc NDA + Design-In Agreement
+  - per-pad detail for Quectel, Murata, TI, ADI parts still requires binary-PDF or partner-portal pull
+  - all production-release reports (pinout-review, symbol-review, footprint-review, footprint-3d-binding) still blocked per supplier-to-kicad-evidence-map.yaml

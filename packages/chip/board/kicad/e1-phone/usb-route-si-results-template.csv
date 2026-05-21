@@ -1,0 +1,9 @@
+measurement_id,domain,unit,min,max,measured_value,pass,reviewer,evidence_class,required_artifact,result_artifact,notes
+routed_usb2_total_length_mm,route_length,mm,0,90,,,,physical_usb2_route_si_result,KiCad post-route length/skew report for USB_DP/USB_DN,,Blank until routed USB2 copper exists.
+routed_usb2_intra_pair_skew_mm,route_length,mm,0,0.5,,,,physical_usb2_route_si_result,KiCad post-route length/skew report for USB_DP/USB_DN,,Blank until routed USB2 copper exists.
+flex_or_pcb_diff_impedance_ohm,impedance,ohm,81,99,,,,physical_usb2_route_si_result,"supplier stackup, impedance coupon, or TDR report for the selected rigid/flex path",,Blank until supplier stackup and coupon/TDR data exist.
+return_via_or_ground_contact_spacing_mm,return_path,mm,0,3.0,,,,physical_usb2_route_si_result,routed USB2 return-path screenshot with GND contacts flanking the split interconnect,,Blank until routed return-path review exists.
+usb2_insertion_loss_240mhz_db,signal_integrity,dB,-6.0,0,,,,physical_usb2_route_si_result,USB2 channel S-parameter or simulator report through connector/flex/PCB path,,Blank until channel SI report exists.
+usb2_eye_height_mv,signal_integrity,mV,100,,,,,physical_usb2_route_si_result,USB2 high-speed eye or equivalent compliance prescan capture,,Blank until eye/compliance capture exists.
+usb_attach_adb_fastboot_pass_count,bringup,count,5,,,,,physical_usb2_route_si_result,"repeated attach, ADB, and fastboot log set on EVT units",,Blank until bring-up logs exist.
+routed_usb_enclosure_clearance_interference_count,mechanical_clearance,count,0,0,,,,physical_usb2_route_si_result,routed-board STEP reimport and enclosure clearance report for USB/flex geometry,,Blank until routed-board STEP enclosure rerun exists.

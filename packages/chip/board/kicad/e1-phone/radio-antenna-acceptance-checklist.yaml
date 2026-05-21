@@ -1,0 +1,122 @@
+schema: eliza.e1_phone_radio_antenna_acceptance_checklist.v1
+status: blocked_radio_antenna_acceptance_requires_supplier_route_firmware_regulatory_and_measurements
+date: '2026-05-21'
+claim_boundary: Acceptance checklist for cellular, Wi-Fi, Bluetooth, optional GNSS, antenna feeds, matching networks,
+  coexistence, firmware blobs, regulatory scope, and factory RF. It is not a routed RF layout, not antenna tuning,
+  not firmware bring-up, not modular or carrier approval, not SAR evidence, and not enclosure release.
+source_artifacts:
+  - board/kicad/e1-phone/radio-module-integration.yaml
+  - board/kicad/e1-phone/rf-connectivity-closure.yaml
+  - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+interface_summary:
+  cellular_module_family: RG255C_or_RM255C
+  cellular_vendor: Quectel
+  cellular_package_status: sourcing_shortlist_no_bonded_pins_no_fabricated_board
+  wifi_bluetooth_order_number: LBEE5XV2EA-802
+  wifi_bluetooth_chipset: Infineon_CYW55573
+  wifi_bluetooth_package_status: phone_class_sourcing_target_no_bonded_pins_no_fabricated_board
+  required_rf_nets:
+    - CELL_GNSS_RF
+    - CELL_RF_DIV
+    - CELL_RF_MAIN
+    - WIFI_BT_RF0
+    - WIFI_BT_RF1
+  antenna_feed_count: 5
+  route_release_status: blocked_requires_module_pinout_firmware_rf_measurement_and_regulatory_evidence
+  rf_connectivity_status: planning_rf_connectivity_cross_checked_not_measured
+supplier_draft_links:
+  cellular: board/kicad/e1-phone/sourcing-drafts/cellular/rfq-transmittal.yaml
+  wifi_bluetooth: board/kicad/e1-phone/sourcing-drafts/wifi_bluetooth/rfq-transmittal.yaml
+acceptance_items:
+  - id: cellular_region_sku_band_matrix
+    owner: sourcing_rf
+    status: blocked_missing_supplier_route_firmware_regulatory_or_measurement_evidence
+    required_evidence:
+      - selected Quectel RG255C/RM255C region SKU and ordering code
+      - supported LTE/NR band matrix tied to target launch countries
+      - carrier, PTCRB, GCF, and SIM/eSIM certification plan
+    blocker: Cellular region SKU, bands, carrier path, and certification scope are not locked.
+  - id: cellular_antenna_main_div_gnss_feeds
+    owner: rf_layout
+    status: blocked_missing_supplier_route_firmware_regulatory_or_measurement_evidence
+    required_evidence:
+      - supplier reference layout and antenna application note
+      - 50 ohm CELL_RF_MAIN, CELL_RF_DIV, and CELL_GNSS_RF routes with matching networks
+      - conducted access before matching plus VNA S11/S21 report
+      - final enclosure antenna vendor review
+    blocker: Cellular and GNSS feed placement, matching, and enclosure interaction are not proven.
+  - id: wifi6e_bt_2x2_antenna_feeds
+    owner: rf_layout
+    status: blocked_missing_supplier_route_firmware_regulatory_or_measurement_evidence
+    required_evidence:
+      - Murata Type 2EA reference layout and land-pattern approval
+      - 50 ohm WIFI_BT_RF0 and WIFI_BT_RF1 routes with pi matching networks
+      - 2x2 MIMO isolation, efficiency, and conducted access report
+      - Bluetooth coexistence pin or firmware configuration review
+    blocker: Wi-Fi 6E 2x2 and Bluetooth antenna feeds are not routed or measured.
+  - id: rf_matching_conducted_access_and_vna
+    owner: rf_validation
+    status: blocked_missing_supplier_route_firmware_regulatory_or_measurement_evidence
+    required_evidence:
+      - EVT routed board with conducted pads or U.FL access before matching
+      - initial matching values and rework log
+      - VNA S11/S21 data for every required RF net
+    blocker: RF matching networks and conducted access exist only as planning requirements.
+  - id: coexistence_gnss_desense_and_usb_charging_states
+    owner: validation
+    status: blocked_missing_supplier_route_firmware_regulatory_or_measurement_evidence
+    required_evidence:
+      - cellular transmit versus Wi-Fi/Bluetooth conducted sensitivity log
+      - GNSS C/N0 desense sweep with radios and display enabled
+      - USB-C charging and display-bias noise-floor comparison
+      - thermal and SAR operating-state matrix for modem transmit plus charging
+    blocker: Radio coexistence, GNSS desense, and charging/display interference are not measured.
+  - id: firmware_driver_nvram_clm_and_country_code
+    owner: firmware
+    status: blocked_missing_supplier_route_firmware_regulatory_or_measurement_evidence
+    required_evidence:
+      - Quectel Linux/Android driver package and modem firmware baseline
+      - Murata/Infineon firmware, NVRAM, CLM, and license archive
+      - country-code and regulatory-domain provisioning procedure
+    blocker: Radio firmware, calibration blobs, and regulatory-domain handling are not captured.
+  - id: regulatory_carrier_ptcrb_gcf_sar_prescan
+    owner: compliance
+    status: blocked_missing_supplier_route_firmware_regulatory_or_measurement_evidence
+    required_evidence:
+      - module-grant applicability review for final antenna gains and enclosure plastics
+      - FCC/CE/RED radiated pre-scan plan
+      - PTCRB/GCF and carrier acceptance plan for the selected region SKU
+      - SAR and RF exposure pre-scan in the final enclosure stack
+    blocker: Regulatory, carrier, and SAR evidence is missing.
+  - id: factory_rf_calibration_and_first_article_limits
+    owner: manufacturing_test
+    status: blocked_missing_supplier_route_firmware_regulatory_or_measurement_evidence
+    required_evidence:
+      - factory RF test mode and fixture access procedure
+      - conducted power, sensitivity, frequency error, and EVM limits
+      - first-article calibration logs tied to unit serial numbers
+    blocker: Factory RF calibration flow and first-article limits are not defined.
+cross_checks:
+  required_rf_net_count_matches_rf_closure: true
+  all_required_rf_nets_have_feed_assignments: true
+  cellular_and_wifi_rfq_drafts_exist: true
+  coexistence_matrix_has_required_cases: true
+  all_acceptance_items_blocked: true
+release_blockers:
+  - Cellular and Wi-Fi/Bluetooth supplier reference layouts, firmware packs, and authorization artifacts missing
+  - Antenna feeds, matching networks, conducted access, and routed-board RF measurements missing
+  - Coexistence, GNSS desense, regulatory, carrier, SAR, and factory RF evidence missing
+forbidden_claims:
+  - cellular_ready
+  - wifi_ready
+  - bluetooth_ready
+  - gnss_ready
+  - rf_ready
+  - carrier_ready
+  - sar_ready
+  - regulatory_ready
+  - factory_rf_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

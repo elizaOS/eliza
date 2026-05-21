@@ -1,0 +1,30 @@
+# evidence_class: simulated_first_article_for_evt_planning_not_production_release
+# companion_to: mechanical-lifecycle-results-template.csv
+# anchored to: Panasonic EVQ-P7 (100k cycles), GCT USB4105 (20k cycles), 1.0m drop steel
+sample_id,measurement_id,fixture,units,min,max,cycles_required,measured,pass,operator,notes
+EVT1-2026-05-12-0001,power_button_cycle_failures,evt_fixture_button_force_probe,count,0,0,100000,0,true,Lin Wei (IQC-04),Panasonic EVQ-P7 rated 100k cycles.
+EVT1-2026-05-12-0001,volume_button_cycle_failures,evt_fixture_button_force_probe,count,0,0,100000,0,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0001,power_button_travel_post,evt_fixture_button_force_probe,mm,0.25,0.55,100000,0.34,true,Lin Wei (IQC-04),Post 100k cycles.
+EVT1-2026-05-12-0001,usb_c_post_cycle_insertion_force,evt_fixture_usb_c_insertion_gauge,N,0,40,20000,14.2,true,Chen Min (S2-OP-07),GCT USB4105 20k cycle spec.
+EVT1-2026-05-12-0001,usb_c_post_cycle_continuity_failures,evt_fixture_usb_c_insertion_gauge,count,0,0,20000,0,true,Chen Min (S2-OP-07),
+EVT1-2026-05-12-0001,screen_post_cycle_lift_or_fpc_faults,evt_fixture_screen_bond_clamp_frame,count,0,0,500,0,true,Chen Min (S2-OP-07),
+EVT1-2026-05-12-0001,fpc_bend_100k_at_R1.0,evt_fixture_screen_bond_clamp_frame,count,0,0,100000,0,true,Chen Min (S2-OP-07),Display FPC dynamic bend.
+EVT1-2026-05-12-0001,drop_1m_face_down,drop_tower_steel_plate,count,0,0,1,0,true,Yang Lei (S6-OP-05),1.0 m drop onto steel plate.
+EVT1-2026-05-12-0001,drop_1m_face_up,drop_tower_steel_plate,count,0,0,1,0,true,Yang Lei (S6-OP-05),
+EVT1-2026-05-12-0001,drop_1m_edge_long,drop_tower_steel_plate,count,0,0,1,0,true,Yang Lei (S6-OP-05),
+EVT1-2026-05-12-0001,drop_1m_edge_short,drop_tower_steel_plate,count,0,0,1,0,true,Yang Lei (S6-OP-05),
+EVT1-2026-05-12-0001,drop_1m_corner_top_left,drop_tower_steel_plate,count,0,0,1,0,true,Yang Lei (S6-OP-05),
+EVT1-2026-05-12-0001,drop_1m_corner_bottom_right,drop_tower_steel_plate,count,0,0,1,0,true,Yang Lei (S6-OP-05),
+EVT1-2026-05-12-0002,power_button_cycle_failures,evt_fixture_button_force_probe,count,0,0,100000,0,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0002,volume_button_cycle_failures,evt_fixture_button_force_probe,count,0,0,100000,0,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0002,usb_c_post_cycle_insertion_force,evt_fixture_usb_c_insertion_gauge,N,0,40,20000,13.9,true,Chen Min (S2-OP-07),
+EVT1-2026-05-12-0002,usb_c_post_cycle_continuity_failures,evt_fixture_usb_c_insertion_gauge,count,0,0,20000,0,true,Chen Min (S2-OP-07),
+EVT1-2026-05-12-0002,drop_1m_face_down,drop_tower_steel_plate,count,0,0,1,0,true,Yang Lei (S6-OP-05),
+EVT1-2026-05-12-0003,power_button_cycle_failures,evt_fixture_button_force_probe,count,0,0,100000,0,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0003,usb_c_post_cycle_insertion_force,evt_fixture_usb_c_insertion_gauge,N,0,40,20000,14.5,true,Chen Min (S2-OP-07),
+EVT1-2026-05-12-0003,drop_1m_edge_short,drop_tower_steel_plate,count,0,0,1,0,true,Yang Lei (S6-OP-05),
+EVT1-2026-05-12-0004,power_button_cycle_failures,evt_fixture_button_force_probe,count,0,0,100000,0,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0004,usb_c_post_cycle_insertion_force,evt_fixture_usb_c_insertion_gauge,N,0,40,20000,14.0,true,Chen Min (S2-OP-07),
+EVT1-2026-05-12-0005,power_button_cycle_failures,evt_fixture_button_force_probe,count,0,0,100000,0,true,Lin Wei (IQC-04),
+EVT1-2026-05-12-0005,drop_1m_face_up,drop_tower_steel_plate,count,0,0,1,0,true,Yang Lei (S6-OP-05),
+EVT1-2026-05-12-0005,fpc_bend_100k_at_R1.0,evt_fixture_screen_bond_clamp_frame,count,0,0,100000,0,true,Chen Min (S2-OP-07),

@@ -20,14 +20,20 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
-VARIANT = WORKSPACE / "os/linux/variants/elizaos-debian-riscv64"
+VARIANT = WORKSPACE / "os/linux/elizaos"
 MANIFEST = VARIANT / "manifest.json"
-STATUS_REPORT = VARIANT / "STATUS.md"
+if not MANIFEST.exists() and (VARIANT / "manifest.json.template").exists():
+    MANIFEST = VARIANT / "manifest.json.template"
+STATUS_REPORT = VARIANT / "README.md"
 QEMU_EVIDENCE = VARIANT / "evidence/qemu_virt_boot.json"
 FIRST_BOOT = VARIANT / "config/includes.chroot/usr/lib/elizaos/first-boot.sh"
+if not FIRST_BOOT.exists():
+    FIRST_BOOT = VARIANT / "config/includes.chroot/usr/local/lib/elizaos/first-boot.sh"
 AGENT_UNIT = VARIANT / "config/includes.chroot/etc/systemd/system/elizaos-agent.service"
 AGENT_INSTALL_HOOK = VARIANT / "config/hooks/normal/0010-elizaos-agent.hook.chroot"
 RELEASE_CHECK = VARIANT / "scripts/check_release_manifest.py"
+TUI_SMOKE_UNIT = VARIANT / "config/includes.chroot/etc/systemd/system/elizaos-terminal-tui-smoke.service"
+TUI_SMOKE_SCRIPT = VARIANT / "config/includes.chroot/usr/lib/elizaos/run-terminal-tui-smoke.sh"
 REPORT = ROOT / "build/reports/os_rv64_chip_boot_contract.json"
 SCHEMA = "eliza.os_rv64_chip_boot_contract.v1"
 CLAIM_BOUNDARY = "chip_objective_gate_no_qemu_virt_or_first_boot_marker_substitution"
@@ -64,7 +70,17 @@ def read_text(path: Path) -> str:
 
 
 def read_json(path: Path) -> dict[str, object]:
-    return json.loads(read_text(path))
+    text = read_text(path)
+    if path.name == "manifest.json.template":
+        text = (
+            text.replace("@ARCH@", "riscv64")
+            .replace("@PROFILE@", "default")
+            .replace("@ARTIFACT@", "elizaos-linux-riscv64-template.iso")
+            .replace("@BUILD_TS@", "template")
+            .replace("@SHA256@", "0" * 64)
+            .replace("@SIZE@", "0")
+        )
+    return json.loads(text)
 
 
 def rel(path: Path) -> str:
@@ -82,13 +98,35 @@ def evidence_rows(manifest: dict[str, object]) -> dict[str, dict[str, object]]:
         for row in raw:
             if isinstance(row, dict) and isinstance(row.get("id"), str):
                 rows[str(row["id"])] = row
+    elif isinstance(validation, dict):
+        mapped = {
+            "qemuBoot": "qemu-virt-boot",
+            "agentHealth": "elizaos-agent-live",
+            "terminalTui": "elizaos-terminal-tui-live",
+        }
+        for key, evidence_id in mapped.items():
+            value = validation.get(key)
+            if isinstance(value, dict):
+                rows[evidence_id] = {
+                    "id": evidence_id,
+                    "status": value.get("status"),
+                    "path": value.get("evidence"),
+                }
     return rows
 
 
 def required_evidence(manifest: dict[str, object]) -> set[str]:
     validation = manifest.get("validation", {})
     raw = validation.get("requiredEvidence", []) if isinstance(validation, dict) else []
-    return {str(item) for item in raw if isinstance(item, str)}
+    required = {str(item) for item in raw if isinstance(item, str)}
+    if isinstance(validation, dict):
+        if "qemuBoot" in validation:
+            required.add("qemu-virt-boot")
+        if "agentHealth" in validation:
+            required.add("elizaos-agent-live")
+        if "terminalTui" in validation:
+            required.add("elizaos-terminal-tui-live")
+    return required
 
 
 def resolve_variant_path(path_value: object) -> Path | None:
@@ -135,9 +173,18 @@ def agent_binary_path(unit_text: str) -> str | None:
 
 
 def agent_installer_packages_binary(path_value: str | None) -> bool:
-    if path_value != "/opt/elizaos/bin/elizaos" or not AGENT_INSTALL_HOOK.is_file():
+    if not path_value or not AGENT_INSTALL_HOOK.is_file():
         return False
     hook = read_text(AGENT_INSTALL_HOOK)
+    if path_value == "/opt/elizaos/bin/bun":
+        return (
+            "/opt/elizaos-artifacts" in hook
+            and "bun.sha256" in hook
+            and "install -m 0755" in hook
+            and "${INSTALL}/bin/bun" in hook
+        )
+    if path_value != "/opt/elizaos/bin/elizaos":
+        return False
     return (
         "bun-linux-riscv64-musl.zip" in hook
         and "sha256sum" in hook
@@ -179,6 +226,8 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         FIRST_BOOT,
         AGENT_UNIT,
         RELEASE_CHECK,
+        TUI_SMOKE_UNIT,
+        TUI_SMOKE_SCRIPT,
     )
     findings: list[Finding] = []
     for path in required_inputs:
@@ -201,6 +250,14 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     chip_ids_present = sorted((required_ids | row_ids) & CHIP_BOOT_EVIDENCE_IDS)
     agent_ids_present = sorted((required_ids | row_ids) & AGENT_LIVE_EVIDENCE_IDS)
     target = manifest.get("target", {})
+    if not isinstance(target, dict):
+        target = {
+            "platform": manifest.get("platform"),
+            "architecture": manifest.get("architecture"),
+            "device": manifest.get("device"),
+            "hypervisor": manifest.get("hypervisor"),
+            "firmware": manifest.get("firmware"),
+        }
     target_device = target.get("device") if isinstance(target, dict) else None
     target_hypervisor = target.get("hypervisor") if isinstance(target, dict) else None
     qemu_boundary = str(qemu_evidence.get("claim_boundary", ""))
@@ -317,6 +374,14 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         transcript_source,
         "Capture `systemctl is-active elizaos-agent.service` and a localhost health/API probe in the Linux boot evidence.",
     )
+    add_if(
+        findings,
+        "elizaos-tui-ready" not in transcript,
+        "missing_tui_liveness_marker",
+        "boot transcript lacks a terminal TUI startup marker",
+        transcript_source,
+        "Run the terminal TUI smoke in the boot target and capture `elizaos-tui-ready` in the Linux boot evidence.",
+    )
 
     evidence = {
         "manifest": rel(manifest_path),
@@ -331,6 +396,8 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "transcript_source": transcript_source,
         "agent_execstart": exec_start,
         "status_report": rel(STATUS_REPORT),
+        "tui_smoke_unit": rel(TUI_SMOKE_UNIT),
+        "tui_smoke_script": rel(TUI_SMOKE_SCRIPT),
     }
     return payload(findings, evidence)
 

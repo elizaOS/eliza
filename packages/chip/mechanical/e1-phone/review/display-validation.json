@@ -15,7 +15,7 @@
         "device_envelope_mm": [
           78.0,
           153.6,
-          9.6
+          11.2
         ]
       },
       "target": ">=0.3 mm nominal CTP-to-orange-body margin",
@@ -75,7 +75,13 @@
       "min": 0.45,
       "max": "",
       "fixture": "screen_bond_peel_fixture",
-      "notes": "Peel strength around die-cut adhesive perimeter after dwell."
+      "notes": "Peel strength around die-cut adhesive perimeter after dwell.",
+      "required_evidence_artifacts": [
+        "display_peel_force_raw_csv",
+        "peel_fixture_calibration_certificate",
+        "bond_perimeter_photo",
+        "display_adhesive_lot_record"
+      ]
     },
     {
       "measurement_id": "screen_adhesive_compression_mm",
@@ -83,7 +89,13 @@
       "min": 0.03,
       "max": 0.08,
       "fixture": "evt_fixture_screen_bond_clamp_frame",
-      "notes": "Compressed adhesive thickness after screen placement."
+      "notes": "Compressed adhesive thickness after screen placement.",
+      "required_evidence_artifacts": [
+        "compression_height_raw_csv",
+        "screen_bond_fixture_certificate",
+        "compression_witness_photo",
+        "display_adhesive_lot_record"
+      ]
     },
     {
       "measurement_id": "display_fpc_bend_radius_mm",
@@ -91,7 +103,13 @@
       "min": 1.0,
       "max": "",
       "fixture": "evt_fixture_screen_bond_clamp_frame",
-      "notes": "Measured bend radius after connector mating and closure."
+      "notes": "Measured bend radius after connector mating and closure.",
+      "required_evidence_artifacts": [
+        "fpc_bend_radius_measurement_csv",
+        "optical_measurement_fixture_certificate",
+        "mated_fpc_bend_photo",
+        "display_module_lot_record"
+      ]
     },
     {
       "measurement_id": "display_luminance_cd_m2",
@@ -99,7 +117,13 @@
       "min": 450.0,
       "max": "",
       "fixture": "display_colorimeter",
-      "notes": "White-screen luminance after DSI bring-up and backlight enable."
+      "notes": "White-screen luminance after DSI bring-up and backlight enable.",
+      "required_evidence_artifacts": [
+        "display_luminance_raw_csv",
+        "colorimeter_calibration_certificate",
+        "white_screen_photo",
+        "display_module_lot_record"
+      ]
     },
     {
       "measurement_id": "touch_grid_dead_zones",
@@ -107,7 +131,13 @@
       "min": 0.0,
       "max": 0.0,
       "fixture": "touch_grid_test",
-      "notes": "Capacitive touch grid dead zones after bonding and enclosure close."
+      "notes": "Capacitive touch grid dead zones after bonding and enclosure close.",
+      "required_evidence_artifacts": [
+        "touch_grid_raw_log",
+        "touch_fixture_calibration_record",
+        "touch_grid_screenshot",
+        "display_touch_module_lot_record"
+      ]
     },
     {
       "measurement_id": "display_dsi_bringup_logs",
@@ -115,7 +145,13 @@
       "min": 1.0,
       "max": 1.0,
       "fixture": "drm_kms_or_android_surfaceflinger",
-      "notes": "Panel probes, init sequence runs, and display pipeline produces image."
+      "notes": "Panel probes, init sequence runs, and display pipeline produces image.",
+      "required_evidence_artifacts": [
+        "drm_or_surfaceflinger_bringup_log",
+        "display_driver_revision_record",
+        "display_image_output_photo",
+        "display_module_lot_record"
+      ]
     },
     {
       "measurement_id": "screen_drop_lift_or_glass_crack",
@@ -123,7 +159,13 @@
       "min": 0.0,
       "max": 0.0,
       "fixture": "evt_drop_and_visual_inspection",
-      "notes": "Glass crack, adhesive lift, or LCM shift after EVT drop screen check."
+      "notes": "Glass crack, adhesive lift, or LCM shift after EVT drop screen check.",
+      "required_evidence_artifacts": [
+        "drop_test_result_log",
+        "drop_fixture_calibration_certificate",
+        "post_drop_screen_inspection_photo",
+        "display_glass_and_adhesive_lot_records"
+      ]
     }
   ],
   "results_template": "mechanical/e1-phone/review/display-results-template.csv",

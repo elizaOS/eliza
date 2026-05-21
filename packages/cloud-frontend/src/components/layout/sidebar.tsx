@@ -92,8 +92,8 @@ function SidebarComponent({
           className="relative z-10 flex items-center gap-2 hover:opacity-80"
         >
           <ElizaCloudLockup
-            logoClassName="h-4 md:h-5"
-            textClassName="text-[9px] md:text-[10px]"
+            logoClassName="h-6 md:h-7"
+            textClassName="text-lg md:text-xl"
           />
         </Link>
       }

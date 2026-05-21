@@ -1,6 +1,6 @@
 schema: eliza.e1_phone_routed_release_plan.v1
 status: blocked_routed_release_requires_real_route_and_supplier_outputs
-date: '2026-05-20'
+date: '2026-05-21'
 release_target: EVT1-routed-first-article
 claim_boundary: Routed release checklist only. This is not a fabrication package, not a routed PCB, not enclosure-ready
   evidence, and not factory-test release evidence.
@@ -14,6 +14,7 @@ source_artifacts:
   - board/kicad/e1-phone/enclosure-placement-closure.yaml
   - board/kicad/e1-phone/power-thermal-budget.yaml
   - board/kicad/e1-phone/rf-connectivity-closure.yaml
+  - board/kicad/e1-phone/module-rf-pinout-execution.yaml
   - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
 current_board_state:
   revision: EVT0-concept
@@ -322,6 +323,26 @@ rf_release_dependency:
     - coexistence test for Wi-Fi/Bluetooth/cellular/GNSS
     - SAR and RF exposure pre-scan in final enclosure plastics
     - carrier/PTCRB/GCF plan for selected region SKU
+module_rf_pinout_execution_release_dependency:
+  execution_status: blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence
+  selected_cellular: RG255C_or_RM255C
+  selected_wifi_bluetooth: LBEE5XV2EA-802
+  rf_feed_count: 5
+  module_execution_record_ids:
+    - cellular_5g_redcap_module
+    - wifi6e_bluetooth_5p3_module
+  required_rf_nets:
+    - CELL_RF_MAIN
+    - CELL_RF_DIV
+    - CELL_GNSS_RF
+    - WIFI_BT_RF0
+    - WIFI_BT_RF1
+  release_blockers:
+    - cellular regional SKU, supplier pinout, land pattern, STEP, firmware, and carrier plan missing
+    - Wi-Fi/Bluetooth module pinout, land pattern, STEP, firmware, NVRAM/CLM, and regulatory scope missing
+    - RF matching networks and conducted access are requirements only; no 50 ohm routed geometry or VNA data exists
+    - factory RF calibration, identity provisioning, and first-article radio limits are missing
+    - routed PCB, DRC, SI/PI, RF, SAR, enclosure, and fabrication outputs are missing
 ready_to_fabricate: false
 ready_for_enclosure: false
 ready_for_factory_test: false

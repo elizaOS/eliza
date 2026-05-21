@@ -115,7 +115,7 @@ make -C packages/inference/verify kernel-contract reference-test cuda-verify cud
 make -C packages/inference/verify vulkan-verify vulkan-verify-multiblock vulkan-verify-fused
 make -C packages/inference/verify vulkan-dispatch-smoke   # built-fork Vulkan graph routes (needs the linux-x64-vulkan build)
 # Bench (CUDA text + ASR, RTX 5080):
-~/.cache/eliza-dflash/milady-llama-cpp/build-cuda/bin/llama-bench \
+~/.cache/eliza-dflash/eliza-llama-cpp/build-cuda/bin/llama-bench \
   -m ~/.eliza/local-inference/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-32k.gguf -ngl 99 -p 16,512 -n 32 -fa 1
 ```
 

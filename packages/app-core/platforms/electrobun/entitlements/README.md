@@ -72,7 +72,7 @@ to `Contents/MacOS/bun` only). Exit code 1 with a per-key diff on any
 mismatch.
 
 ```
-node packages/app-core/scripts/mas-smoke.mjs --app=/Applications/Milady.app
+node packages/app-core/scripts/mas-smoke.mjs --app=/Applications/Eliza.app
 ```
 
 Wired into `desktop-build.mjs` behind `--verify-mas` (or `ELIZA_VERIFY_MAS=1`)

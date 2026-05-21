@@ -312,17 +312,17 @@ test("resolveRiscv64BuildPlan keeps RVV ON for Zig 0.15-dev pre-release strings"
 test("resolveRiscv64BuildPlan flips GGML_CPU_ALL_VARIANTS on opt-in env", () => {
   const plan = resolveRiscv64BuildPlan({
     zigVersion: "0.14.0",
-    env: { MILADY_GGML_CPU_ALL_VARIANTS: "1" },
+    env: { ELIZA_GGML_CPU_ALL_VARIANTS: "1" },
   });
   assert.equal(plan.rvv, true);
   assert.equal(plan.allVariants, true);
   assert.equal(plan.reason, "all-variants-opt-in");
 });
 
-test("resolveRiscv64BuildPlan ignores MILADY_GGML_CPU_ALL_VARIANTS=1 on Zig 0.13 (scalar wins)", () => {
+test("resolveRiscv64BuildPlan ignores ELIZA_GGML_CPU_ALL_VARIANTS=1 on Zig 0.13 (scalar wins)", () => {
   const plan = resolveRiscv64BuildPlan({
     zigVersion: "0.13.0",
-    env: { MILADY_GGML_CPU_ALL_VARIANTS: "1" },
+    env: { ELIZA_GGML_CPU_ALL_VARIANTS: "1" },
   });
   assert.equal(plan.rvv, false);
   assert.equal(plan.allVariants, false);
@@ -397,10 +397,10 @@ test("riscv64CmakeFlagsForPlan: non-riscv64 ABIs get empty flag list (no x86/arm
 });
 
 test("describeAndroidTargetDryRun (riscv64) shows the resolver-reported plan + matching cmake flags", () => {
-  // Force a deterministic resolver by clearing MILADY_GGML_CPU_ALL_VARIANTS
+  // Force a deterministic resolver by clearing ELIZA_GGML_CPU_ALL_VARIANTS
   // for this test so behavior doesn't drift with the developer's local env.
-  const prev = process.env.MILADY_GGML_CPU_ALL_VARIANTS;
-  delete process.env.MILADY_GGML_CPU_ALL_VARIANTS;
+  const prev = process.env.ELIZA_GGML_CPU_ALL_VARIANTS;
+  delete process.env.ELIZA_GGML_CPU_ALL_VARIANTS;
   try {
     const lines = [];
     describeAndroidTargetDryRun({
@@ -426,9 +426,9 @@ test("describeAndroidTargetDryRun (riscv64) shows the resolver-reported plan + m
     }
   } finally {
     if (prev === undefined) {
-      delete process.env.MILADY_GGML_CPU_ALL_VARIANTS;
+      delete process.env.ELIZA_GGML_CPU_ALL_VARIANTS;
     } else {
-      process.env.MILADY_GGML_CPU_ALL_VARIANTS = prev;
+      process.env.ELIZA_GGML_CPU_ALL_VARIANTS = prev;
     }
   }
 });

@@ -36,13 +36,13 @@ const manager = new ElizaRuntimeManager({ logBuffer });
 const apiClient = new ElizaRuntimeApiClient({
 	getApiBase: () => manager.status().apiBase,
 	getAuthToken: () =>
-		process.env.ELIZA_RUNTIME_API_TOKEN ?? process.env.MILADY_API_TOKEN ?? null,
+		process.env.ELIZA_RUNTIME_API_TOKEN ?? process.env.ELIZA_API_TOKEN ?? null,
 });
 const streamEvents: AgentMessageStreamEvent[] = [];
 const streamManager = new AgentStreamManager({
 	getApiBase: () => manager.status().apiBase,
 	getAuthToken: () =>
-		process.env.ELIZA_RUNTIME_API_TOKEN ?? process.env.MILADY_API_TOKEN ?? null,
+		process.env.ELIZA_RUNTIME_API_TOKEN ?? process.env.ELIZA_API_TOKEN ?? null,
 	emit: (name, payload) => {
 		writeJson(`event:${name}`, payload);
 		if (

@@ -19,16 +19,16 @@ Status: concept KiCad placement reconciled to CAD envelopes; routed-board STEP s
 
 ## CAD Projection
 
-- PASS: `J_USB_C` best CAD gap 3.4 mm, tolerance 12.0 mm
-- PASS: `SW_POWER_VOL` best CAD gap 15.144 mm, tolerance 16.0 mm
+- PASS: `J_USB_C` best CAD gap 1.4 mm, tolerance 12.0 mm
+- PASS: `SW_POWER_VOL` best CAD gap 27.549 mm, tolerance 28.0 mm
 - PASS: `J_DISPLAY_TOUCH` best CAD gap 0.0 mm, tolerance 6.0 mm
 - PASS: `J_CAM0_CAM1` best CAD gap 0.0 mm, tolerance 8.0 mm
 - PASS: `U_CELL` best CAD gap 0.0 mm, tolerance 8.0 mm
 - PASS: `U_WIFI_BT` best CAD gap 0.0 mm, tolerance 12.0 mm
-- PASS: `U_PMIC_CHARGER` best CAD gap 4.0 mm, tolerance 14.0 mm
+- PASS: `U_PMIC_CHARGER` best CAD gap 8.246 mm, tolerance 14.0 mm
 - PASS: `J_BATTERY` best CAD gap 0.0 mm, tolerance 1.0 mm
 - PASS: `U_SOC_LPDDR_UFS` best CAD gap 0.0 mm, tolerance 10.0 mm
-- PASS: `U_AUDIO_SPK_MIC` best CAD gap 0.0 mm, tolerance 18.0 mm
+- PASS: `U_AUDIO_SPK_MIC` best CAD gap 5.275 mm, tolerance 18.0 mm
 
 ## Release Blockers
 

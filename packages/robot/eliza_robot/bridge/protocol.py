@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from eliza_robot.bridge.types import JsonDict, JsonValue
 
 
 def utc_now_iso() -> str:
     """Return an RFC3339-like UTC timestamp."""
-    return datetime.now(tz=timezone.utc).isoformat()
+    return datetime.now(tz=UTC).isoformat()
 
 
 @dataclass(frozen=True)
@@ -102,6 +102,10 @@ VALID_COMMANDS = {
     "policy.stop",
     "policy.tick",
     "policy.status",
+    # ASIMOV-1 native command API
+    "asimov.mode",
+    "asimov.velocity",
+    "asimov.trajectory",
     # Profile / introspection
     "profile.describe",
     # Camera (unified across sim + real backends — sim returns rendered
@@ -142,4 +146,3 @@ def parse_command(raw: JsonDict) -> CommandEnvelope:
         payload=payload,
         preempt=preempt_value,
     )
-
