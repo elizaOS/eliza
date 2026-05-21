@@ -342,6 +342,9 @@ export function resolveElectrobunCopyMap({
     if (fs.existsSync(path.join(repoRoot, "plugins.json"))) {
       copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`;
     }
+    if (fs.existsSync(path.join(electrobunDir, "remotes"))) {
+      copy["remotes"] = "remotes";
+    }
     copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
   }
 

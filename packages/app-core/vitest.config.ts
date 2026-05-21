@@ -91,6 +91,14 @@ const pluginAgentOrchestratorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-orchestrator/src",
 );
+const pluginRemoteManifestSrc = path.join(
+  monorepoRoot,
+  "packages/plugin-remote-manifest/src",
+);
+const pluginWorkerRuntimeSrc = path.join(
+  monorepoRoot,
+  "packages/plugin-worker-runtime/src",
+);
 const pluginWorkflowSrc = path.join(
   monorepoRoot,
   "plugins/plugin-workflow/src",
@@ -439,6 +447,22 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-agent-orchestrator\/(.+)$/,
         replacement: path.join(pluginAgentOrchestratorSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-remote-manifest$/,
+        replacement: path.join(pluginRemoteManifestSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-remote-manifest\/(.+)$/,
+        replacement: path.join(pluginRemoteManifestSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-worker-runtime$/,
+        replacement: path.join(pluginWorkerRuntimeSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-worker-runtime\/(.+)$/,
+        replacement: path.join(pluginWorkerRuntimeSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-workflow$/,
