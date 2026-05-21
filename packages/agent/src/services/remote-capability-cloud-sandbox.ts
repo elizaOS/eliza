@@ -265,7 +265,7 @@ export async function waitForCloudCapabilityEndpointAvailability(
   const deadline = Date.now() + timeoutMs;
   let lastError = "availability was not checked";
 
-  while (Date.now() < deadline) {
+  do {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
@@ -308,8 +308,10 @@ export async function waitForCloudCapabilityEndpointAvailability(
     options.onProgress?.(
       `waiting for endpoint ${options.endpoint.id}: ${lastError}`,
     );
-    await sleep(pollIntervalMs);
-  }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await sleep(Math.min(pollIntervalMs, remainingMs));
+  } while (Date.now() < deadline);
 
   throw new Error(
     `Cloud capability endpoint ${options.endpoint.id} did not report plugin availability within ${timeoutMs}ms. Last error: ${lastError}`,
