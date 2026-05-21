@@ -195,7 +195,10 @@ async function installBscMocks(
 
     if (path === "/api/crypto/direct-payments") {
       createPaymentCalls += 1;
-      const body = await route.request().postDataJSON().catch(() => ({}));
+      const body = await route
+        .request()
+        .postDataJSON()
+        .catch(() => ({}));
       const requestedSymbol: string =
         typeof body?.tokenSymbol === "string" ? body.tokenSymbol : "USDT";
       const token =
@@ -346,7 +349,9 @@ test("/bsc shows BNB/USDT/$U token selector and $5 bonus is per-purchase, token-
   await expect(tokenSelect).toBeVisible();
   // The three BSC tokens are selectable; USDC must NOT appear.
   for (const value of ["BNB", "USDT", "U"]) {
-    await expect(tokenSelect.locator(`option[value="${value}"]`)).toHaveCount(1);
+    await expect(tokenSelect.locator(`option[value="${value}"]`)).toHaveCount(
+      1,
+    );
   }
   await expect(tokenSelect.locator('option[value="USDC"]')).toHaveCount(0);
 
@@ -455,7 +460,7 @@ test("Login with Ethereum (SIWE) excludes Phantom from the injected-provider pat
   await ethereumButton.click();
   // Brief wait for any async injected-provider call to fire.
   await page.waitForTimeout(750);
-  expect(errors.some((m) => m.includes("unexpected_phantom_account_request"))).toBe(
-    false,
-  );
+  expect(
+    errors.some((m) => m.includes("unexpected_phantom_account_request")),
+  ).toBe(false);
 });

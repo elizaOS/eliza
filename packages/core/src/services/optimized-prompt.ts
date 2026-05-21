@@ -189,11 +189,15 @@ function resolveHmacKey(): Buffer {
 
 function computeArtifactMac(payload: Buffer | string): string {
 	const key = resolveHmacKey();
-	const data = typeof payload === "string" ? Buffer.from(payload, "utf-8") : payload;
+	const data =
+		typeof payload === "string" ? Buffer.from(payload, "utf-8") : payload;
 	return createHmac("sha256", key).update(data).digest("hex");
 }
 
-function verifyArtifactMac(payload: Buffer | string, expectedHex: string): boolean {
+function verifyArtifactMac(
+	payload: Buffer | string,
+	expectedHex: string,
+): boolean {
 	if (!/^[0-9a-fA-F]{64}$/.test(expectedHex.trim())) return false;
 	const expected = Buffer.from(expectedHex.trim(), "hex");
 	const actual = Buffer.from(computeArtifactMac(payload), "hex");
@@ -217,9 +221,7 @@ export const OPTIMIZED_PROMPT_INTEGRITY_FAILED_AUDIT_ACTION =
 	"optimized_prompt.integrity_failed";
 
 /** Test/diagnostic helper: compute the MAC the service would write. */
-export function _computeOptimizedPromptMacForTest(
-	payload: string,
-): string {
+export function _computeOptimizedPromptMacForTest(payload: string): string {
 	return computeArtifactMac(payload);
 }
 
