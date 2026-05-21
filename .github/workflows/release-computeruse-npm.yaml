@@ -100,18 +100,18 @@ jobs:
     runs-on: ${{ matrix.settings.host }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Setup node (Windows ARM64)
         if: matrix.settings.host == 'windows-11-arm'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
 
       - name: Setup node (default)
         if: matrix.settings.host != 'windows-11-arm'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
@@ -134,7 +134,7 @@ jobs:
           targets: ${{ matrix.settings.target }}
 
       - name: Cache cargo registry
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -177,7 +177,7 @@ jobs:
         shell: bash
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.settings.target }}
           path: |
@@ -191,16 +191,16 @@ jobs:
     needs: build
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Setup node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
 

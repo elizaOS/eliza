@@ -307,7 +307,7 @@ packages/app-core/platforms/electrobun/satellites/runtime
 
 The required package-side fields are present:
 
-- `carrot.json`
+- `plugin.json`
 - `id: "eliza.runtime"`
 - `mode: "background"`
 - `worker.relativePath: "src/bun/worker.ts"`
@@ -318,9 +318,9 @@ After install, start `eliza.runtime` from the existing module manager. If the cu
 
 ## Current Upstream Packaging Notes
 
-The existing Electrobun module system in this repo still uses upstream packaging names such as `carrot.json`, `build.carrot`, and `carrotOnly`. Those names are kept only where the upstream API requires them.
+The existing Electrobun module system in this repo still uses upstream packaging names such as `plugin.json`, `build.carrot`, and `carrotOnly`. Those names are kept only where the upstream API requires them.
 
-The current host manifest shape supports `host.storage`, `bun.read`, `bun.write`, `bun.env`, `bun.run`, and `bun.worker` through nested `host` and `bun` permission maps. The requested flat permission keys are not the shape used by the local `@elizaos/electrobun-carrots` types, so the Runtime Satellite uses the existing nested format.
+The current host manifest shape supports `host.storage`, `bun.read`, `bun.write`, `bun.env`, `bun.run`, and `bun.worker` through nested `host` and `bun` permission maps. The requested flat permission keys are not the shape used by the current `@elizaos/plugin-remote-manifest` types, so the Runtime Satellite uses the existing nested format.
 
 The current host can downgrade `isolation: "isolated-process"` to a shared worker. The bundled first-party Runtime Satellite delegates production process ownership to the existing Electrobun `AgentManager`; only standalone smoke tests use the subprocess manager directly.
 

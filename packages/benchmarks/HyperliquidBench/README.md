@@ -171,6 +171,9 @@ contract:
 ```bash
 HL_PRIVATE_KEY=0x... \
 CEREBRAS_API_KEY=csk-... \
+VISION_LANGUAGE_PROVIDER=local-eliza \
+VISION_LANGUAGE_MODEL=eliza-1-9b \
+VISION_LANGUAGE_TIER=eliza-1-9b \
 PYTHONPATH=. \
 python -m benchmarks.orchestrator run \
   --benchmarks hyperliquid_bench \
