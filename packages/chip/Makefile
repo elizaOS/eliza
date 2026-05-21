@@ -1390,7 +1390,7 @@ evidence-regression-test: no-hardware-action-check software-bsp-test physical-ga
 	ai-eda-macro-placement-candidate-eval ai-eda-macro-placement-combined-candidate-eval \
 	ai-eda-macro-placement-full-candidate-eval ai-eda-macro-placement-replay-plan \
 	ai-eda-macro-placement-replay-preflight ai-eda-macro-placement-combined-replay-plan \
-	ai-eda-macro-placement-full-replay-plan ai-eda-candidate-manifests-check \
+	ai-eda-macro-placement-full-replay-plan ai-eda-macro-placement-replay-queue ai-eda-candidate-manifests-check \
 	ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-verification-targets \
 	ai-eda-physical-design-targets ai-eda-optimization-targets ai-eda-all-target-captures ai-eda-logic-synthesis-recipes \
 	ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload \
@@ -1587,6 +1587,10 @@ ai-eda-macro-placement-full-replay-plan: ai-eda-macro-placement-full-candidate-e
 	@$(PYTHON) scripts/ai_eda/plan_macro_placement_replay.py --run-id $(AI_EDA_RUN_ID) --candidate-dir build/ai_eda/macro_placement_policy/$(AI_EDA_RUN_ID)/candidates --candidate-dir build/ai_eda/macro_placement_supervised_model/$(AI_EDA_RUN_ID)/candidates --candidate-dir build/ai_eda/macro_placement_torch_inference/$(AI_EDA_RUN_ID)/candidates --out-root build/ai_eda/macro_placement_full_replay
 	@$(PYTHON) scripts/ai_eda/check_macro_placement_replay_plan.py --report build/ai_eda/macro_placement_full_replay/$(AI_EDA_RUN_ID)/replay_plan.json
 	@$(PYTHON) scripts/ai_eda/check_tool_action_manifests.py --manifests-dir build/ai_eda/macro_placement_full_replay/$(AI_EDA_RUN_ID)/tool_actions
+
+ai-eda-macro-placement-replay-queue: ai-eda-macro-placement-full-replay-plan
+	@$(PYTHON) scripts/ai_eda/select_macro_placement_replay_queue.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_macro_placement_replay_queue.py --report build/ai_eda/macro_placement_replay_queue/$(AI_EDA_RUN_ID)/replay_queue.json
 
 ai-eda-candidate-manifests-check: ai-eda-fixture-placement-train
 	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py

@@ -3,77 +3,61 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { StewardAuth, StewardAuthResult } from "@stwd/sdk";
 import { useCallback, useEffect, useRef } from "react";
-import { useAccount, useSignMessage } from "wagmi";
+import {
+  type Connector,
+  useAccount,
+  useConnect,
+  useSignMessage,
+} from "wagmi";
 import { useT } from "@/providers/I18nProvider";
-
-interface EthereumProvider {
-  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-}
-
-function isEthereumProvider(value: unknown): value is EthereumProvider {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    "request" in value &&
-    typeof Reflect.get(value, "request") === "function"
-  );
-}
 
 // Phantom injects itself as an Ethereum provider but must never be used for
 // SIWE — it is Solana-first and the user's intent for SIWE is a real EVM wallet.
-function isPhantomProvider(value: unknown): boolean {
-  if (value === null || typeof value !== "object") return false;
-  if (Reflect.get(value, "isPhantom") === true) return true;
-  // window.phantom is also set when Phantom is installed
-  if (
-    typeof window !== "undefined" &&
-    Reflect.get(window, "phantom") !== undefined
-  ) {
-    const phantomEth = Reflect.get(
-      Reflect.get(window, "phantom") as object,
-      "ethereum",
-    );
-    if (phantomEth === value) return true;
+// We mirror the previous EIP-1193 isPhantom check, but against the connector's
+// underlying provider so the wagmi store stays the source of truth.
+async function isPhantomConnector(connector: Connector): Promise<boolean> {
+  const id = connector.id.toLowerCase();
+  const name = (connector.name ?? "").toLowerCase();
+  if (id.includes("phantom") || name.includes("phantom")) return true;
+  try {
+    const provider = (await connector.getProvider()) as unknown;
+    if (provider !== null && typeof provider === "object") {
+      if (Reflect.get(provider, "isPhantom") === true) return true;
+    }
+  } catch {
+    // If a connector can't surface its provider yet, treat it as non-Phantom
+    // and let downstream connect() surface any real failure.
   }
   return false;
 }
 
-function getInjectedEthereumProvider(): EthereumProvider | null {
-  if (typeof window === "undefined") return null;
-  const ethereum = Reflect.get(window, "ethereum") as unknown;
-  const providers =
-    ethereum !== null &&
-    typeof ethereum === "object" &&
-    "providers" in ethereum &&
-    Array.isArray(ethereum.providers)
-      ? ethereum.providers
-      : undefined;
-  // Prefer the providers[] array (EIP-6963 multi-wallet) so we can skip Phantom.
-  if (providers) {
-    return (
-      providers.find((p) => isEthereumProvider(p) && !isPhantomProvider(p)) ??
-      null
-    );
+// Pick the best EVM connector that is NOT Phantom. Prefer an "injected"-style
+// connector (MetaMask, generic injected, Coinbase, etc.) over WalletConnect so
+// users with a wallet extension get the native popup instead of a QR modal.
+async function pickInjectedConnector(
+  connectors: readonly Connector[],
+): Promise<Connector | null> {
+  const eligible: Connector[] = [];
+  for (const connector of connectors) {
+    if (await isPhantomConnector(connector)) continue;
+    eligible.push(connector);
   }
-  if (isEthereumProvider(ethereum) && !isPhantomProvider(ethereum))
-    return ethereum;
-  return null;
-}
+  if (eligible.length === 0) return null;
 
-function toPersonalSignHex(message: string): `0x${string}` {
-  const bytes = new TextEncoder().encode(message);
-  const hex = Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-  return `0x${hex}`;
-}
-
-function getFirstEvmAccount(result: unknown): `0x${string}` | null {
-  if (!Array.isArray(result)) return null;
-  const [account] = result;
-  if (typeof account !== "string") return null;
-  if (!/^0x[a-fA-F0-9]{40}$/.test(account)) return null;
-  return account as `0x${string}`;
+  // Prefer injected-type connectors over walletConnect; ordering within
+  // `connectors` already reflects RainbowKit's wallet detection priority.
+  const injected = eligible.find((c) => {
+    const type = c.type.toLowerCase();
+    const id = c.id.toLowerCase();
+    return (
+      type === "injected" ||
+      id === "metamask" ||
+      id === "metaMaskSDK".toLowerCase() ||
+      id === "coinbasewallet" ||
+      id === "coinbasewalletsdk"
+    );
+  });
+  return injected ?? eligible[0];
 }
 
 /**
@@ -141,6 +125,7 @@ function EthereumButton({
   const t = useT();
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
+  const { connectAsync, connectors } = useConnect();
   const { openConnectModal } = useConnectModal();
   // We start a sign flow either from the click (if already connected) or after
   // the user connects via the modal. This ref tracks the "we're waiting for
@@ -168,50 +153,6 @@ function EthereumButton({
     [auth, signMessageAsync, onSuccess, onError, onLoadingChange],
   );
 
-  const signWithInjectedProvider = useCallback(
-    async (provider: EthereumProvider) => {
-      onLoadingChange(true);
-      try {
-        const accounts = await provider.request({
-          method: "eth_requestAccounts",
-        });
-        const account = getFirstEvmAccount(accounts);
-        if (!account) {
-          throw new Error(
-            t("cloud.login.wallet.error.noAccount", {
-              defaultValue: "No Ethereum account returned by wallet.",
-            }),
-          );
-        }
-
-        const result = await auth.signInWithSIWE(
-          account,
-          async (message: string) => {
-            const signature = await provider.request({
-              method: "personal_sign",
-              params: [toPersonalSignHex(message), account],
-            });
-            if (typeof signature !== "string" || !signature.startsWith("0x")) {
-              throw new Error(
-                t("cloud.login.wallet.error.invalidSignature", {
-                  defaultValue: "Wallet returned an invalid signature.",
-                }),
-              );
-            }
-            return signature;
-          },
-        );
-        await onSuccess(result);
-      } catch (e) {
-        const err = e instanceof Error ? e : new Error(String(e));
-        onError(err);
-      } finally {
-        onLoadingChange(false);
-      }
-    },
-    [auth, onSuccess, onError, onLoadingChange, t],
-  );
-
   // If click triggered a connect modal, once connection lands, auto-sign.
   useEffect(() => {
     if (pendingSignRef.current && isConnected && address) {
@@ -220,30 +161,51 @@ function EthereumButton({
     }
   }, [isConnected, address, sign]);
 
+  const connectAndSign = useCallback(async () => {
+    onLoadingChange(true);
+    try {
+      const connector = await pickInjectedConnector(connectors);
+      if (!connector) {
+        // No injected connector available — fall through to the RainbowKit
+        // modal (WalletConnect QR etc.).
+        pendingSignRef.current = true;
+        openConnectModal?.();
+        return;
+      }
+      const { accounts } = await connectAsync({ connector });
+      const [account] = accounts;
+      if (!account) {
+        throw new Error(
+          t("cloud.login.wallet.error.noAccount", {
+            defaultValue: "No Ethereum account returned by wallet.",
+          }),
+        );
+      }
+      await sign(account);
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      onError(err);
+    } finally {
+      onLoadingChange(false);
+    }
+  }, [
+    connectAsync,
+    connectors,
+    openConnectModal,
+    onError,
+    onLoadingChange,
+    sign,
+    t,
+  ]);
+
   const handleClick = useCallback(() => {
     if (disabled || loading) return;
     if (isConnected && address) {
       void sign(address);
       return;
     }
-    const injectedProvider = getInjectedEthereumProvider();
-    if (injectedProvider) {
-      pendingSignRef.current = false;
-      void signWithInjectedProvider(injectedProvider);
-      return;
-    }
-    // Not connected: open the modal and flag for auto-sign once connected.
-    pendingSignRef.current = true;
-    openConnectModal?.();
-  }, [
-    disabled,
-    loading,
-    isConnected,
-    address,
-    sign,
-    signWithInjectedProvider,
-    openConnectModal,
-  ]);
+    void connectAndSign();
+  }, [disabled, loading, isConnected, address, sign, connectAndSign]);
 
   // If the user closes the modal without connecting, we don't have a clean
   // signal from RainbowKit; the next effect-tick just leaves pendingSignRef

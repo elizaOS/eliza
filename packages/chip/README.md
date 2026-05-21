@@ -114,6 +114,7 @@ assets, critical fetch commands, expected CUDA outputs, the current-research
 watchlist capture handoff, OpenROAD ML snapshot handoff, the E1 AI workload
 manifest/checker, the fail-closed CT/SA/Hier-RTLMP/ChipDiffusion real-wrapper
 readiness contract, the quarantined assertion-candidate manifest checker, and
+the deterministic macro-placement replay queue for top ranked candidates, and
 the no-datasets/no-weights payload boundary.
 `make ai-eda-cuda-run-plan-dry-run`
 expands the embedded CUDA run plan into a reviewed execution manifest without
@@ -130,7 +131,12 @@ current-research watchlist, setup-check/bootstrap evidence, training-handoff
 bootstrap evidence, and E1 replay-preflight state into one machine-readable
 blocked-or-ready report for the CUDA host. For evidence produced under
 different run IDs, pass `AI_EDA_SETUP_RUN_ID=<setup-run>` and
-`AI_EDA_TRAINING_HANDOFF_RUN_ID=<handoff-run>` when invoking the audit.
+`AI_EDA_TRAINING_HANDOFF_RUN_ID=<handoff-run>` when invoking the audit. For
+manual audits assembled from reviewed artifacts generated under separate run
+IDs, `capture_cuda_readiness_audit.py` also accepts explicit
+`--preflight-run-id`, `--payload-run-id`, `--run-plan-execution-run-id`,
+`--run-plan-safety-run-id`, `--alphachip-run-id`, `--watchlist-run-id`, and
+`--replay-preflight-run-id` arguments.
 
 ## Docker Setup
 

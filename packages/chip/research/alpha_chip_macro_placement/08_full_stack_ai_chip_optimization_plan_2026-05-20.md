@@ -2057,6 +2057,12 @@ not as:
 - [x] Add a fail-closed external-method wrapper readiness contract for
   replacing CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters, including required
   payloads, output contracts, blockers, and replay gates.
+- [x] Add a deterministic macro-placement replay queue that selects top-ranked
+  candidates per case, records candidate/config/tool-action hashes, and keeps
+  OpenLane/OpenROAD replay blocked until a pinned PD host can execute it.
+- [x] Extend the CUDA readiness audit to accept split evidence run IDs for
+  preflight, payload/run-plan, safety matrix, AlphaChip audit, current-research
+  watchlist, E1 replay preflight, setup, and training-handoff artifacts.
 - [ ] Export latest deterministic E1 OpenLane/OpenROAD run metrics into
   `eda.flow_run.v1` after replay artifacts exist.
 - [ ] Replace CT/SA/Hier-RTLMP/ChipDiffusion proxy adapters with the real
