@@ -82,7 +82,7 @@ REQUIRED_TRANSCRIPT_MARKERS: tuple[str, ...] = (
 REQUIRED_TRANSCRIPT_MARKER = REQUIRED_TRANSCRIPT_MARKERS[0]
 GRUB_TRANSCRIPT_MARKERS: tuple[str, ...] = (
     "GNU GRUB",
-    "Booting `elizaOS Live (RISC-V 64)'",
+    "Live system (riscv64)",
     "EFI stub: Booting Linux Kernel",
 )
 
