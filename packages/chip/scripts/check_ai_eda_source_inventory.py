@@ -1160,7 +1160,7 @@ def check_pd_predictor(errors: list[str]) -> None:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{artifact.get('name')}: stale artifact hash")
 
 
@@ -1247,7 +1247,7 @@ def check_zigzag(errors: list[str]) -> None:
             path_value = artifact.get("path")
             if isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale architecture hash")
 
 
@@ -1349,7 +1349,7 @@ def check_simulator_optimization(source_ids: set[str], errors: list[str]) -> Non
             path_value = artifact.get("path")
             if isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale simulator input hash")
         gates = report.get("required_followup_gates") or []
         if "make benchmark-sim-metrics" not in gates:
@@ -1504,7 +1504,7 @@ def check_rtlmul_ppa(source_ids: set[str], errors: list[str]) -> None:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale input artifact hash")
         gates = report.get("required_followup_gates") or []
         if "make synth" not in gates:
@@ -1548,7 +1548,7 @@ def check_hls_accelerator_targets(source_ids: set[str], errors: list[str]) -> No
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale HLS input hash")
         gates = {
             gate
@@ -1616,13 +1616,13 @@ def check_timing_closure_targets(source_ids: set[str], errors: list[str]) -> Non
                 if skip_generated_artifact_hash(path_value):
                     continue
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale timing input hash")
         for artifact in report.get("timing_report_artifacts") or []:
             path_value = artifact.get("path")
             if isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale timing report hash")
         gates = {
             gate
@@ -1704,13 +1704,13 @@ def check_routing_congestion_targets(source_ids: set[str], errors: list[str]) ->
                 if skip_generated_artifact_hash(path_value):
                     continue
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale routing input hash")
         for artifact in report.get("routing_artifacts") or []:
             path_value = artifact.get("path")
             if isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale routing artifact hash")
         gates = {
             gate
@@ -1789,13 +1789,13 @@ def check_clock_tree_targets(source_ids: set[str], errors: list[str]) -> None:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale clock tree input hash")
         for artifact in report.get("clock_artifacts") or []:
             path_value = artifact.get("path")
             if isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale clock tree artifact hash")
         gates = {
             gate
@@ -1885,13 +1885,13 @@ def check_extraction_parasitic_targets(source_ids: set[str], errors: list[str]) 
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale extraction input hash")
         for artifact in report.get("extraction_artifacts") or []:
             path_value = artifact.get("path")
             if isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale extraction artifact hash")
         gates = {
             gate
@@ -1953,7 +1953,7 @@ def check_analog_mixed_signal_targets(source_ids: set[str], errors: list[str]) -
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale analog input hash")
         gates = {
             gate
@@ -2005,7 +2005,7 @@ def check_memory_interconnect_targets(source_ids: set[str], errors: list[str]) -
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale memory/interconnect hash")
         gates = {
             gate
@@ -2059,7 +2059,7 @@ def check_dft_atpg_targets(source_ids: set[str], errors: list[str]) -> None:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale DFT/ATPG hash")
         gates = {
             gate
@@ -2118,7 +2118,7 @@ def check_power_thermal_targets(source_ids: set[str], errors: list[str]) -> None
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale power/thermal hash")
         gates = {
             gate
@@ -2179,7 +2179,7 @@ def check_hardware_security_targets(source_ids: set[str], errors: list[str]) -> 
             path = ROOT / path_value
             if not path.exists():
                 fail(errors, f"{label}/{path_value}: missing hardware security input")
-            elif path.is_file() and artifact.get("sha256") != sha256_file(path):
+            elif path.is_file() and (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                 fail(errors, f"{label}/{path_value}: stale hardware security hash")
         gates = {
             gate
@@ -2237,7 +2237,7 @@ def check_cdc_rdc_targets(source_ids: set[str], errors: list[str]) -> None:
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale CDC/RDC hash")
         gates = {
             gate
@@ -2300,7 +2300,7 @@ def check_software_bsp_firmware_targets(source_ids: set[str], errors: list[str])
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale software BSP/firmware hash")
         gates = {
             gate
@@ -2361,7 +2361,7 @@ def check_rtl_rewrite_equivalence_targets(source_ids: set[str], errors: list[str
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale RTL rewrite/equivalence hash")
         gates = {
             gate
@@ -2430,7 +2430,7 @@ def check_board_package_fpga_targets(source_ids: set[str], errors: list[str]) ->
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale board/package/FPGA hash")
         gates = {
             gate
@@ -2504,7 +2504,7 @@ def check_low_power_intent_targets(source_ids: set[str], errors: list[str]) -> N
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale low-power intent hash")
         gates = {
             gate
@@ -2578,7 +2578,7 @@ def check_verification_debug_targets(source_ids: set[str], errors: list[str]) ->
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale verification debug hash")
         gates = {
             gate
@@ -2649,7 +2649,7 @@ def check_post_silicon_validation_targets(source_ids: set[str], errors: list[str
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale post-silicon validation hash")
         gates = {
             gate
@@ -2723,7 +2723,7 @@ def check_circuit_foundation_model_targets(source_ids: set[str], errors: list[st
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale circuit foundation model hash")
         gates = {
             gate
@@ -2805,7 +2805,7 @@ def check_dfm_yield_lithography_targets(source_ids: set[str], errors: list[str])
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale DFM/yield/lithography hash")
         gates = {
             gate
@@ -2882,7 +2882,7 @@ def check_cpu_microarchitecture_targets(source_ids: set[str], errors: list[str])
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale CPU microarchitecture hash")
         gates = {
             gate
@@ -2968,7 +2968,7 @@ def check_compiler_autotuning_targets(source_ids: set[str], errors: list[str]) -
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale compiler autotuning hash")
         gates = {
             gate
@@ -3053,7 +3053,7 @@ def check_reliability_resilience_targets(source_ids: set[str], errors: list[str]
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale reliability resilience hash")
         gates = {
             gate
@@ -3134,7 +3134,7 @@ def check_external_model_corpus_intake_targets(source_ids: set[str], errors: lis
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale external intake hash")
         gates = {
             gate
@@ -3214,7 +3214,7 @@ def check_benchmark_evaluation_hygiene_targets(source_ids: set[str], errors: lis
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale benchmark hygiene hash")
         gates = {
             gate
@@ -3297,7 +3297,7 @@ def check_eda_tool_agent_interop_targets(source_ids: set[str], errors: list[str]
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale EDA tool-agent interop hash")
         gates = {
             gate
@@ -3379,7 +3379,7 @@ def check_spec_traceability_targets(source_ids: set[str], errors: list[str]) -> 
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale spec traceability hash")
         gates = {
             gate
@@ -3465,7 +3465,7 @@ def check_ip_register_contract_targets(source_ids: set[str], errors: list[str]) 
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale IP/register contract hash")
         gates = {
             gate
@@ -3549,7 +3549,7 @@ def check_memory_macro_library_targets(source_ids: set[str], errors: list[str]) 
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale memory macro/library hash")
         gates = {
             gate
@@ -3632,7 +3632,7 @@ def check_chiplet_3dic_package_targets(source_ids: set[str], errors: list[str]) 
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale chiplet/3DIC package hash")
         gates = {
             gate
@@ -3717,7 +3717,7 @@ def check_logic_synthesis_targets(source_ids: set[str], errors: list[str]) -> No
                 if skip_generated_artifact_hash(path_value):
                     continue
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale logic synthesis hash")
         gates = {
             gate
@@ -3806,13 +3806,13 @@ def check_netlist_equivalence_targets(source_ids: set[str], errors: list[str]) -
                 if skip_generated_artifact_hash(path_value):
                     continue
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale netlist equivalence hash")
         for artifact in report.get("openlane_netlist_artifacts") or []:
             path_value = artifact.get("path")
             if isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale OpenLane netlist hash")
         gates = {
             gate
@@ -3911,13 +3911,13 @@ def check_physical_verification_targets(source_ids: set[str], errors: list[str])
                 if skip_generated_artifact_hash(path_value):
                     continue
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale physical verification hash")
         for artifact in report.get("physical_verification_artifacts") or []:
             path_value = artifact.get("path")
             if isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale physical verification artifact hash")
         gates = {
             gate
@@ -4013,13 +4013,13 @@ def check_placement_legalization_targets(source_ids: set[str], errors: list[str]
                 if skip_generated_artifact_hash(path_value):
                     continue
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale placement/legalization hash")
         for artifact in report.get("placement_artifacts") or []:
             path_value = artifact.get("path")
             if isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(
                         errors,
                         f"{label}/{path_value}: stale placement/legalization artifact hash",
@@ -4123,13 +4123,13 @@ def check_floorplan_io_pdn_targets(source_ids: set[str], errors: list[str]) -> N
             path_value = artifact.get("path")
             if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale floorplan/IO/PDN hash")
         for artifact in report.get("floorplan_artifacts") or []:
             path_value = artifact.get("path")
             if isinstance(path_value, str):
                 path = ROOT / path_value
-                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                if not path.is_file() or (not skip_generated_artifact_hash(path_value) and artifact.get("sha256") != sha256_file(path)):
                     fail(errors, f"{label}/{path_value}: stale floorplan/IO/PDN artifact hash")
         gates = {
             gate

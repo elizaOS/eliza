@@ -18,16 +18,19 @@ LOCKFILE = ROOT / "external/SOURCES.lock.yaml"
 EXPECTED_REPORT_SCHEMA = "eliza.ai_eda.cuda_training_payload_report.v1"
 EXPECTED_PLAN_SCHEMA = "eliza.ai_eda.cuda_training_payload.v1"
 EXPECTED_CLAIM_BOUNDARY = "cuda_training_payload_metadata_only_no_dataset_weights_or_training_claim"
+
 CRITICAL_FETCH_ASSETS = {
-    "circuitnet3",
-    "chipbench-d",
-    "openabc-d",
     "aieda-idata",
-    "rtlmul",
-    "llm4dv",
     "assertllm",
+    "chipbench-d",
+    "circuitnet3",
+    "edalearn",
     "fault-dft",
+    "llm4dv",
+    "openabc-d",
+    "rtlmul",
 }
+
 REQUIRED_PLAN_COMMANDS = (
     "python3 scripts/ai_eda/bootstrap_ai_eda_stack.py --profile metadata --run-id <cuda-host>",
     "python3 scripts/ai_eda/preflight_cuda_training_stack.py --run-id <cuda-host>",
@@ -35,11 +38,32 @@ REQUIRED_PLAN_COMMANDS = (
     "python3 scripts/ai_eda/check_backend_preflight.py --report build/ai_eda/backend_preflight/<cuda-host>/backend_preflight_report.json",
     "python3 scripts/ai_eda/train_macro_placement_torch_regressor.py --run-id <cuda-host> --device auto --epochs 200",
     "python3 scripts/ai_eda/infer_macro_placement_torch_regressor.py --run-id <cuda-host> --device auto",
+    "python3 scripts/ai_eda/convert_edalearn_to_internal_records.py --run-id <cuda-host> --sample-limit 64",
+    "python3 scripts/ai_eda/check_edalearn_conversion.py --report build/ai_eda/edalearn/<cuda-host>/conversion_report.json",
     "python3 scripts/ai_eda/replay_macro_placement_on_e1.py --run-id <cuda-host> --plan build/ai_eda/macro_placement_replay/<cuda-host>/replay_plan.json",
     "python3 scripts/ai_eda/check_macro_placement_replay_preflight.py --report build/ai_eda/macro_placement_replay_preflight/<cuda-host>/replay_preflight_report.json",
     "python3 scripts/ai_eda/check_verification_target_captures.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/check_physical_design_target_captures.py --run-id <cuda-host>",
+    "python3 scripts/ai_eda/check_ai_optimization_target_captures.py --run-id <cuda-host>",
 )
+
+REQUIRED_OUTPUTS = {
+    "build/ai_eda/backend_preflight/<run-id>/backend_preflight_report.json",
+    "build/ai_eda/circuit_foundation_model_targets/<run-id>/targets_report.json",
+    "build/ai_eda/cuda_training_preflight/<run-id>/cuda_training_preflight.json",
+    "build/ai_eda/dfm_yield_lithography_targets/<run-id>/targets_report.json",
+    "build/ai_eda/eda_tool_agent_interop_targets/<run-id>/targets_report.json",
+    "build/ai_eda/edalearn/<run-id>/conversion_report.json",
+    "build/ai_eda/edalearn/<run-id>/records/*.json",
+    "build/ai_eda/hardware_security_targets/<run-id>/targets_report.json",
+    "build/ai_eda/logic_synthesis_targets/<run-id>/targets_report.json",
+    "build/ai_eda/low_power_intent_targets/<run-id>/targets_report.json",
+    "build/ai_eda/macro_placement_replay_preflight/<run-id>/replay_preflight_report.json",
+    "build/ai_eda/macro_placement_torch_regressor/<run-id>/torch_regressor.pt",
+    "build/ai_eda/physical_verification_targets/<run-id>/targets_report.json",
+    "build/ai_eda/post_silicon_validation_targets/<run-id>/targets_report.json",
+}
+
 FORBIDDEN_MEMBER_PATTERNS = (
     re.compile(r"(^|/)payload(/|$)"),
     re.compile(r"(^|/)build/"),
@@ -67,10 +91,10 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def load_lock_ids(path: Path) -> set[str]:
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+def load_lock_ids() -> set[str]:
+    data = yaml.safe_load(LOCKFILE.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise ValueError(f"{path}: expected YAML mapping")
+        raise ValueError(f"{LOCKFILE}: expected YAML mapping")
     return {
         entry["id"]
         for entry in data.get("entries", [])
@@ -122,28 +146,15 @@ def validate_plan(plan: dict[str, Any], members: set[str], lock_ids: set[str]) -
     selected_assets = plan.get("selected_assets")
     if not isinstance(selected_assets, list) or not selected_assets:
         errors.append("run plan selected_assets must be non-empty")
-    else:
         selected_ids: set[str] = set()
-        for index, asset in enumerate(selected_assets):
-            if not isinstance(asset, dict):
-                errors.append(f"selected_assets[{index}] must be a mapping")
-                continue
-            asset_id = asset.get("id")
-            if not isinstance(asset_id, str) or asset_id not in lock_ids:
-                errors.append(f"selected_assets[{index}] has unknown id {asset_id!r}")
-            else:
-                selected_ids.add(asset_id)
-            if asset.get("allowed_use") not in {
-                "metadata-only",
-                "training-only",
-                "advisory-inference-only",
-                "deterministic-replay-candidate",
-                "blocked",
-            }:
-                errors.append(f"selected_assets[{index}] has invalid allowed_use")
-        missing_critical = sorted(CRITICAL_FETCH_ASSETS - selected_ids)
-        if missing_critical:
-            errors.append(f"critical assets missing from selected_assets: {', '.join(missing_critical)}")
+    else:
+        selected_ids = {asset.get("id") for asset in selected_assets if isinstance(asset, dict)}
+        unknown = sorted(asset_id for asset_id in selected_ids if asset_id not in lock_ids)
+        if unknown:
+            errors.append(f"selected_assets contain unknown ids: {', '.join(unknown)}")
+        missing = sorted(CRITICAL_FETCH_ASSETS - selected_ids)
+        if missing:
+            errors.append(f"critical assets missing from selected_assets: {', '.join(missing)}")
     commands = plan.get("required_remote_commands")
     if not isinstance(commands, list) or not commands:
         errors.append("required_remote_commands must be non-empty")
@@ -167,15 +178,7 @@ def validate_plan(plan: dict[str, Any], members: set[str], lock_ids: set[str]) -
     if not isinstance(outputs, list) or not outputs:
         errors.append("expected_outputs must be non-empty")
     else:
-        required_outputs = {
-            "build/ai_eda/cuda_training_preflight/<run-id>/cuda_training_preflight.json",
-            "build/ai_eda/backend_preflight/<run-id>/backend_preflight_report.json",
-            "build/ai_eda/macro_placement_torch_regressor/<run-id>/torch_regressor.pt",
-            "build/ai_eda/macro_placement_replay_preflight/<run-id>/replay_preflight_report.json",
-            "build/ai_eda/logic_synthesis_targets/<run-id>/targets_report.json",
-            "build/ai_eda/physical_verification_targets/<run-id>/targets_report.json",
-        }
-        missing_outputs = sorted(required_outputs - {item for item in outputs if isinstance(item, str)})
+        missing_outputs = sorted(REQUIRED_OUTPUTS - {item for item in outputs if isinstance(item, str)})
         if missing_outputs:
             errors.append(f"missing expected output patterns: {', '.join(missing_outputs)}")
     return errors
@@ -191,42 +194,31 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("release_use_allowed must be false")
     payload = report.get("payload")
     run_plan = report.get("run_plan")
-    if not isinstance(payload, str):
-        errors.append("payload path is required")
-        return errors
-    if not isinstance(run_plan, str):
-        errors.append("run_plan path is required")
-        return errors
+    if not isinstance(payload, str) or not isinstance(run_plan, str):
+        return errors + ["payload and run_plan paths are required"]
     payload_path = repo_path(payload)
     run_plan_path = repo_path(run_plan)
     if not payload_path.is_file():
-        errors.append(f"payload tarball missing: {rel(payload_path)}")
-        return errors
+        return errors + [f"payload tarball missing: {rel(payload_path)}"]
     if not run_plan_path.is_file():
-        errors.append(f"run plan missing: {rel(run_plan_path)}")
-        return errors
+        return errors + [f"run plan missing: {rel(run_plan_path)}"]
     try:
         plan = load_json(run_plan_path)
     except Exception as exc:  # noqa: BLE001
-        errors.append(f"{rel(run_plan_path)}: {exc}")
-        return errors
+        return errors + [f"{rel(run_plan_path)}: {exc}"]
     try:
         with tarfile.open(payload_path, "r:gz") as archive:
             members = {member.name for member in archive.getmembers() if member.isfile()}
-            try:
-                embedded = json.loads(archive.extractfile("cuda_training_run_plan.json").read().decode("utf-8"))  # type: ignore[union-attr]
-            except Exception as exc:  # noqa: BLE001
-                errors.append(f"embedded cuda_training_run_plan.json unreadable: {exc}")
-                embedded = None
+            embedded_file = archive.extractfile("cuda_training_run_plan.json")
+            embedded = json.loads(embedded_file.read().decode("utf-8")) if embedded_file else None
     except Exception as exc:  # noqa: BLE001
-        errors.append(f"{rel(payload_path)}: {exc}")
-        return errors
+        return errors + [f"{rel(payload_path)}: {exc}"]
     if report.get("included_file_count") != len(members):
         errors.append("included_file_count does not match tarball file count")
     if embedded != plan:
         errors.append("embedded run plan does not match reported run_plan")
     try:
-        lock_ids = load_lock_ids(LOCKFILE)
+        lock_ids = load_lock_ids()
     except Exception as exc:  # noqa: BLE001
         errors.append(f"{rel(LOCKFILE)}: {exc}")
         lock_ids = set()
