@@ -18,7 +18,7 @@ entries:
     kind: repo
     priority: P0
     source_url: https://github.com/google-research/circuit_training
-    license_status: review_required
+    license_status: training_only_review_complete_cc-by-nc-4.0_noncommercial_release_blocked
     revision:
       type: commit
       value: c417a3a13f40867b649c719c03daaf1b39a909bc
@@ -707,6 +707,32 @@ entries:
       license_review: pending
       provenance_review: pending
       hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: r-zoo-rectilinear-floorplan
+    name: R-Zoo Rectilinear Floorplan Benchmark Dataset
+    kind: dataset
+    priority: P2
+    source_url: https://github.com/iCAS-SJTU/Chip-Like-A-House
+    license_status: review_required
+    revision:
+      type: commit
+      value: 986d5ca24362bc6fc0a4980afdafccb814d740e6
+    expected_size: unknown_until_fetch
+    checksum_status: verified_by_fetch_report_codex-rzoo-fetch-20260521
+    allowed_use: training-only
+    e1_lane:
+      - floorplan_policy_pretraining
+      - rectilinear_floorplanning
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset r-zoo-rectilinear-floorplan --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset r-zoo-rectilinear-floorplan --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset r-zoo-rectilinear-floorplan --verify-only
+    validation:
+      license_review: complete_training_only_noncommercial_2026-05-21
+      provenance_review: complete
+      hash_verification: complete
       deterministic_replay_required: true
       release_use_allowed: false
   - id: macro-place-challenge-2026

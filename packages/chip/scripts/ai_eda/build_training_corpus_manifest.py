@@ -72,6 +72,12 @@ DATASETS = (
         "lane": "fpga_macro_placement_transfer",
     },
     {
+        "id": "r_zoo_rectilinear_floorplan",
+        "records": "build/ai_eda/r_zoo_rectilinear_floorplan/{run_id}/records",
+        "report": "build/ai_eda/r_zoo_rectilinear_floorplan/{run_id}/conversion_report.json",
+        "lane": "rectilinear_floorplan_legality",
+    },
+    {
         "id": "research_code_assets",
         "records": "build/ai_eda/research_code_assets/{run_id}/records",
         "report": "build/ai_eda/research_code_assets/{run_id}/conversion_report.json",

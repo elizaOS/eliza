@@ -19,7 +19,9 @@ REQUIRED_JOB_IDS = {
     "host_preflight",
     "asset_fetch_and_verify",
     "normalized_training_corpus",
+    "floorplanning_dataset_readiness",
     "circuitnet3_timing_power_surrogate",
+    "r_zoo_rectilinear_legality_baseline",
     "macro_placement_supervised_dataset",
     "alphachip_successor_cuda_train",
     "alphachip_successor_inference",
@@ -28,6 +30,15 @@ REQUIRED_JOB_IDS = {
     "logic_synthesis_policy_baseline",
     "verification_analysis_optimization_targets",
     "objective_readiness_closeout",
+}
+REQUIRED_FULL_DATASET_MODES = {
+    "CircuitNet3",
+    "ChiPBench-D",
+    "OpenABC-D",
+    "AIEDA iDATA",
+    "EDALearn",
+    "Macro Placement Challenge 2026",
+    "R-Zoo Rectilinear Floorplan",
 }
 
 
@@ -124,6 +135,24 @@ def validate(report: dict[str, Any]) -> list[str]:
                 errors.append(f"input_artifacts.{name} missing")
             else:
                 errors.extend(validate_artifact(f"input_artifacts.{name}", artifacts[name], allow_missing))
+    full_dataset_modes = report.get("full_dataset_conversion_modes")
+    if not isinstance(full_dataset_modes, dict):
+        errors.append("full_dataset_conversion_modes must be a mapping")
+    else:
+        missing_modes = sorted(REQUIRED_FULL_DATASET_MODES - set(full_dataset_modes))
+        if missing_modes:
+            errors.append(f"missing full-dataset modes: {', '.join(missing_modes)}")
+        bad_values = [
+            name
+            for name, value in full_dataset_modes.items()
+            if name in REQUIRED_FULL_DATASET_MODES and not isinstance(value, bool)
+        ]
+        if bad_values:
+            errors.append(f"full-dataset mode values must be boolean: {', '.join(sorted(bad_values))}")
+        if report.get("status") == "MATRIX_READY_FOR_CUDA_HOST" and not all(
+            full_dataset_modes.get(name) is True for name in REQUIRED_FULL_DATASET_MODES
+        ):
+            errors.append("ready matrix requires every reviewed all-record conversion mode")
     jobs = report.get("jobs")
     if not isinstance(jobs, list) or not jobs:
         return errors + ["jobs must be a non-empty list"]

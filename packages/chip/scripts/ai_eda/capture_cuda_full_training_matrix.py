@@ -126,11 +126,25 @@ def required_jobs() -> list[dict[str, Any]]:
                 "EDALearn",
                 "Macro Placement Challenge 2026",
                 "MLCAD 2023 FPGA Macro",
+                "R-Zoo Rectilinear Floorplan",
                 "E1 OpenLane/softmacro records",
             ],
             ["build/ai_eda/training_corpus_manifest/<run-id>/training_corpus_manifest.json"],
             0,
             ["all converted record directories pass check_internal_dataset_schemas.py"],
+        ),
+        job(
+            "floorplanning_dataset_readiness",
+            "Gate FloorSet and R-Zoo before floorplanning pretraining",
+            "data",
+            "python3 scripts/ai_eda/capture_floorplanning_dataset_readiness.py --run-id <cuda-host>",
+            ["FloorSet and R-Zoo external intake manifests", "ignored payload directories after fetch"],
+            ["build/ai_eda/floorplanning_dataset_readiness/<run-id>/floorplanning_dataset_readiness.json"],
+            0,
+            [
+                "check_floorplanning_dataset_readiness.py passes",
+                "conversion/training/E1 optimization claims remain blocked until payload, license, schema, legality, split, and replay gates pass",
+            ],
         ),
         job(
             "circuitnet3_timing_power_surrogate",
@@ -144,6 +158,27 @@ def required_jobs() -> list[dict[str, Any]]:
             ],
             0,
             ["check_circuitnet3_surrogate.py passes", "surrogate remains pretraining-only"],
+        ),
+        job(
+            "r_zoo_rectilinear_legality_baseline",
+            "Train R-Zoo rectilinear-floorplan legality baseline",
+            "floorplanning",
+            "python3 scripts/ai_eda/train_r_zoo_legality_baseline.py --run-id <cuda-host> --record-dir build/ai_eda/r_zoo_rectilinear_floorplan/<cuda-host>/records --split-manifest build/ai_eda/r_zoo_rectilinear_floorplan_splits/<cuda-host>/split_manifest.json",
+            [
+                "build/ai_eda/r_zoo_rectilinear_floorplan/<cuda-host>/records",
+                "build/ai_eda/r_zoo_rectilinear_floorplan_splits/<cuda-host>/split_manifest.json",
+                "build/ai_eda/r_zoo_license_review/<cuda-host>/license_review.json",
+            ],
+            [
+                "build/ai_eda/r_zoo_legality_baseline/<run-id>/training_run.json",
+                "build/ai_eda/r_zoo_legality_baseline/<run-id>/metrics.json",
+                "build/ai_eda/r_zoo_legality_baseline/<run-id>/r_zoo_legality_model.json",
+            ],
+            0,
+            [
+                "check_r_zoo_legality_baseline.py passes",
+                "model remains public R-Zoo training-only and not E1 signoff evidence",
+            ],
         ),
         job(
             "macro_placement_supervised_dataset",
@@ -240,6 +275,17 @@ def required_jobs() -> list[dict[str, Any]]:
     ]
 
 
+FULL_DATASET_CONVERTER_COMMANDS = {
+    "CircuitNet3": "python3 scripts/ai_eda/convert_circuitnet3_to_internal_records.py --run-id <cuda-host> --all-records",
+    "ChiPBench-D": "python3 scripts/ai_eda/convert_chipbench_d_to_internal_records.py --run-id <cuda-host> --all-records",
+    "OpenABC-D": "python3 scripts/ai_eda/convert_openabc_d_to_internal_records.py --run-id <cuda-host> --all-records",
+    "AIEDA iDATA": "python3 scripts/ai_eda/convert_aieda_idata_to_internal_records.py --run-id <cuda-host> --all-records",
+    "EDALearn": "python3 scripts/ai_eda/convert_edalearn_to_internal_records.py --run-id <cuda-host> --all-records",
+    "Macro Placement Challenge 2026": "python3 scripts/ai_eda/convert_macro_place_challenge_2026_to_internal_records.py --run-id <cuda-host> --all-records",
+    "R-Zoo Rectilinear Floorplan": "python3 scripts/ai_eda/convert_r_zoo_to_internal_records.py --run-id <cuda-host>",
+}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", default="validation")
@@ -292,11 +338,12 @@ def main() -> int:
                 if not has_output(run_plan, expected):
                     blockers.append(f"run plan missing expected output for job {item['id']}: {expected}")
 
-    full_benchmark_blockers = [
-        "current converters use positive --sample-limit smoke bounds for CircuitNet3, ChiPBench-D, OpenABC-D, AIEDA iDATA, EDALearn, and Macro Placement Challenge 2026",
-        "full-dataset execution must either raise those limits explicitly or add reviewed all-record conversion modes before claiming exhaustive benchmark training",
-    ]
-    blockers.extend(full_benchmark_blockers)
+    full_dataset_modes: dict[str, bool] = {}
+    for dataset, command in FULL_DATASET_CONVERTER_COMMANDS.items():
+        present = has_command(run_plan, command) if run_plan is not None else False
+        full_dataset_modes[dataset] = present
+        if run_plan is not None and not present:
+            blockers.append(f"run plan missing reviewed all-record conversion mode for {dataset}")
 
     status = "MATRIX_READY_FOR_CUDA_HOST" if not blockers else "MATRIX_RECORDED_WITH_BLOCKERS"
     report = {
@@ -315,12 +362,13 @@ def main() -> int:
             "cuda_run_plan": artifact(run_plan_path),
             "cuda_preflight": artifact(preflight_path),
         },
+        "full_dataset_conversion_modes": full_dataset_modes,
         "job_count": len(jobs),
         "jobs": jobs,
         "blockers": blockers,
         "next_required_gates": [
             "run this matrix on a CUDA host after preflight reports large_training_ready=true",
-            "replace bounded sample-limit conversions with reviewed full-dataset conversion modes or explicit per-dataset limits",
+            "execute the reviewed --all-records conversion modes for every available public corpus on the CUDA/storage host",
             "execute CUDA successor training and inference with device=cuda evidence",
             "execute baseline and candidate OpenLane/OpenROAD replay and compare metrics",
             "rerun CUDA readiness, evidence bundle, and objective readiness after all matrix jobs complete",
