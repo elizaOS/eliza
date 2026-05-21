@@ -232,3 +232,77 @@ MIT — see [LICENSE](LICENSE).
 <a href="https://github.com/elizaos/eliza/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=elizaos/eliza" alt="Eliza project contributors" />
 </a>
+
+## ❓ FAQ
+
+### What is elizaOS?
+elizaOS is an all-in-one, extensible platform for building and deploying AI-powered applications. It combines a modular architecture, powerful CLI, and rich web interface to give you full control over agents' development, deployment, and management lifecycle. Works for chatbots, autonomous agents for business automation, and intelligent game NPCs.
+
+### How does elizaOS compare to other agent frameworks?
+| Feature | elizaOS | LangChain | CrewAI | AutoGen |
+|---------|---------|-----------|--------|---------|
+| Architecture | Framework + Web UI | Library | Library | Library |
+| Multi-Agent | ✅ Built-in | ⚠️ Requires setup | ✅ Role-based | ✅ Conversation-based |
+| Web UI | ✅ Modern dashboard | ❌ | ❌ | ❌ |
+| Plugin System | ✅ Rich ecosystem | ⚠️ Basic | ⚠️ Basic | ⚠️ Basic |
+| Connectivity | ✅ Discord/Telegram/Farcaster | ❌ | ❌ | ❌ |
+
+### What are the key features?
+- 🔌 **Rich Connectivity**: Discord, Telegram, Farcaster, and more connectors
+- 🧠 **Model Agnostic**: OpenAI, Gemini, Anthropic, Llama, Grok
+- 🖥️ **Modern Web UI**: Professional dashboard for agent management
+- 🤖 **Multi-Agent Architecture**: Orchestrating groups of specialized agents
+- 📄 **Document Ingestion (RAG)**: Ingest documents for Q&A
+- 🛠️ **Highly Extensible**: Powerful plugin system
+
+### What LLM providers are supported?
+elizaOS supports all major models:
+- OpenAI (GPT-4, GPT-4o, GPT-3.5)
+- Anthropic (Claude 3.5, Claude 3)
+- Google (Gemini 1.5 Pro, Gemini 1.5 Flash)
+- Llama (local via Ollama)
+- Grok (xAI)
+- Groq
+- Custom endpoints
+
+### How to get started?
+```bash
+# Quick start with npx
+npx @elizaos/cli create
+
+# Or clone and build
+git clone https://github.com/elizaOS/eliza.git
+cd eliza
+pnpm install
+pnpm start
+```
+
+### What is the plugin system?
+elizaOS has a powerful plugin system. Browse community plugins at: https://github.com/elizaOS-plugins/registry
+
+Plugins include:
+- **Connectors**: Discord, Telegram, Farcaster, Twitter, Slack
+- **Actions**: Custom agent behaviors
+- **Providers**: Data sources and services
+- **App plugins**: Runtime plugins with app surfaces
+
+### How does multi-agent architecture work?
+elizaOS is designed from the ground up for creating and orchestrating groups of specialized agents. Each agent can have specific roles, behaviors, and connections.
+
+### What is document ingestion (RAG)?
+elizaOS allows easy document ingestion. Agents can retrieve information and answer questions from your data without additional RAG setup.
+
+### What are the framework layers?
+- **Framework** (`@elizaos/core`): Runtime, agent loop, plugin model, message/memory/state primitives
+- **Project**: Deployable product workspace with branded app shell
+- **App Plugin**: Runtime plugin contributing app surface (e.g., `@elizaos/plugin-companion`)
+
+### What license does elizaOS use?
+elizaOS uses MIT License. Free for commercial and personal use.
+
+### Where can I get help?
+- 📖 Documentation: https://docs.elizaos.ai/
+- 💬 Issues: https://github.com/elizaOS/eliza/issues
+- 🔌 Plugin Registry: https://github.com/elizaOS-plugins/registry
+- 💭 Discussions: https://github.com/elizaOS/eliza/discussions
+
