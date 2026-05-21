@@ -4,7 +4,11 @@ import {
   type VoicePillMessage,
 } from "@elizaos/ui/components/voice-pill";
 import { useApp } from "@elizaos/ui/state";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  startBackgroundVoiceCapture,
+  stopBackgroundVoiceCapture,
+} from "../native/voice-capture";
 
 /**
  * AndroidVoicePill
@@ -71,12 +75,33 @@ export function AndroidVoicePill() {
     [sendChatText, activeConversationId],
   );
 
-  // Recording lifecycle (mic permission, AudioRecord/SpeechRecognizer, ASR
-  // transcript) is owned by the shared `<VoicePill>` voice session, so no
-  // `onRecordingChange` bridge is needed here. Background-mic survival when
-  // the WebView is not foregrounded is held by the native
-  // `ElizaVoiceCaptureService` (manifest foregroundServiceType="microphone").
-  return <VoicePill messages={messages} onSubmit={handleSubmit} />;
+  // The pill's mic toggle is the user's "always-on" gesture. Mirror it to the
+  // native `ElizaVoiceCaptureService` (microphone FGS) so capture survives the
+  // WebView being backgrounded. The in-WebView getUserMedia transcript is
+  // still owned by the shared `<VoicePill>` session; this only holds the
+  // native lifecycle anchor. `recording` falls back to false if the native
+  // start is denied (no RECORD_AUDIO grant).
+  const [recording, setRecording] = useState(false);
+  const handleRecordingChange = useCallback((next: boolean): void => {
+    if (next) {
+      void startBackgroundVoiceCapture("always-on").then((started) => {
+        setRecording(started);
+      });
+      setRecording(true);
+    } else {
+      void stopBackgroundVoiceCapture();
+      setRecording(false);
+    }
+  }, []);
+
+  return (
+    <VoicePill
+      messages={messages}
+      onSubmit={handleSubmit}
+      recording={recording}
+      onRecordingChange={handleRecordingChange}
+    />
+  );
 }
 
 export default AndroidVoicePill;
