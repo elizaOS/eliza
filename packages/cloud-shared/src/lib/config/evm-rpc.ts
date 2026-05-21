@@ -65,13 +65,7 @@ function builtinPublicRpc(network: EvmPayoutNetwork): string {
  */
 export function resolveEvmRpc(network: EvmPayoutNetwork): {
   url: string;
-  source:
-    | "crypto_direct"
-    | "explicit"
-    | "x402"
-    | "alchemy"
-    | "infura"
-    | "public_default";
+  source: "crypto_direct" | "explicit" | "x402" | "alchemy" | "infura" | "public_default";
 } {
   const key = NETWORK_KEY[network];
 
