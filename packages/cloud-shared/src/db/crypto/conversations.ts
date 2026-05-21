@@ -7,11 +7,7 @@
  * column.
  */
 
-import {
-  decryptField,
-  encryptField,
-  type EncryptedField,
-} from "./field-crypto";
+import { decryptField, type EncryptedField, encryptField } from "./field-crypto";
 
 const TABLE = "conversation_messages";
 const COLUMN = "content";

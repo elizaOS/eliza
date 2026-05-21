@@ -256,9 +256,7 @@ export const secretAuditLog = pgTable(
     // shorter retention (e.g. dev events). Purge job at
     // packages/cloud-api/src/jobs/audit-log-purge.ts removes rows where
     // expires_at < now().
-    expires_at: timestamp("expires_at")
-      .notNull()
-      .default(sql`now() + interval '7 years'`),
+    expires_at: timestamp("expires_at").notNull().default(sql`now() + interval '7 years'`),
   },
   (table) => ({
     secret_idx: index("secret_audit_log_secret_idx").on(table.secret_id),
