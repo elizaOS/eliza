@@ -22,7 +22,7 @@ export default function HeroSection() {
     >
       <div className="relative mx-auto flex min-h-[100svh] w-full max-w-7xl flex-col items-start justify-center px-6 py-28 text-black sm:px-10 lg:px-16">
         <h1
-          className="max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
+          className="max-w-5xl whitespace-nowrap text-[clamp(2rem,9vw,7rem)] font-medium leading-[0.86] text-black"
           style={{ fontFamily: "Poppins, Arial, system-ui, sans-serif" }}
         >
           {t("cloud.landing.heroTitle", {
