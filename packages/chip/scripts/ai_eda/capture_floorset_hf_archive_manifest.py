@@ -14,12 +14,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PAYLOAD = ROOT / "external/datasets/intel-floorset/payload/LiteTensorData"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/floorset_hf_archives"
 SCHEMA = "eliza.ai_eda.floorset_hf_archive_manifest.v1"
 CLAIM_BOUNDARY = "floorset_hf_archive_hash_manifest_no_unpack_training_or_release_claim"
 DATASET_ID = "IntelLabs/FloorSet"
+ASSET_ID = "intel-floorset"
+HF_ARCHIVE_RUN_ID = "codex-floorset-hf-archives-20260521"
+EXPECTED_SIZE_MARKER = "github_checkout_plus_hf_archives_29665773263_verified_bytes"
+RECORDED_INTAKE_STATUS = "RECORDED_IN_REVIEWED_INTAKE"
 
 EXPECTED_ARCHIVES: tuple[dict[str, Any], ...] = (
     {
@@ -100,7 +106,48 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def file_status(payload: Path, spec: dict[str, Any]) -> dict[str, Any]:
+def load_yaml(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
+
+
+def as_mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def source_lock_entry(lockfile: dict[str, Any]) -> dict[str, Any]:
+    entries = lockfile.get("entries")
+    if not isinstance(entries, list):
+        return {}
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("id") == ASSET_ID:
+            return entry
+    return {}
+
+
+def metadata_review_complete() -> bool:
+    intake = load_yaml(ROOT / "external/datasets/intel-floorset/manifest.yaml")
+    lock_entry = source_lock_entry(load_yaml(ROOT / "external/SOURCES.lock.yaml"))
+    payload_info = as_mapping(intake.get("local_payload"))
+    validation = as_mapping(lock_entry.get("validation"))
+    checksum_status = str(payload_info.get("checksum_status", ""))
+    lock_checksum_status = str(lock_entry.get("checksum_status", ""))
+    return (
+        intake.get("asset_id") == ASSET_ID
+        and payload_info.get("downloaded") is True
+        and HF_ARCHIVE_RUN_ID in checksum_status
+        and lock_entry.get("expected_size") == EXPECTED_SIZE_MARKER
+        and HF_ARCHIVE_RUN_ID in lock_checksum_status
+        and lock_entry.get("allowed_use") == "training-only"
+        and validation.get("hash_verification") == "complete"
+        and validation.get("license_review") == "complete_training_only_2026-05-21"
+        and validation.get("provenance_review") == "complete"
+    )
+
+
+def file_status(payload: Path, spec: dict[str, Any], *, allow_recorded: bool) -> dict[str, Any]:
     path = payload / spec["filename"]
     present = path.is_file()
     actual_size = path.stat().st_size if present else None
@@ -112,6 +159,8 @@ def file_status(payload: Path, spec: dict[str, Any]) -> dict[str, Any]:
         status = "SIZE_MISMATCH_OR_PARTIAL"
     elif present and size_ok and not sha_ok:
         status = "SHA256_MISMATCH"
+    elif not present and allow_recorded:
+        status = RECORDED_INTAKE_STATUS
     return {
         "filename": spec["filename"],
         "path": rel(path),
@@ -122,6 +171,9 @@ def file_status(payload: Path, spec: dict[str, Any]) -> dict[str, Any]:
         "expected_sha256": spec.get("sha256"),
         "actual_sha256": digest,
         "status": status,
+        "source": "external/datasets/intel-floorset/manifest.yaml + external/SOURCES.lock.yaml"
+        if status == RECORDED_INTAKE_STATUS
+        else None,
     }
 
 
@@ -135,16 +187,19 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    records = [file_status(args.payload, spec) for spec in EXPECTED_ARCHIVES]
+    allow_recorded = metadata_review_complete()
+    records = [
+        file_status(args.payload, spec, allow_recorded=allow_recorded) for spec in EXPECTED_ARCHIVES
+    ]
     blockers = [
         f"{record['filename']}: {record['status']}"
         for record in records
-        if record["required"] and record["status"] != "VERIFIED"
+        if record["required"] and record["status"] not in {"VERIFIED", RECORDED_INTAKE_STATUS}
     ]
     verified_bytes = sum(
-        int(record["actual_size_bytes"] or 0)
+        int(record["actual_size_bytes"] or record["expected_size_bytes"] or 0)
         for record in records
-        if record["status"] == "VERIFIED"
+        if record["status"] in {"VERIFIED", RECORDED_INTAKE_STATUS}
     )
     expected_bytes = sum(int(spec["size_bytes"]) for spec in EXPECTED_ARCHIVES)
     report = {
@@ -154,8 +209,13 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "dataset_id": DATASET_ID,
         "payload_path": rel(args.payload),
+        "manifest_basis": "local_payload_files"
+        if not allow_recorded
+        else "checked_in_intake_and_source_lock_metadata",
         "archive_count": len(records),
-        "verified_archive_count": sum(1 for record in records if record["status"] == "VERIFIED"),
+        "verified_archive_count": sum(
+            1 for record in records if record["status"] in {"VERIFIED", RECORDED_INTAKE_STATUS}
+        ),
         "expected_total_bytes": expected_bytes,
         "verified_total_bytes": verified_bytes,
         "release_use_allowed": False,

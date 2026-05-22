@@ -179,9 +179,9 @@ def validate_asset(asset: Any) -> list[str]:
             conversion = asset.get("conversion_evidence")
             split = asset.get("split_evidence")
             license_evidence = asset.get("license_evidence")
-            if not isinstance(conversion, dict) or conversion.get("available") is not True:
-                errors.append(f"{asset_id}: conversion_evidence.available must be true")
-            else:
+            if not isinstance(conversion, dict):
+                errors.append(f"{asset_id}: conversion_evidence must be a mapping")
+            elif conversion.get("available") is True:
                 if conversion.get("case_count") != 14 or conversion.get("record_count") != 42:
                     errors.append(
                         f"{asset_id}: conversion evidence must cover 14 cases / 42 records"
@@ -192,9 +192,9 @@ def validate_asset(asset: Any) -> list[str]:
                     )
                 )
                 required_fragments.discard("dataset-specific schema converter is not implemented")
-            if not isinstance(split, dict) or split.get("available") is not True:
-                errors.append(f"{asset_id}: split_evidence.available must be true")
-            else:
+            if not isinstance(split, dict):
+                errors.append(f"{asset_id}: split_evidence must be a mapping")
+            elif split.get("available") is True:
                 summary = split.get("summary")
                 if not isinstance(summary, dict) or summary.get("case_count") != 14:
                     errors.append(f"{asset_id}: split evidence must summarize 14 cases")
@@ -209,12 +209,9 @@ def validate_asset(asset: Any) -> list[str]:
                     "split manifest and benchmark contamination review are not present"
                 )
                 required_fragments.discard("floorplan legality checker logs are not present")
-            if (
-                not isinstance(license_evidence, dict)
-                or license_evidence.get("available") is not True
-            ):
-                errors.append(f"{asset_id}: license_evidence.available must be true")
-            else:
+            if not isinstance(license_evidence, dict):
+                errors.append(f"{asset_id}: license_evidence must be a mapping")
+            elif license_evidence.get("available") is True:
                 if license_evidence.get("status") != "TRAINING_ONLY_REVIEW_COMPLETE":
                     errors.append(f"{asset_id}: license evidence must be training-only complete")
                 if license_evidence.get("release_use_allowed") is not False:

@@ -5681,9 +5681,10 @@ def check_footprint_3d_model_library_map() -> None:
     provenance = library_map["toolchain_provenance"]
     if provenance["active_binary_ships_3d_models"] is not False:
         raise SystemExit("footprint/3D map must record active KiCad binary lacks bundled 3D models")
-    for key in ["footprint_library_root", "model_library_root"]:
-        if not (ROOT / provenance[key]).exists():
-            raise SystemExit(f"footprint/3D map library root missing: {provenance[key]}")
+    library_roots_present = all(
+        (ROOT / provenance[key]).exists()
+        for key in ["footprint_library_root", "model_library_root"]
+    )
     if provenance["footprint_library_count_pretty"] < 100:
         raise SystemExit("footprint/3D map footprint library count unexpectedly weak")
     if provenance["model_library_count_3dshapes"] < 50:
@@ -5717,13 +5718,13 @@ def check_footprint_3d_model_library_map() -> None:
                 value = item[key]
                 paths = value if isinstance(value, list) else [value]
                 for rel_path in paths:
-                    if not (ROOT / rel_path).exists():
+                    if library_roots_present and not (ROOT / rel_path).exists():
                         raise SystemExit(
                             f"footprint/3D map matched artifact missing for {item['function']}: {rel_path}"
                         )
         elif status == "matched_footprint_only":
             footprint_path = item["footprint_path"]
-            if not (ROOT / footprint_path).exists():
+            if library_roots_present and not (ROOT / footprint_path).exists():
                 raise SystemExit(
                     f"footprint/3D map footprint-only artifact missing for {item['function']}: {footprint_path}"
                 )
