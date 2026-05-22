@@ -353,7 +353,7 @@ export function buildBunRpcHandlers({
     readDiagnostics: getStartupDiagnosticsSnapshot,
     readDatabaseStatus: () => agent.getDatabaseSnapshot(),
     readDiagnosticLogTail: getStartupDiagnosticLogTail,
-    listRemotePluginStatuses: () =>
+    listRemoteStatuses: () =>
       getFirstPartyRemotePluginDefinitions({ includeDev: true }).map(
         (definition) => {
           const status = remotePluginHost.getWorkerStatus(definition.id);
