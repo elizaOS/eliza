@@ -14,8 +14,7 @@
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import type { AuditDispatcher } from "@elizaos/security";
-import type { KmsClient } from "@elizaos/security";
+import type { AuditDispatcher, KmsClient } from "@elizaos/security";
 import { systemKey } from "@elizaos/security";
 
 export const PLUGIN_MANIFEST_KEY = systemKey("plugin-manifest");

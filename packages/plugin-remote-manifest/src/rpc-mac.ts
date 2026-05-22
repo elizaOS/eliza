@@ -8,9 +8,9 @@
  * dispatcher verifies before invoking any surface.
  */
 
-import type { JsonValue, WorkerRpcMessage } from "./types.js";
-import { systemKey } from "@elizaos/security";
 import type { KeyId } from "@elizaos/security";
+import { systemKey } from "@elizaos/security";
+import type { JsonValue, WorkerRpcMessage } from "./types.js";
 
 /** Stable JSON: sort object keys recursively for deterministic encoding. */
 function stableStringify(value: JsonValue): string {
