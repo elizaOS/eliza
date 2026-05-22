@@ -56,6 +56,10 @@ const SEED_TARGETS = [
     dir: path.join(ELIZA_ROOT, "packages", "skills"),
   },
   {
+    label: "@elizaos/security",
+    dir: path.join(ELIZA_ROOT, "packages", "security"),
+  },
+  {
     label: "@elizaos/app-core",
     dir: path.join(ELIZA_ROOT, "packages", "app-core"),
   },
