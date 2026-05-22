@@ -411,7 +411,9 @@ app.post("/", async (c) => {
     stewardUserId: claims.userId,
     expiresAt: exchange.data.expiresAt,
     expiresIn: exchange.data.expiresIn,
-    ...(shouldReturnClientToken(c, isProduction) ? { token, refreshToken } : {}),
+    ...(shouldReturnClientToken(c, isProduction)
+      ? { token, refreshToken }
+      : {}),
   });
 });
 

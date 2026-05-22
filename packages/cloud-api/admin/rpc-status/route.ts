@@ -108,7 +108,7 @@ async function probeNetwork(
 function redact(url: string): string {
   // Strip api keys from infura/alchemy-style URLs for the response payload.
   return url.replace(/(api[-_]?key=|\/v[23]\/|\/[a-f0-9]{20,}\b)/gi, (m) =>
-    m.startsWith("api") ? m.split("=")[0] + "=***" : "/***",
+    m.startsWith("api") ? `${m.split("=")[0]}=***` : "/***",
   );
 }
 
