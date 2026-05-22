@@ -39,7 +39,10 @@ const RETENTION_DAYS = Number.parseInt(
  */
 const REDACT_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /[A-Za-z0-9_-]{20,}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, label: "<EMAIL>" },
-  { re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, label: "<EMAIL>" },
+  {
+    re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+    label: "<EMAIL>",
+  },
   { re: /sk-[A-Za-z0-9_-]{20,}/g, label: "<API_KEY>" },
   { re: /(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, label: "<GH_TOKEN>" },
   { re: /xox[bpars]-[A-Za-z0-9-]{10,}/g, label: "<SLACK_TOKEN>" },
@@ -147,4 +150,4 @@ export function pruneOldSessions(now: number = Date.now()): number {
   return removed;
 }
 
-export { SESSIONS_ROOT, RETENTION_DAYS };
+export { RETENTION_DAYS, SESSIONS_ROOT };
