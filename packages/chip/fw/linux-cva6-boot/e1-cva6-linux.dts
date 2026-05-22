@@ -28,13 +28,12 @@
 		stdout-path = "/soc/serial@10001000";
 		bootargs = "console=ttyS0,115200 earlycon=uart8250,mmio,0x10001000 keep_bootcon panic=-1 rdinit=/init";
 		/*
-		 * The initramfs window (linux,initrd-start / -end) is resolved at
-		 * image-assembly time and substituted here by
-		 * build_linux_boot_image.py before `dtc`, because its address
-		 * depends on the kernel image size.
+		 * No linux,initrd-start/-end: the trimmed kernel carries the
+		 * initramfs as a builtin archive (CONFIG_INITRAMFS_SOURCE), so
+		 * there is no separate initrd load step and no DRAM window to
+		 * advertise — the kernel unpacks its builtin cpio and runs /init
+		 * directly, which is the shortest path to userland.
 		 */
-		linux,initrd-start = <__INITRD_START_HI__ __INITRD_START_LO__>;
-		linux,initrd-end = <__INITRD_END_HI__ __INITRD_END_LO__>;
 	};
 
 	cpus {
@@ -59,7 +58,15 @@
 
 	memory@80000000 {
 		device_type = "memory";
-		reg = <0x0 0x80000000 0x0 0x20000000>;
+		/*
+		 * 128 MiB.  The boot top's fabric decodes 256 MiB of DRAM, and a
+		 * 2 MiB kernel + builtin initramfs needs only a fraction of that;
+		 * advertising 128 MiB (rather than the full window) keeps the
+		 * kernel's early mem_init / page-struct setup — a cycle-dominant
+		 * phase on the slow behavioural DRAM model — small enough that the
+		 * bounded Verilator run reaches userland in a tractable cycle count.
+		 */
+		reg = <0x0 0x80000000 0x0 0x08000000>;
 	};
 
 	soc {

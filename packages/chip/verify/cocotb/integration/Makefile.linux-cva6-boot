@@ -85,15 +85,15 @@ MODULE   ?= test_linux_boot_cva6
 PYTHON   ?= python3
 
 COMPILE_ARGS += +define+E1_HAVE_CVA6 +define+WT_DCACHE
-# Preload window large enough for the ~24 MiB OpenSBI+kernel+initramfs image
-# (build_linux_boot_image.py reports preload_beats_required ~1.58M beats); the
-# shim sits at the top of that image and is the CVA6 reset vector.  Must stay
-# >= the builder's image_beats.
-DRAM_PRELOAD_BEATS ?= 1600000
+# Preload window: the assembled image is OpenSBI @0x80000000 .. shim @0x81000000
+# (build_linux_boot_image.py SHIM_ADDR), i.e. <= 16 MiB = ~1.05M beats with the
+# trimmed kernel.  Must stay >= the builder's image_beats.
+DRAM_PRELOAD_BEATS ?= 1100000
 COMPILE_ARGS += -GDRAM_PRELOAD_BEATS=$(DRAM_PRELOAD_BEATS)
-# CVA6 boots into the entry shim at the top of the assembled image (full 64-bit
-# literal so it is not sign-extended); the shim jumps to OpenSBI _fw_start.
-LINUX_SHIM_ADDR ?= 64\'h0000000081810000
+# CVA6 reset vector = the boot shim at the FIXED SHIM_ADDR in
+# build_linux_boot_image.py (full 64-bit literal so it is not sign-extended);
+# the shim jumps to OpenSBI _fw_start.  These two MUST stay equal.
+LINUX_SHIM_ADDR ?= 64\'h0000000081000000
 COMPILE_ARGS += -GCVA6_BOOT_ADDR=$(LINUX_SHIM_ADDR)
 
 EXTRA_ARGS += $(CVA6_INCDIRS)

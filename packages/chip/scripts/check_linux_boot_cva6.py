@@ -155,10 +155,14 @@ def main() -> int:
         sim_build = "sim_build_linux_cva6_boot"
         builder = ROOT / "fw/linux-cva6-boot/build_linux_boot_image.py"
         boot_hex = ROOT / "fw/linux-cva6-boot/build/linux_boot.hex128"
-        require = args.require or "Linux version"
+        # Default goal is userland: the trimmed kernel (CONFIG_INITRAMFS_SOURCE
+        # builtin, no SMP/NET/PCI, size-optimised) has a short enough
+        # pre-userland init path that ELIZA-USERLAND-OK is reachable inside the
+        # cycle budget.  The budget is generous (this is a long Verilator run).
+        require = args.require or "ELIZA-USERLAND-OK"
         transcript_name = "linux_boot_cva6.transcript"
-        max_cycles = args.max_cycles or 200_000_000
-        idle_limit = args.idle_limit or 8_000_000
+        max_cycles = args.max_cycles or 600_000_000
+        idle_limit = args.idle_limit or 40_000_000
         build_cmd = ["python3", str(builder)]
 
     transcript = EVIDENCE_DIR / transcript_name

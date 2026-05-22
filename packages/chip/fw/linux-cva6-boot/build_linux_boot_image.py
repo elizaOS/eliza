@@ -6,11 +6,11 @@ Lays out, at fixed DRAM addresses, the components the CVA6-from-DRAM boot top
 
   1. OpenSBI fw_jump.bin @ 0x80000000  (real repo OpenSBI v1.8.1, FW_TEXT_START;
                                         next stage = the Linux kernel in S-mode)
-  2. device-tree blob    @ 0x80040000  (e1-cva6-linux.dts, with /chosen bootargs
-                                        + linux,initrd-start/-end patched in)
-  3. Linux Image         @ 0x80200000  (real riscv64 Image; text_offset 0x200000)
-  4. initramfs cpio      @ <aligned, after the kernel>  (tiny /init payload)
-  5. boot shim           @ <top>        (CVA6 reset vector; sets a0/a1, jumps to
+  2. device-tree blob    @ 0x80040000  (e1-cva6-linux.dts, with /chosen bootargs)
+  3. Linux Image         @ 0x80200000  (real riscv64 Image; text_offset 0x200000;
+                                        the initramfs is BUILTIN in this Image via
+                                        CONFIG_INITRAMFS_SOURCE — no separate load)
+  4. boot shim           @ <top>        (CVA6 reset vector; sets a0/a1, jumps to
                                         OpenSBI _fw_start at 0x80000000)
 
 OpenSBI is built FW_JUMP=y with FW_JUMP_ADDR = the kernel base and
@@ -32,7 +32,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]   # packages/chip
@@ -42,13 +41,21 @@ OPENSBI_PLATFORM_SRC = ROOT / "sw/opensbi/platform/eliza"
 LINUX_GNU = ROOT / "external/riscv64-linux-gnu"
 
 # --- fixed memory map (all in DRAM @ 0x80000000) ---
+# Every address is FIXED (independent of the kernel Image size) so the CVA6
+# reset vector baked into the elaborated Verilator model (-GCVA6_BOOT_ADDR, set
+# in Makefile.linux-cva6-boot to SHIM_ADDR) always matches the shim placed here.
+# A kernel-size-dependent shim address would silently desync from the elaborated
+# reset vector whenever the Image size changes, leaving the CPU to fetch zeros.
 DRAM_BASE     = 0x80000000
 OPENSBI_ADDR  = 0x80000000   # FW_TEXT_START (aligned base)
 DTB_ADDR      = 0x80040000   # FW_JUMP_FDT_ADDR
 KERNEL_ADDR   = 0x80200000   # FW_JUMP_ADDR (kernel text_offset 0x200000)
+# Boot shim / CVA6 reset vector: fixed 16 MiB into DRAM, well above the kernel
+# Image (the trimmed Image is ~2 MiB; this leaves ample headroom) and matched by
+# LINUX_SHIM_ADDR in Makefile.linux-cva6-boot.  Must stay in sync with that.
+SHIM_ADDR     = 0x81000000
 
 BEAT_BYTES = 16
-MiB = 1024 * 1024
 
 
 def _env() -> dict:
@@ -96,19 +103,8 @@ def build_opensbi(env: dict) -> bytes:
     return binf.read_bytes()
 
 
-def build_dtb(out_dir: Path, env: dict, initrd_start: int, initrd_end: int) -> bytes:
-    # Substitute the resolved initrd window into the DTS template, then compile.
-    src = (HERE / "e1-cva6-linux.dts").read_text()
-    subs = {
-        "__INITRD_START_HI__": f"0x{initrd_start >> 32:x}",
-        "__INITRD_START_LO__": f"0x{initrd_start & 0xFFFFFFFF:x}",
-        "__INITRD_END_HI__":   f"0x{initrd_end >> 32:x}",
-        "__INITRD_END_LO__":   f"0x{initrd_end & 0xFFFFFFFF:x}",
-    }
-    for k, v in subs.items():
-        src = src.replace(k, v)
-    dts = out_dir / "e1-cva6-linux.resolved.dts"
-    dts.write_text(src)
+def build_dtb(out_dir: Path, env: dict) -> bytes:
+    dts = HERE / "e1-cva6-linux.dts"
     dtb = out_dir / "e1-cva6-linux.dtb"
     _run(["dtc", "-I", "dts", "-O", "dtb", "-o", str(dtb), str(dts)], HERE, env)
     return dtb.read_bytes()
@@ -152,8 +148,6 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--kernel",
                     default=str(ROOT / "external/linux/arch/riscv/boot/Image"))
-    ap.add_argument("--initramfs",
-                    default=str(HERE / "build/initramfs.cpio"))
     ap.add_argument("--out", default=str(HERE / "build/linux_boot.hex128"))
     ap.add_argument("--report", default=str(HERE / "build/linux_boot_image.json"))
     args = ap.parse_args()
@@ -168,24 +162,23 @@ def main() -> int:
         raise SystemExit(f"kernel Image not found: {kernel_path}")
     kernel = kernel_path.read_bytes()
 
-    initrd_path = Path(args.initramfs)
-    if not initrd_path.exists():
-        # Build the initramfs on demand.
-        _run(["python3", str(HERE / "build_initramfs.py")], HERE, env)
-    initrd = initrd_path.read_bytes()
-
-    # initramfs placed 1 MiB-aligned just past the kernel image.
+    # The initramfs is builtin to the trimmed Image (CONFIG_INITRAMFS_SOURCE),
+    # so there is no external initrd to place.  The boot shim sits at the FIXED
+    # SHIM_ADDR (matched by the elaborated CVA6 reset vector); guard against a
+    # kernel large enough to collide with it.
     kernel_end = KERNEL_ADDR + len(kernel)
-    initrd_addr = (kernel_end + MiB - 1) & ~(MiB - 1)
-    initrd_end = initrd_addr + len(initrd)
-    # boot shim placed 64 KiB-aligned past the initramfs.
-    shim_addr = (initrd_end + 0x10000 - 1) & ~(0x10000 - 1)
+    shim_addr = SHIM_ADDR
+    if kernel_end > shim_addr:
+        raise SystemExit(
+            f"kernel ends at {kernel_end:#x}, overruns fixed shim at "
+            f"{shim_addr:#x}; trim the kernel or raise SHIM_ADDR (and "
+            f"LINUX_SHIM_ADDR in Makefile.linux-cva6-boot to match)")
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
 
     opensbi = build_opensbi(env)
-    dtb = build_dtb(out.parent, env, initrd_addr, initrd_end)
+    dtb = build_dtb(out.parent, env)
     shim = build_shim(out.parent, env, shim_addr)
 
     if OPENSBI_ADDR + len(opensbi) > DTB_ADDR:
@@ -201,7 +194,6 @@ def main() -> int:
     place(image, OPENSBI_ADDR, opensbi, "opensbi")
     place(image, DTB_ADDR, dtb, "dtb")
     place(image, KERNEL_ADDR, kernel, "kernel")
-    place(image, initrd_addr, initrd, "initramfs")
     place(image, shim_addr, shim, "shim")
 
     lines = []
@@ -217,9 +209,8 @@ def main() -> int:
         "layout": {
             "opensbi":   {"addr": hex(OPENSBI_ADDR), "bytes": len(opensbi)},
             "dtb":       {"addr": hex(DTB_ADDR),     "bytes": len(dtb)},
-            "kernel":    {"addr": hex(KERNEL_ADDR),  "bytes": len(kernel)},
-            "initramfs": {"addr": hex(initrd_addr),  "bytes": len(initrd),
-                          "end": hex(initrd_end)},
+            "kernel":    {"addr": hex(KERNEL_ADDR),  "bytes": len(kernel),
+                          "initramfs": "builtin (CONFIG_INITRAMFS_SOURCE)"},
             "shim":      {"addr": hex(shim_addr),    "bytes": len(shim)},
         },
         "entry": {"a0_hartid": 0, "a1_dtb": hex(DTB_ADDR), "pc": hex(shim_addr),

@@ -58,6 +58,9 @@ DRAIN_CYCLES = int(os.environ.get("E1_BOOT_DRAIN_CYCLES", "200000"))
 # Idle watchdog: if no new console byte appears for this many cycles AFTER the
 # first byte, stop — the boot has wedged (records the furthest marker reached).
 IDLE_LIMIT = int(os.environ.get("E1_BOOT_IDLE_LIMIT", "4000000"))
+# Periodic progress log so a long Verilator run reports cycle rate and the
+# furthest marker live (visible in the cocotb sim log even before any flush).
+HEARTBEAT = int(os.environ.get("E1_BOOT_HEARTBEAT", "1000000"))
 
 _RUN = os.environ.get("CVA6_VERILATOR_FULL_OK", "1") == "1"
 
@@ -99,13 +102,34 @@ async def test_boot_markers(dut):
     cycles_since_byte = 0
     saw_first_byte = False
 
+    # Flush the transcript to disk on every completed console line.  This is a
+    # very long Verilator run (millions of cycles); if it is killed by an outer
+    # wall-clock timeout the on-disk transcript still records the furthest
+    # marker reached, so the gate never has to guess.
+    EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+
+    def _flush():
+        TRANSCRIPT.write_text(chars.decode("latin-1"), encoding="utf-8")
+
+    # Truncate any stale transcript from a prior run up front, so the on-disk
+    # file only ever reflects THIS run's console (a partial run killed before
+    # the first newline must not be read as the previous run's output).
+    _flush()
+
     while cycles < MAX_CYCLES:
         await RisingEdge(dut.clk)
         cycles += 1
+        if cycles % HEARTBEAT == 0:
+            dut._log.info(
+                f"heartbeat: cycle {cycles}/{MAX_CYCLES}, UART bytes "
+                f"{len(chars)}, furthest = {_furthest(chars.decode('latin-1'))}")
         if int(dut.uart_tx_valid_o.value) == 1:
-            chars.append(int(dut.uart_tx_byte_o.value) & 0xFF)
+            byte = int(dut.uart_tx_byte_o.value) & 0xFF
+            chars.append(byte)
             saw_first_byte = True
             cycles_since_byte = 0
+            if byte == 0x0A:
+                _flush()
             if not require_seen and REQUIRE in chars.decode("latin-1"):
                 require_seen = True
                 for _ in range(DRAIN_CYCLES):
@@ -123,8 +147,7 @@ async def test_boot_markers(dut):
                 break
 
     transcript = chars.decode("latin-1")
-    EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
-    TRANSCRIPT.write_text(transcript, encoding="utf-8")
+    _flush()
 
     dram_ar = int(dut.dram_ar_xfers_o.value)
     dram_r = int(dut.dram_r_xfers_o.value)
