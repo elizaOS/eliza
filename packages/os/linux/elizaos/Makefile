@@ -8,7 +8,7 @@
 #   make build ARCH=riscv64 DEBIAN_MIRROR=https://ftp.debian.org/debian
 #
 #   make qemu-boot ARCH=riscv64
-#   make release-check-strict ARCH=amd64
+#   make release-check-strict ARCH=riscv64
 #   make brand-assets
 
 ARCH    ?= amd64
@@ -23,13 +23,14 @@ AGENT_ARTIFACTS_MOUNT := $(if $(wildcard $(AGENT_ARTIFACTS)),-v "$(AGENT_ARTIFAC
 
 SUPPORTED_ARCHES := amd64 arm64 riscv64
 
-.PHONY: help build builder qemu-boot release-check-strict release-check brand-assets clean lint
+.PHONY: help build builder qemu-boot release-check-strict release-check check-riscv64-release-arch brand-assets clean lint
 
 help:
 	@echo "elizaOS Linux build targets:"
 	@echo "  make build [ARCH=amd64|arm64|riscv64] [PROFILE=default|secure]"
 	@echo "  make qemu-boot ARCH=<arch>"
-	@echo "  make release-check-strict ARCH=<arch>"
+	@echo "  make release-check ARCH=riscv64"
+	@echo "  make release-check-strict ARCH=riscv64"
 	@echo "  make brand-assets       # regenerate PNG branding from SVG sources"
 	@echo "  make lint               # static smoke checks"
 	@echo "  make clean              # remove out/ and live-build state"
@@ -75,11 +76,17 @@ build: builder check-arch
 qemu-boot: check-arch
 	scripts/boot-qemu.sh $(ARCH)
 
-release-check-strict: check-arch
-	scripts/release-check.sh --strict --arch $(ARCH)
+release-check-strict: check-riscv64-release-arch
+	scripts/check_release_manifest.py --strict
 
-release-check: check-arch
-	scripts/release-check.sh --arch $(ARCH)
+release-check: check-riscv64-release-arch
+	scripts/check_release_manifest.py
+
+check-riscv64-release-arch: check-arch
+	@if [ "$(ARCH)" != "riscv64" ]; then \
+	    echo "ERROR: release-check currently validates the riscv64 qemu-virt release manifest only; got ARCH=$(ARCH)" >&2; \
+	    exit 64; \
+	fi
 
 brand-assets:
 	scripts/generate-elizaos-brand-assets.sh

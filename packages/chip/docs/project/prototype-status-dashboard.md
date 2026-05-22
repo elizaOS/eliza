@@ -1,6 +1,6 @@
 # Prototype Status Dashboard
 
-Snapshot: updated 2026-05-21 after native-toolchain recovery; MVP rows mirror `scripts/check_mvp_status.py --json`.
+Snapshot: updated 2026-05-22 from a source-only checkout; volatile generated-artifact rows stay conservative until the local/CI run regenerates evidence.
 
 ## MVP Gate Snapshot
 
@@ -14,18 +14,18 @@ Snapshot: updated 2026-05-21 after native-toolchain recovery; MVP rows mirror `s
 | software-bsp | `BLOCK` | `scaffold_only` | `make software-bsp-evidence-check` |
 | real-world-release-gates | `PASS` | `command_pass` | `none` |
 | rtl-source | `PASS` | `source_present` | `none` |
-| synthesis | `PASS` | `generated_artifact` | `none` |
-| cocotb | `PASS` | `generated_artifact` | `none` |
-| verilator | `PASS` | `generated_artifact` | `none` |
+| synthesis | `BLOCK` | `tool_blocker` | `make synth` |
+| cocotb | `BLOCK` | `regen_required` | `make cocotb cocotb-npu cocotb-contract cocotb-cpu` |
+| verilator | `BLOCK` | `tool_blocker` | `make verilator` |
 | formal | `BLOCK` | `tool_blocker` | `make formal inside Docker/Nix` |
 | qemu | `BLOCK` | `tool_blocker` | `make qemu-check` |
 | renode | `BLOCK` | `tool_blocker` | `make renode-check` |
-| npu-ml-proof | `PASS` | `generated_artifact` | `none` |
+| npu-ml-proof | `BLOCK` | `tool_blocker` | `make mvp-npu-ml-evidence-check` |
 | minimum-linux-npu-target | `BLOCK` | `tool_blocker` | `make minimum-linux-npu-target-strict` |
 | pd-contract | `PASS` | `command_pass` | `none` |
 | product-package | `BLOCK` | `release_blocker` | `close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication` |
 | benchmarks | `BLOCK` | `scaffold_only` | `python3 benchmarks/run_benchmarks.py run --metadata benchmarks/metadata/strict-blocked-template.json --strict-missing` |
-| release-pipeline | `PASS` | `generated_artifact` | `none` |
+| release-pipeline | `BLOCK` | `regen_required` | `make tool-versions pipeline-check` |
 
 ## Workstream Dashboard
 
