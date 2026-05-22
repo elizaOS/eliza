@@ -13,7 +13,7 @@
     -->
     <meta name="referrer" content="no-referrer" />
     <!--
-      Snapshot then strip any `#token=...` from the URL before any other JS
+      Snapshot then strip any token-bearing hash from the URL before any other JS
       runs (React, analytics, Sentry, etc.) so the access token never reaches
       anything that might log `location.href`. Tokens are then read by
       consumeStewardTokensFromHash() from `__stewardOAuthHash`.
@@ -22,7 +22,8 @@
       (() => {
         try {
           const h = window.location.hash;
-          if (h && h.indexOf("token=") !== -1) {
+          const params = h ? new URLSearchParams(h.replace(/^#/, "")) : null;
+          if (params && (params.has("token") || params.has("access_token"))) {
             window.__stewardOAuthHash = h;
             history.replaceState(
               null,

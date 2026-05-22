@@ -28,6 +28,11 @@ const stewardTenantId = STEWARD_TENANT_ID;
 const stewardSessionEndpoint = `${cloudApiUrl.replace(/\/$/, "")}${STEWARD_SESSION_ENDPOINT}`;
 const stewardNonceExchangeEndpoint = `${cloudApiUrl.replace(/\/$/, "")}${STEWARD_NONCE_EXCHANGE_ENDPOINT}`;
 
+type StewardTokenPayload = {
+  token: string;
+  refreshToken: string | null;
+};
+
 function getDefaultProduct(): Product {
   const fallback =
     hardwareProducts.find((product) => product.sku === "elizaos-usb") ??
@@ -66,6 +71,24 @@ function getStoredStewardToken() {
   return readStoredStewardToken();
 }
 
+function readStewardTokenParams(
+  params: URLSearchParams,
+): StewardTokenPayload | null {
+  const token = params.get("token") ?? params.get("access_token");
+  if (!token) return null;
+  return {
+    token,
+    refreshToken: params.get("refreshToken") ?? params.get("refresh_token"),
+  };
+}
+
+function removeStewardTokenParams(params: URLSearchParams): void {
+  params.delete("token");
+  params.delete("access_token");
+  params.delete("refreshToken");
+  params.delete("refresh_token");
+}
+
 function consumeStewardCodeFromQuery(): string | null {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
@@ -93,9 +116,8 @@ function consumeStewardTokensFromHash(): {
   }
   if (!hash || hash.length < 2) return null;
   const params = new URLSearchParams(hash.replace(/^#/, ""));
-  const token = params.get("token");
-  if (!token) return null;
-  const refreshToken = params.get("refreshToken");
+  const tokens = readStewardTokenParams(params);
+  if (!tokens) return null;
   if (!snapshotted) {
     window.history.replaceState(
       null,
@@ -103,7 +125,7 @@ function consumeStewardTokensFromHash(): {
       `${window.location.pathname}${window.location.search}`,
     );
   }
-  return { token, refreshToken };
+  return tokens;
 }
 
 function ProductImage({
@@ -220,8 +242,11 @@ export function CheckoutPage() {
         redirectUri: buildOAuthRedirectUri(product),
         tenantId: stewardTenantId,
       })
-        .then(() => {
-          setIsAuthed(true);
+        .then((session) => {
+          if (session.token) {
+            writeStoredStewardToken(session.token);
+          }
+          setIsAuthed(Boolean(session.token) || hasStewardAuthedCookie());
         })
         .catch((error: unknown) => {
           setMessage(
@@ -236,11 +261,9 @@ export function CheckoutPage() {
 
     const fromHash = consumeStewardTokensFromHash();
     const params = new URLSearchParams(window.location.search);
-    const queryToken = params.get("token");
-    const queryRefreshToken = params.get("refreshToken");
-    const token = fromHash?.token ?? queryToken;
-    const refreshToken =
-      fromHash?.refreshToken ?? queryRefreshToken ?? undefined;
+    const fromQuery = readStewardTokenParams(params);
+    const token = fromHash?.token ?? fromQuery?.token;
+    const refreshToken = fromHash?.refreshToken ?? fromQuery?.refreshToken;
     if (!token) {
       setIsAuthed(Boolean(getStoredStewardToken()) || hasStewardAuthedCookie());
       return;
@@ -254,9 +277,8 @@ export function CheckoutPage() {
     })
       .then(() => {
         setIsAuthed(true);
-        if (queryToken || queryRefreshToken) {
-          params.delete("token");
-          params.delete("refreshToken");
+        if (fromQuery) {
+          removeStewardTokenParams(params);
           const query = params.toString();
           window.history.replaceState(
             null,
