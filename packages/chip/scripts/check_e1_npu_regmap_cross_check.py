@@ -217,7 +217,10 @@ def main() -> int:
     # 3. Offsets at or above the doc-table floor that the docs expose must
     # appear in the RTL read-data mux (allow scratchpad family + write-only
     # registers that legitimately have no read path).
-    write_only_offsets = {0x40}  # DESC_BASE: write-only ring base
+    # Write-only registers that legitimately have no read-data mux entry:
+    #   0x38 SEC_LOCK  — W1S sticky monitor-programming lock (read via SEC_STATUS)
+    #   0x40 DESC_BASE — write-only ring base
+    write_only_offsets = {0x38, 0x40}
     for offset, name in sorted(doc_offsets.items()):
         if offset < DOC_TABLE_FLOOR:
             continue
