@@ -23,12 +23,29 @@ users:
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
     lock_passwd: true
+    # Mirror operator SSH keys onto the deploy user. Hetzner only injects
+    # `hcloud_ssh_key` entries into root by default, but the
+    # `.github/workflows/deploy-eliza-provisioning-worker.yml` workflow SSHes
+    # in as `deploy`. Without this list the first auto-deploy would fail.
+    ssh_authorized_keys:
+%{ for key in operator_ssh_keys ~}
+      - ${key}
+%{ endfor ~}
 
 package_update: true
 package_upgrade: false
 
+apt:
+  sources:
+    docker:
+      source: "deb [arch=amd64 signed-by=$KEY_FILE] https://download.docker.com/linux/ubuntu $RELEASE stable"
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+
 packages:
   - curl
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
   - git
   - jq
   - nginx
@@ -44,13 +61,21 @@ write_files:
       export ELIZA_DEPLOY_BRANCH="${deploy_branch}"
 
 runcmd:
-  # Docker (official convenience installer — pin sha if you want it
-  # auditable; we keep it simple for the bootstrap).
-  - curl -fsSL https://get.docker.com | sh
+  # Docker is installed via the `apt` block above using the official
+  # Docker apt repo (GPG-verified keyring), not `curl get.docker.com | sh`.
   - systemctl enable --now docker
 
-  # Bun runtime for the deploy user (the daemons run under bun/tsx).
-  - su - deploy -c 'curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.13"'
+  # Bun runtime for the deploy user. We download a pinned release tarball
+  # AND its SHASUMS256 manifest from the same GitHub release, then verify
+  # the binary against the published hash before extracting. This avoids
+  # the `curl bun.sh/install | bash` supply-chain pattern flagged in the
+  # PR review — we still trust GitHub's HTTPS, but the manifest commits
+  # the publisher to a specific hash that an attacker can't forge mid-flight.
+  - install -d -o deploy -g deploy /home/deploy/.bun /home/deploy/.bun/bin
+  - su - deploy -c 'curl -fsSL -o /tmp/bun.zip https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/bun-linux-x64.zip'
+  - su - deploy -c 'curl -fsSL -o /tmp/bun-SHASUMS256.txt https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/SHASUMS256.txt'
+  - su - deploy -c 'cd /tmp && grep "bun-linux-x64.zip" bun-SHASUMS256.txt | sha256sum -c -'
+  - su - deploy -c 'cd /tmp && unzip -q bun.zip && install -m 0755 bun-linux-x64/bun /home/deploy/.bun/bin/bun && rm -rf /tmp/bun.zip /tmp/bun-linux-x64 /tmp/bun-SHASUMS256.txt'
 
   # Repo checkout — the GitHub deploy workflow then takes over for code updates.
   - mkdir -p /opt/eliza && chown deploy:deploy /opt/eliza

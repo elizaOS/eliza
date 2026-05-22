@@ -10,7 +10,10 @@ locals {
 }
 
 resource "hcloud_ssh_key" "operators" {
-  for_each = { for idx, key in var.ssh_public_keys : idx => key }
+  # Key the map by a short SHA-256 prefix of the public key rather than the
+  # list index — keeps Terraform plans stable when operators are
+  # inserted/reordered in `var.ssh_public_keys`.
+  for_each = { for key in var.ssh_public_keys : substr(sha256(key), 0, 12) => key }
 
   name       = "eliza-cp-${var.environment}-op-${each.key}"
   public_key = each.value
@@ -30,8 +33,9 @@ resource "hcloud_server" "control_plane" {
   })
 
   user_data = templatefile("${path.module}/cloud-init/bootstrap.yaml.tftpl", {
-    hostname      = "eliza-cp-${var.environment}-${each.value}"
-    deploy_branch = var.deploy_branch
+    hostname          = "eliza-cp-${var.environment}-${each.value}"
+    deploy_branch     = var.deploy_branch
+    operator_ssh_keys = var.ssh_public_keys
   })
 
   # Keep server alive across refactors: changing labels or user_data
