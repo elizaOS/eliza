@@ -757,6 +757,32 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).toContain("NOT reachable");
     });
 
+    it("suppresses an exhausted retry failure when a newer continuation is active", async () => {
+      session = sessionWithTask(`build it at ${DEAD_URL}`, 2);
+      const newer = {
+        ...session,
+        id: "11111111-2222-3333-4444-555555555555",
+        status: "running",
+        createdAt: new Date("2026-05-07T12:01:00.000Z"),
+        lastActivityAt: new Date("2026-05-07T12:01:00.000Z"),
+      } satisfies SessionInfo;
+      acp = makeAcpService(session);
+      acp.service.listSessions.mockResolvedValue([session, newer]);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+        setting: { ELIZA_URL_VERIFY_SETTLE_MS: "0" },
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Done — live at ${DEAD_URL}`,
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).not.toHaveBeenCalled();
+    });
+
     it("treats a 405 (reachable, GET-not-allowed) URL as not dead — no retry", async () => {
       // Sub-agents dump raw HTTP headers into their narration; incidental
       // URLs there (CDN telemetry / NEL `report-to`, POST-only APIs) 405 a
@@ -974,17 +1000,52 @@ describe("SubAgentRouter", () => {
         expect(spawnSession).not.toHaveBeenCalled();
         expect(handleMessage).toHaveBeenCalledTimes(1);
         const posted = handleMessage.mock.calls[0]?.[1];
-        expect(posted?.content?.text).toContain(localPage);
+        expect(posted?.content?.text).not.toContain(localPage);
         expect(posted?.content?.text).toContain(publicPage);
-        expect(posted?.content?.text).toContain("style.css");
-        expect(posted?.content?.text).toContain("app.js");
         expect(posted?.content?.metadata?.subAgentVerifiedUrls).toEqual([
-          localPage,
           publicPage,
         ]);
       } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });
       }
+    });
+
+    it("rejects generated app pages that reference unreachable image assets", async () => {
+      const appUrl = "https://example.test/apps/permit-garden/";
+      const imageUrl = "https://cdn.example.test/permit-garden/sticker.png";
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === imageUrl) {
+          return new Response("not found", { status: 404 });
+        }
+        return new Response(
+          `<!doctype html><img src="${imageUrl}" alt="Sticker">`,
+          {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          },
+        );
+      });
+      stubFetch(fetchMock);
+      session = sessionWithTask(`build and verify ${appUrl}`);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+        setting: { ELIZA_URL_VERIFY_SETTLE_MS: "0" },
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Done — live at ${appUrl}`,
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(spawnSession).toHaveBeenCalledTimes(1);
+      const retryTask = String(spawnSession.mock.calls[0]?.[0]?.initialTask);
+      expect(retryTask).toContain("--- VERIFICATION FEEDBACK");
+      expect(retryTask).toContain(imageUrl);
+      expect(retryTask).toContain("HTTP 404");
+      expect(handleMessage).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledWith(imageUrl, expect.anything());
     });
 
     it("rejects mapped app URLs whose local target was not written this session by default", async () => {
@@ -1267,11 +1328,10 @@ describe("SubAgentRouter", () => {
         expect(handleMessage).toHaveBeenCalledTimes(1);
         const posted = handleMessage.mock.calls[0]?.[1];
         expect(posted?.content?.metadata?.subAgentVerifiedUrls).toEqual([
-          localUrl,
           publicUrl,
         ]);
-        expect(posted?.content?.text).toContain(localUrl);
-        expect(posted?.content?.text).not.toContain(publicUrl);
+        expect(posted?.content?.text).not.toContain(localUrl);
+        expect(posted?.content?.text).toContain(publicUrl);
         expect(posted?.content?.text).not.toContain("[verification:");
       } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });
@@ -1484,6 +1544,18 @@ describe("extractSubResources", () => {
     expect(extractSubResources(html, PAGE).sort()).toEqual([
       "https://example.test/apps/bmi/app.js",
       "https://example.test/apps/bmi/style.css",
+    ]);
+  });
+
+  it("extracts media src and srcset resources", () => {
+    const html = `<!doctype html><img src="hero.png" srcset="hero-small.png 480w, https://cdn.example.com/hero-large.png 960w">
+      <source srcset="poster.webp 1x, poster@2x.webp 2x">`;
+    expect(extractSubResources(html, PAGE).sort()).toEqual([
+      "https://cdn.example.com/hero-large.png",
+      "https://example.test/apps/bmi/hero-small.png",
+      "https://example.test/apps/bmi/hero.png",
+      "https://example.test/apps/bmi/poster.webp",
+      "https://example.test/apps/bmi/poster@2x.webp",
     ]);
   });
 

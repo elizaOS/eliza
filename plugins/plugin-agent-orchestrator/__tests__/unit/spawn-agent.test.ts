@@ -273,6 +273,10 @@ describe("TASKS:spawn_agent", () => {
       expect(initialTask).toContain(
         "write files under data/apps/<slug>/, not apps/<slug>/ or public/apps/<slug>/",
       );
+      expect(initialTask).toContain(
+        "do not leave placeholder/mock external assets, TODO/placeholder comments, or unfinished sample code",
+      );
+      expect(initialTask).toContain('do not leave inert href="#" controls');
       expect(initialTask.indexOf("--- Resolved Workspace ---")).toBeLessThan(
         initialTask.indexOf("--- User Task ---"),
       );

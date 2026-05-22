@@ -354,6 +354,8 @@ function taskWithResolvedRoute(
         "--- URL Path Mapping ---",
         "These mappings are authoritative for hosted artifacts and override conflicting guesses in the task text:",
         ...mappingLines,
+        "For hosted deliverables, do not leave placeholder/mock external assets, TODO/placeholder comments, or unfinished sample code; create complete local assets or omit the asset.",
+        'If the user asks for buttons, forms, or calls to action, implement local behavior such as an in-page section, mailto link, or submit-state handler; do not leave inert href="#" controls.',
       );
     }
   }
