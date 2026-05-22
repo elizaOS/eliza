@@ -301,7 +301,6 @@ export interface StewardNonceExchangeRequest {
 }
 
 export interface StewardNonceExchangeResponse extends StewardSessionResponse {
-  token?: string;
   expiresIn?: number;
   expiresAt?: number;
   /**
