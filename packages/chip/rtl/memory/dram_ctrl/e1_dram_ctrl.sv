@@ -92,7 +92,13 @@ module e1_dram_ctrl
     parameter int unsigned TRFCPB_CYCLES    = 220,
     parameter int unsigned ZQCS_INTERVAL    = 128_000,
     parameter int unsigned ZQCL_INTERVAL    = 2_048_000,
-    parameter int unsigned IDLE_PRECHARGE_CYCLES = 32
+    parameter int unsigned IDLE_PRECHARGE_CYCLES = 32,
+
+    // Sim-only firmware-image preload window (in DATA_WIDTH-bit beats from
+    // MEM_BASE_ADDR).  Bounds the `+E1_DRAM_PRELOAD_HEX` $readmemh buffer; the
+    // bare-metal CPU-execution image is a few KiB, so 4096 beats (64 KiB at a
+    // 128-bit bus) is ample.  Has no effect outside `ifndef SYNTHESIS`.
+    parameter int unsigned MEM_PRELOAD_MAX_BEATS = 4096
 ) (
     input  logic clk,
     input  logic rst_n,
@@ -269,6 +275,31 @@ module e1_dram_ctrl
         end
         store[key] = cur;
     endtask
+
+    // Sim-only image preload (firmware load by an external boot agent).  When
+    // the `+E1_DRAM_PRELOAD_HEX=<file>` plusarg is supplied, the named hex file
+    // (one DATA_WIDTH-bit beat per line, MSB-first per $readmemh) is loaded
+    // beat-for-beat into the backing store starting at MEM_BASE_ADDR.  This is
+    // the deterministic stand-in for the secure boot-ROM / loader that places
+    // M-mode firmware into DRAM before the application core is released; it is
+    // gated behind `ifndef SYNTHESIS` and the plusarg so it never affects
+    // synthesis or any run that does not request a preload.
+    integer preload_words;
+    initial begin : dram_preload
+        string preload_path;
+        logic [DATA_WIDTH-1:0] preload_buf [0:MEM_PRELOAD_MAX_BEATS-1];
+        if ($value$plusargs("E1_DRAM_PRELOAD_HEX=%s", preload_path)) begin
+            for (int i = 0; i < MEM_PRELOAD_MAX_BEATS; i++) preload_buf[i] = '0;
+            $readmemh(preload_path, preload_buf);
+            preload_words = 0;
+            for (int unsigned i = 0; i < MEM_PRELOAD_MAX_BEATS; i++) begin
+                if (preload_buf[i] !== '0) begin
+                    store[i] = preload_buf[i];
+                    preload_words = preload_words + 1;
+                end
+            end
+        end
+    end
 `endif
 
     // ------------------------------------------------------------------

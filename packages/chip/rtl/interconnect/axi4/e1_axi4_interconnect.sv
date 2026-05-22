@@ -598,7 +598,7 @@ module e1_axi4_interconnect
                         };
                         decode_err_irq[m] <= 1'b1;
                     end else begin
-                        int unsigned slv = m_awslv[m];
+                        automatic int unsigned slv = m_awslv[m];
                         wr_queue[m][wr_q_tail[m][OUTST_W-2:0]] <= '{
                             valid:     1'b1,
                             slave:     SLAVE_IDX_W'(slv),
@@ -647,7 +647,7 @@ module e1_axi4_interconnect
                         rd_q_count[m] <= rd_q_count[m] + 1'b1;
                         decode_err_irq[m] <= 1'b1;
                     end else begin
-                        int unsigned slv = m_arslv[m];
+                        automatic int unsigned slv = m_arslv[m];
                         rd_queue[m][rd_q_tail[m][OUTST_W-2:0]] <= '{
                             valid:     1'b1,
                             slave:     SLAVE_IDX_W'(slv),
