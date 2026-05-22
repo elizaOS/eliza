@@ -60,14 +60,14 @@ describe("Android Assistant and App Actions routing source", () => {
     expect(manifest).toContain('android:resource="@xml/shortcuts"');
   });
 
-  it("keeps default-assistant and voice-command surfaces out of the consumer manifest", () => {
+  it("declares default-assistant and voice-command surfaces without privileged voice permissions", () => {
     const manifest = readRepoFile(
       "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
     );
 
-    expect(manifest).not.toContain("ElizaAssistActivity");
-    expect(manifest).not.toContain("android.intent.action.ASSIST");
-    expect(manifest).not.toContain("android.intent.action.VOICE_COMMAND");
+    expect(manifest).toContain("ElizaAssistActivity");
+    expect(manifest).toContain("android.intent.action.ASSIST");
+    expect(manifest).toContain("android.intent.action.VOICE_COMMAND");
     expect(manifest).not.toContain("android.app.role.ASSISTANT");
     expect(manifest).not.toContain("android.permission.BIND_VOICE_INTERACTION");
   });
@@ -97,13 +97,13 @@ describe("Android Assistant and App Actions routing source", () => {
     expect(shortcuts).toContain("source=android-app-actions");
     expect(shortcuts).toContain("source=android-static-shortcut");
     expect(shortcuts).toContain(
-      "eliza://feature/open?source=android-app-actions",
+      "elizaos://feature/open?source=android-app-actions",
     );
     expect(shortcuts).toContain(
-      "eliza://chat?source=android-app-actions&amp;action=chat",
+      "elizaos://chat?source=android-app-actions&amp;action=chat",
     );
     expect(shortcuts).toContain(
-      "eliza://lifeops/task/new?source=android-static-shortcut",
+      "elizaos://lifeops/task/new?source=android-static-shortcut",
     );
     expect(shortcuts.toLowerCase()).not.toContain("notification");
     expect(shortcuts).not.toContain("assistant/open");
