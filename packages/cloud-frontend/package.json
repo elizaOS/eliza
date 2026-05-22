@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource/dm-mono": "^5.2.7",
@@ -49,6 +50,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/three": "^0.184.0",
     "@vitejs/plugin-react": "^6.0.0",
+    "@web3icons/react": "^4.1.17",
     "buffer": "^6.0.3",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
@@ -80,8 +82,7 @@
     "viem": "^2.48.8",
     "vite": "^8.0.10",
     "wagmi": "^3.6.15",
-    "zustand": "^5.0.12",
-    "@elizaos/shared": "workspace:*"
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
