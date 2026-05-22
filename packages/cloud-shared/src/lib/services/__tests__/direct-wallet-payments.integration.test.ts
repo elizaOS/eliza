@@ -161,16 +161,13 @@ if (SUPPORTS_VITEST_MOCK_API)
     };
   });
 
-// Solana — we don't test the Solana confirm path through verify (would need a
-// huge mock of getParsedTransaction + ATA owner check). The Solana createPayment
-// is exercised separately though, so we still need these imports to resolve.
-// Mutable state read by the spl-token / Connection mocks to flip behavior per
-// test. Hoisted so `vi.mock(...)` factories — which run before module init —
-// can capture a reference.
-const solanaTestState = vi.hoisted(() => ({
+const createSolanaTestState = () => ({
   ataOwnerOverride: null as Uint8Array | null,
   parsedTxOverride: null as unknown,
-}));
+});
+
+const solanaTestState =
+  typeof vi.hoisted === "function" ? vi.hoisted(createSolanaTestState) : createSolanaTestState();
 
 if (SUPPORTS_VITEST_MOCK_API)
   vi.mock("@solana/spl-token", async () => {

@@ -68,6 +68,16 @@ export interface DevRouteCatalogPayload {
  */
 const ROUTES: DevRouteEntry[] = [
   {
+    tabId: "home",
+    path: "/home",
+    label: "Home",
+    group: "Home",
+    visibility: "all",
+    featureFlag: null,
+    requiresAuth: false,
+    platformGate: null,
+  },
+  {
     tabId: "chat",
     path: "/chat",
     label: "Chat",
