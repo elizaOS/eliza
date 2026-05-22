@@ -364,15 +364,20 @@ function BaseIcon() {
 }
 
 function BnbIcon() {
+  // BNB Chain mark: yellow disc with the four-diamond + center-diamond
+  // pattern in white. Matches https://bnbchain.org brand guidelines and
+  // the Wikimedia reference SVG. Previously the disc was white with
+  // yellow diamonds, which is not how the mark is rendered anywhere.
   return (
     <svg
-      className="h-4 w-4 rounded-full bg-white ring-1 ring-black/20"
+      className="h-4 w-4 rounded-full ring-1 ring-black/20"
       aria-hidden="true"
       viewBox="0 0 32 32"
       xmlns="http://www.w3.org/2000/svg"
     >
+      <circle cx="16" cy="16" r="16" fill="#F0B90B" />
       <path
-        fill="#F0B90B"
+        fill="#FFFFFF"
         d="M16 4 11.3 8.7 16 13.4l4.7-4.7L16 4Zm-7.3 7.3L4 16l4.7 4.7L13.4 16 8.7 11.3Zm14.6 0L18.6 16l4.7 4.7L28 16l-4.7-4.7ZM16 18.6l-4.7 4.7L16 28l4.7-4.7L16 18.6Zm0-5.2L13.4 16 16 18.6 18.6 16 16 13.4Z"
       />
     </svg>
