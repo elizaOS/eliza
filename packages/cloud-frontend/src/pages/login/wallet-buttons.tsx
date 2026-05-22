@@ -364,16 +364,23 @@ function BaseIcon() {
 }
 
 function BnbIcon() {
+  // Canonical BNB mark: yellow disc with the nested chevron + center-
+  // diamond glyph in white. Path data lifted from the de-facto crypto
+  // icon library `spothq/cryptocurrency-icons` (MIT, the same source
+  // every major wallet UI uses) so the proportions, the chevron tops,
+  // and the inner diamond match what users recognize from Trust Wallet,
+  // CoinGecko, CoinMarketCap, and 1inch.
   return (
     <svg
-      className="h-4 w-4 rounded-full bg-white ring-1 ring-black/20"
+      className="h-4 w-4 rounded-full ring-1 ring-black/20"
       aria-hidden="true"
       viewBox="0 0 32 32"
       xmlns="http://www.w3.org/2000/svg"
     >
+      <circle cx="16" cy="16" r="16" fill="#F3BA2F" />
       <path
-        fill="#F0B90B"
-        d="M16 4 11.3 8.7 16 13.4l4.7-4.7L16 4Zm-7.3 7.3L4 16l4.7 4.7L13.4 16 8.7 11.3Zm14.6 0L18.6 16l4.7 4.7L28 16l-4.7-4.7ZM16 18.6l-4.7 4.7L16 28l4.7-4.7L16 18.6Zm0-5.2L13.4 16 16 18.6 18.6 16 16 13.4Z"
+        fill="#FFFFFF"
+        d="M12.116 14.404L16 10.52l3.886 3.886 2.26-2.26L16 6l-6.144 6.144 2.26 2.26zM6 16l2.26-2.26L10.52 16l-2.26 2.26L6 16zm6.116 1.596L16 21.48l3.886-3.886 2.26 2.259L16 26l-6.144-6.144-.003-.003 2.263-2.257zM21.48 16l2.26-2.26L26 16l-2.26 2.26L21.48 16zm-3.188-.002h.002V16L16 18.294l-2.291-2.29-.004-.004.004-.003.401-.402.195-.195L16 13.706l2.293 2.293z"
       />
     </svg>
   );
