@@ -1,11 +1,14 @@
-# Cocotb Makefile — CVA6 boots a bare-metal M-mode image from the REAL AXI4
-# DRAM controller through the REAL fabric, with the REAL CLINT/PLIC + RoT gate.
+# Cocotb Makefile — OpenSBI v1.8.1 boots on the REAL CVA6 from REAL DRAM.
 #
-# Top: rtl/top/e1_cva6_dram_boot_top.sv  (TB = the top itself; cocotb drives
-# clk/rst_n + the RoT release inputs and reads the DRAM markers back).
+# Same DUT as Makefile.cva6-dram-boot (rtl/top/e1_cva6_dram_boot_top.sv) but
+# the preload image is the OpenSBI boot image (shim + real OpenSBI fw_jump +
+# DTB + S-mode payload, assembled by fw/opensbi-cva6-boot/build_boot_image.py)
+# and the DRAM-controller preload window is widened to hold it.  cocotb scrapes
+# the ns16550a UART TX stream and asserts the OpenSBI banner (and the S-mode
+# handoff marker) appears.
 #
-# Reuses the CVA6 flist expansion + the tracked Verilator-lowering patches
-# from Makefile.cva6 so the real OpenHW CVA6 v5.3.0 sources compile.
+# Reuses the CVA6 flist expansion + Verilator-lowering patches from
+# Makefile.cva6-dram-boot's machinery.
 
 TOPLEVEL_LANG ?= verilog
 SIM           ?= verilator
@@ -53,7 +56,8 @@ endif
 CVA6_INCDIRS := $(shell cat $(CVA6_INCDIR_OUT) | tr '\n' ' ')
 CVA6_FILES   := $(shell cat $(CVA6_FLIST_OUT))
 
-# E1 SoC RTL: packages first, then leaves, then adapters + the boot top.
+# E1 SoC RTL: packages first, then leaves (incl. the ns16550a UART), then
+# adapters + the boot top.
 E1_SOURCES := \
 	$(REPO)/rtl/interconnect/axi4/e1_axi4_pkg.sv \
 	$(REPO)/rtl/interconnect/axi4/e1_axi4_interconnect.sv \
@@ -71,10 +75,17 @@ E1_SOURCES := \
 VERILOG_SOURCES := $(CVA6_FILES) $(E1_SOURCES)
 
 TOPLEVEL ?= e1_cva6_dram_boot_top
-MODULE   ?= test_cva6_dram_boot
+MODULE   ?= test_opensbi_cva6_boot
 PYTHON   ?= python3
 
 COMPILE_ARGS += +define+E1_HAVE_CVA6 +define+WT_DCACHE
+# Widen the DRAM-controller preload window to hold the OpenSBI boot image, and
+# boot CVA6 into the entry shim above the OpenSBI image (so OpenSBI keeps its
+# aligned FW_TEXT_START=0x8000_0000).  Must match fw/opensbi-cva6-boot/
+# build_boot_image.py (SHIM_ADDR, image size).
+COMPILE_ARGS += -GDRAM_PRELOAD_BEATS=40960
+# Full 64-bit literal: a bare 0x80080000 is sign-extended to 0xffffffff80080000.
+COMPILE_ARGS += -GCVA6_BOOT_ADDR=64\'h0000000080080000
 
 EXTRA_ARGS += $(CVA6_INCDIRS)
 EXTRA_ARGS += \

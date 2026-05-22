@@ -52,7 +52,20 @@ module e1_cva6_dram_boot_top
     parameter logic [39:0] DRAM_MASK  = 40'h00_0FFF_FFFF,
     // CLINT window decode (64 KiB at 0x0200_0000).
     parameter logic [39:0] CLINT_BASE = 40'h00_0200_0000,
-    parameter logic [39:0] CLINT_MASK = 40'h00_0000_FFFF
+    parameter logic [39:0] CLINT_MASK = 40'h00_0000_FFFF,
+    // ns16550a UART window decode (4 KiB at 0x1000_1000) — the OpenSBI console.
+    parameter logic [39:0] UART_BASE  = 40'h00_1000_1000,
+    parameter logic [39:0] UART_MASK  = 40'h00_0000_0FFF,
+    // DRAM preload depth (16-byte beats).  The bare-metal proof fits in the
+    // default 4096 beats (64 KiB); an OpenSBI fw_jump image + DTB + S-mode
+    // payload needs a deeper window, so this is overridable from the TB.
+    parameter int unsigned DRAM_PRELOAD_BEATS = 4096,
+    // CVA6 reset vector.  Defaults to the DRAM base (the bare-metal proof links
+    // there).  The OpenSBI boot overrides this to a small entry shim placed
+    // above the OpenSBI image, so OpenSBI itself can keep FW_TEXT_START aligned
+    // at 0x8000_0000 (its domain/PMP init requires fw_start be aligned to the
+    // fw_rw offset, which 0x8000_0000 satisfies and an offset base does not).
+    parameter logic [63:0] CVA6_BOOT_ADDR = 64'h0000_0000_8000_0000
 ) (
     input  logic clk,
     input  logic rst_n,
@@ -100,7 +113,16 @@ module e1_cva6_dram_boot_top
     output logic [63:0] mark_mcause_o,   // DRAM[0x2018] : trap mcause
     output logic [63:0] mark_mepc_o,     // DRAM[0x2020] : trap mepc
     output logic [63:0] mark_bootok_lo_o,// DRAM[0x2030] : "E1BOOT-O"
-    output logic [63:0] mark_bootok_hi_o // DRAM[0x2038] : "K\0"
+    output logic [63:0] mark_bootok_hi_o,// DRAM[0x2038] : "K\0"
+
+    // ns16550a console TX scrape.  `uart_tx_valid_o` pulses for one cycle each
+    // time the CPU writes a byte to the UART THR; `uart_tx_byte_o` carries the
+    // byte.  cocotb assembles these into the OpenSBI transcript.
+    output logic       uart_tx_valid_o,
+    output logic [7:0] uart_tx_byte_o,
+    // UART write-transfer counter at the UART slave port — structural evidence
+    // the CPU programmed + drove the console through the real fabric.
+    output logic [31:0] uart_aw_xfers_o
 );
     // ----------------------------------------------------------------------
     // Geometry.  CVA6 native AXI is 4-bit ID / 64-bit addr / 64-bit data.
@@ -118,18 +140,19 @@ module e1_cva6_dram_boot_top
     localparam int unsigned FAB_USER_W  = 8;
     localparam int unsigned NUM_MASTERS = 1;
     // The fabric's per-slave base/mask parameter arrays default to NUM_SLAVES=4;
-    // keep that shape (slave0=DRAM, slave1=CLINT, slaves 2/3 are unmapped
-    // sentinels that never decode) so the array-literal override matches the
-    // declared parameter type, matching the e1_soc_integrated convention.
+    // keep that shape (slave0=DRAM, slave1=CLINT, slave2=ns16550a UART, slave3
+    // is an unmapped sentinel that never decodes) so the array-literal override
+    // matches the declared parameter type, matching the e1_soc_integrated
+    // convention.
     localparam int unsigned NUM_SLAVES  = 4;
     localparam int unsigned WIDE_ID_W   = FAB_ID_W + $clog2(NUM_MASTERS + 1); // 5
     // Unmapped sentinel region (never matched by the decoder).
     localparam logic [39:0] UNMAP_BASE  = 40'hFF_FFFF_F000;
     localparam logic [39:0] UNMAP_MASK  = 40'h00_0000_0FFF;
 
-    // Boot vector = DRAM base.  0x8000_0000 is CVA6 cv64a6's executable +
-    // cached PMA region (ExecuteRegionAddrBase[0]); the firmware links there.
-    localparam logic [63:0] BOOT_ADDR = 64'h0000_0000_8000_0000;
+    // Boot vector.  0x8000_0000 (and any higher DRAM address) is CVA6 cv64a6's
+    // executable + cached PMA region (ExecuteRegionAddrBase[0], length 1 GiB).
+    localparam logic [63:0] BOOT_ADDR = CVA6_BOOT_ADDR;
 
     // ----------------------------------------------------------------------
     // RoT reset sequencer — gates the CVA6 application core.
@@ -240,6 +263,112 @@ module e1_cva6_dram_boot_top
     );
 
     // ----------------------------------------------------------------------
+    // AXI4 atomics adapter.  CVA6 emits RISC-V `amo*` as AXI5 AWATOP atomic
+    // writes that expect the old value returned on R; the downstream fabric +
+    // DRAM controller have no atomic support, so this adapter resolves each
+    // atomic into a read-modify-write and synthesises the R response.  Normal
+    // (atop==0) traffic passes through transparently.  Without this, OpenSBI's
+    // boot lottery `amoswap.w` never gets its R response and the core deadlocks.
+    // ----------------------------------------------------------------------
+    logic [CVA6_ID_W-1:0]       a_ar_id;
+    logic [CVA6_ADDR_W-1:0]     a_ar_addr;
+    logic [7:0]                 a_ar_len;
+    logic [2:0]                 a_ar_size;
+    logic [1:0]                 a_ar_burst;
+    logic                       a_ar_lock;
+    logic [3:0]                 a_ar_cache;
+    logic [2:0]                 a_ar_prot;
+    logic [3:0]                 a_ar_qos;
+    logic [3:0]                 a_ar_region;
+    logic [CVA6_USER_W-1:0]     a_ar_user;
+    logic                       a_ar_valid, a_ar_ready;
+    logic [CVA6_ID_W-1:0]       a_r_id;
+    logic [CVA6_DATA_W-1:0]     a_r_data;
+    logic [1:0]                 a_r_resp;
+    logic                       a_r_last;
+    logic [CVA6_USER_W-1:0]     a_r_user;
+    logic                       a_r_valid, a_r_ready;
+    logic [CVA6_ID_W-1:0]       a_aw_id;
+    logic [CVA6_ADDR_W-1:0]     a_aw_addr;
+    logic [7:0]                 a_aw_len;
+    logic [2:0]                 a_aw_size;
+    logic [1:0]                 a_aw_burst;
+    logic                       a_aw_lock;
+    logic [3:0]                 a_aw_cache;
+    logic [2:0]                 a_aw_prot;
+    logic [3:0]                 a_aw_qos;
+    logic [3:0]                 a_aw_region;
+    logic [5:0]                 a_aw_atop;
+    logic [CVA6_USER_W-1:0]     a_aw_user;
+    logic                       a_aw_valid, a_aw_ready;
+    logic [CVA6_DATA_W-1:0]     a_w_data;
+    logic [(CVA6_DATA_W/8)-1:0] a_w_strb;
+    logic                       a_w_last;
+    logic [CVA6_USER_W-1:0]     a_w_user;
+    logic                       a_w_valid, a_w_ready;
+    logic [CVA6_ID_W-1:0]       a_b_id;
+    logic [1:0]                 a_b_resp;
+    logic [CVA6_USER_W-1:0]     a_b_user;
+    logic                       a_b_valid, a_b_ready;
+
+    e1_axi4_amo_adapter #(
+        .ID_W   (CVA6_ID_W),
+        .ADDR_W (CVA6_ADDR_W),
+        .DATA_W (CVA6_DATA_W),
+        .USER_W (CVA6_USER_W)
+    ) u_amo (
+        .clk (clk), .rst_n (cva6_rst_n),
+        .u_aw_id   (c_aw_id),    .u_aw_addr (c_aw_addr),
+        .u_aw_len  (c_aw_len),   .u_aw_size (c_aw_size),
+        .u_aw_burst(c_aw_burst), .u_aw_lock (c_aw_lock),
+        .u_aw_cache(c_aw_cache), .u_aw_prot (c_aw_prot),
+        .u_aw_qos  (c_aw_qos),   .u_aw_region(c_aw_region),
+        .u_aw_atop (c_aw_atop),  .u_aw_user (c_aw_user),
+        .u_aw_valid(c_aw_valid), .u_aw_ready(c_aw_ready),
+        .u_w_data  (c_w_data),   .u_w_strb  (c_w_strb),
+        .u_w_last  (c_w_last),   .u_w_user  (c_w_user),
+        .u_w_valid (c_w_valid),  .u_w_ready (c_w_ready),
+        .u_b_id    (c_b_id),     .u_b_resp  (c_b_resp),
+        .u_b_user  (c_b_user),   .u_b_valid (c_b_valid),
+        .u_b_ready (c_b_ready),
+        .u_ar_id   (c_ar_id),    .u_ar_addr (c_ar_addr),
+        .u_ar_len  (c_ar_len),   .u_ar_size (c_ar_size),
+        .u_ar_burst(c_ar_burst), .u_ar_lock (c_ar_lock),
+        .u_ar_cache(c_ar_cache), .u_ar_prot (c_ar_prot),
+        .u_ar_qos  (c_ar_qos),   .u_ar_region(c_ar_region),
+        .u_ar_user (c_ar_user),  .u_ar_valid(c_ar_valid),
+        .u_ar_ready(c_ar_ready),
+        .u_r_id    (c_r_id),     .u_r_data  (c_r_data),
+        .u_r_resp  (c_r_resp),   .u_r_last  (c_r_last),
+        .u_r_user  (c_r_user),   .u_r_valid (c_r_valid),
+        .u_r_ready (c_r_ready),
+        .d_aw_id   (a_aw_id),    .d_aw_addr (a_aw_addr),
+        .d_aw_len  (a_aw_len),   .d_aw_size (a_aw_size),
+        .d_aw_burst(a_aw_burst), .d_aw_lock (a_aw_lock),
+        .d_aw_cache(a_aw_cache), .d_aw_prot (a_aw_prot),
+        .d_aw_qos  (a_aw_qos),   .d_aw_region(a_aw_region),
+        .d_aw_atop (a_aw_atop),  .d_aw_user (a_aw_user),
+        .d_aw_valid(a_aw_valid), .d_aw_ready(a_aw_ready),
+        .d_w_data  (a_w_data),   .d_w_strb  (a_w_strb),
+        .d_w_last  (a_w_last),   .d_w_user  (a_w_user),
+        .d_w_valid (a_w_valid),  .d_w_ready (a_w_ready),
+        .d_b_id    (a_b_id),     .d_b_resp  (a_b_resp),
+        .d_b_user  (a_b_user),   .d_b_valid (a_b_valid),
+        .d_b_ready (a_b_ready),
+        .d_ar_id   (a_ar_id),    .d_ar_addr (a_ar_addr),
+        .d_ar_len  (a_ar_len),   .d_ar_size (a_ar_size),
+        .d_ar_burst(a_ar_burst), .d_ar_lock (a_ar_lock),
+        .d_ar_cache(a_ar_cache), .d_ar_prot (a_ar_prot),
+        .d_ar_qos  (a_ar_qos),   .d_ar_region(a_ar_region),
+        .d_ar_user (a_ar_user),  .d_ar_valid(a_ar_valid),
+        .d_ar_ready(a_ar_ready),
+        .d_r_id    (a_r_id),     .d_r_data  (a_r_data),
+        .d_r_resp  (a_r_resp),   .d_r_last  (a_r_last),
+        .d_r_user  (a_r_user),   .d_r_valid (a_r_valid),
+        .d_r_ready (a_r_ready)
+    );
+
+    // ----------------------------------------------------------------------
     // 64 → 128 width converter (AXI4 upsizing).  Produces a 128-bit master
     // at the CVA6 address width (64); the fabric address slice happens below.
     // ----------------------------------------------------------------------
@@ -293,30 +422,30 @@ module e1_cva6_dram_boot_top
         .BURST_LEN_W      (8)
     ) u_width (
         .clk_i (clk), .rst_ni (cva6_rst_n),
-        .up_aw_id   (c_aw_id),    .up_aw_addr (c_aw_addr),
-        .up_aw_len  (c_aw_len),   .up_aw_size (c_aw_size),
-        .up_aw_burst(c_aw_burst), .up_aw_lock (c_aw_lock),
-        .up_aw_cache(c_aw_cache), .up_aw_prot (c_aw_prot),
-        .up_aw_qos  (c_aw_qos),   .up_aw_region(c_aw_region),
-        .up_aw_atop (c_aw_atop),  .up_aw_user (c_aw_user),
-        .up_aw_valid(c_aw_valid), .up_aw_ready(c_aw_ready),
-        .up_w_data  (c_w_data),   .up_w_strb  (c_w_strb),
-        .up_w_last  (c_w_last),   .up_w_user  (c_w_user),
-        .up_w_valid (c_w_valid),  .up_w_ready (c_w_ready),
-        .up_b_id    (c_b_id),     .up_b_resp  (c_b_resp),
-        .up_b_user  (c_b_user),   .up_b_valid (c_b_valid),
-        .up_b_ready (c_b_ready),
-        .up_ar_id   (c_ar_id),    .up_ar_addr (c_ar_addr),
-        .up_ar_len  (c_ar_len),   .up_ar_size (c_ar_size),
-        .up_ar_burst(c_ar_burst), .up_ar_lock (c_ar_lock),
-        .up_ar_cache(c_ar_cache), .up_ar_prot (c_ar_prot),
-        .up_ar_qos  (c_ar_qos),   .up_ar_region(c_ar_region),
-        .up_ar_user (c_ar_user),  .up_ar_valid(c_ar_valid),
-        .up_ar_ready(c_ar_ready),
-        .up_r_id    (c_r_id),     .up_r_data  (c_r_data),
-        .up_r_resp  (c_r_resp),   .up_r_last  (c_r_last),
-        .up_r_user  (c_r_user),   .up_r_valid (c_r_valid),
-        .up_r_ready (c_r_ready),
+        .up_aw_id   (a_aw_id),    .up_aw_addr (a_aw_addr),
+        .up_aw_len  (a_aw_len),   .up_aw_size (a_aw_size),
+        .up_aw_burst(a_aw_burst), .up_aw_lock (a_aw_lock),
+        .up_aw_cache(a_aw_cache), .up_aw_prot (a_aw_prot),
+        .up_aw_qos  (a_aw_qos),   .up_aw_region(a_aw_region),
+        .up_aw_atop (a_aw_atop),  .up_aw_user (a_aw_user),
+        .up_aw_valid(a_aw_valid), .up_aw_ready(a_aw_ready),
+        .up_w_data  (a_w_data),   .up_w_strb  (a_w_strb),
+        .up_w_last  (a_w_last),   .up_w_user  (a_w_user),
+        .up_w_valid (a_w_valid),  .up_w_ready (a_w_ready),
+        .up_b_id    (a_b_id),     .up_b_resp  (a_b_resp),
+        .up_b_user  (a_b_user),   .up_b_valid (a_b_valid),
+        .up_b_ready (a_b_ready),
+        .up_ar_id   (a_ar_id),    .up_ar_addr (a_ar_addr),
+        .up_ar_len  (a_ar_len),   .up_ar_size (a_ar_size),
+        .up_ar_burst(a_ar_burst), .up_ar_lock (a_ar_lock),
+        .up_ar_cache(a_ar_cache), .up_ar_prot (a_ar_prot),
+        .up_ar_qos  (a_ar_qos),   .up_ar_region(a_ar_region),
+        .up_ar_user (a_ar_user),  .up_ar_valid(a_ar_valid),
+        .up_ar_ready(a_ar_ready),
+        .up_r_id    (a_r_id),     .up_r_data  (a_r_data),
+        .up_r_resp  (a_r_resp),   .up_r_last  (a_r_last),
+        .up_r_user  (a_r_user),   .up_r_valid (a_r_valid),
+        .up_r_ready (a_r_ready),
         .dn_aw_id   (w_aw_id),    .dn_aw_addr (w_aw_addr),
         .dn_aw_len  (w_aw_len),   .dn_aw_size (w_aw_size),
         .dn_aw_burst(w_aw_burst), .dn_aw_lock (w_aw_lock),
@@ -463,11 +592,12 @@ module e1_cva6_dram_boot_top
     logic [NUM_SLAVES-1:0][1:0]              s_rresp;
     logic [NUM_SLAVES-1:0]                   s_rlast;
 
-    // Per-slave decode: slave0 = DRAM, slave1 = CLINT.
+    // Per-slave decode: slave0 = DRAM, slave1 = CLINT, slave2 = UART.
     logic [FAB_ADDR_W-1:0] slv_base [0:NUM_SLAVES-1];
     logic [FAB_ADDR_W-1:0] slv_mask [0:NUM_SLAVES-1];
     assign slv_base[0] = DRAM_BASE;  assign slv_mask[0] = DRAM_MASK;
     assign slv_base[1] = CLINT_BASE; assign slv_mask[1] = CLINT_MASK;
+    assign slv_base[2] = UART_BASE;  assign slv_mask[2] = UART_MASK;
 
     /* verilator lint_off UNUSEDSIGNAL */
     logic [NUM_MASTERS-1:0]       ic_decode_err_irq, ic_excl_fail_irq;
@@ -482,8 +612,8 @@ module e1_cva6_dram_boot_top
         .ID_WIDTH    (FAB_ID_W),
         .USER_WIDTH  (FAB_USER_W),
         .BURST_LEN_W (8),
-        .SLAVE_BASE  ('{DRAM_BASE, CLINT_BASE, UNMAP_BASE, UNMAP_BASE}),
-        .SLAVE_MASK  ('{DRAM_MASK, CLINT_MASK, UNMAP_MASK, UNMAP_MASK})
+        .SLAVE_BASE  ('{DRAM_BASE, CLINT_BASE, UART_BASE, UNMAP_BASE}),
+        .SLAVE_MASK  ('{DRAM_MASK, CLINT_MASK, UART_MASK, UNMAP_MASK})
     ) u_fabric (
         .clk (clk), .rst_n (cva6_rst_n),
         .m_awvalid (m_awvalid), .m_awready (m_awready), .m_awid (m_awid),
@@ -524,8 +654,8 @@ module e1_cva6_dram_boot_top
 
     /* verilator lint_off UNUSEDSIGNAL */
     logic unused_slv_base_mask;
-    assign unused_slv_base_mask = ^{slv_base[0], slv_base[1],
-                                    slv_mask[0], slv_mask[1]};
+    assign unused_slv_base_mask = ^{slv_base[0], slv_base[1], slv_base[2],
+                                    slv_mask[0], slv_mask[1], slv_mask[2]};
     /* verilator lint_on UNUSEDSIGNAL */
 
     // ----------------------------------------------------------------------
@@ -554,7 +684,8 @@ module e1_cva6_dram_boot_top
         .ID_WIDTH   (WIDE_ID_W),
         .ADDR_WIDTH (FAB_ADDR_W),
         .DATA_WIDTH (FAB_DATA_W),
-        .USER_WIDTH (FAB_USER_W)
+        .USER_WIDTH (FAB_USER_W),
+        .MEM_PRELOAD_MAX_BEATS (DRAM_PRELOAD_BEATS)
     ) u_dram (
         .clk (clk), .rst_n (cva6_rst_n),
         .s_awvalid (s_awvalid[0]), .s_awready (s_awready[0]),
@@ -673,9 +804,41 @@ module e1_cva6_dram_boot_top
     // timer trap; the PLIC is wired structurally so the external-IRQ path is
     // present and elaborated (and so a follow-on test can claim/complete it).
     // ----------------------------------------------------------------------
-    // Unmapped sentinel slaves (2, 3): never decoded, so the fabric never
-    // forwards an address phase to them.  Tie their response inputs to idle.
-    for (genvar gs = 2; gs < NUM_SLAVES; gs++) begin : g_unmapped_slaves
+    // ----------------------------------------------------------------------
+    // Slave 2 — ns16550a-compatible UART @ 0x1000_1000, the OpenSBI console.
+    // OpenSBI's uart8250 driver polls LSR.THRE then writes the character to
+    // THR; this model accepts each write and emits the byte on the TX scrape
+    // ports for cocotb to assemble into the boot transcript.
+    // ----------------------------------------------------------------------
+    e1_uart_ns16550 #(
+        .ID_W   (WIDE_ID_W),
+        .ADDR_W (FAB_ADDR_W),
+        .DATA_W (FAB_DATA_W)
+    ) u_uart (
+        .clk (clk), .rst_n (cva6_rst_n),
+        .s_awvalid (s_awvalid[2]), .s_awready (s_awready[2]),
+        .s_awid (s_awid[2]),       .s_awaddr (s_awaddr[2]),
+        .s_awlen (s_awlen[2]),     .s_awsize (s_awsize[2]),
+        .s_awburst (s_awburst[2]),
+        .s_wvalid (s_wvalid[2]),   .s_wready (s_wready[2]),
+        .s_wdata (s_wdata[2]),     .s_wstrb (s_wstrb[2]),
+        .s_wlast (s_wlast[2]),
+        .s_bvalid (s_bvalid[2]),   .s_bready (s_bready[2]),
+        .s_bid (s_bid[2]),         .s_bresp (s_bresp[2]),
+        .s_arvalid (s_arvalid[2]), .s_arready (s_arready[2]),
+        .s_arid (s_arid[2]),       .s_araddr (s_araddr[2]),
+        .s_arlen (s_arlen[2]),     .s_arsize (s_arsize[2]),
+        .s_arburst (s_arburst[2]),
+        .s_rvalid (s_rvalid[2]),   .s_rready (s_rready[2]),
+        .s_rid (s_rid[2]),         .s_rdata (s_rdata[2]),
+        .s_rresp (s_rresp[2]),     .s_rlast (s_rlast[2]),
+        .tx_valid_o (uart_tx_valid_o),
+        .tx_byte_o  (uart_tx_byte_o)
+    );
+
+    // Unmapped sentinel slave (3): never decoded, so the fabric never
+    // forwards an address phase to it.  Tie its response inputs to idle.
+    for (genvar gs = 3; gs < NUM_SLAVES; gs++) begin : g_unmapped_slaves
         assign s_awready[gs] = 1'b0;
         assign s_wready[gs]  = 1'b0;
         assign s_bvalid[gs]  = 1'b0;
@@ -727,6 +890,12 @@ module e1_cva6_dram_boot_top
             if (clint_awvalid && clint_awready) clint_aw_xfers_o <= clint_aw_xfers_o + 1;
             if (clint_arvalid && clint_arready) clint_ar_xfers_o <= clint_ar_xfers_o + 1;
         end
+    end
+
+    // UART write-transfer counter at the UART slave port.
+    always_ff @(posedge clk or negedge cva6_rst_n) begin
+        if (!cva6_rst_n) uart_aw_xfers_o <= '0;
+        else if (s_awvalid[2] && s_awready[2]) uart_aw_xfers_o <= uart_aw_xfers_o + 1;
     end
 
     // ----------------------------------------------------------------------

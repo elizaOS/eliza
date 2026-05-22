@@ -132,5 +132,12 @@ const struct sbi_platform platform = {
 	.features          = SBI_PLATFORM_DEFAULT_FEATURES,
 	.hart_count        = ELIZA_HART_COUNT,
 	.hart_stack_size   = ELIZA_HART_STACK_SIZE,
+	/*
+	 * Heap size MUST be non-zero: sbi_init -> sbi_heap_init fails closed
+	 * (SBI_EINVAL -> sbi_hart_hang) on a zero/misaligned heap, hanging the
+	 * boot before the console comes up.  Use the default sizing for the
+	 * hart count, as the fixed (non-FDT) template platform does.
+	 */
+	.heap_size         = SBI_PLATFORM_DEFAULT_HEAP_SIZE(ELIZA_HART_COUNT),
 	.platform_ops_addr = (unsigned long)&platform_ops,
 };
