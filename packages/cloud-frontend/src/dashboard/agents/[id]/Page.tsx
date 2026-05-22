@@ -23,12 +23,12 @@ import { useT } from "@/providers/I18nProvider";
 import { ApiError } from "../../../lib/api-client";
 import { useRequireAuth } from "../../../lib/auth-hooks";
 import { useAgent } from "../../../lib/data/eliza-agents";
-import { ElizaAgentActions } from "../../containers/_components/agent-actions";
-import { DockerLogsViewer } from "../../containers/_components/docker-logs-viewer";
-import { ElizaAgentBackupsPanel } from "../../containers/_components/eliza-agent-backups-panel";
-import { ElizaAgentLogsViewer } from "../../containers/_components/eliza-agent-logs-viewer";
-import { ElizaAgentTabs } from "../../containers/_components/eliza-agent-tabs";
-import { ElizaConnectButton } from "../../containers/_components/eliza-connect-button";
+import { ElizaAgentActions } from "../_components/agent-actions";
+import { DockerLogsViewer } from "../_components/docker-logs-viewer";
+import { ElizaAgentBackupsPanel } from "../_components/eliza-agent-backups-panel";
+import { ElizaAgentLogsViewer } from "../_components/eliza-agent-logs-viewer";
+import { ElizaAgentTabs } from "../_components/eliza-agent-tabs";
+import { ElizaConnectButton } from "../_components/eliza-connect-button";
 
 function formatDate(date: string | null): string {
   if (!date) return "—";

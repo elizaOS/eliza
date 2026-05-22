@@ -300,38 +300,6 @@ export const CLOUD_CAPABILITIES = [
     },
   }),
   capability({
-    id: "containers.manage",
-    category: "containers",
-    title: "Manage containers",
-    summary: "List, provision, inspect, and operate user-deployed Docker containers.",
-    auth: { modes: ["session", "api_key", "bearer_steward", "wallet_signature"] },
-    billing: {
-      effect: "recurring_compute",
-      account: "organization",
-      ledger: "credit_transactions",
-    },
-    surfaces: {
-      rest: { method: "GET", path: "/api/v1/containers", status: "implemented" },
-      mcp: { tool: "cloud.containers.manage", status: "implemented" },
-      a2a: { skill: "cloud.containers.manage", status: "implemented" },
-      skill: { section: "Containers", status: "implemented" },
-    },
-  }),
-  capability({
-    id: "containers.quota",
-    category: "containers",
-    title: "Get container quota",
-    summary: "Show container limits, pricing, and estimated account runway.",
-    auth: { modes: ["session", "api_key", "bearer_steward", "wallet_signature"] },
-    billing: { effect: "none", account: "organization" },
-    surfaces: {
-      rest: { method: "GET", path: "/api/v1/containers/quota", status: "implemented" },
-      mcp: { tool: "cloud.containers.quota", status: "implemented" },
-      a2a: { skill: "cloud.containers.quota", status: "implemented" },
-      skill: { section: "Containers", status: "implemented" },
-    },
-  }),
-  capability({
     id: "mcp.platform",
     category: "mcp",
     title: "Use platform MCP",

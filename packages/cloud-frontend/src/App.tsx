@@ -18,6 +18,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useParams,
 } from "react-router-dom";
 import RootLayout from "./RootLayout";
 
@@ -162,16 +163,6 @@ const InvoiceDetailPage = lazyWithPreload(
   () => import("./dashboard/invoices/[id]/Page"),
 );
 
-const ContainersPage = lazyWithPreload(
-  () => import("./dashboard/containers/Page"),
-);
-const ContainerDetailPage = lazyWithPreload(
-  () => import("./dashboard/containers/[id]/Page"),
-);
-const ContainerAgentDetailPage = lazyWithPreload(
-  () => import("./dashboard/containers/agents/[id]/Page"),
-);
-
 const ApiExplorerLayout = lazyWithPreload(
   () => import("./dashboard/api-explorer/Layout"),
 );
@@ -266,21 +257,6 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     preload: preloadAll(DashboardLayout.preload, BillingPage.preload),
   },
   { path: "/bsc", preload: BscPromo.preload },
-  {
-    path: "/dashboard/containers/agents/:id",
-    preload: preloadAll(
-      DashboardLayout.preload,
-      ContainerAgentDetailPage.preload,
-    ),
-  },
-  {
-    path: "/dashboard/containers/:id",
-    preload: preloadAll(DashboardLayout.preload, ContainerDetailPage.preload),
-  },
-  {
-    path: "/dashboard/containers",
-    preload: preloadAll(DashboardLayout.preload, ContainersPage.preload),
-  },
   {
     path: "/dashboard/agents/:id/chat",
     preload: preloadAll(DashboardLayout.preload, AgentChatPage.preload),
@@ -550,7 +526,9 @@ function LegacyBuildRedirect() {
 
 function DashboardRedirect({ to }: { to: string }) {
   const location = useLocation();
-  return <Navigate to={`${to}${location.search}`} replace />;
+  const params = useParams();
+  const resolved = to.replace(/:([a-zA-Z]+)/g, (_, key) => params[key] ?? "");
+  return <Navigate to={`${resolved}${location.search}`} replace />;
 }
 
 const DashboardChatRedirect = lazy(() => import("./dashboard/chat-redirect"));
@@ -729,11 +707,17 @@ function App() {
             element={<DashboardRedirect to="/dashboard/api-explorer" />}
           />
 
-          <Route path="containers" element={<ContainersPage />} />
-          <Route path="containers/:id" element={<ContainerDetailPage />} />
+          <Route
+            path="containers"
+            element={<DashboardRedirect to="/dashboard/agents" />}
+          />
+          <Route
+            path="containers/:id"
+            element={<DashboardRedirect to="/dashboard/agents/:id" />}
+          />
           <Route
             path="containers/agents/:id"
-            element={<ContainerAgentDetailPage />}
+            element={<DashboardRedirect to="/dashboard/agents/:id" />}
           />
 
           <Route path="api-explorer" element={<ApiExplorerLayout />}>

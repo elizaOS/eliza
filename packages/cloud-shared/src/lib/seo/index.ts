@@ -8,7 +8,6 @@ export {
 export {
   generateCharacterMetadata,
   generateChatMetadata,
-  generateContainerMetadata,
   generateDynamicMetadata,
   generateOGImageUrl,
   generatePageMetadata,

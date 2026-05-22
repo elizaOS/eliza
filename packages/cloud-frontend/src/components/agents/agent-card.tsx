@@ -260,7 +260,7 @@ export function AgentCard({
   );
 
   const openAgentAdmin = useCallback(() => {
-    navigate("/dashboard/containers");
+    navigate("/dashboard/agents");
   }, [navigate]);
 
   const handleCardClick = useCallback(

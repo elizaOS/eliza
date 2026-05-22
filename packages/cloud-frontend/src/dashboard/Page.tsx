@@ -26,8 +26,8 @@ import { api } from "../lib/api-client";
 import { useRequireAuth } from "../lib/auth-hooks";
 import { useApiKeys } from "../lib/data/api-keys";
 import { useApps } from "../lib/data/apps";
-import { useContainers } from "../lib/data/containers";
 import { useCreditsBalance } from "../lib/data/credits";
+import { useAgents } from "../lib/data/eliza-agents";
 import {
   AgentsSection,
   AgentsSectionSkeleton,
@@ -117,7 +117,7 @@ export default function DashboardPage() {
 
   const dashboard = useDashboardData(enabled);
   const credits = useCreditsBalance();
-  const containers = useContainers();
+  const agentSandboxes = useAgents();
   const apps = useApps();
   const apiKeys = useApiKeys();
   const referral = useDashboardReferralMe();
@@ -158,9 +158,9 @@ export default function DashboardPage() {
     typeof credits.data?.balance === "number" ? credits.data.balance : null;
   const formattedBalance = formatBalance(creditBalance);
 
-  const containerList = containers.data ?? [];
-  const runningContainers = containerList.filter(
-    (c) => c.status === "running" || c.status === "active",
+  const agentSandboxList = agentSandboxes.data ?? [];
+  const runningAgentSandboxes = agentSandboxList.filter(
+    (a) => a.status === "running",
   ).length;
 
   const appList = apps.data ?? [];
@@ -262,18 +262,18 @@ export default function DashboardPage() {
                 isLoading={dashboard.isLoading}
               />
               <StatCard
-                to="/dashboard/containers"
+                to="/dashboard/agents"
                 icon={<Server className="h-5 w-5" />}
                 label={t("cloud.dashboard.stats.containers", {
                   defaultValue: "Instances running",
                 })}
-                value={runningContainers}
+                value={runningAgentSandboxes}
                 caption={
-                  containerList.length > 0
-                    ? `of ${containerList.length} total`
+                  agentSandboxList.length > 0
+                    ? `of ${agentSandboxList.length} total`
                     : undefined
                 }
-                isLoading={containers.isLoading}
+                isLoading={agentSandboxes.isLoading}
               />
               <StatCard
                 to="/dashboard/apps"

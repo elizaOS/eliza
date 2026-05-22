@@ -114,13 +114,6 @@ export function getSidebarSections(t: SidebarTranslator): SidebarSection[] {
           freeAllowed: false,
           featureFlag: "mcp",
         },
-        {
-          id: "containers",
-          label: t("cloud.nav.containers", { defaultValue: "Containers" }),
-          href: "/dashboard/containers",
-          icon: Server,
-          freeAllowed: false,
-        },
       ],
     },
     {

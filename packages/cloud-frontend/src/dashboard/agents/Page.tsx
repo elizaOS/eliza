@@ -9,11 +9,11 @@ import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useCreditsBalance } from "../../lib/data/credits";
 import { type AgentListItem, useAgents } from "../../lib/data/eliza-agents";
-import { ElizaAgentPricingBanner } from "../containers/_components/eliza-agent-pricing-banner";
+import { ElizaAgentPricingBanner } from "./_components/eliza-agent-pricing-banner";
 import {
   type ElizaAgentRow,
   ElizaAgentsTable,
-} from "../containers/_components/eliza-agents-table";
+} from "./_components/eliza-agents-table";
 
 function toAgentRow(a: AgentListItem): ElizaAgentRow {
   return {

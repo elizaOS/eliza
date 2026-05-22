@@ -179,9 +179,6 @@ const dashboardRoutes = [
   "/dashboard/affiliates",
   "/dashboard/invoices/inv_1",
   "/dashboard/chat",
-  "/dashboard/containers",
-  "/dashboard/containers/container_1",
-  "/dashboard/containers/agents/agent_1",
   "/dashboard/api-explorer",
   "/dashboard/admin",
   "/dashboard/admin/infrastructure",
@@ -199,6 +196,9 @@ const dashboardRedirects: Array<[from: string, toPattern: RegExp]> = [
   ["/dashboard/video", /\/dashboard\/api-explorer$/],
   ["/dashboard/gallery", /\/dashboard\/api-explorer$/],
   ["/dashboard/voices", /\/dashboard\/api-explorer$/],
+  ["/dashboard/containers", /\/dashboard\/agents$/],
+  ["/dashboard/containers/agent_1", /\/dashboard\/agents\/agent_1$/],
+  ["/dashboard/containers/agents/agent_1", /\/dashboard\/agents\/agent_1$/],
 ];
 
 const publicRedirects: Array<[from: string, to: string, bodyText: string]> = [

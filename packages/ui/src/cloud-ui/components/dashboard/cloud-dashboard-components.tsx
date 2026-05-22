@@ -141,7 +141,7 @@ export function DashboardActionCards({
       </Link>
 
       <Link
-        to="/dashboard/containers"
+        to="/dashboard/agents"
         className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-black p-5 text-white transition-colors hover:bg-white/[0.06]"
       >
         <div className="flex items-center justify-between">

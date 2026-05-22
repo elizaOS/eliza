@@ -15,15 +15,11 @@
  *     `remote_sessions`.
  *   • Billing: hourly rate with active/warning/suspended/exempt tiers.
  *
- * containers — user-deployed arbitrary Docker workloads
+ * containers — user-deployed arbitrary Docker workloads (LEGACY)
  * ─────────────────────────────────────────────────────────────────────────
- *   • Created explicitly by the user via `POST /api/v1/containers`.
- *   • User supplies image, env vars, port; the control plane runs
- *     docker pull + docker create + docker start over SSH.
- *   • Supports persistent project volumes (local host dir or Hetzner Cloud
- *     block device), stable public hostnames, and the ingress map endpoint.
+ *   • DEPRECATED — user-facing CRUD removed; table kept for history.
+ *   • Historical rows reachable via admin infra dashboard only.
  *   • Supporting tables: `container_billing_records`.
- *   • Billing: daily credit deductions per `container_billing_records`.
  *
  * Why they are separate: the two domains share a compute substrate
  * (Hetzner-Docker pool) but nothing else. Merging them would force every
