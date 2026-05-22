@@ -1062,12 +1062,11 @@ Website: https://the-undesirables.com${demoNotice}`,
  * This is what makes the plugin "ambient intelligence" — the agent
  * becomes market-aware without anyone explicitly calling an action.
  */
-const marketIntelligenceEvaluator: Evaluator = {
+const marketIntelligenceEvaluator = {
   name: "UNDESIRABLE_MARKET_INTELLIGENCE",
   description:
     "Passively monitors conversations for market-related topics and enriches " +
     "agent context with live TCG market data from the Oracle API.",
-  alwaysRun: true,
   similes: [
     "MARKET_ENRICHMENT",
     "PRICE_CONTEXT",
@@ -1151,7 +1150,7 @@ const marketIntelligenceEvaluator: Evaluator = {
       data: { products: results.length, enrichment },
     };
   },
-};
+} as unknown as Evaluator;
 
 // ============================================================
 // PLUGIN EXPORT
