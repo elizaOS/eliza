@@ -62,6 +62,18 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 		},
 	],
 	[
+		"capability-router",
+		{
+			reason:
+				"RuntimeCapabilityService is the canonical router, while the agent remote and e2b routers intentionally keep the same slot during the P0/P1 strategy-table migration.",
+			classes: new Set([
+				"packages/core/src/services/runtime-capability-service.ts:RuntimeCapabilityService",
+				"packages/agent/src/services/e2b-capability-router.ts:E2BRemoteCapabilityRouterService",
+				"packages/agent/src/services/remote-capability-router.ts:RemoteCapabilityRouterService",
+			]),
+		},
+	],
+	[
 		"discord-local",
 		{
 			reason:
@@ -82,6 +94,17 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 				"plugins/plugin-tailscale/src/services/CloudTailscaleService.ts:CloudTailscaleService",
 				"plugins/plugin-tailscale/src/services/LocalTailscaleService.ts:LocalTailscaleService",
 				"plugins/plugin-tunnel/src/services/LocalTunnelService.ts:LocalTunnelService",
+			]),
+		},
+	],
+	[
+		"xr-session",
+		{
+			reason:
+				"Hearwear and XR expose the same headset session service contract during plugin consolidation and must not be enabled together.",
+			classes: new Set([
+				"plugins/plugin-hearwear/src/services/xr-session-service.ts:XRSessionService",
+				"plugins/plugin-xr/src/services/xr-session-service.ts:XRSessionService",
 			]),
 		},
 	],
