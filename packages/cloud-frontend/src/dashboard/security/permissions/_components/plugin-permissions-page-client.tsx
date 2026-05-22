@@ -6,7 +6,7 @@ import {
   useSetPageHeader,
 } from "@elizaos/ui";
 import { Puzzle } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, api, apiFetch } from "@/lib/api-client";
 import { emitAuditEvent } from "@/lib/security/audit-client";

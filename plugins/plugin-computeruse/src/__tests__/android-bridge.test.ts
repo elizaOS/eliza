@@ -24,9 +24,7 @@ import {
   type CapturedScreenFrame,
   type GestureArgs,
   type GlobalAction,
-  type MediaProjectionHandle,
   type SwipeGestureArgs,
-  type TapGestureArgs,
 } from "../mobile/android-bridge.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────

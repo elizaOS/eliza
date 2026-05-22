@@ -39,31 +39,30 @@ jobs:
           gitleaks version
 
       - name: Run gitleaks
-        # Scan only the PR/push commit range. The checkout still fetches full
-        # history above so these ranges resolve, but pre-existing historical
-        # findings do not block unrelated source-only PRs.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            log_opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
-          else
-            before="${{ github.event.before }}"
-            if [[ "$before" =~ ^0+$ ]]; then
-              log_opts="${{ github.sha }}^..${{ github.sha }}"
-            else
-              log_opts="${before}..${{ github.sha }}"
-            fi
+          RANGE_ARGS=()
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            RANGE_ARGS=(--log-opts "${PR_BASE_SHA}..${PR_HEAD_SHA}")
+          elif [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
+            RANGE_ARGS=(--log-opts "${BEFORE_SHA}..${CURRENT_SHA}")
           fi
-          echo "Scanning gitleaks range: ${log_opts}"
+
           gitleaks detect \
             --config .gitleaks.toml \
             --source . \
-            --log-opts "$log_opts" \
             --verbose \
             --redact \
             --report-format sarif \
             --report-path gitleaks.sarif \
-            --no-banner
+            --no-banner \
+            "${RANGE_ARGS[@]}"
 
       - name: Upload SARIF
         if: always()
