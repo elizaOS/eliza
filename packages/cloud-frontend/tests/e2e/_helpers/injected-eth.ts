@@ -38,8 +38,7 @@ export async function installInjectedEthereum(
 
   await page.addInitScript(
     ({ pk, addr }) => {
-      const sleep = (ms: number) =>
-        new Promise<void>((r) => setTimeout(r, ms));
+      const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
       const win = window as unknown as Record<string, unknown> & {
         __injectedEthSign?: (msg: string) => Promise<string>;
       };
@@ -129,9 +128,8 @@ export async function loginWithInjectedEthereum(
         new Promise((resolve) => {
           console.log(`[injected-eth] PERSONAL_SIGN_REQUEST:${addr}:${msg}`);
           const interval = setInterval(() => {
-            const sig = (
-              window as unknown as Record<string, unknown>
-            ).__siweSignature as string | undefined;
+            const sig = (window as unknown as Record<string, unknown>)
+              .__siweSignature as string | undefined;
             if (sig) {
               clearInterval(interval);
               resolve(sig);

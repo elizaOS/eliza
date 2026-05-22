@@ -61,9 +61,9 @@ test.describe("billing top-up flow", () => {
     await page.goto("/dashboard/billing");
 
     // Wait for billing content (Credit Balance card title).
-    await expect(
-      page.getByText(/credit balance/i).first(),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/credit balance/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Card / Crypto toggle.
     const cardButton = page.getByRole("button", { name: /^card$/i });
@@ -79,15 +79,13 @@ test.describe("billing top-up flow", () => {
 
     // Click Crypto — selection swaps.
     await cryptoButton.click();
-    await expect(cryptoButton).toHaveAttribute(
-      "aria-pressed",
-      "true",
-      { timeout: 2_000 },
-    ).catch(async () => {
-      // Some implementations use the [data-state] selected-attr instead.
-      const dataState = await cryptoButton.getAttribute("data-state");
-      expect(dataState === "active" || dataState === "selected").toBe(true);
-    });
+    await expect(cryptoButton)
+      .toHaveAttribute("aria-pressed", "true", { timeout: 2_000 })
+      .catch(async () => {
+        // Some implementations use the [data-state] selected-attr instead.
+        const dataState = await cryptoButton.getAttribute("data-state");
+        expect(dataState === "active" || dataState === "selected").toBe(true);
+      });
 
     // Type an amount and the Buy credits CTA must enable.
     const amountInput = page.getByPlaceholder(/0\.00/).first();
