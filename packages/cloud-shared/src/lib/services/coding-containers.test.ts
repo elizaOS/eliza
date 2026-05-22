@@ -3,7 +3,7 @@ import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { buildCodingContainerCreatePayload } from "./coding-containers";
 
 describe("coding container payloads", () => {
-  it("uses the coding Remote image when configured", () => {
+  it("uses the coding remote runner image when configured", () => {
     const payload = runWithCloudBindings(
       {
         ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE: "ghcr.io/elizaos/coding-remote-runner:test",

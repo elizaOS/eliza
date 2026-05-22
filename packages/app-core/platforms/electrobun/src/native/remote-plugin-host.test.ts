@@ -7,8 +7,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RemotePluginWorkerMessage } from "@elizaos/plugin-remote-manifest";
+import type {
+  JsonValue,
+  RemotePluginWorkerMessage,
+} from "@elizaos/plugin-remote-manifest";
 import { describe, expect, it } from "vitest";
+import type { DynamicViewHost } from "../dynamic-views/host";
+import type { TraceHost } from "../trace/trace-host-requests";
+import type { VoiceHost } from "../voice/voice-host-requests";
 import {
   RemotePluginHost,
   type RemotePluginWorkerHandle,
@@ -267,6 +273,210 @@ describe("RemotePluginHost", () => {
       });
     }));
 
+  it("dispatches dynamic view host requests for trusted workers", () =>
+    withTempDir((dir) => {
+      const worker = new FakeWorkerHandle();
+      const opened: JsonValue[] = [];
+      const dynamicViewHost: DynamicViewHost = {
+        register: async () => ({ ok: true }),
+        unregister: async () => ({ removed: true }),
+        list: async () => ({ views: [] }),
+        open: async (params) => {
+          opened.push(params ?? null);
+          return {
+            sessionId: "session-1",
+            viewId: "agent.run.trace",
+            title: "Trace",
+            placement: "floating",
+            status: "open",
+            createdAt: "2026-05-17T00:00:00.000Z",
+            updatedAt: "2026-05-17T00:00:00.000Z",
+          };
+        },
+        close: async () => ({ ok: true }),
+        push: async () => ({ ok: true }),
+        sessions: async () => ({ sessions: [] }),
+      };
+      const manager = new RemotePluginHost({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000,
+        dynamicViewHost,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      worker.emit({
+        type: "host-request",
+        requestId: 14,
+        method: "dynamic-view-open",
+        params: { viewId: "agent.run.trace" },
+      });
+
+      return new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            const response = worker.messages.find(
+              (m) => m.type === "host-response" && m.requestId === 14,
+            );
+            expect(opened).toEqual([{ viewId: "agent.run.trace" }]);
+            expect(response).toMatchObject({
+              type: "host-response",
+              requestId: 14,
+              success: true,
+              payload: { sessionId: "session-1" },
+            });
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        }, 10);
+      });
+    }));
+
+  it("dispatches trace host requests for trusted workers", () =>
+    withTempDir((dir) => {
+      const worker = new FakeWorkerHandle();
+      const recorded: JsonValue[] = [];
+      const traceHost: TraceHost = {
+        startSession: async () => ({ id: "trace-1" }),
+        completeSession: async () => ({ id: "trace-1", status: "completed" }),
+        cancelSession: async () => ({ id: "trace-1", status: "cancelled" }),
+        errorSession: async () => ({ id: "trace-1", status: "error" }),
+        recordEvent: async (params) => {
+          recorded.push(params ?? null);
+          return { id: "event-1", sequence: 1 };
+        },
+        listSessions: async () => ({ sessions: [] }),
+        getSession: async () => ({ id: "trace-1" }),
+        summarizeSession: async () => ({ eventCount: 1 }),
+        tailEvents: async () => ({ events: [], nextSequence: 0 }),
+        searchEvents: async () => ({ events: [] }),
+        openTraceView: async () => ({
+          session: { id: "trace-1" },
+          dynamicViewSessionId: "view-1",
+        }),
+      };
+      const manager = new RemotePluginHost({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000,
+        traceHost,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      worker.emit({
+        type: "host-request",
+        requestId: 15,
+        method: "trace-event-record",
+        params: { sessionId: "trace-1", kind: "tool.started" },
+      });
+
+      return new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            const response = worker.messages.find(
+              (m) => m.type === "host-response" && m.requestId === 15,
+            );
+            expect(recorded).toEqual([
+              { sessionId: "trace-1", kind: "tool.started" },
+            ]);
+            expect(response).toMatchObject({
+              type: "host-response",
+              requestId: 15,
+              success: true,
+              payload: { id: "event-1", sequence: 1 },
+            });
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        }, 10);
+      });
+    }));
+
+  it("dispatches voice host requests for trusted workers", () =>
+    withTempDir((dir) => {
+      const worker = new FakeWorkerHandle();
+      const spoken: JsonValue[] = [];
+      const synthesized: JsonValue[] = [];
+      const voiceHost: VoiceHost = {
+        status: async () => ({ id: "voice-1", status: "listening" }),
+        components: async () => ({ components: [] }),
+        start: async () => ({ id: "voice-1", status: "listening" }),
+        stop: async () => ({ id: "voice-1", status: "idle" }),
+        interrupt: async () => ({ id: "voice-1", status: "interrupted" }),
+        injectTranscript: async () => ({ id: "turn-1" }),
+        speak: async (params) => {
+          spoken.push(params ?? null);
+          return { id: "turn-1", status: "completed" };
+        },
+        transcribeAudio: async () => ({ id: "turn-1", status: "asr_final" }),
+        synthesizeSpeech: async (params) => {
+          synthesized.push(params ?? null);
+          return {
+            audioBase64: "AAAA",
+            mimeType: "audio/wav",
+            byteLength: 3,
+          };
+        },
+        latency: async () => ({ totalToPlaybackMs: 50 }),
+        recentTurns: async () => ({ turns: [] }),
+      };
+      const manager = new RemotePluginHost({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000,
+        voiceHost,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      worker.emit({
+        type: "host-request",
+        requestId: 16,
+        method: "voice-speak",
+        params: { text: "hello" },
+      });
+      worker.emit({
+        type: "host-request",
+        requestId: 17,
+        method: "voice-synthesize-speech",
+        params: { text: "hello" },
+      });
+
+      return new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            const response = worker.messages.find(
+              (m) => m.type === "host-response" && m.requestId === 16,
+            );
+            const synthResponse = worker.messages.find(
+              (m) => m.type === "host-response" && m.requestId === 17,
+            );
+            expect(spoken).toEqual([{ text: "hello" }]);
+            expect(synthesized).toEqual([{ text: "hello" }]);
+            expect(response).toMatchObject({
+              type: "host-response",
+              requestId: 16,
+              success: true,
+              payload: { id: "turn-1", status: "completed" },
+            });
+            expect(synthResponse).toMatchObject({
+              type: "host-response",
+              requestId: 17,
+              success: true,
+              payload: { audioBase64: "AAAA", mimeType: "audio/wav" },
+            });
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        }, 10);
+      });
+    }));
+
   it("seeds and replaces the remote plugin auth token on demand", () =>
     withTempDir((dir) => {
       const previousToken = process.env.ELIZA_API_TOKEN;
@@ -498,6 +708,133 @@ describe("RemotePluginHost", () => {
         success: true,
         payload: { sum: 5 },
       });
+    }));
+
+  it("invokes a running worker directly from the host", async () =>
+    withTempDir(async (dir) => {
+      const worker = new FakeWorkerHandle();
+      const manager = new RemotePluginHost({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      const resultPromise = manager.invokeWorker({
+        id: "bunny.search",
+        method: "lookup",
+        params: { query: "eliza" },
+      });
+      const forwarded = worker.messages.find((m) => m.type === "request");
+      expect(forwarded).toMatchObject({
+        type: "request",
+        method: "lookup",
+        params: { query: "eliza" },
+      });
+
+      worker.emit({
+        type: "response",
+        requestId: (forwarded as { requestId: number }).requestId,
+        success: true,
+        payload: { ok: true },
+      });
+
+      await expect(resultPromise).resolves.toEqual({ ok: true });
+    }));
+
+  it("tails worker events with sequence cursors and bounded limits", () =>
+    withTempDir((dir) => {
+      const worker = new FakeWorkerHandle();
+      let tick = 0;
+      const manager = new RemotePluginHost({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000 + tick++,
+        maxWorkerEvents: 500,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      worker.emit({
+        type: "event",
+        name: "first",
+        payload: { count: 1 },
+      });
+      worker.emit({
+        type: "event",
+        name: "second",
+        payload: { count: 2 },
+      });
+
+      const initial = manager.tailWorkerEvents({ id: "bunny.search" });
+      expect(initial).toMatchObject({
+        id: "bunny.search",
+        nextSequence: 2,
+        minimumSequence: 1,
+        gapBeforeSequence: null,
+        events: [
+          {
+            remotePluginId: "bunny.search",
+            sequence: 1,
+            name: "first",
+            payload: { count: 1 },
+          },
+          {
+            sequence: 2,
+            name: "second",
+            payload: { count: 2 },
+          },
+        ],
+      });
+
+      worker.emit({
+        type: "event",
+        name: "third",
+        payload: { count: 3 },
+      });
+      expect(
+        manager.tailWorkerEvents({
+          id: "bunny.search",
+          afterSequence: initial.nextSequence,
+        }).events,
+      ).toMatchObject([
+        {
+          sequence: 3,
+          name: "third",
+          payload: { count: 3 },
+        },
+      ]);
+
+      for (let index = 0; index < 510; index += 1) {
+        worker.emit({
+          type: "event",
+          name: "many",
+          payload: { index },
+        });
+      }
+      const capped = manager.tailWorkerEvents({
+        id: "bunny.search",
+        afterSequence: 0,
+        limit: 1_000,
+      });
+      expect(capped.events).toHaveLength(500);
+      expect(capped.minimumSequence).toBe(14);
+      expect(capped.gapBeforeSequence).toBe(14);
+      expect(capped.nextSequence).toBe(513);
+    }));
+
+  it("rejects event tailing when the worker is not running", () =>
+    withTempDir((dir) => {
+      const manager = new RemotePluginHost({
+        storeRoot: join(dir, "store"),
+        now: () => 1700000000000,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+
+      expect(() => manager.tailWorkerEvents({ id: "bunny.search" })).toThrow(
+        "not running",
+      );
     }));
 
   it("invoke-remote-plugin returns error when target is not running", () =>

@@ -271,7 +271,7 @@ const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Voice$/,
   /^Capabilities$/,
   /^Apps$/,
-  /^Carrots$/,
+  /^Remote Plugins$/,
   /^Connectors$/,
   /^App Permissions$/,
   /^Wallet & RPC$/,

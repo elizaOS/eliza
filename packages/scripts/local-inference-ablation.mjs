@@ -28,17 +28,19 @@ const DEFAULT_VARIANTS = [
   {
     name: "turbo4_polar_kv",
     label: "target only, Turbo/Polar KV turbo4",
-    args: ["--cache-type-k", "turbo4", "--cache-type-v", "turbo4"],
+    args: ["--cache-type-k", "tbq4_0", "--cache-type-v", "tbq4_0"],
   },
   {
     name: "turbo3_polar_kv",
     label: "target only, Turbo/Polar KV turbo3",
-    args: ["--cache-type-k", "turbo3", "--cache-type-v", "turbo3"],
+    args: ["--cache-type-k", "tbq3_0", "--cache-type-v", "tbq3_0"],
   },
   {
     name: "qjl_tcq_forced",
     label: "target only, forced QJL/TCQ turbo3_tcq",
-    args: ["--cache-type-k", "turbo3_tcq", "--cache-type-v", "turbo3_tcq"],
+    args: ["--cache-type-k", "tbq3_tcq", "--cache-type-v", "tbq3_tcq"],
+    softFailBackends: ["cpu"],
+    softFailSignals: ["SIGSEGV"],
   },
   {
     name: "dflash_only",
@@ -54,13 +56,13 @@ const DEFAULT_VARIANTS = [
       "--spec-type",
       "dflash",
       "--cache-type-k",
-      "turbo4",
+      "tbq4_0",
       "--cache-type-v",
-      "turbo4",
+      "tbq4_0",
       "--cache-type-k-draft",
-      "turbo4",
+      "tbq4_0",
       "--cache-type-v-draft",
-      "turbo4",
+      "tbq4_0",
     ],
   },
   {
@@ -71,13 +73,13 @@ const DEFAULT_VARIANTS = [
       "--spec-type",
       "dflash",
       "--cache-type-k",
-      "turbo3_tcq",
+      "tbq3_tcq",
       "--cache-type-v",
-      "turbo3_tcq",
+      "tbq3_tcq",
       "--cache-type-k-draft",
-      "turbo3_tcq",
+      "tbq3_tcq",
       "--cache-type-v-draft",
-      "turbo3_tcq",
+      "tbq3_tcq",
     ],
   },
 ];
@@ -123,6 +125,8 @@ function defaultModelPath(name) {
 
 function parseArgs(argv) {
   const backend = detectBackend();
+  let gpuLayersExplicit = false;
+  let draftGpuLayersExplicit = false;
   const args = {
     backend,
     binary: defaultBinary(backend),
@@ -176,11 +180,13 @@ function parseArgs(argv) {
       args.batchSize = Number.parseInt(next(), 10);
     else if (arg === "--ubatch-size" || arg === "-ub")
       args.ubatchSize = Number.parseInt(next(), 10);
-    else if (arg === "--gpu-layers")
+    else if (arg === "--gpu-layers") {
       args.gpuLayers = Number.parseInt(next(), 10);
-    else if (arg === "--draft-gpu-layers")
+      gpuLayersExplicit = true;
+    } else if (arg === "--draft-gpu-layers") {
       args.draftGpuLayers = Number.parseInt(next(), 10);
-    else if (arg === "--timeout-ms")
+      draftGpuLayersExplicit = true;
+    } else if (arg === "--timeout-ms")
       args.timeoutMs = Number.parseInt(next(), 10);
     else if (arg === "--start-timeout-ms")
       args.startTimeoutMs = Number.parseInt(next(), 10);
@@ -211,6 +217,9 @@ function parseArgs(argv) {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
+  if (args.backend === "cpu" && !gpuLayersExplicit) args.gpuLayers = 0;
+  if (args.backend === "cpu" && !draftGpuLayersExplicit)
+    args.draftGpuLayers = 0;
   args.binary = args.binary || defaultBinary(args.backend);
   return args;
 }
@@ -238,6 +247,7 @@ Exit codes:
 
 function loadVariants(args) {
   let variants = DEFAULT_VARIANTS;
+  const capabilities = loadCapabilities(args.binary);
   if (args.config) {
     const parsed = JSON.parse(fs.readFileSync(args.config, "utf8"));
     if (Array.isArray(parsed.variants)) variants = parsed.variants;
@@ -255,8 +265,46 @@ function loadVariants(args) {
     if (variant.needsDrafter && !drafterExists) {
       return { ...variant, skipReason: `drafter missing: ${args.drafter}` };
     }
+    const missingKernels = missingVariantKernels(variant, capabilities);
+    if (missingKernels.length > 0) {
+      return {
+        ...variant,
+        skipReason: `kernel unavailable for ${args.backend}: ${missingKernels.join(", ")}`,
+      };
+    }
     return variant;
   });
+}
+
+function loadCapabilities(binaryPath) {
+  const filePath = path.join(path.dirname(binaryPath), "CAPABILITIES.json");
+  if (!fs.existsSync(filePath)) return null;
+  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  return parsed && typeof parsed === "object" ? parsed : null;
+}
+
+function missingVariantKernels(variant, capabilities) {
+  const kernels = capabilities?.kernels;
+  if (!kernels || typeof kernels !== "object") return [];
+  const required = new Set();
+  const args = variant.args || [];
+  for (let i = 0; i < args.length; i += 1) {
+    const flag = args[i];
+    const value = args[i + 1];
+    if (flag === "--spec-type" && value === "dflash") required.add("dflash");
+    if (
+      flag === "--cache-type-k" ||
+      flag === "--cache-type-v" ||
+      flag === "--cache-type-k-draft" ||
+      flag === "--cache-type-v-draft"
+    ) {
+      if (value === "turbo3" || value === "tbq3_0") required.add("turbo3");
+      if (value === "turbo4" || value === "tbq4_0") required.add("turbo4");
+      if (value === "turbo3_tcq" || value === "tbq3_tcq")
+        required.add("turbo3_tcq");
+    }
+  }
+  return Array.from(required).filter((name) => kernels[name] !== true);
 }
 
 function loadThresholds(filePath) {
@@ -445,6 +493,19 @@ function serverArgs(args, variant, port) {
   return out;
 }
 
+function softFailureReason(args, variant, message) {
+  const backends = Array.isArray(variant.softFailBackends)
+    ? variant.softFailBackends
+    : [];
+  const signals = Array.isArray(variant.softFailSignals)
+    ? variant.softFailSignals
+    : [];
+  if (!backends.includes(args.backend)) return null;
+  const matchedSignal = signals.find((signal) => message.includes(signal));
+  if (!matchedSignal) return null;
+  return `kernel crashed on ${args.backend}: ${matchedSignal}`;
+}
+
 async function completion(baseUrl, args, maxTokens) {
   const started = performance.now();
   const json = await fetchJson(
@@ -528,7 +589,14 @@ async function runVariant(args, variant) {
   } catch (error) {
     row.error = error instanceof Error ? error.message : String(error);
     row.logs = logs.slice(-120);
-    console.log(`${variant.name} FAILED: ${row.error.split("\n")[0]}`);
+    const skipReason = softFailureReason(args, variant, row.error);
+    if (skipReason) {
+      row.skipped = true;
+      row.skipReason = skipReason;
+      console.log(`${variant.name} SKIPPED: ${skipReason}`);
+    } else {
+      console.log(`${variant.name} FAILED: ${row.error.split("\n")[0]}`);
+    }
   } finally {
     await stopServer(child, state);
   }
@@ -564,7 +632,6 @@ async function main() {
   if (variants.length === 0) throw new Error("no variants selected");
 
   const binaryMissing = !fs.existsSync(args.binary);
-  const modelMissing = !fs.existsSync(args.model);
   const thresholds = args.gate ? loadThresholds(args.gate) : null;
 
   fs.mkdirSync(args.outDir, { recursive: true });

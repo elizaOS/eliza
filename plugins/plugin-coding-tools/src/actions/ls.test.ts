@@ -41,6 +41,7 @@ function unavailableCapability(
 function makeListRouter(
   list: ElizaCapabilityRouter["fs"]["list"],
 ): ElizaCapabilityRouter {
+  const unavailable = new UnavailableCapabilityRouter("desktop");
   return {
     environment: "desktop",
     availability: async () => ({
@@ -69,7 +70,7 @@ function makeListRouter(
     model: {
       status: async () => unavailableCapability("model", "model.status"),
     },
-    plugin: new UnavailableCapabilityRouter("desktop").plugin,
+    plugin: unavailable.plugin,
   };
 }
 

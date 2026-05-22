@@ -92,7 +92,7 @@ export const containersEnv = {
     return this.defaultAgentImageOverride() ?? "ghcr.io/elizaos/eliza:stable";
   },
 
-  /** Image used by coding-container requests that need the Remote HTTP contract. */
+  /** Image used by coding-container requests that need the remote runner HTTP contract. */
   codingRemoteRunnerImage(): string | undefined {
     const env = getCloudAwareEnv();
     return pick(

@@ -3,8 +3,8 @@ import { createApiBridgeError, serializeError } from "./errors.ts";
 import { RuntimeLogBuffer } from "./log-buffer.ts";
 import type {
   AgentMessageParams,
-  AgentMessageStreamEvent,
   AgentMessageStreamCancelParams,
+  AgentMessageStreamEvent,
   AgentMessageStreamParams,
   JsonValue,
   RuntimeLogEntry,
@@ -12,16 +12,16 @@ import type {
   RuntimeMethod,
   RuntimeResponsePayload,
   RuntimeStartParams,
-  StreamEventKind,
   RuntimeState,
   RuntimeWorkerOutboundMessage,
   RuntimeWorkerRequestMessage,
+  StreamEventKind,
 } from "./protocol.ts";
 import {
-  FILE_REMOTE_ID,
-  GIT_REMOTE_ID,
-  MODEL_REMOTE_ID,
-  TERMINAL_REMOTE_ID,
+  FILE_REMOTE_PLUGIN_ID,
+  GIT_REMOTE_PLUGIN_ID,
+  MODEL_REMOTE_PLUGIN_ID,
+  TERMINAL_REMOTE_PLUGIN_ID,
 } from "./protocol.ts";
 import { ElizaRuntimeManager } from "./runtime-manager.ts";
 import { AgentStreamManager } from "./stream-manager.ts";
@@ -42,7 +42,7 @@ type HostRequestMessage = {
   type: "host-request";
   requestId: number;
   method:
-    | "invoke-carrot"
+    | "invoke-remote-plugin"
     | "agent-manager-start"
     | "agent-manager-stop"
     | "agent-manager-restart"
@@ -215,7 +215,7 @@ function completeHostRequest(message: HostResponseMessage): void {
       code: "CAPABILITY_UNAVAILABLE",
       message: pending.unavailableMessage,
       method: pending.method,
-      details: message.error ?? "Remote request failed.",
+      details: message.error ?? "RemotePlugin request failed.",
     }),
   );
 }
@@ -568,7 +568,7 @@ function requestHost(
           code: "CAPABILITY_UNAVAILABLE",
           message: unavailableMessage,
           method: runtimeMethod,
-          details: "Timed out waiting for Remote response.",
+          details: "Timed out waiting for RemotePlugin response.",
         }),
       );
     }, 30_000);
@@ -629,16 +629,16 @@ function traceEventKindForStream(
   return `agent.message.stream.${kind}`;
 }
 
-function invokeRemote(
-  remoteId: string,
+function invokeRemotePlugin(
+  remotePluginId: string,
   unavailableMessage: string,
   method: RuntimeMethod,
   params?: JsonValue,
 ): Promise<JsonValue | undefined> {
   return requestHost(
-    "invoke-carrot",
+    "invoke-remote-plugin",
     {
-      carrotId: remoteId,
+      remotePluginId: remotePluginId,
       method,
       ...(params === undefined ? {} : { params }),
     },
@@ -739,8 +739,8 @@ async function recordTraceForStreamEvent(
   });
 }
 
-async function invokeTracedRemote(
-  remoteId: string,
+async function invokeTracedRemotePlugin(
+  remotePluginId: string,
   unavailableMessage: string,
   method: RuntimeMethod,
   params?: JsonValue,
@@ -748,8 +748,8 @@ async function invokeTracedRemote(
   const traceSessionId = traceSessionIdFromParams(params);
   const forwardedParams = paramsWithoutTraceFields(params);
   if (traceSessionId === null) {
-    return invokeRemote(
-      remoteId,
+    return invokeRemotePlugin(
+      remotePluginId,
       unavailableMessage,
       method,
       forwardedParams,
@@ -759,15 +759,15 @@ async function invokeTracedRemote(
     sessionId: traceSessionId,
     kind: "capability.invoke.started",
     source: "capability",
-    capabilityId: remoteId,
+    capabilityId: remotePluginId,
     payload: {
       method,
       params: forwardedParams ?? null,
     },
   });
   try {
-    const result = await invokeRemote(
-      remoteId,
+    const result = await invokeRemotePlugin(
+      remotePluginId,
       unavailableMessage,
       method,
       forwardedParams,
@@ -776,7 +776,7 @@ async function invokeTracedRemote(
       sessionId: traceSessionId,
       kind: "capability.invoke.completed",
       source: "capability",
-      capabilityId: remoteId,
+      capabilityId: remotePluginId,
       payload: {
         method,
         result: result ?? null,
@@ -788,7 +788,7 @@ async function invokeTracedRemote(
       sessionId: traceSessionId,
       kind: "capability.invoke.error",
       source: "capability",
-      capabilityId: remoteId,
+      capabilityId: remotePluginId,
       text: error instanceof Error ? error.message : String(error),
       payload: {
         method,
@@ -1017,40 +1017,40 @@ const API_METHODS_REQUIRING_RUNTIME_STATE = new Set<RuntimeMethod>([
   "agent.message.stream",
 ]);
 
-type RemoteRoute = {
-  remoteId: string;
+type RemotePluginRoute = {
+  remotePluginId: string;
   unavailableMessage: string;
   params?: JsonValue;
 };
 
-function remoteRouteFor(
+function remotePluginRouteFor(
   request: RuntimeWorkerRequestMessage,
-): RemoteRoute | null {
+): RemotePluginRoute | null {
   if (FILE_METHODS.has(request.method)) {
     return {
-      remoteId: FILE_REMOTE_ID,
-      unavailableMessage: "File Remote eliza.fs is not available",
+      remotePluginId: FILE_REMOTE_PLUGIN_ID,
+      unavailableMessage: "File RemotePlugin eliza.fs is not available",
       params: request.params,
     };
   }
   if (PTY_METHODS.has(request.method)) {
     return {
-      remoteId: TERMINAL_REMOTE_ID,
-      unavailableMessage: "Terminal Remote eliza.pty is not available",
+      remotePluginId: TERMINAL_REMOTE_PLUGIN_ID,
+      unavailableMessage: "Terminal RemotePlugin eliza.pty is not available",
       params: request.params,
     };
   }
   if (GIT_METHODS.has(request.method)) {
     return {
-      remoteId: GIT_REMOTE_ID,
-      unavailableMessage: "Git Remote eliza.git is not available",
+      remotePluginId: GIT_REMOTE_PLUGIN_ID,
+      unavailableMessage: "Git RemotePlugin eliza.git is not available",
       params: request.params,
     };
   }
   if (!MODEL_METHODS.has(request.method)) return null;
   return {
-    remoteId: MODEL_REMOTE_ID,
-    unavailableMessage: "Model Remote eliza.local-model is not available",
+    remotePluginId: MODEL_REMOTE_PLUGIN_ID,
+    unavailableMessage: "Model RemotePlugin eliza.local-model is not available",
     params: withRuntimeApiBase(request.params),
   };
 }
@@ -1172,10 +1172,10 @@ async function dispatch(
   if (runtimeResponse !== null) return runtimeResponse;
   const apiResponse = await dispatchApiRequest(request);
   if (apiResponse !== null) return apiResponse;
-  const route = remoteRouteFor(request);
+  const route = remotePluginRouteFor(request);
   if (route !== null) {
-    return invokeTracedRemote(
-      route.remoteId,
+    return invokeTracedRemotePlugin(
+      route.remotePluginId,
       route.unavailableMessage,
       request.method,
       route.params,

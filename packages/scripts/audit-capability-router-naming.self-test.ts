@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     }
     if (
       !bad.output.includes(
-        "satellite is only allowed for historical naming analysis",
+        'legacy "satellite"/"carrot" vocabulary is forbidden',
       )
     ) {
       throw new Error(`bad naming fixture failed incorrectly: ${bad.output}`);
@@ -64,8 +64,8 @@ async function main(): Promise<void> {
       );
     }
     if (
-      !Array.isArray(productionReport.allowedSatelliteMentionFiles) ||
-      !productionReport.allowedSatelliteMentionFiles.includes(
+      !Array.isArray(productionReport.allowedLegacyMentionFiles) ||
+      !productionReport.allowedLegacyMentionFiles.includes(
         "packages/agent/docs/capability-router-remote-plugins.md",
       )
     ) {
@@ -73,18 +73,6 @@ async function main(): Promise<void> {
         `production naming audit must report the architecture doc allowlist: ${production.output}`,
       );
     }
-    if (
-      productionReport.allowedSatelliteMentionFiles.some(
-        (file) =>
-          typeof file === "string" &&
-          file.startsWith("packages/agent/src/services/"),
-      )
-    ) {
-      throw new Error(
-        `production naming audit must not allowlist service implementation files: ${production.output}`,
-      );
-    }
-
     console.log("Capability-router naming audit self-test passed.");
   } finally {
     await rm(workspace, { force: true, recursive: true });

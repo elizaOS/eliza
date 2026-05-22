@@ -1,7 +1,7 @@
 /**
  * Remote Plugin Manager — installs, starts, stops, and uninstalls Electrobun
  * remote plugins through the typed desktop bridge. Lives in Settings rather
- * than AppsView until the catalog→carrot product mapping is decided
+ * than AppsView until the catalog→remote-plugin product mapping is decided
  * (see PR #7624 follow-up notes). Scope is deliberately MVP: no
  * remote install, no permission diff/re-consent dialog, no
  * window-mode webview opening, no inter-plugin invoke surface. Just:
@@ -374,8 +374,9 @@ export function RemotePluginHostSection() {
           About remote plugins
         </h3>
         <p className="text-xs text-muted">
-          Carrots are Electrobun's sandboxed mini-app primitive. Each runs in
-          its own Bun Worker with a scoped state path, log file, and auth token.{" "}
+          Remote plugins are Electrobun's sandboxed mini-app primitive. Each
+          runs in its own Bun Worker with a scoped state path, log file, and
+          auth token.{" "}
           <span className="text-warn">
             Permissions are declared in the manifest and shown here at install —
             runtime enforcement is not wired yet. <code>bun:*</code> grants also

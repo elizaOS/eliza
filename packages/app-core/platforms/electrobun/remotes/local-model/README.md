@@ -128,7 +128,7 @@ ELIZA_PHASE8_LIVE_API=1 bun run --cwd elizalaunch/remotes/local-model smoke:phas
 
 ## Packaging Boundary
 
-The upstream Electrobun module system still names its package manifest `plugin.json` and config fields `build.carrot` / `carrotOnly`. Those names are kept only at the packaging boundary.
+The upstream Electrobun module system still names its package manifest `plugin.json` and config fields `build.remote plugin` / `remote pluginOnly`. Those names are kept only at the packaging boundary.
 
 ## Limitations
 

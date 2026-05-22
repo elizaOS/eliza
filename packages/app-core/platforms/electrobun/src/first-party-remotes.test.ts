@@ -1,14 +1,16 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RemotePluginWorkerMessage } from "@elizaos/plugin-remote-manifest";
-import { assertRemotePluginPayload } from "@elizaos/plugin-remote-manifest";
+import {
+  assertRemotePluginPayload,
+  type RemotePluginWorkerMessage,
+} from "@elizaos/plugin-remote-manifest";
 import { describe, expect, it } from "vitest";
 import {
-  getFirstPartyRemoteDefinitions,
-  isFirstPartyRemoteDisabled,
-  seedFirstPartyRemotes,
-  setFirstPartyRemoteDisabled,
+  getFirstPartyRemotePluginDefinitions,
+  isFirstPartyRemotePluginDisabled,
+  seedFirstPartyRemotePlugins,
+  setFirstPartyRemotePluginDisabled,
 } from "./first-party-remotes";
 import {
   RemotePluginHost,
@@ -56,9 +58,9 @@ function withTempManager<T>(fn: (manager: RemotePluginHost) => T): T {
       storeRoot: join(dir, "store"),
       now: () => 1700000000000,
       workerRunner: {
-        start: (carrot) => {
+        start: (remotePlugin) => {
           const worker = new FakeWorkerHandle();
-          workers.set(carrot.manifest.id, worker);
+          workers.set(remotePlugin.manifest.id, worker);
           return worker;
         },
       },
@@ -69,9 +71,9 @@ function withTempManager<T>(fn: (manager: RemotePluginHost) => T): T {
   }
 }
 
-describe("first-party Remotes", () => {
+describe("first-party RemotePlugins", () => {
   it("validates bundled manifests", () => {
-    const manifests = getFirstPartyRemoteDefinitions({
+    const manifests = getFirstPartyRemotePluginDefinitions({
       includeDev: true,
     }).map((definition) => assertRemotePluginPayload(definition.sourceDir));
 
@@ -85,10 +87,10 @@ describe("first-party Remotes", () => {
     ]);
   });
 
-  it("seeds first-party Remotes idempotently and starts auto-start entries", () =>
+  it("seeds first-party RemotePlugins idempotently and starts auto-start entries", () =>
     withTempManager((manager) => {
-      const first = seedFirstPartyRemotes({ manager, includeDev: true });
-      const second = seedFirstPartyRemotes({ manager, includeDev: true });
+      const first = seedFirstPartyRemotePlugins({ manager, includeDev: true });
+      const second = seedFirstPartyRemotePlugins({ manager, includeDev: true });
 
       expect(first.map((result) => result.action)).toEqual([
         "installed",
@@ -119,12 +121,17 @@ describe("first-party Remotes", () => {
 
   it("preserves explicit disabled state for auto-start entries", () =>
     withTempManager((manager) => {
-      setFirstPartyRemoteDisabled("eliza.runtime", true, manager);
+      setFirstPartyRemotePluginDisabled("eliza.runtime", true, manager);
 
-      const results = seedFirstPartyRemotes({ manager, includeDev: false });
+      const results = seedFirstPartyRemotePlugins({
+        manager,
+        includeDev: false,
+      });
       const runtime = results.find((result) => result.id === "eliza.runtime");
 
-      expect(isFirstPartyRemoteDisabled("eliza.runtime", manager)).toBe(true);
+      expect(isFirstPartyRemotePluginDisabled("eliza.runtime", manager)).toBe(
+        true,
+      );
       expect(runtime).toMatchObject({
         id: "eliza.runtime",
         disabled: true,

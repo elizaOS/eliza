@@ -121,10 +121,22 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 		},
 	],
 	[
+		"capability-router",
+		{
+			reason:
+				"RuntimeCapabilityService is the canonical slot while existing HTTP and sandbox router services remain constructible during the router-strategy migration.",
+			classes: new Set([
+				"packages/core/src/services/runtime-capability-service.ts:RuntimeCapabilityService",
+				"packages/agent/src/services/e2b-capability-router.ts:E2BRemoteCapabilityRouterService",
+				"packages/agent/src/services/remote-capability-router.ts:RemoteCapabilityRouterService",
+			]),
+		},
+	],
+	[
 		"xr-session",
 		{
 			reason:
-				"Hearwear and XR expose the same session service contract while those plugins converge; they are alternative providers, not services enabled together.",
+				"plugin-hearwear keeps the plugin-xr session contract so headset clients and parity tests use the same service slot.",
 			classes: new Set([
 				"plugins/plugin-hearwear/src/services/xr-session-service.ts:XRSessionService",
 				"plugins/plugin-xr/src/services/xr-session-service.ts:XRSessionService",

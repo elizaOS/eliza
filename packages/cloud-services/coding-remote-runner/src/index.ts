@@ -43,15 +43,15 @@ export type CommandResult = {
   exitCode: number;
   timedOut: boolean;
 };
-export type CodingRemoteCommandRunner = (
+export type CodingRemoteRunnerCommandRunner = (
   payload: CommandPayload,
   config: RunnerConfig,
 ) => Promise<CommandResult>;
 type RunnerContext = {
   config: RunnerConfig;
-  commandRunner: CodingRemoteCommandRunner;
+  commandRunner: CodingRemoteRunnerCommandRunner;
 };
-type CodingRemoteRouteHandler = (
+type CodingRemoteRunnerRouteHandler = (
   request: Request,
   url: URL,
   context: RunnerContext,
@@ -96,24 +96,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RunnerConfig {
         DEFAULT_WORKSPACE_ROOT,
     ),
     token:
-      readEnv(env, "ELIZA_REMOTE_HTTP_TOKEN") ??
-      readEnv(env, "REMOTE_HTTP_TOKEN") ??
+      readEnv(env, "ELIZA_REMOTE_RUNNER_HTTP_TOKEN") ??
+      readEnv(env, "REMOTE_RUNNER_HTTP_TOKEN") ??
       null,
     allowUnauthenticated:
-      readEnv(env, "ELIZA_REMOTE_ALLOW_UNAUTHENTICATED") === "1",
+      readEnv(env, "ELIZA_REMOTE_RUNNER_ALLOW_UNAUTHENTICATED") === "1",
     maxReadBytes: readPositiveInt(
       env,
-      "ELIZA_REMOTE_MAX_READ_BYTES",
+      "ELIZA_REMOTE_RUNNER_MAX_READ_BYTES",
       DEFAULT_MAX_READ_BYTES,
     ),
     commandTimeoutMs: readPositiveInt(
       env,
-      "ELIZA_REMOTE_COMMAND_TIMEOUT_MS",
+      "ELIZA_REMOTE_RUNNER_COMMAND_TIMEOUT_MS",
       DEFAULT_COMMAND_TIMEOUT_MS,
     ),
     maxCommandOutputBytes: readPositiveInt(
       env,
-      "ELIZA_REMOTE_MAX_COMMAND_OUTPUT_BYTES",
+      "ELIZA_REMOTE_RUNNER_MAX_COMMAND_OUTPUT_BYTES",
       DEFAULT_MAX_COMMAND_OUTPUT_BYTES,
     ),
   };
@@ -125,7 +125,7 @@ export async function ensureWorkspace(config: RunnerConfig): Promise<void> {
 
 export function createHandler(
   config: RunnerConfig,
-  options: { commandRunner?: CodingRemoteCommandRunner } = {},
+  options: { commandRunner?: CodingRemoteRunnerCommandRunner } = {},
 ): (request: Request) => Promise<Response> {
   const context: RunnerContext = {
     config,
@@ -141,7 +141,7 @@ export function createHandler(
   };
 }
 
-const PRIVATE_ROUTE_HANDLERS: Record<string, CodingRemoteRouteHandler> = {
+const PRIVATE_ROUTE_HANDLERS: Record<string, CodingRemoteRunnerRouteHandler> = {
   "GET /v1/health": (_request, _url, context) =>
     privateHealthResponse(context.config),
   "GET /v1/fs/entries": (_request, url, context) =>
@@ -195,7 +195,7 @@ function errorResponse(error: unknown, url: URL): Response {
   const status = error instanceof HttpError ? error.status : 500;
   const message = error instanceof Error ? error.message : String(error);
   if (status >= 500) {
-    log("error", "[CodingRemote] request failed", {
+    log("error", "[CodingRemoteRunner] request failed", {
       path: url.pathname,
       status,
       error: message,
@@ -536,7 +536,7 @@ function authorize(request: Request, config: RunnerConfig): Response | null {
   if (!config.token) {
     return config.allowUnauthenticated
       ? null
-      : jsonResponse(503, { error: "Remote token is not configured" });
+      : jsonResponse(503, { error: "Remote runner token is not configured" });
   }
   const expected = `Bearer ${config.token}`;
   if (request.headers.get("authorization") === expected) return null;
@@ -649,7 +649,7 @@ if (import.meta.main) {
     port: config.port,
     fetch: createHandler(config),
   });
-  log("info", "[CodingRemote] listening", {
+  log("info", "[CodingRemoteRunner] listening", {
     hostname: config.hostname,
     port: config.port,
     workspaceRoot: config.workspaceRoot,

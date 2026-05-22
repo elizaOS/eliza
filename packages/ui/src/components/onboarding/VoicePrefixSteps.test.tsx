@@ -43,14 +43,12 @@ describe("VoicePrefixSteps", () => {
     );
     expect(screen.getByTestId("voice-prefix-welcome")).toBeTruthy();
     expect(screen.getByTestId("voice-prefix-steps").className).toContain(
-      "text-[#0B35F1]",
+      "text-[var(--onboarding-text-primary)]",
     );
-    expect(container.querySelector("main")?.className).toContain(
-      "bg-[#FFFFFF]",
-    );
+    expect(container.querySelector("main")?.className).toContain("bg-white/28");
     expect(
       screen.getByTestId("voice-prefix-welcome-request-mic").className,
-    ).toContain("bg-[#0B35F1]");
+    ).toContain("bg-accent");
   });
 
   it("lets users skip voice setup from the welcome step without microphone access", () => {

@@ -2,10 +2,10 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { AgentMessageStreamEvent } from "../protocol/event-types.ts";
 import {
-  RuntimeRemoteClient,
   type RuntimeEventHandler,
   type RuntimeEventTailResult,
-  type RuntimeRemoteBridge,
+  type RuntimeRemotePluginBridge,
+  RuntimeRemotePluginClient,
 } from "../protocol/runtime-client.ts";
 import {
   addAssistantStreamMessage,
@@ -283,7 +283,7 @@ function mockInvokeResponse(method: string, params?: unknown): unknown {
   );
 }
 
-class MockRuntimeBridge implements RuntimeRemoteBridge {
+class MockRuntimeBridge implements RuntimeRemotePluginBridge {
   private readonly handlers = new Map<string, Set<RuntimeEventHandler>>();
 
   async invoke(
@@ -331,8 +331,7 @@ class TailRuntimeBridge extends MockRuntimeBridge {
       id: targetId,
       events: [
         {
-          carrotId: targetId,
-          remoteId: targetId,
+          remotePluginId: targetId,
           sequence: 1,
           name: "agent.message.stream.delta",
           payload: {
@@ -355,7 +354,7 @@ const root = process.cwd();
 for (const relativePath of [
   "package.json",
   "electrobun.config.ts",
-  "carrot.json",
+  "plugin.json",
   "src/protocol/runtime-client.ts",
   "src/web/index.html",
 ]) {
@@ -366,7 +365,7 @@ for (const relativePath of [
 }
 
 const bridge = new MockRuntimeBridge();
-const client = new RuntimeRemoteClient({ bridge });
+const client = new RuntimeRemotePluginClient({ bridge });
 const state = createInitialState();
 
 for (const eventName of [
@@ -493,7 +492,7 @@ bridge.emit(
 bridge.emit("agent.message.stream.done", streamEvent("done"));
 
 const tailBridge = new TailRuntimeBridge();
-const tailClient = new RuntimeRemoteClient({ bridge: tailBridge });
+const tailClient = new RuntimeRemotePluginClient({ bridge: tailBridge });
 let tailedDelta = "";
 const unsubscribeTail = tailClient.on(
   "agent.message.stream.delta",

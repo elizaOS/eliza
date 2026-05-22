@@ -7,7 +7,7 @@
  * re-exported here so tests can import from a single predictable location.
  *
  * The extractViewId helper below extends the one in view-actions.ts with
- * the complete set of all 24 registered XR view IDs.
+ * the complete set of all 25 registered XR view IDs.
  */
 
 export {
@@ -24,7 +24,7 @@ export {
 } from "./view-actions.ts";
 
 /**
- * All 24 registered XR view IDs.
+ * All 25 registered XR view IDs.
  * Used by extractViewId() for natural-language routing.
  */
 export const ALL_XR_VIEW_IDS = [
@@ -52,14 +52,14 @@ export const ALL_XR_VIEW_IDS = [
   "trajectory-logger",
   "model-tester",
   "smartglasses",
-  "facewear",
+  "hearwear",
 ] as const;
 
 export type XRViewId = (typeof ALL_XR_VIEW_IDS)[number];
 
 /**
  * Extract a view id from natural-language text.
- * Checks all 24 registered view ids in order, matching by word or slug.
+ * Checks all 25 registered view ids in order, matching by word or slug.
  */
 export function extractViewId(text: string): XRViewId | "" {
   const lower = text.toLowerCase();

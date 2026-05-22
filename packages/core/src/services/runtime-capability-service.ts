@@ -24,7 +24,7 @@
  * P0 follow-ups; P0 ships this shell with the canonical type surface so
  * downstream consumers can begin migrating to
  * `runtime.getService(CAPABILITY_ROUTER_SERVICE_TYPE)` semantics without
- * caring whether the underlying dispatch is local-Carrot or remote-HTTP.
+ * caring whether the underlying dispatch is local-RemotePlugin or remote-HTTP.
  *
  * The router classes named above remain in the tree during P0; P1 deletes
  * them and folds their dispatch logic into the strategies declared below.

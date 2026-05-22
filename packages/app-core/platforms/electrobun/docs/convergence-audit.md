@@ -56,7 +56,7 @@ No Swift host/controller path is part of this architecture. The only retained bo
 - packages/agent
 - packages/app-core
 - packages/app-core/platforms/electrobun core shell
-- packages/electrobun-carrots
+- packages/electrobun-remote-plugins
 - connector plugins
 - provider plugins
 - app plugins
@@ -317,7 +317,7 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | packages/app-core/platforms/electrobun/src/trace | desktop-shell | core | leave-alone | yes | yes | no | low | Observability spine. Plugins should emit trace events; trace should not become a static dashboard. |
 | packages/app-core/platforms/electrobun/src/voice | desktop-shell | core | leave-alone | yes | yes | no | low | Voice is a pipeline. Keep live behavior gated and report through trace. |
 | packages/core | core-runtime | core | leave-alone | no | no | no | low | Hard no-migration item. Runtime semantics stay here. |
-| packages/electrobun-carrots | desktop-shell | core | leave-alone | no | no | no | low | Keep as module runtime substrate. Do not turn into a second plugin system. |
+| packages/electrobun-remote-plugins | desktop-shell | core | leave-alone | no | no | no | low | Keep as module runtime substrate. Do not turn into a second plugin system. |
 | packages/shared/src/local-inference | model-plugin | model-pipeline-participant | connect-to-local-model | no | yes | no | medium | Source of truth for Eliza-1 and voice metadata. Do not duplicate in Electrobun. |
 | plugin-2004scape | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-action-bench | dev-tooling | plugin | leave-alone | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |

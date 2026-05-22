@@ -1,7 +1,7 @@
-# Coding Remote
+# Coding remote runner
 
 Bun-based HTTP runner image for Eliza Cloud coding containers and home-machine
-Remote hosting.
+Remote runner hosting.
 
 It exposes the contract consumed by `packages/agent/src/services/e2b-capability-router.ts`:
 
@@ -17,7 +17,7 @@ POST /v1/processes/run
 Required runtime env:
 
 ```text
-ELIZA_REMOTE_HTTP_TOKEN=<generated per container>
+ELIZA_REMOTE_RUNNER_HTTP_TOKEN=<generated per container>
 ELIZA_CODING_WORKSPACE=/workspace
 ```
 

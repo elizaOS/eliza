@@ -140,7 +140,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: Puzzle,
     tone: "accent",
     titleKey: "settings.sections.remote-plugins.label",
-    defaultTitle: "Carrots",
+    defaultTitle: "Remote Plugins",
     Component: RemotePluginHostSection,
   },
   {

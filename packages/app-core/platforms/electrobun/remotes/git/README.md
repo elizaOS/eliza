@@ -72,4 +72,4 @@ When the host forwards worker events, the Git Remote can emit operation events. 
 
 ## Upstream Packaging Boundary
 
-The current local module system still requires upstream packaging names like `plugin.json`, `build.carrot`, and `carrotOnly`. They are used only at the packaging boundary.
+The current local module system still requires upstream packaging names like `plugin.json`, `build.remote plugin`, and `remote pluginOnly`. They are used only at the packaging boundary.

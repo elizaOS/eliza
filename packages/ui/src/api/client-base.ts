@@ -60,6 +60,34 @@ const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "dev.elizacloud.ai",
 ]);
 
+type StreamChatEvent = {
+  type?: string;
+  text?: string;
+  fullText?: string;
+  agentName?: string;
+  message?: string;
+  noResponseReason?: string;
+  failureKind?: ChatFailureKind;
+  localInference?: LocalInferenceChatMetadata;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+    model?: string;
+  };
+};
+
+type StreamChatState = {
+  fullText: string;
+  doneText: string | null;
+  doneAgentName: string | null;
+  doneNoResponseReason: "ignored" | null;
+  doneUsage: ChatTokenUsage | undefined;
+  doneFailureKind: ChatFailureKind | undefined;
+  doneLocalInference: LocalInferenceChatMetadata | undefined;
+  receivedDone: boolean;
+};
+
 function normalizeBaseUrl(value: string | null | undefined): string {
   const trimmed = value?.slice(0, 4096).trim() ?? "";
   let end = trimmed.length;
@@ -79,6 +107,98 @@ function isElizaCloudControlPlaneBase(
   } catch {
     return false;
   }
+}
+
+function findSseEventBreak(
+  chunkBuffer: string,
+): { index: number; length: number } | null {
+  const lfBreak = chunkBuffer.indexOf("\n\n");
+  const crlfBreak = chunkBuffer.indexOf("\r\n\r\n");
+
+  if (lfBreak === -1 && crlfBreak === -1) return null;
+  if (lfBreak === -1) return { index: crlfBreak, length: 4 };
+  if (crlfBreak === -1) return { index: lfBreak, length: 2 };
+  return lfBreak < crlfBreak
+    ? { index: lfBreak, length: 2 }
+    : { index: crlfBreak, length: 4 };
+}
+
+function parseStreamChatDataLine(line: string): StreamChatEvent | null {
+  const payload = line.startsWith("data:") ? line.slice(5).trim() : "";
+  if (!payload) return null;
+  try {
+    const parsed = JSON.parse(payload) as StreamChatEvent;
+    if (!parsed.type && typeof parsed.text === "string") parsed.type = "token";
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function applyStreamChatTokenEvent(
+  parsed: StreamChatEvent,
+  state: StreamChatState,
+  onToken: (token: string, accumulatedText?: string) => void,
+): boolean {
+  const chunk = parsed.text ?? "";
+  const nextFullText =
+    typeof parsed.fullText === "string"
+      ? parsed.fullText
+      : chunk
+        ? mergeStreamingText(state.fullText, chunk)
+        : state.fullText;
+  if (nextFullText === state.fullText) return false;
+  state.fullText = nextFullText;
+  onToken(chunk, state.fullText);
+  return false;
+}
+
+function applyStreamChatDoneEvent(
+  parsed: StreamChatEvent,
+  state: StreamChatState,
+): boolean {
+  state.receivedDone = true;
+  if (typeof parsed.fullText === "string") state.doneText = parsed.fullText;
+  if (typeof parsed.agentName === "string" && parsed.agentName.trim()) {
+    state.doneAgentName = parsed.agentName;
+  }
+  if (parsed.noResponseReason === "ignored") {
+    state.doneNoResponseReason = "ignored";
+  }
+  if (typeof parsed.failureKind === "string") {
+    state.doneFailureKind = parsed.failureKind;
+  }
+  if (parsed.localInference && typeof parsed.localInference === "object") {
+    state.doneLocalInference = parsed.localInference;
+  }
+  if (parsed.usage) {
+    state.doneUsage = {
+      promptTokens: parsed.usage.promptTokens ?? 0,
+      completionTokens: parsed.usage.completionTokens ?? 0,
+      totalTokens: parsed.usage.totalTokens ?? 0,
+      model: parsed.usage.model,
+    };
+  }
+  return true;
+}
+
+function applyStreamChatDataLine(
+  line: string,
+  state: StreamChatState,
+  onToken: (token: string, accumulatedText?: string) => void,
+): boolean {
+  const parsed = parseStreamChatDataLine(line);
+  if (!parsed) return false;
+  if (parsed.type === "token") {
+    return applyStreamChatTokenEvent(parsed, state, onToken);
+  }
+  if (parsed.type === "done") {
+    return applyStreamChatDoneEvent(parsed, state);
+  }
+  if (parsed.type === "error") {
+    throw new Error(parsed.message ?? "generation failed");
+  }
+  return false;
 }
 
 function isLocalAgentIpcBase(value: string | null | undefined): boolean {
@@ -341,109 +461,10 @@ export class ElizaClient {
         message: "API not available (no HTTP origin)",
       });
     }
-    const requestUrl = (() => {
-      if (this.baseUrl) {
-        return `${this.baseUrl}${path}`;
-      }
-      if (typeof window !== "undefined") {
-        const proto = window.location.protocol;
-        if (proto === "http:" || proto === "https:") {
-          return new URL(path, window.location.origin).toString();
-        }
-      }
-      return path;
-    })();
-    const makeRequest = async (token: string | null): Promise<Response> => {
-      const timeoutMs = options?.timeoutMs ?? defaultFetchTimeoutMs(path, init);
-      const abortController = new AbortController();
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      let timedOut = false;
-      let abortListener: (() => void) | undefined;
-
-      if (init?.signal?.aborted) {
-        throw new ApiError({
-          kind: "network",
-          path,
-          message: "Request aborted",
-        });
-      }
-
-      timeoutId = setTimeout(() => {
-        timedOut = true;
-        abortController.abort();
-      }, timeoutMs);
-
-      if (init?.signal) {
-        abortListener = () => {
-          abortController.abort();
-        };
-        init.signal.addEventListener("abort", abortListener, { once: true });
-      }
-
-      const requestInit: RequestInit = {
-        ...init,
-        signal: abortController.signal,
-        headers: {
-          "X-ElizaOS-Client-Id": this.clientId,
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(this._uiLanguage
-            ? { "X-ElizaOS-UI-Language": this._uiLanguage }
-            : {}),
-          ...init?.headers,
-        },
-      };
-
-      try {
-        const transport =
-          this.requestTransport === fetchAgentTransport
-            ? ((await androidNativeAgentTransportForUrl(requestUrl)) ??
-              (await iosInProcessAgentTransportForUrl(requestUrl)) ??
-              desktopHttpTransportForUrl(requestUrl) ??
-              nativeCloudHttpTransportForUrl(requestUrl) ??
-              this.requestTransport)
-            : this.requestTransport;
-        return await transport.request(requestUrl, requestInit, { timeoutMs });
-      } catch (err) {
-        if (timedOut) {
-          throw new ApiError({
-            kind: "timeout",
-            path,
-            message: `Request timed out after ${timeoutMs}ms`,
-          });
-        }
-        if (abortController.signal.aborted) {
-          throw new ApiError({
-            kind: "network",
-            path,
-            message: "Request aborted",
-            cause: err,
-          });
-        }
-        if (err instanceof ApiError) {
-          throw err;
-        }
-        throw new ApiError({
-          kind: "network",
-          path,
-          message:
-            err instanceof Error && err.message
-              ? err.message
-              : "Network request failed",
-          cause: err,
-        });
-      } finally {
-        if (timeoutId !== undefined) {
-          clearTimeout(timeoutId);
-        }
-        if (init?.signal && abortListener) {
-          init.signal.removeEventListener("abort", abortListener);
-        }
-      }
-    };
-
+    const requestUrl = this.rawRequestUrl(path);
     const token =
       this.apiToken ?? (await hydrateAndroidLocalAgentTokenForUrl(requestUrl));
-    let res = await makeRequest(token);
+    let res = await this.rawRequestOnce(path, requestUrl, init, options, token);
     if (res.status === 401) {
       const hydratedToken = await hydrateAndroidLocalAgentTokenForUrl(
         requestUrl,
@@ -451,7 +472,13 @@ export class ElizaClient {
       );
       const retryToken = hydratedToken ?? (!token ? this.apiToken : null);
       if (retryToken && retryToken !== token) {
-        res = await makeRequest(retryToken);
+        res = await this.rawRequestOnce(
+          path,
+          requestUrl,
+          init,
+          options,
+          retryToken,
+        );
       }
     }
     if (!res.ok && !options?.allowNonOk) {
@@ -494,6 +521,134 @@ export class ElizaClient {
       });
     }
     return res;
+  }
+
+  private rawRequestUrl(path: string): string {
+    if (this.baseUrl) return `${this.baseUrl}${path}`;
+    if (typeof window !== "undefined") {
+      const proto = window.location.protocol;
+      if (proto === "http:" || proto === "https:") {
+        return new URL(path, window.location.origin).toString();
+      }
+    }
+    return path;
+  }
+
+  private async rawRequestOnce(
+    path: string,
+    requestUrl: string,
+    init: RequestInit | undefined,
+    options: { allowNonOk?: boolean; timeoutMs?: number } | undefined,
+    token: string | null,
+  ): Promise<Response> {
+    const timeoutMs = options?.timeoutMs ?? defaultFetchTimeoutMs(path, init);
+    const abortController = new AbortController();
+    let timedOut = false;
+    let abortListener: (() => void) | undefined;
+
+    if (init?.signal?.aborted) {
+      throw new ApiError({
+        kind: "network",
+        path,
+        message: "Request aborted",
+      });
+    }
+
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      abortController.abort();
+    }, timeoutMs);
+    if (init?.signal) {
+      abortListener = () => abortController.abort();
+      init.signal.addEventListener("abort", abortListener, { once: true });
+    }
+
+    try {
+      const requestInit = this.rawRequestInit(init, abortController, token);
+      const transport = await this.rawRequestTransport(requestUrl);
+      return await transport.request(requestUrl, requestInit, { timeoutMs });
+    } catch (err) {
+      return this.throwRawRequestError(
+        err,
+        path,
+        timeoutMs,
+        timedOut,
+        abortController,
+      );
+    } finally {
+      clearTimeout(timeoutId);
+      if (init?.signal && abortListener) {
+        init.signal.removeEventListener("abort", abortListener);
+      }
+    }
+  }
+
+  private rawRequestInit(
+    init: RequestInit | undefined,
+    abortController: AbortController,
+    token: string | null,
+  ): RequestInit {
+    return {
+      ...init,
+      signal: abortController.signal,
+      headers: {
+        "X-ElizaOS-Client-Id": this.clientId,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(this._uiLanguage
+          ? { "X-ElizaOS-UI-Language": this._uiLanguage }
+          : {}),
+        ...init?.headers,
+      },
+    };
+  }
+
+  private async rawRequestTransport(
+    requestUrl: string,
+  ): Promise<AgentRequestTransport> {
+    if (this.requestTransport !== fetchAgentTransport) {
+      return this.requestTransport;
+    }
+    return (
+      (await androidNativeAgentTransportForUrl(requestUrl)) ??
+      (await iosInProcessAgentTransportForUrl(requestUrl)) ??
+      desktopHttpTransportForUrl(requestUrl) ??
+      nativeCloudHttpTransportForUrl(requestUrl) ??
+      this.requestTransport
+    );
+  }
+
+  private throwRawRequestError(
+    err: unknown,
+    path: string,
+    timeoutMs: number,
+    timedOut: boolean,
+    abortController: AbortController,
+  ): never {
+    if (timedOut) {
+      throw new ApiError({
+        kind: "timeout",
+        path,
+        message: `Request timed out after ${timeoutMs}ms`,
+      });
+    }
+    if (abortController.signal.aborted) {
+      throw new ApiError({
+        kind: "network",
+        path,
+        message: "Request aborted",
+        cause: err,
+      });
+    }
+    if (err instanceof ApiError) throw err;
+    throw new ApiError({
+      kind: "network",
+      path,
+      message:
+        err instanceof Error && err.message
+          ? err.message
+          : "Network request failed",
+      cause: err,
+    });
   }
 
   async fetch<T>(
@@ -911,109 +1066,15 @@ export class ElizaClient {
     const decoder = new TextDecoder();
     const reader = res.body.getReader();
     let buffer = "";
-    let fullText = "";
-    let doneText: string | null = null;
-    let doneAgentName: string | null = null;
-    let doneNoResponseReason: "ignored" | null = null;
-    let doneUsage: ChatTokenUsage | undefined;
-    let doneFailureKind: ChatFailureKind | undefined;
-    let doneLocalInference: LocalInferenceChatMetadata | undefined;
-    let receivedDone = false;
-
-    const findSseEventBreak = (
-      chunkBuffer: string,
-    ): { index: number; length: number } | null => {
-      const lfBreak = chunkBuffer.indexOf("\n\n");
-      const crlfBreak = chunkBuffer.indexOf("\r\n\r\n");
-
-      if (lfBreak === -1 && crlfBreak === -1) return null;
-      if (lfBreak === -1) return { index: crlfBreak, length: 4 };
-      if (crlfBreak === -1) return { index: lfBreak, length: 2 };
-      return lfBreak < crlfBreak
-        ? { index: lfBreak, length: 2 }
-        : { index: crlfBreak, length: 4 };
-    };
-
-    const parseDataLine = (line: string): boolean => {
-      const payload = line.startsWith("data:") ? line.slice(5).trim() : "";
-      if (!payload) return false;
-
-      let parsed: {
-        type?: string;
-        text?: string;
-        fullText?: string;
-        agentName?: string;
-        message?: string;
-        noResponseReason?: string;
-        failureKind?: ChatFailureKind;
-        localInference?: LocalInferenceChatMetadata;
-        usage?: {
-          promptTokens?: number;
-          completionTokens?: number;
-          totalTokens?: number;
-          model?: string;
-        };
-      };
-      try {
-        parsed = JSON.parse(payload) as typeof parsed;
-      } catch {
-        return false;
-      }
-
-      if (!parsed.type && typeof parsed.text === "string") {
-        parsed.type = "token";
-      }
-
-      if (parsed.type === "token") {
-        const chunk = parsed.text ?? "";
-        const nextFullText =
-          typeof parsed.fullText === "string"
-            ? parsed.fullText
-            : chunk
-              ? mergeStreamingText(fullText, chunk)
-              : fullText;
-        if (nextFullText === fullText) return false;
-        fullText = nextFullText;
-        onToken(chunk, fullText);
-        return false;
-      }
-
-      if (parsed.type === "done") {
-        receivedDone = true;
-        if (typeof parsed.fullText === "string") doneText = parsed.fullText;
-        if (typeof parsed.agentName === "string" && parsed.agentName.trim()) {
-          doneAgentName = parsed.agentName;
-        }
-        if (parsed.noResponseReason === "ignored") {
-          doneNoResponseReason = "ignored";
-        }
-        if (typeof parsed.failureKind === "string") {
-          doneFailureKind = parsed.failureKind;
-        }
-        if (
-          parsed.localInference &&
-          typeof parsed.localInference === "object"
-        ) {
-          doneLocalInference = parsed.localInference;
-        }
-        if (parsed.usage) {
-          doneUsage = {
-            promptTokens: parsed.usage.promptTokens ?? 0,
-            completionTokens: parsed.usage.completionTokens ?? 0,
-            totalTokens: parsed.usage.totalTokens ?? 0,
-            model: parsed.usage.model,
-          };
-        }
-        // Terminal event: stop reading immediately instead of waiting for the
-        // server to close the body (some stacks leave the stream open briefly).
-        void reader.cancel("elizaos-sse-terminal-done").catch(() => {});
-        return true;
-      }
-
-      if (parsed.type === "error") {
-        throw new Error(parsed.message ?? "generation failed");
-      }
-      return false;
+    const streamState: StreamChatState = {
+      fullText: "",
+      doneText: null,
+      doneAgentName: null,
+      doneNoResponseReason: null,
+      doneUsage: undefined,
+      doneFailureKind: undefined,
+      doneLocalInference: undefined,
+      receivedDone: false,
     };
 
     // Contract: the API must emit `data: {"type":"done",...}` or
@@ -1048,37 +1109,46 @@ export class ElizaClient {
         buffer = buffer.slice(eventBreak.index + eventBreak.length);
         for (const line of rawEvent.split(/\r?\n/)) {
           if (!line.startsWith("data:")) continue;
-          if (parseDataLine(line)) {
+          if (applyStreamChatDataLine(line, streamState, onToken)) {
             buffer = "";
+            void reader.cancel("elizaos-sse-terminal-done").catch(() => {});
             break;
           }
         }
-        if (receivedDone) break;
+        if (streamState.receivedDone) break;
         eventBreak = findSseEventBreak(buffer);
       }
-      if (receivedDone) break;
+      if (streamState.receivedDone) break;
     }
 
-    if (!receivedDone && buffer.trim()) {
+    if (!streamState.receivedDone && buffer.trim()) {
       for (const line of buffer.split(/\r?\n/)) {
-        if (line.startsWith("data:")) parseDataLine(line);
+        if (line.startsWith("data:")) {
+          applyStreamChatDataLine(line, streamState, onToken);
+        }
       }
     }
 
     const resolvedText =
-      doneNoResponseReason === "ignored"
+      streamState.doneNoResponseReason === "ignored"
         ? ""
-        : this.normalizeAssistantText(doneText ?? fullText);
+        : this.normalizeAssistantText(
+            streamState.doneText ?? streamState.fullText,
+          );
     return {
       text: resolvedText,
-      agentName: doneAgentName ?? "Eliza",
-      completed: receivedDone,
-      ...(doneNoResponseReason
-        ? { noResponseReason: doneNoResponseReason }
+      agentName: streamState.doneAgentName ?? "Eliza",
+      completed: streamState.receivedDone,
+      ...(streamState.doneNoResponseReason
+        ? { noResponseReason: streamState.doneNoResponseReason }
         : {}),
-      ...(doneUsage ? { usage: doneUsage } : {}),
-      ...(doneFailureKind ? { failureKind: doneFailureKind } : {}),
-      ...(doneLocalInference ? { localInference: doneLocalInference } : {}),
+      ...(streamState.doneUsage ? { usage: streamState.doneUsage } : {}),
+      ...(streamState.doneFailureKind
+        ? { failureKind: streamState.doneFailureKind }
+        : {}),
+      ...(streamState.doneLocalInference
+        ? { localInference: streamState.doneLocalInference }
+        : {}),
     };
   }
 }

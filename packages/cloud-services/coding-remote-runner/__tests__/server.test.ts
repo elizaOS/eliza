@@ -10,26 +10,28 @@ import {
 import { tmpdir } from "node:os";
 import nodePath from "node:path";
 import {
+  type CodingRemoteRunnerCommandRunner,
   createHandler,
   ensureWorkspace,
   loadConfig,
-  type CodingRemoteCommandRunner,
 } from "../src/index";
 
 let workspaceRoot = "";
 
 beforeEach(async () => {
-  workspaceRoot = await mkdtemp(nodePath.join(tmpdir(), "coding-remote-runner-"));
+  workspaceRoot = await mkdtemp(
+    nodePath.join(tmpdir(), "coding-remote-runner-"),
+  );
 });
 
 afterEach(() => {
   workspaceRoot = "";
 });
 
-function handler(commandRunner?: CodingRemoteCommandRunner) {
+function handler(commandRunner?: CodingRemoteRunnerCommandRunner) {
   const config = loadConfig({
     ELIZA_CODING_WORKSPACE: workspaceRoot,
-    ELIZA_REMOTE_HTTP_TOKEN: "token",
+    ELIZA_REMOTE_RUNNER_HTTP_TOKEN: "token",
   });
   return createHandler(config, commandRunner ? { commandRunner } : {});
 }
@@ -44,8 +46,8 @@ function request(
   return new Request(`http://127.0.0.1${path}`, { ...init, headers });
 }
 
-describe("coding Remote HTTP runner", () => {
-  it("requires bearer auth on the Remote API", async () => {
+describe("coding remote runner HTTP runner", () => {
+  it("requires bearer auth on the remote runner API", async () => {
     const response = await handler()(request("/v1/health", {}, false));
 
     expect(response.status).toBe(401);
@@ -107,11 +109,14 @@ describe("coding Remote HTTP runner", () => {
     await ensureWorkspace(
       loadConfig({
         ELIZA_CODING_WORKSPACE: workspaceRoot,
-        ELIZA_REMOTE_HTTP_TOKEN: "token",
+        ELIZA_REMOTE_RUNNER_HTTP_TOKEN: "token",
       }),
     );
-    const commandCalls: Array<{ command: string; args: string[]; cwd: string }> =
-      [];
+    const commandCalls: Array<{
+      command: string;
+      args: string[];
+      cwd: string;
+    }> = [];
     const workspaceRealPath = await realpath(workspaceRoot);
     const response = await handler(async (payload) => {
       commandCalls.push({

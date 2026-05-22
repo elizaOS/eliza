@@ -9,21 +9,21 @@ import {
   type RemotePluginHost,
 } from "./native/remote-plugin-host";
 
-export type FirstPartyRemoteKind = "required" | "recommended" | "dev";
+export type FirstPartyRemotePluginKind = "required" | "recommended" | "dev";
 
-export interface FirstPartyRemoteDefinition {
+export interface FirstPartyRemotePluginDefinition {
   id: string;
   displayName: string;
   sourceDir: string;
-  kind: FirstPartyRemoteKind;
+  kind: FirstPartyRemotePluginKind;
   autoStart: boolean;
 }
 
-export interface FirstPartyRemoteSeedResult {
+export interface FirstPartyRemotePluginSeedResult {
   id: string;
   displayName: string;
   sourceDir: string;
-  kind: FirstPartyRemoteKind;
+  kind: FirstPartyRemotePluginKind;
   autoStart: boolean;
   disabled: boolean;
   hash: string;
@@ -31,7 +31,7 @@ export interface FirstPartyRemoteSeedResult {
   autoStarted: boolean;
 }
 
-interface FirstPartyRemoteState {
+interface FirstPartyRemotePluginState {
   version: 1;
   disabled: Record<string, boolean>;
 }
@@ -40,7 +40,7 @@ const platformRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const remotesRoot = path.join(platformRoot, "remotes");
+const remotePluginsRoot = path.join(platformRoot, "remotes");
 const stateFileName = "first-party-remotes.json";
 const skippedHashEntries = new Set([
   ".DS_Store",
@@ -49,104 +49,104 @@ const skippedHashEntries = new Set([
   "node_modules",
 ]);
 
-export const FIRST_PARTY_REMOTES: FirstPartyRemoteDefinition[] = [
+export const FIRST_PARTY_REMOTE_PLUGINS: FirstPartyRemotePluginDefinition[] = [
   {
     id: "eliza.runtime",
-    displayName: "Eliza Runtime Remote",
-    sourceDir: path.join(remotesRoot, "runtime"),
+    displayName: "Eliza Runtime RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "runtime"),
     kind: "required",
     autoStart: true,
   },
   {
     id: "eliza.fs",
-    displayName: "Eliza File Remote",
-    sourceDir: path.join(remotesRoot, "fs"),
+    displayName: "Eliza File RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "fs"),
     kind: "recommended",
     autoStart: true,
   },
   {
     id: "eliza.local-model",
-    displayName: "Eliza Model Remote",
-    sourceDir: path.join(remotesRoot, "local-model"),
+    displayName: "Eliza Model RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "local-model"),
     kind: "recommended",
     autoStart: true,
   },
   {
     id: "eliza.pty",
-    displayName: "Eliza Terminal Remote",
-    sourceDir: path.join(remotesRoot, "pty"),
+    displayName: "Eliza Terminal RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "pty"),
     kind: "recommended",
     autoStart: false,
   },
   {
     id: "eliza.git",
-    displayName: "Eliza Git Remote",
-    sourceDir: path.join(remotesRoot, "git"),
+    displayName: "Eliza Git RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "git"),
     kind: "recommended",
     autoStart: false,
   },
   {
     id: "eliza.surface",
-    displayName: "Eliza Surface Remote",
-    sourceDir: path.join(remotesRoot, "surface"),
+    displayName: "Eliza Surface RemotePlugin",
+    sourceDir: path.join(remotePluginsRoot, "surface"),
     kind: "dev",
     autoStart: false,
   },
 ];
 
-export function getFirstPartyRemoteDefinitions(options?: {
+export function getFirstPartyRemotePluginDefinitions(options?: {
   includeDev?: boolean;
-}): FirstPartyRemoteDefinition[] {
+}): FirstPartyRemotePluginDefinition[] {
   const includeDev =
-    options?.includeDev ?? process.env.ELIZA_ENABLE_DEV_REMOTES === "1";
-  return FIRST_PARTY_REMOTES.filter(
+    options?.includeDev ?? process.env.ELIZA_ENABLE_DEV_REMOTE_PLUGINS === "1";
+  return FIRST_PARTY_REMOTE_PLUGINS.filter(
     (definition) => includeDev || definition.kind !== "dev",
   );
 }
 
-export function setFirstPartyRemoteDisabled(
+export function setFirstPartyRemotePluginDisabled(
   id: string,
   disabled: boolean,
   manager: RemotePluginHost = getRemotePluginHost(),
 ): void {
-  const state = readFirstPartyRemoteState(manager);
+  const state = readFirstPartyRemotePluginState(manager);
   if (disabled) {
     state.disabled[id] = true;
   } else {
     delete state.disabled[id];
   }
-  writeFirstPartyRemoteState(manager, state);
+  writeFirstPartyRemotePluginState(manager, state);
 }
 
-export function isFirstPartyRemoteDisabled(
+export function isFirstPartyRemotePluginDisabled(
   id: string,
   manager: RemotePluginHost = getRemotePluginHost(),
 ): boolean {
-  return readFirstPartyRemoteState(manager).disabled[id] === true;
+  return readFirstPartyRemotePluginState(manager).disabled[id] === true;
 }
 
-export function seedFirstPartyRemotes(options?: {
+export function seedFirstPartyRemotePlugins(options?: {
   manager?: RemotePluginHost;
   includeDev?: boolean;
   startAutoStart?: boolean;
-}): FirstPartyRemoteSeedResult[] {
+}): FirstPartyRemotePluginSeedResult[] {
   const manager = options?.manager ?? getRemotePluginHost();
   const startAutoStart = options?.startAutoStart ?? true;
-  const results: FirstPartyRemoteSeedResult[] = [];
+  const results: FirstPartyRemotePluginSeedResult[] = [];
 
-  for (const definition of getFirstPartyRemoteDefinitions({
+  for (const definition of getFirstPartyRemotePluginDefinitions({
     includeDev: options?.includeDev,
   })) {
     const manifest = assertRemotePluginPayload(definition.sourceDir);
     if (manifest.id !== definition.id) {
       throw new Error(
-        `First-party Remote id mismatch: registry=${definition.id} manifest=${manifest.id}`,
+        `First-party RemotePlugin id mismatch: registry=${definition.id} manifest=${manifest.id}`,
       );
     }
 
     const hash = hashDirectory(definition.sourceDir);
     const existing = manager.getRemotePlugin(definition.id);
-    let action: FirstPartyRemoteSeedResult["action"] = "unchanged";
+    let action: FirstPartyRemotePluginSeedResult["action"] = "unchanged";
     if (!existing) {
       manager.installFromDirectory({
         sourceDir: definition.sourceDir,
@@ -163,7 +163,7 @@ export function seedFirstPartyRemotes(options?: {
       action = "updated";
     }
 
-    const disabled = isFirstPartyRemoteDisabled(definition.id, manager);
+    const disabled = isFirstPartyRemotePluginDisabled(definition.id, manager);
     let autoStarted = false;
     if (definition.autoStart && startAutoStart && !disabled) {
       manager.startWorker(definition.id);
@@ -182,10 +182,10 @@ export function seedFirstPartyRemotes(options?: {
   return results;
 }
 
-export function seedFirstPartyRemotesForStartup(): void {
+export function seedFirstPartyRemotePluginsForStartup(): void {
   try {
-    const results = seedFirstPartyRemotes();
-    logger.info("[FirstPartyRemotes] seed complete", {
+    const results = seedFirstPartyRemotePlugins();
+    logger.info("[FirstPartyRemotePlugins] seed complete", {
       results: results.map((result) => ({
         id: result.id,
         action: result.action,
@@ -195,7 +195,7 @@ export function seedFirstPartyRemotesForStartup(): void {
     });
   } catch (error) {
     logger.warn(
-      "[FirstPartyRemotes] seed failed",
+      "[FirstPartyRemotePlugins] seed failed",
       error instanceof Error
         ? { message: error.message, stack: error.stack }
         : { error: String(error) },
@@ -203,34 +203,34 @@ export function seedFirstPartyRemotesForStartup(): void {
   }
 }
 
-function readFirstPartyRemoteState(
+function readFirstPartyRemotePluginState(
   manager: RemotePluginHost,
-): FirstPartyRemoteState {
-  const statePath = firstPartyRemoteStatePath(manager);
+): FirstPartyRemotePluginState {
+  const statePath = firstPartyRemotePluginStatePath(manager);
   if (!fs.existsSync(statePath)) return { version: 1, disabled: {} };
   const parsed = JSON.parse(fs.readFileSync(statePath, "utf8")) as unknown;
-  if (!isFirstPartyRemoteState(parsed)) {
+  if (!isFirstPartyRemotePluginState(parsed)) {
     return { version: 1, disabled: {} };
   }
   return parsed;
 }
 
-function writeFirstPartyRemoteState(
+function writeFirstPartyRemotePluginState(
   manager: RemotePluginHost,
-  state: FirstPartyRemoteState,
+  state: FirstPartyRemotePluginState,
 ): void {
-  const statePath = firstPartyRemoteStatePath(manager);
+  const statePath = firstPartyRemotePluginStatePath(manager);
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
   fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
-function firstPartyRemoteStatePath(manager: RemotePluginHost): string {
+function firstPartyRemotePluginStatePath(manager: RemotePluginHost): string {
   return path.join(manager.getStoreRoot(), stateFileName);
 }
 
-function isFirstPartyRemoteState(
+function isFirstPartyRemotePluginState(
   value: unknown,
-): value is FirstPartyRemoteState {
+): value is FirstPartyRemotePluginState {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
   }

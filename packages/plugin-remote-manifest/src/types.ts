@@ -205,8 +205,43 @@ export type HostRequestMethod =
   | "list-remote-plugins"
   | "start-remote-plugin"
   | "stop-remote-plugin"
+  | "agent-manager-start"
+  | "agent-manager-stop"
+  | "agent-manager-restart"
+  | "agent-manager-status"
+  | "agent-manager-health"
+  | "agent-manager-logs-tail"
   | "get-auth-token"
   | "set-auth-token"
+  | "dynamic-view-register"
+  | "dynamic-view-unregister"
+  | "dynamic-view-list"
+  | "dynamic-view-open"
+  | "dynamic-view-close"
+  | "dynamic-view-push"
+  | "dynamic-view-sessions"
+  | "trace-session-start"
+  | "trace-session-complete"
+  | "trace-session-cancel"
+  | "trace-session-error"
+  | "trace-event-record"
+  | "trace-session-list"
+  | "trace-session-get"
+  | "trace-session-summary"
+  | "trace-events-tail"
+  | "trace-events-search"
+  | "trace-view-open"
+  | "voice-status"
+  | "voice-components"
+  | "voice-start"
+  | "voice-stop"
+  | "voice-interrupt"
+  | "voice-inject-transcript"
+  | "voice-speak"
+  | "voice-transcribe-audio"
+  | "voice-synthesize-speech"
+  | "voice-latency"
+  | "voice-recent-turns"
   | "screen-get-primary-display"
   | "screen-get-cursor-screen-point";
 
@@ -281,7 +316,7 @@ export type PluginSurfaceKind =
   | "tests";
 
 /** Tag pointing to a function that lives on the worker side; surfaced in the announce payload. */
-export interface RemoteFunctionRef {
+export interface RemoteFunctionRef extends JsonObject {
   rpc: true;
   /** Stable id assigned by the worker bootstrap. */
   id: string;

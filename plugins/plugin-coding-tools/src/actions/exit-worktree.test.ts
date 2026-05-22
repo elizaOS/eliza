@@ -117,6 +117,7 @@ function makeGitRouter(
         pty: false,
         git: true,
         model: false,
+        plugin: false,
       },
     }),
     fs: {

@@ -37,6 +37,7 @@ function makeWriteRouter(
         pty: false,
         git: false,
         model: false,
+        plugin: false,
       },
     }),
     fs: {

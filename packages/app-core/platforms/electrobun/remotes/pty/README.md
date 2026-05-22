@@ -62,4 +62,4 @@ bun run --cwd elizalaunch/remotes/pty smoke:phase6
 
 ## Upstream Packaging Boundary
 
-The current local module system still requires upstream packaging names like `plugin.json`, `build.carrot`, and `carrotOnly`. They are used only at the packaging boundary.
+The current local module system still requires upstream packaging names like `plugin.json`, `build.remote plugin`, and `remote pluginOnly`. They are used only at the packaging boundary.
