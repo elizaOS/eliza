@@ -136,7 +136,10 @@ describe("TEE runtime config", () => {
           ELIZA_TEE_REQUIRED: "true",
           ELIZA_TEE_REVOCATION_PUBKEY: pem,
           ELIZA_TEE_REVOCATION_AUTHORITY: "eliza-revocation-authority",
-          ELIZA_TEE_REVOCATIONS_JSON: JSON.stringify({ ...manifest, signature }),
+          ELIZA_TEE_REVOCATIONS_JSON: JSON.stringify({
+            ...manifest,
+            signature,
+          }),
         },
       }),
     ).resolves.toMatchObject({

@@ -204,10 +204,7 @@ import {
   collectConfigEnvVars,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
-import {
-  resolveStateDir,
-  resolveUserPath,
-} from "../config/paths.ts";
+import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 import {
   createHookEvent,
   type LoadHooksOptions,
@@ -216,12 +213,12 @@ import {
 } from "../hooks/index.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
 import { SandboxAuditLog } from "../security/audit-log.ts";
+import { createDstackTeeProvider } from "../services/dstack-tee-provider.ts";
 import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adapter.ts";
 import {
   SandboxManager,
   type SandboxMode,
 } from "../services/sandbox-manager.ts";
-import { createDstackTeeProvider } from "../services/dstack-tee-provider.ts";
 import {
   evaluateTeeBootGate,
   type TeeBootGate,

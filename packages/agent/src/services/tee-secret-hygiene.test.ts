@@ -24,7 +24,8 @@ const CONFIDENTIAL_MODULES = [
 
 // Off-domain sinks: anything that serializes or emits a value outside the
 // confidential process boundary.
-const SINK = /\b(?:console\.\w+|logger\.\w+|JSON\.stringify|process\.stdout\.write|process\.stderr\.write)\s*\(/;
+const SINK =
+  /\b(?:console\.\w+|logger\.\w+|JSON\.stringify|process\.stdout\.write|process\.stderr\.write)\s*\(/;
 
 // Names that hold cleartext secret material inside the domain.
 const SECRET_MATERIAL =
@@ -38,20 +39,19 @@ function moduleSource(name: string): string {
 }
 
 describe("TEE confidential-module secret hygiene (A9)", () => {
-  it.each(CONFIDENTIAL_MODULES)(
-    "%s never emits secret material to an off-domain sink",
-    (moduleName) => {
-      const source = moduleSource(moduleName);
-      const offenders: string[] = [];
-      source.split("\n").forEach((line, index) => {
-        const code = line.replace(/\/\/.*$/, ""); // ignore line comments
-        if (SINK.test(code) && SECRET_MATERIAL.test(code)) {
-          offenders.push(`${moduleName}:${index + 1}: ${line.trim()}`);
-        }
-      });
-      expect(offenders, offenders.join("\n")).toEqual([]);
-    },
-  );
+  it.each(
+    CONFIDENTIAL_MODULES,
+  )("%s never emits secret material to an off-domain sink", (moduleName) => {
+    const source = moduleSource(moduleName);
+    const offenders: string[] = [];
+    source.split("\n").forEach((line, index) => {
+      const code = line.replace(/\/\/.*$/, ""); // ignore line comments
+      if (SINK.test(code) && SECRET_MATERIAL.test(code)) {
+        offenders.push(`${moduleName}:${index + 1}: ${line.trim()}`);
+      }
+    });
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
 
   it("the scanned modules still exist (guards against silent skips on rename)", () => {
     for (const moduleName of CONFIDENTIAL_MODULES) {

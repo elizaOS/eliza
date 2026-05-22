@@ -164,7 +164,8 @@ export async function runAutonomousCli(
     }
 
     const handle = startAgentTerminalTui({ apiBaseUrl });
-    if (!handle) throw new Error("terminal TUI is disabled; set ELIZA_TERMINAL_TUI=1");
+    if (!handle)
+      throw new Error("terminal TUI is disabled; set ELIZA_TERMINAL_TUI=1");
     await handle.ready;
     console.log(`elizaos-tui-ready api=${apiBaseUrl ?? "default"}`);
     return;

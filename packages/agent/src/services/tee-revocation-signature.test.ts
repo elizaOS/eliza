@@ -69,7 +69,10 @@ describe("TEE revocation manifest signature verification", () => {
   it("rejects a manifest signed by an unknown authority", () => {
     const trusted = ed25519Authority();
     const rogue = ed25519Authority();
-    const manifest = { ...baseManifest, signature: rogue.signManifest(baseManifest) };
+    const manifest = {
+      ...baseManifest,
+      signature: rogue.signManifest(baseManifest),
+    };
     // Trusted map holds a different key for this authority id -> signature fails.
     expect(
       verifyTeeRevocationManifest(manifest, {
@@ -99,6 +102,8 @@ describe("TEE revocation manifest signature verification", () => {
       authority: "x",
       schemaVersion: 1,
     };
-    expect(canonicalizeRevocationBody(a)).toEqual(canonicalizeRevocationBody(b));
+    expect(canonicalizeRevocationBody(a)).toEqual(
+      canonicalizeRevocationBody(b),
+    );
   });
 });

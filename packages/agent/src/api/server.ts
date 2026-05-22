@@ -1555,14 +1555,14 @@ async function handleRequest(
   const blueBubblesWebhookPath =
     typeof resolveBlueBubblesWebhookPath === "function"
       ? resolveBlueBubblesWebhookPath({
-      runtime: state.runtime
-        ? {
-            getService: (type: string) =>
-              (
-                state.runtime as { getService: (t: string) => unknown }
-              ).getService(type),
-          }
-        : undefined,
+          runtime: state.runtime
+            ? {
+                getService: (type: string) =>
+                  (
+                    state.runtime as { getService: (t: string) => unknown }
+                  ).getService(type),
+              }
+            : undefined,
         })
       : null;
   const isBlueBubblesWebhookEndpoint =

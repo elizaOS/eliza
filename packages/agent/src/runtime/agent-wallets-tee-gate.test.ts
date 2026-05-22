@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestVault, type TestVault } from "@elizaos/vault";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TeeBootGate } from "../services/tee-boot-gate.ts";
 import {
   clearTeeBootGateState,
