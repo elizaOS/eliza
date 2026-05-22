@@ -473,7 +473,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				success: true,
 				text: "raw shell output with exact paths and metrics",
 				userFacingText:
-					"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/milady/.bun (19G).",
+					"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/example/.bun (19G).",
 				data: { actionName: "CHECK_RUNTIME" },
 			}),
 		});
@@ -503,7 +503,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						decision: "FINISH",
 						thought: "Tool result is enough.",
 						messageToUser:
-							"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/milody/.bun (19G).",
+							"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/wrong-user/.bun (19G).",
 					}),
 				},
 			],
@@ -519,7 +519,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/milady/.bun (19G).",
+				"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/example/.bun (19G).",
 			);
 		}
 	});
