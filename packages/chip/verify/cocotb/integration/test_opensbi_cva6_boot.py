@@ -9,9 +9,12 @@ of a hand-written bare-metal image, with:
 
   * a synthesizable ns16550a UART model @0x1000_1000 wired onto the fabric as
     the OpenSBI console sink (rtl/peripherals/e1_uart_ns16550.sv), and
-  * an AXI4 atomics adapter (rtl/top/adapters/e1_axi4_amo_adapter.sv) that
-    resolves CVA6's RISC-V atomics into read-modify-write so the fabric/DRAM
-    need no atomic support (OpenSBI's boot lottery / spinlocks use `amo*`).
+  * the vendored pulp-platform axi_riscv_atomics filter (wrapped by
+    rtl/top/adapters/e1_axi4_riscv_atomics.sv) that resolves CVA6's RISC-V
+    atomics + LR/SC against an RVWMO-correct AMO engine and reservation table so
+    the fabric/DRAM need no atomic or exclusive support (OpenSBI's boot lottery /
+    spinlocks use `amo*`), preserving the serialized-atomics ordering CVA6's
+    wt_axi_adapter assumes.
 
 Preload image (fw/opensbi-cva6-boot/build_boot_image.py):
   0x80000000  OpenSBI fw_jump  (FW_TEXT_START; aligned base so domain/PMP init
@@ -29,15 +32,11 @@ console over the real UART.
 
 The transcript is written to docs/evidence/cpu_ap/opensbi_cva6_boot.transcript.
 
-S-mode handoff: OpenSBI is configured to drop to S-mode (FW_JUMP next mode
-PRV_S) at the S-mode payload, which prints S-MODE-OK.  Reaching that marker is
-opportunistically detected and recorded, but the asserted milestone here is the
-banner: CVA6's wt_axi_adapter carries an internal write-ID FIFO assertion that
-assumes fully-serialized atomics, which the external (non-coherent) atomics
-adapter does not guarantee once OpenSBI's post-banner general-info printing
-interleaves stores with lr/sc; the sim therefore stops shortly after the
-banner.  The handoff (and the long Linux-kernel run) is the documented next
-step — see docs/evidence/cpu_ap/opensbi_cva6_boot.json.
+This test asserts the BANNER milestone; the M->S handoff (S-MODE-OK) and the
+Linux-kernel run are proven by test_linux_boot_cva6.py + check_linux_boot_cva6.py,
+which drive the same DUT past the banner.  With the vendored axi_riscv_atomics
+filter in place, the previous post-banner write-ID FIFO assertion in CVA6's
+wt_axi_adapter no longer fires, so the boot proceeds to the S-mode payload.
 """
 
 from __future__ import annotations

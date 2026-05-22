@@ -1,14 +1,12 @@
-# Cocotb Makefile — OpenSBI v1.8.1 boots on the REAL CVA6 from REAL DRAM.
+# Cocotb Makefile — OpenSBI hands off to a real riscv64 Linux kernel on the
+# REAL CVA6 from REAL DRAM.
 #
-# Same DUT as Makefile.cva6-dram-boot (rtl/top/e1_cva6_dram_boot_top.sv) but
-# the preload image is the OpenSBI boot image (shim + real OpenSBI fw_jump +
-# DTB + S-mode payload, assembled by fw/opensbi-cva6-boot/build_boot_image.py)
-# and the DRAM-controller preload window is widened to hold it.  cocotb scrapes
-# the ns16550a UART TX stream and asserts the OpenSBI banner (and the S-mode
-# handoff marker) appears.
-#
-# Reuses the CVA6 flist expansion + Verilator-lowering patches from
-# Makefile.cva6-dram-boot's machinery.
+# Same DUT as Makefile.opensbi-cva6-boot (rtl/top/e1_cva6_dram_boot_top.sv) with
+# the vendored axi_riscv_atomics filter, but the preload image is the Linux boot
+# image (OpenSBI fw_jump -> kernel Image @0x80200000 + initramfs, assembled by
+# fw/linux-cva6-boot/build_linux_boot_image.py) and the DRAM-controller preload
+# window is grown to hold the ~24 MiB kernel.  cocotb scrapes the ns16550a UART
+# TX stream and records the furthest Linux boot marker reached.
 
 TOPLEVEL_LANG ?= verilog
 SIM           ?= verilator
@@ -29,7 +27,6 @@ export VERILATOR_TRACE
 PLUSARGS += +trace
 endif
 
-# Apply the tracked CVA6 Verilator-lowering patches just in time.
 ifeq ($(CVA6_SKIP_LOCAL_PATCHES),)
 CVA6_PATCH_RC := $(shell $(REPO)/scripts/apply_cva6_patches.sh >&2 && echo OK || echo FAIL)
 ifneq ($(CVA6_PATCH_RC),OK)
@@ -56,12 +53,8 @@ endif
 CVA6_INCDIRS := $(shell cat $(CVA6_INCDIR_OUT) | tr '\n' ' ')
 CVA6_FILES   := $(shell cat $(CVA6_FLIST_OUT))
 
-# Vendored pulp-platform axi_riscv_atomics filter (CVA6's own vendor tree).
-# Its common_cells / axi_pkg dependencies (axi_pkg, stream_arbiter,
-# stream_arbiter_flushable, rr_arb_tree, lzc, cf_math_pkg, counter, fifo_v3)
-# are already compiled by the CVA6 flist ($(CVA6_FILES), listed first below),
-# so only the atomics leaves are added here.  The interface-style _wrap modules
-# are intentionally omitted; e1_axi4_riscv_atomics drives the flat-port module.
+# Vendored pulp-platform axi_riscv_atomics filter (CVA6's own vendor tree); its
+# common_cells / axi_pkg deps are already compiled by the CVA6 flist.
 CVA6_ATOMICS_DIR := $(CVA6_REPO_DIR)/vendor/pulp-platform/axi_riscv_atomics/src
 ATOMICS_SOURCES := \
 	$(CVA6_ATOMICS_DIR)/axi_res_tbl.sv \
@@ -70,8 +63,6 @@ ATOMICS_SOURCES := \
 	$(CVA6_ATOMICS_DIR)/axi_riscv_lrsc.sv \
 	$(CVA6_ATOMICS_DIR)/axi_riscv_atomics.sv
 
-# E1 SoC RTL: packages first, then leaves (incl. the ns16550a UART), then
-# adapters + the boot top.
 E1_SOURCES := \
 	$(REPO)/rtl/interconnect/axi4/e1_axi4_pkg.sv \
 	$(REPO)/rtl/interconnect/axi4/e1_axi4_interconnect.sv \
@@ -90,17 +81,20 @@ E1_SOURCES := \
 VERILOG_SOURCES := $(CVA6_FILES) $(E1_SOURCES)
 
 TOPLEVEL ?= e1_cva6_dram_boot_top
-MODULE   ?= test_opensbi_cva6_boot
+MODULE   ?= test_linux_boot_cva6
 PYTHON   ?= python3
 
 COMPILE_ARGS += +define+E1_HAVE_CVA6 +define+WT_DCACHE
-# Widen the DRAM-controller preload window to hold the OpenSBI boot image, and
-# boot CVA6 into the entry shim above the OpenSBI image (so OpenSBI keeps its
-# aligned FW_TEXT_START=0x8000_0000).  Must match fw/opensbi-cva6-boot/
-# build_boot_image.py (SHIM_ADDR, image size).
-COMPILE_ARGS += -GDRAM_PRELOAD_BEATS=40960
-# Full 64-bit literal: a bare 0x80080000 is sign-extended to 0xffffffff80080000.
-COMPILE_ARGS += -GCVA6_BOOT_ADDR=64\'h0000000080080000
+# Preload window large enough for the ~24 MiB OpenSBI+kernel+initramfs image
+# (build_linux_boot_image.py reports preload_beats_required ~1.58M beats); the
+# shim sits at the top of that image and is the CVA6 reset vector.  Must stay
+# >= the builder's image_beats.
+DRAM_PRELOAD_BEATS ?= 1600000
+COMPILE_ARGS += -GDRAM_PRELOAD_BEATS=$(DRAM_PRELOAD_BEATS)
+# CVA6 boots into the entry shim at the top of the assembled image (full 64-bit
+# literal so it is not sign-extended); the shim jumps to OpenSBI _fw_start.
+LINUX_SHIM_ADDR ?= 64\'h0000000081810000
+COMPILE_ARGS += -GCVA6_BOOT_ADDR=$(LINUX_SHIM_ADDR)
 
 EXTRA_ARGS += $(CVA6_INCDIRS)
 EXTRA_ARGS += \

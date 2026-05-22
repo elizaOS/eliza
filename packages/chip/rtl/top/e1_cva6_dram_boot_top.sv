@@ -263,12 +263,17 @@ module e1_cva6_dram_boot_top
     );
 
     // ----------------------------------------------------------------------
-    // AXI4 atomics adapter.  CVA6 emits RISC-V `amo*` as AXI5 AWATOP atomic
-    // writes that expect the old value returned on R; the downstream fabric +
-    // DRAM controller have no atomic support, so this adapter resolves each
-    // atomic into a read-modify-write and synthesises the R response.  Normal
-    // (atop==0) traffic passes through transparently.  Without this, OpenSBI's
-    // boot lottery `amoswap.w` never gets its R response and the core deadlocks.
+    // AXI4 atomics filter — the vendored pulp-platform `axi_riscv_atomics`
+    // (CVA6's own vendor tree), wrapped by e1_axi4_riscv_atomics.  CVA6 emits
+    // RISC-V `amo*` as AXI5 AWATOP atomic writes and lr/sc as AxLOCK exclusive
+    // accesses; the downstream fabric + DRAM controller have no atomic or
+    // exclusive support.  The filter resolves every AMO into a read-modify-write
+    // and every LR/SC against a real reservation table per the RVWMO model, so
+    // it emits only plain AXI4 (atop==0, lock==0) downstream AND preserves the
+    // serialized-atomics ordering CVA6's wt_axi_adapter assumes (the bespoke
+    // read-modify-write adapter approximated that ordering and tripped CVA6's
+    // internal write-ID FIFO assertion once post-banner stores interleave with
+    // lr/sc).
     // ----------------------------------------------------------------------
     logic [CVA6_ID_W-1:0]       a_ar_id;
     logic [CVA6_ADDR_W-1:0]     a_ar_addr;
@@ -311,7 +316,7 @@ module e1_cva6_dram_boot_top
     logic [CVA6_USER_W-1:0]     a_b_user;
     logic                       a_b_valid, a_b_ready;
 
-    e1_axi4_amo_adapter #(
+    e1_axi4_riscv_atomics #(
         .ID_W   (CVA6_ID_W),
         .ADDR_W (CVA6_ADDR_W),
         .DATA_W (CVA6_DATA_W),
