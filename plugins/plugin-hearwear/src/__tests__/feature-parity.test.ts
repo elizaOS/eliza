@@ -72,7 +72,7 @@ const ALL_XR_VIEW_IDS = [
   "trajectory-logger",
   "model-tester",
   "smartglasses",
-  "hearwear",
+  "facewear",
 ] as const;
 
 async function callViewHostRoute(input: unknown) {
