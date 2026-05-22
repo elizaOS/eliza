@@ -1,6 +1,36 @@
 # elizaOS USB Installer Handoff
 
-Last updated: 2026-05-20
+Last updated: 2026-05-22
+
+## 2026-05-22 Current State
+
+- Canonical Linux build tree: `packages/os/linux/elizaos`.
+- The previous `packages/os/linux/variants/milady-tails` build wrapper was
+  removed from `origin/develop` by the Linux consolidation work. Do not
+  resurrect that removed fork while updating USB installer work.
+- Current USB installer package: `packages/os/usb-installer`.
+- Current validation worktree:
+  `/home/nubs/Git/iqlabs/elizaos-7871-develop-clean-20260522`.
+- Current validated base: `origin/develop@323114515a`.
+- Current PR being cleaned up: #7871,
+  https://github.com/elizaOS/eliza/pull/7871.
+
+Local validation on 2026-05-22:
+
+- `bun install --frozen-lockfile` passed with no tracked package or lockfile
+  changes.
+- `bun run --cwd packages/os/usb-installer typecheck` passed.
+- `bun run --cwd packages/os/usb-installer test` passed: 9 files passed, 1
+  skipped; 81 tests passed, 1 skipped.
+- `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
+  against a disposable `scsi_debug` removable block device, including write,
+  sync, readback, and SHA-256 verification.
+- `bun run --cwd packages/os/usb-installer build` passed.
+- `make -C packages/os/linux/elizaos lint` passed.
+
+Hardware caveat: this is code, build, and Linux virtual-block proof. It is not
+a substitute for flashing a final signed image to a physical USB drive and
+booting it on real hardware.
 
 ## Current Branch
 

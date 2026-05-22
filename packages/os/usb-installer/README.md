@@ -107,7 +107,7 @@ Linux:
 
 - Enumerates block devices with `lsblk --json --bytes`.
 - Blocks removable disks that are mounted as the current root/live-boot media,
-  so an elizaOS/Tails live USB cannot overwrite itself.
+  so an elizaOS Live USB cannot overwrite itself.
 - Unmounts mounted child partitions before writing.
 - Writes through `pkexec`, cached/allowed `sudo`, `kdesu`, or `doas` plus `dd`.
 
@@ -137,3 +137,17 @@ Remaining production hardening:
   policy.
 - Add readback verification beyond `sync`/eject/status completion.
 - Add packaged-app launch smoke tests and platform hardware/VM write evidence.
+
+## Latest Local Validation
+
+2026-05-22, on the consolidated `packages/os/linux/elizaos` tree from
+`origin/develop@323114515a`:
+
+- `bun run --cwd packages/os/usb-installer typecheck`
+- `bun run --cwd packages/os/usb-installer test` — 9 files passed, 1 skipped;
+  81 tests passed, 1 skipped.
+- `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` — passed
+  against a disposable `scsi_debug` removable block device with readback
+  SHA-256 verification.
+- `bun run --cwd packages/os/usb-installer build`
+- `make -C packages/os/linux/elizaos lint`
