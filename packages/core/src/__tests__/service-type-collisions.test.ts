@@ -62,6 +62,29 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 		},
 	],
 	[
+		"capability-router",
+		{
+			reason:
+				"Capability router implementations intentionally share the router slot during the P0/P1 migration; runtime/config selects the concrete local, E2B, or remote implementation.",
+			classes: new Set([
+				"packages/core/src/services/runtime-capability-service.ts:RuntimeCapabilityService",
+				"packages/agent/src/services/e2b-capability-router.ts:E2BRemoteCapabilityRouterService",
+				"packages/agent/src/services/remote-capability-router.ts:RemoteCapabilityRouterService",
+			]),
+		},
+	],
+	[
+		"xr-session",
+		{
+			reason:
+				"plugin-hearwear carries the XR session compatibility service while plugin-xr owns the standalone XR plugin; they share one session slot and should not be active together.",
+			classes: new Set([
+				"plugins/plugin-hearwear/src/services/xr-session-service.ts:XRSessionService",
+				"plugins/plugin-xr/src/services/xr-session-service.ts:XRSessionService",
+			]),
+		},
+	],
+	[
 		"discord-local",
 		{
 			reason:
