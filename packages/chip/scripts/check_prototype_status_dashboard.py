@@ -19,6 +19,7 @@ VOLATILE_BUILD_OUTPUT_SUBSYSTEMS = {
     "qemu",
     "renode",
     "benchmarks",
+    "npu-ml-proof",
     "release-pipeline",
 }
 

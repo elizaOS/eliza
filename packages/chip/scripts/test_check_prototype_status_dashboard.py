@@ -87,6 +87,19 @@ class PrototypeStatusDashboardTest(unittest.TestCase):
         }
         self.assertTrue(conservative_snapshot_allowed("benchmarks", status, row))
 
+    def test_allows_npu_ml_proof_to_remain_source_only_conservative(self) -> None:
+        status = {
+            "status": "pass",
+            "evidence_class": "generated_artifact",
+            "next_step": "none",
+        }
+        row = {
+            "Status": "`BLOCK`",
+            "Evidence class": "`tool_blocker`",
+            "Next action": "`make mvp-npu-ml-evidence-check`",
+        }
+        self.assertTrue(conservative_snapshot_allowed("npu-ml-proof", status, row))
+
 
 if __name__ == "__main__":
     unittest.main()

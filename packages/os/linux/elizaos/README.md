@@ -89,10 +89,13 @@ No promoted artifact exists yet — the manifest template carries
 
 This is the active, canonical Linux build. The build pipeline, multi-arch
 config, branding overlay, `secure` hardening profile, and release-manifest
-gate are in the tree. A riscv64 candidate ISO has qemu-virt boot evidence
-under `evidence/qemu_virt_boot.json`, including GRUB EFI, Linux, local curl
-health, agent-ready, and terminal TUI smoke markers. amd64 and arm64 still
-need produced ISO evidence before release promotion. See
+gate are in the tree. The checked-in riscv64 release manifest is intentionally
+`planned`: promotion remains blocked until a local build fills artifact
+metadata and archives qemu-virt, GRUB EFI, local curl health, agent-ready, and
+terminal TUI smoke transcripts. The existing `evidence/qemu_virt_boot.json`
+records the prior local qemu-virt summary only; it is not promoted release
+evidence without its matching transcript and ISO artifact. amd64 and arm64
+still need produced ISO evidence before release promotion. See
 `packages/os/CLAUDE.md` for the distribution-channel and promotion policy.
 
 ## License

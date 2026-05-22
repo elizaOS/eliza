@@ -401,20 +401,20 @@ echo
 echo "--- step 5/5: manifest ---"
 TEMPLATE="${HERE}/manifest.json.template"
 if [ ! -f "${TEMPLATE}" ]; then
-    echo "WARN: ${TEMPLATE} missing — skipping manifest emission." >&2
-else
-    SHA256="$(awk '{print $1}' "${OUT}/${ARTIFACT_BASENAME}.iso.sha256")"
-    sed \
-        -e "s|@@ARCH@@|${ARCH}|g" \
-        -e "s|@@PROFILE@@|${PROFILE}|g" \
-        -e "s|@@FILENAME@@|${ARTIFACT_BASENAME}.iso|g" \
-        -e "s|@@BUILD_TIMESTAMP@@|${BUILD_TS}|g" \
-        -e "s|@@SHA256@@|${SHA256}|g" \
-        -e "s|@@SIZE_BYTES@@|${ISO_BYTES}|g" \
-        "${TEMPLATE}" > "${OUT}/${ARTIFACT_BASENAME}.manifest.json"
-    python3 -c "import json,sys; json.load(open('${OUT}/${ARTIFACT_BASENAME}.manifest.json'))"
-    echo "    manifest: ${OUT}/${ARTIFACT_BASENAME}.manifest.json"
+    echo "ERROR: ${TEMPLATE} missing; refusing to emit an ISO without release metadata." >&2
+    exit 3
 fi
+SHA256="$(awk '{print $1}' "${OUT}/${ARTIFACT_BASENAME}.iso.sha256")"
+sed \
+    -e "s|@@ARCH@@|${ARCH}|g" \
+    -e "s|@@PROFILE@@|${PROFILE}|g" \
+    -e "s|@@FILENAME@@|${ARTIFACT_BASENAME}.iso|g" \
+    -e "s|@@BUILD_TIMESTAMP@@|${BUILD_TS}|g" \
+    -e "s|@@SHA256@@|${SHA256}|g" \
+    -e "s|@@SIZE_BYTES@@|${ISO_BYTES}|g" \
+    "${TEMPLATE}" > "${OUT}/${ARTIFACT_BASENAME}.manifest.json"
+python3 -c "import json,sys; json.load(open('${OUT}/${ARTIFACT_BASENAME}.manifest.json'))"
+echo "    manifest: ${OUT}/${ARTIFACT_BASENAME}.manifest.json"
 
 echo
 echo "=== done ==="
