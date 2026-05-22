@@ -987,7 +987,7 @@ describe("SubAgentRouter", () => {
       }
     });
 
-    it("rejects mapped app URLs whose local target was not written this session", async () => {
+    it("rejects mapped app URLs whose local target was not written this session by default", async () => {
       const tmpRoot = fs.mkdtempSync(
         path.join(os.tmpdir(), "sub-agent-router-"),
       );
@@ -1016,7 +1016,6 @@ describe("SubAgentRouter", () => {
                 {
                   urlPrefix: "https://example.test/apps/",
                   localPath: "data/apps/",
-                  requireFresh: true,
                 },
               ],
             },
@@ -1046,7 +1045,7 @@ describe("SubAgentRouter", () => {
       }
     });
 
-    it("does not reject a reachable mapped app URL for stale local mtime unless freshness is required", async () => {
+    it("does not reject a reachable mapped app URL for stale local mtime when freshness is explicitly disabled", async () => {
       const tmpRoot = fs.mkdtempSync(
         path.join(os.tmpdir(), "sub-agent-router-"),
       );
@@ -1076,6 +1075,7 @@ describe("SubAgentRouter", () => {
                 {
                   urlPrefix: "https://example.test/apps/",
                   localPath: "data/apps/",
+                  requireFresh: false,
                 },
               ],
             },

@@ -1551,7 +1551,7 @@ function verifyMappedLocalUrl(
     return verifyLocalTarget(
       localTarget,
       routeVerification.sessionStartedAtMs,
-      mapping.requireFresh === true,
+      mapping.requireFresh !== false,
     );
   }
   return undefined;
