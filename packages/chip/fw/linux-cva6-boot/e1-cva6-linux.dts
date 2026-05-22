@@ -26,7 +26,7 @@
 
 	chosen {
 		stdout-path = "/soc/serial@10001000";
-		bootargs = "console=ttyS0,115200 earlycon=uart8250,mmio,0x10001000 keep_bootcon panic=-1 rdinit=/init";
+		bootargs = "console=ttyS0,115200 earlycon=uart8250,mmio,0x10001000 keep_bootcon panic=-1 rdinit=/init lpj=10000";
 		/*
 		 * No linux,initrd-start/-end: the trimmed kernel carries the
 		 * initramfs as a builtin archive (CONFIG_INITRAMFS_SOURCE), so
@@ -59,14 +59,17 @@
 	memory@80000000 {
 		device_type = "memory";
 		/*
-		 * 128 MiB.  The boot top's fabric decodes 256 MiB of DRAM, and a
-		 * 2 MiB kernel + builtin initramfs needs only a fraction of that;
-		 * advertising 128 MiB (rather than the full window) keeps the
-		 * kernel's early mem_init / page-struct setup — a cycle-dominant
-		 * phase on the slow behavioural DRAM model — small enough that the
-		 * bounded Verilator run reaches userland in a tractable cycle count.
+		 * 32 MiB.  The boot top's fabric decodes 256 MiB and the
+		 * e1_dram_ctrl advertises 2 GiB capacity, both of which cover this
+		 * window; advertising only 32 MiB to Linux is the smallest size a
+		 * 2 MiB kernel + builtin initramfs boots in, and it minimises the
+		 * page-struct / memmap init the kernel walks during mem_init — the
+		 * cycle-dominant, output-silent phase on the behavioural DRAM model.
+		 * Fewer advertised pages -> far fewer DRAM accesses -> the bounded
+		 * Verilator run reaches userland in a tractable cycle count.  This
+		 * is a sim boot-functionality config, not the board memory map.
 		 */
-		reg = <0x0 0x80000000 0x0 0x08000000>;
+		reg = <0x0 0x80000000 0x0 0x02000000>;
 	};
 
 	soc {

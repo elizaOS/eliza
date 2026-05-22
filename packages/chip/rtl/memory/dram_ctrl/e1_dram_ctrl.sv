@@ -197,6 +197,34 @@ module e1_dram_ctrl
     assign mem_capacity_bytes = MEM_CAPACITY_BYTES;
 
     // ------------------------------------------------------------------
+    // SIM-ONLY FAST FUNCTIONAL MODE (`+E1_DRAM_FAST`).
+    //
+    // NOT TIMING-ACCURATE.  When this plusarg is supplied, the open-row /
+    // row-miss / write / tCCD latency model is collapsed to a single cycle so
+    // a long behavioural-DRAM-bound Verilator run (e.g. a full Linux boot to
+    // userland, whose mem-init phase is latency-bound across tens of millions
+    // of zero-output cycles) completes inside a bounded sim wall-time.  The
+    // AXI4 protocol, ordering, address decode, and data path are unchanged —
+    // only the cycle-cost of each access is removed.  The DEFAULT (no plusarg)
+    // keeps the realistic DRAMsim3-derived LPDDR latency as the fidelity
+    // reference.  This flag is gated behind `ifndef SYNTHESIS` and has no
+    // effect on synthesis or on any run that does not request it.
+    // ------------------------------------------------------------------
+    logic dram_fast;
+`ifndef SYNTHESIS
+    initial begin : dram_fast_cfg
+        dram_fast = ($test$plusargs("E1_DRAM_FAST") != 0);
+    end
+`else
+    assign dram_fast = 1'b0;
+`endif
+
+    // Collapse a modelled latency to a single cycle in fast functional mode.
+    function automatic logic [15:0] eff_lat(input logic [15:0] lat);
+        eff_lat = dram_fast ? 16'd1 : lat;
+    endfunction
+
+    // ------------------------------------------------------------------
     // Address decode helpers.  in_range() implements the fail-closed range
     // check; out-of-range accesses return DECERR.  bank_of()/row_of()
     // extract bank/row indices used by the open-row latency model.
@@ -531,8 +559,9 @@ module e1_dram_ctrl
                         w_size_q  <= s_awsize;
                         w_burst_q <= s_awburst;
                         w_oob_q   <= !in_range(s_awaddr);
-                        w_lat     <= access_latency(1'b1, s_awaddr, w_row_valid,
-                                                    w_open_bank, w_open_row);
+                        w_lat     <= eff_lat(access_latency(1'b1, s_awaddr,
+                                                w_row_valid, w_open_bank,
+                                                w_open_row));
                         w_state   <= W_ROW_LAT;
                     end
                 end
@@ -557,7 +586,7 @@ module e1_dram_ctrl
                         end
                         w_addr_q <= next_addr(w_base_q, w_addr_q, w_len_q, w_size_q, w_burst_q);
                         if (s_wlast) begin
-                            w_lat   <= WRITE_LATENCY[15:0];
+                            w_lat   <= eff_lat(WRITE_LATENCY[15:0]);
                             w_state <= W_RESP_LAT;
                         end
                     end
@@ -686,8 +715,9 @@ module e1_dram_ctrl
                         r_size_q   <= aq_size[aq_rptr];
                         r_burst_q  <= aq_burst[aq_rptr];
                         r_beat_idx <= '0;
-                        r_lat      <= access_latency(1'b0, aq_addr[aq_rptr], r_row_valid,
-                                                     r_open_bank, r_open_row);
+                        r_lat      <= eff_lat(access_latency(1'b0,
+                                                aq_addr[aq_rptr], r_row_valid,
+                                                r_open_bank, r_open_row));
                         r_state    <= R_ROW_LAT;
                     end
                 end
@@ -728,7 +758,8 @@ module e1_dram_ctrl
                                                     r_size_q, r_burst_q);
                             r_beat_idx <= r_beat_idx + 1'b1;
                             s_rvalid   <= 1'b0;
-                            r_lat      <= (TCCD_CYCLES > 1) ? (TCCD_CYCLES[15:0] - 16'd1) : 16'd0;
+                            r_lat      <= dram_fast ? 16'd0 :
+                                          ((TCCD_CYCLES > 1) ? (TCCD_CYCLES[15:0] - 16'd1) : 16'd0);
                             r_state    <= R_BEAT_GAP;
                         end
                     end

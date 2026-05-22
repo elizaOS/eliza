@@ -96,6 +96,25 @@ COMPILE_ARGS += -GDRAM_PRELOAD_BEATS=$(DRAM_PRELOAD_BEATS)
 LINUX_SHIM_ADDR ?= 64\'h0000000081000000
 COMPILE_ARGS += -GCVA6_BOOT_ADDR=$(LINUX_SHIM_ADDR)
 
+# --- FAST FUNCTIONAL BOOT CONFIG (E1_BOOT_FAST=1) --------------------------
+# Sim-only performance config that lets the full OpenSBI -> Linux -> userland
+# boot fit a bounded Verilator wall-time.  This is a BOOT-FUNCTIONALITY proof,
+# NOT a timing/perf claim:
+#   * +E1_DRAM_FAST collapses the behavioural DRAM open-row/refresh latency to
+#     one cycle (the kernel mem-init phase is latency-bound), with the AXI4
+#     protocol / ordering / data path left intact.
+#   * Verilator builds the model C++ at -O2 with x-assign/x-initial fast
+#     (deterministic zero-fill, no random X) and multi-threaded evaluation,
+#     raising cycles/s.
+# The realistic-latency path (no E1_BOOT_FAST) stays the fidelity reference.
+ifeq ($(E1_BOOT_FAST),1)
+PLUSARGS += +E1_DRAM_FAST
+EXTRA_ARGS += --x-assign fast --x-initial fast
+E1_VERILATOR_THREADS ?= 4
+EXTRA_ARGS += --threads $(E1_VERILATOR_THREADS)
+BUILD_ARGS += OPT_FAST="-O2" OPT_SLOW="-O1"
+endif
+
 EXTRA_ARGS += $(CVA6_INCDIRS)
 EXTRA_ARGS += \
 	-Wno-fatal -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM \
