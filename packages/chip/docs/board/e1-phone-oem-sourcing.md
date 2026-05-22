@@ -24,7 +24,7 @@ Target geometry:
 - Active area: 68.04 x 120.96 mm.
 - TFT outline target: about 70-71 x 129 mm.
 - Touch/lens assembly target: about 77 x 152 x 3.4 mm.
-- Device envelope target: 78.0 x 153.6 x 11.2 mm flush-back before final cover-glass and
+- Device envelope target: 78.0 x 153.6 x 11.8 mm flush-back before final cover-glass and
   gasket tolerance stack. This contains the 77.1 x 151.77 x 3.39 mm
   Chenghao-class CTP outline with first-pass assembly clearance.
 - Rigid PCB bounding box target: 64 x 132 mm, with battery window.
@@ -138,7 +138,7 @@ Required before enclosure or schematic freeze:
   curve.
 - Exact connector pinout and mating part, or a soldered-pack variant decision.
 - Battery cavity decision: enlarge the cavity, reduce capacity, or source a
-  custom narrow pack whose drawing fits the 78.0 x 153.6 x 11.2 mm flush-back enclosure.
+  custom narrow pack whose drawing fits the 78.0 x 153.6 x 11.8 mm flush-back enclosure.
 - Charge-current and thermal-soak validation against the MAX77860 charge path
   and 43 C skin-temperature limit.
 

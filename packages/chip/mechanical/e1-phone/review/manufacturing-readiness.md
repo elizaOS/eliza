@@ -19,6 +19,12 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
 - PASS: `compact_envelope_optimization`
   Evidence: compactness-optimization.json, compactness-optimization.md, compactness-optimization.png, compactness-optimization.svg, device_compactness, screen_mount_margin, pcb_battery_non_overlap
   Remaining: Envelope is optimized against current EVT0 supplier envelopes only.; Need supplier STEP and routed PCB before proving no further local reduction is possible.
+- PASS: `battery_swell_management`
+  Evidence: battery_pouch, battery_back_void_foam_pad, battery_display_and_wall_clearance, battery_back_void_foam_management, battery-swell-management.json, battery-swell-management.md
+  Remaining: CAD now models a compressible back-void foam pad, but supplier battery swelling and foam compression-set data are still missing.; Need physical thermal aging, drop, and pouch-preload validation before battery release.
+- PASS: `component_selection_review`
+  Evidence: component-selection-review.json, component-selection-review.md, screen_mount_and_connection, usb_c_insertion_envelope, button_force_and_travel, camera_optical_seal_stack, camera_speaker_behind_glass
+  Remaining: Component review reconciles current CAD envelopes and selected off-the-shelf candidates only.; Need supplier drawings, STEP/B-rep models, samples, live procurement quotes, and lab validation before sourcing or tooling release.
 - PASS: `screen_stack`
   Evidence: screen_cover_glass, display_lcm, screen_adhesive_top, display_fpc_connector, screen_mount_and_connection, interface-validation.json, interface-validation.md, display-validation.json, display-validation.md, display-results-template.csv, display-results-review.json, display-results-review.md, mechanical-integration-sim.json, mechanical-integration-sim.md
   Remaining: Need supplier drawing and exact FPC exit direction.; Need verified touch/display pinout and bend test with real sample.; Need populated display/touch bond, luminance, touch-grid, drop, and bring-up results.
@@ -65,16 +71,16 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
   Evidence: environmental-validation.json, environmental-validation.md, environmental-results-template.csv, environmental-results-review.json, environmental-results-review.md
   Remaining: No populated thermal, RF, SAR pre-scan, drop, dust, or splash lab rows are present yet.; Need measured passing environmental data before claiming manufacturable environmental readiness.
 - PASS: `injection_mold_tooling`
-  Evidence: mold_sprue_bushing, mold_primary_runner, mold_left_submarine_gate, mold_right_submarine_gate, mold_runner_gate_model, mold_ejector_cooling_model, injection-molding-dfm.json, injection-molding-dfm.md, mold-process-window.json, mold-process-window.md, toolmaker-signoff-package.json, toolmaker-signoff-package.md, toolmaker-signoff-response-template.csv, toolmaker-signoff-review.json, toolmaker-signoff-review.md
+  Evidence: mold_sprue_bushing, mold_primary_runner, mold_left_submarine_gate, mold_right_submarine_gate, mold_runner_gate_model, mold_ejector_cooling_model, injection-molding-dfm.json, injection-molding-dfm.md, mold-process-window.json, mold-process-window.md, tooling-action-register.json, tooling-action-register.csv, tooling-action-register.md, toolmaker-signoff-package.json, toolmaker-signoff-package.md, toolmaker-signoff-response-template.csv, toolmaker-signoff-review.json, toolmaker-signoff-review.md
   Remaining: Runner/gate/ejector/cooling geometry and process window are CAD DFM proxies, not toolmaker-approved steel design.; Need mold-flow/fill/pack/warp analysis, first-shot data, and toolmaker review.
 - PASS: `toolmaker_moldflow_signoff`
   Evidence: toolmaker-signoff-package.json, toolmaker-signoff-package.md, toolmaker-signoff-response-template.csv, toolmaker-signoff-review.json, toolmaker-signoff-review.md
   Remaining: No mold-flow report, toolmaker gate/ejector/cooling markup, or CMF signoff has been returned.; Need signed toolmaker response before steel release or manufacturing-ready claim.
 - PASS: `review_automation`
-  Evidence: fit-check-report.json, visual-review.json, part-review.json, part-review-contact-sheet.png, visual-decision-report.json, visual-decision-report.md, manufacturing_drawing.json, full_top_down.png, mold_tooling.png, rear_feature_detail.png
+  Evidence: fit-check-report.json, visual-review.json, part-review.json, part-review-contact-sheet.png, part-explode-contact-sheet.png, visual-decision-report.json, visual-decision-report.md, manufacturing_drawing.json, full_top_down.png, component-review-audio.png, component-review-io-buttons.png, component-review-optical.png, mold_tooling.png, rear_feature_detail.png
   Remaining: Visual checks prove nonblank/high-contrast renders and record EVT0 decisions; they do not replace CMF, tooling, or human DFM review.
 - PASS: `visual_aesthetic_decision_log`
-  Evidence: visual-decision-report.json, visual-decision-report.md, full_front_iso.png, full_back_iso.png, rear_feature_detail.png, full_bottom_port.png, component_stack.png, mold_tooling.png
+  Evidence: visual-decision-report.json, visual-decision-report.md, full_front_iso.png, full_back_iso.png, rear_feature_detail.png, full_bottom_port.png, component_stack.png, component-review-audio.png, component-review-io-buttons.png, component-review-optical.png, mold_tooling.png
   Remaining: CAD render decisions are EVT0 packaging decisions, not CMF lock.; Back-side identity needs dedicated rear feature review before industrial-design freeze.
 - PASS: `assembly_clearance`
   Evidence: assembly-clearance.json, assembly-clearance.md, battery_to_pcb_islands, haptic_to_battery, usb_to_bottom_speaker, front_camera_to_earpiece
@@ -103,6 +109,7 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
 - PASS: `manufacturing_drawing`
 - PASS: `mass_budget`
 - PASS: `compactness_optimization`
+- PASS: `battery_swell_management`
 - PASS: `supplier_lock`
 - PASS: `kicad_mechanical_handoff`
 - PASS: `kicad_placement_reconciliation`
@@ -124,6 +131,7 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
 - PASS: `assembly_clearance`
 - PASS: `injection_molding_dfm`
 - PASS: `mold_process_window`
+- PASS: `tooling_action_register`
 - PASS: `toolmaker_signoff_package`
 - PASS: `tolerance_stack`
 - PASS: `gdt_release_package`
@@ -133,3 +141,4 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
 - PASS: `supplier_rfq_package`
 - PASS: `supplier_response_review`
 - PASS: `part_review`
+- PASS: `component_selection_review`

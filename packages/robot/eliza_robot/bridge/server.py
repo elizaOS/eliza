@@ -7,6 +7,7 @@ import asyncio
 import base64
 import io
 import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -158,6 +159,13 @@ def _coerce_runtime_config(args: argparse.Namespace, config_obj: JsonDict) -> Ru
         if isinstance(trace_log_value, str):
             trace_log_path = trace_log_value
 
+    asimov_livekit_url = getattr(args, "asimov_livekit_url", "") or os.environ.get(
+        "ASIMOV_LIVEKIT_URL", ""
+    )
+    asimov_livekit_token = getattr(args, "asimov_livekit_token", "") or os.environ.get(
+        "ASIMOV_LIVEKIT_TOKEN", ""
+    )
+
     return RuntimeConfig(
         queue_size=queue_size,
         max_commands_per_sec=max_commands_per_sec,
@@ -174,8 +182,8 @@ def _coerce_runtime_config(args: argparse.Namespace, config_obj: JsonDict) -> Ru
         camera_height=getattr(args, "camera_height", 480),
         rosbridge_host=getattr(args, "rosbridge_host", "192.168.1.218"),
         rosbridge_port=getattr(args, "rosbridge_port", 9090),
-        asimov_livekit_url=getattr(args, "asimov_livekit_url", ""),
-        asimov_livekit_token=getattr(args, "asimov_livekit_token", ""),
+        asimov_livekit_url=asimov_livekit_url,
+        asimov_livekit_token=asimov_livekit_token,
     )
 
 

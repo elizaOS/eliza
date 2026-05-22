@@ -1578,6 +1578,21 @@ def golden_gemm_s8(a, b):
 
 
 def golden_gemm_s4(a, b):
+    """Reference INT4 GEMM over decoded signed-INT4 operands.
+
+    Both operands are interpreted as already-decoded signed INT4 lanes and must
+    lie in the signed 4-bit range [-8, 7]; the packed-byte encode/decode the
+    hardware path performs is exercised by `E1NpuRuntime.gemm_s4`. Enforcing the
+    range here keeps the golden reference on the same ABI boundary as the
+    runtime instead of silently accepting INT8-range inputs.
+    """
+    for name, matrix in (("a", a), ("b", b)):
+        for row in matrix:
+            for value in row:
+                if not -8 <= value <= 7:
+                    raise ValueError(
+                        f"golden_gemm_s4 {name} value {value} outside signed INT4 range"
+                    )
     return golden_gemm_s8(a, b)
 
 
@@ -1645,6 +1660,3 @@ def golden_vrelu_s8(values: list[int]) -> list[int]:
     if any(not -128 <= value <= 127 for value in values):
         raise ValueError("VRELU_S8 input outside signed INT8 range")
     return [max(0, value) for value in values]
-
-
-HelloNpuRuntime = E1NpuRuntime

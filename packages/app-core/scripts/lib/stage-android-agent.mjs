@@ -21,7 +21,7 @@
  *   arm64-v8a/libstdc++.so.6.0.33
  *   arm64-v8a/libgcc_s.so.1
  *   riscv64/bun                     (cuttlefish riscv64; opt-in via
- *                                    MILADY_BUN_RISCV64_FILE/URL since upstream
+ *                                    ELIZA_BUN_RISCV64_FILE/URL since upstream
  *                                    Bun has no riscv64-linux-musl release)
  *   riscv64/ld-musl-riscv64.so.1
  *   riscv64/libstdc++.so.6.0.33
@@ -322,10 +322,10 @@ function normalizeSha256(value, envName) {
 
 function riscv64BunSha256() {
   return normalizeSha256(
-    process.env.MILADY_BUN_RISCV64_SHA256 ??
+    process.env.ELIZA_BUN_RISCV64_SHA256 ??
       process.env.ELIZA_BUN_RISCV64_SHA256,
-    process.env.MILADY_BUN_RISCV64_SHA256
-      ? "MILADY_BUN_RISCV64_SHA256"
+    process.env.ELIZA_BUN_RISCV64_SHA256
+      ? "ELIZA_BUN_RISCV64_SHA256"
       : "ELIZA_BUN_RISCV64_SHA256",
   );
 }
@@ -342,7 +342,7 @@ function defaultRiscv64BunArtifactPath() {
 
 function riscv64BunFilePath() {
   const configured =
-    process.env.MILADY_BUN_RISCV64_FILE?.trim() ??
+    process.env.ELIZA_BUN_RISCV64_FILE?.trim() ??
     process.env.ELIZA_BUN_RISCV64_FILE?.trim();
   if (configured) return path.resolve(configured);
   const defaultPath = defaultRiscv64BunArtifactPath();
@@ -351,7 +351,7 @@ function riscv64BunFilePath() {
 
 function riscv64BunUrl() {
   return (
-    process.env.MILADY_BUN_RISCV64_URL?.trim() ??
+    process.env.ELIZA_BUN_RISCV64_URL?.trim() ??
     process.env.ELIZA_BUN_RISCV64_URL?.trim() ??
     null
   );
@@ -440,15 +440,15 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
     if (!sourceFile && !url) {
       throw new Error(
         "Bun riscv64 artifact not available: upstream Bun has no riscv64-linux-musl release. " +
-          "Set MILADY_BUN_RISCV64_FILE (or ELIZA_BUN_RISCV64_FILE) to a local " +
-          "self-built zip, or set MILADY_BUN_RISCV64_URL (or ELIZA_BUN_RISCV64_URL) " +
+          "Set ELIZA_BUN_RISCV64_FILE (or ELIZA_BUN_RISCV64_FILE) to a local " +
+          "self-built zip, or set ELIZA_BUN_RISCV64_URL (or ELIZA_BUN_RISCV64_URL) " +
           "to a hosted zip produced by packages/app-core/scripts/bun-riscv64/build.sh, " +
           "or skip the riscv64 ABI for this build.",
       );
     }
     if (!expectedRiscv64Sha256) {
       throw new Error(
-        "Bun riscv64 artifact hash is required: set MILADY_BUN_RISCV64_SHA256 " +
+        "Bun riscv64 artifact hash is required: set ELIZA_BUN_RISCV64_SHA256 " +
           "(or ELIZA_BUN_RISCV64_SHA256) to the SHA-256 of bun-linux-riscv64-musl.zip.",
       );
     }
@@ -837,7 +837,7 @@ export async function stageAndroidAgentRuntime({
     // Soft-skip the riscv64 lane when no local file/URL is set and
     // ELIZA_BUN_RISCV64_REQUIRED is not requested. Upstream Bun has no
     // riscv64-linux-musl release, so by default riscv64 is opt-in (provide
-    // MILADY_BUN_RISCV64_FILE or MILADY_BUN_RISCV64_URL from
+    // ELIZA_BUN_RISCV64_FILE or ELIZA_BUN_RISCV64_URL from
     // packages/app-core/scripts/bun-riscv64/build.sh). The libllama /
     // shim cross-compiles still land their per-ABI artifacts independently
     // — operators iterating on the native side don't have to build Bun
@@ -849,7 +849,7 @@ export async function stageAndroidAgentRuntime({
       const required = process.env.ELIZA_BUN_RISCV64_REQUIRED === "1";
       if (!riscvFile && !riscvUrl && !required) {
         tlog(
-          `Skipping ABI ${androidAbi}: no MILADY_BUN_RISCV64_FILE/URL is set ` +
+          `Skipping ABI ${androidAbi}: no ELIZA_BUN_RISCV64_FILE/URL is set ` +
             `(upstream Bun has no riscv64-linux-musl release). Build with ` +
             `packages/app-core/scripts/bun-riscv64/build.sh and re-run, or set ` +
             `ELIZA_BUN_RISCV64_REQUIRED=1 to ` +

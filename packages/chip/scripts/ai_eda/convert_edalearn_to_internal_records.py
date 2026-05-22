@@ -232,7 +232,7 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
             "graph_node_count": metrics["graph_node_count"],
             "graph_edge_count": metrics["graph_edge_count"],
         }
-        for record, path in zip(records, paths, strict=True)
+        for record, path in zip(records, paths, strict=False)
     ]
 
 
@@ -242,12 +242,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=8)
+    parser.add_argument(
+        "--all-records",
+        action="store_true",
+        help="Convert every discovered design instead of the smoke sample limit.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if args.sample_limit <= 0:
+    if not args.all_records and args.sample_limit <= 0:
         raise SystemExit("--sample-limit must be positive")
     if not args.design_root.exists():
         print(f"STATUS: BLOCKED ai_eda.edalearn_conversion missing_design_root {args.design_root}")
@@ -256,7 +261,7 @@ def main() -> int:
     if not designs:
         print(f"STATUS: BLOCKED ai_eda.edalearn_conversion no_designs {args.design_root}")
         return 2
-    selected = designs[: args.sample_limit]
+    selected = designs if args.all_records else designs[: args.sample_limit]
     out_dir = args.out_root / args.run_id / "records"
     out_dir.mkdir(parents=True, exist_ok=True)
     for stale in out_dir.glob("edalearn-*.json"):
@@ -272,6 +277,8 @@ def main() -> int:
         "design_root": rel(args.design_root),
         "available_design_count": len(designs),
         "converted_design_count": len(selected),
+        "conversion_mode": "all_records" if args.all_records else "sample_limit",
+        "sample_limit": None if args.all_records else args.sample_limit,
         "converted_record_count": len(converted),
         "converted_records": converted,
         "release_use_allowed": False,

@@ -13,11 +13,13 @@ source_artifacts:
   - board/kicad/e1-phone/layout-utilization.yaml
   - board/kicad/e1-phone/placement-interface-matrix.yaml
   - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/evt1-stackup-impedance-coupon-plan.yaml
   - board/kicad/e1-phone/block-netlist.yaml
   - board/kicad/e1-phone/top-bottom-interconnect-plan.yaml
   - board/kicad/e1-phone/evt1-routing-work-package.yaml
   - board/kicad/e1-phone/factory-probe-map.yaml
   - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+  - board/kicad/e1-phone/trial-route-input-matrix.yaml
 
 geometry_pressure:
   board_bbox_mm: {width: 64.0, height: 132.0, area_mm2: 8448.0}
@@ -104,6 +106,8 @@ trial_route_exit_criteria:
     - via_count_and_escape_density_report
     - copper_area_and_return_path_review
     - impedance_coupon_stackup_quote
+    - trial_route_input_matrix_cross_check
+    - evt1_stackup_coupon_plan_cross_check
     - routed_step_clearance_report
   current_status: blocked_no_supplier_footprints_or_trial_route
 

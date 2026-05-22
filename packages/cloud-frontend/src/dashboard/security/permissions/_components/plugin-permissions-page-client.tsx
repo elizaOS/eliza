@@ -8,7 +8,7 @@ import {
 import { Puzzle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, api, apiFetch } from "@/lib/api-client";
+import { api, apiFetch } from "@/lib/api-client";
 import { emitAuditEvent } from "@/lib/security/audit-client";
 
 interface PluginGrant {
@@ -56,6 +56,7 @@ export function PluginPermissionsPageClient() {
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable scope function; running on mount only is intentional
   useEffect(() => {
     void load();
   }, []);

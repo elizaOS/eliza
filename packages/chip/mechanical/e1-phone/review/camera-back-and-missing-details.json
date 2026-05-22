@@ -1,0 +1,76 @@
+{
+  "evidence_class": "cad_estimate_for_evt_planning, not_measured_hardware",
+  "source": {
+    "manifest": "out/assembly-manifest.json",
+    "manifest_entries": 132,
+    "boolean_check": "scripts/check_e1_phone_boolean_interference.py",
+    "boolean_run_date": "2026-05-21",
+    "boolean_overall": "PASS",
+    "boolean_scopes_pass": "11/11",
+    "boolean_unintentional_clashes": 0,
+    "back_outer_plane_z_mm": -5.9,
+    "back_inner_wall_z_mm": -4.7,
+    "device_depth_mm": 11.8
+  },
+  "verdict": {
+    "flush_back_holds": true,
+    "flush_back_max_solid_protrusion_mm": 0.0,
+    "rear_camera_buried": true,
+    "rear_camera_burial_mm": 0.4,
+    "rear_flash_buried": true,
+    "rear_flash_burial_mm": 0.15,
+    "flash_to_lens_window_center_spacing_mm": 8.1,
+    "rear_camera_window_sealed": true,
+    "rear_flash_window_sealed": true,
+    "front_camera_window_sealed": true,
+    "light_leak_path_to_lens": false
+  },
+  "camera_back_checks": [
+    {"check": "rear_camera_lens_window_flush", "value_z_outer_mm": -5.9, "expected": -5.9, "pass": true, "evidence": "manifest bounds"},
+    {"check": "rear_camera_cover_glass_flush", "value_z_outer_mm": -5.9, "pass": true, "evidence": "manifest bounds"},
+    {"check": "rear_camera_window_to_shell_seal", "part": "rear_camera_cover_adhesive_{top,bottom,left,right}", "present": true, "sides": 4, "pass": true},
+    {"check": "rear_camera_module_burial_clearance_mm", "value": 0.4, "required": 0.3, "pass": true, "evidence": "boolean burial"},
+    {"check": "rear_camera_module_to_shell_gap_mm", "value": 0.5, "intersection_mm3": 0.0, "pass": true, "evidence": "boolean"},
+    {"check": "rear_camera_lens_aperture_radial_margin_mm", "value": 0.2, "note": "lens_window_opening_diameter_mm 7.2 vs lens OD 6.8 -> 0.2 mm radial margin", "pass": true, "flag": "B-2", "closed": true},
+    {"check": "rear_camera_light_baffle_coverage", "value": "top+bottom only", "note": "no L/R baffle; L/R face dark interior, flash side covered by septum", "pass": "partial", "flag": "B-1"},
+    {"check": "rear_flash_led_window_flush", "value_z_outer_mm": -5.9, "pass": true},
+    {"check": "rear_flash_led_burial_clearance_mm", "value": 0.15, "required": 0.1, "pass": true, "evidence": "boolean burial"},
+    {"check": "rear_flash_window_to_shell_seal", "part": "rear_flash_window_adhesive_{top,bottom,left,right}", "present": true, "sides": 4, "pass": true, "flag": "B-3", "closed": true},
+    {"check": "flash_to_camera_window_center_spacing_mm", "value": 8.1, "required": 6.0, "hard_floor": 5.0, "pass": true},
+    {"check": "rear_flash_camera_septum_present", "part": "rear_flash_camera_septum", "thickness_mm": 0.6, "z_span_mm": [-4.75, -2.65], "present": true, "pass": true},
+    {"check": "front_camera_black_mask_aperture_vs_lens", "aperture_mm": 5.0, "lens_od_mm": 3.4, "pass": true},
+    {"check": "front_camera_under_glass_to_cover_seal", "part": "front_camera_under_glass_adhesive_{top,bottom,left,right}", "present": true, "sides": 4, "pass": true, "flag": "B-4", "closed": true},
+    {"check": "flush_back_max_solid_protrusion_mm", "value": 0.0, "required": 0.0, "pass": true, "evidence": "boolean flush_back_no_rear_protrusion"}
+  ],
+  "missing_details": [
+    {"item": "Thermal spreader / graphite / SoC thermal pad", "present": false, "severity": "high", "recommendation": "Add a graphite spreader or thermal pad part on SoC/modem; only path to the 43C skin target, currently unbacked."},
+    {"item": "Display ground / EMI foam, conductive gasket", "present": false, "severity": "high", "recommendation": "Add conductive foam/gasket grounding the display metal frame to shield/chassis for emissions + ESD."},
+    {"item": "Mid-frame / display bracket / metal stiffener", "present": false, "severity": "high", "recommendation": "Plastic shell + side frame + 10 bosses + gussets only; no mid-plate. Validate panel-bend stiffness without one or add a metal mid-plate."},
+    {"item": "Antenna carriers / spring contacts / contact pads", "present": false, "severity": "high", "recommendation": "Only RF keepouts + aperture tuner modeled; add LDS carrier and spring-finger/pogo feed contacts to the board."},
+    {"item": "Proximity + ambient-light sensor (front, near earpiece)", "present": false, "severity": "high", "recommendation": "No prox/ALS part; standard phone needs prox (in-call screen-off) + ALS (auto-brightness). Add sensor + front IR/ALS aperture."},
+    {"item": "Battery mounting adhesive / pull-tab", "present": false, "severity": "medium", "recommendation": "Compliant foam shelf present (battery_back_void_foam_pad); add the mounting adhesive layer + service pull-tab."},
+    {"item": "FPC stiffeners", "present": false, "severity": "medium", "recommendation": "Flex tails modeled but no stiffener parts at connector lands; add for ZIF insertion + bend control."},
+    {"item": "Accelerometer/gyro/magnetometer IMU", "present": false, "severity": "medium", "recommendation": "Electrical/board detail; add footprint to PCB. No enclosure CAD volume required."},
+    {"item": "Vibration isolation for the LRA", "present": false, "severity": "medium", "recommendation": "haptic_lra seated rigidly; add an isolation grommet/foam to cut buzz into the shell and drop shock to the actuator."},
+    {"item": "Front-camera under-glass bond ring (seal)", "present": true, "severity": "none", "recommendation": "Closed: front_camera_under_glass_adhesive_{top,bottom,left,right} four-side bond ring seals the under-glass window to the black-mask aperture."},
+    {"item": "Rear flash-window adhesive seal", "present": true, "severity": "none", "recommendation": "Closed: rear_flash_window_adhesive_{top,bottom,left,right} four-side PSA ring seals the flash light-pipe window, matching the rear-camera window seal."},
+    {"item": "ZIF connector actuators", "present": false, "severity": "low", "recommendation": "Connectors modeled as blocks; actuator detail is vendor part data, acceptable at EVT."},
+    {"item": "Notification / status LED + light pipe", "present": false, "severity": "low", "recommendation": "No notification LED in the design; acceptable to omit, but confirm it is a deliberate product decision."},
+    {"item": "Rear-camera left/right light baffle", "present": false, "severity": "low", "recommendation": "Only top/bottom baffles; L/R faces dark interior and the flash side is covered by the septum, so omission is acceptable."},
+    {"item": "EMI shield cans (SoC/PMIC/modem-RF)", "present": true, "severity": "none", "recommendation": "Present: soc_shield_can, pmic_shield_can, radio_shield_can."},
+    {"item": "Cover-glass perimeter adhesive", "present": true, "severity": "none", "recommendation": "Present: screen_adhesive_{top,bottom,left,right}."},
+    {"item": "Cover-glass perimeter cushion", "present": true, "severity": "none", "recommendation": "Present: glass_perimeter_cushion_{top,bottom,left,right} (PORON)."},
+    {"item": "Screw bosses (10) + corner gussets", "present": true, "severity": "none", "recommendation": "Present: orange_screw_boss_1..10 + orange_corner_rib_1..4 (+_leg)."},
+    {"item": "Waterproof mesh on speaker/mic/earpiece ports", "present": true, "severity": "none", "recommendation": "Present: bottom_speaker_dust_mesh, bottom_microphone_mesh_{1,2}, top_microphone_mesh, handset_acoustic_mesh."}
+  ],
+  "missing_counts": {"high": 5, "medium": 4, "low": 3},
+  "closed_flags": {
+    "B-2": "rear camera lens-window radial margin opened to 0.2 mm (lens_window_opening_diameter_mm 7.2)",
+    "B-3": "rear flash light-pipe window 4-side adhesive seal added (rear_flash_window_adhesive_*)",
+    "B-4": "front under-glass camera 4-side bond ring added (front_camera_under_glass_adhesive_*)"
+  },
+  "still_open_geometry_items": {
+    "note": "The 5 remaining high-severity items below are declared in cad/e1_phone_params.yaml (soc_thermal_spreader, soc_thermal_pad, display_ground_foam, mid_frame_stiffener, antenna_feeds + gnss, front_proximity_als) but are not yet emitted by build_parts in generate_e1_phone_cad.py. They are CAD-closeable (no supplier data needed) and tracked as an open generator action; the params intent exists, the solids do not.",
+    "items": ["soc_thermal_spreader+pad", "display_ground_foam", "mid_frame_stiffener", "antenna_spring_feeds+gnss_element", "front_proximity_als+aperture"]
+  }
+}

@@ -43,6 +43,36 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
+    "./kms": {
+      "types": "./dist/kms/index.d.ts",
+      "eliza-source": {
+        "types": "./src/kms/index.ts",
+        "import": "./src/kms/index.ts",
+        "default": "./src/kms/index.ts"
+      },
+      "bun": {
+        "types": "./src/kms/index.ts",
+        "import": "./src/kms/index.ts",
+        "default": "./src/kms/index.ts"
+      },
+      "import": "./dist/kms/index.js",
+      "default": "./dist/kms/index.js"
+    },
+    "./audit": {
+      "types": "./dist/audit/index.d.ts",
+      "eliza-source": {
+        "types": "./src/audit/index.ts",
+        "import": "./src/audit/index.ts",
+        "default": "./src/audit/index.ts"
+      },
+      "bun": {
+        "types": "./src/audit/index.ts",
+        "import": "./src/audit/index.ts",
+        "default": "./src/audit/index.ts"
+      },
+      "import": "./dist/audit/index.js",
+      "default": "./dist/audit/index.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "bun": {

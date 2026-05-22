@@ -8,6 +8,7 @@ import type { TeeEvidence } from "../src/services/tee-evidence.ts";
 import {
   HttpTeeKeyReleaseClient,
   LocalTeeKeyReleaseClient,
+  wrapTeeReleaseKey,
 } from "../src/services/tee-key-release.ts";
 import { evaluateTeeEvidencePolicy } from "../src/services/tee-policy.ts";
 
@@ -190,6 +191,8 @@ async function handleKeyReleaseRequest(
   const payload = JSON.parse(body) as {
     keyId: string;
     context?: string;
+    nonce: string;
+    ephemeralPublicKey: string;
     policy: Parameters<typeof evaluateTeeEvidencePolicy>[1];
     evidence: TeeEvidence;
   };
@@ -206,11 +209,20 @@ async function handleKeyReleaseRequest(
     .update(payload.evidence.measurements?.agent ?? "", "utf8")
     .update(payload.evidence.measurements?.policy ?? "", "utf8")
     .digest("hex");
+  // Wrap the released key to the agent's ephemeral public key so the client's
+  // X25519/HKDF/AES-256-GCM unwrap succeeds (plan §3.2 step 5).
+  const wrappedKey = wrapTeeReleaseKey({
+    keyMaterialHex,
+    agentEphemeralPublicKeyDerBase64: payload.ephemeralPublicKey,
+    nonceHex: payload.nonce,
+  });
   response.writeHead(200, { "content-type": "application/json" });
   response.end(
     JSON.stringify({
       keyId: payload.keyId,
-      keyMaterialHex,
+      wrappedKey,
+      // Echo the client-issued nonce for the replay-binding check.
+      nonce: payload.nonce,
       decision,
     }),
   );

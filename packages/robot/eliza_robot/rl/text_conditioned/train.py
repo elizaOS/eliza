@@ -11,10 +11,10 @@ Two regimes:
                  ~1-3 hours wall-clock on a 16 GB GPU per the Playground
                  research surveys.
 
-The checkpoint format is unified: both regimes write a `.zip`
-(stable-baselines3) + a `manifest.json` that records the curriculum
-version, PCA dim, and active task subset. The bridge's policy.tick
-handler loads the .zip via `eliza_robot.rl.text_conditioned.policy`.
+The checkpoint format is unified at the manifest/policy wrapper boundary:
+smoke SB3 runs write `policy.zip`, ASIMOV full MJX/Brax runs write
+`policy_brax.pkl`, and both write `manifest.json` for
+`eliza_robot.rl.text_conditioned.policy`.
 """
 
 from __future__ import annotations
@@ -206,20 +206,38 @@ def _write_full_training_job(
     (out_dir / "training_job.json").write_text(json.dumps(job, indent=2) + "\n")
     (out_dir / "manifest.template.json").write_text(json.dumps(job["manifest_template"], indent=2) + "\n")
     run_script = out_dir / "run_full_training.sh"
+    package_root = Path(__file__).resolve().parents[3]
     run_script.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
+        "MODE=\"${1:---check}\"\n"
         "JOB_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\n"
-        "PACKAGE_ROOT=\"${ELIZA_ROBOT_PACKAGE_ROOT:-$(pwd)}\"\n"
+        f"PACKAGE_ROOT=\"${{ELIZA_ROBOT_PACKAGE_ROOT:-{package_root}}}\"\n"
         "cd \"$PACKAGE_ROOT\"\n"
         "python3 scripts/validate_asimov1_full_training_job.py --job-dir \"$JOB_DIR\"\n"
-        "python3 scripts/run_asimov1_full_training.py --job-dir \"$JOB_DIR\" --check-only\n"
-        "echo 'ASIMOV-1 full-training package is valid.'\n"
+        "if [[ \"$MODE\" == \"--check\" || \"$MODE\" == \"check\" ]]; then\n"
+        "  python3 scripts/run_asimov1_full_training.py --job-dir \"$JOB_DIR\" --check-only --require-ready\n"
+        "  echo 'ASIMOV-1 full-training package is valid and ready.'\n"
+        "elif [[ \"$MODE\" == \"--train\" || \"$MODE\" == \"train\" ]]; then\n"
+        "  python3 scripts/run_asimov1_full_training.py --job-dir \"$JOB_DIR\"\n"
+        "  python3 scripts/verify_brax_text_policy.py --ckpt \"$JOB_DIR\" --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25\n"
+        f"  python3 scripts/validate_asimov1_production_checkpoint.py \"$JOB_DIR\" --min-steps {total_steps}\n"
+        "  python3 scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt \"$JOB_DIR\" --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200\n"
+        "  python3 scripts/sim_validation_gate.py --profile asimov-1 --checkpoint \"$JOB_DIR\"\n"
+        "else\n"
+        "  echo \"usage: $0 [--check|--train]\" >&2\n"
+        "  exit 64\n"
+        "fi\n"
     )
     run_script.chmod(0o755)
     (out_dir / "README.full_training.md").write_text(
         "# ASIMOV-1 Full Training Job\n\n"
-        "Reproducible ASIMOV-1 text-conditioned PPO/MJX job package.\n"
+        "Reproducible ASIMOV-1 text-conditioned PPO/MJX job package.\n\n"
+        "Run `./run_full_training.sh --check` on a development machine to validate "
+        "the package and installed training dependencies. Run "
+        "`./run_full_training.sh --train` on a GPU training host to start Brax/MJX "
+        "PPO and then execute the policy verifier, production checkpoint "
+        "validator, ASIMOV MJX evaluator, and simulation validation gate.\n"
     )
     return job
 

@@ -1,0 +1,148 @@
+schema: eliza.e1_phone_routed_layout_readiness_binding.v1
+status: blocked_layout_readiness_requires_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance
+date: 2026-05-21
+claim_boundary: >
+  Aggregate routed-layout readiness binding for the E1 phone PCB. This rolls up
+  routed PCB implementation, release outputs, live PCB audit, routed STEP export,
+  enclosure fit, manufacturing, and factory-test gates into one fail-closed
+  layout release contract. It is not a routed PCB, not DRC evidence, not SI/PI/RF
+  signoff, not a fabrication output package, not factory release, and not
+  enclosure-ready proof.
+
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/schematic-capture-readiness-binding.yaml
+  - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+  - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/pcb-implementation-audit.yaml
+  - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/manufacturing-closure.yaml
+  - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
+  - board/kicad/e1-phone/production-factory-release-execution.yaml
+  - board/kicad/e1-phone/board-optimization-scorecard.yaml
+  - board/kicad/e1-phone/layout-optimization-execution.yaml
+  - board/kicad/e1-phone/post-route-validation-binding.yaml
+
+upstream_status:
+  schematic_capture_readiness: blocked_schematic_capture_requires_real_symbols_supplier_pinouts_footprints_erc_and_trial_route
+  routed_pcb_implementation: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
+  routed_release_plan: blocked_routed_release_requires_real_route_and_supplier_outputs
+  pcb_implementation_audit: blocked_live_kicad_pcb_scaffold_audited_not_routed
+  routed_board_step_export: blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
+  enclosure_fit_execution: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+  manufacturing_closure: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
+  factory_production_acceptance: blocked_factory_production_acceptance_requires_routed_outputs_fixture_limits_quotes_and_first_article
+  production_factory_release_execution: blocked_requires_routed_release_supplier_packs_fab_assembly_fixture_and_first_article
+  board_optimization_scorecard: blocked_concept_optimized_but_not_routed_or_enclosure_ready
+  layout_optimization_execution: blocked_concept_layout_optimized_requires_supplier_footprints_trial_route_measurements_and_routed_step
+  post_route_validation_binding: blocked_post_route_validation_requires_routed_drc_si_pi_rf_power_factory_and_enclosure_evidence
+
+current_live_layout_state:
+  board_revision: EVT0-concept
+  required_release_revision: EVT1-routed
+  declared_net_count: 180
+  footprint_count: 87
+  assigned_pad_net_count: 507
+  net_class_count: 16
+  segment_count: 0
+  zone_count: 0
+  keepout_zone_count: 11
+  rf_feed_count: 5
+  test_point_count: 8
+  has_tracks: false
+  has_filled_zones: false
+  has_production_outputs: false
+  concept_placeholder_footprints: 87
+
+release_output_gate:
+  required_output_count: 20
+  present_output_count: 0
+  ready_to_fabricate: false
+  ready_for_enclosure: false
+  ready_for_factory_test: false
+  required_output_ids:
+    - schematic_erc_report
+    - pcb_drc_report
+    - routed_kicad_pcb
+    - filled_zones
+    - gerber_x2
+    - ipc_2581_or_odbpp
+    - nc_drill_slots
+    - stackup_impedance_report
+    - position_file
+    - production_bom_avl
+    - assembly_drawing
+    - split_interconnect_assembly_drawing
+    - board_step_with_supplier_models
+    - enclosure_clearance_report_using_routed_step
+    - si_pi_reports
+    - rf_reports
+    - power_thermal_measurements
+    - factory_test_limits
+    - first_article_traveler
+    - fab_assembler_quote
+
+layout_domain_gate:
+  required_domain_count: 10
+  blocked_domain_count: 10
+  required_domains:
+    - usb_c_power
+    - display_touch
+    - cameras
+    - radios
+    - side_buttons
+    - audio_haptics
+    - split_interconnect
+    - battery
+    - compute_storage
+    - manufacturing
+
+enclosure_gate:
+  requires_routed_board_step: true
+  requires_supplier_3d_models: true
+  requires_routed_clearance_rerun: true
+  requires_full_cad_boolean_interference_pass: true
+  production_step_present: false
+  routed_clearance_passed: false
+
+factory_gate:
+  requires_routed_probe_coordinates: true
+  requires_factory_test_limits: true
+  requires_first_article_traveler: true
+  requires_fab_assembler_quote: true
+  ready_for_factory_test: false
+
+cross_checks:
+  manifest_cites_binding: true
+  live_layout_counts_match_pcb_audit: true
+  routed_release_outputs_all_blocked: true
+  routed_domains_all_fail_closed: true
+  routed_step_contract_blocks_enclosure: true
+  manufacturing_and_factory_gates_remain_blocked: true
+  layout_optimization_remains_concept_only: true
+  fail_closed_until_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance_exist: true
+
+release_blockers:
+  - routed KiCad PCB source is missing
+  - current KiCad PCB is a concept placeholder scaffold
+  - no routed copper segments or filled zones are present in the KiCad PCB
+  - PCB has no routed copper, filled zones, or DRC evidence
+  - production STEP export is missing
+  - supplier component STEP/B-rep models are missing
+  - routed-board clearance rerun is blocked
+  - factory limits for rails, USB-C, radios, display, cameras, audio, buttons, and split interconnect missing
+  - first-article traveler, current limits, stop-on-fail rules, and signoff missing
+
+forbidden_claims:
+  - routed_pcb_ready
+  - layout_ready
+  - drc_clean
+  - si_pi_ready
+  - rf_ready
+  - production_outputs_ready
+  - routed_board_step_ready
+  - factory_test_ready
+  - fabrication_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

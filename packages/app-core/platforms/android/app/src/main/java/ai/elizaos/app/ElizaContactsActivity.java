@@ -29,7 +29,7 @@ public class ElizaContactsActivity extends Activity {
         Uri data = source != null ? source.getData() : null;
         String action = source != null ? source.getAction() : null;
 
-        Uri.Builder route = Uri.parse("ai.elizaos.app://contacts").buildUpon()
+        Uri.Builder route = Uri.parse("elizaos://contacts").buildUpon()
                 .appendQueryParameter("source", "android-contacts");
         if (action != null) {
             route.appendQueryParameter("action", action);

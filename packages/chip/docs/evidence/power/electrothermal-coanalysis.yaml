@@ -1,0 +1,95 @@
+as_of: '2026-05-21T12:41:42.057930Z'
+blocks:
+  - block: cpu_ap_cluster
+    converged_power_w: 1.5599
+    converged_tj_c: 31.52
+    leakage_uplift_w: 0.1599
+    sustained_w_at_ref: 1.4
+  - block: npu
+    converged_power_w: 1.3017
+    converged_tj_c: 30.1
+    leakage_uplift_w: 0.1017
+    sustained_w_at_ref: 1.2
+  - block: lpddr_phy_and_dram
+    converged_power_w: 0.5388
+    converged_tj_c: 29.73
+    leakage_uplift_w: 0.0388
+    sustained_w_at_ref: 0.5
+  - block: display_and_dsi
+    converged_power_w: 0.4332
+    converged_tj_c: 30.0
+    leakage_uplift_w: 0.0332
+    sustained_w_at_ref: 0.4
+  - block: wifi_bt
+    converged_power_w: 0.3238
+    converged_tj_c: 29.82
+    leakage_uplift_w: 0.0238
+    sustained_w_at_ref: 0.3
+  - block: misc_pmic_audio
+    converged_power_w: 0.2119
+    converged_tj_c: 28.76
+    leakage_uplift_w: 0.0119
+    sustained_w_at_ref: 0.2
+check_command: python3 scripts/electrothermal_coanalysis.py --check
+claim_boundary: first_order_electrothermal_planning_coanalysis_no_package_thermal_model_tcad_or_silicon_claim
+fit:
+  max_tj_fit: true
+  steady_state_fit: true
+iterations:
+  - power_w:
+      cpu_ap_cluster: 1.5426
+      display_and_dsi: 0.4303
+      lpddr_phy_and_dram: 0.5357
+      misc_pmic_audio: 0.2111
+      npu: 1.2929
+      wifi_bt: 0.3218
+    temps_c:
+      cpu_ap_cluster: 30.94
+      display_and_dsi: 29.64
+      lpddr_phy_and_dram: 29.4
+      misc_pmic_audio: 28.52
+      npu: 29.72
+      wifi_bt: 29.48
+  - power_w:
+      cpu_ap_cluster: 1.5599
+      display_and_dsi: 0.4332
+      lpddr_phy_and_dram: 0.5388
+      misc_pmic_audio: 0.2119
+      npu: 1.3017
+      wifi_bt: 0.3238
+    temps_c:
+      cpu_ap_cluster: 31.52
+      display_and_dsi: 30.0
+      lpddr_phy_and_dram: 29.73
+      misc_pmic_audio: 28.76
+      npu: 30.1
+      wifi_bt: 29.82
+model_assumptions:
+  fixed_point_iterations: 2
+  leakage_fraction_at_ref: 0.2
+  leakage_k_per_c: 0.069315
+  leakage_t_ref_c: 25.0
+  substrate_coupling_c_per_w: 0.4
+  t_ambient_c: 25.0
+  theta_ja_c_per_w:
+    cpu_ap_cluster: 3.5
+    display_and_dsi: 8.0
+    lpddr_phy_and_dram: 6.0
+    misc_pmic_audio: 10.0
+    npu: 3.0
+    wifi_bt: 10.0
+provenance: power_thermal_model_projection_x_engineering_theta_and_leakage_assumptions
+release_blocker: false
+release_blockers:
+  - Thermal resistances are vapor-chamber phone-class engineering assumptions, not an extracted package thermal model.
+  - Leakage temperature coefficient is a generic advanced-node assumption, not a foundry leakage model or TCAD deck.
+  - No calibrated electrothermal co-simulation (signoff power-grid + thermal solver) has confirmed this fixed point.
+  - Per-block floorplan-aware theta coupling matrix is not extracted.
+release_use: prohibited_until_external_review
+schema: eliza.electrothermal_coanalysis.v1
+status: draft_local_evidence
+totals:
+  converged_total_power_w: 4.3692
+  max_tj_c: 31.52
+  max_tj_envelope_c: 95.0
+  steady_state_envelope_w_high: 6.0

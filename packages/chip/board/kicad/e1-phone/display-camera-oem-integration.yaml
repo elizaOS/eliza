@@ -10,6 +10,7 @@ source_artifacts:
   - package/display/v0-dsi-720x1280.yaml
   - package/camera/oem-mipi-csi-modules.yaml
   - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
   - board/kicad/e1-phone/supplier-source-verification.yaml
   - board/kicad/e1-phone/supplier-rfq-intake.yaml
   - board/kicad/e1-phone/external-interface-design-review.yaml
@@ -17,6 +18,7 @@ source_artifacts:
   - board/kicad/e1-phone/block-netlist.yaml
   - board/kicad/e1-phone/routing-constraints.yaml
   - board/kicad/e1-phone/component-height-step-integration.yaml
+  - board/kicad/e1-phone/display-camera-schematic-net-binding.yaml
 display_oem_context:
   selected_primary:
     vendor: Chenghao Optoelectronic
@@ -79,7 +81,7 @@ display_oem_context:
     current_device_envelope_mm:
       width: 78.0
       height: 153.6
-      max_thickness: 11.2
+      max_thickness: 11.8
     primary_clearance_in_current_envelope_mm:
       width_clearance_mm: 0.9
       height_clearance_mm: 1.83
@@ -87,7 +89,7 @@ display_oem_context:
     recommended_device_envelope_mm:
       width: 78.0
       height: 153.6
-      max_thickness: 11.2
+      max_thickness: 11.8
       basis: primary 5.5 inch Chenghao-class CTP module plus compact flush-back CAD rail margin
   external_interface_review:
     region_mm:

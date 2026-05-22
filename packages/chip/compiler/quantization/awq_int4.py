@@ -14,32 +14,19 @@ activation scale used to reconstruct the dequantized output.
 
 from __future__ import annotations
 
-import json
-import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from ._base import MIN_SCALE, QuantizationManifest
+
 
 @dataclass(frozen=True)
-class AwqInt4Manifest:
+class AwqInt4Manifest(QuantizationManifest):
     schema: str
     group_size: int
     activation_scale: float
     weight_scales: dict[str, list[float]]
     awq_alpha: float
-
-    def to_json(self) -> str:
-        return json.dumps(
-            {
-                "schema": self.schema,
-                "group_size": self.group_size,
-                "activation_scale": self.activation_scale,
-                "weight_scales": self.weight_scales,
-                "awq_alpha": self.awq_alpha,
-            },
-            indent=2,
-            sort_keys=True,
-        )
 
 
 class AwqInt4Calibrator:
@@ -63,17 +50,15 @@ class AwqInt4Calibrator:
         self.group_size = group_size
         self.awq_alpha = awq_alpha
         self._weight_scales: dict[str, list[float]] = {}
-        self._activation_scale: float = math.ldexp(1.0, -24)
+        self._activation_scale: float = MIN_SCALE
 
     def record_activation_scale(self, scale: float) -> None:
-        self._activation_scale = max(scale, math.ldexp(1.0, -24))
+        self._activation_scale = max(scale, MIN_SCALE)
 
     def record_weight_group_scales(self, name: str, group_scales: Sequence[float]) -> None:
         if not group_scales:
             raise ValueError(f"weight {name} has zero groups")
-        self._weight_scales[name] = [
-            (v / 7.0) if v > 0 else math.ldexp(1.0, -24) for v in group_scales
-        ]
+        self._weight_scales[name] = [(v / 7.0) if v > 0 else MIN_SCALE for v in group_scales]
 
     def build_manifest(self) -> AwqInt4Manifest:
         return AwqInt4Manifest(

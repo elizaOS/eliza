@@ -42,6 +42,7 @@ export const COMPANION_ENABLED = viteEnvFlagEnabled(
 
 /** Built-in tab identifiers. */
 export type BuiltinTab =
+  | "home"
   | "chat"
   | "phone"
   | "messages"
@@ -301,6 +302,7 @@ export function getTabGroups(
 }
 
 export const TAB_PATHS: Record<BuiltinTab, string> = {
+  home: "/home",
   chat: "/chat",
   phone: "/phone",
   messages: "/messages",
@@ -515,6 +517,8 @@ export function getAppSlugFromPath(
 
 export function titleForTab(tab: Tab): string {
   switch (tab) {
+    case "home":
+      return "Home";
     case "chat":
       return "Chat";
     case "phone":

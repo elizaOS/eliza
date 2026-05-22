@@ -13,27 +13,16 @@ trinarize, activations stay int8 with a per-tensor scale.
 
 from __future__ import annotations
 
-import json
-import math
 from dataclasses import dataclass
+
+from ._base import MIN_SCALE, QuantizationManifest
 
 
 @dataclass(frozen=True)
-class Int2BitnetManifest:
+class Int2BitnetManifest(QuantizationManifest):
     schema: str
     weight_thresholds: dict[str, float]
     activation_scale: float
-
-    def to_json(self) -> str:
-        return json.dumps(
-            {
-                "schema": self.schema,
-                "weight_thresholds": self.weight_thresholds,
-                "activation_scale": self.activation_scale,
-            },
-            indent=2,
-            sort_keys=True,
-        )
 
 
 class Int2BitnetCalibrator:
@@ -43,7 +32,7 @@ class Int2BitnetCalibrator:
 
     def __init__(self) -> None:
         self._weight_thresholds: dict[str, float] = {}
-        self._activation_scale: float = math.ldexp(1.0, -24)
+        self._activation_scale: float = MIN_SCALE
 
     def record_weight_mean_abs(self, name: str, mean_abs: float) -> None:
         # BitNet b1.58 uses mean-abs / 2 as the trinarization threshold;
@@ -53,7 +42,7 @@ class Int2BitnetCalibrator:
         self._weight_thresholds[name] = mean_abs / 2.0
 
     def record_activation_scale(self, scale: float) -> None:
-        self._activation_scale = max(scale, math.ldexp(1.0, -24))
+        self._activation_scale = max(scale, MIN_SCALE)
 
     def build_manifest(self) -> Int2BitnetManifest:
         return Int2BitnetManifest(

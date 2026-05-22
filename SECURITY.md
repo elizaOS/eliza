@@ -1,6 +1,6 @@
 # Security Policy
 
-The Milady / elizaOS team takes the security of our software seriously. This
+The elizaOS team takes the security of our software seriously. This
 document describes how to report vulnerabilities and our remediation
 commitments.
 

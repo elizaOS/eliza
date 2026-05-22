@@ -17,6 +17,8 @@ cc_library_shared {
 
     srcs: ["hwcomposer.cpp"],
 
+    header_libs: ["libhardware_headers"],
+
     shared_libs: [
         "libbase",
         "libcutils",

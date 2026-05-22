@@ -4,7 +4,11 @@ import {
   type VoicePillMessage,
 } from "@elizaos/ui/components/voice-pill";
 import { useApp } from "@elizaos/ui/state";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  startBackgroundVoiceCapture,
+  stopBackgroundVoiceCapture,
+} from "../native/voice-capture";
 
 /**
  * AndroidVoicePill
@@ -71,20 +75,30 @@ export function AndroidVoicePill() {
     [sendChatText, activeConversationId],
   );
 
-  const handleRecordingChange = useCallback((_recording: boolean): void => {
-    // TODO: route recording start/stop through the shared voice capture
-    // pipeline at `eliza/packages/ui/src/voice/local-asr-capture.ts` +
-    // `eliza/packages/ui/src/voice/voice-chat-recording.ts`. The main
-    // composer wires this via `useChatVoiceSession` — once that hook is
-    // refactored to be reusable outside the composer shell, swap this stub
-    // for a real start/stop call that funnels the transcript through
-    // `sendChatText` above.
+  // The pill's mic toggle is the user's "always-on" gesture. Mirror it to the
+  // native `ElizaVoiceCaptureService` (microphone FGS) so capture survives the
+  // WebView being backgrounded. The in-WebView getUserMedia transcript is
+  // still owned by the shared `<VoicePill>` session; this only holds the
+  // native lifecycle anchor. `recording` falls back to false if the native
+  // start is denied (no RECORD_AUDIO grant).
+  const [recording, setRecording] = useState(false);
+  const handleRecordingChange = useCallback((next: boolean): void => {
+    if (next) {
+      void startBackgroundVoiceCapture("always-on").then((started) => {
+        setRecording(started);
+      });
+      setRecording(true);
+    } else {
+      void stopBackgroundVoiceCapture();
+      setRecording(false);
+    }
   }, []);
 
   return (
     <VoicePill
       messages={messages}
       onSubmit={handleSubmit}
+      recording={recording}
       onRecordingChange={handleRecordingChange}
     />
   );

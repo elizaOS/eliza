@@ -1,0 +1,747 @@
+{
+  "baseline_weighted_mpki": 15.015019,
+  "best_config": "baseline",
+  "best_delta_vs_baseline": 0.0,
+  "best_geometry_diff": {},
+  "best_weighted_mpki": 15.015019,
+  "cbp5_reference_mpki": {
+    "sample_fp_trace": 0.5736,
+    "sample_int_trace": 5.1327
+  },
+  "generated_at_utc": "2026-05-21T16:11:38.585705+00:00",
+  "harness": "behavioural-bpu-model",
+  "max_branches_per_trace": 300000,
+  "ranking": [
+    "baseline",
+    "pre_opt_r8",
+    "tage_reach_xlong",
+    "tage7_tables"
+  ],
+  "results": {
+    "baseline": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 300000,
+          "instructions": 1742886,
+          "misp": 2156,
+          "mpki": 1.237029,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 300000,
+          "instructions": 1939054,
+          "misp": 2017,
+          "mpki": 1.040198,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 300000,
+          "instructions": 2006533,
+          "misp": 33660,
+          "mpki": 16.775204,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 2970,
+          "mpki": 2.976724,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2050,
+          "mpki": 2.055548,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 300000,
+          "instructions": 1998553,
+          "misp": 7947,
+          "mpki": 3.976377,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 300000,
+          "instructions": 1007329,
+          "misp": 7116,
+          "mpki": 7.064226,
+          "weight": 1.5
+        },
+        "synthetic:alternating": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 5,
+          "mpki": 1.0,
+          "weight": 0.35
+        },
+        "synthetic:always_not_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:always_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:deep_recursion": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 32,
+          "mpki": 12.5,
+          "weight": 0.35
+        },
+        "synthetic:gpu_command_processor": {
+          "branches": 1835,
+          "instructions": 9175,
+          "misp": 774,
+          "mpki": 84.359673,
+          "weight": 1.0
+        },
+        "synthetic:gpu_tile_kernel": {
+          "branches": 3168,
+          "instructions": 15840,
+          "misp": 15,
+          "mpki": 0.94697,
+          "weight": 1.0
+        },
+        "synthetic:gpu_warp_divergence": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 121,
+          "mpki": 23.632812,
+          "weight": 1.0
+        },
+        "synthetic:jit_dispatch_warmup": {
+          "branches": 1596,
+          "instructions": 7980,
+          "misp": 125,
+          "mpki": 15.66416,
+          "weight": 0.75
+        },
+        "synthetic:loop_with_known_trip": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 5,
+          "mpki": 0.976562,
+          "weight": 0.5
+        },
+        "synthetic:mixed_workload": {
+          "branches": 704,
+          "instructions": 3520,
+          "misp": 52,
+          "mpki": 14.772727,
+          "weight": 0.75
+        },
+        "synthetic:v8_indirect_dispatch": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 500,
+          "mpki": 195.3125,
+          "weight": 0.5
+        },
+        "text_log": {
+          "branches": 300000,
+          "instructions": 1736251,
+          "misp": 8672,
+          "mpki": 4.99467,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5063,
+          "mpki": 1.916866,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 15.015019
+    },
+    "pre_opt_r8": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 300000,
+          "instructions": 1742886,
+          "misp": 2153,
+          "mpki": 1.235307,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 300000,
+          "instructions": 1939054,
+          "misp": 2008,
+          "mpki": 1.035557,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 300000,
+          "instructions": 2006533,
+          "misp": 34526,
+          "mpki": 17.206794,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3053,
+          "mpki": 3.059912,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2077,
+          "mpki": 2.082621,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 300000,
+          "instructions": 1998553,
+          "misp": 8021,
+          "mpki": 4.013404,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 300000,
+          "instructions": 1007329,
+          "misp": 7383,
+          "mpki": 7.329284,
+          "weight": 1.5
+        },
+        "synthetic:alternating": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 5,
+          "mpki": 1.0,
+          "weight": 0.35
+        },
+        "synthetic:always_not_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:always_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:deep_recursion": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 32,
+          "mpki": 12.5,
+          "weight": 0.35
+        },
+        "synthetic:gpu_command_processor": {
+          "branches": 1835,
+          "instructions": 9175,
+          "misp": 774,
+          "mpki": 84.359673,
+          "weight": 1.0
+        },
+        "synthetic:gpu_tile_kernel": {
+          "branches": 3168,
+          "instructions": 15840,
+          "misp": 15,
+          "mpki": 0.94697,
+          "weight": 1.0
+        },
+        "synthetic:gpu_warp_divergence": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 126,
+          "mpki": 24.609375,
+          "weight": 1.0
+        },
+        "synthetic:jit_dispatch_warmup": {
+          "branches": 1596,
+          "instructions": 7980,
+          "misp": 125,
+          "mpki": 15.66416,
+          "weight": 0.75
+        },
+        "synthetic:loop_with_known_trip": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 11,
+          "mpki": 2.148438,
+          "weight": 0.5
+        },
+        "synthetic:mixed_workload": {
+          "branches": 704,
+          "instructions": 3520,
+          "misp": 52,
+          "mpki": 14.772727,
+          "weight": 0.75
+        },
+        "synthetic:v8_indirect_dispatch": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 500,
+          "mpki": 195.3125,
+          "weight": 0.5
+        },
+        "text_log": {
+          "branches": 300000,
+          "instructions": 1736251,
+          "misp": 8924,
+          "mpki": 5.13981,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5024,
+          "mpki": 1.9021,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 15.165119
+    },
+    "tage7_tables": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 300000,
+          "instructions": 1742886,
+          "misp": 2174,
+          "mpki": 1.247356,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 300000,
+          "instructions": 1939054,
+          "misp": 2032,
+          "mpki": 1.047934,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 300000,
+          "instructions": 2006533,
+          "misp": 33657,
+          "mpki": 16.773709,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 3005,
+          "mpki": 3.011804,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2055,
+          "mpki": 2.060561,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 300000,
+          "instructions": 1998553,
+          "misp": 7956,
+          "mpki": 3.98088,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 300000,
+          "instructions": 1007329,
+          "misp": 7096,
+          "mpki": 7.044372,
+          "weight": 1.5
+        },
+        "synthetic:alternating": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 4,
+          "mpki": 0.8,
+          "weight": 0.35
+        },
+        "synthetic:always_not_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:always_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:deep_recursion": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 32,
+          "mpki": 12.5,
+          "weight": 0.35
+        },
+        "synthetic:gpu_command_processor": {
+          "branches": 1835,
+          "instructions": 9175,
+          "misp": 774,
+          "mpki": 84.359673,
+          "weight": 1.0
+        },
+        "synthetic:gpu_tile_kernel": {
+          "branches": 3168,
+          "instructions": 15840,
+          "misp": 17,
+          "mpki": 1.073232,
+          "weight": 1.0
+        },
+        "synthetic:gpu_warp_divergence": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 171,
+          "mpki": 33.398438,
+          "weight": 1.0
+        },
+        "synthetic:jit_dispatch_warmup": {
+          "branches": 1596,
+          "instructions": 7980,
+          "misp": 125,
+          "mpki": 15.66416,
+          "weight": 0.75
+        },
+        "synthetic:loop_with_known_trip": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 11,
+          "mpki": 2.148438,
+          "weight": 0.5
+        },
+        "synthetic:mixed_workload": {
+          "branches": 704,
+          "instructions": 3520,
+          "misp": 54,
+          "mpki": 15.340909,
+          "weight": 0.75
+        },
+        "synthetic:v8_indirect_dispatch": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 500,
+          "mpki": 195.3125,
+          "weight": 0.5
+        },
+        "text_log": {
+          "branches": 300000,
+          "instructions": 1736251,
+          "misp": 8698,
+          "mpki": 5.009644,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5036,
+          "mpki": 1.906643,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 15.567652
+    },
+    "tage_reach_xlong": {
+      "per_trace": {
+        "agent_decode": {
+          "branches": 300000,
+          "instructions": 1742886,
+          "misp": 2163,
+          "mpki": 1.241045,
+          "weight": 1.5
+        },
+        "agent_loop": {
+          "branches": 300000,
+          "instructions": 1939054,
+          "misp": 2029,
+          "mpki": 1.046387,
+          "weight": 2.0
+        },
+        "audio_frames": {
+          "branches": 300000,
+          "instructions": 2006533,
+          "misp": 33750,
+          "mpki": 16.820057,
+          "weight": 1.5
+        },
+        "cbp5:sample_fp_trace": {
+          "branches": 148723,
+          "instructions": 997741,
+          "misp": 2976,
+          "mpki": 2.982738,
+          "weight": 1.0
+        },
+        "cbp5:sample_int_trace": {
+          "branches": 181877,
+          "instructions": 997301,
+          "misp": 2055,
+          "mpki": 2.060561,
+          "weight": 1.0
+        },
+        "file_tlv": {
+          "branches": 300000,
+          "instructions": 1998553,
+          "misp": 7962,
+          "mpki": 3.983882,
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 300000,
+          "instructions": 1007329,
+          "misp": 7071,
+          "mpki": 7.019554,
+          "weight": 1.5
+        },
+        "synthetic:alternating": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 6,
+          "mpki": 1.2,
+          "weight": 0.35
+        },
+        "synthetic:always_not_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:always_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:deep_recursion": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 32,
+          "mpki": 12.5,
+          "weight": 0.35
+        },
+        "synthetic:gpu_command_processor": {
+          "branches": 1835,
+          "instructions": 9175,
+          "misp": 774,
+          "mpki": 84.359673,
+          "weight": 1.0
+        },
+        "synthetic:gpu_tile_kernel": {
+          "branches": 3168,
+          "instructions": 15840,
+          "misp": 15,
+          "mpki": 0.94697,
+          "weight": 1.0
+        },
+        "synthetic:gpu_warp_divergence": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 139,
+          "mpki": 27.148438,
+          "weight": 1.0
+        },
+        "synthetic:jit_dispatch_warmup": {
+          "branches": 1596,
+          "instructions": 7980,
+          "misp": 125,
+          "mpki": 15.66416,
+          "weight": 0.75
+        },
+        "synthetic:loop_with_known_trip": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 5,
+          "mpki": 0.976562,
+          "weight": 0.5
+        },
+        "synthetic:mixed_workload": {
+          "branches": 704,
+          "instructions": 3520,
+          "misp": 53,
+          "mpki": 15.056818,
+          "weight": 0.75
+        },
+        "synthetic:v8_indirect_dispatch": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 500,
+          "mpki": 195.3125,
+          "weight": 0.5
+        },
+        "text_log": {
+          "branches": 300000,
+          "instructions": 1736251,
+          "misp": 8782,
+          "mpki": 5.058024,
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "misp": 5001,
+          "mpki": 1.893392,
+          "weight": 1.5
+        }
+      },
+      "weighted_mpki": 15.212962
+    }
+  },
+  "schema": "eliza.bpu_sweep.v1",
+  "trace_set": [
+    {
+      "branches": 300000,
+      "instructions": 1939054,
+      "name": "agent_loop",
+      "weight": 2.0
+    },
+    {
+      "branches": 300000,
+      "instructions": 1742886,
+      "name": "agent_decode",
+      "weight": 1.5
+    },
+    {
+      "branches": 300000,
+      "instructions": 1007329,
+      "name": "http_parser",
+      "weight": 1.5
+    },
+    {
+      "branches": 300000,
+      "instructions": 1736251,
+      "name": "text_log",
+      "weight": 1.5
+    },
+    {
+      "branches": 300000,
+      "instructions": 1998553,
+      "name": "file_tlv",
+      "weight": 1.5
+    },
+    {
+      "branches": 275928,
+      "instructions": 2641291,
+      "name": "video_blocks",
+      "weight": 1.5
+    },
+    {
+      "branches": 300000,
+      "instructions": 2006533,
+      "name": "audio_frames",
+      "weight": 1.5
+    },
+    {
+      "branches": 1000,
+      "instructions": 5000,
+      "name": "synthetic:always_taken",
+      "weight": 0.25
+    },
+    {
+      "branches": 1000,
+      "instructions": 5000,
+      "name": "synthetic:always_not_taken",
+      "weight": 0.25
+    },
+    {
+      "branches": 1000,
+      "instructions": 5000,
+      "name": "synthetic:alternating",
+      "weight": 0.35
+    },
+    {
+      "branches": 1024,
+      "instructions": 5120,
+      "name": "synthetic:loop_with_known_trip",
+      "weight": 0.5
+    },
+    {
+      "branches": 512,
+      "instructions": 2560,
+      "name": "synthetic:deep_recursion",
+      "weight": 0.35
+    },
+    {
+      "branches": 512,
+      "instructions": 2560,
+      "name": "synthetic:v8_indirect_dispatch",
+      "weight": 0.5
+    },
+    {
+      "branches": 704,
+      "instructions": 3520,
+      "name": "synthetic:mixed_workload",
+      "weight": 0.75
+    },
+    {
+      "branches": 1596,
+      "instructions": 7980,
+      "name": "synthetic:jit_dispatch_warmup",
+      "weight": 0.75
+    },
+    {
+      "branches": 3168,
+      "instructions": 15840,
+      "name": "synthetic:gpu_tile_kernel",
+      "weight": 1.0
+    },
+    {
+      "branches": 1024,
+      "instructions": 5120,
+      "name": "synthetic:gpu_warp_divergence",
+      "weight": 1.0
+    },
+    {
+      "branches": 1835,
+      "instructions": 9175,
+      "name": "synthetic:gpu_command_processor",
+      "weight": 1.0
+    },
+    {
+      "branches": 148723,
+      "instructions": 997741,
+      "name": "cbp5:sample_fp_trace",
+      "weight": 1.0
+    },
+    {
+      "branches": 181877,
+      "instructions": 997301,
+      "name": "cbp5:sample_int_trace",
+      "weight": 1.0
+    }
+  ],
+  "weights": {
+    "agent_decode": 1.5,
+    "agent_loop": 2.0,
+    "audio_frames": 1.5,
+    "cbp5:sample_fp_trace": 1.0,
+    "cbp5:sample_int_trace": 1.0,
+    "file_tlv": 1.5,
+    "http_parser": 1.5,
+    "synthetic:alternating": 0.35,
+    "synthetic:always_not_taken": 0.25,
+    "synthetic:always_taken": 0.25,
+    "synthetic:deep_recursion": 0.35,
+    "synthetic:gpu_command_processor": 1.0,
+    "synthetic:gpu_tile_kernel": 1.0,
+    "synthetic:gpu_warp_divergence": 1.0,
+    "synthetic:jit_dispatch_warmup": 0.75,
+    "synthetic:loop_with_known_trip": 0.5,
+    "synthetic:mixed_workload": 0.75,
+    "synthetic:v8_indirect_dispatch": 0.5,
+    "text_log": 1.5,
+    "video_blocks": 1.5
+  }
+}

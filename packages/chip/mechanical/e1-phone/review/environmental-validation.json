@@ -12,7 +12,7 @@
           "radio_shield_can",
           "soc_shield_can"
         ],
-        "estimated_physical_mass_g": 163.5,
+        "estimated_physical_mass_g": 183.3,
         "target_mass_g": 185
       },
       "target": "shield cans present and CAD mass below target for thermal inertia; lab skin temperature <= target",
@@ -45,7 +45,7 @@
         "drop_height_m": 1.0,
         "corner_radius_mm": 7.5,
         "wall_thickness_mm": 1.15,
-        "screw_boss_count": 6,
+        "screw_boss_count": 10,
         "snap_hook_count": 8,
         "screen_adhesive_present": true,
         "screen_clearance_pass": true

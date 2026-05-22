@@ -19,7 +19,7 @@
       "path": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
       "present": true,
       "schema": "eliza.bpu_mpki.v1",
-      "sha256": "57d3616b8d8b86b1376817bff4b383633ba9f138e88ec5bb8ab4ed026eb03c21"
+      "sha256": "5b0f206c7f998e7050da01367fe0b7d7c16815733c8bac311aebda4568f1fe6f"
     },
     "spec2017_claim": false,
     "v8_claim": false
@@ -32,7 +32,7 @@
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
-  "generated_at_utc": "2026-05-20T10:14:13.034613+00:00",
+  "generated_at_utc": "2026-05-21T16:08:59.150725+00:00",
   "parameters": {
     "BIM_ENTRIES": 16384,
     "FETCH_BLOCK_BYTES": 32,
@@ -66,24 +66,24 @@
       16
     ],
     "SC_TABLES": 4,
-    "TAGE_ENTRIES_TABLE": 4096,
+    "TAGE_ENTRIES_TABLE": 8192,
     "TAGE_HIST_LEN": [
       8,
-      13,
-      32,
-      64,
-      119
+      16,
+      44,
+      90,
+      195
     ],
-    "TAGE_HIST_LEN_MAX": 119,
+    "TAGE_HIST_LEN_MAX": 195,
     "TAGE_TABLES": 5,
     "UFTB_ENTRIES": 512
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "bd21824ee48d26781db4c9bb5ad2424d74688030",
+  "source_revision": "e34e96b6048285ee63fde43158335f2da546fff5",
   "sources": {
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "be8c609b43f7b3bf3abd55b7b2286be3fcb489ab3ecabd9a03cc49cbce1a5976"
+      "sha256": "60a957e4c1bc46e67ab03c145f95281c487b5f284e2fe6807b068c909698d586"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",
@@ -91,11 +91,11 @@
     },
     "package": {
       "path": "rtl/cpu/bpu/bpu_pkg.sv",
-      "sha256": "3bbb09c368c5fd4e655a70de57e0258ca21bf6a2d75e151c27232bd2c328ce9a"
+      "sha256": "b2f8cbb0c0c2cbc08b4bfea0114bdefd3f1159336b8830f9222860185190eac7"
     },
     "top": {
       "path": "rtl/cpu/bpu/bpu_top.sv",
-      "sha256": "526af26ea13452950c8f4e638fe34dff4006befe8f4f70c45fe5c5e2d4071d83"
+      "sha256": "a064aefac83b1a544789626d98d04f4580f6872446a6b2f5704b7cf9dbd884e9"
     }
   },
   "status": "clean",
@@ -108,7 +108,7 @@
     "path": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
     "present": true,
     "schema": "eliza.bpu_mpki.v1",
-    "sha256": "a2ca589f5ca10e714dc02339d8aaaf1590ae35317cb385c850aeba894917ce7f",
+    "sha256": "af33f28d906190f56bba67254d2152c5354e535060aed72db70e97feef7fa1b0",
     "spec2017_claim": false,
     "trace_class": "synthetic_planning_only"
   },

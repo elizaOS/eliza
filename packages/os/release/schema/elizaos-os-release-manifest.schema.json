@@ -220,10 +220,7 @@
         },
         "measurements": {
           "type": "object",
-          "additionalProperties": {
-            "type": "string",
-            "pattern": "^sha256:[a-f0-9]{64}$"
-          },
+          "additionalProperties": false,
           "required": ["boot", "os", "agent", "policy"],
           "properties": {
             "boot": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
@@ -244,7 +241,23 @@
               "type": "string",
               "pattern": "^sha256:[a-f0-9]{64}$"
             },
+            "compose": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "gpuFirmware": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
             "npuFirmware": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "modelWeights": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "monitor": {
               "type": "string",
               "pattern": "^sha256:[a-f0-9]{64}$"
             }
@@ -260,7 +273,8 @@
             "memoryEncrypted": { "type": "boolean" },
             "ioProtected": { "type": "boolean" },
             "gpuProtected": { "type": "boolean" },
-            "npuProtected": { "type": "boolean" }
+            "npuProtected": { "type": "boolean" },
+            "monitorMeasured": { "type": "boolean" }
           }
         },
         "providers": {

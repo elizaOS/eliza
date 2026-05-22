@@ -4,7 +4,7 @@
   "device_envelope_mm": [
     78.0,
     153.6,
-    11.2
+    11.8
   ],
   "corner_radius_mm": 7.5,
   "wall_thickness_mm": 1.15,
@@ -21,14 +21,14 @@
   "battery_envelope_mm": [
     64.0,
     87.0,
-    5.7
+    5.6
   ],
   "manufacturing": {
     "draft_deg": 2.0,
     "sprue_diameter_mm": 4.0,
     "runner_diameter_mm": 2.2,
     "gate_thickness_mm": 0.85,
-    "screw_boss_count": 6,
+    "screw_boss_count": 10,
     "snap_hook_count": 8
   }
 }

@@ -74,6 +74,7 @@ function normalizeClaims(
         "ioProtected",
         "gpuProtected",
         "npuProtected",
+        "monitorMeasured",
       ].includes(name) &&
       typeof value === "boolean"
     ) {

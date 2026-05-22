@@ -62,3 +62,13 @@ ANSI_COLOR="38;2;11;53;241"
 HOME_URL="https://elizaos.ai/"
 SUPPORT_URL="https://elizaos.ai/support"
 EOF
+
+# Console login banner — replace the stock "Debian GNU/Linux 13" prompt with
+# elizaOS branding. \s \m expand to OS name + arch; \n \l to hostname + tty.
+cat > /etc/issue <<'EOF'
+elizaOS Linux (\s \m) \n \l
+
+EOF
+cat > /etc/issue.net <<'EOF'
+elizaOS Linux (\s \m)
+EOF

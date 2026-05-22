@@ -6,6 +6,7 @@ claim_boundary: Schematic/PCB binding package for the split-interconnect pin all
   not a routed flex, not ERC/DRC evidence, and not fabrication or enclosure readiness.
 source_artifacts:
   - board/kicad/e1-phone/split-interconnect-pin-allocation.yaml
+  - board/kicad/e1-phone/split-interconnect-schematic-net-binding.yaml
   - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
   - board/kicad/e1-phone/schematic/split_interconnect.kicad_sch
   - board/kicad/e1-phone/pcb-implementation-audit.yaml

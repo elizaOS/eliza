@@ -54,9 +54,19 @@ def validate(report: dict[str, Any]) -> list[str]:
             "payload",
             "run_plan_execution",
             "run_plan_safety_matrix",
+            "full_training_matrix",
+            "formal_prerequisites",
+            "formal_execution",
+            "formal_solver_isolation",
             "alphachip_checkpoint",
+            "alphachip_successor_plan",
+            "alphachip_successor_reproduction",
             "current_research_watchlist",
             "replay_preflight",
+            "replay_prerequisites",
+            "replay_handoff",
+            "replay_execution",
+            "replay_comparison",
             "setup_check",
             "training_handoff",
         ):
@@ -77,16 +87,37 @@ def validate(report: dict[str, Any]) -> list[str]:
             "payload_handoff_ready",
             "run_plan_dry_run_validated",
             "run_plan_safety_matrix_validated",
+            "full_training_matrix_validated",
+            "full_training_matrix_ready",
+            "formal_prerequisites_validated",
+            "strict_formal_host_ready",
+            "formal_yosys_fallback_possible",
+            "formal_execution_evidence_validated",
+            "strict_formal_execution_ready",
+            "formal_fallback_execution_captured",
+            "formal_solver_isolation_validated",
+            "formal_z3_module_smoke_passed",
+            "formal_bitwuzla_engine_errors_isolated",
+            "formal_fallback_counts_as_deep_formal",
             "large_cuda_training_ready",
             "alphachip_checkpoint_available",
+            "alphachip_successor_plan_validated",
+            "alphachip_successor_cuda_scale_ready",
+            "alphachip_successor_reproduction_validated",
+            "alphachip_successor_reproduced",
             "current_research_watchlist_captured",
             "e1_openlane_replay_ready",
+            "openlane_replay_execution_validated",
+            "openlane_replay_comparison_validated",
             "setup_check_bootstrap_complete",
             "training_handoff_bootstrap_complete",
             "torch_training_validated",
             "torch_inference_validated",
             "full_replay_plan_validated",
             "replay_queue_validated",
+            "openlane_replay_prerequisites_validated",
+            "openlane_replay_handoff_validated",
+            "openlane_replay_host_ready",
             "training_handoff_payload_ready",
         ):
             if not isinstance(capabilities.get(field), bool):
@@ -109,10 +140,12 @@ def validate(report: dict[str, Any]) -> list[str]:
         if present < 3:
             errors.append("at least three core handoff artifacts must be present")
     blockers = report.get("blockers")
-    if report.get("status") == "PASS_WITH_BLOCKERS_RECORDED" and (
+    if report.get("status") == "PASS_WITH_BLOCKERS_RECORDED" and (  # noqa: SIM102
         not isinstance(blockers, list) or not blockers
     ):
         errors.append("blocked readiness audit must list blockers")
+        if not isinstance(blockers, list) or not blockers:
+            errors.append("blocked readiness audit must list blockers")
     if isinstance(blockers, list):
         for index, blocker in enumerate(blockers):
             if not isinstance(blocker, dict):

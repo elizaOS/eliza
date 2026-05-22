@@ -24,7 +24,6 @@ import json
 import math
 import os
 import sys
-from importlib import import_module
 from pathlib import Path
 from typing import Any, cast
 
@@ -41,10 +40,7 @@ MANIFEST = OUT / "assembly-manifest.json"
 PART_SHOTS = OUT / "e1-phone-part-explode-shots"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-_animation = import_module("generate_e1_phone_exploded_animation")
-RING_MM = _animation.RING_MM
-classify = _animation.classify
-color_for = _animation.color_for
+from generate_e1_phone_exploded_animation import RING_MM, classify, color_for  # noqa: E402
 
 # Penetration tolerance: assembled parts share datum faces, and CAD envelopes carry
 # datasheet-typical slop, so treat sub-0.05 mm^3 growth as numerical noise.
@@ -55,7 +51,7 @@ SAMPLES = 21  # trajectory fractions f in [0, 1]
 def load_parts() -> tuple[trimesh.Scene, list[dict[str, Any]]]:
     scene = cast(trimesh.Scene, trimesh.load(str(ASM_GLB), force="scene"))
     manifest = json.loads(MANIFEST.read_text())
-    parts: list[dict] = []
+    parts: list[dict[str, Any]] = []
     for entry in manifest:
         name = entry["name"]
         if name not in scene.geometry:

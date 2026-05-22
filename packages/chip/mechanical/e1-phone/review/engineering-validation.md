@@ -7,8 +7,8 @@ Status: CAD validation inputs ready; physical EVT validation still required.
 - PASS: `screen_xy_fit` = 0.45 (Minimum CTP-to-orange-body margin in X/Y.)
 - PASS: `pcb_edge_clearance` = 7.0 (Minimum board edge clearance to outer molded envelope.)
 - PASS: `usb_shell_to_aperture` = 0.175 (Minimum modeled shell clearance to external USB-C aperture.)
-- PASS: `battery_to_pcb` = 0.5 (Minimum gap from pouch battery to rigid PCB islands.)
-- PASS: `button_pressure` = 0.121 (Nominal side-key force divided by cap contact area.)
+- PASS: `battery_to_pcb` = 1.0 (Minimum gap from pouch battery to rigid PCB islands.)
+- PASS: `button_pressure` = 0.119 (Nominal side-key force divided by cap contact area.)
 
 ## Domain Reviews
 

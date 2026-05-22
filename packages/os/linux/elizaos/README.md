@@ -23,6 +23,15 @@ config/package-lists/
 
 All three arches boot via GRUB EFI; amd64 also gets BIOS via `grub-pc`.
 
+`make qemu-boot ARCH=<arch>` opens an interactive GNOME desktop window for
+every arch via `scripts/boot-qemu.sh`. riscv64 reaches GUI parity with
+amd64/arm64 by adding `-device virtio-gpu-pci` plus USB input to the
+`qemu-system-riscv64 -M virt` invocation (riscv64 `virt` has no default
+GPU). Headless, fail-closed boot-marker evidence for riscv64 is a separate
+path: `scripts/qemu_virt_boot_riscv64.sh` (driven by
+`scripts/qemu_virt_smoke.py`), which runs `-nographic` and emits the
+`eliza.os.linux.qemu_virt_boot.v1` evidence JSON.
+
 ## Profiles
 
 `ELIZAOS_PROFILE` selects a hardening profile:
@@ -80,8 +89,10 @@ No promoted artifact exists yet — the manifest template carries
 
 This is the active, canonical Linux build. The build pipeline, multi-arch
 config, branding overlay, `secure` hardening profile, and release-manifest
-gate are in the tree. Not yet done: a produced+validated ISO per arch and
-full brand-asset path validation against a real chroot. See
+gate are in the tree. A riscv64 candidate ISO has qemu-virt boot evidence
+under `evidence/qemu_virt_boot.json`, including GRUB EFI, Linux, local curl
+health, agent-ready, and terminal TUI smoke markers. amd64 and arm64 still
+need produced ISO evidence before release promotion. See
 `packages/os/CLAUDE.md` for the distribution-channel and promotion policy.
 
 ## License

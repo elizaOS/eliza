@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
 """Train/evaluate a tiny dependency-free PD surrogate over flow-run labels.
 
-This is a plumbing smoke test. It proves the normalized `eda.flow_run.v1`
-records can feed a model/eval artifact path before real OpenLane/CircuitNet/iDATA
-labels are available.
+This proves the normalized `eda.flow_run.v1` label path can feed a model/eval
+artifact before a generalizing PD predictor is trainable. When no explicit
+`--flow-run` is given it auto-discovers every parsed OpenLane flow-label record
+under `build/ai_eda/openlane_flow_labels/*/records/`, deduplicates by design
+bundle + normalized-metric content (re-runs of the same signoff config collapse
+to one label), and trains the constant-mean surrogate over the distinct labels.
+
+The surrogate cannot generalize from a single design point: a constant-mean over
+one (or N identical) label(s) has zero held-out signal. The run therefore emits
+an explicit `generalization` gate that fails closed until `distinct_label_count
+>= GENERALIZATION_MIN_DISTINCT_LABELS`, naming the command that seeds more real
+OpenLane runs. The plumbing smoke still passes on one label; only the
+generalization claim is gated.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,11 +27,34 @@ from statistics import mean
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_FLOW_RUN = (
-    ROOT / "build/ai_eda/openlane_flow_labels/validation/records/flow-run-with-metrics.json"
-)
+OPENLANE_FLOW_LABELS = ROOT / "build/ai_eda/openlane_flow_labels"
+DEFAULT_FLOW_RUN = OPENLANE_FLOW_LABELS / "validation/records/flow-run-with-metrics.json"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/pd_surrogate_smoke"
 CLAIM_BOUNDARY = "pd_surrogate_smoke_only_no_ppa_signoff_training_or_release_claim"
+
+# A constant-mean surrogate needs distinct real signoff points to carry any
+# held-out signal. Three independent designs/configs is the floor below which no
+# generalization is even measurable.
+GENERALIZATION_MIN_DISTINCT_LABELS = 3
+SEED_MORE_LABELS_COMMAND = (
+    "make ai-eda-openlane-flow-labels  # run pd/openlane on a new design/config, "
+    "then re-run parse_openlane_metrics_to_flow_run.py to emit another distinct "
+    "eda.flow_run.v1 label"
+)
+# Normalized labels that define a distinct signoff point (excludes bookkeeping
+# fields like raw_metric_count so identical re-runs collapse to one label).
+CONTENT_KEYS = (
+    "timing_wns_ns",
+    "timing_tns_ns",
+    "hold_wns_ns",
+    "hold_tns_ns",
+    "die_area_um2",
+    "instance_area_um2",
+    "instance_count",
+    "wirelength_um",
+    "route_drc_count",
+    "power_mw",
+)
 
 TARGETS = (
     "timing_wns_ns",
@@ -60,6 +94,40 @@ def numeric_labels(flow_run: dict[str, Any]) -> dict[str, float]:
     return labels
 
 
+def is_real_label(flow_run: dict[str, Any]) -> bool:
+    metrics = flow_run.get("metrics", {})
+    return (
+        metrics.get("label_status") == "deterministic_openlane_metrics_unreviewed"
+        and metrics.get("deterministic_run_artifacts_present") is True
+    )
+
+
+def content_signature(flow_run: dict[str, Any]) -> str:
+    """Stable key over design bundle + signoff-defining normalized metrics.
+
+    Re-runs of the same OpenLane design/config produce identical metrics and
+    therefore collapse to one distinct label, so the generalization gate counts
+    independent signoff points rather than repeated runs.
+    """
+    normalized = flow_run.get("metrics", {}).get("normalized", {})
+    payload = {
+        "design_bundle_id": flow_run.get("design_bundle_id"),
+        "metrics": {key: normalized.get(key) for key in CONTENT_KEYS},
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def discover_distinct_real_labels() -> list[tuple[Path, dict[str, Any]]]:
+    """Load every parsed OpenLane flow label, keep one per distinct signoff."""
+    by_signature: dict[str, tuple[Path, dict[str, Any]]] = {}
+    for path in sorted(OPENLANE_FLOW_LABELS.glob("*/records/flow-run-with-metrics.json")):
+        record = load_json(path)
+        if record.get("schema") != "eda.flow_run.v1" or not is_real_label(record):
+            continue
+        by_signature.setdefault(content_signature(record), (path, record))
+    return list(by_signature.values())
+
+
 def feature_vector(flow_run: dict[str, Any]) -> dict[str, float]:
     labels = numeric_labels(flow_run)
     return {
@@ -95,7 +163,30 @@ def train_constant_surrogate(records: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def evaluate(model: dict[str, Any], records: list[dict[str, Any]]) -> dict[str, Any]:
+def generalization_gate(distinct_label_count: int) -> dict[str, Any]:
+    generalizable = distinct_label_count >= GENERALIZATION_MIN_DISTINCT_LABELS
+    return {
+        "distinct_label_count": distinct_label_count,
+        "min_distinct_labels_required": GENERALIZATION_MIN_DISTINCT_LABELS,
+        "generalization_allowed": generalizable,
+        "status": "GENERALIZATION_READY"
+        if generalizable
+        else "BLOCKED_INSUFFICIENT_DISTINCT_LABELS",
+        "blocker": None
+        if generalizable
+        else (
+            f"only {distinct_label_count} distinct real OpenLane signoff label(s) available; "
+            f"a generalizing surrogate needs >= {GENERALIZATION_MIN_DISTINCT_LABELS} "
+            "independent design/config points (a constant-mean over identical "
+            "re-runs has zero held-out signal)"
+        ),
+        "seed_more_labels_command": None if generalizable else SEED_MORE_LABELS_COMMAND,
+    }
+
+
+def evaluate(
+    model: dict[str, Any], records: list[dict[str, Any]], gate: dict[str, Any]
+) -> dict[str, Any]:
     predictions = model["target_predictions"]
     residuals: dict[str, list[float]] = {target: [] for target in predictions}
     for record in records:
@@ -115,10 +206,11 @@ def evaluate(model: dict[str, Any], records: list[dict[str, Any]]) -> dict[str, 
         "claim_boundary": CLAIM_BOUNDARY,
         "status": "PASS_FIXTURE_OVERFIT_SMOKE",
         "metrics": metrics,
+        "generalization": gate,
         "release_use_allowed": False,
         "limitations": [
-            "single fixture-derived label path; no generalization claim",
-            "fixture OpenLane metrics are not PPA/signoff evidence",
+            "constant-mean over distinct real labels; no generalization claim until the gate clears",
+            "OpenLane metrics here are parsed-unreviewed, not PPA/signoff evidence",
             "real use requires deterministic OpenLane labels and held-out split audit",
         ],
     }
@@ -134,10 +226,27 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    flow_paths = args.flow_run or [DEFAULT_FLOW_RUN]
-    records = [load_json(path) for path in flow_paths]
+    if args.flow_run:
+        flow_paths = list(args.flow_run)
+        records = [load_json(path) for path in flow_paths]
+        distinct_label_count = len(
+            {content_signature(record) for record in records if is_real_label(record)}
+        )
+    else:
+        discovered = discover_distinct_real_labels()
+        if discovered:
+            flow_paths = [path for path, _ in discovered]
+            records = [record for _, record in discovered]
+            distinct_label_count = len(records)
+        else:
+            flow_paths = [DEFAULT_FLOW_RUN]
+            records = [load_json(DEFAULT_FLOW_RUN)]
+            distinct_label_count = (
+                len({content_signature(records[0])}) if is_real_label(records[0]) else 0
+            )
+    gate = generalization_gate(distinct_label_count)
     model = train_constant_surrogate(records)
-    evaluation = evaluate(model, records)
+    evaluation = evaluate(model, records, gate)
     out_dir = args.out_root / args.run_id
     out_dir.mkdir(parents=True, exist_ok=True)
     model_path = out_dir / "pd_surrogate_model.json"
@@ -151,8 +260,10 @@ def main() -> int:
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "status": evaluation["status"],
+        "generalization": gate,
         "inputs": {
             "flow_runs": [rel(path.resolve()) for path in flow_paths],
+            "distinct_label_count": gate["distinct_label_count"],
             "feature_vectors": [feature_vector(record) for record in records],
         },
         "outputs": {
@@ -162,7 +273,10 @@ def main() -> int:
         "release_use_allowed": False,
     }
     run_path.write_text(json.dumps(run, indent=2, sort_keys=True) + "\n")
-    print(f"STATUS: PASS ai_eda.pd_surrogate_smoke {run_path}")
+    print(
+        f"STATUS: PASS ai_eda.pd_surrogate_smoke distinct_labels={gate['distinct_label_count']} "
+        f"generalization={gate['status']} {rel(run_path.resolve())}"
+    )
     return 0
 
 

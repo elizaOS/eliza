@@ -1,0 +1,75 @@
+schema: eliza.analog_automation_policy.v1
+status: DRAFT_CAPTURE_ONLY
+claim_boundary: analog_policy_only_no_spice_layout_ip_or_signoff_claim
+
+context: >
+  Governs every present and future AI- or automation-assisted analog/mixed-signal
+  activity for the E1 SoC: SPICE generation, schematic or Verilog-A synthesis,
+  layout generators, sizing agents, design-equation synthesis, and analog dataset
+  or model intake. Today none of these are run for E1. This policy is intent and
+  guardrail only. It does not authorize any analog electrical work, does not
+  produce a netlist, layout, or model, and makes no analog performance, SI/PI,
+  or tapeout/release claim. Real analog signoff stays blocked on vendor PDKs,
+  qualified simulators, and human analog review captured under
+  required_before_execution.
+
+blocked_actions:
+  - generate_spice_netlist
+  - generate_schematic
+  - generate_verilog_a_model
+  - generate_layout
+  - run_spice_simulation
+  - run_drc_lvs_extraction
+  - select_foundry_ip
+  - download_analog_model_weights
+  - import_analog_dataset_payload
+  - export_e1_design_to_hosted_model
+  - change_padframe
+  - change_package_pinout
+  - claim_analog_performance
+  - claim_si_pi_closure
+  - claim_tapeout_or_release_readiness
+
+required_before_execution:
+  - exact_tool_revision
+  - pdk_or_model_provenance
+  - input_spec_hash
+  - dependency_manifest
+  - command_log
+  - output_hashes
+  - convergence_log
+  - pvt_corner_manifest
+  - drc_lvs_extraction_report
+  - generated_artifact_quarantine_path
+  - package_or_board_context
+  - license_review
+  - human_analog_reviewer
+  - reviewer_disposition
+
+artifact_quarantine_roots:
+  - build/ai_eda/analog_mixed_signal/
+
+e1_context_inputs:
+  - docs/pd/pad-cell-selection-criteria.md
+  - pd/padframe/e1_demo_padframe.yaml
+  - package/e1-demo-pinout.yaml
+  - package/wifi-external-interface.yaml
+  - pd/signoff/si-pi/local-evidence.yaml
+  - docs/spec-db/process-14a-effects.yaml
+
+promotion_gates:
+  - python3 scripts/check_analog_automation_policy.py
+  - python3 scripts/ai_eda/capture_analog_mixed_signal_targets.py --run-id validation
+  - python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation
+  - make analog-automation-policy-check
+  - make padframe-check
+  - make board-package-evidence-check
+  - make no-hardware-action-check
+
+forbidden_claims:
+  - analog_block_sized
+  - spice_validated
+  - layout_drc_lvs_clean
+  - foundry_ip_selected
+  - si_pi_closed
+  - analog_tapeout_ready

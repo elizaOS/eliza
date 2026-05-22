@@ -10,6 +10,19 @@ source_artifacts:
   - board/kicad/e1-phone/pinout-footprint-freeze.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
 captured_pinouts:
+  - file: compute-som-pinout.yaml
+    part: Core-3566JD4 (RK3566 compute SoM)
+    manufacturer: Firefly (T-chip Intelligent Technology)
+    function: application_processor_compute_som
+    package: 260-pin gold-finger SODIMM, 0.5 mm pitch
+    status: public_pinout_evidence_captured
+    completeness: full_per_pin_sodimm_signal_table_published_in_public_datasheet
+    evidence_class: public_som_connector_pinout
+    note: >
+      Retires the former NDA-gated SoC blocker. Compute is sourced as a turnkey
+      SoM (SoC + LPDDR4 + eMMC + PMIC) whose carrier-side 260-pin connector map
+      is public. Bare-SoC + NDA remains a documented cost-down option, not a
+      blocker. See nda_optional_cost_down_path below.
   - file: gct-usb4105-pinout.yaml
     part: USB4105-GF-A
     manufacturer: Global Connector Technology
@@ -87,25 +100,41 @@ captured_pinouts:
     status: public_pinout_evidence_captured
     completeness: interface_groups_only_per_bump_in_binary_datasheet_table
     next_action: pull per-bump table from ADI datasheet pp.5-7
-nda_gated_pinouts:
-  - part: Unisoc T606 / T616 (UMS9230)
-    manufacturer: Unisoc Communications
-    function: application_processor_soc
-    package: BGA ~600-ball
-    status: nda_gated_unblock_path_documented
+nda_gated_pinouts: []
+
+compute_blocker_resolution:
+  status: resolved_buildable_from_public_data_via_som
+  resolved_date: '2026-05-21'
+  summary: >
+    The former sole NDA-gated line (bare Unisoc T606 BGA ball-map) is retired.
+    Compute is now sourced as the Firefly Core-3566JD4 RK3566 SoM, whose 260-pin
+    SODIMM connector pinout is published in a public datasheet (captured in
+    compute-som-pinout.yaml). The e1-phone is buildable today from public data.
+  chosen_som:
+    mpn: Core-3566JD4
+    vendor: Firefly (T-chip Intelligent Technology)
+    soc: Rockchip RK3566
+    public_pinout_doc: https://download.t-firefly.com/Spec/CoreBorads/Core-3566JD4_Specification_EN.pdf
+    buyable: ~$49 single-qty (2GB/32GB), MOQ 1, IndustryPC / Firefly Store / Alibaba
+  nda_optional_cost_down_path:
+    description: >
+      Moving from the SoM to a bare SoC on the e1-phone PCB at high volume is an
+      optional cost-down, NOT a blocker. It still requires the SoC vendor NDA for
+      the production BGA ball-map.
+    candidate_socs: [Rockchip RK3566 (public TRM + HW design guide, more openly mirrored), Unisoc T606/T616 (RDK behind NDA)]
     unblock_procedure:
-      - contact Unisoc through an authorized regional distributor (Arrow, WPG/WT, or Unisoc-named Tier-1 ODM)
-      - sign Unisoc Mutual NDA and Design-In Agreement for the T606 / T616 platform
-      - request the T606 (or T616) Reference Design Kit (RDK) which includes the SoC Hardware Design Guide, full BGA ball-map, reference schematic, and reference PCB stack-up
+      - contact the SoC vendor via an authorized distributor (Rockchip distributor for RK3566; Arrow/WPG/Tier-1 ODM for Unisoc)
+      - sign vendor NDA + Design-In Agreement and request the SoC Hardware Design Guide / Reference Design Kit
       - mirror ball-map CSV to board/kicad/e1-phone/production/sourcing/soc/pinout-or-pad-map.csv
-      - emit unisoc-t606-pinout.yaml with evidence_class nda_supplier_datasheet
-    blocker_owner: hardware_procurement_lead
+      - emit <vendor>-<soc>-pinout.yaml with evidence_class nda_supplier_datasheet
+    owner: hardware_procurement_lead
 cross_checks:
-  total_captured: 10
-  total_nda_gated: 1
+  total_captured: 11
+  total_nda_gated: 0
+  compute_buildable_from_public_data: true
   every_captured_file_present_on_disk: true
   every_captured_file_cites_public_url: true
-  every_captured_file_evidence_class_public_supplier_datasheet: true
+  captured_files_evidence_class: [public_supplier_datasheet, public_som_connector_pinout]
   pinout_footprint_freeze_yaml_untouched: true
   supplier_to_kicad_evidence_map_yaml_untouched: true
   preliminary_bom_yaml_untouched: true
@@ -114,8 +143,10 @@ forbidden_claims:
   - pinout_reviews_complete
   - symbols_ready
   - footprints_ready
-  - soc_pinout_captured
+  - bare_soc_bga_ball_map_captured_without_nda
 release_blockers_unchanged:
-  - Unisoc T606/T616 BGA ball-map remains behind Unisoc NDA + Design-In Agreement
   - per-pad detail for Quectel, Murata, TI, ADI parts still requires binary-PDF or partner-portal pull
   - all production-release reports (pinout-review, symbol-review, footprint-review, footprint-3d-binding) still blocked per supplier-to-kicad-evidence-map.yaml
+compute_blocker_change:
+  before: Unisoc T606/T616 bare-SoC BGA ball-map behind NDA was the sole un-unblockable public-data line
+  after: compute sourced as public-pinout RK3566 SoM (Core-3566JD4); no NDA-gated lines block a public-data build; bare-SoC+NDA retained as optional cost-down

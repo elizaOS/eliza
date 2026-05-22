@@ -72,6 +72,18 @@ DATASETS = (
         "lane": "fpga_macro_placement_transfer",
     },
     {
+        "id": "r_zoo_rectilinear_floorplan",
+        "records": "build/ai_eda/r_zoo_rectilinear_floorplan/{run_id}/records",
+        "report": "build/ai_eda/r_zoo_rectilinear_floorplan/{run_id}/conversion_report.json",
+        "lane": "rectilinear_floorplan_legality",
+    },
+    {
+        "id": "floorset_lite",
+        "records": "build/ai_eda/floorset_lite/{run_id}/records",
+        "report": "build/ai_eda/floorset_lite/{run_id}/conversion_report.json",
+        "lane": "floorplanning_graph_tensor_labels",
+    },
+    {
         "id": "research_code_assets",
         "records": "build/ai_eda/research_code_assets/{run_id}/records",
         "report": "build/ai_eda/research_code_assets/{run_id}/conversion_report.json",
@@ -82,6 +94,12 @@ DATASETS = (
         "records": "build/ai_eda/current_research_watchlist_records/{run_id}/records",
         "report": "build/ai_eda/current_research_watchlist_records/{run_id}/conversion_report.json",
         "lane": "current_research_rag",
+    },
+    {
+        "id": "verireason_rtl_coder",
+        "records": "build/ai_eda/verireason_rtl_coder/{run_id}/records",
+        "report": "build/ai_eda/verireason_rtl_coder/{run_id}/conversion_report.json",
+        "lane": "rtl_generation_verification_feedback",
     },
     {
         "id": "openabc_d",

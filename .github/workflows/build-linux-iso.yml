@@ -1,5 +1,11 @@
 name: Build elizaOS Linux ISO
 
+# One unified multi-arch live-build at packages/os/linux/elizaos. The build
+# runs inside a Docker builder container (`make build ARCH=<arch>`), so the
+# runner only needs Docker — no host live-build/just/rust install. amd64 is
+# the gating leg; arm64/riscv64 run continue-on-error until they have
+# produced+validated artifacts.
+
 on:
   workflow_call:
     inputs:
@@ -25,7 +31,6 @@ on:
   release:
     types: [created]
 
-# Default to least privilege. Override per-job where needed.
 permissions:
   contents: read
 
@@ -33,8 +38,16 @@ jobs:
   build-iso:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64, riscv64]
+    # arm64/riscv64 build under qemu-user-static and have no validated
+    # artifact yet — surface failures without blocking the amd64 gate.
+    continue-on-error: ${{ matrix.arch != 'amd64' }}
     env:
       CHANNEL: ${{ inputs.channel || (github.event_name == 'release' && 'stable') || 'nightly' }}
+      VARIANT_DIR: packages/os/linux/elizaos
 
     steps:
       - name: Checkout
@@ -42,172 +55,76 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install live-build and dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            live-build \
-            just \
-            squashfs-tools \
-            xorriso \
-            isolinux \
-            syslinux-efi \
-            grub-efi-amd64-bin \
-            grub-pc-bin \
-            mtools \
-            dosfstools \
-            python3 \
-            curl \
-            rsync
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.13"
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
-
-      - name: Restore model cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/usbeliza-build/models
-          key: elizaos-model-cache-${{ hashFiles('packages/os/linux/variants/eliza-tails/Justfile') }}
-          restore-keys: elizaos-model-cache-
-
-      - name: Restore CLI cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/usbeliza-build/cli
-          key: elizaos-cli-cache-${{ hashFiles('packages/os/linux/variants/eliza-tails/Justfile') }}
-          restore-keys: elizaos-cli-cache-
-
-      - name: Restore live-build chroot/debs cache
+      - name: Restore live-build cache
         uses: actions/cache@v5
         with:
           path: |
-            packages/os/linux/variants/eliza-tails/tails/cache
-            packages/os/linux/variants/eliza-tails/tails/.build
-          key: elizaos-iso-livebuild-${{ runner.os }}-${{ hashFiles('packages/os/linux/variants/eliza-tails/tails/**/package-lists/**', 'packages/os/linux/variants/eliza-tails/tails/**/*.list.chroot', 'packages/os/linux/variants/eliza-tails/build-iso.sh', 'packages/os/linux/variants/eliza-tails/Dockerfile') }}
-          restore-keys: elizaos-iso-livebuild-${{ runner.os }}-
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-gnu
-
-      - name: Cache Rust build
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            packages/os/linux/target
-          key: elizaos-iso-rust-${{ runner.os }}-${{ hashFiles('packages/os/linux/**/Cargo.lock', 'packages/os/linux/**/Cargo.toml') }}
-          restore-keys: elizaos-iso-rust-${{ runner.os }}-
+            ${{ env.VARIANT_DIR }}/cache
+          key: elizaos-iso-${{ matrix.arch }}-${{ hashFiles('packages/os/linux/elizaos/auto/config', 'packages/os/linux/elizaos/config/package-lists/**', 'packages/os/linux/elizaos/Dockerfile') }}
+          restore-keys: elizaos-iso-${{ matrix.arch }}-
 
       - name: Detect KVM acceleration
         id: kvm
         run: |
-          if command -v kvm-ok >/dev/null 2>&1 && kvm-ok >/dev/null 2>&1; then
-            echo "have_kvm=true" >> "$GITHUB_OUTPUT"
-          elif [ -e /dev/kvm ]; then
+          if [ -e /dev/kvm ]; then
             echo "have_kvm=true" >> "$GITHUB_OUTPUT"
           else
             echo "have_kvm=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Stage ISO build
-        working-directory: packages/os/linux/variants/eliza-tails
-        env:
-          ELIZAOS_BUILD_ELIZA_APP: "1"
-        run: just iso-stage
-
-      # Model/CLI caching is not implemented for the eliza-tails variant —
-      # the chroot resolves them inline during live-build. The targets exist
-      # as documented no-ops so the workflow contract stays uniform.
-      - name: Cache pre-downloaded models (variant no-op)
-        working-directory: packages/os/linux/variants/eliza-tails
-        run: just iso-cache-model
-
-      - name: Cache pre-downloaded CLIs (variant no-op)
-        working-directory: packages/os/linux/variants/eliza-tails
-        run: just iso-cache-cli
-
-      - name: Configure live-build
-        working-directory: packages/os/linux/variants/eliza-tails
-        run: just iso-config
-
-      - name: Validate ISO config
-        working-directory: packages/os/linux/variants/eliza-tails
-        run: just iso-check
-
-      - name: Build ISO
-        working-directory: packages/os/linux/variants/eliza-tails
-        run: sudo --preserve-env=ELIZAOS_BUILD_ELIZA_APP just iso-build
-        timeout-minutes: 90
+      - name: Build ISO (${{ matrix.arch }})
+        working-directory: ${{ env.VARIANT_DIR }}
+        run: make build ARCH=${{ matrix.arch }}
+        timeout-minutes: 110
 
       - name: Locate and rename ISO
         id: iso
         run: |
-          ISO=$(find packages/os/linux/variants/eliza-tails -name "*.iso" | head -1)
+          set -euo pipefail
+          ISO=$(find "${VARIANT_DIR}/out" -name "elizaos-linux-${{ matrix.arch }}-*.iso" | sort | tail -1)
           if [ -z "$ISO" ]; then
             echo "ERROR: ISO not found after build"
             exit 1
           fi
           DATE=$(date +%Y.%m.%d)
-          DEST="elizaos-linux-live-${CHANNEL}-${DATE}-amd64.iso"
+          DEST="elizaos-linux-${CHANNEL}-${DATE}-${{ matrix.arch }}.iso"
           cp "$ISO" "$DEST"
-          SHA256=$(sha256sum "$DEST" | cut -d' ' -f1)
-          SIZE=$(stat --format="%s" "$DEST")
-          echo "path=$DEST" >> "$GITHUB_OUTPUT"
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
-          echo "filename=$DEST" >> "$GITHUB_OUTPUT"
+          sha256sum "$DEST" > "$DEST.sha256"
+          {
+            echo "path=$DEST"
+            echo "filename=$DEST"
+            echo "sha256=$(sha256sum "$DEST" | cut -d' ' -f1)"
+            echo "size=$(stat --format=%s "$DEST")"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Generate SHA256SUMS
-        run: |
-          sha256sum "${{ steps.iso.outputs.path }}" > "${{ steps.iso.outputs.filename }}.sha256"
-
-      - name: Smoke test ISO (headless QEMU)
-        if: runner.os == 'Linux' && steps.kvm.outputs.have_kvm == 'true'
+      - name: Smoke test ISO (headless QEMU, amd64 only)
+        if: matrix.arch == 'amd64' && steps.kvm.outputs.have_kvm == 'true'
         run: |
           set -euo pipefail
+          sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
-          QEMU_TIMEOUT=180
-          ISO_PATH="${{ steps.iso.outputs.path }}"
           SERIAL_LOG=$(mktemp)
-          # Allow non-zero exit when timeout fires; we assert on log contents.
-          timeout "$QEMU_TIMEOUT" qemu-system-x86_64 \
-            -enable-kvm \
-            -cdrom "$ISO_PATH" \
-            -boot d \
-            -m 2G \
-            -smp 2 \
-            -display none \
-            -vga none \
-            -serial "file:$SERIAL_LOG" \
-            -no-reboot \
-            -nographic 2>/dev/null || true
+          timeout 180 qemu-system-x86_64 \
+            -enable-kvm -cdrom "${{ steps.iso.outputs.path }}" -boot d \
+            -m 2G -smp 2 -display none -vga none \
+            -serial "file:$SERIAL_LOG" -no-reboot -nographic 2>/dev/null || true
           if grep -qi "elizaOS\|eliza\|login:" "$SERIAL_LOG" 2>/dev/null; then
-            echo "ISO smoke test: boot strings found in serial log"
+            echo "ISO smoke test: boot strings found"
           else
-            echo "ERROR: boot strings not detected in serial log"
+            echo "ERROR: boot strings not detected"
             tail -200 "$SERIAL_LOG" || true
-            rm -f "$SERIAL_LOG"
             exit 1
           fi
           rm -f "$SERIAL_LOG"
 
-      - name: Smoke test ISO (KVM unavailable — skipped)
-        if: runner.os == 'Linux' && steps.kvm.outputs.have_kvm != 'true'
-        run: |
-          echo "::notice::QEMU/KVM unavailable on this runner; skipping ISO boot smoke test (not silently passed — the gate above is the contract)."
+      - name: Smoke test skipped (no KVM or non-amd64)
+        if: matrix.arch != 'amd64' || steps.kvm.outputs.have_kvm != 'true'
+        run: echo "::notice::Boot smoke test runs only on amd64 with KVM; skipped for ${{ matrix.arch }}."
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v7
         with:
-          name: elizaos-linux-iso-${{ env.CHANNEL }}
+          name: elizaos-linux-iso-${{ env.CHANNEL }}-${{ matrix.arch }}
           path: |
             ${{ steps.iso.outputs.path }}
             ${{ steps.iso.outputs.filename }}.sha256
@@ -227,7 +144,7 @@ jobs:
       - name: Write ISO metadata to summary
         run: |
           {
-            echo "## elizaOS Linux ISO"
+            echo "## elizaOS Linux ISO (${{ matrix.arch }})"
             echo "| Field | Value |"
             echo "| ----- | ----- |"
             echo "| File | \`${{ steps.iso.outputs.filename }}\` |"

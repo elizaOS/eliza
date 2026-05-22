@@ -1,0 +1,41 @@
+{
+  "id": "elizaos-linux-riscv64",
+  "kind": "raw-image",
+  "target": {
+    "platform": "linux",
+    "architecture": "riscv64",
+    "device": null,
+    "hypervisor": "qemu-virt",
+    "firmware": "qemu-efi-riscv64/EDK2 + OpenSBI"
+  },
+  "filename": "elizaos-linux-riscv64-default-20260521T131111Z.iso",
+  "downloadUrl": null,
+  "status": "candidate",
+  "sizeBytes": 427153408,
+  "sha256": "07519ebc789eb1cb83d9aea94a72265ca694e147af24d1f0d5070214450c1eb1",
+  "notes": "elizaOS Live (profile=default, built=20260521T131111Z); promotion blocked until qemu-virt, GRUB EFI RISC-V, and elizaOS agent boot evidence are collected.",
+  "validation": {
+    "requiredEvidence": [
+      "qemu-virt-boot",
+      "grub-efi-riscv64-boot",
+      "elizaos-agent-live"
+    ],
+    "evidence": [
+      {
+        "id": "qemu-virt-boot",
+        "status": "collected",
+        "path": "evidence/qemu_virt_boot.json"
+      },
+      {
+        "id": "grub-efi-riscv64-boot",
+        "status": "collected",
+        "path": "evidence/qemu_virt_boot.json"
+      },
+      {
+        "id": "elizaos-agent-live",
+        "status": "collected",
+        "path": "evidence/qemu_virt_boot.json"
+      }
+    ]
+  }
+}

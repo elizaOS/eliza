@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CONTRACT = REPO_ROOT / "packages/chip/docs/spec-db/tee-confidential-domain-contract.json"
@@ -21,8 +20,12 @@ def validate(contract: dict[str, object], policy: dict[str, object]) -> list[str
         errors.append("defaultAction must be deny")
 
     io_contract_value = contract.get("io")
-    io_contract: dict[str, Any] = io_contract_value if isinstance(io_contract_value, dict) else {}
-    required_ids = set(io_contract.get("requiredDmaSourceIds", []))
+    io_contract: dict[str, object] = (
+        io_contract_value if isinstance(io_contract_value, dict) else {}
+    )
+    required_ids_value = io_contract.get("requiredDmaSourceIds", [])
+    required_ids_items = required_ids_value if isinstance(required_ids_value, list) else []
+    required_ids = {source_id for source_id in required_ids_items if isinstance(source_id, str)}
     masters = policy.get("masters")
     if not isinstance(masters, list) or not masters:
         errors.append("masters must be a non-empty list")
@@ -31,9 +34,9 @@ def validate(contract: dict[str, object], policy: dict[str, object]) -> list[str
     seen_source_ids: set[int] = set()
     seen_master_ids: set[str] = set()
     shared_regions_value = policy.get("sharedRegions", [])
-    shared_regions_list = shared_regions_value if isinstance(shared_regions_value, list) else []
+    shared_region_items = shared_regions_value if isinstance(shared_regions_value, list) else []
     shared_regions = {
-        region.get("id") for region in shared_regions_list if isinstance(region, dict)
+        region.get("id") for region in shared_region_items if isinstance(region, dict)
     }
 
     for index, master in enumerate(masters):
@@ -83,7 +86,7 @@ def validate(contract: dict[str, object], policy: dict[str, object]) -> list[str
     if missing:
         errors.append(f"missing required DMA masters: {', '.join(missing)}")
 
-    for index, region in enumerate(shared_regions_list):
+    for index, region in enumerate(shared_region_items):
         prefix = f"sharedRegions[{index}]"
         if not isinstance(region, dict):
             errors.append(f"{prefix} must be an object")

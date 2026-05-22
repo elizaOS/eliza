@@ -2082,11 +2082,8 @@ public class ElizaAgentService extends Service {
     }
 
     private static boolean isBrandedDevice() {
-        if (!readSystemProperty("ro.elizaos.product").isEmpty()) return true;
-        // White-label forks set ro.<brand>os.product (e.g. ro.elizaos.product).
-        // We can't enumerate every fork's namespace from native code, so
-        // probe the most common ones used by current forks. Forks that
-        // need a different sysprop should override shouldAutoStart locally.
+        // AOSP / ElizaOS images set ro.elizaos.product. White-label forks
+        // that use a different sysprop should override shouldAutoStart locally.
         return !readSystemProperty("ro.elizaos.product").isEmpty();
     }
 

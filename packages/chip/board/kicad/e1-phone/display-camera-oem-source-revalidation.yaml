@@ -172,6 +172,85 @@ layout_decisions:
   rear_camera: Sincere_First_OV13855_class_remains_rear_primary_pending_supplier_pack
   front_camera: Sincere_First_GC5035_class_remains_front_primary_pending_supplier_pack
   alibaba_junde_imx219: not_promoted_due_to_25x24_mm_envelope_and_parser_inaccessibility
+rfq_readiness_matrix:
+  display_touch:
+    primary_source_id: display_primary_chenghao_ch550fh01a_ct
+    supplemental_public_source_id: display_primary_chenghao_ch550fh01a_ct_public_pdf
+    marketplace_channel: Made-in-China
+    supplier_contact_target: Shenzhen Chenghao Optoelectronic
+    candidate_to_quote: CH550FH01A-CT
+    observed_quote_basis:
+      public_price_signal_usd:
+        qty_2_to_299: 17.4
+        qty_300_to_999: 16.5
+        qty_1000_plus: 15.4
+      production_capacity_signal: 500000_pcs_per_month
+    supplier_questions_to_send:
+      - confirm orderable CH550FH01A-CT MPN and lifecycle status for 12 month availability
+      - provide signed LCM plus CTP 2D drawing, FPC exit datum, pin-1 datum, and cover-lens datum
+      - provide exact FPC pinout, mating connector MPN, recommended land pattern, and STEP model
+      - provide HX8399C initialization sequence, GT911 touch configuration, backlight current, and bias rail limits
+      - quote 10, 100, and 1000 piece lots plus five engineering samples with lead time
+    route_release_dependency: J_DISPLAY_TOUCH symbol_footprint_and_MIPI_DSI_route_remain_blocked_until_supplier_pack_received
+    rfq_ready_from_public_page: true
+    production_release_ready: false
+  rear_camera:
+    primary_source_id: rear_camera_primary_sincere_first_ov13855
+    marketplace_channel: Made-in-China
+    supplier_contact_target: Guangzhou Sincere Information Technology / Sincere First
+    candidate_to_quote: SF-XR3855A-A0_OV13855_or_OV13850_13MP_AF
+    observed_quote_basis:
+      public_price_signal_usd:
+        qty_5_to_999: 16.35
+        qty_1000_to_9999: 11.65
+        qty_10000_plus: 8.35
+      public_pin_count: 24
+      public_sensor_class: OV13855_or_OV13850
+    supplier_questions_to_send:
+      - confirm exact SF-XR3855A-A0 orderable variant, sensor, VCM, and lifecycle status
+      - provide signed 2D drawing with lens center, z-height, barrel keepout, FPC exit, and stiffener dimensions
+      - provide 24 pin FPC pinout, mating connector MPN, power sequence, AF current, and CSI lane order
+      - provide STEP model, register pack, Linux or Android driver notes, and OTP calibration flow
+      - quote 10, 100, and 1000 piece lots plus five engineering samples with image-quality samples
+    route_release_dependency: J_CAM0 symbol_footprint_CSI_route_and_lens_window_remain_blocked_until_supplier_pack_received
+    rfq_ready_from_public_page: true
+    production_release_ready: false
+  front_camera:
+    primary_source_id: front_camera_primary_sincere_first_gc5035
+    marketplace_channel: Made-in-China
+    supplier_contact_target: Guangzhou Sincere Information Technology / Sincere First
+    candidate_to_quote: SF-G5035S60FY_GC5035_5MP_FF_MIPI
+    observed_quote_basis:
+      public_pin_count: 30
+      public_sensor: GC5035
+      public_mipi_lanes: 2
+      production_capacity_signal: 10kk_pcs_per_month
+    supplier_questions_to_send:
+      - confirm exact SF-G5035S60FY orderable variant, lens height, FPC exit, and lifecycle status
+      - provide signed 2D drawing with optical center, z-height, stiffener dimensions, and cover-glass clearance
+      - provide 30 pin FPC pinout, mating connector MPN, power sequence, and CSI lane order
+      - provide STEP model, register pack, Linux or Android driver notes, and sample capture data
+      - quote 10, 100, and 1000 piece lots plus five engineering samples with dimensional inspection data
+    route_release_dependency: J_CAM1 symbol_footprint_CSI_route_and_front_camera_earpiece_keepout_remain_blocked_until_supplier_pack_received
+    rfq_ready_from_public_page: true
+    production_release_ready: false
+  alibaba_camera_alternate:
+    primary_source_id: front_camera_alternate_alibaba_junde_imx219
+    marketplace_channel: Alibaba
+    supplier_contact_target: Shenzhen Junde Electronics
+    candidate_to_quote: JDT-HPLCC-8MP-120_IMX219_lab_or_redesign_branch_only
+    observed_quote_basis:
+      public_sensor: IMX219
+      public_module_size_mm:
+        width: 25
+        height: 24
+      fit_result: rejected_for_current_17_x_13_mm_camera_region
+    supplier_questions_to_send:
+      - request smaller phone-class IMX219 or equivalent module variants that fit within the active camera/FPC region
+      - request exact 2D drawing, FPC pinout, STEP, connector MPN, and sample availability before any redesign branch
+    route_release_dependency: front_camera_primary_replacement_and_camera_region_repack_remain_blocked_until_smaller_parseable_supplier_pack_received
+    rfq_ready_from_public_page: false
+    production_release_ready: false
 cross_checks:
   primary_display_matches_display_fit: true
   primary_display_fits_device_envelope: true
@@ -185,6 +264,8 @@ cross_checks:
   supplier_source_verification_still_fail_closed: true
   current_public_fields_revalidated_2026_05_21: true
   alibaba_direct_page_remains_shortlist_only_until_parseable_or_supplier_response: true
+  rfq_matrix_tracks_display_camera_primary_sources: true
+  rfq_matrix_keeps_alibaba_camera_alternate_out_of_current_layout_release: true
 required_next_supplier_artifacts:
   - display signed 2D drawing with FPC exit, pin-1 datum, cover-lens datums, and mating connector MPN
   - rear camera signed 2D drawing with lens-axis datum, z-height, FPC exit, pinout, and STEP model

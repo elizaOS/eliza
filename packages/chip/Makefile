@@ -4,18 +4,44 @@ PYTHON ?= python3
 AI_EDA_RUN_ID ?= validation
 AI_EDA_SETUP_RUN_ID ?= $(AI_EDA_RUN_ID)
 AI_EDA_TRAINING_HANDOFF_RUN_ID ?= $(AI_EDA_RUN_ID)-training-handoff
+AI_EDA_TRAINING_CORPUS_RUN_ID ?= $(AI_EDA_RUN_ID)
+AI_EDA_READINESS_RUN_ID ?= $(AI_EDA_RUN_ID)
+AI_EDA_EVIDENCE_BUNDLE_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
+AI_EDA_RESEARCH_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
+AI_EDA_REPLAY_PREREQUISITES_RUN_ID ?= $(AI_EDA_TRAINING_HANDOFF_RUN_ID)
+AI_EDA_REPLAY_PREFLIGHT_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
+AI_EDA_REPLAY_HANDOFF_RUN_ID ?= $(AI_EDA_REPLAY_PREFLIGHT_RUN_ID)
+AI_EDA_REPLAY_EXECUTION_RUN_ID ?= $(AI_EDA_REPLAY_PREFLIGHT_RUN_ID)
+AI_EDA_REPLAY_COMPARISON_RUN_ID ?= $(AI_EDA_REPLAY_EXECUTION_RUN_ID)
+AI_EDA_ALPHACHIP_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
+AI_EDA_ALPHACHIP_SUCCESSOR_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
+AI_EDA_ALPHACHIP_SUCCESSOR_REPRODUCTION_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
+AI_EDA_FULL_TRAINING_MATRIX_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
+AI_EDA_FORMAL_PREREQUISITES_RUN_ID ?= $(AI_EDA_READINESS_RUN_ID)
+AI_EDA_FORMAL_EXECUTION_RUN_ID ?= $(AI_EDA_FORMAL_PREREQUISITES_RUN_ID)
+AI_EDA_CUDA_MATRIX_PAYLOAD_RUN_ID ?= $(AI_EDA_RUN_ID)
+AI_EDA_CUDA_MATRIX_PREFLIGHT_RUN_ID ?= $(AI_EDA_RUN_ID)
+AI_EDA_BASELINE_REPLAY_EXECUTION ?= build/ai_eda/openlane_replay_execution/$(AI_EDA_RUN_ID)-baseline/openlane_replay_execution.json
+AI_EDA_CANDIDATE_REPLAY_EXECUTION ?= build/ai_eda/openlane_replay_execution/$(AI_EDA_RUN_ID)/openlane_replay_execution.json
+AI_EDA_REPLAY_CANDIDATE_ID ?= replay-candidate-placeholder
+AI_EDA_REPLAY_METRICS ?= build/ai_eda/openlane_replay_inputs/$(AI_EDA_RUN_ID)/final-metrics.json
+AI_EDA_REPLAY_OPENLANE_LOG ?= build/ai_eda/openlane_replay_inputs/$(AI_EDA_RUN_ID)/openlane.log
+AI_EDA_REPLAY_OPENROAD_LOG ?= build/ai_eda/openlane_replay_inputs/$(AI_EDA_RUN_ID)/openroad.log
+AI_EDA_REPLAY_DEF ?= build/ai_eda/openlane_replay_inputs/$(AI_EDA_RUN_ID)/final.def
+AI_EDA_REPLAY_GDS ?= build/ai_eda/openlane_replay_inputs/$(AI_EDA_RUN_ID)/final.gds
+AI_EDA_REPLAY_HANDOFF_REPORT ?= build/ai_eda/openlane_replay_handoff/$(AI_EDA_REPLAY_HANDOFF_RUN_ID)/openlane_replay_handoff.json
 VENV := .venv
 VENV_PYTHON := $(VENV)/bin/python
 BENCH_PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),$(PYTHON))
 COCOTB_PYTHON ?= $(shell if [ -x "$(VENV_PYTHON)" ] && "$(VENV_PYTHON)" -c "import cocotb" >/dev/null 2>&1; then printf '%s' "$(VENV_PYTHON)"; else command -v "$(PYTHON)" || printf '%s' "$(PYTHON)"; fi)
 RTL_TOP := e1_chip_top
-RTL_SRCS := rtl/top/e1_chip_top.sv rtl/clock/e1_reset_sync.sv rtl/debug/e1_dbg_mmio_bridge.sv rtl/top/e1_soc_top.sv rtl/bootrom/e1_bootrom.sv rtl/dma/e1_dma.sv rtl/npu/e1_npu.sv rtl/display/e1_display.sv rtl/peripherals/e1_peripherals.sv rtl/cpu/e1_cpu_subsystem_stub.sv rtl/interconnect/e1_axi_lite_interconnect.sv rtl/memory/e1_axi_lite_dram.sv rtl/memory/e1_weight_buffer_sram.sv rtl/interrupts/e1_interrupt_controller.sv rtl/interconnect/e1_linux_soc_contract.sv
+RTL_SRCS := rtl/top/e1_soc_pkg.sv rtl/peripherals/e1_mmio_decode.sv rtl/peripherals/e1_clint.sv rtl/memory/e1_behavioral_dram.sv rtl/top/e1_chip_top.sv rtl/clock/e1_reset_sync.sv rtl/debug/e1_dbg_mmio_bridge.sv rtl/top/e1_soc_top.sv rtl/bootrom/e1_bootrom.sv rtl/dma/e1_dma.sv rtl/npu/e1_npu.sv rtl/display/e1_display.sv rtl/peripherals/e1_peripherals.sv rtl/cpu/e1_cpu_subsystem_stub.sv rtl/interconnect/e1_axi_lite_interconnect.sv rtl/memory/e1_axi_lite_dram.sv rtl/memory/e1_weight_buffer_sram.sv rtl/interrupts/e1_interrupt_controller.sv rtl/interconnect/e1_linux_soc_contract.sv
 BUILD := build
 
 .PHONY: ci-release-evidence evidence-regression-test formal-fast formal-strict openlane-orchestration-test physical-gates-test pipeline-check-strict strict-release-gate-test
 .PHONY: rail-plan-check upf-check pdn-workload-signoff pmic-procurement-gate cocotb-droop cocotb-clock-stretcher cocotb-avfs cocotb-pmc cocotb-power fw-pmc-build
 .PHONY: chipyard-external-generation-plan chipyard-generated-path-check chipyard-generated-path-repair chipyard-import-preflight chipyard-linux-payload-check chipyard-payload-path-check chipyard-generated-ap-boot chipyard-verilator-linux-smoke-test chipyard-verilator-preflight chipyard-verilator-stale-path-repair cpu-ap-capture-plan-shell cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-dts-audit linux-boot-artifacts-check cpu-ap-boot-readiness-check minimum-linux-target-check minimum-linux-target-strict mvp-npu-ml-evidence-check minimum-linux-npu-target-check minimum-linux-npu-target-strict hello-npu-linux-smoke-check
-.PHONY: tapeout-readiness tapeout-readiness-strict tapeout-readiness-test manufacturing-tapeout-scope-check manufacturing-tapeout-scope-test chip-os-bring-up-status
+.PHONY: tapeout-readiness tapeout-readiness-strict tapeout-readiness-test manufacturing-tapeout-scope-check manufacturing-tapeout-scope-test chip-os-bring-up-status chip-os-boot-gap-inventory chip-os-boot-gap-inventory-test chip-os-gap-keyword-inventory chip-os-gap-keyword-inventory-test chip-os-objective-evidence-matrix chip-os-objective-evidence-matrix-test chip-os-closure-plan chip-os-closure-plan-test chip-os-environment-preflight chip-os-environment-preflight-test chip-os-report-freshness chip-os-report-freshness-test
 .PHONY: sota-parity-audit sota-parity-audit-strict sota-parity-audit-test
 .PHONY: software-bsp-external-preflight software-bsp-evidence-check
 .PHONY: e1-phone-display-fit
@@ -39,7 +65,7 @@ BUILD := build
 .PHONY: software-bsp-firmware-ai-policy-check
 .PHONY: spec-traceability-ai-policy-check
 
-.PHONY: setup venv tools kicad-setup kicad-tools-check e1-phone-schematic-scaffold e1-phone-layout-metrics e1-phone-manufacturing-closure e1-phone-board-package-check kicad-phone-render kicad-phone-preview-check phone-cad phone-cad-test lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-check benchmark-efficiency-scope-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-scope-check power-thermal-scope-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test npu-scope-check npu-scope-test e1-npu-nnapi-proof-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-scope-check cpu-ap-scope-test cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-iommu-qos-sim-check memory-iommu-qos-sim-test memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-axi4-width-converter cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check npu-context-queue-sim-check npu-context-queue-sim-test scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check phone-soc-claim-check phone-media-pipeline-scope-check phone-media-pipeline-scope-test security-lifecycle-scope-check security-lifecycle-scope-test radio-sensor-pmic-scope-check radio-sensor-pmic-scope-test product-feature-gates-check product-check product-check-status-test product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check buildroot-qemu-virt-smoke buildroot-qemu-virt-smoke-test aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-scope-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release clean
+.PHONY: setup venv tools kicad-setup kicad-tools-check e1-phone-schematic-scaffold e1-phone-layout-metrics e1-phone-manufacturing-closure e1-phone-board-package-check kicad-phone-render kicad-phone-preview-check phone-cad phone-cad-test lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-check benchmark-efficiency-scope-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-scope-check power-thermal-scope-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test npu-scope-check npu-scope-test e1-npu-nnapi-proof-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-scope-check cpu-ap-scope-test cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-iommu-qos-sim-check memory-iommu-qos-sim-test memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-axi4-width-converter cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check npu-context-queue-sim-check npu-context-queue-sim-test scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check phone-soc-claim-check phone-media-pipeline-scope-check phone-media-pipeline-scope-test security-lifecycle-scope-check security-lifecycle-scope-test tee-software-check tee-confidential-domain-contract-check tee-page-state-policy-check tee-page-state-model-check tee-page-state-model-test tee-iopmp-policy-check tee-side-channel-claims-check tee-attestation-evidence-check tee-quote-serializer-test tee-otp-fuse-map-check tee-otp-fuse-map-test tee-mee-freshness-model-check tee-purge-sequence-scope-check radio-sensor-pmic-scope-check radio-sensor-pmic-scope-test product-feature-gates-check product-check product-check-status-test product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check buildroot-qemu-virt-smoke buildroot-qemu-virt-smoke-test aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-scope-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release otp-rtl-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check rot-integration-check boot-security-chain-contract-check rot-check clean
 
 setup: kicad-setup venv tools kicad-tools-check
 	@echo "packages/chip setup complete"
@@ -128,6 +154,7 @@ kicad-phone-preview-check:
 
 phone-cad:
 	@$(BENCH_PYTHON) scripts/generate_e1_phone_cad.py
+	@$(BENCH_PYTHON) scripts/check_e1_phone_boolean_interference.py
 
 phone-cad-test:
 	@$(BENCH_PYTHON) -m pytest -q scripts/test_generate_e1_phone_cad.py
@@ -147,7 +174,7 @@ analysis:
 verify-all: lint typecheck smoke analysis cocotb cocotb-npu cocotb-contract cocotb-cpu qemu-status-test renode-status-test
 	@echo "verify-all complete"
 
-smoke: lint typecheck docs-check project-plan-check record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check soc-thermal-sweep soc-optimization soc-optimization-work-order cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier cpu-npu-2028-readiness-scorecard cpu-npu-manual-review scale-feasibility-gate verification-maturity-matrix-check platform-contract-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test chipyard-generator-check cpu-ap-scaffold-check cpu-ap-evidence-test cpu-ap-completion-gate stub-audit bsp-scaffold-check software-bsp-check qemu-check renode-check benchmarks-dry-run rtl-check synth
+smoke: lint typecheck docs-check project-plan-check record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check soc-thermal-sweep soc-optimization soc-optimization-work-order cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier cpu-npu-2028-readiness-scorecard cpu-npu-manual-review scale-feasibility-gate verification-maturity-matrix-check platform-contract-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test chipyard-generator-check cpu-ap-scaffold-check cpu-ap-evidence-test cpu-ap-completion-gate stub-audit bsp-scaffold-check software-bsp-check tee-software-check otp-rtl-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check qemu-check renode-check benchmarks-dry-run rtl-check synth
 	@echo "smoke complete"
 
 ci-fast: lint typecheck docs-check project-plan-check npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check scale-feasibility-gate verification-maturity-matrix-check platform-contract-check pinout-check stub-audit rtl-check synth cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check product-check
@@ -226,13 +253,47 @@ tapeout-readiness-strict: manufacturing-tapeout-scope-check
 tapeout-readiness-test:
 	@$(PYTHON) scripts/test_aggregate_tapeout_readiness.py
 
-# Unified chip + OS RV64 bring-up dashboard. The aggregator already
-# carries the OS gates under subsystem=os_rv64; this target is just a
-# friendly entry point that names the cross-package view explicitly so
-# operators can spot it next to ``tapeout-readiness``. It is view-only
-# and preserves the same ``claim_boundary`` as the chip aggregator.
+# Unified chip + OS RV64 bring-up objective gate. This is intentionally
+# strict: any missing Linux/AOSP boot, launcher, APK payload, or agent
+# liveness evidence exits nonzero and writes a dedicated report.
 chip-os-bring-up-status:
-	@$(PYTHON) scripts/aggregate_tapeout_readiness.py
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --strict --report build/reports/chip-os-bring-up-status.json
+
+chip-os-boot-gap-inventory:
+	@$(PYTHON) scripts/check_chip_os_boot_gap_inventory.py
+
+chip-os-boot-gap-inventory-test:
+	@$(PYTHON) scripts/test_chip_os_boot_gap_inventory.py
+
+chip-os-gap-keyword-inventory:
+	@$(PYTHON) scripts/check_chip_os_gap_keyword_inventory.py
+
+chip-os-gap-keyword-inventory-test:
+	@$(PYTHON) scripts/test_chip_os_gap_keyword_inventory.py
+
+chip-os-objective-evidence-matrix:
+	@$(PYTHON) scripts/check_chip_os_objective_evidence_matrix.py
+
+chip-os-objective-evidence-matrix-test:
+	@$(PYTHON) scripts/test_chip_os_objective_evidence_matrix.py
+
+chip-os-closure-plan:
+	@$(PYTHON) scripts/check_chip_os_closure_plan.py
+
+chip-os-closure-plan-test:
+	@$(PYTHON) scripts/test_chip_os_closure_plan.py
+
+chip-os-environment-preflight:
+	@$(PYTHON) scripts/check_chip_os_environment_preflight.py
+
+chip-os-environment-preflight-test:
+	@$(PYTHON) scripts/test_chip_os_environment_preflight.py
+
+chip-os-report-freshness:
+	@$(PYTHON) scripts/check_chip_os_report_freshness.py
+
+chip-os-report-freshness-test:
+	@$(PYTHON) scripts/test_chip_os_report_freshness.py
 
 manufacturing-tapeout-scope-check:
 	@$(PYTHON) scripts/check_manufacturing_tapeout_scope.py
@@ -766,6 +827,83 @@ security-lifecycle-scope-check:
 security-lifecycle-scope-test:
 	@$(PYTHON) scripts/test_security_lifecycle_scope.py
 
+# ----- OpenTitan-class Root-of-Trust gates (W1-W9) ------------------------
+# Buildable RoT subset: the constant-time mask-ROM secure-boot verifier, the
+# OTP and lifecycle controller RTL, the DICE measurement chain, ATE
+# provisioning + readback, secure-boot negative-evidence transcripts, and the
+# Ibex + OTP + lifecycle + mailbox + reset-sequencer integration spine. The
+# OpenTitan crypto blocks (rom_ctrl/keymgr/kmac/hmac/aes/csrng/edn/entropy_src/
+# alert_handler) remain honest fail-closed shims in rot-integration-check until
+# the topgen/fusesoc reg-package + prim elaboration chain is staged; silicon
+# (OTP macro, on-die entropy) stays BLOCKED by design.
+
+otp-rtl-check:
+	@$(PYTHON) scripts/check_otp_rtl.py
+
+dice-measurement-chain-check:
+	@$(PYTHON) scripts/check_dice_measurement_chain.py
+
+secure-boot-negative-evidence-check:
+	@$(PYTHON) scripts/check_secure_boot_negative_evidence.py
+
+provisioning-readback-check:
+	@$(PYTHON) scripts/check_provisioning_readback.py
+
+rot-integration-check:
+	@$(PYTHON) scripts/check_rot_integration.py
+
+boot-security-chain-contract-check:
+	@$(PYTHON) scripts/check_boot_security_chain_contract.py
+
+# Full RoT gate set. Fail-closed: rot-integration-check exits non-zero while the
+# OpenTitan crypto blocks are shimmed rather than integrated.
+rot-check: bootrom-check boot-security-chain-contract-check otp-rtl-check security-lifecycle-scope-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check tee-attestation-evidence-check rot-integration-check
+	@echo "rot-check: RoT gate set evaluated"
+
+# ----- TEE-native Phase-1 software gates (buildable now; no silicon) ------
+# Aggregate of the pure-software TEE checkers + models. Silicon/FPGA/lab items
+# are tracked as BLOCKED scope gates that name the missing dependency and the
+# command that will later prove them (see docs/security/tee-plan/07).
+
+tee-confidential-domain-contract-check:
+	@$(PYTHON) scripts/check_tee_confidential_domain_contract.py
+
+tee-page-state-policy-check:
+	@$(PYTHON) scripts/check_tee_page_state_policy.py
+
+tee-page-state-model-check:
+	@$(PYTHON) scripts/check_tee_page_state_model.py
+
+tee-iopmp-policy-check:
+	@$(PYTHON) scripts/check_tee_iopmp_policy.py
+
+tee-side-channel-claims-check:
+	@$(PYTHON) scripts/check_tee_side_channel_claims.py
+
+tee-attestation-evidence-check:
+	@$(PYTHON) scripts/check_tee_attestation_evidence.py
+
+tee-quote-serializer-test:
+	@$(PYTHON) scripts/test_tee_quote_serializer.py
+
+tee-otp-fuse-map-check:
+	@$(PYTHON) scripts/check_otp_fuse_map.py
+
+tee-otp-fuse-map-test:
+	@$(PYTHON) scripts/test_otp_fuse_map.py
+
+tee-mee-freshness-model-check:
+	@$(PYTHON) scripts/check_tee_mee_freshness_model.py
+
+tee-purge-sequence-scope-check:
+	@$(PYTHON) scripts/check_tee_purge_sequence_scope.py
+
+tee-page-state-model-test:
+	@$(PYTHON) scripts/check_tee_page_state_model.py
+
+tee-software-check: tee-confidential-domain-contract-check tee-page-state-policy-check tee-page-state-model-check tee-iopmp-policy-check tee-side-channel-claims-check tee-attestation-evidence-check tee-quote-serializer-test tee-otp-fuse-map-check tee-otp-fuse-map-test tee-mee-freshness-model-check tee-purge-sequence-scope-check
+	@$(PYTHON) scripts/check_tee_software_aggregate.py
+
 product-feature-gates-check: security-lifecycle-scope-check
 	@$(PYTHON) scripts/check_product_feature_gates.py
 
@@ -995,7 +1133,7 @@ cocotb-cpu:
 cocotb-coverage: cocotb cocotb-npu
 	@$(PYTHON) scripts/check_cocotb_coverage.py --require-blocks
 
-.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval mpki-eval-rtl mpki-eval-model bpu-lint
+.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval mpki-eval-rtl mpki-eval-model bpu-lint bpu-workload-trace bpu-workload-trace-decode bpu-sweep bpu-model-test bpu-vs-cva6-mpki
 
 cocotb-bpu: cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_bpu_top COCOTB_TOPLEVEL=bpu_top_tb scripts/run_cocotb_bpu.sh
@@ -1041,6 +1179,32 @@ mpki-eval-rtl:
 
 mpki-eval-model:
 	@$(PYTHON) benchmarks/cpu/branch/run_mpki.py --backend model
+
+# Capture a real RV64 branch trace of the llama.cpp agent duty cycle under
+# qemu-riscv64 + libexeclog (privilege-free, native toolchain). MODE=1 selects
+# the decode-heavy (hard-branch) variant; STEPS controls trace length.
+bpu-workload-trace:
+	@$(PYTHON) -m benchmarks.cpu.branch.capture_workload_trace \
+	  --name $(or $(NAME),agent_loop) --mode $(or $(MODE),0) --steps $(or $(STEPS),64)
+
+# Behavioural-model unit tests for the BPU (TAGE-SC-L+ITTAGE) model.
+bpu-model-test:
+	@$(PYTHON) -m pytest \
+	  benchmarks/cpu/branch/test_bpu_model.py \
+	  benchmarks/cpu/branch/test_baseline_predictors.py -q
+
+# Geometry/tuning sweep: rank bpu_pkg.sv geometries by workload-weighted MPKI
+# over the E1 trace set; writes the leaderboard + evidence envelope. Tuning
+# runs on a capped prefix (MAXBR); set MAXBR=0 to validate on full traces.
+bpu-sweep:
+	@$(PYTHON) -m benchmarks.cpu.branch.sweep \
+	  --max-branches $(or $(MAXBR),800000) --jobs $(or $(JOBS),8)
+
+# Behavioural apples-to-apples MPKI comparison against a CVA6/Ariane-class
+# BHT+BTB+RAS front-end baseline over synthetic, QEMU RV64, and CBP-5 traces.
+bpu-vs-cva6-mpki:
+	@$(PYTHON) -m benchmarks.cpu.branch.compare_mpki \
+	  --trace external/workload-traces --trace external/cbp5-traces
 
 .PHONY: cache-hierarchy-claim-gate cocotb-cache cocotb-cache-coherence \
 	cocotb-cache-l1d cocotb-cache-l1i cocotb-cache-drrip \
@@ -1372,30 +1536,32 @@ software-bsp-test:
 evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test synth verilator formal cocotb cocotb-npu cocotb-contract cocotb-cpu cocotb-cross-domain record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
-.PHONY: ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check \
-	ai-eda-external-assets-check ai-eda-external-intake-check \
+.PHONY: ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check ai-eda-external-method-wrapper-readiness-check ai-eda-external-assets-check ai-eda-external-intake-check \
 	ai-eda-external-assets-dry-run ai-eda-local-rag-index ai-eda-backend-preflight \
 	ai-eda-bootstrap-metadata ai-eda-bootstrap-setup-check ai-eda-bootstrap-local-smoke \
 	ai-eda-bootstrap-training-handoff ai-eda-alphachip-checkpoint-blocker-check \
-	ai-eda-alphachip-checkpoint-blocker-network-check ai-eda-external-method-wrapper-readiness-check ai-eda-internal-schemas-check \
+	ai-eda-alphachip-checkpoint-blocker-network-check ai-eda-alphachip-successor-plan ai-eda-alphachip-successor-reproduction ai-eda-internal-schemas-check \
 	ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert \
 	ai-eda-circuitnet3-convert ai-eda-chipbench-d-convert ai-eda-aieda-idata-convert \
 	ai-eda-edalearn-convert ai-eda-macro-place-challenge-convert ai-eda-mlcad-fpga-macro-convert \
-	ai-eda-research-code-assets-convert ai-eda-current-research-watchlist-convert ai-eda-circuitnet3-surrogate \
+	ai-eda-floorplanning-dataset-readiness ai-eda-floorset-license-review ai-eda-floorset-lite-convert ai-eda-floorset-split-manifest ai-eda-r-zoo-convert ai-eda-r-zoo-split-manifest ai-eda-r-zoo-license-review ai-eda-r-zoo-legality-baseline ai-eda-research-code-assets-convert ai-eda-current-research-watchlist-convert ai-eda-verireason-rtl-dataset-manifest ai-eda-verireason-rtl-coder-convert ai-eda-circuitnet3-surrogate \
 	ai-eda-openabc-d-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert \
 	ai-eda-training-corpus-manifest \
 	ai-eda-openlane-flow-labels ai-eda-openroad-ml-snapshot ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train \
+	ai-eda-rtl-model-eval-dry-run \
 	ai-eda-macro-placement-supervised-dataset ai-eda-macro-placement-supervised-train \
 	ai-eda-macro-placement-torch-train ai-eda-macro-placement-torch-infer \
 	ai-eda-macro-placement-supervised-replay-plan ai-eda-macro-placement-baseline \
 	ai-eda-macro-placement-candidate-eval ai-eda-macro-placement-combined-candidate-eval \
 	ai-eda-macro-placement-full-candidate-eval ai-eda-macro-placement-replay-plan \
 	ai-eda-macro-placement-replay-preflight ai-eda-macro-placement-combined-replay-plan \
-	ai-eda-macro-placement-full-replay-plan ai-eda-macro-placement-replay-queue ai-eda-candidate-manifests-check \
-	ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-verification-targets \
+	ai-eda-macro-placement-full-replay-plan ai-eda-macro-placement-replay-queue ai-eda-openlane-replay-prerequisites ai-eda-openlane-replay-handoff ai-eda-candidate-manifests-check \
+	ai-eda-openlane-replay-execution ai-eda-openlane-replay-comparison \
+	ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run ai-eda-formal-verification-prerequisites ai-eda-verification-targets \
 	ai-eda-physical-design-targets ai-eda-optimization-targets ai-eda-all-target-captures ai-eda-logic-synthesis-recipes \
 	ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload \
-	ai-eda-cuda-payload-check ai-eda-cuda-run-plan-dry-run ai-eda-cuda-run-plan-safety-matrix ai-eda-cuda-readiness-audit
+	ai-eda-cuda-payload-check ai-eda-cuda-full-training-matrix ai-eda-cuda-run-plan-dry-run ai-eda-cuda-run-plan-safety-matrix ai-eda-cuda-readiness-audit \
+	ai-eda-cuda-evidence-bundle ai-eda-objective-readiness-audit
 ai-eda-source-inventory-check:
 	@AI_EDA_RUN_ID=$(AI_EDA_RUN_ID) $(PYTHON) scripts/check_ai_eda_source_inventory.py
 
@@ -1405,6 +1571,9 @@ ai-eda-ai-workload-manifest-check:
 ai-eda-assertion-candidate-manifests-check:
 	@$(PYTHON) scripts/ai_eda/check_assertion_candidate_manifests.py
 
+ai-eda-external-method-wrapper-readiness-check:
+	@$(PYTHON) scripts/ai_eda/check_external_method_wrapper_readiness.py
+
 ai-eda-external-assets-check:
 	@$(PYTHON) scripts/ai_eda/check_external_asset_manifests.py
 
@@ -1413,6 +1582,10 @@ ai-eda-external-intake-check: ai-eda-external-assets-check
 
 ai-eda-external-assets-dry-run:
 	@$(PYTHON) scripts/ai_eda/fetch_external_asset.py --all --dry-run --run-id $(AI_EDA_RUN_ID)
+
+ai-eda-rtl-model-eval-dry-run:
+	@$(PYTHON) scripts/ai_eda/evaluate_rtl_model.py --run-id $(AI_EDA_RUN_ID) --dry-run
+	@$(PYTHON) scripts/ai_eda/check_rtl_model_evaluation.py --report build/ai_eda/rtl_model_eval/$(AI_EDA_RUN_ID)/eval_report.json
 
 ai-eda-local-rag-index:
 	@$(PYTHON) scripts/ai_eda/build_local_eda_rag_index.py --run-id $(AI_EDA_RUN_ID)
@@ -1440,8 +1613,13 @@ ai-eda-alphachip-checkpoint-blocker-check:
 ai-eda-alphachip-checkpoint-blocker-network-check:
 	@$(PYTHON) scripts/ai_eda/check_alphachip_checkpoint_blocker.py --run-id $(AI_EDA_RUN_ID) --network
 
-ai-eda-external-method-wrapper-readiness-check:
-	@$(PYTHON) scripts/ai_eda/check_external_method_wrapper_readiness.py
+ai-eda-alphachip-successor-plan:
+	@$(PYTHON) scripts/ai_eda/capture_alphachip_successor_plan.py --run-id $(AI_EDA_RUN_ID) --training-corpus-run-id $(AI_EDA_TRAINING_CORPUS_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_alphachip_successor_plan.py --report build/ai_eda/alphachip_successor_plan/$(AI_EDA_RUN_ID)/alphachip_successor_plan.json
+
+ai-eda-alphachip-successor-reproduction: ai-eda-alphachip-successor-plan ai-eda-cuda-full-training-matrix ai-eda-openlane-replay-comparison
+	@$(PYTHON) scripts/ai_eda/capture_alphachip_successor_reproduction.py --run-id $(AI_EDA_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID) --full-training-matrix-run-id $(AI_EDA_FULL_TRAINING_MATRIX_RUN_ID) --replay-comparison-run-id $(AI_EDA_REPLAY_COMPARISON_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_alphachip_successor_reproduction.py --report build/ai_eda/alphachip_successor_reproduction/$(AI_EDA_RUN_ID)/alphachip_successor_reproduction.json
 
 ai-eda-internal-schemas-check:
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py
@@ -1486,6 +1664,44 @@ ai-eda-mlcad-fpga-macro-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/mlcad_2023_fpga_macro/$(AI_EDA_RUN_ID)/records
 	@$(PYTHON) scripts/ai_eda/check_mlcad_2023_fpga_macro_conversion.py --report build/ai_eda/mlcad_2023_fpga_macro/$(AI_EDA_RUN_ID)/conversion_report.json
 
+ai-eda-floorplanning-dataset-readiness: ai-eda-floorset-license-review ai-eda-floorset-hf-archive-manifest ai-eda-r-zoo-split-manifest ai-eda-r-zoo-license-review
+	@$(PYTHON) scripts/ai_eda/capture_floorplanning_dataset_readiness.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_floorplanning_dataset_readiness.py --report build/ai_eda/floorplanning_dataset_readiness/$(AI_EDA_RUN_ID)/floorplanning_dataset_readiness.json
+
+ai-eda-floorset-license-review:
+	@$(PYTHON) scripts/ai_eda/capture_floorset_license_review.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_floorset_license_review.py --report build/ai_eda/floorset_license_review/$(AI_EDA_RUN_ID)/license_review.json
+
+ai-eda-floorset-hf-archive-manifest:
+	@$(PYTHON) scripts/ai_eda/capture_floorset_hf_archive_manifest.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_floorset_hf_archive_manifest.py --report build/ai_eda/floorset_hf_archives/$(AI_EDA_RUN_ID)/archive_manifest.json
+
+ai-eda-floorset-lite-convert: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/convert_floorset_lite_to_internal_records.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/floorset_lite/$(AI_EDA_RUN_ID)/records
+	@$(PYTHON) scripts/ai_eda/check_floorset_lite_conversion.py --report build/ai_eda/floorset_lite/$(AI_EDA_RUN_ID)/conversion_report.json
+
+ai-eda-floorset-split-manifest: ai-eda-floorset-lite-convert
+	@$(PYTHON) scripts/ai_eda/capture_floorset_split_manifest.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_floorset_split_manifest.py --report build/ai_eda/floorset_lite_splits/$(AI_EDA_RUN_ID)/split_manifest.json
+
+ai-eda-r-zoo-convert: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/convert_r_zoo_to_internal_records.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/r_zoo_rectilinear_floorplan/$(AI_EDA_RUN_ID)/records
+	@$(PYTHON) scripts/ai_eda/check_r_zoo_conversion.py --report build/ai_eda/r_zoo_rectilinear_floorplan/$(AI_EDA_RUN_ID)/conversion_report.json
+
+ai-eda-r-zoo-split-manifest: ai-eda-r-zoo-convert
+	@$(PYTHON) scripts/ai_eda/capture_r_zoo_split_manifest.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_r_zoo_split_manifest.py --report build/ai_eda/r_zoo_rectilinear_floorplan_splits/$(AI_EDA_RUN_ID)/split_manifest.json
+
+ai-eda-r-zoo-license-review:
+	@$(PYTHON) scripts/ai_eda/capture_r_zoo_license_review.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_r_zoo_license_review.py --report build/ai_eda/r_zoo_license_review/$(AI_EDA_RUN_ID)/license_review.json
+
+ai-eda-r-zoo-legality-baseline: ai-eda-r-zoo-split-manifest ai-eda-r-zoo-license-review
+	@$(PYTHON) scripts/ai_eda/train_r_zoo_legality_baseline.py --run-id $(AI_EDA_RUN_ID) --record-dir build/ai_eda/r_zoo_rectilinear_floorplan/$(AI_EDA_RUN_ID)/records --split-manifest build/ai_eda/r_zoo_rectilinear_floorplan_splits/$(AI_EDA_RUN_ID)/split_manifest.json
+	@$(PYTHON) scripts/ai_eda/check_r_zoo_legality_baseline.py --report build/ai_eda/r_zoo_legality_baseline/$(AI_EDA_RUN_ID)/training_run.json
+
 ai-eda-research-code-assets-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/convert_research_code_assets_to_internal_records.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/research_code_assets/$(AI_EDA_RUN_ID)/records
@@ -1495,6 +1711,15 @@ ai-eda-current-research-watchlist-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/convert_current_research_watchlist_to_internal_records.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/current_research_watchlist_records/$(AI_EDA_RUN_ID)/records
 	@$(PYTHON) scripts/ai_eda/check_current_research_watchlist_records.py --report build/ai_eda/current_research_watchlist_records/$(AI_EDA_RUN_ID)/conversion_report.json
+
+ai-eda-verireason-rtl-dataset-manifest:
+	@$(PYTHON) scripts/ai_eda/capture_verireason_rtl_dataset_manifest.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_verireason_rtl_dataset_manifest.py --report build/ai_eda/verireason_rtl_datasets/$(AI_EDA_RUN_ID)/dataset_manifest.json
+
+ai-eda-verireason-rtl-coder-convert: ai-eda-internal-schemas-check ai-eda-verireason-rtl-dataset-manifest
+	@$(PYTHON) scripts/ai_eda/convert_verireason_rtl_coder_to_internal_records.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/verireason_rtl_coder/$(AI_EDA_RUN_ID)/records
+	@$(PYTHON) scripts/ai_eda/check_verireason_rtl_coder_conversion.py --report build/ai_eda/verireason_rtl_coder/$(AI_EDA_RUN_ID)/conversion_report.json
 
 ai-eda-circuitnet3-surrogate: ai-eda-circuitnet3-convert
 	@$(PYTHON) scripts/ai_eda/train_circuitnet3_timing_power_baseline.py --run-id $(AI_EDA_RUN_ID)
@@ -1522,7 +1747,7 @@ ai-eda-openlane-flow-labels: ai-eda-e1-openlane-convert
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/openlane_flow_labels/$(AI_EDA_RUN_ID)/records
 	@$(PYTHON) scripts/ai_eda/check_openlane_flow_labels.py --report build/ai_eda/openlane_flow_labels/$(AI_EDA_RUN_ID)/label-parse-report.json
 
-ai-eda-training-corpus-manifest: ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert ai-eda-circuitnet3-convert ai-eda-chipbench-d-convert ai-eda-aieda-idata-convert ai-eda-edalearn-convert ai-eda-macro-place-challenge-convert ai-eda-mlcad-fpga-macro-convert ai-eda-research-code-assets-convert ai-eda-current-research-watchlist-convert ai-eda-openabc-d-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels
+ai-eda-training-corpus-manifest: ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert ai-eda-circuitnet3-convert ai-eda-chipbench-d-convert ai-eda-aieda-idata-convert ai-eda-edalearn-convert ai-eda-macro-place-challenge-convert ai-eda-mlcad-fpga-macro-convert ai-eda-floorset-split-manifest ai-eda-floorset-license-review ai-eda-r-zoo-legality-baseline ai-eda-research-code-assets-convert ai-eda-current-research-watchlist-convert ai-eda-verireason-rtl-coder-convert ai-eda-openabc-d-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels
 	@$(PYTHON) scripts/ai_eda/build_training_corpus_manifest.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_training_corpus_manifest.py --manifest build/ai_eda/training_corpus_manifest/$(AI_EDA_RUN_ID)/training_corpus_manifest.json
 
@@ -1536,7 +1761,7 @@ ai-eda-pd-surrogate-smoke: ai-eda-openlane-flow-labels
 ai-eda-fixture-placement-train: ai-eda-internal-fixtures
 	@$(PYTHON) scripts/ai_eda/train_fixture_placement_smoke.py --run-id $(AI_EDA_RUN_ID) --device cpu
 
-ai-eda-macro-placement-supervised-dataset: ai-eda-internal-fixtures ai-eda-tilos-macroplacement-convert ai-eda-chipbench-d-convert ai-eda-e1-softmacro-cases
+ai-eda-macro-placement-supervised-dataset: ai-eda-internal-fixtures ai-eda-e1-openlane-convert ai-eda-tilos-macroplacement-convert ai-eda-chipbench-d-convert ai-eda-e1-softmacro-cases
 	@$(PYTHON) scripts/ai_eda/build_macro_placement_supervised_dataset.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_macro_placement_supervised_dataset.py --report build/ai_eda/macro_placement_supervised_dataset/$(AI_EDA_RUN_ID)/macro_placement_supervised_dataset_report.json
 
@@ -1596,6 +1821,14 @@ ai-eda-macro-placement-replay-queue: ai-eda-macro-placement-full-replay-plan
 	@$(PYTHON) scripts/ai_eda/select_macro_placement_replay_queue.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_macro_placement_replay_queue.py --report build/ai_eda/macro_placement_replay_queue/$(AI_EDA_RUN_ID)/replay_queue.json
 
+ai-eda-openlane-replay-prerequisites: ai-eda-macro-placement-replay-queue
+	@$(PYTHON) scripts/ai_eda/capture_openlane_replay_prerequisites.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_openlane_replay_prerequisites.py --report build/ai_eda/openlane_replay_prerequisites/$(AI_EDA_RUN_ID)/openlane_replay_prerequisites.json
+
+ai-eda-openlane-replay-handoff: ai-eda-macro-placement-replay-queue ai-eda-macro-placement-replay-preflight
+	@$(PYTHON) scripts/ai_eda/package_openlane_replay_handoff.py --run-id $(AI_EDA_RUN_ID) --handoff-run-id $(AI_EDA_REPLAY_HANDOFF_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_openlane_replay_handoff.py --report build/ai_eda/openlane_replay_handoff/$(AI_EDA_REPLAY_HANDOFF_RUN_ID)/openlane_replay_handoff.json
+
 ai-eda-candidate-manifests-check: ai-eda-fixture-placement-train
 	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py
 
@@ -1605,7 +1838,20 @@ ai-eda-tool-actions-check: ai-eda-internal-schemas-check
 ai-eda-cocotb-stimulus-dry-run:
 	@$(PYTHON) scripts/ai_eda/run_cocotb_stimulus_search.py --dry-run --run-id $(AI_EDA_RUN_ID)
 
-ai-eda-verification-targets:
+ai-eda-formal-verification-prerequisites:
+	@$(PYTHON) scripts/ai_eda/capture_formal_verification_prerequisites.py --run-id $(AI_EDA_FORMAL_PREREQUISITES_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_formal_verification_prerequisites.py --report build/ai_eda/formal_verification_prerequisites/$(AI_EDA_FORMAL_PREREQUISITES_RUN_ID)/formal_verification_prerequisites.json
+
+ai-eda-formal-execution-evidence: ai-eda-formal-verification-prerequisites
+	@scripts/run_formal.sh || echo "Formal execution failed; capturing available formal evidence."
+	@$(PYTHON) scripts/ai_eda/capture_formal_execution_evidence.py --run-id $(AI_EDA_FORMAL_EXECUTION_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_formal_execution_evidence.py --report build/ai_eda/formal_execution_evidence/$(AI_EDA_FORMAL_EXECUTION_RUN_ID)/formal_execution_evidence.json
+
+ai-eda-formal-solver-isolation: ai-eda-formal-verification-prerequisites
+	@$(PYTHON) scripts/ai_eda/run_formal_solver_isolation.py --run-id $(AI_EDA_FORMAL_EXECUTION_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_formal_solver_isolation.py --report build/ai_eda/formal_solver_isolation/$(AI_EDA_FORMAL_EXECUTION_RUN_ID)/formal_solver_isolation.json
+
+ai-eda-verification-targets: ai-eda-formal-execution-evidence ai-eda-formal-solver-isolation
 	@$(PYTHON) scripts/ai_eda/capture_logic_synthesis_targets.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id $(AI_EDA_RUN_ID)
@@ -1689,6 +1935,10 @@ ai-eda-cuda-payload:
 ai-eda-cuda-payload-check:
 	@$(PYTHON) scripts/ai_eda/check_cuda_training_payload.py --report build/ai_eda/cuda_training_payloads/$(AI_EDA_RUN_ID)/cuda_training_payload_report.json
 
+ai-eda-cuda-full-training-matrix:
+	@$(PYTHON) scripts/ai_eda/capture_cuda_full_training_matrix.py --run-id $(AI_EDA_RUN_ID) --payload-run-id $(AI_EDA_CUDA_MATRIX_PAYLOAD_RUN_ID) --preflight-run-id $(AI_EDA_CUDA_MATRIX_PREFLIGHT_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_cuda_full_training_matrix.py --report build/ai_eda/cuda_full_training_matrix/$(AI_EDA_RUN_ID)/cuda_full_training_matrix.json
+
 ai-eda-cuda-run-plan-dry-run: ai-eda-cuda-payload
 	@$(PYTHON) scripts/ai_eda/execute_cuda_run_plan.py --plan build/ai_eda/cuda_training_payloads/$(AI_EDA_RUN_ID)/cuda_training_run_plan.json --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_cuda_run_plan_execution.py --report build/ai_eda/cuda_run_plan_execution/$(AI_EDA_RUN_ID)/cuda_run_plan_execution.json
@@ -1696,11 +1946,27 @@ ai-eda-cuda-run-plan-dry-run: ai-eda-cuda-payload
 ai-eda-cuda-run-plan-safety-matrix: ai-eda-cuda-payload
 	@$(PYTHON) scripts/ai_eda/check_cuda_run_plan_safety_matrix.py --plan build/ai_eda/cuda_training_payloads/$(AI_EDA_RUN_ID)/cuda_training_run_plan.json --run-id $(AI_EDA_RUN_ID)
 
-ai-eda-cuda-readiness-audit: ai-eda-cuda-preflight ai-eda-cuda-run-plan-dry-run ai-eda-cuda-run-plan-safety-matrix ai-eda-alphachip-checkpoint-blocker-check ai-eda-optimization-targets ai-eda-macro-placement-replay-preflight
-	@$(PYTHON) scripts/ai_eda/capture_cuda_readiness_audit.py --run-id $(AI_EDA_RUN_ID) --setup-run-id $(AI_EDA_SETUP_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID)
+ai-eda-cuda-readiness-audit: ai-eda-cuda-preflight ai-eda-cuda-run-plan-dry-run ai-eda-cuda-run-plan-safety-matrix ai-eda-alphachip-checkpoint-blocker-check ai-eda-alphachip-successor-plan ai-eda-optimization-targets ai-eda-openlane-replay-prerequisites ai-eda-openlane-replay-handoff ai-eda-openlane-replay-comparison ai-eda-cuda-full-training-matrix ai-eda-formal-execution-evidence ai-eda-alphachip-successor-reproduction
+	@$(PYTHON) scripts/ai_eda/capture_cuda_readiness_audit.py --run-id $(AI_EDA_RUN_ID) --setup-run-id $(AI_EDA_SETUP_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID) --replay-prerequisites-run-id $(AI_EDA_REPLAY_PREREQUISITES_RUN_ID) --replay-preflight-run-id $(AI_EDA_REPLAY_PREFLIGHT_RUN_ID) --replay-handoff-run-id $(AI_EDA_REPLAY_HANDOFF_RUN_ID) --replay-execution-run-id $(AI_EDA_REPLAY_EXECUTION_RUN_ID) --replay-comparison-run-id $(AI_EDA_REPLAY_COMPARISON_RUN_ID) --full-training-matrix-run-id $(AI_EDA_FULL_TRAINING_MATRIX_RUN_ID) --formal-prerequisites-run-id $(AI_EDA_FORMAL_PREREQUISITES_RUN_ID) --formal-execution-run-id $(AI_EDA_FORMAL_EXECUTION_RUN_ID) --alphachip-successor-reproduction-run-id $(AI_EDA_ALPHACHIP_SUCCESSOR_REPRODUCTION_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_cuda_readiness_audit.py --report build/ai_eda/cuda_readiness_audit/$(AI_EDA_RUN_ID)/cuda_readiness_audit.json
 
-docs-check: ai-eda-local-rag-index ai-eda-backend-preflight ai-eda-all-target-captures ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-alphachip-checkpoint-blocker-check ai-eda-external-method-wrapper-readiness-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
+ai-eda-cuda-evidence-bundle: ai-eda-cuda-readiness-audit
+	@$(PYTHON) scripts/ai_eda/package_cuda_evidence_bundle.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_cuda_evidence_bundle.py --report build/ai_eda/cuda_evidence_bundles/$(AI_EDA_RUN_ID)/cuda_evidence_bundle.json
+
+ai-eda-objective-readiness-audit:
+	@$(PYTHON) scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id $(AI_EDA_RUN_ID) --readiness-run-id $(AI_EDA_READINESS_RUN_ID) --evidence-bundle-run-id $(AI_EDA_EVIDENCE_BUNDLE_RUN_ID) --training-handoff-run-id $(AI_EDA_TRAINING_HANDOFF_RUN_ID) --training-corpus-run-id $(AI_EDA_TRAINING_CORPUS_RUN_ID) --research-run-id $(AI_EDA_RESEARCH_RUN_ID) --replay-prerequisites-run-id $(AI_EDA_REPLAY_PREREQUISITES_RUN_ID) --replay-preflight-run-id $(AI_EDA_REPLAY_PREFLIGHT_RUN_ID) --replay-handoff-run-id $(AI_EDA_REPLAY_HANDOFF_RUN_ID) --replay-execution-run-id $(AI_EDA_REPLAY_EXECUTION_RUN_ID) --replay-comparison-run-id $(AI_EDA_REPLAY_COMPARISON_RUN_ID) --alphachip-run-id $(AI_EDA_ALPHACHIP_RUN_ID) --alphachip-successor-run-id $(AI_EDA_ALPHACHIP_SUCCESSOR_RUN_ID) --alphachip-successor-reproduction-run-id $(AI_EDA_ALPHACHIP_SUCCESSOR_REPRODUCTION_RUN_ID) --full-training-matrix-run-id $(AI_EDA_FULL_TRAINING_MATRIX_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_ai_eda_objective_readiness.py --report build/ai_eda/objective_readiness/$(AI_EDA_RUN_ID)/objective_readiness.json
+
+ai-eda-openlane-replay-execution:
+	@$(PYTHON) scripts/ai_eda/capture_openlane_replay_execution.py --run-id $(AI_EDA_RUN_ID) --candidate-id $(AI_EDA_REPLAY_CANDIDATE_ID) --metrics $(AI_EDA_REPLAY_METRICS) --openlane-log $(AI_EDA_REPLAY_OPENLANE_LOG) --openroad-log $(AI_EDA_REPLAY_OPENROAD_LOG) --def-file $(AI_EDA_REPLAY_DEF) --gds-file $(AI_EDA_REPLAY_GDS) --replay-handoff $(AI_EDA_REPLAY_HANDOFF_REPORT)
+	@$(PYTHON) scripts/ai_eda/check_openlane_replay_execution.py --report build/ai_eda/openlane_replay_execution/$(AI_EDA_RUN_ID)/openlane_replay_execution.json
+
+ai-eda-openlane-replay-comparison: ai-eda-openlane-replay-execution
+	@$(PYTHON) scripts/ai_eda/capture_openlane_replay_comparison.py --run-id $(AI_EDA_RUN_ID) --baseline-execution $(AI_EDA_BASELINE_REPLAY_EXECUTION) --candidate-execution $(AI_EDA_CANDIDATE_REPLAY_EXECUTION)
+	@$(PYTHON) scripts/ai_eda/check_openlane_replay_comparison.py --report build/ai_eda/openlane_replay_comparison/$(AI_EDA_RUN_ID)/openlane_replay_comparison.json
+
+docs-check: ai-eda-local-rag-index ai-eda-backend-preflight ai-eda-all-target-captures ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check ai-eda-external-assets-check ai-eda-external-intake-check ai-eda-floorplanning-dataset-readiness ai-eda-rtl-model-eval-dry-run ai-eda-alphachip-checkpoint-blocker-check ai-eda-external-method-wrapper-readiness-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-cocotb-stimulus-dry-run
 	@$(PYTHON) scripts/docs_check.py
 
 tool-versions:
@@ -1854,3 +2120,23 @@ boot-pipeline-status:
 	else \
 		echo "tier2:       MISSING  kernel=$(TIER2_KERNEL) initrd=$(TIER2_INITRD) (run 'make tier2-build')"; \
 	fi
+
+# --- node-profile / PDK abstraction (advanced-node readiness) ---
+.PHONY: node-profile-check corner-expand-check
+node-profile-check:
+	@$(PYTHON) scripts/build_node_profile.py
+	@$(PYTHON) scripts/check_node_profile.py
+
+corner-expand-check:
+	@$(PYTHON) scripts/expand_corners.py
+
+# --- requirements traceability spine ---
+.PHONY: traceability-build traceability-check change-impact
+traceability-build:
+	@$(PYTHON) scripts/build_traceability_graph.py
+
+traceability-check:
+	@$(PYTHON) scripts/check_traceability.py
+
+change-impact:
+	@$(PYTHON) scripts/query_change_impact.py $(IMPACT_PATH)

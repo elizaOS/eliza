@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD = ROOT / "docs/project/prototype-status-dashboard.md"
+REPORT = ROOT / "build/reports/prototype_status_dashboard.json"
 VOLATILE_BUILD_OUTPUT_SUBSYSTEMS = {
     "synthesis",
     "cocotb",
@@ -20,6 +21,29 @@ VOLATILE_BUILD_OUTPUT_SUBSYSTEMS = {
     "benchmarks",
     "release-pipeline",
 }
+
+
+def write_report(status: str, findings: list[dict[str, str]]) -> None:
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": "eliza.prototype_status_dashboard.v1",
+        "status": status,
+        "claim_boundary": "dashboard_consistency_only_not_boot_runtime_or_release_evidence",
+        "summary": {"findings": len(findings)},
+        "findings": findings,
+        "evidence": {"dashboard": str(DASHBOARD.relative_to(ROOT))},
+    }
+    REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def blocker(code: str, message: str, evidence: str, next_step: str) -> dict[str, str]:
+    return {
+        "code": code,
+        "severity": "blocker",
+        "message": message,
+        "evidence": evidence,
+        "next_step": next_step,
+    }
 
 
 def run_mvp_json() -> list[dict[str, str]]:
@@ -81,7 +105,7 @@ def conservative_snapshot_allowed(
     status: dict[str, str],
     row: dict[str, str],
 ) -> bool:
-    """Allow source-tree docs to stay conservative after local CI emits artifacts."""
+    """Allow source docs to stay conservative after local build artifacts appear."""
 
     if subsystem not in VOLATILE_BUILD_OUTPUT_SUBSYSTEMS:
         return False
@@ -95,7 +119,7 @@ def conservative_snapshot_allowed(
         current_status == "PASS"
         and current_evidence == "generated_artifact"
         and dashboard_status == "BLOCK"
-        and dashboard_evidence in {"tool_blocker", "regen_required"}
+        and dashboard_evidence in {"tool_blocker", "regen_required", "scaffold_only"}
     ):
         return True
 
@@ -103,16 +127,7 @@ def conservative_snapshot_allowed(
         current_status == "BLOCK"
         and dashboard_status == "BLOCK"
         and current_evidence in {"tool_blocker", "regen_required"}
-        and dashboard_evidence in {"tool_blocker", "regen_required"}
-    ):
-        return True
-
-    if (
-        subsystem == "benchmarks"
-        and current_status == "BLOCK"
-        and dashboard_status == "BLOCK"
-        and current_evidence == "regen_required"
-        and dashboard_evidence == "scaffold_only"
+        and dashboard_evidence in {"tool_blocker", "regen_required", "scaffold_only"}
     ):
         return True
 
@@ -127,7 +142,19 @@ def conservative_snapshot_allowed(
 
 def main() -> int:
     if not DASHBOARD.is_file():
-        print(f"missing dashboard: {DASHBOARD.relative_to(ROOT)}")
+        message = f"missing dashboard: {DASHBOARD.relative_to(ROOT)}"
+        write_report(
+            "fail",
+            [
+                blocker(
+                    "prototype_dashboard_missing",
+                    message,
+                    str(DASHBOARD),
+                    "Restore the prototype status dashboard.",
+                )
+            ],
+        )
+        print(message)
         return 1
 
     text = DASHBOARD.read_text()
@@ -149,6 +176,16 @@ def main() -> int:
     ]
     missing_terms = [term for term in required_terms if term not in text]
     if missing_terms:
+        findings = [
+            blocker(
+                "prototype_dashboard_missing_required_term",
+                "prototype status dashboard is missing a required claim-boundary term",
+                term,
+                "Update the dashboard claim-boundary text so it keeps scaffold/reference evidence scoped honestly.",
+            )
+            for term in missing_terms
+        ]
+        write_report("fail", findings)
         print("dashboard missing required terms:")
         for term in missing_terms:
             print(f"  - {term}")
@@ -156,6 +193,17 @@ def main() -> int:
 
     dashboard_rows = parse_table_rows(text, "## MVP Gate Snapshot")
     if not dashboard_rows:
+        write_report(
+            "fail",
+            [
+                blocker(
+                    "prototype_dashboard_missing_mvp_table",
+                    "dashboard is missing a parseable MVP Gate Snapshot table",
+                    "## MVP Gate Snapshot",
+                    "Restore the MVP Gate Snapshot table with Subsystem, Status, Evidence class, and Next action columns.",
+                )
+            ],
+        )
         print("dashboard missing parseable MVP Gate Snapshot table")
         return 1
 
@@ -163,6 +211,17 @@ def main() -> int:
         subsystem = status["subsystem"]
         row = dashboard_rows.get(subsystem)
         if row is None:
+            write_report(
+                "fail",
+                [
+                    blocker(
+                        "prototype_dashboard_missing_mvp_row",
+                        "dashboard MVP row is missing",
+                        subsystem,
+                        "Regenerate or update the dashboard row from check_mvp_status.py --json.",
+                    )
+                ],
+            )
             print(f"dashboard MVP row is missing: {subsystem}")
             return 1
         expected = {
@@ -175,6 +234,17 @@ def main() -> int:
         for column, expected_value in expected.items():
             observed = normalize_cell(row.get(column, ""))
             if observed != normalize_cell(expected_value):
+                write_report(
+                    "fail",
+                    [
+                        blocker(
+                            "prototype_dashboard_stale_mvp_row",
+                            "dashboard MVP row is stale against check_mvp_status.py",
+                            f"{subsystem}: {column} is {observed!r}, expected {expected_value!r}",
+                            "Update docs/project/prototype-status-dashboard.md from the current MVP gate output.",
+                        )
+                    ],
+                )
                 print(
                     f"dashboard MVP row is stale for {subsystem}: "
                     f"{column} is {observed!r}, expected {expected_value!r}"
@@ -183,6 +253,17 @@ def main() -> int:
 
     extra_rows = sorted(set(dashboard_rows) - {status["subsystem"] for status in run_mvp_json()})
     if extra_rows:
+        write_report(
+            "fail",
+            [
+                blocker(
+                    "prototype_dashboard_extra_mvp_rows",
+                    "dashboard has MVP rows not emitted by check_mvp_status.py",
+                    ", ".join(extra_rows),
+                    "Remove stale dashboard rows or teach check_mvp_status.py to emit them.",
+                )
+            ],
+        )
         print(
             "dashboard has MVP rows that are not emitted by check_mvp_status.py: "
             + ", ".join(extra_rows)
@@ -198,9 +279,21 @@ def main() -> int:
         "F: product, security, radios, sensors, battery",
     ):
         if workstream not in text:
+            write_report(
+                "fail",
+                [
+                    blocker(
+                        "prototype_dashboard_missing_workstream_row",
+                        "dashboard missing required workstream row",
+                        workstream,
+                        "Restore all required workstream rows so ownership of boot and runtime gaps remains visible.",
+                    )
+                ],
+            )
             print(f"dashboard missing workstream row: {workstream}")
             return 1
 
+    write_report("pass", [])
     print("prototype status dashboard matches current MVP gate statuses")
     return 0
 

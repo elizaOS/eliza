@@ -16,6 +16,7 @@ ASIMOV1_FABRICATION_MANIFEST = ASIMOV1_SUBMODULE_ROOT / "mechanical" / "FABRICAT
 
 ASIMOV1_PROFILE_ASSET_ROOT = ROBOT_PACKAGE_ROOT / "assets" / "profiles" / ASIMOV1_PROFILE_ID
 ASIMOV1_GENERATED_MJCF = ASIMOV1_PROFILE_ASSET_ROOT / "mjcf" / "asimov_eliza.xml"
+ASIMOV1_GENERATED_URDF = ASIMOV1_PROFILE_ASSET_ROOT / "asimov.urdf"
 ASIMOV1_GENERATED_MANIFEST = ASIMOV1_PROFILE_ASSET_ROOT / "asimov_asset_manifest.json"
 
 ASIMOV1_CONTROL_HZ = 50.0
@@ -40,6 +41,11 @@ ASIMOV1_LEG_JOINT_ORDER = (
     "right_ankle_pitch_joint",
     "right_ankle_roll_joint",
 )
+
+ASIMOV1_LEG_OBSERVATION_DELAY_GROUPS = {
+    "left_leg": tuple(range(0, 6)),
+    "right_leg": tuple(range(6, 12)),
+}
 
 ASIMOV1_FIRMWARE_JOINT_ORDER = (
     *ASIMOV1_LEG_JOINT_ORDER,

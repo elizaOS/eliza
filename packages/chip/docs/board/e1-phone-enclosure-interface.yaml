@@ -10,7 +10,7 @@ coordinate_system:
   origin: top_left_of_rigid_mainboard_front_view
   units: mm
   board_bbox: {x: 0.0, y: 0.0, width: 64.0, height: 132.0}
-  device_envelope: {width: 78.0, height: 153.6, max_thickness: 11.2}
+  device_envelope: {width: 78.0, height: 153.6, max_thickness: 11.8}
   display_active_area: {width: 68.04, height: 120.96}
   display_tft_outline_target: {width: 70.78, height: 129.17, thickness: 1.7}
   touch_lens_outline_reference: {width: 77.1, height: 151.77, thickness: 3.39}
@@ -22,11 +22,11 @@ z_stack_target:
     - {name: display_adhesive_and_air_gap, thickness_mm: 0.2_to_0.5, status: estimate}
     - {name: rigid_mainboard, thickness_mm: 0.8, status: concept}
     - {name: tallest_topside_component_or_shield, thickness_mm: 1.2_to_2.6, status: requires_selected_parts}
-    - {name: battery_pack, thickness_mm: 5.7, status: target}
+    - {name: battery_pack, thickness_mm: 5.6, status: target}
     - {name: graphite_thermal_spreader_and_gap_pad, thickness_mm: 0.2_to_0.6, status: estimate}
     - {name: rear_cover_or_midframe_allowance, thickness_mm: 0.7_to_1.2, status: estimate}
   risk: >
-    The stack can exceed 11.2 mm unless shield can heights, battery thickness,
+    The stack can exceed 11.8 mm unless shield can heights, battery thickness,
     camera z-height, and rear cover design are locked together. A STEP
     tolerance stack is mandatory before claiming enclosure fit.
 
@@ -84,7 +84,7 @@ component_keepouts:
 next_me_artifacts_required:
   - STEP_model_for_board_display_battery_camera_usb_c_and_buttons
   - 2D_drawing_with_datums_for_display_lens_camera_usb_c_and_side_buttons
-  - tolerance_stack_for_11p2_mm_flush_back_thickness_target
+  - tolerance_stack_for_11p8_mm_flush_back_thickness_target
   - antenna_plastic_and_metal_keepout_model
   - acoustic_chamber_model_for_speaker_mics_and_earpiece
   - drop_and_connector_insertion_load_review

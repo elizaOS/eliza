@@ -10,11 +10,11 @@
 import {
   blindIndex,
   decryptField,
+  type EncryptedField,
   encryptField,
   normalizeEmail,
   normalizePhone,
   normalizeWallet,
-  type EncryptedField,
 } from "./field-crypto";
 
 const TABLE = "users";

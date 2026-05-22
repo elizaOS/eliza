@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -61,13 +64,16 @@ _SOURCES = [
 
 
 def _github_json(url: str) -> tuple[Any | None, str | None]:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "eliza-robot-asimov-audit",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if token := os.environ.get("GITHUB_TOKEN"):
+        headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(
         url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "eliza-robot-asimov-audit",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
@@ -97,10 +103,188 @@ def _repo_default_branch(repo: str) -> tuple[str | None, dict[str, Any]]:
     }
 
 
+def _git_default_branch(repo: str) -> tuple[str | None, str | None]:
+    url = f"https://github.com/{repo}.git"
+    try:
+        proc = subprocess.run(
+            ["git", "ls-remote", "--symref", url, "HEAD"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"
+    if proc.returncode != 0:
+        return None, proc.stderr.strip() or proc.stdout.strip() or f"git ls-remote failed with {proc.returncode}"
+    for line in proc.stdout.splitlines():
+        if line.startswith("ref: refs/heads/") and line.endswith("\tHEAD"):
+            return line.removeprefix("ref: refs/heads/").removesuffix("\tHEAD"), None
+    return "main", None
+
+
+def _git_tags(repo: str) -> tuple[list[str], str | None]:
+    url = f"https://github.com/{repo}.git"
+    try:
+        proc = subprocess.run(
+            ["git", "ls-remote", "--tags", url],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+    except Exception as exc:
+        return [], f"{type(exc).__name__}: {exc}"
+    if proc.returncode != 0:
+        return [], proc.stderr.strip() or proc.stdout.strip() or f"git ls-remote --tags failed with {proc.returncode}"
+    tags: list[str] = []
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].startswith("refs/tags/"):
+            tag = parts[1].removeprefix("refs/tags/").removesuffix("^{}")
+            if tag not in tags:
+                tags.append(tag)
+    return tags, None
+
+
+def _audit_repo_releases_git(repo: str, api_error: str) -> dict[str, Any]:
+    tags, tag_error = _git_tags(repo)
+    if tag_error:
+        return {
+            "repo": repo,
+            "ok": False,
+            "source": "git_tags_fallback",
+            "error": f"{api_error}; git tag fallback failed: {tag_error}",
+            "releases": [],
+            "artifacts": [],
+        }
+    if tags:
+        return {
+            "repo": repo,
+            "ok": False,
+            "source": "git_tags_fallback",
+            "error": f"{api_error}; tags exist, release assets require GitHub release API inspection",
+            "release_count": len(tags),
+            "releases": [{"tag_name": tag, "name": None, "published_at": None, "asset_count": None, "html_url": f"https://github.com/{repo}/releases/tag/{tag}"} for tag in tags],
+            "artifacts": [],
+        }
+    return {
+        "repo": repo,
+        "ok": True,
+        "source": "git_tags_fallback",
+        "api_error": api_error,
+        "release_count": 0,
+        "releases": [],
+        "artifacts": [],
+    }
+
+
+def _audit_repo_tree_git(repo: str, branch: str | None, api_error: str) -> dict[str, Any]:
+    if not branch:
+        branch, branch_error = _git_default_branch(repo)
+        if branch_error:
+            return {
+                "repo": repo,
+                "ok": False,
+                "source": "git_fallback",
+                "error": f"{api_error}; git default branch fallback failed: {branch_error}",
+                "artifacts": [],
+            }
+    assert branch is not None
+    url = f"https://github.com/{repo}.git"
+    with tempfile.TemporaryDirectory(prefix="asimov-model-audit-") as tmp:
+        try:
+            clone = subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--depth",
+                    "1",
+                    "--filter=blob:none",
+                    "--sparse",
+                    "--no-checkout",
+                    "--branch",
+                    branch,
+                    url,
+                    tmp,
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=180,
+            )
+        except Exception as exc:
+            return {
+                "repo": repo,
+                "ok": False,
+                "source": "git_fallback",
+                "default_branch": branch,
+                "error": f"{api_error}; git clone fallback raised {type(exc).__name__}: {exc}",
+                "artifacts": [],
+            }
+        if clone.returncode != 0:
+            return {
+                "repo": repo,
+                "ok": False,
+                "source": "git_fallback",
+                "default_branch": branch,
+                "error": f"{api_error}; git clone fallback failed: {clone.stderr.strip() or clone.stdout.strip()}",
+                "artifacts": [],
+            }
+        try:
+            tree = subprocess.run(
+                ["git", "-C", tmp, "ls-tree", "-r", "--name-only", "HEAD"],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=60,
+            )
+        except Exception as exc:
+            return {
+                "repo": repo,
+                "ok": False,
+                "source": "git_fallback",
+                "default_branch": branch,
+                "error": f"{api_error}; git ls-tree fallback raised {type(exc).__name__}: {exc}",
+                "artifacts": [],
+            }
+        if tree.returncode != 0:
+            return {
+                "repo": repo,
+                "ok": False,
+                "source": "git_fallback",
+                "default_branch": branch,
+                "error": f"{api_error}; git ls-tree fallback failed: {tree.stderr.strip() or tree.stdout.strip()}",
+                "artifacts": [],
+            }
+    paths = [line.strip() for line in tree.stdout.splitlines() if line.strip()]
+    artifacts = [
+        {
+            "repo": repo,
+            "source": "repository_tree_git_fallback",
+            "path": path,
+            "url": f"https://github.com/{repo}/blob/{branch}/{path}",
+            "size": None,
+        }
+        for path in paths
+        if _looks_like_model_artifact(path)
+    ]
+    return {
+        "repo": repo,
+        "ok": True,
+        "source": "git_fallback",
+        "default_branch": branch,
+        "truncated": False,
+        "blob_count": len(paths),
+        "api_error": api_error,
+        "artifacts": artifacts,
+    }
+
+
 def _audit_repo_releases(repo: str) -> dict[str, Any]:
     payload, error = _github_json(f"https://api.github.com/repos/{repo}/releases")
     if error or not isinstance(payload, list):
-        return {"repo": repo, "ok": False, "error": error or "invalid releases response", "releases": [], "artifacts": []}
+        return _audit_repo_releases_git(repo, error or "invalid releases response")
     artifacts: list[dict[str, Any]] = []
     releases = []
     for release in payload:
@@ -136,10 +320,10 @@ def _audit_repo_releases(repo: str) -> dict[str, Any]:
 def _audit_repo_tree(repo: str) -> dict[str, Any]:
     branch, repo_meta = _repo_default_branch(repo)
     if not branch:
-        return {"repo": repo, "ok": False, "error": repo_meta.get("error"), "artifacts": []}
+        return _audit_repo_tree_git(repo, None, str(repo_meta.get("error") or "repository API failed"))
     payload, error = _github_json(f"https://api.github.com/repos/{repo}/git/trees/{branch}?recursive=1")
     if error or not isinstance(payload, dict):
-        return {"repo": repo, "ok": False, "default_branch": branch, "error": error or "invalid tree response", "artifacts": []}
+        return _audit_repo_tree_git(repo, branch, error or "invalid tree response")
     tree = payload.get("tree") if isinstance(payload.get("tree"), list) else []
     artifacts = []
     for item in tree:
@@ -173,10 +357,26 @@ def _audit_github() -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]
     for row in [*release_rows, *tree_rows]:
         artifacts.extend(row.get("artifacts", []))
     return (
-        {"checked": True, "repos": release_rows},
-        {"checked": True, "repos": tree_rows},
+        {"checked": True, "token_used": bool(os.environ.get("GITHUB_TOKEN")), "repos": release_rows},
+        {"checked": True, "token_used": bool(os.environ.get("GITHUB_TOKEN")), "repos": tree_rows},
         artifacts,
     )
+
+
+def _github_audit_warnings(*reports: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    for report in reports:
+        if not report.get("checked"):
+            continue
+        for row in report.get("repos", []):
+            if not isinstance(row, dict):
+                continue
+            repo = row.get("repo", "unknown")
+            if not row.get("ok", False):
+                warnings.append(f"{repo}: {row.get('error', 'GitHub check failed')}")
+            if row.get("truncated"):
+                warnings.append(f"{repo}: repository tree response was truncated")
+    return warnings
 
 
 def audit_released_models(*, check_github_releases: bool = False) -> dict:
@@ -199,13 +399,21 @@ def audit_released_models(*, check_github_releases: bool = False) -> dict:
     ]
     found_artifacts = [*local_artifacts, *github_artifacts]
     found = bool(found_artifacts)
+    warnings = _github_audit_warnings(release_report, tree_report)
+    audit_complete = not warnings
     return {
         "ok": not found,
+        "audit_complete": audit_complete,
+        "warnings": warnings,
         "found_released_policy_or_model": found,
         "conclusion": (
             "released ASIMOV policy/model artifacts found; inspect artifact list before choosing a training baseline"
             if found
-            else "no released ASIMOV-1 policy/model artifacts found in audited public sources"
+            else (
+                "no released ASIMOV-1 policy/model artifacts found in completed audited public sources; some GitHub checks were incomplete"
+                if warnings
+                else "no released ASIMOV-1 policy/model artifacts found in audited public sources"
+            )
         ),
         "expected_remote": "https://github.com/asimovinc/asimov-1.git",
         "pinned_checkout": inv,
@@ -225,11 +433,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check-github-releases", action="store_true")
     parser.add_argument("--require-none", action="store_true")
+    parser.add_argument("--require-complete", action="store_true")
     args = parser.parse_args()
     report = audit_released_models(check_github_releases=args.check_github_releases)
     print(json.dumps(report, indent=2))
     if args.require_none and report["found_released_policy_or_model"]:
         return 2
+    if args.require_complete and not report["audit_complete"]:
+        return 3
     return 0 if report["ok"] or not args.require_none else 2
 
 

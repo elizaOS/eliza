@@ -75,12 +75,12 @@ def read_json(path: Path) -> dict[str, object]:
     text = read_text(path)
     if path.name == "manifest.json.template":
         text = (
-            text.replace("@ARCH@", "riscv64")
-            .replace("@PROFILE@", "default")
-            .replace("@ARTIFACT@", "elizaos-linux-riscv64-template.iso")
-            .replace("@BUILD_TS@", "template")
-            .replace("@SHA256@", "0" * 64)
-            .replace("@SIZE@", "0")
+            text.replace("@@ARCH@@", "riscv64")
+            .replace("@@PROFILE@@", "default")
+            .replace("@@FILENAME@@", "elizaos-linux-riscv64-template.iso")
+            .replace("@@BUILD_TIMESTAMP@@", "template")
+            .replace("@@SHA256@@", "0" * 64)
+            .replace("@@SIZE_BYTES@@", "null")
         )
     return json.loads(text)
 

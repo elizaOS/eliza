@@ -1,8 +1,4 @@
-TOPLEVEL_LANG ?= verilog
-SIM ?= verilator
-
-PWD := $(shell pwd)
-REPO := $(abspath ../../..)
+include ../common.mk
 
 # Each top is verified independently; the runner selects via TOPLEVEL+MODULE.
 VERILOG_SOURCES_DROOP := \
@@ -31,8 +27,7 @@ endif
 
 TOPLEVEL ?= droop_stretch_tb
 MODULE   ?= test_droop_event
-PYTHON   ?= python3
 
-EXTRA_ARGS += -Wall -Wno-UNUSEDPARAM -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-VARHIDDEN -Wno-TIMESCALEMOD
+EXTRA_ARGS += -Wno-UNUSEDPARAM -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-VARHIDDEN -Wno-TIMESCALEMOD
 
-include $(shell $(PYTHON) -m cocotb.config --makefiles)/Makefile.sim
+include $(COCOTB_SIM_MK)

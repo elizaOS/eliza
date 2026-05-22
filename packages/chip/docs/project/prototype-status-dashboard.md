@@ -1,6 +1,6 @@
 # Prototype Status Dashboard
 
-Snapshot: updated after 2026-05-19 PD closure retry and local tool recovery.
+Snapshot: updated 2026-05-21 after native-toolchain recovery; MVP rows mirror `scripts/check_mvp_status.py --json`.
 
 ## MVP Gate Snapshot
 
@@ -14,9 +14,9 @@ Snapshot: updated after 2026-05-19 PD closure retry and local tool recovery.
 | software-bsp | `BLOCK` | `scaffold_only` | `make software-bsp-evidence-check` |
 | real-world-release-gates | `PASS` | `command_pass` | `none` |
 | rtl-source | `PASS` | `source_present` | `none` |
-| synthesis | `BLOCK` | `tool_blocker` | `make synth` |
-| cocotb | `BLOCK` | `regen_required` | `make cocotb cocotb-npu cocotb-contract cocotb-cpu` |
-| verilator | `BLOCK` | `tool_blocker` | `make verilator` |
+| synthesis | `PASS` | `generated_artifact` | `none` |
+| cocotb | `PASS` | `generated_artifact` | `none` |
+| verilator | `PASS` | `generated_artifact` | `none` |
 | formal | `BLOCK` | `tool_blocker` | `make formal inside Docker/Nix` |
 | qemu | `BLOCK` | `tool_blocker` | `make qemu-check` |
 | renode | `BLOCK` | `tool_blocker` | `make renode-check` |
@@ -25,7 +25,7 @@ Snapshot: updated after 2026-05-19 PD closure retry and local tool recovery.
 | pd-contract | `PASS` | `command_pass` | `none` |
 | product-package | `BLOCK` | `release_blocker` | `close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication` |
 | benchmarks | `BLOCK` | `scaffold_only` | `python3 benchmarks/run_benchmarks.py run --metadata benchmarks/metadata/strict-blocked-template.json --strict-missing` |
-| release-pipeline | `BLOCK` | `regen_required` | `make tool-versions pipeline-check` |
+| release-pipeline | `PASS` | `generated_artifact` | `none` |
 
 ## Workstream Dashboard
 

@@ -3,6 +3,7 @@
   "PDK": "gf180mcuC",
   "STD_CELL_LIBRARY": "gf180mcu_fd_sc_mcu7t5v0",
   "VERILOG_FILES": [
+    "dir::../../rtl/top/e1_soc_pkg.sv",
     "dir::../../rtl/top/e1_chip_top.sv",
     "dir::../../rtl/clock/e1_reset_sync.sv",
     "dir::../../rtl/debug/e1_dbg_mmio_bridge.sv",

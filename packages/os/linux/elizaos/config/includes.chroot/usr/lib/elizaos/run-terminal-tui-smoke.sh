@@ -12,6 +12,12 @@ if [ -x /opt/elizaos/bin/elizaos ]; then
     exit 0
 fi
 
+if [ -x /opt/elizaos/bin/bun ] && [ -f /opt/elizaos/app/agent-bundle.js ]; then
+    /opt/elizaos/bin/bun /opt/elizaos/app/agent-bundle.js tui-smoke --api "${URL}"
+    echo "elizaos-tui-ready url=${URL}"
+    exit 0
+fi
+
 if [ -x /opt/elizaos/bin/bun ] && [ -f /opt/elizaos/app/server.js ]; then
     /opt/elizaos/bin/bun /opt/elizaos/app/server.js tui-smoke --api "${URL}"
     echo "elizaos-tui-ready url=${URL}"

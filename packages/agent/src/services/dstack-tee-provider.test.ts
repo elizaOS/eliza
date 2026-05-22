@@ -56,4 +56,68 @@ describe("dstack TEE provider", () => {
       collectDstackTeeEvidence({ env: {}, evidencePath: "" }),
     ).rejects.toThrow(/No dstack TEE evidence source configured/);
   });
+
+  it("rejects an oversized evidence payload (decompression-bomb guard)", async () => {
+    await expect(
+      collectDstackTeeEvidence({
+        maxPayloadBytes: 16,
+        env: {
+          ELIZA_TEE_EVIDENCE_JSON: JSON.stringify({
+            kind: "dstack",
+            measurements: { agent: `sha256:${"a".repeat(64)}` },
+          }),
+        },
+      }),
+    ).rejects.toThrow(/payload exceeds 16 bytes/);
+  });
+
+  it("refuses a plain-http evidence endpoint under the production profile", async () => {
+    await expect(
+      collectDstackTeeEvidence({
+        endpointUrl: "http://tee.example.test/evidence",
+        requireSecureTransport: true,
+        fetch: (async () =>
+          Response.json({ kind: "dstack" })) as unknown as typeof fetch,
+        env: {},
+      }),
+    ).rejects.toThrow(/must be https:/);
+  });
+
+  it("refuses NODE_TLS_REJECT_UNAUTHORIZED=0 under the production profile", async () => {
+    await expect(
+      collectDstackTeeEvidence({
+        requireSecureTransport: true,
+        env: {
+          NODE_TLS_REJECT_UNAUTHORIZED: "0",
+          ELIZA_TEE_EVIDENCE_JSON: JSON.stringify({ kind: "dstack" }),
+        },
+      }),
+    ).rejects.toThrow(/NODE_TLS_REJECT_UNAUTHORIZED=0/);
+  });
+
+  it("enforces a pinned KMS identity", async () => {
+    await expect(
+      collectDstackTeeEvidence({
+        expectedKmsPublicKey: "pinned-key",
+        env: {
+          ELIZA_TEE_EVIDENCE_JSON: JSON.stringify({
+            kind: "dstack",
+            kmsPublicKey: "rogue-key",
+          }),
+        },
+      }),
+    ).rejects.toThrow(/KMS identity does not match the pinned public key/);
+
+    await expect(
+      collectDstackTeeEvidence({
+        expectedKmsPublicKey: "pinned-key",
+        env: {
+          ELIZA_TEE_EVIDENCE_JSON: JSON.stringify({
+            kind: "dstack",
+            kmsPublicKey: "pinned-key",
+          }),
+        },
+      }),
+    ).resolves.toMatchObject({ kind: "dstack", provider: "dstack" });
+  });
 });

@@ -51,7 +51,13 @@ def classify(name: str) -> tuple[np.ndarray, int]:
     n = name.lower()
     # Front-surface apertures lift straight off the glass face (+Z) so they do not
     # drag sideways into the molded side frame as the stack separates.
-    if n.startswith("handset_acoustic") or "front_camera_under_glass" in n:
+    if (
+        n.startswith("handset_acoustic")
+        or "front_camera_under_glass" in n
+        or "front_camera_black_mask" in n
+    ):
+        # Front-glass-plane apertures/masks lift straight off the glass (+Z); a
+        # +Y drag would sweep them through the +Z-lifted molded side frame.
         return np.array([0.0, 0.0, 1.0]), 2
     # The rear speaker acoustic cavity sits deepest behind the bottom PCB island,
     # so it ejects straight back (-Z) ahead of the board rather than -Y, where it
@@ -79,10 +85,22 @@ def classify(name: str) -> tuple[np.ndarray, int]:
         return np.array([1.0, 0.0, 0.0]), 2 if "cap" in n else 3 if "labyrinth" in n else 1
     if n.startswith("volume_button") or "volume_actuator" in n or "volume_flex" in n:
         return np.array([-1.0, 0.0, 0.0]), 2 if "cap" in n else 3 if "labyrinth" in n else 1
-    if "side_key" in n or "split_interconnect_side" in n or "wifi_bt_side" in n:
+    # The split-board side flex is a board-top interconnect running along the +X
+    # rail; lift it +Z off the board (like the other interconnect parts) so it
+    # clears the -Z-dropping snap hooks instead of sliding +X into them.
+    if "split_interconnect_side" in n:
+        return np.array([0.0, 0.0, 1.0]), 1
+    if "side_key" in n or "wifi_bt_side" in n:
         return np.array([1.0, 0.0, 0.0]), 1
-    # Front of screen (+Z toward viewer): cover glass, adhesives, display, fpc
-    if n.startswith("screen_cover") or n.startswith("screen_adhesive"):
+    # Front of screen (+Z toward viewer): cover glass, adhesives, perimeter
+    # cushion, display, fpc. The PORON glass-perimeter cushions sit under the
+    # cover-glass edge and ride the cover-glass stack out the front; a default
+    # -Z would plunge them back through the +Y/-Y earpiece/speaker groups.
+    if (
+        n.startswith("screen_cover")
+        or n.startswith("screen_adhesive")
+        or n.startswith("glass_perimeter_cushion")
+    ):
         return np.array([0.0, 0.0, 1.0]), 3
     if (
         n.startswith("display")
@@ -116,10 +134,21 @@ def classify(name: str) -> tuple[np.ndarray, int]:
         return np.array([0.0, 0.0, -1.0]), 2
     if "rear_camera" in n:
         return np.array([0.0, 0.0, -1.0]), 4
+    # Board-top small parts (interconnect flex tails/connectors, RFFE aperture
+    # tuner) sit on the PCB top face; lift them +Z off the board so they clear
+    # the PCB (which ejects -Z) instead of sharing its ring and staying nested.
     if "antenna" in n or "interconnect" in n:
+        return np.array([0.0, 0.0, 1.0]), 1
+    # Snap hooks ride the shallow side-frame top (z near the parting line); eject
+    # them -Z at ring 1 so they do not overtake and dive through the deeper
+    # mid-stack parts (the haptic LRA) the way a ring-4 ejection would.
+    if "snap_hook" in n:
         return np.array([0.0, 0.0, -1.0]), 1
-    if "snap_hook" in n or "screw_boss" in n or "rib" in n or "reinforcement" in n:
-        return np.array([0.0, 0.0, -1.0]), 2
+    # Molded retention bosses/ribs/saddle belong to the enclosure and nest deep
+    # around the battery perimeter. They eject -Z at ring 4 — past the battery
+    # (ring 2) so they separate from it, ahead of the back shell (ring 5).
+    if "screw_boss" in n or "rib" in n or "reinforcement" in n:
+        return np.array([0.0, 0.0, -1.0]), 4
     if "service_label" in n:
         return np.array([0.0, 0.0, -1.0]), 3
     # The SIM tray services from the +X side wall, so it ejects sideways rather
@@ -270,7 +299,7 @@ def build_animated_glb(scene: trimesh.Scene, parts: list[dict[str, Any]]) -> Non
         ta = add_accessor(tb, 5126, 2, "SCALAR", mn=[float(times.min())], mx=[float(times.max())])
         samplers: list[AnimationSampler] = []
         channels: list[AnimationChannel] = []
-        for p, node_idx in zip(parts, part_node_indices, strict=True):
+        for p, node_idx in zip(parts, part_node_indices, strict=False):
             dir_v = p["dir"]
             ring = p["ring"]
             offset = dir_v * (ring * RING_MM)
@@ -361,8 +390,8 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict[str, Any]]) -> tuple[str, 
     n_frames = int(TURNTABLE_S * FPS)
     FRAMES_DIR.mkdir(parents=True, exist_ok=True)
     # clean prior frames
-    for frame_path in FRAMES_DIR.glob("*.png"):
-        frame_path.unlink()
+    for p in FRAMES_DIR.glob("*.png"):
+        p.unlink()
 
     # phase timing within the 12s loop
     # 0..3 explode, 3..4.5 hold-exploded, 4.5..7.5 reassemble, 7.5..12 hold-assembled (4.5s)
@@ -408,7 +437,9 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict[str, Any]]) -> tuple[str, 
     fill = pyrender.DirectionalLight(color=np.ones(3) * 0.85, intensity=1.5)
     rim = pyrender.DirectionalLight(color=np.ones(3), intensity=1.8)
 
-    key_frame_times: list[float] = [x / 2.0 for x in range(int(TURNTABLE_S / 0.5) + 1)]
+    key_frame_times: list[float] = [
+        float(round(x * 0.5, 2)) for x in range(int(TURNTABLE_S / 0.5) + 1)
+    ]
 
     for fi in range(n_frames):
         if fi > 0 and fi % RENDERER_CHUNK == 0:
@@ -463,8 +494,14 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict[str, Any]]) -> tuple[str, 
         # also save keyframe copy
         tr = float(round(t, 2))
         if any(abs(tr - kt) < (1.0 / FPS) / 2 for kt in key_frame_times):
-            nearest_key_frame = min(key_frame_times, key=lambda x: abs(float(x) - tr))
-            kt = round(nearest_key_frame, 1)
+            nearest_key = key_frame_times[0]
+            nearest_delta = abs(nearest_key - tr)
+            for frame_time in key_frame_times[1:]:
+                delta = abs(float(frame_time) - tr)
+                if delta < nearest_delta:
+                    nearest_key = frame_time
+                    nearest_delta = delta
+            kt = round(nearest_key, 1)
             img.save(FRAMES_DIR / f"keyframe_t{kt:04.1f}s.png")
     renderer.delete()
     elapsed = time.time() - t0

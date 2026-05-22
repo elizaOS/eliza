@@ -1,0 +1,153 @@
+schema: eliza.e1_phone_usb_sidekey_schematic_net_binding.v1
+status: blocked_usb_sidekey_net_binding_requires_real_schematic_footprints_route_and_measurements
+date: 2026-05-21
+claim_boundary: >
+  Schematic and routing binding target for the single USB-C port, USB-PD
+  controller, charger, power key, and volume keys. This maps required nets to
+  schematic blocks, protection devices, route classes, and factory probes so
+  EVT1 capture and layout have one source of truth. It is not a KiCad schematic
+  implementation, not ERC/DRC evidence, not a supplier land pattern, not a PD
+  attach log, and not enclosure-ready proof.
+
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/usb-sidekey-integration.yaml
+  - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+  - package/usb-c/e1-phone-usb-c-port.yaml
+  - package/usb-pd/tps65987.yaml
+  - package/charger/max77860.yaml
+  - package/human-interface/side-buttons.yaml
+
+interface_context:
+  usb_c_port_count: 1
+  usb_c_region_mm: {x: 26.0, y: 126.0, width: 16.0, height: 6.0}
+  side_key_connector_region_mm: {x: 18.0, y: 26.0, width: 12.0, height: 3.0}
+  side_key_actuator_spine_region_mm: {x: 4.0, y: 50.0, width: 7.0, height: 46.0}
+  selected_usb_connector_family: USB4105
+  pd_controller: TPS65987DDH
+  charger: MAX77860
+  side_switch_family: EVQ-P7_EVQ-P3_EVQ-9P7
+
+schematic_blocks:
+  usb_c_receptacle:
+    refdes_prefix: J_USB
+    package_role: USB_Type_C_USB2_receptacle
+    required_nets: [VBUS, GND, SHIELD_GND, USB_DP, USB_DN, USB_CC1, USB_CC2]
+    required_local_parts:
+      - USB2 low-capacitance ESD array before split-board transition
+      - CC low-capacitance ESD array near receptacle
+      - VBUS TVS or surge clamp between connector and charger input
+      - shell-to-chassis/logic-ground network with stitch points
+    routing_class: usb2_diff_and_power_entry
+    status: blocked_no_supplier_land_pattern_or_erc
+  usb_pd_controller:
+    refdes_prefix: U_PD
+    package_role: USB_PD_sink_policy_and_CC_controller
+    required_nets: [USBPD_I2C_SCL, USBPD_I2C_SDA, USBPD_IRQ_N, USBPD_RESET, USB_CC1, USB_CC2, USB_DP, USB_DN, VBUS]
+    required_local_parts:
+      - pullup and reset policy matching boot firmware
+      - IRQ route to always-on or early-boot controller
+      - PD flash/config programming access if required by selected part
+    routing_class: cc_i2c_irq_low_speed_plus_usb2_monitor
+    status: blocked_no_symbol_pinout_or_firmware_config
+  charger_power_path:
+    refdes_prefix: U_CHG
+    package_role: battery_charger_and_sys_power_path
+    required_nets: [VBUS, VBAT, SYS, GND, CHG_I2C_SCL, CHG_I2C_SDA, CHG_IRQ_N, CHG_CE_N, CHG_OTG_EN, BAT_NTC, BAT_ID, CHG_TS]
+    required_local_parts:
+      - input current sense or charger input monitor policy
+      - local thermal vias and copper for charge-current path
+      - battery NTC and ID filter network close to charger or pack connector
+    routing_class: high_current_power_plus_i2c_irq
+    status: blocked_no_symbol_pinout_or_thermal_validation
+  side_key_flex_or_switches:
+    refdes_prefix: J_KEY_OR_SW
+    package_role: power_volume_side_key_subassembly
+    required_nets: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, AON_1V8, GND]
+    recommended_min_contacts: 8
+    required_local_parts:
+      - low-leakage ESD near side-key flex connector if off-board
+      - optional RC or series damping after PMIC/AON leakage is known
+      - ground-adjacent pins for wake and recovery signals
+    routing_class: side_keys_aon_low_speed
+    status: blocked_no_switch_or_flex_supplier_drawing
+
+net_route_bindings:
+  usb2_diff_pair:
+    nets: [USB_DP, USB_DN]
+    routing_constraint: USB_DP_DN
+    impedance_ohm_diff: 90
+    max_length_mm: 90
+    intra_pair_skew_mm_max: 0.5
+    factory_probe_required: true
+    required_validation: routed_usb2_length_skew_impedance_and_attach_log
+  usb_cc:
+    nets: [USB_CC1, USB_CC2]
+    routing_constraint: low_speed_cc_esd_near_connector
+    factory_probe_required: true
+    required_validation: attach_on_both_plug_flips_and_pd_sink_profile_log
+  vbus_power_entry:
+    nets: [VBUS, SYS, VBAT, GND, SHIELD_GND]
+    routing_constraint: wide_short_power_entry_with_tvs_current_limit_and_stitching
+    factory_probe_required: true
+    required_validation: current_limit_dead_battery_precharge_and_thermal_log
+  charger_control:
+    nets: [CHG_I2C_SCL, CHG_I2C_SDA, CHG_IRQ_N, CHG_CE_N, CHG_OTG_EN, BAT_NTC, BAT_ID, CHG_TS]
+    routing_constraint: low_speed_i2c_irq_ntc_id_filter
+    factory_probe_required: true
+    required_validation: charger_register_ntc_id_and_cc_cv_log
+  side_keys:
+    nets: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N]
+    routing_constraint: SIDE_KEYS
+    max_length_mm: 80
+    debounce_ms: 20
+    factory_probe_required: true
+    required_validation: wake_recovery_combo_force_travel_and_debounce_log
+
+factory_probe_bindings:
+  usb_c: [USB_CC1, USB_CC2, USB_DP, USB_DN, VBUS, SHIELD_GND]
+  side_keys: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, AON_1V8, GND]
+  charger_power: [VBUS, VBAT, SYS, BAT_NTC, BAT_ID]
+  required_fixture_notes:
+    - fixture access must remain reachable after the orange back shell is removed
+    - USB-C shell and shield probing must not rely on user cable ground continuity
+    - side-key wake and recovery nets must be observable before AP boot
+
+evt1_capture_exit_criteria:
+  - KiCad schematic contains non-placeholder symbols for USB-C receptacle, PD controller, charger, ESD/TVS, side-key connector or switches
+  - all required nets in schematic_blocks are present in block-netlist.yaml and assigned to reviewed pins
+  - USB2 pair uses the usb2_diff route class and EVT1 stackup/coupon target
+  - VBUS/SYS/VBAT copper widths, via counts, and current limits are signed off before charge testing
+  - side-key signals route in always-on domain with wake/recovery firmware ownership defined
+  - factory-probe-map.yaml covers USB-C, charger, and side-key nets or records fixture alternatives
+
+cross_checks:
+  usb_c_region_matches_integration: true
+  side_key_regions_match_integration: true
+  usb2_diff_pair_matches_routing_constraints: true
+  side_key_bus_matches_routing_constraints: true
+  factory_probe_nets_match_probe_map: true
+  all_required_nets_exist_in_block_netlist: true
+  fail_closed_until_real_schematic_route_and_measurements_exist: true
+
+release_blockers:
+  - KiCad schematic still lacks real USB-C, PD, charger, ESD/TVS, and side-key symbols
+  - supplier land patterns and STEP models for USB-C and side-key hardware are missing
+  - routed USB2/CC/VBUS/charger/side-key copper and DRC/ERC evidence are missing
+  - PD attach, charger CC/CV, side-key wake/recovery, and force/travel measurements are missing
+  - routed board STEP and enclosure clearance rerun are missing
+
+forbidden_claims:
+  - usb_c_schematic_ready
+  - charging_schematic_ready
+  - side_key_schematic_ready
+  - usb_c_ready
+  - charging_ready
+  - side_buttons_ready
+  - routed_pcb_ready
+  - fabrication_ready
+  - enclosure_ready

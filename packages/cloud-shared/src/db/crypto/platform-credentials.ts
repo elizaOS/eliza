@@ -4,11 +4,7 @@
  * Encrypted columns: platform_user_id, platform_email, platform_display_name.
  */
 
-import {
-  decryptField,
-  encryptField,
-  type EncryptedField,
-} from "./field-crypto";
+import { decryptField, type EncryptedField, encryptField } from "./field-crypto";
 
 const TABLE = "platform_credentials";
 

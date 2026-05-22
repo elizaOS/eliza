@@ -11,16 +11,8 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-hidl_interface {
-    name: "vendor.eliza.e1_npu@1.0",
-    root: "vendor.eliza",
-    srcs: [
-        "IE1Npu.hal",
-    ],
-    interfaces: [
-        "android.hidl.base@1.0",
-    ],
-    gen_java: false,
+hidl_package_root {
+    name: "vendor.eliza.e1_npu",
 }
 
 cc_binary {

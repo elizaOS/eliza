@@ -10,6 +10,7 @@ source_artifacts:
   - board/kicad/e1-phone/route-feasibility-density.yaml
   - board/kicad/e1-phone/evt1-routing-work-package.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
   - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
   - mechanical/e1-phone/review/board-step-readiness.json
   - mechanical/e1-phone/review/routed-board-clearance.json
@@ -21,21 +22,21 @@ compactness_context:
   current_envelope_mm:
     - 78.0
     - 153.6
-    - 11.2
+    - 11.8
   width_excess_over_bound_mm: 0.3
   height_excess_over_bound_mm: 1.23
   area_excess_over_bound_mm2: 141.7
-  decision: 'Keep 78.0 x 153.6 x 11.2 mm molded orange body: width/height stay display-driven; depth was deliberately raised to fully bury the rear camera and torch under a flat flush back wall (no camera bump, no proud lens ring).'
+  decision: 'Keep 78.0 x 153.6 x 11.8 mm molded orange body: width/height stay display-driven; depth was deliberately raised to fully bury the rear camera and torch under a flat flush back wall (no camera bump, no proud lens ring).'
 concept_step_context:
   enclosure_placement_status: enclosure_placement_cross_checked_not_release_ready
   step_validation_status: pass
-  validated_step_count: 94
+  validated_step_count: 132
   assembly_step: mechanical/e1-phone/out/e1-phone-solid-assembly.step
   assembly_step_imported: true
   assembly_step_bbox_span_mm:
     - 81.1
     - 154.24
-    - 11.63
+    - 12.21
   concept_step_artifact_count: 25
   missing_concept_step_artifacts: []
   concept_is_release_evidence: false
@@ -47,7 +48,7 @@ routed_board_step_context:
   has_filled_zones: true
   has_production_step: false
   placeholder_marker_count: 116
-  concept_split_island_geometry_matches_kicad: true
+  concept_split_island_geometry_matches_kicad: false
 supplier_geometry_context:
   supplier_evidence_status: blocked_no_supplier_evidence
   expected_family_count: 6
@@ -237,13 +238,12 @@ height_critical_models:
 routed_clearance_rerun_matrix:
   - case_id: battery_to_pcb_islands
     concept_clearance_pass: true
-    concept_actual_mm: 0.5
+    concept_actual_mm: 1.0
     concept_required_mm: 0.5
-    concept_margin_mm: 0.0
-    rerun_priority: 1
-    risk_level: high_less_than_0p1mm_margin
-    measurement_instruction: Tight concept margin leaves little room for routed footprint, tolerance, or supplier
-      STEP variation.
+    concept_margin_mm: 0.5
+    rerun_priority: 2
+    risk_level: medium
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
   - case_id: haptic_to_battery
     concept_clearance_pass: true
@@ -251,9 +251,8 @@ routed_clearance_rerun_matrix:
     concept_required_mm: 0.5
     concept_margin_mm: 0.0
     rerun_priority: 1
-    risk_level: high_zero_nominal_clearance
-    measurement_instruction: Zero-clearance concept registration must be checked for routed component body and solder
-      fillet interference.
+    risk_level: high
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
   - case_id: split_interconnect_connectors_on_pcb_islands
     concept_clearance_pass: true
@@ -261,9 +260,8 @@ routed_clearance_rerun_matrix:
     concept_required_mm: 0.0
     concept_margin_mm: 0.0
     rerun_priority: 1
-    risk_level: high_zero_nominal_clearance
-    measurement_instruction: Zero-clearance concept registration must be checked for routed component body and solder
-      fillet interference.
+    risk_level: high
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
   - case_id: usb_shell_to_external_aperture
     concept_clearance_pass: true
@@ -271,9 +269,17 @@ routed_clearance_rerun_matrix:
     concept_required_mm: 0.15
     concept_margin_mm: 0.025
     rerun_priority: 1
-    risk_level: high_less_than_0p1mm_margin
-    measurement_instruction: Tight concept margin leaves little room for routed footprint, tolerance, or supplier
-      STEP variation.
+    risk_level: high
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
+    requires_routed_step_rerun: true
+  - case_id: battery_back_void_foam_to_pouch
+    concept_clearance_pass: true
+    concept_actual_mm: 0.42
+    concept_required_mm: 0.25
+    concept_margin_mm: 0.17
+    rerun_priority: 2
+    risk_level: medium
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
   - case_id: bottom_mic_to_usb
     concept_clearance_pass: true
@@ -281,8 +287,8 @@ routed_clearance_rerun_matrix:
     concept_required_mm: 1.0
     concept_margin_mm: 10.78
     rerun_priority: 3
-    risk_level: medium_functional_interface
-    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    risk_level: normal
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
   - case_id: front_camera_to_earpiece
     concept_clearance_pass: true
@@ -290,8 +296,8 @@ routed_clearance_rerun_matrix:
     concept_required_mm: 1.0
     concept_margin_mm: 8.75
     rerun_priority: 3
-    risk_level: medium_functional_interface
-    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    risk_level: normal
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
   - case_id: rear_camera_to_battery
     concept_clearance_pass: true
@@ -299,8 +305,8 @@ routed_clearance_rerun_matrix:
     concept_required_mm: 2.0
     concept_margin_mm: 14.3
     rerun_priority: 3
-    risk_level: medium_functional_interface
-    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    risk_level: normal
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
   - case_id: split_interconnect_flex_to_battery_edge
     concept_clearance_pass: true
@@ -308,8 +314,8 @@ routed_clearance_rerun_matrix:
     concept_required_mm: 0.5
     concept_margin_mm: 0.8
     rerun_priority: 3
-    risk_level: medium_functional_interface
-    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    risk_level: normal
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
   - case_id: split_interconnect_flex_within_side_rail
     concept_clearance_pass: true
@@ -317,8 +323,8 @@ routed_clearance_rerun_matrix:
     concept_required_mm: 1.5
     concept_margin_mm: 1.8
     rerun_priority: 3
-    risk_level: medium_functional_interface
-    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    risk_level: normal
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
   - case_id: usb_to_bottom_speaker
     concept_clearance_pass: true
@@ -326,17 +332,17 @@ routed_clearance_rerun_matrix:
     concept_required_mm: 1.0
     concept_margin_mm: 5.53
     rerun_priority: 3
-    risk_level: medium_functional_interface
-    measurement_instruction: Functional interface clearance affects assembly, service, or user-facing fit.
+    risk_level: normal
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
   - case_id: haptic_to_pcb_islands
     concept_clearance_pass: true
-    concept_actual_mm: 1.118
+    concept_actual_mm: 1.581
     concept_required_mm: 0.5
-    concept_margin_mm: 0.618
+    concept_margin_mm: 1.081
     rerun_priority: 3
-    risk_level: standard
-    measurement_instruction: Measure during the routed-board clearance rerun.
+    risk_level: normal
+    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
 route_dependency_context:
   route_feasibility_status: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
@@ -347,6 +353,8 @@ route_dependency_context:
     - via_count_and_escape_density_report
     - copper_area_and_return_path_review
     - impedance_coupon_stackup_quote
+    - trial_route_input_matrix_cross_check
+    - evt1_stackup_coupon_plan_cross_check
     - routed_step_clearance_report
   evt1_required_release_outputs:
     - board/kicad/e1-phone/production/reports/erc.json

@@ -71,6 +71,7 @@ def main() -> int:
     cellular_rf_nets = ["CELL_RF_MAIN", "CELL_RF_DIV", "CELL_GNSS_RF"]
     wifi_rf_nets = ["WIFI_BT_RF0", "WIFI_BT_RF1"]
 
+    s11_plan = {item["net"]: item for item in rf["s11_and_efficiency_plan"]["per_feed"]}
     rf_feed_execution = []
     for feed in rf["antenna_feed_assignments"]:
         matching = next(
@@ -78,19 +79,26 @@ def main() -> int:
             for item in routing["rf_layout"]["matching_networks_required"]
             if item["net"] == feed["net"]
         )
+        plan = s11_plan[feed["net"]]
         rf_feed_execution.append(
             {
                 "net": feed["net"],
                 "role": feed["role"],
                 "candidate_zone": feed["candidate_zone"],
                 "near": matching["near"],
+                "band_plan": plan["bands"],
+                "freq_range_mhz": plan["freq_range_mhz"],
+                "planning_target_s11_db_max": plan["target_s11_db_max"],
+                "planning_target_total_efficiency_pct_min": plan["target_total_efficiency_pct_min"],
+                "planning_target_evidence_class": "planning_estimate_not_vna_measured",
                 "requires_pi_or_t_matching_network": True,
                 "requires_conducted_access_before_matching": feed["requires_conducted_access"],
                 "requires_via_fence_and_continuous_ground_reference": True,
                 "status": "blocked_waiting_reference_layout_antenna_vendor_review_vna_and_sar_evidence",
                 "blocker": (
                     "RF feed is a logical net with a required matching-network placeholder; "
-                    "no routed 50 ohm geometry, antenna tune, VNA data, or SAR evidence exists."
+                    "the S11/efficiency targets are pre-layout planning estimates. No routed "
+                    "50 ohm geometry, antenna tune, VNA data, or SAR evidence exists."
                 ),
             }
         )
@@ -286,6 +294,16 @@ def main() -> int:
             == sorted(radio_antenna["interface_summary"]["required_rf_nets"]),
             "all_rf_feeds_have_execution_records": sorted(item["net"] for item in rf_feed_execution)
             == sorted(rf["required_rf_nets"]),
+            "all_rf_feeds_carry_planning_s11_efficiency_targets": all(
+                "planning_target_s11_db_max" in item
+                and "planning_target_total_efficiency_pct_min" in item
+                for item in rf_feed_execution
+            ),
+            "rf_closure_exposes_keepout_audit_and_sar_plan": (
+                "antenna_keepout_audit" in rf
+                and "sar_prescan_plan" in rf
+                and rf["antenna_keepout_audit"]["all_keepouts_within_board_outline"] is True
+            ),
             "routing_constraints_cover_required_module_pairs": all(
                 pair in routing_pairs
                 for pair in [

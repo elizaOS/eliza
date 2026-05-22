@@ -68,6 +68,15 @@ if [ -z "${DUT}" ]; then
         "E1_COREMARK_DUT=spike make coremark   # or verilator|qemu|board"
 fi
 
+# Cycle-accurate path: the CVA6 ("Ariane") reference core, which is also
+# E1's little core (e1-pro). The CVA6 Verilator runner builds its own CoreMark
+# ELF from CVA6's bundled sources + bare-metal BSP, so it does not use the
+# generic posix build below. Delegate before that build runs. Fail-closed; it
+# writes its own evidence.
+if [ "${DUT}" = "verilator" ]; then
+    exec "${ROOT}/scripts/run_coremark_cva6_verilator.sh"
+fi
+
 # Step 4: Build CoreMark for rv64gc.
 BUILD_DIR="${ROOT}/build/coremark"
 mkdir -p "${BUILD_DIR}"
@@ -91,14 +100,9 @@ fi
         -o "${BUILD_DIR}/coremark.rv64gc.elf"
 )
 
-# Step 5: Hand off to DUT runner.
+# Step 5: Hand off to DUT runner. (verilator is handled above, before the
+# generic posix build, because the CVA6 runner builds its own ELF.)
 case "${DUT}" in
-    verilator)
-        write_blocked \
-            "verilator DUT runner not implemented" \
-            "scripts/run_coremark_verilator.sh (and a Chipyard simulator)" \
-            "Implement after build/chipyard/eliza_rocket/simulator exists; binary at ${BUILD_DIR}/coremark.rv64gc.elf"
-        ;;
     spike)
         SPIKE="${E1_SPIKE_BIN:-spike}"
         if ! command -v "${SPIKE}" >/dev/null 2>&1; then

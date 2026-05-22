@@ -38,8 +38,8 @@ hal/elizanpu/
   command_buffer.c            elizanpu opcode -> descriptor encode + submit
   event.h         event.c     barrier event
   executable.h    executable.c
-                              loads the descriptor-table section emitted by
-                              elizanpu-emit-descriptor-table
+                              loads the descriptor-table section produced by
+                              the command_buffer descriptor encode path
   executable_cache.h
   executable_cache.c          trivial pass-through cache
   semaphore.h     semaphore.c event-fd style waitable

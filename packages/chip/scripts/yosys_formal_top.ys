@@ -1,3 +1,7 @@
+read_verilog -sv -formal rtl/top/e1_soc_pkg.sv
+read_verilog -sv -formal rtl/peripherals/e1_mmio_decode.sv
+read_verilog -sv -formal rtl/peripherals/e1_clint.sv
+read_verilog -sv -formal rtl/memory/e1_behavioral_dram.sv
 read_verilog -sv -formal rtl/bootrom/e1_bootrom.sv
 read_verilog -sv -formal rtl/clock/e1_reset_sync.sv
 read_verilog -sv -formal rtl/debug/e1_dbg_mmio_bridge.sv

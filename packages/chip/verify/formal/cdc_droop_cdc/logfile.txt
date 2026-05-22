@@ -1,0 +1,18 @@
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] Removing directory '/home/shaw/milady/eliza/packages/chip/build/formal/cdc/droop_cdc.239938'.
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/../../rtl/power/power_pkg.sv' to '/home/shaw/milady/eliza/packages/chip/verify/properties/../../build/formal/cdc/droop_cdc.239938/src/power_pkg.sv'.
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/../../rtl/power/droop_sensor.sv' to '/home/shaw/milady/eliza/packages/chip/verify/properties/../../build/formal/cdc/droop_cdc.239938/src/droop_sensor.sv'.
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/cdc_properties.sv' to '/home/shaw/milady/eliza/packages/chip/verify/properties/../../build/formal/cdc/droop_cdc.239938/src/cdc_properties.sv'.
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/droop_cdc_bind.sv' to '/home/shaw/milady/eliza/packages/chip/verify/properties/../../build/formal/cdc/droop_cdc.239938/src/droop_cdc_bind.sv'.
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] engine_0: smtbmc z3
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] engine_1: smtbmc bitwuzla
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] base: starting process "cd ../../build/formal/cdc/droop_cdc.239938/src; yosys -ql ../model/design.log ../model/design.ys"
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] base: droop_sensor.sv:32: ERROR: syntax error, unexpected TOK_IMPORT, expecting '#' or '(' or ';'
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] base: finished (returncode=1)
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] base: task failed. ERROR.
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] summary: engine_0 (smtbmc z3) did not return a status
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] summary: engine_0 did not produce any traces
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] summary: engine_1 (smtbmc bitwuzla) did not return a status
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] summary: engine_1 did not produce any traces
+SBY  5:37:38 [../../build/formal/cdc/droop_cdc.239938] DONE (ERROR, rc=16)

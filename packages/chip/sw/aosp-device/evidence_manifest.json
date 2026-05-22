@@ -14,7 +14,9 @@
     "docs/evidence/android/cuttlefish_riscv64_smoke.log",
     "docs/evidence/android/cuttlefish_riscv64_boot.log",
     "docs/evidence/android/qemu_riscv64_smoke.log",
-    "docs/evidence/android/renode_e1_soc_smoke.log"
+    "docs/evidence/android/renode_e1_soc_smoke.log",
+    "docs/evidence/android/eliza_launcher_runtime_evidence.json",
+    "agent_health:/api/health HTTP 200 from the launcher-bound local agent watchdog (proven by eliza_launcher_runtime_evidence.json)"
   ],
   "strict_gate": {
     "checker": "scripts/check_software_bsp.py aosp --require-evidence",
@@ -162,6 +164,20 @@
       "external_artifacts": [
         "Renode monitor transcript",
         "UART smoke transcript"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/eliza_launcher_runtime_evidence.json",
+      "claim": "Cuttlefish riscv64 booted, the Eliza launcher held the HOME role, the ElizaAgentService process was alive, and /api/health returned HTTP 200; this is not e1-chip/AP or Android compatibility evidence",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-boot-full",
+      "validation_command": "python3 scripts/check_aosp_simulator_completion_gate.py",
+      "external_artifacts": [
+        "Cuttlefish instance adb transport",
+        "adb shell pm path ai.elizaos.app",
+        "adb shell cmd role get-role-holders android.app.role.HOME",
+        "adb shell pidof for ai.elizaos.app/.ElizaAgentService",
+        "/api/health forwarded over adb tcp"
       ]
     }
   ],

@@ -3,15 +3,17 @@
 Status: generated part index and contact sheet for every assembly part.
 
 - `mechanical/e1-phone/review/part-review-contact-sheet.png`
+- `mechanical/e1-phone/review/part-explode-contact-sheet.png`
 
 ## Parts
 
-- `orange_back_shell`: role `molded enclosure`, span [78.0, 153.6, 1.2] mm, material PC+ABS orange rounded back shell
-- `orange_side_frame`: role `molded enclosure`, span [78.0, 153.6, 11.2] mm, material PC+ABS orange rounded perimeter frame
+- `orange_back_shell`: role `molded enclosure`, span [78.0, 153.6, 1.2] mm, material PC+ABS orange rounded back shell with real rear camera and flash holes
+- `orange_side_frame`: role `molded enclosure`, span [78.0, 153.6, 11.05] mm, material PC+ABS orange rounded perimeter frame
 - `screen_cover_glass`: role `screen`, span [77.1, 151.77, 0.7] mm, material black rounded cover glass
-- `display_lcm`: role `screen`, span [70.78, 129.17, 1.7] mm, material LCM
-- `main_pcb`: role `PCB`, span [64.0, 132.0, 0.8] mm, material 8L HDI FR-4 top/bottom islands around full-width battery
-- `battery_pouch`: role `battery`, span [64.0, 87.0, 5.7] mm, material LiPo pouch
+- `display_lcm`: role `screen`, span [70.78, 129.17, 3.39] mm, material bonded LCD+CTP module (cover lens, touch, polarizers, TFT cell, BLU)
+- `main_pcb`: role `PCB`, span [64.0, 146.75, 0.8] mm, material 8L HDI FR-4 top/bottom split-island board envelope around full-width battery
+- `battery_pouch`: role `battery`, span [64.0, 87.0, 5.6] mm, material LiPo pouch
+- `battery_back_void_foam_pad`: role `battery support`, span [60.0, 80.0, 0.18] mm, material PORON-style low-compression-set polyurethane foam, low-preload battery back pad
 - `usb_c_receptacle`: role `I/O`, span [8.94, 7.8, 3.25] mm, material stainless shell
 - `usb_c_external_aperture`: role `I/O`, span [10.2, 0.35, 3.6] mm, material USB-C molded aperture visual check
 - `usb_c_perimeter_gasket_top`: role `I/O seal`, span [11.4, 0.45, 0.35] mm, material silicone USB-C perimeter gasket top rail
@@ -25,18 +27,38 @@ Status: generated part index and contact sheet for every assembly part.
 - `bottom_mic`: role `audio`, span [3.5, 2.65, 1.0] mm, material MEMS mic
 - `top_mic`: role `audio`, span [3.5, 2.65, 1.0] mm, material MEMS mic
 - `rear_camera_module`: role `camera`, span [10.0, 10.0, 5.1] mm, material single 13 MP simple-AF module, buried
+- `rear_camera_shell_aperture`: role `camera aperture`, span [10.6, 10.6, 0.08] mm, material open molded back-shell camera hole exposing the flush cover window
+- `orange_rear_camera_bezel_top`: role `molded enclosure`, span [12.6, 1.0, 0.14] mm, material integral orange camera aperture bevel/top land
+- `orange_rear_camera_bezel_bottom`: role `molded enclosure`, span [12.6, 1.0, 0.14] mm, material integral orange camera aperture bevel/bottom land
+- `orange_rear_camera_bezel_left`: role `molded enclosure`, span [1.0, 10.6, 0.14] mm, material integral orange camera aperture bevel/left land
+- `orange_rear_camera_bezel_right`: role `molded enclosure`, span [1.0, 10.6, 0.14] mm, material integral orange camera aperture bevel/right land
+- `rear_flash_shell_aperture`: role `camera aperture`, span [2.2, 2.2, 0.08] mm, material open molded back-shell flash hole exposing the flush light-pipe window
+- `orange_rear_flash_bezel_top`: role `molded enclosure`, span [3.1, 0.45, 0.12] mm, material integral orange flash aperture bevel/top land
+- `orange_rear_flash_bezel_bottom`: role `molded enclosure`, span [3.1, 0.45, 0.12] mm, material integral orange flash aperture bevel/bottom land
+- `orange_rear_flash_bezel_left`: role `molded enclosure`, span [0.45, 2.2, 0.12] mm, material integral orange flash aperture bevel/left land
+- `orange_rear_flash_bezel_right`: role `molded enclosure`, span [0.45, 2.2, 0.12] mm, material integral orange flash aperture bevel/right land
 - `rear_camera_lens_window`: role `camera`, span [6.8, 6.8, 0.55] mm, material flush internal lens window, coplanar with flat back
+- `rear_camera_optical_sight_tunnel`: role `camera optical clearance`, span [7.1, 7.1, 1.6] mm, material clear rear-camera sight tunnel from exterior through the back-shell aperture to the module
 - `rear_flash_led`: role `camera`, span [1.0, 1.0, 0.7] mm, material single rear torch/flash LED, buried
 - `rear_flash_led_window`: role `camera`, span [1.6, 1.6, 0.55] mm, material flush internal torch light pipe window, coplanar with flat back
 - `front_camera_module`: role `camera`, span [6.5, 6.5, 3.2] mm, material front MIPI camera
-- `front_camera_under_glass`: role `camera`, span [3.4, 0.35, 3.4] mm, material under-glass aperture
+- `front_camera_under_glass`: role `camera`, span [3.4, 3.4, 0.08] mm, material under-glass aperture marker below cover glass
 - `rear_camera_cover_adhesive_top`: role `camera seal`, span [10.1, 0.45, 0.16] mm, material black PSA gasket above rear camera cover window
 - `rear_camera_cover_adhesive_bottom`: role `camera seal`, span [10.1, 0.45, 0.16] mm, material black PSA gasket below rear camera cover window
 - `rear_camera_cover_adhesive_left`: role `camera seal`, span [0.45, 9.2, 0.16] mm, material black PSA gasket left of rear camera cover window
 - `rear_camera_cover_adhesive_right`: role `camera seal`, span [0.45, 9.2, 0.16] mm, material black PSA gasket right of rear camera cover window
 - `rear_camera_light_baffle_top`: role `camera seal`, span [8.3, 0.35, 0.55] mm, material black molded rear camera anti-dust light baffle
 - `rear_camera_light_baffle_bottom`: role `camera seal`, span [8.3, 0.35, 0.55] mm, material black molded rear camera anti-dust light baffle
-- `front_camera_black_mask_window`: role `camera seal`, span [5.0, 5.0, 0.12] mm, material black printed mask datum around front under-glass camera
+- `front_camera_black_mask_window`: role `camera seal`, span [5.0, 5.0, 0.08] mm, material black printed mask datum around front under-glass camera
+- `rear_flash_window_adhesive_top`: role `camera seal`, span [2.5, 0.45, 0.16] mm, material black PSA gasket above rear flash light-pipe window
+- `rear_flash_window_adhesive_bottom`: role `camera seal`, span [2.5, 0.45, 0.16] mm, material black PSA gasket below rear flash light-pipe window
+- `rear_flash_window_adhesive_left`: role `camera seal`, span [0.45, 1.6, 0.16] mm, material black PSA gasket left of rear flash light-pipe window
+- `rear_flash_window_adhesive_right`: role `camera seal`, span [0.45, 1.6, 0.16] mm, material black PSA gasket right of rear flash light-pipe window
+- `front_camera_under_glass_adhesive_top`: role `camera seal`, span [4.2, 0.4, 0.08] mm, material optically-black PSA bond ring above front under-glass camera window
+- `front_camera_under_glass_adhesive_bottom`: role `camera seal`, span [4.2, 0.4, 0.08] mm, material optically-black PSA bond ring below front under-glass camera window
+- `front_camera_under_glass_adhesive_left`: role `camera seal`, span [0.4, 3.4, 0.08] mm, material optically-black PSA bond ring left of front under-glass camera window
+- `front_camera_under_glass_adhesive_right`: role `camera seal`, span [0.4, 3.4, 0.08] mm, material optically-black PSA bond ring right of front under-glass camera window
+- `rear_flash_camera_septum`: role `camera seal`, span [0.6, 8.3, 2.1] mm, material opaque PC stray-light septum between rear flash light-pipe and rear camera baffle column, molded to the back shell inner wall
 - `power_button_cap`: role `button`, span [2.0, 12.0, 1.1] mm, material orange molded cap
 - `volume_button_cap`: role `button`, span [2.0, 21.0, 1.1] mm, material orange molded cap
 - `handset_acoustic_slot`: role `audio`, span [16.0, 1.0, 0.25] mm, material gasketed handset slot
@@ -74,6 +96,10 @@ Status: generated part index and contact sheet for every assembly part.
 - `orange_screw_boss_4`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
 - `orange_screw_boss_5`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
 - `orange_screw_boss_6`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
+- `orange_screw_boss_7`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
+- `orange_screw_boss_8`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
+- `orange_screw_boss_9`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
+- `orange_screw_boss_10`: role `molded enclosure`, span [4.2, 4.2, 2.8] mm, material PC+ABS screw boss, core pin required
 - `orange_snap_hook_1`: role `molded enclosure`, span [1.3, 5.0, 1.4] mm, material PC+ABS snap hook
 - `orange_snap_hook_2`: role `molded enclosure`, span [1.3, 5.0, 1.4] mm, material PC+ABS snap hook
 - `orange_snap_hook_3`: role `molded enclosure`, span [1.3, 5.0, 1.4] mm, material PC+ABS snap hook
@@ -89,9 +115,22 @@ Status: generated part index and contact sheet for every assembly part.
 - `display_fpc_bend_keepout`: role `connector`, span [22.0, 10.0, 0.3] mm, material display FPC bend keepout
 - `bottom_speaker_acoustic_chamber`: role `audio`, span [18.0, 13.0, 2.2] mm, material molded loudspeaker rear chamber
 - `earpiece_gasket`: role `audio`, span [14.5, 2.0, 0.55] mm, material compressed earpiece acoustic gasket
+- `orange_corner_rib_1`: role `molded enclosure`, span [7.0, 0.9, 2.4] mm, material PC+ABS corner gusset tying corner boss to side frame
+- `orange_corner_rib_1_leg`: role `molded enclosure`, span [0.9, 7.0, 2.4] mm, material PC+ABS corner gusset tying corner boss to side frame
+- `orange_corner_rib_2`: role `molded enclosure`, span [7.0, 0.9, 2.4] mm, material PC+ABS corner gusset tying corner boss to side frame
+- `orange_corner_rib_2_leg`: role `molded enclosure`, span [0.9, 7.0, 2.4] mm, material PC+ABS corner gusset tying corner boss to side frame
+- `orange_corner_rib_3`: role `molded enclosure`, span [7.0, 0.9, 2.4] mm, material PC+ABS corner gusset tying corner boss to side frame
+- `orange_corner_rib_3_leg`: role `molded enclosure`, span [0.9, 7.0, 2.4] mm, material PC+ABS corner gusset tying corner boss to side frame
+- `orange_corner_rib_4`: role `molded enclosure`, span [7.0, 0.9, 2.4] mm, material PC+ABS corner gusset tying corner boss to side frame
+- `orange_corner_rib_4_leg`: role `molded enclosure`, span [0.9, 7.0, 2.4] mm, material PC+ABS corner gusset tying corner boss to side frame
+- `glass_perimeter_cushion_top`: role `screen retention`, span [62.1, 1.0, 0.25] mm, material PORON-style microcellular polyurethane foam, low compression set
+- `glass_perimeter_cushion_bottom`: role `screen retention`, span [62.1, 1.0, 0.25] mm, material PORON-style microcellular polyurethane foam, low compression set
+- `glass_perimeter_cushion_left`: role `screen retention`, span [1.0, 136.77, 0.25] mm, material PORON-style microcellular polyurethane foam, low compression set
+- `glass_perimeter_cushion_right`: role `screen retention`, span [1.0, 136.77, 0.25] mm, material PORON-style microcellular polyurethane foam, low compression set
 - `cellular_top_antenna_keepout`: role `RF keepout`, span [62.0, 6.0, 2.0] mm, material top plastic antenna keepout volume
 - `cellular_bottom_antenna_keepout`: role `RF keepout`, span [62.0, 6.0, 2.0] mm, material bottom plastic antenna keepout volume
 - `wifi_bt_side_antenna_keepout`: role `RF keepout`, span [34.0, 5.0, 2.0] mm, material side Wi-Fi/Bluetooth antenna keepout volume
+- `antenna_aperture_tuner`: role `RF tuner`, span [2.0, 2.0, 0.5] mm, material Qorvo QPC1252Q antenna aperture/band-switch tuner
 - `soc_shield_can`: role `EMI shield`, span [18.0, 16.0, 1.2] mm, material stamped RF/SoC shield can
 - `pmic_shield_can`: role `EMI shield`, span [11.0, 10.0, 1.1] mm, material stamped PMIC shield can
 - `radio_shield_can`: role `EMI shield`, span [18.0, 20.0, 1.2] mm, material stamped radio shield can

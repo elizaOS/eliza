@@ -45,7 +45,8 @@ blocks:
     package_binding: package/charger/max77860.yaml
     nets:
       power: [VBUS, VBAT, SYS, GND]
-      control: [CHG_I2C_SCL, CHG_I2C_SDA, CHG_IRQ_N, BAT_NTC, BAT_ID]
+      control: [CHG_I2C_SCL, CHG_I2C_SDA, CHG_IRQ_N, CHG_CE_N, CHG_OTG_EN, BAT_NTC, BAT_ID]
+      thermistor: [CHG_TS]
 
   - id: J_BATTERY
     kind: battery_pack_connector

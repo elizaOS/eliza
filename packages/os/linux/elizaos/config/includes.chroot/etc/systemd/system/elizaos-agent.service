@@ -10,16 +10,22 @@ Group=elizaos
 WorkingDirectory=/var/lib/elizaos
 Environment=ELIZA_STATE_DIR=/var/lib/elizaos
 Environment=ELIZA_API_PORT=31337
-ExecStart=/opt/elizaos/bin/bun /opt/elizaos/app/server.js --headless --port=31337
+ExecStart=/usr/lib/elizaos/run-agent.sh
+ExecStartPost=/usr/lib/elizaos/wait-agent-health.sh http://127.0.0.1:31337/api/health
 Restart=on-failure
 RestartSec=2
 SyslogIdentifier=elizaos-agent
 StandardOutput=journal+console
 StandardError=journal+console
-NoNewPrivileges=yes
-ProtectSystem=strict
+# The local agent is a system assistant that performs privileged
+# system-management tasks via passwordless sudo (see
+# /etc/sudoers.d/010-elizaos-agent). It runs unprivileged as `elizaos`
+# but must be able to escalate, so the usual sandboxing is relaxed:
+#   - NoNewPrivileges would block sudo's setuid escalation, so it is omitted.
+#   - ProtectSystem=strict / ProtectHome=yes would hide /etc/sudoers and
+#     sudo's runtime state, so they are dropped.
+ProtectSystem=false
 ReadWritePaths=/var/lib/elizaos /var/log/elizaos
-ProtectHome=yes
 
 [Install]
 WantedBy=multi-user.target

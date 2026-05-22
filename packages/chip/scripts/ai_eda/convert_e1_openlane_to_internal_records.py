@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,13 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = ROOT / "pd/openlane/config.sky130.json"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/e1_openlane_conversion"
 CLAIM_BOUNDARY = "e1_openlane_conversion_only_no_training_inference_ppa_or_release_claim"
+KNOWN_MACRO_SIZES_UM = {
+    "sky130_sram_2kbyte_1rw1r_32x512_8": {
+        "width_um": 659.98,
+        "height_um": 398.18,
+        "source": "known_sky130_sram_macros_lef_size_fallback",
+    },
+}
 
 
 def sha256(path: Path) -> str | None:
@@ -41,6 +49,19 @@ def resolve_openlane_path(value: str, config_dir: Path) -> Path:
     if value.startswith("dir::"):
         return (config_dir / value.removeprefix("dir::")).resolve()
     return (ROOT / value).resolve()
+
+
+def lef_size(path: Path) -> tuple[float, float] | None:
+    if not path.is_file():
+        return None
+    match = re.search(
+        r"\bSIZE\s+([0-9.]+)\s+BY\s+([0-9.]+)\s*;",
+        path.read_text(encoding="utf-8", errors="ignore"),
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return float(match.group(1)), float(match.group(2))
 
 
 def parse_area(area: str | list[Any]) -> list[float]:
@@ -83,21 +104,48 @@ def macro_objects(config: dict[str, Any]) -> tuple[list[dict[str, Any]], list[di
     for macro_name, macro in config.get("MACROS", {}).items():
         if not isinstance(macro, dict):
             continue
+        lef_paths_value = macro.get("lef")
+        lef_paths: list[Any] = lef_paths_value if isinstance(lef_paths_value, list) else []
+        size = None
+        size_source = None
+        for lef_value in lef_paths:
+            if not isinstance(lef_value, str):
+                continue
+            parsed = lef_size(resolve_openlane_path(lef_value, ROOT / "pd/openlane"))
+            if parsed:
+                size = parsed
+                size_source = "lef"
+                break
+        if size is None and macro_name in KNOWN_MACRO_SIZES_UM:
+            fallback: dict[str, Any] = KNOWN_MACRO_SIZES_UM[macro_name]
+            size = (float(fallback["width_um"]), float(fallback["height_um"]))
+            size_source = str(fallback["source"])
         for inst_name, inst in macro.get("instances", {}).items():
             location = (
                 inst.get("location", [None, None]) if isinstance(inst, dict) else [None, None]
             )
+            x_um = float(location[0]) if location[0] is not None else 0.0
+            y_um = float(location[1]) if location[1] is not None else 0.0
+            width_um, height_um = size if size else (1.0, 1.0)
             item = {
                 "id": inst_name,
                 "type": "hard_macro",
                 "macro_name": macro_name,
-                "x_um": location[0],
-                "y_um": location[1],
+                "width_um": width_um,
+                "height_um": height_um,
+                "x_um": x_um,
+                "y_um": y_um,
                 "orientation": inst.get("orientation") if isinstance(inst, dict) else None,
                 "source": "pd/openlane/MACROS",
+                "size_source": size_source or "missing_lef_size_default_1um",
+                "target_placement": {
+                    "x_um": x_um,
+                    "y_um": y_um,
+                    "orientation": inst.get("orientation") if isinstance(inst, dict) else "N",
+                    "source": "checked_in_openlane_macro_seed",
+                },
             }
-            # Treat checked-in hard macro locations as fixed seed placements for replay.
-            fixed.append(item)
+            movable.append(item)
     return movable, fixed
 
 
@@ -179,7 +227,7 @@ def build_records(config_path: Path, run_id: str) -> dict[str, Any]:
         },
         "replay": {
             "deterministic_command": f"openlane --config {rel(config_path)}",
-            "expected_report": f"build/ai_eda/e1_openlane_conversion/{run_id}/flow-run.json",
+            "expected_report": f"build/ai_eda/e1_openlane_conversion/{run_id}/records/flow-run.json",
         },
     }
 

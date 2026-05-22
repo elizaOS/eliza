@@ -44,7 +44,7 @@ public class ElizaMmsReceiver extends BroadcastReceiver {
                         + " format=" + (format != null ? format : "<null>")
                         + " subscription=" + subscription);
 
-        Uri.Builder route = Uri.parse("ai.elizaos.app://messages").buildUpon()
+        Uri.Builder route = Uri.parse("elizaos://messages").buildUpon()
                 .appendQueryParameter("event", "mms-deliver")
                 .appendQueryParameter("retrieval", "deferred")
                 .appendQueryParameter("timestamp", Long.toString(receivedAt));

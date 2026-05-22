@@ -1,0 +1,98 @@
+schema: eliza.external_model_corpus_intake_policy.v1
+status: DRAFT_CAPTURE_ONLY
+claim_boundary: intake_policy_only_no_download_training_inference_or_release_use
+release_use_allowed: false
+description: |
+  Intake policy for any external AI/EDA model, weight set, dataset, or
+  reference corpus considered for use against the E1 RTL. This policy is
+  capture-only: it governs how a candidate external asset is described,
+  reviewed, and quarantined before any human decision to import it. It does
+  NOT authorize downloading weights, cloning external code into source,
+  running inference, training/fine-tuning, running external benchmark evals,
+  generating or modifying RTL/assertions/layout/constraints, exporting E1
+  source or logs to any hosted service, or making any release/tapeout claim.
+  Every such action stays blocked until an external review explicitly
+  promotes the policy and the promotion_gates below all pass.
+
+# Actions that remain blocked under this capture-only policy. The capture
+# tooling (scripts/ai_eda/capture_external_model_corpus_intake_targets.py and
+# scripts/ai_eda/probe_external_ai_eda_sources.py) may only enumerate and hash
+# targets; it must never perform any of these.
+blocked_actions:
+  - download_model_weights
+  - download_dataset_payload
+  - clone_external_code_into_source
+  - run_model_inference
+  - train_or_finetune_model
+  - run_external_benchmark_eval
+  - generate_or_modify_rtl
+  - generate_or_modify_assertions
+  - generate_or_modify_layout_or_constraints
+  - export_e1_source_or_logs_to_hosted_service
+  - make_release_or_tapeout_claim
+
+# Every candidate external source must be described by a manifest carrying all
+# of these fields before a human reviewer can disposition it.
+required_manifest_fields:
+  - source_id
+  - provider
+  - source_url
+  - api_url
+  - exact_revision
+  - declared_license
+  - license_review_owner
+  - file_manifest
+  - file_sha256
+  - quarantine_path
+  - privacy_review
+  - contamination_scan
+  - benchmark_overlap_review
+  - deterministic_gates
+  - reviewer_disposition
+
+# Evidence that must accompany any future local E1 evaluation of a promoted
+# asset. None of these may be produced under the current capture-only status;
+# they describe the bar a promoted asset must clear, all routed through the
+# deterministic E1 gates rather than any hosted scoring service.
+local_e1_eval_requirements:
+  - held_out_task_manifest
+  - prompt_hashes
+  - output_hashes
+  - no_hardware_action_review
+  - lint_log
+  - synthesis_log
+  - simulation_log
+  - formal_log
+
+# Quarantine roots: any captured external artifact stays under these paths and
+# never enters source, the PD flow, or release evidence.
+quarantine_roots:
+  - build/ai_eda/external_assets/
+  - build/ai_eda/external_model_corpus_intake_targets/
+
+# Per-provider preconditions that must be true before a candidate from that
+# provider can even be captured into the intake manifest.
+provider_requirements:
+  license_compatible_with_local_review: true
+  no_phone_home_or_telemetry_at_rest: true
+  reproducible_by_exact_revision: true
+  no_proprietary_pdk_or_eda_payload: true
+
+# Gates that must all pass before this policy may be promoted out of
+# DRAFT_CAPTURE_ONLY by an external reviewer.
+promotion_gates:
+  - python3 scripts/check_external_model_corpus_intake_policy.py
+  - make external-model-corpus-intake-policy-check
+  - python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation
+  - python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation
+  - make no-hardware-action-check
+  - make docs-check
+
+forbidden_claims:
+  - external_model_used_in_release
+  - external_corpus_used_in_release
+  - external_eval_score_is_signoff_evidence
+
+release_blockers:
+  - External model/corpus intake stays capture-only until an external review
+    promotes this policy and all promotion_gates pass.

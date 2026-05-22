@@ -110,12 +110,16 @@ rfq_lines:
     package_binding: package/cellular/quectel-5g-redcap.yaml
     marketplace_or_vendor_basis:
       - Quectel RG255C/RM255C vendor product pages
+      - Quectel EG915Q/EG915U and EG916Q-GL compact LTE Cat 1 bis public module pages
+      - Fibocom MC665 compact LTE Cat 1 bis public module page
     board_dependency:
       - U_CELL LGA or M.2 footprint selection
+      - compact LTE Cat 1 bis alternate fit against a repacked cellular region, not the stale 14 x 14 mm placeholder
       - CELL_RF_MAIN, CELL_RF_DIV, CELL_GNSS_RF matching and conducted access
       - USIM/eSIM and USB2/PCIe interface choice
     required_supplier_artifacts:
       - selected region SKU band matrix and orderable MPN
+      - smaller LTE Cat 1 bis alternate orderable MPN, lifecycle, band matrix, and quote if RedCap cannot fit
       - hardware design guide and reference layout revision
       - module 2D drawing with package dimensions, shield height, datum, and keepouts
       - module pinout, LGA pad map, signal-voltage table, and reserved-pin rules
@@ -124,6 +128,7 @@ rfq_lines:
       - antenna feed and matching recommendations
       - carrier/PTCRB/GCF/module grant documentation
       - Linux/Android driver, firmware, and certification-use restrictions
+      - explicit throughput, power, firmware, and certification delta for any LTE Cat 1 bis alternate versus RG255C
     intake_status: blocked_no_region_sku_hardware_design_pack_or_cert_scope
   - function: wifi_bluetooth
     primary_candidate: Murata_LBEE5XV2EA-802_Type_2EA
@@ -181,13 +186,13 @@ rfq_lines:
       - sample force and life-cycle test report
     intake_status: blocked_no_side_key_flex_or_switch_subassembly_pack
   - function: battery_pack
-    primary_candidate: 5830mAh_22p45Wh_64x87x5p7mm_pouch_class
+    primary_candidate: 5727mAh_22p05Wh_64x87x5p6mm_pouch_class
     sourcing_audit_group: battery
     package_binding: package/battery/e1-phone-17p3wh-pack.yaml
     marketplace_or_vendor_basis:
-      - Alibaba and Made-in-China custom 5830 mAh thick pouch quote pools with LP446487 baseline outline evidence
+      - Alibaba and Made-in-China custom 5727 mAh thick pouch quote pools with LP446487 baseline outline evidence
     board_dependency:
-      - 64 x 87 mm battery cavity and 11.2 mm flush-back device thickness target
+      - 64 x 87 mm battery cavity and 11.8 mm flush-back device thickness target
       - VBAT, BAT_NTC, BAT_ID, GND connector and pack swelling clearance
     required_supplier_artifacts:
       - signed pack drawing with cell, PCM, tab, connector, and adhesive datums

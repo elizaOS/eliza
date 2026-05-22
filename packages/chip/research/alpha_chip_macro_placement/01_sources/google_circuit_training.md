@@ -35,33 +35,36 @@ scripts/alphachip/build_container.sh
 scripts/alphachip/run_toy_training.sh
 ```
 
-## Current upstream binary issue
+## Current upstream binary status (2026-05-21)
 
-On 2026-05-19, both documented Google Cloud Storage binary paths tested from
-this workstation returned 298-byte `AccessDenied` XML responses rather than
-artifacts:
+The documented Google Cloud Storage binary paths still return HTTP 403
+`AccessDenied` (verified by `check_alphachip_checkpoint_blocker.py --network`):
 
-- `placement_cost/plc_wrapper_main_0.0.4`
+- `placement_cost/plc_wrapper_main` / `_0.0.4`
 - `dreamplace/dreamplace_20231214_c5a83e5_python3.9.tar.gz`
+- `tpu_checkpoint_20240815.tar.gz`
 
-The local wrapper works around the first issue by using the Linux
-`plc_wrapper_main` binary vendored in Farama's public
-`a2perf-circuit-training` repository:
+A lawful mirror of the **binary** (not the checkpoint) is available from the
+Apache-2.0 Farama repository, verified live on 2026-05-21:
 
 https://github.com/Farama-Foundation/a2perf-circuit-training
 
-The second issue requires either:
+It serves `bin/plc_wrapper_main` (10,605,424 bytes, a genuine Linux x86-64 ELF,
+sha256 `86fe9a2841fc21d3c18bb838d93fff128ceb51f82490d561e22985caab00c9b3`) plus a
+`dreamplace_builds/` directory. `scripts/alphachip/build_container.sh` already
+points at this URL via `PLC_BINARY_URL`. Downloaded locally it executes and
+computes the documented proxy terms on the Ariane fixtures.
 
-```sh
-scripts/alphachip/build_dreamplace_from_source.sh
-scripts/alphachip/build_container.sh
-```
+The DREAMPlace standard-cell placer (needed for the full RL collect loop, not for
+proxy-cost evaluation) can come from the Farama `dreamplace_builds/`, from
+`scripts/alphachip/build_dreamplace_from_source.sh`, or from a compatible tarball
+passed as `DREAMPLACE_TARBALL=... scripts/alphachip/build_container.sh`.
 
-or obtaining a compatible DREAMPlace tarball and passing:
-
-```sh
-DREAMPLACE_TARBALL=/path/to/dreamplace_..._python3.9.tar.gz scripts/alphachip/build_container.sh
-```
+For proxy-cost evaluation that needs neither the binary nor DREAMPlace, use the
+open BSD-3 path: `scripts/alphachip/open_proxy_cost.py` (TILOS `plc_client_os`).
+See `docs/toolchain/alphachip-checkpoint-blocker.md` for the full status and the
+two irreducible blockers (the TPU checkpoint mirror, and full distributed PPO on
+CPU).
 
 ## Compute note
 

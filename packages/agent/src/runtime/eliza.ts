@@ -221,6 +221,15 @@ import {
   SandboxManager,
   type SandboxMode,
 } from "../services/sandbox-manager.ts";
+import { createDstackTeeProvider } from "../services/dstack-tee-provider.ts";
+import {
+  evaluateTeeBootGate,
+  type TeeBootGate,
+} from "../services/tee-boot-gate.ts";
+import {
+  setTeeBootGateState,
+  teeBootGateBlocksSecrets,
+} from "../services/tee-boot-gate-state.ts";
 import {
   resolveDefaultAgentWorkspaceDir,
   shouldBootstrapWorkspaceInitFiles,
@@ -3995,7 +4004,47 @@ export async function startEliza(
     );
   };
 
+  // One-time TEE boot gate (plan §4.1 / agent A4). Inert when no TEE policy is
+  // configured: `evaluateTeeBootGate` returns secretsEnabled:true and normal/
+  // local-only boots are unaffected. When ELIZA_TEE_REQUIRED (or a production
+  // profile) resolves a required policy and the evidence is not trusted, the
+  // gate fails closed and high-value capabilities (remote plugin sync; future
+  // model-key/signing consumers) are withheld. Boot still proceeds in a
+  // degraded, secret-less mode — it never silently continues with secrets.
+  const runTeeBootGate = async (): Promise<void> => {
+    let teeBootGate: TeeBootGate;
+    try {
+      teeBootGate = await evaluateTeeBootGate({
+        env: process.env,
+        evidenceProvider: createDstackTeeProvider({ env: process.env }),
+      });
+    } catch (err) {
+      // A TEE policy was configured but evidence could not be collected or
+      // evaluated. Fail closed rather than crash the boot.
+      teeBootGate = {
+        policy: undefined,
+        teeConfigured: true,
+        required: true,
+        productionProfile: process.env.ELIZA_TEE_PRODUCTION_PROFILE === "true",
+        secretsEnabled: false,
+      };
+      logger.error(
+        `[TeeBootGate] TEE evidence evaluation failed; secrets disabled (fail-closed): ${formatError(err)}`,
+      );
+    }
+    // Publish the one-time decision so secret-path modules (agent-wallet key
+    // reveal/bridge, remote plugin sync) can consult it via the shared
+    // singleton. Inert when no TEE: the gate's `required` is false.
+    setTeeBootGateState(teeBootGate);
+  };
+
   const syncRemoteCapabilityPluginsIfAvailable = async (): Promise<void> => {
+    if (teeBootGateBlocksSecrets()) {
+      logger.warn(
+        "[TeeBootGate] Skipping remote capability plugin sync: TEE evidence is not trusted.",
+      );
+      return;
+    }
     try {
       const result = await bootstrapRemoteCapabilityPlugins(runtime, {
         unloadMissing: true,
@@ -4136,6 +4185,7 @@ export async function startEliza(
     await registerConnectorSetupService();
     await registerRemoteCodingRunner();
     await initializeCoreRuntime();
+    await runTeeBootGate();
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
     await registerConversationProximityProvider();

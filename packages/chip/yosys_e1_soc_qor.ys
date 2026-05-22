@@ -1,0 +1,58 @@
+# yosys_e1_soc_qor.ys — Sky130 Liberty-aware QoR synthesis variant.
+#
+# Unlike scripts/yosys_e1_soc.ys (generic, tech-independent cell histogram), this
+# script maps the E1 SoC to the Sky130 sky130_fd_sc_hd standard-cell library with
+# ABC delay/area optimization, sequential-cell mapping, optional retiming, and a
+# Liberty-driven area+timing stat. It is the frontend half of the synth<->backend
+# QoR loop.
+#
+# It is fail-closed by construction: the paths below are injected by
+# scripts/run_sky130_qor_baseline.py (which validates that the Sky130 Liberty and
+# the PD feedback manifest exist before invoking yosys). Run it directly only
+# after exporting:
+#   QOR_LIBERTY   absolute path to sky130_fd_sc_hd__tt_025C_1v80.lib
+#   QOR_NETLIST   output mapped netlist path
+#   QOR_STAT_JSON output stat JSON path
+#   QOR_ABC_DELAY ABC target delay (ps) derived from the SDC clock period
+#   QOR_RETIME    "1" to enable abc retiming (set when PD feedback flags setup)
+#
+# yosys reads these via the front-end `read_liberty`/`abc` arguments materialized
+# by the runner; this file is the canonical pass pipeline.
+
+read_verilog -sv rtl/top/e1_soc_pkg.sv
+read_verilog -sv rtl/peripherals/e1_mmio_decode.sv
+read_verilog -sv rtl/peripherals/e1_clint.sv
+read_verilog -sv rtl/memory/e1_behavioral_dram.sv
+read_verilog -sv rtl/top/e1_chip_top.sv
+read_verilog -sv rtl/clock/e1_reset_sync.sv
+read_verilog -sv rtl/debug/e1_dbg_mmio_bridge.sv
+read_verilog -sv rtl/bootrom/e1_bootrom.sv
+read_verilog -sv rtl/peripherals/e1_uart.sv
+read_verilog -sv rtl/peripherals/e1_peripherals.sv
+read_verilog -sv rtl/dma/e1_dma.sv
+read_verilog -sv rtl/npu/e1_npu.sv
+read_verilog -sv rtl/display/e1_display.sv
+read_verilog -sv rtl/cpu/e1_cva6_wrapper.sv
+read_verilog -sv rtl/cpu/e1_cpu_axi_bridge.sv
+read_verilog -sv rtl/cpu/e1_cpu_subsystem_stub.sv
+read_verilog -sv rtl/interconnect/e1_axi_lite_interconnect.sv
+read_verilog -sv rtl/memory/e1_axi_lite_dram.sv
+read_verilog -sv rtl/memory/e1_weight_buffer_sram.sv
+read_verilog -sv rtl/interrupts/e1_interrupt_controller.sv
+read_verilog -sv rtl/interconnect/e1_linux_soc_contract.sv
+read_verilog -sv rtl/top/e1_soc_top.sv
+
+hierarchy -check -top e1_chip_top
+
+# Generic logic optimization before technology mapping.
+proc
+flatten
+opt -full
+fsm
+opt
+wreduce
+peepopt
+memory
+opt -full
+techmap
+opt -full

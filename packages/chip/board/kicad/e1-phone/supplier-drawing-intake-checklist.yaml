@@ -289,11 +289,14 @@ intake_records:
       - antenna feed and matching recommendations
       - carrier/PTCRB/GCF/module grant documentation
       - Linux/Android driver, firmware, and certification-use restrictions
+      - smaller LTE Cat 1 bis alternate orderable MPN, lifecycle, band matrix, and quote if RedCap cannot fit
+      - explicit throughput, power, firmware, and certification delta for any LTE Cat 1 bis alternate versus RG255C
     mechanical_datums_required:
       - module_land_pattern_or_m2_socket
       - shield_can_height
       - sim_or_esim_location
       - antenna_feed_datum
+      - compact_lte_alternate_package_datum
     planned_contract_nets:
       - AP_WAKE_CELL
       - CELL_PCIE_RX_N
@@ -549,7 +552,7 @@ intake_records:
   - function: battery_pack
     status: blocked_waiting_supplier_response_pack_and_reviews
     criticality: hard_blocker_for_evt1_route_and_enclosure
-    primary_candidate: 5830mAh_22p45Wh_64x87x5p7mm_pouch_class
+    primary_candidate: 5727mAh_22p05Wh_64x87x5p6mm_pouch_class
     package_binding: package/battery/e1-phone-17p3wh-pack.yaml
     freeze_record: battery_pack_connector
     draft_id: e1_phone_battery_pack_rfq_2026-05-21

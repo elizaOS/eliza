@@ -5,7 +5,7 @@
   "ring_offset_mm": 25.0,
   "trajectory_samples": 21,
   "overlap_tolerance_mm3": 0.05,
-  "solid_part_count": 89,
+  "solid_part_count": 127,
   "excluded_virtual_volume_count": 5,
   "excluded_virtual_volumes": [
     "display_fpc_bend_keepout",
@@ -14,30 +14,40 @@
     "wifi_bt_side_antenna_keepout",
     "sim_tray_keepout"
   ],
-  "pair_count": 3916,
+  "pair_count": 8001,
   "pass_through_pair_count": 0,
   "pass_through_pairs": [],
-  "residual_overlap_at_full_explode_pair_count": 15,
+  "residual_overlap_at_full_explode_pair_count": 36,
   "residual_overlap_pairs": [
     {
-      "a": "main_pcb",
+      "a": "orange_side_frame",
+      "b": "split_interconnect_top_connector",
+      "fully_exploded_overlap_mm3": 34.56
+    },
+    {
+      "a": "orange_side_frame",
+      "b": "split_interconnect_bottom_connector",
+      "fully_exploded_overlap_mm3": 34.56
+    },
+    {
+      "a": "orange_side_frame",
+      "b": "split_interconnect_side_flex",
+      "fully_exploded_overlap_mm3": 38.016
+    },
+    {
+      "a": "orange_side_frame",
       "b": "split_interconnect_top_flex_tail",
-      "fully_exploded_overlap_mm3": 3.6
+      "fully_exploded_overlap_mm3": 4.5
     },
     {
-      "a": "main_pcb",
+      "a": "orange_side_frame",
       "b": "split_interconnect_bottom_flex_tail",
-      "fully_exploded_overlap_mm3": 3.6
+      "fully_exploded_overlap_mm3": 4.5
     },
     {
-      "a": "battery_pouch",
-      "b": "orange_screw_boss_5",
-      "fully_exploded_overlap_mm3": 37.044
-    },
-    {
-      "a": "battery_pouch",
-      "b": "orange_screw_boss_6",
-      "fully_exploded_overlap_mm3": 37.044
+      "a": "orange_side_frame",
+      "b": "antenna_aperture_tuner",
+      "fully_exploded_overlap_mm3": 2.0
     },
     {
       "a": "battery_pouch",
@@ -55,9 +65,44 @@
       "fully_exploded_overlap_mm3": 0.1123
     },
     {
+      "a": "rear_camera_shell_aperture",
+      "b": "rear_camera_lens_window",
+      "fully_exploded_overlap_mm3": 1.156
+    },
+    {
+      "a": "rear_camera_shell_aperture",
+      "b": "rear_camera_optical_sight_tunnel",
+      "fully_exploded_overlap_mm3": 1.2603
+    },
+    {
+      "a": "rear_camera_shell_aperture",
+      "b": "rear_camera_cover_glass",
+      "fully_exploded_overlap_mm3": 2.116
+    },
+    {
+      "a": "rear_flash_shell_aperture",
+      "b": "rear_flash_led_window",
+      "fully_exploded_overlap_mm3": 0.064
+    },
+    {
+      "a": "rear_camera_lens_window",
+      "b": "rear_camera_optical_sight_tunnel",
+      "fully_exploded_overlap_mm3": 25.432
+    },
+    {
       "a": "rear_camera_lens_window",
       "b": "rear_camera_cover_glass",
       "fully_exploded_overlap_mm3": 25.432
+    },
+    {
+      "a": "rear_camera_optical_sight_tunnel",
+      "b": "rear_camera_cover_glass",
+      "fully_exploded_overlap_mm3": 27.7255
+    },
+    {
+      "a": "front_camera_under_glass",
+      "b": "front_camera_black_mask_window",
+      "fully_exploded_overlap_mm3": 0.9248
     },
     {
       "a": "rear_camera_light_baffle_top",
@@ -70,24 +115,84 @@
       "fully_exploded_overlap_mm3": 1.3799
     },
     {
+      "a": "front_camera_black_mask_window",
+      "b": "front_camera_under_glass_adhesive_top",
+      "fully_exploded_overlap_mm3": 0.1344
+    },
+    {
+      "a": "front_camera_black_mask_window",
+      "b": "front_camera_under_glass_adhesive_bottom",
+      "fully_exploded_overlap_mm3": 0.1344
+    },
+    {
+      "a": "front_camera_black_mask_window",
+      "b": "front_camera_under_glass_adhesive_left",
+      "fully_exploded_overlap_mm3": 0.1088
+    },
+    {
+      "a": "front_camera_black_mask_window",
+      "b": "front_camera_under_glass_adhesive_right",
+      "fully_exploded_overlap_mm3": 0.1088
+    },
+    {
+      "a": "orange_screw_boss_1",
+      "b": "orange_corner_rib_1",
+      "fully_exploded_overlap_mm3": 4.536
+    },
+    {
+      "a": "orange_screw_boss_1",
+      "b": "orange_corner_rib_1_leg",
+      "fully_exploded_overlap_mm3": 4.536
+    },
+    {
+      "a": "orange_screw_boss_2",
+      "b": "orange_corner_rib_2",
+      "fully_exploded_overlap_mm3": 4.536
+    },
+    {
+      "a": "orange_screw_boss_2",
+      "b": "orange_corner_rib_2_leg",
+      "fully_exploded_overlap_mm3": 4.536
+    },
+    {
       "a": "orange_screw_boss_3",
-      "b": "orange_battery_left_rib",
-      "fully_exploded_overlap_mm3": 0.105
+      "b": "orange_corner_rib_3",
+      "fully_exploded_overlap_mm3": 4.536
+    },
+    {
+      "a": "orange_screw_boss_3",
+      "b": "orange_corner_rib_3_leg",
+      "fully_exploded_overlap_mm3": 4.536
     },
     {
       "a": "orange_screw_boss_4",
-      "b": "orange_battery_right_rib",
-      "fully_exploded_overlap_mm3": 0.105
+      "b": "orange_corner_rib_4",
+      "fully_exploded_overlap_mm3": 4.536
     },
     {
-      "a": "orange_screw_boss_5",
-      "b": "orange_battery_left_rib",
-      "fully_exploded_overlap_mm3": 4.41
+      "a": "orange_screw_boss_4",
+      "b": "orange_corner_rib_4_leg",
+      "fully_exploded_overlap_mm3": 4.536
     },
     {
-      "a": "orange_screw_boss_6",
-      "b": "orange_battery_right_rib",
-      "fully_exploded_overlap_mm3": 4.41
+      "a": "orange_corner_rib_1",
+      "b": "orange_corner_rib_1_leg",
+      "fully_exploded_overlap_mm3": 1.944
+    },
+    {
+      "a": "orange_corner_rib_2",
+      "b": "orange_corner_rib_2_leg",
+      "fully_exploded_overlap_mm3": 1.944
+    },
+    {
+      "a": "orange_corner_rib_3",
+      "b": "orange_corner_rib_3_leg",
+      "fully_exploded_overlap_mm3": 1.944
+    },
+    {
+      "a": "orange_corner_rib_4",
+      "b": "orange_corner_rib_4_leg",
+      "fully_exploded_overlap_mm3": 1.944
     },
     {
       "a": "soc_shield_can",
@@ -97,7 +202,7 @@
   ],
   "release_rule": "No part-part overlap may grow beyond its assembled baseline anywhere on the explode trajectory (no pass-through). Residual overlaps at full explode are reported for review; same-axis stacked parts may legitimately remain nested if their assembled overlap does not grow.",
   "part_screenshots": {
-    "part_shot_count": 94,
+    "part_shot_count": 132,
     "contact_sheet": "/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/review/part-explode-contact-sheet.png"
   }
 }

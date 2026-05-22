@@ -15,10 +15,8 @@ add_mlir_dialect_library(MLIRElizaNpuDialect
 )
 
 add_mlir_dialect_library(MLIRElizaNpuTransforms
-  Transforms/ConvertLinalgToElizaNpu.cpp
   Transforms/AssignScratch.cpp
   Transforms/LegalizeDescriptorRing.cpp
-  Transforms/EmitDescriptorTable.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/elizanpu
@@ -31,8 +29,6 @@ add_mlir_dialect_library(MLIRElizaNpuTransforms
   LINK_LIBS PUBLIC
   MLIRElizaNpuDialect
   MLIRIR
-  MLIRLinalgDialect
-  MLIRLinalgTransforms
   MLIRPass
   MLIRTransforms
 )

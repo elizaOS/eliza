@@ -8,10 +8,11 @@ the toolmaker / FAI signoff captured under
 `board/kicad/e1-phone/production/reports/pinout-review/<function>.yaml` per
 `supplier-to-kicad-evidence-map.yaml`.
 
-## Captured pinouts (10)
+## Captured pinouts (11)
 
 | # | File | Part | Manufacturer | Status |
 |---|------|------|--------------|--------|
+| 0 | `compute-som-pinout.yaml` | Core-3566JD4 RK3566 compute SoM (260-pin SODIMM) | Firefly | full per-pin SODIMM signal map published in public datasheet |
 | 1 | `gct-usb4105-pinout.yaml` | USB4105-GF-A USB-C 2.0 receptacle, 24 positions | GCT | full pin table (USB-IF Type-C standard) |
 | 2 | `quectel-rg255c-pinout.yaml` | RG255C-EAB 5G RedCap LGA | Quectel | interfaces verified; per-pad table behind Quectel Partner Portal |
 | 3 | `murata-type-2ea-pinout.yaml` | LBEE5XV2EA-802 Wi-Fi 6E + BT 5.3 (Type 2EA) | Murata | interface pin groups verified; per-pad coords in binary datasheet PDF |
@@ -29,45 +30,73 @@ vendor page confirms the package, pin count, and interface groups**, but the
 portal and must be re-emitted with full per-pin entries before the
 corresponding `pinout-review/<function>.yaml` signoff can flip to ready.
 
-## Remaining NDA-gated pinouts (1)
+## Compute / application processor — RESOLVED (public SoM connector pinout)
 
-The only component on the e1-phone BoM whose pinout is **genuinely
-NDA-gated** (cannot be retrieved by any public-web search) is the application
-processor SoC:
+The compute SoC was previously the **only** NDA-gated line on the e1-phone BoM:
+a bare Unisoc T606 (UMS9230) BGA ball-map ships only inside Unisoc's NDA'd
+Reference Design Kit, so the board could not be built from public data.
 
-### Unisoc T606 / T616 (UMS9230)
+**This blocker is retired.** A bare application-processor BGA *always* needs an
+NDA — that is intrinsic to buying a raw AP. The standard way to make a phone
+buildable from public data is to source the AP role as a turnkey
+**System-on-Module** that bundles SoC + LPDDR + eMMC + PMIC and exposes a
+**publicly documented board-to-board connector**. The e1-phone now does exactly
+that:
 
-- **Package:** BGA, ~600 balls.
-- **Status:** `nda_gated_pinout_unblock_path_documented`
-- **Why blocked:** Unisoc does not publish AP SoC pinouts on its public web
-  site. The pad map ships only inside the Reference Design Kit (RDK) that
-  Unisoc releases to design-in customers after NDA execution.
-- **Unblock procedure:**
-  1. Contact Unisoc via an **authorized regional distributor** (e.g. Arrow,
-     WPG/WT, or a Unisoc-named Tier-1 ODM in PRC). Walk-in requests to
-     unisoc.com/contact are routed to the same distributor channel.
-  2. Sign Unisoc's **Mutual NDA** plus the **Design-In Agreement** for the
-     T606 / T616 platform. Both are required before any document release.
-  3. Request the **T606 (or T616) Reference Design Kit**, which contains:
-     - SoC Hardware Design Guide (with full BGA ball map and ball-attribute
-       tables)
-     - Reference Schematic (pre-routed PMIC + DDR + audio + RF)
-     - Reference PCB stack-up
-     - Linux/Android BSP and bring-up image
-  4. Mirror the ball-map CSV to
-     `board/kicad/e1-phone/production/sourcing/soc/pinout-or-pad-map.csv`
-     and emit `unisoc-t606-pinout.yaml` in this directory with
+### Compute sourced as Firefly Core-3566JD4 (RK3566 SoM) — public connector pinout
+
+- **Part:** Firefly `Core-3566JD4`, Rockchip RK3566 quad-core Cortex-A55 +
+  Mali-G52 + 1 TOPS NPU, LPDDR4 (1-8 GB) + eMMC (8-128 GB) on-module.
+- **Carrier interface:** single **260-pin gold-finger SODIMM** edge connector,
+  0.5 mm pitch. The **full per-pin signal table is published in the public
+  Core-3566JD4 specification PDF** — no NDA, no partner portal.
+- **Public docs:**
+  [datasheet PDF](https://download.t-firefly.com/Spec/CoreBorads/Core-3566JD4_Specification_EN.pdf),
+  [product page](https://en.t-firefly.com/product/core/core3566jd4.html),
+  [wiki + schematics + BSP](https://wiki.t-firefly.com/en/Core-3566JD4/),
+  plus Rockchip's public RK3566 datasheet and Hardware Design Guide.
+- **Captured here:** `compute-som-pinout.yaml`
+  (`evidence_class: public_som_connector_pinout`) — power rails, MIPI-DSI x2,
+  4-lane MIPI-CSI, USB2/USB3, PCIe 2.1, SDIO (Wi-Fi/BT), I2C/UART/SPI/ADC,
+  boot/recovery/reset.
+- **Buyable today:** ~$49 single-qty (2 GB/32 GB) at IndustryPC/Firefly Store;
+  also listed on Alibaba. MOQ 1.
+- **e1-phone fit:** DSI0 drives the 5.5" panel, CSI feeds rear 13 MP + front
+  5 MP, the Quectel RG255C 5G RedCap modem attaches over USB2.0 HOST/OTG, and
+  the Murata Type-2EA Wi-Fi/BT uses SDIO (SDMMC1) + UART. All AP-role interfaces
+  are on the public connector map.
+
+**Honest scope of the resolution:** going to a *bare* RK3566 (or T606) SoC on
+the e1-phone PCB later — the cost-down-at-scale path — still requires that
+vendor's NDA'd Hardware Design Guide for the BGA ball-map (Rockchip's is far
+more openly mirrored than Unisoc's, but the production ball-map is still a
+controlled document). What changed is that the e1-phone no longer *needs* the
+NDA to be buildable: there is now a complete, purchasable-from-public-data
+compute path via the SoM. The bare-SoC + NDA route is retained as a documented
+cost-down option, not a blocker.
+
+**Bare-SoC cost-down path (optional, later):**
+  1. Contact the chosen SoC vendor (Rockchip via authorized distributor for
+     RK3566, or Unisoc via Arrow/WPG/Tier-1 ODM for T606/T616).
+  2. Sign the vendor NDA + Design-In Agreement and request the SoC Hardware
+     Design Guide (full BGA ball-map + reference schematic + PCB stack-up + BSP).
+  3. Mirror the ball-map CSV to
+     `board/kicad/e1-phone/production/sourcing/soc/pinout-or-pad-map.csv` and
+     emit `<vendor>-<soc>-pinout.yaml` with
      `evidence_class: nda_supplier_datasheet`.
-  5. Flip the SoC row in `pinout-footprint-freeze.yaml` from blocked to
-     captured and re-run the pinout-review gate.
+  4. Flip the SoC row in `pinout-footprint-freeze.yaml` to the bare-SoC variant
+     and re-run the pinout-review gate.
 
-Until step 4 completes, the SoC remains the **only** un-unblockable line item
-in the supplier-evidence chain.
+Until that optional step closes, the SoM remains the canonical buildable-now
+compute source and there are **no** NDA-gated lines blocking a public-data build.
 
 ## Evidence-class convention
 
 - `public_supplier_datasheet` — pinout sourced from a public web page or
   publicly downloadable PDF; what this directory captures.
+- `public_som_connector_pinout` — board-to-board / edge-connector signal map of
+  a turnkey System-on-Module, published in a public vendor datasheet (the
+  compute path; see `compute-som-pinout.yaml`).
 - `nda_supplier_datasheet` — pinout sourced from a document released under
   NDA (Unisoc RDK, Quectel Partner Portal HW Design, OmniVision sensor reg
   spec, etc.). These overwrite the public capture once procurement closes.

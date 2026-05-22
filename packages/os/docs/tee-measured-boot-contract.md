@@ -11,6 +11,8 @@ protected VMs, and a future Eliza RISC-V confidential domain.
 
 Every TEE-capable OS artifact must publish a signed measurement manifest with:
 
+Required (always present in a TEE-capable measurement set):
+
 - `boot`: bootloader, firmware, AVB metadata, or confidential-VM launcher
   digest.
 - `os`: kernel, initramfs, root filesystem, system image, vendor image, product
@@ -18,14 +20,36 @@ Every TEE-capable OS artifact must publish a signed measurement manifest with:
 - `agent`: agent package, container image, APK, or protected-agent guest digest.
 - `policy`: TEE policy JSON digest, including allowed providers, required
   claims, and key-release rules.
+
+Optional (present per substrate / capability):
+
 - `device`: platform identity class, lifecycle state, and security-version
   source.
-- `container`: dstack compose or Docker image digest when the agent runs in a
+- `container`: agent container image digest when the agent runs in a
   confidential container.
-- `npuFirmware`: NPU firmware digest when local inference is allowed to handle
-  private user data.
+- `compose`: dstack `app-compose.json` / `docker-compose.yaml` digest measured
+  into RTMR3 (cloud TDX) or the in-domain compose blob (E1).
+- `monitor`: tiny-TCB monitor digest — the TDX module / SEAM measurement on
+  cloud, the M-mode TSM / security-manager measurement on E1.
+- `gpuFirmware`: confidential-GPU firmware/attestation-report digest (NVIDIA
+  H100/Blackwell) when weights run on a confidential GPU.
+- `npuFirmware`: NPU firmware + queue-policy digest when on-device inference is
+  allowed to handle private user data.
+- `modelWeights`: golden digest of the local model weights bound into the
+  measured image for on-device inference.
+
+These names mirror the agent's canonical `TeeMeasurementName` union
+(`packages/agent/src/services/tee-evidence.ts`); `modelWeights` and `monitor`
+are OS-side additions accepted by the agent's open `(string & {})` fallback. The
+agent lane owns the TS type; the OS lane owns this schema/fixture/contract.
 
 The release pipeline must fail closed when any required digest is absent.
+
+When any inference-bearing measurement (`gpuFirmware`, `npuFirmware`,
+`modelWeights`) is declared, the manifest MUST also assert
+`requiredClaims.npuProtected = true` and `requiredClaims.ioProtected = true`;
+`validate-tee-measurements.mjs` / `validate-release-manifest.mjs` fail closed
+otherwise.
 
 ## Evidence Format
 
@@ -99,3 +123,36 @@ Key release is allowed only when:
 
 Missing, stale, debug, or mismatched evidence must block plugin sync, signing,
 model key release, and high-value capability calls.
+
+## Runtime Evidence Bridge
+
+The in-domain bridge transforms the platform quote into the normalized
+`TeeEvidence` document consumed by
+`packages/agent/src/services/dstack-tee-provider.ts`. It is exposed through:
+
+- `ELIZA_TEE_EVIDENCE_PATH=/run/elizaos/tee/evidence.json`, or
+- `ELIZA_TEE_EVIDENCE_URL=http://127.0.0.1:<port>/tee/evidence`.
+
+`packages/os/scripts/tee-evidence-bridge.mjs` produces this document. On real
+hardware it parses MRTD/RTMR0–3 (TDX) or the DICE-folded CoVE measurements (E1);
+**that hardware path is BLOCKED** — see the gate below. Until then it emits MOCK
+fixtures (`packages/os/release/schema/tee-evidence.mock.json` and
+`tee-evidence.tampered.mock.json`) bound to the golden measurement manifest so
+the agent provider can be exercised locally. The bridge fails closed if any
+runtime measurement does not equal the signed golden
+`tee-measurements.json`.
+
+> **Gate `tdx-cvm-boot-smoke` / `confidential-gpu-attest` (BLOCKED):** real quote
+> collection needs a 4th/5th-gen Xeon TDX host (and a CC-GPU host for
+> `gpuFirmware`). Proving command, once a host exists:
+> `node packages/os/scripts/tee-evidence-bridge.mjs --quote-source tappd --socket /var/run/dstack.sock`.
+
+## dstack Hardening Pins
+
+Before dstack is trusted in a high-assurance stack it must be pinned/hardened per
+`packages/os/linux/confidential/dstack-pins.json` (the data form of the plan
+§2.3 table): a pinned post-Feb-2026 release, DevMode and dev-KMS forbidden,
+mandatory QE-identity + TCB-status enforcement, TLS verification ON, no
+client-controlled PCCS URL, and an on-chain `AppAuth` code-hash allowlist. The
+root of trust is the platform RoT + our signed golden measurements, never dstack
+alone. Open upstream tracking: issues **#608** and **#609**.

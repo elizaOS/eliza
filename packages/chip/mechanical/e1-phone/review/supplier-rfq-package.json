@@ -133,7 +133,7 @@
       "supplier_item_ids": [
         "side_buttons"
       ],
-      "candidate": "Panasonic EVQ-P7/P3/9P7 side-push tactile switch",
+      "candidate": "XKB TS-1187A-B-A-B side-push tactile switch, 3.5x2.9x1.7 mm",
       "attached_steps": [
         "mechanical/e1-phone/out/power_button_cap.step",
         "mechanical/e1-phone/out/volume_button_cap.step",

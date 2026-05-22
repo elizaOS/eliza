@@ -31,15 +31,14 @@ export default function HeroSection() {
         </h1>
         <p className="mt-6 max-w-2xl text-xl font-medium leading-snug text-black/80 sm:text-2xl">
           {t("cloud.landing.heroSubtitle", {
-            defaultValue:
-              "Hosting, APIs and commerce tools for agents.",
+            defaultValue: "Hosting, APIs and commerce tools for agents.",
           })}
         </p>
         <div className="mt-10 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">
           <button
             type="button"
             onClick={launchEliza}
-            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-[3px] border border-black bg-black px-8 py-4 text-base font-medium text-white transition-colors hover:bg-white hover:text-black sm:text-lg"
+            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-[3px] bg-black px-8 py-4 text-base font-medium text-white transition-colors hover:bg-white hover:text-black sm:text-lg"
           >
             {t("cloud.landing.launchEliza", { defaultValue: "Launch Eliza" })}
             <ArrowRight className="h-5 w-5" />

@@ -51,12 +51,12 @@ def validate_example(path: Path, schema: dict[str, Any]) -> list[str]:
     action_type = document.get("action_type")
     mode = document.get("mode")
     decision_value = document.get("decision")
-    decision: dict[str, Any] = decision_value if isinstance(decision_value, dict) else {}
     safety_value = document.get("safety")
-    safety: dict[str, Any] = safety_value if isinstance(safety_value, dict) else {}
     command_value = document.get("command")
-    command: dict[str, Any] = command_value if isinstance(command_value, dict) else {}
     scope_value = document.get("scope")
+    decision: dict[str, Any] = decision_value if isinstance(decision_value, dict) else {}
+    safety: dict[str, Any] = safety_value if isinstance(safety_value, dict) else {}
+    command: dict[str, Any] = command_value if isinstance(command_value, dict) else {}
     scope: dict[str, Any] = scope_value if isinstance(scope_value, dict) else {}
 
     if action_type in schema["forbidden_action_types"] and mode != "blocked":
@@ -83,8 +83,9 @@ def validate_example(path: Path, schema: dict[str, Any]) -> list[str]:
     write_paths = scope.get("write_paths", [])
     if not isinstance(write_paths, list):
         errors.append(f"{record_id}: scope.write_paths must be a list")
-    elif mode != "blocked" and any(
-        isinstance(path, str) and not path.startswith("build/ai_eda/") for path in write_paths
+    elif (
+        any(isinstance(path, str) and not path.startswith("build/ai_eda/") for path in write_paths)
+        and mode != "blocked"
     ):
         errors.append(f"{record_id}: non-blocked write paths must stay under build/ai_eda/")
 

@@ -57,7 +57,7 @@ public class GatewayConnectionService extends Service {
         super.onCreate();
         ensureNotificationChannel();
 
-        Notification notification = buildNotification("elizaOS Gateway", "Starting…");
+        Notification notification = buildNotification("Eliza Gateway", "Starting…");
 
         // API 34+ requires explicit foreground service type when calling startForeground().
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -123,7 +123,7 @@ public class GatewayConnectionService extends Service {
             "Gateway Connection",
             NotificationManager.IMPORTANCE_LOW
         );
-        channel.setDescription("Shows elizaOS gateway connection status");
+        channel.setDescription("Shows Eliza gateway connection status");
         channel.setShowBadge(false);
 
         NotificationManager mgr = getSystemService(NotificationManager.class);
@@ -190,15 +190,15 @@ public class GatewayConnectionService extends Service {
 
         switch (currentStatus) {
             case STATUS_CONNECTED:
-                title = "elizaOS Gateway · Connected";
+                title = "Eliza Gateway · Connected";
                 text = "WebSocket connection active";
                 break;
             case STATUS_RECONNECTING:
-                title = "elizaOS Gateway · Reconnecting";
+                title = "Eliza Gateway · Reconnecting";
                 text = "Attempting to restore connection…";
                 break;
             default:
-                title = "elizaOS Gateway";
+                title = "Eliza Gateway";
                 text = "Disconnected";
                 break;
         }

@@ -1,0 +1,3 @@
+# Intentional: the elizaOS local agent runs privileged system-management
+# tasks for the user, so it gets passwordless sudo on this assistant OS.
+elizaos ALL=(ALL) NOPASSWD: ALL

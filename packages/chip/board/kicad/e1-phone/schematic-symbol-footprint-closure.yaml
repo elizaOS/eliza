@@ -18,15 +18,16 @@ source_artifacts:
   - board/kicad/e1-phone/block-netlist.yaml
   - board/kicad/e1-phone/pinout-footprint-freeze.yaml
   - board/kicad/e1-phone/preliminary-bom.yaml
+  - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
   - board/kicad/e1-phone/placement-interface-matrix.yaml
 current_kicad_state:
   schematic_sheet_count: 14
-  schematic_symbol_count: 0
-  schematic_text_item_count: 211
+  schematic_symbol_count: 23
+  schematic_text_item_count: 157
   pcb_declared_net_count: 181
   pcb_placeholder_footprint_count: 87
   pcb_track_or_zone_count: 11
-  schematic_evidence_class: text_only_non_release_scaffold
+  schematic_evidence_class: non_release_symbol_scaffold_not_erc_checked
   pcb_evidence_class: non_release_placeholder_footprint_floorplan
   erc_report_present: false
   footprint_library_release_present: false
@@ -133,15 +134,15 @@ release_required_outputs:
   - board/kicad/e1-phone/production/reports/pinout-review-signoff.yaml
   - board/kicad/e1-phone/production/reports/footprint-3d-model-binding.yaml
 cross_checks:
-  schematic_is_text_scaffold: true
-  real_schematic_symbols_missing: true
+  schematic_is_non_release_symbol_scaffold: true
+  supplier_reviewed_schematic_symbols_missing: true
   placeholder_footprints_present: true
   tracks_and_zones_missing: true
   erc_missing: true
   every_major_interface_has_symbol_footprint_closure_record: true
   production_outputs_are_blocked_until_supplier_symbols_footprints_and_erc_exist: true
 release_blockers:
-  - KiCad schematic sheets contain text scaffolds instead of real symbols and wires
+  - KiCad schematic sheets contain non-release scaffold symbols that have not been supplier-reviewed or ERC-cleaned
   - exact supplier pinouts and mating connector drawings are not frozen
   - reviewed symbol library and footprint library are not present
   - placeholder footprints have not been replaced with supplier land patterns, courtyards, paste, and STEP models

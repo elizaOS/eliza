@@ -21,6 +21,39 @@
       "pass": true
     },
     {
+      "id": "rear_camera_back_shell_aperture",
+      "actual": {
+        "aperture_mm": [
+          10.6,
+          10.6
+        ],
+        "cover_window_mm": [
+          9.2,
+          9.2
+        ],
+        "optical_sight_tunnel_present": true,
+        "bezel_part_count": 4
+      },
+      "target": "explicit molded back-shell opening larger than the flush cover window with a clear camera sight tunnel and four orange bevel lands",
+      "pass": true
+    },
+    {
+      "id": "rear_flash_back_shell_aperture",
+      "actual": {
+        "aperture_mm": [
+          2.2,
+          2.2
+        ],
+        "window_mm": [
+          1.6,
+          1.6
+        ],
+        "bezel_part_count": 4
+      },
+      "target": "explicit molded back-shell opening larger than the flush flash light-pipe window with four orange bevel lands",
+      "pass": true
+    },
+    {
       "id": "rear_camera_z_stack",
       "actual": {
         "module_depth_mm": 5.1,

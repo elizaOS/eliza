@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-REPORTS = {
+REPORTS: dict[str, dict[str, Any]] = {
     "logic_synthesis": {
         "path": "build/ai_eda/logic_synthesis_targets/{run_id}/targets_report.json",
         "schema": "eliza.ai_eda.logic_synthesis_targets.v1",
@@ -182,19 +182,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def default_report_paths(run_id: str) -> list[Path]:
-    paths: list[Path] = []
-    for item in REPORTS.values():
-        path_template = item["path"]
-        if not isinstance(path_template, str):
-            raise TypeError("REPORTS path entries must be strings")
-        paths.append(repo_path(path_template.format(run_id=run_id)))
-    return paths
-
-
 def main() -> int:
     args = parse_args()
-    paths = args.report or default_report_paths(args.run_id)
+    paths = args.report or [
+        repo_path(item["path"].format(run_id=args.run_id)) for item in REPORTS.values()
+    ]
     expected_by_schema = {item["schema"]: (key, item) for key, item in REPORTS.items()}
     errors: list[str] = []
     validated = 0

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import {
+  optionalTeeMeasurementNames,
   parseArgs,
+  requiredTeeMeasurementNames,
   sha256File,
   writeJson,
 } from "./os-release-lib.mjs";
@@ -13,10 +15,9 @@ if (!output) {
   process.exit(1);
 }
 
-const requiredInputs = ["boot", "os", "agent", "policy"];
 const measurements = {};
 
-for (const name of requiredInputs) {
+for (const name of requiredTeeMeasurementNames) {
   const filePath = args[name];
   if (!filePath || typeof filePath !== "string") {
     console.error(`error: --${name} is required`);
@@ -25,7 +26,7 @@ for (const name of requiredInputs) {
   measurements[name] = `sha256:${await sha256File(filePath)}`;
 }
 
-for (const name of ["device", "container", "npuFirmware"]) {
+for (const name of optionalTeeMeasurementNames) {
   const filePath = args[name];
   if (filePath && typeof filePath === "string") {
     measurements[name] = `sha256:${await sha256File(filePath)}`;

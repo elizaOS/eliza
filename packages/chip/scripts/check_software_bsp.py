@@ -18,6 +18,7 @@ LOG_EVIDENCE_MANIFEST = ROOT / "docs/android/bsp-log-evidence-manifest.json"
 BOOT_TRANSCRIPT_SCHEMA = ROOT / "docs/android/boot-transcript.schema.json"
 EVIDENCE_MANIFEST = ROOT / "docs/evidence/software-bsp-evidence-manifest.json"
 LOCAL_EXTERNAL_PREFLIGHT_REPORT = ROOT / "docs/evidence/software-bsp-external-preflight-status.json"
+REPORT = ROOT / "build/reports/software_bsp.json"
 AOSP_EVIDENCE_MANIFEST = ROOT / "sw/aosp-device/evidence_manifest.json"
 NNAPI_PROOF_TEMPLATE = ROOT / "docs/benchmarks/capabilities/e1_npu_nnapi.proof.template.json"
 ANDROID_PROOF_TEMPLATE = (
@@ -31,6 +32,7 @@ AOSP_REFERENCE_ONLY_PATHS = [
     "docs/evidence/android/qemu_riscv64_smoke.log",
     "docs/evidence/android/renode_e1_soc_smoke.log",
 ]
+CLAIM_BOUNDARY = "scaffold_and_evidence_inventory_only_not_linux_or_aosp_boot_evidence"
 DEFAULT_EVIDENCE_METADATA = ["EXTERNAL_TREE=", "COMMAND=", "START_UTC=", "END_UTC=", "RESULT="]
 ANDROID_COMPAT_METADATA = [
     "EXTERNAL_TREE=",
@@ -443,10 +445,54 @@ def check_boot_transcript_schema(errors: list[str]) -> None:
             errors.append(f"virtual-device smoke schema missing required field {field}")
 
 
+def active_aosp_hal_names(manifest_text: str) -> list[str]:
+    active_text = re.sub(r"<!--.*?-->", "", manifest_text, flags=re.DOTALL)
+    names: list[str] = []
+    for hal_block in re.findall(r"<hal(?:\s|>).*?</hal>", active_text, flags=re.DOTALL):
+        match = re.search(r"<name>\s*([^<\s]+)\s*</name>", hal_block)
+        names.append(match.group(1) if match else "<unnamed>")
+    return names
+
+
+def aosp_make_text_without_comments(device_text: str) -> str:
+    lines: list[str] = []
+    for line in device_text.splitlines():
+        lines.append(line.split("#", 1)[0])
+    return "\n".join(lines)
+
+
+def aosp_hal_source_files(device_root: Path, hal_name: str) -> list[Path]:
+    if hal_name == "vendor.eliza.e1_npu":
+        hal_root = device_root / "hal/e1_npu"
+        return [
+            hal_root / "Android.bp",
+            hal_root / "service.cpp",
+            hal_root / "E1Npu.cpp",
+            hal_root / "vendor.eliza.e1_npu@1.0-service.rc",
+            hal_root / "vendor.eliza.e1_npu@1.0-service.xml",
+        ]
+    if hal_name == "android.hardware.graphics.composer":
+        hal_root = device_root / "hal/hwcomposer"
+        return [
+            hal_root / "Android.bp",
+            hal_root / "service.cpp",
+            hal_root / "hwcomposer.cpp",
+            hal_root / "android.hardware.graphics.composer@2.4-service.eliza_ai_soc.rc",
+            hal_root / "android.hardware.graphics.composer@2.4-service.eliza_ai_soc.xml",
+        ]
+    return []
+
+
+def aosp_hal_source_available(device_root: Path, hal_name: str) -> bool:
+    source_files = aosp_hal_source_files(device_root, hal_name)
+    return bool(source_files) and all(path.is_file() for path in source_files)
+
+
 def check_aosp_product_glue(errors: list[str]) -> None:
-    product = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/AndroidProducts.mk"
-    board = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/BoardConfig.mk"
-    manifest = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/manifest.xml"
+    device_root = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc"
+    product = device_root / "AndroidProducts.mk"
+    board = device_root / "BoardConfig.mk"
+    manifest = device_root / "manifest.xml"
     text = product.read_text(errors="ignore") if product.is_file() else ""
     lunch_choices = {
         "eliza_ai_soc-userdebug",
@@ -470,17 +516,37 @@ def check_aosp_product_glue(errors: list[str]) -> None:
                 errors.append(f"AOSP VINTF manifest missing XML marker {term}")
         if "</manifest>" not in manifest_text and "/>" not in manifest_text:
             errors.append("AOSP VINTF manifest is missing closing </manifest> marker")
-        active_text = re.sub(r"<!--.*?-->", "", manifest_text, flags=re.DOTALL)
-        if re.search(r"<hal(?:\s|>)", active_text):
+        active_hals_without_sources = [
+            name
+            for name in active_aosp_hal_names(manifest_text)
+            if not aosp_hal_source_available(device_root, name)
+        ]
+        if active_hals_without_sources:
             errors.append(
-                "AOSP VINTF manifest must not declare active HAL entries until source or prebuilts exist"
+                "AOSP VINTF manifest must not declare active HAL entries until source "
+                "or prebuilts exist: " + ", ".join(active_hals_without_sources)
             )
-    device = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/device.mk"
+    device = device_root / "device.mk"
     device_text = device.read_text(errors="ignore") if device.is_file() else ""
-    if "PRODUCT_PACKAGES +=" in device_text and (
-        "e1_npu.default" in device_text or "hwcomposer.eliza_ai_soc" in device_text
-    ):
-        errors.append("AOSP device.mk must not list HAL packages until source or prebuilts exist")
+    active_device_text = aosp_make_text_without_comments(device_text)
+    hal_package_sources = {
+        "e1_npu.default": "vendor.eliza.e1_npu",
+        "vendor.eliza.e1_npu@1.0-service": "vendor.eliza.e1_npu",
+        "android.hardware.graphics.composer@2.4-service.eliza_ai_soc": (
+            "android.hardware.graphics.composer"
+        ),
+        "hwcomposer.eliza_ai_soc": "android.hardware.graphics.composer",
+    }
+    hal_packages_without_sources = [
+        package
+        for package, hal_name in hal_package_sources.items()
+        if package in active_device_text and not aosp_hal_source_available(device_root, hal_name)
+    ]
+    if hal_packages_without_sources:
+        errors.append(
+            "AOSP device.mk must not list HAL packages until source or prebuilts exist: "
+            + ", ".join(hal_packages_without_sources)
+        )
     forbidden_feature_terms = [
         "android.hardware.camera",
         "android.hardware.audio",
@@ -711,6 +777,76 @@ def target_report(name: str) -> dict:
         "missing_evidence": missing,
         "invalid_evidence": invalid_evidence,
     }
+
+
+def blocker_code(text: str, fallback: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:12]) or fallback
+
+
+def build_scaffold_report(
+    *,
+    target: str,
+    scaffold_only: bool,
+    require_evidence: bool,
+    results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    findings: list[dict[str, Any]] = []
+    for result in results:
+        name = str(result["target"])
+        for error in result["errors"]:
+            findings.append(
+                {
+                    "code": blocker_code(f"{name} {error}", "software_bsp_scaffold_error"),
+                    "severity": "fail",
+                    "target": name,
+                    "message": error,
+                    "evidence": f"python3 scripts/check_software_bsp.py {name}",
+                    "next_step": "Fix the missing or stale repo-local BSP scaffold artifact.",
+                }
+            )
+        for blocker in result["blockers"]:
+            findings.append(
+                {
+                    "code": blocker_code(
+                        f"{name} {blocker}", "software_bsp_external_evidence_blocked"
+                    ),
+                    "severity": "blocker",
+                    "target": name,
+                    "message": blocker,
+                    "evidence": f"python3 scripts/check_software_bsp.py {name} --require-evidence",
+                    "next_step": "Capture and validate the external BSP build or boot evidence named by the checker.",
+                }
+            )
+    if any(finding["severity"] == "fail" for finding in findings):
+        status = "fail"
+    elif findings:
+        status = "blocked"
+    else:
+        status = "pass"
+    return {
+        "schema": "eliza.software_bsp.v1",
+        "status": status,
+        "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "target": target,
+        "scaffold_only": scaffold_only,
+        "require_evidence": require_evidence,
+        "summary": {
+            "targets_checked": len(results),
+            "targets_with_errors": sum(1 for result in results if result["errors"]),
+            "targets_with_blockers": sum(1 for result in results if result["blockers"]),
+            "findings": len(findings),
+        },
+        "targets": results,
+        "findings": findings,
+    }
+
+
+def write_scaffold_report(report: dict[str, Any], output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def print_status(name: str) -> int:
@@ -1320,6 +1456,11 @@ def main() -> int:
         action="store_true",
         help="Emit machine-readable scaffold/evidence status and blockers.",
     )
+    parser.add_argument(
+        "--report",
+        default=str(REPORT),
+        help="Write the structured BSP scaffold/evidence report to this path.",
+    )
     args = parser.parse_args()
 
     names = TARGETS.keys() if args.target == "all" else [args.target]
@@ -1351,6 +1492,7 @@ def main() -> int:
         return 0
 
     failed = False
+    results: list[dict[str, Any]] = []
     for name in names:
         errors, blockers = check_target(name)
         scaffold = subprocess.run(
@@ -1365,6 +1507,15 @@ def main() -> int:
             print(scaffold.stderr, end="", file=sys.stderr)
         if scaffold.returncode:
             errors.append(f"{name} scaffold audit failed")
+        results.append(
+            {
+                "target": name,
+                "scaffold_status": "FAIL" if errors else "PASS",
+                "evidence_status": "BLOCKED" if blockers else "PASS",
+                "errors": errors,
+                "blockers": blockers,
+            }
+        )
         evidence_required = args.require_evidence and not args.scaffold_only
         if errors or (blockers and evidence_required):
             failed = True
@@ -1395,6 +1546,15 @@ def main() -> int:
                         )
                     )
 
+    write_scaffold_report(
+        build_scaffold_report(
+            target=args.target,
+            scaffold_only=args.scaffold_only,
+            require_evidence=args.require_evidence,
+            results=results,
+        ),
+        Path(args.report),
+    )
     return 1 if failed else 0
 
 

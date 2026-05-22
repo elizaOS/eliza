@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # elizaOS Debian RISC-V 64 — qemu-system-riscv64 -M virt boot harness.
 #
-# Boots the live ISO produced by `build.sh` on top of OpenSBI + (optionally)
-# U-Boot under qemu-system-riscv64 -M virt, captures the serial transcript,
-# checks the transcript for the expected boot markers, and writes a JSON
-# evidence record at --evidence.
+# Boots the live ISO produced by `build.sh` on top of OpenSBI + EDK2 UEFI
+# under qemu-system-riscv64 -M virt, captures the serial transcript, checks
+# the transcript for the expected boot markers, and writes a JSON evidence
+# record at --evidence.
 #
 # Honesty / fail-closed rules:
 #   - This harness is qemu-virt boot transcript evidence only. It does NOT
@@ -26,8 +26,8 @@
 #   --cpus       4
 #   --timeout    600    (seconds)
 #   --evidence   evidence/qemu_virt_boot.json  (relative to variant dir)
-#   --u-boot     <chip-package>/build/u-boot/u-boot.elf if it exists,
-#                else QEMU built-in fallback (no -kernel passed)
+#   --u-boot     unsupported with the UEFI ISO path; retained as a rejected
+#                compatibility flag so older callers fail clearly.
 #   --transcript evidence/qemu_virt_boot.transcript.log
 
 set -euo pipefail
@@ -36,9 +36,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VARIANT_DIR="$(cd "${HERE}/.." && pwd)"
 EVIDENCE_DEFAULT="${VARIANT_DIR}/evidence/qemu_virt_boot.json"
 TRANSCRIPT_DEFAULT="${VARIANT_DIR}/evidence/qemu_virt_boot.transcript.log"
-UBOOT_CHIP_DEFAULT="${VARIANT_DIR}/../../../../chip/build/u-boot/u-boot.elf"
-UEFI_CODE_DEFAULT="/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd"
-UEFI_VARS_DEFAULT="/usr/share/qemu-efi-riscv64/RISCV_VIRT_VARS.fd"
+UEFI_CODE_DEFAULT="${ELIZAOS_QEMU_EFI_CODE:-/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd}"
+UEFI_VARS_DEFAULT="${ELIZAOS_QEMU_EFI_VARS:-/usr/share/qemu-efi-riscv64/RISCV_VIRT_VARS.fd}"
 
 ISO=""
 MEMORY_MB=4096
@@ -111,18 +110,13 @@ mkdir -p "$(dirname "${TRANSCRIPT_PATH}")"
 
 command -v qemu-system-riscv64 >/dev/null 2>&1 \
     || die "qemu-system-riscv64 not on PATH"
-command -v qemu-img >/dev/null 2>&1 \
-    || die "qemu-img not on PATH"
 command -v python3 >/dev/null 2>&1 \
     || die "python3 not on PATH"
 command -v sha256sum >/dev/null 2>&1 \
     || die "sha256sum not on PATH"
 
-if [ -z "${UBOOT_PATH}" ] && [ -f "${UBOOT_CHIP_DEFAULT}" ]; then
-    UBOOT_PATH="${UBOOT_CHIP_DEFAULT}"
-fi
-if [ -n "${UBOOT_PATH}" ] && [ ! -f "${UBOOT_PATH}" ]; then
-    die "u-boot ELF not found: ${UBOOT_PATH}"
+if [ -n "${UBOOT_PATH}" ]; then
+    die "--u-boot is not supported for the riscv64 UEFI live ISO path"
 fi
 
 ISO_SHA256="$(sha256sum "${ISO}" | awk '{ print $1 }')"
@@ -150,18 +144,23 @@ fi
 
 QEMU_CMD+=(
     -drive "file=${ISO},if=virtio,format=raw,media=cdrom,readonly=on"
-    -netdev user,id=net0
-    -device virtio-net-device,netdev=net0
     -monitor none
     -serial mon:stdio
     -no-reboot)
 
-if [ -n "${UBOOT_PATH}" ]; then
-    QEMU_CMD+=( -kernel "${UBOOT_PATH}" )
+if qemu-system-riscv64 -netdev help 2>&1 | grep -E -q -- '^[[:space:]]*user$'; then
+    QEMU_CMD+=(
+        -netdev user,id=net0
+        -device virtio-net-device,netdev=net0
+    )
+else
+    QEMU_FIRMWARE_DESC="${QEMU_FIRMWARE_DESC}; netdev-user-unavailable"
 fi
 
 START_EPOCH="$(date -u +%s)"
 START_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+QEMU_STDIN_FIFO="$(mktemp -u)"
+mkfifo "${QEMU_STDIN_FIFO}"
 
 : > "${TRANSCRIPT_PATH}"
 {
@@ -173,7 +172,7 @@ START_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '## cpus: %s\n' "${CPUS}"
     printf '## timeout_secs: %s\n' "${TIMEOUT_SECS}"
     printf '## firmware: %s\n' "${QEMU_FIRMWARE_DESC}"
-    printf '## u_boot: %s\n' "${UBOOT_PATH:-<built-in>}"
+    printf '## u_boot: %s\n' "<not-used>"
     printf '## cmd: %s\n' "${QEMU_CMD[*]}"
     printf '##\n'
 } >> "${TRANSCRIPT_PATH}"
@@ -193,7 +192,17 @@ forbidden_marker_present() {
 }
 
 set +e
-"${QEMU_CMD[@]}" </dev/null >> "${TRANSCRIPT_PATH}" 2>&1 &
+(
+    sleep 8
+    printf '\n\r'
+    sleep 8
+    printf '\n\r'
+    sleep 10
+    printf '\n\r'
+    sleep "${TIMEOUT_SECS}"
+) > "${QEMU_STDIN_FIFO}" &
+QEMU_STDIN_PID=$!
+"${QEMU_CMD[@]}" <"${QEMU_STDIN_FIFO}" >> "${TRANSCRIPT_PATH}" 2>&1 &
 QEMU_PID=$!
 QEMU_RC=124
 QEMU_TIMED_OUT=0
@@ -225,6 +234,8 @@ if [ "${QEMU_RC}" -eq 124 ] && [ "${QEMU_TIMED_OUT}" -eq 0 ] && ! kill -0 "${QEM
     QEMU_RC=$?
 fi
 set -e
+kill "${QEMU_STDIN_PID}" >/dev/null 2>&1 || true
+rm -f "${QEMU_STDIN_FIFO}"
 if [ -n "${UEFI_VARS_RUNTIME}" ]; then
     rm -f "${UEFI_VARS_RUNTIME}"
 fi
@@ -297,6 +308,20 @@ fi
 
 TRANSCRIPT_SHA256="$(sha256sum "${TRANSCRIPT_PATH}" | awk '{ print $1 }')"
 
+variant_relative_path() {
+    python3 - "$1" "${VARIANT_DIR}" <<'PYEOF'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1]).resolve()
+variant = Path(sys.argv[2]).resolve()
+try:
+    print(path.relative_to(variant).as_posix())
+except ValueError:
+    print(sys.argv[1])
+PYEOF
+}
+
 emit_array() {
     if [ "$#" -eq 0 ]; then
         printf '[]'
@@ -315,7 +340,7 @@ FORBIDDEN_HIT_JSON="$(emit_array "${FORBIDDEN_HIT[@]+"${FORBIDDEN_HIT[@]}"}")"
 export QVB_EVIDENCE_PATH="${EVIDENCE_PATH}"
 export QVB_ISO_PATH="${ISO}"
 export QVB_ISO_SHA256="${ISO_SHA256}"
-export QVB_TRANSCRIPT_PATH="${TRANSCRIPT_PATH}"
+export QVB_TRANSCRIPT_PATH="$(variant_relative_path "${TRANSCRIPT_PATH}")"
 export QVB_TRANSCRIPT_SHA256="${TRANSCRIPT_SHA256}"
 export QVB_MEMORY_MB="${MEMORY_MB}"
 export QVB_CPUS="${CPUS}"

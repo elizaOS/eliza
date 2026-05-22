@@ -34,27 +34,34 @@ DEFAULT_GEOMETRY: dict[str, object] = {
     "BIM_ENTRIES": 16384,
     "BIM_CTR_W": 2,
     "TAGE_TABLES": 5,
-    "TAGE_ENTRIES_TABLE": 4096,
+    "TAGE_ENTRIES_TABLE": 8192,
     "TAGE_TAG_W": 8,
     "TAGE_CTR_W": 3,
     "TAGE_USEFUL_W": 2,
-    "TAGE_HIST_LEN": (8, 13, 32, 64, 119),
+    # Allocation/aging policy. Useful-bit aging mirrors bpu_pkg.sv
+    # TAGE_USEFUL_RESET_PERIOD; allocation decrement remains an experiment-only
+    # lever because tage.sv does not currently decrement occupied candidates
+    # while walking the allocation stack.
+    "TAGE_ALLOC_DECREMENT": True,
+    "TAGE_UBIT_RESET_PERIOD": 100_000,  # branches between useful-bit aging
+    "TAGE_HIST_LEN": (8, 16, 44, 90, 195),
     "SC_TABLES": 4,
     "SC_ENTRIES_TABLE": 512,
     "SC_CTR_W": 6,
     "SC_HIST_LEN": (0, 4, 10, 16),
     "SC_THRESH_INIT": 6,
+    "SC_ADAPTIVE": True,
     "LOOP_ENTRIES": 64,
     "LOOP_CTR_W": 14,
     "LOOP_CONF_W": 3,
-    "FTB_ENTRIES": 2048,
+    "FTB_ENTRIES": 4096,
     "FTB_WAYS": 4,
     "UFTB_ENTRIES": 512,
     "UFTB_WAYS": 4,
     "RAS_ARCH_ENTRIES": 32,
     "RAS_SPEC_ENTRIES": 64,
     "ITTAGE_TABLES": 5,
-    "ITTAGE_ENTRIES": (256, 256, 512, 512, 512),
+    "ITTAGE_ENTRIES": (512, 512, 1024, 1024, 1024),
     "ITTAGE_HIST_LEN": (4, 8, 13, 16, 32),
     "ITTAGE_TAG_W": 9,
     "ITTAGE_CTR_W": 3,
@@ -173,12 +180,29 @@ class _TageTable:
         }
         return True
 
+    def decrement_useful(self, pc: int, hist: int) -> None:
+        """Age the candidate victim's useful counter on a failed allocation."""
+        idx, _tag = self._index_tag(pc, hist)
+        entry = self.storage.get(idx)
+        if entry is not None and entry["useful"] > 0:
+            entry["useful"] -= 1
+
+    def age_useful(self, clear_high: bool) -> None:
+        """Periodic useful-bit reset: alternately clear the high or low bit of
+        every allocated entry's useful counter (classic TAGE u-bit decay)."""
+        bit = (1 << (self.useful_w - 1)) if clear_high else 1
+        mask = _mask(self.useful_w) & ~bit
+        for entry in self.storage.values():
+            entry["useful"] &= mask
+
 
 @dataclass
 class _Tage:
     geo: dict
     tables: list[_TageTable]
     bim: _BimodalTable
+    branch_ctr: int = 0
+    reset_phase: int = 0
 
     @classmethod
     def build(cls, geo: dict) -> _Tage:
@@ -228,10 +252,110 @@ class _Tage:
         if provider > 0:
             self.tables[provider - 1].update(pc, hist_resolve_time, taken, not misp)
         if misp:
-            # Allocate the next-longer history table that has a victim.
+            # Allocate into a longer-history table that has a free victim
+            # (useful==0). With TAGE_ALLOC_DECREMENT, age the useful counter of
+            # each occupied candidate we pass over, so a later misprediction at
+            # the same site can allocate — this is the classic fix for the
+            # allocation starvation that pure first-fit suffers on long traces.
+            alloc_decrement = self.geo.get("TAGE_ALLOC_DECREMENT", False)
             for higher in range(provider, len(self.tables)):
                 if self.tables[higher].try_allocate(pc, hist_resolve_time, taken):
-                    return
+                    break
+                if alloc_decrement:
+                    self.tables[higher].decrement_useful(pc, hist_resolve_time)
+        # Periodic useful-bit reset (aging): without it, useful counters
+        # saturate and block all future allocation. Alternately clear the high
+        # then low bit of every entry's useful counter each period.
+        period = self.geo.get("TAGE_UBIT_RESET_PERIOD", 0)
+        if period:
+            self.branch_ctr += 1
+            if self.branch_ctr >= period:
+                self.branch_ctr = 0
+                for tbl in self.tables:
+                    tbl.age_useful(self.reset_phase == 0)
+                self.reset_phase ^= 1
+
+
+@dataclass
+class _SC:
+    """Statistical corrector — signed-counter tables that can override a
+    low-confidence TAGE direction.
+
+    Mirrors ``rtl/cpu/bpu/sc.sv``: ``SC_TABLES`` tables of signed
+    ``SC_CTR_W``-bit counters, each indexed by the PC folded with a
+    different-length history segment. The summed vote overrides TAGE only
+    when TAGE reported low confidence and the absolute sum clears the
+    threshold. The RTL threshold is static at ``SC_THRESH_INIT`` (its
+    ``always_ff`` never rewrites ``threshold_q``), so the faithful model
+    keeps it fixed; adaptive-threshold is a tuning lever, not current RTL.
+    """
+
+    tables: int
+    entries: int
+    ctr_w: int
+    hist_lens: tuple[int, ...]
+    threshold: int
+    adaptive: bool = False
+    tc: int = 0  # threshold-control counter (Seznec TC) when adaptive
+    storage: list[list[int]] = field(default_factory=list)
+
+    @classmethod
+    def build(cls, geo: dict) -> _SC:
+        entries = geo["SC_ENTRIES_TABLE"]
+        tables = geo["SC_TABLES"]
+        return cls(
+            tables=tables,
+            entries=entries,
+            ctr_w=geo["SC_CTR_W"],
+            hist_lens=tuple(geo["SC_HIST_LEN"]),
+            threshold=geo["SC_THRESH_INIT"],
+            adaptive=bool(geo.get("SC_ADAPTIVE", False)),
+            storage=[[0] * entries for _ in range(tables)],
+        )
+
+    def _idx(self, tid: int, pc: int, hist: int) -> int:
+        idx_w = max(1, (self.entries - 1).bit_length())
+        return _index_hash(pc, hist, self.hist_lens[tid], idx_w, tid) % self.entries
+
+    def _sum(self, pc: int, hist: int) -> int:
+        total = 0
+        for tid in range(self.tables):
+            total += self.storage[tid][self._idx(tid, pc, hist)]
+        return total
+
+    def predict(self, pc: int, hist: int, tage_lowconf: bool) -> tuple[bool, bool]:
+        total = self._sum(pc, hist)
+        override = tage_lowconf and abs(total) >= self.threshold
+        return override, total >= 0
+
+    def update(self, pc: int, hist: int, taken: bool, tage_lowconf: bool) -> None:
+        if not tage_lowconf:
+            return
+        # Seznec adaptive threshold (TC): nudge the override threshold so the
+        # SC fires neither too eagerly nor too rarely. Off by default to match
+        # the static-threshold RTL; enabling it is a concrete RTL proposal.
+        if self.adaptive:
+            total = self._sum(pc, hist)
+            sc_taken = total >= 0
+            if sc_taken != taken:
+                self.tc += 1
+                if self.tc >= 12:
+                    self.threshold += 1
+                    self.tc = 0
+            elif abs(total) >= self.threshold:
+                self.tc -= 1
+                if self.tc <= -12:
+                    self.threshold = max(4, self.threshold - 1)
+                    self.tc = 0
+        hi = (1 << (self.ctr_w - 1)) - 1
+        lo = -(1 << (self.ctr_w - 1))
+        for tid in range(self.tables):
+            idx = self._idx(tid, pc, hist)
+            ctr = self.storage[tid][idx]
+            if taken and ctr < hi:
+                self.storage[tid][idx] = ctr + 1
+            elif not taken and ctr > lo:
+                self.storage[tid][idx] = ctr - 1
 
 
 @dataclass
@@ -371,6 +495,7 @@ class BPUSimulator:
 
     geometry: dict = field(default_factory=lambda: dict(DEFAULT_GEOMETRY))
     tage: _Tage = field(init=False)
+    sc: _SC = field(init=False)
     loop: _LoopPredictor = field(init=False)
     ras: _RAS = field(init=False)
     ftb: _FTB = field(init=False)
@@ -380,6 +505,7 @@ class BPUSimulator:
 
     def __post_init__(self) -> None:
         self.tage = _Tage.build(self.geometry)
+        self.sc = _SC.build(self.geometry)
         self.loop = _LoopPredictor(entries=self.geometry["LOOP_ENTRIES"])
         self.ras = _RAS(
             spec_capacity=self.geometry["RAS_SPEC_ENTRIES"],
@@ -433,7 +559,13 @@ class BPUSimulator:
         if event.kind == BR_COND:
             loop_conf, loop_taken = self.loop.predict(event.pc)
             tage_taken, provider, low_conf = self.tage.predict(event.pc, self.hist)
-            taken = loop_taken if loop_conf else tage_taken
+            sc_override, sc_taken = self.sc.predict(event.pc, self.hist, low_conf)
+            if loop_conf:
+                taken = loop_taken
+            elif sc_override:
+                taken = sc_taken
+            else:
+                taken = tage_taken
             target = (
                 ftb_entry["target"]
                 if (ftb_entry and taken)
@@ -471,8 +603,12 @@ class BPUSimulator:
 
         # Train tables.
         if event.kind == BR_COND:
-            _, provider, _low_conf = self.tage.predict(event.pc, self.hist)
+            _, provider, low_conf = self.tage.predict(event.pc, self.hist)
+            sc_override, _ = self.sc.predict(event.pc, self.hist, low_conf)
+            if sc_override:
+                self.counters["sc_override"] += 1
             self.tage.update(event.pc, self.hist, self.hist, actual_taken, provider, misp)
+            self.sc.update(event.pc, self.hist, actual_taken, low_conf)
             self.loop.update(event.pc, actual_taken)
             self.ftb.update(event.pc, actual_target, event.kind)
         elif event.kind == BR_CALL:

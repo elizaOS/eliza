@@ -66,26 +66,26 @@ def parse_demand_map(path: Path) -> dict[str, Any]:
         if not cells:
             continue
         try:
-            values_row = [float(cell) for cell in cells]
+            row = [float(cell) for cell in cells]
         except ValueError as exc:
             raise ValueError(f"{path}: non-numeric value on line {line_number}") from exc
-        if any(not math.isfinite(value) for value in values_row):
+        if any(not math.isfinite(value) for value in row):
             raise ValueError(f"{path}: non-finite value on line {line_number}")
-        rows.append(values_row)
+        rows.append(row)
 
     if not rows:
         raise ValueError(f"{path}: demand map is empty")
     width = len(rows[0])
     if width <= 0:
         raise ValueError(f"{path}: demand map has zero columns")
-    for index, demand_row in enumerate(rows, start=1):
-        if len(demand_row) != width:
-            raise ValueError(f"{path}: row {index} has width {len(demand_row)}, expected {width}")
+    for index, row in enumerate(rows, start=1):
+        if len(row) != width:
+            raise ValueError(f"{path}: row {index} has width {len(row)}, expected {width}")
 
     nonzero_cells: list[tuple[int, int, float]] = []
     all_values: list[float] = []
-    for row_index, demand_row in enumerate(rows):
-        for col_index, demand in enumerate(demand_row):
+    for row_index, row in enumerate(rows):
+        for col_index, demand in enumerate(row):
             all_values.append(demand)
             if demand > 0:
                 nonzero_cells.append((row_index, col_index, demand))
@@ -100,28 +100,31 @@ def parse_demand_map(path: Path) -> dict[str, Any]:
     cell_count = row_count * col_count
     node_features = [
         {
-            "id": f"cell_r{row}_c{col}",
+            "id": f"cell_r{cell_row}_c{col}",
             "node_type": "route_demand_grid_cell",
             "x_index": col,
-            "y_index": row,
+            "y_index": cell_row,
             "x_norm": 0.0 if col_count == 1 else col / (col_count - 1),
-            "y_norm": 0.0 if row_count == 1 else row / (row_count - 1),
+            "y_norm": 0.0 if row_count == 1 else cell_row / (row_count - 1),
             "demand": demand,
             "demand_norm": 0.0 if max_demand == 0 else demand / max_demand,
         }
-        for row, col, demand in nonzero_cells
+        for cell_row, col, demand in nonzero_cells
     ]
 
-    nonzero_lookup = {(row, col): demand for row, col, demand in nonzero_cells}
+    nonzero_lookup = {(cell_row, col): demand for cell_row, col, demand in nonzero_cells}
     edge_features: list[dict[str, Any]] = []
-    for row, col, demand in nonzero_cells:
-        for next_row, next_col, direction in ((row, col + 1, "east"), (row + 1, col, "south")):
+    for cell_row, col, demand in nonzero_cells:
+        for next_row, next_col, direction in (
+            (cell_row, col + 1, "east"),
+            (cell_row + 1, col, "south"),
+        ):
             other_demand = nonzero_lookup.get((next_row, next_col))
             if other_demand is None:
                 continue
             edge_features.append(
                 {
-                    "src": f"cell_r{row}_c{col}",
+                    "src": f"cell_r{cell_row}_c{col}",
                     "dst": f"cell_r{next_row}_c{next_col}",
                     "edge_type": "grid_four_neighbor_positive_demand",
                     "direction": direction,
@@ -131,12 +134,12 @@ def parse_demand_map(path: Path) -> dict[str, Any]:
                 }
             )
     if not edge_features and len(nonzero_cells) > 1:
-        for (row, col, demand), (next_row, next_col, other_demand) in zip(
+        for (cell_row, col, demand), (next_row, next_col, other_demand) in zip(
             nonzero_cells, nonzero_cells[1:], strict=False
         ):
             edge_features.append(
                 {
-                    "src": f"cell_r{row}_c{col}",
+                    "src": f"cell_r{cell_row}_c{col}",
                     "dst": f"cell_r{next_row}_c{next_col}",
                     "edge_type": "sparse_positive_demand_sequence_fallback",
                     "direction": "sequence",
@@ -249,7 +252,7 @@ def convert_map(path: Path, out_dir: Path) -> list[dict[str, Any]]:
             "nonzero_count": stats["nonzero_count"],
             "edge_count": stats["edge_count"],
         }
-        for record, out_path in zip(records, paths, strict=True)
+        for record, out_path in zip(records, paths, strict=False)
     ]
 
 
@@ -259,12 +262,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=3)
+    parser.add_argument(
+        "--all-records",
+        action="store_true",
+        help="Convert every discovered demand map instead of the smoke sample limit.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if args.sample_limit <= 0:
+    if not args.all_records and args.sample_limit <= 0:
         raise SystemExit("--sample-limit must be positive")
     if not args.map_dir.exists():
         print(f"STATUS: BLOCKED ai_eda.aieda_idata_conversion missing_map_dir {args.map_dir}")
@@ -273,7 +281,7 @@ def main() -> int:
     if not maps:
         print(f"STATUS: BLOCKED ai_eda.aieda_idata_conversion no_demand_maps {args.map_dir}")
         return 2
-    selected = maps[: args.sample_limit]
+    selected = maps if args.all_records else maps[: args.sample_limit]
 
     out_dir = args.out_root / args.run_id / "records"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -291,6 +299,8 @@ def main() -> int:
         "map_dir": rel(args.map_dir),
         "available_map_count": len(maps),
         "converted_map_count": len(selected),
+        "conversion_mode": "all_records" if args.all_records else "sample_limit",
+        "sample_limit": None if args.all_records else args.sample_limit,
         "converted_record_count": len(converted),
         "converted_records": converted,
         "release_use_allowed": False,

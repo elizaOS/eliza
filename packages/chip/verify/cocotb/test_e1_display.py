@@ -8,6 +8,9 @@ from cocotb.triggers import RisingEdge, Timer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import common  # noqa: E402
+from common import read_reg as _read_reg  # noqa: E402
+from common import write_reg as _write_reg  # noqa: E402
 from coverage_helpers import CoverPointSet  # noqa: E402
 
 DISPLAY_MMIO_REGIONS = (
@@ -42,43 +45,21 @@ def _classify_display_reg(addr: int) -> str:
 
 
 async def reset(dut):
-    dut.rst_n.value = 0
-    dut.valid.value = 0
-    dut.write.value = 0
-    dut.addr.value = 0
-    dut.wdata.value = 0
+    # Framebuffer-read sideband must idle low through the reset window before
+    # delegating to the shared simple-register reset.
     dut.fb_read_data.value = 0
     dut.fb_read_ready.value = 0
-    await Timer(1, units="ns")
-    for _ in range(4):
-        await RisingEdge(dut.clk)
-    dut.rst_n.value = 1
-    await RisingEdge(dut.clk)
+    await common.reset(dut)
 
 
 async def write_reg(dut, addr, data):
     _DISPLAY_COVER.sample("mmio_region", "register", _classify_display_reg(addr))
-    dut.addr.value = addr
-    dut.wdata.value = data
-    dut.write.value = 1
-    dut.valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.valid.value = 0
-    dut.write.value = 0
-    await Timer(1, units="ns")
+    await _write_reg(dut, addr, data)
 
 
 async def read_reg(dut, addr):
     _DISPLAY_COVER.sample("mmio_region", "register", _classify_display_reg(addr))
-    dut.addr.value = addr
-    dut.write.value = 0
-    dut.valid.value = 1
-    await Timer(1, units="ns")
-    value = int(dut.rdata.value)
-    await RisingEdge(dut.clk)
-    dut.valid.value = 0
-    await Timer(1, units="ns")
-    return value
+    return await _read_reg(dut, addr)
 
 
 async def advance(dut, cycles):

@@ -11,12 +11,22 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { Coins, Loader2, ShieldCheck, Wallet } from "lucide-react";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { erc20Abi } from "viem";
 import { useAccount, useConfig, useSwitchChain } from "wagmi";
-import { sendTransaction, waitForTransactionReceipt, writeContract } from "wagmi/actions";
+import {
+  sendTransaction,
+  waitForTransactionReceipt,
+  writeContract,
+} from "wagmi/actions";
 import type {
   CryptoStatusResponse,
   CryptoStatusTokenOption,
@@ -184,6 +194,7 @@ export function DirectCryptoCreditCard({
   // When the network changes (or the underlying token list does), reset the
   // selected token to the network's default so we don't carry a stale BSC
   // selection into Base/Solana.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selected?.network is the intentional reset signal here
   useEffect(() => {
     setTokenSymbol(null);
   }, [selected?.network]);
@@ -269,7 +280,10 @@ export function DirectCryptoCreditCard({
         value: BigInt(payment.instructions.amountUnits),
         chainId: cfg.chainId,
       });
-      await waitForTransactionReceipt(wagmiConfig, { hash, chainId: cfg.chainId });
+      await waitForTransactionReceipt(wagmiConfig, {
+        hash,
+        chainId: cfg.chainId,
+      });
       return hash;
     }
     if (!payment.instructions.tokenAddress) {

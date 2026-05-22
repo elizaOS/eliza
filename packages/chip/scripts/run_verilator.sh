@@ -14,8 +14,12 @@ fi
 rm -rf build/verilator build/verilator_npu_gemm
 mkdir -p build/verilator
 repo_dir="$(pwd)"
-verilator -Wall --cc --exe --build \
+verilator -Wall -Wno-UNUSEDSIGNAL --cc --exe --build \
     --top-module e1_chip_top \
+    "$repo_dir/rtl/top/e1_soc_pkg.sv" \
+    "$repo_dir/rtl/peripherals/e1_mmio_decode.sv" \
+    "$repo_dir/rtl/peripherals/e1_clint.sv" \
+    "$repo_dir/rtl/memory/e1_behavioral_dram.sv" \
     "$repo_dir/rtl/top/e1_chip_top.sv" \
     "$repo_dir/rtl/clock/e1_reset_sync.sv" \
     "$repo_dir/rtl/debug/e1_dbg_mmio_bridge.sv" \
@@ -38,8 +42,12 @@ verilator -Wall --cc --exe --build \
 
 build/verilator/Ve1_chip_top
 
-verilator -Wall --cc --exe --build \
+verilator -Wall -Wno-UNUSEDSIGNAL --cc --exe --build \
     --top-module e1_soc_top \
+    "$repo_dir/rtl/top/e1_soc_pkg.sv" \
+    "$repo_dir/rtl/peripherals/e1_mmio_decode.sv" \
+    "$repo_dir/rtl/peripherals/e1_clint.sv" \
+    "$repo_dir/rtl/memory/e1_behavioral_dram.sv" \
     "$repo_dir/rtl/top/e1_soc_top.sv" \
     "$repo_dir/rtl/bootrom/e1_bootrom.sv" \
     "$repo_dir/rtl/peripherals/e1_peripherals.sv" \

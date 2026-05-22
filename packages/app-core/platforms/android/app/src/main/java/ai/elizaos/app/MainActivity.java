@@ -56,7 +56,6 @@ public class MainActivity extends BridgeActivity {
      */
     private static final UserAgentMarker[] BRAND_USER_AGENT_MARKERS = new UserAgentMarker[] {
         new UserAgentMarker("ro.elizaos.product", "ElizaOS/"),
-        // BRAND_USER_AGENT_MARKERS_INJECTION_POINT
     };
 
     @Override
@@ -71,6 +70,7 @@ public class MainActivity extends BridgeActivity {
 
         registerPlugin(AgentPlugin.class);
         registerPlugin(BatteryOptimizationPlugin.class);
+        registerPlugin(VoiceCapturePlugin.class);
         super.onCreate(savedInstanceState);
 
         // Keep the screen on while the agent app is in the foreground.

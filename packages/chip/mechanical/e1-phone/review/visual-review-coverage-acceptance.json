@@ -1,12 +1,12 @@
 {
-  "claim_boundary": "Automated CAD visual review coverage acceptance; proves required render coverage, image nonblank checks, per-part contact-sheet coverage, and recorded CAD visual decisions. It is not CMF lock or human industrial-design signoff.",
+  "claim_boundary": "Automated CAD visual review coverage acceptance; proves required render coverage, image nonblank checks, per-part top-view and exploded-context contact-sheet coverage, and recorded CAD visual decisions. It is not CMF lock or human industrial-design signoff.",
   "status": "visual_review_coverage_acceptance_pass",
   "automated_visual_coverage_ready": true,
   "production_visual_signoff_ready": false,
-  "expected_view_count": 9,
-  "complete_view_count": 9,
-  "expected_visual_gate_count": 5,
-  "passing_visual_gate_count": 5,
+  "expected_view_count": 12,
+  "complete_view_count": 12,
+  "expected_visual_gate_count": 6,
+  "passing_visual_gate_count": 6,
   "view_cases": [
     {
       "view": "full_front_iso.png",
@@ -21,7 +21,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05561
+      "nonwhite_pixel_ratio": 0.05591
     },
     {
       "view": "full_back_iso.png",
@@ -36,7 +36,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05885
+      "nonwhite_pixel_ratio": 0.05907
     },
     {
       "view": "rear_feature_detail.png",
@@ -51,7 +51,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.11025
+      "nonwhite_pixel_ratio": 0.11041
     },
     {
       "view": "full_left_side.png",
@@ -66,7 +66,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.03224
+      "nonwhite_pixel_ratio": 0.03282
     },
     {
       "view": "full_bottom_port.png",
@@ -96,7 +96,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.11015
+      "nonwhite_pixel_ratio": 0.11013
     },
     {
       "view": "exploded_iso.png",
@@ -111,7 +111,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.07773
+      "nonwhite_pixel_ratio": 0.07826
     },
     {
       "view": "component_stack.png",
@@ -126,7 +126,52 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.07942
+      "nonwhite_pixel_ratio": 0.08478
+    },
+    {
+      "view": "component-review-audio.png",
+      "purpose": "speaker, earpiece, microphone, acoustic mesh, and port packaging",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.05649
+    },
+    {
+      "view": "component-review-io-buttons.png",
+      "purpose": "USB-C, side buttons, seals, and tactile actuation packaging",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.04622
+    },
+    {
+      "view": "component-review-optical.png",
+      "purpose": "front/rear cameras, flash, baffles, cover windows, and optical seals",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.05625
     },
     {
       "view": "mold_tooling.png",
@@ -141,19 +186,21 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.04165
+      "nonwhite_pixel_ratio": 0.04156
     }
   ],
   "part_review_case": {
-    "part_count": 94,
+    "part_count": 132,
     "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
     "contact_sheet_pass": true,
+    "exploded_contact_sheet": "mechanical/e1-phone/review/part-explode-contact-sheet.png",
+    "exploded_contact_sheet_pass": true,
     "pass": true
   },
   "part_visual_coverage_case": {
     "status": "part_visual_coverage_pass",
-    "expected_part_count": 94,
-    "covered_part_count": 94,
+    "expected_part_count": 132,
+    "covered_part_count": 132,
     "missing_or_incomplete_part_count": 0,
     "pass": true
   },
@@ -164,6 +211,10 @@
     },
     {
       "id": "compact_screen_margin",
+      "pass": true
+    },
+    {
+      "id": "component_family_detail_views",
       "pass": true
     },
     {
@@ -188,5 +239,5 @@
     "open_manual_review_count": 5,
     "pass": true
   },
-  "release_rule": "Every required full-object, detail, exploded, component, tooling, and per-part review artifact must be generated, pass pixel/contact-sheet checks, every CAD part must map to at least one generated review view plus the per-part contact sheet, and the views must be covered by a recorded CAD visual/design decision before automated visual coverage is accepted. Production visual/CMF signoff remains blocked until manual review items are closed."
+  "release_rule": "Every required full-object, detail, exploded, component, tooling, and per-part review artifact must be generated, pass pixel/contact-sheet checks, every CAD part must map to at least one generated review view plus the per-part top-view and exploded-context contact sheets, and the views must be covered by a recorded CAD visual/design decision before automated visual coverage is accepted. Production visual/CMF signoff remains blocked until manual review items are closed."
 }

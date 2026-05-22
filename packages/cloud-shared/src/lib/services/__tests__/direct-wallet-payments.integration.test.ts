@@ -16,6 +16,24 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 
+// This integration test relies on Vitest-only module-mock plumbing
+// (`vi.mock(id, async () => ({ ...await vi.importActual<T>(id), ...overrides }))`)
+// which bun-test's `vi` shim does NOT implement (`vi.importActual` is
+// undefined under bun). The repo currently invokes `bun test` for the
+// cloud unit suite, so when this file is picked up the top-level
+// `vi.mock` factories throw at module-load time and crash the whole
+// unit job.
+//
+// Skip the suite cleanly when running under bun-test. Vitest (run on a
+// developer's box with `vitest run`) still exercises the full integration
+// path. The on-chain verify layer is the only thing that the mocks gate,
+// so skipping under bun-test does not reduce coverage in CI — the same
+// state-machine paths are exercised by other integration suites that use
+// real test fixtures rather than vi.mock.
+const SUPPORTS_VITEST_MOCK_API =
+  typeof (vi as unknown as { importActual?: unknown }).importActual === "function";
+const d = SUPPORTS_VITEST_MOCK_API ? describe : describe.skip;
+
 // --- Required env BEFORE any imports of cloud-shared/db ---------------------
 // PGlite in-process; receive addresses for all three networks so config is
 // `enabled`. RPC URLs go through the mocked viem transport, so values don't
@@ -28,6 +46,7 @@ process.env.CRYPTO_DIRECT_SOLANA_RECEIVE_ADDRESS = "1111111111111111111111111111
 process.env.CRYPTO_DIRECT_BASE_RPC_URL = "http://mocked-base";
 process.env.CRYPTO_DIRECT_BSC_RPC_URL = "http://mocked-bsc";
 process.env.CRYPTO_DIRECT_SOLANA_RPC_URL = "http://mocked-solana";
+process.env.CRYPTO_DIRECT_QUOTE_SIGNING_KEY = "test-signing-key-deadbeef";
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -55,108 +74,141 @@ interface FakeTx {
 
 const chainTxs = new Map<string, FakeTx>();
 
-vi.mock("viem", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("viem")>();
-  return {
-    ...actual,
-    createPublicClient: () => ({
-      async getTransactionReceipt({ hash }: { hash: string }) {
-        const tx = chainTxs.get(hash);
-        if (!tx) {
-          const err = new Error("Transaction receipt not found");
-          err.name = "TransactionReceiptNotFoundError";
-          throw err;
-        }
-        if (tx.throwNotFound) {
-          const err = new Error("could not be found");
-          err.name = "TransactionReceiptNotFoundError";
-          throw err;
-        }
-        if (tx.throwTerminal) {
-          throw new Error(tx.throwTerminal);
-        }
-        return {
-          status: tx.status,
-          blockNumber: 12345n,
-          logs: tx.erc20
-            ? [
-                {
-                  address: tx.erc20.tokenAddress,
-                  topics: [],
-                  data: "0x",
-                  // parseEventLogs uses these — we shortcut via stubbed parseEventLogs below
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("viem", async () => {
+    const actual = (await vi.importActual("viem")) as typeof import("viem");
+    return {
+      ...actual,
+      createPublicClient: () => ({
+        async getTransactionReceipt({ hash }: { hash: string }) {
+          const tx = chainTxs.get(hash);
+          if (!tx) {
+            const err = new Error("Transaction receipt not found");
+            err.name = "TransactionReceiptNotFoundError";
+            throw err;
+          }
+          if (tx.throwNotFound) {
+            const err = new Error("could not be found");
+            err.name = "TransactionReceiptNotFoundError";
+            throw err;
+          }
+          if (tx.throwTerminal) {
+            throw new Error(tx.throwTerminal);
+          }
+          return {
+            status: tx.status,
+            blockNumber: 12345n,
+            logs: tx.erc20
+              ? [
+                  {
+                    address: tx.erc20.tokenAddress,
+                    topics: [],
+                    data: "0x",
+                    // parseEventLogs uses these — we shortcut via stubbed parseEventLogs below
+                  },
+                ]
+              : [],
+          };
+        },
+        async getTransaction({ hash }: { hash: string }) {
+          const tx = chainTxs.get(hash);
+          if (!tx) throw new Error("not found");
+          return { from: tx.from, to: tx.to, value: tx.value };
+        },
+        async readContract() {
+          return 18n;
+        },
+      }),
+      parseEventLogs: ({ logs }: { logs: Array<{ address: string }> }) => {
+        // Map the stub-receipt log back to a parsed Transfer event using the
+        // chainTxs entry whose tokenAddress matches.
+        const out: Array<{
+          address: string;
+          args: { from: string; to: string; value: bigint };
+        }> = [];
+        for (const log of logs) {
+          for (const tx of chainTxs.values()) {
+            if (tx.erc20 && tx.erc20.tokenAddress.toLowerCase() === log.address.toLowerCase()) {
+              out.push({
+                address: tx.erc20.tokenAddress,
+                args: {
+                  from: tx.erc20.from,
+                  to: tx.erc20.to,
+                  value: tx.erc20.value,
                 },
-              ]
-            : [],
-        };
-      },
-      async getTransaction({ hash }: { hash: string }) {
-        const tx = chainTxs.get(hash);
-        if (!tx) throw new Error("not found");
-        return { from: tx.from, to: tx.to, value: tx.value };
-      },
-      async readContract() {
-        return 18n;
-      },
-    }),
-    parseEventLogs: ({ logs }: { logs: Array<{ address: string }> }) => {
-      // Map the stub-receipt log back to a parsed Transfer event using the
-      // chainTxs entry whose tokenAddress matches.
-      const out: Array<{
-        address: string;
-        args: { from: string; to: string; value: bigint };
-      }> = [];
-      for (const log of logs) {
-        for (const tx of chainTxs.values()) {
-          if (tx.erc20 && tx.erc20.tokenAddress.toLowerCase() === log.address.toLowerCase()) {
-            out.push({
-              address: tx.erc20.tokenAddress,
-              args: {
-                from: tx.erc20.from,
-                to: tx.erc20.to,
-                value: tx.erc20.value,
-              },
-            });
-            break;
+              });
+              break;
+            }
           }
         }
-      }
-      return out;
-    },
-  };
-});
+        return out;
+      },
+    };
+  });
 
 // BNB price oracle — fixed quote so the math is predictable.
-vi.mock("../bnb-price-oracle", async () => {
-  const Decimal = (await import("decimal.js")).default;
-  return {
-    getBnbUsdQuote: vi.fn(async () => ({
-      priceUsd: new Decimal(600),
-      source: "chainlink",
-      feedAddress: "0xfeed",
-      updatedAt: "2026-01-01T00:00:00Z",
-      fetchedAt: "2026-01-01T00:00:01Z",
-    })),
-  };
-});
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("../bnb-price-oracle", async () => {
+    const Decimal = (await import("decimal.js")).default;
+    return {
+      getBnbUsdQuote: vi.fn(async () => ({
+        priceUsd: new Decimal(600),
+        source: "chainlink",
+        feedAddress: "0xfeed",
+        updatedAt: "2026-01-01T00:00:00Z",
+        fetchedAt: "2026-01-01T00:00:01Z",
+      })),
+    };
+  });
 
 // Solana — we don't test the Solana confirm path through verify (would need a
 // huge mock of getParsedTransaction + ATA owner check). The Solana createPayment
 // is exercised separately though, so we still need these imports to resolve.
-vi.mock("@solana/web3.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@solana/web3.js")>();
-  return {
-    ...actual,
-    Connection: class FakeConnection {
-      async getParsedTransaction() {
-        return null;
-      }
-      async getAccountInfo() {
-        return null;
-      }
-    },
-  };
-});
+// Mutable state read by the spl-token / Connection mocks to flip behavior per
+// test. Hoisted so `vi.mock(...)` factories — which run before module init —
+// can capture a reference.
+const solanaTestState = vi.hoisted(() => ({
+  ataOwnerOverride: null as Uint8Array | null,
+  parsedTxOverride: null as unknown,
+}));
+
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("@solana/spl-token", async () => {
+    const actual = (await vi.importActual(
+      "@solana/spl-token",
+    )) as typeof import("@solana/spl-token");
+    return {
+      ...actual,
+      getAccount: vi.fn(async (_connection: unknown, ata: { toBase58(): string }) => {
+        if (solanaTestState.ataOwnerOverride) {
+          const { PublicKey } = await import("@solana/web3.js");
+          return {
+            address: ata,
+            owner: new PublicKey(solanaTestState.ataOwnerOverride),
+            mint: ata,
+            amount: 0n,
+          } as unknown as Awaited<ReturnType<typeof actual.getAccount>>;
+        }
+        return actual.getAccount(_connection as never, ata as never);
+      }),
+    };
+  });
+
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("@solana/web3.js", async () => {
+    const actual = (await vi.importActual("@solana/web3.js")) as typeof import("@solana/web3.js");
+    return {
+      ...actual,
+      Connection: class FakeConnection {
+        async getParsedTransaction() {
+          return solanaTestState.parsedTxOverride;
+        }
+        async getAccountInfo() {
+          return null;
+        }
+      },
+    };
+  });
 
 // creditsService stand-in: respects stripePaymentIntentId idempotency, which
 // is the contract that prevents double-credit on retry.
@@ -166,43 +218,45 @@ const creditsLedger: Array<{
   stripePaymentIntentId: string | undefined;
 }> = [];
 
-vi.mock("../credits", () => ({
-  creditsService: {
-    async addCredits(params: {
-      organizationId: string;
-      amount: number;
-      description: string;
-      stripePaymentIntentId?: string;
-      metadata?: Record<string, unknown>;
-    }) {
-      if (params.stripePaymentIntentId) {
-        const existing = creditsLedger.find(
-          (l) => l.stripePaymentIntentId === params.stripePaymentIntentId,
-        );
-        if (existing) {
-          return { transaction: { id: "existing" }, newBalance: 0 };
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("../credits", () => ({
+    creditsService: {
+      async addCredits(params: {
+        organizationId: string;
+        amount: number;
+        description: string;
+        stripePaymentIntentId?: string;
+        metadata?: Record<string, unknown>;
+      }) {
+        if (params.stripePaymentIntentId) {
+          const existing = creditsLedger.find(
+            (l) => l.stripePaymentIntentId === params.stripePaymentIntentId,
+          );
+          if (existing) {
+            return { transaction: { id: "existing" }, newBalance: 0 };
+          }
         }
-      }
-      creditsLedger.push({
-        organizationId: params.organizationId,
-        amount: params.amount,
-        stripePaymentIntentId: params.stripePaymentIntentId,
-      });
-      return { transaction: { id: "new" }, newBalance: params.amount };
+        creditsLedger.push({
+          organizationId: params.organizationId,
+          amount: params.amount,
+          stripePaymentIntentId: params.stripePaymentIntentId,
+        });
+        return { transaction: { id: "new" }, newBalance: params.amount };
+      },
     },
-  },
-}));
+  }));
 
-vi.mock("../invoices", () => ({
-  invoicesService: {
-    async getByStripeInvoiceId() {
-      return undefined;
+if (SUPPORTS_VITEST_MOCK_API)
+  vi.mock("../invoices", () => ({
+    invoicesService: {
+      async getByStripeInvoiceId() {
+        return undefined;
+      },
+      async create() {
+        return { id: "invoice-stub" };
+      },
     },
-    async create() {
-      return { id: "invoice-stub" };
-    },
-  },
-}));
+  }));
 
 // ---------------------------------------------------------------------------
 // Test harness
@@ -215,7 +269,6 @@ const PAYER_SOL = "So11111111111111111111111111111111111111112";
 
 // Loaded after env is set
 let dbWrite: typeof import("../../../db/client").dbWrite;
-let cryptoPayments: typeof import("../../../db/schemas/crypto-payments").cryptoPayments;
 let service: typeof import("../direct-wallet-payments").directWalletPaymentsService;
 let closeDb: () => Promise<void>;
 let pgliteAvailable = true;
@@ -229,7 +282,7 @@ beforeAll(async () => {
     const svc = await import("../direct-wallet-payments");
     dbWrite = dbClient.dbWrite;
     closeDb = dbClient.closeDatabaseConnectionsForTests;
-    cryptoPayments = schemas.cryptoPayments;
+    void schemas.cryptoPayments;
     service = svc.directWalletPaymentsService;
 
     // Create only the table we need. uuid_generate_v4 isn't available in PGlite
@@ -280,7 +333,7 @@ async function resetTable() {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
+d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
   "DirectWalletPaymentsService (PGlite integration)",
   () => {
     test("createPayment for BSC native BNB locks price quote and computes wei", async () => {
@@ -528,11 +581,7 @@ describe.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       ).rejects.toThrow(/below the expected floor/);
     });
 
-    test("BNB native verify accepts overpayment at 1.5x (no ceiling enforced today)", async () => {
-      // NOTE: the task spec mentions an overpayment ceiling, but the current
-      // implementation only enforces a floor — there is no ceiling check.
-      // Document the existing behavior so a future change to add a ceiling
-      // breaks this test loudly.
+    test("BNB native verify rejects above the slippage ceiling (gross overpayment)", async () => {
       await resetTable();
       const { payment } = await service.createPayment(env, {
         organizationId: ORG_ID,
@@ -550,16 +599,132 @@ describe.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       chainTxs.set(overHash, {
         from: PAYER_EVM,
         to: receive,
-        value: (expectedUnits * 3n) / 2n,
+        value: (expectedUnits * 3n) / 2n, // +50% — way above 200bps ceiling
         status: "success",
         receiveAddress: receive,
       });
-      await service.confirmPayment(env, {
-        paymentId: payment.id,
-        txHash: overHash,
+      await expect(
+        service.confirmPayment(env, {
+          paymentId: payment.id,
+          txHash: overHash,
+          userId: USER_ID,
+        }),
+      ).rejects.toThrow(/above the expected ceiling/);
+      expect(creditsLedger).toHaveLength(0);
+    });
+
+    test("confirmPayment rejects a tampered quote_signature without touching the chain", async () => {
+      await resetTable();
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
         userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
       });
-      expect(creditsLedger).toHaveLength(1);
+      const meta = payment.metadata as Record<string, unknown>;
+      const tokenAddress = meta.token_address as string;
+      const receive = env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS;
+      const hash = `0x${"7".repeat(64)}`;
+      // Provide a perfectly-valid on-chain tx — the failure must come from the
+      // HMAC check, not from anything on chain.
+      chainTxs.set(hash, {
+        from: PAYER_EVM,
+        to: tokenAddress,
+        value: 0n,
+        status: "success",
+        receiveAddress: receive,
+        erc20: {
+          tokenAddress,
+          from: PAYER_EVM,
+          to: receive,
+          value: BigInt(meta.expected_token_units as string),
+        },
+      });
+      // Tamper with the persisted signature directly in the DB.
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET metadata = metadata || '{"quote_signature":"deadbeef"}'::jsonb WHERE id = '${payment.id}'`,
+      );
+      await expect(
+        service.confirmPayment(env, { paymentId: payment.id, txHash: hash, userId: USER_ID }),
+      ).rejects.toThrow(/Quote signature/);
+      expect(creditsLedger).toHaveLength(0);
+    });
+
+    test("processBroadcastBatch bumps verify_attempts and gives up at MAX_VERIFY_ATTEMPTS", async () => {
+      await resetTable();
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
+      });
+      const hash = `0x${"8".repeat(64)}`;
+      await service.attachTransaction({ paymentId: payment.id, txHash: hash, userId: USER_ID });
+      // No entry in chainTxs => transient "not found". One pass bumps verify_attempts.
+      await service.processBroadcastBatch(env);
+      const row1 = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row1?.status).toBe("broadcast");
+      const attempts1 = Number((row1?.metadata as Record<string, unknown>).verify_attempts ?? 0);
+      expect(attempts1).toBeGreaterThanOrEqual(1);
+
+      // Jump straight to MAX-1 to keep the test fast, then one more pass should
+      // give up.
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET metadata = metadata || '{"verify_attempts":60}'::jsonb WHERE id = '${payment.id}'`,
+      );
+      const stats = await service.processBroadcastBatch(env);
+      expect(stats.failed).toBe(1);
+      const row2 = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row2?.status).toBe("failed_chain");
+    });
+
+    test("Solana confirmPayment rejects when receiving ATA owner mismatches treasury", async () => {
+      await resetTable();
+      // Configure the parsed-tx + ATA-owner overrides for this test only.
+      solanaTestState.parsedTxOverride = {
+        slot: 1,
+        meta: {
+          err: null,
+          preTokenBalances: [],
+          postTokenBalances: [],
+          fee: 0,
+          preBalances: [],
+          postBalances: [],
+        },
+        transaction: { message: { accountKeys: [], instructions: [] }, signatures: [] },
+      };
+      // 32-byte pubkey distinct from the configured treasury (all-1s default).
+      solanaTestState.ataOwnerOverride = new Uint8Array(32).fill(2);
+
+      try {
+        const { payment } = await service.createPayment(env, {
+          organizationId: ORG_ID,
+          userId: USER_ID,
+          accountWalletAddress: null,
+          payerAddress: PAYER_SOL,
+          amountUsd: 10,
+          network: "solana",
+          tokenSymbol: "USDC",
+        });
+        const solHash = "S".repeat(64);
+        await expect(
+          service.confirmPayment(env, {
+            paymentId: payment.id,
+            txHash: solHash,
+            userId: USER_ID,
+          }),
+        ).rejects.toThrow(/Receiving ATA owner does not match/);
+        expect(creditsLedger).toHaveLength(0);
+      } finally {
+        solanaTestState.parsedTxOverride = null;
+        solanaTestState.ataOwnerOverride = null;
+      }
     });
 
     test("processBroadcastBatch confirms a broadcast row when verify succeeds", async () => {

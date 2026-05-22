@@ -22,15 +22,32 @@ context.
 ```
 07_post_route_ppa/
   README.md                  this file
-  openroad.json              OpenROAD baseline post-route PPA
-  alphachip.json             AlphaChip candidate post-route PPA
-  dreamplace.json            DREAMPlace 4.0 candidate post-route PPA
+  openroad.json              OpenROAD baseline post-route PPA (softmacro .plc flow)
+  alphachip.json             AlphaChip candidate post-route PPA (softmacro .plc flow)
+  dreamplace.json            DREAMPlace 4.0 candidate post-route PPA (softmacro .plc flow)
   comparison.json            optional aggregate (delta wirelength / TNS / DRC)
+  macro_array_baseline_4x2.json   E1 weight-buffer array, 4x2 grid (measured)
+  macro_array_compact_4x2.json    E1 weight-buffer array, compact 4x2 (measured)
+  macro_array_stack_2x4.json      E1 weight-buffer array, 2x4 stack (measured)
+  macro_array_comparison.json     post-route ranking + False-Dawn verdict
 ```
 
-Today every JSON above is BLOCKED on the hard-macro inventory landing
-(`pd/macros/manifest.yaml`). The release flow has Macros: 0 so detailed
-route on an AlphaChip `.plc` will not move metrics relative to the
+The `macro_array_*.json` files are REAL measured post-route PPA for the eight
+movable-Sky130-SRAM `e1_npu_weight_buffer_array` experiment. Each is extracted
+from its OpenLane run's `62-checker-xor/state_out.json` (post-detailed-route).
+The `comparison` verdict records the discipline outcome: the wirelength/TNS
+proxy winner (`stack_2x4`) REGRESSES post-route signoff (+4 antenna nets, +156
+max-slew, +1 max-fanout) and is rejected as an optimization win
+(`optimization_claim_allowed: false`). AI candidates only approximate these
+routed placements (nearest mean displacement 57-806 um); none reproduces a
+measured cfg within legalizer tolerance, so none inherits measured PPA — each
+distinct candidate requires its own OpenLane route.
+
+The softmacro `openroad.json` / `alphachip.json` / `dreamplace.json` `.plc`
+flow remains BLOCKED on the AlphaChip softmacro benchmark
+(`/tmp/e1-alphachip/e1_softmacro/*.pb.txt` + `.plc`) and the
+`circuit_training:e1-r0.0.4` image. The release flow has Macros: 0 there, so
+detailed route on an AlphaChip `.plc` will not move metrics relative to the
 baseline.
 
 ## How to populate

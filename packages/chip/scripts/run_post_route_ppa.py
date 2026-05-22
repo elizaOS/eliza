@@ -158,27 +158,20 @@ def collect_metrics(metrics_json: Path) -> dict[str, Any]:
 
 
 def run_openlane_post_route(args: argparse.Namespace) -> Path:
-    """Invoke OpenLane to re-run detailed route with macros pinned to .plc."""
+    """Invoke OpenLane to re-run detailed route with macros pinned to .plc.
+
+    Native ``openlane`` on PATH is preferred (the chip toolchain runs natively on
+    Linux x86_64); Docker is used only when no native binary is present.
+    """
     config_path = existing_path(args.openlane_config)
     if config_path is None:
         sys.exit(fail("openlane config missing", config=args.openlane_config))
     run_dir = existing_path(args.openroad_run_dir)
     if run_dir is None:
         sys.exit(fail("openroad run dir missing", run_dir=args.openroad_run_dir))
-    if shutil.which("docker") is None:
-        sys.exit(fail("docker not on PATH; cannot invoke OpenLane"))
     out_dir = ROOT / "build" / "pd" / "post_route_ppa" / Path(args.plc).stem
     out_dir.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        "docker",
-        "run",
-        "--rm",
-        "-v",
-        f"{ROOT}:{ROOT}",
-        "-w",
-        str(ROOT),
-        args.openlane_image,
-        "openlane",
+    openlane_args = [
         str(config_path),
         "--run-tag",
         out_dir.name,
@@ -189,6 +182,24 @@ def run_openlane_post_route(args: argparse.Namespace) -> Path:
         "--to",
         "signoff",
     ]
+    native = shutil.which("openlane")
+    if native is not None:
+        cmd = [native, *openlane_args]
+    elif shutil.which("docker") is not None:
+        cmd = [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{ROOT}:{ROOT}",
+            "-w",
+            str(ROOT),
+            args.openlane_image,
+            "openlane",
+            *openlane_args,
+        ]
+    else:
+        sys.exit(fail("neither native openlane nor docker on PATH; cannot invoke OpenLane"))
     print(f"RUN: {' '.join(cmd)}")
     result = subprocess.run(cmd, cwd=ROOT)
     if result.returncode != 0:

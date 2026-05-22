@@ -1,0 +1,87 @@
+schema: eliza.hardware_security_ai_policy.v1
+status: DRAFT_CAPTURE_ONLY
+claim_boundary: hardware_security_policy_only_no_scanner_fuzzer_trojan_or_vulnerability_claim
+description: |
+  Governing policy for AI/EDA-assisted hardware-security work on the Eliza E1
+  SoC: vulnerability triage, RTL/netlist security scanning, hardware fuzzing,
+  hardware-trojan detection or insertion, and LLM/RAG-based security analysis.
+  This file is a fail-closed boundary contract only. It captures targets and
+  enumerates the human review, dual-use review, and disclosure handling that
+  any future run must produce; it does NOT authorize running a scanner,
+  fuzzer, or trojan detector, generating exploits or fuzzer programs, mutating
+  RTL/netlists, or asserting the presence, absence, or readiness of any
+  vulnerability or trojan. No security tool is vendored under external/, and
+  no vulnerability / trojan / readiness claim may be made without a vendored
+  tool's real output plus a human security reviewer disposition.
+blocked_actions:
+  - run_security_scanner
+  - run_fuzzer
+  - run_trojan_detector
+  - run_llm_classifier
+  - run_rag_vulnerability_triage
+  - generate_fuzzer_program
+  - generate_exploit
+  - insert_trojan
+  - claim_vulnerability
+  - claim_no_vulnerability
+  - claim_trojan_presence
+  - claim_trojan_absence
+  - claim_release_or_tapeout_security_readiness
+  - change_rtl
+  - change_netlist
+  - import_external_security_benchmark
+  - download_security_model_weights
+  - export_e1_design_to_hosted_model
+required_before_execution:
+  - human_security_reviewer
+  - reviewer_disposition
+  - license_review
+  - dual_use_review
+  - disclosure_handling_plan
+  - dependency_manifest
+  - exact_tool_revision
+  - input_rtl_or_netlist_hashes
+  - output_hashes
+  - prompt_or_query_log
+  - deterministic_replay_log
+  - generated_artifact_quarantine_path
+  - threat_model_mapping
+  - taxonomy_or_cwe_mapping
+  - regression_or_formal_followup
+promotion_gates:
+  - python3 scripts/check_hardware_security_ai_policy.py
+  - make hardware-security-ai-policy-check
+  - python3 scripts/ai_eda/capture_hardware_security_targets.py --run-id validation
+  - python3 scripts/ai_eda/capture_post_silicon_validation_targets.py --run-id validation
+  - python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation
+  - make rtl-check
+  - make formal
+  - make no-hardware-action-check
+e1_context_inputs:
+  - rtl/top/e1_chip_top.sv
+  - rtl/top/e1_soc_top.sv
+  - rtl/npu/e1_npu.sv
+  - rtl/dma/e1_dma.sv
+  - rtl/interconnect/e1_axi_lite_interconnect.sv
+  - rtl/security
+  - verify/formal/e1_soc_top_formal.sv
+  - verify/formal/e1_npu_formal.sv
+  - verify/formal/e1_dma_formal.sv
+  - docs/arch/security.md
+  - docs/security/usb-storage-update-security-evidence.md
+  - docs/project/no-hardware-action-matrix-2026-05-17.yaml
+  - docs/project/security-usb-storage-update-fail-closed-work-order-2026-05-17.yaml
+  - scripts/check_no_hardware_action_matrix.py
+  - scripts/check_security_usb_update_work_order.py
+artifact_quarantine_roots:
+  - build/ai_eda/hardware_security/
+forbidden_claims:
+  - "no vulnerabilities found"
+  - "vulnerability confirmed"
+  - "trojan present"
+  - "trojan free"
+  - "security signoff complete"
+  - "fuzzing coverage achieved"
+quarantine_root: build/ai_eda/hardware_security/
+external_gates:
+  - docs/project/no-hardware-action-matrix-2026-05-17.yaml
