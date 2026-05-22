@@ -3,6 +3,7 @@ import type { ResolvedSection } from "../../types/prompt-batcher";
 import type { IAgentRuntime } from "../../types/runtime";
 import {
 	type CallPlan,
+	clampRetryCount,
 	createMinimalState,
 	type DispatchCallMeta,
 	type DispatchOutcome,
@@ -62,6 +63,7 @@ export class PromptDispatcher {
 						options: {
 							modelSize,
 							key: `prompt-batcher:${callPlan.sections.map((item) => item.section.id).join(",")}`,
+							maxRetries: maxRetriesForCallPlan(callPlan),
 						},
 					});
 
@@ -321,4 +323,13 @@ export class PromptDispatcher {
 				stopSequences.size > 0 ? Array.from(stopSequences) : undefined,
 		};
 	}
+}
+
+function maxRetriesForCallPlan(callPlan: CallPlan): number {
+	return Math.max(
+		0,
+		...callPlan.sections.map((item) =>
+			clampRetryCount(item.section.maxRetries),
+		),
+	);
 }

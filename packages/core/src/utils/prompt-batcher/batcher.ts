@@ -695,6 +695,12 @@ export class PromptBatcher {
 				continue;
 			}
 
+			if (!this._recurringSectionDue(section, now)) {
+				args.sectionsSkipped.push(section.id);
+				continue;
+			}
+			this._markRecurringSectionAttempt(section, now);
+
 			if (section.shouldRun) {
 				try {
 					const shouldRun = await section.shouldRun(this.runtime);
@@ -741,6 +747,7 @@ export class PromptBatcher {
 						},
 						removeOnceSection: !cacheState.stale,
 					});
+					this._markRecurringSectionAttempt(section, now);
 
 					if (!cacheState.stale) {
 						continue;
@@ -796,6 +803,7 @@ export class PromptBatcher {
 						meta: { ...baseMeta, fallbackUsed: true },
 						removeOnceSection: true,
 					});
+					this._markRecurringSectionAttempt(resolvedSection.section);
 					return;
 				}
 
@@ -808,7 +816,7 @@ export class PromptBatcher {
 						meta: baseMeta,
 						removeOnceSection: true,
 					});
-					this.lastRunAt.set(resolvedSection.section.id, Date.now());
+					this._markRecurringSectionAttempt(resolvedSection.section);
 					return;
 				}
 
@@ -826,7 +834,7 @@ export class PromptBatcher {
 						meta: { ...baseMeta, retryAttempt: 1 },
 						removeOnceSection: true,
 					});
-					this.lastRunAt.set(resolvedSection.section.id, Date.now());
+					this._markRecurringSectionAttempt(resolvedSection.section);
 					return;
 				}
 
@@ -837,6 +845,7 @@ export class PromptBatcher {
 					meta: { ...baseMeta, fallbackUsed: true },
 					removeOnceSection: true,
 				});
+				this._markRecurringSectionAttempt(resolvedSection.section);
 			}),
 		);
 
@@ -853,6 +862,28 @@ export class PromptBatcher {
 		}
 
 		return outcome.calls;
+	}
+
+	private _recurringSectionDue(section: PromptSection, now: number): boolean {
+		if (section.frequency !== "recurring") {
+			return true;
+		}
+		const minCycleMs =
+			typeof section.minCycleMs === "number" ? section.minCycleMs : 0;
+		if (minCycleMs <= 0) {
+			return true;
+		}
+		const lastRunAt = this.lastRunAt.get(section.id);
+		return !lastRunAt || now - lastRunAt >= minCycleMs;
+	}
+
+	private _markRecurringSectionAttempt(
+		section: PromptSection,
+		timestamp = Date.now(),
+	): void {
+		if (section.frequency === "recurring") {
+			this.lastRunAt.set(section.id, timestamp);
+		}
 	}
 
 	private _metaForSection(
@@ -1206,6 +1237,7 @@ export class PromptBatcher {
 			schema: resolvedSection.section.schema,
 			options: {
 				modelSize: resolvedSection.preferredModel,
+				maxRetries: resolvedSection.section.maxRetries,
 			},
 		});
 

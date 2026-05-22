@@ -264,9 +264,10 @@ export async function runPlannerLoop(
 							trajectory,
 							evaluator,
 							finalMessage: userSafeFinalMessage(
-								evaluator.messageToUser ??
-									plannerOutput.messageToUser ??
-									latestToolResultText(trajectory),
+								preferredFinalMessageFromToolOrModel(
+									trajectory,
+									evaluator.messageToUser ?? plannerOutput.messageToUser,
+								),
 								trajectory,
 							),
 						};
@@ -518,7 +519,7 @@ export async function runPlannerLoop(
 				trajectory,
 				evaluator: gated,
 				finalMessage: userSafeFinalMessage(
-					gated.messageToUser ?? latestToolResultText(trajectory),
+					preferredFinalMessageFromToolOrModel(trajectory, gated.messageToUser),
 					trajectory,
 				),
 			};
@@ -550,11 +551,13 @@ export async function runPlannerLoop(
 				trajectory,
 				evaluator,
 				finalMessage: userSafeFinalMessage(
-					evaluator.messageToUser ??
-						latestToolResultText(trajectory) ??
-						(evaluator.success === false
+					preferredFinalMessageFromToolOrModel(
+						trajectory,
+						evaluator.messageToUser,
+						evaluator.success === false
 							? failedToolFallbackMessage(trajectory)
-							: undefined),
+							: undefined,
+					),
 					trajectory,
 				),
 			};
@@ -2173,6 +2176,32 @@ function latestToolResultText(
 		}
 	}
 	return undefined;
+}
+
+function singleSuccessfulUserFacingToolResultText(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	const toolResultSteps = trajectory.steps.filter(
+		(step) => step.toolCall && step.result,
+	);
+	if (toolResultSteps.length !== 1) return undefined;
+	const result = toolResultSteps[0]?.result;
+	if (result?.success !== true) return undefined;
+	const text = result.userFacingText?.trim();
+	return text || undefined;
+}
+
+function preferredFinalMessageFromToolOrModel(
+	trajectory: PlannerTrajectory,
+	modelMessage?: unknown,
+	fallback?: unknown,
+): string | undefined {
+	return (
+		singleSuccessfulUserFacingToolResultText(trajectory) ??
+		getNonEmptyString(modelMessage) ??
+		latestToolResultText(trajectory) ??
+		getNonEmptyString(fallback)
+	);
 }
 
 function latestFailedToolStep(

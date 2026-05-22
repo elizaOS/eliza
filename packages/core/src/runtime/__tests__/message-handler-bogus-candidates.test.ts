@@ -24,14 +24,17 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { messageHandlerFromFieldResult } from "../../services/message";
+import {
+	messageHandlerFromFieldResult,
+	resolvePlannerActionName,
+} from "../../services/message";
 import type { Action } from "../../types/components";
 
-// Minimal Action stub — only `name` matters for the lookup.
-function makeAction(name: string): Action {
+// Minimal Action stub — only `name` and `similes` matter for these lookups.
+function makeAction(name: string, similes: string[] = []): Action {
 	return {
 		name,
-		similes: [],
+		similes,
 		description: `stub action ${name}`,
 		examples: [],
 		validate: async () => true,
@@ -46,6 +49,27 @@ const BROWSER = makeAction("BROWSER");
 const REAL_ACTIONS: Action[] = [TASKS_SPAWN_AGENT, SHELL, SEARCH];
 
 describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
+	it("resolves canonical action names before another action's simile", () => {
+		const scheduledTasks = makeAction("SCHEDULED_TASKS", [
+			"TASKS",
+			"REMINDER_TASK",
+		]);
+		const codingTasks = makeAction("TASKS");
+		const warnings: unknown[] = [];
+		const runtime = {
+			actions: [scheduledTasks, codingTasks],
+			logger: { warn: (...args: unknown[]) => warnings.push(args) },
+		};
+
+		expect(resolvePlannerActionName(runtime, undefined, "TASKS")).toEqual([
+			"TASKS",
+		]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "REMINDER_TASK"),
+		).toEqual(["SCHEDULED_TASKS"]);
+		expect(warnings).toEqual([]);
+	});
+
 	it("does not promote a `[simple]` route to planning when ALL candidateActionNames are bogus", () => {
 		const handler = messageHandlerFromFieldResult(
 			{

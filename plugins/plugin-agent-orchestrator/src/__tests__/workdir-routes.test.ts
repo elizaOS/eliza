@@ -209,6 +209,32 @@ describe("resolveWorkdirRoute", () => {
 
     expect(result?.id).toBe("static-apps");
   });
+
+  it("can route static site and landing page requests without requiring the literal word app", () => {
+    process.env[ENV_KEY] = JSON.stringify([
+      {
+        id: "static-apps",
+        workdir: appsDir,
+        matchAny: ["app", "static site", "landing page", "website", "webpage"],
+        excludeAny: ["production", "auth", "database", "pull request"],
+      },
+    ]);
+
+    expect(
+      resolveWorkdirRoute(
+        undefined,
+        "build a dystopian landing page with pricing cards",
+        "build a small legal static site with a waitlist",
+      )?.id,
+    ).toBe("static-apps");
+    expect(
+      resolveWorkdirRoute(
+        undefined,
+        "build a production website with database auth",
+        "build a production website with database auth",
+      ),
+    ).toBeUndefined();
+  });
 });
 
 describe("resolveSpawnWorkdir", () => {

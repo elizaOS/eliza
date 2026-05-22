@@ -37,7 +37,6 @@ const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/g;
 // hyphen U+2010, non-breaking hyphen U+2011, figure dash U+2012, en dash
 // U+2013, em dash U+2014, horizontal bar U+2015, minus sign U+2212.
 const UNICODE_DASHES_RE = /[\u2010-\u2015\u2212]/g;
-
 // A URL (mentioned by a sub-agent, or a page sub-resource) that did not
 // verify as reachable. Shared by the verification pass and the retry path.
 interface DeadUrl {
@@ -285,6 +284,7 @@ export class SubAgentRouter extends Service {
   private readonly delivered = new Set<string>();
   private readonly roundTripCounts = new Map<string, number>();
   private readonly capExceededSessions = new Set<string>();
+  private readonly verifyRetryHandedOffSessions = new Set<string>();
   private started = false;
   private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
   private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -381,6 +381,7 @@ export class SubAgentRouter extends Service {
     this.delivered.clear();
     this.roundTripCounts.clear();
     this.capExceededSessions.clear();
+    this.verifyRetryHandedOffSessions.clear();
   }
 
   private async handleEvent(
@@ -393,6 +394,27 @@ export class SubAgentRouter extends Service {
     if (!acp) return;
     const session = (await acp.getSession(sessionId)) ?? undefined;
     if (!session) return;
+    if (this.verifyRetryHandedOffSessions.has(sessionId)) {
+      this.log(
+        "debug",
+        "suppressing original session event after verify retry handoff",
+        {
+          sessionId,
+          event,
+        },
+      );
+      return;
+    }
+    if (event === "error" && isUnsupportedCancelError(data)) {
+      this.log(
+        "debug",
+        "suppressing internal unsupported session/cancel error",
+        {
+          sessionId,
+        },
+      );
+      return;
+    }
 
     const dedupKey = computeDedupKey(sessionId, event, session, data);
     if (this.delivered.has(dedupKey)) return;
@@ -516,7 +538,18 @@ export class SubAgentRouter extends Service {
     // spawned, suppress this post — the retry's own task_complete reports.
     if (event === "task_complete" && deadUrls.length > 0) {
       const retried = await this.retryIncompleteBuild(session, deadUrls);
-      if (retried) return;
+      if (retried) {
+        this.verifyRetryHandedOffSessions.add(sessionId);
+        return;
+      }
+      if (await this.hasNewerContinuation(session, origin)) {
+        this.log(
+          "debug",
+          "suppressing stale verification failure; newer continuation exists",
+          { sessionId, deadCount: deadUrls.length },
+        );
+        return;
+      }
     }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
@@ -548,6 +581,16 @@ export class SubAgentRouter extends Service {
     // handleMessage without a callback — the planner will still update
     // state but no message reaches the user.
     for (const target of targets) {
+      const sessionMeta = session.metadata as
+        | Record<string, unknown>
+        | undefined;
+      const sessionRoute =
+        sessionMeta?.workdirRoute &&
+        typeof sessionMeta.workdirRoute === "object"
+          ? (sessionMeta.workdirRoute as Record<string, unknown>)
+          : undefined;
+      const sessionRouteId = pickPlainString(sessionMeta?.workdirRouteId);
+      const sessionInitialTask = pickPlainString(sessionMeta?.initialTask);
       const memory: Memory = {
         id: randomUUID() as UUID,
         entityId: subAgentEntityId,
@@ -595,7 +638,10 @@ export class SubAgentRouter extends Service {
               ? { originConnectorMessageId: origin.parentConnectorMessageId }
               : {}),
             ...(origin.source ? { originSource: origin.source } : {}),
-          },
+            ...(sessionRouteId ? { workdirRouteId: sessionRouteId } : {}),
+            ...(sessionRoute ? { workdirRoute: sessionRoute } : {}),
+            ...(sessionInitialTask ? { initialTask: sessionInitialTask } : {}),
+          } as Content["metadata"],
         },
         createdAt: Date.now(),
       };
@@ -812,6 +858,23 @@ Do not report done until every referenced URL in the final page resolves without
     }
   }
 
+  private async hasNewerContinuation(
+    session: SessionInfo,
+    origin: OriginInfo,
+  ): Promise<boolean> {
+    const service =
+      this.acp ??
+      (this.runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService | null);
+    if (!service?.listSessions) return false;
+    const currentCreatedAt = sessionTimeMs(session.createdAt);
+    const sessions = await service
+      .listSessions()
+      .catch(() => [] as SessionInfo[]);
+    return sessions.some((candidate) =>
+      isNewerContinuationSession(candidate, session, origin, currentCreatedAt),
+    );
+  }
+
   private log(
     level: "debug" | "info" | "warn" | "error",
     msg: string,
@@ -839,8 +902,18 @@ function shouldInject(event: SessionEventName): boolean {
   );
 }
 
+function isUnsupportedCancelError(data: unknown): boolean {
+  const serialized = JSON.stringify(data);
+  const message =
+    pickPayloadString(data, "message") ??
+    (typeof serialized === "string" ? serialized : "");
+  return (
+    /method\s+not\s+found/i.test(message) && /session\/cancel/i.test(message)
+  );
+}
+
 function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
-  if (!text.includes("[tool output:")) return text;
+  const userFacingUrls = publicPreferredUrls(verifiedUrls);
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const retained: string[] = [];
   let insideToolOutput = false;
@@ -870,13 +943,18 @@ function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
       verifiedUrls.length > 0 &&
       meaningfulLines.length > 0 &&
       meaningfulLines.every((line) => /^https?:\/\/\S+$/.test(line)) &&
-      meaningfulLines.join("\n") !== verifiedUrls.join("\n")
+      meaningfulLines.join("\n") !== userFacingUrls.join("\n")
     ) {
-      return [header, ...verifiedUrls].filter(Boolean).join("\n");
+      return [header, ...userFacingUrls].filter(Boolean).join("\n");
     }
     return text;
   }
-  return [header, ...verifiedUrls].filter(Boolean).join("\n");
+  return [header, ...userFacingUrls].filter(Boolean).join("\n");
+}
+
+function publicPreferredUrls(urls: string[]): string[] {
+  const publicUrls = urls.filter((url) => !isLoopbackUrl(url));
+  return publicUrls.length > 0 ? publicUrls : urls;
 }
 
 interface OriginInfo {
@@ -934,6 +1012,54 @@ function readOrigin(session: SessionInfo): OriginInfo | null {
     label: pickLabel(meta) ?? session.name ?? session.id,
     source: typeof meta.source === "string" ? meta.source : undefined,
   };
+}
+
+function sessionTimeMs(value: Date | string | number | undefined): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function mayStillProduceContinuation(session: SessionInfo): boolean {
+  const status = session.status.toLowerCase();
+  return (
+    status !== "stopped" &&
+    status !== "errored" &&
+    status !== "error" &&
+    status !== "cancelled"
+  );
+}
+
+function isNewerContinuationSession(
+  candidate: SessionInfo,
+  current: SessionInfo,
+  currentOrigin: OriginInfo,
+  currentCreatedAt: number,
+): boolean {
+  if (candidate.id === current.id) return false;
+  if (candidate.workdir !== current.workdir) return false;
+  if (!mayStillProduceContinuation(candidate)) return false;
+  if (sessionTimeMs(candidate.createdAt) <= currentCreatedAt) return false;
+  const candidateOrigin = readOrigin(candidate);
+  if (!candidateOrigin) return false;
+  if (candidateOrigin.taskRoomId !== currentOrigin.taskRoomId) return false;
+  if (
+    currentOrigin.parentConnectorMessageId &&
+    candidateOrigin.parentConnectorMessageId
+  ) {
+    return (
+      candidateOrigin.parentConnectorMessageId ===
+      currentOrigin.parentConnectorMessageId
+    );
+  }
+  if (currentOrigin.parentMessageId && candidateOrigin.parentMessageId) {
+    return candidateOrigin.parentMessageId === currentOrigin.parentMessageId;
+  }
+  return currentOrigin.label === candidateOrigin.label;
 }
 
 function normalizeSwarmRooms(
@@ -1450,7 +1576,7 @@ function canonicalUserFacingVerifiedUrls(
       canonical.add(url);
     }
   }
-  return [...canonical];
+  return publicPreferredUrls([...canonical]);
 }
 
 function routePageAliasesForUrl(
@@ -1596,27 +1722,26 @@ async function detectCachedMiss(
 }
 
 /**
- * Extract the sub-resource URLs an HTML document declares via
- * `<link href>` and `<script src>`, resolved absolute against the page
- * URL. Mechanical extraction from a structured document — not intent
+ * Extract the sub-resource URLs an HTML document declares via common
+ * resource-bearing attributes, resolved absolute against the page URL.
+ * Mechanical extraction from a structured document — not intent
  * classification. Skips in-page anchors and data:/mailto: refs, and caps
  * the result so a pathological page can't fan out unbounded probes.
  */
 export function extractSubResources(html: string, pageUrl: string): string[] {
   const refs = new Set<string>();
   const attrRe =
-    /<(?:link|script)\b[^>]*?\b(?:href|src)\s*=\s*["']([^"']+)["']/gi;
-  let match: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop
-  while ((match = attrRe.exec(html)) !== null) {
-    const ref = match[1]?.trim();
+    /<(?:link|script|img|source|video|audio|iframe)\b[^>]*?\b(?:href|src)\s*=\s*["']([^"']+)["']/gi;
+  const srcsetRe = /<(?:img|source)\b[^>]*?\bsrcset\s*=\s*["']([^"']+)["']/gi;
+  const addRef = (rawRef: string | undefined) => {
+    const ref = rawRef?.trim();
     if (
       !ref ||
       ref.startsWith("#") ||
       ref.startsWith("data:") ||
       ref.startsWith("mailto:")
     ) {
-      continue;
+      return;
     }
     try {
       const resolved = new URL(ref, pageUrl);
@@ -1626,7 +1751,19 @@ export function extractSubResources(html: string, pageUrl: string): string[] {
     } catch {
       // unparseable ref — skip
     }
+  };
+  let match: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop
+  while ((match = attrRe.exec(html)) !== null) {
+    addRef(match[1]);
     if (refs.size >= 10) break;
+  }
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop
+  while (refs.size < 10 && (match = srcsetRe.exec(html)) !== null) {
+    for (const candidate of (match[1] ?? "").split(",")) {
+      addRef(candidate.trim().split(/\s+/)[0]);
+      if (refs.size >= 10) break;
+    }
   }
   return [...refs];
 }

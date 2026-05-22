@@ -465,6 +465,65 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(evalStage?.evaluation?.decision).toBe("FINISH");
 	});
 
+	it("prefers a single tool's verified user-facing text over evaluator paraphrase", async () => {
+		const inspectRuntime = makeMockAction({
+			name: "CHECK_RUNTIME",
+			parameters: [],
+			handler: async () => ({
+				success: true,
+				text: "raw shell output with exact paths and metrics",
+				userFacingText:
+					"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/example/.bun (19G).",
+				data: { actionName: "CHECK_RUNTIME" },
+			}),
+		});
+
+		const runtime = makeRuntime({
+			actions: [inspectRuntime],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["CHECK_RUNTIME"],
+						thought: "Runtime inspection needs a tool.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Checking runtime state.",
+						toolCalls: [{ id: "call-1", name: "CHECK_RUNTIME", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Tool result is enough.",
+						messageToUser:
+							"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/wrong-user/.bun (19G).",
+					}),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("check disk space"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/example/.bun (19G).",
+			);
+		}
+	});
+
 	it("records terminal task failure separately from evaluator failures", async () => {
 		const brokenAction = makeMockAction({
 			name: "BROKEN_ACTION",

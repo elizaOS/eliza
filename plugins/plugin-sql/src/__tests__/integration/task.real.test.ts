@@ -87,6 +87,31 @@ describe("Task Integration Tests", () => {
       const retrieved = await adapter.getTask(taskId);
       expect(retrieved).not.toBeNull();
       expect(retrieved?.id).toBe(taskId);
+      expect(retrieved?.agentId).toBe(testAgentId);
+    });
+
+    it("returns agentId from task lookup APIs", async () => {
+      const taskId = uuidv4() as UUID;
+      const task: Task = {
+        id: taskId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: testEntityId,
+        name: "Drain Task",
+        description: "A managed drain task",
+        tags: ["queue", "repeat"],
+        metadata: { affinityKey: "autonomy" },
+      };
+      await adapter.createTask(task);
+
+      const byId = await adapter.getTask(taskId);
+      const byName = await adapter.getTasksByName("Drain Task");
+      const byQuery = await adapter.getTasks({ tags: ["queue"] });
+
+      expect(byId?.agentId).toBe(testAgentId);
+      expect(byName).toHaveLength(1);
+      expect(byName[0]?.agentId).toBe(testAgentId);
+      expect(byQuery.find((item) => item.id === taskId)?.agentId).toBe(testAgentId);
     });
 
     it("should update a task", async () => {

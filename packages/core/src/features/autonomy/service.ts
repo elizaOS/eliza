@@ -49,6 +49,7 @@ const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
 const AUTONOMY_RECENT_THOUGHT_LIMIT = 10;
 const AUTONOMY_CONTEXT_MEMORY_LIMIT = 80;
 const AUTONOMY_COMPACTED_MAX_CHARS = 4_000;
+const AUTONOMY_INCLUDE_ALL_ROOMS_SETTING = "AUTONOMY_INCLUDE_ALL_ROOMS";
 
 interface AutonomyCompactionCacheEntry {
 	summary: string;
@@ -99,27 +100,47 @@ export class AutonomyService extends Service {
 		}
 	}
 
+	private shouldIncludeAllRoomsForAutonomy(): boolean {
+		const raw = this.runtime.getSetting(AUTONOMY_INCLUDE_ALL_ROOMS_SETTING);
+		if (typeof raw !== "string") return false;
+		const normalized = raw.trim().toLowerCase();
+		return normalized === "1" || normalized === "true" || normalized === "yes";
+	}
+
 	private async getTargetRoomContextText(): Promise<string> {
 		const targetRoomId = this.getTargetRoomId();
-		const participantRooms = await this.runtime.getRoomsForParticipant(
-			this.runtime.agentId,
-		);
 		const orderedRoomIds: UUID[] = [];
 		if (targetRoomId) {
 			orderedRoomIds.push(targetRoomId);
-		}
-		for (const roomId of participantRooms) {
-			if (!orderedRoomIds.includes(roomId)) {
-				orderedRoomIds.push(roomId);
+		} else if (this.shouldIncludeAllRoomsForAutonomy()) {
+			const participantRooms = await this.runtime.getRoomsForParticipant(
+				this.runtime.agentId,
+			);
+			for (const roomId of participantRooms) {
+				if (!orderedRoomIds.includes(roomId)) {
+					orderedRoomIds.push(roomId);
+				}
 			}
 		}
+
+		const autonomyMemories = await this.runtime.getMemories({
+			roomId: this.autonomousRoomId,
+			limit: AUTONOMY_CONTEXT_MEMORY_LIMIT,
+			tableName: "memories",
+		});
+		const autonomySection =
+			await this.buildCompactedAutonomyThoughtSection(autonomyMemories);
+
 		if (orderedRoomIds.length === 0) {
-			return "(no rooms configured)";
+			return [
+				`Room context: no AUTONOMY_TARGET_ROOM_ID configured. Set ${AUTONOMY_INCLUDE_ALL_ROOMS_SETTING}=true to opt into broad room context.`,
+				autonomySection,
+			].join("\n\n");
 		}
 
 		const rooms = await this.runtime.getRoomsByIds(orderedRoomIds);
 		if (!rooms) {
-			return "(no rooms found)";
+			return [`Room context: (no rooms found)`, autonomySection].join("\n\n");
 		}
 
 		const roomNameById = new Map<UUID, string>();
@@ -131,20 +152,14 @@ export class AutonomyService extends Service {
 			(roomId) => roomId !== this.autonomousRoomId,
 		);
 		const perRoomLimit = 10;
-		const [messages, autonomyMemories] = await Promise.all([
+		const messages =
 			messageRoomIds.length > 0
-				? this.runtime.getMemoriesByRoomIds({
+				? await this.runtime.getMemoriesByRoomIds({
 						tableName: "messages",
 						roomIds: messageRoomIds,
 						limit: perRoomLimit * messageRoomIds.length,
 					})
-				: Promise.resolve([]),
-			this.runtime.getMemories({
-				roomId: this.autonomousRoomId,
-				limit: AUTONOMY_CONTEXT_MEMORY_LIMIT,
-				tableName: "memories",
-			}),
-		]);
+				: [];
 
 		const entityIds = new Set<UUID>();
 		for (const memory of messages) {
@@ -190,9 +205,6 @@ export class AutonomyService extends Service {
 				.filter((line) => line.trim().length > 0);
 			return `Room: ${roomName}\n${lines.join("\n")}`;
 		});
-
-		const autonomySection =
-			await this.buildCompactedAutonomyThoughtSection(autonomyMemories);
 
 		return [...roomSections, autonomySection].join("\n\n");
 	}
@@ -1036,6 +1048,7 @@ export class AutonomyService extends Service {
 					callback,
 				);
 			},
+			maxRetries: 1,
 			minCycleMs: this.intervalMs,
 			// WHY: Fallback ensures the section always delivers something; IGNORE is the safe no-op so we don't run actions on invalid/empty model output.
 			fallback: {
