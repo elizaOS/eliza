@@ -52,6 +52,7 @@ jobs:
         run: bun run cloud:e2e
         env:
           CI: "true"
+          CLOUD_E2E: "1"
           # mocks read these
           MOCK_REDIS: "1"
           MOCK_HETZNER_LATENCY: "0"
