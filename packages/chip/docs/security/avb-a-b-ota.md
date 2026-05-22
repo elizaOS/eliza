@@ -1,7 +1,9 @@
 # AVB Chain, A/B Slots, OTA, and Recovery
 
-Status: pre-silicon specification, with the vbmeta **verification** path now
-implemented in firmware and exercised by host known-answer + negative tests.
+Status: pre-silicon specification, with the vbmeta **verification** path AND the
+A/B slot + OTA-apply + recovery bootloader logic now implemented in firmware and
+exercised by host known-answer + negative tests.
+
 The freestanding vbmeta verifier (`fw/avb/avb_verify.{c,h}`) parses the real
 libavb vbmeta image and descriptor formats, verifies the authentication block,
 pins the AVB key, checks rollback, and walks hash/hashtree/chain/property
@@ -9,15 +11,24 @@ descriptors; it builds freestanding for riscv64 and is gated by
 `scripts/check_avb_verify.py` (report `build/reports/avb_verify.json`). See §2.1
 for the implemented scope and the E1 algorithm profile.
 
-The rest of this document remains specification. What is **not** yet
-implemented: on-device AVB *enforcement* inside a booted Android image
-(dm-verity activation, `androidboot.verifiedbootstate` propagation, the
-fstab-driven runtime path) is gated on the AOSP boot lane; full A/B OTA
-download/apply, slot switching, and recovery sideload (§§4-7) are
-specification only; and the silicon root-of-trust — the OTP rollback fuses and
-RoT crypto that supply the verifier's trust inputs — is hardware-gated. AOSP
-`fstab.eliza` AVB flags remain scaffold markers. No production verified-boot
-claim follows from host/sim evidence alone.
+The A/B slot state machine and OTA apply (`fw/avb/ab_slot.{c,h}`,
+`fw/avb/ota_apply.{c,h}`) implement slot selection, OTA apply-to-inactive-slot,
+automatic rollback on boot-try exhaustion, monotonic OTP rollback-floor advance
+on a pinned boot, and recovery fallback — all gating on the same `avb_verify`
+(no fakes). They build freestanding for riscv64 and are gated by
+`scripts/check_ab_ota.py` (report `build/reports/ab_ota.json`). See §§4.1, 5.1,
+6.1 for the implemented scope.
+
+What is **not** yet implemented and remains specification: on-device AVB
+*enforcement* inside a booted Android image (dm-verity activation,
+`androidboot.verifiedbootstate` propagation, the fstab-driven runtime path) is
+gated on the AOSP boot lane; the physical OTA download/staging, the flash/UFS
+block write, the atomic bootloader-message commit, and recovery sideload UI
+(the driver/platform half of §§5-7) are physical/driver follow-ons; fastboot
+(§7) is specification only; and the silicon root-of-trust — the OTP rollback
+fuses and RoT crypto that supply the verifier's trust inputs — is
+hardware-gated. AOSP `fstab.eliza` AVB flags remain scaffold markers. No
+production verified-boot or OTA claim follows from host/sim evidence alone.
 
 ## 1. A/B slot layout
 
@@ -159,6 +170,32 @@ verification only — see the status block for what remains specification.
 | Unbootable slot after switch | bootloader (tries_remaining decrement) | After N=2 failed boots, revert to previous slot. | TC-OTA-009 |
 | Recovery sideload of bad payload | recovery | Same checks as OTA; abort on failure. | TC-OTA-010 |
 
+### 4.1 Implemented A/B slot state machine
+
+`fw/avb/ab_slot.{c,h}` implements the bootloader slot logic, the firmware model
+of the AOSP `boot_control` HAL. Per-slot metadata (priority 0-15, tries_remaining
+0-7, successful_boot, unbootable, cached rollback_index) mirrors the
+bootloader-message record in `misc` (§1). It is freestanding (no malloc, no libc
+beyond the shared crypto memcpy/memset) and fail-closed.
+
+- `ab_select_slot()` considers A and B in priority order (ties to A), and for
+  each eligible candidate (priority > 0, not unbootable, tries_remaining > 0 or
+  already successful, image present) runs `avb_verify` against the live OTP
+  rollback floor and the pinned AVB key A hash, with the slot's boot image fed
+  as a hash target so the boot partition digest is confirmed too. The first slot
+  returning `AVB_OK` is selected; a slot whose vbmeta fails is permanently marked
+  unbootable. If neither A nor B is selectable it falls through to the recovery
+  slot (§6.1), and if recovery also fails it returns `AB_ERR_NO_BOOTABLE_SLOT`
+  (fail-closed halt — there is no unverified boot path).
+- `ab_mark_boot_attempt()` decrements tries for the slot about to launch; a slot
+  that reaches zero tries without a success is marked unbootable, so the next
+  `ab_select_slot()` auto-reverts to the other slot or recovery (TC-OTA-009).
+- `ab_mark_successful()` pins the slot (successful_boot=1, tries=0,
+  priority=15), demotes the other A/B slot below it, and advances the OTP
+  rollback floor monotonically to the booted image's rollback_index (§3; the
+  firmware model of programming OTP fuses — the physical program is
+  `fw/provisioning/e1_provision.py` / the OTP driver).
+
 ## 5. OTA streaming / staging policy
 
 - OTA downloads stream into a dedicated staging area inside /data/ota, never
@@ -174,6 +211,33 @@ verification only — see the status block for what remains specification.
   successful_boot=1, tries_remaining=0 for new slot and clears flags on old
   slot; rollback index advanced.
 
+### 5.1 Implemented OTA apply
+
+`fw/avb/ota_apply.{c,h}` implements `ota_apply()`: the apply half of this
+section, fail-closed.
+
+1. The target must be A or B and must not be the running (active) slot; recovery
+   is never an OTA target.
+2. **Pre-write verification** runs the same `avb_verify` gate over the payload
+   vbmeta with the payload boot image as a hash target, against the live OTP
+   rollback floor. A rollback-index downgrade (`AVB_ERR_ROLLBACK`), a tampered
+   vbmeta (`AVB_ERR_HASH`), a wrong key (`AVB_ERR_PUBKEY_HASH`), or a corrupt
+   descriptor is rejected here and **nothing is written** to the inactive slot
+   (TC-OTA-001..004). The precise `avb_result` is returned for logging.
+3. The verified payload is staged into the inactive slot (modeled as a
+   capacity-checked software store; an oversized payload is refused with
+   `OTA_ERR_NO_SPACE`, the TC-OTA-007 path).
+4. The slot is armed active-pending: priority=15, tries_remaining=2 (`AB_OTA_TRIES`),
+   successful_boot=0. A bad new image therefore auto-rolls-back via §4.1 after
+   the tries are spent without an `ab_mark_successful()`.
+5. A **post-write re-verify** runs `avb_verify` over the bytes that actually
+   landed; a corrupted write disarms the slot (unbootable) and returns
+   `OTA_ERR_VERIFY_POST`.
+
+Scope boundary: the partition store is a software model. The OTA download into
+`/data/ota`, the resumable chunk verification, the physical flash/UFS block
+write, and the atomic bootloader-message commit are driver/platform follow-ons.
+
 ## 6. Recovery partition spec
 
 - Standalone bootable image with minimal kernel + initramfs + recovery binary
@@ -186,6 +250,17 @@ verification only — see the status block for what remains specification.
   does not bypass lock.
 - Recovery boot reason logged via bootloader-message; reasons: recovery,
   update, bootloader, --wipe_data, --wipe_cache.
+
+### 6.1 Implemented recovery selection
+
+The recovery fallback is implemented in `ab_select_slot()` (§4.1): when neither
+A nor B is bootable, the shared recovery slot is verified with the same
+`avb_verify` gate, against its own OTP rollback floor (`recovery_rollback_floor`,
+the recovery rollback slot 3 of `boot-image-format.md` §4) and the pinned AVB
+key A. A recovery image that verifies is selected; an absent or
+verification-failing recovery image fails closed to `AB_ERR_NO_BOOTABLE_SLOT`.
+Recovery sideload of an OTA payload uses the same `avb_verify` checks as `ota_apply`
+(§5.1); the sideload transport and UI are platform follow-ons.
 
 ## 7. fastboot / fastbootd
 
