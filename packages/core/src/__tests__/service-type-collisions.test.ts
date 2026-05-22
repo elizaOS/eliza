@@ -51,6 +51,29 @@ const serviceTypeValuesByMember = new Map(
 
 const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 	[
+		"capability-router",
+		{
+			reason:
+				"Runtime capability routing keeps local, remote, and E2B implementations in one capability-router discovery slot while the strategy-table migration is in progress.",
+			classes: new Set([
+				"packages/core/src/services/runtime-capability-service.ts:RuntimeCapabilityService",
+				"packages/agent/src/services/e2b-capability-router.ts:E2BRemoteCapabilityRouterService",
+				"packages/agent/src/services/remote-capability-router.ts:RemoteCapabilityRouterService",
+			]),
+		},
+	],
+	[
+		"xr-session",
+		{
+			reason:
+				"Hearwear and XR plugins expose the same XR session service contract for different runtime surfaces; only the enabled plugin registers its implementation.",
+			classes: new Set([
+				"plugins/plugin-hearwear/src/services/xr-session-service.ts:XRSessionService",
+				"plugins/plugin-xr/src/services/xr-session-service.ts:XRSessionService",
+			]),
+		},
+	],
+	[
 		"trajectories",
 		{
 			reason:

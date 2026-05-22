@@ -29,7 +29,7 @@ import {
 
 import { buildSharedEnv } from "./env";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
 const LOG_DIR = resolve(import.meta.dirname, "../../.logs");
 
 export interface StackHandle {
