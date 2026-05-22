@@ -14,7 +14,9 @@ interface VoiceCapturePlugin {
     mode?: BackgroundCaptureMode;
   }) => Promise<{ started: boolean; reason?: string }>;
   stopBackgroundCapture: () => Promise<{ stopped: boolean }>;
-  setMode: (options: { mode: BackgroundCaptureMode }) => Promise<{ ok: boolean }>;
+  setMode: (options: {
+    mode: BackgroundCaptureMode;
+  }) => Promise<{ ok: boolean }>;
   isCaptureSupported: () => Promise<{ granted: boolean }>;
   requestMicPermission: () => Promise<{ granted: boolean }>;
 }
