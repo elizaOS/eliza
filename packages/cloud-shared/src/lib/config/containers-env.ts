@@ -184,13 +184,15 @@ export const containersEnv = {
 
   /**
    * Default Hetzner Cloud location for provisioning nodes and volumes
-   * (e.g. "ash", "hil", "fsn1"). Hetzner volumes are location-bound, so
+   * (e.g. "fsn1", "nbg1", "hel1"). Hetzner volumes are location-bound, so
    * the volume and the server it attaches to must share a location.
-   * Defaults to "ash" (Ashburn, Virginia, US).
+   * Defaults to "fsn1" (Falkenstein, DE) to match the existing prod fleet
+   * — and because Hetzner deprecated cpx32 on "ash" (Ashburn) which made
+   * the previous default fail with "unsupported location for server type".
    */
   defaultHcloudLocation(): string {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_HCLOUD_LOCATION, env.HCLOUD_LOCATION) ?? "ash";
+    return pick(env.CONTAINERS_HCLOUD_LOCATION, env.HCLOUD_LOCATION) ?? "fsn1";
   },
 
   /**

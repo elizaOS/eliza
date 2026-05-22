@@ -1,0 +1,12 @@
+# Copy to staging.tfvars (gitignored) and fill in real values.
+
+environment           = "staging"
+hcloud_location       = "fsn1"
+hcloud_server_type    = "cpx21"
+control_plane_count   = 1
+cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
+
+# Operator SSH public keys (NEVER paste private keys here).
+ssh_public_keys = [
+  # "ssh-ed25519 AAAA... operator@laptop"
+]

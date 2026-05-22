@@ -1,0 +1,60 @@
+#cloud-config
+# Cloud-init bootstrap for eliza control-plane VMs.
+#
+# At first boot:
+#   1. Install system deps (docker, nginx, node, jq, postgresql-client, ssh)
+#   2. Add a `deploy` user that the GitHub Actions workflow
+#      `.github/workflows/deploy-eliza-provisioning-worker.yml` SSHes into
+#   3. Clone the monorepo on `${deploy_branch}` to /opt/eliza
+#   4. Install systemd units for `eliza-provisioning-worker` and
+#      `eliza-agent-router`
+#
+# Secrets (DATABASE_URL, KV_REST_API_*, STEWARD_*, HCLOUD_TOKEN, etc.) are NOT
+# baked in here. The operator copies `cloud/.env.local` to `/opt/eliza/cloud/.env.local`
+# in a follow-up step (one-shot, out-of-band) using `scp` or the existing
+# `packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs` script.
+
+hostname: ${hostname}
+manage_etc_hosts: true
+
+users:
+  - name: deploy
+    groups: sudo, docker
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - curl
+  - git
+  - jq
+  - nginx
+  - postgresql-client
+  - rsync
+  - unzip
+
+write_files:
+  - path: /etc/profile.d/eliza-paths.sh
+    permissions: "0644"
+    content: |
+      export PATH="/home/deploy/.bun/bin:$PATH"
+      export ELIZA_DEPLOY_BRANCH="${deploy_branch}"
+
+runcmd:
+  # Docker (official convenience installer — pin sha if you want it
+  # auditable; we keep it simple for the bootstrap).
+  - curl -fsSL https://get.docker.com | sh
+  - systemctl enable --now docker
+
+  # Bun runtime for the deploy user (the daemons run under bun/tsx).
+  - su - deploy -c 'curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.13"'
+
+  # Repo checkout — the GitHub deploy workflow then takes over for code updates.
+  - mkdir -p /opt/eliza && chown deploy:deploy /opt/eliza
+  - su - deploy -c 'git clone --depth 200 --branch ${deploy_branch} https://github.com/elizaOS/eliza.git /opt/eliza'
+
+  # Final marker for the bootstrap-warn check that runs after this.
+  - echo "eliza-control-plane bootstrap finished $(date -u +%Y-%m-%dT%H:%M:%SZ)" > /var/log/eliza-bootstrap.log

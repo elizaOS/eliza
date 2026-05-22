@@ -424,8 +424,13 @@ export class NodeAutoscaler {
 
 function generateNodeId(): string {
   // Short hex id with a deterministic prefix — easy to scan in the dashboard.
-  const random = Math.random().toString(16).slice(2, 10);
-  return `node-${random}`;
+  // `Math.random().toString(16)` strips trailing zeros (e.g. 0.5 → "0.8"), so
+  // `.slice(2, 10)` is not guaranteed to be 8 chars. Generate 4 random bytes
+  // and hex-encode them for a stable 8-char suffix and stronger uniqueness.
+  const bytes = new Uint8Array(4);
+  crypto.getRandomValues(bytes);
+  const random = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `eliza-core-${random}`;
 }
 
 function getHcloudServerId(node: DockerNode): number | undefined {
