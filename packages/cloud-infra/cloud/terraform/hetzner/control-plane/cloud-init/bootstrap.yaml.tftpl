@@ -1,0 +1,85 @@
+#cloud-config
+# Cloud-init bootstrap for eliza control-plane VMs.
+#
+# At first boot:
+#   1. Install system deps (docker, nginx, node, jq, postgresql-client, ssh)
+#   2. Add a `deploy` user that the GitHub Actions workflow
+#      `.github/workflows/deploy-eliza-provisioning-worker.yml` SSHes into
+#   3. Clone the monorepo on `${deploy_branch}` to /opt/eliza
+#   4. Install systemd units for `eliza-provisioning-worker` and
+#      `eliza-agent-router`
+#
+# Secrets (DATABASE_URL, KV_REST_API_*, STEWARD_*, HCLOUD_TOKEN, etc.) are NOT
+# baked in here. The operator copies `cloud/.env.local` to `/opt/eliza/cloud/.env.local`
+# in a follow-up step (one-shot, out-of-band) using `scp` or the existing
+# `packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs` script.
+
+hostname: ${hostname}
+manage_etc_hosts: true
+
+users:
+  - name: deploy
+    groups: sudo, docker
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    # Mirror operator SSH keys onto the deploy user. Hetzner only injects
+    # `hcloud_ssh_key` entries into root by default, but the
+    # `.github/workflows/deploy-eliza-provisioning-worker.yml` workflow SSHes
+    # in as `deploy`. Without this list the first auto-deploy would fail.
+    ssh_authorized_keys:
+%{ for key in operator_ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+
+package_update: true
+package_upgrade: false
+
+apt:
+  sources:
+    docker:
+      source: "deb [arch=amd64 signed-by=$KEY_FILE] https://download.docker.com/linux/ubuntu $RELEASE stable"
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+
+packages:
+  - curl
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - git
+  - jq
+  - nginx
+  - postgresql-client
+  - rsync
+  - unzip
+
+write_files:
+  - path: /etc/profile.d/eliza-paths.sh
+    permissions: "0644"
+    content: |
+      export PATH="/home/deploy/.bun/bin:$PATH"
+      export ELIZA_DEPLOY_BRANCH="${deploy_branch}"
+
+runcmd:
+  # Docker is installed via the `apt` block above using the official
+  # Docker apt repo (GPG-verified keyring), not `curl get.docker.com | sh`.
+  - systemctl enable --now docker
+
+  # Bun runtime for the deploy user. We download a pinned release tarball
+  # AND its SHASUMS256 manifest from the same GitHub release, then verify
+  # the binary against the published hash before extracting. This avoids
+  # the `curl bun.sh/install | bash` supply-chain pattern flagged in the
+  # PR review — we still trust GitHub's HTTPS, but the manifest commits
+  # the publisher to a specific hash that an attacker can't forge mid-flight.
+  - install -d -o deploy -g deploy /home/deploy/.bun /home/deploy/.bun/bin
+  - su - deploy -c 'curl -fsSL -o /tmp/bun.zip https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/bun-linux-x64.zip'
+  - su - deploy -c 'curl -fsSL -o /tmp/bun-SHASUMS256.txt https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/SHASUMS256.txt'
+  - su - deploy -c 'cd /tmp && grep "bun-linux-x64.zip" bun-SHASUMS256.txt | sha256sum -c -'
+  - su - deploy -c 'cd /tmp && unzip -q bun.zip && install -m 0755 bun-linux-x64/bun /home/deploy/.bun/bin/bun && rm -rf /tmp/bun.zip /tmp/bun-linux-x64 /tmp/bun-SHASUMS256.txt'
+
+  # Repo checkout — the GitHub deploy workflow then takes over for code updates.
+  - mkdir -p /opt/eliza && chown deploy:deploy /opt/eliza
+  - su - deploy -c 'git clone --depth 200 --branch ${deploy_branch} https://github.com/elizaOS/eliza.git /opt/eliza'
+
+  # Final marker for the bootstrap-warn check that runs after this.
+  - echo "eliza-control-plane bootstrap finished $(date -u +%Y-%m-%dT%H:%M:%SZ)" > /var/log/eliza-bootstrap.log

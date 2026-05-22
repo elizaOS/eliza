@@ -1,0 +1,11 @@
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+crash.log
+crash.*.log
+
+# Live tfvars contain SSH public keys + zone IDs — keep them out of git.
+# Only `.tfvars.example` lives in the repo.
+*.tfvars
+!*.tfvars.example
