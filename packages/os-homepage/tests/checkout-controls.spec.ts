@@ -104,9 +104,7 @@ test("checkout accepts a Steward token and posts the selected product to Stripe"
     (request) =>
       new URL(request.url).pathname === "/api/stripe/create-checkout-session",
   );
-  expect(checkoutRequest?.headers.authorization).toBe(
-    "Bearer steward-token-1",
-  );
+  expect(checkoutRequest?.headers.authorization).toBe("Bearer steward-token-1");
   expect(checkoutRequest?.body).toMatchObject({
     hardwareSku: "elizaos-phone",
     hardwareColor: "Blue glass",
@@ -154,9 +152,7 @@ test("checkout accepts OAuth-style hash token names and strips the fragment", as
     "/checkout?sku=elizaos-phone#access_token=steward-token-2&refresh_token=refresh-token-2",
   );
   await expect(page.getByRole("button", { name: "Pay deposit" })).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => window.location.hash))
-    .toBe("");
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe("");
 
   const sessionRequest = requests.find(
     (request) => new URL(request.url).pathname === "/api/auth/steward-session",
