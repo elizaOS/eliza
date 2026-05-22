@@ -525,6 +525,392 @@ def synthetic_gpu_command_processor(
                 )
 
 
+def synthetic_dual_branch_fetch_block(repetitions: int = 256) -> Iterator[BranchEvent]:
+    """Two conditional branches in one 32-byte fetch block.
+
+    The first branch is a mostly fall-through guard; the second branch is a
+    stable taken redirect. A one-branch-per-block prediction model cannot see
+    the second branch in time, while a dual-slot front end can.
+    """
+    guard_pc = 0x8007_0000
+    redirect_pc = guard_pc + 0x10
+    for r in range(repetitions):
+        guard_taken = (r % 17) == 16
+        yield BranchEvent(
+            pc=guard_pc,
+            target=guard_pc + 0x200,
+            taken=guard_taken,
+            kind=BR_COND,
+        )
+        if not guard_taken:
+            yield BranchEvent(
+                pc=redirect_pc,
+                target=redirect_pc + 0x300,
+                taken=True,
+                kind=BR_COND,
+            )
+
+
+def synthetic_nested_imli_loop(outer_reps: int = 96) -> Iterator[BranchEvent]:
+    """Nested-loop shape where the inner trip count follows outer iteration.
+
+    This is the classic IMLI/loop-iteration-history stressor: the same inner
+    backedge exits at different counts, but the count is predictable from the
+    surrounding loop phase.
+    """
+    outer_pc = 0x8007_2000
+    inner_pc = 0x8007_2040
+    trip_pattern = (3, 5, 7, 11, 7, 5)
+    for outer in range(outer_reps):
+        trips = trip_pattern[outer % len(trip_pattern)]
+        for i in range(trips):
+            yield BranchEvent(
+                pc=inner_pc,
+                target=inner_pc - 0x40,
+                taken=i < trips - 1,
+                kind=BR_COND,
+            )
+        yield BranchEvent(
+            pc=outer_pc,
+            target=outer_pc - 0x80,
+            taken=outer < outer_reps - 1,
+            kind=BR_COND,
+        )
+
+
+def synthetic_correlated_xor_branches(iterations: int = 768) -> Iterator[BranchEvent]:
+    """Branches whose third outcome is a function of earlier branch outcomes.
+
+    The first two PCs are simple phase functions; the third PC is their XOR.
+    This gives the sweep a hard global-correlation shape for GEHL/perceptron
+    experiments without pretending the current predictor should solve it fully.
+    """
+    pc_a = 0x8007_4000
+    pc_b = 0x8007_4040
+    pc_x = 0x8007_4080
+    for i in range(iterations):
+        a_taken = ((i * 5 + 1) & 7) in (0, 1, 4, 6)
+        b_taken = ((i * 3 + 2) & 7) in (1, 2, 5, 7)
+        x_taken = a_taken ^ b_taken
+        yield BranchEvent(pc=pc_a, target=pc_a + 0x100, taken=a_taken, kind=BR_COND)
+        yield BranchEvent(pc=pc_b, target=pc_b + 0x140, taken=b_taken, kind=BR_COND)
+        yield BranchEvent(pc=pc_x, target=pc_x + 0x180, taken=x_taken, kind=BR_COND)
+
+
+def synthetic_vtable_path_correlated(paths: int = 4, repeats: int = 192) -> Iterator[BranchEvent]:
+    """One indirect callsite whose target depends on the preceding call path."""
+    call_base = 0x8007_6000
+    ind_pc = 0x8007_7000
+    target_base = 0x8007_9000
+    for r in range(repeats):
+        path = (r ^ (r >> 2)) % paths
+        yield BranchEvent(
+            pc=call_base + path * 0x40,
+            target=call_base + 0x400 + path * 0x80,
+            taken=True,
+            kind=BR_CALL,
+            call_return_pc=call_base + path * 0x40 + 0x20,
+        )
+        yield BranchEvent(
+            pc=ind_pc,
+            target=target_base + path * 0x100,
+            taken=True,
+            kind=BR_IND,
+        )
+        yield BranchEvent(
+            pc=call_base + 0x500 + path * 0x80,
+            target=call_base + path * 0x40 + 0x20,
+            taken=True,
+            kind=BR_RET,
+        )
+
+
+def synthetic_interpreter_dispatch_mixed(opcodes: int = 9, repeats: int = 160) -> Iterator[BranchEvent]:
+    """Interpreter/VM dispatch: bytecode indirects mixed with local branches."""
+    dispatch_pc = 0x8007_A000
+    guard_pc = 0x8007_A040
+    loop_pc = 0x8007_A080
+    handler_base = 0x8007_C000
+    for r in range(repeats):
+        opcode = ((r * 7) ^ (r >> 1)) % opcodes
+        yield BranchEvent(
+            pc=dispatch_pc,
+            target=handler_base + opcode * 0x100,
+            taken=True,
+            kind=BR_IND,
+        )
+        yield BranchEvent(
+            pc=guard_pc + (opcode % 3) * 0x40,
+            target=handler_base + 0x1000 + opcode * 0x20,
+            taken=(opcode in (0, 3, 5) and (r % 5) != 0),
+            kind=BR_COND,
+        )
+        for i in range((opcode % 4) + 1):
+            yield BranchEvent(
+                pc=loop_pc,
+                target=loop_pc - 0x60,
+                taken=i < (opcode % 4),
+                kind=BR_COND,
+            )
+
+
+def synthetic_phase_change_server(phases: int = 6, phase_len: int = 160) -> Iterator[BranchEvent]:
+    """Server-like phase changes on stable PCs.
+
+    The same conditional PCs flip bias across phases, and one indirect site
+    changes from a small hot target set to a larger one and back. This stresses
+    useful-bit aging, stale target replacement, and SC threshold decisions.
+    """
+    cond_a = 0x8008_0000
+    cond_b = 0x8008_0040
+    ind_pc = 0x8008_0100
+    target_base = 0x8008_4000
+    for phase in range(phases):
+        mostly_taken = (phase % 2) == 0
+        target_span = 3 if phase in (0, phases - 1) else 11
+        for i in range(phase_len):
+            a_taken = ((i % 16) != 0) if mostly_taken else ((i % 16) == 0)
+            b_taken = (((i + phase) % 7) in (0, 1, 2)) ^ mostly_taken
+            yield BranchEvent(
+                pc=cond_a,
+                target=cond_a + 0x200,
+                taken=a_taken,
+                kind=BR_COND,
+            )
+            yield BranchEvent(
+                pc=cond_b,
+                target=cond_b + 0x240,
+                taken=b_taken,
+                kind=BR_COND,
+            )
+            yield BranchEvent(
+                pc=ind_pc,
+                target=target_base + ((i * 5 + phase) % target_span) * 0x100,
+                taken=True,
+                kind=BR_IND,
+            )
+
+
+def synthetic_alias_thrash(groups: int = 20, rounds: int = 64) -> Iterator[BranchEvent]:
+    """Many branch PCs collide in low index bits but need different answers."""
+    base = 0x8009_0000
+    # Keep the low 16 bits stable to collide in the model's smaller direct
+    # maps while changing higher tag bits enough for tagged tables to help.
+    stride = 0x1_0000
+    for r in range(rounds):
+        for g in range(groups):
+            pc = base + g * stride
+            if g % 4 == 0:
+                taken = (r % 8) != 0
+            elif g % 4 == 1:
+                taken = (r % 8) == 0
+            elif g % 4 == 2:
+                taken = ((r + g) & 1) == 0
+            else:
+                taken = ((r * 3 + g) % 7) in (0, 2, 5)
+            yield BranchEvent(
+                pc=pc,
+                target=pc + 0x180 + (g % 5) * 0x40,
+                taken=taken,
+                kind=BR_COND,
+            )
+
+
+def synthetic_gpu_occupancy_phase(kernels: int = 48) -> Iterator[BranchEvent]:
+    """GPU launch stream with changing occupancy and dispatch phases."""
+    tile_loop = 0x800A_0000
+    edge_guard = 0x800A_0040
+    sparse_guard = 0x800A_0080
+    early_exit = 0x800A_00C0
+    dispatch_pc = 0x800A_0200
+    target_base = 0x800A_4000
+    for kernel in range(kernels):
+        occupancy = kernel % 4
+        trips = (32, 24, 9, 3)[occupancy]
+        for i in range(trips):
+            yield BranchEvent(
+                pc=tile_loop,
+                target=tile_loop - 0x80,
+                taken=i < trips - 1,
+                kind=BR_COND,
+            )
+        yield BranchEvent(
+            pc=edge_guard,
+            target=edge_guard + 0x200,
+            taken=occupancy in (1, 2),
+            kind=BR_COND,
+        )
+        yield BranchEvent(
+            pc=sparse_guard,
+            target=sparse_guard + 0x240,
+            taken=occupancy == 2 and (kernel % 3) != 0,
+            kind=BR_COND,
+        )
+        yield BranchEvent(
+            pc=early_exit,
+            target=early_exit + 0x280,
+            taken=occupancy == 3,
+            kind=BR_COND,
+        )
+        yield BranchEvent(
+            pc=dispatch_pc,
+            target=target_base + ((kernel * 7 + occupancy) % 13) * 0x100,
+            taken=True,
+            kind=BR_IND,
+        )
+
+
+def synthetic_return_mismatch_exceptions(repeats: int = 32) -> Iterator[BranchEvent]:
+    """Mostly normal calls with occasional tail-call/coroutine return targets."""
+    call_base = 0x800B_0000
+    ret_base = 0x800B_4000
+    for r in range(repeats):
+        depth = 4 + (r % 5)
+        for i in range(depth):
+            call_pc = call_base + i * 0x40
+            yield BranchEvent(
+                pc=call_pc,
+                target=ret_base + i * 0x80,
+                taken=True,
+                kind=BR_CALL,
+                call_return_pc=call_pc + 0x20,
+            )
+        for i in range(depth - 1, -1, -1):
+            expected = call_base + i * 0x40 + 0x20
+            if r % 11 == 10 and i == depth - 1:
+                target = call_base + 0x900  # non-LIFO exception/coroutine resume
+            elif r % 7 == 6 and i == 0:
+                target = call_base + 0xA00  # tail-call style handoff
+            else:
+                target = expected
+            yield BranchEvent(
+                pc=ret_base + i * 0x80,
+                target=target,
+                taken=True,
+                kind=BR_RET,
+            )
+
+
+def synthetic_gpu_nested_reconvergence(warps: int = 192) -> Iterator[BranchEvent]:
+    """Nested SIMT divergence where inner masks depend on outer phase.
+
+    GPU wavefronts often execute a short ladder of divergent guards before
+    reconverging at a common post-dominator. This keeps the static PC set tiny
+    but makes the same branch PCs see different biases in nested phases.
+    """
+    outer_pc = 0x800C_0000
+    inner_a_pc = 0x800C_0040
+    inner_b_pc = 0x800C_0080
+    reconv_inner_pc = 0x800C_00C0
+    reconv_outer_pc = 0x800C_0100
+    for warp in range(warps):
+        phase = (warp >> 4) & 3
+        outer_taken = ((warp + phase) % 6) in (0, 1, 2)
+        yield BranchEvent(
+            pc=outer_pc,
+            target=outer_pc + 0x300,
+            taken=outer_taken,
+            kind=BR_COND,
+        )
+        if outer_taken:
+            yield BranchEvent(
+                pc=inner_a_pc,
+                target=inner_a_pc + 0x240,
+                taken=((warp ^ phase) & 3) != 0,
+                kind=BR_COND,
+            )
+        else:
+            yield BranchEvent(
+                pc=inner_b_pc,
+                target=inner_b_pc + 0x280,
+                taken=((warp + phase * 3) % 5) in (0, 2),
+                kind=BR_COND,
+            )
+        yield BranchEvent(
+            pc=reconv_inner_pc,
+            target=reconv_inner_pc - 0x180,
+            taken=(warp % 8) != 7,
+            kind=BR_COND,
+        )
+        yield BranchEvent(
+            pc=reconv_outer_pc,
+            target=reconv_outer_pc - 0x300,
+            taken=(warp % 32) != 31,
+            kind=BR_COND,
+        )
+
+
+def synthetic_control_indirect_pair(iterations: int = 640) -> Iterator[BranchEvent]:
+    """A conditional immediately selects the target family of one indirect PC.
+
+    Models hot server code that validates a request/message shape and then
+    dispatches through a vtable, RPC method table, or JIT stub. The indirect
+    site alone is polymorphic; the preceding control outcome carries the
+    missing target context.
+    """
+    guard_pc = 0x800C_2000
+    mode_pc = 0x800C_2040
+    dispatch_pc = 0x800C_2080
+    fast_base = 0x800C_6000
+    slow_base = 0x800C_9000
+    for i in range(iterations):
+        hot_request = ((i * 7 + (i >> 3)) % 17) < 12
+        mode = ((i >> 2) ^ i) & 3
+        yield BranchEvent(
+            pc=guard_pc,
+            target=guard_pc + 0x200,
+            taken=hot_request,
+            kind=BR_COND,
+        )
+        yield BranchEvent(
+            pc=mode_pc,
+            target=mode_pc + 0x240,
+            taken=mode in (0, 3),
+            kind=BR_COND,
+        )
+        target_base = fast_base if hot_request else slow_base
+        yield BranchEvent(
+            pc=dispatch_pc,
+            target=target_base + mode * 0x100,
+            taken=True,
+            kind=BR_IND,
+        )
+
+
+def synthetic_btb_confidence_churn(
+    sites: int = 768, phase_repeats: int = 3
+) -> Iterator[BranchEvent]:
+    """BTB/uBTB capacity and target-confidence stress with compact PCs.
+
+    Many front-end-sized server kernels have a broad working set of cold-ish
+    guards plus a smaller set of indirect exits whose targets are stable within
+    a phase and then flip. This stresses set capacity and stale target
+    confidence without requiring a long trace.
+    """
+    guard_base = 0x800D_0000
+    exit_base = 0x8011_0000
+    target_base = 0x8018_0000
+    for phase in range(phase_repeats):
+        for site in range(sites):
+            guard_pc = guard_base + site * 0x20
+            taken = ((site + phase * 13) % 19) == 0
+            yield BranchEvent(
+                pc=guard_pc,
+                target=guard_pc + 0x100,
+                taken=taken,
+                kind=BR_COND,
+            )
+            if site % 4 == 0:
+                exit_pc = exit_base + (site // 4) * 0x40
+                target = target_base + (((site // 4) + phase) % 257) * 0x80
+                yield BranchEvent(
+                    pc=exit_pc,
+                    target=target,
+                    taken=True,
+                    kind=BR_IND,
+                )
+
+
 SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
     "always_taken": synthetic_always_taken_loop,
     "always_not_taken": synthetic_always_not_taken,
@@ -537,6 +923,18 @@ SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
     "gpu_tile_kernel": synthetic_gpu_tile_kernel,
     "gpu_warp_divergence": synthetic_gpu_warp_divergence,
     "gpu_command_processor": synthetic_gpu_command_processor,
+    "dual_branch_fetch_block": synthetic_dual_branch_fetch_block,
+    "nested_imli_loop": synthetic_nested_imli_loop,
+    "correlated_xor_branches": synthetic_correlated_xor_branches,
+    "vtable_path_correlated": synthetic_vtable_path_correlated,
+    "interpreter_dispatch_mixed": synthetic_interpreter_dispatch_mixed,
+    "phase_change_server": synthetic_phase_change_server,
+    "alias_thrash": synthetic_alias_thrash,
+    "gpu_occupancy_phase": synthetic_gpu_occupancy_phase,
+    "return_mismatch_exceptions": synthetic_return_mismatch_exceptions,
+    "gpu_nested_reconvergence": synthetic_gpu_nested_reconvergence,
+    "control_indirect_pair": synthetic_control_indirect_pair,
+    "btb_confidence_churn": synthetic_btb_confidence_churn,
 }
 
 # Stress test on RAS overflow — kept available for direct invocation by the

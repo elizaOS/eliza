@@ -92,6 +92,13 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             variant / "config/includes.chroot/etc/systemd/system/elizaos-agent.service",
             "[Service]\nExecStart=/opt/elizaos/bin/elizaos start --headless --port=31337\n",
         )
+        agent_hook = write(
+            variant / "config/hooks/normal/0010-elizaos-agent.hook.chroot",
+            "install_fallback_payload() {\n"
+            "  echo elizaos-fallback > /opt/elizaos/app/fallback_agent.py\n"
+            "}\n"
+            "install_fallback_payload\n",
+        )
         release_check = write(
             variant / "scripts/check_release_manifest.py",
             "# Marker the elizaOS first-boot unit prints once the agent is up.\n"
@@ -117,7 +124,7 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             mock.patch.object(
                 gate,
                 "AGENT_INSTALL_HOOK",
-                variant / "config/hooks/normal/0010-elizaos-agent.hook.chroot",
+                agent_hook,
             ),
             mock.patch.object(gate, "RELEASE_CHECK", release_check),
             mock.patch.object(gate, "TUI_SMOKE_UNIT", tui_unit),
@@ -135,14 +142,81 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
         self.assertIn("missing_chip_target_boot_evidence_row", codes)
         self.assertIn("missing_agent_live_evidence_row", codes)
         self.assertIn("manifest_target_is_generic", codes)
+        self.assertIn("manifest_target_not_chip_emulator", codes)
         self.assertIn("qemu_virt_evidence_is_reference_only", codes)
         self.assertIn("os_rv64_status_report_stale_against_manifest", codes)
         self.assertIn("transcript_agent_binary_missing", codes)
         self.assertIn("elizaos_ready_marker_before_agent_start", codes)
         self.assertIn("linux_release_gate_overstates_elizaos_ready_marker", codes)
         self.assertIn("agent_execstart_not_packaged", codes)
+        self.assertIn("linux_agent_fallback_payload_allowed", codes)
         self.assertIn("missing_agent_liveness_marker", codes)
         self.assertIn("missing_tui_liveness_marker", codes)
+
+    def test_agent_live_row_cannot_reuse_qemu_virt_reference_for_chip_objective(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches, manifest, _, _ = self._patch_tree(Path(tmpdir))
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["validation"]["requiredEvidence"].append("elizaos-agent-live")
+            payload["validation"]["evidence"].append(
+                {
+                    "id": "elizaos-agent-live",
+                    "status": "collected",
+                    "path": "evidence/qemu_virt_boot.json",
+                }
+            )
+            manifest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            with PatchStack(patches):
+                report = gate.run_check(Namespace(manifest=None, qemu_evidence=None))
+        self.assertEqual(report["status"], "blocked")
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("agent_live_evidence_reuses_qemu_virt_reference", codes)
+        self.assertEqual(report["evidence"]["agent_live_reference_rows"], ["elizaos-agent-live"])
+
+    def test_missing_generated_ap_files_are_reported_by_manifest_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches, manifest, _, _ = self._patch_tree(Path(tmpdir))
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["target"] = {
+                "platform": "linux",
+                "architecture": "riscv64",
+                "device": "eliza-e1-generated-ap",
+                "hypervisor": "eliza-chip-emulator",
+                "firmware": "generated-ap OpenSBI",
+            }
+            payload["validation"] = {
+                "requiredEvidence": [
+                    "generated-eliza-ap-boot",
+                    "elizaos-agent-live",
+                ],
+                "evidence": [
+                    {
+                        "id": "generated-eliza-ap-boot",
+                        "status": "missing",
+                        "path": "evidence/generated_eliza_ap_boot.json",
+                    },
+                    {
+                        "id": "elizaos-agent-live",
+                        "status": "missing",
+                        "path": "evidence/generated_eliza_ap_agent_live.json",
+                    },
+                ],
+            }
+            manifest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            with PatchStack(patches):
+                report = gate.run_check(Namespace(manifest=None, qemu_evidence=None))
+        self.assertEqual(report["status"], "blocked")
+        findings = {finding["code"]: finding for finding in report["findings"]}
+        self.assertIn("chip_target_boot_evidence_file_missing", findings)
+        self.assertIn("agent_live_evidence_file_missing", findings)
+        self.assertIn(
+            "os/linux/elizaos/evidence/generated_eliza_ap_boot.json",
+            findings["chip_target_boot_evidence_file_missing"]["evidence"],
+        )
+        self.assertIn(
+            "os/linux/elizaos/evidence/generated_eliza_ap_agent_live.json",
+            findings["agent_live_evidence_file_missing"]["evidence"],
+        )
 
     def test_chip_boot_and_agent_live_contract_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -151,7 +225,7 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             transcript = variant / "evidence/chip_boot.transcript.log"
             write(
                 transcript,
-                "OpenSBI\nLinux version\n"
+                "OpenSBI\nLinux version\nelizaos-firstboot-ready instance=fixture\n"
                 "systemctl is-active elizaos-agent.service: active\n"
                 "GET /api/health 200\nelizaos-agent-ready\n"
                 "elizaos-tui-ready\n",
@@ -187,12 +261,52 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
                 },
             )
             write_json(
-                qemu,
+                variant / "evidence/chip_boot.json",
                 {
                     "schema": "eliza.os.linux.chip_boot.v1",
                     "boot_completed": True,
                     "provenance": "generated_eliza_ap",
                     "claim_boundary": "generated_eliza_ap_chip_emulator_boot_evidence",
+                    "transcript_path": str(transcript),
+                },
+            )
+            write_json(
+                variant / "evidence/agent_live.json",
+                {
+                    "schema": "eliza.os.linux.agent_live.v1",
+                    "provenance": "generated_eliza_ap",
+                    "claim_boundary": "generated_eliza_ap_chip_emulator_agent_live_evidence",
+                    "transcript_path": str(transcript),
+                    "fallback_payload_used": False,
+                    "full_agent_bundle": True,
+                    "service": {
+                        "name": "elizaos-agent.service",
+                        "active": True,
+                        "systemctl_is_active": "active",
+                    },
+                    "process": {
+                        "pid": 31337,
+                        "executable": "/opt/elizaos/bin/elizaos",
+                        "command": "/opt/elizaos/bin/elizaos start --headless --port=31337",
+                    },
+                    "health": {
+                        "url": "http://127.0.0.1:31337/api/health",
+                        "http_status": 200,
+                        "ready": True,
+                        "response": {
+                            "agentId": "elizaos-chip-agent",
+                            "status": "ready",
+                        },
+                    },
+                },
+            )
+            write_json(
+                qemu,
+                {
+                    "schema": "eliza.os.linux.qemu_virt_boot.v1",
+                    "boot_completed": True,
+                    "provenance": "qemu_virt",
+                    "claim_boundary": "qemu_virt_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
                     "transcript_path": str(transcript),
                 },
             )
@@ -212,6 +326,10 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
                 )
                 gate.RELEASE_CHECK.write_text(
                     'REQUIRED_TRANSCRIPT_MARKER = "elizaos-firstboot-ready"\n',
+                    encoding="utf-8",
+                )
+                gate.AGENT_INSTALL_HOOK.write_text(
+                    "install -m 0755 /opt/elizaos-artifacts/bun /opt/elizaos/bin/bun\n",
                     encoding="utf-8",
                 )
                 report = gate.run_check(Namespace(manifest=None, qemu_evidence=None))

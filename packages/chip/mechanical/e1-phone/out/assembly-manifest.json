@@ -2413,6 +2413,196 @@
     ]
   },
   {
+    "name": "cellular_lga_module_keepout",
+    "role": "cellular module",
+    "material": "Quectel RG255C RedCap LGA module",
+    "obj": "mechanical/e1-phone/out/cellular_lga_module_keepout.obj",
+    "stl": "mechanical/e1-phone/out/cellular_lga_module_keepout.stl",
+    "bounds_mm": [
+      [
+        -30.0,
+        29.0,
+        -1.65
+      ],
+      [
+        -1.0,
+        61.0,
+        0.75
+      ]
+    ]
+  },
+  {
+    "name": "wifi_bt_module_keepout",
+    "role": "Wi-Fi/Bluetooth module",
+    "material": "Murata Type 2EA Wi-Fi 6E + Bluetooth module",
+    "obj": "mechanical/e1-phone/out/wifi_bt_module_keepout.obj",
+    "stl": "mechanical/e1-phone/out/wifi_bt_module_keepout.stl",
+    "bounds_mm": [
+      [
+        13.75,
+        37.3,
+        -1.6
+      ],
+      [
+        26.25,
+        46.7,
+        -0.4
+      ]
+    ]
+  },
+  {
+    "name": "soc_package_marker",
+    "role": "PCB component marker",
+    "material": "visual marker for application processor package under SoC shield",
+    "obj": "mechanical/e1-phone/out/soc_package_marker.obj",
+    "stl": "mechanical/e1-phone/out/soc_package_marker.stl",
+    "bounds_mm": [
+      [
+        -13.5,
+        48.5,
+        -0.18
+      ],
+      [
+        -0.5,
+        61.5,
+        0.06
+      ]
+    ]
+  },
+  {
+    "name": "dram_package_marker",
+    "role": "PCB component marker",
+    "material": "visual marker for LPDDR memory package near SoC",
+    "obj": "mechanical/e1-phone/out/dram_package_marker.obj",
+    "stl": "mechanical/e1-phone/out/dram_package_marker.stl",
+    "bounds_mm": [
+      [
+        -11.75,
+        64.0,
+        -0.18
+      ],
+      [
+        -2.25,
+        72.0,
+        0.04
+      ]
+    ]
+  },
+  {
+    "name": "storage_package_marker",
+    "role": "PCB component marker",
+    "material": "visual marker for eMMC/UFS storage package",
+    "obj": "mechanical/e1-phone/out/storage_package_marker.obj",
+    "stl": "mechanical/e1-phone/out/storage_package_marker.stl",
+    "bounds_mm": [
+      [
+        5.25,
+        63.5,
+        -0.18
+      ],
+      [
+        16.75,
+        72.5,
+        0.04
+      ]
+    ]
+  },
+  {
+    "name": "pmic_package_marker",
+    "role": "PCB component marker",
+    "material": "visual marker for PMIC package under power shield",
+    "obj": "mechanical/e1-phone/out/pmic_package_marker.obj",
+    "stl": "mechanical/e1-phone/out/pmic_package_marker.stl",
+    "bounds_mm": [
+      [
+        9.0,
+        51.5,
+        -0.18
+      ],
+      [
+        16.0,
+        58.5,
+        0.04
+      ]
+    ]
+  },
+  {
+    "name": "rf_transceiver_package_marker",
+    "role": "PCB component marker",
+    "material": "visual marker for RF transceiver/front-end package under radio shield",
+    "obj": "mechanical/e1-phone/out/rf_transceiver_package_marker.obj",
+    "stl": "mechanical/e1-phone/out/rf_transceiver_package_marker.stl",
+    "bounds_mm": [
+      [
+        -25.75,
+        51.25,
+        -0.18
+      ],
+      [
+        -18.25,
+        58.75,
+        0.04
+      ]
+    ]
+  },
+  {
+    "name": "gnss_lna_package_marker",
+    "role": "PCB component marker",
+    "material": "visual marker for GNSS/RF low-noise amplifier placement",
+    "obj": "mechanical/e1-phone/out/gnss_lna_package_marker.obj",
+    "stl": "mechanical/e1-phone/out/gnss_lna_package_marker.stl",
+    "bounds_mm": [
+      [
+        -31.5,
+        61.25,
+        -1.3
+      ],
+      [
+        -28.5,
+        63.75,
+        -1.1
+      ]
+    ]
+  },
+  {
+    "name": "wifi_bt_rf_feed_coax_stub",
+    "role": "RF feed",
+    "material": "concept coax/feed stub from Wi-Fi/Bluetooth module toward side antenna keepout",
+    "obj": "mechanical/e1-phone/out/wifi_bt_rf_feed_coax_stub.obj",
+    "stl": "mechanical/e1-phone/out/wifi_bt_rf_feed_coax_stub.stl",
+    "bounds_mm": [
+      [
+        23.5,
+        41.775,
+        -1.175
+      ],
+      [
+        33.5,
+        42.225,
+        -0.825
+      ]
+    ]
+  },
+  {
+    "name": "cellular_rf_feed_coax_stub",
+    "role": "RF feed",
+    "material": "concept coax/feed stub from cellular module toward top antenna keepout",
+    "obj": "mechanical/e1-phone/out/cellular_rf_feed_coax_stub.obj",
+    "stl": "mechanical/e1-phone/out/cellular_rf_feed_coax_stub.stl",
+    "bounds_mm": [
+      [
+        -30.225,
+        53.5,
+        -1.175
+      ],
+      [
+        -29.775,
+        68.5,
+        -0.825
+      ]
+    ]
+  },
+  {
     "name": "haptic_lra",
     "role": "haptics",
     "material": "compact 0612 X-axis linear resonant actuator",

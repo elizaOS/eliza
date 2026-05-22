@@ -128,7 +128,6 @@ static const struct file_operations eliza_e1_npu_fops = {
 	.unlocked_ioctl = eliza_e1_npu_ioctl,
 	.compat_ioctl = eliza_e1_npu_ioctl,
 	.mmap = eliza_e1_npu_mmap,
-	.llseek = no_llseek,
 };
 
 static int eliza_e1_npu_probe(struct platform_device *pdev)
@@ -167,12 +166,11 @@ static int eliza_e1_npu_probe(struct platform_device *pdev)
 	return misc_register(&npu->miscdev);
 }
 
-static int eliza_e1_npu_remove(struct platform_device *pdev)
+static void eliza_e1_npu_remove(struct platform_device *pdev)
 {
 	struct eliza_e1_npu *npu = platform_get_drvdata(pdev);
 
 	misc_deregister(&npu->miscdev);
-	return 0;
 }
 
 static const struct of_device_id eliza_e1_npu_of_match[] = {

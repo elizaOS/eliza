@@ -58,13 +58,24 @@ AsmDB (ISCA '19) shows datacenter and large mobile workloads spend a substantial
 
 ## B. Current state in `packages/chip`
 
-1. **Tiny CPU stub** at `rtl/cpu/e1_cpu_subsystem_stub.sv` — no branch predictor of any kind. Every branch resolved by sequential FSM.
-2. **CVA6 integration wrapper** at `rtl/cpu/e1_cva6_wrapper.sv`, gated by `E1_HAVE_CVA6`. Brings the toy default predictor: 32-entry BTB, 128-entry 2-bit bimodal BHT, 2-entry RAS.
-3. **Selected AP path**: Chipyard `main-2026-05-20` `ElizaRocketConfig`. Rocket's BPU is similarly minimal.
-4. **Architecture planning** does not enumerate branch prediction as a workstream.
-5. **Modeled MPKI** in `benchmarks/results/simulator-arch-metrics-sota.json` is a static input to the perf/W model, not driven by any predictor structure.
-
-Honest claim today: the project has zero branch prediction implementation, evidence, or planning artifact specific to that subsystem.
+1. **Synthesizable BPU slice** at `rtl/cpu/bpu/`: decoupled FTQ front end,
+   uFTB + FTB target prediction, TAGE-SC direction prediction, ITTAGE indirect
+   target prediction, loop predictor, RAS, PMU counters, and an L1I prefetch
+   shim. The selected geometry and evidence gate live in
+   `docs/arch/branch-prediction.md` and `scripts/check_branch_prediction.py`.
+2. **Implemented since the original SOTA note**: dual in-block branch slots,
+   SC local-history folding, ITTAGE target-history tuning, ITTAGE useful-bit
+   replacement/aging, FTB/uFTB age-based replacement, and confident uFTB-only
+   call/return RAS parity, RAS top-entry restore after wrong-path returns, and
+   loop-predictor weak/old-first replacement.
+3. **Still below the target hierarchy**: the fetch contract emits one next-PC
+   per cycle rather than a true non-contiguous two-taken stream, predictor
+   commit/recovery still depends on resolver-supplied metadata instead of
+   FTQ replay, and there is no larger delayed L2 BTB/FTB tier for cold Android
+   or server footprints.
+4. **Modeled MPKI** is now backed by the local branch-model and RTL cocotb
+   harnesses under `benchmarks/cpu/branch/` and `verify/cocotb/bpu/`; closed
+   SPEC/AOSP/JS traces remain evidence blockers.
 
 ## C. Recommended target (2028)
 

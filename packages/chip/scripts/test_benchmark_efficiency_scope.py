@@ -53,6 +53,21 @@ def test_blocker_removal_fails() -> None:
     print("PASS blocker removal rejected")
 
 
+def test_structured_findings_cover_blocked_real_evidence() -> None:
+    report = check_benchmark_efficiency_scope.build_report()
+    findings = report.get("findings", [])
+    if not findings:
+        raise AssertionError("benchmark efficiency scope report must expose structured findings")
+    if not any(
+        str(item.get("code", "")).startswith("benchmark_efficiency_missing_real_evidence_")
+        for item in findings
+    ):
+        raise AssertionError(
+            f"benchmark efficiency findings must include missing real evidence: {findings}"
+        )
+    print("PASS structured benchmark efficiency findings cover blocked real evidence")
+
+
 def test_failed_structural_check_fails() -> None:
     report = check_benchmark_efficiency_scope.build_report()
     mutated = copy.deepcopy(report)
@@ -74,6 +89,7 @@ def main() -> None:
     test_claim_boundary_drift_fails()
     test_release_claim_flip_fails()
     test_blocker_removal_fails()
+    test_structured_findings_cover_blocked_real_evidence()
     test_failed_structural_check_fails()
     test_scaffold_removal_fails()
 

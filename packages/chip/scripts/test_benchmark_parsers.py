@@ -232,6 +232,82 @@ def test_npu_scale_parser_preserves_process_corner_metrics() -> None:
         raise AssertionError("worst process corner TOPS must be positive")
 
 
+def test_mlperf_inference_parser_accepts_modeled_npu_output() -> None:
+    result = subprocess.run(
+        [
+            "python3",
+            str(ROOT / "benchmarks/mlperf/run_mlperf_inference.py"),
+            "--query-count",
+            "8",
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(result.stdout)
+
+    metrics = run_benchmarks.parse_eliza_mlperf_inference(result.stdout)
+
+    assert_equal(metrics["benchmark_success_allowed"], True, "MLPerf benchmark success marker")
+    assert_equal(metrics["scenario_count"], 2, "MLPerf scenario count")
+    assert_equal(metrics["min_top1_accuracy"], 1.0, "MLPerf min accuracy")
+    assert_equal(metrics["npu_macs_total"], 288, "MLPerf total MACs")
+    assert_equal(metrics["npu_commands_total"], 32, "MLPerf total NPU commands")
+    assert_equal(metrics["macs_per_inference"], 18, "MLPerf MACs per inference")
+    if metrics["single_stream_p90_latency_ns"] <= 0:
+        raise AssertionError("MLPerf SingleStream p90 latency must be positive")
+    if metrics["offline_throughput_samples_per_second"] <= 0:
+        raise AssertionError("MLPerf Offline throughput must be positive")
+    if metrics["energy_joules_per_inference"] <= 0:
+        raise AssertionError("MLPerf modeled energy must be positive")
+
+
+def test_mlperf_inference_parser_rejects_claim_and_power_drift() -> None:
+    result = subprocess.run(
+        [
+            "python3",
+            str(ROOT / "benchmarks/mlperf/run_mlperf_inference.py"),
+            "--query-count",
+            "2",
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(result.stdout)
+    data = json.loads(result.stdout)
+
+    wrong_claim = json.loads(json.dumps(data))
+    wrong_claim["claim_boundary"] = "measured_power_official_submission"
+    try:
+        run_benchmarks.parse_eliza_mlperf_inference(json.dumps(wrong_claim))
+    except ValueError as exc:
+        if "claim boundary" not in str(exc):
+            raise
+    else:
+        raise AssertionError("MLPerf parser accepted drifted claim boundary")
+
+    missing_power_blocker = json.loads(json.dumps(data))
+    missing_power_blocker["summary"]["blocked_axes"] = [
+        blocker
+        for blocker in missing_power_blocker["summary"]["blocked_axes"]
+        if blocker.get("blocker_id") != "mlperf-power-closed"
+    ]
+    try:
+        run_benchmarks.parse_eliza_mlperf_inference(json.dumps(missing_power_blocker))
+    except ValueError as exc:
+        if "measured-power blocker" not in str(exc):
+            raise
+    else:
+        raise AssertionError("MLPerf parser accepted missing measured-power blocker")
+
+
 def test_strict_missing_exits_two_and_preserves_blockers() -> None:
     temp_parent = ROOT / "benchmarks/results/test-temp"
     temp_parent.mkdir(parents=True, exist_ok=True)
@@ -474,6 +550,8 @@ def main() -> int:
         test_simulator_parser_accepts_calibrated_counter_export_shape,
         test_simulator_benchmark_runs_without_measured_target_metadata,
         test_npu_scale_parser_preserves_process_corner_metrics,
+        test_mlperf_inference_parser_accepts_modeled_npu_output,
+        test_mlperf_inference_parser_rejects_claim_and_power_drift,
         test_strict_missing_exits_two_and_preserves_blockers,
         test_blocked_metadata_template_covers_config_assets,
         test_process_metadata_blocks_without_pdk_signoff,

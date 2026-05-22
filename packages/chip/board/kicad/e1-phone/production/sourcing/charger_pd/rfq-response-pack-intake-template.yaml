@@ -1,0 +1,46 @@
+schema: eliza.e1_phone_supplier_response_pack_intake_template.v1
+status: outbound_template_not_supplier_evidence
+date: 2026-05-22
+lane: charger_pd
+maps_to_gap_map_functions:
+  - usb_pd_controller
+  - charger_power_path
+selected_hardware:
+  - TI_TPS65987DDH
+  - MAX77860_class
+package_bindings:
+  - package/usb-pd/tps65987.yaml
+  - package/charger/max77860.yaml
+expected_return_archives:
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/rfq-response-pack.yaml
+required_supplier_returns:
+  - PD controller lifecycle and stock statement for TPS65987DDH or approved replacement branch, signed drawing, package, pad map, and land pattern
+  - PD reference schematic, configuration image, flash or I2C/SPI binding, dead-battery behavior, CC attach policy, and interoperability plan
+  - charger exact package, thermal land pattern, exposed-pad guidance, power-path reference layout, I2C register configuration, and JEITA limits
+  - battery NTC and pack-ID policy, CC/CV charge-current limits, fault handling, current-limit settings, and thermal evidence
+  - STEP or B-rep models for PD and charger packages plus validation logs for CC attach, dead battery, charger cycle, and thermal behavior
+intake_fields:
+  supplier_legal_name: ""
+  supplier_contact: ""
+  orderable_mpn_pd: ""
+  orderable_mpn_charger: ""
+  quote_quantities: [10, 100, 1000]
+  sample_lot_quantity: 5
+  signed_2d_drawing_path: ""
+  pinout_or_pad_map_path: ""
+  recommended_land_pattern_path: ""
+  step_or_brep_model_path: ""
+  lifecycle_stock_quote_path: ""
+  sample_lot_tracking_path: ""
+  incoming_inspection_path: ""
+release_flags:
+  supplier_response_received: false
+  signed_drawing_received: false
+  pd_lifecycle_replacement_decision_complete: false
+  charger_safety_review_complete: false
+  kicad_capture_allowed: false
+  route_release_allowed: false
+  enclosure_release_allowed: false
+  fabrication_release_allowed: false
+  end_to_end_phone_release_allowed: false

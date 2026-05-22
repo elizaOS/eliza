@@ -29,6 +29,14 @@
 
 `timescale 1ns/1ps
 
+// Number of RVFI retired-instruction ports exposed when E1_RVFI is defined.
+// The cv64a6_imafdc_sv39 config (e1-pro little core) retires one instruction
+// per cycle (NrCommitPorts == 1). An elaboration assert below fails closed if
+// a wider config is wrapped without widening this surface.
+`ifndef E1_RVFI_NRET
+`define E1_RVFI_NRET 1
+`endif
+
 /* verilator lint_off DECLFILENAME */
 /* verilator lint_off UNUSEDSIGNAL */
 module e1_cpu_subsystem #(
@@ -117,6 +125,26 @@ module e1_cpu_subsystem #(
     input  logic [63:0]                hart_id_i,
     output logic [63:0]                dbg_pc_o,
     output logic                       dbg_valid_o
+
+`ifdef E1_RVFI
+    // ── RVFI retired-instruction surface ──────────────────────────────────
+    // Decoded, per-commit-port RISC-V Formal Interface stream, exposed for a
+    // Spike step-and-compare (tandem) lane. Only the fields a retired-
+    // instruction comparator needs are flattened out of the cva6_rvfi
+    // decoder below; the full rvfi_instr_t / rvfi_csr_t structs stay internal
+    // because their packed widths are config-dependent and not part of a
+    // stable SoC-level contract. CVA6's NrCommitPorts is 1 for the cv64a6
+    // Sv39 little-core config (e1-pro), so the surface is single-ported.
+    ,
+    output logic [`E1_RVFI_NRET-1:0]                 rvfi_valid_o,
+    output logic [`E1_RVFI_NRET-1:0][63:0]           rvfi_order_o,
+    output logic [`E1_RVFI_NRET-1:0][31:0]           rvfi_insn_o,
+    output logic [`E1_RVFI_NRET-1:0]                 rvfi_trap_o,
+    output logic [`E1_RVFI_NRET-1:0][1:0]            rvfi_mode_o,
+    output logic [`E1_RVFI_NRET-1:0][4:0]            rvfi_rd_addr_o,
+    output logic [`E1_RVFI_NRET-1:0][63:0]           rvfi_rd_wdata_o,
+    output logic [`E1_RVFI_NRET-1:0][63:0]           rvfi_pc_rdata_o
+`endif
 );
 
 `ifdef E1_HAVE_CVA6
@@ -129,6 +157,12 @@ module e1_cpu_subsystem #(
     // wrapper's own AXI parameters must match the cv64a6 config; we cross-
     // check at elaboration time below.
     // =========================================================================
+
+`ifdef E1_RVFI
+    // RVFI struct macros, sourced from the pinned CVA6 tree (core/include is
+    // on the +incdir+ path supplied by core/Flist.cva6).
+    `include "rvfi_types.svh"
+`endif
 
     // Resolve the CVA6 build configuration once.
     localparam config_pkg::cva6_cfg_t CVA6Cfg = build_config_pkg::build_config(
@@ -228,6 +262,38 @@ module e1_cpu_subsystem #(
     cva6_noc_req_t  cva6_noc_req;
     cva6_noc_resp_t cva6_noc_resp;
 
+    // ── RVFI probe / retired-instruction types ────────────────────────────
+    // Built from CVA6's own `rvfi_types.svh` macros so the wrapper tracks the
+    // pinned core's probe layout exactly (adopt, do not reinvent). The probe
+    // bus (`rvfi_probes_o`) is the raw, undecoded tap; `cva6_rvfi` lowers it
+    // into the architectural retired-instruction stream (`rvfi_instr_t`) that
+    // a Spike step-and-compare consumes, mirroring the corev_apu testharness.
+`ifdef E1_RVFI
+    localparam type rvfi_probes_instr_t = `RVFI_PROBES_INSTR_T(CVA6Cfg);
+    localparam type rvfi_probes_csr_t   = `RVFI_PROBES_CSR_T(CVA6Cfg);
+    localparam type rvfi_probes_t       = struct packed {
+        rvfi_probes_csr_t   csr;
+        rvfi_probes_instr_t instr;
+    };
+    localparam type rvfi_instr_t        = `RVFI_INSTR_T(CVA6Cfg);
+    localparam type rvfi_csr_elmt_t     = `RVFI_CSR_ELMT_T(CVA6Cfg);
+    localparam type rvfi_csr_t          = `RVFI_CSR_T(CVA6Cfg, rvfi_csr_elmt_t);
+    localparam type rvfi_to_iti_t       = `RVFI_TO_ITI_T(CVA6Cfg);
+
+    initial begin
+        // synthesis translate_off
+        if (CVA6Cfg.NrCommitPorts != `E1_RVFI_NRET)
+            $fatal(1, "e1_cva6_wrapper: E1_RVFI_NRET=%0d != CVA6Cfg.NrCommitPorts=%0d; widen the RVFI surface for this config",
+                   `E1_RVFI_NRET, CVA6Cfg.NrCommitPorts);
+        // synthesis translate_on
+    end
+
+    rvfi_probes_t                                  rvfi_probes;
+    rvfi_instr_t [CVA6Cfg.NrCommitPorts-1:0]       rvfi_instr;
+    rvfi_csr_t                                     rvfi_csr;
+    rvfi_to_iti_t                                  rvfi_to_iti;
+`endif
+
     // CVxIF tied off — we do not attach a coprocessor in the e1-chip
     // little-core path. The CVA6 v5.3.0 NoC pipeline ignores cvxif_req_o
     // when cvxif_resp_i is held quiescent.
@@ -236,9 +302,14 @@ module e1_cpu_subsystem #(
     /* verilator lint_on UNUSEDSIGNAL */
 
     cva6 #(
-        .CVA6Cfg     (CVA6Cfg),
-        .noc_req_t   (cva6_noc_req_t),
-        .noc_resp_t  (cva6_noc_resp_t)
+        .CVA6Cfg              (CVA6Cfg),
+`ifdef E1_RVFI
+        .rvfi_probes_instr_t  (rvfi_probes_instr_t),
+        .rvfi_probes_csr_t    (rvfi_probes_csr_t),
+        .rvfi_probes_t        (rvfi_probes_t),
+`endif
+        .noc_req_t            (cva6_noc_req_t),
+        .noc_resp_t           (cva6_noc_resp_t)
     ) u_cva6 (
         .clk_i        (clk_i),
         .rst_ni       (rst_ni),
@@ -248,12 +319,51 @@ module e1_cpu_subsystem #(
         .ipi_i        (ipi_i),
         .time_irq_i   (time_irq_i),
         .debug_req_i  (debug_req_i),
+`ifdef E1_RVFI
+        .rvfi_probes_o(rvfi_probes),
+`else
         .rvfi_probes_o(/* unconnected; trace ports left open */),
+`endif
         .cvxif_req_o  (/* unconnected; no coprocessor */),
         .cvxif_resp_i ('0),
         .noc_req_o    (cva6_noc_req),
         .noc_resp_i   (cva6_noc_resp)
     );
+
+`ifdef E1_RVFI
+    // ── RVFI probe decoder ────────────────────────────────────────────────
+    // Lowers the raw probe bus into the architectural retired-instruction
+    // stream, exactly as corev_apu/tb/ariane_testharness.sv does. The decoded
+    // stream is what the Spike step-and-compare lane diffs each instruction.
+    cva6_rvfi #(
+        .CVA6Cfg             (CVA6Cfg),
+        .rvfi_instr_t        (rvfi_instr_t),
+        .rvfi_csr_t          (rvfi_csr_t),
+        .rvfi_probes_instr_t (rvfi_probes_instr_t),
+        .rvfi_probes_csr_t   (rvfi_probes_csr_t),
+        .rvfi_probes_t       (rvfi_probes_t),
+        .rvfi_to_iti_t       (rvfi_to_iti_t)
+    ) u_cva6_rvfi (
+        .clk_i        (clk_i),
+        .rst_ni       (rst_ni),
+        .rvfi_probes_i(rvfi_probes),
+        .rvfi_instr_o (rvfi_instr),
+        .rvfi_to_iti_o(rvfi_to_iti),
+        .rvfi_csr_o   (rvfi_csr)
+    );
+
+    // Flatten the decoded stream onto the wrapper's RVFI output surface.
+    for (genvar p = 0; p < CVA6Cfg.NrCommitPorts; p++) begin : gen_rvfi_out
+        assign rvfi_valid_o[p]    = rvfi_instr[p].valid;
+        assign rvfi_order_o[p]    = rvfi_instr[p].order;
+        assign rvfi_insn_o[p]     = rvfi_instr[p].insn;
+        assign rvfi_trap_o[p]     = rvfi_instr[p].trap;
+        assign rvfi_mode_o[p]     = rvfi_instr[p].mode;
+        assign rvfi_rd_addr_o[p]  = rvfi_instr[p].rd_addr;
+        assign rvfi_rd_wdata_o[p] = {{(64-CVA6Cfg.XLEN){1'b0}}, rvfi_instr[p].rd_wdata};
+        assign rvfi_pc_rdata_o[p] = {{(64-CVA6Cfg.XLEN){1'b0}}, rvfi_instr[p].pc_rdata};
+    end
+`endif
 
     // ── NoC struct ↔ flat AXI4 adapter ────────────────────────────────────
     e1_cva6_to_e1axi4 #(
@@ -315,13 +425,19 @@ module e1_cpu_subsystem #(
         .axi_b_ready  (axi_b_ready)
     );
 
-    // Observability — CVA6 v5.3.0 does not expose `commit_instr_o` on the
-    // top-level NoC port. The RVFI probe surface (`rvfi_probes_o`) carries
-    // committed-PC information for debug/trace consumers; tap it in a
-    // future RVFI bridge. For now we tie dbg_pc/dbg_valid to zero and the
-    // SoC top relies on AXI4 traffic as the structural execution proof.
+    // Observability — CVA6 does not expose `commit_instr_o` on the top-level
+    // NoC port. With E1_RVFI defined, the decoded RVFI stream above is the
+    // architectural commit record, so dbg_pc/dbg_valid follow commit port 0
+    // (the retired-PC the step-and-compare lane checks against Spike). Without
+    // E1_RVFI the wrapper still elaborates and the SoC top relies on AXI4
+    // traffic as the structural execution proof.
+`ifdef E1_RVFI
+    assign dbg_pc_o    = rvfi_pc_rdata_o[0];
+    assign dbg_valid_o = rvfi_valid_o[0];
+`else
     assign dbg_pc_o    = 64'h0;
     assign dbg_valid_o = 1'b0;
+`endif
 
 `else // !E1_HAVE_CVA6
     // =========================================================================
@@ -392,6 +508,20 @@ module e1_cpu_subsystem #(
 
     assign dbg_pc_o    = 64'h0;
     assign dbg_valid_o = 1'b0;
+
+`ifdef E1_RVFI
+    // RVFI surface only carries data when the real core is linked; with the
+    // stub it is quiescent so the port list stays consistent for integrators
+    // that always declare it.
+    assign rvfi_valid_o    = '0;
+    assign rvfi_order_o    = '0;
+    assign rvfi_insn_o     = '0;
+    assign rvfi_trap_o     = '0;
+    assign rvfi_mode_o     = '0;
+    assign rvfi_rd_addr_o  = '0;
+    assign rvfi_rd_wdata_o = '0;
+    assign rvfi_pc_rdata_o = '0;
+`endif
 
 `endif // E1_HAVE_CVA6
 

@@ -100,10 +100,9 @@ static int eliza_e1_dma_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int eliza_e1_dma_remove(struct platform_device *pdev)
+static void eliza_e1_dma_remove(struct platform_device *pdev)
 {
 	sysfs_remove_groups(&pdev->dev.kobj, eliza_e1_dma_groups);
-	return 0;
 }
 
 static const struct of_device_id eliza_e1_dma_of_match[] = {

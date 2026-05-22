@@ -144,6 +144,8 @@ module tage
     logic                              alt_taken;
     logic                              provider_found;
     logic                              alt_found;
+    logic                              provider_weak;
+    logic [TAGE_CTR_W-1:0]             provider_ctr;
 
     always_comb begin
         provider_pri   = '0;
@@ -152,6 +154,8 @@ module tage
         alt_taken      = bim_taken;
         provider_found = 1'b0;
         alt_found      = 1'b0;
+        provider_weak  = 1'b0;
+        provider_ctr   = '0;
         lkp_hit_vec    = {tab_hit, 1'b1};
         for (int ti = TAGE_TABLES-1; ti >= 0; ti--) begin
             if (tab_hit[ti]) begin
@@ -166,14 +170,22 @@ module tage
                 end
             end
         end
-        lkp_taken     = provider_found ? provider_taken : bim_taken;
         lkp_taken_alt = alt_found ? alt_taken : bim_taken;
         lkp_provider  = provider_pri;
         // Provider counter readout for SC. Zero when the bimodal provided.
         if (provider_found) begin
-            lkp_provider_ctr = tab_ctr[provider_pri - 1];
+            provider_ctr = tab_ctr[provider_pri - 1];
+            provider_weak =
+                (provider_ctr == ((1 << (TAGE_CTR_W - 1)) - 1)) ||
+                (provider_ctr == (1 << (TAGE_CTR_W - 1)));
+            lkp_provider_ctr = provider_ctr;
         end else begin
             lkp_provider_ctr = '0;
+        end
+        if (provider_found && TAGE_USE_ALT_ON_NA != 0 && provider_weak) begin
+            lkp_taken = lkp_taken_alt;
+        end else begin
+            lkp_taken = provider_found ? provider_taken : bim_taken;
         end
     end
 

@@ -45,6 +45,42 @@ def contains_all(text: str, tokens: tuple[str, ...]) -> bool:
     return all(token.lower() in lowered for token in tokens)
 
 
+def code_from_text(text: str, fallback: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:10]) or fallback
+
+
+def structured_findings(
+    blocked_until_real_evidence: list[str], checks: list[dict[str, Any]]
+) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for item in blocked_until_real_evidence:
+        findings.append(
+            {
+                "code": f"power_thermal_missing_real_evidence_{code_from_text(item, 'evidence')}",
+                "severity": "blocker",
+                "message": item,
+                "evidence": "blocked_until_real_evidence",
+                "next_step": "Capture calibrated same-window power, thermal, frequency, workload, and throttle evidence before allowing sustained TOPS/W or thermal-compliance claims.",
+            }
+        )
+    for check in checks:
+        if check.get("status") == "pass":
+            continue
+        ident = str(check.get("id", "scope_check"))
+        findings.append(
+            {
+                "code": f"power_thermal_scope_check_failed_{code_from_text(ident, 'scope_check')}",
+                "severity": "blocker",
+                "message": f"{ident} structural scope check is {check.get('status')}",
+                "evidence": str(check.get("evidence", "")),
+                "next_step": "Repair the power/thermal scope contract before using this report as runtime or optimization evidence.",
+            }
+        )
+    return findings
+
+
 def mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -190,6 +226,16 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(POWER_MANIFEST),
         },
     ]
+    blocked_until_real_evidence = [
+        "measured prototype-silicon or complete-phone target identity, board serial, and SoC revision",
+        "calibrated VDDCORE and VDDIO power trace covering the sustained workload window",
+        "calibrated die/package/board/skin thermal traces aligned to the same window",
+        "NPU frequency, voltage, throttle-state, and CPU-fallback traces aligned to the same window",
+        "workload transcript proving e1-NPU NNAPI selection, zero unsupported ops, and zero CPU fallback",
+        "calibration record for power, thermal, and frequency instruments with artifact hashes",
+        "release reviewer approval that local OpenLane or architecture-model arithmetic is not used as measured TOPS/W evidence",
+    ]
+    findings = structured_findings(blocked_until_real_evidence, checks)
     return {
         "schema": "eliza.power_thermal_scope.v1",
         "status": "power_thermal_scope_release_blocked",
@@ -205,15 +251,8 @@ def build_report() -> dict[str, Any]:
             "thermal_capture_plan": rel(THERMAL_PLAN),
             "measured_manifest_checker": rel(SUSTAINED_CHECKER),
         },
-        "blocked_until_real_evidence": [
-            "measured prototype-silicon or complete-phone target identity, board serial, and SoC revision",
-            "calibrated VDDCORE and VDDIO power trace covering the sustained workload window",
-            "calibrated die/package/board/skin thermal traces aligned to the same window",
-            "NPU frequency, voltage, throttle-state, and CPU-fallback traces aligned to the same window",
-            "workload transcript proving e1-NPU NNAPI selection, zero unsupported ops, and zero CPU fallback",
-            "calibration record for power, thermal, and frequency instruments with artifact hashes",
-            "release reviewer approval that local OpenLane or architecture-model arithmetic is not used as measured TOPS/W evidence",
-        ],
+        "blocked_until_real_evidence": blocked_until_real_evidence,
+        "findings": findings,
         "checks": checks,
         "summary": {
             "check_count": len(checks),
@@ -264,6 +303,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     blocked = data.get("blocked_until_real_evidence")
     if not isinstance(blocked, list) or len(blocked) < 7:
         errors.append("power/thermal scope must enumerate blocked real-evidence items")
+    findings = data.get("findings")
+    if not isinstance(findings, list) or not findings:
+        errors.append("findings must list structured power/thermal blockers")
     scaffolds = data.get("current_scaffolds")
     if not isinstance(scaffolds, dict):
         errors.append("current_scaffolds must be a mapping")

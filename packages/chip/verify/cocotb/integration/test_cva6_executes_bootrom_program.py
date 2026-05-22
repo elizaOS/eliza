@@ -4,24 +4,18 @@ This test drives the standalone CVA6 wrapper (`rtl/cpu/e1_cva6_wrapper.sv`)
 through the dedicated harness `e1_cva6_unit_tb.sv`.  The harness wires the
 wrapper's flat AXI4 master to a minimal in-TB ROM + DRAM memory model.
 
-Program (4 64-bit words at the boot address 0x0000_1000):
+Program (4 instructions at the boot address 0x0001_0000):
 
     addi x1, x0, 1         ; x1 = 1
     addi x2, x0, 2         ; x2 = 2
     add  x3, x1, x2        ; x3 = 3
     j    .                 ; spin-loop
 
-CVA6 issues an instruction-cache miss against the ROM region; each AR
-handshake fetches one cache line containing the encoded instructions.  The
-test confirms the wrapper actually moves: the AXI4 AR handshake counter
-must reach at least one (so the wrapper has started fetching) within the
-configured timeout.  A non-zero AR count is the structural proof that
-CVA6 elaborated, came out of reset, and started executing.
-
-The minstret = 4 assertion is the upgrade target: when the RVFI probe
-bridge lands, this test will read the committed-instruction count
-directly off CVA6's `rvfi_probes_o` and assert it equals 4.  Until then,
-the AR-handshake count is the executable evidence that the core is alive.
+CVA6 issues an instruction-cache miss against the ROM region, then the
+test observes the decoded RVFI retirement stream exported by the wrapper
+through the unit TB.  The pass condition is the first four retired
+instructions matching the boot ROM program at the expected PCs with no
+trap, plus a non-zero AXI fetch count as the memory-side sanity check.
 
 The Verilator 5.049 V3Delayed `Unexpected LHS form` crash on CVA6
 btb.sv:188 (and the identical bht.sv:122 pattern) is unblocked by the
@@ -75,6 +69,8 @@ PROGRAM = [
     0x0000006F,
 ]
 
+BOOT_ADDR = 0x0000_0000_0001_0000
+
 
 # Write the boot-ROM hex file at module import time so the TB's initial
 # `$readmemh` sees the payload before simulation time 0.
@@ -97,6 +93,10 @@ def _expected_word(program: list[int], idx: int) -> int:
     lo = program[2 * idx] if 2 * idx < len(program) else 0
     hi = program[2 * idx + 1] if 2 * idx + 1 < len(program) else 0
     return (hi << 32) | lo
+
+
+def _packed_word(value: int, idx: int, width: int) -> int:
+    return (value >> (idx * width)) & ((1 << width) - 1)
 
 
 async def _assert_rom_preloaded(dut, program: list[int]) -> None:
@@ -152,44 +152,62 @@ async def test_cva6_starts_fetching(dut):
 
 @cocotb.test(skip=not _RUN_CVA6)
 async def test_cva6_executes_four_instructions(dut):
-    """Structural proof CVA6 retires the 4-instruction program.
+    """RVFI proof CVA6 retires the 4-instruction program.
 
     Pass criteria:
       - The 4-instruction program is preloaded into the boot ROM.
-      - After reset deassertion CVA6 fetches at least 4 instructions'
-        worth of code from the ROM region; we measure this by counting R
-        handshakes (each carries a full 64-bit ROM beat = 2 instructions).
-
-    The Zihpm/RVFI commit-counter assertion is the upgrade target: when
-    the RVFI bridge wires `rvfi_probes_o.instr.valid` into a TB counter,
-    this test will assert minstret == 4 directly.  AR/R xfer counts are
-    the structural surrogate that still proves the core is alive.
+      - After reset deassertion CVA6 retires the first four instructions
+        through the wrapper's decoded RVFI stream.
+      - The first four retired PCs/instructions match the boot ROM prefix
+        and none of those retirements trap.
+      - At least one AXI read beat was observed as a memory-side sanity
+        check that the TB ROM actually served the instruction stream.
     """
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await _assert_rom_preloaded(dut, PROGRAM)
     await reset(dut)
 
-    # Let CVA6 fetch from the ROM.  The cv64a6 frontend issues 64-byte
-    # cache-line bursts (8 beats); a single AR captures the entire
-    # program plus surrounding bytes.  We wait until at least one
-    # complete burst has delivered.
-    for _ in range(4096):
+    # Let CVA6 fetch and commit from the ROM.  The unit TB increments
+    # rvfi_retire_count_o only when the decoded CVA6 RVFI stream asserts
+    # valid, so this is a commit-visible proof rather than an AXI-only
+    # structural surrogate.
+    for _ in range(8192):
         await RisingEdge(dut.clk)
-        if int(dut.r_xfer_count_o.value) >= 1:
+        if int(dut.rvfi_retire_count_o.value) >= len(PROGRAM):
             break
+
+    retire_count = int(dut.rvfi_retire_count_o.value)
+    assert retire_count >= len(PROGRAM), (
+        f"CVA6 retired {retire_count} instructions via RVFI, expected at "
+        f"least {len(PROGRAM)}.  This blocks precise bootrom retirement "
+        "evidence; inspect the E1_RVFI compile define and cva6_rvfi decode path."
+    )
 
     assert int(dut.r_xfer_count_o.value) >= 1, (
         "CVA6 wrapper never received an R-channel beat — the TB memory "
         "model did not respond to the wrapper's AR handshake."
     )
 
-    # Additional cycles to let the program reach the spin-loop.
-    for _ in range(512):
-        await RisingEdge(dut.clk)
-
-    # AR count grows once frontend starts servicing the jump's spin
-    # loop or speculatively refilling the prefetch queue.
     assert int(dut.ar_xfer_count_o.value) >= 1, (
         "CVA6 frontend stalled after the first fetch — expected at "
         "least one AR handshake to advance after the program is loaded."
     )
+
+    first4_insn = int(dut.rvfi_first4_insn_o.value)
+    first4_pc = int(dut.rvfi_first4_pc_o.value)
+    first4_trap = int(dut.rvfi_first4_trap_o.value)
+
+    for idx, expected_insn in enumerate(PROGRAM):
+        got_insn = _packed_word(first4_insn, idx, 32)
+        got_pc = _packed_word(first4_pc, idx, 64)
+        got_trap = (first4_trap >> idx) & 1
+        expected_pc = BOOT_ADDR + idx * 4
+        assert got_insn == expected_insn, (
+            f"RVFI retired instruction {idx} mismatch: expected "
+            f"0x{expected_insn:08x}, got 0x{got_insn:08x}."
+        )
+        assert got_pc == expected_pc, (
+            f"RVFI retired PC {idx} mismatch: expected 0x{expected_pc:016x}, "
+            f"got 0x{got_pc:016x}."
+        )
+        assert got_trap == 0, f"RVFI retired instruction {idx} with trap=1."

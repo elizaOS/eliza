@@ -67,6 +67,16 @@ def test_blocker_removal_fails() -> None:
     print("PASS blocker removal rejected")
 
 
+def test_structured_findings_cover_required_real_evidence() -> None:
+    report = check_npu_scope.build_report()
+    findings = report.get("findings", [])
+    if not findings:
+        raise AssertionError("NPU scope report must expose structured findings")
+    if not any(str(item.get("code", "")).startswith("npu_missing_real_evidence_") for item in findings):
+        raise AssertionError(f"NPU findings must include missing real evidence: {findings}")
+    print("PASS structured NPU findings cover required real evidence")
+
+
 def test_failed_structural_check_fails() -> None:
     report = check_npu_scope.build_report()
     mutated = copy.deepcopy(report)
@@ -90,6 +100,7 @@ def main() -> None:
     test_phone_claim_flip_fails()
     test_current_level_promotion_fails()
     test_blocker_removal_fails()
+    test_structured_findings_cover_required_real_evidence()
     test_failed_structural_check_fails()
     test_scaffold_removal_fails()
 

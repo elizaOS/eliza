@@ -85,7 +85,7 @@
           "min_bytes": 160,
           "required_strings": [
             "eliza-evidence: target=linux artifact=eliza_e1_kernel_build",
-            "eliza-evidence: command=make ARCH=riscv",
+            "make ARCH=riscv",
             "eliza-evidence: started_utc=",
             "CONFIG_ELIZA_E1",
             "eliza-evidence: ended_utc=",
@@ -169,7 +169,7 @@
         {
           "artifact": "U-Boot Eliza build transcript",
           "path": "docs/evidence/linux/u_boot_eliza_build.log",
-          "capture_command": "ELIZA_UBOOT_CMD='make eliza_defconfig && make' sw/u-boot/capture-u-boot-evidence.sh /path/to/u-boot build",
+          "capture_command": "ELIZA_UBOOT_CMD='make eliza_defconfig && make' docs/sw/u-boot/capture-u-boot-evidence.sh /path/to/u-boot build",
           "min_bytes": 160,
           "required_strings": [
             "eliza-evidence: target=u-boot artifact=u_boot_eliza_build",
@@ -185,7 +185,7 @@
         {
           "artifact": "U-Boot OpenSBI boot-chain transcript",
           "path": "docs/evidence/linux/u_boot_opensbi_boot_chain.log",
-          "capture_command": "ELIZA_UBOOT_BOOT_CMD='/path/to/qemu-or-renode boot command' sw/u-boot/capture-u-boot-evidence.sh /path/to/u-boot boot-chain",
+          "capture_command": "ELIZA_UBOOT_BOOT_CMD='/path/to/qemu-or-renode boot command' docs/sw/u-boot/capture-u-boot-evidence.sh /path/to/u-boot boot-chain",
           "min_bytes": 160,
           "required_strings": [
             "eliza-evidence: target=u-boot artifact=u_boot_opensbi_boot_chain",

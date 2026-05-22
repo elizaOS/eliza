@@ -10,8 +10,10 @@ source_artifacts:
   - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
   - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
   - board/kicad/e1-phone/display-envelope-downselect.yaml
   - board/kicad/e1-phone/camera-module-fit-downselect.yaml
   - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
@@ -247,6 +249,45 @@ selected_hardware_release_coupling:
         - Wi-Fi/Bluetooth MAC provisioning, RF calibration, conducted test, and coexistence result
         - factory identity result tied to board serial and test software revision
       status: blocked_missing_selected_wifi_bt_avl_rf_fixture_and_first_article_evidence
+alternate_display_production_release_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/display-envelope-downselect.yaml
+  status: blocked_until_alternate_display_bom_avl_fixture_limits_and_first_article_traceability_exist
+  branch_count: 2
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      required_release_outputs:
+        - production_bom_avl
+        - assembly_drawing
+        - position_file
+        - factory_test_limits
+        - first_article_traveler
+      required_fixture_domains:
+        - display_touch
+      required_traceability:
+        - display branch supplier lot, signed drawing revision, 40-pin pinout review, and connector MPN
+        - AVL row proving lifecycle, MOQ, lead time, sample lot, and approved substitution policy
+        - pick-and-place, assembly drawing, fixture limits, and display/touch bring-up tied to board serial
+        - promotion review proving production supply and factory risk before replacing CH550FH01A-CT
+      production_release_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      required_release_outputs:
+        - production_bom_avl
+        - assembly_drawing
+        - position_file
+        - factory_test_limits
+        - first_article_traveler
+      required_fixture_domains:
+        - display_touch
+      required_traceability:
+        - AMOLED branch supplier lot, signed drawing revision, FPC pinout review, connector MPN, and RM67191/GT1151 firmware data
+        - AVL row proving lifecycle, MOQ, lead time, sample lot, burn-in/luminance data, and approved substitution policy
+        - pick-and-place, assembly drawing, fixture limits, power/thermal log, and display/touch bring-up tied to board serial
+        - promotion review proving production supply, power/thermal, and factory risk before replacing CH550FH01A-CT
+      production_release_allowed: false
 cross_checks:
   all_routed_release_outputs_tracked: true
   all_manufacturing_outputs_mapped_to_release_outputs: true
@@ -255,6 +296,7 @@ cross_checks:
   output_presence_matches_routed_release_plan: true
   no_output_marked_present_before_real_artifact: true
   selected_hardware_release_coupling_fail_closed: true
+  alternate_display_production_release_gate_fail_closed: true
   ready_flags_remain_false: true
 release_blockers:
   - routed KiCad PCB, ERC, DRC, zones, and route reports are missing
@@ -262,6 +304,7 @@ release_blockers:
   - fabrication, assembly, stackup, impedance, DFM/DFA, and quote outputs are missing
   - fixture coordinates, factory limits, RF calibration procedure, and first-article transcript are missing
   - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth production traceability evidence is missing
+  - parseable 055WU01 and E549/RM67191 display alternates cannot enter production release until BOM/AVL, assembly, fixture limits, first-article traceability, and promotion evidence exist
   - routed board STEP and enclosure clearance rerun are missing
 forbidden_claims:
   - production_factory_release_ready

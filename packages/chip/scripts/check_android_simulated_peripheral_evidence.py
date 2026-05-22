@@ -38,6 +38,16 @@ REQUIRED_COMPONENTS = {
     "bluetooth",
     "cellular_5g_lte",
 }
+REQUIRED_LOG_PROVENANCE = (
+    "eliza-evidence: target=android_simulated_peripheral component=",
+    "eliza-evidence: claim_boundary=adb-backed Android simulator peripheral evidence only",
+    "eliza-evidence: command_env=",
+    "eliza-evidence: command=",
+    "eliza-evidence: started_utc=",
+    "COMMAND_OUTPUT_BEGIN",
+    "COMMAND_OUTPUT_END",
+    "eliza-evidence: ended_utc=",
+)
 
 
 @dataclass(frozen=True)
@@ -140,6 +150,7 @@ def peripheral_entries(data: dict[str, Any], findings: list[Finding]) -> list[di
             continue
         component = item.get("id")
         evidence = item.get("evidence")
+        producer = item.get("producer")
         markers = item.get("required_markers")
         if not isinstance(component, str) or not component:
             findings.append(
@@ -185,7 +196,35 @@ def peripheral_entries(data: dict[str, Any], findings: list[Finding]) -> list[di
                 )
             )
             continue
-        entries.append({"id": component, "evidence": evidence, "required_markers": markers})
+        if not isinstance(producer, str) or not producer:
+            findings.append(
+                Finding(
+                    f"peripheral_producer_missing:{component}",
+                    "blocker",
+                    "simulated peripheral entry has no capture producer",
+                    component,
+                    "Point producer at scripts/android/capture_simulated_peripheral_evidence.py for the component.",
+                )
+            )
+            continue
+        if "capture_simulated_peripheral_evidence.py" not in producer:
+            findings.append(
+                Finding(
+                    f"peripheral_producer_not_canonical:{component}",
+                    "blocker",
+                    "simulated peripheral entry does not use the canonical capture driver",
+                    producer,
+                    "Use scripts/android/capture_simulated_peripheral_evidence.py so logs include command provenance and fail-closed status.",
+                )
+            )
+        entries.append(
+            {
+                "id": component,
+                "evidence": evidence,
+                "producer": producer,
+                "required_markers": markers,
+            }
+        )
     missing = sorted(REQUIRED_COMPONENTS - seen)
     for component in missing:
         findings.append(
@@ -213,6 +252,18 @@ def check_log(component: str, path: Path, markers: list[str], findings: list[Fin
         )
         return
     text = read_text(path)
+    for marker in REQUIRED_LOG_PROVENANCE:
+        expected = marker + component if marker.endswith("component=") else marker
+        if expected not in text:
+            findings.append(
+                Finding(
+                    f"peripheral_log_provenance_missing:{component}",
+                    "blocker",
+                    "simulated peripheral probe log is missing required capture provenance",
+                    f"{rel(path)} missing {expected}",
+                    "Regenerate this log with scripts/android/capture_simulated_peripheral_evidence.py against a booted adb device.",
+                )
+            )
     if "eliza-evidence: status=FAIL" in text or "RESULT=1" in text:
         findings.append(
             Finding(

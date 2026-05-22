@@ -85,6 +85,9 @@ CONTACT_KEYWORDS = (
     "acoustic_chamber",
     "flex_tail",
     "fpc_connector",
+    "module_keepout",
+    "package_marker",
+    "rf_feed",
     "flash_led_window",
     # Wave-2 residual closure parts: corner gussets, glass edge cushion, and the
     # cellular aperture/band-switch tuner footprint. Each is an envelope solid that

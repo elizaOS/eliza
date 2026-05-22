@@ -126,7 +126,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.08478
+      "nonwhite_pixel_ratio": 0.08634
     },
     {
       "view": "component-review-audio.png",
@@ -190,7 +190,7 @@
     }
   ],
   "part_review_case": {
-    "part_count": 132,
+    "part_count": 142,
     "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
     "contact_sheet_pass": true,
     "exploded_contact_sheet": "mechanical/e1-phone/review/part-explode-contact-sheet.png",
@@ -199,8 +199,8 @@
   },
   "part_visual_coverage_case": {
     "status": "part_visual_coverage_pass",
-    "expected_part_count": 132,
-    "covered_part_count": 132,
+    "expected_part_count": 142,
+    "covered_part_count": 142,
     "missing_or_incomplete_part_count": 0,
     "pass": true
   },

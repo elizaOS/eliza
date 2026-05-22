@@ -2,8 +2,8 @@
   "aggregate": {
     "branch_count": 13207561,
     "instruction_count": 79227755,
-    "misprediction_count": 123756,
-    "mpki": 1.562028
+    "misprediction_count": 79908,
+    "mpki": 1.008586
   },
   "cbp5_tage_sc_l_64kb_reference_mpki_by_class": {
     "compress": 2.799,
@@ -26,12 +26,13 @@
     "v8_claim": false
   },
   "evidence_class": "cbp5_train_traces_only",
-  "generated_at_utc": "2026-05-21T19:26:20.134422+00:00",
+  "generated_at_utc": "2026-05-22T01:06:50.156985+00:00",
   "geometry": {
     "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
     "FETCH_BLOCK_BYTES": 32,
     "FTB_ENTRIES": 4096,
+    "FTB_TARGET_CONF_W": 2,
     "FTB_WAYS": 4,
     "ITTAGE_CTR_W": 3,
     "ITTAGE_ENTRIES": [
@@ -48,8 +49,11 @@
       16,
       32
     ],
+    "ITTAGE_REPLACE_MIN_PROVIDER": 4,
+    "ITTAGE_REPLACE_WEAK_CTR": 3,
     "ITTAGE_TABLES": 5,
     "ITTAGE_TAG_W": 9,
+    "ITTAGE_TARGET_HISTORY_BITS": 64,
     "LOOP_CONF_W": 3,
     "LOOP_CTR_W": 14,
     "LOOP_ENTRIES": 64,
@@ -65,7 +69,7 @@
       16
     ],
     "SC_TABLES": 4,
-    "SC_THRESH_INIT": 6,
+    "SC_THRESH_INIT": 8,
     "TAGE_ALLOC_DECREMENT": true,
     "TAGE_CTR_W": 3,
     "TAGE_ENTRIES_TABLE": 8192,
@@ -91,13 +95,13 @@
       "counters": {
         "call": 2650,
         "cond": 6615499,
-        "cond_misp": 13287,
+        "cond_misp": 13286,
         "ind": 1924,
-        "ind_misp": 118,
+        "ind_misp": 119,
         "misp": 13405,
         "pred": 6622719,
         "ret": 2646,
-        "sc_override": 1015
+        "sc_override": 988
       },
       "instruction_count": 38475498,
       "mpki": 0.348404,
@@ -108,16 +112,16 @@
       "counters": {
         "call": 2046,
         "cond": 3833773,
-        "cond_misp": 6277,
+        "cond_misp": 6268,
         "ind": 1803,
-        "ind_misp": 166,
-        "misp": 6443,
+        "ind_misp": 165,
+        "misp": 6433,
         "pred": 3839663,
         "ret": 2041,
-        "sc_override": 1283
+        "sc_override": 1255
       },
       "instruction_count": 24817722,
-      "mpki": 0.259613,
+      "mpki": 0.25921,
       "trace_class": "qemu_rv64_workload"
     },
     "audio_frames": {
@@ -125,16 +129,16 @@
       "counters": {
         "call": 1988,
         "cond": 426512,
-        "cond_misp": 50072,
+        "cond_misp": 23969,
         "ind": 1747,
         "ind_misp": 162,
-        "misp": 50234,
+        "misp": 24131,
         "pred": 432230,
         "ret": 1983,
-        "sc_override": 15238
+        "sc_override": 10648
       },
       "instruction_count": 2890947,
-      "mpki": 17.376313,
+      "mpki": 8.347092,
       "trace_class": "qemu_rv64_workload"
     },
     "file_tlv": {
@@ -142,16 +146,16 @@
       "counters": {
         "call": 1990,
         "cond": 465554,
-        "cond_misp": 12389,
+        "cond_misp": 12403,
         "ind": 1748,
         "ind_misp": 164,
-        "misp": 12553,
+        "misp": 12567,
         "pred": 471277,
         "ret": 1985,
-        "sc_override": 8015
+        "sc_override": 8012
       },
       "instruction_count": 3139574,
-      "mpki": 3.998313,
+      "mpki": 4.002772,
       "trace_class": "qemu_rv64_workload"
     },
     "http_parser": {
@@ -159,16 +163,16 @@
       "counters": {
         "call": 3389,
         "cond": 765522,
-        "cond_misp": 17448,
+        "cond_misp": 2976,
         "ind": 1747,
-        "ind_misp": 545,
-        "misp": 17993,
+        "ind_misp": 353,
+        "misp": 3329,
         "pred": 774042,
         "ret": 3384,
-        "sc_override": 660
+        "sc_override": 609
       },
       "instruction_count": 2599051,
-      "mpki": 6.922911,
+      "mpki": 1.280852,
       "trace_class": "qemu_rv64_workload"
     },
     "sample_fp_trace": {
@@ -186,17 +190,17 @@
       "counters": {
         "call": 10589,
         "cond": 127544,
-        "cond_misp": 2965,
+        "cond_misp": 1829,
         "ind": 1,
         "ind_misp": 4,
-        "misp": 2970,
+        "misp": 1834,
         "pred": 148723,
         "ret": 10589,
         "ret_misp": 1,
-        "sc_override": 1262
+        "sc_override": 1046
       },
       "instruction_count": 997741,
-      "mpki": 2.976724,
+      "mpki": 1.838152,
       "trace_class": "cbp5_train_traces_only"
     },
     "sample_int_trace": {
@@ -214,17 +218,17 @@
       "counters": {
         "call": 12900,
         "cond": 149840,
-        "cond_misp": 1867,
+        "cond_misp": 1840,
         "ind": 6235,
-        "ind_misp": 179,
-        "misp": 2050,
+        "ind_misp": 178,
+        "misp": 2022,
         "pred": 181877,
         "ret": 12902,
         "ret_misp": 4,
         "sc_override": 28
       },
       "instruction_count": 997301,
-      "mpki": 2.055548,
+      "mpki": 2.027472,
       "trace_class": "cbp5_train_traces_only"
     },
     "text_log": {
@@ -232,16 +236,16 @@
       "counters": {
         "call": 4690,
         "cond": 449979,
-        "cond_misp": 12880,
+        "cond_misp": 10976,
         "ind": 1748,
         "ind_misp": 165,
-        "misp": 13045,
+        "misp": 11141,
         "pred": 461102,
         "ret": 4685,
-        "sc_override": 9097
+        "sc_override": 8681
       },
       "instruction_count": 2668630,
-      "mpki": 4.888276,
+      "mpki": 4.174801,
       "trace_class": "qemu_rv64_workload"
     },
     "video_blocks": {
@@ -249,16 +253,16 @@
       "counters": {
         "call": 1988,
         "cond": 270210,
-        "cond_misp": 4901,
+        "cond_misp": 4884,
         "ind": 1747,
         "ind_misp": 162,
-        "misp": 5063,
+        "misp": 5046,
         "pred": 275928,
         "ret": 1983,
-        "sc_override": 3874
+        "sc_override": 3860
       },
       "instruction_count": 2641291,
-      "mpki": 1.916866,
+      "mpki": 1.910429,
       "trace_class": "qemu_rv64_workload"
     }
   }

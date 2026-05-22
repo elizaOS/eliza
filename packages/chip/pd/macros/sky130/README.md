@@ -18,8 +18,8 @@ Two macro sources are accepted:
 
 2. **Freshly generated OpenRAM macros.** Custom-sized SRAMs (4 KB, 16 KB,
    64 KB) listed under `pdks.sky130A.target_macros` in
-   `pd/macros/manifest.yaml` are not in the PDK and must be generated locally
-   from the OpenRAM source tree (Docker recipe below).
+   `pd/macros/manifest.yaml` are not in the PDK and are generated locally from
+   the OpenRAM source tree (native build, see "How to generate" below).
 
 ## What goes here
 
@@ -27,93 +27,74 @@ For each target macro `<name>` in the manifest:
 
 ```
 pd/macros/sky130/<name>/
-  <name>.lef                   placement abstract for OpenROAD
-  <name>.gds                   final GDS for tapeout integration
-  <name>.lib                   Liberty timing (typical + corners)
-  <name>.spice                 SPICE netlist for LVS
-  <name>.openram.config.py     OpenRAM input config (reproducibility)
-  build/                       OpenRAM scratch (gitignored)
-  README.md                    pin map, halo, dimensions, intended user
+  <name>.openram.config.py     OpenRAM input config (tracked source of record)
+  build/                       OpenRAM outputs (the artifacts of record):
+    <name>.gds                   final GDS for tapeout integration
+    <name>.lef                   placement abstract for OpenROAD
+    <name>_{TT,SS,FF}_1p8V_{25,85,-40}C.lib   Liberty timing corners
+    <name>.sp                     SPICE netlist
+    <name>.lvs.sp                 LVS-ready SPICE netlist
+    <name>.v                      behavioral Verilog model
+    <name>.html                   OpenRAM datasheet
 ```
 
-The manifest's `lef`/`gds`/`lib`/`spice` fields stay set to `BLOCKED_run_openram`
-until those exact files exist.
+The manifest's `lef`/`gds`/`lib`/`spice`/`verilog_model` fields point at the
+exact files under `build/` once they exist, and stay `BLOCKED_run_openram`
+until then.
 
-## How to generate (host install)
+## How to generate (native, Linux x64)
 
-OpenRAM is intentionally NOT vendored under `external/` because its outputs
-are PDK-specific. The reproducible path:
+OpenRAM is checked out at `external/OpenRAM`
+(commit `e16d9eb0b4495e8beee441ced3fcad68391155e6`, pinned in
+`pd/macros/manifest.yaml` as `generator_pinned_commit`). The EDA stack it
+shells out to (magic/ngspice/netgen/klayout) comes from the conda environment
+at `~/.openram-miniconda`. Both are wired into the build driver
+`build_openram_macro.sh`; no Docker.
+
+Build one macro:
 
 ```sh
-git clone https://github.com/VLSIDA/OpenRAM external/OpenRAM
-cd external/OpenRAM
-git rev-parse HEAD                                  # pin this in manifest.yaml
-export OPENRAM_HOME=$PWD/compiler
-export OPENRAM_TECH=$PWD/technology
-make pdk PDK=sky130A
+# Serialize heavy OpenRAM builds — only one at a time (the host OOM-thrashes
+# if two run concurrently).
+flock -w 21600 /tmp/eliza_heavy_eda.lock -c \
+  'pd/macros/sky130/build_openram_macro.sh pd/macros/sky130/e1_sram_4kb_1rw'
 ```
 
-Then for each macro:
+The driver copies `<name>.openram.config.py` to `build/openram_config.py`
+(OpenRAM rejects dotted config basenames) and runs
+`external/OpenRAM/sram_compiler.py`. Outputs land directly under
+`pd/macros/sky130/<name>/build/`: `<name>.{gds,lef,sp,v}`, the Liberty corner
+libs (`<name>_{TT,SS,FF}_1p8V_{25,85,-40}C.lib`), the LVS netlist
+(`<name>.lvs.sp`), and a datasheet (`<name>.html`). Point the manifest's
+`lef`/`gds`/`lib`/`spice`/`verilog_model` fields at those exact files.
+
+Build time is dominated by the bitcell-array submodule generation and routing;
+the 4 KB macro took ~6.9 h wall on this host (1024w x 32b, 512 cols x 64 rows).
+The 16 KB (256 rows) and 64 KB (1024 rows) macros scale accordingly and are the
+long poles of the inventory.
+
+## DRC verification (native)
+
+Inline DRC is disabled in the configs because the openram-miniconda Magic
+(8.3.363) cannot load Volare's sky130A techfile (needs 8.3.411+). Verify
+afterwards with the native Magic on PATH (`tools/env.sh` → magic 8.3.645):
 
 ```sh
-python3 $OPENRAM_HOME/openram.py \
-    pd/macros/sky130/<name>/<name>.openram.config.py
+source tools/env.sh
+python3 scripts/check_openram_macro_drc.py \
+    --macro-dir pd/macros/sky130/e1_sram_4kb_1rw/build \
+    --macro-name e1_sram_4kb_1rw \
+    --out-json build/reports/pd/openram_4kb_drc.json
 ```
 
-Outputs land in the directory referenced by `output_path` in the config. Move
-the `*.lef`, `*.gds`, `*.lib`, `*.sp` files into `pd/macros/sky130/<name>/`
-and update `pd/macros/manifest.yaml` to point at them.
-
-## How to generate (Docker, recommended)
-
-If OpenRAM is not installed on the host, the same flow runs in a container
-built from the OpenRAM upstream Dockerfile:
-
-```sh
-# 1. Clone OpenRAM at a known-good revision.
-git clone https://github.com/VLSIDA/OpenRAM external/OpenRAM
-cd external/OpenRAM
-git checkout f1a72b91                # last commit verified locally
-
-# 2. Build the OpenRAM container (ships ngspice + magic + netgen).
-docker build -t openram:f1a72b91 .
-
-# 3. Run the compiler for one e1 target. Outputs land under
-#    pd/macros/sky130/<name>/build/ inside the container, which is mounted
-#    from the repo so the artifacts persist on the host.
-cd ../..
-docker run --rm \
-    -v "$PWD":/work -w /work \
-    -e OPENRAM_HOME=/opt/openram/compiler \
-    -e OPENRAM_TECH=/opt/openram/technology \
-    openram:f1a72b91 \
-    python3 /opt/openram/compiler/openram.py \
-        pd/macros/sky130/e1_sram_4kb_1rw/e1_sram_4kb_1rw.openram.config.py
-
-# 4. Promote the artifacts.
-mv pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw.lef \
-   pd/macros/sky130/e1_sram_4kb_1rw/
-# (repeat for .gds, .lib, .spice). Update pd/macros/manifest.yaml.
-```
-
-If the OpenRAM upstream Dockerfile does not build cleanly (it depends on
-PDK-specific ngspice + magic versions), fall back to running OpenRAM inside
-the OpenLane container — it already ships the right SPICE/magic/netgen
-stack:
-
-```sh
-docker run --rm \
-    -v "$PWD":/work -w /work \
-    ghcr.io/efabless/openlane2:2.4.0.dev1 \
-    bash -lc 'pip install --user openram && \
-        python3 ~/.local/bin/openram.py \
-        pd/macros/sky130/e1_sram_4kb_1rw/e1_sram_4kb_1rw.openram.config.py'
-```
-
-Status today: OpenRAM is NOT installed on this host. The PDK-prebuilt 2 KB
-macro is sufficient to flip OpenLane's `Macros` count to 1 and unblock the
-AlphaChip / DREAMPlace / OpenROAD post-route PPA evidence loop. The 4 KB /
-16 KB / 64 KB macros remain `BLOCKED_run_openram` in the manifest.
+The script runs `drc count` (per-cell attribution, the same signal OpenRAM's
+own `compiler/verify/magic.py` uses) and classifies error tiles by cell:
+`bitcell_waived` (the proprietary SkyWater `sky130_fd_bd_sram__*` foundry
+bitcells, which are not DRC-clean under the open `drc(full)` ruleset by
+construction and are waived in the closed PDK flow) vs `periphery` (the
+OpenRAM-generated decoders/drivers/control/wiring). PASS == zero periphery
+error tiles. Tapeout-grade signoff remains the OpenLane flow that carries the
+macro as an abstracted hard block (see `pd/openlane/runs/.../63-magic-drc/`).
 
 ## Why these sizes
 
@@ -128,13 +109,17 @@ At 130 nm a 64 KB SRAM is roughly 1.5 mm x 1.5 mm. Three of these alone push
 total macro area past the 8 mm^2 mark, which is where AlphaChip-style RL
 placement begins to outperform OpenROAD's analytical placer on proxy cost.
 
-## DRC/LVS
+## Signoff checklist
 
-Every macro must produce:
+Each macro must produce:
 
-- `magic` Sky130 DRC clean on its standalone GDS.
-- `netgen` LVS clean against its SPICE.
-- `openroad` placement-density check clean inside the e1 floorplan.
+- `magic` periphery DRC clean on its standalone GDS (see
+  "DRC verification" above; foundry-bitcell pseudo-errors are waived).
+- `netgen` LVS clean: extracted-from-GDS netlist vs `<name>.lvs.sp`, using
+  `external/pdks/.../sky130A/libs.tech/netgen/sky130A_setup.tcl`.
+- `openroad` placement-density check clean inside the e1 floorplan, carried
+  through the OpenLane flow as an abstracted hard macro.
 
-Until those run, the macro stays in `BLOCKED_run_openram` state and the
-`macro-placement-evidence.yaml` gate fails closed.
+A macro's manifest entry stays `BLOCKED_run_openram` until the LEF/GDS/Liberty/
+SPICE files exist; the `drc` field records the periphery-DRC verdict and
+report path once `scripts/check_openram_macro_drc.py` has run.

@@ -89,7 +89,7 @@ derived_block_envelope_at_n2:
   rv64gc_ooo_8wide_with_l2_at_n2_mm2:
     low: 2.5
     high: 3.5
-    basis: Ascalon_or_Kunminghu_class_RV64GC_OoO_8wide
+    basis: Kunminghu_class_RV64GC_OoO_8wide
   apple_slc_class_at_n2_mm2:
     low: 8.0
     high: 12.0
@@ -245,7 +245,7 @@ per_block_asap7_projection_p50_mm2:
       production_geometry_note: >
         Leaf is the e1_cpu_subsystem_stub RV64I subset (~32x64-bit RF +
         decoder + ALU + AXI-Lite master FSM). A real 8-wide OoO big core
-        (Ascalon/Kunminghu class) is 100-500x larger; this shape is the
+        (Kunminghu class) is 100-500x larger; this shape is the
         smallest non-trivial CPU leaf available without external/cva6 or
         the upstream big-core submodule.
     npu_tile:

@@ -74,6 +74,11 @@ def test_boot_script_blocks_without_aosp_dir() -> None:
         raise AssertionError(
             f"android sim report missing deterministic AOSP_DIR blocker: {missing_requirements}"
         )
+    findings = data.get("findings", [])
+    if not any(item.get("code") == "android_sim_host_aosp_dir_is_not_set" for item in findings):
+        raise AssertionError(f"android sim report missing structured AOSP_DIR finding: {findings}")
+    if not any(item.get("code", "").startswith("android_sim_status_") for item in findings):
+        raise AssertionError(f"android sim report missing structured status finding: {findings}")
     for key in ("run_qemu", "run_renode"):
         if not isinstance(data.get(key), bool):
             raise AssertionError(f"android sim report must include boolean {key}")

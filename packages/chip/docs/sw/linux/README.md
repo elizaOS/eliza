@@ -172,6 +172,7 @@ sw/linux/scripts/capture-linux-bsp-evidence.sh "$ELIZA_LINUX_TREE" dtb-check
 
 python3 scripts/locate_chipyard_linux_payload.py --require
 CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh
+# On PASS, the wrapper writes docs/evidence/linux/eliza_e1_serial_boot.log.
 
 ELIZA_OPENSBI_HANDOFF_CMD='<exact boot command>' \
   docs/sw/opensbi/capture-opensbi-evidence.sh "$ELIZA_OPENSBI_TREE" handoff
@@ -180,6 +181,16 @@ E1_SMOKE_CMD='<target command for /usr/bin/e1-mmio-smoke>' \
   sw/linux/scripts/capture-linux-bsp-evidence.sh "$ELIZA_LINUX_TREE" smoke
 
 make linux-boot-artifacts-check
+```
+
+If the generated AP transcript also boots the elizaOS image far enough to
+prove agent liveness, convert the real transcript into OS-side manifest
+evidence from `packages/os/linux/elizaos`:
+
+```sh
+scripts/capture-chip-boot-evidence.py \
+  --boot-transcript ../../../chip/docs/evidence/linux/eliza_e1_serial_boot.log \
+  --agent-transcript /path/to/generated-ap-agent-health.log
 ```
 
 Current expected local status is `BLOCKED` until the external kernel checkout,

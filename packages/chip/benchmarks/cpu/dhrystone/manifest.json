@@ -1,8 +1,8 @@
 {
   "schema": "eliza.cpu_benchmark_manifest.v1",
   "benchmark": "dhrystone",
-  "status": "pinned_not_run",
-  "claim_boundary": "build_only_until_real_core_runs_dhrystone_on_verilator_or_silicon",
+  "status": "verilator_passed",
+  "claim_boundary": "L1_RTL_FULL_SOC Verilator only until real phone/prototype silicon evidence exists",
   "upstream": {
     "name": "Dhrystone 2.1",
     "vendor": "Reinhold P. Weicker (classic), CVA6-bundled port",
@@ -29,17 +29,18 @@
   },
   "expected_results": {
     "cva6_rv64gc": {
-      "dmips_per_mhz": 1.7,
-      "claim_status": "modeled_open_reference_pending_verilator_run",
-      "note": "CVA6 publishes ~1.7 DMIPS/MHz for the single-issue in-order config; this manifest does NOT assert it — it is the model's expectation pending a measured Verilator run."
+      "dmips_per_mhz": 1.1662,
+      "claim_status": "measured_L1_RTL_FULL_SOC_verilator",
+      "note": "Measured by the CVA6 Verilator testharness in benchmarks/results/cpu/dhrystone/result.json. This does not support a phone-class L5/L6 benchmark claim."
     }
   },
   "result_artifact": "benchmarks/results/cpu/dhrystone/result.json",
   "result_schema": "eliza.cpu_benchmark_result.v1",
   "run_command": "scripts/run_dhrystone.sh",
-  "fail_closed_until": [
+  "fail_closed_for_phone_claim_until": [
     "CVA6 corev_apu Verilator testharness submodules initialized (register_interface, riscv-dbg, axi_mem_if, apb_uart)",
     "Variane_testharness model built",
+    "L5/L6 phone or prototype silicon DUT",
     "benchmarks/results/cpu/dhrystone/result.json exists and matches schema"
   ]
 }

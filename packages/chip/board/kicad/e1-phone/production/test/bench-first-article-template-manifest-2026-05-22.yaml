@@ -1,0 +1,107 @@
+schema: eliza.e1_phone_bench_first_article_template_manifest.v1
+status: template_manifest_fail_closed_no_release_evidence
+date: 2026-05-22
+claim_boundary: >
+  Manifest for empty bench and first-article evidence templates only. The
+  listed files define future log structure and traceability fields. They are
+  not passed logs, not a completed first-article transcript, not a signed
+  traveler, not production evidence, and not permission to fabricate.
+
+source_artifacts:
+  - board/kicad/e1-phone/power-usb-sidekey-bench-bringup-execution-2026-05-22.yaml
+  - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+
+template_policy:
+  template_date: 2026-05-22
+  templates_are_empty: true
+  templates_are_release_evidence: false
+  real_logs_present: false
+  release_flags_must_remain_false: true
+  parent_manifest_integration_required: true
+  central_checker_integration_required: true
+
+template_inventory:
+  - id: pd_attach_log
+    path: board/kicad/e1-phone/production/test/usb-c-pd-attach-log.template.json
+    future_evidence_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+    maps_to:
+      bench_execution_step: cc_attach_and_dead_battery
+      first_article_section: usb_pd_attach_debug_and_dead_battery_log
+    source_artifacts:
+      - board/kicad/e1-phone/power-usb-sidekey-bench-bringup-execution-2026-05-22.yaml
+      - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+    release_allowed: false
+    status: template_empty_not_executed
+  - id: usb2_adb_fastboot_log
+    path: board/kicad/e1-phone/production/test/usb2-adb-fastboot-attach-log.template.json
+    future_evidence_path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+    maps_to:
+      bench_execution_step: usb2_adb_fastboot
+      first_article_section: usb_pd_attach_debug_and_dead_battery_log
+    source_artifacts:
+      - board/kicad/e1-phone/power-usb-sidekey-bench-bringup-execution-2026-05-22.yaml
+      - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+    release_allowed: false
+    status: template_empty_not_executed
+  - id: charger_cc_cv_log
+    path: board/kicad/e1-phone/production/test/charger-cc-cv-cycle.template.json
+    future_evidence_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+    maps_to:
+      bench_execution_step: charger_cc_cv_jeita_current_limit_thermal
+      first_article_section: charger_cc_cv_jeita_and_thermal_log
+    source_artifacts:
+      - board/kicad/e1-phone/power-usb-sidekey-bench-bringup-execution-2026-05-22.yaml
+      - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+    release_allowed: false
+    status: template_empty_not_executed
+  - id: side_key_force_wake_log
+    path: board/kicad/e1-phone/production/test/side-key-force-travel-wake-log.template.json
+    future_evidence_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+    maps_to:
+      bench_execution_step: aon_power_key_wake
+      first_article_section: side_key_force_travel_wake_and_recovery_combo_log
+    source_artifacts:
+      - board/kicad/e1-phone/power-usb-sidekey-bench-bringup-execution-2026-05-22.yaml
+      - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+    release_allowed: false
+    status: template_empty_not_executed
+  - id: first_article_transcript
+    path: board/kicad/e1-phone/production/test/first-article-test-transcript.template.json
+    future_evidence_path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+    maps_to:
+      bench_execution_step: all_usb_power_sidekey_steps
+      first_article_section: usb_c_power_sidekeys
+    source_artifacts:
+      - board/kicad/e1-phone/power-usb-sidekey-bench-bringup-execution-2026-05-22.yaml
+      - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+    release_allowed: false
+    status: template_empty_not_executed
+  - id: first_article_traveler
+    path: board/kicad/e1-phone/production/test/first-article-traveler.template.yaml
+    future_evidence_path: board/kicad/e1-phone/production/first-article
+    maps_to:
+      bench_execution_step: all_usb_power_sidekey_steps
+      first_article_section: required_traveler
+    source_artifacts:
+      - board/kicad/e1-phone/power-usb-sidekey-bench-bringup-execution-2026-05-22.yaml
+      - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+    release_allowed: false
+    status: template_empty_not_executed
+
+release_flags:
+  pd_attach_passed: false
+  usb2_adb_fastboot_passed: false
+  charger_cc_cv_passed: false
+  side_key_force_wake_passed: false
+  first_article_transcript_passed: false
+  traveler_signed: false
+  selected_hardware_release_allowed: false
+  fabrication_release_allowed: false
+  enclosure_release_allowed: false
+  end_to_end_phone_release_allowed: false
+
+open_blockers:
+  - templates must be integrated by parent artifact manifest and central checker
+  - real logs must be generated on routed first-article hardware
+  - real first-article transcript and signed traveler are still absent
+  - all release flags remain false

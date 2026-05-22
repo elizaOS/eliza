@@ -3,8 +3,8 @@
   "core_role": "mid_core_e1_premium",
   "status": "selected_pending_chipyard_or_standalone_integration",
   "selected_for_2028_phone_class_big_core": false,
-  "claim_level": "primary_mid_core_path_and_big_core_fallback",
-  "rationale": "XiangShan Kunminghu V2/V3 (OpenXiangShan, Mulan PSL v2) is the most mature open RISC-V OoO RTL at flagship class. Selected as mid core (e1-premium) at 6-wide / 256-entry ROB / 3.0-3.4 GHz, and held as the big-core fallback if Ascalon-D8 licensing for mobile SKUs blocks.",
+  "claim_level": "primary_mid_core_path",
+  "rationale": "XiangShan Kunminghu V2/V3 (OpenXiangShan, Mulan PSL v2) is the most mature open RISC-V OoO RTL at flagship class. Selected as mid core (e1-premium) at 6-wide / 256-entry ROB / 3.0-3.4 GHz. The 8-wide scale-up of the same RTL is the selected big-core path (see eliza-kunminghu-big-manifest.json).",
   "vendor": "OpenXiangShan",
   "core_ip": {
     "name": "XiangShan Kunminghu",

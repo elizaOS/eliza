@@ -45,4 +45,9 @@ if [ -z "${E1_SPEC_DUT:-}" ]; then
     write_blocked "E1_SPEC_DUT not set; choose verilator|firesim|board"
 fi
 
-write_blocked "SPEC harness is structurally complete; awaiting (a) compiler agent's pinned LLVM RISC-V, (b) DUT capable of running SPEC at meaningful sample sizes (silicon or FireSim)"
+LLVM_CLANG="${ROOT}/build/llvm-stage2/bin/clang"
+if [ ! -x "${LLVM_CLANG}" ]; then
+    write_blocked "pinned LLVM RISC-V clang absent at ${LLVM_CLANG}; run scripts/build_llvm_riscv.sh inside the canonical Linux container"
+fi
+
+write_blocked "SPEC harness is structurally complete but no target runner is implemented yet for E1_SPEC_DUT=${E1_SPEC_DUT}; remaining blockers are licensed SPEC workload execution plus a DUT capable of meaningful SPEC sample sizes (silicon or FireSim)"

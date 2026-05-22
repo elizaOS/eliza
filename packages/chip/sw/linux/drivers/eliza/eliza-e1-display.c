@@ -96,13 +96,12 @@ static int eliza_e1_display_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int eliza_e1_display_remove(struct platform_device *pdev)
+static void eliza_e1_display_remove(struct platform_device *pdev)
 {
 	struct eliza_e1_display *d = platform_get_drvdata(pdev);
 
 	writel(0, d->regs + E1_DISPLAY_ENABLE_OFFSET);
 	sysfs_remove_groups(&pdev->dev.kobj, eliza_e1_display_groups);
-	return 0;
 }
 
 static const struct of_device_id eliza_e1_display_of_match[] = {

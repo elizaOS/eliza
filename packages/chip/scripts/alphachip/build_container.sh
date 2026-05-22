@@ -13,8 +13,10 @@ DREAMPLACE_PATTERN="${DREAMPLACE_PATTERN:-dreamplace_20231214_c5a83e5_${PYTHON_V
 PLC_BINARY_URL="${PLC_BINARY_URL:-https://github.com/Farama-Foundation/a2perf-circuit-training/raw/refs/heads/dev/bin/plc_wrapper_main}"
 DREAMPLACE_TARBALL="${DREAMPLACE_TARBALL:-}"
 
-if [ ! -d "$CT_DIR/.git" ]; then
-    echo "Missing Circuit Training checkout at $CT_DIR"
+# Accept either a git checkout or a bundled source tree (payload ships the
+# source without .git). The Dockerfile and plc binary only need the files.
+if [ ! -f "$CT_DIR/tools/docker/ubuntu_circuit_training" ]; then
+    echo "Missing Circuit Training source at $CT_DIR"
     echo "Run: git clone https://github.com/google-research/circuit_training.git $CT_DIR"
     exit 1
 fi

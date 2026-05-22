@@ -63,3 +63,68 @@ async def ittage_misprediction_allocates(dut):
         assert int(dut.lkp_target.value) == target
     await RisingEdge(dut.clk)
     dut.lkp_valid.value = 0
+
+
+@cocotb.test()
+async def ittage_replaces_weak_stale_target(dut):
+    """A weak provider with a stale target should be overwritten in place.
+
+    This keeps monomorphic-after-warmup indirect sites from spending several
+    extra misses aging out an old target before learning the steady target.
+    """
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc_low = 0x9000_3000
+    pc_high = 0x9000_4000
+    stale = 0x9000_6000
+    target = 0x9000_7000
+
+    # Seed table 0, then prove provider 1 is not replaced in place.
+    dut.upd_valid.value = 1
+    dut.upd_pc.value = pc_low
+    dut.upd_hist.value = 0
+    dut.upd_target.value = stale
+    dut.upd_misp.value = 1
+    dut.upd_provider.value = 0
+    await RisingEdge(dut.clk)
+    dut.upd_target.value = target
+    dut.upd_misp.value = 0
+    dut.upd_provider.value = 1
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    dut.upd_valid.value = 0
+    await RisingEdge(dut.clk)
+    dut.lkp_valid.value = 1
+    dut.lkp_pc.value = pc_low
+    dut.lkp_hist.value = 0
+    await Timer(1, units="ps")
+    assert int(dut.lkp_hit.value) == 1
+    assert int(dut.lkp_target.value) == stale
+    await RisingEdge(dut.clk)
+    dut.lkp_valid.value = 0
+
+    # Seed table 3 directly, then prove provider 4 replaces a weak target.
+    dut.upd_valid.value = 1
+    dut.upd_pc.value = pc_high
+    dut.upd_hist.value = 0
+    dut.upd_target.value = stale
+    dut.upd_misp.value = 1
+    dut.upd_provider.value = 3
+    await RisingEdge(dut.clk)
+    dut.upd_target.value = target
+    dut.upd_misp.value = 0
+    dut.upd_provider.value = 4
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    dut.upd_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    dut.lkp_valid.value = 1
+    dut.lkp_pc.value = pc_high
+    dut.lkp_hist.value = 0
+    await Timer(1, units="ps")
+    assert int(dut.lkp_hit.value) == 1
+    assert int(dut.lkp_target.value) == target
+    await RisingEdge(dut.clk)
+    dut.lkp_valid.value = 0

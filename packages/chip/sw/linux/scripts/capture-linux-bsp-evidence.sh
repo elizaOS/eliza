@@ -13,6 +13,16 @@ evidence_dir="$repo_root/docs/evidence/linux"
 jobs=${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}
 cross_compile=${CROSS_COMPILE:-}
 
+for tool_bin in \
+	"$repo_root/tools/bin" \
+	"$repo_root/external/riscv64-linux-gnu/usr/bin" \
+	"$repo_root/external/deb-tools/dtc/usr/bin"; do
+	if [ -d "$tool_bin" ]; then
+		PATH="$tool_bin:$PATH"
+	fi
+done
+export PATH
+
 if [ ! -f "$linux/Kconfig" ] || [ ! -d "$linux/drivers" ] || [ ! -d "$linux/arch" ]; then
 	echo "error: $linux does not look like a Linux kernel checkout" >&2
 	exit 1
@@ -124,7 +134,7 @@ case "$mode" in
 		record_command \
 			eliza_e1_kernel_build \
 			"$evidence_dir/eliza_e1_kernel_build.log" \
-			"test -f .config && $make_prefix -j$jobs Image dtbs modules && grep -Eq \"^CONFIG_ELIZA_E1_BSP=\" .config && grep -Eq \"^CONFIG_ELIZA_E1_NPU=\" .config && grep -Eq \"^CONFIG_ELIZA_E1_DMA=\" .config && grep -Eq \"^CONFIG_ELIZA_E1_DISPLAY=\" .config && grep -Fq \"CONFIG_ELIZA_E1_GPIO\" drivers/misc/eliza-e1/Makefile && test -f arch/riscv/boot/Image"
+			"test -f .config && $make_prefix olddefconfig && $make_prefix -j$jobs Image dtbs modules && grep -Eq \"^CONFIG_ELIZA_E1_BSP=\" .config && grep -Eq \"^CONFIG_ELIZA_E1_NPU=\" .config && grep -Eq \"^CONFIG_ELIZA_E1_DMA=\" .config && grep -Eq \"^CONFIG_ELIZA_E1_DISPLAY=\" .config && grep -Fq \"CONFIG_ELIZA_E1_GPIO\" drivers/misc/eliza-e1/Makefile && test -f arch/riscv/boot/Image"
 		;;
 	dtb-check)
 		require_imported_bsp

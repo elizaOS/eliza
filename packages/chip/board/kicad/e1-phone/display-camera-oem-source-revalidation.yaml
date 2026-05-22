@@ -8,6 +8,7 @@ source_artifacts:
   - package/display/v0-dsi-720x1280.yaml
   - package/camera/oem-mipi-csi-modules.yaml
   - board/kicad/e1-phone/supplier-source-verification.yaml
+  - board/kicad/e1-phone/display-camera-marketplace-current-snapshot.yaml
   - board/kicad/e1-phone/component-envelope-fit-audit.yaml
   - board/kicad/e1-phone/display-fit.yaml
 browser_revalidation_context:
@@ -53,6 +54,20 @@ browser_revalidation_context:
     alibaba_display_alternate_result: direct Alibaba product URL opened but machine-readable page body returned no
       parseable product lines in this environment; keep as alternate shortlist evidence only until supplier RFQ response
       or a parseable product page is available
+    alibaba_display_alternate_search_result_now_parseable:
+      - META 055WU01 model number
+      - 5.5 inch 1080x1920 TFT LCD with capacitive touch
+      - MIPI 4-lane interface and MIPI 40-pin signal interface
+      - 68.04 x 120.96 mm active area
+      - 1000 cd/m2 typical brightness signal
+      - MOQ 1 piece and 10 business day single-piece lead-time signal
+    made_in_china_amoled_alternate_search_result_now_parseable:
+      - E549-HC01/RM67191 or RM67195-class 5.5 inch AMOLED listings remain visible
+      - 1080x1920 resolution and MIPI 4-lane interface
+      - 68.299 x 121.421 mm or 68.31 x 121.44 mm active area class
+      - 70.66 x 128.36 x 0.82 mm or 70.41 x 128.29 x 0.77 mm outline class
+      - on-cell/touch-display options and mobile phone/smartphone application signals
+      - GT1151 touch IC or equivalent on-cell touch-controller signal on parseable listing
 revalidated_sources:
   - id: display_primary_chenghao_ch550fh01a_ct
     group: display
@@ -107,6 +122,48 @@ revalidated_sources:
       storage_temp_c: [-30, 80]
     board_decision: bind_public_driver_and_touch_controller_fields_to_display_rfq_not_release
     blocking_gap: pdf_is_public_reference_not_signed_supplier_drawing_or_final_fpc_pinout
+  - id: display_alternate_alibaba_meta_055wu01
+    group: display
+    source_type: alibaba_search_result_parseable_2026_05_21
+    supplier: META Display LLC
+    url: https://www.alibaba.com/product-detail/5-5-Inch-TFT-LCD-Display_1601425016323.html
+    candidate: 055WU01
+    observed_public_fields:
+      model: 055WU01
+      resolution: 1080x1920
+      interface: MIPI_4_lane
+      signal_interface: MIPI_40_pins
+      active_area_mm:
+        width: 68.04
+        height: 120.96
+      brightness_typ_cd_m2: 1000
+      minimum_order_signal_pieces: 1
+      single_piece_lead_time_business_days: 10
+    board_decision: keep_as_brightness_and_40pin_display_alternate_shortlist_only
+    blocking_gap: outline_fpc_exit_signed_drawing_mating_connector_step_model_and_sample_inspection_missing
+  - id: display_alternate_made_in_china_e549_amoled
+    group: display
+    source_type: made_in_china_search_result_parseable_2026_05_21
+    supplier: Shenzhen Dayuan Display Technology / FET-class suppliers
+    url: https://fetoled.en.made-in-china.com/product/RwKmavZJCtcS/China-5-5-Inch-Hight-Resolution-1080X1920-Amoled-Display-Screen-with-Mipi.html
+    candidate: E549-HC01_RM67191_AMOLED_class
+    observed_public_fields:
+      model: E549-HC01
+      resolution: 1080x1920
+      interface: MIPI_4_lane
+      driver_ic: RM67191
+      touch_ic: GT1151
+      touch_screen: on_cell
+      active_area_mm:
+        width: 68.299
+        height: 121.421
+      outline_mm:
+        width: 70.66
+        height: 128.36
+        thickness: 0.82
+      application_signal: mobile_phone
+    board_decision: keep_as_thin_z_height_amoled_alternate_shortlist_only
+    blocking_gap: exact_touch_stack_power_sequence_fpc_pinout_step_model_and_sample_inspection_missing
   - id: rear_camera_primary_sincere_first_ov13855
     group: camera
     source_type: direct_made_in_china_page_opened_2026_05_21
@@ -169,6 +226,8 @@ revalidated_sources:
 layout_decisions:
   primary_display: Chenghao_CH550FH01A_CT_remains_primary_screen_anchor
   primary_display_pdf: use_public_pdf_for_driver_touch_and_interface_rfq_fields_only
+  alibaba_display_meta_055wu01: keep_as_parseable_brightness_40pin_alternate_not_primary_without_outline_and_supplier_pack
+  made_in_china_e549_amoled: keep_as_thin_z_height_amoled_alternate_not_primary_without_touch_stack_and_supplier_pack
   rear_camera: Sincere_First_OV13855_class_remains_rear_primary_pending_supplier_pack
   front_camera: Sincere_First_GC5035_class_remains_front_primary_pending_supplier_pack
   alibaba_junde_imx219: not_promoted_due_to_25x24_mm_envelope_and_parser_inaccessibility
@@ -192,6 +251,47 @@ rfq_readiness_matrix:
       - provide HX8399C initialization sequence, GT911 touch configuration, backlight current, and bias rail limits
       - quote 10, 100, and 1000 piece lots plus five engineering samples with lead time
     route_release_dependency: J_DISPLAY_TOUCH symbol_footprint_and_MIPI_DSI_route_remain_blocked_until_supplier_pack_received
+    rfq_ready_from_public_page: true
+    production_release_ready: false
+  display_alibaba_alternate:
+    primary_source_id: display_alternate_alibaba_meta_055wu01
+    marketplace_channel: Alibaba
+    supplier_contact_target: META Display LLC
+    candidate_to_quote: 055WU01_5p5_1080x1920_MIPI_40pin_CTP
+    observed_quote_basis:
+      public_active_area_mm:
+        width: 68.04
+        height: 120.96
+      public_brightness_typ_cd_m2: 1000
+      public_signal_interface: MIPI_40_pins
+      public_minimum_order_signal_pieces: 1
+    supplier_questions_to_send:
+      - confirm exact 055WU01 orderable MPN, lifecycle status, and whether 40 pin signal interface is pin-compatible with the selected display FPC connector strategy
+      - provide signed outline drawing, FPC exit, pin-1 datum, cover-lens datum, mating connector MPN, recommended land pattern, and STEP model
+      - provide panel initialization sequence, touch-controller IC/configuration, backlight or bias rail requirements, and sample lead time
+    route_release_dependency: J_DISPLAY_TOUCH alternate_40pin_DSI_route_and_connector_variant_remain_blocked_until_supplier_pack_received
+    rfq_ready_from_public_page: true
+    production_release_ready: false
+  display_amoled_alternate:
+    primary_source_id: display_alternate_made_in_china_e549_amoled
+    marketplace_channel: Made-in-China
+    supplier_contact_target: Shenzhen Dayuan Display Technology / FET-class suppliers
+    candidate_to_quote: E549-HC01_RM67191_5p5_1080x1920_MIPI_AMOLED
+    observed_quote_basis:
+      public_outline_mm:
+        width: 70.66
+        height: 128.36
+        thickness: 0.82
+      public_active_area_mm:
+        width: 68.299
+        height: 121.421
+      public_driver_ic: RM67191
+      public_touch_ic: GT1151
+    supplier_questions_to_send:
+      - confirm exact E549-HC01 or pin-compatible AMOLED orderable MPN, lifecycle, touch stack, and mobile-phone cover-lens integration options
+      - provide signed 2D drawing, FPC pinout, mating connector MPN, recommended land pattern, STEP model, and power-sequence limits
+      - quote 10, 100, and 1000 piece lots plus five samples with luminance, burn-in, and touch-controller configuration data
+    route_release_dependency: AMOLED_display_branch_power_bias_touch_stack_connector_and_enclosure_clearance_remain_blocked_until_supplier_pack_received
     rfq_ready_from_public_page: true
     production_release_ready: false
   rear_camera:
@@ -258,6 +358,9 @@ cross_checks:
   made_in_china_primary_display_verified: true
   display_pdf_datasheet_matches_primary_outline: true
   display_pdf_adds_driver_touch_controller_rfq_fields: true
+  alibaba_display_alternate_now_parseable_for_shortlist: true
+  made_in_china_amoled_alternate_now_parseable_for_shortlist: true
+  display_alternates_remain_blocked_for_supplier_packs: true
   made_in_china_primary_camera_sources_verified: true
   alibaba_camera_alternate_not_promoted: true
   requires_quote_drawing_samples_before_release: true

@@ -33,8 +33,12 @@ OS_COMMON = WORKSPACE / "os/android/vendor/eliza/eliza_common.mk"
 OS_PERMISSION_DIR = WORKSPACE / "os/android/vendor/eliza/permissions"
 LOCAL_MANIFEST = ROOT / "sw/aosp-device/local_manifests/eliza.xml"
 REPORT = ROOT / "build/reports/android_system_bridge_contract.json"
+RUNTIME_EVIDENCE = ROOT / "docs/evidence/android/system_bridge_runtime_evidence.json"
+RUNTIME_CAPTURE = ROOT / "scripts/android/capture_system_bridge_runtime_evidence.py"
 SCHEMA = "eliza.android_system_bridge_contract.v1"
-CLAIM_BOUNDARY = "static_system_bridge_contract_only_not_runtime_system_control_evidence"
+CLAIM_BOUNDARY = "system_bridge_static_contract_and_runtime_evidence_not_full_launcher_claim"
+RUNTIME_SCHEMA = "eliza.android_system_bridge_runtime_evidence.v1"
+RUNTIME_CLAIM_BOUNDARY = "booted_android_system_bridge_runtime_evidence_only"
 BRIDGE_PACKAGE = "ai.elizaos.system.bridge"
 EXPECTED_BRIDGE_MODULES = {
     "ElizaSystemBridge",
@@ -137,6 +141,14 @@ def privapp_permission_grants(path: Path) -> tuple[str | None, set[str]]:
     return package, permissions
 
 
+def load_json(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(read_text(path))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 def add_if(
     findings: list[Finding],
     condition: bool,
@@ -159,6 +171,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         BRIDGE_CONTRACT,
         OS_COMMON,
         LOCAL_MANIFEST,
+        RUNTIME_CAPTURE,
     )
     findings: list[Finding] = []
     for path in inputs:
@@ -288,6 +301,84 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         f"channel_count={len(channels)} channels={sorted(channels)}",
         "Keep Wi-Fi, cell, audio, battery, time, connectivity, power, settings, and lockscreen channels in the contract.",
     )
+    runtime_evidence = load_json(RUNTIME_EVIDENCE) if RUNTIME_EVIDENCE.is_file() else {}
+    add_if(
+        findings,
+        not RUNTIME_EVIDENCE.is_file(),
+        "system_bridge_runtime_evidence_missing",
+        "booted Android system bridge runtime evidence is missing",
+        rel(RUNTIME_EVIDENCE),
+        "Run scripts/android/capture_system_bridge_runtime_evidence.py against the selected AOSP/chip-emulator target to prove the bridge package is installed, service is registered, privapp permissions are granted, the JS bridge is bound, launcher consumes live state, and logs are clean.",
+    )
+    if runtime_evidence:
+        add_if(
+            findings,
+            runtime_evidence.get("schema") != RUNTIME_SCHEMA,
+            "system_bridge_runtime_schema_mismatch",
+            "booted Android system bridge runtime evidence has the wrong schema",
+            f"schema={runtime_evidence.get('schema')!r}",
+            f"Regenerate runtime evidence with schema {RUNTIME_SCHEMA}.",
+        )
+        add_if(
+            findings,
+            runtime_evidence.get("claim_boundary") != RUNTIME_CLAIM_BOUNDARY,
+            "system_bridge_runtime_claim_boundary_mismatch",
+            "booted Android system bridge runtime evidence has the wrong claim boundary",
+            f"claim_boundary={runtime_evidence.get('claim_boundary')!r}",
+            f"Regenerate runtime evidence with claim_boundary {RUNTIME_CLAIM_BOUNDARY}.",
+        )
+        add_if(
+            findings,
+            runtime_evidence.get("status") != "PASS",
+            "system_bridge_runtime_status_not_pass",
+            "booted Android system bridge runtime evidence does not record status=PASS",
+            f"status={runtime_evidence.get('status')!r}",
+            "Regenerate runtime evidence from a booted target after every bridge runtime assertion passes.",
+        )
+        add_if(
+            findings,
+            runtime_evidence.get("result") not in (0, "0"),
+            "system_bridge_runtime_result_not_zero",
+            "booted Android system bridge runtime evidence does not record result=0",
+            f"result={runtime_evidence.get('result')!r}",
+            "Regenerate runtime evidence from a successful capture; blocked or failed captures must not satisfy this contract.",
+        )
+        required_true = {
+            "sys_boot_completed",
+            "package_installed",
+            "service_registered",
+            "privapp_permissions_granted",
+            "js_bridge_bound",
+            "launcher_consumed_live_state",
+            "production_mock_fallback_absent",
+        }
+        missing_true = sorted(
+            key for key in required_true if runtime_evidence.get(key) is not True
+        )
+        add_if(
+            findings,
+            bool(missing_true),
+            "system_bridge_runtime_evidence_incomplete",
+            "booted Android system bridge runtime evidence does not prove every required live bridge marker",
+            f"missing_or_false={missing_true}",
+            "Regenerate system bridge runtime evidence with boot completion, package install path, service registration, permission grants, JS bridge binding, live-state UI consumption, and no production mock fallback.",
+        )
+        add_if(
+            findings,
+            runtime_evidence.get("logcat_crash_count") not in (0, "0"),
+            "system_bridge_runtime_logcat_crashes",
+            "system bridge runtime evidence reports logcat crashes",
+            f"logcat_crash_count={runtime_evidence.get('logcat_crash_count')!r}",
+            "Fix bridge/launcher crashes and recapture a clean logcat summary.",
+        )
+        add_if(
+            findings,
+            runtime_evidence.get("selinux_denial_count") not in (0, "0"),
+            "system_bridge_runtime_selinux_denials",
+            "system bridge runtime evidence reports SELinux denials",
+            f"selinux_denial_count={runtime_evidence.get('selinux_denial_count')!r}",
+            "Fix bridge SELinux policy and recapture denial-free runtime evidence.",
+        )
 
     evidence: dict[str, object] = {
         "bridge_package": package,
@@ -298,6 +389,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "privapp_permission_files": [rel(path) for path in priv_files],
         "manifest_permissions": sorted(manifest_permissions),
         "privapp_grants": sorted(priv_grants),
+        "runtime_evidence": rel(RUNTIME_EVIDENCE),
+        "runtime_evidence_present": RUNTIME_EVIDENCE.is_file(),
+        "runtime_capture": rel(RUNTIME_CAPTURE),
     }
     return payload(findings, evidence)
 

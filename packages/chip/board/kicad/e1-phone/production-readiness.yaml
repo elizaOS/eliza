@@ -14,6 +14,7 @@ source_artifacts:
   - board/kicad/e1-phone/evt1-stackup-impedance-coupon-plan.yaml
   - board/kicad/e1-phone/supplier-rfq-intake.yaml
   - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/manufacturing-closure.yaml
   - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
@@ -98,6 +99,58 @@ production_output_requirements:
   - DFM/DFA report from selected fab and assembler
   - first-article traveler, current-limit table, and stop-on-fail instructions
 
+selected_supplier_response_production_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_define_avl_bom_factory_and_production_release_inputs
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_production_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  selected_response_pack_count: 7
+  required_response_fields:
+    - orderable_manufacturer_part_number
+    - lifecycle_status
+    - MOQ
+    - unit_price_10
+    - unit_price_100
+    - unit_price_1000
+    - lead_time_days_10
+    - lead_time_days_100
+    - lead_time_days_1000
+    - signed_2d_drawing_path
+    - pinout_or_pad_map_path
+    - recommended_land_pattern_path
+    - step_or_brep_model_path
+    - compliance_pack_index_path
+    - sample_lot_tracking
+    - approved_by_ee
+    - approved_by_me
+    - approved_by_ops
+  production_inputs_blocked:
+    - production BOM and AVL cannot name approved orderable MPNs, substitutes, lifecycle, MOQ, price breaks, or lead times
+    - assembly drawings cannot bind supplier pad maps, recommended land patterns, courtyards, STEP models, or inspection datums
+    - factory limits cannot be derived from supplier samples, electrical specs, compliance packs, RF modular grants, or first-article measurements
+    - DFM/DFA and stackup release cannot close without supplier reference layouts, keepouts, and enclosure datum packs
+    - EVT1 buy release cannot proceed until EE, ME, and Ops approve the normalized selected response packs
+  required_production_outputs_blocked:
+    - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+    - assembly drawing with polarity, shield, keepout, do-not-populate, and inspection notes
+    - board STEP exported from routed KiCad with supplier 3D models
+    - DFM/DFA report from selected fab and assembler
+    - first-article traveler, current-limit table, and stop-on-fail instructions
+  all_selected_supplier_response_packs_absent: true
+  production_release_allowed_without_selected_supplier_packs: false
+
 selected_hardware_production_constraints:
   status: blocked_until_selected_hardware_stackup_coupon_factory_and_avl_evidence_exist
   function_count: 5
@@ -155,6 +208,7 @@ selected_hardware_production_constraints:
 
 release_blockers:
   - real supplier footprints and pinouts missing
+  - selected supplier response packs with orderable MPNs, AVL/BOM fields, supplier drawings, land patterns, STEP/B-rep models, samples, and approvals are missing
   - routed copper and filled zones missing
   - ERC/DRC evidence missing
   - stackup and impedance coupon quote missing

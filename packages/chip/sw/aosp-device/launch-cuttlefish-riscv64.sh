@@ -258,7 +258,7 @@ if [ "$launcher" = cvd ]; then
 		--boot_slot=a \
 		--start_webrtc=false \
 		--netsim=false \
-		--enable_wifi=false \
+		--enable_wifi=true \
 		--enable_tap_devices=false \
 		--noresume \
 		--data_policy=always_create \
@@ -274,7 +274,7 @@ else
 		--boot_slot=a \
 		--start_webrtc=false \
 		--netsim=false \
-		--enable_wifi=false \
+		--enable_wifi=true \
 		--enable_tap_devices=false \
 		--noresume \
 		--data_policy=always_create \

@@ -21,9 +21,10 @@ Notes:
   payload** (`--all-records`), not a small fast-verification sample. Designs that
   lack the required DEF/LEF/netlist files are skipped fail-closed (e.g. EDALearn
   converts the 68 of 85 design dirs that carry the required collateral).
-- CircuitNet 3.0 is owned by a separate workstream; only 8 payload files are
-  present locally, so its 16-case conversion is bounded by the local payload, and
-  the full 2004-case set remains a `--sample-limit` knob, not a code gap.
+- CircuitNet 3.0 is owned by a separate workstream. The full `circuitNetv3.zip`
+  payload is present locally and all 2004 `dataset/Final` cases are converted via
+  `--all-records` into `build/ai_eda/circuitnet3/validation/records`. The
+  `--sample-limit 16` smoke path remains for fast schema verification only.
 - No full external dataset is committed. Contamination/overlap audit between
   public training corpora and any E1 evaluation is a standing requirement before
   a model-guided change is accepted.

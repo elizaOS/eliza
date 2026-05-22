@@ -61,7 +61,8 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
         )
         linux_agent_hook = write(
             os_rv64 / "config/hooks/normal/0010-elizaos-agent.hook.chroot",
-            '{"stage": "placeholder", "provenance": "scaffolding"}\n',
+            '{"stage": "placeholder", "provenance": "scaffolding"}\n'
+            "install_fallback_payload() { echo elizaos-fallback > fallback_agent.py; }\n",
         )
         linux_unit = write(
             os_rv64 / "config/includes.chroot/etc/systemd/system/elizaos-agent.service",
@@ -113,6 +114,7 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
         self.assertIn("android_riscv64_bun_payload_is_url_only", codes)
         self.assertIn("linux_rv64_agent_install_is_placeholder", codes)
         self.assertIn("linux_rv64_status_later_agent_binary_marker", codes)
+        self.assertIn("linux_rv64_fallback_agent_can_satisfy_health", codes)
         self.assertIn("linux_rv64_agent_unit_has_no_health_probe", codes)
         self.assertIn("linux_rv64_manifest_missing_agent_health_evidence", codes)
         self.assertIn("linux_rv64_does_not_consume_shared_bun_payload", codes)

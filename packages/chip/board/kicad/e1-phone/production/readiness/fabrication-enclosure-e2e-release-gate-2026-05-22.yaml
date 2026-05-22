@@ -1,0 +1,261 @@
+schema: eliza.e1_phone_fabrication_enclosure_e2e_release_gate.v1
+status: blocked_fail_closed
+date: '2026-05-22'
+claim_boundary: Top-level release gate for E1 phone fabrication, enclosure, factory first-article, and
+  end-to-end phone readiness. This report only aggregates existing fail-closed evidence and cannot create
+  supplier, routed PCB, mechanical, factory, bench, or release approval evidence.
+inputs:
+  release_evidence_content_contract: board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+  release_evidence_validation_dry_run: board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
+  routed_board_release_acceptance_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  first_article_bench_acceptance_matrix: board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml
+  production_factory_required_output_presence_inventory: board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
+  mechanical_cad_evidence_inventory: mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
+  end_to_end_readiness: board/kicad/e1-phone/end-to-end-readiness.yaml
+  objective_completion_audit: board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
+  board_step_readiness: mechanical/e1-phone/review/board-step-readiness.json
+  routed_board_clearance: mechanical/e1-phone/review/routed-board-clearance.json
+  report_path: board/kicad/e1-phone/production/readiness/fabrication-enclosure-e2e-release-gate-2026-05-22.yaml
+summary:
+  release_gate_count: 4
+  open_release_gate_count: 0
+  blocked_release_gate_count: 4
+  fabrication_release_allowed: false
+  enclosure_release_allowed: false
+  factory_first_article_allowed: false
+  end_to_end_release_allowed: false
+  total_blocker_count: 28
+  release_state: blocked_fail_closed
+release_gates:
+- id: fabrication_release
+  fabrication_release_allowed: false
+  release_allowed: false
+  status: blocked_fail_closed
+  source_reports:
+  - board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+  - board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
+  - board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  - board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
+  - board/kicad/e1-phone/end-to-end-readiness.yaml
+  - board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
+  blocker_count: 8
+  blockers:
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+    metric: validated_artifact_content_requirement_count
+    current_value: 0
+    required_value: 413
+    reason: no release evidence row is validated and approved yet
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+    metric: template_content_requirement_count
+    current_value: 6
+    required_value: 0
+    reason: template artifacts still appear in the required evidence surface
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
+    metric: blocked_row_count
+    current_value: 413
+    required_value: 0
+    reason: dry-run validator rejects all missing, template, presence-only, unapproved, or placeholder
+      evidence rows
+  - source: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+    metric: missing_required_output_path_count
+    current_value: 44
+    required_value: 0
+    reason: routed board, ERC/DRC, SI/PI/RF, fab, assembly, and STEP outputs are not complete
+  - source: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+    metric: missing_validation_evidence_category_count
+    current_value: 5
+    required_value: 0
+    reason: routed validation evidence categories are still missing
+  - source: board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
+    metric: missing_required_output_path_count
+    current_value: 56
+    required_value: 0
+    reason: production/factory output package is absent
+  - source: board/kicad/e1-phone/end-to-end-readiness.yaml
+    metric: ready_to_fabricate
+    current_value: false
+    required_value: true
+    reason: end-to-end readiness still forbids fabrication release
+  - source: board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
+    metric: fabrication_ready
+    current_value: false
+    required_value: true
+    reason: objective audit records fabrication readiness as incomplete
+  required_clearance:
+  - all source reports are non-blocked
+  - all required artifacts are present
+  - all content rows are validated, non-template, non-presence-only, and approved
+  - routed PCB, routed STEP, mechanical clearance, factory outputs, first article, and end-to-end decision
+    agree
+- id: enclosure_release
+  enclosure_release_allowed: false
+  release_allowed: false
+  status: blocked_fail_closed
+  source_reports:
+  - board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+  - board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
+  - mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
+  - mechanical/e1-phone/review/board-step-readiness.json
+  - mechanical/e1-phone/review/routed-board-clearance.json
+  - board/kicad/e1-phone/end-to-end-readiness.yaml
+  - board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
+  blocker_count: 8
+  blockers:
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+    metric: validated_artifact_content_requirement_count
+    current_value: 0
+    required_value: 413
+    reason: no release evidence row is validated and approved yet
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+    metric: template_content_requirement_count
+    current_value: 6
+    required_value: 0
+    reason: template artifacts still appear in the required evidence surface
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
+    metric: blocked_row_count
+    current_value: 413
+    required_value: 0
+    reason: dry-run validator rejects all missing, template, presence-only, unapproved, or placeholder
+      evidence rows
+  - source: mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
+    metric: missing_required_evidence_count
+    current_value: 5
+    required_value: 0
+    reason: routed-board STEP, supplier geometry, clearance, physical fit, and process evidence are missing
+  - source: mechanical/e1-phone/review/board-step-readiness.json
+    metric: status
+    current_value: blocked_concept_pcb_no_routed_step
+    required_value: pass
+    reason: mechanical review has no routed-board STEP intake
+  - source: mechanical/e1-phone/review/routed-board-clearance.json
+    metric: status
+    current_value: blocked_waiting_for_routed_board_step
+    required_value: pass
+    reason: mechanical review has no routed-board clearance rerun
+  - source: board/kicad/e1-phone/end-to-end-readiness.yaml
+    metric: ready_for_enclosure
+    current_value: false
+    required_value: true
+    reason: end-to-end readiness still forbids enclosure release
+  - source: board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
+    metric: enclosure_ready
+    current_value: false
+    required_value: true
+    reason: objective audit records enclosure readiness as incomplete
+  required_clearance:
+  - all source reports are non-blocked
+  - all required artifacts are present
+  - all content rows are validated, non-template, non-presence-only, and approved
+  - routed PCB, routed STEP, mechanical clearance, factory outputs, first article, and end-to-end decision
+    agree
+- id: factory_first_article
+  factory_first_article_allowed: false
+  release_allowed: false
+  status: blocked_fail_closed
+  source_reports:
+  - board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+  - board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
+  - board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
+  - board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml
+  - board/kicad/e1-phone/end-to-end-readiness.yaml
+  blocker_count: 7
+  blockers:
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+    metric: validated_artifact_content_requirement_count
+    current_value: 0
+    required_value: 413
+    reason: no release evidence row is validated and approved yet
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+    metric: template_content_requirement_count
+    current_value: 6
+    required_value: 0
+    reason: template artifacts still appear in the required evidence surface
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
+    metric: blocked_row_count
+    current_value: 413
+    required_value: 0
+    reason: dry-run validator rejects all missing, template, presence-only, unapproved, or placeholder
+      evidence rows
+  - source: board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
+    metric: missing_required_output_path_count
+    current_value: 56
+    required_value: 0
+    reason: factory outputs, fixture, limits, calibration, and traceability are absent
+  - source: board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml
+    metric: missing_required_non_template_row_count
+    current_value: 61
+    required_value: 0
+    reason: executed bench logs and first-article traveler are missing
+  - source: board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml
+    metric: template_row_count
+    current_value: 6
+    required_value: 0
+    reason: template-only first-article records cannot unlock release
+  - source: board/kicad/e1-phone/end-to-end-readiness.yaml
+    metric: ready_for_factory_test
+    current_value: false
+    required_value: true
+    reason: end-to-end readiness still forbids factory-test release
+  required_clearance:
+  - all source reports are non-blocked
+  - all required artifacts are present
+  - all content rows are validated, non-template, non-presence-only, and approved
+  - routed PCB, routed STEP, mechanical clearance, factory outputs, first article, and end-to-end decision
+    agree
+- id: end_to_end_phone_release
+  end_to_end_release_allowed: false
+  release_allowed: false
+  status: blocked_fail_closed
+  source_reports:
+  - board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+  - board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
+  - board/kicad/e1-phone/end-to-end-readiness.yaml
+  - board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
+  blocker_count: 5
+  blockers:
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+    metric: validated_artifact_content_requirement_count
+    current_value: 0
+    required_value: 413
+    reason: no release evidence row is validated and approved yet
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+    metric: template_content_requirement_count
+    current_value: 6
+    required_value: 0
+    reason: template artifacts still appear in the required evidence surface
+  - source: board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
+    metric: blocked_row_count
+    current_value: 413
+    required_value: 0
+    reason: dry-run validator rejects all missing, template, presence-only, unapproved, or placeholder
+      evidence rows
+  - source: board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
+    metric: blocked_requirement_count
+    current_value: 3
+    required_value: 0
+    reason: objective audit still has blocked fabrication, enclosure, and end-to-end requirements
+  - source: board/kicad/e1-phone/end-to-end-readiness.yaml
+    metric: end_to_end_phone_ready
+    current_value: false
+    required_value: true
+    reason: end-to-end readiness decision remains false
+  required_clearance:
+  - all source reports are non-blocked
+  - all required artifacts are present
+  - all content rows are validated, non-template, non-presence-only, and approved
+  - routed PCB, routed STEP, mechanical clearance, factory outputs, first article, and end-to-end decision
+    agree
+hard_stop_conditions:
+- source status starts with blocked
+- missing required routed or factory output count is nonzero
+- required artifact content is template-only, presence-only, unvalidated, or unapproved
+- board STEP intake uses concept/demo evidence instead of routed-board evidence
+- routed-board clearance rerun is missing
+- first-article transcript or traveler is missing
+- supplier-returned geometry, drawings, and traceability are absent or unvalidated
+forbidden_claims:
+- fabrication_ready
+- enclosure_ready
+- factory_ready
+- first_article_passed
+- end_to_end_phone_ready

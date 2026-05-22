@@ -134,6 +134,16 @@ Status: generated part index and contact sheet for every assembly part.
 - `soc_shield_can`: role `EMI shield`, span [18.0, 16.0, 1.2] mm, material stamped RF/SoC shield can
 - `pmic_shield_can`: role `EMI shield`, span [11.0, 10.0, 1.1] mm, material stamped PMIC shield can
 - `radio_shield_can`: role `EMI shield`, span [18.0, 20.0, 1.2] mm, material stamped radio shield can
+- `cellular_lga_module_keepout`: role `cellular module`, span [29.0, 32.0, 2.4] mm, material Quectel RG255C RedCap LGA module
+- `wifi_bt_module_keepout`: role `Wi-Fi/Bluetooth module`, span [12.5, 9.4, 1.2] mm, material Murata Type 2EA Wi-Fi 6E + Bluetooth module
+- `soc_package_marker`: role `PCB component marker`, span [13.0, 13.0, 0.24] mm, material visual marker for application processor package under SoC shield
+- `dram_package_marker`: role `PCB component marker`, span [9.5, 8.0, 0.22] mm, material visual marker for LPDDR memory package near SoC
+- `storage_package_marker`: role `PCB component marker`, span [11.5, 9.0, 0.22] mm, material visual marker for eMMC/UFS storage package
+- `pmic_package_marker`: role `PCB component marker`, span [7.0, 7.0, 0.22] mm, material visual marker for PMIC package under power shield
+- `rf_transceiver_package_marker`: role `PCB component marker`, span [7.5, 7.5, 0.22] mm, material visual marker for RF transceiver/front-end package under radio shield
+- `gnss_lna_package_marker`: role `PCB component marker`, span [3.0, 2.5, 0.2] mm, material visual marker for GNSS/RF low-noise amplifier placement
+- `wifi_bt_rf_feed_coax_stub`: role `RF feed`, span [10.0, 0.45, 0.35] mm, material concept coax/feed stub from Wi-Fi/Bluetooth module toward side antenna keepout
+- `cellular_rf_feed_coax_stub`: role `RF feed`, span [0.45, 15.0, 0.35] mm, material concept coax/feed stub from cellular module toward top antenna keepout
 - `haptic_lra`: role `haptics`, span [6.0, 12.0, 2.5] mm, material compact 0612 X-axis linear resonant actuator
 - `sim_tray_keepout`: role `service`, span [14.5, 22.0, 2.0] mm, material side SIM tray keepout
 - `sim_tray_outline`: role `service`, span [0.8, 18.0, 4.0] mm, material orange side service tray outline

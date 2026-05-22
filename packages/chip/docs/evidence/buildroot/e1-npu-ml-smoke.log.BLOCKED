@@ -1,11 +1,25 @@
-BLOCKED: target-side Buildroot hello-npu-ml-smoke transcript is missing.
+BLOCKED: target-side Buildroot e1-npu-ml-smoke transcript is missing.
 
-Required capture command:
-HELLO_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/hello-npu-ml-smoke --device /dev/hello-npu' sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke
+reason: /usr/bin/e1-npu-ml-smoke opens /dev/e1-npu and drives a real GEMM_S8
+  tile through the e1 NPU ioctl ABI (E1_NPU_IOC_GET_CONTRACT,
+  E1_NPU_IOC_RUN_CMD RELU4_S8, E1_NPU_IOC_RUN_GEMM_S8, E1_NPU_IOC_GET_COUNTERS),
+  rejecting any CPU-only fallback and requiring the hardware to return the
+  reference result [[-44,8],[139,-54]]. This needs the eliza,e1-npu MMIO
+  register block at E1_NPU_BASE=0x10020000 to exist and execute the workload.
+  No available simulation target models the e1 NPU: qemu-system-riscv64 -M virt
+  has no eliza,e1-npu device, and the Renode platform
+  (sim/renode/eliza_e1.repl) models only CPU, RAM, UART, PLIC, and CLINT. The
+  smoke therefore cannot PASS without e1 silicon, an e1 NPU QEMU device model,
+  or an RTL co-simulation that implements the NPU register block.
 
-Required validation command:
-python3 scripts/check_software_bsp.py buildroot --require-evidence
+required capture command (on a target that exposes /dev/e1-npu):
+  E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' \
+    sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke
+
+required validation command:
+  python3 scripts/check_software_bsp.py buildroot --require-evidence
 
 This marker is not release evidence. Replace it only with a real transcript at
-docs/evidence/buildroot/hello-npu-ml-smoke.log captured from the built Buildroot
-rootfs running on the target or simulator.
+docs/evidence/buildroot/e1-npu-ml-smoke.log captured from a target or simulator
+that actually instantiates the eliza,e1-npu platform device and executes the
+GEMM_S8 workload in hardware.

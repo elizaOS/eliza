@@ -1,3 +1,0 @@
-reason: no Buildroot output/images/ manifest yet because no build has run
-required: after a successful `make BR2_EXTERNAL=...`, capture `find output/images -maxdepth 1 -type f -print | tee docs/evidence/buildroot/openphone_hello_image_manifest.txt`
-audit: docs/android/bsp-critical-gap-audit-2026-05-17.md

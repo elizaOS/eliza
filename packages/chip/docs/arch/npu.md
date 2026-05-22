@@ -713,7 +713,10 @@ Additional registers:
 | `0x24` | `GEMM_BASE` | GEMM byte bases: `A[5:0]`, `B[13:8]`, `C[21:16]`; VRELU byte bases: `SRC[5:0]`, `DST[13:8]` |
 | `0x28` | `GEMM_STRIDE` | byte strides: `A[3:0]`, `B[11:8]`, `C[19:16]` |
 | `0x2c` | `PERF_UNSUPPORTED_OPS` | unsupported opcode/configuration counter |
-| `0x30` | `CMD_PARAM` | bit 0 selects descriptor-submission mode; bit 1 selects BitNet ternary decode for the next `DOT16_S2` dispatch |
+| `0x30` | `CMD_PARAM` | bit 0 selects descriptor-submission mode; bit 1 selects BitNet ternary decode for the next `DOT16_S2` dispatch; `[31:12]` carries the owner-domain token checked at doorbell time when the NPU is owned-private and locked (see Confidential-I/O) |
+| `0x34` | `SEC_OWNER_CFG` | write (monitor-only, only while unlocked): `OWNER[19:0]` owning confidential domain, bit 30 perf-lock policy, bit 31 owned-private. Read: `OWNER[19:0]`, bit 30 perf-lock, bit 31 owned |
+| `0x38` | `SEC_LOCK` | write 1 to bit 0 to set the sticky W1S monitor-programming lock; freezes ownership/perf-lock policy until reset |
+| `0x3c` | `SEC_STATUS` | read-only: bit 0 owned, bit 1 perf-lock, bit 2 perf-hidden (owned & perf-lock), bit 4 lock; `[31:8]` fixed NPU source ID (`0x000004`) |
 | `0x40` | `DESC_BASE` | descriptor ring base; must be 32-bit aligned |
 | `0x44` | `DESC_HEAD` | software producer index, 3 bits |
 | `0x48` | `DESC_TAIL` | hardware/software consumer index, 3 bits |
@@ -777,6 +780,60 @@ the word-aligned GEMM output tile from scratchpad to the descriptor word-2
 destination address through the NPU AXI-Lite write master, and update
 `DESC_BYTES_WRITTEN`/`DESC_WRITE_BEATS`. Scalar writeback, vector writeback,
 unaligned destinations, and non-word-sized writebacks still fail closed.
+
+### Confidential-I/O hooks (source-ID tag, private queue, perf lockdown)
+
+These hooks implement the NPU half of
+`docs/security/tee-plan/03-secure-io-iommu-npu.md` S4 (NPU as confidential I/O).
+They are RTL-resident in `rtl/npu/e1_npu.sv`; the source-ID/domain sideband ports
+are compiled in by defining `E1_NPU_SECURE_SIDEBAND` (mirroring `USE_POWER_PINS`
+in `e1_npu_weight_buffer_array.sv`), so the current `e1_soc_top` instantiation —
+which has not yet been re-homed from the AXI-Lite path onto an IOMMU upstream
+port (the open RTL item, S6.x) — keeps a valid pin list. The
+`verify/cocotb/npu/test_npu_confidential_io.py` KAT and the
+`npu-accelerator-check` gate (`scripts/check_npu_accelerator.py`) exercise the
+sideband build.
+
+**Source-ID / domain tag (IOMMU + IOPMP binding).** Every outbound NPU access
+(descriptor fetch, tensor stream, writeback) carries:
+
+- `m_axil_arsource` / `m_axil_awsource` = the fixed 24-bit `NPU_SOURCE_ID`
+  (`0x000004`). The confidential-domain monitor binds this constant to a device
+  context in the RISC-V IOMMU DDT (`ar_devid`/`aw_devid` on
+  `rtl/iommu/e1_riscv_iommu.sv`) and to a locked source-ID region set in the
+  IOPMP (`rtl/iommu/e1_iopmp.sv` source-ID-gated R/W/X table). It is a build-time
+  constant so the IOMMU/IOPMP/MTT policy can reference it independent of the
+  descriptor contents the host programs.
+- `m_axil_ardomain` / `m_axil_awdomain` = the 20-bit owning-domain ID (the IOMMU
+  `ar_pasid`/`aw_pasid` PASID); `0` when unowned. This is what lets the IOMMU
+  G-stage walk confine the NPU to that domain's `device-assigned` `private` pages
+  and is the tag the memory-translation table (MTT) uses to scope tensor pages.
+- `m_axil_secure` = asserted when the NPU is owned-private, the IOPMP
+  secure-transaction qualifier.
+
+`SEC_STATUS` (`0x3c`) exposes the source ID and ownership read-only so the
+monitor / IOMMU DC installer can confirm the binding (`npu_owner_domain` /
+`npu_owned` are also brought out as observation ports).
+
+**Private command queue (ownership gate).** The monitor assigns the NPU to a
+domain by writing `SEC_OWNER_CFG` (`0x34`) with the owner domain and perf-lock
+policy, then setting the sticky `SEC_LOCK` (`0x38`). While owned-private and
+locked, a doorbell (`CMD_PARAM[0]` + `CTRL_STATUS.start`) must present the owning
+domain in `CMD_PARAM[31:12]`; a mismatched or host doorbell is rejected with
+`DESC_STATUS.owner_error` (bit 6, code `0x40`), increments `PERF_ERRORS`, and
+never starts a descriptor fetch or advances `DESC_TAIL`. Reset is the only revoke
+path (S4.3): it returns the NPU to unowned/unlocked so a fresh measured launch
+can reprogram ownership.
+
+**Perf-counter lockdown.** When owned-private with the perf lock armed
+(`SEC_STATUS.perf_hidden`), host reads of the timing/MAC side-channel counters
+(`PERF_UNSUPPORTED_OPS`, `PERF_CYCLES`, `PERF_MACS`, `PERF_OPS`, `PERF_ERRORS`,
+`DESC_TIMEOUT_COUNT`, `DESC_BYTES_READ`/`WRITTEN`, `DESC_READ`/`WRITE_BEATS`,
+`PERF_STALL_CYCLES`, `PERF_SCRATCH_BYTES`, `PERF_THERMAL_THROTTLE`) return `0`.
+Functional completion status (`DESC_STATUS` done/error/busy) stays visible so the
+owner can sequence work. The counters still increment internally; the monitor
+reads them out of band. This is the block-level half of the no-perf-leakage
+requirement whose cross-domain enforcement lives in `04-`.
 
 ### DMA writeback path (planned, L1)
 

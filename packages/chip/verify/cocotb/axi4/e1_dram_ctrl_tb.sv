@@ -198,6 +198,8 @@ module e1_dram_ctrl_tb #(
     logic        dfi_zqcs_active;
     logic        dfi_zqcl_active;
     logic        dfi_dram_clk_disable;
+    logic [63:0] dfi_mem_base_addr;
+    logic [63:0] dfi_mem_capacity_bytes;
 
     e1_dram_ctrl #(
         .ID_WIDTH    (ID_WIDTH + $clog2(NUM_MASTERS+1)),
@@ -205,6 +207,18 @@ module e1_dram_ctrl_tb #(
         .DATA_WIDTH  (DATA_WIDTH),
         .USER_WIDTH  (USER_WIDTH),
         .BURST_LEN_W (BURST_LEN_W),
+        // This DFI-shape harness maps DRAM at base 0 with a 64 KiB aperture
+        // (DRAM_MASK = 0xFFFF), so override the controller's discoverable
+        // geometry to match — otherwise the small test addresses fall out
+        // of the default 0x8000_0000/2 GiB main-memory range.
+        .MEM_BASE_ADDR      (40'h00_0000_0000),
+        .MEM_CAPACITY_BYTES (64'h0000_0000_0001_0000),
+        // Speed up the row-access model so the DFI-shape test does not
+        // simulate the full LPDDR access latency on every beat.
+        .ROW_HIT_LATENCY  (1),
+        .ROW_MISS_LATENCY (2),
+        .WRITE_LATENCY    (1),
+        .TCCD_CYCLES      (1),
         // Compress the refresh interval so the cocotb test exercises
         // refresh_active without simulating millions of cycles.
         .TREFI_CYCLES (256),
@@ -230,6 +244,8 @@ module e1_dram_ctrl_tb #(
         .s_aruser(s_aruser[0]),
         .s_rvalid(s_rvalid[0]), .s_rready(s_rready[0]),
         .s_rid(s_rid[0]), .s_rdata(s_rdata[0]), .s_rresp(s_rresp[0]), .s_rlast(s_rlast[0]),
+        .mem_base_addr(dfi_mem_base_addr),
+        .mem_capacity_bytes(dfi_mem_capacity_bytes),
         // DFI 5.0 north — wired out for cocotb observation.
         .dfi_addr(dfi_addr),
         .dfi_bank(dfi_bank),

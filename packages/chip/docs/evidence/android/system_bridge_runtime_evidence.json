@@ -1,0 +1,50 @@
+{
+  "adb_serial": "default",
+  "artifacts": {
+    "logcat_path": "docs/evidence/android/system_bridge_runtime_logcat.log"
+  },
+  "bridge_package": "ai.elizaos.system.bridge",
+  "claim_boundary": "booted_android_system_bridge_runtime_evidence_only",
+  "ended_utc": "2026-05-22T21:05:14Z",
+  "js_bridge_bound": false,
+  "launcher_consumed_live_state": false,
+  "launcher_package": "ai.elizaos.app",
+  "logcat_crash_count": 0,
+  "observations": {
+    "adb_devices": "List of devices attached",
+    "adb_devices_available": true,
+    "adb_get_state": "error: no devices/emulators found",
+    "adb_get_state_available": false,
+    "boot_getprop": "adb: no devices/emulators found",
+    "logcat_available": false,
+    "missing_or_false": [
+      "js_bridge_bound",
+      "launcher_consumed_live_state",
+      "package_installed",
+      "privapp_permissions_granted",
+      "service_registered",
+      "sys_boot_completed"
+    ],
+    "package_dump_available": false,
+    "pm_path": "adb: no devices/emulators found",
+    "service_probe_matched": false
+  },
+  "package_installed": false,
+  "privapp_permissions_granted": false,
+  "production_mock_fallback_absent": true,
+  "required_markers": {
+    "bridge_bound_marker": "ElizaSystemBridge: bound",
+    "live_state_marker": "AndroidSystemProvider: live-state",
+    "mock_fallback_forbidden_markers": [
+      "native system bridge transport (__elizaAndroidBridge) is not bound",
+      "MockSystemProvider"
+    ]
+  },
+  "result": 2,
+  "schema": "eliza.android_system_bridge_runtime_evidence.v1",
+  "selinux_denial_count": 0,
+  "service_registered": false,
+  "started_utc": "2026-05-22T21:05:14Z",
+  "status": "BLOCKED",
+  "sys_boot_completed": false
+}

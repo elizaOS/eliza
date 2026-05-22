@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import tarfile
 from pathlib import Path
 
@@ -171,6 +172,40 @@ REQUIRED_TEXT = {
     ],
 }
 
+ROOT = Path(__file__).resolve().parents[1]
+REPORT = ROOT / "build/reports/release_archive.json"
+SCHEMA = "eliza.release_archive.v1"
+CLAIM_BOUNDARY = "release_archive_validation_only_not_release_evidence"
+
+
+def write_report(status: str, archive: Path, findings: list[str]) -> None:
+    payload = {
+        "schema": SCHEMA,
+        "status": status,
+        "claim_boundary": CLAIM_BOUNDARY,
+        "archive": str(archive),
+        "summary": {
+            "release_ready": status == "pass",
+            "blockers": len(findings) if status == "blocked" else 0,
+            "failures": len(findings) if status == "fail" else 0,
+        },
+        "findings": [
+            {
+                "code": f"release_archive_{status}_{index}",
+                "severity": "blocker" if status == "blocked" else "error",
+                "message": finding,
+                "evidence": str(archive),
+                "next_step": (
+                    "Regenerate the release archive from real checked release artifacts "
+                    "and rerun this checker."
+                ),
+            }
+            for index, finding in enumerate(findings, start=1)
+        ],
+    }
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
 
 def suffix_present(names: set[str], suffix: str) -> str | None:
     matches = [
@@ -196,7 +231,9 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.archive.is_file():
-        print(f"release archive missing: {args.archive}")
+        failure = f"release archive missing: {args.archive}"
+        write_report("blocked", args.archive, [failure])
+        print(f"STATUS: BLOCKED release archive validation: {failure}")
         return 1
 
     failures: list[str] = []
@@ -230,11 +267,14 @@ def main() -> int:
                     failures.append(f"{suffix} missing required text token: {token}")
 
     if failures:
+        write_report("blocked", args.archive, failures)
+        print(f"STATUS: BLOCKED release archive validation: {args.archive}")
         print("Release archive validation failed:")
         for failure in failures:
             print(f"  - {failure}")
         return 1
 
+    write_report("pass", args.archive, [])
     print(f"release archive validation ok: {args.archive}")
     return 0
 

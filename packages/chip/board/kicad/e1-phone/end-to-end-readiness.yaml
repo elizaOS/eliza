@@ -15,6 +15,7 @@ source_artifacts:
   - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
   - board/kicad/e1-phone/radio-module-integration.yaml
   - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/wireless-module-release-execution.yaml
   - board/kicad/e1-phone/module-rf-pinout-execution.yaml
   - board/kicad/e1-phone/board-optimization-scorecard.yaml
   - board/kicad/e1-phone/component-height-step-integration.yaml
@@ -23,11 +24,13 @@ source_artifacts:
   - board/kicad/e1-phone/evt1-routing-work-package.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
   - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
   - board/kicad/e1-phone/first-article-route-execution-order.yaml
   - board/kicad/e1-phone/post-route-validation-binding.yaml
   - board/kicad/e1-phone/layout-optimization-execution.yaml
   - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
   - board/kicad/e1-phone/supplier-sample-release-gate.yaml
   - board/kicad/e1-phone/manufacturing-closure.yaml
   - board/kicad/e1-phone/production-readiness.yaml
@@ -66,6 +69,7 @@ current_board_state:
   evt1_routing_status: blocked_requires_supplier_pinouts_routed_pcb_and_post_route_evidence
   routed_release_plan_status: blocked_routed_release_requires_real_route_and_supplier_outputs
   routed_pcb_implementation_execution_status: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
+  routed_layout_readiness_status: blocked_layout_readiness_requires_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance
   first_article_route_execution_order_status: blocked_first_article_route_requires_ordered_supplier_schematic_layout_factory_and_enclosure_evidence
   post_route_validation_binding_status: blocked_post_route_validation_requires_routed_drc_si_pi_rf_power_factory_and_enclosure_evidence
   pcb_implementation_audit_status: blocked_live_kicad_pcb_scaffold_audited_not_routed
@@ -76,9 +80,12 @@ current_board_state:
   usb_sidekey_selection_wiring_decision_status: blocked_usb_sidekey_selection_requires_supplier_drawings_real_schematic_route_measurements_and_enclosure_load_path
   usb_sidekey_acceptance_status: blocked_usb_c_sidekey_acceptance_requires_supplier_route_enclosure_and_measurements
   radio_module_selection_wiring_decision_status: blocked_radio_module_selection_requires_supplier_design_packs_region_decision_routed_rf_and_firmware_evidence
+  wireless_module_release_execution_status: blocked_wireless_module_release_requires_cellular_branch_decision_supplier_design_packs_routed_rf_firmware_regulatory_and_factory_logs
   module_rf_pinout_execution_status: blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence
+  board_optimization_scorecard_status: blocked_concept_optimized_but_not_routed_or_enclosure_ready
   production_status: blocked_requires_routed_board_supplier_data_and_factory_quotes
   manufacturing_status: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
+  supplier_rfq_response_normalization_status: blocked_response_normalization_ready_no_supplier_responses_received
   supplier_sample_release_gate_status: blocked_supplier_samples_response_packs_and_reviews_required_before_layout_release
   production_factory_release_execution_status: blocked_requires_routed_release_supplier_packs_fab_assembly_fixture_and_first_article
   enclosure_status: enclosure_placement_cross_checked_not_release_ready
@@ -151,8 +158,8 @@ objective_requirements:
       - mechanical/e1-phone/review/routed-board-clearance.json
   off_the_shelf_wireless_modules:
     requirement: Use easy-to-acquire off-the-shelf cellular, Wi-Fi, and Bluetooth modules and wire host/RF contracts.
-    evidence_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
-    current_status: blocked_radio_module_selection_requires_supplier_design_packs_region_decision_routed_rf_and_firmware_evidence
+    evidence_artifact: board/kicad/e1-phone/wireless-module-release-execution.yaml
+    current_status: blocked_wireless_module_release_requires_cellular_branch_decision_supplier_design_packs_routed_rf_firmware_regulatory_and_factory_logs
     selected_stack:
       cellular_performance_reference: Quectel_RG255C_or_RM255C_5G_RedCap_Sub_6
       active_space_saving_rfq_branch: quectel_eg915q_na_or_eg915u_class
@@ -361,13 +368,44 @@ objective_traceability_cross_checks:
   usb_c_sidekey_selection_wiring_tracks_selected_connector_pd_charger_and_buttons: true
   usb_c_sidekey_acceptance_remains_blocked_on_supplier_route_enclosure_measurements: true
   radio_module_selection_wiring_tracks_selected_cellular_wifi_bt_and_rf_feeds: true
+  wireless_module_release_execution_tracks_branch_supplier_rf_firmware_regulatory_factory_and_first_article_gates: true
   module_rf_pinout_execution_remains_blocked_on_supplier_rf_and_firmware_evidence: true
   layout_optimization_execution_tracks_current_size_power_rf_thermal_objective: true
   routed_pcb_implementation_execution_tracks_end_to_end_pcb_objective: true
   routed_release_plan_remains_blocked_until_real_route_and_supplier_outputs: true
   post_route_validation_tracks_selected_hardware_evidence: true
+  alternate_display_final_readiness_gate_blocks_final_readiness: true
   production_factory_release_tracks_selected_hardware_traceability: true
   production_factory_release_execution_tracks_manufacturing_factory_objective: true
+  selected_supplier_response_gate_blocks_final_readiness: true
+selected_supplier_response_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_response_normalization_ready_no_supplier_responses_received
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_supplier_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  selected_response_pack_count: 7
+  release_required_response_packs:
+    - board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack.yaml
+    - board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack.yaml
+    - board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack.yaml
+    - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack.yaml
+    - board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack.yaml
+    - board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml
+    - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml
+  all_selected_supplier_response_packs_absent: true
+  blocks_end_to_end_phone_ready: true
 selected_hardware_post_route_gate:
   source_artifact: board/kicad/e1-phone/post-route-validation-binding.yaml
   status: blocked_post_route_validation_requires_routed_drc_si_pi_rf_power_factory_and_enclosure_evidence
@@ -418,6 +456,32 @@ selected_hardware_production_gate:
     - rf_reports
   all_selected_hardware_traceability_absent: true
   blocks_end_to_end_phone_ready: true
+alternate_display_final_readiness_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/board-optimization-scorecard.yaml
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/post-route-validation-binding.yaml
+    - board/kicad/e1-phone/first-article-route-execution-order.yaml
+  status: blocked_until_alternate_display_supplier_route_validation_step_enclosure_and_first_article_evidence_exist
+  branch_count: 2
+  blocks_end_to_end_phone_ready: true
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      required_final_readiness_evidence:
+        - selected-or-promoted supplier response pack with signed drawing, pinout, connector, land pattern, STEP/B-rep, and samples
+        - routed KiCad branch with DRC/ERC, SI/PI, courtyard utilization, display/touch bring-up, and factory limits
+        - routed board STEP, enclosure clearance release, physical fit, and first-article transcript
+        - promotion review proving screen availability, size, performance, and enclosure tradeoffs before replacing CH550FH01A-CT
+      end_to_end_ready_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      required_final_readiness_evidence:
+        - selected-or-promoted supplier response pack with signed AMOLED drawing, FPC pinout, connector, land pattern, STEP/B-rep, and samples
+        - routed KiCad branch with DRC/ERC, SI/PI, power/thermal, courtyard utilization, RM67191/GT1151 bring-up, and factory limits
+        - routed board STEP, enclosure clearance release, physical fit, and first-article transcript
+        - promotion review proving screen availability, thin-stack value, power/thermal risk, and enclosure tradeoffs before replacing CH550FH01A-CT
+      end_to_end_ready_allowed: false
 release_decision:
   ready_to_fabricate: false
   ready_for_enclosure: false
@@ -431,6 +495,8 @@ release_decision:
     - live KiCad utilization audit finds placeholder courtyard intrusions into the battery window and reserve pressure remains
       below routed-release target
     - supplier pinouts, footprints, STEP models, routed DRC/ERC, SI/PI, RF, thermal, factory, and enclosure evidence are missing
+    - selected supplier RFQ response packs for display, camera, USB-C, side keys, cellular, and Wi-Fi/Bluetooth are missing
+    - parseable 055WU01 and E549/RM67191 display alternates remain blocked until supplier, route, validation, STEP, enclosure, first-article, and promotion evidence exist
     - enclosure fit execution package requires routed-board STEP, supplier 3D models, boolean-interference clearance, physical
       fit logs, and measured clearance cases
 required_release_outputs:
@@ -454,6 +520,7 @@ cross_checks:
   live_utilization_audit_explicitly_reports_battery_window_status: true
   selected_hardware_post_route_gate_blocks_final_readiness: true
   selected_hardware_production_gate_blocks_final_readiness: true
+  selected_supplier_response_gate_blocks_final_readiness: true
   enclosure_requires_routed_board_step: true
   enclosure_fit_execution_blocks_release: true
   factory_requires_first_article: true

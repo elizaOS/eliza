@@ -25,7 +25,10 @@ REGMAPS = {
     "boot_address": GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.0x1000.0.regmap.json",
     "clint": GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.0x2000000.0.regmap.json",
     "plic": GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.0xc000000.0.regmap.json",
-    "uart": GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.0x10020000.0.regmap.json",
+    "uart": GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.0x10001000.0.regmap.json",
+    "dma": GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.0x10010000.0.regmap.json",
+    "npu": GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.0x10020000.0.regmap.json",
+    "display": GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.0x10030000.0.regmap.json",
 }
 
 ROM_CONNECT_RE = re.compile(r"connect rom\[(\d+)\], UInt<64>\(0h([0-9a-fA-F]+)\)")
@@ -96,9 +99,17 @@ def check_dts(failures: list[str], blockers: list[str]) -> None:
         'compatible = "riscv,clint0"',
         "interrupt-controller@c000000",
         'compatible = "riscv,plic0"',
-        "serial@10020000",
+        "serial@10001000",
         'compatible = "sifive,uart0"',
+        "dma@10010000",
+        'compatible = "eliza,e1-dma"',
+        "npu@10020000",
+        'compatible = "eliza,e1-npu"',
+        "display@10030000",
+        'compatible = "eliza,e1-display"',
         "stdout-path",
+        'stdout-path = "/soc/serial@10001000"',
+        'bootargs = "earlycon=sbi console=ttySIF0,3686400n8"',
         "rom@10000",
         "boot-address-reg@1000",
     ]
@@ -121,7 +132,10 @@ def check_memmap(failures: list[str], blockers: list[str]) -> None:
         "boot-address-reg@1000": (0x1000, 0x1000),
         "clint@2000000": (0x2000000, 0x10000),
         "interrupt-controller@c000000": (0x0C000000, 0x4000000),
-        "serial@10020000": (0x10020000, 0x1000),
+        "serial@10001000": (0x10001000, 0x1000),
+        "dma@10010000": (0x10010000, 0x1000),
+        "npu@10020000": (0x10020000, 0x1000),
+        "display@10030000": (0x10030000, 0x1000),
         "memory@80000000": (0x80000000, 0x10000000),
     }
     for name, expected_region in expected.items():
@@ -139,6 +153,9 @@ def check_regmaps(failures: list[str], blockers: list[str]) -> None:
         "clint": ["msip_0", "mtimecmp_0", "mtime_0"],
         "plic": ["priority_1", "pending_1", "enables_0", "threshold_0", "claim_complete_0"],
         "uart": ["txdata", "rxdata", "txctrl", "rxen", "ie", "ip", "div"],
+        "dma": ["0x0", "0x38"],
+        "npu": ["0x0", "0xc", "0x10", "0x20", "0x50", "0x80"],
+        "display": ["0x0", "0x24"],
     }
     for name, path in REGMAPS.items():
         data = load_json(path, failures, blockers)
@@ -190,9 +207,17 @@ def check_embedded_bootrom_dtb(failures: list[str], blockers: list[str]) -> None
     dtb = image[offset : offset + total_size]
     for token in (
         b"ucb-bar,chipyard-dev",
-        b"/soc/serial@10020000",
+        b"/soc/serial@10001000",
+        b"dma@10010000",
+        b"npu@10020000",
+        b"display@10030000",
         b"stdout-path",
+        b"/soc/serial@10001000",
+        b"earlycon=sbi console=ttySIF0,3686400n8",
         b"sifive,uart0",
+        b"eliza,e1-dma",
+        b"eliza,e1-npu",
+        b"eliza,e1-display",
         b"riscv,clint0",
         b"riscv,plic0",
     ):

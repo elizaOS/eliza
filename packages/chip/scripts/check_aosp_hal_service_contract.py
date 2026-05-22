@@ -29,6 +29,15 @@ HAL_DIR = DEVICE / "hal/e1_npu"
 HAL_BP = HAL_DIR / "Android.bp"
 HAL_RC = HAL_DIR / "vendor.eliza.e1_npu@1.0-service.rc"
 HAL_IMPL = HAL_DIR / "E1Npu.h"
+HAL_IMPL_CC = HAL_DIR / "E1Npu.cpp"
+HAL_INTERFACE = HAL_DIR / "1.0/IE1Npu.hal"
+HAL_INTERFACE_BP = HAL_DIR / "1.0/Android.bp"
+HWC_DIR = DEVICE / "hal/hwcomposer"
+HWC_BP = HWC_DIR / "Android.bp"
+HWC_IMPL = HWC_DIR / "hwcomposer.cpp"
+SIM_HAL_BP = DEVICE / "hal/e1_npu_sim/Android.bp"
+SIM_HAL_IMPL = DEVICE / "hal/e1_npu_sim/E1NpuSim.h"
+SIM_HAL_RC = DEVICE / "hal/e1_npu_sim/vendor.eliza.e1_npu@1.0-service.sim.rc"
 SEPOLICY = DEVICE / "sepolicy"
 FILE_CONTEXTS = SEPOLICY / "file_contexts"
 E1_NPU_TE = SEPOLICY / "e1_npu.te"
@@ -131,6 +140,14 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         HAL_BP,
         HAL_RC,
         HAL_IMPL,
+        HAL_IMPL_CC,
+        HAL_INTERFACE,
+        HAL_INTERFACE_BP,
+        HWC_BP,
+        HWC_IMPL,
+        SIM_HAL_BP,
+        SIM_HAL_IMPL,
+        SIM_HAL_RC,
         FILE_CONTEXTS,
         E1_NPU_TE,
         LINUX_CONTRACT_HEADER,
@@ -154,14 +171,26 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     hal_bp = read_text(HAL_BP)
     hal_rc = read_text(HAL_RC)
     hal_impl = read_text(HAL_IMPL)
+    hal_impl_cc = read_text(HAL_IMPL_CC)
+    hal_interface = read_text(HAL_INTERFACE)
+    hwc_bp = read_text(HWC_BP)
+    hwc_impl = read_text(HWC_IMPL)
+    sim_hal_bp = read_text(SIM_HAL_BP)
+    sim_hal_impl = read_text(SIM_HAL_IMPL)
+    sim_hal_rc = read_text(SIM_HAL_RC)
     file_contexts = read_text(FILE_CONTEXTS)
     te = read_text(E1_NPU_TE)
     contract = read_text(LINUX_CONTRACT_HEADER)
+    interface_bp = read_text(HAL_INTERFACE_BP)
+    e1_hal_sources = "\n".join((hal_bp, hal_impl, hal_interface))
+    hwc_sources = "\n".join((hwc_bp, hwc_impl))
+    sim_hal_sources = "\n".join((sim_hal_bp, sim_hal_impl, sim_hal_rc))
     packages = product_packages(device_mk)
     manifest_hals_declared = manifest_hals(DEVICE_MANIFEST) | manifest_hals(E1_MANIFEST)
     service_declared = E1_NPU_HAL in manifest_hals_declared
     contract_result_offset = int_from_literal(macro_value(contract, "E1_NPU_RESULT_OFFSET"))
     hal_result_offset = int_from_literal(cxx_const_offset(hal_impl, "kResultOffset"))
+    runtime_requirements: list[str] = []
 
     add_if(
         findings,
@@ -247,12 +276,72 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
-        "srcs:" in hal_bp and "IE1Npu.hal" not in hal_bp,
+        not (
+            'hidl_interface' in interface_bp
+            and 'name: "vendor.eliza.e1_npu@1.0"' in interface_bp
+            and '"IE1Npu.hal"' in interface_bp
+            and '"types.hal"' in interface_bp
+            and 'root: "vendor.eliza.e1_npu"' in interface_bp
+        ),
         "aosp_e1_npu_hidl_interface_not_packaged",
-        "HAL service Android.bp depends on a generated HIDL interface but does not package or generate IE1Npu.hal from this tree",
-        rel(HAL_BP),
+        "e1 NPU HIDL interface package is not generated from the checked-in IE1Npu.hal/types.hal sources",
+        rel(HAL_INTERFACE_BP),
         "Add the HIDL interface package/import path to the external AOSP tree and gate hidl-gen/build evidence.",
     )
+    hal_fail_closed = (
+        'static constexpr const char* kDevicePath = "/dev/e1-npu"' in hal_impl
+        and "O_RDWR | O_CLOEXEC" in hal_impl_cc
+        and "Status::NOT_SUPPORTED" in hal_impl_cc
+        and "::read(fd.get(), &identity, sizeof(identity))" in hal_impl_cc
+        and "kSimulatedIdentity" not in e1_hal_sources
+    )
+    add_if(
+        findings,
+        not hal_fail_closed,
+        "aosp_e1_npu_hal_not_fail_closed_to_kernel_node",
+        "e1 NPU HAL does not prove a fail-closed path to /dev/e1-npu and the driver identity read",
+        f"{rel(HAL_IMPL)}, {rel(HAL_IMPL_CC)}",
+        "Keep the HAL backed by /dev/e1-npu, return NOT_SUPPORTED when the node is absent, and avoid simulator constants in the real HAL.",
+    )
+    if "smoke() generates" in hal_interface:
+        runtime_requirements.append(
+            "Booted selected chip target must capture IE1Npu/default lshal registration and smoke() identity read from /dev/e1-npu before NPU liveness is unblocked."
+        )
+    add_if(
+        findings,
+        not (
+            "/dev/graphics/fb0" in hwc_sources
+            and "FBIOGET_VSCREENINFO" in hwc_sources
+            and "FBIOGET_FSCREENINFO" in hwc_sources
+            and "android.hardware.graphics.composer@2.4-service.eliza_ai_soc" in packages
+        ),
+        "aosp_hwcomposer_fbdev_probe_missing",
+        "hwcomposer package does not prove a fail-closed framebuffer probe path",
+        f"{rel(HWC_BP)}, {rel(HWC_IMPL)}",
+        "Keep the composer package tied to an fbdev/simple-framebuffer probe and capture booted SurfaceFlinger/display evidence.",
+    )
+    if "getFunction = nullptr" in hwc_sources:
+        runtime_requirements.append(
+            "Display readiness remains blocked until booted SurfaceFlinger/HWC evidence proves the selected product renders through the intended graphics path."
+        )
+    add_if(
+        findings,
+        not (
+            'name: "vendor.eliza.e1_npu@1.0-service.sim"' in sim_hal_bp
+            and 'service vendor.e1_npu_sim /vendor/bin/hw/vendor.eliza.e1_npu@1.0-service.sim' in sim_hal_rc
+            and "kSimulatedIdentity" in sim_hal_impl
+            and E1_NPU_SERVICE_PACKAGE in packages
+            and "vendor.eliza.e1_npu@1.0-service.sim" not in packages
+        ),
+        "aosp_cuttlefish_sim_hal_not_separated_from_real_product",
+        "Cuttlefish simulator HAL is not clearly separated from the real chip product package/startup path",
+        f"{rel(SIM_HAL_BP)}, {rel(SIM_HAL_IMPL)}",
+        "Keep the simulator binary/package distinct and require evidence to identify whether lshal was captured from sim or chip target.",
+    )
+    if "software-simulator" in sim_hal_sources:
+        runtime_requirements.append(
+            "Cuttlefish simulator HAL evidence must be labeled simulator-only and must not satisfy chip /dev/e1-npu liveness."
+        )
     add_if(
         findings,
         "/dev/e1-npu" in init_rc and "/dev/e1-npu" not in file_contexts,
@@ -271,7 +360,11 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "linux_result_offset": contract_result_offset,
         "hal_result_offset": hal_result_offset,
         "hal_rc": rel(HAL_RC),
+        "hal_interface": rel(HAL_INTERFACE),
+        "hwcomposer": rel(HWC_IMPL),
+        "sim_hal": rel(SIM_HAL_IMPL),
         "sepolicy": rel(SEPOLICY),
+        "runtime_requirements": runtime_requirements,
     }
     return payload(findings, evidence)
 

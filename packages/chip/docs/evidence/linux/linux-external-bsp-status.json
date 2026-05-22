@@ -1,52 +1,89 @@
 {
-  "blockers": [
-    {
-      "detail": "/home/shaw/milady/eliza/packages/chip/external/linux",
-      "id": "external_linux_tree_invalid"
-    },
-    {
-      "detail": "set CROSS_COMPILE=... or install a riscv64 Linux compiler",
-      "id": "riscv_cross_compiler_missing"
-    },
-    {
-      "detail": "docs/evidence/linux/eliza_e1_kernel_build.log",
-      "id": "linux_kernel_build_evidence_blocked"
-    },
-    {
-      "detail": "docs/evidence/linux/eliza_e1_dtb_check.log",
-      "id": "linux_dtb_check_evidence_blocked"
-    },
-    {
-      "detail": "docs/evidence/linux/e1-mmio-smoke.log",
-      "id": "linux_mmio_smoke_evidence_blocked"
-    }
-  ],
+  "blockers": [],
   "claim_boundary": "status_only_not_linux_boot_evidence",
   "evidence": {
     "linux_dtb_check": {
-      "blocked_marker": "docs/evidence/linux/eliza_e1_dtb_check.log.BLOCKED",
+      "bytes": 17155,
       "path": "docs/evidence/linux/eliza_e1_dtb_check.log",
-      "reason": "reason: external/linux exists and has imported the OpenPhone hello DTS/bindings, but host tools cannot run dtbs_check and no PASS transcript has been captured.",
-      "state": "blocked"
+      "state": "present"
     },
     "linux_kernel_build": {
-      "blocked_marker": "docs/evidence/linux/eliza_e1_kernel_build.log.BLOCKED",
+      "bytes": 82331,
       "path": "docs/evidence/linux/eliza_e1_kernel_build.log",
-      "reason": "reason: external/linux exists and has imported the Eliza e1 BSP, but host tools cannot run the kernel build and no PASS transcript has been captured.",
-      "state": "blocked"
+      "state": "present"
     },
     "linux_mmio_smoke": {
-      "blocked_marker": "docs/evidence/linux/e1-mmio-smoke.log.BLOCKED",
+      "bytes": 1073,
       "path": "docs/evidence/linux/e1-mmio-smoke.log",
-      "reason": "reason: no boot transcript of an imported OpenPhone hello kernel/rootfs exists, so /dev/hello-npu and DMA sysfs smoke output cannot be captured.",
-      "state": "blocked"
+      "state": "present"
     }
   },
   "imported_bsp": {
-    "status": "missing_tree"
+    "missing_optional": [],
+    "missing_required": [],
+    "optional": {
+      "board_dts_makefile": {
+        "exists": true,
+        "is_file": true,
+        "path": "/home/shaw/milady/eliza/packages/chip/external/linux/arch/riscv/boot/dts/eliza/Makefile"
+      },
+      "display_binding": {
+        "exists": true,
+        "is_file": true,
+        "path": "/home/shaw/milady/eliza/packages/chip/external/linux/Documentation/devicetree/bindings/eliza/eliza,e1-display.yaml"
+      },
+      "dma_binding": {
+        "exists": true,
+        "is_file": true,
+        "path": "/home/shaw/milady/eliza/packages/chip/external/linux/Documentation/devicetree/bindings/eliza/eliza,e1-dma.yaml"
+      },
+      "npu_binding": {
+        "exists": true,
+        "is_file": true,
+        "path": "/home/shaw/milady/eliza/packages/chip/external/linux/Documentation/devicetree/bindings/eliza/eliza,e1-npu.yaml"
+      }
+    },
+    "required": {
+      "board_dts": {
+        "exists": true,
+        "is_file": true,
+        "path": "/home/shaw/milady/eliza/packages/chip/external/linux/arch/riscv/boot/dts/eliza/eliza-e1.dts"
+      },
+      "dma_driver": {
+        "exists": true,
+        "is_file": true,
+        "path": "/home/shaw/milady/eliza/packages/chip/external/linux/drivers/misc/eliza-e1/eliza-e1-dma.c"
+      },
+      "driver_kconfig": {
+        "exists": true,
+        "is_file": true,
+        "path": "/home/shaw/milady/eliza/packages/chip/external/linux/drivers/misc/eliza-e1/Kconfig"
+      },
+      "driver_makefile": {
+        "exists": true,
+        "is_file": true,
+        "path": "/home/shaw/milady/eliza/packages/chip/external/linux/drivers/misc/eliza-e1/Makefile"
+      },
+      "npu_driver": {
+        "exists": true,
+        "is_file": true,
+        "path": "/home/shaw/milady/eliza/packages/chip/external/linux/drivers/misc/eliza-e1/eliza-e1-npu.c"
+      },
+      "platform_header": {
+        "exists": true,
+        "is_file": true,
+        "path": "/home/shaw/milady/eliza/packages/chip/external/linux/drivers/misc/eliza-e1/e1_platform_contract.h"
+      }
+    },
+    "status": "imported",
+    "text_checks": {
+      "drivers_misc_kconfig_sources_eliza": true,
+      "drivers_misc_makefile_links_eliza": true,
+      "riscv_dts_makefile_links_eliza": true
+    }
   },
   "linux_tree": "/home/shaw/milady/eliza/packages/chip/external/linux",
-  "linux_tree_valid": false,
+  "linux_tree_valid": true,
   "producer_commands": {
     "configure": "cd /home/shaw/milady/eliza/packages/chip/external/linux && make ARCH=riscv eliza_e1.config olddefconfig",
     "dtb_check": "sw/linux/scripts/capture-linux-bsp-evidence.sh /home/shaw/milady/eliza/packages/chip/external/linux dtb-check",
@@ -56,13 +93,15 @@
     "mmio_smoke": "E1_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-mmio-smoke' sw/linux/scripts/capture-linux-bsp-evidence.sh /home/shaw/milady/eliza/packages/chip/external/linux smoke"
   },
   "schema": "eliza.linux_external_bsp_status.v1",
-  "status": "blocked",
+  "status": "pass",
   "tools": {
     "cross_compile": "",
-    "dtc": "",
+    "dtc": "/home/shaw/milady/eliza/packages/chip/tools/bin/dtc",
     "make": "/usr/bin/make",
     "make_version": "GNU Make 4.3",
     "make_version_ok": true,
-    "riscv_compiler": ""
+    "riscv_compiler": "riscv64-linux-gnu-gcc",
+    "riscv_compiler_path": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+    "search_path_prefix": "/home/shaw/milady/eliza/packages/chip/tools/bin:/home/shaw/milady/eliza/packages/chip/external/riscv64-linux-gnu/usr/bin:/home/shaw/milady/eliza/packages/chip/external/deb-tools/dtc/usr/bin"
   }
 }

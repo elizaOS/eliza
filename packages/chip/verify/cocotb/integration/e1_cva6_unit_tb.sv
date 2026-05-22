@@ -13,9 +13,8 @@
 //
 //   - test_cva6_executes_bootrom_program.py
 //       Releases reset on CVA6 with a 4-instruction program at the boot
-//       address; checks that minstret reaches 4 via the Zihpm-style
-//       commit counter (taken from CVA6 commit-stage observability when
-//       available; otherwise inferred from AXI4 fetch traffic).
+//       address; checks that the decoded RVFI retirement stream commits
+//       the expected instruction prefix.
 //
 //   - test_cva6_dram_read_write.py
 //       Runs a small program that writes a constant to DRAM_BASE and
@@ -23,8 +22,9 @@
 //       address + data pattern.
 //
 // The TB is intentionally minimal: it only exposes the signals the two
-// tests need (clk, rst_n, IRQ inputs, debug PC, and AXI4 traffic
-// counters).  The full CVA6 source tree lives under `external/cva6/cva6`
+// tests need (clk, rst_n, IRQ inputs, debug PC, RVFI retirement fields,
+// and AXI4 traffic counters).  The full CVA6 source tree lives under
+// `external/cva6/cva6`
 // and is pinned to v5.3.0 (commit 2ef1c1b); the cocotb Makefile is
 // responsible for adding the CVA6 Flist sources to the compile.
 
@@ -41,6 +41,18 @@ module e1_cva6_unit_tb (
     // Observability outputs surfaced to cocotb
     output logic [63:0] dbg_pc_o,
     output logic        dbg_valid_o,
+    // Decoded RVFI retirement surface from e1_cva6_wrapper.sv.  The TB
+    // keeps the public cocotb port list stable even when compiled without
+    // E1_RVFI, but Makefile.cva6 defines E1_RVFI for this evidence path.
+    output logic        rvfi_valid_o,
+    output logic [63:0] rvfi_order_o,
+    output logic [31:0] rvfi_insn_o,
+    output logic        rvfi_trap_o,
+    output logic [63:0] rvfi_pc_rdata_o,
+    output logic [31:0] rvfi_retire_count_o,
+    output logic [127:0] rvfi_first4_insn_o,
+    output logic [255:0] rvfi_first4_pc_o,
+    output logic [3:0]   rvfi_first4_trap_o,
     // AXI4 traffic counters — increment each handshake so the test can
     // confirm CVA6 actually issues fetch / load / store transactions.
     output logic [31:0] ar_xfer_count_o,
@@ -119,6 +131,17 @@ module e1_cva6_unit_tb (
     logic                        w_b_valid;
     logic                        w_b_ready;
 
+`ifdef E1_RVFI
+    logic [`E1_RVFI_NRET-1:0]        w_rvfi_valid;
+    logic [`E1_RVFI_NRET-1:0][63:0] w_rvfi_order;
+    logic [`E1_RVFI_NRET-1:0][31:0] w_rvfi_insn;
+    logic [`E1_RVFI_NRET-1:0]        w_rvfi_trap;
+    logic [`E1_RVFI_NRET-1:0][1:0]  w_rvfi_mode_unused;
+    logic [`E1_RVFI_NRET-1:0][4:0]  w_rvfi_rd_addr_unused;
+    logic [`E1_RVFI_NRET-1:0][63:0] w_rvfi_rd_wdata_unused;
+    logic [`E1_RVFI_NRET-1:0][63:0] w_rvfi_pc_rdata;
+`endif
+
     // ── CVA6 wrapper instance ─────────────────────────────────────────
     e1_cpu_subsystem #(
         .BOOT_ADDR  (BOOT_ADDR),
@@ -181,7 +204,32 @@ module e1_cva6_unit_tb (
         .hart_id_i     (64'h0),
         .dbg_pc_o      (dbg_pc_o),
         .dbg_valid_o   (dbg_valid_o)
+`ifdef E1_RVFI
+        ,
+        .rvfi_valid_o    (w_rvfi_valid),
+        .rvfi_order_o    (w_rvfi_order),
+        .rvfi_insn_o     (w_rvfi_insn),
+        .rvfi_trap_o     (w_rvfi_trap),
+        .rvfi_mode_o     (w_rvfi_mode_unused),
+        .rvfi_rd_addr_o  (w_rvfi_rd_addr_unused),
+        .rvfi_rd_wdata_o (w_rvfi_rd_wdata_unused),
+        .rvfi_pc_rdata_o (w_rvfi_pc_rdata)
+`endif
     );
+
+`ifdef E1_RVFI
+    assign rvfi_valid_o    = |w_rvfi_valid;
+    assign rvfi_order_o    = w_rvfi_order[0];
+    assign rvfi_insn_o     = w_rvfi_insn[0];
+    assign rvfi_trap_o     = w_rvfi_trap[0];
+    assign rvfi_pc_rdata_o = w_rvfi_pc_rdata[0];
+`else
+    assign rvfi_valid_o    = 1'b0;
+    assign rvfi_order_o    = 64'h0;
+    assign rvfi_insn_o     = 32'h0;
+    assign rvfi_trap_o     = 1'b0;
+    assign rvfi_pc_rdata_o = 64'h0;
+`endif
 
     // ── Minimal AXI4 memory model ─────────────────────────────────────
     // Two regions:
@@ -393,6 +441,34 @@ module e1_cva6_unit_tb (
             if (w_w_valid  && w_w_ready)  w_xfer_count_o  <= w_xfer_count_o  + 32'd1;
             if (w_r_valid  && w_r_ready)  r_xfer_count_o  <= r_xfer_count_o  + 32'd1;
             if (w_b_valid  && w_b_ready)  b_xfer_count_o  <= b_xfer_count_o  + 32'd1;
+        end
+    end
+
+    // ── RVFI retirement capture ───────────────────────────────────────
+    // Keep a tiny prefix trace in public TB outputs so cocotb can prove the
+    // bootrom path commits instructions, not merely fetches them over AXI.
+    always_ff @(posedge clk or negedge rst_n) begin
+        logic [31:0] retire_count_n;
+        if (!rst_n) begin
+            rvfi_retire_count_o <= '0;
+            rvfi_first4_insn_o  <= '0;
+            rvfi_first4_pc_o    <= '0;
+            rvfi_first4_trap_o  <= '0;
+        end else begin
+            retire_count_n = rvfi_retire_count_o;
+`ifdef E1_RVFI
+            for (int p = 0; p < `E1_RVFI_NRET; p++) begin
+                if (w_rvfi_valid[p]) begin
+                    if (retire_count_n < 32'd4) begin
+                        rvfi_first4_insn_o[retire_count_n*32 +: 32] <= w_rvfi_insn[p];
+                        rvfi_first4_pc_o[retire_count_n*64 +: 64]   <= w_rvfi_pc_rdata[p];
+                        rvfi_first4_trap_o[retire_count_n]          <= w_rvfi_trap[p];
+                    end
+                    retire_count_n = retire_count_n + 32'd1;
+                end
+            end
+`endif
+            rvfi_retire_count_o <= retire_count_n;
         end
     end
 

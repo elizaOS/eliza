@@ -62,6 +62,7 @@ def yaml_text() -> str:
             [
                 f"  - id: {component}",
                 f"    evidence: {evidence}",
+                f"    producer: scripts/android/capture_simulated_peripheral_evidence.py {component}",
                 "    required_markers:",
             ]
         )
@@ -101,8 +102,16 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
                 for component, (evidence, markers) in COMPONENTS.items():
                     write(
                         gate.ROOT / evidence,
+                        f"eliza-evidence: target=android_simulated_peripheral component={component}\n"
+                        "eliza-evidence: claim_boundary=adb-backed Android simulator peripheral evidence only\n"
+                        "eliza-evidence: command_env=ELIZA_TEST\n"
+                        "eliza-evidence: command=probe\n"
+                        "eliza-evidence: started_utc=2026-05-19T20:06:41Z\n"
                         f"COMPONENT={component}\n"
+                        "COMMAND_OUTPUT_BEGIN\n"
                         "eliza-evidence: status=BLOCKED\n"
+                        "COMMAND_OUTPUT_END\n"
+                        "eliza-evidence: ended_utc=2026-05-19T20:06:42Z\n"
                         "RESULT=2\n"
                         f"MISSING_MARKERS={','.join(markers[1:])}\n",
                     )
@@ -136,8 +145,16 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
                         gate.ROOT / evidence,
                         "\n".join(
                             [
+                                f"eliza-evidence: target=android_simulated_peripheral component={component}",
+                                "eliza-evidence: claim_boundary=adb-backed Android simulator peripheral evidence only",
+                                "eliza-evidence: command_env=ELIZA_TEST",
+                                "eliza-evidence: command=probe",
+                                "eliza-evidence: started_utc=2026-05-19T20:06:41Z",
                                 f"COMPONENT={component}",
+                                "COMMAND_OUTPUT_BEGIN",
                                 *markers,
+                                "COMMAND_OUTPUT_END",
+                                "eliza-evidence: ended_utc=2026-05-19T20:06:42Z",
                                 "eliza-evidence: status=PASS",
                                 "RESULT=0",
                             ]

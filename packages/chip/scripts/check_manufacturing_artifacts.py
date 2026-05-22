@@ -9,6 +9,9 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+REPORT = ROOT / "build/reports/manufacturing_artifacts.json"
+SCHEMA = "eliza.manufacturing_artifacts.v1"
+CLAIM_BOUNDARY = "manufacturing_artifact_inventory_only_not_fabrication_release_evidence"
 DEFAULT_MANIFESTS = [
     "docs/manufacturing/artifact-manifest.yaml",
     "package/artifact-manifest.yaml",
@@ -25,6 +28,36 @@ ALLOWED_MANIFEST_STATUS = {
     "release_blocked",
     "complete",
 }
+
+
+def write_report(status: str, mode: str, manifests: list[str], findings: list[str]) -> None:
+    payload = {
+        "schema": SCHEMA,
+        "status": status,
+        "claim_boundary": CLAIM_BOUNDARY,
+        "mode": mode,
+        "manifests": manifests,
+        "summary": {
+            "release_ready": status == "pass" and mode == "release",
+            "blockers": len(findings) if status == "blocked" else 0,
+            "failures": len(findings) if status == "fail" else 0,
+        },
+        "findings": [
+            {
+                "code": f"manufacturing_artifacts_{status}_{index}",
+                "severity": "blocker" if status == "blocked" else "error",
+                "message": finding,
+                "evidence": manifests[min(index - 1, len(manifests) - 1)] if manifests else "",
+                "next_step": (
+                    "Archive complete package, board, FPGA, SI/PI, current, thermal, "
+                    "and fabrication evidence before using this gate as release proof."
+                ),
+            }
+            for index, finding in enumerate(findings, start=1)
+        ],
+    }
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 REQUIRED_KICAD_COMMANDS = {"erc", "drc", "gerbers", "drill", "bom", "position"}
 REQUIRED_FPGA_COMMANDS = {"synth", "place_route", "pack"}
 ALLOWED_RELEASE_GATES = {"pd_release", "tapeout_release", "board_fabrication_release"}
@@ -708,14 +741,18 @@ def main() -> int:
             json.dumps(resolved_manifest(manifests), indent=2, sort_keys=True) + "\n"
         )
 
+    mode = "release" if args.release else "preflight"
     if failures:
-        mode = "release" if args.release else "preflight"
+        status = "blocked" if args.release else "fail"
+        write_report(status, mode, manifests, failures)
+        if status == "blocked":
+            print(f"STATUS: BLOCKED manufacturing artifact {mode} check")
         print(f"manufacturing artifact {mode} check failed:")
         for failure in failures:
             print(f"  - {failure}")
         return 1
 
-    mode = "release" if args.release else "preflight"
+    write_report("pass", mode, manifests, [])
     print(f"manufacturing artifact {mode} check ok")
     return 0
 

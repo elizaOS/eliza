@@ -84,10 +84,12 @@ numbers**, expect identical pass/fail shape on the methodology checks.
 
 - Status: real, fabricable, open.
 - Clock target: 100 ns (10 MHz) per `pd/openlane/config.sky130.json`.
-- Closure status: latest `pd/openlane/runs/RUN_2026-05-19_05-08-54` is
-  clean DRC + LVS at 142,274 std-cells, 3.24 mm² die, 0 macros.
-  Hold + slew + cap violations open — see
-  `pd/signoff/manifest.yaml`.
+- Closure status: `e1_pd_smoke_top` closes fully clean in
+  `pd/openlane/runs/RUN_2026-05-21_10-19-23` — DRC clean (magic + klayout),
+  LVS clean, route DRC-free, setup and hold met, zero slew/cap/fanout/antenna
+  violations at 366 std-cells / 0.0324 mm² / 0 macros / 20 ns. This is the
+  open-PDK signoff-shape proof; the full `e1_chip_top` release lane remains
+  open for a clean closure — see `pd/signoff/manifest.yaml`.
 - Evidence class: real open PDK methodology evidence.
 
 ### 4.2 GF180MCU — secondary lane

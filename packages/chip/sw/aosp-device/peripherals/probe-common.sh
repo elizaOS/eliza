@@ -18,3 +18,12 @@ require_adb_device() {
 	state=$(printf '%s\n' "$state_output" | tr -d '\r' | tail -n1)
 	[ "$state" = device ] || die "adb device is not ready: $state_output" 2
 }
+
+require_android_boot_completed() {
+	boot_output=$(adb_cmd shell getprop sys.boot_completed 2>&1) || {
+		die "could not read sys.boot_completed: $boot_output" 2
+	}
+	boot_completed=$(printf '%s\n' "$boot_output" | tr -d '\r' | tail -n1)
+	emit "SYS_BOOT_COMPLETED=$boot_completed"
+	[ "$boot_completed" = 1 ] || die "Android boot is not complete: sys.boot_completed=$boot_completed" 2
+}

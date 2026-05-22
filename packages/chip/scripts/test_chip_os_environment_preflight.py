@@ -23,6 +23,7 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
         self.assertIn("missing_tool_qemu_system_riscv64", codes)
         self.assertIn("missing_env_aosp_dir", codes)
         self.assertIn("missing_path_chipyard_checkout", codes)
+        self.assertIn("missing_tool_aapt", codes)
 
     def test_present_tool_env_and_path_can_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -42,6 +43,28 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
+
+    def test_preflight_covers_android_agent_payload_and_release_tools(self) -> None:
+        tools = {spec.name for spec in preflight.TOOLS}
+        paths = {spec.ident for spec in preflight.PATHS}
+        self.assertTrue(
+            {
+                "aapt",
+                "apkanalyzer",
+                "curl",
+                "jq",
+                "node",
+                "bun",
+            }.issubset(tools)
+        )
+        self.assertTrue(
+            {
+                "android_app_agent_plugin_manifest",
+                "android_release_manifest",
+                "android_post_flash_validator",
+                "android_release_manifest_validator",
+            }.issubset(paths)
+        )
 
 
 if __name__ == "__main__":

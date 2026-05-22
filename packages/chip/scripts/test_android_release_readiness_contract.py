@@ -101,7 +101,13 @@ PASSING_UMBRELLA_MANIFEST = """{
       "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "validation": {
         "requiredEvidence": ["assistant-role-validation", "agent-health-smoke"],
-        "evidence": ["evidence/android/chip-riscv64-launcher-agent.json"]
+        "evidence": [
+          {
+            "id": "android-chip-riscv64-launcher-agent-live",
+            "status": "collected",
+            "path": "evidence/android/chip-riscv64-launcher-agent.json"
+          }
+        ]
       }
     }
   ]
@@ -142,6 +148,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         )
         patches = [
             mock.patch.object(gate, "WORKSPACE", tmp),
+            mock.patch.object(gate, "RELEASE_DIR", tmp / "os/release/beta-2026-05-16"),
             mock.patch.object(gate, "ANDROID_MANIFEST", android_manifest),
             mock.patch.object(gate, "UMBRELLA_MANIFEST", umbrella_manifest),
             mock.patch.object(gate, "POST_FLASH", post_flash),
@@ -172,12 +179,34 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             with PatchStack(patches):
                 gate.ANDROID_MANIFEST.write_text(PASSING_ANDROID_MANIFEST, encoding="utf-8")
                 gate.UMBRELLA_MANIFEST.write_text(PASSING_UMBRELLA_MANIFEST, encoding="utf-8")
+                write(
+                    Path(tmpdir)
+                    / "os/release/beta-2026-05-16/evidence/android/chip-riscv64-launcher-agent.json",
+                    '{"status":"collected"}\n',
+                )
                 gate.POST_FLASH.write_text(FULL_VALIDATOR_SCRIPT, encoding="utf-8")
                 gate.INSTALLER.write_text(FULL_VALIDATOR_SCRIPT, encoding="utf-8")
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+
+    def test_collected_row_with_unresolved_evidence_payload_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches = self._patch_tree(Path(tmpdir))
+            with PatchStack(patches):
+                gate.ANDROID_MANIFEST.write_text(PASSING_ANDROID_MANIFEST, encoding="utf-8")
+                gate.UMBRELLA_MANIFEST.write_text(PASSING_UMBRELLA_MANIFEST, encoding="utf-8")
+                write(
+                    Path(tmpdir)
+                    / "os/release/beta-2026-05-16/evidence/android/chip-riscv64-launcher-agent.json",
+                    '{"status":"missing"}\n',
+                )
+                gate.POST_FLASH.write_text(FULL_VALIDATOR_SCRIPT, encoding="utf-8")
+                gate.INSTALLER.write_text(FULL_VALIDATOR_SCRIPT, encoding="utf-8")
+                report = gate.run_check(Namespace())
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("umbrella_android_artifacts_evidence_payloads_unresolved", codes)
 
 
 class PatchStack:

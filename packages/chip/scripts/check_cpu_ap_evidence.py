@@ -4,21 +4,36 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
+import re
 import subprocess
 import sys
 
 from cpu_ap_evidence_lib import (
     EXPECTED_CHIPYARD,
+    GENERATED_MANIFEST,
     ROOT,
     SELECTED_MANIFEST,
     load_evidence_manifest,
     load_json,
+    rel,
     require,
+    sha256_path,
     text_problems,
     transcript_metadata_problems,
     transcript_specs,
 )
+
+STALE_EVIDENCE_REPORT = ROOT / "build/reports/cpu_ap_stale_evidence.json"
+
+TRANSCRIPT_MODE_BY_KEY = {
+    "ap_benchmark_log": "ap-benchmarks",
+    "isa_cache_mmu_log": "isa-cache-mmu",
+    "linux_boot_log": "linux-boot",
+    "opensbi_boot_log": "opensbi-boot",
+    "trap_timer_irq_log": "trap-timer-irq",
+}
 
 
 def read(path: str) -> str:
@@ -233,6 +248,106 @@ def evidence_problems() -> tuple[list[str], list[str]]:
     return missing, problems
 
 
+def utc_now() -> str:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def stale_manifest_bindings(evidence_manifest: dict) -> list[dict[str, object]]:
+    if not GENERATED_MANIFEST.is_file():
+        return []
+
+    expected_sha = sha256_path(GENERATED_MANIFEST)
+    expected_manifest = rel(GENERATED_MANIFEST)
+    stale: list[dict[str, object]] = []
+    for key, spec in transcript_specs(evidence_manifest).items():
+        rel_path = spec.get("path")
+        if not isinstance(rel_path, str):
+            continue
+        path = ROOT / rel_path
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        sha_match = re.search(
+            r"^eliza-evidence: generated_manifest_sha256=([0-9a-fA-F]+)$",
+            text,
+            re.M,
+        )
+        if not sha_match:
+            continue
+        recorded_sha = sha_match.group(1).lower()
+        if recorded_sha == expected_sha:
+            continue
+        manifest_match = re.search(r"^eliza-evidence: generated_manifest=(.+)$", text, re.M)
+        mode = TRANSCRIPT_MODE_BY_KEY.get(key, key)
+        stale.append(
+            {
+                "transcript": rel_path,
+                "transcript_key": key,
+                "mode": mode,
+                "recorded_generated_manifest": manifest_match.group(1).strip()
+                if manifest_match
+                else None,
+                "recorded_generated_manifest_sha256": recorded_sha,
+                "current_generated_manifest": expected_manifest,
+                "current_generated_manifest_sha256": expected_sha,
+                "transcript_mtime_utc": dt.datetime.fromtimestamp(
+                    path.stat().st_mtime, dt.UTC
+                ).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                "generated_manifest_mtime_utc": dt.datetime.fromtimestamp(
+                    GENERATED_MANIFEST.stat().st_mtime, dt.UTC
+                ).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                "regeneration_command": (
+                    'eval "$(python3 scripts/wire_cpu_ap_capture_commands.py --format shell)" '
+                    f"&& scripts/capture_chipyard_linux_evidence.sh {mode}"
+                ),
+                "intake_command_template": spec.get("capture_command"),
+            }
+        )
+    return stale
+
+
+def write_stale_evidence_report(stale: list[dict[str, object]], absent: list[str]) -> None:
+    report = {
+        "schema": "eliza.cpu_ap_stale_evidence.v1",
+        "status": "blocked",
+        "claim_boundary": (
+            "blocked_report_only_no_hash_rewrite_no_regenerated_evidence_created_by_this_check"
+        ),
+        "generated_utc": utc_now(),
+        "generated_manifest": rel(GENERATED_MANIFEST),
+        "stale_transcripts": stale,
+        "missing_transcripts": absent,
+        "next_smallest_step": (
+            "Regenerate each stale transcript from a real generated-AP command, then archive it "
+            "with scripts/capture_cpu_ap_evidence.py intake so the transcript records the current "
+            "ElizaRocketConfig.manifest.json sha256."
+        ),
+    }
+    STALE_EVIDENCE_REPORT.parent.mkdir(parents=True, exist_ok=True)
+    STALE_EVIDENCE_REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+
+
+def print_missing_transcripts(absent: list[str], evidence_manifest: dict) -> None:
+    if not absent:
+        return
+    print("  missing production boot/trap evidence:")
+    capture_commands: list[str] = []
+    specs_by_path = {
+        spec.get("path"): spec
+        for spec in transcript_specs(evidence_manifest).values()
+        if isinstance(spec.get("path"), str)
+    }
+    for path in absent:
+        print(f"  - {path}")
+        command = specs_by_path.get(path, {}).get("capture_command")
+        if isinstance(command, str) and command:
+            capture_commands.append(command)
+    if capture_commands:
+        print("  capture commands:")
+        for command in capture_commands:
+            print(f"    {command}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--require-evidence", action="store_true")
@@ -248,29 +363,41 @@ def main() -> int:
 
     print("STATUS: PASS cpu_ap.scaffold - tiny executable CPU path and gates are present")
     absent, problems = evidence_problems()
+    evidence_manifest = load_evidence_manifest([])
+    stale = stale_manifest_bindings(evidence_manifest)
+    stale_problem_messages = {
+        f"{entry['transcript']} generated_manifest_sha256 must match {rel(GENERATED_MANIFEST)}"
+        for entry in stale
+    }
     if problems:
+        non_stale_problems = [
+            problem for problem in problems if problem not in stale_problem_messages
+        ]
+        if stale and not non_stale_problems:
+            write_stale_evidence_report(stale, absent)
+            print(
+                "STATUS: BLOCKED cpu_ap.linux_evidence - stale generated-manifest-bound "
+                "evidence must be regenerated"
+            )
+            for entry in stale:
+                print(
+                    "  - "
+                    f"{entry['transcript']} records generated_manifest_sha256="
+                    f"{entry['recorded_generated_manifest_sha256']} but current "
+                    f"{entry['current_generated_manifest']} is "
+                    f"{entry['current_generated_manifest_sha256']}"
+                )
+                print(f"    next: {entry['regeneration_command']}")
+            print(f"  report: {rel(STALE_EVIDENCE_REPORT)}")
+            print_missing_transcripts(absent, evidence_manifest)
+            return 1 if args.require_evidence else 0
         print("STATUS: FAIL cpu_ap.linux_evidence - evidence logs are invalid:")
-        for problem in problems:
+        for problem in non_stale_problems:
             print(f"  - {problem}")
         return 1
     if absent:
         print("STATUS: BLOCKED cpu_ap.linux_evidence - missing production boot/trap evidence:")
-        capture_commands: list[str] = []
-        evidence_manifest = load_evidence_manifest([])
-        specs_by_path = {
-            spec.get("path"): spec
-            for spec in transcript_specs(evidence_manifest).values()
-            if isinstance(spec.get("path"), str)
-        }
-        for path in absent:
-            print(f"  - {path}")
-            command = specs_by_path.get(path, {}).get("capture_command")
-            if isinstance(command, str) and command:
-                capture_commands.append(command)
-        if capture_commands:
-            print("  capture commands:")
-            for command in capture_commands:
-                print(f"    {command}")
+        print_missing_transcripts(absent, evidence_manifest)
         print(
             "  next: run python3 scripts/capture_cpu_ap_evidence.py plan all --format shell, "
             "wire the generated AP simulator/test commands, run "

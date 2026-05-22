@@ -185,7 +185,7 @@ if cocotb is not None:
         if not _real_dut(dut):
             cocotb.log.info(
                 "STATUS: BLOCKED cpu.mmu_sv39_evidence - "
-                "DUT has no satp/MMU; real CVA6/Kunminghu/Ascalon required."
+                "DUT has no satp/MMU; real CVA6/Kunminghu required."
             )
             return
         raise AssertionError(
@@ -218,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(
         "STATUS: BLOCKED cpu.mmu_sv39_evidence - "
-        "real Sv39 walk requires CVA6 / Kunminghu / Ascalon DUT; "
+        "real Sv39 walk requires CVA6 / Kunminghu DUT; "
         "page-table builder + Ztso RSW host check passed."
     )
     return 0

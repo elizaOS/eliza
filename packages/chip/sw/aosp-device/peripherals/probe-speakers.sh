@@ -28,6 +28,7 @@ die() {
 # shellcheck disable=SC1091
 . "$here/probe-common.sh"
 require_adb_device
+require_android_boot_completed
 command -v file >/dev/null 2>&1 || die "file(1) not on PATH" 2
 command -v python3 >/dev/null 2>&1 || die "python3 not on PATH" 2
 [ -f "$tone_fixture" ] || die "missing fixture: $tone_fixture (regenerate with fixtures/scripts/make-tone.py)" 2
