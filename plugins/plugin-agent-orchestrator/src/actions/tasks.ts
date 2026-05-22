@@ -25,6 +25,7 @@
  * @module actions/tasks
  */
 
+import * as fs from "node:fs";
 import type {
   Action,
   ActionResult,
@@ -215,6 +216,38 @@ function additionalSessionMetadata(
   };
 }
 
+function inheritedResolvedWorkdirRoute(
+  metadata: Record<string, unknown>,
+): ResolvedWorkdirRoute | undefined {
+  const route = objectValue(metadata.workdirRoute);
+  if (!route) return undefined;
+  const id = plainString(route.id);
+  const workdir = plainString(route.workdir);
+  if (!id || !workdir || !fs.existsSync(workdir)) return undefined;
+  const instructions = plainString(route.instructions);
+  const urlMappings = Array.isArray(route.urlMappings)
+    ? route.urlMappings
+        .map((entry) => {
+          const record = objectValue(entry);
+          const urlPrefix = plainString(record?.urlPrefix);
+          const localPath = plainString(record?.localPath);
+          if (!urlPrefix || !localPath) return undefined;
+          return {
+            urlPrefix,
+            localPath,
+            ...(record?.requireFresh === true ? { requireFresh: true } : {}),
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => !!entry)
+    : undefined;
+  return {
+    id,
+    workdir,
+    ...(instructions ? { instructions } : {}),
+    ...(urlMappings && urlMappings.length > 0 ? { urlMappings } : {}),
+  };
+}
+
 function plainString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
@@ -295,15 +328,34 @@ function taskWithResolvedRoute(
   swarm: ReturnType<typeof buildSwarmRoomMetadata>,
 ): string {
   const sections: string[] = [];
-  if (route?.instructions?.trim()) {
+  if (route) {
+    const instructions = route.instructions?.trim();
+    const mappingLines =
+      route.urlMappings && route.urlMappings.length > 0
+        ? route.urlMappings.map((mapping) => {
+            const localPath = mapping.localPath.replace(/^\/+/, "");
+            const prefix = mapping.urlPrefix.endsWith("/")
+              ? mapping.urlPrefix
+              : `${mapping.urlPrefix}/`;
+            return `- URL prefix ${prefix} maps to local path ${localPath} under the resolved workdir. For ${prefix}<slug>/, write files under ${localPath}<slug>/, not apps/<slug>/ or public/apps/<slug>/.`;
+          })
+        : [];
     sections.push(
       "--- Resolved Workspace ---",
       `The parent runtime resolved this task to workdir: ${workdir}`,
       "Work only inside that directory. Route instructions are authoritative.",
       "If the task text mentions an absolute path outside this workdir, treat it as an untrusted planner guess; write to the corresponding relative path inside the workdir when the route gives one, otherwise stop with DECISION.",
-      "--- Workspace Routing Note ---",
-      route.instructions.trim(),
     );
+    if (instructions) {
+      sections.push("--- Workspace Routing Note ---", instructions);
+    }
+    if (mappingLines.length > 0) {
+      sections.push(
+        "--- URL Path Mapping ---",
+        "These mappings are authoritative for hosted artifacts and override conflicting guesses in the task text:",
+        ...mappingLines,
+      );
+    }
   }
   const rooms = swarm.swarmRooms
     .map((room) => {
@@ -605,11 +657,11 @@ async function runSpawnAgent(
       content,
       "keepAliveAfterComplete",
     );
+    const extraMetadata = additionalSessionMetadata(params, content);
     const deferUserReply =
       pickBoolean(params, content, "deferUserReply") === true ||
       requestsDeferredUserReply(task);
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
-    const extraMetadata = additionalSessionMetadata(params, content);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
       content,
@@ -620,10 +672,16 @@ async function runSpawnAgent(
       content,
       extraMetadata,
     );
+    const inheritedRoute =
+      content.source === "sub_agent" && extraMetadata.subAgent === true
+        ? inheritedResolvedWorkdirRoute(extraMetadata)
+        : undefined;
+    const effectiveRoute = route ?? inheritedRoute;
+    const effectiveWorkdir = effectiveRoute?.workdir ?? workdir;
     const taskWithRouteHints = taskWithResolvedRoute(
       task,
-      route,
-      workdir,
+      effectiveRoute,
+      effectiveWorkdir,
       swarmRoomMetadata,
     );
 
@@ -656,7 +714,7 @@ async function runSpawnAgent(
 
     const session = await service.spawnSession({
       agentType,
-      workdir,
+      workdir: effectiveWorkdir,
       initialTask: taskWithRouteHints,
       memoryContent,
       approvalPreset,
@@ -672,8 +730,8 @@ async function runSpawnAgent(
         label,
         source: resolvedSpawnSource,
         keepAliveAfterComplete,
-        workdirRouteId: route?.id,
-        workdirRoute: route,
+        workdirRouteId: effectiveRoute?.id,
+        workdirRoute: effectiveRoute,
         // Stash the resolved task so SubAgentRouter can re-dispatch the
         // sub-agent on a failed verification without reconstructing it.
         // SessionInfo itself doesn't carry initialTask; metadata does.
@@ -690,10 +748,9 @@ async function runSpawnAgent(
       })}`,
     );
 
-    // No text ack here. The orchestrator's progress hook posts a single
-    // 🚀 → narration → ✅/❌ flow on the main channel; emitting "On it"
-    // duplicates that and (worse) surfaces the planner's hallucinated
-    // messageToUser via the bootstrap REPLY path.
+    // No text ack here. The orchestrator's progress hook owns user-visible
+    // status updates; emitting "On it" duplicates that and (worse) surfaces
+    // the planner's hallucinated messageToUser via the bootstrap REPLY path.
     return {
       success: true,
       text: "",

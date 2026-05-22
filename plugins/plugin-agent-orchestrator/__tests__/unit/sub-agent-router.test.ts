@@ -220,6 +220,57 @@ describe("SubAgentRouter", () => {
     await router.stop();
   });
 
+  it("carries workdir route metadata into routed terminal messages", async () => {
+    session = makeSession({
+      metadata: {
+        label: "build-app",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        initialTask: "Build the routed static app.",
+        workdirRouteId: "static-apps",
+        workdirRoute: {
+          id: "static-apps",
+          workdir: "/tmp/wf",
+          instructions: "Write under data/apps/<slug>/.",
+          urlMappings: [
+            {
+              urlPrefix: "https://example.test/apps/",
+              localPath: "data/apps/",
+            },
+          ],
+        },
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    const router = await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "error", {
+      message: "Sub-agent state was lost; spawn a fresh sub-agent to continue.",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    const posted = handleMessage.mock.calls[0]?.[1];
+    const metadata = posted?.content?.metadata as Record<string, unknown>;
+    expect(metadata?.workdirRouteId).toBe("static-apps");
+    expect(metadata?.initialTask).toBe("Build the routed static app.");
+    expect(metadata?.workdirRoute).toMatchObject({
+      id: "static-apps",
+      workdir: "/tmp/wf",
+      urlMappings: [
+        {
+          urlPrefix: "https://example.test/apps/",
+          localPath: "data/apps/",
+        },
+      ],
+    });
+
+    await router.stop();
+  });
+
   it("posts terminal updates to deduped deterministic task/worktree swarm rooms", async () => {
     session = makeSession({
       metadata: {
@@ -1046,6 +1097,65 @@ describe("SubAgentRouter", () => {
         expect(handleMessage).toHaveBeenCalledTimes(1);
         const posted = handleMessage.mock.calls[0]?.[1];
         expect(posted?.content?.text).not.toContain("[verification:");
+      } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+      }
+    });
+
+    it("rejects mapped app URLs when the sub-agent wrote an unserved sibling path", async () => {
+      const tmpRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), "sub-agent-router-"),
+      );
+      try {
+        const appUrl = "https://example.test/apps/compliance-candy/";
+        const wrongDir = path.join(tmpRoot, "apps/compliance-candy");
+        fs.mkdirSync(wrongDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(wrongDir, "index.html"),
+          "<html><body>wrong path</body></html>",
+        );
+        stubFetch(
+          vi.fn(async () => {
+            return new Response("<html><body>ok</body></html>", {
+              status: 200,
+              headers: { "content-type": "text/html" },
+            });
+          }),
+        );
+        session = {
+          ...sessionWithTask(`build and verify ${appUrl}`, 2, {
+            workdirRoute: {
+              id: "static-apps",
+              workdir: tmpRoot,
+              urlMappings: [
+                {
+                  urlPrefix: "https://example.test/apps/",
+                  localPath: "data/apps/",
+                },
+              ],
+            },
+          }),
+          workdir: tmpRoot,
+        };
+        acp = makeAcpService(session);
+        const { runtime, handleMessage, spawnSession } = makeRuntime({
+          acp: acp.service,
+        });
+        await SubAgentRouter.start(runtime);
+
+        acp.emit(SESSION_ID, "task_complete", {
+          response: `Wrote apps/compliance-candy/index.html. Public URL ${appUrl}`,
+        });
+        await new Promise((r) => setTimeout(r, 200));
+
+        expect(spawnSession).not.toHaveBeenCalled();
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+        const posted = handleMessage.mock.calls[0]?.[1];
+        expect(posted?.content?.text).toContain(
+          "mapped local target missing or empty",
+        );
+        expect(posted?.content?.text).toContain("data/apps/compliance-candy");
+        expect(posted?.content?.text).toContain("[verification:");
       } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });
       }

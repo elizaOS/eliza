@@ -574,6 +574,16 @@ export class SubAgentRouter extends Service {
     // handleMessage without a callback — the planner will still update
     // state but no message reaches the user.
     for (const target of targets) {
+      const sessionMeta = session.metadata as
+        | Record<string, unknown>
+        | undefined;
+      const sessionRoute =
+        sessionMeta?.workdirRoute &&
+        typeof sessionMeta.workdirRoute === "object"
+          ? (sessionMeta.workdirRoute as Record<string, unknown>)
+          : undefined;
+      const sessionRouteId = pickPlainString(sessionMeta?.workdirRouteId);
+      const sessionInitialTask = pickPlainString(sessionMeta?.initialTask);
       const memory: Memory = {
         id: randomUUID() as UUID,
         entityId: subAgentEntityId,
@@ -621,7 +631,10 @@ export class SubAgentRouter extends Service {
               ? { originConnectorMessageId: origin.parentConnectorMessageId }
               : {}),
             ...(origin.source ? { originSource: origin.source } : {}),
-          },
+            ...(sessionRouteId ? { workdirRouteId: sessionRouteId } : {}),
+            ...(sessionRoute ? { workdirRoute: sessionRoute } : {}),
+            ...(sessionInitialTask ? { initialTask: sessionInitialTask } : {}),
+          } as Content["metadata"],
         },
         createdAt: Date.now(),
       };

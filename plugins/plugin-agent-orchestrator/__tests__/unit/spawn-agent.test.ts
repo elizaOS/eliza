@@ -233,6 +233,12 @@ describe("TASKS:spawn_agent", () => {
         workdir: process.cwd(),
         matchAny: ["counter"],
         instructions: "Create app files under data/apps/<slug>/.",
+        urlMappings: [
+          {
+            urlPrefix: "https://example.test/apps/",
+            localPath: "data/apps/",
+          },
+        ],
       },
     ]);
     try {
@@ -260,9 +266,66 @@ describe("TASKS:spawn_agent", () => {
       expect(initialTask).toContain(
         "Create app files under data/apps/<slug>/.",
       );
+      expect(initialTask).toContain("--- URL Path Mapping ---");
+      expect(initialTask).toContain(
+        "URL prefix https://example.test/apps/ maps to local path data/apps/ under the resolved workdir",
+      );
+      expect(initialTask).toContain(
+        "write files under data/apps/<slug>/, not apps/<slug>/ or public/apps/<slug>/",
+      );
       expect(initialTask.indexOf("--- Resolved Workspace ---")).toBeLessThan(
         initialTask.indexOf("--- User Task ---"),
       );
+    } finally {
+      if (oldRoutes === undefined) delete process.env.TASK_AGENT_WORKDIR_ROUTES;
+      else process.env.TASK_AGENT_WORKDIR_ROUTES = oldRoutes;
+    }
+  });
+
+  it("keeps an inherited workdir route for routed sub-agent follow-up turns", async () => {
+    const oldRoutes = process.env.TASK_AGENT_WORKDIR_ROUTES;
+    delete process.env.TASK_AGENT_WORKDIR_ROUTES;
+    try {
+      const svc = serviceMock();
+      const result = await spawnAgentAction.handler(
+        runtimeWith(svc),
+        memory({
+          source: "sub_agent",
+          metadata: {
+            subAgent: true,
+            workdirRoute: {
+              id: "local-apps",
+              workdir: process.cwd(),
+              instructions: "Write under data/apps/<slug>/.",
+              urlMappings: [
+                {
+                  urlPrefix: "https://example.test/apps/",
+                  localPath: "data/apps/",
+                },
+              ],
+            },
+          },
+        }),
+        state,
+        {
+          parameters: {
+            action: "spawn_agent",
+            task: "Continue the failed static page build.",
+            agentType: "opencode",
+          },
+        },
+        callback(),
+      );
+      expect(result?.success).toBe(true);
+      const call = svc.spawnSession.mock.calls[0]?.[0] as {
+        initialTask?: string;
+        metadata?: Record<string, unknown>;
+        workdir?: string;
+      };
+      expect(call.workdir).toBe(process.cwd());
+      expect(call.metadata?.workdirRouteId).toBe("local-apps");
+      expect(call.initialTask).toContain("--- URL Path Mapping ---");
+      expect(call.initialTask).toContain("data/apps/<slug>/");
     } finally {
       if (oldRoutes === undefined) delete process.env.TASK_AGENT_WORKDIR_ROUTES;
       else process.env.TASK_AGENT_WORKDIR_ROUTES = oldRoutes;
