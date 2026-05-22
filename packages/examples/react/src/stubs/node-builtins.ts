@@ -150,6 +150,15 @@ export function createHmac(_algorithm: string, key: unknown): BrowserHash {
   return new BrowserHash().update(key);
 }
 
+export function timingSafeEqual(a: unknown, b: unknown): boolean {
+  const x = toBytes(a);
+  const y = toBytes(b);
+  if (x.length !== y.length) return false;
+  let diff = 0;
+  for (let i = 0; i < x.length; i += 1) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+
 export function pbkdf2Sync(
   password: unknown,
   salt: unknown,
@@ -638,6 +647,7 @@ const nodeBuiltins = {
   strictEqual,
   subtle,
   symlink,
+  timingSafeEqual,
   tmpdir,
   unlink,
   unlinkSync,
