@@ -9,7 +9,7 @@ split so we stop treating manually-created VMs as "infrastructure-by-prayer".
 ┌──────────────────────────────────────────────────────────────┐
 │  Tier 1 — Control plane (static, 1-2 VMs, Terraform)        │
 │                                                              │
-│   eliza-cp-production-1   (Hetzner cpx21, fsn1)             │
+│   eliza-1   (Hetzner cpx21, fsn1)             │
 │     ├── eliza-provisioning-worker  (systemd, queue consumer)│
 │     ├── eliza-agent-router         (systemd, HTTP routing)  │
 │     ├── headscale                  (VPN mesh)               │
@@ -64,7 +64,7 @@ to coordinate it.
 
 | Layer | Prefix | Example | Where it's set |
 |---|---|---|---|
-| Control plane VM | `eliza-cp-<env>-<n>` | `eliza-cp-production-1` | Terraform `var.environment` |
+| Control plane VM | `eliza-<n>` | `eliza-1` | Terraform `hcloud_server.control_plane` |
 | Data plane node (NEW) | `eliza-core-<hex>` | `eliza-core-38ea87b1` | [`generateNodeId()`](../../../../cloud-shared/src/lib/services/containers/node-autoscaler.ts) |
 | Data plane node (LEGACY) | `milady-core-<n>` | `milady-core-1` | DEPRECATED — see [Legacy migration](#legacy-milady-core-migration) |
 

@@ -47,9 +47,9 @@ variable "cloudflare_zone_id" {
 }
 
 variable "control_plane_hostname_prefix" {
-  description = "DNS subdomain prefix. Final record: <prefix>-<environment>-<n>.elizacloud.ai"
+  description = "DNS subdomain prefix. Final record: <prefix>-<environment>-<n>.elizacloud.ai (e.g. eliza-production-1.elizacloud.ai)"
   type        = string
-  default     = "cp"
+  default     = "eliza"
 }
 
 variable "deploy_branch" {

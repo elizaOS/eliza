@@ -15,7 +15,7 @@ resource "hcloud_ssh_key" "operators" {
   # inserted/reordered in `var.ssh_public_keys`.
   for_each = { for key in var.ssh_public_keys : substr(sha256(key), 0, 12) => key }
 
-  name       = "eliza-cp-${var.environment}-op-${each.key}"
+  name       = "eliza-op-${var.environment}-${each.key}"
   public_key = each.value
   labels     = local.common_labels
 }
@@ -23,7 +23,12 @@ resource "hcloud_ssh_key" "operators" {
 resource "hcloud_server" "control_plane" {
   for_each = toset([for i in range(var.control_plane_count) : tostring(i + 1)])
 
-  name        = "eliza-cp-${var.environment}-${each.value}"
+  # Naming: `eliza-${index}` — short, matches the data-plane convention
+  # `eliza-core-<hex>` and supports the in-place rename from the legacy
+  # `milady` VM. The environment lives in labels, not the hostname, so the
+  # prod/staging distinction shows up in the Hetzner Console filter
+  # without bloating the hostname every operator types into SSH.
+  name        = "eliza-${each.value}"
   location    = var.hcloud_location
   server_type = var.hcloud_server_type
   image       = var.hcloud_image
@@ -33,7 +38,7 @@ resource "hcloud_server" "control_plane" {
   })
 
   user_data = templatefile("${path.module}/cloud-init/bootstrap.yaml.tftpl", {
-    hostname          = "eliza-cp-${var.environment}-${each.value}"
+    hostname          = "eliza-${each.value}"
     deploy_branch     = var.deploy_branch
     operator_ssh_keys = var.ssh_public_keys
   })
