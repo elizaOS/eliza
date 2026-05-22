@@ -8,12 +8,9 @@
  * audit emissions without persisting anything.
  */
 
-import { describe, expect, test, beforeEach } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { AuditDispatcher, InMemorySink } from "@elizaos/security/audit";
 import { Hono } from "hono";
-import {
-  AuditDispatcher,
-  InMemorySink,
-} from "@elizaos/security/audit";
 
 // Import from the dedicated `api-key-permission` module — not `auth.ts` —
 // so this test does not pull in the global auth-gate's transitive deps
@@ -88,7 +85,10 @@ describe("assertOrgMembership", () => {
       return c.json({ ok: true });
     });
     app.onError((err, c) =>
-      c.json({ error: err.message }, "status" in err ? (err as any).status : 500),
+      c.json(
+        { error: err.message },
+        "status" in err ? (err as any).status : 500,
+      ),
     );
     const res = await app.request("/x");
     expect(res.status).toBe(403);
@@ -104,7 +104,10 @@ describe("requireApiKeyPermission", () => {
     app.use("*", requireApiKeyPermission(perm));
     app.get("/", (c) => c.json({ ok: true }));
     app.onError((err, c) =>
-      c.json({ error: err.message }, "status" in err ? (err as any).status : 500),
+      c.json(
+        { error: err.message },
+        "status" in err ? (err as any).status : 500,
+      ),
     );
     return app;
   }
@@ -173,7 +176,10 @@ describe("requireApiKeyPermission", () => {
     app.use("*", requireApiKeyPermission("agents:write"));
     app.get("/", (c) => c.json({ ok: true }));
     app.onError((err, c) =>
-      c.json({ error: err.message }, "status" in err ? (err as any).status : 500),
+      c.json(
+        { error: err.message },
+        "status" in err ? (err as any).status : 500,
+      ),
     );
     const res = await app.request("/");
     expect(res.status).toBe(403);

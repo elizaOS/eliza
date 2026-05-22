@@ -4,10 +4,10 @@
  * Protected by CRON_SECRET.
  */
 
+import { purgeExpiredAuditLog } from "@elizaos/cloud-shared/lib/services/audit-log-purge";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { purgeExpiredAuditLog } from "@elizaos/cloud-shared/lib/services/audit-log-purge";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 

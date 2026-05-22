@@ -20,12 +20,16 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.get("/", (c) => c.json({ ok: true, route: "process-pending-crypto-payments" }));
+app.get("/", (c) =>
+  c.json({ ok: true, route: "process-pending-crypto-payments" }),
+);
 
 app.post("/", async (c) => {
   try {
     requireCronSecret(c);
-    const stats = await directWalletPaymentsService.processBroadcastBatch(c.env);
+    const stats = await directWalletPaymentsService.processBroadcastBatch(
+      c.env,
+    );
     return c.json({ success: true, ...stats });
   } catch (error) {
     logger.error("[Cron process-pending-crypto-payments] failed", {

@@ -7,14 +7,14 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { requireApiKeyPermission } from "@/api-app/middleware/auth";
+import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import {
   ForbiddenError,
   failureResponse,
   NotFoundError,
 } from "@/lib/api/cloud-worker-errors";
-import { requireApiKeyPermission } from "@/api-app/middleware/auth";
-import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";

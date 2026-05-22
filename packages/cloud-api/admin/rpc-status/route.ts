@@ -15,13 +15,20 @@ import {
   listEvmPayoutNetworks,
   resolveEvmRpc,
 } from "@/lib/config/evm-rpc";
-import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "@/lib/config/token-constants";
+import {
+  ELIZA_DECIMALS,
+  ERC20_ABI,
+  EVM_CHAINS,
+} from "@/lib/config/token-constants";
 import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
-import { ELIZA_TOKEN_ADDRESSES, type SupportedNetwork } from "@/lib/services/eliza-token-price";
+import {
+  ELIZA_TOKEN_ADDRESSES,
+  type SupportedNetwork,
+} from "@/lib/services/eliza-token-price";
 import { getHotWalletAddresses } from "@/lib/services/payout-status";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -60,7 +67,10 @@ async function probeNetwork(
     error: null,
   };
 
-  const client = createPublicClient({ chain, transport: http(url, { timeout: PROBE_TIMEOUT_MS }) });
+  const client = createPublicClient({
+    chain,
+    transport: http(url, { timeout: PROBE_TIMEOUT_MS }),
+  });
   const started = Date.now();
   try {
     const [chainId, block] = await Promise.all([
@@ -76,7 +86,9 @@ async function probeNetwork(
     result.latestBlock = block.toString();
 
     if (hotWalletAddress) {
-      const tokenAddress = ELIZA_TOKEN_ADDRESSES[network as SupportedNetwork] as Address;
+      const tokenAddress = ELIZA_TOKEN_ADDRESSES[
+        network as SupportedNetwork
+      ] as Address;
       const raw = await client.readContract({
         address: tokenAddress,
         abi: ERC20_ABI,
@@ -84,7 +96,8 @@ async function probeNetwork(
         args: [hotWalletAddress],
       });
       result.hotWalletBalance =
-        Number(raw) / 10 ** ELIZA_DECIMALS[network as keyof typeof ELIZA_DECIMALS];
+        Number(raw) /
+        10 ** ELIZA_DECIMALS[network as keyof typeof ELIZA_DECIMALS];
     }
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error);

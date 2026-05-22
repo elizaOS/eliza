@@ -268,8 +268,7 @@ app.post("/", async (c) => {
         result: "success",
         resource: null,
         org_id: cloudUser.organization_id ?? undefined,
-        ip:
-          c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+        ip: c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
         user_agent: c.req.header("user-agent") ?? undefined,
         request_id: c.get("requestId"),
         metadata: { provider: "steward", method: "session_exchange" },
